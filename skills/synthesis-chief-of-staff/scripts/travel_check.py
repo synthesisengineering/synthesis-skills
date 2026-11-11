@@ -40,8 +40,11 @@ LINES = ("Paid by", "Leave", "Route", "Arrive", "Backup", "Fare", "Ticket")
 LABEL = re.compile(r"(?im)^\s*(For|Paid by|Leave|Route|Arrive|Backup|Fare|Ticket|Decision|Travel)\s*:[ \t]*(.*)$")
 EMPTY = re.compile(r"(?i)\s*(?:tbd|tbc|tba|tk|n/?a|unknown|to be (?:confirmed|decided|determined|announced)|\?+|-+)?\s*")
 BREAK = re.compile(r"(?i)<br\s*/?>|</(?:p|div|li|tr|h\d)>")  # a connector may return a description as HTML
+STREET = re.compile(r"(?i)(?:^|[,;(@]|\bat\s)\s*\d+[^\W\d_]?(?:[-–/]\d+)*(?:[ \t]+\d+)*[ \t]+(?:\d+(?:st|nd|rd|th)\b|[^\W\d_])")
+CLOCK = re.compile(r"(?i)\b\d{1,2}(?::\d{2})?\s*[ap]\.?m\b\.?|\b\d{1,2}:\d{2}\b")
+CJK = re.compile(r"[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af]")  # an address in these scripts runs number and name together
 CAR = re.compile(r"(?i)\b(?:car|uber|lyft|taxi|cab|rideshare|ride[ -]share|limo|car service)\b")
-NEAR = timedelta(hours=12)  # farther than this from every commitment, a block with no `For:` line belongs to none
+NEAR = timedelta(hours=12)  # farther than this from every commitment, a block with no `For:` line serves none
 ASK = "the principal's decision, written on a `Decision:` line of that block"
 
 
@@ -50,19 +53,44 @@ def stop(message: str):
 
 
 def lines(description: str) -> dict:
-    """The labeled lines of a description, a placeholder counting as no line. HTML is read as the text it shows."""
-    text = html.unescape(re.sub(r"<[^<>]+>", "", BREAK.sub("\n", description or "")))
-    return {label.lower(): value.strip() for label, value in LABEL.findall(text) if not EMPTY.fullmatch(value)}
+    """The labeled lines of a description, a placeholder counting as no line and a label given twice keeping both
+    values, one to a line. HTML is read as the text it shows."""
+    text, said = html.unescape(re.sub(r"<[^<>]+>", "", BREAK.sub("\n", str(description or "")))), {}
+    for label, value in LABEL.findall(text):
+        if not EMPTY.fullmatch(value):
+            said[label.lower()] = "\n".join(filter(None, [said.get(label.lower()), value.strip()]))
+    return said
+
+
+def tidy(location) -> str:
+    """A location on one line, each line of it a part as a comma would make it."""
+    return ", ".join(" ".join(row.split()) for row in str(location or "").splitlines() if row.strip())
+
+
+def street(text: str):
+    """A house number with its street, or a postcode with its town, after it (`149 Main St`, `10115 Berlin`); a
+    time of day is set aside first."""
+    return STREET.search(CLOCK.sub("", text))
+
+
+def exact(location: str) -> bool:
+    """Whether a location reads as an address a route can be planned to: a street number as above, or a number in
+    one part and a name in another (`Calle Mayor, 5`). A venue whose name ends in a number (`Studio 54`) and a
+    time of day are not one. It reads the form of what is written, not a map."""
+    text = CLOCK.sub("", location)
+    numbered = [bool(re.search(r"\d", part)) for part in re.split(r"[,;]", text) if part.strip()]
+    return bool(street(location) or (any(numbered) and (not all(numbered) or CJK.search(text))))
 
 
 def place(location: str, policy: dict) -> str:
     """'' for no place (empty, a link, a number to call, an online meeting), 'base' for the home or a named
-    place with a standing route, 'away' for anywhere else."""
-    text = " ".join(str(location or "").split())
+    place with a standing route, 'away' for anywhere else. A location that holds a street address is a place
+    whatever else it says: a venue called Zoom Hall, a map link beside it, a number to call as well."""
+    text = tidy(location)
     low = text.lower()
     online = [str(w).lower() for w in policy.get("online") or []]
-    if (not text or "://" in low or low.startswith("www.") or re.fullmatch(r"[\d\s()+.-]{7,}", text)
-            or any(re.search(rf"\b{re.escape(w)}\b", low) for w in online)):
+    if not text or (not street(text) and ("://" in low or low.startswith("www.") or re.fullmatch(r"[\d\s()+.-]{7,}", text)
+                                          or any(re.search(rf"\b{re.escape(w)}\b", low) for w in online))):
         return ""
     bases = [slot.part(policy, "home"), *[p for p in policy.get("places") or [] if isinstance(p, dict)]]
     for base in bases:
@@ -70,6 +98,21 @@ def place(location: str, policy: dict) -> str:
         if (label and low == label) or (address and address in low):
             return "base"
     return "away"
+
+
+def days(entry: dict, a, b):
+    """The first and last day an entry covers; None when it has no start, which makes it no event. An all-day end
+    names the day after its last, as calendars give it, and a timed entry that ends at midnight ends the day before."""
+    if a:
+        return a.date(), max(a, (b or a) - timedelta(minutes=1)).date()
+    try:
+        first, last = (date.fromisoformat(str(v.get("date") if isinstance(v, dict) else v)[:10])
+                       for v in (entry.get("start"), entry.get("end") or entry.get("start")))
+    except ValueError:
+        if entry.get("start"):
+            stop(f"the start or end of {str(entry.get('summary'))!r} is not a date or a time this can read")
+        return None
+    return first, max(first, last - timedelta(days=1))
 
 
 def judge(args, config: dict, read: dict) -> dict:
@@ -80,43 +123,46 @@ def judge(args, config: dict, read: dict) -> dict:
     today = date.fromisoformat(args.today) if args.today else datetime.now(zone).date()
     first = date.fromisoformat(args.start) if args.start else today
     last = first + timedelta(days=args.days - 1)
-    window = read.get("window") if isinstance(read, dict) else None
-    if not isinstance(window, dict) or not window.get("from") or not window.get("through"):
+    try:
+        covered = [date.fromisoformat(str(read["window"][key])[:10]) for key in ("from", "through")]
+    except (TypeError, KeyError, ValueError):
         stop('the calendar read must say which days it covers: {"window": {"from": ..., "through": ...}, "events": [...]}')
-    if window["from"] > first.isoformat() or window["through"] < last.isoformat():
-        stop(f"the calendar read does not cover {first} through {last} (it covers {window['from']} through {window['through']}); "
+    if covered[0] > first or covered[1] < last:
+        stop(f"the calendar read does not cover {first} through {last} (it covers {covered[0]} through {covered[1]}); "
              "read the calendar for those days first")
     title = str(policy.get("block_title") or "Travel").lower()
     blocks, commitments = [], []
-    for entry in read.get("events") or []:
+    for entry in (e for e in read.get("events") or [] if isinstance(e, dict)):
         try:
             a, b = slot.moment(entry.get("start"), zone), slot.moment(entry.get("end"), zone)
         except SystemExit as exc:
             stop(str(exc.code).split(": ", 1)[-1])
         summary, said = str(entry.get("summary") or "an event"), lines(entry.get("description"))
         if re.match(rf"{re.escape(title)}\b", summary.lower()):
-            blocks += [{"start": a, "end": b, "said": said}] if a and b else []
+            names = [" ".join(name.lower().split()) for name in said.get("for", "").splitlines()]
+            blocks += [{"start": a, "end": b, "said": said, "names": names}] if a and b else []
             continue
-        raw = entry.get("start")
-        try:
-            day = a.date() if a else date.fromisoformat(str(raw.get("date") if isinstance(raw, dict) else raw)[:10])
-        except ValueError:
-            continue  # an entry with no start is not an event this can place on a day
-        if place(entry.get("location"), policy) == "away":
-            commitments.append({"summary": summary, "start": a, "end": b, "day": day, "said": said,
-                                "location": " ".join(str(entry.get("location")).split())})
+        span, spot = days(entry, a, b), tidy(entry.get("location"))
+        if span and place(spot, policy) == "away":
+            commitments.append({"summary": summary, "title": " ".join(summary.lower().split()), "start": a, "end": b or a,
+                                "days": span, "said": said, "location": spot})
     timed = [c for c in commitments if c["start"]]
-    for block in blocks:  # a block that names no commitment belongs to the one it stands nearest to, and to no other
-        near = min(timed, key=lambda c: min(abs(c["start"] - block["end"]), abs(block["start"] - c["end"])), default=None)
-        block["beside"] = near if near and min(abs(near["start"] - block["end"]), abs(block["start"] - near["end"])) <= NEAR else None
-    commitments = [c for c in commitments if first <= c["day"] <= last]
+
+    def apart(block, c):  # how far a block stands from a commitment
+        return min(abs(c["start"] - block["end"]), abs(block["start"] - c["end"]))
+    for block in blocks:  # a block serves each commitment it names; one that names none, the commitment nearest to it
+        titled = [[c for c in timed if c["title"] == name] or [c for c in timed if c["title"].startswith(name)] for name in block["names"]]
+        nearest = min(timed, key=lambda c: apart(block, c), default=None)
+        block["serves"] = ([min(found, key=lambda c: apart(block, c)) for found in titled if found] if block["names"]
+                           else [nearest] if nearest and apart(block, nearest) <= NEAR else [])
+    commitments = [c for c in commitments if c["days"][0] <= last and c["days"][1] >= first]  # under way on a day judged counts
     early, local = int(policy.get("arrive_early_minutes", 15)), int(policy.get("local_minutes", 15))
     latest = str(policy.get("latest_return") or "")
     events = []
-    for c in sorted(commitments, key=lambda c: (c["day"], c["start"] or datetime.min.replace(tzinfo=zone))):
-        lacks, found = [], {"summary": c["summary"], "start": c["start"].isoformat() if c["start"] else c["day"].isoformat(),
+    for c in sorted(commitments, key=lambda c: (c["days"][0], c["start"] or datetime.min.replace(tzinfo=zone))):
+        lacks, found = [], {"summary": c["summary"], "start": c["start"].isoformat() if c["start"] else c["days"][0].isoformat(),
                             "location": c["location"]}
-        if not re.search(r"\d", c["location"]):
+        if not exact(c["location"]):
             lacks.append(f'no exact address: the location reads "{c["location"]}"')
         travel = c["said"].get("travel", "")
         minutes = re.search(r"(?i)\blocal\b\D*(\d+)\s*min", travel)
@@ -133,14 +179,18 @@ def judge(args, config: dict, read: dict) -> dict:
             lacks += ["the event holds no clock times, so its blocks cannot be checked: give it times"] if travel else []
             events.append({**found, "lacks": lacks})
             continue
-        named = [b for b in blocks if b["said"].get("for") and (b["said"]["for"].lower() in c["summary"].lower()
-                                                                or c["summary"].lower() in b["said"]["for"].lower())]
-        loose = [b for b in blocks if not b["said"].get("for") and b["beside"] is c]
-        before = max((b for b in named + loose if b["start"] < c["start"]), key=lambda b: b["start"], default=None)
-        after = min((b for b in named + loose if b["start"] >= c["start"]), key=lambda b: b["start"], default=None)
-        for side, block in (("before", before), ("after", after)):
+        mine = [b for b in blocks if any(served is c for served in b["serves"])]
+        before = max((b for b in mine if b["start"] < c["start"]), key=lambda b: b["start"], default=None)
+        after = min((b for b in mine if b["start"] >= c["start"]), key=lambda b: b["start"], default=None)
+        # A side that lies outside the read is not judged from it: the way to an event already under way when the
+        # read begins, the way back from one that outlasts it.
+        for side, block in [("before", before)] * (c["days"][0] >= covered[0]) + [("after", after)] * (c["days"][1] <= covered[1]):
             if not block:
-                lacks.append(f"no travel block {side} it (leave, route, arrive, backup, fare, ticket)")
+                beside = next((b for b in blocks if b not in mine and apart(b, c) <= NEAR and (b["start"] < c["start"]) == (side == "before")), None)
+                whose = beside and ("; ".join(beside["said"].get("for", "").splitlines()) or beside["serves"][0]["summary"])
+                lacks.append(f"no travel block {side} it (leave, route, arrive, backup, fare, ticket)" + (
+                    f'; the block at {slot.hm(beside["start"])} is for "{whose}", and a block serves only the events its `For:` lines name'
+                    if beside else ""))
                 continue
             lacks += [f"the block {side} has no `{line}:` line" for line in LINES if not block["said"].get(line.lower())]
             if (CAR.search(block["said"].get("route", "")) and "personal" in block["said"].get("paid by", "").lower()
@@ -209,3 +259,6 @@ if __name__ == "__main__":
             print(exc.code, file=sys.stderr)
             sys.exit(2)
         raise
+    except Exception as exc:  # noqa: BLE001  a read it cannot make sense of was not shown enough: never 0 or 1
+        print(f"travel_check: this calendar read could not be judged ({exc!r})", file=sys.stderr)
+        sys.exit(2)

@@ -320,3 +320,13 @@ def test_an_all_day_event_that_began_earlier_counts_on_the_days_it_covers(tmp_pa
     assert code == 1 and report["in_person"] == 1, report
     over = dict(offsite, end={"date": "2026-11-11"})  # an all-day end names the day after its last
     assert check(tmp_path, [over])[1]["in_person"] == 0
+
+
+def test_a_read_it_cannot_make_sense_of_is_not_a_verdict(tmp_path):
+    """Exit 1 means an event lacks its travel; a read whose shape breaks the check must not look like that."""
+    odd = {"summary": None, "start": "2026-11-11T19:00", "end": "2026-11-11T18:00", "location": {"street": "149 Main St"}, "description": 7}
+    code, said = check(tmp_path, [odd, "a stray string", {"summary": "Travel: x", "start": "2026-11-11T17:00", "end": "2026-11-11T18:00",
+                                                           "description": ["For: nothing"]}])
+    assert code in (1, 2) and "Traceback" not in str(said), said
+    code, said = check(tmp_path, [dict(RESOLVED, start={"dateTime": 5})])
+    assert code == 2 and "Traceback" not in str(said), said
