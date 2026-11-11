@@ -1644,8 +1644,9 @@ def _resolved(text: str) -> list[str]:
     for m in ASSIGNED.finditer(text):
         for before in (list(found.get(m[1], {})) or [""]) if m[2] else [""]:  # `D+=…` adds to each value D had
             found.setdefault(m[1], {})[before + m[3].strip("'\"")] = None
-    for m in LOOPED.finditer(text):
-        found.setdefault(m[1], {}).update(dict.fromkeys(word.strip("'\"") for word in m[2].split()))
+    for m in LOOPED.finditer(text):  # a list a command prints cannot be read: `$` stands for it
+        listed = ["$"] if re.search(r"\$\(|`", m[2]) else [word.strip("'\"") for word in m[2].split()]
+        found.setdefault(m[1], {}).update(dict.fromkeys(listed))
     used = {m[1] or m[4] for m in USED.finditer(text)}
     found = {name: list(values) for name, values in found.items() if name in used}
     if math.prod(map(len, found.values())) > READINGS:
@@ -1708,7 +1709,7 @@ def _awk_writes(program: str) -> list[str]:
         outs += [token[1:-1] if token[:1] == '"' else "$"] if redirect else []
         redirect = printing and token in (">", ">>")
         printing = token in ("print", "printf") or (printing and token not in (";", "{", "}", "\n"))
-        outs += ["$"] if token == "|" or token.startswith("system") else []
+        outs += ["$"] if (token == "|" and printing) or token.startswith("system") else []  # `cmd | getline` only reads
     return outs
 
 
@@ -1836,7 +1837,7 @@ def _python_source(words: list, text: str) -> str:
     """The Python a command runs: its -c program, or the heredoc it reads on stdin; "" for a script file."""
     if "-c" in words[:-1]:
         return words[words.index("-c") + 1]
-    if words[1:2] in ([], ["-"]):
+    if not _ran(words):  # no script file, with or without options before `-`: the program arrives on stdin
         try:
             return "\n".join(t[1] for t in _lex(text) if t[0] == "in")
         except (Unreadable, StopIteration, IndexError):
@@ -1935,7 +1936,7 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None) -> str |
             led = os.path.realpath(os.path.join(where, os.path.expanduser(os.path.expandvars(word))))
             if not within or word[:1] in ("~", "/") or word == HANDED or os.path.lexists(led):  # inside the folder, a file that is there
                 handed.append((head, word, led))
-        script = text if words[1:2] in ([], ["-"]) else own  # a program read from stdin is the heredoc's text
+        script = text if not _ran(words) and "-c" not in words and "-e" not in words else own  # read from stdin, it is the heredoc's text
         if SCRIPT.match(head) and re.search(r"\bsynthesis\b", script) and SELF_GRANT_CALLS.search(script):
             why = why or "runs synthesis's approval or send-window code, which only the guard and the principal's prompt use"
         source = _python_source(words, text) if head.startswith("python") else ""
@@ -1951,10 +1952,11 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None) -> str |
                   if within or any(n in source for n in names) else False) if source else None
         if SCRIPT.match(head) and wrote and (reaches or (judged is not False and (within or any(n in script for n in names)))):
             why = why or "runs a script that writes where the synthesis state, its board or a harness's transcripts live (a script on stdin is judged by the whole command: if only another part names that path, run the script alone)"
-        inline = bool(source) or words[1:2] in ([], ["-"]) or any(w in ("-c", "-e") for w in words[1:])
-        if within and readable and ("/" in words[0] or not (head in READERS or head in WRITERS or head in OWN_RULES or (
-                (SCRIPT.match(head) or head in SHELLS) and inline))):  # nothing it names, yet it may write where it stands
-            why = why or (f"runs `{head}` inside the synthesis state folder, its board or a harness's transcripts, where a "
+        inline = bool(source) or not _ran(words) or any(w in ("-c", "-e") for w in words[1:])
+        stood = any(paths.inside(os.path.realpath(where), os.path.realpath(str(r))) for r in (paths.state(), paths.board(), paths.sessions()))
+        if stood and readable and not (head in READERS or head in WRITERS or head in OWN_RULES or (
+                (SCRIPT.match(head) or head in SHELLS) and inline)):  # nothing it names, yet it may write where it stands
+            why = why or (f"runs `{head}` inside the synthesis state folder, its board or the session archive, where a "
                           "program this guard cannot read may write without naming a file (run it from another folder)")
         if head == "apply_patch":  # Codex's file editor, run as a command: the patch names every file it writes
             asked += [(a or b, where) for a, b in PATCH_PATHS.findall(text)]
