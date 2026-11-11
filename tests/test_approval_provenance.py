@@ -1066,3 +1066,44 @@ def test_working_from_inside_a_transcript_folder_is_not_refused(saved, command, 
 ])
 def test_and_what_stays_refused_with_the_standing_rule_narrowed(saved, command, tmp_path):
     assert REFUSED in (guards.check("Bash", {"command": command.format(**saved)}, {}, cwd=str(tmp_path)) or ""), command
+
+
+# --- probed before the third review (2026-11-11) -------------------------------------------------------------
+# The write tokens were found by a pattern that stopped at the first closing parenthesis, so a path built by a
+# nested call hid the write. A Python program is now read by its syntax first. And three ways to stand or run
+# that the guard did not follow.
+
+@pytest.mark.parametrize("command", [
+    "python3 -c \"from pathlib import Path; open(str(Path('{state}') / 'a.json'), 'w').write('x')\"",
+    "python3 -c \"import io; io.open('{state}/a.json', 'w').write('x')\"",
+    "python3 -c \"import gzip; gzip.open('{state}/a.json.gz', 'wt').write('x')\"",
+    "env -C {state} tar -xf /tmp/a.tar",                                   # a wrapper that changes the folder
+    "git -C {state} init",                                                  # git acting inside the state folder
+    "cd {state} && git checkout -b other",
+    "cd {state} && python3 -m zipfile -e /tmp/a.zip .",                     # a module's own -e is not an inline program
+    "python3 -I synthesis/hook.py",                                         # python's -I takes no value
+])
+def test_what_a_probe_before_the_third_review_got_through_is_refused(saved, command, tmp_path):
+    assert REFUSED in (guards.check("Bash", {"command": command.format(**saved)}, {}, cwd=str(tmp_path)) or ""), command
+
+
+@pytest.mark.parametrize("command", [
+    "cd {work}/abc/tool-results && python3 -c \"out = '/tmp/pad/o.txt'; open(out, 'w').write('x')\"",
+    "cd {work}/abc/tool-results && python3 -c \"SP = '/tmp/pad'; open(SP + '/o.txt', 'w').write('x'); open(f'{{SP}}/p.txt', 'w').write('y')\"",
+    "cd {work}/abc/tool-results && python3 -c \"import os; open(os.path.join('/tmp/pad', 'o.txt'), 'w').write('x')\"",
+    "cd {work}/abc/tool-results && python3 -c \"from pathlib import Path; (Path('/tmp/pad') / 'o.txt').write_text('x')\"",
+    "python3 -c \"import os; print(open(os.path.join('{state}', 'a.json')).read())\"",
+    "cd {state} && git log --oneline -3 && git status --short",
+    "perl -I lib tools/count.pl synthesis/hook.py",
+])
+def test_and_what_the_same_probe_showed_must_pass(saved, command, tmp_path):
+    assert guards.check("Bash", {"command": command.format(**saved)}, {}, cwd=str(tmp_path)) is None
+
+
+@pytest.mark.parametrize("command", [
+    "cd {work}/abc/tool-results && python3 -c \"name = input(); open(name, 'w').write('x')\"",          # a target it cannot read
+    "cd {work}/abc/tool-results && python3 -c \"SP = '/tmp/pad'; SP = '.'; open(SP + '/o.txt', 'w').write('x')\"",   # a name given twice
+    "cd {work}/abc/tool-results && python3 -c \"open('/tmp/pad/../..{work}/s.jsonl', 'w').write('x')\"",  # a plain path that climbs back
+])
+def test_a_write_from_inside_that_cannot_be_shown_to_land_elsewhere_is_refused(saved, command, tmp_path):
+    assert REFUSED in (guards.check("Bash", {"command": command.format(**saved)}, {}, cwd=str(tmp_path)) or ""), command
