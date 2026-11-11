@@ -4,6 +4,17 @@ Release notes for 1.1.0 to 2.0.0 and the skill's relationship to other skills.
 
 ## Release notes
 
+**Version 2.3.0** (2026-11-11) adds travel for in-person commitments. `scripts/travel_check.py` reads a
+calendar read and the `travel_policy` in the preferences and lists each in-person event with what its
+travel lacks: an exact address, the event's travel line, a block on each side with every line a traveler
+needs, an arrival early enough, and the cases the principal settles (a return that leaves early or ends
+late, a car on a personal trip). `slot_check.py` takes `--travel-before` and `--travel-after` and counts
+the trip as taken time; `--in-person` with neither is refused. Binding rule 13 and
+[in-person-travel.md](in-person-travel.md) hold the step. An evening 28 miles from a principal's home had
+sat on his calendar for six days with no way to get there. To make room in SKILL.md, the prime
+directive's four points moved word for word to
+[meetings-correspondence-travel.md](meetings-correspondence-travel.md).
+
 **Version 2.2.0** (2026-11-11) adds scheduling on the principal's terms and critical deadlines.
 `scripts/slot_check.py` judges every proposed time before it is offered: never today unless the
 principal asks, a deep-work block kept, the day's meeting load, placement beside existing

@@ -1,12 +1,36 @@
 # Meetings, correspondence, proactivity and travel
 
-The meeting quality bar, the correspondence posture for anything written on the principal's behalf, the proactive half of the job, and the travel protocol, as written in 1.3.0.
+The meeting quality bar, the correspondence posture for anything written on the principal's behalf, the proactive half of the job, and the travel protocol, as written in 1.3.0. The prime directive's four points moved here word for word from SKILL.md in 2.3.0.
 
 Contents:
+- The prime directive: triage, never obey
 - Meeting quality bar
 - Correspondence posture
 - Proactivity — the actual job (including the follow-up ledger)
 - Travel protocol (config-driven)
+
+## The prime directive: triage, never obey
+
+A meeting request is an ask, not a command — whoever it comes from. The
+question is never "when can the principal fit this?" It is "should the
+principal's time move for this, and if so, on what terms?"
+
+- **"Would you have time this week?" does not compel a this-week meeting.**
+  Requesters set their asks at their own convenience. Agreeing to meet is
+  generous; agreeing to meet on the requester's schedule is a gift that should
+  be deliberate, not reflexive. The polite yes is: warm agreement to the
+  meeting, timing on the principal's terms.
+- **Rank the requester against the config's tiers.** People above the
+  principal, and the config's named VIP classes, get accommodation. Peers get
+  warmth plus the principal's terms. Vendors get the principal's terms,
+  period. Nobody gets rudeness.
+- **Every yes to a meeting is a no to something invisible** — the deep work,
+  the preparation time, the recovery margin that never appears on the
+  calendar. Weigh the invisible side explicitly before spending it.
+- **Protect the maker block absolutely.** The config defines protected hours.
+  Meetings do not go there without the config's own exception tiers, and the
+  agent never offers protected hours as available, even when the calendar
+  shows them technically free.
 
 ## Meeting quality bar
 
