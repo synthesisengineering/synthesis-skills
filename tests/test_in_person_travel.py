@@ -102,3 +102,39 @@ def test_a_policy_it_cannot_read_refuses_the_write_and_says_why(tmp_path, broken
 def test_a_tool_that_is_not_a_calendar_write_is_not_judged(config):
     assert guards.check("mcp__workspace__get_events", {"location": PLACE}, config) is None
     assert guards.check("mcp__maps__search_places", {"location": PLACE, "query": "theatre"}, config) is None
+
+
+# --- after a second model's review of the guard (2026-11-11), each as a test that failed first -------------
+
+def bare() -> dict:
+    return {key: value for key, value in event().items() if key != "location"}
+
+
+@pytest.mark.parametrize("where", [
+    {"where": PLACE}, {"place": PLACE}, {"venue": PLACE},
+    {"location": {"displayName": "The Grand Theatre", "address": {"street": "149 Main St", "city": "Harbor Town"}}},
+    {"locations": [{"displayName": PLACE}]},
+])
+def test_a_place_under_another_name_or_in_another_shape_is_still_a_place(config, where):
+    assert refused(guards.check(CREATE, {**bare(), **where}, config))
+    assert guards.check(CREATE, {**bare(), **where, "description": "Travel: blocks before and after"}, config) is None
+
+
+def test_what_is_not_the_events_place_is_not_read_as_one(config):
+    online = {"location": {"displayName": "Online meeting", "locationType": "default", "uniqueIdType": "private"}}
+    assert guards.check_travel(CREATE, {**bare(), **online}, config) is None
+    guest = {"attendees": [{"emailAddress": {"address": "pat@example.com", "name": "Pat Example"}}]}
+    assert guards.check_travel(CREATE, {**bare(), **guest}, config) is None  # an attendee's address is not where the event is
+
+
+@pytest.mark.parametrize("location", ["Zoom Hall, 149 Main St, Harbor Town", "149 Main St, Harbor Town (or join by phone)",
+                                      "The Grand Theatre, 149 Main St (map: https://maps.example.com/x)"])
+def test_a_street_address_is_a_place_whatever_else_the_location_says(config, location):
+    assert refused(guards.check(CREATE, event(location=location), config))
+
+
+@pytest.mark.parametrize("description", ["<p>Notes for the evening</p><br>Travel: local, 12 min walk",
+                                         "<div>Doors at 18:45</div><div>Travel: blocks before and after</div>",
+                                         "Agenda attached<br/>Travel:&nbsp;none, already there for the session before"])
+def test_a_travel_line_in_a_description_written_as_html_is_read(config, description):
+    assert guards.check(CREATE, event(description=description), config) is None

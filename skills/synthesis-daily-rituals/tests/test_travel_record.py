@@ -119,3 +119,24 @@ def test_a_result_it_cannot_read_is_refused_and_a_workspace_can_ask_for_other_da
     code, out, refusal = record(state, "--travel", result(tmp_path, WHOLE, through="2026-11-13"))
     assert code == 0, refusal
     assert "through 2026-11-13" in out
+
+
+# --- after a second model's review (2026-11-11): a result must read as the check's own output -------------
+
+@pytest.mark.parametrize("change", [
+    {"window": {"from": DAY}},                                  # no last day
+    {"window": {"from": DAY, "through": None}},
+    {"window": {"from": DAY, "through": "tomorrow"}},
+    {"flagged": 1},                                             # counts and verdict that its own events contradict
+    {"verdict": "REFUSE"},
+    {"in_person": 3},
+    {"events": "none"},
+    {"events": [{"summary": "an event with no word on what it lacks"}]},
+])
+def test_a_result_that_does_not_read_as_the_checks_own_output_is_refused(tmp_path, record, change):
+    state = tmp_path / "state"
+    declare(state, desk={"plans_dirs": [], "travel_check": True})
+    saved = Path(result(tmp_path, WHOLE))
+    saved.write_text(json.dumps({**json.loads(saved.read_text(encoding="utf-8")), **change}), encoding="utf-8")
+    code, _, refusal = record(state, "--travel", str(saved))
+    assert code != 0 and "travel" in refusal and history(state) == ""

@@ -675,3 +675,73 @@ def test_a_link_in_a_memory_folder_does_not_open_the_transcript_it_points_at(roo
     assert "session transcripts" in refused
     made = guards.check("Bash", {"command": f"ln -s {project}/s.jsonl {project}/memory/other.md"}, {}, cwd=str(tmp_path))
     assert REFUSED in made  # and no command may make such a link there
+
+
+# --- the write guard after a second model's review of the change above (2026-11-11) -----------------------
+# The review showed three things. The variable reader gave a variable its last value wherever it stood, and read
+# only the plainest assignment and the plainest use. The guard knew fewer ways for a utility to land a write than
+# the utilities have. And it compared spelling exactly, on a file system that does not. Each command in the first
+# list passed; each in the second was refused for a write it never made.
+
+
+@pytest.mark.parametrize("command", [
+    "D={state}; echo x > \"$D/a\"; D=/tmp",                               # the value in force when the write runs
+    "D=/tmp; for i in 1 2; do echo x > \"$D/a\"; D={state}; done",        # which a loop can make the later one
+    "readonly D={state}; cd \"$D\"; echo x > a",
+    "declare -r D={state}/approvals; echo x > \"$D/a.json\"",
+    "if true; then D={state}; fi; echo x > \"$D/a\"",
+    "{{ D={state}; echo x > \"$D/a\"; }}",
+    "A=/tmp D={state}; echo x > \"$D/a\"",
+    "env D={state} sh -c 'echo x > \"$D/a\"'",
+    "D={state}/approvals/; echo x > \"${{D%/}}/a.json\"",                  # the uses the shell rewrites
+    "P={state}/approvals/a.json; echo x > \"${{P%.json}}.txt\"",
+    "P=/tmp/x{state}/a; echo x > \"${{P#/tmp/x}}\"",
+    "echo x > \"${{D:-{state}}}/a\"",
+    "D={state}; cp -t \"$D\" /tmp/source",                                 # where a utility lands what it writes
+    "cp --target-directory={state}/approvals /tmp/source",
+    "mv -ft {state}/approvals /tmp/source",
+    "D={state}; dd if=/tmp/source of=\"$D/a\"",
+    "install -d {state}/new /tmp/elsewhere",
+    "ditto /tmp/a {state}/a",
+    "rmdir {state}/approvals",
+    "perl -pi -e 's/a/b/' {state}/approvals/a.json",
+    "sed -Ei.bak 's/a/b/' {state}/approvals/a.json",
+])
+def test_the_shells_other_ways_to_name_and_write_a_protected_folder_are_refused(roots, command, tmp_path):
+    assert REFUSED in (guards.check("Bash", {"command": command.format(**roots)}, {}, cwd=str(tmp_path)) or "")
+
+
+@pytest.mark.parametrize("command", [
+    "readonly OUT=/tmp/report; cat {state}/a > \"$OUT\"",
+    "OUT=/tmp/; cat {state}/a > \"${{OUT%/}}/report\"",
+    "cat {state}/a > \"${{TMPDIR:-/tmp}}/copy\"",
+    "if [ -f {state}/a ]; then OUT=/tmp/report; cat {state}/a > \"$OUT\"; fi",
+    "OUT=/tmp/a; echo x > \"$OUT\"; OUT=/tmp/b; cat {state}/c > \"$OUT\"",   # several values, none of them protected
+    "cp -t /tmp/out {state}/config.json",                                    # -t names where it lands
+    "dd if={state}/a of=/tmp/copy",
+    "perl -ne 'print if /x/' {state}/a",
+    "sed -n 's/a/b/p' {state}/a",
+    "N=$(wc -l < {state}/a); echo \"$N\" > /tmp/count",
+])
+def test_reading_a_protected_folder_beside_a_write_elsewhere_is_not_refused(roots, command, tmp_path):
+    assert guards.check("Bash", {"command": command.format(**roots)}, {}, cwd=str(tmp_path)) is None
+
+
+def test_a_folder_named_by_a_variable_of_the_environment_is_read_too(roots, tmp_path, monkeypatch):
+    monkeypatch.setenv("WHERE_STATE_LIVES", str(roots["state"]))
+    for command in ("echo x > \"$WHERE_STATE_LIVES/approvals/a.json\"", "echo x > ${WHERE_STATE_LIVES}/approvals/a.json",
+                    "cp /tmp/forged \"${WHERE_STATE_LIVES%/}/approvals/a.json\""):
+        assert REFUSED in (guards.check("Bash", {"command": command}, {}, cwd=str(tmp_path)) or ""), command
+    assert guards.check("Bash", {"command": "cat \"$WHERE_STATE_LIVES/a\" > /tmp/copy"}, {}, cwd=str(tmp_path)) is None
+
+
+def test_a_protected_path_spelled_in_another_case_is_the_same_path(roots, tmp_path):
+    """A Mac's file system does not tell `Approvals` from `approvals`, so a guard that compares spelling exactly
+    protects one name of a file and leaves its other names open."""
+    state, claude = str(roots["state"]), str(roots["claude"])
+    for path in (state.upper() + "/approvals/a.json", claude.upper() + "/-work/s.jsonl", state + "/APPROVALS/a.json"):
+        assert guards.check("Write", {"file_path": path, "content": "x"}, {}, cwd=str(tmp_path)), path
+        assert REFUSED in (guards.check("Bash", {"command": f"echo x > {path}"}, {}, cwd=str(tmp_path)) or ""), path
+    store = tmp_path / "policy" / "line-allowances.json"
+    for path in (str(store), str(store.with_name("LINE-ALLOWANCES.JSON"))):
+        assert guards.check("Write", {"file_path": path, "content": "{}"}, {"line_allowances": str(store)}, cwd=str(tmp_path)), path

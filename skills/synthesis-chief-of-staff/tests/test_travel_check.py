@@ -227,3 +227,95 @@ def test_a_description_written_as_html_is_read_line_by_line(tmp_path):
     assert code == 0, report
     trip = next(e for e in report["events"] if e["summary"].startswith("Book launch"))
     assert trip["paid_by"] == "personal" and trip["leave"] == "17:05"
+
+
+# --- after a second model's review of the check (2026-11-11), each as a test that failed first ------------
+
+DINNER = event("Dinner at Rosa's", "19:00", "20:00", "Rosa's, 12 Quay St, Harbor Town", "Travel: blocks before and after")
+SHOW = event("Late show", "20:30", "22:00", "The Grand Theatre, 149 Main St, Harbor Town", "Travel: blocks before and after")
+LAUNCH_NAME = "Book launch at the Grand Theatre"
+
+
+def named(block, *titles):
+    """The block with its `For:` line replaced by one for each title given; none given, a block that names nothing."""
+    rows = [row for row in block["description"].splitlines() if not row.startswith("For:")]
+    return dict(block, description="\n".join([f"For: {title}" for title in titles] + rows))
+
+
+def test_one_pair_of_blocks_does_not_cover_two_places(tmp_path):
+    """Out before the first and home after the second leaves the way between them unwritten."""
+    code, report = check(tmp_path, [DINNER, SHOW, named(GOING), named(RETURNING)])
+    assert code == 1 and report["flagged"] == 2, report
+    assert any("no travel block after it" in item for item in lacks(report, "Dinner at Rosa's"))
+    assert any("no travel block before it" in item for item in lacks(report, "Late show"))
+
+
+def test_a_block_between_two_places_names_both_and_serves_both(tmp_path):
+    between = named(event("Travel: Rosa's to the Grand Theatre", "20:02", "20:14", "", OUT), "Dinner at Rosa's", "Late show")
+    code, report = check(tmp_path, [DINNER, SHOW, named(GOING, "Dinner at Rosa's"), between, named(RETURNING, "Late show")])
+    assert code == 0, report
+    alone = named(between, "Late show")  # named for one of them, it is that one's only
+    code, report = check(tmp_path, [DINNER, SHOW, named(GOING, "Dinner at Rosa's"), alone, named(RETURNING, "Late show")])
+    assert code == 1 and lacks(report, "Late show") == []
+    assert any("no travel block after it" in item for item in lacks(report, "Dinner at Rosa's"))
+
+
+def test_a_block_named_for_another_event_is_not_this_ones(tmp_path):
+    launch = dict(RESOLVED, summary="Book launch")
+    code, report = check(tmp_path, [launch, named(GOING, "Book launch planning lunch"), named(RETURNING, "Book launch planning lunch")])
+    assert code == 1, report
+    missing = " | ".join(lacks(report, "Book launch"))
+    assert "no travel block before it" in missing and "no travel block after it" in missing
+    assert "Book launch planning lunch" in missing  # and it says whose the block beside it is
+
+
+def test_a_block_may_name_its_event_by_the_opening_words_of_its_title(tmp_path):
+    code, report = check(tmp_path, [RESOLVED, named(GOING, "book launch"), named(RETURNING, "Book  launch at the Grand")])
+    assert code == 0, report
+
+
+def test_events_with_one_title_each_take_the_blocks_nearest_them(tmp_path):
+    again = dict(RESOLVED, start="2026-11-13T19:00", end="2026-11-13T22:00")
+    code, report = check(tmp_path, [RESOLVED, GOING, RETURNING, again])
+    assert code == 1 and report["flagged"] == 1, report
+    later = next(e for e in report["events"] if e["start"].startswith("2026-11-13"))
+    assert any("no travel block before it" in item for item in later["lacks"])
+
+
+@pytest.mark.parametrize("location", ["Studio 54", "Pier 39", "Room 4, Floor 12", "Harbor Town, 7 pm", "Main entrance, 18:30"])
+def test_a_number_in_a_venues_name_or_a_time_is_not_an_address(tmp_path, location):
+    code, report = check(tmp_path, [dict(RESOLVED, location=location), GOING, RETURNING])
+    assert code == 1 and any("no exact address" in item for item in lacks(report)), report
+
+
+@pytest.mark.parametrize("location", ["149 Main St", "Hauptstraße 5, 10115 Berlin", "Kungsgatan 44, 111 35 Stockholm", "Calle Mayor, 5, Madrid",
+                                      "12, MG Road, Bengaluru 560001", "405 5th Ave, New York", "東京都千代田区丸の内1丁目9-1"])
+def test_an_address_is_read_as_one_however_its_country_writes_it(tmp_path, location):
+    code, report = check(tmp_path, [dict(RESOLVED, location=location), GOING, RETURNING])
+    assert code == 0, report
+
+
+def test_an_online_word_in_a_venues_name_does_not_hide_its_address(tmp_path):
+    code, report = check(tmp_path, [event("Town meeting", "19:00", "21:00", "Zoom Hall, 149 Main St, Harbor Town")])
+    assert code == 1 and report["in_person"] == 1, report
+    code, report = check(tmp_path, [event("Stand-up", "09:00", "09:15", "Zoom, passcode 12345")])
+    assert code == 0 and report["in_person"] == 0, report
+
+
+def test_an_event_under_way_when_the_days_begin_is_judged_for_its_way_back(tmp_path):
+    workshop = {"summary": "Overnight workshop", "start": "2026-11-10T23:00", "end": "2026-11-11T20:00",
+                "location": "The Grand Theatre, 149 Main St, Harbor Town", "description": "Travel: blocks before and after"}
+    code, report = check(tmp_path, [workshop])  # the read starts on the 11th
+    assert code == 1 and report["in_person"] == 1, report
+    missing = " | ".join(lacks(report, "Overnight workshop"))
+    assert "no travel block after it" in missing and "block before" not in missing  # the way there is behind it, outside this read
+    code, report = check(tmp_path, [workshop], window=("2026-11-10", "2026-11-18"))
+    assert "no travel block before it" in " | ".join(lacks(report, "Overnight workshop"))  # a read that holds its start shows both
+
+
+def test_an_all_day_event_that_began_earlier_counts_on_the_days_it_covers(tmp_path):
+    offsite = {"summary": "Offsite", "start": {"date": "2026-11-09"}, "end": {"date": "2026-11-13"}, "location": "The Lodge, 3 Lake Rd, Harbor Town"}
+    code, report = check(tmp_path, [offsite])
+    assert code == 1 and report["in_person"] == 1, report
+    over = dict(offsite, end={"date": "2026-11-11"})  # an all-day end names the day after its last
+    assert check(tmp_path, [over])[1]["in_person"] == 0
