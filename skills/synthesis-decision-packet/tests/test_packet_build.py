@@ -57,6 +57,17 @@ def write(tmp_path, value, name="spec.json"):
     return path
 
 
+def test_a_row_tagged_critical_is_refused():
+    """A deadline whose miss cannot be undone is never one row among many (2026-11-06: an enrollment
+    window sat as a packet row, "choose when you do yours", and closed unanswered)."""
+    current = spec()
+    assert not hard(bp.validate(current))
+    current["rows"][2]["tags"] = ["benefits", "Critical"]
+    problems = hard(bp.validate(current))
+    assert len(problems) == 1 and "R-3" in problems[0] and "critical" in problems[0]
+    assert "day plan" in problems[0]
+
+
 def png(width=2, height=2):
     """A valid PNG; a large declared size gets a token pixel stream, enough for header checks."""
     def chunk(kind, data):

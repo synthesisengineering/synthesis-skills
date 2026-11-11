@@ -31,6 +31,10 @@ SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "ritual_state.py"
 
 
 def run(state: Path, *args: str) -> subprocess.CompletedProcess[str]:
+    if "record" in args and not (state / "config.json").exists():
+        # `record` reads the workspace's declared plan folders; these tests keep no plans, and say so.
+        state.mkdir(parents=True, exist_ok=True)
+        (state / "config.json").write_text(json.dumps({"defaults": {"plans_dirs": []}, "workspaces": {}}), encoding="utf-8")
     return subprocess.run(
         [sys.executable, str(SCRIPT), "--state-dir", str(state), *args],
         capture_output=True, text=True, check=False,
@@ -209,7 +213,7 @@ def test_last_honors_workspace(tmp_path: Path) -> None:
 
 def test_streak_refuses_without_workspace_and_honors_it(tmp_path: Path) -> None:
     (tmp_path / "config.json").write_text(json.dumps({
-        "defaults": {"streak": "none", "weekdays": [0, 1, 2, 3, 4], "non_working_dates": []},
+        "defaults": {"streak": "none", "weekdays": [0, 1, 2, 3, 4], "non_working_dates": [], "plans_dirs": []},
         "workspaces": {"alpha": {"streak": "expected-days"}, "beta": {"streak": "expected-days"}},
     }), encoding="utf-8")
     for day in ("2026-09-08", "2026-09-09", "2026-09-10", "2026-09-11"):
@@ -233,7 +237,7 @@ def test_streak_refuses_without_workspace_and_honors_it(tmp_path: Path) -> None:
 
 def test_a_workspace_worked_occasionally_shows_quiet_days_and_owes_no_review(tmp_path: Path) -> None:
     (tmp_path / "config.json").write_text(json.dumps({
-        "workspaces": {"advisory": {"streak": "none", "quiet_after_days": 21}},
+        "workspaces": {"advisory": {"streak": "none", "quiet_after_days": 21, "plans_dirs": []}},
     }), encoding="utf-8")
     record(tmp_path, "day-end", "advisory", "2026-09-01")
     view = query_json(tmp_path, "summary", "--today", "2026-09-25")["workspaces"]["advisory"]
@@ -253,7 +257,7 @@ def _one_workspace_log(state: Path) -> None:
     read as omitted, lets `weekly-review` infer a seat and every other view
     answer for the whole log."""
     (state / "config.json").write_text(json.dumps({
-        "defaults": {"streak": "expected-days", "weekdays": [0, 1, 2, 3, 4], "non_working_dates": []},
+        "defaults": {"streak": "expected-days", "weekdays": [0, 1, 2, 3, 4], "non_working_dates": [], "plans_dirs": []},
         "workspaces": {"alpha": {}},
     }), encoding="utf-8")
     record(state, "day-end", "alpha", "2026-09-11")
