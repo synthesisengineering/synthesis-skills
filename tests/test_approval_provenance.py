@@ -745,3 +745,78 @@ def test_a_protected_path_spelled_in_another_case_is_the_same_path(roots, tmp_pa
     store = tmp_path / "policy" / "line-allowances.json"
     for path in (str(store), str(store.with_name("LINE-ALLOWANCES.JSON"))):
         assert guards.check("Write", {"file_path": path, "content": "{}"}, {"line_allowances": str(store)}, cwd=str(tmp_path)), path
+
+
+# --- a protected folder reached without naming it whole, or handed to a program the guard cannot read ------
+# Found while the review above was being answered (2026-11-11). The guard looked at a command's writes only when
+# the command spelled a protected folder out in full, so a path relative to where the session stands, or to a
+# `cd`, was never looked at. And it knew a short list of utilities that write: a move's source, `find -delete`,
+# `xargs rm`, an archive unpacked into the folder, a download saved there or a file compressed in place were
+# no write to it. A gate passes what it can prove: a protected path may be given to a program the guard knows
+# only reads it, and to no other.
+
+
+@pytest.fixture
+def spots(roots, tmp_path):
+    state = roots["state"]
+    return {**roots, "parent": state.parent.parent, "first": state.parent.name, "rest": state.name,
+            "rel": f"{state.parent.name}/{state.name}"}
+
+
+@pytest.mark.parametrize("command, where", [
+    ("echo x > {rel}/approvals/a.json", "{parent}"),                    # relative to where the session stands
+    ("cp /tmp/forged {rel}/approvals/a.json", "{parent}"),
+    ("cd {parent} && echo x > {rel}/approvals/a.json", "/"),            # relative to a cd
+    ("cd {parent}/{first} && cd {rest}/approvals && echo x > a.json", "/"),
+    ("mv {state}/approvals/a.json /tmp/elsewhere/", "/"),                # a move takes the file away
+    ("find {state}/approvals -name '*.json' -delete", "/"),
+    ("find {state}/approvals -name '*.json' -exec rm {{}} +", "/"),
+    ("find {state}/approvals -type f -exec sh -c 'rm \"$1\"' _ {{}} \;", "/"),
+    ("find {state}/approvals -name '*.json' | xargs rm", "/"),
+    ("ls {state}/approvals | xargs -n 1 rm -f", "/"),
+    ("tar -xf /tmp/a.tar -C {state}", "/"),                              # programs the guard does not know
+    ("unzip /tmp/a.zip -d {state}/approvals", "/"),
+    ("curl -s https://example.com/a -o {state}/approvals/a.json", "/"),
+    ("curl -s https://example.com/a --output={state}/approvals/a.json", "/"),
+    ("gzip {claude}/-work/s.jsonl", "/"),
+    ("sort -o {state}/approvals/a.json /tmp/b", "/"),
+    ("sqlite3 {state}/x.db 'delete from t'", "/"),
+    ("sudo rm -f {state}/approvals/a.json", "/"),
+])
+def test_a_protected_folder_reached_another_way_is_refused(spots, command, where, tmp_path):
+    reason = guards.check("Bash", {"command": command.format(**spots)}, {}, cwd=where.format(**spots))
+    assert REFUSED in (reason or ""), command
+
+
+@pytest.mark.parametrize("command", [
+    "find {state}/approvals -name '*.json'",
+    "find {state}/approvals -name '*.json' -print0 | xargs -0 cat",
+    "find {state}/approvals -type f -exec cat {{}} +",
+    "ls {state}/approvals | xargs -n 1 basename",
+    "cp {state}/approvals/a.json /tmp/elsewhere/",
+    "cd {state} && cat approvals/a.json > /tmp/copy",
+    "cat {state}/approvals/a.json | sort | uniq -c",
+    "xxd < {state}/approvals/a.json | head",
+    "grep -c x {claude}/-work/s.jsonl | tee /tmp/count",
+    "python3 tools/read.py {claude}/-work/s.jsonl",
+    "synthesis claim {claude}/-work/memory/a.md",
+    "echo 'see {state} for the approvals'",
+    "notify --title x --body 'the folder {state} holds the approvals'",        # a path inside a sentence is not a path
+    "git log --oneline -3 && ls {state}",
+])
+def test_reading_a_protected_folder_with_a_program_the_guard_knows_is_not_refused(spots, command, tmp_path):
+    assert guards.check("Bash", {"command": command.format(**spots)}, {}, cwd=str(tmp_path)) is None
+
+
+def test_a_refusal_for_an_unknown_program_says_how_to_read_the_file_instead(spots, tmp_path):
+    reason = guards.check("Bash", {"command": "gzip -k {claude}/-work/s.jsonl".format(**spots)}, {}, cwd=str(tmp_path))
+    assert "`gzip`" in reason and "cat" in reason and "pipe" in reason
+
+
+def test_the_approved_lines_file_can_be_staged_and_committed_but_not_rewritten(tmp_path):
+    store = tmp_path / "policy" / "line-allowances.json"
+    config = {"line_allowances": str(store)}
+    for command in (f"git add {store}", f"git diff {store}", f"cd {store.parent} && git commit -m lines line-allowances.json"):
+        assert guards.check("Bash", {"command": command}, config, cwd=str(tmp_path)) is None, command
+    for command in (f"echo '{{}}' > {store}", f"cd {store.parent} && echo '{{}}' > line-allowances.json", f"jq -S . {store} | sponge {store}"):
+        assert REFUSED in (guards.check("Bash", {"command": command}, config, cwd=str(tmp_path)) or ""), command
