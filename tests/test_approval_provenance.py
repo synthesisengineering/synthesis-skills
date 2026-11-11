@@ -348,3 +348,68 @@ def test_words_after_approve_are_never_read_as_codes(isolated_home):
     "approve budget" neither grants nor draws a "Not granted" note."""
     assert approvals.typed_codes("please approve budget, approve before lunch, approve abc123") == []
     assert approvals.typed_codes("approve 3A1b2c") == ["3a1b2c"]
+
+
+# --- several codes after one "approve" (2026-11-11) ------------------------------------------------
+# A principal typed the word once and nine codes after it. The first was granted and the other eight were
+# passed over without a word, because only a code that directly follows the word was read. Each of the eight
+# then cost a turn of its own.
+
+@pytest.mark.parametrize("prompt", [
+    "approve 3a1b2c 4d5e6f 7a8b9c",
+    "approve 3a1b2c, 4d5e6f, 7a8b9c",
+    "approve 3a1b2c,4d5e6f and 7a8b9c",
+    "Approve 3A1B2C, 4D5E6F, and 7A8B9C.",
+    "yes: approve 3a1b2c\n4d5e6f\n7a8b9c\nthanks",
+    "approve 3a1b2c 4d5e6f 4d5e6f 7a8b9c",  # a code typed twice counts once
+])
+def test_every_code_in_a_list_after_one_approve_is_read(prompt):
+    assert approvals.typed_codes(prompt) == ["3a1b2c", "4d5e6f", "7a8b9c"]
+
+
+@pytest.mark.parametrize("prompt, read", [
+    ("approve 3a1b2c then send 4d5e6f", ["3a1b2c"]),          # a word ends the list
+    ("approve 3a1b2c and the 4d5e6f one", ["3a1b2c"]),
+    ("approve 3a1b2c. 4d5e6f is another matter", ["3a1b2c"]),  # so does the end of a sentence
+    ("approve 3a1b2c 4d5e6f7", ["3a1b2c"]),                    # a longer token is not a code
+    ("approve 3a1b2c-4d5e6f", ["3a1b2c"]),
+    ("approve 3a1b2c and approve 4d5e6f", ["3a1b2c", "4d5e6f"]),  # the word again starts another list
+    ("4d5e6f approve 3a1b2c", ["3a1b2c"]),                     # a code before the word is not approved
+])
+def test_the_list_ends_at_the_first_thing_that_is_not_a_code(prompt, read):
+    assert approvals.typed_codes(prompt) == read
+
+
+def test_hook_text_that_repeats_a_list_still_reads_as_no_approval():
+    """Hook output is rewritten so the phrase never appears: the word, then "code", then the codes. That form
+    must stay unread however many codes follow, or a board message quoting a list would grant it."""
+    from synthesis import hook
+    for said in ("the guard said approve 3a1b2c 4d5e6f", "type approve 3a1b2c, 4d5e6f and 7a8b9c", "approve 3a1b2c\n4d5e6f"):
+        assert approvals.typed_codes(said) and approvals.typed_codes(hook._defuse(said)) == []
+    assert approvals.typed_codes("approve code 3a1b2c 4d5e6f") == []
+    assert approvals.typed_codes("approve the codes 3a1b2c 4d5e6f") == []
+
+
+def test_one_prompt_with_a_list_grants_each_pending_request_and_names_the_code_that_matched_nothing(isolated_home):
+    first = approvals.request("send", {"to": "a"}, "send to a")
+    second = approvals.request("send", {"to": "b"}, "send to b")
+    stale = next(c for c in ("1aaaaa", "2bbbbb", "3ccccc") if c not in (first, second))
+    out = _hook("user-prompt-submit", {"prompt": f"approve {first} {second} {stale}"}).stdout
+    assert "Approved by the principal: send to a" in out and "Approved by the principal: send to b" in out
+    assert f"no pending request has the code {stale}" in out
+    assert approvals.pending() == []
+
+
+def test_each_code_of_a_list_is_backed_by_the_one_prompt_that_carried_them(tmp_path):
+    """The transcript check reads the principal's prompt the same way, so every call the list approved goes
+    through once, on the record of that one prompt."""
+    other = {"channel_id": "C0EXAMPLE", "message": "A second probe for the approval check."}
+    codes = [_code(guards.check(SLACK, call, {})) for call in (CALL, other)]
+    prompt = f"approve {codes[0]}, {codes[1]}"
+    transcript = tmp_path / "transcript.jsonl"
+    transcript.write_text(json.dumps(claude(prompt, time.time() + 0.01, promptSource="sdk")) + "\n", encoding="utf-8")
+    assert len(approvals.grant_from_prompt(prompt)) == 2
+    session = {"session_id": SID, "transcript_path": str(transcript)}
+    assert guards.check(SLACK, CALL, {}, session=session) is None
+    assert guards.check(SLACK, other, {}, session=session) is None
+    assert "approval" in guards.check(SLACK, other, {}, session=session)  # each spent once
