@@ -994,7 +994,7 @@ def test_a_script_that_writes_where_it_stands_or_where_its_environment_points_is
     "cd {state}/approvals && unzip -o /tmp/forged.zip",
     "cd {state} && /tmp/tools/unpack.sh",
     "cd {state} && python3 /tmp/tools/unpack.py",
-    "cd {work} && grep -c x s.jsonl; docker start bench",
+    "cd {state} && grep -c x a.json; docker start bench",
     "ln -s {state}/approvals /tmp/elsewhere/link && echo x > /tmp/elsewhere/link/a.json",
 ])
 def test_inside_a_protected_folder_only_a_command_the_guard_can_read_runs(work, command, tmp_path):
@@ -1013,7 +1013,7 @@ def test_and_a_command_it_can_read_still_runs_there(work, command, tmp_path):
 
 
 def test_the_refusal_for_standing_in_a_protected_folder_says_to_run_it_elsewhere(work, tmp_path):
-    reason = guards.check("Bash", {"command": "docker start bench"}, {}, cwd=str(work["work"]))
+    reason = guards.check("Bash", {"command": "docker start bench"}, {}, cwd=str(work["state"]))
     assert "`docker`" in reason and "another folder" in reason
 
 
@@ -1036,4 +1036,33 @@ def test_the_replay_after_the_second_round_left_these_and_they_pass(saved, comma
     "cd {work}/abc/tool-results && python3 - <<'EOF'\nimport sys\nopen(sys.argv[0] + '.out', 'w').write('x')\nEOF",
 ])
 def test_and_these_after_the_second_round_stay_refused(saved, command, tmp_path):
+    assert REFUSED in (guards.check("Bash", {"command": command.format(**saved)}, {}, cwd=str(tmp_path)) or ""), command
+
+
+# --- the replay with the standing rule on (2026-11-11) ---------------------------------------------------------
+# Applied to every protected folder, the rule that only a readable command runs inside one newly refused 17 real
+# commands in 30 days, all needless: sessions park in a transcript folder to work on saved tool results, then run
+# their own scripts and unrelated programs from there. So it holds where no session has reason to stand (the
+# state folder, the board, the sessions archive) and not inside a harness's transcript folder, where an inline
+# script's writes are still read.
+
+@pytest.mark.parametrize("command", [
+    "cd {work}/abc/tool-results && python3 -B - <<'PY'\nimport json\nprint(len(json.load(open('events.txt'))))\nPY",
+    "cd {work} && python3 -B /tmp/pad/build_transcript.py",
+    "cd {work} && grep -c x s.jsonl; docker start bench; open -a Docker",
+    "cd {claude} && find . -name '*.jsonl' -print0 | xargs -0 /usr/bin/grep -c x | sort | head -3",
+    "for f in $(grep -l \"Inbox hygiene (Step 3d)\" {work}/*.jsonl | head -2); do grep -c x \"$f\"; done",
+    "ls {work} | head -2 | awk '{{ cmd = \"date -r \" $1; cmd | getline d; close(cmd); print d }}'",
+])
+def test_working_from_inside_a_transcript_folder_is_not_refused(saved, command, tmp_path):
+    assert guards.check("Bash", {"command": command.format(**saved)}, {}, cwd=str(tmp_path)) is None
+
+
+@pytest.mark.parametrize("command", [
+    "cd {state} && python3 -B /tmp/pad/build.py",
+    "cd {state} && plutil -p /tmp/a.plist",
+    "cd {work}/abc/tool-results && python3 -B - <<'PY'\nopen('events.txt', 'w').write('x')\nPY",
+    "for d in $(ls -d {state}/*); do rm -rf \"$d\"; done",
+])
+def test_and_what_stays_refused_with_the_standing_rule_narrowed(saved, command, tmp_path):
     assert REFUSED in (guards.check("Bash", {"command": command.format(**saved)}, {}, cwd=str(tmp_path)) or ""), command
