@@ -9,7 +9,7 @@ depends_on:
   - synthesis-checkpoint
 metadata:
   author: "Rajiv Pant"
-  version: "3.7.0"
+  version: "3.8.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
   format: v5
@@ -35,6 +35,7 @@ slips silently. Each workspace runs its own; a project supplement may add repos 
 10. **Observe around live sessions:** claim only the files you write, fast-forward only unheld branches, never repair or re-run another session's work, release claims at the end.
 11. **Native memory stays on.** Durable entries move into synthesis records archive-first; raw memory files are never deleted or edited.
 12. **A critical deadline is never one item among many.** Tag a deadline whose miss cannot be undone `**Critical:** <class>` the day it is first seen. From seven days out it opens every plan and brief in its own section; it never lapses and closes only on evidence or the principal's own words; `ritual_state.py record` refuses while one is past due. An enrollment window once closed as one dated row among a hundred.
+13. **LinkedIn's conversation list is read through the workspace's declared parking thread, never the bare messaging page,** which opens the newest conversation and marks it read. Open a thread only when its preview cannot show whether something is owed, and name each one opened.
 
 ## Contents
 
@@ -49,6 +50,7 @@ slips silently. Each workspace runs its own; a project supplement may add repos 
 - [references/sync-watermarks.md](references/sync-watermarks.md): the watermark contract and the Google Chat target set. Read before any sync.
 - [references/decay-sweep.md](references/decay-sweep.md): deadline tags, identity and the sweep's coverage. Read at Day-End Step 4b.
 - [references/critical-deadlines.md](references/critical-deadlines.md): the Critical tag, its section in the plan, alerts, closure on evidence, and the plan folders each workspace declares. Read at day-start, at every sweep, and the day such a deadline is first seen.
+- [references/linkedin-messages.md](references/linkedin-messages.md): LinkedIn messages as a declared surface: the declaration, the read through the parking thread, the coverage line, what is owed. Read before a sync in a workspace that declares it.
 - [references/mailbox-manifest.md](references/mailbox-manifest.md): `.agents/mailboxes.yaml` and the mailbox states. Read before an email sweep.
 - [references/ownership-routing.md](references/ownership-routing.md): which workspace owns an item, and which side of a conflict moves. Read at the catch-up read.
 - [references/ritual-worker-contract.md](references/ritual-worker-contract.md): desk and workers, artifacts, plan storage separation. Read when a workers registry exists.
