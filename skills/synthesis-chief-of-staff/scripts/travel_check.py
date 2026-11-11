@@ -24,6 +24,7 @@ flagged, 2 when it was not shown enough to judge (no policy, a read that does no
 from __future__ import annotations
 
 import argparse
+import html
 import json
 import re
 import sys
@@ -38,8 +39,9 @@ import slot_check as slot  # noqa: E402  the same calendar read, read the same w
 LINES = ("Paid by", "Leave", "Route", "Arrive", "Backup", "Fare", "Ticket")
 LABEL = re.compile(r"(?im)^\s*(For|Paid by|Leave|Route|Arrive|Backup|Fare|Ticket|Decision|Travel)\s*:[ \t]*(.*)$")
 EMPTY = re.compile(r"(?i)\s*(?:tbd|tbc|tba|tk|n/?a|unknown|to be (?:confirmed|decided|determined|announced)|\?+|-+)?\s*")
+BREAK = re.compile(r"(?i)<br\s*/?>|</(?:p|div|li|tr|h\d)>")  # a connector may return a description as HTML
 CAR = re.compile(r"(?i)\b(?:car|uber|lyft|taxi|cab|rideshare|ride[ -]share|limo|car service)\b")
-NEAR = timedelta(hours=12)  # a block with no `For:` line belongs to the commitment it stands next to
+NEAR = timedelta(hours=12)  # farther than this from every commitment, a block with no `For:` line belongs to none
 ASK = "the principal's decision, written on a `Decision:` line of that block"
 
 
@@ -48,8 +50,9 @@ def stop(message: str):
 
 
 def lines(description: str) -> dict:
-    """The labeled lines of a description, a placeholder counting as no line."""
-    return {label.lower(): value.strip() for label, value in LABEL.findall(description or "") if not EMPTY.fullmatch(value)}
+    """The labeled lines of a description, a placeholder counting as no line. HTML is read as the text it shows."""
+    text = html.unescape(re.sub(r"<[^<>]+>", "", BREAK.sub("\n", description or "")))
+    return {label.lower(): value.strip() for label, value in LABEL.findall(text) if not EMPTY.fullmatch(value)}
 
 
 def place(location: str, policy: dict) -> str:
@@ -99,9 +102,14 @@ def judge(args, config: dict, read: dict) -> dict:
             day = a.date() if a else date.fromisoformat(str(raw.get("date") if isinstance(raw, dict) else raw)[:10])
         except ValueError:
             continue  # an entry with no start is not an event this can place on a day
-        if first <= day <= last and place(entry.get("location"), policy) == "away":
+        if place(entry.get("location"), policy) == "away":
             commitments.append({"summary": summary, "start": a, "end": b, "day": day, "said": said,
                                 "location": " ".join(str(entry.get("location")).split())})
+    timed = [c for c in commitments if c["start"]]
+    for block in blocks:  # a block that names no commitment belongs to the one it stands nearest to, and to no other
+        near = min(timed, key=lambda c: min(abs(c["start"] - block["end"]), abs(block["start"] - c["end"])), default=None)
+        block["beside"] = near if near and min(abs(near["start"] - block["end"]), abs(block["start"] - near["end"])) <= NEAR else None
+    commitments = [c for c in commitments if first <= c["day"] <= last]
     early, local = int(policy.get("arrive_early_minutes", 15)), int(policy.get("local_minutes", 15))
     latest = str(policy.get("latest_return") or "")
     events = []
@@ -127,7 +135,7 @@ def judge(args, config: dict, read: dict) -> dict:
             continue
         named = [b for b in blocks if b["said"].get("for") and (b["said"]["for"].lower() in c["summary"].lower()
                                                                 or c["summary"].lower() in b["said"]["for"].lower())]
-        loose = [b for b in blocks if not b["said"].get("for") and abs(b["start"] - c["start"]) <= NEAR]
+        loose = [b for b in blocks if not b["said"].get("for") and b["beside"] is c]
         before = max((b for b in named + loose if b["start"] < c["start"]), key=lambda b: b["start"], default=None)
         after = min((b for b in named + loose if b["start"] >= c["start"]), key=lambda b: b["start"], default=None)
         for side, block in (("before", before), ("after", after)):
