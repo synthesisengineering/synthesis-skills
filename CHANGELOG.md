@@ -25,13 +25,21 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   config (`decay_sweep.py --records-dir`): every Markdown file under it is read with the same item grammar, as of
   the date in its name or of the sweep's day. A plan outranks a record: once a plan or ritual artifact carries the
   item's Decay ID, the plans decide it.
-- **One `approve` can carry several codes** (core, message guard 2.6.1). A principal typed the word once with nine
-  codes after it; the first was granted and the other eight were passed over without a word, because only a code
-  that directly followed the word was read. Each of the eight then cost a turn of its own. The prompt hook now
-  reads a list after the word, separated by spaces, commas or "and" (`approve <code> <code>`), and ends it at the
-  first thing that is not a code. Nothing else about an approval changes: each code grants one exact pending call,
-  the harness's transcript must show the principal typing it, and a code that matched no pending request is named
-  back. `approve code <code>`, the form every hook message is rewritten to, still approves nothing.
+- **One `approve` can carry several codes, and nothing typed is passed over without a word** (core, message guard
+  2.6.1). A principal typed the word once with nine codes after it; the first was granted and the other eight were
+  passed over in silence, because only a code that directly followed the word was read. Each of the eight then cost
+  a turn of its own. The prompt hook now reads a list after the word on its line, separated by spaces, commas or
+  "and" (`approve <code> <code>`), and ends it at the first thing that is not a code and at the end of the line, so
+  pasted context that opens the next line with a code cannot join it. A pending code that is in the message and
+  was not approved is now named back, as a code that matched nothing already was. Each code still grants one exact
+  pending call, and the harness's transcript must show the principal typing it. `approve code <code>`, the form
+  every hook message is rewritten to, still approves nothing.
+- **Three things a review of that change found in the approval reader, fixed with it** (core). A negation right
+  before the word ("don't approve ...") used to grant; it grants nothing now. A block a harness wraps into a prompt
+  is taken out whole when it sits inside another block of the same name or crosses one (the old pattern stopped at
+  the first closing tag and left the rest to be read), and what stands where a block was now ends a list. Taking
+  blocks out is one pass over the tags: the old pattern took seconds on a prompt of 300,000 characters. In a
+  transcript record of several blocks, a list no longer runs on into the next block.
 
 ## [5.5.0] - 2026-11-11
 

@@ -24,10 +24,14 @@ from synthesis import paths
 
 TTL_SECONDS = 15 * 60
 ONE = r"\d[0-9a-f]{5}\b"  # the shape request() issues: no English word fits
-# The word, then the codes it approves, separated by spaces, commas or "and". The first thing that is not a code
-# ends the list, so "approve code <code>", the form hook text is rewritten to, approves nothing (hook._defuse).
-CODE = re.compile(rf"\bapprove\s+({ONE}(?:(?:\s*,\s*(?:and\s+)?|\s+and\s+|\s+){ONE})*)", re.IGNORECASE)
-INSERTED = r"(?s)<([A-Za-z][\w-]*)\b[^>]*>.*?</\1\s*>"  # blocks a harness wraps into a prompt; compiled on use
+GAP = r"[ \t  -   　]"  # a space inside a line; a line break is not one
+# The word, then on its own line the codes it approves, separated by spaces, commas or "and". The first thing that
+# is not a code ends the list: "approve code <code>", the form hook text is rewritten to, approves nothing
+# (hook._defuse), and neither does pasted context that opens the next line with a code.
+CODE = re.compile(rf"\bapprove{GAP}+({ONE}(?:(?:{GAP}*,{GAP}*(?:and{GAP}+)?|{GAP}+and{GAP}+|{GAP}+){ONE})*)", re.IGNORECASE)
+NEGATED = re.compile(rf"(?:n['’]t|\b(?:not|never|no|cannot|dont|cant|wont)){GAP}+$", re.IGNORECASE)  # "don't approve ..."
+TAG = re.compile(r"<(/?)([A-Za-z][\w-]*)\b[^<>]*>")  # a harness wraps what it inserts into a prompt in a pair of these
+CUT = " / "  # stands where a wrapped block or a record's block boundary was: it ends a list and parts the word from a code
 NOT_TYPED = ("isMeta", "isSidechain", "isCompactSummary", "isVisibleInTranscriptOnly", "isSynthetic", "toolUseResult")
 
 
@@ -79,12 +83,36 @@ def _expire() -> None:
             pass
 
 
+def typed_text(prompt: str) -> str:
+    """The prompt without the blocks a harness wrapped into it, such as a background task's report (2026-10-20: a
+    helper's report quoting the guard reached this hook as a prompt). A block inside another, or crossing one, goes
+    with it, and each gap is marked so no list runs across it. One pass over the tags: a long prompt cannot stall
+    the hook (2026-11-11: removing blocks one pattern match at a time took seconds on 300,000 characters)."""
+    prompt, blocks, opened = prompt or "", [], {}
+    for tag in TAG.finditer(prompt):
+        if not tag[1]:
+            opened.setdefault(tag[2].lower(), []).append(tag.start())
+        elif opened.get(tag[2].lower()):
+            blocks.append((opened[tag[2].lower()].pop(), tag.end()))
+    kept, at = [], 0
+    for start, end in sorted(blocks):
+        if start >= at:
+            kept.append(prompt[at:start])
+        at = max(at, end)
+    return CUT.join(kept + [prompt[at:]])
+
+
 def typed_codes(prompt: str) -> list[str]:
-    """The codes the principal typed: never one inside a block the harness wrapped into the prompt, such as
-    a background task's report (2026-10-20: a helper's report quoting the guard reached this hook as a prompt).
-    One "approve" may carry several (2026-11-11: nine were typed after the word and eight were passed over)."""
-    lists = CODE.findall(re.sub(INSERTED, " ", prompt or ""))
+    """The codes the principal approved in what they typed. One "approve" may carry several (2026-11-11: nine were
+    typed after the word and eight were passed over). A negation right before the word approves nothing."""
+    text = typed_text(prompt)
+    lists = [m[1] for m in CODE.finditer(text) if not NEGATED.search(text, max(0, m.start() - 12), m.start())]
     return list(dict.fromkeys(code.lower() for codes in lists for code in re.findall(ONE, codes, re.IGNORECASE)))
+
+
+def mentioned(prompt: str) -> list[str]:
+    """Every word shaped like a code in what the principal typed, approved or not."""
+    return list(dict.fromkeys(code.lower() for code in re.findall(rf"\b{ONE}", typed_text(prompt), re.IGNORECASE)))
 
 
 def grant_from_prompt(prompt: str) -> list[str]:
@@ -138,7 +166,7 @@ def _prompt(record: dict, session_id: str) -> tuple[float, str]:
     if (any(entry.get(k) for k in NOT_TYPED) or (isinstance(origin, dict) and origin.get("kind") != "human")
             or any(isinstance(b, dict) and b.get("type") == "tool_result" for b in blocks)):
         return 0.0, ""
-    text = " ".join(b if isinstance(b, str) else str(b.get("text") or "") for b in blocks if isinstance(b, (str, dict)))
+    text = CUT.join(b if isinstance(b, str) else str(b.get("text") or "") for b in blocks if isinstance(b, (str, dict)))
     stamp = record.get("timestamp") or record.get("recorded_at")
     if isinstance(stamp, (int, float)):
         return stamp / 1e6, text  # Muse records microseconds
