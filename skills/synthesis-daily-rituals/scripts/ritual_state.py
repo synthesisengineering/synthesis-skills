@@ -12,13 +12,17 @@ so every view answers for one workspace, and an empty `--workspace ""` (an
 unset shell variable) is refused rather than read as "all workspaces".
 
     ritual_state.py record --direction day-end --workspace W --date YYYY-MM-DD \\
-        [--mode quick] [--outcome clean] [--session ID] [--pointer FILE] [--count sent=3]
+        [--mode quick] [--outcome clean] [--session ID] [--pointer FILE] [--count sent=3] [--travel FILE]
     ritual_state.py query summary|last|open|streak|weekly-review [--workspace W] [--json]
 
 `record` first reads the plan folders the workspace declares in the ritual config (`plans_dirs`,
 `artifacts_dirs`) with the deadline sweep. It refuses while a critical deadline is past due and open,
 and refuses a clean outcome over plans it could not read whole (2026-11-06: an enrollment window
 closed unanswered and the day was recorded clean). A workspace that declares neither key is refused.
+A workspace that turns the travel check on (`"travel_check": true`, or `{"days": N}`) must also pass
+`--travel`, the output of `travel_check.py --json` for that day and the days ahead: no result, or one
+that holds an in-person event without its travel, and the ritual is not recorded (2026-11-11: an evening
+28 miles from home had been carried through three plans and a day-start with no way to get there).
 
 The log is `<synthesis home>/rituals/history.jsonl` (`RITUAL_STATE_DIR` or
 `--state-dir` points elsewhere, to exercise a copy). Derivations live in the
@@ -32,7 +36,7 @@ import fcntl
 import json
 import os
 import sys
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timedelta
 from pathlib import Path
 
 _PLUGIN = Path(__file__).resolve().parents[3]
@@ -118,6 +122,34 @@ def critical_deadlines(workspace: str, outcome: str) -> str:
     return f"critical deadlines: {len(rows)} open, {sum(r['lead'] for r in rows)} within {decay_sweep.LEAD_DAYS} days"
 
 
+def travel(workspace: str, day: str, given) -> str:
+    """The line `record` prints about travel, or a refusal: no result, one for other days, an event without its travel."""
+    wanted = ((rituals.config().get("workspaces") or {}).get(workspace) or {}).get("travel_check")
+    if not wanted:
+        return ""
+    days = int(wanted.get("days", 7)) if isinstance(wanted, dict) else 7
+    last = (date.fromisoformat(day) + timedelta(days=days - 1)).isoformat()
+    again = "travel_check.py --json (in synthesis-chief-of-staff)"
+    if not given:
+        refuse(f"{workspace} checks travel, and this record names no result. Read the calendar for the next {days} days, run "
+               f"{again} over it, save what it prints and pass --travel <that file>")
+    try:
+        found = json.loads(Path(given).read_text(encoding="utf-8"))
+        window, events = found["window"], list(found["events"])
+        bare = [e for e in events if e["lacks"]]
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        refuse(f"the travel result {given} cannot be read ({exc!r}); run {again} again")
+    if window.get("from") != day or str(window.get("through")) < last:
+        refuse(f"the travel result covers {window.get('from')} through {window.get('through')}, and this record needs {day} "
+               f"through {last}. Run {again} for those days")
+    if bare:
+        refuse(f"{len(bare)} in-person event(s) through {last} lack their travel, so this ritual is not recorded:\n"
+               + "\n".join(f"  {str(e.get('start'))[:16]} {e.get('summary')}: " + "; ".join(map(str, e["lacks"])) for e in bare)
+               + "\nWork each trip out from a live source and add its blocks, or put the event to the principal. Never "
+               "write a time that no block gives.")
+    return f"\ntravel: {len(events)} in-person event{'s' * (len(events) != 1)} through {last}, each with its travel"
+
+
 def cmd_record(args) -> int:
     check_workspace(args.workspace, "record --direction <direction> --workspace <workspace> --date YYYY-MM-DD")
     try:
@@ -126,7 +158,7 @@ def cmd_record(args) -> int:
         refuse(f"--date {args.date!r} is not YYYY-MM-DD; the logical workday is required and never inferred")
     if args.mode == "migration":
         refuse("mode 'migration' marks old bookkeeping and cannot be written")
-    critical = critical_deadlines(args.workspace, args.outcome)
+    critical = critical_deadlines(args.workspace, args.outcome) + travel(args.workspace, args.date, args.travel)
     record = {"ts": datetime.now().astimezone().isoformat(timespec="seconds"), "date": args.date,
               "direction": args.direction, "workspace": args.workspace, "mode": args.mode,
               "outcome": args.outcome}
@@ -233,6 +265,7 @@ def main(argv: list[str] | None = None) -> int:
     rec.add_argument("--pointer", help="the session log that holds the narrative")
     rec.add_argument("--note")
     rec.add_argument("--count", action="append", metavar="KEY=VALUE")
+    rec.add_argument("--travel", help="the output of travel_check.py --json, for a workspace that checks travel")
     rec.set_defaults(fn=cmd_record)
     query = sub.add_parser("query", help="derive a view")
     query.add_argument("view", choices=VIEWS)
