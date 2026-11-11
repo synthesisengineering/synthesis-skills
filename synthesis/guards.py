@@ -334,6 +334,44 @@ def _own_hold(event: dict) -> bool:
         return False
 
 
+TRAVEL_READER = os.path.join(os.path.dirname(HOLDS_READER), "travel_check.py")
+
+
+def check_travel(tool: str, tool_input: dict, config: dict) -> str | None:
+    """A calendar write that puts the principal at a place carries the event's travel line, or is refused with the
+    way to earn one (2026-11-11: an evening 28 miles from home sat on a calendar for six days with no way to get
+    there, and the agent that wrote it was never asked). What a place is and what a travel line is are asked of
+    the chief of staff's own travel check and the principal's travel policy; no copy of either lives here. It
+    reads the call alone and asks for no approval. {"in_person_travel": {"preferences": "<the preferences file>"}};
+    no key, no change; a policy that cannot be read refuses the write."""
+    rule = config.get("in_person_travel")
+    if rule is None or not CALENDAR_WRITE.search(tool):
+        return None
+    try:
+        with open(os.path.expanduser(str(rule["preferences"])), encoding="utf-8") as source:
+            policy = json.load(source)["travel_policy"]
+        reader = type(os)("travel_check")
+        reader.__file__ = TRAVEL_READER
+        with open(TRAVEL_READER, encoding="utf-8") as source:
+            exec(compile(source.read(), TRAVEL_READER, "exec"), reader.__dict__)  # no import: nothing is written beside it
+        title = str(policy.get("block_title") or "Travel").lower()
+        for event in [*_events(tool_input)] or [tool_input]:
+            said = {key.lower(): text for key, text in _strings(event)}
+            name = next((said[k] for k in ("summary", "title", "subject", "name") if said.get(k)), "an event")
+            notes = "\n".join(said.get(k, "") for k in ("description", "notes", "body", "details"))
+            if (reader.place(said.get("location", ""), policy) == "away" and not name.lower().startswith(title)
+                    and not reader.lines(notes).get("travel")):
+                return (f"Refused: this writes \"{name}\" at a place ({said['location']}) and says nothing about how the "
+                        "principal gets there. Work the trip out first (synthesis-chief-of-staff, references/in-person-travel.md): "
+                        "who pays, the exact address, the trip door to door from a live source, a travel block on each side. "
+                        "Then put the event's travel line in its description (`Travel: blocks before and after`, or `Travel: "
+                        "local, N min walk`, or `Travel: none, <why>`) and make the call again. This needs no approval.")
+    except Exception as exc:  # noqa: BLE001
+        return (f"Refused: in_person_travel is set, and the travel policy cannot be read ({exc!r}). It is the travel_policy "
+                "section of the preferences file that key names; a calendar write is not judged without it.")
+    return None
+
+
 def _falls(text: str, zones: list, unread: bool) -> str:
     """"today" when the date as written is today (ISO, or a written date such as "9 November 2026 at 3:00 PM"), the
     same moment is today on this machine's clock, or (for a time with no offset) it is today in a zone the event
@@ -2087,4 +2125,5 @@ def check(tool: str, tool_input: dict, config: dict, cwd: str | None = None, ses
         return check_desktop(desktop_tool(tool), tool, tool_input, config, session)
     # The account is checked before the send approval, so no approval is spent on the wrong account.
     reason = routed(tool, tool_input) and check_account(tool, tool_input, config, cwd)
-    return reason or (check_send(tool, tool_input, config, session) if _sends(tool, tool_input, config) else None)
+    return reason or check_travel(tool, tool_input, config) or (
+        check_send(tool, tool_input, config, session) if _sends(tool, tool_input, config) else None)

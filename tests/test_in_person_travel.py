@@ -78,7 +78,7 @@ def test_an_update_is_judged_only_when_it_gives_the_event_a_place(config):
 def test_other_connectors_field_names_are_read(config):
     apple = {"title": "Book launch", "start_date": "18 November 2026 at 7:00 PM", "location": PLACE, "notes": ""}
     assert refused(guards.check(APPLE, apple, config))
-    assert guards.check(APPLE, dict(apple, notes="Travel: blocks before and after"), config) is None
+    assert not refused(guards.check(APPLE, dict(apple, notes="Travel: blocks before and after"), config))  # on to the send approval
     batch = {"events": [event(description="Travel: blocks before and after"), event(summary="Dinner", location="Corner Bistro, 22 River St")]}
     reason = guards.check(MANY, batch, config)
     assert refused(reason) and "Dinner" in reason and "Book launch" not in reason  # each event of a batch is judged by itself
