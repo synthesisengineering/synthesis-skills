@@ -67,6 +67,7 @@
     "arrive_early_minutes": 15,
     "latest_return": "23:30",
     "sleep_hours": 8,
+    "morning_starts": "07:00",
     "cost": {
       "personal": "the cheapest reliable option, bought ahead where that is cheaper; a car only on the principal's decision",
       "business": "an expensable car where policy allows and it saves real time"

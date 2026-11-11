@@ -227,9 +227,9 @@ def judge(args, config: dict, read: dict) -> dict:
             late = latest and (after["end"].date() > c["start"].date() or after["end"].time() > time.fromisoformat(latest))
             if late and not decided:
                 lacks.append(f"home at {slot.hm(after['end'])}, after {latest}: {ASK}")
-            short = slot.morning_after(after["end"], others, policy.get("sleep_hours"))
+            short = slot.morning_after(after["end"], others, policy.get("sleep_hours"), str(policy.get("morning_starts") or ""))
             if short and not decided:
-                lacks.append(f"home at {slot.hm(after['end'])} and \"{short[1]}\" starts {slot.hm(short[0])} the next morning: "
+                lacks.append(f"home at {slot.hm(after['end'])} and {slot.first_thing(short)} the next morning: "
                              f"{slot.span(short[2])} between, under the {float(policy['sleep_hours']):g} hours the policy keeps: {ASK}")
             found.update(home=slot.hm(after["end"]))
         events.append({**found, "lacks": lacks})

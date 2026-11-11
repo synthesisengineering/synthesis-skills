@@ -96,7 +96,7 @@ slot Thu 2026-11-12 15:30-16:00: REVIEW
 | deep work | it leaves fewer free blocks of the set length than the day must keep, the trip there and back counted as taken | | `calendar_guardian.thresholds.maker_block_minutes` (default 120), `.min_maker_blocks_per_day` (1) |
 | travel | the trip there or back runs through another event (only with `--travel-before` or `--travel-after`) | | |
 | return | | home after `travel_policy.latest_return`: the principal's decision (only with `--travel-after`; the line always gives the time home) | |
-| sleep | | less than `travel_policy.sleep_hours` between getting home and the next morning's first commitment | the read ends before the next morning |
+| sleep | | less than `travel_policy.sleep_hours` between getting home and the next morning's first commitment, or the hour `travel_policy.morning_starts` gives the morning if that is earlier | the read ends before the next morning and the policy's hour leaves the night long enough |
 | meeting load | the day's meetings with this one exceed the limit | | `.max_meeting_hours_per_day` (5) |
 | placement | | it sits in the middle of a free block long enough for deep work, away from any meeting | |
 | existing touchpoint | | a meeting with one of the same people is already on the calendar within the look-ahead | `.touchpoint_days` (7) |

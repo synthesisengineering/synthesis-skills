@@ -67,13 +67,20 @@ def span(gap: timedelta) -> str:
     return f"{hours} h {minutes:02d} min"
 
 
-def morning_after(home: datetime, entries: list, hours) -> tuple | None:
+def morning_after(home: datetime, entries: list, hours, starts: str = "") -> tuple | None:
     """(start, title, the time between) for the next morning's first entry, when it starts less than `hours` after
     the principal gets home. The night is the one that begins on the day they get home, or on the day before when
-    that is past midnight; an entry later the same night is not the morning."""
+    that is past midnight; an entry later the same night is not the morning. `starts` is the hour the policy says
+    the morning begins, entry or none (its title is empty): the night ends at the earlier of the two."""
     night = home.date() if home.hour >= 12 else home.date() - timedelta(days=1)
-    first = min(((a, title) for a, title in entries if a.date() == night + timedelta(days=1) and a > home), default=None)
+    begins = [(datetime.combine(night + timedelta(days=1), time.fromisoformat(starts), home.tzinfo), "")] if starts else []
+    first = min(((a, title) for a, title in [*entries, *begins] if a.date() == night + timedelta(days=1) and a > home), default=None)
     return (*first, first[0] - home) if first and hours and first[0] - home < timedelta(hours=float(hours)) else None
+
+
+def first_thing(short: tuple) -> str:
+    """How the morning's first commitment is said: the entry by its title, or the hour the policy gives the morning."""
+    return f'"{short[1]}" starts {hm(short[0])}' if short[1] else f"the morning starts {hm(short[0])} (the policy's hour)"
 
 
 def clock(day: date, text: str, zone: ZoneInfo) -> datetime:
@@ -176,13 +183,14 @@ def judge(args, config: dict, read: dict) -> dict:
         add("return", "REVIEW" if late else "OK", f"home at {hm(home)}" + (
             f", after {latest}: the principal's decision, made with the trip in front of them" if late else ""))
         morning = (home.date() if home.hour >= 12 else home.date() - timedelta(days=1)) + timedelta(days=1)
-        short = morning_after(home, [(a, s) for a, _, s, _ in events], keeps)
-        if keeps and window["through"] < morning.isoformat():
+        short = morning_after(home, [(a, s) for a, _, s, _ in events], keeps, str(policy.get("morning_starts") or ""))
+        if keeps and short:  # short by an entry the read holds, or by the hour the policy says the morning starts
+            add("sleep", "REVIEW", f"home at {hm(home)} and {first_thing(short)} the next morning: {span(short[2])} between, "
+                                   f"under the {float(keeps):g} hours the policy keeps: the principal's decision")
+        elif keeps and window["through"] < morning.isoformat():
             add("sleep", "NOTE", f"the calendar read ends before {morning}, so the night cannot be judged: read through that day")
         elif keeps:
-            add("sleep", "REVIEW" if short else "OK", f"home at {hm(home)} and \"{short[1]}\" starts {hm(short[0])} the next morning: "
-                f"{span(short[2])} between, under the {float(keeps):g} hours the policy keeps: the principal's decision" if short
-                else f"{float(keeps):g} hours or more between getting home and the next morning's first commitment")
+            add("sleep", "OK", f"{float(keeps):g} hours or more between getting home and the next morning's first commitment")
 
     load = sum(((b - a).total_seconds() for a, b, _ in that_day), (end - start).total_seconds()) / 3600
     most = float(limits.get("max_meeting_hours_per_day", 5))
