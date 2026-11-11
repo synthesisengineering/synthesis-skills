@@ -1881,7 +1881,8 @@ CONTENT = ("open", "read", "readline", "readlines", "read_text", "read_bytes")  
 ARG_READERS = {"argparse", "optparse", "getopt", "fileinput", "click", "typer", "fire", "docopt"}  # take the arguments unseen
 
 
-def _python_writes(source: str, names: list, roots: list | tuple = (), where: str = "", argv: list | tuple = ()) -> tuple:
+def _python_writes(source: str, names: list, roots: list | tuple = (), where: str = "", argv: list | tuple = (),
+                   env: dict | None = None) -> tuple:
     """(whether a Python program writes into a protected path, whether it writes at all); (None, None) when it cannot
     be told (no source, a syntax error, exec or eval). Only a write's target counts, never the content it writes, so
     a project record that cites a transcript path is not a write into transcripts (2026-10-14). The program is read
@@ -1891,8 +1892,9 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
     reached through an assignment, a loop, a `with`, a default, a call to the program's own function, a list or an
     attribute. What the program reads from a file is content, and names no path (30 days: six programs that read
     a transcript and numbered their output files by its lines were refused).
-    `argv` is what the shell hands the program, from its own name on; `where` is the folder it runs in, and inside a
-    protected folder, or after a chdir into one, every write must be led by a plain folder elsewhere."""
+    `argv` is what the shell hands the program, from its own name on, and `env` the variables it runs with;
+    `where` is the folder it runs in, and inside a protected folder, or after a chdir into one, every write must
+    be led by a plain folder elsewhere."""
     import ast
     try:
         tree = ast.parse(source) if source.strip() else None
@@ -1944,6 +1946,23 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
     def said(node):  # the text of a string, None for anything else
         value = node.value if isinstance(node, ast.Constant) else None
         return value.decode("utf-8", "replace") if isinstance(value, bytes) else value if isinstance(value, str) else None
+
+    # The environment is placed the same way: a variable the program reads by name (os.environ["X"], .get("X"),
+    # os.getenv("X")) has the value the command gives it, when that value is plain. Read any other way, a variable
+    # that carries a protected path makes any write a refusal (30 days: a program that read the time from one
+    # variable was refused for a transcript's path in another).
+    env, keyed = env or {}, set()
+    for n in nodes:
+        holder = n.value if isinstance(n, ast.Subscript) else n.func.value if isinstance(n, ast.Call) and getattr(n.func, "attr", "") == "get" else None
+        key = said(n.slice) if isinstance(n, ast.Subscript) else said(n.args[0]) if isinstance(n, ast.Call) and n.args else None
+        if key is not None and (getattr(holder, "attr", getattr(holder, "id", "")) == "environ" or (
+                holder is None and isinstance(n, ast.Call) and getattr(n.func, "attr", getattr(n.func, "id", "")) == "getenv")):
+            keyed.add(id(holder if holder is not None else n.func))
+            if key in env and not re.search(r"[$`]", env[key]):
+                given[id(n)] = env[key]
+    wild = any(getattr(n, "attr", getattr(n, "id", "")) in ("environ", "environb", "getenv", "putenv") and id(n) not in keyed for n in nodes)
+    loose = loose or (wild and (any(m in v for v in env.values() for m in names) or any(
+        v[:1] == "/" and paths.inside(v, r) for v in env.values() for r in roots)))
 
     def named(node) -> bool:  # built from a protected path: in a string, in an argument, or through a name or an attribute
         todo = [node]
@@ -2104,8 +2123,11 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None) -> str |
     why, wheres, handed, links, made, linked = "", {cwd}, [], [], [], []
     if codes and re.search(r"(?i)\b(?:%s)\b" % "|".join(map(re.escape, codes)), command):
         why = "carries a pending approval code (to see pending requests, run `synthesis approvals`)"
-    feeds: list = []
+    feeds, env = [], dict(os.environ)
     found = _parse(text, cwd, feeds=feeds)[0]
+    for m in ASSIGNED.finditer(text):  # the value the command gives a variable; given two, the one that names a protected path
+        if not m[2] and (env.get(m[1]) is None or m[1] in os.environ or any(n in m[3] for n in names)):
+            env[m[1]] = m[3].strip("'\"")
     for (words, where), fed in zip(found, feeds + [""] * len(found)):  # each command with what it reads on its own stdin
         head, own = os.path.basename(words[0]), " ".join(words[1:])
         wheres.add(where)  # a redirect after `cd <root>` writes relative to that root
@@ -2130,11 +2152,11 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None) -> str |
         # runs in (2026-10-06: through a variable). Its arguments are put where it reads them; through the
         # environment, or through arguments it takes unseen, any write it makes is refused. Another script is
         # judged by the words it is given, or, read from stdin, by the whole command.
-        hit, wrote = _python_writes(source, names, [os.path.realpath(r) for r in raw], where, argv) if source else (None, None)
+        hit, wrote = _python_writes(source, names, [os.path.realpath(r) for r in raw], where, argv, env) if source else (None, None)
         wrote = bool(re.search(SCRIPTED_WRITE, source or script)) if wrote is None else wrote  # by its syntax, else by its text
-        reaches = (hit is None and any(n in w for w in words[1:] if w != source for n in names)) or (
-            re.search(r"\b(?:environ|getenv|ENV)\b|\.env\b", script) and (any(n in m[3] for m in ASSIGNED.finditer(text) for n in names) or any(
-                v[:1] == "/" and paths.inside(v, os.path.realpath(r)) for v in os.environ.values() for r in raw)))
+        carried = re.search(r"\b(?:environ|getenv|ENV)\b|\.env\b", script) and (any(n in m[3] for m in ASSIGNED.finditer(text) for n in names) or any(
+            v[:1] == "/" and paths.inside(v, os.path.realpath(r)) for v in os.environ.values() for r in raw))
+        reaches = hit is None and (carried or any(n in w for w in words[1:] if w != source for n in names))  # read by its syntax, both are placed
         if SCRIPT.match(head) and (hit or (wrote and (reaches or (hit is None and (within or any(n in script for n in names)))))):
             why = why or ("runs a script that writes where the synthesis state, its board or a harness's transcripts live, or that "
                           "writes while such a path reaches it through an argument, the environment or the folder it runs in "
