@@ -299,3 +299,15 @@ def test_the_folders_an_answer_names_are_the_same_folders_however_each_is_writte
     listing(tmp_path, monkeypatch, "claude-code d20ab7c4 #41", records=[str(real)] * 3)
     code, out, refusal = record(state, "--outcome", "partial")
     assert code == 0 and "prompts: 1 of 3 typed on 2026-11-11 is cited by no record" in out, refusal
+
+
+@pytest.mark.parametrize("day", ["20261111", "2026-W46-3", "2026-W46"])
+def test_a_day_the_listing_finds_nothing_under_is_refused_before_it_is_asked(tmp_path, record, monkeypatch, day):
+    """Python 3.11 and later read these as dates. The listing finds no prompt typed on a day so written, answers
+    `prompts: 0` and exits 0, and the day was recorded clean while a prompt typed that day was cited by no record."""
+    state = tmp_path / "state"
+    declare(state, desk=ON)
+    asked = listing(tmp_path, monkeypatch, total=0, day=day)
+    for outcome in ("clean", "partial"):
+        code, _, refusal = record(state, "--outcome", outcome, day=day)
+        assert code != 0 and "is not YYYY-MM-DD" in refusal and history(state) == "" and not asked.exists(), outcome
