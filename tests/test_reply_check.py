@@ -1018,3 +1018,159 @@ def test_a_judgment_on_a_wait_or_a_description_of_what_happens_once_is_no_announ
 def test_a_wait_until_a_state_that_is_still_to_come_is_sent_back(reply):
     reason = _sent_back(reply)
     assert reason and "nothing is armed" in reason
+
+
+# A second list from an agent that never saw the code, across other kinds of work. Nine were wrong. Sent back needlessly:
+# a subject judged in the passive ("resuming after a crash is handled by"), a subject that holds "before the debrief", a
+# short wait after a request ("Send me the code ... I'll wait"), after a question, and "waiting on that before I ...".
+# Passed: the event in front with any verb after "when" or "after" ("when the bank confirms, I will record"), and
+# "after it does".
+INDEPENDENT2_NO_WATCHER = {
+    "FN01": 'Waiting for the cache to warm is what makes the first request slow, not the query itself.',
+    "FN02": 'Resuming after a crash is handled by the checkpoint file, so the loader never reprocesses a partition twice.',
+    "FN03": 'In the onboarding flow, the app holds the splash screen until the profile request returns, and then it '
+            'routes to the home tab.',
+    "FN04": 'Escrow works like this: the title company holds the deposit until both parties sign, and releases it when '
+            'the deed is recorded.',
+    "FN05": 'Waiting until every interviewer has submitted a scorecard before the debrief is a common way to reduce '
+            "anchoring, and I'd keep that rule.",
+    "FN06": "Waiting for the supplier's reply would have cost another day, so I ordered the standard part instead and the"
+            ' repair is booked for Friday.',
+    "FN07": 'The backfill finished after I waited out the warehouse maintenance window; all 31 partitions loaded and the '
+            'row counts match.',
+    "FN08": 'After the recruiter replied this morning, I booked the three interviews; they are on the calendar for '
+            'Thursday.',
+    "FN09": 'Status: the queue is empty, no jobs are waiting, and the last batch finished at 09:40 with zero errors.',
+    "FN10": 'I held the release until the security scan came back clean, then published version 2.4.1; nothing is '
+            'outstanding.',
+    "FN11": 'When the certificate renews next spring, remember to restart the proxy so it picks up the new file.',
+    "FN12": "I'd recommend waiting until the reindex completes before you cut traffic over; switching earlier risks stale"
+            ' search results.',
+    "FN13": "After the refund posts, you'll want to check that the statement shows the full amount, since partial credits"
+            ' are common with disputes like this one.',
+    "FN14": 'For future runs, you could trigger the export once the upstream job has finished instead of at a fixed time;'
+            ' that would avoid the partial files we saw today.',
+    "FN15": 'When the preprint is updated, you should re-check the sample size in table 2, since the authors said it '
+            'would change.',
+    "FN16": 'The deploy log\'s last line reads "waiting for rollout to finish, will retry in 30s"; that message is '
+            'routine, and the deploy itself completed at 14:02.',
+    "FN17": "The repair shop's auto-reply says 'we are waiting on parts and will call once they arrive'. I saved it in "
+            'the appliance folder.',
+    "FN18": 'A line you could use in the status update: “We’re waiting on the vendor’s patch and will redeploy as soon as'
+            ' it ships.”',
+    "FN19": 'I added this comment above the polling loop:\n```python\n# wait until the job finishes, then fetch the '
+            'results\n```\nThe change is committed on the branch.',
+    "FN20": "Here is the template for the on-call handoff note:\n~~~\nWaiting for the batch to finish; I'll restart the "
+            'workers when it does.\n~~~\nAdjust the wording to suit your team.',
+    "FN21": "The hiring manager's note on the ticket says:\n> I'm waiting for the background check to clear and will send "
+            'the offer once it does.\nI copied it into the candidate summary.',
+    "FN22": 'On startup the service prints `waiting for database, will continue once it is ready`, which is expected and '
+            'not an error.',
+    "FN23": 'The methods section states, "we waited until the cultures reached confluence and then applied the '
+            'treatment"; I added that detail to the comparison table.',
+    "FN24": "The bookkeeper's last email says 'I'll wait for the bank's confirmation and close the month when it "
+            "arrives', and I filed it under March.",
+    "FN25": "I'll continue with the literature search once you confirm which years to cover.",
+    "FN26": "Send me the six-digit code from your authenticator app and I'll finish the sign-in. I'll wait.",
+    "FN27": "The transfer needs your approval in the banking app; I'm waiting on that before I record the payment.",
+    "FN28": "Once your review of the offer letter is done, I'll send it to the candidate.",
+    "FN29": 'Holding the email to the contractor until you tell me which of the two quotes you prefer.',
+    "FN30": "As soon as you pick a date for the dinner, I'll book the table and send the invitations.",
+    "FN31": "Waiting for your decision on the two chart styles; I'll finalize the figures after you choose.",
+    "FN32": "The pull request description is drafted, and I won't open it until you've read it over. When you approve, "
+            "I'll push the branch and open it.",
+    "FN33": "Tell me when you've signed the lease and I'll set up the utilities transfer.",
+    "FN34": 'I am, at the moment, paused on the release notes until your answer about the version number comes in.',
+    "FN35": "We'll be able to continue the budget review after you find the two cash receipts; only you have those.",
+    "FN36": "I'll keep waiting for your go-ahead before touching the production database, and I'll start the cutover when"
+            ' you give it.',
+    "FN37": "You'll need to sign the engagement letter first, and I'll hold the filing until you have.",
+    "FN38": "I need the door code that only you have; once I have it, I'll schedule the cleaner.",
+    "FN39": "Which of the three caterers would you like me to book? I'm waiting on that and nothing else.",
+    "FN40": "The sync job runs once a day at 02:00 UTC, so today's dashboard includes orders through yesterday only.",
+    "FN41": 'Once the token expires, the client requests a new one automatically, so no change was needed in the login '
+            'code.',
+    "FN42": 'Company policy is that an expense is reimbursed when a receipt is attached, which is why the two claims '
+            'without receipts were rejected.',
+    "FN43": 'As soon as the queue drains, the autoscaler removes the extra workers; that explains the drop in node count '
+            'at 14:10.',
+    "FN44": "When a candidate reschedules, the booking tool frees the original slot immediately, so the panel's calendars"
+            ' are already correct.',
+    "FN45": 'I ran the import once more after fixing the date format, and all 212 rows loaded.',
+}
+INDEPENDENT2_OWN_WAIT = {
+    "FW01": "I'll rerun the integration suite once the staging deploy finishes.",
+    "FW02": "Once the nightly export lands in the bucket, I'll load it and rebuild the revenue table.",
+    "FW03": "Now that you've pushed the fix, I am waiting for CI to finish on the branch and will tag the release when it"
+            ' passes.',
+    "FW04": "We're holding until the certificate is issued by the certificate authority, then we'll switch the load "
+            'balancer over.',
+    "FW05": 'Waiting on the app store review to come back; will publish the release notes as soon as the build is '
+            'approved.',
+    "FW06": "As soon as the recruiter replies with the candidate's availability, I'll send the calendar invites.",
+    "FW07": 'After the backfill job completes I will compare the row counts against the source tables.',
+    "FW08": "I'll wait for the plumber's reply and book the Tuesday visit when he confirms the slot.",
+    "FW09": "The infrastructure provisioning run is still going; I'll be able to continue with the DNS change once it's "
+            'done.',
+    "FW10": "Your build is compiling now, and I'll pick up the signing step when it finishes.",
+    "FW11": 'The search index is rebuilding, so the import is paused. Resuming after the rebuild completes.',
+    "FW12": "Waiting until the emulator boots, then I'll run the UI tests.",
+    "FW13": "You approved the sofa order yesterday, so it now sits with the supplier; I'll update the delivery schedule "
+            'as soon as they confirm a date.',
+    "FW14": "I'll hold here until the `payments-db` migration job exits, then run `verify_totals.sql`.",
+    "FW15": "The corresponding author hasn't answered yet. I'll wait for her reply before adding the dataset details to "
+            'the literature summary.',
+    "FW16": "Once your pull request has been approved by the second reviewer, I'll merge it and delete the branch.",
+    "FW17": "When the reimbursement posts to your account, I'll mark the expense report as settled.",
+    "FW18": "I'm going to wait for the pharmacy to text that the prescription is ready, and then I'll arrange the pickup.",
+    "FW19": 'We will continue with the rollout as soon as the canary metrics have been collected.',
+    "FW20": "The scheduling poll is still open. Once the interviewers have all responded, I'll lock the panel times and "
+            'notify the candidate.',
+    "FW21": "The warehouse team's notice reads:\n> Maintenance ends at 03:00 UTC.\nI'll wait for the cluster to come back "
+            'online and then restart the nightly load.',
+    "FW22": 'The wire has been submitted. When the bank confirms it has cleared, I will record the payment against '
+            'invoice 2207.',
+    "FW23": "I can't finish the chart until the survey export finishes generating, so I'm waiting on that and will "
+            'complete the figure afterwards.',
+    "FW24": "I'm currently still waiting for the background-check provider to return its report, and I'll finalize the "
+            'offer packet as soon as it has.',
+    "FW25": "Waiting for your landlord to send the signed lease back; I'll file it and then set up the rent autopay.",
+    "FW26": "The symbol upload for the crash reports is in progress. I'll resume triage after it's processed.",
+    "FW27": "The payroll provider's batch hasn't settled yet, so I'll hold the journal entries and post them after it "
+            'does.',
+    "FW28": "The bank's export page shows:\n```\nStatement for October: generating\n```\nI'll download it once it's ready and"
+            ' finish the reconciliation.',
+    "FW29": 'I\'ll rerun the "Nightly Sales" dashboard refresh once the `orders_raw` load completes.',
+    "FW30": "Once the 'Release' workflow finishes, I'll attach the signed package to the ticket.",
+    "FW31": "I have to wait for the payment processor to release the hold before I can issue the refund, so I'll issue it"
+            ' when the hold lifts.',
+    "FW32": "We are, as of this message, waiting on the data vendor to deliver the corrected file; we'll rerun the "
+            "pipeline once it's delivered.",
+    "FW33": "I will, in the meantime, keep waiting for the library to confirm the interlibrary loan, and I'll extract the"
+            ' three chapters when the scan arrives.',
+    "FW34": "Until the firmware vendor ships the fixed version, I'm holding the device rollout; I'll resume it when the "
+            'new version is out.',
+    "FW35": "Your refund request is with the airline now, and I'm holding off on the hotel until their confirmation email"
+            " comes through, then I'll rebook it.",
+}
+MORE_OF_THE_SIXTH_LISTS_CLASSES = {
+    "a-request-then-waiting-on-it": "Type the code from the terminal below. I'm waiting on it.",
+    "a-question-then-waiting-on-that": "Do you want the long version? I'm waiting on that before I draft anything.",
+    "when-a-build-fails": "When a build fails, I'll look at the first error before anything else.",
+}
+MORE_WAITS_OF_THE_SIXTH_LISTS_CLASSES = {
+    "the-export-then-waiting-on-that": "The export is running; I'm waiting on that before I rebuild the index.",
+    "when-the-courier-scans": "When the courier scans the parcel, I'll forward the tracking link.",
+    "until-with-a-before-clause": "Waiting until the deploy finishes before the cache is warmed.",
+}
+
+
+@pytest.mark.parametrize("reply", _cases(INDEPENDENT2_NO_WATCHER, MORE_OF_THE_SIXTH_LISTS_CLASSES))
+def test_a_second_list_written_without_sight_of_the_code_of_replies_that_need_no_watcher_passes(reply):
+    assert _sent_back(reply) is None
+
+
+@pytest.mark.parametrize("reply", _cases(INDEPENDENT2_OWN_WAIT, MORE_WAITS_OF_THE_SIXTH_LISTS_CLASSES))
+def test_a_second_list_written_without_sight_of_the_code_of_unarmed_waits_is_sent_back(reply):
+    reason = _sent_back(reply)
+    assert reason and "nothing is armed" in reason
