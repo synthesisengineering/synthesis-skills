@@ -57,6 +57,38 @@ def test_hosted_domains_when_required_come_from_googles_userinfo():
     assert not policy.decide(claims(email="outsider@example.com", hd="example.com")).allowed
 
 
+def unlisted(email):
+    return (f"Access denied: {email} is not on this knowledge base's access list. "
+            "Ask its administrator to add the address.")
+
+
+def test_the_operator_only_test_mode_admits_the_operator_and_refuses_everyone_else_as_unlisted():
+    policy = AccessPolicy.from_settings("lead@example.com,analyst@example.com", "", None,
+                                        " Lead@Example.com ,lead@example.com")
+    assert policy.operators == {"lead@example.com"} and POLICY.operators == frozenset()
+    assert policy.decide(claims()).reason == "allowed" and policy.decide(claims(email="LEAD@example.com")).allowed
+    assert POLICY.decide(claims(email="someone@example.com")).message == unlisted("someone@example.com")
+    for email in ("analyst@example.com", "someone@example.com"):  # one the list would admit, one it would not
+        decision = policy.decide(claims(email=email))
+        assert not decision.allowed and decision.reason == "operator_only_test_mode"
+        assert decision.message == unlisted(email)  # the words an unlisted person gets, whatever the list says
+    assert policy.decide(claims(email="analyst@example.com", verified="false")).reason == "operator_only_test_mode"
+    assert policy.decide(claims(verified="false")).reason == "email_unverified"  # the operator still has to be verified
+    assert policy.decide({"sub": "1"}).reason == "no_identity"
+
+
+def test_the_operator_only_test_mode_narrows_the_access_list_and_never_widens_it():
+    both = "lead@example.com,analyst@example.com"
+    domains = AccessPolicy.from_settings(both, "example.com", None, "lead@example.com")
+    assert domains.decide(claims(hd="example.com")).reason == "allowed"
+    refused = domains.decide(claims(email="analyst@example.com", hd="example.com"))  # listed, in an allowed domain
+    assert not refused.allowed and refused.reason == "operator_only_test_mode"
+    assert refused.message == unlisted("analyst@example.com")
+    assert domains.decide(claims()).reason == "domain_not_allowed"  # the operator outside the allowed domain
+    off_the_list = AccessPolicy.from_settings("analyst@example.com", "", None, "lead@example.com")
+    assert off_the_list.decide(claims()).reason == "email_not_listed"  # naming an operator adds nobody to the list
+
+
 def test_an_empty_or_malformed_list_is_refused_at_start():
     for raw in ("", " , ", None):
         with pytest.raises(ValueError, match="nobody can sign in"):

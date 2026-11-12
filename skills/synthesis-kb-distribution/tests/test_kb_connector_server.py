@@ -38,10 +38,12 @@ SCOPES = "openid https://www.googleapis.com/auth/userinfo.email"
 REDIRECT = "http://localhost:8765/callback"
 RESOURCE = "http://127.0.0.1/mcp"
 PEOPLE = {"code-lead": ("lead@example.com", True, "example.com"),
+          "code-analyst": ("analyst@example.com", True, "example.com"),
           "code-outsider": ("outsider@example.com", True, "example.com"),
           "code-unverified": ("lead@example.com", False, "example.com"),
           "code-personal": ("lead@example.com", True, None)}
 PRICING = "datasets/active/pricing-decision.md"
+OPERATOR = {"KB_OPERATOR_TEST": "1", "KB_OPERATOR_ADDRESSES": "lead@example.com"}  # the operator-only test mode
 
 
 def settings_for(published, **env):
@@ -49,6 +51,12 @@ def settings_for(published, **env):
                         "KB_GOOGLE_CLIENT_ID": CLIENT_ID, "KB_GOOGLE_CLIENT_SECRET": "test-secret",
                         "KB_ALLOWED_EMAILS": "lead@example.com,analyst@example.com",
                         "KB_DOCUMENT_URL_TEMPLATE": "https://git.example.com/kb/src/{commit}/{source_path}", **env})
+
+
+def policy_for(settings, roster=None):
+    """The policy main() builds from these settings."""
+    return AccessPolicy.from_settings(settings.allowed_emails, settings.allowed_hosted_domains, roster,
+                                      settings.operator_addresses)
 
 
 def loaded(published):
@@ -214,9 +222,22 @@ def test_health_reports_the_served_commit_and_503_before_a_load(published):
             return await http.get("/health")
     ok = run(health(library))
     assert ok.status_code == 200 and ok.json()["status"] == "ok" and ok.json()["files"] == 4
-    assert set(ok.json()) == {"status", "commit", "files", "refreshed_at", "last_attempt_at", "last_refresh_failed"}
+    assert set(ok.json()) == {"status", "commit", "files", "refreshed_at", "last_attempt_at", "last_refresh_failed",
+                              "test_only"}
+    assert ok.json()["test_only"] is False
     empty = run(health(Library(DirectorySource(published))))
-    assert empty.status_code == 503 and empty.json()["status"] == "unavailable"
+    assert empty.status_code == 503 and empty.json()["status"] == "unavailable" and empty.json()["test_only"] is False
+
+
+def test_health_says_when_the_connector_is_the_operators_own_test(published):
+    settings = settings_for(published, **OPERATOR)
+
+    async def health():
+        mcp = server.build_server(settings, loaded(published), policy_for(settings), ClaimsVerifier({}))
+        async with asgi_server(mcp, stateless_http=True) as srv, srv.http_client() as http:
+            return await http.get("/health")
+    answer = run(health())
+    assert answer.status_code == 200 and answer.json()["status"] == "ok" and answer.json()["test_only"] is True
 
 
 def directory(*people):
@@ -402,6 +423,69 @@ def test_the_tool_check_refuses_anyone_not_listed_whatever_the_token(published):
         assert tools == [] and result.is_error and message in result.content[0].text
 
 
+@pytest.mark.parametrize("env, group", [
+    ({}, None),                                                                       # on the email list
+    ({"KB_ALLOWED_EMAILS": "", "KB_ALLOWED_GROUPS": "leads@example.com"},             # in an allowed group
+     ("lead@example.com", "analyst@example.com")),
+    ({"KB_ALLOWED_HOSTED_DOMAINS": "example.com"}, None),                             # listed, in an allowed domain
+])
+def test_the_test_mode_signs_in_the_operator_and_nobody_else_the_rules_would_admit(published, caplog, env, group):
+    settings, google = settings_for(published, **OPERATOR, **env), FakeGoogle()
+    roster = GroupRoster(["leads@example.com"], 300, directory(*group)) if group else None
+    assert roster is None or roster.refresh()
+    policy = policy_for(settings, roster)
+
+    async def go():
+        mcp = server.build_server(settings, loaded(published), policy, google_auth(settings, policy, google))
+        async with asgi_server(mcp, stateless_http=True) as srv, srv.http_client() as http:
+            refused = await sign_in(http, "code-analyst")
+            callback, token = await sign_in(http, "code-lead")
+            async with srv.client(auth=token) as client:
+                return refused, callback, await client.call_tool("search", {"query": "glossary"})
+    (refused, none), callback, found = run(go())
+    assert refused.status_code == 403 and none is None and "location" not in refused.headers
+    assert "Access denied" in refused.text and "analyst@example.com is not on this knowledge base" in refused.text
+    assert "sign-in refused for analyst@example.com: operator_only_test_mode" in caplog.text
+    assert callback.status_code == 302
+    assert found.structured_content["results"][0]["id"] == "datasets/reference/glossary.md"
+
+
+def test_a_token_from_before_the_test_mode_works_for_the_operator_alone(published, caplog):
+    settings, google = settings_for(published, **OPERATOR), FakeGoogle()
+    policy = AccessPolicy.from_settings(settings.allowed_emails)  # before the test: the list lets both in
+
+    async def go():
+        auth = google_auth(settings, policy, google)
+        mcp = server.build_server(settings, loaded(published), policy, auth)
+        async with asgi_server(mcp, stateless_http=True) as srv, srv.http_client() as http:
+            (_, analyst), (_, operator) = await sign_in(http, "code-analyst"), await sign_in(http, "code-lead")
+            before = await http.post("/mcp", headers={"authorization": f"Bearer {analyst}"}, json={})
+            auth.policy = policy_for(settings)  # the test mode comes on over a store that kept both tokens
+            after = await http.post("/mcp", headers={"authorization": f"Bearer {analyst}"}, json={})
+            kept = await http.post("/mcp", headers={"authorization": f"Bearer {operator}"}, json={})
+            return before, after, kept
+    before, after, kept = run(go())
+    assert before.status_code != 401 and kept.status_code != 401
+    assert after.status_code == 401 and 'error="invalid_token"' in after.headers["www-authenticate"]
+    assert "token refused for analyst@example.com: operator_only_test_mode" in caplog.text
+
+
+def test_the_tool_check_refuses_everyone_but_the_operator_in_the_test_mode(published):
+    settings = settings_for(published, **OPERATOR)
+    verifier = ClaimsVerifier({"analyst": {"email": "analyst@example.com", "email_verified": "true"},
+                               "operator": {"email": "lead@example.com", "email_verified": "true"}})
+    mcp = server.build_server(settings, loaded(published), policy_for(settings), verifier)
+
+    async def go(token):
+        async with asgi_server(mcp, stateless_http=True) as srv, srv.client(auth=token) as client:
+            return await client.list_tools(), await client.call_tool("search", {"query": "x"}, raise_on_error=False)
+    tools, result = run(go("analyst"))  # on the list, and not the operator
+    assert tools == [] and result.is_error
+    assert "analyst@example.com is not on this knowledge base's access list" in result.content[0].text
+    tools, result = run(go("operator"))
+    assert {tool.name for tool in tools} == {"search", "fetch"} and not result.is_error
+
+
 def test_oauth_state_goes_to_firestore_encrypted_and_prefixed(published, monkeypatch):
     from cryptography.fernet import Fernet
     from key_value.aio.stores.firestore import store as firestore_store
@@ -451,3 +535,22 @@ def test_main_refuses_bad_settings_and_serves_good_ones_statelessly(published, m
     assert isinstance(mcp.auth, server.AccessListGoogleProvider)
     assert kwargs == {"transport": "http", "host": "0.0.0.0", "port": 8080, "show_banner": False,
                       "stateless_http": True, "uvicorn_config": {"access_log": False}}
+
+
+def test_main_says_test_only_at_the_start_of_the_operators_own_test(published, monkeypatch, caplog, capsys):
+    env = {"KB_SOURCE_DIR": str(published), "KB_PUBLIC_URL": "https://kb.example.com", "KB_GOOGLE_CLIENT_ID": CLIENT_ID,
+           "KB_GOOGLE_CLIENT_SECRET": "test-secret", "KB_ALLOWED_EMAILS": "lead@example.com,analyst@example.com",
+           "KB_REFRESH_SECONDS": "0"}
+    served = []
+    monkeypatch.setattr(server.FastMCP, "run", lambda self, **kwargs: served.append(self))
+    assert server.main(env) == 0 and served[-1].auth.policy.operators == frozenset()
+    assert not [message for message in caplog.messages if "TEST ONLY" in message]
+    assert server.main({**env, **OPERATOR, "KB_OPERATOR_ADDRESSES": "Second@Example.com, lead@example.com"}) == 0
+    assert served[-1].auth.policy.operators == {"lead@example.com", "second@example.com"}
+    (line,) = [record for record in caplog.records if record.getMessage().startswith("TEST ONLY")]
+    assert line.levelno == logging.WARNING and line.name == "kb_connector"
+    assert "operator-only test mode at https://kb.example.com." in line.getMessage()
+    assert "Do not give this address to anyone" in line.getMessage()
+    assert "Only lead@example.com, second@example.com can sign in." in line.getMessage()
+    assert server.main({**env, "KB_OPERATOR_TEST": "1"}) == 2 and len(served) == 2  # the mode with no operator named
+    assert "needs both KB_OPERATOR_TEST=1 and KB_OPERATOR_ADDRESSES" in capsys.readouterr().err

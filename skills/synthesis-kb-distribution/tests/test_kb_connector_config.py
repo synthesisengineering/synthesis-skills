@@ -8,6 +8,7 @@ KEY = "A" * 43 + "="
 BASE = {"KB_GIT_URL": "git@git.example.com:example/knowledge-plugin.git", "KB_PUBLIC_URL": "https://kb.example.com/",
         "KB_GOOGLE_CLIENT_ID": "id.apps.googleusercontent.com", "KB_GOOGLE_CLIENT_SECRET": "secret",
         "KB_ALLOWED_EMAILS": "lead@example.com"}
+OPERATOR = {"KB_OPERATOR_TEST": "1", "KB_OPERATOR_ADDRESSES": "lead@example.com"}  # the operator-only test mode
 
 
 def problems(env):
@@ -55,9 +56,30 @@ def test_every_problem_is_reported_together():
     ({"KB_ALLOWED_EMAILS": "lead@example.com, example.com"}, "comma-separated email addresses"),
     ({"KB_REFRESH_SECONDS": "-5"}, "KB_REFRESH_SECONDS must be a whole number from 0 to 86400"),
     ({"KB_PUBLIC_URL": "kb.example.com"}, "KB_PUBLIC_URL must be"),
+    ({**OPERATOR, "KB_OPERATOR_ADDRESSES": "lead"}, "KB_OPERATOR_ADDRESSES must be comma-separated email addresses"),
 ])
 def test_a_bad_value_stops_the_start(change, expected):
     assert expected in problems({**BASE, **change})
+
+
+def test_the_operator_only_test_mode_is_one_switch_and_the_operators_own_addresses():
+    assert load(BASE).operator_addresses == "" and load({**BASE, "KB_OPERATOR_TEST": "0"}).operator_addresses == ""
+    assert load({**BASE, **OPERATOR}).operator_addresses == "lead@example.com"  # a permanent address may run the test too
+    two = load({**BASE, "KB_OPERATOR_TEST": " 1 ", "KB_OPERATOR_ADDRESSES": " Lead@Example.com, second@example.com "})
+    assert two.operator_addresses == "Lead@Example.com, second@example.com"
+
+
+@pytest.mark.parametrize("change", [
+    {"KB_OPERATOR_TEST": "1"},                                               # the mode with no operator named
+    {"KB_OPERATOR_TEST": "1", "KB_OPERATOR_ADDRESSES": " , "},               # only separators: still nobody
+    {"KB_OPERATOR_ADDRESSES": "lead@example.com"},                           # an operator named, the mode not on
+    {"KB_OPERATOR_TEST": "0", "KB_OPERATOR_ADDRESSES": "lead@example.com"},
+    {"KB_OPERATOR_TEST": "yes", "KB_OPERATOR_ADDRESSES": "lead@example.com"},  # only 1 turns it on
+    {"KB_OPERATOR_TEST": "true"},
+])
+def test_a_test_mode_set_by_halves_stops_the_start(change):
+    assert ("the operator-only test mode needs both KB_OPERATOR_TEST=1 and KB_OPERATOR_ADDRESSES"
+            in problems({**BASE, **change}))
 
 
 def test_http_is_allowed_only_for_a_local_address():
