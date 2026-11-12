@@ -1197,6 +1197,20 @@ def test_in_a_terminal_of_their_own_the_principal_clears_a_loss_without_a_code(h
     assert _checked(tmp_path)[0] == "ok"
 
 
+def test_a_transcript_an_adapter_cannot_read_is_named_and_the_run_goes_on(harness, tmp_path, capsys):
+    """A row of a shape an adapter does not expect stopped the whole run where it stood: the transcripts after it
+    were not copied and no stamp was left, so the doctor answered ok until a day had passed."""
+    for name, said in (("a1", ["a block that is only a string"]), ("b1", "Plan the release."), ("c1", "Draft the notes.")):
+        _jsonl(harness["claude"].with_name(f"{name}.jsonl"), [_typed({"cwd": harness["work"], "sessionId": name}, said, "2026-10-30T15:00:00.000Z")])
+    report = sessions.export(0)
+    status, detail, stamp = _checked(tmp_path)
+    assert sorted(line for line in report if "record(s)" in line) == ["claude-code b1: 1 record(s)", "claude-code c1: 1 record(s)"]
+    assert status == "fail" and list(stamp["uncopied"]) == ["claude-code a1"]
+    assert stamp["reason"].startswith("claude-code a1: not exported (AttributeError: ") and stamp["reason"] in report
+    assert cli.main(["sessions", "prompts", "--workspace", "acme", "--date", "2026-10-30"]) == 2          # and that day is not listed
+    assert "claude-code a1: not exported" in capsys.readouterr().err
+
+
 def test_a_run_started_by_a_command_line_is_briefed_not_prompted(harness):
     """`codex exec` and `claude -p` take their prompt from a script or another agent (2026-11-11: eight review
     briefs an agent wrote were listed among the principal's own prompts of the day)."""
