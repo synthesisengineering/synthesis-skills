@@ -580,7 +580,7 @@ def records(folder: str, kinds: tuple = (), whole: bool = False) -> list:
     return rows
 
 
-CITED = re.compile(r"(?<![\w.-])([A-Za-z0-9][\w.-]*)\s+#(\d+)(?:\s*(?:-|–|to)\s*#?(\d+))?")  # `<session> #<seq>`, or a range of them
+CITED = re.compile(r"(?<![\w.-])([A-Za-z0-9][\w.-]*)\s+#(\d+)(?:\s*(?:-|–|—|to|through)\s*#?(\d+))?")  # `<session> #<seq>`, or a range of them
 
 
 def prompts(workspace: str, day: str) -> list:

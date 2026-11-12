@@ -627,7 +627,8 @@ def main(argv=None) -> int:
             say(plugin_lines)
             if args.dry_run:
                 say([f"runtime: would install it from {REPO} into {install._home()}" + (", with the commit check in every "
-                     "repository" if args.git_hooks else "") + (f"; would link day-end ({args.day_end})" if args.day_end else "")])
+                     "repository" if args.git_hooks else "") + (f"; would link day-end ({args.day_end})" if args.day_end else "")
+                     + ("; would schedule the hourly copy of session transcripts" if args.sessions_export else "")])
             else:
                 git_hooks = args.git_hooks or (interactive and args.command == "all" and confirm(
                     "Run the synthesis commit check (secrets, disclosures, other sessions' claims) in every repository?",
