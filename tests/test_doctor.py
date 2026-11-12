@@ -360,24 +360,30 @@ def test_codex_instruction_byte_limit():
     assert doctor.check_codex_doc_bytes({"project_doc_max_bytes": 98304}).status == "ok"
 
 
-def test_codex_must_write_the_board_and_never_the_state_folder(tmp_path):
-    """2026-10-30: Codex sessions could not claim or post, because the sandbox could not write the board."""
-    board, state = tmp_path / "v5" / "board", tmp_path / "v5" / "state"
+def test_codex_must_write_the_board_and_the_outbox_and_never_the_state_folder(tmp_path):
+    """2026-10-30: Codex sessions could not claim or post, because the sandbox could not write the board. The outbox
+    is the other folder a sandboxed session writes: without it a Codex session cannot stage a file it attaches."""
+    board, state, outbox = tmp_path / "v5" / "board", tmp_path / "v5" / "state", tmp_path / "v5" / "outbox"
     older = lambda *r: {"sandbox_mode": "workspace-write",  # noqa: E731
                         "sandbox_workspace_write": {"writable_roots": "[" + ", ".join(f'"{x}"' for x in r) + "]"}}
     profile = lambda *r: {"default_permissions": "mine", "permissions": {  # noqa: E731  (granted by the profile it extends)
         "mine": {"extends": "base"}, "base": {"extends": ":workspace", "filesystem": {x: "write" for x in r}}}}
     for config in (older, profile):
-        assert doctor.check_codex_board(config("/elsewhere", str(board)), board, state).status == "ok"
-        missing = doctor.check_codex_board(config(str(board) + "-old"), board, state)
+        both = doctor.check_codex_board(config("/elsewhere", str(board), str(outbox)), board, state, outbox)
+        assert both.status == "ok" and doctor._short(board) in both.detail and doctor._short(outbox) in both.detail
+        missing = doctor.check_codex_board(config(str(board) + "-old", str(outbox)), board, state, outbox)
         assert missing.status == "fail" and "neither claim files nor post" in missing.detail
-        exposed = doctor.check_codex_board(config(str(tmp_path / "v5")), board, state)
+        alone = doctor.check_codex_board(config(str(board), str(outbox) + "-old"), board, state, outbox)  # as an earlier setup left it
+        assert alone.status == "fail" and doctor._short(outbox) in alone.detail and "cannot stage a file" in alone.detail
+        assert "setup for codex again" in alone.detail and "neither claim" not in alone.detail
+        exposed = doctor.check_codex_board(config(str(tmp_path / "v5")), board, state, outbox)
         assert exposed.status == "fail" and "approvals and send windows" in exposed.detail
-    assert doctor.check_codex_board({}, board, state).status == "fail"  # the built-in :workspace
-    ignored = {"sandbox_workspace_write": older(str(board))["sandbox_workspace_write"]}  # read only with sandbox_mode
-    assert doctor.check_codex_board(ignored, board, state).status == "fail"
-    assert doctor.check_codex_board({"sandbox_mode": "danger-full-access"}, board, state).status == "ok"
-    assert doctor.check_codex_board({"default_permissions": ":danger-full-access"}, board, state).status == "ok"
+        assert doctor._short(board) in exposed.detail and doctor._short(outbox) in exposed.detail  # what to grant instead
+    assert doctor.check_codex_board({}, board, state, outbox).status == "fail"  # the built-in :workspace
+    ignored = {"sandbox_workspace_write": older(str(board), str(outbox))["sandbox_workspace_write"]}  # read only with sandbox_mode
+    assert doctor.check_codex_board(ignored, board, state, outbox).status == "fail"
+    assert doctor.check_codex_board({"sandbox_mode": "danger-full-access"}, board, state, outbox).status == "ok"
+    assert doctor.check_codex_board({"default_permissions": ":danger-full-access"}, board, state, outbox).status == "ok"
     assert doctor.toml_strings('[ "a\\"b", \'c\' ]') == ['a"b', "c"] and doctor.toml_strings(None) == []
 
 
@@ -595,7 +601,7 @@ def machine(tmp_path, monkeypatch):
     (home / ".codex" / "config.toml").write_text(
         f"project_doc_max_bytes = 98304\ndefault_permissions = \"synthesis\"\n\n[features]\nhooks = true\n\n"
         f"[permissions.synthesis]\nextends = \":workspace\"\n[permissions.synthesis.filesystem]\n"
-        f"\"{synthesis_home / 'board'}\" = \"write\"\n\n{state}")
+        f"\"{synthesis_home / 'board'}\" = \"write\"\n\"{synthesis_home / 'outbox'}\" = \"write\"\n\n{state}")
     claude_settings = Path(os.environ["CLAUDE_CONFIG_DIR"]) / "settings.json"
     claude_settings.parent.mkdir(parents=True, exist_ok=True)
     claude_settings.write_text('{"cleanupPeriodDays": 3650}')
@@ -671,6 +677,17 @@ def test_doctor_json_output(machine, capsys):
     report = json.loads(capsys.readouterr().out)
     assert report["healthy"] is True and isinstance(report["ms"], int)
     assert {"status", "name", "detail"} == set(report["checks"][0])
+
+
+def test_a_codex_config_that_grants_the_board_alone_is_a_problem_and_the_doctor_names_the_outbox(machine, capsys):
+    """What setup wrote before the outbox: Codex's sandbox can post on the board and cannot stage a file."""
+    config = machine[0] / ".codex" / "config.toml"
+    granted = f"\"{machine[0] / '.synthesis' / 'v5' / 'outbox'}\" = \"write\"\n"
+    assert granted in config.read_text()
+    config.write_text(config.read_text().replace(granted, ""))
+    assert doctor.main([]) == 1
+    line = next(row for row in capsys.readouterr().out.splitlines() if "codex board access" in row)
+    assert "fail" in line and "~/.synthesis/v5/outbox" in line and "cannot stage a file" in line
 
 
 def test_doctor_skips_absent_harnesses(machine, capsys):
@@ -1101,6 +1118,8 @@ def test_a_connector_kept_running_must_have_been_started_with_the_outbox(connect
     assert doctor.check_outbox(*connector, started(ALLOWED_FILE_DIRS=str(tmp_path / "linked" / "outbox"))).status == "ok"
     unset = doctor.check_outbox(*connector, started())
     assert unset.status == "fail" and "ALLOWED_FILE_DIRS (not set)" in unset.detail and "restart" in unset.detail
+    # A restart cannot help a connector whose auto-start carries another synthesis home: the line says what does.
+    assert "install-autostart.sh again" in unset.detail and f"SYNTHESIS_HOME is {doctor._short(outbox.parent)}" in unset.detail
     other = os.pathsep.join(["/srv/reports", f"{outbox}-old", str(outbox).upper()])
     elsewhere = doctor.check_outbox(*connector, started(ALLOWED_FILE_DIRS=other))
     assert elsewhere.status == "fail" and other in elsewhere.detail
@@ -1127,6 +1146,7 @@ def test_a_connector_started_by_hand_is_judged_when_it_can_be_read_and_expected_
     unit.unlink()
     without = doctor.check_outbox(*connector, lambda pid: dict(PORT))
     assert without.status == "fail" and "ALLOWED_FILE_DIRS (not set)" in without.detail
+    assert "restart" in without.detail and "install-autostart.sh" not in without.detail  # no auto-start to install again
     assert doctor.check_outbox(*connector, lambda pid: {**PORT, "ALLOWED_FILE_DIRS": str(outbox)}).status == "ok"
     stopped = doctor.check_outbox(*connector, lambda pid: {})  # nothing is expected to run where none is installed
     assert stopped.status == "ok" and "no mail connector auto-start" in stopped.detail

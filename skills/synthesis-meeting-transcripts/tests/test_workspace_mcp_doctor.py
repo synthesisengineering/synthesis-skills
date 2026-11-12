@@ -38,13 +38,17 @@ def fixture(
     )
     secret = tmp_path / "client-secret.json"
     secret.write_text("{}\n", encoding="utf-8")
+    # A healthy service has started once, so its start script made the outbox; the unit names no synthesis home.
+    (home / ".synthesis" / "v5" / "outbox").mkdir(parents=True)
     binaries = tmp_path / "bin"
     binaries.mkdir()
     assert platform in {"Darwin", "Linux", "UnsupportedFixtureOS"}
     executable(binaries / "uname", f'printf "%s\\n" "{platform}"\n')
     executable(
         binaries / "plutil",
-        f'case "$2" in ProgramArguments.0) printf "%s\\n" "{START}" ;; *) printf "%s\\n" "{secret}" ;; esac\n',
+        f'case "$2" in ProgramArguments.0) printf "%s\\n" "{START}" ;; '
+        'EnvironmentVariables.SYNTHESIS_HOME) echo "Could not extract value, error: No value at that key path"; exit 1 ;; '
+        f'*) printf "%s\\n" "{secret}" ;; esac\n',
     )
     executable(binaries / "launchctl", launch)
     executable(binaries / "systemctl", f"exit {systemd_exit}\n")
