@@ -110,8 +110,7 @@ def wake(target, run=subprocess.run) -> str:
     return "woken through its own harness" if done.returncode == 0 else f"it could not be woken ({(done.stderr or '').strip()[:120]})"
 
 
-def _watch(session_id: str, what: str, seconds: float, every: float, ready, sender: str = "") -> int:
-    until = time.time() + seconds
+def _watch(session_id: str, what: str, until: float, seconds: float, every: float, ready, sender: str = "") -> int:
     held = record(session_id, what, until, pid=os.getpid(), sender=sender)
     try:
         while True:
@@ -147,11 +146,12 @@ def main(argv: list[str], session_id: str) -> int:
     except ValueError as exc:
         print(exc, file=sys.stderr)
         return 2
+    until = time.time() + seconds
     if args.kind == "note":
         if not args.target or not args.by:
             print("a note says what is awaited and, with --by, what will wake this seat", file=sys.stderr)
             return 2
-        record(session_id, args.target, time.time() + seconds, by=args.by)
+        record(session_id, args.target, until, by=args.by)
         print(f"noted: {args.target}, for {said(seconds)}, woken by {args.by}")
         return 0
     if args.kind == "message":
@@ -164,18 +164,22 @@ def main(argv: list[str], session_id: str) -> int:
             found = unread(session_id, args.sender)
             names = ", ".join(dict.fromkeys(board.short_name(m["from"]) for m in found))
             return f"message from {names} ({len(found)} unread): run `synthesis inbox` to read" if found else ""
-        return _watch(session_id, "a message" + (f" from {args.sender}" if args.sender else ""), seconds, every, ready, args.sender)
+        return _watch(session_id, "a message" + (f" from {args.sender}" if args.sender else ""), until, seconds, every, ready, args.sender)
     if args.kind == "file" and args.target:
         path = Path(args.target).expanduser()
         before = path.stat().st_mtime_ns if path.exists() else None
-        return _watch(session_id, f"the file {path}", seconds, every,
+        return _watch(session_id, f"the file {path}", until, seconds, every,
                       lambda: f"{path} {'appeared' if before is None else 'changed'}" if path.exists() and path.stat().st_mtime_ns != before else "")
     if args.kind == "run" and command:
-        tries = []
+        tries, shown = [], f"`{' '.join(command)}`"
 
-        def ready():
-            tries.append(subprocess.run(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode)
-            return f"`{' '.join(command)}` exited 0 after {len(tries)} tr{'y' if len(tries) == 1 else 'ies'}" if tries[-1] == 0 else ""
-        return _watch(session_id, f"`{' '.join(command)}` to succeed", seconds, every, ready)
+        def ready():  # a try has only the time left: one still running at the bound is stopped, and none counts after it
+            left = until - time.time()
+            try:
+                tries.append(left > 0 and subprocess.run(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=left).returncode == 0)
+            except subprocess.TimeoutExpired:
+                tries.append(False)
+            return f"{shown} exited 0 after {len(tries)} tr{'y' if len(tries) == 1 else 'ies'}" if tries[-1] and time.time() <= until else ""
+        return _watch(session_id, f"{shown} to succeed", until, seconds, every, ready)
     print("give the file to wait for, or the command after `--`", file=sys.stderr)
     return 2
