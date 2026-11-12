@@ -392,8 +392,8 @@ def check_sessions_export(plist: Path, stamp: Path, now: float = 0, run=subproce
         return Check("fail", "sessions export", f"{_short(plist)} is not loaded, so nothing copies transcripts on a schedule ({how})")
     if not install.runs_only(plist, command):  # this home's fresh stamp says nothing of whose schedule the label holds
         others = ", ".join(dict.fromkeys(_short(p) for p in install.scheduled(plist) if p and p != str(command)))
-        return Check("fail", "sessions export", f"{_short(plist)} is loaded and runs {others or 'no command that can be read'}, not this "
-                     f"install's {_short(command)}, so no schedule of this install's own copies this home's transcripts ({how}, which sets that one aside)")
+        return Check("fail", "sessions export", f"{_short(plist)} is loaded and runs {others or 'no command that can be read'}, not this install's "
+                     f"{_short(command)}, so no schedule of this install's own copies this home's transcripts ({how}, which sets that one aside)")
     try:
         age = ((now or time.time()) - datetime.fromisoformat(last.get("exported", "")).timestamp()) / 3600
     except ValueError:

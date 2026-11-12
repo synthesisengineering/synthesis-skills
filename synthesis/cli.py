@@ -219,7 +219,7 @@ def cmd_sessions(args) -> int:
     if args.action == "export" and args.lost:
         try:
             print(sessions.lost(args.lost))
-        except (ValueError, PermissionError) as exc:  # not one the stamp names, or still there; or the principal's code is needed, or not theirs (Unverified)
+        except (ValueError, PermissionError) as exc:  # not one the stamp names, or still there; or the principal's code is needed, or is not theirs
             print(exc, file=sys.stderr)
             return 1 if isinstance(exc, ValueError) else 2
     elif args.action == "export":
@@ -264,7 +264,7 @@ def cmd_sessions(args) -> int:
                   + (f" (and {len(late) - 1} more)" if len(late) > 1 else "")
                   + ("" if busy else ". `synthesis doctor` says how each is cleared"), file=sys.stderr)
             return 2
-        roots = [r and os.path.realpath(os.path.expanduser(r)) for r in args.records]  # as the walk reads each: links followed, then `..`; an empty name is no folder
+        roots = [r and os.path.realpath(os.path.expanduser(r)) for r in args.records]  # each as the walk reads it; an empty name is no folder
         found = sessions.prompts(args.workspace, day)
         left = sessions.uncited(found, roots) if roots else found
         known = sessions.catalog() if left else []

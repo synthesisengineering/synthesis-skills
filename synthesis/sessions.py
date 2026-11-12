@@ -623,9 +623,9 @@ def _export(days: float, only: str) -> list:
 
 def lost(session: str) -> str:
     """Clear a transcript the stamp names as never copied, once it is gone, and keep what was lost in
-    `.state/lost.jsonl`. One that is still where a run looks is not lost. Only the principal can accept a loss:
-    called by an agent (inside a harness, or with no terminal), this clears on their code for that transcript and
-    otherwise asks for it, whoever calls; typed by the principal in a terminal of their own, it needs none."""
+    `.state/lost.jsonl`. One still where a run looks, or perhaps in a folder a run cannot list, is not lost. Only
+    the principal can accept a loss: called by an agent (inside a harness, or with no terminal), this clears on their
+    code for that transcript and otherwise asks for it, whoever calls; typed by them in their own terminal, it needs none."""
     from synthesis import approvals
     with _writer(True) as busy:
         stamp = root() / ".state" / "export.json"
@@ -641,9 +641,9 @@ def lost(session: str) -> str:
         if there:
             raise ValueError(f"{names[0]} is not lost: its transcript is at {there[0]}, and `synthesis sessions export "
                              f"--session {sid}` copies it or says why it cannot")
-        if harness in [h for h, _, _ in unread]:  # where it may still be was not looked through
-            raise ValueError(f"{names[0]} is not known to be lost: {next(f for h, f, _ in unread if h == harness)} cannot be listed, "
-                             "and its transcript may be there")
+        shut = [folder for h, folder, _ in unread if h == harness]  # where it may still be was not looked through
+        if shut:
+            raise ValueError(f"{names[0]} is not known to be lost: {shut[0]} cannot be listed, and its transcript may be there")
         said = f"{names[0]}, whose copy last failed {entry['at'][:16]} ({entry['reason']})"
         agent = paths.harness() != "unknown" or not sys.stdin.isatty()
         if agent and not approvals.consume("sessions-lost", names[0], {"session_id": paths.session_id()}):

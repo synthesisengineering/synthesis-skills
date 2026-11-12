@@ -231,7 +231,7 @@ def prompts(workspace: str, day: str, direction: str, outcome: str) -> str:
         refuse(f"the listing of {day}'s prompts does not agree with itself: it exits 1 exactly while it lists a prompt open, "
                f"lists no more than were typed and each once, and this answer exited {done.returncode} (or a field has another "
                f"shape), so nothing is recorded; run `{again} --json` to see it")
-    read = [os.path.realpath(os.path.expanduser(r)) for r in roots]  # as the listing's walk reads each and its answer names it: links followed, then `..`
+    read = [os.path.realpath(os.path.expanduser(r)) for r in roots]  # each as the listing's walk reads it and its answer names it: links followed
     if answered != (workspace, day, read):
         refuse(f"the listing answered for {answered[0]} on {answered[1]} against {answered[2]}, and this record is for {workspace} on "
                f"{day} against {read}. Run `{again}`")
