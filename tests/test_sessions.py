@@ -1024,6 +1024,18 @@ def test_the_listing_names_each_records_folder_as_its_walk_reads_it(asked, tmp_p
     assert history.exists()
 
 
+def test_a_records_folder_named_by_nothing_is_no_folder(asked, monkeypatch, capsys):
+    """`--records ""`, the shape an unset shell variable leaves, was named in the answer as the working folder, which
+    the walk never opened. It names no folder: nothing is read for it, every prompt stays open, and the answer names
+    none, also when the command runs inside the records."""
+    first, second = sessions.prompts("acme", "2026-10-30")
+    asked["log"].write_text(f"- the whole day (claude-code c1 #{first['seq']}-{second['seq']})\n", encoding="utf-8")
+    monkeypatch.chdir(asked["kb"])
+    assert cli.main(["sessions", "prompts", "--workspace", "acme", "--date", "2026-10-30", "--records", "", "--json"]) == 1
+    answer = json.loads(capsys.readouterr().out)
+    assert answer["records"] == [""] and len(answer["open"]) == 2 and answer["prompts"] == 2
+
+
 def test_the_listing_exports_first_and_stops_when_a_transcript_could_not_be_copied(asked, capsys, monkeypatch):
     """2026-11-12, a review: with an archive that could not be written the listing held no prompt, and the day
     closed clean. The listing brings the archive up to date itself, and says nothing was listed when it cannot."""
