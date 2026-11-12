@@ -2104,6 +2104,12 @@ ARG_READERS = {"argparse", "optparse", "getopt", "fileinput", "click", "typer", 
 WALKS = ("walk", "fwalk", "glob", "iglob", "rglob")  # hand back what lies under a folder, or what a pattern names
 LIBRARY_WRITES = ("basicConfig", "FileHandler", "RotatingFileHandler", "TimedRotatingFileHandler", "WatchedFileHandler", "urlretrieve",
                   "NamedTemporaryFile", "TemporaryFile", "SpooledTemporaryFile", "TemporaryDirectory", "mkstemp", "mkdtemp")
+# A writer by its name, in any library: the first thing it is handed (`to_csv`), the first or second (`save`,
+# `savefig`, `imwrite`, `export`), the second (`dump`); and, as a module's own function only, a deletion or a move
+# (`send2trash`), since a list has a `remove` of its own. PATH_KEYS: the keywords such writers take a path under.
+BY_NAME = re.compile(r"(to_[a-z_]+)|(save\w*|imwrite|export\w*)|(dump)|((?:remove|delete|unlink|trash|send2trash|rmtree|move|rename|extract|unpack|truncate)\w*)")
+PATH_KEYS = ("path", "filepath", "file_path", "filename", "file", "fname", "fp", "f", "where", "dest", "dst", "target", "output", "out", "out_file",
+             "outfile", "path_or_buf", "save_path", "output_path")
 STARTS = ("system", "popen", "create_subprocess_exec", "create_subprocess_shell", "spawn")  # os's, asyncio's and pty's ways to start a command
 PLACED = ("args", "shell", "cwd", "env", "input", "executable", "stdin", "stdout", "stderr")  # what a started command is given that the reader places or judges
 
@@ -2909,6 +2915,14 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
             targets.append(base)
         elif method and label in ("rename", "replace") and len(n.args) + len(kw) == 1 and (n.args or "target" in kw):
             targets += [base] + every  # both ends change; str.replace takes two
+        flag = (n.args[1:2] or [kw.get("mode", kw.get("flag"))])[0]
+        writer = BY_NAME.fullmatch(label) if not targets and not opener else None
+        if label == "open" and owners and not method and not opener and "os" not in owners and ("shelve" in owners or (
+                flag is not None and (said(flag) is None or re.search(r"[wax+cn]", said(flag))))):
+            targets += n.args[:1] or [kw[k] for k in PATH_KEYS if k in kw]  # another library's store opened for writing: shelve, dbm, wave
+        elif writer and (not writer[4] or (owners and not method)):  # a call named as a writer: judged where its path lands, the rest being content
+            targets += [a for a in (n.args[:1] if writer[1] else n.args[1:2] if writer[3] else n.args[:2] if writer[2] else n.args) + [
+                kw[k] for k in PATH_KEYS if k in kw] if named(a) or (spelled(a)[:1] not in ("\0", "\2") and re.search(r"/|^~|\.\w{1,6}$", spelled(a)))]
         if label in LIBRARY_WRITES:  # the standard library's own writers: a log file, a download, a temporary file made where it is told
             targets += [kw[k] for k in ("filename", "dir") if k in kw] + (
                 n.args[1:2] if label == "urlretrieve" else n.args[:1] if "Handler" in label else n.args[2:3] if label.startswith(("mk", "TemporaryD")) else [])
