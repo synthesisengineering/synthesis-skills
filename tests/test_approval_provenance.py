@@ -1493,3 +1493,14 @@ def test_from_inside_a_transcript_folder_these_programs_write_elsewhere_and_pass
 def test_and_from_inside_these_stay_refused(saved, program, tmp_path):
     command = "cd {work} && python3 - <<'EOF'\n".format(**saved) + program + "\nEOF"
     assert REFUSED in (guards.check("Bash", {"command": command}, {}, cwd=str(tmp_path)) or ""), program
+
+
+@pytest.mark.parametrize("command", [
+    "ln -s {work}/s.jsonl /tmp/pad/l; mv /tmp/pad/l {work}/memory/note.md; echo x > {work}/memory/note.md",   # a link moved into place
+    "ln -s {work}/s.jsonl /tmp/pad/l && mv /tmp/pad/l {work}/memory/ && echo x >> {work}/memory/l",
+    "cd /tmp/pad && ln -s {state} l && mv l m && echo x > m/a.json",
+])
+def test_a_link_made_and_moved_in_one_command_is_still_that_link(saved, command, tmp_path):
+    """Found writing the runtime doc's list of what the fourth review closed: a link moved after it was made was
+    judged as an ordinary file at its new place."""
+    assert REFUSED in (guards.check("Bash", {"command": command.format(**saved)}, {}, cwd=str(tmp_path)) or ""), command
