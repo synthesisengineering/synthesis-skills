@@ -217,18 +217,9 @@ def cmd_sessions(args) -> int:
         print(json.dumps(rec, ensure_ascii=False, default=str) if args.json else line)
 
     if args.action == "export" and args.lost:
-        from synthesis import approvals
         try:
-            what = sessions.lost(args.lost, clear=False)  # named in the stamp, and gone from wherever a run looks
-            if paths.harness() != "unknown" or not sys.stdin.isatty():  # run by an agent: only on the principal's code for this one
-                if not approvals.consume("sessions-lost", args.lost, {"session_id": _session(args)}):
-                    code = approvals.request("sessions-lost", args.lost, f"accept the transcript of {args.lost} as lost")
-                    print(f"{what} was never copied, and its transcript is gone. Only the principal can accept that what it "
-                          f"held is lost. Show them this and ask them to type {approvals.how(code)}. Then run the identical "
-                          "command again.", file=sys.stderr)
-                    return 2
             print(sessions.lost(args.lost))
-        except (ValueError, approvals.Unverified) as exc:
+        except (ValueError, PermissionError) as exc:  # not one the stamp names, or still there; or the principal's code is needed
             print(exc, file=sys.stderr)
             return 1 if isinstance(exc, ValueError) else 2
     elif args.action == "export":

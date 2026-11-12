@@ -25,6 +25,7 @@ import json
 import os
 import re
 import subprocess
+import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -585,10 +586,12 @@ def _export(days: float, only: str) -> list:
     return report
 
 
-def lost(session: str, clear: bool = True) -> str:
+def lost(session: str) -> str:
     """Clear a transcript the stamp names as never copied, once it is gone, and keep what was lost in
-    `.state/lost.jsonl`. Only the principal can accept a loss: the command asks for their code first (cli), and
-    with `clear` off this only says what would go. One that is still where a run looks is not lost."""
+    `.state/lost.jsonl`. One that is still where a run looks is not lost. Only the principal can accept a loss:
+    called by an agent (inside a harness, or with no terminal), this clears on their code for that transcript and
+    otherwise asks for it, whoever calls; typed by the principal in a terminal of their own, it needs none."""
+    from synthesis import approvals
     with _writer(True) as busy:
         stamp = root() / ".state" / "export.json"
         last = paths.read_json(stamp)
@@ -604,8 +607,12 @@ def lost(session: str, clear: bool = True) -> str:
             raise ValueError(f"{names[0]} is not lost: its transcript is at {there[0]}, and `synthesis sessions export "
                              f"--session {sid}` copies it or says why it cannot")
         said = f"{names[0]}, whose copy last failed {entry['at'][:16]} ({entry['reason']})"
-        if not clear:
-            return said
+        agent = paths.harness() != "unknown" or not sys.stdin.isatty()
+        if agent and not approvals.consume("sessions-lost", names[0], {"session_id": paths.session_id()}):
+            code = approvals.request("sessions-lost", names[0], f"accept the transcript of {names[0]} as lost")
+            raise PermissionError(f"{said} was never copied, and its transcript is gone. Only the principal can accept that "
+                                  f"what it held is lost. Show them this and ask them to type {approvals.how(code)}. Then run "
+                                  "the identical command again.")
         with (stamp.parent / "lost.jsonl").open("a", encoding="utf-8") as kept:
             kept.write(json.dumps({"transcript": names[0], **entry, "cleared": datetime.now().astimezone().isoformat(timespec="seconds")}) + "\n")
         rest = {"failed": len(waiting), "reason": next(iter(waiting.values()))["reason"], "uncopied": waiting} if waiting else {}
