@@ -163,7 +163,8 @@ def test_the_build_reads_dependencies_in_both_list_forms():
         assert package.depends_on(text) == dependencies(text), skill_md.parent.name
     block = "---\nname: x\ndepends_on:\n  - synthesis-a\n  - \"synthesis-b\"\nmetadata:\n  format: v5\n---\n"
     assert package.depends_on(block) == ["synthesis-a", "synthesis-b"]
-    assert package.depends_on(block.replace("\n  - ", "\n- ")) == ["synthesis-a", "synthesis-b"]  # YAML allows no indent
+    unindented = block.replace("\n  - ", "\n- ")  # YAML allows a block list at its key's own indent
+    assert package.depends_on(unindented) == ["synthesis-a", "synthesis-b"]
     assert package.depends_on("---\nname: x\n---\ndepends_on: [\"not-frontmatter\"]\n") == []
 
 
@@ -176,7 +177,7 @@ def test_the_manifest_carries_the_repository_version_and_the_words_of_the_list(b
     plugin = json.loads((ROOT / ".codex-plugin/plugin.json").read_text(encoding="utf-8"))
     assert {key: manifest[key] for key in ("author", "homepage", "repository", "license")} == \
         {key: plugin[key] for key in ("author", "homepage", "repository", "license")}
-    assert manifest["name"] != plugin["name"]  # its own name, so both can be installed side by side
+    assert manifest["name"] != plugin["name"]  # its own name: it is not the plugin, and must not pass for it
 
 
 def test_the_description_says_what_the_package_lacks_and_where_the_whole_system_is(built):
@@ -233,7 +234,7 @@ def test_a_skill_left_out_of_the_list_is_recorded_with_its_reason_and_still_fail
 
 
 CLAIMED = [  # (kind, a line as a skill outside the list writes it)
-    ("a hook claim", "the hook refuses this send until the principal approves"),  # the decision memo's own example
+    ("a hook claim", "the hook refuses this send until the principal approves"),  # the promise the check keeps out
     ("a hook claim", "closed. The v5 PreToolUse hook runs `guards.check_send` on every Slack, Gmail, email,"),
     ("a hook claim", "CONTEXT.md, which the SessionStart hook re-injects."),
     ("a hook claim", "These five are also in the v5 Stop hook's built-in list, so a reply using them bare is sent"),
