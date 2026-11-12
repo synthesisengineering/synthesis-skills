@@ -1591,3 +1591,54 @@ def test_a_program_that_starts_a_refused_command_is_told_which_rule_refused_it(s
     copy = "import subprocess\nsubprocess.run(['cp', '/tmp/pad/x', '{work}/s.jsonl'])".format(**saved)
     reason = guards.check("Bash", {"command": "python3 - <<'EOF'\n" + copy + "\nEOF"}, {}, cwd=str(tmp_path))
     assert REFUSED in reason and "starts a command" in reason and "writes into" in reason
+
+
+# --- the sixth review round (2026-11-11): two ways through the rule added in answer to the fifth --------------
+# A command a program starts was judged in the folder the program was started in, not the one it had changed
+# into, and without the configuration that protects the approved lines. And two refusals of ordinary work: a
+# reading flag under an imported name, and a pattern or a type letter of `find` read as a file.
+
+@pytest.mark.parametrize("program", [
+    "import os, subprocess\nos.chdir('{state}')\nsubprocess.run(['touch', 'forged.json'])",              # the folder it changed into
+    "import os\nos.chdir('{state}')\nos.system('touch forged.json')",
+    "import os, subprocess\nos.chdir('{work}')\nsubprocess.run(['cp', '/tmp/pad/x', 's.jsonl'])",
+    "import os, subprocess\nfor d in ['/tmp/pad', '{state}']:\n    os.chdir(d)\n    subprocess.run(['touch', 'forged.json'])",
+    "import os, subprocess, sys\nos.chdir(sys.stdin.readline().strip() or '{state}')\nsubprocess.run(['touch', 'forged.json'])",
+])
+def test_a_command_a_program_starts_runs_where_the_program_has_gone(saved, program, tmp_path):
+    command = "python3 - <<'EOF'\n" + program.format(**saved) + "\nEOF"
+    assert REFUSED in (guards.check("Bash", {"command": command}, {}, cwd=str(tmp_path)) or ""), program
+
+
+def test_a_command_a_program_starts_is_judged_with_the_same_configuration(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    store = tmp_path / "policy" / "approved.json"
+    store.parent.mkdir(parents=True)
+    store.write_text("{}", encoding="utf-8")
+    config = {"line_allowances": str(store)}
+    for program in (f"import subprocess\nsubprocess.run(['cp', '/tmp/pad/x', '{store}'])", f"import os\nos.system('cp /tmp/pad/x {store}')"):
+        command = "python3 - <<'EOF'\n" + program + "\nEOF"
+        assert REFUSED in (guards.check("Bash", {"command": command}, config, cwd=str(tmp_path)) or ""), program
+    assert REFUSED in (guards.check("Bash", {"command": f"cp /tmp/pad/x {store}"}, config, cwd=str(tmp_path)) or "")   # as the shell's own copy is
+
+
+@pytest.mark.parametrize("command", [
+    "python3 - <<'EOF'\nfrom os import open as fdopen, O_RDONLY as RD\nprint(fdopen('{work}/s.jsonl', RD))\nEOF",       # a reading flag under an imported name
+    "python3 - <<'EOF'\nfrom os import O_RDONLY\nimport os\nflags = O_RDONLY\nprint(os.open('{work}/s.jsonl', flags))\nEOF",
+    "cd {work} && find /tmp/pad -name '*.tmp' -delete",                                                                 # a pattern is not a file
+    "cd {work} && find /tmp/pad -type f -delete",
+    "cd {work} && find -L /tmp/pad /tmp/pad2 -newer /tmp/pad/stamp -exec rm {{}} +",
+    "python3 - <<'EOF'\nimport os, subprocess\nos.chdir('/tmp/pad')\nsubprocess.run(['touch', 'made.txt'])\nEOF",       # a folder elsewhere
+])
+def test_the_sixth_reviews_everyday_commands_pass(saved, command, tmp_path):
+    assert guards.check("Bash", {"command": command.format(**saved)}, {}, cwd=str(tmp_path)) is None
+
+
+@pytest.mark.parametrize("command", [
+    "cd {work} && find . -name '*.jsonl' -delete",                                                                     # the folder it stands in
+    "cd {work} && find -name '*.jsonl' -delete",                                                                       # no folder named: this one
+    "find /tmp/pad {work} -name '*.jsonl' -delete",
+    "python3 - <<'EOF'\nfrom os import open as fdopen, O_RDWR as RW\nfdopen('{work}/s.jsonl', RW)\nEOF",
+])
+def test_and_what_stays_refused_after_the_sixth_review(saved, command, tmp_path):
+    assert REFUSED in (guards.check("Bash", {"command": command.format(**saved)}, {}, cwd=str(tmp_path)) or ""), command
