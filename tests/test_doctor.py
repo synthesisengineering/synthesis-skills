@@ -1070,3 +1070,6 @@ def test_the_hourly_export_fails_while_a_transcript_it_tried_is_not_copied(tmp_p
     found = doctor.check_sessions_export(plist, stamp, now, loaded)
     assert found.status == "fail" and "no run has copied everything since 2026-11-11T08:00" in found.detail
     assert "synthesis sessions export --all" in found.detail
+    plist.unlink()                       # with no schedule a session's own export still failed: a failure, not a warning
+    found = doctor.check_sessions_export(plist, stamp, now, loaded)
+    assert found.status == "fail" and "1 transcript(s) could not be copied" in found.detail
