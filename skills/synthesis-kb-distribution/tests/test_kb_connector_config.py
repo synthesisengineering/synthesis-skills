@@ -32,8 +32,9 @@ def test_overrides():
     settings = load({**BASE, "KB_REFRESH_SECONDS": "0", "PORT": "9000", "KB_OAUTH_STORE": "Firestore",
                      "KB_STORAGE_ENCRYPTION_KEY": KEY, "KB_ALLOWED_REDIRECT_URIS": "https://a.example/cb, https://b.example/*",
                      "KB_DOCUMENT_URL_TEMPLATE": "https://git.example.com/kb/src/{commit}/{source_path}",
-                     "KB_GIT_KNOWN_HOSTS": "git.example.com ssh-ed25519 AAAA\n"})
+                     "KB_GIT_KNOWN_HOSTS": "git.example.com ssh-ed25519 AAAA\n", "KB_LOG_LEVEL": "debug"})
     assert settings.refresh_seconds == 0 and settings.port == 9000 and settings.oauth_store == "firestore"
+    assert settings.log_level == "DEBUG" and load(BASE).log_level == "INFO"
     assert settings.allowed_redirect_uris == ("https://a.example/cb", "https://b.example/*")
     assert settings.known_hosts == "git.example.com ssh-ed25519 AAAA"
 
@@ -59,6 +60,7 @@ def test_every_problem_is_reported_together():
     ({"KB_REFRESH_SECONDS": "-5"}, "KB_REFRESH_SECONDS must be a whole number from 0 to 86400"),
     ({"KB_PUBLIC_URL": "kb.example.com"}, "KB_PUBLIC_URL must be"),
     ({**OPERATOR, "KB_OPERATOR_ADDRESSES": "lead"}, "KB_OPERATOR_ADDRESSES must be comma-separated email addresses"),
+    ({"KB_LOG_LEVEL": "loud"}, "KB_LOG_LEVEL must be DEBUG, INFO, WARNING, ERROR or CRITICAL, not 'LOUD'"),
 ])
 def test_a_bad_value_stops_the_start(change, expected):
     assert expected in problems({**BASE, **change})
