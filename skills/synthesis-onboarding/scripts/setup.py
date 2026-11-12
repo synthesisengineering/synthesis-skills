@@ -450,7 +450,8 @@ def _points_at(plist: Path, target: Path) -> bool:
     file that cannot be read (2026-11-12, a second review: a schedule running `echo <target>` was unloaded and removed)."""
     import plistlib
     try:
-        args = plistlib.loads(plist.read_bytes()).get("ProgramArguments")
+        job = plistlib.loads(plist.read_bytes())
+        args = [job["Program"]] if "Program" in job else job["ProgramArguments"]  # launchd runs `Program` when a job names one
         if not (isinstance(args, list) and len(args) == 3 and args[:2] == ["/bin/bash", "-lc"]):
             return isinstance(args, list) and args[:1] == [str(target)]  # no shell line: the program is the first word
         words = shlex.shlex(args[2].replace("\n", ";"), posix=True, punctuation_chars=True)
