@@ -539,10 +539,23 @@ ROOT = Path(__file__).resolve().parents[1]
 # guard can read: a temporary file, the top of the repository). _put 2, PLACE and DEEP (the folder a command is in).
 # LIBRARY_WRITES 2. OPAQUE and _named 2 (a program for an interpreter the guard cannot read is held for each path it
 # names).
+# After a ninth review round (eleven findings at the edges of the eighth round's answer) and the probes that followed,
+# guards.py 56 more. _python_writes 47: the folder a call is made in is followed through a `with`, a `try`, a branch,
+# a loop and the program's main block, each in the order its statements run (a branch may not be taken, a loop may
+# run no times or leave at any point, a handler and a finally may start from any point of the try, and the body of
+# `with contextlib.chdir` runs in that folder, and one passed over by `suppress` may not have happened), 34; a descriptor stands for its folder as it stood when it was
+# opened, 5; a process kept under a second name is the same process, 5; the parent of a path and `dirname`, 3.
+# _commands 2, WORDS 2 and _named 1 (a handed command line starts as a command with any program the guard has a rule
+# for, a reader included since it may redirect, and not with a shell's own word or a word a sentence starts with; a
+# message attached to its option, `--body=...`, is words for a reader). _landing 2 (an operand that is `-` is the
+# input, so the operand after it is still the output). _bare 2 (what `trap` keeps to run when the shell ends).
+# travel_check.py 11: is_block 10 and STEP (a travel block is known by the form of its title or by its lines, so an
+# event whose title only begins with the block's word is an event). ritual_state.py 2: FENCE (a fence left open and
+# an HTML comment are not the plan's own text).
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # consolidate first).
-CORE_BUDGET = 9768
-PLUGIN_BUDGET = 30144
+CORE_BUDGET = 9824
+PLUGIN_BUDGET = 30213
 
 
 def _lines(files):

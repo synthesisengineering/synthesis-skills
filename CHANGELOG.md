@@ -21,7 +21,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
     leaves before the end, one that ends after the latest hour, a night shorter than the policy keeps, a car on a
     personal trip). A block serves the events its `For:` lines name, or, naming none, the one event nearest it. An
     entry beside the event that is titled like a trip but is not in the labeled form is named as that, not
-    reported as no block, and an event at a place whose start cannot be read stops the check and is named. It
+    reported as no block; a block is known by the form of its title (the block's word alone, or followed by a
+    colon, a dash or a direction) or by its lines, so an event whose title only begins with that word is an event; and an event at a place whose start cannot be read stops the check and is named. It
     plans no trip: an agent does that from a live source.
   - `slot_check.py` takes `--travel-before` and `--travel-after`, counts the trip as taken time and says when
     the principal is home; `--in-person` with neither is refused.
@@ -51,7 +52,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
     offers options (under a heading of its own, or as an entry of a list under a shared heading) has no
     `Recommendation:` line, or, when it is an accept-or-decline or carries a `Commits:` line, no `Consequences:`
     line. Options indented under their entry, at any depth of a list, are that entry's own; an example is not read
-    (a fenced block, quoted or not, or a block Markdown shows as code). **This applies to every workspace that declares plan
+    (a fenced block, quoted or not, closed or not, or a block Markdown shows as code, also inside a quote under
+    a list entry), nor is an HTML comment; emphasis may be written with asterisks or underscores, and a title
+    struck or ticked inside bold is closed. **This applies to every workspace that declares plan
     folders,** from its next ritual record.
   - The decision packet generator refuses a row that is not blind and recommends nothing. Until now one
     recommended row covered for rows with none.
@@ -69,7 +72,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
 - **The write guard reads a path however a command names it, passes a protected path only to a program it knows
   to only read it, and reads an inline Python program by its syntax** (core). It began as two faults: a write
   through a variable the command had just assigned was judged as a write somewhere else, and the file tools were
-  refused in a project's memory folder. Eight rounds of review by a second model, and this project's own probes
+  refused in a project's memory folder. Nine rounds of review by a second model, and this project's own probes
   (more than 800 plain commands and programs) and replays while answering them, showed the guard was narrower than what it guards against in four ways.
   - **How a path is read.** Every write in a command is resolved and judged, whether or not the command spells a
     protected folder out: relative to the session's folder, to a `cd` (`cd -`, `pushd` and `popd` are followed) or
@@ -102,9 +105,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
     protected folder under it). What `printf` prints into a shell is its format with its words put in, and an inline
     program for an interpreter the guard does not read (`php -r`, `lua -e`) is held for each path it names. A word
     handed to a program the
-    guard does not know (`watch`, `ssh`, `osascript`) is read as a command line where it starts as a command (a
-    shell, an interpreter, a file utility) and held for what it would write, run or start; the value of a message
-    option (`--body`, `-m`, `--prompt`) and a sentence that mentions a folder are words for a reader.
+    guard does not know (`watch`, `ssh`, `osascript`) is read as a command line where it starts with a program
+    the guard has a rule for (a shell, an interpreter, a file utility, `awk`, or a reader that redirects, as in
+    `date >> file`) and held for what it would
+    write, run or start; the value of a message option (`--body`, `-m`, `--prompt`, attached or not) and a
+    sentence that mentions a folder are words for a reader. What `trap` keeps to run when the shell ends is
+    read as a script, and an operand that is `-` is a command's input, so the operand after it is still its
+    output (`uniq - <file>`).
   - **How a Python program is read.** A program given to Python inline or on its stdin is read by its syntax and
     alone, since a pattern over its text stopped at the first closing parenthesis and every heredoc of a line was
     read as one program. A write is a file opened to write, a `pathlib` call that changes a file, a call into
@@ -116,8 +123,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
     a protected path makes any write a refusal. What the program reads from a file is content and names no path
     (the `.name` of a file it opened is that file's path). A copy out of a protected folder changes only the copy.
     The folder a call is made in is followed in the order the program's statements run: a folder change that is a
-    statement of the program is sure, one in a loop, a branch or a function may not have happened, and a
-    descriptor stands for the folder it was opened on. A command the program spells whole (`subprocess`,
+    statement of the program is sure; the body of a `with`, a `try`, a branch, a loop and the program's main
+    block is followed the same way (a branch may not be taken, a loop may run no times, and the body of `with
+    contextlib.chdir` runs in that folder); one inside a function may come at any time; and a descriptor stands
+    for the folder it was opened on, as it stood then. A command the program spells whole (`subprocess`,
     `os.system`, asyncio's and pty's ways to start one) is judged as the shell guard judges that command, with
     what the program gives it: the folder, the variables it keeps for it however the mapping is kept, the words
     after a shell's script, a script fed on its input or written down a pipe to that process, piece after piece.

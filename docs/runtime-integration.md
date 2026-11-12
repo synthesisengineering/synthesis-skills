@@ -227,17 +227,20 @@ harness that gives no transcript cannot carry approved sends or deploys until it
      what each command it runs writes besides, read in the folder of what it found when
      `-execdir` or `-okdir` runs it (the top of the search, and each protected folder under
      it); the files `xargs` hands such a command; a hex dump's second operand, which is its
-     output); an interpreter script that writes there; and a path inside one of those
+     output, also when the first is `-`; what `trap` keeps to run when the shell ends); an interpreter script that writes there; and a path inside one of those
      folders handed to any program the guard does not know to only read it. An inline
      program for an interpreter the guard does not read (`php -r`, `lua -e`, `Rscript -e`
      and their like) is held for each path it names. What `printf` prints into a shell is
      its format with its words put in. A word handed to such a program may be a script it runs (`watch`, `ssh`,
      `osascript`), so in a command that names a protected folder each word with a space in
-     it is read as a command line too. A line of it counts as a command where it starts as
-     one the guard knows (a shell, an interpreter, a file utility), and is held for what it
-     writes, runs and starts; it is not held for a path it is merely handed. Words for a
+     it is read as a command line too. A line of it counts as a command where it starts
+     with a program the guard has a rule for (a shell, an interpreter, a file utility,
+     `awk`, `sed`, a hex dump, an interpreter it cannot read, or a reader such as `date`,
+     `grep` or `git`, which may still redirect), and is held for what it writes, runs and
+     starts; it is not held for a path it is merely handed. A shell's own words and words a
+     sentence starts with (`select`, `for`, `case`, `read`, `which`) start no command there. Words for a
      reader are left alone: the value of a message option (`--body`, `-m`, `--title`,
-     `--prompt` and their like), the words given to `codex`, `claude`, `muse` and `gh`,
+     `--prompt` and their like), also attached as `--body=…`, the words given to `codex`, `claude`, `muse` and `gh`,
      which run under their own guards, and a sentence that mentions a folder or shows a
      query (`select … where n > 5`).
    - **How it reads a Python program.** A program given to Python inline (`-c`, in each form
@@ -265,9 +268,14 @@ harness that gives no transcript cannot carry approved sends or deploys until it
      of a protected folder changes only the copy. The folder a call is made in is followed
      in the order the program's statements run: a folder change that is a statement of the
      program (`os.chdir`, `os.fchdir`) is sure, and a relative one is taken from wherever
-     the program stood; one in a loop, a branch, a `with` or a function may not have
-     happened, so both places are judged; a descriptor stands for the folder it was opened
-     on (`fchdir`, `dir_fd=`). A command the program spells whole (`subprocess.run([...])`,
+     the program stood. The body of a `with`, of a `try`, of a branch, of a loop and of the
+     program's main block is followed the same way, statement by statement: a branch may
+     not be taken, a loop may run no times or leave at any point, a handler and a `finally`
+     may start from any point of the `try`, and the body of `with contextlib.chdir(folder)`
+     runs in that folder, after which the program is back where it was; a change inside
+     `with contextlib.suppress(...)` may have failed and been passed over. A change inside a
+     function may come at any time. A descriptor stands for the folder it was opened on,
+     as that folder stood when it was opened (`fchdir`, `dir_fd=`). A command the program spells whole (`subprocess.run([...])`,
      `os.system("...")`, asyncio's and pty's ways to start one) is judged as the shell guard
      judges that command: in each folder the program may stand in or `cwd=` names, as the
      program `executable=` names, with the variables the program has put in `os.environ` or
@@ -375,7 +383,7 @@ stay open, and no hook running as that same user can close them:
   protected folder; one that builds that folder's name at run time is the first case above.
 - The shell guard reads the text of a command. It follows the ordinary ways a command names
   a file, runs in a folder and hands a file on, and each of those has a test. A spelling
-  made to get past that reading may get through until it is added: eight review rounds by a
+  made to get past that reading may get through until it is added: nine review rounds by a
   second model each found more of them (a folder stack turned by number, a wrapper inside a
   wrapper, a file name split across two strings, a link made and then moved into place, two
   folder changes one after the other, a script written down a pipe, a path made whole

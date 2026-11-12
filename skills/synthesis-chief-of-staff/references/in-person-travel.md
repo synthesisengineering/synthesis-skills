@@ -61,7 +61,9 @@ RSVP, an invitation the agent accepts, a decision in a plan.
 ## The travel block
 
 One calendar event on each side, so the time is visibly taken. Its title starts with the policy's
-`block_title` (`Travel` unless set), and its description carries these lines:
+`block_title` (`Travel` unless set): the word alone, or followed by a colon, a dash or a direction
+(`Travel: to the theatre`, `Travel home`). An event whose title only begins with that word (`Travel
+planning workshop`) is an event, unless it carries a block's lines. Its description carries these lines:
 
 ```text
 For: Book launch at the Grand Theatre
