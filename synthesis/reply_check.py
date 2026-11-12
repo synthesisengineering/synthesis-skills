@@ -32,15 +32,24 @@ DEFAULT_PHRASES = [
 # ("waiting for a runner was the cause"). Phrases read anywhere in a reply sent back 15 of 34 that need no watcher
 # and passed 9 of 17 waits (review, 2026-11-12). THEIRS, the principal's own next move ("you" as the one who acts,
 # "your" before an act of theirs), exempts only the clause it stands in. Config `wait_phrases` adds plain phrases.
-_ME, _SOON, _WHEN = r"\b(?:i|we)", r"(?:(?:still|now|just|currently) )?", r"\b(?:once|when|after|until|as soon as)\b"
-_WILL = _ME + r"(?:['’]ll| will) " + _SOON
+_ME, _WHEN = r"\b(?:i|we)", r"\b(?:once|when|after|until|as soon as)\b"
+# Ordinary grammar between a subject and its verb (review round 2): any run of adverbs ("currently still", "then",
+# "simply"; "not" and "no longer" are none), helping verbs ("continue to wait", "be able to resume", "go ahead and
+# merge"), "going to" and "need to" for "will", and a subject left out ("Will report back", "I pushed it and will").
+_SOON = (r"(?:(?:still|now|just|also|then|again|already|here|right now|at this point|stuck|blocked|idle"
+         r"|(?!hardly|barely|rarely|scarcely)\w+ly),? ){0,3}")
+_AM = r"(?:" + _ME + r"(?:['’]m| am|['’]re| are)|\b(?:and|but) am),? " + _SOON
+_WILL = (r"(?:" + _ME + r"(?:['’]ll| will| shall|(?:['’]m| am|['’]re| are) going to)|^\W*will|" + _ME
+         + r"\b[^:]{0,120}?\b(?:and|but|then) will),? " + _SOON)
+_MUST = r"(?:" + _WILL + "|" + _ME + r" (?:(?:still|now|just|also|then|\w+ly) )?(?:(?:need|have|plan|intend|want) to|must) )"
+_HELP = r"(?:(?:be|keep|keep on|go on|carry on|continue to|have to|need to|be able to|go ahead and) )*"
 _GO = r"(?:continue(?! to\b)|resume|proceed|pick \w+(?: back)? up|finish|merge|follow up|(?:report|check|come|get) back|let you know)\b"
 _SUBJECT = (r"(?!(?: (?!(?:that|which|who|when|it|they|we|i)\b)[\w'’-]+){1,6}? "
             r"(?:is|was|are|were|has|had|can|could|would|cause[sd]|took|takes|costs?)\b)")
 WAITS = re.compile(
-    "(?i)" + _ME + r"(?:['’]m| am|['’]re| are) " + _SOON + r"a?waiting\b(?! (?:for|on)(?: you\b| from\b|\W*$))"
-    "|" + _WILL + r"(?:(?:be|keep|have to|need to) )?(?:wait(?:ing)?\b|hold(?:ing)?\b(?=.{0,160}?\b(?:until|till)\b))(?! (?:for|on) you\b)"
-    "|" + _WILL + _GO + ".{0,160}?" + _WHEN + "|" + _WHEN + ".{0,160}?" + _WILL + _GO
+    "(?i)" + _AM + r"a?waiting\b(?! (?:for|on)(?: you\b| from\b|\W*$))"
+    "|" + _MUST + _HELP + r"(?:wait(?:ing)?\b|hold(?:ing)?\b(?=.{0,160}?\b(?:until|till)\b))(?! (?:for|on) you\b)"
+    "|" + _WILL + _HELP + _GO + ".{0,160}?" + _WHEN + "|" + _WHEN + ".{0,160}?" + _WILL + _HELP + _GO
     + r"|\b(?:(?:when|once) it (?:lands|finishes|returns|arrives)|should (?:come|arrive) shortly),?(?: and)?(?: then)? " + _WILL
     + r"|(?:^\W*|[:—–] ?| --? )" + _SOON + r"(?:waiting (?:(?:for|on)\b(?! you\b)" + _SUBJECT + r"|until\b)|awaiting\b" + _SUBJECT + ")")
 THEIRS = re.compile(
