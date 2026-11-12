@@ -31,3 +31,9 @@ metadata:
   source_type: "public"
 ---
 ```
+
+## 3.0.0 to 3.0.1 (2026-11-12)
+
+| 3.0.0 passage | Now |
+|---|---|
+| `references/decisive-uncertainty.md`, sections "Admitted local observation" and "Admission, steering and capture" (71 lines) | `skills/synthesis-autopilot/references/uncertainty-journal.md` (verbatim), with one sentence left in their place that points there. The sections describe an autopilot run's journal and controller, which a package of the method skills alone does not carry; the owner saw the move before it was made |
