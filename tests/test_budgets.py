@@ -584,28 +584,33 @@ ROOT = Path(__file__).resolve().parents[1]
 # choices 3 (a closing line closes when it says what was decided; a recommendation marked on the option), ITEM 2,
 # OPTION 2, FENCE 2, OPEN 1 and HEAD 1 (a quote inside a list entry, a heading or a row of a table as an option, a
 # sentence that begins with the word, a fence longer than the one it holds).
-# The eleventh review round, and the probes after it, add 358 to the plugin, 314 of them in guards.py (the bar the
-# principal set on 2026-11-11: a round with no ordinary way through and no ordinary work refused). The round's
-# eight findings in the Python reader were one gap, a field or a key read as one set of values whatever carried
-# it, so a member is now read by the thing that holds it. In _python_writes: its own body 93 (a table or a row
-# spelled out once and only read, handed as `f(**table)` or `f(*row)`, written out; each class's lineage, the
-# __init__ that builds it, its kin and the function each node is written in; an argument parser's defaults; the
-# census of what each thing is given after it is made; where a writer by its name takes its path), part 41 (what
-# one member of one thing holds: a table's entry, a list's place, an object's field, the environment's variable,
-# and what it was given since, the last plain gift along one path standing for those before it), resolve 30 (each
-# thing an expression may be, as the place that makes it), built 25 (what an object's field holds as it is made:
-# what the __init__ that runs gives it from what that call hands it, a base's through super().__init__, a field
-# handed by place or by name, the class's constants and properties), under 18 (a value read with what one call
-# hands the function and the object it is called on), sel_of 17 and path_of 6 (a member read or store, and the
-# path it is reached by), order 14 and flat 2 (the last plain gift before each read; a main block in line), named
-# 14 (a member is built from what it holds, a method's answer from what it hands back, a comprehension from what
-# it makes each one of), asked 10 (`cls(...)`, `super().__init__(...)`, a method by the class of what it is called
-# on, and a call on a file or a string is no call of the program's own method), stringy 9 (what reads as a path
-# and not as an object or an open file), selves 7, read_as 7, members 6, is_member 6, spelled 5, key_at 5,
-# handed_field 4, keep 3, settle 3, one 2, lineage 2, gives 2 (a pair unpacked from anything is its first and its
-# second), elements 2, builds 2, outer 2, held 1; less table 14, answers 8, entry_of 8, key_of 4 and gather 2,
-# which the member model replaces. BY_NAME 4, STRINGS 3, FOREIGN 2, OBJECT_FIRST 1, PATH_FIRST 1 and OPENED 1 (a
-# writer in another library takes its path first, second or either; a library's own way to open a file).
+# The eleventh review round, and the probes and the replay after it, add 389 to the plugin, 345 of them in
+# guards.py (the bar the principal set on 2026-11-11: a round with no ordinary way through and no ordinary work
+# refused). The round's eight findings in the Python reader were one gap, a field or a key read as one set of
+# values whatever carried it, so a member is now read by the thing that holds it. In _python_writes: its own body
+# 100 (a table or a row spelled out once and only read, handed as `f(**table)` or `f(*row)`, written out; each
+# class's lineage, the __init__ that builds it, its kin and the function each node is written in; an argument
+# parser's defaults; a class that keeps its keywords as its fields; the census of what each thing is given after
+# it is made; where a writer by its name takes its path), part 42 (what one member of one thing holds: a table's
+# entry, a list's place, an object's field, the environment's variable, and what it was given since, the last
+# plain gift along one path standing for those before it; a thing that holds itself read once), resolve 10 and
+# follow 30 (each thing an expression may be, as the place that makes it; a finished reading kept, one that runs
+# away cut short, after the replay met two recorded commands that did not come back), built 27 (what an object's
+# field holds as it is made: what the __init__ that runs gives it from what that call hands it, a base's through
+# super().__init__, a field handed by place or by name, the class's constants and properties), under 19 (a value
+# read with what one call hands the function and the object it is called on; a name the function gives another
+# value is either, which a function that rebinds what it is handed had slipped past since the tenth round),
+# sel_of 17 and path_of 6 (a member read or store, and the path it is reached by), named 15 (a member is built
+# from what it holds, the program's own function from what it hands back, a comprehension from what it makes
+# each one of; one member followed once), order 14 and flat 2 (the last plain gift before each read; a main block
+# in line), members 11 (with its default; kept between settlings), asked 10 (`cls(...)`, `super().__init__(...)`,
+# a method by the class of what it is called on, and a call on a file or a string is no call of the program's own
+# method), stringy 9 (what reads as a path and not as an object or an open file), selves 7, read_as 7, is_member
+# 6, spelled 5, key_at 5, handed_field 4, settle 4, gifts 3, keep 3, one 2, lineage 2, gives 2 (a pair unpacked
+# from anything is its first and its second), elements 2, builds 2, outer 2, held 1; less table 14, answers 8,
+# entry_of 8, key_of 4 and gather 2, which the member model replaces. BY_NAME 4, STRINGS 3, FOREIGN 2,
+# OBJECT_FIRST 1, PATH_FIRST 1 and OPENED 1 (a writer in another library takes its path first, second or either;
+# a library's own way to open a file).
 # slot_check.py 27: judge 16 and whole_days 11 (an all-day block the principal marked, or one that says it is busy,
 # takes its day; a night before an all-day commitment is not called enough; of several events at a slot's own
 # hours one is the slot). travel_check.py 5: judge (the same night, said in the event's own lacks).
@@ -614,8 +619,8 @@ ROOT = Path(__file__).resolve().parents[1]
 # (a line led by a pictograph).
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # consolidate first).
-CORE_BUDGET = 10532
-PLUGIN_BUDGET = 31012
+CORE_BUDGET = 10563
+PLUGIN_BUDGET = 31043
 
 
 def _lines(files):
