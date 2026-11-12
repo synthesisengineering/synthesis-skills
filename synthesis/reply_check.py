@@ -33,7 +33,7 @@ DEFAULT_PHRASES = [
 # and passed 9 of 17 waits (review, 2026-11-12). THEIRS, the principal's own next move, exempts only the clause it
 # stands in. Config `wait_phrases` adds plain phrases.
 # "once" is a conjunction here, not a count: not "at once", "once more", "once on staging", "once a day".
-_ONCE = r"(?<!at )once(?! (?:more|again|a|an|per|every|each|or|and|only|on|in|at|for|with|to|by|upon|daily|weekly)\b)"
+_ONCE = r"(?<!\bat )once(?! (?:more|again|a|an|per|every|each|or|and|only|on|in|at|for|with|to|by|upon|daily|weekly)\b)"
 _ME, _WHEN = r"\b(?:i|we)", r"\b(?:" + _ONCE + r"|when|after|until|as soon as)\b"
 # Ordinary grammar between a subject and its verb (review round 2): any run of adverbs ("currently still", "then",
 # "simply"; "not" and "no longer" are none), helping verbs ("continue to wait", "be able to resume", "go ahead and
@@ -51,7 +51,8 @@ _GO = (r"(?:continue(?! to\b)|resume|proceed|pick (?:[\w'’-]+ ){1,4}?(?:back )
 # The session itself ("I", not the "we" of advice) with any verb before an event that is still to come: "I'll send it as soon
 # as the run finishes", "once their quote arrives, I'll update the sheet", "I'll check them when it's done".
 _I = (r"(?:\bi(?:['’]ll| will| shall|(?:['’]m| am) going to)|^\W*will|\bi\b[^:]{0,120}?\b(?:and|but|then) will)" + _ASIDE + _SOON)
-_THEN = r"(?:" + _ONCE + r"|as soon as(?! (?:possible|practical)\b)) (?!(?:i|we)\b)\w"
+_THEN = r"(?:" + _ONCE + r"|as soon as(?! (?:possible|practical)\b)) (?!(?:i|we)\b)(?=\w)"
+_SAYS = r"(?:(?!\b(?:that|because|since|which|if|whether|what|how|why|where)\b)[^;:]){1,100}?"  # not "I'll note that once ..."
 _DONE = (r"(?:when|once) (?:it|they|that|this|everything)(?:(?:['’]s|['’]re| is| are| has| have)(?: been)? (?:done|ready|finished"
          r"|completed?|through|over|back|in|up|live|green|available|out|here|merged|published|released)| (?:lands?|finish(?:es)?"
          r"|completes?|ends?|returns?|arrives?|pass(?:es)?|comes?))\b")
@@ -77,16 +78,20 @@ _PRED = (_OFTEN + r"(?:(?:is|was|are|were|has|had|can|could|would|will|should|ma
          r"|while|during|than|as|into|across|because|if|until)\b)))")
 SUBJECT = re.compile("(?i)" + _WORD + r"{1,12}? " + _PRED)
 # "Waiting until X" may hold a verb of its own (X's): "is" or "can" makes it a subject only after that verb ("waiting
-# until CI is green" announces; "waiting until every replica agrees is safer" explains), "would" or a verb of effect at once.
+# until CI is green" announces; "waiting until every replica agrees is safer" explains), or before a judgment ("waiting
+# until Friday is risky"); "would" or a verb of effect makes it one at once.
+_VALUE = (r"(?:the|a|an|what|why|how|not|risky|safer?|slow(?:er)?|fast(?:er)?|fine|ok(?:ay)?|expected|standard|normal|common|wasteful"
+          r"|pointless|harmless|better|worse|best|wrong|right|correct|costly|expensive|cheaper?|unnecessary|necessary|required"
+          r"|recommended|optional|allowed|forbidden)\b")
 UNTIL = re.compile("(?i)" + _WORD + r"{1,10}? (?:(?!(?:" + _STOP + r")\b)(?:is|are|was|were|has|have|had|[a-z]+(?:s|ed))\b" + _WORD
-                   + r"{0,6}? " + _OFTEN + r"(?:is|was|can|could|has|does)(?:n['’]t)?\b|" + _OFTEN
-                   + r"(?:(?:would|will|should|may|might|must)(?:n['’]t)?\b|took\b|cost\b|" + _EFFECT + "))")
+                   + r"{0,6}? " + _OFTEN + r"(?:is|was|can|could|has|does)(?:n['’]t)?\b|" + _OFTEN + r"(?:(?:is|was)(?:n['’]t)? " + _VALUE
+                   + r"|(?:would|will|should|may|might|must)(?:n['’]t)?\b|took\b|cost\b|" + _EFFECT + "))")
 WAITS = re.compile(  # a clause that opens with the wait is tested as a subject afterwards: group "on" by SUBJECT, "till" by UNTIL
     "(?i)" + _AM + r"(?:a?waiting\b(?! (?:for|on)(?: you\b| from\b|\W*$))|(?:holding|standing by)" + _HELD + ")"
     "|" + _MUST + _HELP + r"(?:wait(?:ing)?\b|(?:hold(?:ing)?|stand(?:ing)? by)" + _HELD + r")(?! (?:for|on) you\b)"
     "|" + _WILL + _HELP + _GO + ".{0,160}?" + _WHEN + "|" + _WHEN + ".{0,160}?" + _WILL + _HELP + _GO
     + r"|\b(?:until|till)\b.{0,160}?" + _MUST + _HELP + r"hold(?:ing)?\b"
-    + "|" + _I + r"[^;:]{1,100}?\b(?:" + _THEN + "|" + _DONE + r")|\b" + _THEN + r"[^,;:]{0,100},? (?:and )?(?:then )?" + _I
+    + "|" + _I + _SAYS + r"\b(?:" + _THEN + "|" + _DONE + r")|\b" + _THEN + r"[^,;:]{0,100},? (?:and )?(?:then )?" + _I
     + r"|\b(?:" + _DONE + r"|should (?:come|arrive) shortly),?(?: and)?(?: then)? " + _WILL
     + r"|(?:^\W*|[:—–] ?| --? )" + _SOON + r"(?:(?P<on>waiting (?:for|on|to (?:hear|see|get|learn|find out))\b(?! you\b)|awaiting\b)"
     r"|(?P<till>waiting until\b|(?:holding|standing by)\b.{0,160}?\b(?:until|till)\b|" + _GOING
