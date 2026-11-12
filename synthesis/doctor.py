@@ -762,6 +762,67 @@ def check_packets(roots: list) -> Check:
     return Check("ok", "decision packets", f"{len(pages)} packet and sheet pages carry their generator's marker")
 
 
+# ---- the outbox, and the mail connector that must read it --------------------------
+
+def connector_files(platform: str = sys.platform) -> tuple:
+    """(the unit install-autostart.sh writes for the workspace-mcp connector, the PID file its start.sh keeps)."""
+    home, env = Path.home(), os.environ
+    if platform == "darwin":
+        return (home / "Library" / "LaunchAgents" / "com.synthesis.workspace-mcp.plist",
+                home / "Library" / "Logs" / "workspace-mcp" / "server.pid")
+    return (Path(env.get("XDG_CONFIG_HOME") or home / ".config") / "systemd" / "user" / "workspace-mcp.service",
+            Path(env.get("XDG_STATE_HOME") or home / ".local" / "state") / "workspace-mcp" / "server.pid")
+
+
+def started_with(pid: str, run=subprocess.run, proc: Path = Path("/proc")) -> dict:
+    """The environment a running process was started with; {} when the system does not show it. Linux keeps it
+    under /proc. macOS's `ps -E` prints it after the command, never for Apple's own programs or past a sandbox."""
+    try:
+        if (proc / pid).is_dir():
+            text = (proc / pid / "environ").read_text(encoding="utf-8", errors="replace")
+            return dict(e.split("=", 1) for e in text.split("\0") if "=" in e)
+        shown = run(["ps", "-Eww", "-o", "command=", "-p", pid], capture_output=True, text=True, timeout=5).stdout
+    except (OSError, subprocess.SubprocessError):
+        return {}
+    return dict(e.split("=", 1) for e in re.split(r" (?=[A-Za-z_]\w*=)", shown.strip())[1:])
+
+
+def check_outbox(outbox: Path, unit: Path, pid_file: Path, started=started_with) -> Check:
+    """Agents stage outgoing attachments in the outbox and the send guard passes a file there, so it must be there to
+    write, and a mail connector its auto-start keeps running must have been started with it among ALLOWED_FILE_DIRS
+    (its start.sh's export): one started before that refuses the staged file after the principal approved the send.
+    A connector started by hand is judged too when it can be read; only an installed one is expected to be running."""
+    where = _short(outbox)
+    if os.path.lexists(outbox) and not outbox.is_dir():
+        return Check("fail", "outbox", f"{where} is not a folder, so no agent can stage an attachment there: move it "
+                     "away and make the folder (the mail connector's start.sh makes it at each start)")
+    if not outbox.is_dir() and unit.is_file():
+        return Check("fail", "outbox", f"{where} is missing though a mail connector's auto-start is installed: restart "
+                     "the connector, whose start.sh makes the folder and starts the connector to read it")
+    if not outbox.is_dir():
+        return Check("info", "outbox", f"{where} is not made yet; the mail connector's start.sh makes it, and no "
+                     "auto-start for one is installed here")
+    if not os.access(outbox, os.W_OK | os.X_OK):
+        return Check("fail", "outbox", f"{where} cannot be written, so no agent can stage an attachment there")
+    try:
+        pid = pid_file.read_text(encoding="utf-8").strip()
+    except OSError:
+        pid = ""
+    env = started(pid) if pid.isdigit() else {}
+    if "WORKSPACE_MCP_PORT" not in env and not unit.is_file():  # start.sh always sets it: nothing of its starting was read
+        return Check("ok", "outbox", f"{where} is there to write; no mail connector auto-start is installed here")
+    if "WORKSPACE_MCP_PORT" not in env:
+        return Check("warn", "outbox", f"cannot tell whether the running mail connector reads {where}: what it was "
+                     "started with could not be read (it is not running, or this process may not see it)")
+    allowed = env.get("ALLOWED_FILE_DIRS", "")  # compared as the connector compares: links followed, letters as written
+    roots = tuple(os.path.realpath(os.path.expanduser(a.strip())).rstrip(os.sep) + os.sep
+                  for a in allowed.split(os.pathsep) if a.strip())
+    if not (os.path.realpath(outbox) + os.sep).startswith(roots):
+        return Check("fail", "outbox", f"the running mail connector was started without {where} in ALLOWED_FILE_DIRS "
+                     f"({allowed or 'not set'}), so it refuses a file staged there after the send is approved: restart it")
+    return Check("ok", "outbox", f"{where} is there to write, and the running mail connector was started to read it")
+
+
 # ---- am I behind the latest release? (on demand: it is the only network call) ------
 
 RELEASE_MANIFEST = "https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/{ref}/.codex-plugin/plugin.json"
@@ -1164,7 +1225,8 @@ def run_checks(home: Path | None = None, find=find_client, latest_ref: str = "",
     sessions = board.sessions()
     checks += [check_versions(versions, sessions), check_instruction_adapters(repos),
                check_temporary_work(repos, [s.cwd for s in sessions if not s.stale]),
-               check_home_paths([home / "config.json"]), check_packets(project.roots())]
+               check_home_paths([home / "config.json"]), check_packets(project.roots()),
+               check_outbox(paths.outbox(), *connector_files())]
     if config.get("pr_gated") is not None:
         checks.append(check_pr_gate(config["pr_gated"], repos))
     if latest_ref:
