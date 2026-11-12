@@ -70,9 +70,12 @@ $ python3 <synthesis-agent-guardrails>/scripts/provenance_scan.py --since 2026-1
 provenance scan since 2026-10-05: 1 unsourced; read 6 records and 261 session logs
 ```
 
-- Records: each path given that is a file, and the files under each folder, that sit in
-  `transcripts/`, `daily-plans/` or `projects/<id>/sessions/`, or are a project's
-  `CONTEXT.md` or `REFERENCE.md`, and changed since the date.
+- Records: each path given that is a file; the files under each folder that sit in
+  `transcripts/`, `daily-plans/`, `ritual-workers/`, `drafts/` or `projects/<id>/sessions/`,
+  or are a project's `CONTEXT.md` or `REFERENCE.md`; and every file under each
+  `--records <folder>`, for a plan folder a workspace keeps under another name. Each must
+  have changed since the date. The last line says how many records were read: a count
+  that leaves out the day's plan means the plan's folder was not given.
 - What is checked: what a record gained since its last commit before the date: every
   Slack timestamp (`1234567890.123456` or the `p1234567890123456` permalink form) and every
   attributed quote of twelve or more characters.

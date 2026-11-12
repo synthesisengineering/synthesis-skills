@@ -102,7 +102,7 @@ Native memory stays ON in every harness as a capture buffer; synthesis records a
 
 A quote or timestamp written into a record must come from something a tool actually read. An agent once fabricated a chat message by tweaking a real message's timestamp.
 
-- [ ] Run `python3 <synthesis-agent-guardrails>/scripts/provenance_scan.py --since <today> <today's transcripts, daily plan, and the CONTEXT.md and session logs written today>`. Each Slack timestamp written today must match a synced read; the scan names every one that does not. Fix or remove each named line before the close (correct it from the source, or mark it unverified); never "fix" it by inventing a source.
+- [ ] Run `python3 <synthesis-agent-guardrails>/scripts/provenance_scan.py --since <today> <today's transcripts, daily plan, and the CONTEXT.md and session logs written today>`, with `--records <folder>` for each plan folder the workspace declares (`plans_dirs` in the ritual config) that is not named `daily-plans`, `ritual-workers` or `drafts`: a plan kept somewhere else is a record too, and the line the scan ends with says how many records it read. Each Slack timestamp written today must match a synced read; the scan names every one that does not. Fix or remove each named line before the close (correct it from the source, or mark it unverified); never "fix" it by inventing a source.
 
 ## 6. Career Amplification
 
