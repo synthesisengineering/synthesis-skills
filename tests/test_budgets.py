@@ -441,10 +441,28 @@ ROOT = Path(__file__).resolve().parents[1]
 # and constants 13 (the Drive publisher among the deploy patterns), imports 2, spacing 4, check_destructive 1,
 # _shell_writes 1 and check 1 (the destructive guard and the claim check read the same readings); in paths.py,
 # spelled 4, inside 3 and an import 1 (a path compared as a Mac's file system finds it).
+# After a third review round, three more replays and probes of its own, guards.py 263 more: _python_writes 182 with
+# six constants 6 (an inline Python program read alone and by its syntax: a call known by the module it comes from
+# however it was imported or renamed, arguments by keyword, a target the program spells judged where it leads, a name
+# followed through assignments, loops, `with`, defaults, the program's own functions, lists and attributes, the words
+# after the program and the variables of the environment placed where it reads them, what a file holds kept apart
+# from where it is, a link judged at both ends, a helper's one caller, a folder the program changes into; 30 days of
+# recorded commands held 23 such programs refused for writes they never made), _program 23 less the 11 it took over
+# from _ran and the 4 from _python_source (how Python is handed a program: -Bc, -cPROGRAM, an option that takes a
+# value), _awk_writes 20 and _string_writes 8 (a division is not a pattern, a comparison in parentheses is no
+# redirect, a command given as one plain string is read as a command), _self_grant 13 (each command with its own
+# stdin, the variables the command sets, a relative link read from its own folder), _commands 11 and _parse 2 (each
+# command's own stdin; cd -, pushd and popd), _own 9 less the 6 of _memory it replaces (a session's saved workflow
+# scripts are the agent's own), check_travel 6 (the policy read only for a call that names a place; a title that
+# starts with the block word itself), _bare 2 (env --chdir= and sudo -D), spacing 2. slot_check.py 18: hour 8 (a
+# policy hour that is no time of day stops the check), morning_after 4 and first_thing 3 (the morning begins at the
+# policy's hour, entry or none), judge 1, spacing 2. ritual_state.py 27: _items 23 (a plan's choices under a heading
+# of their own or as entries of a list, fenced blocks left out first), two patterns 2, travel 1 and choices 1 (an
+# event's start is a whole date and time).
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # consolidate first).
-CORE_BUDGET = 9035
-PLUGIN_BUDGET = 29276
+CORE_BUDGET = 9298
+PLUGIN_BUDGET = 29584
 
 
 def _lines(files):
