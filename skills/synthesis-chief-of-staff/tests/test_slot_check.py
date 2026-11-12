@@ -269,3 +269,12 @@ def test_the_policys_hour_judges_the_night_even_when_the_read_ends_before_the_mo
     code, report = check(tmp_path, "12:00", "13:00", [], "--in-person", "--travel-before", "30", "--travel-after", "30",
                          config=MORNING, window=("2026-11-10", "2026-11-12"))
     assert levels(report)["sleep"] == "NOTE"                                                 # long enough by the policy; an entry could be earlier
+
+
+@pytest.mark.parametrize("key, value", [("latest_return", "10pm"), ("morning_starts", "6am"), ("morning_starts", "25:00")])
+def test_a_policy_hour_that_is_no_time_of_day_is_not_judged(tmp_path, key, value):
+    """A value that is no time of day raised an error that left the script with the exit code of a refusal. The
+    check says which key it could not read and exits 2: nothing is judged on a guess."""
+    unreadable = {**CONFIG, "travel_policy": {"latest_return": "23:00", "sleep_hours": 8, key: value}}
+    code, said = check(tmp_path, "19:00", "22:00", [], *EVENING, config=unreadable)
+    assert code == 2 and key in said and "HH:MM" in said

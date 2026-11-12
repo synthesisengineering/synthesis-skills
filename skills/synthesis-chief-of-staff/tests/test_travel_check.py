@@ -376,6 +376,9 @@ def test_the_policys_morning_counts_when_the_calendar_holds_no_entry(tmp_path):
     assert check(tmp_path, [RESOLVED, GOING, decided], config=rested)[0] == 0
     later = {**CONFIG, "travel_policy": {**POLICY, "sleep_hours": 8, "morning_starts": "07:30"}}
     assert check(tmp_path, [RESOLVED, GOING, RETURNING], config=later)[0] == 0               # 8 h 10 min is enough
+    unreadable = {**CONFIG, "travel_policy": {**POLICY, "sleep_hours": 8, "morning_starts": "6am"}}
+    code, said = check(tmp_path, [RESOLVED, GOING, RETURNING], config=unreadable)
+    assert code == 2 and "morning_starts" in str(said)                                       # no time of day: nothing is judged
 
 
 # --- the second review round (2026-11-11), each as a test that failed first --------------------------------

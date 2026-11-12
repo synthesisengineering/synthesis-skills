@@ -1353,6 +1353,7 @@ def test_a_program_that_runs_code_it_builds_is_refused_while_it_names_a_protecte
     "f = open('{work}/s.jsonl')\nopen(f.name, 'w').write('x')",                                    # the name of a file opened to read
     "with open('{work}/s.jsonl') as f:\n    open(f.name, 'w').write('x')",
     "open(open('{work}/s.jsonl').name, 'w').write('x')",
+    "f = open('{work}/s.jsonl', 'rb')\ng = f\nopen(g.name, 'w').write('x')",                       # the same file under a second name
     "import os\nos.chdir(path='{state}')\nopen('a', 'w').write('x')",                             # a folder changed by keyword
 ])
 def test_the_third_reviews_python_programs_are_refused(saved, program, tmp_path):
