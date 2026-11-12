@@ -70,12 +70,20 @@ $ python3 <synthesis-agent-guardrails>/scripts/provenance_scan.py --since 2026-1
 provenance scan since 2026-10-05: 1 unsourced; read 6 records and 261 session logs
 ```
 
-- Records: each path given that is a file; the files under each folder that sit in
-  `transcripts/`, `daily-plans/`, `ritual-workers/`, `drafts/` or `projects/<id>/sessions/`,
-  or are a project's `CONTEXT.md` or `REFERENCE.md`; and every file under each
-  `--records <folder>`, for a plan folder a workspace keeps under another name. Each must
-  have changed since the date. The last line says how many records were read: a count
-  that leaves out the day's plan means the plan's folder was not given.
+- Records: each path given that is a file, whatever its name or suffix (a YAML plan
+  named outright is read); the `.md`, `.txt`, `.jsonl` and `.json` files under each folder
+  given that sit in `transcripts/`, `daily-plans/`, `ritual-workers/`, `drafts/` or
+  `projects/<id>/sessions/`, or are a project's `CONTEXT.md` or `REFERENCE.md`, with hidden
+  folders and `node_modules` not entered; and every regular file under each
+  `--records <folder>`, at any depth and in hidden folders too, with only `.git` left out,
+  for a plan folder a workspace keeps under another name. A link to a folder is not
+  followed. Each must have changed since the date. The last line says how many records
+  were read: a count that leaves out the day's plan means the plan's folder was not given.
+- A record that cannot be opened or is not text (bytes that are not UTF-8, or a NUL byte),
+  and a folder that cannot be listed, is printed as `<path>: unreadable (<why>)` and counted
+  in the last line (`1 unsourced, 2 unreadable; read 6 records ...`). It was not checked:
+  read it another way, or take what is not a record (an image, a database, a file
+  manager's `.DS_Store`) out of the folder given with `--records`.
 - What is checked: what a record gained since its last commit before the date: every
   Slack timestamp (`1234567890.123456` or the `p1234567890123456` permalink form) and every
   attributed quote of twelve or more characters.
@@ -84,8 +92,9 @@ provenance scan since 2026-10-05: 1 unsourced; read 6 records and 261 session lo
   typed counts. The agent's own words, its write calls and a write's echoed result never
   source themselves. Each log is searched as raw bytes first, and only the lines holding a
   candidate are parsed, so a day of logs reads in seconds.
-- Exit 0 when everything is sourced, 1 when something is not, 2 when no session log
-  folder exists. It reads only.
+- Exit 0 when every record was read and everything is sourced, 1 when something is
+  unsourced or unreadable, 2 when no session log folder exists or a path given does not
+  exist. It reads only.
 - An unsourced line is a lead, not a verdict: open the source (the synced transcript, the
   channel) and either cite it or correct the record. Never "fix" it by finding a similar
   message.
