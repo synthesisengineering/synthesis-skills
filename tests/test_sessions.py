@@ -648,6 +648,82 @@ def test_a_citation_names_one_session_and_a_listing_of_what_is_open_cites_nothin
     assert cli.main(command) == 1 and "2 of 2 prompts" in capsys.readouterr().out
 
 
+def test_the_instructions_cite_a_session_as_the_listing_prints_it(harness, tmp_path, capsys):
+    """2026-11-12, a second review: the binding rule still said to cite a session by eight characters. Followed for
+    two sessions that begin alike, neither citation counted and `show` found two sessions. The listing prints as
+    much of each id as names it alone, and the instructions say to write that."""
+    ids = ["01a11111-aaaa-4000-8000-000000000001", "01a11111-aaab-4000-8000-000000000002",      # alike for twelve characters,
+           "01a11111-bbbb-4000-8000-000000000003"]                                              # and for eight
+    for name in ids:
+        _jsonl(harness["claude"].with_name(f"{name}.jsonl"),
+               [_typed({"cwd": harness["work"], "sessionId": name}, f"Plan {name[9:13]}.", "2026-10-30T15:00:00.000Z")])
+    elsewhere = "01a11111-bbbc-4000-8000-000000000004"                  # a session of no workspace, so not listed, that begins like the third
+    _jsonl(harness["claude"].with_name(f"{elsewhere}.jsonl"),
+           [_typed({"cwd": str(tmp_path), "sessionId": elsewhere}, "Something else.", "2026-10-30T15:00:00.000Z")])
+    sub = harness["claude"].parent / ids[0] / "subagents" / "agent-a1.jsonl"   # a sub-agent's id begins with its parent's whole id
+    _jsonl(sub, [{"type": "user", "isSidechain": True, "cwd": harness["work"], "timestamp": "2026-10-30T15:00:00Z",
+                  "message": {"role": "user", "content": "Check the script."}}])
+    sessions.export(0)
+    kb = tmp_path / "kb"
+    kb.mkdir()
+    found = sessions.prompts("acme", "2026-10-30")
+    assert sorted(p["session"] for p in found) == ids
+    command = ["sessions", "prompts", "--workspace", "acme", "--date", "2026-10-30", "--records", str(kb)]
+    assert cli.main(command) == 1
+    cites = [" ".join(line.split()[:3]) for line in capsys.readouterr().out.splitlines()[:3]]
+    names = sorted(cite.split()[1] for cite in cites)
+    assert names == ["01a11111-aaaa", "01a11111-aaab", "01a11111-bbbb"]                       # no more of an id than it takes
+    assert all([s for s in ids if s.startswith(name)] == [s] for name, s in zip(names, ids))   # each names one listed session,
+    for cite, name in ((c, c.split()[1]) for c in cites):                                     # and `show` opens that one's prompt
+        assert cli.main(["sessions", "show", name, "--seq", cite.split("#")[1]]) == 0
+        assert f"user: Plan {name[9:13]}." in capsys.readouterr().out
+    (kb / "log.md").write_text("".join(f"- planned ({cite})\n" for cite in cites), encoding="utf-8")
+    assert cli.main(command) == 0 and "all 3 prompts" in capsys.readouterr().out               # cited as printed, each counts
+    (kb / "log.md").write_text("".join(f"- planned (claude-code {name[:8]} #{cite.split('#')[1]})\n" for cite, name in zip(cites, names)),
+                               encoding="utf-8")
+    assert cli.main(command) == 1 and "3 of 3 prompts" in capsys.readouterr().out               # by eight characters, none does,
+    assert cli.main(["sessions", "show", "01a11111", "--seq", "0"]) == 1 and "sessions match '01a11111'" in capsys.readouterr().err
+    root = Path(__file__).resolve().parents[1]
+    told = {p.relative_to(root).as_posix(): p.read_text(encoding="utf-8") for folder in ("skills", "docs") for p in (root / folder).rglob("*.md")}
+    assert [name for name, text in told.items() if "session8" in text] == []                   # so no instruction asks for eight
+    rule = next(line for line in told["skills/synthesis-context-lifecycle/SKILL.md"].splitlines() if line.startswith("15. "))
+    citing = told["skills/synthesis-context-lifecycle/references/session-transcripts.md"].split("## Reading and citing")[1].split("\n## ")[0]
+    for said in (rule, " ".join(citing.split())):
+        assert "`<harness> <session> #<seq>`" in said and "eight characters, or more where two" in said
+        assert "sessions show <session> --seq <n>" in said
+    assert "first eight characters name" not in " ".join(citing.split())
+
+
+def test_recent_search_and_resume_name_a_session_as_the_listing_does(harness, tmp_path, capsys):
+    """The record behind a decision or a quote is found with `recent`, `search` or `resume` before it is cited. Each
+    printed eight characters of a session's id whoever else began with them: one name for two sessions, and for a
+    sub-agent its parent's name, under which `show` opens the parent's record."""
+    one, two = "01a11111-aaaa-4000-8000-000000000001", "01a11111-bbbb-4000-8000-000000000002"
+    for name in (one, two):
+        _jsonl(harness["claude"].with_name(f"{name}.jsonl"), _claude_rows(harness["work"]))
+    base = {"cwd": harness["work"], "isSidechain": True, "timestamp": "2026-10-30T10:00:00Z"}
+    _jsonl(harness["claude"].parent / one / "subagents" / "agent-a1.jsonl", [
+        {**base, "type": "user", "message": {"role": "user", "content": "Check the script."}},
+        {**base, "type": "assistant", "message": {"model": "claude-opus-5-5", "content": [{"type": "text", "text": "The script is sound."}]}}])
+    kb = tmp_path / "kb"
+    (kb / "projects" / "alpha").mkdir(parents=True)
+    (kb / "projects" / "alpha" / "CONTEXT.md").write_text("**Phase:** build\n**Status:** active\n", encoding="utf-8")
+    resumed = project.resume(str(kb / "projects" / "alpha"), "S-new")                        # exports first
+    assert cli.main(["sessions", "recent", "--workspace", "acme", "--limit", "9"]) == 0
+    recent = capsys.readouterr().out
+    assert cli.main(["sessions", "search", "release|script", "--workspace", "acme", "--kinds", "user,brief,assistant"]) == 0
+    searched = capsys.readouterr().out
+    assert "Please plan the release." in resumed and "The script is sound." in recent and "Check the script." in searched
+    for shown in (resumed, recent, searched):
+        named = re.findall(r"\[[\w-]+ (\S+)\] #(\d+) \S+ [a-z]+(?: \([^)]*\))?: (.*)", shown)
+        assert len(named) >= 2 and len({name for name, _, _ in named}) >= 2
+        for name, seq, said in named:                                                        # the name printed opens the record printed
+            assert [m["session"] for m in sessions.find(name)] in ([one], [two], [f"{one}-agent-a1"]), name
+            assert sessions.records(sessions.find(name)[0]["folder"])[int(seq)]["text"] == said
+    assert {name for name, _, _ in re.findall(r"\[[\w-]+ (\S+)\] #(\d+) \S+ [a-z]+(?: \([^)]*\))?: (.*)", searched)} == {
+        "01a11111-a", "01a11111-b", f"{one}-agent-a1"}                                       # a sub-agent by its whole id
+
+
 def _listed(capsys, *words) -> str:
     """What `synthesis sessions prompts` prints for acme on 2026-10-30 with these words."""
     capsys.readouterr()
