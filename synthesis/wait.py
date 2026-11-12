@@ -10,8 +10,9 @@ which marks what it prints, and waited half an hour on mail addressed to a proje
     synthesis wait list
 
 A wait prints one line when its event happens and exits 0; at its bound it exits 3 and says nothing arrived, so
-silence cannot look like success; 2 for a bound it cannot read or one over twelve hours. A message is named by
-its sender and never printed: the seat reads it with `synthesis inbox`, which is what marks it read.
+silence cannot look like success; 2 for a bound it cannot read, one over twelve hours or a command that cannot
+be started. A message is named by its sender and never printed: the seat reads it with `synthesis inbox`, which
+is what marks it read.
 """
 from __future__ import annotations
 
@@ -154,6 +155,9 @@ def attempt(command: list[str], until: float) -> bool:
         done = proc.wait(timeout=until - time.time()) == 0 and time.time() <= until
     except subprocess.TimeoutExpired:
         pass
+    except OSError as exc:  # no program by that name, or a file that is none: nothing started, so the wait refuses the command
+        why = {FileNotFoundError: "not found", PermissionError: "not executable"}.get(type(exc), exc.strerror)
+        raise ValueError(f"`{' '.join(command)}` could not be started: {why}")
     finally:
         if proc and not done:
             _stop(proc)
@@ -197,12 +201,19 @@ def main(argv: list[str], session_id: str) -> int:
             print(f"{board.short_name(w['session'])}  {w['what']}  since {time.strftime('%H:%M', time.localtime(w['since']))} "
                   f"until {time.strftime('%H:%M', time.localtime(w['until']))}  ({'woken by ' + w['by'] if w.get('by') else 'a watcher is running'})")
         return 0
-    try:
+    try:  # `span` refuses a bound it cannot keep and `attempt` a command it cannot start: each says why, and the wait exits 2
         seconds, every = span(args.bound), span(args.every or ("30s" if args.kind == "run" else "2s"))
+        until = time.time() + seconds
+        if args.kind == "run" and command:
+            tries, shown = [], f"`{' '.join(command)}`"
+
+            def ready():  # a try has only the time left: none starts when none is left, and none counts after the bound
+                tries.append(until > time.time() and attempt(command, until))
+                return f"{shown} exited 0 after {len(tries)} tr{'y' if len(tries) == 1 else 'ies'}" if tries[-1] else ""
+            return _watch(session_id, f"{shown} to succeed", until, seconds, every, ready, edge=0)  # a try takes time: none starts on the bound's edge
     except ValueError as exc:
         print(exc, file=sys.stderr)
         return 2
-    until = time.time() + seconds
     if args.kind == "note":
         if not args.target or not args.by:
             print("a note says what is awaited and, with --by, what will wake this seat", file=sys.stderr)
@@ -226,12 +237,5 @@ def main(argv: list[str], session_id: str) -> int:
         before = path.stat().st_mtime_ns if path.exists() else None
         return _watch(session_id, f"the file {path}", until, seconds, every,
                       lambda: f"{path} {'appeared' if before is None else 'changed'}" if path.exists() and path.stat().st_mtime_ns != before else "")
-    if args.kind == "run" and command:
-        tries, shown = [], f"`{' '.join(command)}`"
-
-        def ready():  # a try has only the time left: none starts when none is left, and none counts after the bound
-            tries.append(until > time.time() and attempt(command, until))
-            return f"{shown} exited 0 after {len(tries)} tr{'y' if len(tries) == 1 else 'ies'}" if tries[-1] else ""
-        return _watch(session_id, f"{shown} to succeed", until, seconds, every, ready, edge=0)  # a try takes time: none starts on the bound's edge
     print("give the file to wait for, or the command after `--`", file=sys.stderr)
     return 2
