@@ -585,7 +585,8 @@ def test_sessions_prompts_names_each_one_no_record_cites_and_exits_1_while_any_i
     assert cli.main(command[:-2]) == 0                                       # with no records given it only lists
     assert len(capsys.readouterr().out.splitlines()) == 3
     assert cli.main(command + ["--json"]) == 0
-    assert json.loads(capsys.readouterr().out) == {"workspace": "acme", "date": "2026-10-30", "prompts": 2, "open": []}
+    assert json.loads(capsys.readouterr().out) == {"workspace": "acme", "date": "2026-10-30", "prompts": 2, "open": [],
+                                                   "records": [str(asked["kb"])]}
     assert cli.main(["sessions", "prompts", "--date", "2026-10-30"]) == 2    # a workspace must be named
     assert cli.main(["sessions", "prompts", "--workspace", "acme"]) == 0     # with no date: today
     assert capsys.readouterr().out.strip().startswith("0 prompts on 20")
@@ -623,6 +624,26 @@ def test_a_citation_names_one_session_and_a_listing_of_what_is_open_cites_nothin
     (kb / "open.json").unlink()
     (kb / "open.md").write_text(listing, encoding="utf-8")                        # and as it is printed
     assert cli.main(command) == 1 and "2 of 2 prompts" in capsys.readouterr().out
+
+
+def test_the_listing_exports_first_and_stops_when_a_transcript_could_not_be_copied(asked, capsys, monkeypatch):
+    """2026-11-12, a review: with an archive that could not be written the listing held no prompt, and the day
+    closed clean. The listing brings the archive up to date itself, and says nothing was listed when it cannot."""
+    with asked["claude"].open("a", encoding="utf-8") as native:
+        native.write(json.dumps(_typed({"cwd": asked["work"], "sessionId": "c1"}, "A third thing.", "2026-10-30T16:00:00.000Z")) + "\n")
+    command = ["sessions", "prompts", "--workspace", "acme", "--date", "2026-10-30"]
+    assert cli.main(command) == 0 and "A third thing." in capsys.readouterr().out          # typed since the last export, and listed
+    assert cli.main(command + ["--records", str(asked["kb"]), "--json"]) == 1
+    assert json.loads(capsys.readouterr().out)["records"] == [str(asked["kb"])]              # and the answer says what it was held against
+
+    def refused(*args, **kwargs):
+        raise PermissionError("read-only")
+    with asked["claude"].open("a", encoding="utf-8") as native:
+        native.write(json.dumps(_typed({"cwd": asked["work"], "sessionId": "c1"}, "A fourth.", "2026-10-30T17:00:00.000Z")) + "\n")
+    monkeypatch.setattr(sessions, "export_file", refused)
+    assert cli.main(command) == 2
+    said = capsys.readouterr()
+    assert said.out == "" and "not exported" in said.err and "2026-10-30" in said.err
 
 
 def test_an_export_that_finishes_says_when_and_a_busy_one_does_not(harness):
