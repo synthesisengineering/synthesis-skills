@@ -1784,3 +1784,28 @@ def test_the_words_after_a_shells_script_are_put_where_the_script_uses_them(save
 def test_a_command_started_another_way_or_fed_down_a_pipe_is_judged_the_same(saved, program, held, tmp_path):
     command = PY.format(program.format(**saved))
     assert (REFUSED in (guards.check("Bash", {"command": command}, {}, cwd=str(tmp_path)) or "")) == held, program
+
+
+# What a command runs for another (asked after the seventh review, of the shell as of the Python reader): `find`
+# was read for what its -exec does to the files found, never for what that command writes besides; a shell it runs
+# was taken to change them whatever its script did; and a program the guard does not know could be handed a
+# script that names the file, since only a word that was itself a path counted.
+
+@pytest.mark.parametrize("command, held", [
+    ("find /tmp/pad -name '*.txt' -exec cp {{}} {state}/approvals/ \\;", True),                      # what the command it runs writes besides the files found
+    ("find /tmp/pad -name '*.txt' -exec sh -c 'echo x >> {work}/s.jsonl' \\;", True),
+    ("find /tmp/pad -name '*.txt' -exec tee -a {work}/s.jsonl \\;", True),
+    ("find /tmp/pad -name '*.txt' -exec python3 -c \"open('{work}/s.jsonl', 'a').write('x')\" \\;", True),
+    ("find {work} -name '*.jsonl' -exec sh -c 'echo x >> \"$1\"' _ {{}} \\;", True),
+    ("find {work} -name '*.jsonl' -execdir sh -c 'rm \"$1\"' _ {{}} \\;", True),
+    ("find {work} -name '*.jsonl' -exec sh -c 'wc -l \"$1\"' _ {{}} \\;", False),                    # a script that only reads what it is handed
+    ("find {work} -name '*.jsonl' -exec sh -c 'cp \"$1\" /tmp/pad/' _ {{}} \\;", False),
+    ("find /tmp/pad -name '*.txt' -exec sh -c 'wc -l {work}/s.jsonl' \\;", False),
+    ("watch -n 1 'echo x >> {work}/s.jsonl'", True),                                                 # a program the guard does not know, handed a script that names the file
+    ("ssh localhost 'echo x >> {work}/s.jsonl'", True),
+    ("osascript -e 'do shell script \"echo x >> {work}/s.jsonl\"'", True),
+    ("osascript -e 'display notification \"3 items wait\"'", False),
+    ("gh pr comment 12 --body 'notes are in {work}/memory/old.md and /tmp/pad/x.txt'", False),       # its own note, named in a message
+])
+def test_a_command_another_command_runs_is_judged_too(saved, command, held, tmp_path):
+    assert (REFUSED in (guards.check("Bash", {"command": command.format(**saved)}, {}, cwd=str(tmp_path)) or "")) == held, command
