@@ -599,6 +599,7 @@ def records(folder: str, kinds: tuple = (), whole: bool = False) -> list:
     return rows
 
 
+LISTING = re.compile(r'(?m)^(?:all )?\d+ (?:of \d+ )?prompts on \d{4}-\d\d-\d\d in .+ (?:is|are) cited by (?:no|a) record$|^\{"workspace": .*"prompts": \d+, "open": \[')
 CITED = re.compile(r"(?<![\w.-])([A-Za-z0-9][\w.-]*)\s+#(\d+)(?:\s*(?:-|–|—|to|through)\s*#?(\d+))?")  # `<session> #<seq>`, or a range of them
 
 
@@ -626,11 +627,12 @@ def _shift(day: str, days: int) -> str:
 
 
 def uncited(found: list, roots: list) -> list:
-    """The prompts that no record cites. A citation is the session's id, or its first eight characters, then
-    `#<seq>` or a range (`#12-40`, `#12 to #40`), in a text file under the roots that changed on or after the
-    day of the oldest prompt (2026-11-11: what the principal asked reached a project record only if an agent
-    remembered, and nothing checked)."""
-    wanted = {str(p["session"]) for p in found} | {str(p["session"])[:8] for p in found}
+    """The prompts that no record cites. A citation is the session's id, or eight or more of its first characters
+    that no other session listed shares, then `#<seq>` or a range (`#12-40`, `#12 to #40`), in a text file under
+    the roots that changed on or after the day of the oldest prompt (2026-11-11: what the principal asked reached
+    a project record only if an agent remembered, and nothing checked). The listing's own output, saved among the
+    records, is no record: it cites nothing."""
+    ids = {str(p["session"]) for p in found}
     since = min((datetime.fromisoformat(p["at"]).replace(hour=0, minute=0).timestamp() for p in found), default=0)
     spans = collections.defaultdict(list)
     for root in roots:
@@ -643,10 +645,21 @@ def uncited(found: list, roots: list) -> list:
                         (".md", ".txt", ".json", ".jsonl", ".yaml", ".yml")) and os.path.getmtime(path) >= since else ""
                 except OSError:
                     continue
-                for session, first, last in CITED.findall(text):
-                    if session in wanted:
-                        spans[session[:8]].append((int(first), int(last or first)))
-    return [p for p in found if not any(first <= p["seq"] <= last for first, last in spans[str(p["session"])[:8]])]
+                for cited, first, last in CITED.findall(text) if not LISTING.search(text) else ():
+                    named = [s for s in ids if s == cited] or [s for s in ids if len(cited) >= 8 and s.startswith(cited)]
+                    if len(named) == 1:  # a few characters that two sessions share name neither
+                        spans[named[0]].append((int(first), int(last or first)))
+    return [p for p in found if not any(first <= p["seq"] <= last for first, last in spans[str(p["session"])])]
+
+
+def short(session: str) -> str:
+    """As much of a session's id as names it alone among the archive's main sessions: eight characters, or more
+    where two begin alike (2026-11-12: a citation of eight shared characters cleared both and opened neither)."""
+    others = [str(m.get("session")) for m in catalog() if m.get("role") not in ("subagent", "reviewer") and "-agent-" not in str(m.get("session"))]
+    size = min(8, len(session))
+    while size < len(session) and any(o != session and o.startswith(session[:size]) for o in others):
+        size += 1
+    return session[:size]
 
 
 def find(prefix: str) -> list:

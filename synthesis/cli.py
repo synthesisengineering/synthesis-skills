@@ -241,7 +241,8 @@ def cmd_sessions(args) -> int:
         day = args.date or time.strftime("%Y-%m-%d")
         found = sessions.prompts(args.workspace, day)
         left = sessions.uncited(found, args.records) if args.records else found
-        cites = [f"{p['harness']} {str(p['session'])[:8]} #{p['seq']}" for p in left]
+        names = {session: sessions.short(session) for session in {str(p["session"]) for p in left}}
+        cites = [f"{p['harness']} {names[str(p['session'])]} #{p['seq']}" for p in left]
         if args.json:
             print(json.dumps({"workspace": args.workspace, "date": day, "prompts": len(found), "open": cites if args.records else []}))
         else:
