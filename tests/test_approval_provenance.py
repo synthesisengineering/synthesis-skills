@@ -2359,6 +2359,9 @@ def test_the_ninth_reviews_programs(above, program, held, inside, tmp_path):
     ("import os\nfor d in ('/tmp/pad', '/tmp/other'):\n    os.chdir(d)\n    if d.endswith('pad'):\n        continue\n    os.chdir('{work}')\n"
      "    open('forged.json', 'w').write('x')", True),
     ("import os\nwhile True:\n    os.chdir('/tmp/pad')\n    open('out.txt', 'w').write('x')\n    break", False),
+    ("import contextlib\nwith contextlib.chdir('/tmp/pad'):\n    open('out.txt', 'w').write('x')", False),                              # the body of `with chdir` runs there
+    ("import contextlib\nwith contextlib.chdir('/tmp/pad'):\n    pass\nopen('forged.json', 'w').write('x')", True),                    # and it goes back after
+    ("import contextlib, os\nos.chdir('/tmp/pad')\nwith contextlib.chdir('{work}'):\n    open('forged.json', 'w').write('x')", True),
 ])
 def test_a_program_that_leaves_a_transcript_folder_inside_a_try_or_its_main_block(above, program, held, tmp_path):
     command = "python3 - <<'EOF'\n" + program.format(**above) + "\nEOF"
