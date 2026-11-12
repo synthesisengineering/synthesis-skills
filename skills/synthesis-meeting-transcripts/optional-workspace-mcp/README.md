@@ -142,7 +142,10 @@ The launchd and systemd units pass only the variables `install-autostart.sh` wri
 `SYNTHESIS_HOME` is among them when it is set at install, so a supervised server reads
 the outbox of the synthesis home it was installed with; installed with none, it reads
 the default. `ALLOWED_FILE_DIRS` is not: a supervised server reads the outbox and its
-own attachment folder.
+own attachment folder. The send guard counts those two folders and no other, whatever a
+server started by hand was given, so that what passes the guard is read by every server
+this script starts. `synthesis doctor` fails its `outbox` line for a server started with
+`WORKSPACE_MCP_DISABLE_LOCAL_FILES=true`, which reads no local file at all.
 
 `./doctor.sh` reports the outbox the unit gives the server: the folder is there to
 write, and it is the outbox of the shell the doctor runs in. When the unit carries

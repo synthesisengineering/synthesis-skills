@@ -835,6 +835,9 @@ def check_outbox(outbox: Path, unit: Path, pid_file: Path, started=started_with)
     if "WORKSPACE_MCP_PORT" not in env:
         return Check("warn", "outbox", f"cannot tell whether the running mail connector reads {where}: what it was "
                      "started with could not be read (it is not running, or this process may not see it)")
+    if env.get("WORKSPACE_MCP_DISABLE_LOCAL_FILES", "").strip().lower() == "true":  # the connector's own reading of it
+        return Check("fail", "outbox", "the running mail connector was started with WORKSPACE_MCP_DISABLE_LOCAL_FILES=true, so "
+                     f"it reads no local file and refuses one staged in {where} after the send is approved: start it without that")
     allowed = env.get("ALLOWED_FILE_DIRS", "")  # compared as the connector compares: links followed, letters as written
     roots = tuple(os.path.realpath(os.path.expanduser(a.strip())).rstrip(os.sep) + os.sep
                   for a in allowed.split(os.pathsep) if a.strip())

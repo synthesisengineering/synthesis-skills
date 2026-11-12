@@ -55,6 +55,8 @@ PLAIN_FIELDS = frozenset({"rsvp_comment", "responseComment"})
 # The workspace connector's mail tools read an attachment given as a path from the connector's own disk, and only
 # from its attachment folder and the folders ALLOWED_FILE_DIRS names, where its start script names the outbox. A
 # file elsewhere was refused after the send was approved; beside one it could read, the mail went without it (2026-11-12).
+# The guard counts the outbox and the connector's default attachment folder and nothing its own process has in
+# ALLOWED_FILE_DIRS: that is the session's setting, and a connector a supervisor started carries its own.
 # What counts as attached is what its source (2.1.0) reads: the entry's `url`, else the file at its `path`, else base64
 # `content` with a `filename`, an entry it cannot read that way being left out (gmail_tools._prepare_gmail_message);
 # and from no folder a file whose name or folder marks secrets (core.utils.validate_file_path, copied here).
@@ -271,8 +273,8 @@ def message_problems(tool: str, tool_input: dict, config: dict, chans: set | Non
 def _unread_files(tool: str, tool_input: dict, bound: dict | None = None) -> list[str]:
     """Why a workspace-connector call would not attach or upload what it names, judged as the connector reads it. A
     file is judged as it reads one: the path whole (it resolves a relative one in its own folder and expands no
-    `~`), links followed, letters as written, the file inside the outbox, the connector's attachment folder or a
-    folder of ALLOWED_FILE_DIRS as this process has it, and not one it reads from nowhere. Given `bound`, each file
+    `~`), links followed, letters as written, the file inside the outbox or the connector's default attachment
+    folder, and not one it reads from nowhere. A Drive call gives the file's content once. Given `bound`, each file
     it would read goes into it under its real path with the hash of its bytes, and one that cannot be read is a problem."""
     name = tool.rsplit("__", 1)[-1]
     key, given = FILE_DRIVE_TOOLS.get(name), tool_input.get("attachments") if name in FILE_MAIL_TOOLS else None
@@ -284,9 +286,7 @@ def _unread_files(tool: str, tool_input: dict, bound: dict | None = None) -> lis
     except ValueError:
         pass
     outbox, problems, until = paths.outbox(), [], time.monotonic() + HASH_SECONDS
-    roots = tuple(os.path.realpath(os.path.expanduser(r.strip())).rstrip(os.sep) + os.sep for r in (
-        str(outbox), os.environ.get("WORKSPACE_ATTACHMENT_DIR") or "~/.workspace-mcp/attachments",
-        *os.environ.get("ALLOWED_FILE_DIRS", "").split(os.pathsep)) if r.strip())
+    roots = tuple(os.path.realpath(os.path.expanduser(r)).rstrip(os.sep) + os.sep for r in (str(outbox), "~/.workspace-mcp/attachments"))
     rule = (": the mail connector takes an attachment only from its `url`, the file at its `path` or standard base64 "
             "`content` with a `filename`, so this one would not go as given. Give one of the three (a file by its full "
             f"path, staged in {outbox}) and file this send again")
@@ -311,6 +311,10 @@ def _unread_files(tool: str, tool_input: dict, bound: dict | None = None) -> lis
                         f"that copy's full path {give}")
 
     named, remote = tool_input.get(key) if key else None, tool_input.get("file_url") if key == "file_path" else None
+    twice = [k for k in ("content", "file_path", "file_url", "base64_content") if tool_input.get(k) is not None] if key == "file_path" else []
+    if len(twice) > 1:
+        problems.append(f"this call gives {' and '.join(f'`{k}`' for k in twice)}, and the connector takes exactly one source "
+                        "for a file's content: give one and make this call again")
     if isinstance(named, str):
         from urllib.parse import unquote, urlparse
         url = urlparse(named)  # a file:// URL is the path in it, percent-decoded, led by any host but localhost
