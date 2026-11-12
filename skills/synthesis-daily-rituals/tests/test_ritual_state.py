@@ -340,6 +340,19 @@ def test_a_day_written_any_other_way_is_refused_on_every_python(tmp_path: Path, 
     assert not (tmp_path / "history.jsonl").exists()
 
 
+def test_a_record_dated_after_the_macs_own_today_is_refused_and_todays_is_kept(tmp_path: Path) -> None:
+    """The record takes the day from the Mac's clock. Two days ahead has not come at any hour of this run; today has,
+    and if the run crosses midnight it is yesterday, which is recorded too."""
+    from datetime import date, timedelta
+    today, ahead = date.today().isoformat(), (date.today() + timedelta(days=2)).isoformat()
+    for direction in ("day-start", "day-end"):
+        done = run(tmp_path, "record", "--direction", direction, "--workspace", "alpha", "--date", ahead)
+        assert done.returncode != 0 and f"--date {ahead} has not come" in done.stderr and "today is 20" in done.stderr
+    assert not (tmp_path / "history.jsonl").exists()
+    record(tmp_path, "day-end", "alpha", today)
+    assert query_json(tmp_path, "last", "--workspace", "alpha")["workspaces"]["alpha"]["last_day_end"]["date"] == today
+
+
 def test_an_early_weekly_review_recorded_for_its_friday_is_not_owed_on_friday(tmp_path: Path) -> None:
     """2026-08-27 lesson: a review pulled forward to Thursday is recorded with the
     date of the Friday it satisfies, so Friday's obligation reads as met."""

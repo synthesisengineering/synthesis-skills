@@ -56,9 +56,10 @@ def listing(tmp_path: Path, monkeypatch, *left, total=3, workspace="desk", day=D
 
 @pytest.fixture
 def record(monkeypatch, capsys):
-    def run(state: Path, *extra, direction="day-end", workspace="desk", day=DAY):
+    """Run `ritual_state.py record` in this process for `day`, on the calendar day `today` (the same day, if none)."""
+    def run(state: Path, *extra, direction="day-end", workspace="desk", day=DAY, today=None):
         monkeypatch.setenv("RITUAL_STATE_DIR", str(state))
-        monkeypatch.setattr(ritual_state, "today", lambda: date.fromisoformat(day), raising=False)
+        monkeypatch.setattr(ritual_state, "today", lambda: date.fromisoformat(today or day), raising=False)
         try:
             code, refusal = ritual_state.main(["record", "--direction", direction, "--workspace", workspace, "--date", day, *extra]), ""
         except SystemExit as exc:
@@ -338,3 +339,63 @@ def test_a_folder_reached_through_a_link_and_its_parent_is_the_folder_the_listin
         code, _, refusal = record(state, "--outcome", outcome)
         assert code != 0 and history(state) == closed, outcome
         assert f"against ['{tmp_path / 'kb'}']" in refusal and f"against ['{read}']" in refusal    # each side as it is read
+
+
+# --- a day that has not come (2026-11-12, a second review) -------------------------------------------------------
+# `record --date <tomorrow>` asked the listing about a day on which nothing had been typed yet, printed `prompts: none
+# typed` and recorded a clean close. Every check a record makes reads what its day held, and a day ahead holds
+# nothing, so a record dated after today is refused, in every direction. One date ahead stays, because the skill's
+# own rule asks for it: a weekly review done early is recorded with the Friday it satisfies. DAY is a Wednesday.
+
+AHEAD = {"tomorrow": "2026-11-12", "the day after": "2026-11-13", "next week": "2026-11-18", "next year": "2027-01-01"}
+REFUSED = [(direction, name) for direction in ritual_state.DIRECTIONS for name in AHEAD
+           if (direction, name) != ("weekly-review", "the day after")]          # that Friday, for a review done early: below
+
+
+def test_a_day_end_for_tomorrow_is_refused_before_anything_is_listed(tmp_path, record, monkeypatch):
+    state = tmp_path / "state"
+    declare(state, desk=ON)
+    asked = listing(tmp_path, monkeypatch, total=0, day="2026-11-12")            # nothing is typed yet on a day that has not come
+    for outcome in ("clean", "partial"):
+        code, _, refusal = record(state, "--outcome", outcome, day="2026-11-12", today=DAY)
+        assert code != 0 and history(state) == "" and not asked.exists(), outcome
+        assert "--date 2026-11-12 has not come" in refusal and "today is 2026-11-11" in refusal
+    code, out, refusal = record(state, day="2026-11-12", today="2026-11-12")      # on the day itself it is listed and recorded
+    assert code == 0 and "prompts: none typed on 2026-11-12" in out and asked.exists(), refusal
+
+
+@pytest.mark.parametrize("direction, ahead", REFUSED, ids=[f"{direction}, {name}" for direction, name in REFUSED])
+def test_a_record_dated_after_today_is_refused_in_every_direction(tmp_path, record, direction, ahead):
+    state = tmp_path / "state"
+    declare(state, desk={"plans_dirs": []})
+    code, _, refusal = record(state, direction=direction, day=AHEAD[ahead], today=DAY)
+    assert code != 0 and history(state) == ""
+    assert f"--date {AHEAD[ahead]} has not come" in refusal and "today is 2026-11-11" in refusal
+    for day, today in ((DAY, DAY), ("2026-11-10", DAY), (DAY, "2026-11-12"), ("2025-01-01", DAY)):   # today, yesterday, a close
+        code, out, refusal = record(state, direction=direction, day=day, today=today)                # after midnight, long ago
+        assert code == 0 and f"recorded {direction} desk {day} (clean)" in out, refusal
+    assert history(state).count("\n") == 4
+
+
+def test_a_weekly_review_done_early_takes_the_friday_it_satisfies_and_no_other_day_ahead(tmp_path, record):
+    """The rituals' rule: a review pulled forward is recorded with the Friday it satisfies, so that Friday reads as
+    met. It is the one date after today a record takes, and only a weekly review takes it."""
+    state = tmp_path / "state"
+    declare(state, desk={"plans_dirs": []})
+    refused = {"on Wednesday, for Thursday": ("2026-11-11", "2026-11-12"),      # the day it is done, the date it is given
+               "on Wednesday, for the Friday after its own": ("2026-11-11", "2026-11-20"),
+               "on Friday, for the next Friday": ("2026-11-13", "2026-11-20"),
+               "on Saturday, for Sunday": ("2026-11-14", "2026-11-15")}
+    for name, (done, given) in refused.items():
+        code, _, refusal = record(state, direction="weekly-review", day=given, today=done)
+        assert code != 0 and history(state) == "", name
+        assert f"--date {given} has not come" in refusal and "the Friday it satisfies" in refusal, name
+    for direction in ("day-start", "day-end"):                                  # no other record takes that Friday early
+        code, _, refusal = record(state, direction=direction, day="2026-11-13", today="2026-11-12")
+        assert code != 0 and "--date 2026-11-13 has not come" in refusal and history(state) == "", direction
+    taken = {"on Wednesday, for its Friday": ("2026-11-11", "2026-11-13"), "on Thursday, for its Friday": ("2026-11-12", "2026-11-13"),
+             "on Saturday, for the Friday to come": ("2026-11-14", "2026-11-20"), "on Friday, for that day": ("2026-11-13", "2026-11-13"),
+             "on Monday, for the Friday missed": ("2026-11-16", "2026-11-13")}
+    for name, (done, given) in taken.items():
+        code, out, refusal = record(state, direction="weekly-review", day=given, today=done)
+        assert code == 0 and f"recorded weekly-review desk {given} (clean)" in out, f"{name}: {refusal}"
