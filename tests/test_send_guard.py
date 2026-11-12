@@ -4,6 +4,7 @@ CI has no ~/.synthesis, so these tests load the public example config shipped wi
 message-guard skill (skills/synthesis-message-guard/config.example.json) and say so here.
 """
 
+import base64
 import json
 import os
 import re
@@ -247,13 +248,18 @@ def test_no_preferred_names_key_means_no_name_check():
 # names the synthesis outbox). A file anywhere else was refused after the principal had approved the send; with
 # a second attachment the connector could read, the message went out without the first. The guard refuses such
 # a call before any code is issued and says where to put the file.
+#
+# Only what the connector reads counts as attached. It takes each attachment from the entry's `url`, else the file
+# at its `path`, else base64 `content` with a `filename` (gmail_tools._prepare_gmail_message, 2.1.0). An entry it
+# cannot read that way it leaves out of the mail, and letters outside standard base64 it skips, attaching other
+# bytes. So an entry that names its file under another key, gives no source or two, gives content that is not
+# standard base64, or names a file it reads from no folder is refused the same way.
 
 SEND = "mcp__workspace-mcp__send_gmail_message"
 MAIL = {"to": "a@example.com", "subject": "Plan", "body": "<p>The plan is attached.</p>", "body_format": "html",
         "user_google_email": "me@example.com"}
 AS_CONTENT = [{"filename": "plan.pdf", "content": "UEsDBA=="},
-              {"url": "https://files.example.com/plan.pdf", "filename": "plan.pdf"},
-              {"file_id": "1aBcD3fGh1jK", "filename": "plan.pdf"}, {"driveFileId": "1aBcD3fGh1jK"}]
+              {"url": "https://files.example.com/plan.pdf", "filename": "plan.pdf"}]
 
 
 def _put(folder: Path, name: str = "plan.pdf") -> Path:
@@ -273,23 +279,109 @@ def scratch(tmp_path, monkeypatch):
     return _put(tmp_path / "scratch").parent
 
 
-def _attached(file, tool: str = SEND, key: str = "path", config: dict = CONFIG):
-    return guards.check(tool, {**MAIL, "attachments": [{key: str(file)}]}, config)
+def _attached(file, tool: str = SEND, config: dict = CONFIG):
+    return guards.check(tool, {**MAIL, "attachments": [{"path": str(file)}]}, config)
+
+
+def _refused(given, *said: str) -> str:
+    """The refusal of a mail call that carries these attachments: it says each of these, and no code is filed."""
+    reason = guards.check(SEND, {**MAIL, "attachments": given}, CONFIG)
+    assert all(words in reason for words in said), (reason, said)
+    assert "approve" not in reason and approvals.pending() == [], reason
+    return reason
 
 
 @pytest.mark.parametrize("tool", [SEND, "mcp__workspace_mcp__draft_gmail_message", "mcp__mail_server__send_gmail_message"])
-@pytest.mark.parametrize("key", ["path", "file_path", "filePath"])
-def test_a_file_outside_the_folders_the_connector_reads_is_refused_with_no_code_and_passes_once_staged(tool, key, scratch):
+def test_a_file_outside_the_folders_the_connector_reads_is_refused_with_no_code_and_passes_once_staged(tool, scratch):
     outside = scratch / "plan.pdf"
-    reason = _attached(outside, tool, key)
+    reason = _attached(outside, tool)
     assert f"the attachment {outside} is outside the folders the mail connector reads" in reason
     assert f"copy the file into {paths.outbox()}" in reason and "file this send again" in reason
     assert "approve" not in reason and approvals.pending() == []
     staged = shutil.copy(outside, paths.outbox() / "plan.pdf")
-    assert "approval" in _attached(staged, tool, key) and len(approvals.pending()) == 1
+    assert "approval" in _attached(staged, tool) and len(approvals.pending()) == 1
 
 
-def test_content_a_url_or_a_drive_id_is_no_file_read_and_only_the_file_beside_it_is_judged(scratch):
+@pytest.mark.parametrize("key", ["file_path", "filePath", "file", "file_id", "driveFileId"])
+def test_a_file_named_under_any_key_but_path_is_refused_with_no_code_and_told_the_key_the_connector_reads(key, scratch):
+    """The connector reads an attachment's file under `path` and under no other key. An entry that named it as
+    `file_path` passed the guard and the principal approved it; the mail then went without the file."""
+    staged = str(shutil.copy(scratch / "plan.pdf", paths.outbox() / "plan.pdf"))
+    for entry in ({key: staged}, {key: staged, "filename": "plan.pdf", "mime_type": "application/pdf"}):
+        for given, place in (([entry], 1), (AS_CONTENT + [entry], 3), (json.dumps([entry]), 1)):
+            _refused(given, f"attachment {place} ", "has none of `path`, `content` and `url`", f"`{key}`",
+                     "the file at its `path`", f"staged in {paths.outbox()}", "file this send again")
+    assert "approval" in _attached(staged)  # the same file, under the key the connector reads
+
+
+NOT_AS_GIVEN = [  # (an entry the connector would not attach as given, what the guard says of it)
+    ({"filename": "plan.pdf", "content": "UEsDBA"}, "`content` that is not standard base64"),  # padding its decoder refuses
+    ({"filename": "plan.pdf", "content": "UEsD-A_="}, "`content` that is not standard base64"),  # URL-safe letters: it skips them
+    # It skips the prefix's punctuation too, reads the rest as data and attaches those other bytes with no word.
+    ({"filename": "plan.pdf", "content": "data:application/pdf;base64,UEsDBA=="}, "`content` that is not standard base64"),
+    ({"filename": "plan.pdf", "content": ["UEsDBA=="]}, "`content` that is not standard base64"),
+    ({"content": "UEsDBA=="}, "`content` with no `filename`"),
+    ({"filename": "plan.pdf", "mime_type": "application/pdf"}, "has none of `path`, `content` and `url`"),
+    ({"filename": "plan.pdf", "content": "", "path": ""}, "has none of `path`, `content` and `url`"),
+    ({"url": "", "filename": "plan.pdf"}, "an empty `url`"),
+]
+
+
+@pytest.mark.parametrize("entry,said", NOT_AS_GIVEN, ids=[f"{n}: {said}" for n, (_, said) in enumerate(NOT_AS_GIVEN)])
+def test_an_entry_the_connector_would_not_attach_as_given_is_refused_with_no_code(entry, said, scratch):
+    """The connector sends when at least one attachment attached and leaves the others out: a mail approved with
+    two files went with one. Alone, such an entry cost an approval before the connector refused the call. Each
+    entry here was run through the connector's own code (2.1.0): all but the `data:` one are left out."""
+    staged = {"path": str(shutil.copy(scratch / "plan.pdf", paths.outbox() / "plan.pdf"))}
+    for given, place in (([entry], 1), ([staged, entry], 2), (json.dumps([staged, entry]), 2)):
+        _refused(given, f"attachment {place} ", said, "would not go as given", "file this send again")
+
+
+def test_content_the_connector_decodes_goes_to_the_code(scratch):
+    """Standard base64 with a name, also in lines as a MIME encoder writes it: its decoder skips the line breaks."""
+    in_lines = base64.encodebytes(bytes(range(256)) * 2).decode("ascii")
+    assert "+" in in_lines and "/" in in_lines and in_lines.count("\n") > 5
+    for content in ("UEsDBA==", in_lines, " UEsDBA== \n"):
+        call = {**MAIL, "attachments": [{"filename": "plan.bin", "content": content}]}
+        assert "approval" in guards.check(SEND, call, CONFIG), content
+
+
+@pytest.mark.parametrize("entry,read", [
+    ({"url": "https://files.example.com/plan.pdf", "path": "<staged>"}, "url"),
+    ({"path": "<staged>", "content": "UEsDBA==", "filename": "plan.pdf"}, "path"),
+    ({"url": "https://files.example.com/plan.pdf", "content": "UEsDBA==", "filename": "plan.pdf"}, "url"),
+    ({"url": None, "path": "<staged>"}, "url"),  # a key left empty still leads: it fetches nothing and reads no path
+])
+def test_an_entry_with_two_sources_is_refused_since_the_connector_reads_one_and_never_the_other(entry, read, scratch):
+    """It takes the `url` before the `path` and the `path` before the `content`, and says nothing of the one it
+    skipped: the principal would see a file named in the call that is not the one attached."""
+    staged = str(shutil.copy(scratch / "plan.pdf", paths.outbox() / "plan.pdf"))
+    entry = {key: staged if value == "<staged>" else value for key, value in entry.items()}
+    _refused([entry], "attachment 1 ", f"reads only the `{read}`", "give one of them", "file this send again")
+    assert "approval" in guards.check(SEND, {**MAIL, "attachments": [{"path": staged}, AS_CONTENT[0]]}, CONFIG)
+
+
+@pytest.mark.parametrize("name", [".env", ".env.production", "credentials.json", "Client_Secret.json", ".netrc",
+                                  ".ssh/id_ed25519.pub", "team/.AWS/config", ".env.d/notes.txt"])
+def test_a_staged_file_whose_name_or_folder_marks_secrets_is_refused_since_the_connector_reads_no_such_file(name, scratch):
+    """The connector reads no .env, key or credentials file from any folder, the outbox included
+    (core.utils.validate_file_path). Staging one again changes nothing, so the refusal does not say to."""
+    staged = _put((paths.outbox() / name).parent, Path(name).name)
+    reason = _attached(staged)
+    assert f"the attachment {staged} is one the mail connector never reads" in reason
+    assert "copy the file into" not in reason and "approve" not in reason and approvals.pending() == []
+
+
+def test_a_name_that_only_resembles_one_is_read_and_a_folder_of_keys_under_an_allowed_home_is_not(scratch, monkeypatch):
+    for name in ("env.txt", "my.env", ".environment", "credentials.txt", "notes/client_secret.json.txt"):
+        assert "approval" in _attached(_put((paths.outbox() / name).parent, Path(name).name)), name
+    monkeypatch.setenv("ALLOWED_FILE_DIRS", os.pathsep.join([str(Path.home()), os.sep]))
+    assert "approval" in _attached(_put(Path.home() / "reports"))
+    for file in (_put(Path.home() / ".kube", "config"), _put(Path.home() / ".config" / "gcloud", "notes.txt"), "/etc/passwd"):
+        assert "never reads" in _attached(file), file
+
+
+def test_content_or_a_url_is_no_file_read_and_only_the_file_beside_it_is_judged(scratch):
     for given in ("absent", None, [], {}, AS_CONTENT, json.dumps(AS_CONTENT), "not a list"):
         call = dict(MAIL) if given == "absent" else {**MAIL, "attachments": given}
         assert "approval" in guards.check(SEND, call, CONFIG), given
@@ -370,4 +462,4 @@ def test_the_composing_reference_lists_this_check_with_the_words_the_guard_block
             "does not exist": paths.outbox() / "gone.pdf", "is not a file": paths.outbox()}
     for words, file in said.items():
         assert words in _attached(file) and words in listed, words
-    assert all(f"`{name}`" in listed for name in (*guards.FILE_KEYS, *sorted(guards.FILE_MAIL_TOOLS), "ALLOWED_FILE_DIRS"))
+    assert all(f"`{name}`" in listed for name in ("path", *sorted(guards.FILE_MAIL_TOOLS), "ALLOWED_FILE_DIRS"))

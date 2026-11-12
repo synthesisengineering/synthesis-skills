@@ -49,14 +49,12 @@ def test_the_tools_keys_and_refusal_the_reference_quotes_are_the_guards(home) ->
     outside.write_bytes(b"%PDF-1.4\n")
     for tool in sorted(guards.FILE_MAIL_TOOLS):
         assert f"`{tool}`" in REFERENCE
-        for key in guards.FILE_KEYS:
-            assert f"`{key}`" in REFERENCE
-            problems = guards.message_problems(f"mcp__workspace-mcp__{tool}", {"attachments": [{key: str(outside)}]}, {})
-            assert len(problems) == 1, problems
-            for words in ("is outside the folders the mail connector reads", "copy the file into", "file this send again"):
-                assert words in problems[0] and words in FLAT, words
-    for unaffected in ("`content`", "`url`"):  # what needs no staging
-        assert unaffected in REFERENCE
+        problems = guards.message_problems(f"mcp__workspace-mcp__{tool}", {"attachments": [{"path": str(outside)}]}, {})
+        assert len(problems) == 1, problems
+        for words in ("is outside the folders the mail connector reads", "copy the file into", "file this send again"):
+            assert words in problems[0] and words in FLAT, words
+    for named in ("`path`", "`content`", "`url`"):  # the key a file goes under, and what needs no staging
+        assert named in REFERENCE
 
 
 def test_skill_md_points_at_the_section_and_keeps_its_size() -> None:
