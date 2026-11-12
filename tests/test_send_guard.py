@@ -570,3 +570,95 @@ def test_the_rule_is_these_five_tools_and_a_remote_address_or_another_tool_is_as
     for remote in ("https://files.example.com/plan.pdf", "http://files.example.com/plan.pdf", str(outside)):
         assert _uploaded(remote, NEW_FILE, "fileUrl") is None, remote  # fetched, or no URL at all: nothing read from this disk
     assert _uploaded(outside.as_uri(), NEW_FILE, "file_path") is None  # the key this tool reads is `fileUrl`
+
+
+# --- the approval binds the bytes of each file the connector reads ---------------------------------------------
+# An approval is keyed by a digest of the whole call, and a file the call names went into it as its path alone:
+# a copy replaced in the outbox between the principal's code and the call went out under the old approval. The
+# digest now takes in the content hash of each file the connector will read, as the iMessage sender binds a photo.
+
+def _code(reason: str) -> str:
+    return re.search(r"\bcode ([a-z0-9]{6})\b", reason).group(1)
+
+
+def _staged(scratch) -> Path:
+    return Path(shutil.copy(scratch / "plan.pdf", paths.outbox() / "plan.pdf"))
+
+
+@pytest.mark.parametrize("ask", [_attached, _uploaded, lambda file: _uploaded(Path(file).as_uri())],
+                         ids=["a mail attachment", "a Drive file by its path", "a Drive file by its URL"])
+def test_a_file_replaced_between_the_approval_and_the_call_needs_a_new_approval(ask, scratch):
+    staged = _staged(scratch)
+    approved = staged.read_bytes()
+    first = ask(staged)
+    assert "as it is now" in first  # the request says what it covers
+    _approve(first)
+    staged.write_bytes(b"%PDF-1.4\nanother plan\n")
+    second = ask(staged)
+    assert "approval" in second and _code(second) != _code(first) and len(approvals.pending()) == 1
+    staged.write_bytes(approved)  # the bytes the principal approved, back in place: that approval is theirs
+    assert ask(staged) is None
+    assert "approval" in ask(staged)  # and spent once
+
+
+def test_the_bytes_are_bound_and_not_the_files_size_or_date(scratch):
+    staged = _staged(scratch)
+    before = staged.stat()
+    _approve(_attached(staged))
+    staged.write_bytes(staged.read_bytes().replace(b"1.4", b"1.5"))  # as long as it was
+    os.utime(staged, ns=(before.st_atime_ns, before.st_mtime_ns))  # and dated as it was
+    after = staged.stat()
+    assert (after.st_size, after.st_mtime_ns) == (before.st_size, before.st_mtime_ns)
+    assert "approval" in _attached(staged)
+
+
+def test_a_link_pointed_at_another_file_after_the_approval_needs_a_new_one_though_the_call_is_the_same(scratch):
+    """The connector follows links, so the bytes bound are those of the file a link leads to."""
+    staged, other = _staged(scratch), _put(paths.outbox(), "other.pdf")
+    other.write_bytes(b"%PDF-1.4\nthe other plan\n")
+    link = scratch / "latest.pdf"
+    link.symlink_to(staged)
+    _approve(_attached(link))
+    link.unlink()
+    link.symlink_to(other)
+    assert "approval" in _attached(link)
+    link.unlink()
+    link.symlink_to(staged)
+    assert _attached(link) is None
+
+
+def test_each_file_of_a_call_is_bound_and_a_file_the_call_does_not_name_is_not(scratch):
+    one, two, beside = _staged(scratch), _put(paths.outbox(), "terms.pdf"), _put(paths.outbox(), "notes.txt")
+    call = {**MAIL, "attachments": [{"path": str(one)}, {"path": str(two)}, AS_CONTENT[0]]}
+    for changed in (one, two):
+        _approve(guards.check(SEND, call, CONFIG))
+        kept = changed.read_bytes()
+        changed.write_bytes(kept + b"a line added\n")
+        assert "approval" in guards.check(SEND, call, CONFIG), changed
+        changed.write_bytes(kept)
+        assert guards.check(SEND, call, CONFIG) is None, changed
+    _approve(guards.check(SEND, call, CONFIG))
+    beside.write_bytes(b"another session's file, staged beside these\n")
+    assert guards.check(SEND, call, CONFIG) is None
+    plain = {"channel_id": "C1", "message": "The plan is in the shared folder."}  # a call that names no file is as it was
+    _approve(guards.check(SLACK, plain, CONFIG))
+    assert guards.check(SLACK, plain, CONFIG) is None
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root reads a file whatever its mode")
+@pytest.mark.parametrize("ask,what", [(_attached, "the attachment"), (_uploaded, "the file")],
+                         ids=["a mail attachment", "a Drive file"])
+def test_a_file_that_cannot_be_read_when_the_call_is_made_refuses_the_call(ask, what, scratch):
+    staged = _staged(scratch)
+    staged.chmod(0)
+    try:
+        unasked = ask(staged)
+        assert f"{what} {staged} cannot be read" in unasked and "approve" not in unasked and approvals.pending() == []
+        staged.chmod(0o600)
+        _approve(ask(staged))
+        staged.chmod(0)
+        refused = ask(staged)
+        assert f"{what} {staged} cannot be read" in refused and "approve" not in refused
+    finally:
+        staged.chmod(0o600)
+    assert ask(staged) is None  # the approval was kept for the call the connector can make
