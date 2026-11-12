@@ -1580,3 +1580,14 @@ def test_and_what_stays_refused_after_the_fifth_review(saved, command, tmp_path)
 def test_a_spawned_command_with_a_found_file_among_its_words_is_judged_with_it(saved, program, held, tmp_path):
     command = "python3 - <<'EOF'\n" + program.format(**saved) + "\nEOF"
     assert (REFUSED in (guards.check("Bash", {"command": command}, {}, cwd=str(tmp_path)) or "")) == held, program
+
+
+def test_a_program_that_starts_a_refused_command_is_told_which_rule_refused_it(saved, tmp_path):
+    """The replay after the fifth review: a program that ran the hook through `subprocess` is refused now, as the
+    same command typed in the shell always was, and the refusal named the wrong rule."""
+    hook = "import subprocess\nsubprocess.run(['/usr/bin/python3', '-S', 'synthesis/hook.py', 'pre-tool-use'], input='{}', text=True)"
+    reason = guards.check("Bash", {"command": "python3 - <<'EOF'\n" + hook + "\nEOF"}, {}, cwd=str(tmp_path))
+    assert REFUSED in reason and "runs the synthesis hook" in reason and "starts a command" in reason
+    copy = "import subprocess\nsubprocess.run(['cp', '/tmp/pad/x', '{work}/s.jsonl'])".format(**saved)
+    reason = guards.check("Bash", {"command": "python3 - <<'EOF'\n" + copy + "\nEOF"}, {}, cwd=str(tmp_path))
+    assert REFUSED in reason and "starts a command" in reason and "writes into" in reason
