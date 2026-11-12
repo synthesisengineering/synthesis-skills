@@ -418,21 +418,29 @@ def test_a_command_is_tried_every_interval_and_not_once_more_on_the_edge_of_the_
     ("a file that is not executable", "is not executable"),
     ("a directory", "is not executable"),
     ("a whole command given as one word", "was not found"),
+    ("a script whose interpreter is missing", f"cannot be run ({os.strerror(errno.ENOENT)})"),
+    ("a file that is no program", f"cannot be run ({os.strerror(errno.ENOEXEC)})"),
 ])
 def test_a_command_that_cannot_be_started_is_refused_at_once_in_one_line(two, tmp_path, monkeypatch, named, why):
     """2026-11-12, a third review: `wait run --for 1m -- no-such-command` ended in a Python traceback. No try of such a
     command starts, so the wait refuses it the way it refuses a bound it cannot read: one line, exit 2, at once. The
     line names the program as it was given, which the traceback did: a command quoted whole after `--` is one word,
-    and reads as a program that was not found only when that word is shown."""
+    and reads as a program that was not found only when that word is shown. And the plain words are said only where
+    they are true: a script that is there, whose interpreter is not, fails with the error of a missing program."""
     from synthesis import paths
-    script, folder = tmp_path / "check.sh", tmp_path / "checks"
+    script, folder, orphan, text = tmp_path / "check.sh", tmp_path / "checks", tmp_path / "orphan.sh", tmp_path / "notes.txt"
     script.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
     script.chmod(0o644)
+    orphan.write_text(f"#!{tmp_path / 'gone' / 'interpreter'}\nexit 0\n", encoding="utf-8")
+    text.write_text("no program\n", encoding="utf-8")
+    for there in (orphan, text):
+        there.chmod(0o755)
     folder.mkdir()
     monkeypatch.setenv("PATH", str(folder))                                           # one empty folder: what a name finds there is the same on every machine
     program = {"a name that is not on PATH": "synthesis-no-such-command", "a path that does not exist": str(tmp_path / "gone" / "check"),
                "a file that is not executable": str(script), "a directory": str(folder),
-               "a whole command given as one word": "synthesis-no-such-command --branch main"}[named]
+               "a whole command given as one word": "synthesis-no-such-command --branch main",
+               "a script whose interpreter is missing": str(orphan), "a file that is no program": str(text)}[named]
     words = [program] if " " in program else [program, "--branch", "main"]
     began = time.time()
     done = cli("wait", "run", "--for", "1m", "--", *words)
@@ -443,10 +451,13 @@ def test_a_command_that_cannot_be_started_is_refused_at_once_in_one_line(two, tm
 
 def test_a_command_that_cannot_be_started_gets_no_second_try_and_one_that_starts_and_fails_does(two, clock, monkeypatch, capsys):
     """Whatever the system says of a command it cannot run is the refusal, said once, with no sleep and no second try,
-    and so it is for a command that goes missing between two tries. A command that starts and exits with anything but
-    0, the 126 and 127 of a shell included, has failed a try: it is tried again until the bound."""
+    and so it is for a command that goes missing between two tries. Of a program that is there to run, only the
+    system's own words are said. A command that starts and exits with anything but 0, the 126 and 127 of a shell
+    included, has failed a try: it is tried again until the bound."""
+    import shutil
     from synthesis import paths, wait
-    starts, tried, asked = [], [], signal.getsignal(signal.SIGTERM)
+    starts, tried, there, asked = [], [], [], signal.getsignal(signal.SIGTERM)
+    monkeypatch.setattr(shutil, "which", lambda name: f"/usr/bin/{name}" if there else None)   # whether a program by the name is there to run
 
     class Check:                                                                      # each start ends as the test set it: an exit code, or no start
         def __init__(self, command, **kwargs):
@@ -471,6 +482,11 @@ def test_a_command_that_cannot_be_started_gets_no_second_try_and_one_that_starts
                        (PermissionError(errno.EACCES, "Permission denied", "ci-check"), "is not executable"),
                        (OSError(errno.ENOEXEC, "Exec format error", "ci-check"), "cannot be run (Exec format error)")):   # a file that is no program
         assert run(error) == (2, "", refused.format(why), 1, 0)
+    there.append("ci-check")                                                          # now a program by that name is there, and may be run
+    for error, why in ((FileNotFoundError(errno.ENOENT, "No such file or directory", "ci-check"), "cannot be run (No such file or directory)"),
+                       (PermissionError(errno.EPERM, "Operation not permitted", "ci-check"), "cannot be run (Operation not permitted)")):
+        assert run(error) == (2, "", refused.format(why), 1, 0)                       # its interpreter is missing; a sandbox forbids the run
+    there.clear()
     gone = FileNotFoundError(errno.ENOENT, "No such file or directory", "ci-check")
     assert run(1, gone) == (2, "", refused.format("was not found"), 2, 30.02)         # it started and failed, then it was gone
     assert run(127, 126) == (3, "", "nothing arrived in 45 s: still waiting for `ci-check --branch main` to succeed\n", 2, 45.02)
