@@ -3101,3 +3101,39 @@ def test_a_reading_that_meets_itself_or_runs_long_still_ends(above, program, hel
     began = time.monotonic()
     reason = guards.check("Bash", {"command": command}, {}, cwd=str(above["work"] if inside else here))
     assert (REFUSED in (reason or "")) == held and time.monotonic() - began < 5, program
+
+
+# This project's third probe after the eleventh round. A call read by what it hands a function read the
+# function's name as that value alone, also where the function itself gives the name another value in a branch or
+# a loop: `def target(out): if late: out = <transcript>; return out` passed when it was handed a file elsewhere,
+# since the tenth round. A name is now the value the call hands it or any the function gives it. With it: a
+# default of None is no value, a call of the program's own function is built from what it hands back and not from
+# what it is handed, and a class that keeps its keywords as its fields is read by the keywords it is built with.
+REBOUND = [
+    ("def target(out):\n    if len(sys.argv) > 5:\n        out = T\n    return out\nopen(target(P + '/a.txt'), 'w').write('x')", True),
+    ("def target(out):\n    if len(sys.argv) > 5:\n        out = P + '/b.txt'\n    return out\nopen(target(P + '/a.txt'), 'w').write('x')", False),
+    ("class J:\n    def where(self, out):\n        for _ in range(1):\n            out = T\n        return out\nopen(J().where(P + '/a.txt'), 'w').write('x')", True),
+    ("class J:\n    def __init__(self, out):\n        if len(sys.argv) > 5:\n            out = T\n        self.out = out\nopen(J(P + '/a.txt').out, 'w').write('x')", True),
+    ("class Job:\n    def __init__(self, src, out=None):\n        self.src = src\n        self.out = out or P + '/default.txt'\nj = Job(T)\nopen(j.out, 'w').write(open(j.src).read())", False),
+    ("class Job:\n    def __init__(self, out=None):\n        self.out = out or T\nj = Job()\nopen(j.out, 'w').write('x')", True),
+    ("class Job:\n    def __init__(self, src, out=None):\n        self.src = src\n        if out is None:\n            out = P + '/default.txt'\n        self.out = out\nj = Job(T)\n"
+     "open(j.out, 'w').write(open(j.src).read())", False),
+    ("class Job:\n    def __init__(self, out=None):\n        if out is None:\n            out = T\n        self.out = out\nj = Job()\nopen(j.out, 'w').write('x')", True),
+    ("class Job:\n    def __init__(self, src):\n        self.src = src\n        self.out = None\ndef out_for(src):\n    return P + '/' + os.path.basename(src) + '.txt'\njob = Job(T)\n"
+     "job.out = out_for(job.src)\nopen(job.out, 'w').write(open(job.src).read())", False),
+    ("class Job:\n    def __init__(self, src):\n        self.src = src\n        self.out = None\ndef out_for(src):\n    return src + '.bak'\njob = Job(T)\njob.out = out_for(job.src)\n"
+     "open(job.out, 'w').write('x')", True),
+    ("class Bunch:\n    def __init__(self, **kw):\n        self.__dict__.update(kw)\nj = Bunch(src=T, out=P + '/a.txt')\nopen(j.out, 'w').write(open(j.src).read())", False),
+    ("class Bunch:\n    def __init__(self, **kw):\n        self.__dict__.update(kw)\nj = Bunch(src=P + '/a.txt', out=T)\nopen(j.out, 'w').write('x')", True),
+    ("class Bunch:\n    def __init__(self, **kw):\n        self.__dict__.update(kw)\nj = Bunch(out=P + '/a.txt')\nj.__dict__['out'] = T\nopen(j.out, 'w').write('x')", True),
+]
+
+
+@pytest.mark.parametrize("program, held", REBOUND)
+@pytest.mark.parametrize("inside", [False, True])
+def test_a_name_a_function_gives_another_value_is_either(above, program, held, inside, tmp_path):
+    here = tmp_path / "elsewhere"
+    here.mkdir()
+    command = "python3 - <<'EOF'\n" + MEMBERS.format(**above) + program + "\nEOF"
+    reason = guards.check("Bash", {"command": command}, {}, cwd=str(above["work"] if inside else here))
+    assert (REFUSED in (reason or "")) == held, program
