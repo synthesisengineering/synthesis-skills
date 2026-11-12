@@ -9,11 +9,12 @@ Which phrases count, decided from what the skills outside the list say (the guar
 
   a hook claim            PreToolUse, SessionStart, UserPromptSubmit; "Stop hook", "session-start hook", "prompt
                           hook", "lifecycle hooks", "git hooks", "v5 hooks", "synthesis-hook"; "the commit check";
-                          hooks.json; core.hooksPath; and "hook" before a verb of enforcement ("the hook refuses")
+                          hooks.json; core.hooksPath; and "hook" before a verb of enforcement ("the hook refuses"):
+                          refuse, block, deny, stop, check, enforce, catch, hold, ask, wait, let, run, re-inject
   a guard claim           a guard by its name, spaced or hyphenated, so the name of a guard skill counts: a send,
                           message, deploy, shell, write, browser, account-routing, repo, commit, publish, pre-tool,
-                          synthesis or v5 guard; "the guard"; "agent guardrails"; guards.py; and "guard" before a
-                          verb of enforcement ("a guard blocks")
+                          synthesis or v5 guard; "the guard"; "agent guardrails"; guards.py; and "guard" before
+                          one of the same verbs ("each guard blocks")
   an approval-code claim  "approve <code>", "approval code", "six-character code", "type approve" and
                           "waits for the code"
   a runtime need          the `synthesis` command in backticks, ~/.synthesis/v5, SYNTHESIS_HOME and an import of
