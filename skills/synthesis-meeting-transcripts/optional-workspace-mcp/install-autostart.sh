@@ -10,6 +10,8 @@
 #   WORKSPACE_MCP_PORT        — default 8765
 #   WORKSPACE_MCP_TOOL_TIER   — default complete
 #   GOOGLE_MCP_CREDENTIALS_DIR — default ~/.google_workspace_mcp/credentials
+#   SYNTHESIS_HOME            — written into the unit when it is set (see below); otherwise
+#                               the unit names none and start.sh uses ~/.synthesis/v5
 
 set -euo pipefail
 
@@ -33,10 +35,30 @@ PORT="${WORKSPACE_MCP_PORT:-8765}"
 TIER="${WORKSPACE_MCP_TOOL_TIER:-complete}"
 CREDS_DIR="${GOOGLE_MCP_CREDENTIALS_DIR:-$HOME/.google_workspace_mcp/credentials}"
 
+# The synthesis home this is installed with goes into the unit. start.sh derives
+# the outbox it starts the server to read from SYNTHESIS_HOME, and launchd and
+# systemd give a server only what the unit carries. Without it, a server installed
+# from a session with another synthesis home was started to read the default
+# outbox, while its sessions staged attachments in theirs, and no restart changed
+# that. Unset, the unit names none and start.sh keeps its default.
+SYN_HOME="${SYNTHESIS_HOME:-}"
+
+# A value written as the text of a plist string, and inside the double quotes of a
+# systemd Environment= line: an ampersand or an angle bracket ends a plist, and
+# systemd reads a backslash, a quote and a percent sign as its own.
+as_xml()  { printf '%s' "$1" | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g'; }
+as_unit() { printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/%/%%/g'; }
+
 install_macos() {
   local label="com.synthesis.workspace-mcp"
   local plist="$HOME/Library/LaunchAgents/$label.plist"
   local log_dir="$HOME/Library/Logs/workspace-mcp"
+  local synthesis_home=""
+  if [ -n "$SYN_HOME" ]; then
+    synthesis_home="
+    <key>SYNTHESIS_HOME</key>
+    <string>$(as_xml "$SYN_HOME")</string>"
+  fi
 
   mkdir -p "$log_dir"
 
@@ -62,7 +84,7 @@ install_macos() {
     <key>GOOGLE_MCP_CREDENTIALS_DIR</key>
     <string>$CREDS_DIR</string>
     <key>WORKSPACE_MCP_FOREGROUND</key>
-    <string>1</string>
+    <string>1</string>$synthesis_home
     <key>PATH</key>
     <string>$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
   </dict>
@@ -111,6 +133,11 @@ PLIST
 install_linux() {
   local unit_dir="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
   local unit="$unit_dir/workspace-mcp.service"
+  local synthesis_home=""
+  if [ -n "$SYN_HOME" ]; then
+    synthesis_home="
+Environment=\"SYNTHESIS_HOME=$(as_unit "$SYN_HOME")\""
+  fi
 
   mkdir -p "$unit_dir"
 
@@ -127,7 +154,7 @@ Environment="GOOGLE_CLIENT_SECRET_PATH=$GOOGLE_CLIENT_SECRET_PATH"
 Environment="WORKSPACE_MCP_PORT=$PORT"
 Environment="WORKSPACE_MCP_TOOL_TIER=$TIER"
 Environment="GOOGLE_MCP_CREDENTIALS_DIR=$CREDS_DIR"
-Environment="WORKSPACE_MCP_FOREGROUND=1"
+Environment="WORKSPACE_MCP_FOREGROUND=1"$synthesis_home
 Environment="PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin"
 Restart=on-failure
 RestartSec=30

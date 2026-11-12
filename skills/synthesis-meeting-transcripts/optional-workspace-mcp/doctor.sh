@@ -188,6 +188,47 @@ if command -v curl >/dev/null 2>&1 && [ "$LISTENING" = "1" ]; then
   fi
 fi
 
+# -------------------------------------------------------------------- outbox
+# Agents stage outgoing attachments in the synthesis outbox, and start.sh starts
+# the server to read that folder: ${SYNTHESIS_HOME:-~/.synthesis/v5}/outbox. A
+# supervised server gets SYNTHESIS_HOME only from the unit, where
+# install-autostart.sh writes it when it is set at install. So the outbox the unit
+# gives the server must be the one this shell's sessions stage in, and it must be
+# a folder that is there to write. A unit with another home starts the server to
+# read another outbox, and no restart changes that: only the installer does.
+# Whether the server now running was started with it is not read here:
+# `synthesis doctor` reads the running process, on its `outbox` line.
+HERE_HOME="${SYNTHESIS_HOME:-$HOME/.synthesis/v5}"
+UNIT_HOME="$HERE_HOME"  # with no unit, a server started by hand from this shell
+if [ -n "$UNIT" ] && [ -f "$UNIT" ]; then
+  if [ "$OS" = "Darwin" ]; then
+    # Only a read that succeeds counts: plutil has printed "Could not extract
+    # value" on stdout on some releases and on stderr on others.
+    UNIT_HOME="$(plutil -extract EnvironmentVariables.SYNTHESIS_HOME raw "$UNIT" 2>/dev/null)" || UNIT_HOME=""
+  else
+    # As install-autostart.sh wrote it: %% for a percent sign, a backslash
+    # before a quote or a backslash.
+    UNIT_HOME="$(sed -n 's/^Environment="SYNTHESIS_HOME=\(.*\)"$/\1/p' "$UNIT" | head -1 \
+      | sed -e 's/%%/%/g' -e 's/\\\(["\\]\)/\1/g')"
+  fi
+  UNIT_HOME="${UNIT_HOME:-$HOME/.synthesis/v5}"  # a unit that names none: start.sh's default
+fi
+HERE_HOME="${HERE_HOME%/}"
+UNIT_HOME="${UNIT_HOME%/}"
+OUTBOX="$UNIT_HOME/outbox"
+if [ "$UNIT_HOME" != "$HERE_HOME" ]; then
+  fail "the unit starts the server to read the outbox $OUTBOX, and this shell's synthesis home puts it at $HERE_HOME/outbox" \
+       "run ./install-autostart.sh again from this shell, which writes its SYNTHESIS_HOME into the unit, then restart the service"
+elif [ -e "$OUTBOX" ] && [ ! -d "$OUTBOX" ]; then
+  fail "the outbox $OUTBOX is not a folder" "move it away, then restart the service: start.sh makes the folder"
+elif [ ! -d "$OUTBOX" ]; then
+  fail "the outbox $OUTBOX is missing" "restart the service: start.sh makes it and starts the server to read it"
+elif [ ! -w "$OUTBOX" ]; then
+  fail "the outbox $OUTBOX cannot be written" "no agent can stage an attachment there until it can"
+else
+  ok "outbox $OUTBOX is there to write (whether the running server was started with it: synthesis doctor, its outbox line)"
+fi
+
 # This doctor establishes supervisor/service liveness, never account identity.
 echo "ACCOUNT: not checked; this doctor proves the service runs, not which Google account it reads as (a read through mcp_client.py shows that)."
 

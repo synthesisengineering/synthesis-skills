@@ -299,22 +299,23 @@ def codex_write_roots(config: dict) -> tuple:
     return found, name == ":danger-full-access"
 
 
-def check_codex_board(config: dict, board: Path, state: Path) -> Check:
+def check_codex_board(config: dict, board: Path, state: Path, outbox: Path) -> Check:
     """Codex's sandbox writes only the workspace and the folders its config grants: without the board among them, a
-    Codex session can neither claim files nor post (2026-10-30). A grant over the state folder would let a
-    sandboxed agent write approvals and send windows."""
+    Codex session can neither claim files nor post (2026-10-30), and without the outbox it cannot stage a file it
+    attaches. A grant over the state folder would let a sandboxed agent write approvals and send windows."""
     found, unsandboxed = codex_write_roots(config)
     roots = [os.path.realpath(os.path.expanduser(r)) for r in found]
     exposed = [r for r in roots if paths.inside(os.path.realpath(state), r)]
     if exposed:
-        return Check("fail", "codex board access", f"Codex's config lets its sandbox write {_short(exposed[0])}, which "
-                     f"holds {_short(state)}, where approvals and send windows live; grant only {_short(board)}")
+        return Check("fail", "codex board access", f"Codex's config lets its sandbox write {_short(exposed[0])}, which holds "
+                     f"{_short(state)}, where approvals and send windows live; grant only {_short(board)} and {_short(outbox)}")
     if unsandboxed:
         return Check("ok", "codex board access", "Codex runs without a sandbox (danger-full-access)")
-    if any(paths.inside(os.path.realpath(board), r) for r in roots):
-        return Check("ok", "codex board access", f"Codex's sandbox may write {_short(board)}")
-    return Check("fail", "codex board access", f"Codex's sandbox cannot write {_short(board)}, so a Codex session can "
-                 "neither claim files nor post on the board: run the onboarding setup for codex again")
+    for folder, cost in ((board, "can neither claim files nor post on the board"), (outbox, "cannot stage a file it attaches")):
+        if not any(paths.inside(os.path.realpath(folder), r) for r in roots):
+            return Check("fail", "codex board access", f"Codex's sandbox cannot write {_short(folder)}, so a Codex session "
+                         f"{cost}: run the onboarding setup for codex again")
+    return Check("ok", "codex board access", f"Codex's sandbox may write {_short(board)} and {_short(outbox)}")
 
 
 def check_claude_retention(settings: Path) -> Check:
@@ -817,9 +818,11 @@ def check_outbox(outbox: Path, unit: Path, pid_file: Path, started=started_with)
     allowed = env.get("ALLOWED_FILE_DIRS", "")  # compared as the connector compares: links followed, letters as written
     roots = tuple(os.path.realpath(os.path.expanduser(a.strip())).rstrip(os.sep) + os.sep
                   for a in allowed.split(os.pathsep) if a.strip())
-    if not (os.path.realpath(outbox) + os.sep).startswith(roots):
+    if not (os.path.realpath(outbox) + os.sep).startswith(roots):  # its start.sh derives the outbox from SYNTHESIS_HOME
+        again = (f"; if it still lacks it, its auto-start carries another synthesis home, so run install-autostart.sh again "
+                 f"from a shell where SYNTHESIS_HOME is {_short(outbox.parent)}, then restart it") if unit.is_file() else ""
         return Check("fail", "outbox", f"the running mail connector was started without {where} in ALLOWED_FILE_DIRS "
-                     f"({allowed or 'not set'}), so it refuses a file staged there after the send is approved: restart it")
+                     f"({allowed or 'not set'}), so it refuses a file staged there after the send is approved: restart it{again}")
     return Check("ok", "outbox", f"{where} is there to write, and the running mail connector was started to read it")
 
 
@@ -1159,7 +1162,7 @@ def harness_checks(found: list, procs: dict, home: Path, runtime: str, catalog=N
         except OSError:
             config = {}
         checks += [check_plugin("codex", entry, error), check_codex_features(config), check_codex_doc_bytes(config),
-                   check_codex_board(config, home / "board", home / "state"),
+                   check_codex_board(config, home / "board", home / "state", home / "outbox"),
                    check_codex_instructions(cwd or Path.cwd(), config, codex_home)]
         if entry:
             versions["codex"] = entry.get("version", "")
