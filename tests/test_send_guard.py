@@ -373,11 +373,9 @@ def test_a_staged_file_whose_name_or_folder_marks_secrets_is_refused_since_the_c
     assert "copy the file into" not in reason and "approve" not in reason and approvals.pending() == []
 
 
-def test_a_name_that_only_resembles_one_is_read_and_a_folder_of_keys_under_an_allowed_home_is_not(scratch, monkeypatch):
+def test_a_name_that_only_resembles_one_is_read_and_a_folder_of_keys_is_not_wherever_it_is(scratch):
     for name in ("env.txt", "my.env", ".environment", "credentials.txt", "notes/client_secret.json.txt"):
         assert "approval" in _attached(_put((paths.outbox() / name).parent, Path(name).name)), name
-    monkeypatch.setenv("ALLOWED_FILE_DIRS", os.pathsep.join([str(Path.home()), os.sep]))
-    assert "approval" in _attached(_put(Path.home() / "reports"))
     for file in (_put(Path.home() / ".kube", "config"), _put(Path.home() / ".config" / "gcloud", "notes.txt"), "/etc/passwd"):
         assert "never reads" in _attached(file), file
 
@@ -419,18 +417,21 @@ def test_the_rule_is_the_workspace_connectors_and_another_mail_tool_is_as_it_was
     assert "approve" not in _attached(outside)
 
 
-def test_the_connectors_own_folder_and_each_folder_it_is_started_with_count_and_no_other(scratch, monkeypatch, tmp_path):
+def test_the_outbox_and_the_connectors_own_attachment_folder_count_and_this_processs_settings_add_none(scratch, monkeypatch, tmp_path):
+    """The guard runs in the session's process, not the connector's. What that process has in ALLOWED_FILE_DIRS or
+    WORKSPACE_ATTACHMENT_DIR says nothing about a connector started elsewhere (a supervisor's unit carries its own),
+    so a file there passed the guard and was refused after the approval. Only the two folders every connector the
+    start script starts can read are counted; the doctor reads what the running one was started with."""
     default = _put(Path.home() / ".workspace-mcp" / "attachments")
-    own, extra, other, beside = (_put(tmp_path / name) for name in ("own", "extra", "other", "extra-more"))
+    own, extra, beside = (_put(tmp_path / name) for name in ("own", "extra", "outbox-more"))
     assert "approval" in _attached(default) and "approval" in _attached(_put(paths.outbox() / "deck"))
-    assert all("approve" not in _attached(file) for file in (own, extra, other, beside))
-    monkeypatch.setenv("WORKSPACE_ATTACHMENT_DIR", str(own.parent))  # the connector's folder is this one, not the default
-    assert "approval" in _attached(own) and "approve" not in _attached(default)
-    monkeypatch.setenv("ALLOWED_FILE_DIRS", os.pathsep.join(["/srv/reports", f" {extra.parent} ", ""]))
-    assert "approval" in _attached(extra) and "approval" in _attached(own)
-    assert all("approve" not in _attached(file) for file in (other, beside))  # a name that only starts the same
-    monkeypatch.setenv("ALLOWED_FILE_DIRS", os.sep)
-    assert "approval" in _attached(other)
+    assert all("approve" not in _attached(file) for file in (own, extra, beside))
+    monkeypatch.setenv("WORKSPACE_ATTACHMENT_DIR", str(own.parent))
+    monkeypatch.setenv("ALLOWED_FILE_DIRS", os.pathsep.join([str(extra.parent), os.sep]))
+    for file in (own, extra, beside, scratch / "plan.pdf"):
+        reason = _attached(file)
+        assert "is outside the folders the mail connector reads" in reason and "approve" not in reason, file
+    assert "approval" in _attached(default) and approvals.pending() != []
 
 
 def test_a_path_is_read_as_the_connector_reads_it(scratch, monkeypatch, tmp_path):
@@ -544,8 +545,21 @@ def test_a_drive_update_from_a_file_outside_the_folders_is_refused_with_no_code_
     staged = Path(shutil.copy(outside, paths.outbox() / "plan.pdf"))
     assert "approval" in _uploaded(staged) and "approval" in _uploaded(staged.as_uri())
     for as_it_was in ({"content": "# Plan"}, {"file_url": "https://files.example.com/plan.docx"}, {"name": "Plan v2"},
-                      {"file_path": None}):
+                      {"file_path": None}, {"content": "# Plan", "file_path": None}):
         assert "approval" in guards.check(UPDATE, {**DRIVE, **as_it_was}, CONFIG), as_it_was
+
+
+def test_a_drive_call_that_gives_the_files_content_twice_is_refused_before_any_code(scratch):
+    """The connector takes exactly one source for a file's content and refuses a call that gives two, which for a
+    call that waits for a code is after the approval."""
+    staged = Path(shutil.copy(scratch / "plan.pdf", paths.outbox() / "plan.pdf"))
+    for two in ({"content": "# Plan", "file_path": str(staged)}, {"file_path": str(staged), "file_url": "https://files.example.com/p.docx"},
+                {"content": "# Plan", "base64_content": "UGxhbg=="}):
+        reason = guards.check(UPDATE, {**DRIVE, **two}, CONFIG)
+        assert "takes exactly one" in reason and all(f"`{k}`" in reason for k in two), reason
+        assert "approve" not in reason and approvals.pending() == []
+        assert "takes exactly one" in guards.check(DOC_IMPORT, {**DRIVE, **two}, CONFIG)
+    assert guards.check(NEW_FILE, {**DRIVE, "content": "# Plan", "fileUrl": "https://files.example.com/p.docx"}, CONFIG) is None  # its own rule
 
 
 @pytest.mark.parametrize("tool,key", NO_CODE)

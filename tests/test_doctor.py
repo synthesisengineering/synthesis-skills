@@ -1118,6 +1118,10 @@ def test_a_connector_kept_running_must_have_been_started_with_the_outbox(connect
     assert doctor.check_outbox(*connector, started(ALLOWED_FILE_DIRS=str(tmp_path / "linked" / "outbox"))).status == "ok"
     unset = doctor.check_outbox(*connector, started())
     assert unset.status == "fail" and "ALLOWED_FILE_DIRS (not set)" in unset.detail and "restart" in unset.detail
+    for off in ("true", " TRUE "):  # the connector's own switch: with it no local file is read, the outbox among them
+        shut = doctor.check_outbox(*connector, started(ALLOWED_FILE_DIRS=str(outbox), WORKSPACE_MCP_DISABLE_LOCAL_FILES=off))
+        assert shut.status == "fail" and "WORKSPACE_MCP_DISABLE_LOCAL_FILES" in shut.detail and "after the send is approved" in shut.detail
+    assert doctor.check_outbox(*connector, started(ALLOWED_FILE_DIRS=str(outbox), WORKSPACE_MCP_DISABLE_LOCAL_FILES="false")).status == "ok"
     # A restart cannot help a connector whose auto-start carries another synthesis home: the line says what does.
     # The unit is removed and installed again, since a supervisor keeps the unit it has loaded until it is unloaded.
     assert "uninstall-autostart.sh and then install-autostart.sh" in unset.detail
