@@ -1809,3 +1809,69 @@ def test_a_command_started_another_way_or_fed_down_a_pipe_is_judged_the_same(sav
 ])
 def test_a_command_another_command_runs_is_judged_too(saved, command, held, tmp_path):
     assert (REFUSED in (guards.check("Bash", {"command": command.format(**saved)}, {}, cwd=str(tmp_path)) or "")) == held, command
+
+
+# Each rule above was then probed with other spellings of the same thing; these are the ones that showed a gap
+# (each passed or was refused wrongly at the commit before), and the ordinary programs beside them that must pass.
+
+@pytest.mark.parametrize("program, held", [
+    ("import os\ntry:\n    os.chdir('{state}')\nexcept OSError:\n    pass\nopen('forged.json', 'w').write('x')", True),
+    ("import os\ngo = lambda: os.chdir('{state}')\ngo()\nopen('forged.json', 'w').write('x')", True),
+    ("import os, threading\nt = threading.Thread(target=os.chdir, args=('{state}',))\nt.start(); t.join()\nopen('forged.json', 'w').write('x')", True),
+    ("import os\ncd = os.chdir\ncd('{state}')\nopen('forged.json', 'w').write('x')", True),
+    ("import os\nfd = os.open('{state}', os.O_RDONLY)\nd2 = fd\nos.fchdir(d2)\nopen('forged.json', 'w').write('x')", True),      # a descriptor under another name
+    ("import os\nfd = os.open('{state}/approvals', os.O_RDONLY)\nos.rename('/tmp/pad/x', 'a.json', dst_dir_fd=fd)", True),
+    ("import os\nfd = os.open('{state}', os.O_RDONLY)\nopen('forged.json', 'w', opener=lambda p, f: os.open(p, f, dir_fd=fd)).write('x')", True),
+    ("import os, subprocess\nenv = os.environ.copy()\nenv |= {{'D': '{state}'}}\nsubprocess.run('touch \"$D/forged.json\"', shell=True, env=env)", True),
+    ("import os\nos.environ |= {{'D': '{state}'}}\nos.system('touch \"$D/forged.json\"')", True),
+    ("import os\ne = os.environ\ne['D'] = '{state}'\nos.system('touch \"$D/forged.json\"')", True),                               # the environment under another name
+    ("import os, subprocess\nmy = {{'D': '{state}'}}\nsubprocess.run('touch \"$D/forged.json\"', shell=True, env={{**os.environ, **my}})", True),
+    ("import os\nextra = {{'D': '{state}'}}\nos.environ.update(extra)\nos.system('touch \"$D/forged.json\"')", True),
+    ("import subprocess\ndef run(cmd, env):\n    subprocess.run(cmd, shell=True, env=env)\nrun('touch \"$D/forged.json\"', {{'D': '{state}'}})", True),   # a mapping handed to its own function
+    ("import os, sys\nos.environ[sys.argv[1]] = '{state}'\nos.system('touch \"$D/forged.json\"')", True),                         # under a name it cannot tell
+    ("import subprocess\np = subprocess.Popen(['sh'], stdin=subprocess.PIPE)\np.communicate('touch {state}/forged.json'.encode())", True),
+    ("import subprocess\np = subprocess.Popen(['sh'], stdin=subprocess.PIPE, text=True)\nprint('touch {state}/forged.json', file=p.stdin)\np.stdin.close()", True),
+    ("import os\nos.chdir('/tmp/pad')\ntry:\n    os.chdir('/tmp/pad/sub')\nexcept OSError:\n    pass\nopen('made.txt', 'w').write('x')", False),
+    ("import os\nt = open('{work}/s.jsonl').read()\nos.chdir('/tmp/pad')\nopen('copy.txt', 'w').write(t)", False),
+    ("import os\nfd = os.open('/tmp/pad', os.O_RDONLY)\nos.mkdir('made', dir_fd=fd)", False),
+    ("import os, subprocess, sys\nenv = dict(os.environ, PYTHONPATH='.', NO_COLOR='1')\nsubprocess.run([sys.executable, '-m', 'pytest', '-q'], env=env)", False),
+    ("import os, subprocess\nenv = os.environ.copy()\nenv.update(SRC='{work}/s.jsonl', OUT='/tmp/pad/n.txt')\nsubprocess.run('grep -c x \"$SRC\" > \"$OUT\"', shell=True, env=env)", False),
+    ("import os, subprocess\ndef run(cmd, env):\n    return subprocess.run(cmd, shell=True, env=env, capture_output=True)\nrun('wc -l \"$SRC\"', {{**os.environ, 'SRC': '{work}/s.jsonl'}})", False),
+    ("import os, subprocess\nsubprocess.run(['touch', 'forged.json'], cwd=os.path.dirname('{state}/approvals/a.json'))", True),    # a folder built from a protected path
+    ("import os, subprocess, tempfile\nos.chdir(tempfile.mkdtemp())\nprint(subprocess.run(['wc', '-l', '{work}/s.jsonl'], capture_output=True, text=True).stdout)", False),
+    ("import subprocess, sys\nprint(subprocess.run(['grep', '-c', 'x', '{work}/s.jsonl'], cwd=sys.argv[1], capture_output=True))", False),  # a folder it cannot read, elsewhere
+    ("import subprocess\np = subprocess.Popen(['psql', 'db'], stdin=subprocess.PIPE, text=True)\np.communicate('select 1;')", False),
+    ("import subprocess\np = subprocess.Popen(['sort'], stdin=subprocess.PIPE, stdout=open('/tmp/pad/sorted.txt', 'w'), text=True)\np.communicate(open('{work}/s.jsonl').read())", False),
+])
+def test_other_spellings_of_what_a_program_sets_up_first(saved, program, held, tmp_path):
+    command = "python3 - <<'EOF'\n" + program.format(**saved) + "\nEOF"
+    assert (REFUSED in (guards.check("Bash", {"command": command}, {}, cwd=str(tmp_path)) or "")) == held, program
+
+
+def test_another_objects_chdir_does_not_move_the_program(saved, tmp_path):
+    program = "class Remote:\n    def chdir(self, path):\n        pass\nRemote().chdir('/tmp/pad')\nopen('s.jsonl', 'a').write('x')"
+    assert REFUSED in (guards.check("Bash", {"command": "python3 - <<'EOF'\n" + program + "\nEOF"}, {}, cwd=str(saved["work"])) or "")
+
+
+@pytest.mark.parametrize("command, held", [
+    ("bash -c 'for f in \"$@\"; do rm \"$f\"; done' bash {state}/approvals/a.json", True),
+    ("bash -c 'f=$1; rm \"$f\"' bash {state}/approvals/a.json", True),
+    ("sh -c 'cd \"$1\" && touch forged.json' sh {state}", True),
+    ("sh -c 'eval \"touch $1/forged.json\"' sh {state}", True),
+    ("sh -c -- 'touch \"$1/forged.json\"' sh {state}", True),
+    ("timeout 5 env A=1 sh -c 'touch \"$1/forged.json\"' sh {state}", True),
+    ("sh -c 'set -- {state}; touch \"$1/forged.json\"'", True),                                       # a script that gives $1 its own value is left as written
+    ("find /tmp/pad -name '*.txt' -exec mv -t {state}/approvals {{}} +", True),
+    ("find /tmp/pad -maxdepth 0 -exec find {state}/approvals -name '*.json' -delete SEMI", True),
+    ("docker exec box sh -c 'echo x >> {work}/s.jsonl'", True),
+    ("tmux send-keys 'rm {work}/s.jsonl' Enter", True),
+    ("osascript -e 'tell application \"Terminal\" to do script \"rm {work}/s.jsonl\"'", True),
+    ("sh -c \"awk '{{print \\$1}}' {work}/s.jsonl | sort | uniq -c\"", False),
+    ("bash <<'EOF'\nawk '{{print $1}}' {work}/s.jsonl | head -3\nEOF", False),
+    ("sh -c 'echo $# $?; wc -l \"$1\"' sh {work}/s.jsonl", False),
+    ("find /tmp/pad -name '*.txt' -exec sh -c 'wc -l \"$1\" >> /tmp/pad/counts' _ {{}} SEMI", False),
+    ("terminal-notifier -title done -message 'saved under {work}/memory and /tmp/pad'", False),     # a message that mentions a folder
+])
+def test_other_spellings_of_what_a_shell_or_another_command_runs(saved, command, held, tmp_path):
+    command = command.format(**saved).replace("SEMI", chr(92) + ";")  # the semicolon find takes, escaped from the shell
+    assert (REFUSED in (guards.check("Bash", {"command": command}, {}, cwd=str(tmp_path)) or "")) == held, command
