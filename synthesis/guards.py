@@ -2192,6 +2192,7 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
     moved = any(map(lands, gone))
     spots = [where] + [os.path.join(where, os.path.expanduser(v)) if "\0" not in v else os.path.expanduser(names[0]) if names and named(a) else "\0"
                        for a in gone for v in ranges.get(getattr(a, "id", ""), [spelled(a)])]  # where it may stand when it starts a command
+    setenv = {said(t.slice): v for t, v in pairs if isinstance(t, ast.Subscript) and getattr(t.value, "attr", getattr(t.value, "id", "")) == "environ"}
     hit = wrote = False
     for n in calls:
         base = n.func.value if isinstance(n.func, ast.Attribute) else None
@@ -2219,6 +2220,16 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
             if parts:  # one word of a list is one file: a word it found in a protected folder stands for a file there, an unread end for a name
                 parts = [w.replace("\0", "x") if w[:1] != "\0" else names[0] + "/x" if names and named(e) else w for w, e in zip(parts, first.elts)]
             ran = shlex.join(parts) if parts else spelled(first) if first is not None and parts is None else "\0"
+            if parts and "shell" in kw and getattr(kw["shell"], "value", True):
+                ran = parts[0]  # a list handed to the shell: its first word is the command line
+            sets = dict(setenv)  # the variables the program hands the command: those it puts in os.environ, and env={...}
+            for key, value in zip(*((kw["env"].keys, kw["env"].values) if isinstance(kw.get("env"), ast.Dict) else ((), ()))):
+                sets[said(key) if key is not None else None] = value
+            for key, value in sets.items():
+                put = spelled(value) if "\0" not in spelled(value) else os.path.expanduser(names[0]) if names and named(value) else None
+                ran = f"{key}={shlex.quote(put)}; {ran}" if put is not None and re.fullmatch(r"[A-Za-z_]\w*", key or "") else ran
+            fed = spelled(kw["input"]) if "input" in kw else ""  # a script fed on its input is that command's script
+            ran = "\0" if "\0" in fed else f"{ran} <<'INPUT_OF_THE_COMMAND'\n{fed}\nINPUT_OF_THE_COMMAND" if fed else ran
             folders = [os.path.join(spot, os.path.expanduser(spelled(kw["cwd"]))) for spot in spots] if "cwd" in kw else spots
             if "\0" not in ran + "".join(folders):  # a command it spells whole is judged as the shell guard judges one, wherever it may run
                 hit = hit or next(filter(None, (check_self_grant(ran, folder, config) for folder in folders)), False)  # the refusal itself
