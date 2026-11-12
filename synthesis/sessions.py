@@ -531,25 +531,18 @@ def _writer(wait: bool):
 
 def export(days: float = 0, only: str = "", wait: bool = True, rebuild: bool = False) -> list:
     """Export every native transcript changed in the last `days` days (all when 0); `only` names one session.
-    Without `wait` a busy archive is read as it is. The stamp is the doctor's heartbeat for the scheduled export: a
-    run that found nothing new still ran, and a run that could not copy a transcript says how many and why until a
-    run of every transcript copies them all (2026-11-12: every copy was refused and the doctor answered ok)."""
+    Without `wait` a busy archive is read as it is."""
     with _writer(wait) as busy:
         if busy:
             return [busy]
         moved = [f"previous archive moved to {_rebuild()}"] if rebuild else []
-        report = moved + _export(0 if rebuild else days, only)
-        stamp, failed = root() / ".state" / "export.json", [line for line in report if ": not exported (" in line]
-        now, kept = datetime.now().astimezone().isoformat(timespec="seconds"), paths.read_json(stamp)
-        if failed:
-            kept.update(failed=len(failed), reason=failed[0])
-        elif not (kept.get("failed") and (days or only)):  # a run of part of the archive does not clear a failure
-            kept = {"complete": now}
-        paths.write_json(stamp, {**kept, "exported": now})
-        return report
+        return moved + _export(0 if rebuild else days, only)
 
 
 def _export(days: float, only: str) -> list:
+    """Every run, a sync's too, leaves a stamp, the doctor's heartbeat for the scheduled export: a run that found
+    nothing new still ran, and a run that could not copy a transcript says how many and why until a run of every
+    transcript copies them all (2026-11-12: every copy was refused and the doctor answered ok)."""
     from synthesis import board
     report = []
     for harness, native in natives(days):
@@ -564,6 +557,13 @@ def _export(days: float, only: str) -> list:
             continue
         if kept:
             report.append(f"{harness} {session}: {kept} record(s)")
+    stamp, failed = root() / ".state" / "export.json", [line for line in report if ": not exported (" in line]
+    now, last = datetime.now().astimezone().isoformat(timespec="seconds"), paths.read_json(stamp)
+    if failed:
+        last.update(failed=len(failed), reason=failed[0])
+    elif not (last.get("failed") and (days or only)):  # a run of part of the archive does not clear a failure
+        last = {"complete": now}
+    paths.write_json(stamp, {**last, "exported": now})
     return report
 
 
