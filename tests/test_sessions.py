@@ -737,6 +737,63 @@ def test_the_day_ends_own_refusal_saved_among_the_records_cites_nothing(asked, t
     assert record().returncode and not history.exists()
 
 
+def test_a_record_in_the_same_file_as_the_listing_still_cites(asked, capsys):
+    """2026-11-12, a second review: a session log that held the printed listing and, after it, a decision with its
+    citation had every citation in it ignored, so a prompt the log accounted for stayed open. Only the listing's
+    own lines, or its JSON answer, are set aside."""
+    first, second = found = sessions.prompts("acme", "2026-10-30")
+    kb = str(asked["kb"])
+    listing, answer = _listed(capsys, "--records", kb), _listed(capsys, "--records", kb, "--json")
+    decision = f"- 10:00 decided to ship on Friday; the plan is in REFERENCE.md (claude-code c1 #{first['seq']})\n"
+    asked["log"].write_text(decision, encoding="utf-8")
+    assert sessions.uncited(found, [kb]) == [second]                 # the control: the record alone accounts for the first,
+    asked["log"].write_text(listing, encoding="utf-8")
+    assert "2 of 2 prompts" in listing and sessions.uncited(found, [kb]) == found     # and the listing alone for neither
+    mixed = {
+        "the listing, then the record": listing + "\n" + decision,
+        "the record, then the listing": decision + "\n" + listing,
+        "every prompt of the day as printed, then the record": _listed(capsys) + "\n" + decision,
+        "the JSON answer in a fenced block, then the record": "```json\n" + json.dumps(json.loads(answer), indent=2) + "\n```\n\n" + decision,
+        "the record, then the JSON answer": decision + "\n" + answer,
+    }
+    command = ["sessions", "prompts", "--workspace", "acme", "--date", "2026-10-30", "--records", kb]
+    wrong = []
+    for name, text in mixed.items():
+        asked["log"].write_text("## 2026-10-30\n\n" + text, encoding="utf-8")
+        if sessions.uncited(found, [kb]) != [second] or cli.main(command) != 1 or "1 of 2 prompts" not in capsys.readouterr().out:
+            wrong.append(name)
+    assert wrong == []
+    asked["log"].unlink()                                            # a log of objects: the answer on one line, a record on the next
+    (asked["kb"] / "projects" / "alpha" / "day.jsonl").write_text(answer.strip() + "\n" + json.dumps(
+        {"decided": "the announcement waits for Friday", "cites": [f"claude-code c1 #{second['seq']}"]}) + "\n", encoding="utf-8")
+    assert sessions.uncited(found, [kb]) == [first]
+
+
+def test_a_listing_line_an_agent_wrote_on_is_a_record_and_the_lines_left_as_printed_are_not(asked, capsys):
+    """An agent that works down the saved listing and writes what became of a prompt on its line has made a record
+    of that prompt. The lines it left as the listing printed them still say nothing."""
+    first, second = found = sessions.prompts("acme", "2026-10-30")
+    one, two = _listed(capsys).splitlines()[:2]
+    asked["log"].write_text(f"{one} -> planned; the plan is in REFERENCE.md\n{two}\n", encoding="utf-8")
+    assert sessions.uncited(found, [str(asked["kb"])]) == [second]
+
+
+def test_a_record_after_the_pasted_refusal_closes_what_it_cites_and_no_more(asked, tmp_path):
+    """The refusal pasted into the session log, then the entries an agent wrote under it: the day closes when they
+    cite every prompt, and not while one of them is only in the pasted list."""
+    record, history = _day_end(asked, tmp_path)
+    first, second = sessions.prompts("acme", "2026-10-30")
+    pasted = f"## 2026-10-30 day-end\n\nThe record refused a clean close:\n\n{record().stderr}\n"
+    asked["log"].write_text(pasted + f"- planned the release (claude-code c1 #{first['seq']})\n", encoding="utf-8")
+    left = record()
+    assert left.returncode and "1 of 2 prompts typed on 2026-10-30 is cited by no record" in left.stderr
+    assert f"  claude-code c1 #{second['seq']}\n" in left.stderr and f"c1 #{first['seq']}\n" not in left.stderr
+    with asked["log"].open("a", encoding="utf-8") as log:
+        log.write(f"- drafted the announcement, in drafts/announcement.md (claude-code c1 #{second['seq']})\n")
+    done = record()
+    assert done.returncode == 0 and "prompts: all 2 typed on 2026-10-30 are cited by a record" in done.stdout and history.exists()
+
+
 def test_the_listing_exports_first_and_stops_when_a_transcript_could_not_be_copied(asked, capsys, monkeypatch):
     """2026-11-12, a review: with an archive that could not be written the listing held no prompt, and the day
     closed clean. The listing brings the archive up to date itself, and says nothing was listed when it cannot."""
