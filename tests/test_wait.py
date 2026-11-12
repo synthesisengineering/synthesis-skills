@@ -223,6 +223,15 @@ def test_a_session_stays_addressable_for_the_whole_bound_of_its_wait(two, monkey
 
 # --- the sender is told what will deliver the message --------------------------------------------------------------
 
+def test_a_word_of_a_message_is_not_taken_for_the_command(two):
+    """The first review: `synthesis msg S1 wait` was handed to the wait command, and nothing was sent."""
+    for text in ("wait", "doctor", "worktree"):
+        sent = cli("msg", "S1", text, session="S2")
+        assert sent.returncode == 0 and "reads it at its next prompt" in sent.stdout, (text, sent.stderr)
+    assert [m["text"] for m in board.inbox("S1")] == ["wait", "doctor", "worktree"]
+    assert cli("--session", "S1", "wait", "note", "the build", "--by", "a timer").returncode == 0     # and the commands still run
+
+
 def test_the_sender_is_told_what_will_deliver_the_message(two):
     idle = cli("msg", "S1", "are you there", session="S2")
     assert idle.returncode == 0 and "reads it at its next prompt" in idle.stdout
