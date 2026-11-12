@@ -29,6 +29,22 @@ beside the line in the handoff record.
 | Who watches it | A health check that runs without anyone remembering to run it, and an alert that reaches a person when it fails | The check's definition and one alert seen arriving (a failure made on purpose in a test) | A check someone runs by hand; an alert nobody receives; a dashboard nobody opens |
 | Who owns it | A named person who is told when it fails and can fix it, and a second way to reach it when they are away | The owner's name in the service's own record and in the handoff note | "The agent", "this session", nobody |
 
+## Each recipient
+
+The five lines are about the thing. This one is about each person it is handed to, and it
+is checked per person: one recipient having access proves nothing about the next.
+
+- They can reach it: they are a member of the workspace or group it lives in (read the
+  members and the pending invitations where an administrator sees them), and the feature
+  is turned on for them.
+- The route they are told to take has passed an end-to-end test. A route that was never
+  tested is not offered.
+- When a check fails, the fix is prepared and brought with the finding, in the order it
+  must run: the invitation, the access change, the corrected note. A problem reported
+  without its fix hands the principal work that could have been done.
+- A note revised and filed again is checked again. A change of wording does not carry the
+  earlier check with it.
+
 ## When a line fails
 
 Do not hand it over. Say which line failed and what would make it pass, and either deploy
@@ -50,6 +66,11 @@ starting a quick tunnel waits for the principal's code.
 - An outage, a restart or a sign-out that touches someone else's setup is an incident.
   The principal is told first, in the same turn, with who is affected and what the fix
   is. The affected people are told on the principal's approval.
+- Every outside dependency of the thing is listed with its owner and where its notices
+  arrive (a permission request, an expiry warning, a deprecation), and each of those
+  places is read at every check-in. Where the state can be asked directly, it is asked. A
+  pending item reaches the principal first in the reply, with what it is, a
+  recommendation, and the step staged for their approval.
 - A ruling of the principal's that conflicts with something already handed out is said
   the same turn: "that address has already reached them".
 - A claim to anyone that something works for a person says how durable it is, or is not
