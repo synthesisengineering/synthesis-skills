@@ -574,6 +574,56 @@ def records(folder: str, kinds: tuple = (), whole: bool = False) -> list:
     return rows
 
 
+CITED = re.compile(r"(?<![\w.-])([A-Za-z0-9][\w.-]*)\s+#(\d+)(?:\s*(?:-|–|to)\s*#?(\d+))?")  # `<session> #<seq>`, or a range of them
+
+
+def prompts(workspace: str, day: str) -> list:
+    """What the principal typed in a workspace on one day (the local date), oldest first, from this Mac's archive:
+    each with the citation that names it (harness, session, seq). A brief one agent wrote for another, injected
+    text and a tool's result are not prompts. Export first: this reads only what the archive holds."""
+    found = []
+    for meta in catalog(workspace, local_only=True):
+        if str(meta.get("last", "9"))[:10] < _shift(day, -1) or str(meta.get("first", ""))[:10] > _shift(day, 1):
+            continue  # a session over before that day or begun after it (a day's slack: the archive keeps UTC)
+        for rec in records(meta["folder"], ("user",)):
+            try:
+                at = datetime.fromisoformat(str(rec.get("at")).replace("Z", "+00:00")).astimezone()
+            except ValueError:
+                continue
+            if at.date().isoformat() == day:
+                found.append({"harness": meta.get("harness"), "session": meta.get("session"), "seq": int(rec.get("seq", -1)),
+                              "at": at.isoformat(timespec="minutes"), "text": str(rec.get("text", ""))})
+    return sorted(found, key=lambda p: (p["at"], str(p["session"]), p["seq"]))
+
+
+def _shift(day: str, days: int) -> str:
+    return datetime.fromordinal(datetime.fromisoformat(day).toordinal() + days).date().isoformat()
+
+
+def uncited(found: list, roots: list) -> list:
+    """The prompts that no record cites. A citation is the session's id, or its first eight characters, then
+    `#<seq>` or a range (`#12-40`, `#12 to #40`), in a text file under the roots that changed on or after the
+    day of the oldest prompt (2026-11-11: what the principal asked reached a project record only if an agent
+    remembered, and nothing checked)."""
+    wanted = {str(p["session"]) for p in found} | {str(p["session"])[:8] for p in found}
+    since = min((datetime.fromisoformat(p["at"]).replace(hour=0, minute=0).timestamp() for p in found), default=0)
+    spans = collections.defaultdict(list)
+    for root in roots:
+        for top, dirs, files in os.walk(os.path.expanduser(root)):
+            dirs[:] = [d for d in dirs if not d.startswith(".") and d != "node_modules"]
+            for name in files:
+                path = os.path.join(top, name)
+                try:
+                    text = Path(path).read_text(encoding="utf-8", errors="replace") if name.endswith(
+                        (".md", ".txt", ".json", ".jsonl", ".yaml", ".yml")) and os.path.getmtime(path) >= since else ""
+                except OSError:
+                    continue
+                for session, first, last in CITED.findall(text):
+                    if session in wanted:
+                        spans[session[:8]].append((int(first), int(last or first)))
+    return [p for p in found if not any(first <= p["seq"] <= last for first, last in spans[str(p["session"])[:8]])]
+
+
 def find(prefix: str) -> list:
     """The sessions a citation's id names: the exact id, else the one main session it starts (a sub-agent's id
     starts with its parent's, so `d20ab7c4` would otherwise match every agent that session started), else every

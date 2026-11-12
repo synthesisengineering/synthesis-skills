@@ -234,6 +234,23 @@ def cmd_sessions(args) -> int:
                 sessions.records(found[0]["folder"], kinds, whole=args.whole))
         for rec in rows:
             out(rec, sessions.render(rec, 0 if args.whole else args.width))
+    elif args.action == "prompts":
+        if not args.workspace:
+            print("name the workspace whose prompts to list: --workspace <name>", file=sys.stderr)
+            return 2
+        day = args.date or time.strftime("%Y-%m-%d")
+        found = sessions.prompts(args.workspace, day)
+        left = sessions.uncited(found, args.records) if args.records else found
+        cites = [f"{p['harness']} {str(p['session'])[:8]} #{p['seq']}" for p in left]
+        if args.json:
+            print(json.dumps({"workspace": args.workspace, "date": day, "prompts": len(found), "open": cites if args.records else []}))
+        else:
+            for cite, p in zip(cites, left):
+                print(f"{cite}  {p['at'][11:16]}  {' '.join(p['text'].split())[:args.width]}")
+            print(f"{len(found)} prompts on {day} in {args.workspace}" if not args.records else
+                  f"all {len(found)} prompts on {day} in {args.workspace} are cited by a record" if not left else
+                  f"{len(left)} of {len(found)} prompts on {day} in {args.workspace} {'is' if len(left) == 1 else 'are'} cited by no record")
+        return 1 if args.records and left else 0
     elif args.action == "recent":
         for rec in sessions.recent(args.project, args.workspace, args.limit):
             out(rec, f"[{rec.get('harness')} {str(rec.get('session'))[:8]}] {sessions.render(rec, args.width)}")
@@ -345,7 +362,7 @@ def parser() -> argparse.ArgumentParser:
     s.add_argument("-m", "--message", default="Update project records")
     s.set_defaults(fn=cmd_handoff)
     s = sub.add_parser("sessions", help="export, sync, list, show, search agent session transcripts from every harness")
-    s.add_argument("action", choices=("export", "sync", "list", "show", "recent", "search"))
+    s.add_argument("action", choices=("export", "sync", "list", "show", "recent", "search", "prompts"))
     s.add_argument("target", nargs="?", default="", help="show: a session id or its start; search: a pattern")
     s.add_argument("--all", action="store_true", help="export: every transcript, not only those changed in --days")
     s.add_argument("--days", type=float, default=2, help="export: transcripts changed in the last N days (default 2)")
@@ -353,6 +370,9 @@ def parser() -> argparse.ArgumentParser:
     s.add_argument("--rebuild", action="store_true", help="export: move the archive aside and export everything again")
     s.add_argument("--no-push", action="store_true", help="sync: commit in each sessions repo but do not push")
     s.add_argument("--seq", type=int, help="show: the cited record and three either side")
+    s.add_argument("--date", default="", help="prompts: the day, YYYY-MM-DD (default today)")
+    s.add_argument("--records", action="append", default=[], metavar="FOLDER",
+                   help="prompts: list only those no text file under this folder cites; repeat for more; exit 1 while any is left")
     s.add_argument("--json", action="store_true", help="list, show, recent, search: one JSON object per line")
     s.add_argument("--project", default="")
     s.add_argument("--workspace", default="")

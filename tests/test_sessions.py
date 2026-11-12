@@ -486,3 +486,5 @@ def test_sessions_prompts_names_each_one_no_record_cites_and_exits_1_while_any_i
     assert cli.main(command + ["--json"]) == 0
     assert json.loads(capsys.readouterr().out) == {"workspace": "acme", "date": "2026-10-30", "prompts": 2, "open": []}
     assert cli.main(["sessions", "prompts", "--date", "2026-10-30"]) == 2    # a workspace must be named
+    assert cli.main(["sessions", "prompts", "--workspace", "acme"]) == 0     # with no date: today
+    assert capsys.readouterr().out.strip().startswith("0 prompts on 20")
