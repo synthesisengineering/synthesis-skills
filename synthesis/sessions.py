@@ -344,6 +344,7 @@ def _codex(row: dict, s: _Session):
             s.meta["unattended"] = True
         elif isinstance(p.get("source"), str):  # continued from another source (`cli`): what is typed from here is the person's
             s.meta.pop("unattended", None)
+        s.trigger = ""  # a new run of the session: the turn before it is over, and so is its word for how it began
         yield {"at": at, "kind": "session", "data": {k: p[k] for k in ("id", "cwd", "originator", "cli_version", "source",
                                                                        "parent_thread_id", "model_provider", "git") if k in p}}
         if p.get("instructions"):
@@ -376,8 +377,9 @@ def _codex(row: dict, s: _Session):
     elif t == "event_msg" and kind == "user_message":
         text = str(p.get("message") or "")
         yield None if not text or _injected(text) or s.mirrored(text, "event") else _prompt(s, at, {"text": text})
-    elif t == "event_msg" and kind == "task_started":  # how this turn began: `composer` for what a person typed, `exec` for a command line
-        s.trigger = str((p.get("turn_attribution") or {}).get("turn_trigger") or "") or s.trigger
+    elif t == "event_msg" and kind == "task_started":  # a turn begins, and may say how: `composer` for what a person typed, `exec` for a command line
+        said = p.get("turn_attribution")  # a turn that says nothing is read by the session line, never by the turn before
+        s.trigger = str(said.get("turn_trigger") or "") if isinstance(said, dict) else ""
         s.skipped["event_msg:task_started"] += 1
     elif t == "compacted":
         s.skipped["compaction history items"] += len(p.get("replacement_history") or [])
