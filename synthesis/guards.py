@@ -2341,10 +2341,10 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
                 getattr(n, "attr", "") == "environ" or getattr(getattr(n, "func", None), "attr", getattr(getattr(n, "func", None), "id", "")) == "getenv"))
             if field or (isinstance(n, ast.Name) and n.id in tainted) or any(m in (said(n) or given.get(id(n)) or env_given.get(id(n), "")) for m in names):
                 return True
-            if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute) and (key_of(n) or "")[:3] == "()@":
-                if n.func.attr in tainted:
+            own_ = asked(n)[1] if isinstance(n, ast.Call) and (key_of(n) or "")[:3] == "()@" else None
+            if own_ is not None and id(own_) in bodies:  # the program's own function: built from what it hands back, not from what it is handed or all its object holds
+                if bodies[id(own_)].name in tainted:
                     return True
-                todo += n.args + [k.value for k in n.keywords]  # the program's own method: by what it hands back and is handed, not by all its object holds
                 continue
             if isinstance(n, (ast.ListComp, ast.SetComp, ast.GeneratorExp, ast.DictComp)):
                 todo += [n.key, n.value] if isinstance(n, ast.DictComp) else [n.elt]  # what a comprehension makes: built from what it makes each one of
@@ -2584,8 +2584,11 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
     pair_of, ENV = {id(t): v for t, v in pairs}, ast.Name(id="environ", ctx=ast.Load())  # what each target is given; the environment, as a table of its own
     homes = {id(n): ast.Call(func=ast.Attribute(value=ast.Name(id="Path", ctx=ast.Load()), attr="home", ctx=ast.Load()), args=[], keywords=[])
              for n in calls if getattr(n.func, "attr", getattr(n.func, "id", "")) == "expanduser"}  # the home each expanduser() asks for, where it asks
+    kept_kw = {id(n.func.value): inside[id(n)] for n in calls if getattr(n.func, "attr", "") == "update" and getattr(n.func.value, "attr", "") == "__dict__"
+               and getattr(n.func.value.value, "id", "") == "self" and len(n.args) == 1 and not n.keywords and id(n) in inside and inside[id(n)].name == "__init__"
+               and getattr(inside[id(n)].args.kwarg, "arg", None) == getattr(n.args[0], "id", "")}  # `self.__dict__.update(kw)` in an __init__: its keywords are its fields
     loose_fields = any(getattr(n, "attr", getattr(n, "id", getattr(n, "name", ""))) in ("__dict__", "vars", "__setattr__", "__getattr__", "__getattribute__")
-                       for n in nodes)  # fields given some other way: none of them is read
+                       and id(n) not in kept_kw for n in nodes)  # fields given some other way: none of them is read
     hidden = any(getattr(n, "id", "") in ("globals", "locals") for n in nodes)
     tainted.update(total if hidden and any(m in (said(n) or "") for n in nodes for m in names) else ())  # any name may be given what the program names
     shapes = {t.id: (said(v.args[1]) or "").replace(",", " ").split() or [said(e) or "" for e in getattr(v.args[1], "elts", [])] for t, v in pairs
@@ -2775,6 +2778,8 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
         found = (by(init, ((init.args, c, obj),)) if init is not None and obj else []) + (by(post, ((post.args, None, obj),)) if post is not None and obj else [])
         if not found and obj and a in fields_of.get(name, ()):  # a class with fields and no __init__ of its own: handed by place or by name
             found = handed_field(c, name, a)
+        if not found and obj and init in kept_kw.values():  # a class that keeps its keywords as its fields
+            found = [(None, ())] if None in [k.arg for k in c.keywords] else [(k.value, ()) for k in c.keywords if k.arg == a]
         for b in [b for k in lineage(name) for b in classes[k].body] if not found else []:  # else what the class body gives: a constant, a field's default, a property's answer
             mine_ = isinstance(b, (ast.Assign, ast.AnnAssign)) and b.value is not None and any(
                 getattr(t, "id", None) == a for t in getattr(b, "targets", [getattr(b, "target", None)]))
@@ -2853,7 +2858,8 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
             return
         own, c, obj = calls_[0]
         sent = {t: a[0] for t, a in hands(own, [c], asked(c)[0] in classes).items() if a[0] is not None} if c is not None else {}
-        options = [spellings(a) for a in sent.values()]
+        options = [list(dict.fromkeys((["\2"] if isinstance(a, ast.Constant) and a.value is None else spellings(a)) + [  # what it is handed, or what the function gives the name itself
+            x for v in stores.get(t, []) for x in (["\0"] if v is None else [v] if isinstance(v, str) else spellings(v))])) for t, a in sent.items()]
         if any(d is own for d in deep) or len(deep) > 3 or math.prod(map(len, options)) > 8:
             sent, options = {}, []  # a function that calls itself, or too many readings: whatever any call may hand it
         deep.append(own)
