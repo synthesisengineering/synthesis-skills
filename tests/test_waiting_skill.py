@@ -17,6 +17,7 @@ def _held(*bound):
     """How long a note is held, in the command's own words."""
     done = subprocess.run([sys.executable, "-m", "synthesis", "wait", "note", "the build", "--by", "a background task", *bound],
                           capture_output=True, text=True, cwd=ROOT, timeout=30, env={**os.environ, "SYNTHESIS_SESSION": "S-usage"})
+    assert done.returncode == 0, done.stderr
     return re.search(r", for (.+), woken by ", done.stdout).group(1)
 
 
