@@ -317,3 +317,52 @@ def test_a_live_wait_and_a_reply_already_sent_back_once_still_pass(isolated_home
     wait.record("S1", "the reviewer's answer", time.time() + 600, pid=os.getpid())
     assert _sent_back(reply) is None
     assert _sent_back(reply, session="S2")                                            # another session's watcher is not this one's
+
+
+# --- review round 2 of 5.8.0 (2026-11-12) --------------------------------------------------------------------------
+# A second fresh pair of lists found 6 of 32 replies that need no watcher sent back and 5 of 20 unarmed waits passed.
+# Each finding is fixed as a class of grammar. The R2 ids are the review's; every other reply is written fresh for
+# these tests, as an agent or a person would end a turn, and none is taken from the review or from the lists above.
+
+# Finding 3 of the review: ordinary grammar between the subject and the verb, and a subject left out.
+R2_GRAMMAR_REVIEW = {
+    "R2-W11": "I'll continue to wait until the remote build completes.",
+    "R2-W12": "We're currently still waiting for the hosting provider to answer.",
+    "R2-W13": "I'll then resume once the replication job ends.",
+}
+GRAMMAR_OWN_WAIT = {
+    "keep-waiting": "I'll keep waiting until the nightly backup finishes.",
+    "two-adverbs-we-are": "We are currently just waiting on the certificate authority.",
+    "an-ly-adverb-before-resume": "I'll simply resume when the indexer catches up.",
+    "going-to-wait": "I'm going to wait for the load test to finish before I write the summary.",
+    "and-will-merge": "I pushed the branch and will merge once the checks are green.",
+    "no-subject-will-report": "Will report back when the export has been written.",
+    "need-to-wait": "I need to wait for the package registry to publish the new version.",
+    "then-be-able-to-proceed": "We'll then be able to proceed after the database has been restored.",
+    "and-am-now-waiting": "I've opened the pull request and am now waiting on the linter.",
+    "at-this-point-only": "At this point I'm only waiting for the mirror to sync.",
+    "still-have-to-wait": "We will still have to wait for the app store's approval of the build.",
+    "go-ahead-and-finish": "I'll go ahead and finish the migration as soon as the snapshot is taken.",
+    "still-just-waiting": "Still just waiting for the container image to build.",
+    "stuck-waiting": "I'm stuck waiting on the upstream mirror.",
+}
+GRAMMAR_NO_WATCHER = {
+    "a-wait-declined": "I won't wait for the nightly run; the unit tests cover this change.",
+    "software-that-will-resume": "The worker sleeps and will resume once the queue has items.",
+    "advice-to-wait": "I'd wait for the vendor's patch before upgrading; the workaround is fragile.",
+    "no-longer-have-to-wait": "We no longer have to wait for the cache to warm, because the index is built at deploy time.",
+    "continue-to-publish": "We will continue to publish the old feed until the end of March.",
+    "a-script-that-waits": "The script waits for the port to open and then runs the migrations.",
+    "did-not-need-to-wait": "I did not need to wait for the full suite: the failing test ran in isolation.",
+}
+
+
+@pytest.mark.parametrize("reply", _cases(R2_GRAMMAR_REVIEW, GRAMMAR_OWN_WAIT))
+def test_a_wait_is_read_through_adverbs_helping_verbs_and_a_subject_left_out(reply):
+    reason = _sent_back(reply)
+    assert reason and "nothing is armed" in reason
+
+
+@pytest.mark.parametrize("reply", _cases(GRAMMAR_NO_WATCHER))
+def test_a_wait_refused_advised_or_done_by_software_is_no_announcement(reply):
+    assert _sent_back(reply) is None
