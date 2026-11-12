@@ -7,6 +7,11 @@
 #   GOOGLE_CLIENT_SECRET_PATH — path to client_secret.json (required)
 #   GOOGLE_MCP_CREDENTIALS_DIR — where per-user tokens are stored (default ~/.google_workspace_mcp/credentials)
 #   WORKSPACE_MCP_TOOL_TIER  — core|extended|complete (default complete)
+#   ALLOWED_FILE_DIRS        — folders the server may read local files from, separated
+#                              by ":". Whatever is set is kept, and the synthesis outbox
+#                              is added (see below).
+#   SYNTHESIS_HOME           — where synthesis keeps its folders (default ~/.synthesis/v5);
+#                              the outbox is $SYNTHESIS_HOME/outbox
 #   WORKSPACE_MCP_FOREGROUND — set to 1 when invoked by a process supervisor
 #                              (launchd, systemd). Causes the script to `exec`
 #                              uvx so the supervisor manages the actual server
@@ -52,6 +57,23 @@ export GOOGLE_MCP_CREDENTIALS_DIR="${GOOGLE_MCP_CREDENTIALS_DIR:-$HOME/.google_w
 export OAUTHLIB_INSECURE_TRANSPORT=1  # permits http://localhost redirect
 
 mkdir -p "$GOOGLE_MCP_CREDENTIALS_DIR"
+
+# Local files the server may read. workspace-mcp reads a file given as a path
+# (a mail attachment, a Drive upload) only from its own attachment folder
+# (WORKSPACE_ATTACHMENT_DIR, default ~/.workspace-mcp/attachments) and from the
+# folders in ALLOWED_FILE_DIRS. A path anywhere else is refused when the tool
+# runs, which for a send is after it was approved. Agents stage outgoing
+# attachments in one folder, the synthesis outbox, so it is made here and added
+# to whatever ALLOWED_FILE_DIRS already holds. A server that is already running
+# keeps the folders it was started with: restart it to pick this up.
+OUTBOX="${SYNTHESIS_HOME:-$HOME/.synthesis/v5}/outbox"
+# The server does much besides mail, so a folder that cannot be made is said, not fatal.
+mkdir -p "$OUTBOX" || echo "WARNING: could not make the outbox $OUTBOX; a file staged there cannot be attached until it exists." >&2
+case ":${ALLOWED_FILE_DIRS:-}:" in
+  *":$OUTBOX:"*) ;;
+  *) ALLOWED_FILE_DIRS="${ALLOWED_FILE_DIRS:+$ALLOWED_FILE_DIRS:}$OUTBOX" ;;
+esac
+export ALLOWED_FILE_DIRS
 
 if [ -f "$PID_FILE" ]; then
   OLD_PID="$(cat "$PID_FILE")"

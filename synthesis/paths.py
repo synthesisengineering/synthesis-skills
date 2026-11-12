@@ -27,6 +27,12 @@ def sessions() -> Path:
     return home() / "sessions"
 
 
+def outbox() -> Path:
+    """Where an agent stages a file before attaching it to a message: the one folder the workspace-mcp connector is
+    started to read (its start.sh names it in ALLOWED_FILE_DIRS), so the send guard passes a file here."""
+    return home() / "outbox"
+
+
 BOARD_FILES = ("sessions", "messages", "sent", "read", "claims.jsonl", "claims.lock", "journal.jsonl")
 
 
