@@ -52,7 +52,7 @@ def settings_for(published, **env):
     on, and a local address, which these settings would load only as the operator's own test."""
     settings = config.load({"KB_SOURCE_DIR": str(published), "KB_PUBLIC_URL": "https://kb.example.com",
                             "KB_GOOGLE_CLIENT_ID": CLIENT_ID, "KB_GOOGLE_CLIENT_SECRET": "test-secret",
-                            "KB_ALLOWED_EMAILS": "lead@example.com,analyst@example.com",
+                            "KB_ALLOWED_EMAILS": "lead@example.com,analyst@example.com", "KB_OAUTH_STORE": "memory",
                             "KB_DOCUMENT_URL_TEMPLATE": "https://git.example.com/kb/src/{commit}/{source_path}", **env})
     return dataclasses.replace(settings, public_url="http://127.0.0.1")
 
@@ -291,7 +291,8 @@ def test_a_group_member_signs_in_and_loses_access_when_the_groups_cannot_be_read
 
 def test_main_refuses_to_start_when_the_access_groups_cannot_be_read(published, monkeypatch, capsys):
     env = {"KB_SOURCE_DIR": str(published), "KB_PUBLIC_URL": "https://kb.example.com", "KB_GOOGLE_CLIENT_ID": CLIENT_ID,
-           "KB_GOOGLE_CLIENT_SECRET": "test-secret", "KB_ALLOWED_GROUPS": "leads@example.com", "KB_REFRESH_SECONDS": "0"}
+           "KB_GOOGLE_CLIENT_SECRET": "test-secret", "KB_ALLOWED_GROUPS": "leads@example.com",
+           "KB_REFRESH_SECONDS": "0", "KB_OAUTH_STORE": "memory"}
 
     def refused(path):
         raise RuntimeError("Cloud Identity API answered 403 for groups:lookup: permission denied")
@@ -527,7 +528,8 @@ def test_main_refuses_bad_settings_and_serves_good_ones_statelessly(published, m
     assert server.main({}) == 2
     assert "KB_GOOGLE_CLIENT_ID is required" in capsys.readouterr().err
     env = {"KB_SOURCE_DIR": str(published), "KB_PUBLIC_URL": "https://kb.example.com", "KB_GOOGLE_CLIENT_ID": CLIENT_ID,
-           "KB_GOOGLE_CLIENT_SECRET": "test-secret", "KB_ALLOWED_EMAILS": "lead@example.com", "KB_REFRESH_SECONDS": "0"}
+           "KB_GOOGLE_CLIENT_SECRET": "test-secret", "KB_ALLOWED_EMAILS": "lead@example.com", "KB_REFRESH_SECONDS": "0",
+           "KB_OAUTH_STORE": "memory"}
     assert server.main({**env, "KB_SOURCE_DIR": str(published / "absent")}) == 1
     assert "the first load failed" in capsys.readouterr().err
     assert server.main({**env, "KB_SOURCE_DIR": "", "KB_GIT_URL": "git@git.example.com:x/y.git"}) == 2
@@ -544,7 +546,7 @@ def test_main_refuses_bad_settings_and_serves_good_ones_statelessly(published, m
 def test_main_says_test_only_at_the_start_of_the_operators_own_test(published, monkeypatch, caplog, capsys):
     env = {"KB_SOURCE_DIR": str(published), "KB_PUBLIC_URL": "https://kb.example.com", "KB_GOOGLE_CLIENT_ID": CLIENT_ID,
            "KB_GOOGLE_CLIENT_SECRET": "test-secret", "KB_ALLOWED_EMAILS": "lead@example.com,analyst@example.com",
-           "KB_REFRESH_SECONDS": "0"}
+           "KB_REFRESH_SECONDS": "0", "KB_OAUTH_STORE": "memory"}
     served = []
     monkeypatch.setattr(server.FastMCP, "run", lambda self, **kwargs: served.append(self))
     assert server.main(env) == 0 and served[-1].auth.policy.operators == frozenset()
@@ -579,3 +581,25 @@ def test_main_refuses_a_temporary_address_and_the_operators_own_test_says_what_e
     assert "The address is temporary and must not be given to anyone" in line
     assert "a restart of this process, this machine or its tunnel ends it." in line
     assert "Only lead@example.com can sign in." in line
+
+
+def test_main_warns_at_every_start_that_the_memory_store_signs_everyone_out(published, monkeypatch, caplog, capsys):
+    from key_value.aio.stores.memory import MemoryStore
+    env = {"KB_SOURCE_DIR": str(published), "KB_PUBLIC_URL": "https://kb.example.com", "KB_GOOGLE_CLIENT_ID": CLIENT_ID,
+           "KB_GOOGLE_CLIENT_SECRET": "test-secret", "KB_ALLOWED_EMAILS": "lead@example.com", "KB_REFRESH_SECONDS": "0"}
+    warning = "KB_OAUTH_STORE=memory: sign-ins live in this process only, so every restart signs everyone out"
+    served = []
+    monkeypatch.setattr(server.FastMCP, "run", lambda self, **kwargs: served.append(self))
+    assert server.main(env) == 2 and not served  # a deployment that names no store does not fall back to memory
+    assert "KB_OAUTH_STORE is required: firestore, with KB_STORAGE_ENCRYPTION_KEY" in capsys.readouterr().err
+    for change in ({"KB_OAUTH_STORE": "memory"},                               # named, on a permanent address
+                   OPERATOR,                                                    # the operator's own test, none named
+                   {**OPERATOR, "KB_PUBLIC_URL": "http://localhost:8080"}):
+        caplog.clear()
+        assert server.main({**env, **change}) == 0
+        assert caplog.messages.count(warning) == 1
+        assert [record.levelno for record in caplog.records if record.getMessage() == warning] == [logging.WARNING]
+    monkeypatch.setattr(server, "oauth_storage", lambda settings: MemoryStore())  # stands in for Firestore
+    caplog.clear()
+    assert server.main({**env, "KB_OAUTH_STORE": "firestore", "KB_STORAGE_ENCRYPTION_KEY": "A" * 43 + "="}) == 0
+    assert len(served) == 4 and not [message for message in caplog.messages if "KB_OAUTH_STORE" in message]

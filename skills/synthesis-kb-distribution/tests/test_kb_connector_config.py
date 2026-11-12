@@ -1,5 +1,5 @@
 """Settings from the environment: defaults, every problem reported at once, nothing served without sign-in, and
-no temporary address outside the operator's own test."""
+no temporary address and no unnamed sign-in store outside the operator's own test."""
 
 import pytest
 
@@ -9,7 +9,7 @@ from kb_connector.config import ConfigError, load
 KEY = "A" * 43 + "="
 BASE = {"KB_GIT_URL": "git@git.example.com:example/knowledge-plugin.git", "KB_PUBLIC_URL": "https://kb.example.com/",
         "KB_GOOGLE_CLIENT_ID": "id.apps.googleusercontent.com", "KB_GOOGLE_CLIENT_SECRET": "secret",
-        "KB_ALLOWED_EMAILS": "lead@example.com"}
+        "KB_ALLOWED_EMAILS": "lead@example.com", "KB_OAUTH_STORE": "memory"}  # a deployment names its store
 OPERATOR = {"KB_OPERATOR_TEST": "1", "KB_OPERATOR_ADDRESSES": "lead@example.com"}  # the operator-only test mode
 
 
@@ -22,7 +22,7 @@ def problems(env):
 def test_defaults():
     settings = load(BASE)
     assert settings.public_url == "https://kb.example.com" and settings.refresh_seconds == 600
-    assert settings.oauth_store == "memory" and settings.search_limit == 10 and settings.port == 8080
+    assert settings.search_limit == 10 and settings.port == 8080
     assert settings.document_url == "kb:{id}" and settings.token_cache_seconds == 300
     assert settings.firestore_prefix == "kb-connector" and settings.allowed_redirect_uris == ()
     assert settings.work_dir == "" and settings.host == "0.0.0.0" and settings.server_name == "Knowledge base"
@@ -43,7 +43,7 @@ def test_every_problem_is_reported_together():
     for expected in ("set exactly one of KB_GIT_URL", "KB_PUBLIC_URL must be the service's https://",
                      "KB_GOOGLE_CLIENT_ID is required", "KB_GOOGLE_CLIENT_SECRET is required",
                      "KB_ALLOWED_EMAILS or KB_ALLOWED_GROUPS is required", "KB_SEARCH_LIMIT must be a whole number from 1 to 50",
-                     "PORT must be a whole number"):
+                     "PORT must be a whole number", "KB_OAUTH_STORE is required"):
         assert expected in text
 
 
@@ -82,6 +82,17 @@ def test_the_operator_only_test_mode_is_one_switch_and_the_operators_own_address
 def test_a_test_mode_set_by_halves_stops_the_start(change):
     assert ("the operator-only test mode needs both KB_OPERATOR_TEST=1 and KB_OPERATOR_ADDRESSES"
             in problems({**BASE, **change}))
+
+
+def test_the_sign_in_store_is_named_outside_the_operators_own_test():
+    unnamed = {name: value for name, value in BASE.items() if name != "KB_OAUTH_STORE"}
+    text = problems(unnamed)  # a deployment that names no store does not fall back to memory
+    assert "KB_OAUTH_STORE is required: firestore, with KB_STORAGE_ENCRYPTION_KEY, keeps sign-ins across" in text
+    assert "memory signs everyone out at every restart and is the default only in the operator-only test mode" in text
+    assert load({**unnamed, "KB_OAUTH_STORE": " Memory "}).oauth_store == "memory"  # named on purpose; the start warns
+    assert load({**unnamed, **OPERATOR}).oauth_store == "memory"  # the operator's own test needs no store named
+    kept = load({**unnamed, **OPERATOR, "KB_OAUTH_STORE": "firestore", "KB_STORAGE_ENCRYPTION_KEY": KEY})
+    assert kept.oauth_store == "firestore"
 
 
 def test_http_is_allowed_only_for_a_local_address():

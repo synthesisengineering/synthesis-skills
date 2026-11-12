@@ -119,7 +119,7 @@ def test_the_operator_only_test_mode_refuses_a_group_member_who_is_not_the_opera
 
 def test_settings_take_groups_alone_and_refuse_neither():
     base = {"KB_SOURCE_DIR": "/kb", "KB_PUBLIC_URL": "https://kb.example.com", "KB_GOOGLE_CLIENT_ID": "id",
-            "KB_GOOGLE_CLIENT_SECRET": "secret"}
+            "KB_GOOGLE_CLIENT_SECRET": "secret", "KB_OAUTH_STORE": "memory"}
     settings = load({**base, "KB_ALLOWED_GROUPS": "leads@example.com"})
     assert settings.allowed_emails == "" and settings.group_refresh_seconds == 300
     assert load({**base, "KB_ALLOWED_GROUPS": "a@example.com", "KB_GROUP_REFRESH_SECONDS": "60"}).group_refresh_seconds == 60
