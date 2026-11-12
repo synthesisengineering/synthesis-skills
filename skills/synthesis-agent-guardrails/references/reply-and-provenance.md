@@ -84,9 +84,7 @@ provenance scan since 2026-10-05: 1 unsourced; read 6 records and 261 session lo
   records ...`). A file that is not text (bytes that are not UTF-8, or a NUL byte: an image, a
   database, the folder file a Mac keeps) holds nothing an agent wrote as text; the last line
   counts it (`...; 3 files that are not text were not read`) and it fails nothing. An unreadable
-  record was not checked:
-  read it another way, or take what is not a record (an image, a database, a file
-  manager's `.DS_Store`) out of the folder given with `--records`.
+  record was not checked: read it another way.
 - What is checked: what a record gained since its last commit before the date: every
   Slack timestamp (`1234567890.123456` or the `p1234567890123456` permalink form) and every
   attributed quote of twelve or more characters.
