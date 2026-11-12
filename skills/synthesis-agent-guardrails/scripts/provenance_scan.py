@@ -9,8 +9,9 @@ ritual-workers/, drafts/ or projects/<id>/sessions/, or are a project's CONTEXT.
 hidden folders and node_modules not entered; and every regular file under each --records FOLDER, at
 any depth and in hidden folders too, .git alone left out, for a plan folder a workspace keeps under
 another name. A link to a folder is not followed. Each must have changed since the date. A record
-that cannot be opened or is not text (bytes that are not UTF-8, or a NUL byte), and a folder that
-cannot be listed, is named as unreadable: it was not checked.
+that cannot be opened, and a folder that cannot be listed, is named as unreadable: it was not
+checked. A file that is not text (bytes that are not UTF-8, or a NUL byte: an image, a database, the
+folder file a Mac keeps) holds nothing an agent wrote as text: it is counted, and fails nothing.
 What a record gained since then (against its last commit before the date) is checked: every
 Slack timestamp (1234567890.123456, or the p1234567890123456 permalink form) and every
 attributed quote (said, wrote, replied ...: "twelve or more characters").
@@ -21,8 +22,8 @@ its writes, and a write's echoed result never source themselves. Origin: an agen
 message by changing a real message's timestamp, and the fake landed in transcripts and context.
 
 Prints each unsourced item as `record: kind value` and each unreadable record as `record: unreadable
-(why)`, then what it read. Exit 0 when every record was read and everything is sourced, 1 when
-something is unsourced or unreadable, 2 when it could not run (no session log folder, or a path given
+(why)`, then what it read and how many files that are not text it left out. Exit 0 when every record
+was read and everything is sourced, 1 when something is unsourced or unreadable, 2 when it could not run (no session log folder, or a path given
 that does not exist). Reads only; writes nothing.
 """
 
@@ -149,15 +150,18 @@ def sourced(needles: dict, dirs: list, since: float) -> tuple[set, int]:
 
 def scan(roots: list, day: str, source_dirs: list, declared: tuple = ()) -> tuple[list, dict]:
     since = time.mktime(time.strptime(day, "%Y-%m-%d"))
-    gained, checked, unread = [], 0, []
+    gained, checked, unread, binary = [], 0, [], 0
     for path in records(roots, since, declared, lambda exc: unread.append((exc.filename, exc.strerror or "cannot be listed"))):
         try:
             with open(path, encoding="utf-8") as handle:
                 now = "".join(iter(lambda: handle.read(1 << 20), ""))  # a large file that is not text fails at its first block
             if "\0" in now:
                 raise UnicodeError
-        except (OSError, UnicodeError) as exc:  # named, never passed over: the scan cannot vouch for what it did not read
-            unread.append((path, getattr(exc, "strerror", None) or "not text"))
+        except UnicodeError:  # an image, a database: nothing an agent wrote as text
+            binary += 1
+            continue
+        except OSError as exc:  # named, never passed over: the scan cannot vouch for what it did not read
+            unread.append((path, exc.strerror or "cannot be opened"))
             continue
         checked += 1
         old = before(path, day)
@@ -176,7 +180,7 @@ def scan(roots: list, day: str, source_dirs: list, declared: tuple = ()) -> tupl
                               lambda t, p=probe: p in words(t))
     found, logs = sourced(needles, source_dirs, since)
     missing = [(p, k, v if k == "timestamp" else f'"{v[:80]}"') for p, k, v in gained if v not in found]
-    return missing, {"records": checked, "session logs": logs, "unreadable": list(dict.fromkeys(unread))}  # each named once
+    return missing, {"records": checked, "session logs": logs, "unreadable": list(dict.fromkeys(unread)), "not text": binary}  # each named once
 
 
 def main(argv=None) -> int:
@@ -203,8 +207,9 @@ def main(argv=None) -> int:
     for path, kind, value in found + [(path, "unreadable", f"({why})") for path, why in read["unreadable"]]:
         print(f"{path}: {kind} {value}")
     unread = f", {len(read['unreadable'])} unreadable" if read["unreadable"] else ""
+    left = read["not text"]
     print(f"provenance scan since {args.since}: {len(found)} unsourced{unread}; read {read['records']} records "
-          f"and {read['session logs']} session logs")
+          f"and {read['session logs']} session logs" + (f"; {left} file{' that is not text was' if left == 1 else 's that are not text were'} not read" if left else ""))
     return 1 if found or read["unreadable"] else 0
 
 
