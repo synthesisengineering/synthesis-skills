@@ -464,6 +464,9 @@ def test_a_prompt_is_accounted_for_by_a_record_that_cites_it_alone_or_in_a_range
     assert sessions.uncited([first, second], roots) == [first, second]      # another record, another session, no citation
     asked["log"].write_text(f"- c1 #{first['seq']} to #{second['seq']}\n", encoding="utf-8")
     assert sessions.uncited([first, second], roots) == []
+    for joined in ("—", " – ", " through #", "..."):
+        asked["log"].write_text(f"- `claude-code c1 #{first['seq']}{joined}{second['seq']}`\n", encoding="utf-8")
+        assert sessions.uncited([first, second], roots) == ([first, second][1:] if joined == "..." else []), joined
     assert sessions.uncited([first], [str(asked["kb"] / "absent")]) == [first]
 
 
