@@ -82,14 +82,18 @@ _HEAD = (r"(?=\W*$|[^\w\s-]| (?:of|on|about|for|before|in|at|by|from|with|regard
          r"|now|today|tonight|tomorrow|soon|too|either|again|instead|please|yet|still|also|back|i|we|it|you|not|to)\b)"
          r"(?!(?:(?<=code)|(?<=codes)) to (?!(?:proceed|continue|go ahead|move forward|start|begin)\b))")
 THEIRS = re.compile(
-    r"(?i)\b(?:from|by|until|till|once|when|after|as soon as) you\b"
+    r"(?i)\b(?:from|by|until|till|once|when(?:ever)?|after|as soon as) you\b"
     r"(?! (?:\w+[^e\W]ed|sent|gave|said|told|chose|wrote|made|did|were|had|got|agreed)\b)|\bfor you to\b"
     r"|(?<!\bas )(?<!\blike )\byou (?:promised|owe|decide|choose|pick|prefer|want|approve|confirm|say)\b"
-    r"|(?:\b(?:for|on|until|till|once|when|after|as soon as|await(?:ing)?|is|are|was) |['’]s |(?:[:—–]| -) |^\W*"
+    r"|\b(?:hear|know|learn|see|find out) (?:back )?(?:which|what|whether|how|when|where|who|if)\b[^,;:]*?(?<!\bto )(?<!\bwith )"
+    r"(?<!\babout )\byou\b"  # a question the principal answers: "to hear which date works for you"
+    r"|(?:\b(?:for|on|until|till|once|when|after|as soon as|await(?:ing)?|needs?|is|are|was) |['’]s |(?:[:—–]| -) |^\W*"
     r"|\b(?:until|till|once|when|after|as soon as) (?:i|we)(?:['’]ve| have)? (?:have|get|got|receive[sd]?|see|hear|read|know|learn) "
     r"|\bto (?:have|get|receive|see|hear|read|know|learn) )(?:(?:only|just|both|either|also|still|now) )?"
     r"your (?:next (?:message|prompt)\b|(?:(?:next|final|explicit|written|own|" + _ACT + r") )*(?:" + _ACT + ")" + _HEAD + ")")
 OPEN = re.compile(r"(?: (?:for|on))?(?: (?:right now|now|here|today|still|at this point))?\W*$")  # nothing is named after the wait
+BACK = re.compile(r"(?i)(?: (?:for|on))?(?: (?:that|this|it|them|those|both|here|now))?\W*$")      # or only a word that points back
+LEAD = re.compile(r"(?i)(?:(?:and|so|but|now|then|until then|till then|meanwhile),? )?")           # before a wait that opens its clause
 MARKS = re.compile(r"^[ \t]*>.*|[*_#]+|^[ \t]*(?:[-+•]|\d+[.)])[ \t]+", re.M)  # a quoted line; emphasis, heading and list marks
 EDGE = re.compile(r"(?<=[.!?])\s+|;|(?<![:\s])\s*\n\s*")  # a sentence's or a line's end, a semicolon; after a colon the line runs on
 # Code and quoted text are not the reply's own words: a fence of three or more backticks, or of tildes at a line's start,
@@ -124,12 +128,15 @@ def shortcut_hits(reply: str, extra: list[str]) -> list[str]:
     return sorted({p for p in DEFAULT_PHRASES + [e.lower() for e in extra] if re.search(rf"\b{re.escape(p)}\b", plain)})
 
 
-def _theirs(text: str, m: re.Match) -> bool:
+def _theirs(text: str, m: re.Match, before: str) -> bool:
     """Is the principal's own next move what this wait awaits? It is when it stands from the wait's words onward; in
     front of them as a condition ("until you choose, I'll wait", "once you sign, I'll wait for the bank"); or anywhere
     in front when nothing is named after the wait ("your answer is the only thing I'm awaiting"). What stands in front
-    otherwise is context ("your review is filed and I'm waiting on CI")."""
-    if THEIRS.search(text, m.start()):
+    otherwise is context ("your review is filed and I'm waiting on CI"). A wait that opens its clause and names nothing,
+    or only "that" or "it", awaits what the clause before it names ("your approval is all that is left; I'm waiting on
+    that")."""
+    if THEIRS.search(text, m.start()) or (before and LEAD.fullmatch(text, 0, m.start()) and BACK.match(text, m.end())
+                                          and THEIRS.search(before)):
         return True
     bare = m.group(0).lower().endswith(("wait", "waiting")) and OPEN.match(text, m.end())
     return any(bare or t.group(0).lower().startswith(("until", "till", "once", "when", "after", "as soon as"))
@@ -142,8 +149,9 @@ def unarmed_wait(reply: str, payload: dict, config: dict) -> list[str]:
     and a reply that ends by asking them has none."""
     plain = MARKS.sub("", QUOTED.sub(" something ", CODE.sub(" something ", reply))).strip()  # a name set aside is still a thing awaited
     forms = [WAITS] + [re.compile(rf"(?i)\b{re.escape(str(p))}\b") for p in config.get("wait_phrases") or [] if str(p).strip()]
-    hits = {m.group(0).lower().strip(" :—–-") for clause in ([] if plain.endswith("?") else EDGE.split(plain))
-            for text in [" ".join(clause.split())] for form in forms for m in form.finditer(text) if not _theirs(text, m)}
+    clauses = [] if plain.endswith("?") else [c for c in (" ".join(part.split()) for part in EDGE.split(plain)) if c]
+    hits = {m.group(0).lower().strip(" :—–-") for at, text in enumerate(clauses) for form in forms for m in form.finditer(text)
+            if not _theirs(text, m, clauses[at - 1] if at else "")}
     if not hits:
         return []
     from synthesis import autopilot, paths, wait
