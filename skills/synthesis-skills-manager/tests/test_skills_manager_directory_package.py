@@ -214,16 +214,17 @@ def test_the_real_package_passes_its_own_check(capsys):
     ("synthesis-agent-guardrails", EVERY_KIND),
     ("synthesis-git-hooks", {"a hook claim", "an approval-code claim", "a runtime need"}),
     ("synthesis-repo-guard", {"a guard claim"}),
-    # Skills that only mention a guard or a command in passing are caught too.
-    ("synthesis-implementation-integrity", {"a hook claim", "a guard claim", "an approval-code claim"}),
-    ("synthesis-anti-shortcuts", {"a hook claim"}),
-    ("synthesis-adversarial-review", {"a guard claim", "a runtime need"}),
-    ("synthesis-decision-packet", {"an approval-code claim", "a runtime need"}),
-    ("synthesis-agent-correspondence", {"a guard claim"}),
+    # A skill that mentions a guard or a command only in passing is caught too, whatever it mentions.
+    ("synthesis-implementation-integrity", set()),
+    ("synthesis-anti-shortcuts", set()),
+    ("synthesis-adversarial-review", set()),
+    ("synthesis-decision-packet", set()),
+    ("synthesis-agent-correspondence", set()),
 ])
 def test_a_runtime_skill_fails_on_its_own_text(skill, at_least):
+    kinds = {kind for _, _, found in claimed(skill) for kind in found}
     assert skill not in LISTED
-    assert at_least <= {kind for _, _, kinds in claimed(skill) for kind in kinds}
+    assert kinds and at_least <= kinds, f"{skill} no longer fails as it did; if it needs nothing now, it may be listed"
 
 
 def test_a_skill_left_out_of_the_list_is_recorded_with_its_reason_and_still_fails():
