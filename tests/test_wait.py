@@ -456,6 +456,51 @@ def test_a_session_stays_addressable_for_the_whole_bound_of_its_wait(two, monkey
     assert board.load("S1").seen == seen                                              # and a watcher never writes its session's record
 
 
+def test_a_seat_in_a_live_wait_is_listed_for_the_whole_bound_of_its_wait(two, tmp_path, capsys):
+    """2026-11-12, a second review: nine hours into a twelve-hour wait `synthesis who` printed nothing for the waiting
+    seat, though a message still reached it, and `who --all` said only that it was stale. The waiting skill tells a
+    seat whose wake did not come to read its binding there."""
+    from synthesis import cli, wait
+    now, area = time.time(), str(tmp_path / "area")
+    board.claim("S1", [area])
+    for name, project in (("S3", "gamma"), ("S4", "delta"), ("S5", "epsilon"), ("S6", None), ("S7", "eta")):
+        board.touch(name, project=project, harness="codex")
+    ended = subprocess.Popen([sys.executable, "-c", "pass"])
+    ended.wait()
+    wait.record("S1", "a message", now + 3 * 3600, pid=os.getpid(), every=300)        # nine hours into twelve, its watcher running
+    wait.record("S4", "a message", now - 60, pid=os.getpid())                         # a wait whose bound passed a minute ago
+    wait.record("S5", "the build", now + 3600, pid=ended.pid)                         # a wait whose watcher is gone
+    wait.record("S6", "the CI run", now + 2 * 3600, by="the harness's timer")         # a wait the harness holds, on a seat bound to no project
+    wait.record("S7", "a file", now + 1800, pid=os.getpid())                          # a seat seen a moment ago that waits too
+    for name in ("S1", "S3", "S4", "S5", "S6"):                                       # each of these was last seen nine hours ago
+        seat = board.load(name)
+        seat.seen = now - 9 * 3600
+        board.save(seat)
+
+    def who(*options):
+        assert cli.main(["who", *options]) == 0
+        said = capsys.readouterr().out
+        return said, {row.split()[1]: row for row in said.splitlines() if not row.startswith(" ")}
+
+    def until(hours):
+        return "waiting until " + time.strftime("%H:%M", time.localtime(now + hours * 3600))
+    said, listed = who()
+    assert set(listed) == {"S1", "S2", "S6", "S7"}                                    # who can be reached: not S3, S4 or S5
+    assert re.search(r"claude-code +alpha +540 min ago  STALE  " + until(3) + "$", listed["S1"])   # its binding, its stale claims, its wait
+    assert f"{listed['S1']}\n    {board.as_claim(area)}\n" in said
+    assert re.search(r"codex +- +540 min ago  STALE  " + until(2) + "$", listed["S6"])
+    assert listed["S7"].endswith("min ago  " + until(0.5)) and listed["S2"].endswith("min ago")
+    said, everyone = who("--all")
+    assert set(everyone) == {"S1", "S2", "S3", "S4", "S5", "S6", "S7"}
+    assert all(everyone[name].endswith("540 min ago  STALE") for name in ("S3", "S4", "S5"))
+    assert all(everyone[name] == listed[name] for name in listed)
+    assert board.holders(area) == []                                                  # its claims are stale as before: they block nothing,
+    with pytest.raises(board.ClaimConflict, match="it is stale, retry with --take"):
+        board.claim("S2", [area])
+    assert board.claim("S2", [area], take_stale=True).claims == [board.as_claim(area)]   # a peer that asks may take them,
+    assert board.resolve("S1").session == "S1" and wait.live("S4") == wait.live("S5") == []   # and mail still reaches the seat
+
+
 # --- the sender is told what will deliver the message --------------------------------------------------------------
 
 def test_a_word_of_a_message_is_not_taken_for_the_command(two):
