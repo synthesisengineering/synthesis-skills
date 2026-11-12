@@ -645,6 +645,22 @@ def test_each_file_of_a_call_is_bound_and_a_file_the_call_does_not_name_is_not(s
     assert guards.check(SLACK, plain, CONFIG) is None
 
 
+def test_a_file_too_large_to_hash_in_the_guards_time_refuses_the_call_and_is_never_sent_on_its_path_alone(scratch, monkeypatch):
+    """A harness passes over a hook that runs past its time, so the read is bounded well inside it: a file whose
+    bytes cannot be bound in that time is refused."""
+    hooks = json.loads((Path(__file__).resolve().parents[1] / "hooks" / "hooks.json").read_text(encoding="utf-8"))
+    given = min(hook["timeout"] for group in hooks["hooks"]["PreToolUse"] for hook in group["hooks"])
+    allowed = guards.HASH_SECONDS
+    assert 0 < allowed <= given / 2
+    staged = _staged(scratch)
+    _approve(_attached(staged))
+    monkeypatch.setattr(guards, "HASH_SECONDS", 0)  # as if the file took longer than the guard may spend
+    refused = _attached(staged)
+    assert f"the attachment {staged} cannot be read" in refused and "approve" not in refused, refused
+    monkeypatch.setattr(guards, "HASH_SECONDS", allowed)
+    assert _attached(staged) is None  # the approval was kept
+
+
 @pytest.mark.skipif(os.geteuid() == 0, reason="root reads a file whatever its mode")
 @pytest.mark.parametrize("ask,what", [(_attached, "the attachment"), (_uploaded, "the file")],
                          ids=["a mail attachment", "a Drive file"])
