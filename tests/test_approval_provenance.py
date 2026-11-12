@@ -2561,6 +2561,8 @@ FOLLOWED = [
     ("import glob, os\nfor f in filter(os.path.isfile, glob.glob('/tmp/pad/*')):\n    os.remove(f)", False),
     ("from collections import namedtuple\nJob = namedtuple('Job', 'src out')\nj = Job('{work}/s.jsonl', '/tmp/pad/o.json')\nopen(j.out, 'w').write(open(j.src).read()[:10])", False),
     ("from collections import namedtuple\nJob = namedtuple('Job', ['src', 'out'])\nj = Job('/tmp/pad/o.json', '{work}/s.jsonl')\nopen(j.out, 'w').write('x')", True),
+    ("import os\nos.environ['HOME'] = '{state}'\nopen(os.path.expanduser('~/x.json'), 'w').write('x')", True),                    # a home the program gives itself
+    ("import os\nos.environ['HOME'] = '/tmp/pad/home'\nopen(os.path.expanduser('~/x.json'), 'w').write('x')", False),
 ]
 
 
