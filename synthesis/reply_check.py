@@ -32,7 +32,9 @@ DEFAULT_PHRASES = [
 # ("waiting for a runner was the cause"). Phrases read anywhere in a reply sent back 15 of 34 that need no watcher
 # and passed 9 of 17 waits (review, 2026-11-12). THEIRS, the principal's own next move, exempts only the clause it
 # stands in. Config `wait_phrases` adds plain phrases.
-_ME, _WHEN = r"\b(?:i|we)", r"\b(?:once|when|after|until|as soon as)\b"
+# "once" is a conjunction here, not a count: not "at once", "once more", "once on staging", "once a day".
+_ONCE = r"(?<!at )once(?! (?:more|again|a|an|per|every|each|or|and|only|on|in|at|for|with|to|by|upon|daily|weekly)\b)"
+_ME, _WHEN = r"\b(?:i|we)", r"\b(?:" + _ONCE + r"|when|after|until|as soon as)\b"
 # Ordinary grammar between a subject and its verb (review round 2): any run of adverbs ("currently still", "then",
 # "simply"; "not" and "no longer" are none), helping verbs ("continue to wait", "be able to resume", "go ahead and
 # merge"), "going to" and "need to" for "will", and a subject left out ("Will report back", "I pushed it and will").
@@ -46,12 +48,23 @@ _MUST = r"(?:" + _WILL + "|" + _ME + r" (?:(?:still|now|just|also|then|\w+ly) )?
 _HELP = r"(?:(?:be|keep|keep on|go on|carry on|continue to|have to|need to|be able to|go ahead and) )*"
 _GO = (r"(?:continue(?! to\b)|resume|proceed|pick (?:[\w'’-]+ ){1,4}?(?:back )?up|finish|merge|confirm|follow up|circle back"
        r"|(?:report|check|come|get) back|let you know|(?:update|notify|tell|ping|message) you)\b")
+# The session itself ("I", not the "we" of advice) with any verb before an event that is still to come: "I'll send it as soon
+# as the run finishes", "once their quote arrives, I'll update the sheet", "I'll check them when it's done".
+_I = (r"(?:\bi(?:['’]ll| will| shall|(?:['’]m| am) going to)|^\W*will|\bi\b[^:]{0,120}?\b(?:and|but|then) will)" + _ASIDE + _SOON)
+_THEN = r"(?:" + _ONCE + r"|as soon as(?! (?:possible|practical)\b)) (?!(?:i|we)\b)\w"
+_DONE = (r"(?:when|once) (?:it|they|that|this|everything)(?:(?:['’]s|['’]re| is| are| has| have)(?: been)? (?:done|ready|finished"
+         r"|completed?|through|over|back|in|up|live|green|available|out|here|merged|published|released)| (?:lands?|finish(?:es)?"
+         r"|completes?|ends?|returns?|arrives?|pass(?:es)?|comes?))\b")
+_GOING = (r"(?:resuming|continuing(?! to\b)|proceeding|merging|finishing|following up|circling back|(?:reporting|checking|coming"
+          r"|getting) back|picking (?:[\w'’-]+ ){1,4}?(?:back )?up)\b")
+_HELD = r"\b(?=.{0,160}?\b(?:until|till)\b)"  # a hold is a wait when it runs until something
 # "Waiting for X" is the subject of its sentence, an explanation, when a verb follows X: a helping verb, a verb of effect
 # ("blocks", "adds", "takes"), or any verb in -s before its object or "out", "up", "down", "off". The words between may
 # hold an infinitive ("the import to release its lock") but nothing that opens another clause (_STOP), so "waiting for
 # the reviewer to confirm the fix is right" stays an announcement (review round 2).
-_STOP = (r"that|which|who|whom|whose|what|where|why|how|whether|wh\w+ever|when|it|they|we|i|you|he|she|and|but|or|then|so|before"
-         r"|after|until|till|while|because|if|as|since|once|though|sure|word|news|notice|proof|signs?|signal|confirm\w*"
+_STOP = (r"that|which|who|whom|whose|what|where|why|how|whether|wh\w+ever|when|it|they|we|i|you|he|she|and|but|or|then|so"
+         r"|(?:before|after|while)(?! \w+ing\b)|until|till|because|if|as|since|once|though|sure|word|news|notice|proof|signs?|signal"
+         r"|confirm\w*"
          r"|(?:say|report|check|tell|decide|see|know|find|show|ensure|learn|hear)s?|verif(?:y|ies)")
 _WORD = r"(?: (?!(?:" + _STOP + r")\b)[\w'’/.-]+)"
 _EFFECT = (r"(?:take|cost|add|waste|delay|slow|mean|make|block|stall|hurt|help|risk|keep|hold|tie|burn|defeat|prevent|guarantee"
@@ -62,20 +75,22 @@ _PRED = (_OFTEN + r"(?:(?:is|was|are|were|has|had|can|could|would|will|should|ma
          r"|what)\b|(?:a|an|the|its|their|our|every|each|last|next|most|much|many|some|no) [\w'’/.-]+"
          r"(?: (?![\w-]*(?:s|ed)(?=\W*$|[ ,]))[\w'’/.-]+){0,3}?(?=\W*$|,| (?:to|in|on|at|for|by|of|from|with|and|but|so|which|when"
          r"|while|during|than|as|into|across|because|if|until)\b)))")
-_SUBJECT = r"(?!" + _WORD + r"{1,12}? " + _PRED + ")"
+SUBJECT = re.compile("(?i)" + _WORD + r"{1,12}? " + _PRED)
 # "Waiting until X" may hold a verb of its own (X's): "is" or "can" makes it a subject only after that verb ("waiting
 # until CI is green" announces; "waiting until every replica agrees is safer" explains), "would" or a verb of effect at once.
-_UNTIL = (r"(?!" + _WORD + r"{1,10}? (?:(?!(?:" + _STOP + r")\b)(?:is|are|was|were|has|have|had|[a-z]+(?:s|ed))\b" + _WORD + r"{0,6}? "
-          + _OFTEN + r"(?:is|was|can|could|has|does)(?:n['’]t)?\b|" + _OFTEN + r"(?:(?:would|will|should|may|might|must)(?:n['’]t)?\b"
-          r"|took\b|cost\b|" + _EFFECT + ")))")
-WAITS = re.compile(
-    "(?i)" + _AM + r"a?waiting\b(?! (?:for|on)(?: you\b| from\b|\W*$))"
-    "|" + _MUST + _HELP + r"(?:wait(?:ing)?\b|hold(?:ing)?\b(?=.{0,160}?\b(?:until|till)\b))(?! (?:for|on) you\b)"
+UNTIL = re.compile("(?i)" + _WORD + r"{1,10}? (?:(?!(?:" + _STOP + r")\b)(?:is|are|was|were|has|have|had|[a-z]+(?:s|ed))\b" + _WORD
+                   + r"{0,6}? " + _OFTEN + r"(?:is|was|can|could|has|does)(?:n['’]t)?\b|" + _OFTEN
+                   + r"(?:(?:would|will|should|may|might|must)(?:n['’]t)?\b|took\b|cost\b|" + _EFFECT + "))")
+WAITS = re.compile(  # a clause that opens with the wait is tested as a subject afterwards: group "on" by SUBJECT, "till" by UNTIL
+    "(?i)" + _AM + r"(?:a?waiting\b(?! (?:for|on)(?: you\b| from\b|\W*$))|(?:holding|standing by)" + _HELD + ")"
+    "|" + _MUST + _HELP + r"(?:wait(?:ing)?\b|(?:hold(?:ing)?|stand(?:ing)? by)" + _HELD + r")(?! (?:for|on) you\b)"
     "|" + _WILL + _HELP + _GO + ".{0,160}?" + _WHEN + "|" + _WHEN + ".{0,160}?" + _WILL + _HELP + _GO
     + r"|\b(?:until|till)\b.{0,160}?" + _MUST + _HELP + r"hold(?:ing)?\b"
-    + r"|\b(?:(?:when|once) it (?:lands|finishes|returns|arrives)|should (?:come|arrive) shortly),?(?: and)?(?: then)? " + _WILL
-    + r"|(?:^\W*|[:—–] ?| --? )" + _SOON + r"(?:waiting (?:(?:for|on|to (?:hear|see|get|learn|find out))\b(?! you\b)" + _SUBJECT
-    + r"|until\b" + _UNTIL + r")|awaiting\b" + _SUBJECT + r"|holding\b(?=.{0,160}?\b(?:until|till)\b" + _UNTIL + "))")
+    + "|" + _I + r"[^;:]{1,100}?\b(?:" + _THEN + "|" + _DONE + r")|\b" + _THEN + r"[^,;:]{0,100},? (?:and )?(?:then )?" + _I
+    + r"|\b(?:" + _DONE + r"|should (?:come|arrive) shortly),?(?: and)?(?: then)? " + _WILL
+    + r"|(?:^\W*|[:—–] ?| --? )" + _SOON + r"(?:(?P<on>waiting (?:for|on|to (?:hear|see|get|learn|find out))\b(?! you\b)|awaiting\b)"
+    r"|(?P<till>waiting until\b|(?:holding|standing by)\b.{0,160}?\b(?:until|till)\b|" + _GOING
+    + r"[^;:]{0,100}?\b(?:when|after|as soon as|" + _ONCE + r")\b))")
 # The principal's own next move is what is awaited: "you" as the one who acts and not in the past ("once you approve";
 # "after you approved" and "as you want" are context), or an act of theirs. An act counts where it is the thing
 # awaited: after the wait's own word ("for", "on", "until", "once I have"), a colon, a dash or the clause's start, and
@@ -142,6 +157,12 @@ def shortcut_hits(reply: str, extra: list[str]) -> list[str]:
     return sorted({p for p in DEFAULT_PHRASES + [e.lower() for e in extra] if re.search(rf"\b{re.escape(p)}\b", plain)})
 
 
+def _explains(text: str, m: re.Match) -> bool:
+    """Is the wait that opens this clause the subject of its sentence ("waiting for a lock blocks a thread")?"""
+    opened = m.groupdict()
+    return bool(opened.get("on") and SUBJECT.match(text, m.end()) or opened.get("till") and UNTIL.match(text, m.end()))
+
+
 def _theirs(text: str, m: re.Match, before: str) -> bool:
     """Is the principal's own next move what this wait awaits? It is when it stands from the wait's words onward; in
     front of them as a condition ("until you choose, I'll wait", "once you sign, I'll wait for the bank"); or anywhere
@@ -164,7 +185,7 @@ def unarmed_wait(reply: str, payload: dict, config: dict) -> list[str]:
     forms = [WAITS] + [re.compile(rf"(?i)\b{re.escape(str(p))}\b") for p in config.get("wait_phrases") or [] if str(p).strip()]
     clauses = [] if plain.endswith("?") else [c for c in (" ".join(part.split()) for part in EDGE.split(plain)) if c]
     hits = {m.group(0).lower().strip(" :—–-") for at, text in enumerate(clauses) for form in forms for m in form.finditer(text)
-            if not _theirs(text, m, clauses[at - 1] if at else "")}
+            if not _explains(text, m) and not _theirs(text, m, clauses[at - 1] if at else "")}
     if not hits:
         return []
     from synthesis import autopilot, paths, wait
