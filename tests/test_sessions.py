@@ -353,6 +353,43 @@ def test_a_turn_that_does_not_say_how_it_began_is_read_by_the_runs_source_never_
     assert [p["text"] for p in sessions.prompts("acme", "2026-10-30")] == [text for kind, text in wanted if kind == "user"]
 
 
+SAID = {  # the copies each turn's `Yes.` is written with: the response item (i), the UI event (e), or both in that order
+    "an item-only turn, then an event-only one": ["i", "e"],
+    "an event-only turn, then an item-only one": ["e", "i"],
+    "a mirrored pair, then an item, then an event": ["ie", "i", "e"],
+    "a pair written event first, then an event, then an item": ["ei", "e", "i"],
+    "an item, an event, an item": ["i", "e", "i"],
+    "one mirrored pair": ["ie"],                                       # these four were right before, and stay so
+    "one pair written event first": ["ei"],
+    "three mirrored pairs": ["ie", "ie", "ie"],
+    "three item-only turns": ["i", "i", "i"],
+}
+SHOWN = {  # what in the rollout shows that one turn is over and another began
+    "each turn has its first row": ("row",),
+    "the agent replies to each turn": ("reply",),
+    "a first row and a reply": ("row", "reply"),
+    "each turn follows a new session line": ("line",),
+}
+
+
+@pytest.mark.parametrize("whole", [True, False], ids=["one export", "an export after every row"])
+@pytest.mark.parametrize("shown", SHOWN.values(), ids=SHOWN.keys())
+@pytest.mark.parametrize("turns", SAID.values(), ids=SAID.keys())
+def test_a_copy_of_a_prompt_is_removed_only_within_the_turn_it_mirrors(harness, turns, shown, whole):
+    """Codex writes a turn's prompt twice, side by side: only that second copy is removed. The same words in
+    another turn are that turn's prompt, however each was written (2026-11-12, a second review: of two turns that
+    each said `Yes.`, one kept only as a response item and the other only as a UI event, the second was removed as
+    a copy of the first, in either order)."""
+    rows = [_codex_line(harness, "cli", "2026-10-30T10:00:00Z")]
+    for at, copies in enumerate(turns, 1):
+        rows += [_codex_line(harness, "cli", f"2026-10-30T10:{at}0:00Z")] if "line" in shown else []
+        rows += [_codex_task(f"2026-10-30T10:{at}0:01Z")] if "row" in shown else []
+        rows += _codex_turn("Yes.", f"2026-10-30T10:{at}0:02Z", copies)
+        rows += [_codex_reply(f"Done {at}.", f"2026-10-30T10:{at}0:09Z")] if "reply" in shown else []
+    assert _codex_export("t2", rows, whole) == [("user", "Yes.")] * len(turns)
+    assert [p["text"] for p in sessions.prompts("acme", "2026-10-30")] == ["Yes."] * len(turns)
+
+
 def test_a_sub_agent_belongs_to_the_workspace_its_parent_started_in_and_workflow_journals_are_not_transcripts(harness, tmp_path):
     folder = re.sub(r"[^A-Za-z0-9]", "-", os.path.realpath(tmp_path / "workspaces" / "acme"))
     sub = Path(os.environ["CLAUDE_CONFIG_DIR"]) / "projects" / folder / "parent" / "subagents"
