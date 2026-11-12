@@ -2229,11 +2229,12 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
                 put = spelled(value) if "\0" not in spelled(value) else os.path.expanduser(names[0]) if names and named(value) else None
                 ran = f"{key}={shlex.quote(put)}; {ran}" if put is not None and re.fullmatch(r"[A-Za-z_]\w*", key or "") else ran
             fed = spelled(kw["input"]) if "input" in kw else ""  # a script fed on its input is that command's script
-            ran = "\0" if "\0" in fed else f"{ran} <<'INPUT_OF_THE_COMMAND'\n{fed}\nINPUT_OF_THE_COMMAND" if fed else ran
+            ran = f"{ran} <<'INPUT_OF_THE_COMMAND'\n{fed}\nINPUT_OF_THE_COMMAND" if fed and "\0" not in fed else ran
             folders = [os.path.join(spot, os.path.expanduser(spelled(kw["cwd"]))) for spot in spots] if "cwd" in kw else spots
             if "\0" not in ran + "".join(folders):  # a command it spells whole is judged as the shell guard judges one, wherever it may run
                 hit = hit or next(filter(None, (check_self_grant(ran, folder, config) for folder in folders)), False)  # the refusal itself
-                continue
+                if "\0" not in fed:  # with an input it cannot read, the command's words are judged above and the older rule still holds below
+                    continue
         told = kw.get("inplace", n.args[1] if len(n.args) > 1 else None)  # fileinput edits its files only when told to
         edits = told is not None and not (isinstance(told, ast.Constant) and not told.value)
         kept = [k for k, plain in (("follow_symlinks", True), ("symlinks", False)) if k in kw and getattr(kw[k], "value", None) is not plain]
