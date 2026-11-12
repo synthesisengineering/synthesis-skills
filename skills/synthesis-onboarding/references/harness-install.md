@@ -170,12 +170,17 @@ One label holds one schedule: another install's schedule under that label is arc
 (`<synthesis home>/archive/<time>/`, and the setup says where), since its hourly copy stops when this one
 replaces it; this install's own older schedule is replaced in place. Whichever was loaded is unloaded first;
 `--no-launchctl` writes the file without loading it.
-`synthesis doctor` then checks that the schedule is loaded and that an export finished within a day. Uninstall
-unloads and removes only a schedule whose every command is this install's: the program each command of its line
-runs is this install's `synthesis`, the whole path. A schedule whose command only ends or begins like that path,
-that hands the path to another program (`echo`, `env`, a shell's words) or sets it as a variable, that runs
-another program beside it, or whose file cannot be read, is not this install's: it is kept, and the uninstall
-says so. Without the schedule, transcripts are copied only when a session runs resume, handoff or a ritual.
+`synthesis doctor` then checks that the schedule is loaded, that it is this install's and that an export
+finished within a day. Uninstall unloads and removes only a schedule that is this install's. A schedule is this
+install's when every command it runs is: the program each command of its line runs is this install's `synthesis`,
+the whole path. A schedule whose command only ends or begins like that path, that hands the path to another
+program (`echo`, `env`, a shell's words) or sets it as a variable, that runs another program beside it, or whose
+file cannot be read, is not this install's. The setup and the doctor ask the same test (`install.runs_only` in the
+plugin's core). Uninstall keeps such a schedule and says so. The doctor fails on it, since this home's stamp can
+be fresh from its own sessions while the label's one schedule copies for another install: it names the program
+the schedule runs and this install's command, and running `--sessions-export` again puts this install's schedule
+back, setting the other aside. Without the schedule, transcripts are copied only when a session runs resume,
+handoff or a ritual.
 
 ## First config
 

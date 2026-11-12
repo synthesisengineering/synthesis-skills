@@ -62,9 +62,11 @@ each harness writes its own transcript to disk as the session runs. The copy is 
 - Anyone may run `synthesis sessions export` (add `--all` for everything on the Mac) before reading or citing.
 - On a Mac where the onboarding setup scheduled it (`setup.py plugin --sessions-export`), a LaunchAgent runs
   `synthesis sessions export --all` and `synthesis sessions sync` every hour and at login, so a transcript is
-  copied whether or not any session remembers to. `synthesis doctor` fails when that schedule is not loaded or
-  no export has finished in a day (2026-11-11: until then the archive had no trigger of its own, and a
-  transcript that no session exported within two days was skipped).
+  copied whether or not any session remembers to. `synthesis doctor` fails when that schedule is not loaded,
+  when it runs another command than this install's (one label holds one schedule, so another install's setup
+  replaces it; the doctor names what it runs), or when no export has finished in a day (2026-11-11: until
+  then the archive had no trigger of its own, and a transcript that no session exported within two days was
+  skipped).
 - An export that could not copy a transcript (it could not be read, or held a row its adapter does not expect)
   goes on to the others, says so in its report and names it in the stamp it leaves, with why and when it last
   tried, and so does the export a sync runs first. On any Mac `synthesis doctor` then fails,

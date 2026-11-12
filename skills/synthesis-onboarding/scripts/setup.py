@@ -451,30 +451,6 @@ def _nudge_plist() -> Path:
     return Path.home() / "Library" / "LaunchAgents" / f"{NUDGE_LABEL}.plist"
 
 
-def _points_at(plist: Path, target: Path) -> bool:
-    """Whether a schedule is this install's: the program of every command its line runs is `target`, the whole path.
-    One whose command only ends like that path, or hands it to another program as a word, is another's, and so is a
-    file that cannot be read (2026-11-12, a second review: a schedule running `echo <target>` was unloaded and removed)."""
-    import plistlib
-    try:
-        job = plistlib.loads(plist.read_bytes())
-        args = [job["Program"]] if "Program" in job else job["ProgramArguments"]  # launchd runs `Program` when a job names one
-        if not (isinstance(args, list) and len(args) == 3 and args[:2] == ["/bin/bash", "-lc"]):
-            return isinstance(args, list) and args[:1] == [str(target)]  # no shell line: the program is the first word
-        words = shlex.shlex(args[2].replace("\n", ";"), posix=True, punctuation_chars=True)
-        words.whitespace_split, words.commenters = True, ""  # split as a shell does: `#` and `-` stay in their word
-        commands = [[]]
-        for word in words:
-            if word and not word.strip(words.punctuation_chars):  # `;`, `&&` and `|` end a command
-                commands.append([])
-            else:
-                commands[-1].append(word)
-        programs = [(c[1:] if c[0] == "exec" else c)[:1] for c in commands if c and c[0] != "export"]  # `export` runs nothing
-        return bool(programs) and all(program == [str(target)] for program in programs)
-    except Exception:  # cut short, or of another shape: not this install's
-        return False
-
-
 def register_day_end(agent: str = "auto", load: bool = True) -> list:
     """Link ~/.local/bin/day-end to the installed launcher, remember which agent it opens, and
     schedule the weekday 16:55 nudge as a LaunchAgent that runs the installed nudge script."""
@@ -495,7 +471,7 @@ def register_day_end(agent: str = "auto", load: bool = True) -> list:
     template = REPO / "skills" / "synthesis-daily-rituals" / "scripts" / f"{NUDGE_LABEL}.plist"
     spec = plistlib.loads(template.read_bytes())
     spec["ProgramArguments"] = ["/bin/bash", "-lc", f'{_homes()}exec "{nudge}"']  # a login shell, for the user's PATH
-    if plist.exists() and not _points_at(plist, nudge):
+    if plist.exists() and not install.runs_only(plist, nudge):
         lines.append(f"archived the previous nudge schedule to {workspace_archive([plist])}")
     plist.parent.mkdir(parents=True, exist_ok=True)
     plist.write_bytes(plistlib.dumps(spec))
@@ -512,7 +488,7 @@ def unregister_day_end(dry_run: bool = False) -> list:
     """Remove only a nudge schedule and a day-end link that point at this install's copies."""
     home, lines = install._home(), []
     plist, link = _nudge_plist(), Path.home() / ".local" / "bin" / "day-end"
-    if plist.exists() and _points_at(plist, home / "bin" / "day-end-nudge.sh"):
+    if plist.exists() and install.runs_only(plist, home / "bin" / "day-end-nudge.sh"):
         if not dry_run:
             run([LAUNCHCTL, "bootout", f"gui/{os.getuid()}/{NUDGE_LABEL}"], 30)
             plist.unlink()
@@ -550,7 +526,7 @@ def register_sessions_export(load: bool = True) -> list:
             "StandardOutPath": log, "StandardErrorPath": log,  # a login shell, for the user's PATH and git credentials
             "ProgramArguments": ["/bin/bash", "-lc", f'{_homes()}"{command}" sessions export --all; "{command}" sessions sync']}
     lines = []
-    if plist.exists() and not _points_at(plist, command):  # one label holds one schedule: another install's copy stops here
+    if plist.exists() and not install.runs_only(plist, command):  # one label holds one schedule: another install's copy stops here
         lines.append(f"archived another install's export schedule to {workspace_archive([plist])}")
     plist.parent.mkdir(parents=True, exist_ok=True)
     plist.write_bytes(plistlib.dumps(spec))
@@ -566,7 +542,7 @@ def register_sessions_export(load: bool = True) -> list:
 def unregister_sessions_export(dry_run: bool = False) -> list:
     """Remove only an export schedule whose every command is this install's."""
     plist = _export_plist()
-    if plist.exists() and _points_at(plist, install._home() / "bin" / "synthesis"):
+    if plist.exists() and install.runs_only(plist, install._home() / "bin" / "synthesis"):
         if not dry_run:
             run([LAUNCHCTL, "bootout", f"gui/{os.getuid()}/{EXPORT_LABEL}"], 30)
             plist.unlink()

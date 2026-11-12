@@ -197,6 +197,41 @@ def _merge(old: Path, new: Path, archive: Path) -> None:
     os.rename(old, archive)
 
 
+# ---- a LaunchAgent's own command: the setup asks before it replaces or removes a schedule, the doctor before it calls one healthy ----
+
+def scheduled(plist: Path) -> list:
+    """The program of each command a schedule runs, in order: the job's `Program` where it names one, else the first
+    word of its arguments, or of each command on the line it hands a login shell. Nothing for a file that cannot be
+    read, is cut short, is of another shape or runs no command."""
+    import plistlib
+    import shlex
+    try:
+        job = plistlib.loads(plist.read_bytes())
+        args = [job["Program"]] if "Program" in job else job["ProgramArguments"]  # launchd runs `Program` when a job names one
+        if not (isinstance(args, list) and len(args) == 3 and args[:2] == ["/bin/bash", "-lc"]):
+            return args[:1] if isinstance(args, list) else []  # no shell line: the program is the first word
+        words = shlex.shlex(args[2].replace("\n", ";"), posix=True, punctuation_chars=True)
+        words.whitespace_split, words.commenters = True, ""  # split as a shell does: `#` and `-` stay in their word
+        commands = [[]]
+        for word in words:
+            if word and not word.strip(words.punctuation_chars):  # `;`, `&&` and `|` end a command
+                commands.append([])
+            else:
+                commands[-1].append(word)
+        return [" ".join((c[1:] if c[0] == "exec" else c)[:1]) for c in commands if c and c[0] != "export"]  # `export` runs nothing
+    except Exception:  # cut short, or of another shape
+        return []
+
+
+def runs_only(plist: Path, target: Path) -> bool:
+    """Whether a schedule is this install's: the program of every command its line runs is `target`, the whole path.
+    One whose command only ends like that path, or hands it to another program as a word, is another's, and so is a
+    file that cannot be read (2026-11-12, a second review: a schedule running `echo <target>` was unloaded and
+    removed, and the doctor answered ok for a loaded schedule that ran another install's command)."""
+    programs = scheduled(plist)
+    return bool(programs) and all(program == str(target) for program in programs)
+
+
 # ---- owned registrations: the global git hooks path, recorded so uninstall can restore it ----
 
 def _git_global(*args):

@@ -369,10 +369,11 @@ def check_sessions_repos(repos: dict, state: Path, now: float = 0) -> list:
     return found
 
 
-def check_sessions_export(plist: Path, stamp: Path, now: float = 0, run=subprocess.run) -> Check:
+def check_sessions_export(plist: Path, stamp: Path, now: float = 0, run=subprocess.run, command: Path = None) -> Check:
     """The hourly copy of session transcripts (2026-11-11: the archive had no trigger of its own): no export left a
-    transcript it could not copy; then scheduled, loaded, and an export finished within the last day, by this job or any session."""
-    how = "python3 <synthesis-onboarding>/scripts/setup.py plugin --sessions-export"
+    transcript it could not copy; then scheduled, loaded, running this home's own `command` (2026-11-12: another
+    install's schedule under the one label read as this home's), and an export finished within the last day, by this job or any session."""
+    how, command = "python3 <synthesis-onboarding>/scripts/setup.py plugin --sessions-export", command or paths.home() / "bin" / "synthesis"
     last = paths.read_json(stamp)
     if last.get("failed"):
         since = f"since {str(last['complete'])[:16]}" if last.get("complete") else "yet"
@@ -389,6 +390,10 @@ def check_sessions_export(plist: Path, stamp: Path, now: float = 0, run=subproce
                      f"handoff or a ritual ({how})")
     if run(["launchctl", "print", f"gui/{os.getuid()}/{plist.stem}"], capture_output=True, text=True).returncode:
         return Check("fail", "sessions export", f"{_short(plist)} is not loaded, so nothing copies transcripts on a schedule ({how})")
+    if not install.runs_only(plist, command):  # this home's fresh stamp says nothing of whose schedule the label holds
+        others = ", ".join(dict.fromkeys(_short(p) for p in install.scheduled(plist) if p and p != str(command)))
+        return Check("fail", "sessions export", f"{_short(plist)} is loaded and runs {others or 'no command that can be read'}, not this "
+                     f"install's {_short(command)}, so no schedule of this install's own copies this home's transcripts ({how}, which sets that one aside)")
     try:
         age = ((now or time.time()) - datetime.fromisoformat(last.get("exported", "")).timestamp()) / 3600
     except ValueError:
@@ -1183,7 +1188,7 @@ def run_checks(home: Path | None = None, find=find_client, latest_ref: str = "",
     checks += check_sessions_repos(sessions.repos(), home / "sessions" / ".state")
     if sys.platform == "darwin":
         checks.append(check_sessions_export(Path.home() / "Library" / "LaunchAgents" / "com.synthesis.sessions-export.plist",
-                                            home / "sessions" / ".state" / "export.json"))
+                                            home / "sessions" / ".state" / "export.json", command=home / "bin" / "synthesis"))
     runtime = runtime_hash(home) if checks[0].status == "ok" else ""
     if (home / "bin" / "synthesis-hook").is_file():  # when it is missing, the runtime line already says so
         checks += [check_hook_script(home), check_self_test(home), check_wait_check()]  # before the CLIs start, so they don't skew timing
