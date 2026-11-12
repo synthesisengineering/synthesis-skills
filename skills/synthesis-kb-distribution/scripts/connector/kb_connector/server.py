@@ -220,7 +220,7 @@ def main(env=None) -> int:
                     "or its tunnel ends it." if temporary else
                     "Do not give this address to anyone while the mode is on.", ", ".join(sorted(policy.operators)))
     if settings.oauth_store == "memory":
-        LOG.warning("KB_OAUTH_STORE=memory: sign-ins and registrations are lost when this process stops")
+        LOG.warning("KB_OAUTH_STORE=memory: sign-ins live in this process only, so every restart signs everyone out")
     try:
         source = DirectorySource(settings.source_dir) if settings.source_dir else GitSource(
             settings.git_url, settings.work_dir or tempfile.mkdtemp(prefix="kb-connector-"), settings.git_branch,
