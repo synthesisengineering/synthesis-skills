@@ -1676,3 +1676,111 @@ def test_an_input_the_guard_cannot_read_does_not_hide_what_the_commands_words_sh
     assert guards.check("Bash", {"command": "python3 - <<'EOF'\n" + reads + "\nEOF"}, {}, cwd=str(tmp_path)) is None
     shell = "import subprocess, sys\nsubprocess.run(['bash'], input=sys.stdin.read() + ' {work}/s.jsonl', text=True)".format(**saved)
     assert REFUSED in (guards.check("Bash", {"command": "python3 - <<'EOF'\n" + shell + "\nEOF"}, {}, cwd=str(tmp_path)) or "")   # a script it cannot read, naming the file
+
+
+# --- the seventh review round (2026-11-11): what a program has built by the time it writes or starts a command --
+# Four ways a write reached a protected folder through what a program had set up first: two folder changes one
+# after the other, a folder entered through its descriptor, variables kept in a mapping under a name, and the
+# words a list hands the shell after its script. And one refusal of ordinary work: a program that had left a
+# transcript folder for a folder elsewhere. The folder a call is made in is now followed in the order the
+# program's own statements run, and asking the same of everything else a started command is given showed more:
+# a script written down a pipe, `sh -s` with words after it, asyncio's and pty's ways to start a command.
+
+@pytest.mark.parametrize("program", [
+    "import os, subprocess\nos.chdir('{parent}/{first}')\nos.chdir('{rest}')\nsubprocess.run(['touch', 'forged.json'])",    # the second change, taken from the first
+    "import os\nos.chdir('{parent}/{first}')\nos.chdir('{rest}')\nopen('forged.json', 'w').write('x')",
+    "import os\nfrom pathlib import Path\nos.chdir('{parent}/{first}')\nos.chdir('{rest}')\nPath('forged.json').write_text('x')",
+    "import os\nfor part in ['{parent}/{first}', '{rest}']:\n    os.chdir(part)\nopen('forged.json', 'w').write('x')",
+    "import os\nos.chdir('{state}/approvals')\nos.chdir('..')\nopen('forged.json', 'w').write('x')",
+    "import os, subprocess\nfd = os.open('{state}', os.O_RDONLY)\nos.fchdir(fd)\nsubprocess.run(['touch', 'forged.json'])",   # a folder entered through its descriptor
+    "import os\nfd = os.open('{state}', os.O_RDONLY)\nos.fchdir(fd)\nopen('forged.json', 'w').write('x')",
+    "import os\nos.fchdir(os.open('{state}', os.O_RDONLY))\nopen('forged.json', 'w').write('x')",
+    "import os\nfd = os.open('{state}', os.O_RDONLY)\nos.open('forged.json', os.O_WRONLY | os.O_CREAT, dir_fd=fd)",          # and a file named from one
+    "import os\nfd = os.open('{state}/approvals', os.O_RDONLY)\nos.unlink('a.json', dir_fd=fd)",
+    "import os\nos.chdir('/tmp/pad')\nopen('a.txt', 'w').write('x')\nos.chdir('{state}')\nopen('forged.json', 'w').write('x')",
+    "import os, sys\nos.chdir('{state}')\nif len(sys.argv) > 5:\n    os.chdir('/tmp/pad')\nopen('forged.json', 'w').write('x')",  # a change that may not happen
+    "import os\nos.chdir('{state}')\nopen('forged.json', 'w').write('x')\nos.chdir('/tmp/pad')",                             # written before it left
+    "import os\ndef go():\n    os.chdir('{state}')\nos.chdir('/tmp/pad')\ngo()\nopen('forged.json', 'w').write('x')",         # a change made in a function
+    "import os\ndef save():\n    open('forged.json', 'w').write('x')\nos.chdir('{state}')\nsave()\nos.chdir('/tmp/pad')",     # a write made in one
+    "import os\nlist(map(os.chdir, ['{state}']))\nopen('forged.json', 'w').write('x')",                                      # a change handed on, not called
+])
+def test_a_program_stands_where_its_folder_changes_have_led_it(spots, saved, program, tmp_path):
+    command = "python3 - <<'EOF'\n" + program.format(**{**spots, **saved}) + "\nEOF"
+    assert REFUSED in (guards.check("Bash", {"command": command}, {}, cwd=str(tmp_path)) or ""), program
+
+
+@pytest.mark.parametrize("program", [
+    "import os, subprocess\nos.chdir('{work}')\nos.chdir('/tmp/pad')\nsubprocess.run(['touch', 'made.txt'])",               # the seventh review's own
+    "import os\nos.chdir('{work}')\nos.chdir('/tmp/pad')\nopen('made.txt', 'w').write('x')",
+    "import os\nos.chdir('{work}')\nn = len(open('s.jsonl').read())\nos.chdir('/tmp/pad')\nopen('count.txt', 'w').write(str(n))",
+    "import os\nos.chdir('{work}')\nopen('memory/note.md', 'w').write('x')",                                               # its own note, by the name it has there
+    "import os\nfd = os.open('/tmp/pad', os.O_RDONLY)\nos.fchdir(fd)\nopen('made.txt', 'w').write('x')",
+    "import os, subprocess\nfor d in ['/tmp/pad', '/tmp/pad/..']:\n    os.chdir(d)\n    subprocess.run(['git', 'status', '--short'])",
+])
+@pytest.mark.parametrize("inside", [False, True])
+def test_a_program_that_has_left_a_protected_folder_writes_where_it_went(saved, program, inside, tmp_path):
+    command = "python3 - <<'EOF'\n" + program.format(**saved) + "\nEOF"
+    assert guards.check("Bash", {"command": command}, {}, cwd=str(saved["work"] if inside else tmp_path)) is None, program
+
+
+@pytest.mark.parametrize("program, held", [
+    ("import subprocess\nenv = {{'D': '{state}'}}\nsubprocess.run('touch \"$D/forged.json\"', shell=True, env=env)", True),   # a mapping kept under a name
+    ("import os, subprocess\nenv = os.environ.copy()\nenv['D'] = '{state}'\nsubprocess.run('touch \"$D/forged.json\"', shell=True, env=env)", True),
+    ("import os, subprocess\nenv = dict(os.environ)\nenv.update({{'D': '{state}'}})\nsubprocess.run(['sh', '-c', 'touch \"$D/forged.json\"'], env=env)", True),
+    ("import os, subprocess\nsubprocess.run('touch \"$D/forged.json\"', shell=True, env={{**os.environ, 'D': '{state}'}})", True),
+    ("import os, subprocess\nsubprocess.run('touch \"$D/forged.json\"', shell=True, env=os.environ | {{'D': '{state}'}})", True),
+    ("import os, subprocess\nos.environ.update({{'D': '{state}'}})\nsubprocess.run('touch \"$D/forged.json\"', shell=True)", True),
+    ("import os\nos.environ.setdefault('D', '{state}')\nos.system('touch \"$D/forged.json\"')", True),
+    ("import os\nos.putenv('D', '{state}')\nos.system('touch \"$D/forged.json\"')", True),
+    ("import subprocess\ndef make(d):\n    return {{'D': d}}\nsubprocess.run('touch \"$D/forged.json\"', shell=True, env=make('{state}'))", True),  # one it cannot read, built from the folder
+    ("import os, subprocess\nenv = dict(os.environ, OUT='/tmp/pad')\nsubprocess.run('cat {work}/s.jsonl > \"$OUT/x.txt\"', shell=True, env=env)", False),
+    ("import os, subprocess\nenv = os.environ.copy()\nenv['SRC'] = '{work}/s.jsonl'\nsubprocess.run('wc -l \"$SRC\"', shell=True, env=env)", False),
+    ("import os, subprocess\nenv = {{**os.environ, 'LC_ALL': 'C'}}\nsubprocess.run(['grep', '-c', 'x', '{work}/s.jsonl'], env=env)", False),
+])
+def test_the_variables_a_program_keeps_for_a_command_reach_it_however_they_are_kept(saved, program, held, tmp_path):
+    command = "python3 - <<'EOF'\n" + program.format(**saved) + "\nEOF"
+    assert (REFUSED in (guards.check("Bash", {"command": command}, {}, cwd=str(tmp_path)) or "")) == held, program
+
+
+PY = "python3 - <<'EOF'\nimport subprocess, sys\n{}\nEOF"
+
+
+@pytest.mark.parametrize("command, held", [
+    (PY.format("subprocess.run(['touch \"$1/forged.json\"', 'sh', '{state}'], shell=True)"), True),              # the words after a shell list's script
+    (PY.format("subprocess.run(['echo x >> \"$0\"', '{work}/s.jsonl'], shell=True)"), True),
+    ("sh -c 'touch \"$1/forged.json\"' sh {state}", True),
+    ("bash -c 'rm \"$@\"' bash /tmp/pad/x {state}/approvals/a.json", True),                                       # each word of "$@" its own
+    ("sh -c 'echo x > \"$0\"' {state}/approvals/a.json", True),
+    ("sh -c 'echo x > \"${{1}}/a.json\"' sh {state}/approvals", True),
+    ("sh -s -- {state} <<'EOF'\ntouch \"$1/forged.json\"\nEOF", True),                                             # a script on its input, with words after -s
+    ("bash -s {state}/approvals/a.json <<'EOF'\necho x > \"$1\"\nEOF", True),
+    ("echo 'touch \"$1/forged.json\"' | sh -s {state}", True),
+    (PY.format("subprocess.run(['sh', '-s', '{state}'], input='touch \"$1/forged.json\"', text=True)"), True),
+    ("sh -c \"awk '{{print > \\$2}}' {state}/x.json\"", True),                                                      # inside single quotes a `$2` is awk's, not the shell's
+    ("sh -c 'wc -l \"$1\"' sh {work}/s.jsonl", False),
+    ("sh -c 'cat \"$1\" > \"$2\"' sh {work}/s.jsonl /tmp/pad/out.txt", False),                                     # each word where the script uses it
+    ("bash -c 'grep -c x \"$@\" > /tmp/pad/count.txt' bash {work}/s.jsonl", False),
+    ("bash -s {work}/s.jsonl /tmp/pad/out.txt <<'EOF'\ncat \"$1\" > \"$2\"\nEOF", False),
+    (PY.format("subprocess.run(['cat \"$1\" > \"$2\"', 'sh', '{work}/s.jsonl', '/tmp/pad/out.txt'], shell=True)"), False),
+])
+def test_the_words_after_a_shells_script_are_put_where_the_script_uses_them(saved, command, held, tmp_path):
+    assert (REFUSED in (guards.check("Bash", {"command": command.format(**saved)}, {}, cwd=str(tmp_path)) or "")) == held, command
+
+
+@pytest.mark.parametrize("program, held", [
+    ("p = subprocess.Popen(['sh'], stdin=subprocess.PIPE, text=True)\np.communicate('touch {state}/forged.json')", True),   # a script written down a pipe
+    ("p = subprocess.Popen(['bash'], stdin=subprocess.PIPE, text=True)\np.stdin.write('echo x >> {work}/s.jsonl\\n')\np.stdin.close()", True),
+    ("p = subprocess.Popen([sys.executable, '-'], stdin=subprocess.PIPE, text=True)\np.communicate(\"open('{work}/s.jsonl', 'a').write('x')\")", True),
+    ("p = subprocess.Popen(['sh'], stdin=subprocess.PIPE, text=True)\np.communicate(sys.argv[1] + ' {work}/s.jsonl')", True),  # one it cannot read, naming the file
+    ("import asyncio\nasync def main():\n    await asyncio.create_subprocess_shell('touch {state}/forged.json')\nasyncio.run(main())", True),
+    ("import asyncio\nasync def main():\n    await asyncio.create_subprocess_exec('cp', '/tmp/pad/x', '{work}/s.jsonl')\nasyncio.run(main())", True),
+    ("import pty\npty.spawn(['touch', '{state}/forged.json'])", True),
+    ("subprocess.run(['x', '-c', 'touch {state}/forged.json'], executable='/bin/sh')", True),                      # the program it really runs
+    ("p = subprocess.Popen(['sh'], stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)\nprint(p.communicate('wc -l {work}/s.jsonl')[0])", False),
+    ("p = subprocess.Popen(['grep', '-c', 'x'], stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)\nprint(p.communicate(open('{work}/s.jsonl').read())[0])", False),
+    ("import asyncio\nasync def main():\n    await asyncio.create_subprocess_exec('wc', '-l', '{work}/s.jsonl')\nasyncio.run(main())", False),
+    ("print(subprocess.run(['wc', '-l'], stdin=open('{work}/s.jsonl'), capture_output=True, text=True).stdout)", False),   # a file read on its input is content
+])
+def test_a_command_started_another_way_or_fed_down_a_pipe_is_judged_the_same(saved, program, held, tmp_path):
+    command = PY.format(program.format(**saved))
+    assert (REFUSED in (guards.check("Bash", {"command": command}, {}, cwd=str(tmp_path)) or "")) == held, program

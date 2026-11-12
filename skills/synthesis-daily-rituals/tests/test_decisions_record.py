@@ -190,3 +190,28 @@ def test_a_recommendation_on_the_title_line_counts_and_a_check_marked_title_is_c
         assert code == 0 and "choices: 0 open" in out, (mark, refusal)
     bare = "### 5. Dinner, no recommendation yet\n**Option A:** Accept\n**Option B:** Decline\n" + COSTS
     assert record(workspace(tmp_path, bare))[0] != 0                                          # the word in a title is not a view
+
+
+# --- the seventh review (2026-11-11) ------------------------------------------------------------------------
+
+def test_options_indented_under_a_list_entry_are_that_entrys_options(tmp_path, record):
+    """The seventh review: options indented by four spaces under a numbered entry were read as an example, so an
+    unfinished choice was recorded with none read. An example is a block indented four past the entry it stands in,
+    after an empty line."""
+    nested = "1. Dinner with the board on Thursday\n    - **Option A** - Accept\n    - **Option B** - Decline\n"
+    code, _, refusal = record(workspace(tmp_path, nested))
+    assert code != 0 and "Dinner with the board" in refusal and "recommendation" in refusal and "consequences" in refusal
+    tenth = "10. The offsite in March\n    **Option A** - Go\n    **Option B** - Send a deputy\n"
+    code, _, refusal = record(workspace(tmp_path, tenth))
+    assert code != 0 and "The offsite in March" in refusal
+    code, out, refusal = record(workspace(tmp_path, nested + "    - " + COSTS + "    - " + VIEW))
+    assert code == 0 and "choices: 1 open" in out, refusal
+    tabbed = "- Dinner with the board on Thursday\n\t- **Option A** - Accept\n\t- **Option B** - Decline\n"
+    code, _, refusal = record(workspace(tmp_path, tabbed))
+    assert code != 0 and "Dinner with the board" in refusal
+    shown = nested + "\n   For example:\n\n       **Recommendation:** B, decline\n       " + COSTS
+    code, _, refusal = record(workspace(tmp_path, shown))                                    # four past the entry's text is still an example
+    assert code != 0 and "recommendation" in refusal and "consequences" in refusal
+    apart = "### How a choice is written\n\nFor example:\n\n    1. An example\n       **Option A:** Accept\n       **Option B:** Decline\n"
+    code, out, refusal = record(workspace(tmp_path, apart))                                  # and a whole example indented by four is none
+    assert code == 0 and "choices: 0 open" in out, refusal
