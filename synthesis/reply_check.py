@@ -64,6 +64,7 @@ WAITS = re.compile(
     "(?i)" + _AM + r"a?waiting\b(?! (?:for|on)(?: you\b| from\b|\W*$))"
     "|" + _MUST + _HELP + r"(?:wait(?:ing)?\b|hold(?:ing)?\b(?=.{0,160}?\b(?:until|till)\b))(?! (?:for|on) you\b)"
     "|" + _WILL + _HELP + _GO + ".{0,160}?" + _WHEN + "|" + _WHEN + ".{0,160}?" + _WILL + _HELP + _GO
+    + r"|\b(?:until|till)\b.{0,160}?" + _MUST + _HELP + r"hold(?:ing)?\b"
     + r"|\b(?:(?:when|once) it (?:lands|finishes|returns|arrives)|should (?:come|arrive) shortly),?(?: and)?(?: then)? " + _WILL
     + r"|(?:^\W*|[:—–] ?| --? )" + _SOON + r"(?:waiting (?:(?:for|on|to (?:hear|see|get|learn|find out))\b(?! you\b)" + _SUBJECT
     + r"|until\b" + _UNTIL + r")|awaiting\b" + _SUBJECT + r"|holding\b(?=.{0,160}?\b(?:until|till)\b" + _UNTIL + "))")
@@ -84,10 +85,11 @@ THEIRS = re.compile(
     r"(?i)\b(?:from|by|until|till|once|when|after|as soon as) you\b"
     r"(?! (?:\w+[^e\W]ed|sent|gave|said|told|chose|wrote|made|did|were|had|got|agreed)\b)|\bfor you to\b"
     r"|(?<!\bas )(?<!\blike )\byou (?:promised|owe|decide|choose|pick|prefer|want|approve|confirm|say)\b"
-    r"|(?:\b(?:for|on|until|till|once|when|after|as soon as|await(?:ing)?|is|are|was) |(?:[:—–]| -) |^\W*"
+    r"|(?:\b(?:for|on|until|till|once|when|after|as soon as|await(?:ing)?|is|are|was) |['’]s |(?:[:—–]| -) |^\W*"
     r"|\b(?:until|till|once|when|after|as soon as) (?:i|we)(?:['’]ve| have)? (?:have|get|got|receive[sd]?|see|hear|read|know|learn) "
     r"|\bto (?:have|get|receive|see|hear|read|know|learn) )(?:(?:only|just|both|either|also|still|now) )?"
     r"your (?:next (?:message|prompt)\b|(?:(?:next|final|explicit|written|own|" + _ACT + r") )*(?:" + _ACT + ")" + _HEAD + ")")
+OPEN = re.compile(r"(?: (?:for|on))?(?: (?:right now|now|here|today|still|at this point))?\W*$")  # nothing is named after the wait
 MARKS = re.compile(r"^[ \t]*>.*|[*_#]+|^[ \t]*(?:[-+•]|\d+[.)])[ \t]+", re.M)  # a quoted line; emphasis, heading and list marks
 EDGE = re.compile(r"(?<=[.!?])\s+|;|(?<![:\s])\s*\n\s*")  # a sentence's or a line's end, a semicolon; after a colon the line runs on
 CODE = re.compile(r"```.*?```|`[^`\n]*`", re.S)
@@ -119,6 +121,18 @@ def shortcut_hits(reply: str, extra: list[str]) -> list[str]:
     return sorted({p for p in DEFAULT_PHRASES + [e.lower() for e in extra] if re.search(rf"\b{re.escape(p)}\b", plain)})
 
 
+def _theirs(text: str, m: re.Match) -> bool:
+    """Is the principal's own next move what this wait awaits? It is when it stands from the wait's words onward; in
+    front of them as a condition ("until you choose, I'll wait", "once you sign, I'll wait for the bank"); or anywhere
+    in front when nothing is named after the wait ("your answer is the only thing I'm awaiting"). What stands in front
+    otherwise is context ("your review is filed and I'm waiting on CI")."""
+    if THEIRS.search(text, m.start()):
+        return True
+    bare = m.group(0).lower().endswith(("wait", "waiting")) and OPEN.match(text, m.end())
+    return any(bare or t.group(0).lower().startswith(("until", "till", "once", "when", "after", "as soon as"))
+               for t in THEIRS.finditer(text, 0, m.start()))
+
+
 def unarmed_wait(reply: str, payload: dict, config: dict) -> list[str]:
     """The words with which a reply announces the session's own wait that nothing will end: no live `synthesis wait`
     of this session, no autopilot run it owns. A clause that awaits the principal's own next move is no such wait,
@@ -126,7 +140,7 @@ def unarmed_wait(reply: str, payload: dict, config: dict) -> list[str]:
     plain = MARKS.sub("", QUOTED.sub(" ", CODE.sub(" ", reply))).strip()
     forms = [WAITS] + [re.compile(rf"(?i)\b{re.escape(str(p))}\b") for p in config.get("wait_phrases") or [] if str(p).strip()]
     hits = {m.group(0).lower().strip(" :—–-") for clause in ([] if plain.endswith("?") else EDGE.split(plain))
-            for text in [" ".join(clause.split())] for form in forms for m in form.finditer(text) if not THEIRS.search(text, m.start())}
+            for text in [" ".join(clause.split())] for form in forms for m in form.finditer(text) if not _theirs(text, m)}
     if not hits:
         return []
     from synthesis import autopilot, paths, wait
