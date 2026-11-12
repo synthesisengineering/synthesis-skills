@@ -1939,7 +1939,8 @@ ARG_READERS = {"argparse", "optparse", "getopt", "fileinput", "click", "typer", 
 
 def _python_writes(source: str, names: list, roots: list | tuple = (), where: str = "", argv: list | tuple = (),
                    env: dict | None = None) -> tuple:
-    """(whether a Python program writes into a protected path, whether it writes at all); (None, None) when it cannot
+    """(whether a Python program writes into a protected path, whether it writes at all; the first is the refusal's own
+    text when it is a command the program starts that is refused); (None, None) when it cannot
     be told (no source, a syntax error), and (None, True) for a program that runs code it builds (exec, eval,
     importlib): it cannot be read and is taken to write. Only a write's target counts, never the content it writes, so
     a project record that cites a transcript path is not a write into transcripts (2026-10-14). The program is read
@@ -2212,7 +2213,7 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
             ran = shlex.join(parts) if parts else spelled(first) if first is not None and parts is None else "\0"
             folder = os.path.join(where, os.path.expanduser(spelled(kw["cwd"]))) if "cwd" in kw else where
             if "\0" not in ran + folder:  # a command it spells whole is judged as the shell guard judges a command, where it runs
-                hit = hit or bool(check_self_grant(ran, folder))
+                hit = hit or check_self_grant(ran, folder) or False  # the refusal itself, so the program is told which rule
                 continue
         told = kw.get("inplace", n.args[1] if len(n.args) > 1 else None)  # fileinput edits its files only when told to
         edits = told is not None and not (isinstance(told, ast.Constant) and not told.value)
@@ -2314,7 +2315,9 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None) -> str |
             v[:1] == "/" and paths.inside(v, os.path.realpath(r)) for v in os.environ.values() for r in raw))
         reaches = hit is None and (carried or any(n in w for w in words[1:] if w != source for n in names))  # read by its syntax, both are placed
         if SCRIPT.match(head) and (hit or (wrote and (reaches or (hit is None and (within or any(n in script for n in names)))))):
-            why = why or ("runs a script that writes where the synthesis state, its board or a harness's transcripts live, or that "
+            inner = re.search(r"this command (.*?)\. Approvals come", hit) if isinstance(hit, str) else None
+            why = why or (f"runs a program that starts a command this guard refuses: it {inner[1]}" if inner else
+                          "runs a script that writes where the synthesis state, its board or a harness's transcripts live, or that "
                           "writes while such a path reaches it through an argument, the environment or the folder it runs in "
                           "(spell each file's path inside the program, or run the script alone)")
         sub, acts = _git(words, where)  # git acts where -C sends it; sent somewhere this cannot read, it is not shown to act here
