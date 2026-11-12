@@ -1563,3 +1563,20 @@ def test_from_inside_a_transcript_folder_the_fifth_reviews_programs_pass(saved, 
 ])
 def test_and_what_stays_refused_after_the_fifth_review(saved, command, tmp_path):
     assert REFUSED in (guards.check("Bash", {"command": command.format(**saved)}, {}, cwd=str(tmp_path)) or ""), command
+
+
+# A command a program starts is judged as a command even when one of its words is a file the program found:
+# the word stands for a protected file, and the command is judged with it (found probing the fifth round's fix).
+
+@pytest.mark.parametrize("program, held", [
+    ("import subprocess\ncmd = ['cat', '{work}/s.jsonl']\nprint(subprocess.run(cmd, capture_output=True).stdout[:40])", False),   # kept in a name
+    ("import glob, subprocess\nfor f in glob.glob('{work}/*.jsonl'):\n    print(subprocess.run(['grep', '-c', 'x', f], capture_output=True).stdout)", False),
+    ("import glob, os, subprocess\nfor f in glob.glob('{work}/*.jsonl'):\n    subprocess.run(['cp', f, os.path.join('/tmp/pad', os.path.basename(f))])", False),
+    ("import glob, subprocess\nfor f in glob.glob('{work}/*.jsonl'):\n    subprocess.run(['rm', f])", True),
+    ("import glob, subprocess\nfor f in glob.glob('{work}/*.jsonl'):\n    subprocess.run(['cp', '/tmp/pad/x', f])", True),
+    ("import subprocess\ncmd = ['cp', '/tmp/pad/x', '{work}/s.jsonl']\nsubprocess.run(cmd)", True),
+    ("import subprocess, sys\nsubprocess.run(['rm', sys.stdin.readline().strip(), '{work}/s.jsonl'])", True),                     # a word it cannot read at all
+])
+def test_a_spawned_command_with_a_found_file_among_its_words_is_judged_with_it(saved, program, held, tmp_path):
+    command = "python3 - <<'EOF'\n" + program.format(**saved) + "\nEOF"
+    assert (REFUSED in (guards.check("Bash", {"command": command}, {}, cwd=str(tmp_path)) or "")) == held, program
