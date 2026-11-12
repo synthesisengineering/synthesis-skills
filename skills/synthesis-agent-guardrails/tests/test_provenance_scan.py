@@ -163,13 +163,16 @@ def test_a_record_that_is_not_text_is_named_unreadable_and_not_counted_as_read(t
     plans = tmp_path / "plans"
     plans.mkdir()
     (plans / "scan.png").write_bytes(b"\x89PNG\r\n\x1a\n" + bytes(range(128, 256)))
+    (plans / "index.db").write_bytes(b"format 3\x00\x10\x00\x01\x01\x00 1700000000.000201 \x00")   # every byte is ASCII
     (plans / "2026-01-02.md").write_text("- [ ] nothing from a chat here\n", encoding="utf-8")
     assert scan.main(["--since", "2026-01-02", "--sources", str(logs), "--records", str(plans), str(plans)]) == 1
     out = capsys.readouterr().out
-    assert "scan.png: unreadable" in out and "0 unsourced, 1 unreadable; read 1 records" in out
+    assert "scan.png: unreadable" in out and "index.db: unreadable" in out
+    assert "0 unsourced, 2 unreadable; read 1 records" in out
     assert scan.main(["--since", "2026-01-02", "--sources", str(logs), str(plans / "scan.png")]) == 1     # named outright
     assert "scan.png: unreadable" in capsys.readouterr().out
     (plans / "scan.png").unlink()
+    (plans / "index.db").unlink()
     assert scan.main(["--since", "2026-01-02", "--sources", str(logs), "--records", str(plans), str(plans)]) == 0
     assert "0 unsourced; read 1 records" in capsys.readouterr().out            # nothing unreadable: the line as it was
 

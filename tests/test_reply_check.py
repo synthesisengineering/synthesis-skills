@@ -300,6 +300,7 @@ def test_a_configured_phrase_is_judged_in_its_own_clause():
     assert "standing by" in _sent_back("Standing by for the vendor.", config)
     assert _sent_back("Standing by for the vendor. You can review the draft meanwhile.", config)
     assert _sent_back("Standing by until you send the code.", config) is None
+    assert _sent_back(OWN_WAIT["W08"], {"wait_phrases": None})                        # a null list is no list, not an error
 
 
 def test_a_live_wait_and_a_reply_already_sent_back_once_still_pass(isolated_home):
