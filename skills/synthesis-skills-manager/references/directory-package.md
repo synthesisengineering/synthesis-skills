@@ -59,12 +59,11 @@ the full system is where they point.
 Under `left_out` the list records each method skill that failed the check, with the
 reason. At the first build that is `synthesis-skill-router`: its routing table names the
 repository guard, the git hooks and the message guard as routes. The cost is discovery in
-Codex.
-Most listed skills set `allow_implicit_invocation: false` in their `agents/openai.yaml`,
-the setting this repository gives a skill that is reached through the router, so without
-the router a person invokes them by name (`$synthesis-writing-craft`). Code planning,
-grounding discipline and the thinking framework leave the setting out and stay available
-without being named.
+Codex. Most listed skills set `allow_implicit_invocation: false` in their
+`agents/openai.yaml`, the setting this repository gives a skill that is reached through
+the router, so without the router a person invokes them by name
+(`$synthesis-writing-craft`). Code planning, grounding discipline and the thinking
+framework leave the setting out and stay available without being named.
 
 ## Build it, check it, and see what changed
 
