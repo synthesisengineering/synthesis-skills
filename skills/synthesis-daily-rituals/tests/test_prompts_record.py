@@ -161,3 +161,53 @@ def test_the_check_starts_on_the_day_the_workspace_names(tmp_path, record, monke
     listing(tmp_path, monkeypatch, "claude-code d20ab7c4 #41", day="2026-11-12")
     code, _, refusal = record(state, day="2026-11-12")
     assert code != 0 and "1 of 3" in refusal
+
+
+# --- only a missing key or `false` turns the check off (2026-11-12, a second review) -----------------------------
+# `"prompt_reconcile": null` and `0` turned the check off without a word: no prompt was listed and a clean day was
+# recorded. So did a first day that is no day (`"from": "tomorrow"`): every day came before it.
+
+
+@pytest.mark.parametrize("setting", [None, 0, 0.0, "", [], "false", "off", 1, "/kb/desk", ["/kb/desk"]], ids=repr)
+def test_a_value_that_is_neither_false_nor_a_setting_is_refused_and_named(tmp_path, record, monkeypatch, setting):
+    state = tmp_path / "state"
+    declare(state, desk={"plans_dirs": [], "prompt_reconcile": setting})
+    asked = listing(tmp_path, monkeypatch, "claude-code d20ab7c4 #41")
+    for outcome in ("clean", "partial"):
+        code, _, refusal = record(state, "--outcome", outcome)
+        assert code != 0 and history(state) == "" and not asked.exists(), outcome             # nothing is listed, nothing recorded
+        assert f"prompt_reconcile to {json.dumps(setting)}" in refusal and "records" in refusal and "false" in refusal
+
+
+def test_a_setting_for_every_workspace_is_read_and_one_workspace_leaves_it_with_false_never_with_null(tmp_path, record, monkeypatch):
+    """The valid shapes: the setting under `defaults`, `false` in the workspace that leaves it. `null` there is the
+    natural way to try the same, and is no setting."""
+    state = tmp_path / "state"
+    state.mkdir()
+    (state / "config.json").write_text(json.dumps({"defaults": {"prompt_reconcile": {"records": ["/kb/all"]}}, "workspaces": {
+        "desk": {"plans_dirs": []}, "lab": {"plans_dirs": [], "prompt_reconcile": False},
+        "den": {"plans_dirs": [], "prompt_reconcile": None}}}), encoding="utf-8")
+    asked = listing(tmp_path, monkeypatch)
+    code, out, refusal = record(state)
+    assert code == 0 and "prompts: all 3 typed" in out and json.loads(asked.read_text())[6:8] == ["--records", "/kb/all"], refusal
+    asked.unlink()
+    listing(tmp_path, monkeypatch, workspace="lab")
+    code, out, refusal = record(state, workspace="lab")
+    assert code == 0 and "prompts" not in out and not asked.exists(), refusal
+    listing(tmp_path, monkeypatch, workspace="den")
+    code, _, refusal = record(state, workspace="den")
+    assert code != 0 and "prompt_reconcile to null" in refusal and not asked.exists() and '"workspace":"den"' not in history(state)
+
+
+@pytest.mark.parametrize("since", ["tomorrow", "20261112", 20261112, "2026-11-12T09:00", "2026-13-45", "", None, True, ["2026-11-12"]], ids=repr)
+def test_a_first_day_that_is_no_day_is_refused(tmp_path, record, monkeypatch, since):
+    """The same defect in the setting's other field: the first day was compared as text, so `"from": "tomorrow"`, a
+    number or a date with its time put every day before it, and each day closed saying `prompts: checked from
+    tomorrow`. An empty or null first day was read as none."""
+    state = tmp_path / "state"
+    declare(state, desk={"plans_dirs": [], "prompt_reconcile": {"records": ["/kb/desk"], "from": since}})
+    asked = listing(tmp_path, monkeypatch, "claude-code d20ab7c4 #41")
+    for outcome in ("clean", "partial"):
+        code, _, refusal = record(state, "--outcome", outcome)
+        assert code != 0 and history(state) == "" and not asked.exists(), outcome
+        assert f'"from" {json.dumps(since)}' in refusal and "YYYY-MM-DD" in refusal
