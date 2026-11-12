@@ -915,6 +915,27 @@ def test_the_listing_exports_first_and_stops_when_a_transcript_could_not_be_copi
     assert said.out == "" and "not exported" in said.err and "2026-10-30" in said.err
 
 
+def test_an_archive_that_cannot_be_written_stops_the_listing_with_its_reason(asked, capsys):
+    """With the lock beside the archive free and the archive itself not writable, each copy failed and then the stamp
+    could not be left: the listing ended in a traceback in place of saying why nothing was listed."""
+    with asked["claude"].open("a", encoding="utf-8") as native:
+        native.write(json.dumps(_typed({"cwd": asked["work"], "sessionId": "c1"}, "A third thing.", "2026-10-30T16:00:00.000Z")) + "\n")
+    command = ["sessions", "prompts", "--workspace", "acme", "--date", "2026-10-30"]
+    folders = [sessions.root(), *(d for d in sessions.root().rglob("*") if d.is_dir())]
+    for folder in folders:
+        folder.chmod(0o555)
+    try:
+        assert cli.main(command) == 2
+        said = capsys.readouterr()
+        assert said.out == "" and "not exported" in said.err and "2026-10-30" in said.err
+        report = sessions.export(2)                                    # and an export says so before anything else
+        assert report[0].startswith("not exported: ") and "claude-code c1: not exported" in report[1]
+    finally:
+        for folder in folders:
+            folder.chmod(0o755)
+    assert cli.main(command) == 0 and "A third thing." in capsys.readouterr().out
+
+
 def test_a_day_is_not_listed_while_a_transcript_that_may_hold_its_prompts_is_not_copied(asked, capsys):
     """2026-11-12, a second review: a transcript whose copy had failed lay outside the two days the listing exports.
     Its failure stayed in the stamp, the listing of that older day held none of its prompts and exited 0, and the
