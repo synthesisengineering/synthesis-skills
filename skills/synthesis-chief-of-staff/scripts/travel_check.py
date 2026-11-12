@@ -28,7 +28,7 @@ import html
 import json
 import re
 import sys
-from datetime import date, datetime, time, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -155,7 +155,7 @@ def judge(args, config: dict, read: dict) -> dict:
         stop(f"the calendar read does not cover {first} through {last} (it covers {covered[0]} through {covered[1]}); "
              "read the calendar for those days first")
     title = str(policy.get("block_title") or "Travel").lower()
-    blocks, commitments, others, loose = [], [], [], []
+    blocks, commitments, others, loose, untimed = [], [], [], [], []
     entries = read.get("events")
     if not isinstance(entries, list) or not all(isinstance(e, dict) for e in entries):
         stop('the calendar read\'s "events" is not a list of entries, so it cannot be judged: save the read again')
@@ -178,7 +178,9 @@ def judge(args, config: dict, read: dict) -> dict:
                  "days": span, "said": said, "location": spot}
         if span and place(spot, policy) == "away" and found not in commitments:  # one event read from two calendars is one event
             commitments.append(found)
-    timed, untimed = [c for c in commitments if c["start"]], [c for c in commitments if not c["start"]]
+        if span and not a and place(spot, policy) and found not in untimed:  # all day at a place, the principal's own included: it holds a morning and gives no hour
+            untimed.append(found)
+    timed = [c for c in commitments if c["start"]]
 
     def apart(block, c):  # how far a block stands from a commitment
         return min(abs(c["start"] - block["end"]), abs(block["start"] - c["end"]))

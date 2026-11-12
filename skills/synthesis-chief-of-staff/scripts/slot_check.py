@@ -186,7 +186,8 @@ def judge(args, config: dict, read: dict) -> dict:
     events, joined, marked, whole, untimed = [], set(), set(), [], []
     for entry in read.get("events") or []:
         a, b = moment(entry.get("start"), zone), moment(entry.get("end"), zone)
-        title, days = str(entry.get("summary") or "a meeting"), whole_days(entry) if not a else None
+        title = str(entry.get("summary") or "a meeting")
+        days = whole_days(entry) if not a and title.strip().lower() != hold else None  # a hold kept all day is still the agent's own hold
         mine = any(re.search(rf"(?<!\w){re.escape(mark)}(?!\w)", title.lower()) for mark in marks)
         if days and (mine or str(entry.get("transparency") or "").lower() == "opaque"):  # the principal's own block, or one that says it is busy
             whole.append((datetime.combine(days[0], time.min, zone), datetime.combine(days[1], time.min, zone) + timedelta(days=1), title))
@@ -259,8 +260,8 @@ def judge(args, config: dict, read: dict) -> dict:
         add("deep work", "OK", f"{len(after)} free block(s) of {need} minutes or more remain, the first {hm(after[0][0])}-{hm(after[0][1])}")
 
     if out or back:  # the trip is taken time: it may not run through another event
-        there = next((s for a, b, s in others if out and a < start and b > start - out), None)
-        home = next((s for a, b, s in others if back and a < end + back and b > end), None)
+        there = next((s for a, b, s in others + whole if out and a < start and b > start - out), None)  # a day blocked whole is in the way too
+        home = next((s for a, b, s in others + whole if back and a < end + back and b > end), None)
         add("travel", "REFUSE" if there or home else "OK",
             f"the trip there ({hm(start - out)}-{hm(start)}) overlaps {there}" if there
             else f"the trip back ({hm(end)}-{hm(end + back)}) overlaps {home}" if home

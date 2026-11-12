@@ -186,7 +186,7 @@ OPEN = re.compile(r"(?i)\W*(?:pending|undecided|unknown|unsure|awaiting|not yet|
 # What Markdown does not show as the plan's own text: a fenced block (quoted or not, closed or not), which is an
 # example, and an HTML comment. Whichever opens first runs to its own end: a fence closes at a line of its own
 # mark alone, at least as long as the one that opened it, so four backticks hold a sample fenced with three.
-FENCE = re.compile(r"(?ms)^\s*(?:>\s*)*(?P<fence>(?P<mark>[`~])(?P=mark){2,}).*?(?:^\s*(?:>\s*)*(?P=fence)(?P=mark)*[ \t]*$|\Z)"
+FENCE = re.compile(r"(?ms)^\s*(?:>\s*|(?:[-*+]|\d+[.)])\s+)*(?P<fence>(?P<mark>[`~])(?P=mark){2,}).*?(?:^\s*(?:>\s*)*(?P=fence)(?P=mark)*[ \t]*$|\Z)"
                    r"|<!--.*?(?:-->|\Z)")
 QUOTE = re.compile(r"^( *)(?:> ?)+")  # what marks a line as quoted: the line is read as the one it quotes, as far in as the quote stands
 NOTHING = re.compile(r"(?i)[*_\s]*(?:tbd|tbc|none|n/?a|no recommendation|your call|up to you|either)?[\s.*_]*")
