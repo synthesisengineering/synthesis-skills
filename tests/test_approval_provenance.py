@@ -2700,3 +2700,378 @@ def test_a_program_is_read_in_the_order_it_runs_and_each_function_by_its_own_nam
     command = "python3 - <<'EOF'\n" + program.format(**above) + "\nEOF"
     reason = guards.check("Bash", {"command": command}, {}, cwd=str(above["work"] if inside else here))
     assert (REFUSED in (reason or "")) == (inside if held is None else held), program
+
+
+# --- the eleventh review round (2026-11-12) -------------------------------------------------------------------
+# Twelve findings, and this project's probes after it (about 630 programs, kept with the project's records). The
+# eight in the Python reader were one gap: a field or a key had one set of values whatever carried it, so two
+# objects of one class, a reader and a writer that both keep a `path`, a table whose entry is replaced before it
+# is written, and a key kept in a name were each read as holding everything any of them held, and refused; the same
+# gap let four writes through from outside (a class that inherits its __init__, a field set through __dict__, a
+# table reached under a second name, a home given before it is asked for). A member is now read by the thing that
+# holds it: each object, table and list is the place that makes it, holding what it was made with and what it is
+# given since, and along one path from one name the last plain gift stands for those before it.
+MEMBERS = "import os, sys, subprocess, shutil, json\nfrom pathlib import Path\nT, W, P = '{work}/s.jsonl', '{work}', '/tmp/pad'\n"
+LIBRARIES = ("import numpy as np, pandas as pd, torch, joblib, pickle, io, csv\nimport matplotlib.pyplot as plt\nfrom PIL import Image\n"
+             "df = pd.DataFrame({'a': [1]})\na = np.zeros(3)\n")
+HELD_BY = [  # objects, tables and the environment: each everyday program with the same program aimed at a transcript
+    ("class Job:\n    @property\n    def out(self):\n        return P + '/a.txt'\nopen(Job().out, 'w').write(open(T).read())", False),  # P31 property on built object
+    ("class Reader:\n    def __init__(self, path):\n        self.path = path\n    def read(self):\n        return open(self.path).read()\nclass Writer:\n    def __init__(self, path):\n        self.path = path\n    def write(self, text):\n        open(self.path, 'w').write(text)\nWriter(P + '/a.txt').write(Reader(T).read())", False),  # P34 reader and writer classes
+    ("class File:\n    def __init__(self, path):\n        self.path = path\nsrc = File(T)\ndst = File(P + '/a.txt')\nopen(dst.path, 'w').write(open(src.path).read())", False),  # P35 two instances
+    ("class Job:\n    def __init__(self, src, out):\n        self.src = src\n        self.out = out\ndef emit(job):\n    open(job.out, 'w').write(open(job.src).read())\nemit(Job(T, P + '/a.txt'))", False),  # object handed to fn
+    ("from dataclasses import dataclass\n@dataclass\nclass Job:\n    src: str\n    out: str\nj = Job(T, P + '/a.txt')\nopen(j.out, 'w').write(open(j.src).read())", False),  # dataclass fields
+    ("from dataclasses import dataclass\n@dataclass\nclass Job:\n    src: str\n    out: str\njobs = [Job(T, P + '/a.txt'), Job(T, P + '/b.txt')]\nfor j in jobs:\n    open(j.out, 'w').write(open(j.src).read())", False),  # dataclass list loop
+    ("from collections import namedtuple\nJob = namedtuple('Job', 'src out')\nj = Job(T, P + '/a.txt')\nopen(j.out, 'w').write(open(j.src).read())", False),  # namedtuple fields
+    ("from types import SimpleNamespace\nns = SimpleNamespace(src=T, out=P + '/a.txt')\nopen(ns.out, 'w').write(open(ns.src).read())", False),  # namespace fields
+    ("class Job:\n    pass\njob = Job()\njob.path = T\ntext = open(job.path).read()\njob.path = P + '/a.txt'\nopen(job.path, 'w').write(text)", False),  # field replaced in order
+    ("class Conv:\n    def __init__(self, src, out):\n        self.src = src\n        self.out = out\n    def run(self):\n        open(self.out, 'w').write(open(self.src).read())\nConv(T, P + '/a.txt').run()", False),  # method uses own fields
+    ("class Source:\n    def __init__(self, path):\n        self.path = path\nclass Sink:\n    def __init__(self, path):\n        self.path = path\ndef copy(src, dst):\n    open(dst.path, 'w').write(open(src.path).read())\ncopy(Source(T), Sink(P + '/a.txt'))", False),  # source and sink to fn
+    ("class Cfg:\n    SRC = T\n    OUT = P + '/a.txt'\nopen(Cfg.OUT, 'w').write(open(Cfg.SRC).read())", False),  # class constants
+    ("class Base:\n    def __init__(self, path):\n        self.path = path\nclass Out(Base):\n    def save(self, text):\n        open(self.path, 'w').write(text)\nclass In(Base):\n    def load(self):\n        return open(self.path).read()\nOut(P + '/a.txt').save(In(T).load())", False),  # inherited field
+    ("class File:\n    def __init__(self, path):\n        self.path = path\nfiles = {'in': File(T), 'out': File(P + '/a.txt')}\nopen(files['out'].path, 'w').write(open(files['in'].path).read())", False),  # objects in a dict
+    ("class Job:\n    out = P + '/a.txt'\n    def __init__(self, src):\n        self.src = src\nj = Job(T)\nopen(j.out, 'w').write(open(j.src).read())", False),  # default field on class
+    ("class Job:\n    def __init__(self, src):\n        self.src = Path(src)\n        self.out = Path(P) / (self.src.stem + '.txt')\nj = Job(T)\nj.out.write_text(j.src.read_text())", False),  # path fields derived
+    ("from dataclasses import dataclass, field\n@dataclass\nclass Job:\n    src: str\n    out: str = field(init=False)\n    def __post_init__(self):\n        self.out = P + '/' + os.path.basename(self.src) + '.txt'\nj = Job(T)\nopen(j.out, 'w').write(open(j.src).read())", False),  # post init derives out
+    ("class Reader:\n    def __init__(self, path):\n        self.path = path\n    def read(self):\n        return open(self.path).read()\nclass Writer:\n    def __init__(self, path):\n        self.path = path\n    def write(self, text):\n        open(self.path, 'w').write(text)\nclass App:\n    def __init__(self):\n        self.src = Reader(T)\n        self.dst = Writer(P + '/a.txt')\n    def run(self):\n        self.dst.write(self.src.read())\nApp().run()", False),  # objects kept on self
+    ("class Job:\n    def __init__(self, src=None, out=None):\n        self.src = src\n        self.out = out\nj = Job(out=P + '/a.txt', src=T)\nopen(j.out, 'w').write(open(j.src).read())", False),  # keyword built object
+    ("class Job:\n    def __init__(self, src):\n        self.src = src\n    def target(self):\n        return P + '/' + os.path.basename(self.src) + '.txt'\nj = Job(T)\nopen(j.target(), 'w').write(open(j.src).read())", False),  # object method returns out
+    ("class File:\n    def __init__(self, path):\n        self.path = path\nsrc = File(T)\nfor name in ('a', 'b'):\n    dst = File(P + '/' + name + '.txt')\n    open(dst.path, 'w').write(open(src.path).read())", False),  # two objects in a loop
+    ("class Job:\n    def __init__(self):\n        self.out = None\n    def to(self, path):\n        self.out = path\n        return self\nj = Job().to(P + '/a.txt')\nopen(j.out, 'w').write(open(T).read())", False),  # setter method
+    ("class Job:\n    @property\n    def out(self):\n        return T\nopen(Job().out, 'w').write('x')", True),  # P31 twin
+    ("class Reader:\n    def __init__(self, path):\n        self.path = path\n    def read(self):\n        return open(self.path).read()\nclass Writer:\n    def __init__(self, path):\n        self.path = path\n    def write(self, text):\n        open(self.path, 'w').write(text)\nWriter(T).write(Reader(P + '/a.txt').read())", True),  # P34 twin
+    ("class File:\n    def __init__(self, path):\n        self.path = path\nsrc = File(P + '/a.txt')\ndst = File(T)\nopen(dst.path, 'w').write(open(src.path).read())", True),  # P35 twin
+    ("class Job:\n    def __init__(self, src, out):\n        self.src = src\n        self.out = out\ndef emit(job):\n    open(job.out, 'w').write(open(job.src).read())\nemit(Job(P + '/a.txt', T))", True),  # object handed twin
+    ("from dataclasses import dataclass\n@dataclass\nclass Job:\n    src: str\n    out: str\nj = Job(P + '/a.txt', T)\nopen(j.out, 'w').write(open(j.src).read())", True),  # dataclass twin
+    ("from dataclasses import dataclass\n@dataclass\nclass Job:\n    src: str\n    out: str\njobs = [Job(P + '/a.txt', P + '/b.txt'), Job(P + '/a.txt', T)]\nfor j in jobs:\n    open(j.out, 'w').write(open(j.src).read())", True),  # dataclass loop twin
+    ("class Job:\n    pass\njob = Job()\njob.path = P + '/a.txt'\ntext = open(job.path).read()\njob.path = T\nopen(job.path, 'w').write(text)", True),  # field replaced twin
+    ("class Job:\n    pass\na = Job()\na.path = P + '/a.txt'\nb = a\nb.path = T\nopen(a.path, 'w').write('x')", True),  # field via alias
+    ("class Job:\n    def __init__(self, out):\n        self.out = out\ndef retarget(job):\n    job.out = T\nj = Job(P + '/a.txt')\nretarget(j)\nopen(j.out, 'w').write('x')", True),  # field via fn
+    ("class Job:\n    def __init__(self, out):\n        self.out = out\nj = Job(P + '/a.txt')\nsetattr(j, 'out', T)\nopen(j.out, 'w').write('x')", True),  # field via setattr
+    ("class Job:\n    def __init__(self, out):\n        self.out = out\n    def retarget(self, p):\n        self.out = p\nj = Job(P + '/a.txt')\nj.retarget(T)\nopen(j.out, 'w').write('x')", True),  # field via method
+    ("class File:\n    def __init__(self, path):\n        self.path = path\nfor p in (P + '/a.txt', T):\n    f = File(p)\n    open(f.path, 'w').write('x')", True),  # second instance twin
+    ("class Base:\n    def __init__(self, path):\n        self.path = path\nclass Out(Base):\n    def save(self, text):\n        open(self.path, 'w').write(text)\nOut(T).save('x')", True),  # inherited twin
+    ("class Base:\n    def save(self, text):\n        open(self.path, 'w').write(text)\nclass Out(Base):\n    def __init__(self):\n        self.path = T\nOut().save('x')", True),  # subclass init twin
+    ("class Cfg:\n    OUT = T\nopen(Cfg.OUT, 'w').write('x')", True),  # class constant twin
+    ("class Cfg:\n    OUT = P + '/a.txt'\nCfg.OUT = T\nopen(Cfg.OUT, 'w').write('x')", True),  # class attr set later
+    ("class Job:\n    def __init__(self, out):\n        self.out = out\nj = Job(P + '/a.txt')\nj.__dict__['out'] = T\nopen(j.out, 'w').write('x')", True),  # instance dict twin
+    ("class File:\n    def __init__(self, path):\n        self.path = path\nfiles = {'in': File(P + '/a.txt'), 'out': File(T)}\nopen(files['out'].path, 'w').write('x')", True),  # objects in dict twin
+    ("class Writer:\n    def __init__(self, path):\n        self.path = path\n    def write(self, text):\n        open(self.path, 'w').write(text)\nclass App:\n    def __init__(self):\n        self.dst = Writer(T)\n    def run(self):\n        self.dst.write('x')\nApp().run()", True),  # kept on self twin
+    ("class Job:\n    def __init__(self):\n        self.out = None\n    def to(self, path):\n        self.out = path\n        return self\nj = Job().to(T)\nopen(j.out, 'w').write('x')", True),  # setter twin
+    ("from dataclasses import dataclass, field\n@dataclass\nclass Job:\n    src: str\n    out: str = field(init=False)\n    def __post_init__(self):\n        self.out = self.src + '.bak'\nj = Job(T)\nopen(j.out, 'w').write('x')", True),  # post init twin
+    ("d = {'src': T, 'out': P + '/a.txt'}\nk = 'out'\nopen(d.get(k), 'w').write('x')", False),  # P37 key in a name
+    ("d = {'out': P + '/a.txt'}\nk = 'out'\nopen(d.get(k), 'w').write('x')", False),  # P38 key in a name
+    ("d = {'path': T}\ntext = open(d['path']).read()\nd['path'] = P + '/a.txt'\nopen(d['path'], 'w').write(text)", False),  # P39 entry replaced
+    ("jobs = [{'src': T, 'out': P + '/a.txt'}, {'src': T, 'out': P + '/b.txt'}]\nfor job in jobs:\n    open(job['out'], 'w').write(open(job['src']).read())", False),  # rows of tables
+    ("cfg = {'paths': {'src': T, 'out': P + '/a.txt'}}\nopen(cfg['paths']['out'], 'w').write(open(cfg['paths']['src']).read())", False),  # nested table
+    ("cfg = {}\ncfg['src'] = T\ncfg['out'] = P + '/a.txt'\nopen(cfg['out'], 'w').write(open(cfg['src']).read())", False),  # table built in steps
+    ("cfg = {'src': T}\nopen(cfg.get('out', P + '/d.txt'), 'w').write(open(cfg['src']).read())", False),  # get with default
+    ("m = {'src': [T], 'out': [P + '/a.txt']}\nopen(m['out'][0], 'w').write(open(m['src'][0]).read())", False),  # table of lists
+    ("outs = {'a': P + '/a.txt', 'b': P + '/b.txt'}\ntext = open(T).read()\nfor key in ('a', 'b'):\n    open(outs[key], 'w').write(text)", False),  # key from a loop
+    ("cfg = {'src': T}\ncfg.update(out=P + '/a.txt')\nopen(cfg['out'], 'w').write(open(cfg['src']).read())", False),  # update then read
+    ("d = dict(src=T, out=P + '/a.txt')\nopen(d['out'], 'w').write(open(d['src']).read())", False),  # dict call
+    ("OUT = 'out'\ncfg = {'src': T, OUT: P + '/a.txt'}\nopen(cfg[OUT], 'w').write(open(cfg['src']).read())", False),  # key constant name
+    ("pairs = {T: P + '/a.txt'}\nfor src, out in pairs.items():\n    open(out, 'w').write(open(src).read())", False),  # source to out map
+    ("for s, o in zip([T], [P + '/a.txt']):\n    open(o, 'w').write(open(s).read())", False),  # zip of lists
+    ("srcs = [T]\nouts = {s: P + '/' + os.path.basename(s) + '.txt' for s in srcs}\nfor s, o in outs.items():\n    open(o, 'w').write(open(s).read())", False),  # dict comprehension map
+    ("srcs = [T]\nouts = [P + '/' + os.path.basename(s) + '.txt' for s in srcs]\nfor s, o in zip(srcs, outs):\n    open(o, 'w').write(open(s).read())", False),  # list comprehension outs
+    ("def run(cfg):\n    open(cfg['out'], 'w').write(open(cfg['src']).read())\nrun({'src': T, 'out': P + '/a.txt'})", False),  # table handed to fn
+    ("def run(src, out):\n    open(out, 'w').write(open(src).read())\ncfg = {'src': T, 'out': P + '/a.txt'}\nrun(**cfg)", False),  # table kwargs
+    ("paths = [T, T]\ntext = open(paths[0]).read()\npaths[1] = P + '/a.txt'\nopen(paths[1], 'w').write(text)", False),  # list replaced in order
+    ("pair = (T, P + '/a.txt')\nopen(pair[1], 'w').write(open(pair[0]).read())", False),  # tuple pair
+    ("cfg = {'src': T, 'out': P + '/a.txt'}\nout = cfg.pop('out')\nopen(out, 'w').write(open(cfg['src']).read())", False),  # pop the out
+    ("cfg = {'src': T}\nout = cfg.setdefault('out', P + '/a.txt')\nopen(out, 'w').write(open(cfg['src']).read())", False),  # setdefault out
+    ("defaults = {'out': P + '/a.txt'}\ncfg = {**defaults, 'src': T}\nopen(cfg['out'], 'w').write(open(cfg['src']).read())", False),  # defaults merged
+    ("plan = {'jobs': [{'src': T, 'out': P + '/a.txt'}]}\nfor job in plan['jobs']:\n    open(job['out'], 'w').write(open(job['src']).read())", False),  # nested rows
+    ("d = {'src': P + '/a.txt', 'out': T}\nk = 'out'\nopen(d.get(k), 'w').write('x')", True),  # P37 twin
+    ("d = {'path': P + '/a.txt'}\ntext = open(d['path']).read()\nd['path'] = T\nopen(d['path'], 'w').write(text)", True),  # P39 twin
+    ("jobs = [{'src': P + '/a.txt', 'out': P + '/b.txt'}, {'src': P + '/a.txt', 'out': T}]\nfor job in jobs:\n    open(job['out'], 'w').write('x')", True),  # rows twin
+    ("cfg = {'paths': {'src': P + '/a.txt', 'out': T}}\nopen(cfg['paths']['out'], 'w').write('x')", True),  # nested twin
+    ("cfg = {'paths': {'out': P + '/a.txt'}}\ncfg['paths']['out'] = T\nopen(cfg['paths']['out'], 'w').write('x')", True),  # nested store twin
+    ("cfg = {'paths': {'out': P + '/a.txt'}}\np = cfg['paths']\np['out'] = T\nopen(cfg['paths']['out'], 'w').write('x')", True),  # nested alias twin
+    ("cfg = {}\ncfg['src'] = P + '/a.txt'\ncfg['out'] = T\nopen(cfg['out'], 'w').write('x')", True),  # steps twin
+    ("d = {'path': P + '/a.txt'}\ndef flip():\n    d['path'] = T\nflip()\nopen(d['path'], 'w').write('x')", True),  # entry replaced in fn
+    ("d = {'path': P + '/a.txt'}\nif len(sys.argv) > 0:\n    d['path'] = T\nopen(d['path'], 'w').write('x')", True),  # entry replaced in branch
+    ("d = {'path': P + '/a.txt'}\ne = d\ne['path'] = T\nopen(d['path'], 'w').write('x')", True),  # entry via alias
+    ("d = {'path': P + '/a.txt'}\nd.update(path=T)\nopen(d['path'], 'w').write('x')", True),  # entry via update
+    ("d = {'path': P + '/a.txt'}\nd.update({'path': T})\nopen(d['path'], 'w').write('x')", True),  # entry via update dict
+    ("d = {'path': P + '/a.txt'}\nfor k in ('path',):\n    d[k] = T\nopen(d['path'], 'w').write('x')", True),  # entry via loop key
+    ("d = {'a': P + '/a.txt', 'b': T}\nk = 'a'\nk = 'b'\nopen(d[k], 'w').write('x')", True),  # key in name twin 2
+    ("d = {'a': P + '/a.txt', 'b': T}\nk = 'a' if len(sys.argv) > 5 else 'b'\nopen(d[k], 'w').write('x')", True),  # key chosen twin
+    ("cfg = {}\nopen(cfg.get('out', T), 'w').write('x')", True),  # get default twin
+    ("paths = [P + '/a.txt', P + '/b.txt']\npaths[1] = T\nopen(paths[1], 'w').write('x')", True),  # list replaced twin
+    ("def run(cfg):\n    open(cfg['out'], 'w').write('x')\nrun({'src': P + '/a.txt', 'out': T})", True),  # table to fn twin
+    ("pairs = {P + '/a.txt': T}\nfor src, out in pairs.items():\n    open(out, 'w').write('x')", True),  # map twin
+    ("srcs = [T]\nouts = [s + '.bak' for s in srcs]\nfor o in outs:\n    open(o, 'w').write('x')", True),  # comprehension twin
+    ("defaults = {'out': T}\ncfg = {**defaults, 'src': P + '/a.txt'}\nopen(cfg['out'], 'w').write('x')", True),  # merged twin
+    ("plan = {'jobs': [{'src': P + '/a.txt', 'out': T}]}\nfor job in plan['jobs']:\n    open(job['out'], 'w').write('x')", True),  # nested rows twin
+    ("d = {'path': P + '/a.txt'}\nd.pop('path')\nopen(d.get('path', T), 'w').write('x')", True),  # del then default
+    ("os.environ['OUT'] = T\nopen(os.getenv('OUT'), 'w').write('x')", True),  # env set then read
+    ("os.environ['OUT'] = T\nopen(os.environ['OUT'], 'w').write('x')", True),  # env set then environ read
+    ("os.environ['OUT'] = T\nopen(os.environ.get('OUT'), 'w').write('x')", True),  # env set then get
+    ("os.environ['HOME'] = W\n(Path.home() / 'x.jsonl').write_text('x')\nos.environ['HOME'] = P", True),  # home set then home
+    ("os.environ['HOME'] = W\nopen(os.path.expanduser('~/x.jsonl'), 'w').write('x')\nos.environ['HOME'] = P", True),  # home set then expanduser
+    ("os.environ['HOME'] = P\n(Path.home() / 'a.txt').write_text('x')\nos.environ['HOME'] = W", False),  # home set elsewhere first
+    ("os.environ['HOME'] = P\nopen(os.path.expanduser('~/a.txt'), 'w').write('x')\nos.environ['HOME'] = W", False),  # home expanduser elsewhere first
+    ("os.environ['OUT'] = T\ntext = open(os.environ['OUT']).read()\nos.environ['OUT'] = P + '/a.txt'\nopen(os.environ['OUT'], 'w').write(text)", False),  # env replaced before read
+    ("open(os.environ.get('SYN_PROBE_OUT', P + '/a.txt'), 'w').write(open(T).read())", False),  # env default elsewhere
+    ("out = os.environ.setdefault('SYN_PROBE_OUT', P + '/a.txt')\nopen(out, 'w').write(open(T).read())", False),  # env setdefault
+    ("def aim():\n    os.environ['OUT'] = T\naim()\nopen(os.environ['OUT'], 'w').write('x')", True),  # env set in fn
+    ('os.putenv(\'OUT\', T)\nsubprocess.run(\'echo x > "$OUT"\', shell=True)', True),  # env putenv then child
+]
+MORE_SHAPES = [  # a second pass over the same ground: factories, loops that fill a table, a work list, a class's own constants
+    ("class File:\n    def __init__(self, path):\n        self.path = path\n    def read(self):\n        return open(self.path).read()\n    def write(self, text):\n        open(self.path, 'w').write(text)\nFile(P + '/a.txt').write(File(T).read())", False),  # one class reads and writes
+    ("class File:\n    def __init__(self, path):\n        self.path = path\n    def read(self):\n        return open(self.path).read()\n    def write(self, text):\n        open(self.path, 'w').write(text)\nsrc = File(T)\ndst = File(P + '/a.txt')\ndst.write(src.read())", False),  # named objects read and write
+    ("class Job:\n    def __init__(self, src, out):\n        self.src = src\n        self.out = out\n    @classmethod\n    def default(cls):\n        return cls(T, P + '/a.txt')\n    def run(self):\n        open(self.out, 'w').write(open(self.src).read())\nJob.default().run()", False),  # classmethod factory
+    ("class Job:\n    def __init__(self, src):\n        self.src = src\n        self.out = None\n    def run(self):\n        open(self.out, 'w').write(open(self.src).read())\njob = Job(T)\nfor name in ('a', 'b'):\n    job.out = P + '/' + name + '.txt'\n    job.run()", False),  # field set in a loop
+    ("import dataclasses\n@dataclasses.dataclass\nclass Job:\n    src: str\n    out: str = P + '/a.txt'\nj = Job(T)\nk = dataclasses.replace(j, out=P + '/b.txt')\nopen(k.out, 'w').write(open(j.src).read())", False),  # dataclass replace
+    ("class Out:\n    def __init__(self, folder):\n        self.folder = Path(folder)\n    def save(self, name, text):\n        (self.folder / name).write_text(text)\nOut(P).save('a.txt', open(T).read())", False),  # path field joined
+    ("paths = {'src': Path(T), 'out': Path(P) / 'a.txt'}\npaths['out'].write_text(paths['src'].read_text())", False),  # table of paths
+    ("import argparse\np = argparse.ArgumentParser()\np.add_argument('--src', default=T)\np.add_argument('--out', default=P + '/a.txt')\nargs = p.parse_args([])\nopen(args.out, 'w').write(open(args.src).read())", False),  # parser default
+    ("cfg = {'paths': {'src': T}}\nout = cfg.get('paths', {}).get('out', P + '/a.txt')\nopen(out, 'w').write(open(cfg['paths']['src']).read())", False),  # nested get
+    ("class Job:\n    def __init__(self, src, out):\n        base = os.path.dirname(out)\n        self.src = src\n        self.out = os.path.join(base, 'x.txt')\nj = Job(T, P + '/a.txt')\nopen(j.out, 'w').write(open(j.src).read())", False),  # local in init
+    ("results = {}\nfor name in ('a', 'b'):\n    results[name] = P + '/' + name + '.txt'\ntext = open(T).read()\nfor name, out in results.items():\n    open(out, 'w').write(text)", False),  # table filled in a loop
+    ("todo = [(T, P + '/a.txt')]\nwhile todo:\n    src, out = todo.pop()\n    open(out, 'w').write(open(src).read())", False),  # work list popped
+    ("class Settings:\n    out_dir = P\n    src = T\nopen(os.path.join(Settings.out_dir, 'a.txt'), 'w').write(open(Settings.src).read())", False),  # settings class
+    ("class App:\n    def __init__(self):\n        self.paths = {'src': T, 'out': P + '/a.txt'}\n    def run(self):\n        open(self.paths['out'], 'w').write(open(self.paths['src']).read())\nApp().run()", False),  # table kept on self
+    ("class Job:\n    def __init__(self, src, out):\n        self.src = src\n        self.out = out\ndef load():\n    return Job(T, P + '/a.txt')\nj = load()\nopen(j.out, 'w').write(open(j.src).read())", False),  # object from a function
+    ("class Job:\n    def __init__(self, src, out):\n        self.src = src\n        self.out = out\njobs = [Job(T, P + '/a.txt')]\nopen(jobs[0].out, 'w').write(open(jobs[0].src).read())", False),  # object by index
+    ("class Cfg:\n    def __init__(self, out):\n        self.out = out\nclass App:\n    def __init__(self):\n        self.cfg = Cfg(P + '/a.txt')\n    def run(self):\n        open(self.cfg.out, 'w').write(open(T).read())\nApp().run()", False),  # object in an object
+    ("from typing import NamedTuple\nclass Job(NamedTuple):\n    src: str\n    out: str\nj = Job(T, P + '/a.txt')\nopen(j.out, 'w').write(open(j.src).read())", False),  # typed named tuple
+    ("from collections import defaultdict\ngroups = defaultdict(list)\ngroups['src'].append(T)\ngroups['out'].append(P + '/a.txt')\nfor o in groups['out']:\n    open(o, 'w').write('x')", False),  # grouped lists
+    ("os.environ['OUT_DIR'] = P\nout = os.path.join(os.environ['OUT_DIR'], 'a.txt')\nopen(out, 'w').write(open(T).read())", False),  # env folder set then joined
+    ("class Out:\n    def __init__(self, path):\n        self.f = open(path, 'w')\n    def line(self, text):\n        self.f.write(text)\no = Out(P + '/a.txt')\no.line(open(T).read())", False),  # object owns its file
+    ("cfg = {}\ndef setup():\n    cfg['src'] = T\n    cfg['out'] = P + '/a.txt'\ndef run():\n    open(cfg['out'], 'w').write(open(cfg['src']).read())\nsetup()\nrun()", False),  # table set in one function, read in another
+    ("class Cfg:\n    pass\ncfg = Cfg()\nsetattr(cfg, 'src', T)\nsetattr(cfg, 'out', P + '/a.txt')\nopen(cfg.out, 'w').write(open(cfg.src).read())", False),  # setattr out
+    ("class Job:\n    def __init__(self):\n        self._out = P + '/a.txt'\n    @property\n    def out(self):\n        return self._out\n    @out.setter\n    def out(self, value):\n        self._out = value\nj = Job()\nj.out = P + '/b.txt'\nopen(j.out, 'w').write(open(T).read())", False),  # property with a setter
+    ("def main():\n    cfg = {'src': T, 'out': P + '/a.txt'}\n    text = open(cfg['src']).read()\n    cfg['src'] = None\n    open(cfg['out'], 'w').write(text)\nif __name__ == '__main__':\n    main()", False),  # main function
+    ("if __name__ == '__main__':\n    path = T\n    text = open(path).read()\n    path = P + '/a.txt'\n    open(path, 'w').write(text)", False),  # main guard order
+    ("class F:\n    def __init__(self, path):\n        self.path = path\nsrcs = [F(T)]\ndsts = [F(P + '/a.txt')]\nfor s, d in zip(srcs, dsts):\n    open(d.path, 'w').write(open(s.path).read())", False),  # pairs of objects zipped
+    ("outs = []\nfor name in ('a', 'b'):\n    outs.append(P + '/' + name + '.txt')\ntext = open(T).read()\nfor o in outs:\n    open(o, 'w').write(text)", False),  # list appended then looped
+    ("jobs = []\njobs.append({'src': T, 'out': P + '/a.txt'})\nfor job in jobs:\n    open(job['out'], 'w').write(open(job['src']).read())", False),  # rows appended then looped
+    ("class F:\n    def __init__(self, path):\n        self.path = path\nouts = {name: F(P + '/' + name + '.txt') for name in ('a', 'b')}\nfor name, f in outs.items():\n    open(f.path, 'w').write(open(T).read())", False),  # items kept in a table of objects
+    ("class Base:\n    def __init__(self, path):\n        self.path = path\nclass Out(Base):\n    def __init__(self, path, mode='w'):\n        super().__init__(path)\n        self.mode = mode\n    def save(self, text):\n        open(self.path, self.mode).write(text)\nOut(P + '/a.txt').save(open(T).read())", False),  # writer base and subclass
+    ("env = dict(os.environ)\nenv['SRC'] = T\nsubprocess.run(['cat'], env=env, stdout=open(P + '/a.txt', 'w'))", False),  # env copy for a child
+    ("cfg = {'in': {'path': T}, 'out': {'path': P + '/a.txt'}}\nopen(cfg['out']['path'], 'w').write(open(cfg['in']['path']).read())", False),  # two keys one table
+    ("src, dst = {'path': T}, {'path': P + '/a.txt'}\nopen(dst['path'], 'w').write(open(src['path']).read())", False),  # tuple of tables
+    ("class Job:\n    def __init__(self, src, out):\n        self.src = src\n        self.out = out\nj = Job(T, P + '/a.txt')\nout = j.out\nopen(out, 'w').write(open(j.src).read())", False),  # object field read into a name
+    ("class File:\n    def __init__(self, path):\n        self.path = path\n    def read(self):\n        return open(self.path).read()\n    def write(self, text):\n        open(self.path, 'w').write(text)\nFile(T).write(File(P + '/a.txt').read())", True),  # one class twin
+    ("class Job:\n    def __init__(self, out):\n        self.out = out\n    @classmethod\n    def default(cls):\n        return cls(T)\n    def run(self):\n        open(self.out, 'w').write('x')\nJob.default().run()", True),  # classmethod twin
+    ("class Job:\n    def __init__(self, out):\n        self.out = out\n    def other(self):\n        return type(self)(T)\n    def run(self):\n        open(self.out, 'w').write('x')\nJob(P + '/a.txt').other().run()", True),  # type self twin
+    ("class Job:\n    def __init__(self):\n        self.out = None\n    def run(self):\n        open(self.out, 'w').write('x')\njob = Job()\nfor p in (P + '/a.txt', T):\n    job.out = p\n    job.run()", True),  # field in loop twin
+    ("import dataclasses\n@dataclasses.dataclass\nclass Job:\n    out: str = P + '/a.txt'\nj = Job()\nk = dataclasses.replace(j, out=T)\nopen(k.out, 'w').write('x')", True),  # replace twin
+    ("class Out:\n    def __init__(self, folder):\n        self.folder = Path(folder)\n    def save(self, name, text):\n        (self.folder / name).write_text(text)\nOut(W).save('a.txt', 'x')", True),  # path field twin
+    ("import argparse\np = argparse.ArgumentParser()\np.add_argument('--out', default=T)\nargs = p.parse_args([])\nopen(args.out, 'w').write('x')", True),  # parser default twin
+    ("cfg = {'paths': {}}\nout = cfg.get('paths', {}).get('out', T)\nopen(out, 'w').write('x')", True),  # nested get twin
+    ("class Job:\n    def __init__(self, out):\n        base = os.path.dirname(out)\n        self.out = os.path.join(base, 'x.jsonl')\nj = Job(T)\nopen(j.out, 'w').write('x')", True),  # local in init twin
+    ("results = {}\nfor name, p in (('a', P + '/a.txt'), ('b', T)):\n    results[name] = p\nfor name, out in results.items():\n    open(out, 'w').write('x')", True),  # filled in loop twin
+    ("todo = [(P + '/a.txt', T)]\nwhile todo:\n    src, out = todo.pop()\n    open(out, 'w').write('x')", True),  # work list twin
+    ("class Settings:\n    out_dir = W\nopen(os.path.join(Settings.out_dir, 'a.txt'), 'w').write('x')", True),  # settings twin
+    ("class App:\n    def __init__(self):\n        self.paths = {'out': T}\n    def run(self):\n        open(self.paths['out'], 'w').write('x')\nApp().run()", True),  # table on self twin
+    ("class App:\n    def __init__(self):\n        self.paths = {'out': P + '/a.txt'}\n    def aim(self):\n        self.paths['out'] = T\n    def run(self):\n        open(self.paths['out'], 'w').write('x')\na = App()\na.aim()\na.run()", True),  # table on self set later
+    ("class Job:\n    def __init__(self, out):\n        self.out = out\ndef load():\n    return Job(T)\nj = load()\nopen(j.out, 'w').write('x')", True),  # object from function twin
+    ("class Job:\n    def __init__(self, out):\n        self.out = out\njobs = [Job(P + '/a.txt'), Job(T)]\nopen(jobs[1].out, 'w').write('x')", True),  # object by index twin
+    ("class Cfg:\n    def __init__(self, out):\n        self.out = out\nclass App:\n    def __init__(self):\n        self.cfg = Cfg(T)\n    def run(self):\n        open(self.cfg.out, 'w').write('x')\nApp().run()", True),  # object in object twin
+    ("class Cfg:\n    def __init__(self, out):\n        self.out = out\nclass App:\n    def __init__(self, cfg):\n        self.cfg = cfg\n    def run(self):\n        open(self.cfg.out, 'w').write('x')\nc = Cfg(P + '/a.txt')\na = App(c)\nc.out = T\na.run()", True),  # object in object set later
+    ("from collections import defaultdict\ngroups = defaultdict(list)\ngroups['out'].append(T)\nfor o in groups['out']:\n    open(o, 'w').write('x')", True),  # grouped lists twin
+    ("os.environ['OUT_DIR'] = W\nout = os.path.join(os.environ['OUT_DIR'], 'a.txt')\nopen(out, 'w').write('x')", True),  # env folder twin
+    ("class Out:\n    def __init__(self, path):\n        self.f = open(path, 'w')\no = Out(T)", True),  # object owns file twin
+    ("cfg = {}\ndef setup():\n    cfg['out'] = T\ndef run():\n    open(cfg['out'], 'w').write('x')\nsetup()\nrun()", True),  # table set in function twin
+    ("class Cfg:\n    pass\ncfg = Cfg()\nsetattr(cfg, 'out', T)\nopen(cfg.out, 'w').write('x')", True),  # setattr twin
+    ("class Job:\n    def __init__(self):\n        self._out = P + '/a.txt'\n    @property\n    def out(self):\n        return self._out\n    @out.setter\n    def out(self, value):\n        self._out = value\nj = Job()\nj.out = T\nopen(j.out, 'w').write('x')", True),  # setter twin
+    ("def main():\n    cfg = {'out': P + '/a.txt'}\n    cfg['out'] = T\n    open(cfg['out'], 'w').write('x')\nif __name__ == '__main__':\n    main()", True),  # main function twin
+    ("def step(d):\n    open(d['k'], 'w').write('x')\n    d['k'] = T\ncfg = {'k': P + '/a.txt'}\nstep(cfg)\nstep(cfg)", True),  # function run twice
+    ("outs = []\nfor p in (P + '/a.txt', T):\n    outs.append(p)\nfor o in outs:\n    open(o, 'w').write('x')", True),  # list appended twin
+    ("outs = [P + '/a.txt']\nouts.extend([T])\nfor o in outs:\n    open(o, 'w').write('x')", True),  # extend twin
+    ("outs = [P + '/a.txt']\nouts += [T]\nfor o in outs:\n    open(o, 'w').write('x')", True),  # plus equals twin
+    ("outs = [P + '/a.txt']\nouts.insert(0, T)\nopen(outs[0], 'w').write('x')", True),  # insert twin
+    ("class Base:\n    def __init__(self, path):\n        self.path = path\nclass Out(Base):\n    def __init__(self, path):\n        super().__init__(path)\n    def save(self, text):\n        open(self.path, 'w').write(text)\nOut(T).save('x')", True),  # subclass super twin
+    ("cfg = {'in': {'path': P + '/a.txt'}, 'out': {'path': T}}\nopen(cfg['out']['path'], 'w').write('x')", True),  # two keys twin
+    ("class C:\n    pass\na, b = C(), C()\na.out, b.out = P + '/a.txt', T\nopen(b.out, 'w').write('x')", True),  # unpacked store twin
+    ("class C:\n    pass\nc = C()\nfor c.out in (T,):\n    pass\nopen(c.out, 'w').write('x')", True),  # loop target field
+    ("class C:\n    def __init__(self, out):\n        self.out = out\nc = C(P + '/a.txt')\nc.__dict__.update(out=T)\nopen(c.out, 'w').write('x')", True),  # dict of object update
+    ("class C:\n    def __init__(self, out):\n        self.out = out\nc = C(P + '/a.txt')\nvars(c)['out'] = T\nopen(c.out, 'w').write('x')", True),  # vars twin
+    ("import copy\nclass W_:\n    def __init__(self, path):\n        self.path = path\n    def save(self):\n        open(self.path, 'w').write('x')\na = W_(P + '/a.txt')\nb = copy.copy(a)\nb.path = T\nb.save()", True),  # copy then retarget
+    ("class C:\n    def __init__(self, out):\n        self.out = out\nitems = [C(P + '/a.txt')]\nitems[0].out = T\nfor it in items:\n    open(it.out, 'w').write('x')", True),  # stored in list then set
+    ("class C:\n    def __init__(self, out=T):\n        self.out = out\nopen(C().out, 'w').write('x')", True),  # default arg object
+    ("class C:\n    out = P + '/a.txt'\nC.out = T\nopen(C().out, 'w').write('x')", True),  # class attr via instance
+    ("a = {'out': P + '/a.txt'}\nb = {'out': T}\na.update(b)\nopen(a['out'], 'w').write('x')", True),  # table update from table
+    ("a = {'out': P + '/a.txt'}\nb = {'out': T}\nc = {**a, **b}\nopen(c['out'], 'w').write('x')", True),  # table merged twin
+    ("a = {'out': P + '/a.txt'}\nb = a | {'out': T}\nopen(b['out'], 'w').write('x')", True),  # table or twin
+    ("class C:\n    def __init__(self, **kw):\n        self.out = kw['out']\nopen(C(out=T).out, 'w').write('x')", True),  # kwargs object twin
+    ("def run(src, out):\n    open(out, 'w').write('x')\ncfg = {'src': P + '/a.txt', 'out': T}\nrun(**cfg)", True),  # star table call twin
+    ("def run(src, out):\n    open(out, 'w').write('x')\nrow = [P + '/a.txt', T]\nrun(*row)", True),  # star row call twin
+    ("def run(src, out=P + '/b.txt'):\n    open(out, 'w').write('x')\ncfg = {'src': P + '/a.txt'}\ncfg['out'] = T\nrun(**cfg)", True),  # star table changed
+]
+# Writers of other libraries, by where each takes its path: a bare name is a file where the program stands (None:
+# refused inside, allowed outside); what is handed besides the path is content, whatever it spells; a wrapper of
+# the program's own named like a writer is read as it is written; a store opened to be read is not written.
+OTHER_LIBRARIES = [
+    ("text = open(T).read()[:10]\ndf.to_csv(P + '/a.csv', index=False)", False),  # to_csv
+    ("text = open(T).read()[:10]\ndf.to_json(P + '/a.json')", False),  # to_json
+    ("text = open(T).read()[:10]\ndf.to_excel(P + '/a.xlsx')", False),  # to_excel
+    ("text = open(T).read()[:10]\ndf.to_parquet(P + '/a.parquet')", False),  # to_parquet
+    ("text = open(T).read()[:10]\ndf.to_pickle(P + '/a.pkl')", False),  # to_pickle
+    ("text = open(T).read()[:10]\ndf.to_html(P + '/a.html')", False),  # to_html
+    ("text = open(T).read()[:10]\ndf.to_markdown(P + '/a.md')", False),  # to_markdown
+    ("text = open(T).read()[:10]\ndf.to_string(buf=P + '/a.txt')", False),  # to_string buf
+    ("text = open(T).read()[:10]\npd.to_pickle(df, P + '/a.pkl')", False),  # pd.to_pickle
+    ("text = open(T).read()[:10]\nwith pd.ExcelWriter(P + '/a.xlsx') as w:\n    df.to_excel(w)", False),  # excel writer
+    ("text = open(T).read()[:10]\nnp.save(P + '/a.npy', a)", False),  # np.save
+    ("text = open(T).read()[:10]\nnp.savez(P + '/a.npz', a=a)", False),  # np.savez
+    ("text = open(T).read()[:10]\nnp.savetxt(P + '/a.txt', a)", False),  # np.savetxt
+    ("text = open(T).read()[:10]\na.tofile(P + '/a.bin')", False),  # tofile
+    ("text = open(T).read()[:10]\nm = np.memmap(P + '/a.dat', dtype='float32', mode='w+', shape=(3,))", False),  # memmap
+    ("text = open(T).read()[:10]\ntorch.save({'w': a}, P + '/m.pt')", False),  # torch.save
+    ("text = open(T).read()[:10]\njoblib.dump(a, P + '/m.joblib')", False),  # joblib.dump
+    ("text = open(T).read()[:10]\nwith open(P + '/m.pkl', 'wb') as f:\n    pickle.dump(a, f)", False),  # pickle.dump
+    ("text = open(T).read()[:10]\nwith open(P + '/m.json', 'w') as f:\n    json.dump({'a': 1}, f)", False),  # json.dump
+    ("text = open(T).read()[:10]\nImage.new('RGB', (1, 1)).save(P + '/a.png')", False),  # image save
+    ("text = open(T).read()[:10]\nplt.plot([1])\nplt.savefig(P + '/a.png')", False),  # savefig
+    ("text = open(T).read()[:10]\nfig, ax = plt.subplots()\nfig.savefig(P + '/a.png', dpi=100)", False),  # fig savefig
+    ("text = open(T).read()[:10]\nplt.imsave(P + '/a.png', a.reshape(1, 3))", False),  # imsave
+    ("text = open(T).read()[:10]\nimport cv2\ncv2.imwrite(P + '/a.png', a)", False),  # cv2 imwrite
+    ("text = open(T).read()[:10]\nimport imageio\nimageio.imwrite(P + '/a.png', a)", False),  # imageio
+    ("text = open(T).read()[:10]\nimport xml.etree.ElementTree as ET\ntree = ET.ElementTree(ET.Element('a'))\ntree.write(P + '/a.xml')", False),  # tree write
+    ("text = open(T).read()[:10]\nimport xml.etree.ElementTree as ET\ntree = ET.parse(P + '/in.xml')\ntree.write(P + '/a.xml')", False),  # parsed tree write
+    ("text = open(T).read()[:10]\nimport h5py\nwith h5py.File(P + '/a.h5', 'w') as f:\n    f['a'] = a", False),  # h5py
+    ("text = open(T).read()[:10]\nimport shelve\nwith shelve.open(P + '/db') as db:\n    db['a'] = 1", False),  # shelve
+    ("text = open(T).read()[:10]\nimport dbm\nwith dbm.open(P + '/db', 'c') as db:\n    db['a'] = '1'", False),  # dbm
+    ("text = open(T).read()[:10]\nimport duckdb\ncon = duckdb.connect(P + '/a.db')", False),  # duckdb
+    ("text = open(T).read()[:10]\nimport polars as pl\npl.DataFrame({'a': [1]}).write_csv(P + '/a.csv')", False),  # polars
+    ("text = open(T).read()[:10]\nimport plotly.express as px\npx.line(x=[1], y=[1]).write_image(P + '/a.png')", False),  # plotly
+    ("text = open(T).read()[:10]\nfrom openpyxl import Workbook\nwb = Workbook()\nwb.save(P + '/a.xlsx')", False),  # workbook save
+    ("text = open(T).read()[:10]\nfrom docx import Document\ndoc = Document()\ndoc.save(P + '/a.docx')", False),  # docx save
+    ("text = open(T).read()[:10]\nimport gzip\nwith gzip.GzipFile(P + '/a.gz', 'w') as f:\n    f.write(b'x')", False),  # gzip file
+    ("text = open(T).read()[:10]\nimport wave\nw = wave.open(P + '/a.wav', 'wb')", False),  # wave
+    ("text = open(T).read()[:10]\ndef save(p):\n    np.save(p, [1])\nsave(P + '/a.npy')", False),  # wrapped np.save
+    ("text = open(T).read()[:10]\ndef to_csv(frame, p):\n    frame.to_csv(p)\nto_csv(df, P + '/a.csv')", False),  # wrapped to_csv
+    ("text = open(T).read()[:10]\ndef dump(obj, p):\n    with open(p, 'w') as f:\n        json.dump(obj, f)\ndump({'a': 1}, P + '/a.json')", False),  # wrapped dump
+    ("text = open(T).read()[:10]\nwith open(P + '/a.csv', 'w', newline='') as f:\n    csv.writer(f).writerow([T, 1])", False),  # csv writer
+    ("df.to_csv(W + '/a.csv', index=False)", True),  # to_csv
+    ("df.to_json(W + '/a.json')", True),  # to_json
+    ("df.to_excel(W + '/a.xlsx')", True),  # to_excel
+    ("df.to_parquet(W + '/a.parquet')", True),  # to_parquet
+    ("df.to_pickle(W + '/a.pkl')", True),  # to_pickle
+    ("df.to_html(W + '/a.html')", True),  # to_html
+    ("df.to_markdown(W + '/a.md')", True),  # to_markdown
+    ("df.to_string(buf=W + '/a.txt')", True),  # to_string buf
+    ("pd.to_pickle(df, W + '/a.pkl')", True),  # pd.to_pickle
+    ("with pd.ExcelWriter(W + '/a.xlsx') as w:\n    df.to_excel(w)", True),  # excel writer
+    ("np.save(W + '/a.npy', a)", True),  # np.save
+    ("np.savez(W + '/a.npz', a=a)", True),  # np.savez
+    ("np.savetxt(W + '/a.txt', a)", True),  # np.savetxt
+    ("a.tofile(W + '/a.bin')", True),  # tofile
+    ("m = np.memmap(W + '/a.dat', dtype='float32', mode='w+', shape=(3,))", True),  # memmap
+    ("torch.save({'w': a}, W + '/m.pt')", True),  # torch.save
+    ("joblib.dump(a, W + '/m.joblib')", True),  # joblib.dump
+    ("Image.new('RGB', (1, 1)).save(W + '/a.png')", True),  # image save
+    ("plt.plot([1])\nplt.savefig(W + '/a.png')", True),  # savefig
+    ("fig, ax = plt.subplots()\nfig.savefig(W + '/a.png', dpi=100)", True),  # fig savefig
+    ("plt.imsave(W + '/a.png', a.reshape(1, 3))", True),  # imsave
+    ("import cv2\ncv2.imwrite(W + '/a.png', a)", True),  # cv2 imwrite
+    ("import imageio\nimageio.imwrite(W + '/a.png', a)", True),  # imageio
+    ("import xml.etree.ElementTree as ET\ntree = ET.ElementTree(ET.Element('a'))\ntree.write(W + '/a.xml')", True),  # tree write
+    ("import h5py\nwith h5py.File(W + '/a.h5', 'w') as f:\n    f['a'] = a", True),  # h5py
+    ("import h5py\nf = h5py.File(W + '/a.h5', 'a')", True),  # h5py append
+    ("import shelve\nwith shelve.open(W + '/db') as db:\n    db['a'] = 1", True),  # shelve
+    ("import dbm\nwith dbm.open(W + '/db', 'c') as db:\n    db['a'] = '1'", True),  # dbm
+    ("import duckdb\ncon = duckdb.connect(W + '/a.db')", True),  # duckdb
+    ("import polars as pl\npl.DataFrame({'a': [1]}).write_csv(W + '/a.csv')", True),  # polars
+    ("import plotly.express as px\npx.line(x=[1], y=[1]).write_image(W + '/a.png')", True),  # plotly
+    ("from openpyxl import Workbook\nwb = Workbook()\nwb.save(W + '/a.xlsx')", True),  # workbook save
+    ("from docx import Document\ndoc = Document()\ndoc.save(W + '/a.docx')", True),  # docx save
+    ("import gzip\nwith gzip.GzipFile(W + '/a.gz', 'w') as f:\n    f.write(b'x')", True),  # gzip file
+    ('def save(p):\n    np.save(p, [1])\nsave(T)', True),  # wrapped np.save
+    ('def to_csv(frame, p):\n    frame.to_csv(p)\nto_csv(df, T)', True),  # wrapped to_csv
+    ("def dump(obj, p):\n    with open(p, 'w') as f:\n        json.dump(obj, f)\ndump({'a': 1}, T)", True),  # wrapped dump
+    ("out = T.replace('.jsonl', '.png')\nImage.new('RGB', (1, 1)).save(out)", True),  # derived name save
+    ("np.save(T.replace('.jsonl', '.npy'), a)", True),  # derived np.save
+    ("df.to_csv(Path(T).with_suffix('.csv'))", True),  # derived to_csv
+    ("df.to_csv(T + '.csv')", True),  # appended to_csv
+    ("df.to_csv(path_or_buf=W + '/a.csv')", True),  # keyword path
+    ("plt.savefig(fname=W + '/a.png')", True),  # keyword fname
+    ("from numpy import save\nsave(W + '/a.npy', a)", True),  # from import save
+    ("torch.save(a, f=W + '/m.pt')", True),  # torch state
+    ("df.to_csv('report')", None),  # to_csv bare
+    ("np.save('checkpoint', a)", None),  # np.save bare
+    ("Image.new('RGB', (1, 1)).save('thumb', 'PNG')", None),  # image bare
+    ("plt.savefig('fig')", None),  # savefig bare
+    ("torch.save(a, 'model')", None),  # torch bare
+    ("joblib.dump(a, 'model')", None),  # joblib bare
+    ("df.to_pickle('cache')", None),  # pickle bare
+    ("a.tofile('raw')", None),  # tofile bare
+    ("rows = df.to_dict('records')", False),  # to_dict
+    ("d = pd.to_datetime('2020-01-01')", False),  # to_datetime
+    ("s = df['a'].to_frame('name')", False),  # to_frame
+    ('print(json.dumps(T))', False),  # dumps path
+    ("with open(P + '/manifest.txt', 'w') as f:\n    f.write(T + '\\n')", False),  # manifest line
+    ('print(T)', False),  # print path
+    ("import xlsxwriter\nwb = xlsxwriter.Workbook(P + '/a.xlsx')\nws = wb.add_worksheet()\nws.write_string('A1', T)\nws.write(1, 0, T)\nwb.close()", False),  # worksheet cell
+    ("import yaml\nprint(yaml.dump({'src': T}))", False),  # yaml dump str
+    ("import ast\nprint(ast.dump(ast.parse('1')))", False),  # ast dump
+    ("b = (5).to_bytes(2, 'big')", False),  # to_bytes
+    ("import matplotlib.colors as mc\nc = mc.to_rgb('red')", False),  # to_rgb
+    ("s = df.to_json(orient='records')", False),  # to_json orient
+    ('s = df.to_csv(index=False)', False),  # to_csv string
+    ('df.to_csv(sys.stdout)', False),  # to_csv stdout
+    ("json.dump({'src': T}, sys.stdout)", False),  # dump stdout
+    ("buf = io.BytesIO()\nplt.savefig(buf, format='png')", False),  # savefig buffer
+    ("buf = io.BytesIO()\nImage.new('RGB', (1, 1)).save(buf, 'PNG')", False),  # image buffer
+    ('buf = io.BytesIO()\nnp.save(buf, a)', False),  # np.save buffer
+    ("torch.save(T, P + '/source.pt')", False),  # P101 path as content
+    ("with open(P + '/m.json', 'w') as f:\n    json.dump(T, f)", False),  # dump path content
+    ("with open(P + '/m.json', 'w') as f:\n    json.dump({'src': T}, f)", False),  # dump dict content
+    ("torch.save({'src': T}, P + '/x.pt')", False),  # torch dict content
+    ("with open(P + '/m.pkl', 'wb') as f:\n    pickle.dump([T], f)", False),  # pickle list content
+    ("df['src'] = T\ndf.to_csv(P + '/a.csv')", False),  # frame column
+    ("np.save(P + '/p.npy', np.array([T]))", False),  # array of paths
+    ("joblib.dump({'src': T}, P + '/x.joblib')", False),  # joblib dict
+    ("import shelve\nwith shelve.open(W + '/snapshot.db', 'r') as db:\n    print(list(db))", False),  # P109 shelve read
+    ("import dbm\ndb = dbm.open(W + '/snapshot', 'r')", False),  # dbm read
+    ("import h5py\nf = h5py.File(W + '/a.h5', 'r')\nprint(list(f))", False),  # h5py read
+    ("import h5py\nf = h5py.File(W + '/a.h5')", False),  # h5py default
+    ("import zipfile\nwith zipfile.ZipFile(P + '/a.zip', 'w') as z:\n    z.write(T, 's.jsonl')", False),  # zip of transcript
+    ('class M:\n    def fit(self):\n        return self\nM().fit()', False),  # model save no args
+    ('def dump(p):\n    print(open(p).read()[:10])\ndump(T)', False),  # own save reads
+    ("def save(text, p):\n    open(p, 'w').write(text)\nsave(open(T).read()[:10], P + '/a.txt')", False),  # own save to pad
+    ("with open(P + '/a.csv', 'w', newline='') as f:\n    w = csv.DictWriter(f, fieldnames=['src'])\n    w.writerow({'src': T})", False),  # dict writer
+    ("import logging\nlogging.basicConfig(filename=P + '/run.log')\nlogging.info('read %s', T)", False),  # logger line
+]
+
+
+@pytest.mark.parametrize("program, held", HELD_BY + MORE_SHAPES)
+@pytest.mark.parametrize("inside", [False, True])
+def test_a_member_is_read_by_the_thing_that_holds_it(above, program, held, inside, tmp_path):
+    here = tmp_path / "elsewhere"
+    here.mkdir()
+    command = "python3 - <<'EOF'\n" + MEMBERS.format(**above) + program + "\nEOF"
+    reason = guards.check("Bash", {"command": command}, {}, cwd=str(above["work"] if inside else here))
+    assert (REFUSED in (reason or "")) == (inside if held is None else held), program
+
+
+@pytest.mark.parametrize("program, held", OTHER_LIBRARIES)
+@pytest.mark.parametrize("inside", [False, True])
+def test_a_writer_by_its_name_takes_its_path_where_that_writer_takes_it(above, program, held, inside, tmp_path):
+    here = tmp_path / "elsewhere"
+    here.mkdir()
+    command = "python3 - <<'EOF'\n" + MEMBERS.format(**above) + LIBRARIES + program + "\nEOF"
+    reason = guards.check("Bash", {"command": command}, {}, cwd=str(above["work"] if inside else here))
+    assert (REFUSED in (reason or "")) == (inside if held is None else held), program
+
+
+@pytest.mark.parametrize("command, held", [
+    ("OUT=/tmp/pad/safe.txt python3 -c \"import os; os.environ['OUT'] = '{work}/s.jsonl'; open(os.getenv('OUT'), 'w').write('x')\"", True),
+    ("OUT={work}/s.jsonl python3 -c \"import os; os.environ['OUT'] = '/tmp/pad/safe.txt'; open(os.getenv('OUT'), 'w').write('x')\"", False),
+    ("OUT=/tmp/pad/safe.txt python3 -c \"import os; open(os.environ['OUT'], 'w').write('x')\"", False),
+    ("OUT={work}/s.jsonl python3 -c \"import os; open(os.environ.get('OUT'), 'w').write('x')\"", True),
+    ("OUT={work}/s.jsonl python3 -c \"import os; print(open(os.environ['OUT']).read()); os.environ['OUT'] = '/tmp/pad/x'; open(os.environ['OUT'], 'w').write('x')\"", False),
+])
+def test_a_variable_the_command_gives_is_what_the_program_reads_until_it_gives_another(above, command, held, tmp_path):
+    reason = guards.check("Bash", {"command": command.format(**above)}, {}, cwd=str(tmp_path))
+    assert (REFUSED in (reason or "")) == held, command
+
+
+def test_a_class_whose_name_is_also_a_variable_is_still_that_class(above, tmp_path):
+    program = "C = '/tmp/pad'\nclass C:\n    out = '/tmp/pad/a.txt'\nC.out = '{work}/s.jsonl'\nopen(C().out, 'w').write('x')"
+    command = "python3 - <<'EOF'\n" + program.format(**above) + "\nEOF"
+    assert REFUSED in (guards.check("Bash", {"command": command}, {}, cwd=str(tmp_path)) or "")
