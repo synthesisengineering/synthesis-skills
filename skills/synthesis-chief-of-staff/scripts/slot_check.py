@@ -79,21 +79,33 @@ def hour(policy: dict, key: str) -> time | None:
         stop(f"travel_policy.{key} is {value!r}, which is no time of day: write it as HH:MM")
 
 
+def morning_day(home: datetime, starts: time | None = None, since: datetime | None = None) -> date:
+    """The day of the morning a return is judged against. With an hour for the morning, the first one still ahead.
+    With none, the night is the one that begins on the day the principal gets home, or on the day before when that
+    is past midnight; an outing that began and ended on one morning came after the night, so its morning is the
+    next day's (a breakfast across town and a call an hour later read as a night of one hour)."""
+    if starts is not None:
+        return home.date() if home.time() < starts else home.date() + timedelta(days=1)
+    past_midnight = home.hour < 12 and not (since is not None and since.date() == home.date())
+    return home.date() if past_midnight else home.date() + timedelta(days=1)
+
+
 def morning_after(home: datetime, entries: list, hours, starts: time | None = None, since: datetime | None = None) -> tuple | None:
     """(start, title, the time between) for the next morning's first entry, when it starts less than `hours` after
-    the principal gets home. With no hour for the morning, the night is the one that begins on the day they get
-    home, or on the day before when that is past midnight; an entry later the same night is not the morning.
-    `starts` is the hour the policy says the morning begins, entry or none (its title is empty): the night ends at
-    the earlier of the two, and the morning meant is the first one still ahead. `since` is when the outing began:
-    one that began on an earlier day and ran past that hour left no night at all (the time between is zero)."""
-    if starts is None:
-        day, begins = (home.date() if home.hour >= 12 else home.date() - timedelta(days=1)) + timedelta(days=1), []
-    else:
-        day = home.date() if home.time() < starts else home.date() + timedelta(days=1)
+    the principal gets home; an entry later the same night is not the morning. `starts` is the hour the policy says
+    the morning begins, entry or none (its title is empty): the night ends at the earlier of the two. `since` is
+    when the outing began: one that began on an earlier day and ran past that hour, or past the start of that
+    morning's first entry, left no night at all (the time between is zero). `entries` are the other entries of the
+    read, without the outing's own."""
+    day, begins = morning_day(home, starts, since), []
+    if starts is not None:
         begins = [(datetime.combine(day, starts, home.tzinfo), "")]
         began = begins[0][0] - timedelta(days=1)  # the last morning that began before the return
         if hours and since is not None and since.date() < began.date():
             return began, "", timedelta(0)
+    begun = min(((a, title) for a, title in entries if since is not None and a.date() == day and since < a <= home), default=None)
+    if begun and hours:  # that morning's first entry had begun before the return
+        return (*begun, timedelta(0))
     first = min(((a, title) for a, title in [*entries, *begins] if a.date() == day and a > home), default=None)
     return (*first, first[0] - home) if first and hours and first[0] - home < timedelta(hours=float(hours)) else None
 
@@ -103,7 +115,8 @@ def first_thing(short: tuple, keeps) -> str:
     morning, with the time between; or that the morning had begun before the return."""
     under = f"under the {float(keeps):g} hours the policy keeps"
     if short[2] <= timedelta(0):
-        return f"the morning began at {hm(short[0])} (the policy's hour) before the return: no night at all, {under}"
+        what = f'"{short[1]}" began at {hm(short[0])}' if short[1] else f"the morning began at {hm(short[0])} (the policy's hour)"
+        return f"{what} before the return: no night at all, {under}"
     what = f'"{short[1]}" starts {hm(short[0])}' if short[1] else f"the morning starts {hm(short[0])} (the policy's hour)"
     return f"{what} the next morning: {span(short[2])} between, {under}"
 
@@ -169,7 +182,13 @@ def judge(args, config: dict, read: dict) -> dict:
             events.append((a, b, title, who))
             joined |= {(a, b, title)} if any(not any(fnmatch.fnmatchcase(p, e) for e in own) for p in who - me) else set()
             marked |= {(a, b, title)} if any(re.search(rf"(?<!\w){re.escape(mark)}(?!\w)", title.lower()) for mark in marks) else set()
-    that_day = [(a, b, s) for a, b, s, _ in events if a.date() == start.date() and (a, b) != (start, end)]
+    # An event is taken time on each day it covers: a block from 23:00 the night before is part of this morning,
+    # and a trip back past midnight meets the next day's first entry. The slot's own hour, when the read holds it,
+    # is the event being checked again.
+    others = [(a, b, s) for a, b, s, _ in events if (a, b) != (start, end)]
+    dawn = datetime.combine(start.date(), time.min, zone)
+    dusk = dawn + timedelta(days=1)
+    that_day = [(a, b, s) for a, b, s in others if a < dusk and b > dawn]
     checks = []
 
     def add(check: str, level: str, detail: str) -> None:
@@ -221,8 +240,8 @@ def judge(args, config: dict, read: dict) -> dict:
         add("deep work", "OK", f"{len(after)} free block(s) of {need} minutes or more remain, the first {hm(after[0][0])}-{hm(after[0][1])}")
 
     if out or back:  # the trip is taken time: it may not run through another event
-        there = next((s for a, b, s in that_day if out and a < start and b > start - out), None)
-        home = next((s for a, b, s in that_day if back and a < end + back and b > end), None)
+        there = next((s for a, b, s in others if out and a < start and b > start - out), None)
+        home = next((s for a, b, s in others if back and a < end + back and b > end), None)
         add("travel", "REFUSE" if there or home else "OK",
             f"the trip there ({hm(start - out)}-{hm(start)}) overlaps {there}" if there
             else f"the trip back ({hm(end)}-{hm(end + back)}) overlaps {home}" if home
@@ -233,8 +252,8 @@ def judge(args, config: dict, read: dict) -> dict:
         late = latest and (home.date() > start.date() or home.time() > latest)
         add("return", "REVIEW" if late else "OK", f"home at {hm(home)}" + (
             f", after {latest:%H:%M}: the principal's decision, made with the trip in front of them" if late else ""))
-        morning = (home.date() if home.hour >= 12 else home.date() - timedelta(days=1)) + timedelta(days=1)
-        short = morning_after(home, [(a, s) for a, _, s, _ in events], keeps, hour(policy, "morning_starts"), start - out)
+        morning = morning_day(home, hour(policy, "morning_starts"), start - out)
+        short = morning_after(home, [(a, s) for a, _, s in others], keeps, hour(policy, "morning_starts"), start - out)
         if keeps and short:  # short by an entry the read holds, or by the hour the policy says the morning starts
             add("sleep", "REVIEW", f"home at {hm(home)} and {first_thing(short, keeps)}: the principal's decision")
         elif keeps and window["through"] < morning.isoformat():
@@ -243,7 +262,7 @@ def judge(args, config: dict, read: dict) -> dict:
             add("sleep", "OK", f"{float(keeps):g} hours or more between getting home and the next morning's first commitment")
 
     counted = [e for e in that_day if e not in marked and (e in joined or not joined)]  # a read that names no one else tells no block from a meeting
-    load = sum(((b - a).total_seconds() for a, b, _ in counted), (end - start).total_seconds()) / 3600
+    load = sum(((min(b, dusk) - max(a, dawn)).total_seconds() for a, b, _ in counted), (end - start).total_seconds()) / 3600
     most, left = float(limits.get("max_meeting_hours_per_day", 5)), len(that_day) - len(counted)
     add("meeting load", "REFUSE" if load > most else "OK", f"{load:.2f} hours of meetings that day with this one (limit {most:g})" + (
         f"; {left} of the day's {len(that_day)} events are the principal's own blocks and are not counted" if left else "") + (
@@ -251,7 +270,10 @@ def judge(args, config: dict, read: dict) -> dict:
 
     near = next((s for a, b, s in that_day if abs(start - b) <= BESIDE or abs(a - end) <= BESIDE), None)
     block = next((g for g in free_blocks([(a, b) for a, b, _ in that_day], opens, closes) if g[0] <= start and end <= g[1]), None)
-    if near:
+    over = next(((a, b, s) for a, b, s in others if a < end and b > start), None)
+    if over:  # on top of another event: never placed as if the time were free
+        add("placement", "REVIEW", f"it overlaps {over[2]} ({hm(over[0])}-{hm(over[1])}): the principal's decision, or another time")
+    elif near:
         add("placement", "OK", f"beside {near}")
     elif start - opens <= BESIDE or closes - end <= BESIDE or not block or block[1] - block[0] < timedelta(minutes=need):
         add("placement", "OK", "at an edge of the day or in a gap too short for deep work")

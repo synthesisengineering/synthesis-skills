@@ -165,10 +165,10 @@ def judge(args, config: dict, read: dict) -> dict:
             a, b = slot.moment(entry.get("start"), zone), slot.moment(entry.get("end"), zone)
         except SystemExit as exc:
             stop(f'the start or end of "{summary}": ' + str(exc.code).split(": ", 1)[-1])
-        others += [(a, summary)] if a else []  # every timed entry, a trip included: what a night runs into the next morning
-        if is_block(summary, said, title) or (not (a and b) and re.match(rf"{re.escape(title)}\b", summary.lower())):
+        others += [(a, summary, id(entry))] if a else []  # every timed entry, a trip included: what a night runs into the next morning
+        if is_block(summary, said, title):  # with clock times or without: a block all day is a block, a workshop all day is an event
             names = [" ".join(name.lower().split()).strip("\"'“”‘’ .:;,!") for name in said.get("for", "").splitlines()]
-            blocks += [{"start": a, "end": b, "said": said, "names": names}] if a and b else []
+            blocks += [{"start": a, "end": b, "said": said, "names": names, "entry": id(entry)}] if a and b else []
             continue
         loose += [(a, b, summary)] if a and b and (TRIP.search(summary) or title in summary.lower()) else []
         span, spot = days(entry, a, b), tidy(entry.get("location"))
@@ -250,7 +250,9 @@ def judge(args, config: dict, read: dict) -> dict:
             late = latest and (after["end"].date() > c["start"].date() or after["end"].time() > latest)
             if late and not decided:
                 lacks.append(f"home at {slot.hm(after['end'])}, after {latest:%H:%M}: {ASK}")
-            short = slot.morning_after(after["end"], others, policy.get("sleep_hours"), slot.hour(policy, "morning_starts"), c["start"])
+            apart_from = {b["entry"] for b in (before, after) if b}  # the outing's own way there and back is no commitment of the next morning
+            short = slot.morning_after(after["end"], [(a, s) for a, s, entry in others if entry not in apart_from],
+                                       policy.get("sleep_hours"), slot.hour(policy, "morning_starts"), c["start"])
             if short and not decided:
                 lacks.append(f"home at {slot.hm(after['end'])} and {slot.first_thing(short, policy['sleep_hours'])}: {ASK}")
             found.update(home=slot.hm(after["end"]))

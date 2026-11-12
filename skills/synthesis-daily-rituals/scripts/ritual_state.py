@@ -171,22 +171,26 @@ def travel(workspace: str, day: str, given) -> str:
     return f"\ntravel: {len(events)} in-person event{'s' * (len(events) != 1)} through {last}, each with its travel"
 
 
-ITEM = r"(?im)^ *(?:>\s*)*(?:[-*+] |\d+[.)] )?[*_]*"  # a line of an item: plain, bold or italic, quoted or a list entry, however deep in its list
-OPTION = re.compile(ITEM + r"Option [A-Z0-9]+\b(.*)$")
+# A line of an item: plain, bold or italic, quoted, a list entry or a task-list box, in any order and however deep
+# (`- > **Option A:**` is a quote inside a list entry).
+ITEM = r"(?im)^ *(?:> *|(?:[-*+]|\d+[.)]) +(?:\[[ xX]\] +)?)*[*_]*"
+OPTION = re.compile(ITEM + r"Option [A-Z0-9]+(?![A-Za-z0-9])(.*)$")  # the label ends at a colon, a space or the mark that closes its emphasis
 SAID = re.compile(ITEM + r"(Recommendation|Consequences|Commits)[*_]*\s*:[*_\s]*(.*)$")
 CLOSED = re.compile(ITEM + r"(?:Decided|Resolved|Released|Lapsed|Withdrawn)[*_]*\s*:")
 # What Markdown does not show as the plan's own text: a fenced block (quoted or not, closed or not), which is an
-# example, and an HTML comment. Whichever opens first runs to its own end.
-FENCE = re.compile(r"(?ms)^\s*(?:>\s*)*(```|~~~).*?(?:^\s*(?:>\s*)*\1[^\n]*$|\Z)|<!--.*?(?:-->|\Z)")
+# example, and an HTML comment. Whichever opens first runs to its own end: a fence closes at a line of its own
+# mark alone, at least as long as the one that opened it, so four backticks hold a sample fenced with three.
+FENCE = re.compile(r"(?ms)^\s*(?:>\s*)*(?P<fence>(?P<mark>[`~])(?P=mark){2,}).*?(?:^\s*(?:>\s*)*(?P=fence)(?P=mark)*[ \t]*$|\Z)"
+                   r"|<!--.*?(?:-->|\Z)")
 QUOTE = re.compile(r"^( *)(?:> ?)+")  # what marks a line as quoted: the line is read as the one it quotes, as far in as the quote stands
-NOTHING = re.compile(r"(?i)[*\s]*(?:tbd|tbc|none|n/?a|no recommendation|your call|up to you|either)?[\s.*]*")
+NOTHING = re.compile(r"(?i)[*_\s]*(?:tbd|tbc|none|n/?a|no recommendation|your call|up to you|either)?[\s.*_]*")
 COMMITS = re.compile(r"(?i)\b(?:accept|decline|rsvp|attend|go|join|host|schedule|meet|say (?:yes|no))\b")
 
 
-TITLED = re.compile(r"(?i)\b(Recommendation|Consequences|Commits)\**\s*:[*\s]*(.*)$")  # the same word and colon on a title line
-MARK = re.compile(r"^ *(?:>\s*)*(?:[-*+] |\d+[.)] )?")  # what stands before a title that is a list entry
+TITLED = re.compile(r"(?i)(?<![A-Za-z0-9])(Recommendation|Consequences|Commits)[*_]*\s*:[*_\s]*(.*)$")  # the same word and colon on a title line
+MARK = re.compile(r"^ *(?:> *|(?:[-*+]|\d+[.)]) +)*")  # what stands before a title that is a list entry; a task-list box stays, since a ticked one closes it
 ENTRY = re.compile(r" *(?:>\s*)*(?:[-*+] |\d+[.)] )")  # a list entry, up to where its own text starts
-LABEL = re.compile(r"(?i)Option ([A-Z0-9]+)\b")
+LABEL = re.compile(r"(?i)Option ([A-Z0-9]+)(?![A-Za-z0-9])")
 
 
 def _shown(text: str) -> str:
@@ -225,10 +229,22 @@ def _items(text: str):
                 entry = len(listed[1])  # the entry a choice's options stand under, by how far it is indented
             elif listed and len(listed[1]) <= entry:
                 entry, fresh = len(listed[1]), True  # the list's next entry: its options are another choice, whatever their letters
+        def depth(j):  # how far in a line's own text stands, its quote marks set aside
+            return len(QUOTE.sub(r"\1", lines[j])) - len(QUOTE.sub(r"\1", lines[j]).lstrip(" "))
         def titled(k):  # the line a choice starts at: the entry just above its options, else the section's own first line
             floor = firsts[k - 1] + 1 if k else 0
             above = next((j for j in range(firsts[k] - 1, floor - 1, -1) if lines[j].strip()
                           and not (OPTION.match(lines[j]) or SAID.match(lines[j]) or CLOSED.match(lines[j]))), None)
+            if above is not None and depth(above) and not ENTRY.match(QUOTE.sub(r"\1", lines[above])):
+                # a sentence of explanation between an entry and its options: the entry is the one it stands in,
+                # the nearest above whose own text begins at or left of it
+                for j in range(above - 1, floor - 1, -1):
+                    found = ENTRY.match(QUOTE.sub(r"\1", lines[j]))
+                    if found and len(found[0]) <= depth(above):
+                        above = j
+                        break
+                    if lines[j].strip() and depth(j) < depth(above):
+                        break  # a line left of it that is no entry: the sentence stands in no list
             entry = above is not None and (len(firsts) > 1 or ENTRY.match(lines[above]))
             return above if entry else 0 if k == 0 else firsts[k]
         starts = [titled(k) for k in range(len(firsts))]
