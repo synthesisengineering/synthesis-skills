@@ -747,3 +747,99 @@ def test_a_third_fresh_list_of_replies_that_need_no_watcher_passes(reply):
 def test_a_third_fresh_list_of_unarmed_waits_is_sent_back(reply):
     reason = _sent_back(reply)
     assert reason and "nothing is armed" in reason
+
+
+# A fourth pair, written as a reviewer who knows the five classes would write it. Six were wrong: a subject's verb
+# before a longer object ("explains the first request's latency"), "waiting until" as the subject of "is", the thing
+# awaited in front of "awaiting on", "yours", a word between "we're" and "waiting" ("both"), and words between commas
+# after "will".
+BLIND4_NO_WATCHER = {
+    "DN01": 'Waiting for the primary to acknowledge each write is what makes the cluster slow under load.',
+    "DN02": "Waiting on a cold cache explains the first request's latency; later requests are fast.",
+    "DN03": 'Waiting until every replica agrees is safer, and the design note recommends it.',
+    "DN04": 'Awaiting inside the loop serializes the calls, so I gathered them instead.',
+    "DN05": 'In the trace, waiting for the mutex accounts for most of the time.',
+    "DN06": "The doc's example reads 'I'll resume once the worker's queue drains', and I kept it as written.",
+    "DN07": 'The alert text is ‘Still waiting for the replica to catch up’, which matches the runbook.',
+    "DN08": 'The reply you asked me to draft says "We\'ll proceed as soon as the contract is signed." Send it when you are'
+            ' ready.',
+    "DN09": "Sample output from the tool:\n~~~~\nwaiting for lock... acquired\nI'll continue once the index is "
+            'rebuilt\n~~~~\nNothing in it is an error.',
+    "DN10": 'The hook prints this when it blocks:\n```\nWaiting on approval from the release owner.\n```\nThat text comes '
+            'from the config.',
+    "DN11": "> I'm waiting for the vendor to confirm.\n\nThat is the line the reviewer objected to; I removed it from the "
+            'summary.',
+    "DN12": "Until you pick a name, I'll leave the placeholder in.",
+    "DN13": "When you've decided on the region, I'll continue with the setup.",
+    "DN14": "Your decision on the retention period is all I'm waiting for.",
+    "DN15": "Your sign-off is the one thing I'm still awaiting on the release notes.",
+    "DN16": "After you send the logo, we'll finish the cover page.",
+    "DN17": "The approval is yours to give; I'm waiting for it.",
+    "DN18": "I'm waiting for your yes or no on the schema change.",
+    "DN19": "I'll hold the invite until your confirmation comes in.",
+    "DN20": 'We are waiting on your input about the two pricing tiers.',
+    "DN21": 'I am still waiting for your thoughts on the draft, so nothing has been sent.',
+    "DN22": "I'm waiting for your review of the migration plan before I run it.",
+    "DN23": "I'll merge as soon as you've approved the pull request.",
+    "DN24": 'The pipeline waits for manual approval at the deploy stage, which is how the team set it up.',
+    "DN25": 'The client library retries and then waits until the server is back.',
+    "DN26": 'I waited for the checks before merging, and all of them passed.',
+    "DN27": 'Everything is merged. There is nothing left to wait for.',
+    "DN28": 'The job is queued behind two others and will start when they finish; no action is needed.',
+    "DN29": 'I would hold the release until the audit is done, but that is your call.',
+    "DN30": 'We could wait for the next version, or pin the current one today.',
+    "DN31": 'Is there anything you want me to wait for before I merge?',
+    "DN32": "I'll leave the branch open until you have had a look.",
+}
+BLIND4_OWN_WAIT = {
+    "DW01": "I'm presently waiting on the artifact store to finish replicating.",
+    "DW02": "We're both waiting for the staging database to come back.",
+    "DW03": "I'll just wait until the scheduled job fires at the top of the hour.",
+    "DW04": 'I will, for my part, continue once the fixture data has been regenerated.',
+    "DW05": "I'll keep on waiting for the rate limiter to reset.",
+    "DW06": "We'll simply proceed after the lock has been released.",
+    "DW07": "I shall resume when the vendor's API is reachable again.",
+    "DW08": "I'm going to hold the deploy until the error rate has settled.",
+    "DW09": "I'll follow up once the ticket is picked up by the platform team.",
+    "DW10": "Once the image has been pushed, I'll finish the rollout.",
+    "DW11": "When the certificate renews, we'll come back to the redirect.",
+    "DW12": "After the backfill completes, I'll report back with the counts.",
+    "DW13": "I'm waiting for your tests to finish in CI.",
+    "DW14": "I'm waiting for the deploy bot to pick up your approval.",
+    "DW15": "I'll continue once your branch has been rebuilt by the pipeline.",
+    "DW16": "We're waiting on your registrar to release the domain.",
+    "DW17": "I'm waiting for the import of your contacts to complete.",
+    "DW18": 'Still waiting on the runner assigned to your project.',
+    "DW19": "I'm waiting for the bank to process your payment.",
+    "DW20": "I'm waiting on 'build-linux' and 'build-mac' to finish.",
+    "DW21": 'I\'ll merge once the check called "license-scan" passes.',
+    "DW22": 'Now waiting for `terraform apply` to finish.',
+    "DW23": "I'm waiting for the reviewer's second pass, which she said would come today.",
+    "DW24": 'Waiting for the sandbox to boot before I rerun the suite.',
+    "DW25": 'I started the export a minute ago and am still waiting on it.',
+    "DW26": "I'll let you know as soon as the migration is through.",
+    "DW27": "We'll get back to the flaky test when the upstream patch lands.",
+}
+MORE_OF_THE_FOURTH_LISTS_CLASSES = {
+    "explains-a-possessive-object": "Waiting on the old index explains last week's slow searches.",
+    "until-is-what": "Waiting until the lease expires is what the protocol requires.",
+    "awaiting-on-the-budget-line": "Your approval is what I'm awaiting on the budget line.",
+    "the-choice-is-yours": "The choice is yours; I'll wait.",
+}
+MORE_WAITS_OF_THE_FOURTH_LISTS_CLASSES = {
+    "we-are-all-waiting": "We're all waiting on the release train to leave.",
+    "however-between-commas": "I am, however, still waiting on the vendor.",
+    "until-with-a-clause-after-confirms": "Waiting until the vendor confirms the invoice is correct.",
+    "holding-until-one-verb": "Holding the tag until the smoke test passes.",
+}
+
+
+@pytest.mark.parametrize("reply", _cases(BLIND4_NO_WATCHER, MORE_OF_THE_FOURTH_LISTS_CLASSES))
+def test_a_fourth_fresh_list_of_replies_that_need_no_watcher_passes(reply):
+    assert _sent_back(reply) is None
+
+
+@pytest.mark.parametrize("reply", _cases(BLIND4_OWN_WAIT, MORE_WAITS_OF_THE_FOURTH_LISTS_CLASSES))
+def test_a_fourth_fresh_list_of_unarmed_waits_is_sent_back(reply):
+    reason = _sent_back(reply)
+    assert reason and "nothing is armed" in reason
