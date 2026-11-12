@@ -459,11 +459,11 @@ ROOT = Path(__file__).resolve().parents[1]
 # policy's hour, entry or none), judge 1, spacing 2. ritual_state.py 27: _items 23 (a plan's choices under a heading
 # of their own or as entries of a list, fenced blocks left out first), two patterns 2, travel 1 and choices 1 (an
 # event's start is a whole date and time).
-# After a fourth review round, guards.py 40 more: _python_writes 26 (the path an open call opens and the name of the
+# After a fourth review round, guards.py 44 more: _python_writes 26 (the path an open call opens and the name of the
 # file it hands back, a loop's rows as each name's values, a helper's default and its call of itself, a folder change
 # under another name, a copy that keeps links, fileinput told to edit, os.open only reading, a file given as
-# filename=), _commands 5 (a wrapper inside a wrapper; the folder stack turned by number), _self_grant 3 (a copy onto
-# a note or a script lands on it, not inside it), VALUED 2 and _landing 2 (a mode, an owner, a size or a date is not
+# filename=), _commands 5 (a wrapper inside a wrapper; the folder stack turned by number), _self_grant 7 (a copy onto
+# a note or a script lands on it, not inside it; a link made and then moved is that link at its new place), VALUED 2 and _landing 2 (a mode, an owner, a size or a date is not
 # a file), _awk_writes 1 and _string_writes 1 (a file name in two strings cannot be read; a command given whole keeps
 # its folder and its unknown programs). slot_check.py 12: morning_after 8 and first_thing 5 less 1 in judge (a return
 # after the morning has begun leaves no night). travel_check.py 1 less (the night is said by the slot check).
@@ -471,8 +471,8 @@ ROOT = Path(__file__).resolve().parents[1]
 # and end is a whole date and time within the result's days).
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # consolidate first).
-CORE_BUDGET = 9338
-PLUGIN_BUDGET = 29645
+CORE_BUDGET = 9342
+PLUGIN_BUDGET = 29649
 
 
 def _lines(files):
