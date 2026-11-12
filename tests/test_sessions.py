@@ -595,6 +595,26 @@ def test_a_prompt_is_accounted_for_by_a_record_that_cites_it_alone_or_in_a_range
     assert sessions.uncited([first], [str(asked["kb"] / "absent")]) == [first]
 
 
+def test_a_range_is_joined_on_one_line_and_ends_in_a_record_number(asked):
+    """A citation at the end of a line was joined to the list item under it: `c1 #2`, then `- 2026-10-30 ...`, read as
+    the range #2 to #2026, which cleared every later prompt of that session with nothing written about them."""
+    first, second = found = sessions.prompts("acme", "2026-10-30")
+    roots, cite = [str(asked["kb"])], f"claude-code c1 #{first['seq']}"
+    assert first["seq"] < second["seq"] < 10
+    for record in (f"- 10:00 planned the release, {cite}\n- 2026-10-30 the announcement is still to draft\n",     # a dated item under it,
+                   f"Planned the release: {cite}\n\n- 40 items remain on the list\n",                                 # a counted one,
+                   f"- {cite} — 2026-10-30: decided to ship on Friday\n",                                            # a dash and a date,
+                   f"- {cite} - 10:30 the plan was agreed\n"):                                                        # or a time
+        asked["log"].write_text(record, encoding="utf-8")
+        assert sessions.uncited(found, roots) == [second], record
+    asked["log"].write_text(f"- claude-code c1 #{second['seq']} - 3 options weighed, the second chosen\n", encoding="utf-8")
+    assert sessions.uncited(found, roots) == [first]                # a number below the record's own ends no range: that record is cited
+    for record in (f"c1 #{first['seq']}-{second['seq']}", f"(c1 #{first['seq']}–{second['seq']}).", f"c1 #{first['seq']} to\n  #{second['seq']}",
+                   f"c1 #{first['seq']} through {second['seq']}, then lunch", f"c1 #{first['seq']} -\n  {second['seq']}"):
+        asked["log"].write_text(f"- the morning's work, {record}\n", encoding="utf-8")
+        assert sessions.uncited(found, roots) == [], record          # a range as the documents write it, wrapped or not
+
+
 def test_sessions_prompts_names_each_one_no_record_cites_and_exits_1_while_any_is_open(asked, capsys):
     command = ["sessions", "prompts", "--workspace", "acme", "--date", "2026-10-30", "--records", str(asked["kb"])]
     assert cli.main(command) == 1
