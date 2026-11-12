@@ -49,7 +49,7 @@ def unit_file(home: Path, platform: str) -> Path:
             else home / ".config" / "systemd" / "user" / "workspace-mcp.service")
 
 
-def written(tmp_path: Path, platform: str, **extra: str) -> str:
+def written(tmp_path: Path, platform: str, installer: Path = INSTALL, **extra: str) -> str:
     """The unit install-autostart.sh writes as `platform`, from a shell with `extra` set. It is answered "n"."""
     home, binaries, loaded = tmp_path / "home", tmp_path / "bin", tmp_path / "loaded"
     unit_file(home, "Darwin").parent.mkdir(parents=True, exist_ok=True)  # macOS makes launchd's folder; the installer does not
@@ -60,7 +60,7 @@ def written(tmp_path: Path, platform: str, **extra: str) -> str:
     secret.write_text("{}\n", encoding="utf-8")
     environment = {"HOME": str(home), "PATH": f"{binaries}:/usr/bin:/bin", "LANG": "C", "LC_ALL": "C",
                    "XDG_CONFIG_HOME": str(home / ".config"), "GOOGLE_CLIENT_SECRET_PATH": str(secret), **extra}
-    result = subprocess.run(["/bin/bash", str(INSTALL)], input="n\n", env=environment, text=True, capture_output=True,
+    result = subprocess.run(["/bin/bash", str(installer)], input="n\n", env=environment, text=True, capture_output=True,
                             check=False, timeout=30)
     assert result.returncode == 0 and result.stdout.endswith("\nCancelled.\n"), result.stdout + result.stderr
     assert not loaded.exists(), loaded.read_text(encoding="utf-8")  # nothing was loaded
@@ -68,16 +68,28 @@ def written(tmp_path: Path, platform: str, **extra: str) -> str:
     return result.stdout.split("\n\n", 1)[1].rsplit("\n\nCancelled.\n", 1)[0] + "\n"
 
 
-def carried(platform: str, unit: str) -> dict:
-    """The environment a unit gives the server: launchd's dictionary, or systemd's Environment= lines unquoted as
-    systemd unquotes them (a backslash before a quote or a backslash, then `%%` for a percent sign)."""
+def unquoted(word: str) -> str:
+    """What systemd reads from the inside of a double-quoted word: a backslash gives the character after it, a
+    doubled percent sign is one, and `%h` is the home folder. A bare quote would end the word, and any other
+    percent sign is a specifier of systemd's own, so neither may stand in a value written to be read back."""
+    read, at = [], 0
+    while at < len(word):
+        pair = word[at:at + 2]
+        assert word[at] != '"' and (word[at] != "%" or pair in ("%%", "%h")), f"systemd would not read {word!r} as written"
+        read.append(pair[1:] if word[at] == "\\" or pair == "%%" else pair if pair == "%h" else word[at])
+        at += 2 if word[at] in "\\%" else 1
+    return "".join(read)
+
+
+def carried(platform: str, unit: str, start: Path = START) -> dict:
+    """The environment a unit gives the server: launchd's dictionary, or systemd's Environment= lines."""
     if platform == "Darwin":
         parsed = plistlib.loads(unit.encode("utf-8"))
-        assert parsed["ProgramArguments"] == [str(START)]
+        assert parsed["ProgramArguments"] == [str(start)]
         return parsed["EnvironmentVariables"]
-    assert f"\nExecStart={START}\n" in unit
+    assert f"\nExecStart={start}\n" in unit
     lines = [re.fullmatch(r'Environment="(\w+)=(.*)"', line) for line in unit.splitlines()]
-    return {m[1]: re.sub(r'\\(["\\])', r"\1", m[2]).replace("%%", "%") for m in lines if m}
+    return {m[1]: unquoted(m[2]) for m in lines if m}
 
 
 def started_with(tmp_path: Path, unit_environment: dict) -> dict:
@@ -157,6 +169,21 @@ def test_a_home_whose_name_needs_escaping_reaches_the_server_as_it_is(platform: 
     assert healthy.returncode == 0 and "HEALTHY" in healthy.stdout, healthy.stdout + healthy.stderr
 
 
+@pytest.mark.parametrize("platform", PLATFORMS)
+def test_every_path_the_unit_carries_is_written_so_the_supervisor_reads_it_back(platform: str, tmp_path: Path) -> None:
+    """The client secret, the credentials folder and the checkout are paths the person chose, written beside the
+    synthesis home. A client secret under a folder named with an ampersand gave a plist that did not parse."""
+    chosen = tmp_path / 'R&D <keys> 100% "live"'
+    chosen.mkdir()
+    scripts = Path(shutil.copytree(SCRIPTS, tmp_path / "R&D" / "optional-workspace-mcp"))
+    unit = written(tmp_path, platform, scripts / "install-autostart.sh",
+                   GOOGLE_CLIENT_SECRET_PATH=str(chosen / "client_secret.json"), GOOGLE_MCP_CREDENTIALS_DIR=str(chosen / "tokens"))
+    served = carried(platform, unit, scripts / "start.sh")
+    assert served["GOOGLE_CLIENT_SECRET_PATH"] == str(chosen / "client_secret.json")
+    assert served["GOOGLE_MCP_CREDENTIALS_DIR"] == str(chosen / "tokens")
+    assert "SYNTHESIS_HOME" not in served and served["WORKSPACE_MCP_PORT"] == "8765"
+
+
 # ---- doctor.sh reports the outbox that unit gives the server -----------------------------------------------------
 
 @pytest.mark.parametrize("platform", PLATFORMS)
@@ -181,7 +208,9 @@ def test_a_unit_with_another_synthesis_home_than_this_shells_is_a_defect_only_th
         report = doctor(tmp_path, platform, unit, quiet=False, **shell)
         assert report.returncode == 1 and "DEFECTS: 1 defect(s), 0 unverifiable." in report.stdout, report.stdout
         assert str(unit_home / "outbox") in report.stdout and str(shell_home / "outbox") in report.stdout
-        assert "install-autostart.sh" in report.stdout and "restart" in report.stdout
+        # Installing over a loaded unit leaves the supervisor with the one it loaded: it is removed first.
+        assert "./uninstall-autostart.sh, then ./install-autostart.sh" in report.stdout and "restart alone" in report.stdout
+        assert (SCRIPTS / "uninstall-autostart.sh").is_file()
         same = doctor(tmp_path, platform, unit, **({"SYNTHESIS_HOME": str(unit_home)} if unit_home != default else {}))
         assert same.returncode == 0 and "HEALTHY" in same.stdout, same.stdout + same.stderr
 
@@ -222,7 +251,8 @@ def test_the_plist_the_installer_writes_is_read_back_by_the_real_plutil(tmp_path
 def test_the_setup_documents_say_what_the_unit_carries_and_what_the_doctor_reports(document: str) -> None:
     text = " ".join((SCRIPTS.parent / document).read_text(encoding="utf-8").split())  # the documents wrap their lines
     for said in ("`SYNTHESIS_HOME` is among them when it is set at install", "`ALLOWED_FILE_DIRS` is not",
-                 "`./doctor.sh` reports the outbox the unit gives the server", "run `./install-autostart.sh` again"):
+                 "`./doctor.sh` reports the outbox the unit gives the server",
+                 "run `./uninstall-autostart.sh` and then `./install-autostart.sh`", "keeps the unit it has loaded"):
         assert said in text, said
     for earlier in ("`./doctor.sh` does not look at it", "`ALLOWED_FILE_DIRS` and `SYNTHESIS_HOME` are not among them"):
         assert earlier not in text, earlier

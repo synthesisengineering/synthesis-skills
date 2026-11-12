@@ -583,9 +583,10 @@ def test_a_file_on_this_disk_given_as_file_url_is_refused_since_the_connector_fe
     """`file_url` is fetched over http or https: the connector refuses a file:// URL there, which for an update is
     after the principal's code. A file on this disk goes under `file_path`."""
     staged = Path(shutil.copy(scratch / "plan.pdf", paths.outbox() / "plan.pdf"))
-    reason = guards.check(tool, {**DRIVE, "file_url": staged.as_uri()}, CONFIG)
-    assert "`file_url`" in reason and "full path as `file_path`" in reason and "make this call again" in reason
-    assert "approve" not in reason and approvals.pending() == []
+    for named in (staged.as_uri(), str(staged), "FILE://localhost" + str(staged)):  # as a URL, or as the bare path
+        reason = guards.check(tool, {**DRIVE, "file_url": named}, CONFIG)
+        assert "`file_url`" in reason and "full path as `file_path`" in reason and "make this call again" in reason, named
+        assert named in reason and "approve" not in reason and approvals.pending() == [], named
     remote = guards.check(tool, {**DRIVE, "file_url": "https://files.example.com/plan.docx"}, CONFIG)
     assert remote is None if tool == DOC_IMPORT else "approval" in remote  # an address it does fetch is as it was
 

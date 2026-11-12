@@ -1119,7 +1119,9 @@ def test_a_connector_kept_running_must_have_been_started_with_the_outbox(connect
     unset = doctor.check_outbox(*connector, started())
     assert unset.status == "fail" and "ALLOWED_FILE_DIRS (not set)" in unset.detail and "restart" in unset.detail
     # A restart cannot help a connector whose auto-start carries another synthesis home: the line says what does.
-    assert "install-autostart.sh again" in unset.detail and f"SYNTHESIS_HOME is {doctor._short(outbox.parent)}" in unset.detail
+    # The unit is removed and installed again, since a supervisor keeps the unit it has loaded until it is unloaded.
+    assert "uninstall-autostart.sh and then install-autostart.sh" in unset.detail
+    assert f"SYNTHESIS_HOME is {doctor._short(outbox.parent)}" in unset.detail
     other = os.pathsep.join(["/srv/reports", f"{outbox}-old", str(outbox).upper()])
     elsewhere = doctor.check_outbox(*connector, started(ALLOWED_FILE_DIRS=other))
     assert elsewhere.status == "fail" and other in elsewhere.detail
