@@ -229,6 +229,54 @@ def test_a_spawned_agent_and_a_claude_sub_agent_are_briefed_not_prompted_by_the_
     assert kinds == [("brief", "Research the"), ("brief", "<cross-sessi"), ("system", "<heartbeat><"), ("user", "Ship it.")]
 
 
+def _codex_turn(text: str, at: str, copies: str = "ie") -> list:
+    """A turn as Codex records it: the response item (i) and the UI event (e) that mirrors it, in the order given."""
+    rows = {"i": {"type": "response_item", "timestamp": at, "payload": {
+                "type": "message", "role": "user", "content": [{"type": "input_text", "text": text}]}},
+            "e": {"type": "event_msg", "timestamp": at, "payload": {"type": "user_message", "message": text}}}
+    return [rows[c] for c in copies]
+
+
+def _codex_reply(text: str, at: str) -> dict:
+    return {"type": "response_item", "timestamp": at, "payload": {
+        "type": "message", "role": "assistant", "content": [{"type": "output_text", "text": text}]}}
+
+
+@pytest.mark.parametrize("copies", ["ie", "ei", "i"])  # the response item first, the UI event first, a turn written once
+def test_the_same_words_typed_again_are_another_turn_and_only_a_mirrored_copy_is_removed(harness, copies):
+    """A person who answers `Yes.` to two questions typed two prompts (2026-11-12: the second was removed as a copy
+    of the first, so a go the principal gave was in no list of what they typed)."""
+    first = _codex_turn("Yes.", "2026-10-30T10:00:02Z", copies)
+    native = _jsonl(Path(os.environ["CODEX_HOME"]) / "sessions" / "2026" / "10" / "30" / "rollout-2026-10-30T10-00-00-y3.jsonl", [
+        {"type": "session_meta", "timestamp": "2026-10-30T10:00:00Z", "payload": {"id": "y3", "cwd": harness["work"]}}, first[0]])
+    sessions.export_file("codex", native)                  # an export may end between a turn and its mirrored copy
+    _jsonl(native, [*first[1:], _codex_reply("Done. Shall I tag it too?", "2026-10-30T10:00:09Z"),
+                    *_codex_turn("Yes.", "2026-10-30T10:05:00Z", copies), _codex_reply("Tagged.", "2026-10-30T10:05:09Z")])
+    sessions.export_file("codex", native)
+    turns = [(r["kind"], r["text"]) for r in sessions.records(_meta(native)["folder"]) if r["kind"] in ("user", "assistant")]
+    assert turns == [("user", "Yes."), ("assistant", "Done. Shall I tag it too?"), ("user", "Yes."), ("assistant", "Tagged.")]
+    assert [p["text"] for p in sessions.prompts("acme", "2026-10-30")] == ["Yes.", "Yes."]
+
+
+def test_a_person_who_continues_a_command_line_run_types_prompts_of_their_own(harness):
+    """`codex exec` hands a run its prompt; the person who then continues that session types their own (2026-11-12:
+    a correction typed into a continued run stayed a brief, in no list of what the principal typed)."""
+    def began(source: str, at: str) -> dict:
+        return {"type": "session_meta", "timestamp": at, "payload": {"id": "x7", "cwd": harness["work"], "source": source}}
+
+    native = _jsonl(Path(os.environ["CODEX_HOME"]) / "sessions" / "2026" / "10" / "30" / "rollout-2026-10-30T10-00-00-x7.jsonl", [
+        began("exec", "2026-10-30T10:00:00Z"), *_codex_turn("Review this branch.", "2026-10-30T10:00:02Z"),
+        began("cli", "2026-10-30T11:00:00Z"), *_codex_turn("The second finding is wrong: read the test again.", "2026-10-30T11:00:05Z")])
+    sessions.export_file("codex", native)
+    _jsonl(native, [*_codex_turn("And check the third.", "2026-10-30T11:05:00Z"),      # a later export still knows who types
+                    began("exec", "2026-10-30T12:00:00Z"), *_codex_turn("Review it again.", "2026-10-30T12:00:02Z")])
+    sessions.export_file("codex", native)
+    kinds = [(r["kind"], r["text"]) for r in sessions.records(_meta(native)["folder"]) if r["kind"] in ("user", "brief")]
+    assert kinds == [("brief", "Review this branch."), ("user", "The second finding is wrong: read the test again."),
+                     ("user", "And check the third."), ("brief", "Review it again.")]
+    assert [p["text"] for p in sessions.prompts("acme", "2026-10-30")] == [text for kind, text in kinds if kind == "user"]
+
+
 def test_a_sub_agent_belongs_to_the_workspace_its_parent_started_in_and_workflow_journals_are_not_transcripts(harness, tmp_path):
     folder = re.sub(r"[^A-Za-z0-9]", "-", os.path.realpath(tmp_path / "workspaces" / "acme"))
     sub = Path(os.environ["CLAUDE_CONFIG_DIR"]) / "projects" / folder / "parent" / "subagents"
@@ -268,6 +316,27 @@ def test_show_opens_a_cited_record_with_its_neighbors(harness, capsys):
     assert cli.main(["sessions", "show", "c1", "--seq", "1"]) == 0
     shown = [line.split()[0] for line in capsys.readouterr().out.splitlines()]
     assert shown == ["#0", "#1", "#2", "#3", "#4"]
+
+
+def test_a_cited_record_is_shown_whole_and_its_neighbors_stay_short(harness, capsys):
+    """The day-end reads each prompt no record cites with `show --seq` (2026-11-12: a request made after a prompt's
+    first 600 characters was missing from what it printed)."""
+    asked = "Draft the announcement. " + "It goes to every list we keep. " * 30 + "Do not send it before Friday."
+    _jsonl(harness["claude"], _claude_rows(harness["work"]) + [
+        _typed({"cwd": harness["work"], "sessionId": "c1"}, asked, "2026-10-30T15:00:00.000Z")])
+    sessions.export(0)
+    rows = sessions.records(_meta(harness["claude"])["folder"])
+    result = next(r["seq"] for r in rows if r["kind"] == "tool_result")
+    assert rows[-1]["text"] == asked and len(asked) > 900 and rows[-1]["seq"] - result <= 3
+    assert cli.main(["sessions", "show", "c1", "--seq", str(rows[-1]["seq"])]) == 0
+    out = capsys.readouterr().out
+    assert out.rstrip().endswith("Do not send it before Friday.")
+    assert out.count("more characters]") == 1                                # the long tool result beside it stays cut
+    assert cli.main(["sessions", "show", "c1", "--seq", str(result)]) == 0
+    assert capsys.readouterr().out.count("line of tool output") == 300       # a long tool result, whole from its blob
+    assert cli.main(["sessions", "show", "c1", "--seq", str(result), "--json"]) == 0
+    shown = [json.loads(line) for line in capsys.readouterr().out.splitlines()]
+    assert next(r for r in shown if r["seq"] == result)["text"].endswith(LONG)
 
 
 # --- sync (R10.2 to R10.4) ------------------------------------------------------------------------------------
@@ -452,6 +521,19 @@ def test_the_principals_prompts_of_a_day_are_listed_and_nothing_else(asked):
     assert sessions.prompts("other", "2026-10-30") == [] and sessions.prompts("acme", "2026-10-29") == []
 
 
+def test_two_prompts_in_one_minute_are_listed_in_the_order_they_were_typed(harness, capsys):
+    """2026-11-12: listed by the minute and then by session id, the later of two prompts came out first."""
+    for name, text, at in (("z9", "First.", "2026-10-30T15:00:01.000Z"), ("a1", "Second.", "2026-10-30T15:00:59.000Z")):
+        _jsonl(harness["claude"].with_name(f"{name}.jsonl"), [_typed({"cwd": harness["work"], "sessionId": name}, text, at)])
+    sessions.export(0)
+    found = sessions.prompts("acme", "2026-10-30")
+    assert [(p["session"], p["text"]) for p in found] == [("z9", "First."), ("a1", "Second.")]
+    assert found[0]["at"] == found[1]["at"] and re.fullmatch(r"\d{4}-\d\d-\d\dT\d\d:\d\d[+-]\d\d:\d\d", found[0]["at"])
+    assert cli.main(["sessions", "prompts", "--workspace", "acme", "--date", "2026-10-30"]) == 0
+    out = capsys.readouterr().out.splitlines()
+    assert [line.split()[1] for line in out[:2]] == ["z9", "a1"] and re.fullmatch(r"\d\d:\d\d", out[0].split()[3])  # the minute, as before
+
+
 def test_a_prompt_is_accounted_for_by_a_record_that_cites_it_alone_or_in_a_range(asked):
     first, second = sessions.prompts("acme", "2026-10-30")
     roots = [str(asked["kb"])]
@@ -501,6 +583,45 @@ def test_an_export_that_finishes_says_when_and_a_busy_one_does_not(harness):
     first = json.loads(stamp.read_text())["exported"]
     assert re.fullmatch(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d[+-]\d\d:\d\d", first)
     assert sessions.export(0) == [] and json.loads(stamp.read_text())["exported"] >= first    # nothing new still counts as a run
+
+
+def test_a_run_that_could_not_copy_a_transcript_stays_visible_until_a_run_copies_everything(harness, tmp_path):
+    """2026-11-12: with every copy refused, the stamp still got a fresh time and the doctor answered ok."""
+    from synthesis import doctor
+    natives = [_jsonl(harness["claude"].with_name(f"{name}.jsonl"), _claude_rows(harness["work"])) for name in ("c1", "c2")]
+    stamp, plist = sessions.root() / ".state" / "export.json", tmp_path / "com.synthesis.sessions-export.plist"
+    plist.write_text("<plist/>", encoding="utf-8")
+
+    def doctors() -> tuple:
+        found = doctor.check_sessions_export(plist, stamp, run=lambda argv, **kw: subprocess.CompletedProcess(argv, 0, "", ""))
+        return found.status, found.detail, json.loads(stamp.read_text())
+
+    try:
+        for native in natives:
+            native.chmod(0o000)                                    # as when the job may not read a harness's files
+        report = sessions.export(0)
+        assert len(report) == 2 and all("not exported" in line and "Permission denied" in line for line in report)
+        status, detail, kept = doctors()
+        assert status == "fail" and "2 transcript(s) could not be copied" in detail
+        assert kept["reason"].replace(str(Path.home()), "~") in detail             # what failed, as the export printed it
+        assert kept["failed"] == 2 and kept["reason"] in report and not kept.get("complete")
+        natives[0].chmod(0o644)
+        assert sessions.export(0, only="c1")[0].startswith("claude-code c1: ")    # a run of one session copies that one,
+        assert doctors()[0] == "fail"                                             # and the other is still not copied
+        assert len(sessions.export(0)) == 1 and doctors()[2]["failed"] == 1
+        natives[1].chmod(0o644)
+        sessions.export(0)
+        status, detail, done = doctors()
+        assert status == "ok" and "failed" not in done and "reason" not in done and done["complete"] == done["exported"]
+        _jsonl(natives[1], [_typed({"cwd": harness["work"], "sessionId": "c2"}, "One more thing.", "2026-10-30T16:00:00.000Z")])
+        natives[1].chmod(0o000)
+        sessions.export(0)
+        status, detail, kept = doctors()
+        assert status == "fail" and "1 transcript(s) could not be copied" in detail and kept["complete"] == done["complete"]
+        assert f"since {done['complete'][:16]}" in detail          # when a run last copied everything
+    finally:
+        for native in natives:
+            native.chmod(0o644)
 
 
 def test_a_run_started_by_a_command_line_is_briefed_not_prompted(harness):

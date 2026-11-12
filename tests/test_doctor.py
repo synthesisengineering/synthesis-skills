@@ -1051,3 +1051,22 @@ def test_the_hourly_export_is_checked_for_its_schedule_and_its_last_run(tmp_path
     stamp.write_text(json.dumps({"exported": "2026-11-12T08:20:00-05:00"}), encoding="utf-8")
     found = doctor.check_sessions_export(plist, stamp, now, loaded)
     assert found.status == "ok" and "every hour" in found.detail and "40 min ago" in found.detail
+
+
+def test_the_hourly_export_fails_while_a_transcript_it_tried_is_not_copied(tmp_path):
+    """2026-11-12: every copy was refused, the stamp's time was fresh, and this check answered ok."""
+    plist, stamp = tmp_path / "com.synthesis.sessions-export.plist", tmp_path / "export.json"
+    plist.write_text("<plist/>", encoding="utf-8")
+    loaded = lambda argv, **kw: subprocess.CompletedProcess(argv, 0, "", "")           # noqa: E731
+    from datetime import datetime
+    now = datetime.fromisoformat("2026-11-12T09:00:00-05:00").timestamp()
+    refused = f"codex 01a1: not exported ([Errno 13] Permission denied: '{Path.home()}/x.jsonl')"
+    stamp.write_text(json.dumps({"exported": "2026-11-12T08:20:00-05:00", "failed": 3, "reason": refused}), encoding="utf-8")
+    found = doctor.check_sessions_export(plist, stamp, now, loaded)
+    assert found.status == "fail" and "3 transcript(s) could not be copied" in found.detail
+    assert "Permission denied: '~/x.jsonl'" in found.detail and "no run has copied everything yet" in found.detail
+    stamp.write_text(json.dumps({"exported": "2026-11-12T08:20:00-05:00", "failed": 1, "reason": refused,
+                                 "complete": "2026-11-11T08:00:00-05:00"}), encoding="utf-8")
+    found = doctor.check_sessions_export(plist, stamp, now, loaded)
+    assert found.status == "fail" and "no run has copied everything since 2026-11-11T08:00" in found.detail
+    assert "synthesis sessions export --all" in found.detail
