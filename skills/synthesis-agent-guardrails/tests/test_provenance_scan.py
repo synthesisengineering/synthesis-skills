@@ -159,22 +159,25 @@ def test_every_file_under_a_declared_folder_is_read_at_any_depth_hidden_folders_
     assert "kb/plans/" not in capsys.readouterr().out                         # without --records, a record's place still decides
 
 
-def test_a_record_that_is_not_text_is_named_unreadable_and_not_counted_as_read(tmp_path, logs, capsys):
+def test_a_file_that_is_not_text_is_counted_as_such_and_fails_nothing(tmp_path, logs, capsys):
+    """A plan folder holds what is no text: an image, a database, the folder file a Mac keeps. No agent wrote a
+    timestamp into those as text, so they are counted and the scan goes on (2026-11-12: first named unreadable,
+    which would have failed the scan in every folder Finder had opened)."""
     plans = tmp_path / "plans"
     plans.mkdir()
     (plans / "scan.png").write_bytes(b"\x89PNG\r\n\x1a\n" + bytes(range(128, 256)))
     (plans / "index.db").write_bytes(b"format 3\x00\x10\x00\x01\x01\x00 1700000000.000201 \x00")   # every byte is ASCII
+    (plans / ".DS_Store").write_bytes(b"\x00\x00\x00\x01Bud1\x00")
     (plans / "2026-01-02.md").write_text("- [ ] nothing from a chat here\n", encoding="utf-8")
-    assert scan.main(["--since", "2026-01-02", "--sources", str(logs), "--records", str(plans), str(plans)]) == 1
-    out = capsys.readouterr().out
-    assert "scan.png: unreadable" in out and "index.db: unreadable" in out
-    assert "0 unsourced, 2 unreadable; read 1 records" in out
-    assert scan.main(["--since", "2026-01-02", "--sources", str(logs), str(plans / "scan.png")]) == 1     # named outright
-    assert "scan.png: unreadable" in capsys.readouterr().out
-    (plans / "scan.png").unlink()
-    (plans / "index.db").unlink()
     assert scan.main(["--since", "2026-01-02", "--sources", str(logs), "--records", str(plans), str(plans)]) == 0
-    assert "0 unsourced; read 1 records" in capsys.readouterr().out            # nothing unreadable: the line as it was
+    out = capsys.readouterr().out
+    assert "unreadable" not in out and "0 unsourced; read 1 records" in out and "3 files that are not text were not read" in out
+    assert scan.main(["--since", "2026-01-02", "--sources", str(logs), str(plans / "scan.png")]) == 0     # named outright
+    assert "1 file that is not text was not read" in capsys.readouterr().out
+    for name in ("scan.png", "index.db", ".DS_Store"):
+        (plans / name).unlink()
+    assert scan.main(["--since", "2026-01-02", "--sources", str(logs), "--records", str(plans), str(plans)]) == 0
+    assert capsys.readouterr().out.rstrip().endswith("read 1 records and 1 session logs")            # nothing left out: the line as it was
 
 
 @pytest.mark.skipif(not hasattr(os, "geteuid") or os.geteuid() == 0, reason="the superuser opens anything")
