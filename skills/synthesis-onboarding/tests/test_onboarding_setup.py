@@ -740,6 +740,21 @@ def test_a_nudge_schedule_whose_command_only_ends_like_this_installs_is_anothers
     assert any("removed the nudge schedule" in said for said in setup.unregister_day_end()) and not plist.exists()
 
 
+def test_another_installs_export_schedule_is_set_aside_before_this_one_replaces_it(day_end):
+    """One label holds one schedule. Installing this one replaced another install's without a word, and with it
+    that install's hourly copy. It is archived first, as a nudge schedule is, and the setup says where."""
+    import plistlib
+    other = '"/another/v5/bin/synthesis" sessions export --all; "/another/v5/bin/synthesis" sessions sync'
+    _scheduled(other)
+    lines = setup.register_sessions_export(load=False)
+    kept = list((setup.install._home() / "archive").glob("*/com.synthesis.sessions-export.plist"))
+    assert len(kept) == 1 and plistlib.loads(kept[0].read_bytes())["ProgramArguments"][-1] == other
+    assert any("archived" in line and str(kept[0].parent) in line for line in lines)
+    assert setup._points_at(setup._export_plist(), setup.install._home() / "bin" / "synthesis")
+    assert not any("archived" in line for line in setup.register_sessions_export(load=False))        # its own is replaced in place
+    assert len(list((setup.install._home() / "archive").glob("*/com.synthesis.sessions-export.plist"))) == 1
+
+
 def test_the_export_schedule_before_install_says_what_to_run_first():
     with pytest.raises(setup.SetupError, match="not installed"):
         setup.register_sessions_export()
