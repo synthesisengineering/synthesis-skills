@@ -197,6 +197,8 @@ MORE_NO_WATCHER = {
     "form-from-you": "Still waiting for the signed form from you; everything else on the list is done.",
     "two-things-from-you": "I'm waiting on two things from you:\n1. The approval code for the deploy\n2. Which title to use",
     "your-sign-off-after-a-colon": "I'm waiting on one thing before I send it: your sign-off on the last paragraph.",
+    "a-draft-in-a-block-quote": "The draft is below; send it as it is, or tell me what to change.\n\n> Thanks for the note. I'm "
+                                "waiting for the venue's answer and will confirm the time as soon as I have it.",
 }
 # Passed before the rebuild too. Each stands beside a form the rebuild reads, so none of those forms may catch it.
 STILL_NO_WATCHER = {
@@ -209,6 +211,9 @@ STILL_NO_WATCHER = {
     "which-you-prefer": "I'm waiting to hear which option you prefer.",
     "a-list-of-the-principals-moves": "Still waiting on:\n- your approval of the draft\n- your decision on the venue",
     "a-calendar-hold": "The meeting is moved to 3 pm and the room is booked. I'll hold the 4 pm slot as a backup.",
+    "a-meeting-held": "We'll hold the review meeting on Tuesday at ten; the agenda is in the invitation.",
+    "our-wait-in-a-quoted-draft": "Here is the reply for you to send:\n\n> We're still waiting on the venue, so the time is not "
+                                  "fixed yet.",
     "a-thing-waited-on": "I'd add the delivery date to the list of things we're waiting on from the printer.",
     "a-wait-refused": "I will not wait for the second review: the first one covered the change, so I merged.",
     "continue-to-support": "We will continue to support the old flag until the next major version.",
