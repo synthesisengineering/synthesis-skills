@@ -2064,8 +2064,10 @@ def test_the_folder_that_holds_the_approved_lines_is_not_removed_or_moved_whole(
     ("cd \"$(dirname {work}/s.jsonl)\" && touch forged.json", True),                     # a folder the guard cannot read, then a bare name
     ("D=$(dirname {work}/s.jsonl); cd \"$D\" && rm s.jsonl", True),
     ("cd \"$(dirname {work}/s.jsonl)\" && python3 -c \"open('forged.json', 'w').write('x')\"", True),
-    ("cd \"$(git rev-parse --show-toplevel)\" && touch made.txt", False),                # no protected folder named: nothing to hold
     ("cd \"$(dirname {work}/s.jsonl)\" && wc -l s.jsonl", False),                        # reading there
+    ("cd \"$(mktemp -d)\" && cp {work}/s.jsonl . && wc -l s.jsonl > count.txt", False),     # a fresh temporary folder is elsewhere
+    ("cd $(mktemp -d /tmp/work.XXXXXX) && cp {work}/s.jsonl copy.jsonl", False),
+    ("cd \"$(dirname '{work}/s.jsonl')\" && rm s.jsonl", True),
     ("sqlite3 /tmp/pad/x.db \"select count(*) from t where n > 5\"", False),             # a comparison is not a redirect
     ("llm \"explain what this does: echo x > {work}/s.jsonl\"", False),                  # words for a reader that show a command
     ("notify \"copy finished: 3 files\"", False),
@@ -2092,3 +2094,14 @@ def test_a_path_made_whole_is_whole_from_where_the_program_stood_then(above, pro
     here.mkdir()
     command = "python3 - <<'EOF'\n" + program.format(**above) + "\nEOF"
     assert (REFUSED in (guards.check("Bash", {"command": command}, {}, cwd=str(here)) or "")) == held, program
+
+
+def test_a_folder_the_guard_cannot_read_holds_nothing_when_no_protected_folder_is_near(above, tmp_path):
+    here = tmp_path / "elsewhere"
+    here.mkdir()
+    command = "cd \"$(git rev-parse --show-toplevel)\" && touch made.txt"
+    assert guards.check("Bash", {"command": command}, {}, cwd=str(here)) is None       # none named, none stood in
+    assert REFUSED in (guards.check("Bash", {"command": command}, {}, cwd=str(above["work"])) or "")   # from inside one, it may not have left
+    stays = "cd \"$(pwd)\" && touch made.txt"                                             # the folder it is in, by a substitution
+    assert guards.check("Bash", {"command": stays}, {}, cwd=str(here)) is None
+    assert REFUSED in (guards.check("Bash", {"command": stays}, {}, cwd=str(above["work"])) or "")

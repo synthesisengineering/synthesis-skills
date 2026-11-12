@@ -950,10 +950,12 @@ class Quoted(str):
 
 MESSAGE = re.compile(r"--?(?:m|message|body|title|subject|description|notes?|comment|text|caption|summary|prompt)")  # its value is words for a reader
 PROMPTED = frozenset({"codex", "claude", "muse", "gh"})  # their words are prompts and messages: each runs under its own guards
+STARTERS = frozenset({"echo", "printf", "cat", "cd", "pushd", "find", "sed", "perl", "tee", "touch", "truncate", "mkdir", "rmdir", "rm",
+                      "unlink", "shred", "chmod", "chown", "chgrp", "dd", "cp", "mv", "ln", "install", "rsync", "ditto", "gzip", "gunzip"})
 
 
 def _commands(command: str, cwd: str, depth: int = 0, writes: list | None = None, runs: list | None = None,
-              feeds: list | None = None) -> list[tuple[list[str], str]]:
+              feeds: list | None = None, prose: bool = False) -> list[tuple[list[str], str]]:
     """Each simple command a shell line runs, with the directory it runs in. Follows `cd`,
     subshells, substitutions, `bash -c`, eval, and scripts a shell reads from its stdin. `writes`
     collects (file, directory) for every redirect that writes a file. `runs` collects, for each
@@ -974,8 +976,6 @@ def _commands(command: str, cwd: str, depth: int = 0, writes: list | None = None
         chain = chain if link == "&&" else object()
         opening = words[:next((i for i, w in enumerate(words) if w not in KEYWORDS), len(words))]
         needed = link != "||" and "!" not in opening  # after `||` it may be skipped; under `!` its failure is what counts
-        if writes is not None:
-            writes += [(t, cwd) for t in targets]
         for text, literal in stdin:
             if not literal:  # an unquoted heredoc expands its substitutions
                 _dquote(text, 0, scripts, "")
@@ -985,6 +985,25 @@ def _commands(command: str, cwd: str, depth: int = 0, writes: list | None = None
         here = cwd
         for folder in moved:  # `env -C a env -C b`: b is read from a
             here = os.path.normpath(os.path.join(here, os.path.expanduser(folder)))
+        head = os.path.basename(words[0]) if words else ""
+        # Read out of a word that may be a message, a line counts as a command only when it starts as one the guard
+        # knows (a shell, an interpreter, a file utility): `select ... where n > 5` and `Example: echo x > file` are words.
+        taken = not prose or head in STARTERS or head in SHELLS or bool(SCRIPT.match(head))
+        if writes is not None and taken:
+            writes += [(t, cwd) for t in targets]
+        if words and (not taken or (_named(words) and head not in PROMPTED)):  # a word it is handed may be a script it runs: read as one
+            for at, word in enumerate(words[1:], 1):
+                held = ([], [], [])
+                try:
+                    inner = _commands(word, here, depth + 1, *held, prose=True) if " " in word and not MESSAGE.fullmatch(words[at - 1]) else []
+                except (Unreadable, StopIteration, IndexError, RecursionError):
+                    continue
+                found += [(w, Quoted(h)) for w, h in inner]
+                for mine, more in zip((writes, runs, feeds), held):
+                    if mine is not None:
+                        mine += more
+        if not taken:
+            continue
         if words:
             found.append((words, here))
             if runs is not None:
@@ -996,7 +1015,8 @@ def _commands(command: str, cwd: str, depth: int = 0, writes: list | None = None
                 turn = next((w for w in words[1:] if re.fullmatch(r"[-+]\d+", w)), "")  # +N from this folder, -N from the oldest
                 dirs = [cwd] + stack[::-1]  # the stack as the shell shows it: this folder first
                 at = (int(turn[1:]) if turn[:1] == "+" else len(dirs) - 1 - int(turn[1:])) % len(dirs) if turn else 0
-                went = back if to == "-" else os.path.normpath(os.path.join(cwd, os.path.expanduser(os.path.expandvars(to or "~"))))
+                aim = os.path.expanduser(os.path.expandvars(to or "~"))  # a folder named by a substitution or an unset variable stays as written
+                went = back if to == "-" else aim if aim[:1] in ("$", "`") else os.path.normpath(os.path.join(cwd, aim))
                 if words[0] == "cd":
                     dirs[0] = went if to is not None or not turn else dirs[at]
                 elif words[0] == "popd":
@@ -1008,17 +1028,6 @@ def _commands(command: str, cwd: str, depth: int = 0, writes: list | None = None
                 roots, ran = _find(words)             # searches; with -execdir it runs in the folder of what it found
                 scripts += [f"cd {shlex.quote(root)} && " + shlex.join(w.replace("{}", "./{}") for w in run) if there
                             else shlex.join(w.replace("{}", os.path.join(root, "{}")) for w in run) for run, there in ran if run for root in roots]
-            if _named(words) and os.path.basename(words[0]) not in PROMPTED:  # a script it may run: read as one, where it parses as one
-                for at, word in enumerate(words[1:], 1):
-                    held = ([], [], [])
-                    try:
-                        inner = _commands(word, here, depth + 1, *held) if " " in word and not MESSAGE.fullmatch(words[at - 1]) else []
-                    except (Unreadable, StopIteration, IndexError, RecursionError):
-                        continue
-                    found += [(w, Quoted(h)) for w, h in inner]
-                    for mine, more in zip((writes, runs, feeds), held):
-                        if mine is not None:
-                            mine += more
             script, reads, given = _shell_input(words)
             if script is not None:
                 scripts.append(_placed(script, given))
@@ -2189,9 +2198,9 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
             if label in ("str", "fspath", "expanduser", "abspath", "realpath", "normpath", "resolve", "absolute", "encode") and len(parts) <= 1:
                 whole = parts[0] if parts else spelled(node.func.value) if isinstance(node.func, ast.Attribute) else "\0"
                 made = label in ("abspath", "realpath", "resolve", "absolute") and whole[:1] not in ("/", "~", "\0", "\1")
-                return "\1" * made + whole  # a relative path made whole is whole from where the program stood then: \1 marks it
+                return f"\1{id(node)}\1" * made + whole  # a relative path made whole is whole from where the program stood at this call
             if label in ("getcwd", "cwd") and not parts:
-                return "\1."
+                return f"\1{id(node)}\1."
             if label in ("with_suffix", "with_name", "with_stem") and isinstance(node.func, ast.Attribute) and len(parts) == 1:
                 folder, name = os.path.split(spelled(node.func.value))
                 stem, suffix = os.path.splitext(name)
@@ -2300,7 +2309,8 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
         return any(leads(path, node, folder, link, at, reach) for path in ranges.get(getattr(node, "id", ""), [spelled(node)]))
 
     def leads(raw: str, node, folder: bool, link: bool, at, reach) -> bool:  # one spelling of a target, from each folder the call may be made in
-        raw, at = (raw[raw.rfind("\1") + 1:], places) if "\1" in raw else (raw, at)  # made whole earlier: wherever the program stood
+        made = re.search("\1(\\d+)\1[^\1]*$", raw)  # made whole at an earlier call: from where the program stood then
+        raw, at = (raw[raw.rfind("\1") + 1:], stood.get(int(made[1]), [where]) if made else places) if "\1" in raw else (raw, at)
         path = os.path.expanduser(raw)
         froms = [""] if os.path.isabs(path) else at
         # A plain path is judged where it leads (one that names a protected folder and climbs away from it is not
@@ -2408,6 +2418,8 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
         node = node.value if getattr(node, "attr", "") == "stdin" else node
         return node.id if isinstance(node, ast.Name) else node if isinstance(node, ast.Call) else None
     withs = [(w.optional_vars, w.context_expr) for w in nodes if isinstance(w, ast.withitem) and w.optional_vars is not None]
+    begun = [c for c in calls if getattr(c.func, "attr", getattr(c.func, "id", "")) in ("Popen", "popen", "create_subprocess_exec", "create_subprocess_shell")]
+    tied = begun + [t.id for t, v in pairs + withs if isinstance(t, ast.Name) and any(v is c for c in begun)]  # each process, and the names it is kept under
     piped = [(owner(c.func.value), a) for c in calls if isinstance(c.func, ast.Attribute) and (c.func.attr == "communicate" or (
         c.func.attr in ("write", "writelines") and getattr(c.func.value, "attr", "") == "stdin"))
         for a in c.args[:1] + [k.value for k in c.keywords if k.arg == "input"]] + [
@@ -2457,12 +2469,13 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
                 else:
                     hit = hit or named(value)  # a protected path under a name it cannot tell: any command it starts may use it
             mine = {t.id for t, v in pairs + withs if v is n and isinstance(t, ast.Name)}  # the names this process is kept under
-            feeds = [kw["input"]] if "input" in kw else [a for who, a in piped if who is None or who is n or who in mine] if getattr(
-                kw.get("stdin"), "attr", getattr(kw.get("stdin"), "id", "")) == "PIPE" else []
+            feeds = [kw["input"]] if "input" in kw else [a for who, a in piped if who is n or who in mine or who not in tied] if getattr(
+                kw.get("stdin"), "attr", getattr(kw.get("stdin"), "id", "")) == "PIPE" else []  # its own pipe, and any that is no one's
             texts = ["".join(spelled(a) for a in feeds)] * bool(feeds)  # what it is fed, piece after piece, is that command's script
             dark = fed_code and "\0" in "".join(texts) and feeds  # one it cannot read is a script only for a shell or an interpreter
-            at = places if "\1" in ran + "".join(texts) else at  # a word made whole earlier: wherever the program stood
-            ran, texts = ran.replace("\1", ""), [text.replace("\1", "") for text in texts]
+            was = [f for call in re.findall("\1(\\d+)\1", ran + "".join(texts)) for f in stood.get(int(call), [where])]
+            at = (was or places) if "\1" in ran + "".join(texts) else at  # a word made whole earlier: from where the program stood then
+            ran, texts = re.sub("\1(?:\\d+\1)?", "", ran), [re.sub("\1(?:\\d+\1)?", "", text) for text in texts]
             spots = [os.path.join(spot, v[v.rfind("\1") + 1:]) for spot in at for v in folders([kw["cwd"]])] if "cwd" in kw else at
             known = [os.path.realpath(f) if os.path.isabs(f) else f  # a folder it cannot read whole is judged from the part it can
                      for f in (spot if "\0" not in spot else os.path.dirname(spot.split("\0")[0]) for spot in spots)]
@@ -2579,7 +2592,8 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None) -> str |
         carried = re.search(r"\b(?:environ|getenv|ENV)\b|\.env\b", script) and (any(n in m[3] for m in ASSIGNED.finditer(text) for n in names) or any(
             v[:1] == "/" and paths.inside(v, os.path.realpath(r)) for v in os.environ.values() for r in raw))
         reaches = hit is None and (carried or any(n in w for w in words[1:] if w != source for n in names))  # read by its syntax, both are placed
-        if SCRIPT.match(head) and (hit or (wrote and (reaches or (hit is None and (within or any(n in script for n in names)))))):
+        lost = where[:1] in ("$", "`") and bool(names)  # it runs in a folder the guard cannot read, in a command that names a protected one
+        if SCRIPT.match(head) and (hit or (wrote and (reaches or lost or (hit is None and (within or any(n in script for n in names)))))):
             inner = re.search(r"this command (.*?)\. Approvals come", hit) if isinstance(hit, str) else None
             why = why or (f"runs a program that starts a command this guard refuses: it {inner[1]}" if inner else
                           "runs a script that writes where the synthesis state, its board or a harness's transcripts live, or that "
@@ -2595,7 +2609,8 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None) -> str |
                           "program this guard cannot read may write without naming a file (run it from another folder)")
         if head == "apply_patch":  # Codex's file editor, run as a command: the patch names every file it writes
             asked += [(a or b, where) for a, b in PATCH_PATHS.findall(text)]
-    if not why and names and any(t.startswith(("$", "`")) for t, _ in asked):  # only asked of a command that names a protected folder
+    unread = ("$", "`")  # a target, or for a relative one the folder it is written in, that the command does not spell
+    if not why and names and any(t.startswith(unread) or (not os.path.isabs(t) and str(w).startswith(unread)) for t, w in asked):
         why = ("writes to a place this guard cannot read (the target starts with a variable or a substitution the command "
                "does not set) while it names the synthesis state folder, its board or a harness's transcripts")
     targets = [os.path.join(w, t) for t, w in asked]
