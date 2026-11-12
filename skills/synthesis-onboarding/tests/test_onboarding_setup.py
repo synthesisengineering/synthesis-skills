@@ -562,6 +562,9 @@ def test_uninstall_removes_only_an_export_schedule_that_runs_this_install(day_en
     plist = setup._export_plist()
     plist.write_text("<plist><dict><key>ProgramArguments</key><array><string>/other/synthesis sessions export</string></array></dict></plist>")
     assert plist.exists() and any(line.startswith("kept") for line in setup.unregister_sessions_export())
+    near = f'"{setup.install._home() / "bin" / "synthesis"}-old" sessions export --all'            # a command whose path only begins like this install's
+    plist.write_text(f"<plist><dict><key>ProgramArguments</key><array><string>{near}</string></array></dict></plist>")
+    assert plist.exists() and any(line.startswith("kept") for line in setup.unregister_sessions_export())
 
 
 def test_the_export_schedule_before_install_says_what_to_run_first():
