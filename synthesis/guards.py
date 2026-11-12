@@ -2312,13 +2312,13 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
         label = getattr(getattr(node, "func", None), "attr", getattr(getattr(node, "func", None), "id", ""))
         if id(node) in given or said(node) is not None:
             return given.get(id(node), said(node))
+        if id(node) in picked:
+            return picked[id(node)]  # one side of `a if c else b` or `a or b`, or what this call of the program's own function hands back
         key = key_of(node)
         if key is not None and (key in picked or len(ranges.get(key, ())) == 1):
             return picked[key] if key in picked else ranges[key][0]  # the one value it holds, or the one this reading takes
         if isinstance(node, ast.Name):
             return bound.get(node.id, "\0")
-        if id(node) in picked:
-            return picked[id(node)]  # one side of `a if c else b` or `a or b`
         if isinstance(node, ast.Attribute) and node.attr == "path" and getattr(node.value, "id", None) in finds:
             return spelled(node.value)  # what os.scandir found: its path
         if label == "home" and isinstance(node, ast.Call) and not node.args:
@@ -2460,7 +2460,7 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
     # object stands under ".field" and an entry of its own table under "[table]key". "\2" is no value at all: None
     # (this project's probe after the tenth review: thirty everyday programs were refused from inside a transcript
     # folder because a name was read only when it was given one value, once).
-    picked, stores, sites, turns, finds = {}, {}, {}, {}, set()
+    picked, stores, sites, turns, finds, deep = {}, {}, {}, {}, set(), []
     grown = {id(n.value): n.op for n in nodes if isinstance(n, ast.AugAssign)}  # `out += x` gives out + x
     withs = [(w.optional_vars, w.context_expr) for w in nodes if isinstance(w, ast.withitem) and w.optional_vars is not None]
     once_value = {**given_once, **{t.id: v for t, v in withs if isinstance(t, ast.Name) and t.id in once}}
@@ -2483,7 +2483,7 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
             label, kw = getattr(getattr(value, "func", None), "attr", getattr(getattr(value, "func", None), "id", "")), {k.arg: k.value for k in getattr(value, "keywords", [])}
             back = rets.get(id(asked(value)[1]), []) if isinstance(value, ast.Call) and asked(value)[0] not in classes else []
             sides = ([[e] for e in value.elts] if isinstance(value, (ast.Tuple, ast.List)) else [[e] for e in rows[value.id]] if getattr(value, "id", None) in rows
-                     else [[None], [ast.BinOp(left=kw["dir"], op=ast.Add(), right=ast.Constant(value="/\0")) if "dir" in kw else ast.Constant(value="/tmp/tmp.made")]]
+                     else [[ast.Constant(value="\2")], [ast.BinOp(left=kw["dir"], op=ast.Add(), right=ast.Constant(value="/\0")) if "dir" in kw else ast.Constant(value="/tmp/tmp.made")]]
                      if label == "mkstemp" else [[r.elts[at] for r in back] for at in range(len(wide))]
                      if back and all(isinstance(r, ast.Tuple) and len(r.elts) == len(wide) for r in back) else [])  # a pair, a row, mkstemp's, its own function's
             if len(sides) == len(wide) and not any(isinstance(e, ast.Starred) for e in wide + [x for side in sides for x in side if x is not None]):
@@ -2664,18 +2664,35 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
             live.setdefault(f"[{found[0]}]{found[1]}", []).extend(table(*found))
         return live
 
-    def outer(node):  # a value's nodes down to each `a if c else b` and `a or b`, which is read by its sides
+    def outer(node):  # a value's nodes down to each `a if c else b` and `a or b`, read by its sides, and each call of the program's own function, read by what it hands back
         yield node
-        if not (isinstance(node, ast.IfExp) or (isinstance(node, ast.BoolOp) and isinstance(node.op, ast.Or))):
+        if not (isinstance(node, ast.IfExp) or (isinstance(node, ast.BoolOp) and isinstance(node.op, ast.Or)) or (key_of(node) or "")[:3] == "()@"):
             for child in ast.iter_child_nodes(node):
                 yield from outer(child)
 
+    def answers(c) -> list:  # what one call of the program's own function hands back, read with what this call hands it
+        own = asked(c)[1]
+        sent = {t: a[0] for t, a in hands(own, [c]).items() if a[0] is not None}
+        options = [spellings(a) for a in sent.values()]
+        if any(asked(d)[1] is own for d in deep) or len(deep) > 2 or math.prod(map(len, options)) > 8:
+            return ranges.get(key_of(c)) or ["\0"]  # a function that calls itself, or too many readings: whatever any call may hand back
+        found = []
+        deep.append(c)
+        for combo in itertools.product(*options):
+            picked.update(x for t, v in zip(sent, combo) for x in ((t, v), (t + "~", v)))
+            found += [x for r in rets[id(own)] for x in (spellings(r) if r is not None else ["\0"])]
+        for t in sent:
+            picked.pop(t, None), picked.pop(t + "~", None)
+        deep.pop()
+        return list(dict.fromkeys(found)) or ["\2"]
+
     def spellings(node) -> list:  # each path a node may spell, one for every value its names may hold; as `spelled` reads it when they are too many
         seen = list(outer(node))
-        sides = [c for c in seen if isinstance(c, (ast.IfExp, ast.BoolOp)) and id(c) not in picked and (isinstance(c, ast.IfExp) or isinstance(c.op, ast.Or))]
-        free = list(dict.fromkeys(k for k in map(key_of, seen) if k is not None and k not in picked and len(ranges.get(k, ())) > 1))
-        options = [ranges[k] for k in free] + [
-            [x for alt in ([c.body, c.orelse] if isinstance(c, ast.IfExp) else c.values) for x in spellings(alt) if x != "\2"] or ["\2"] for c in sides]
+        sides = [c for c in seen if id(c) not in picked and (isinstance(c, ast.IfExp) or (isinstance(c, ast.BoolOp) and isinstance(c.op, ast.Or))
+                                                           or (key_of(c) or "")[:3] == "()@")]
+        free = list(dict.fromkeys(k for k in map(key_of, seen) if k is not None and k not in picked and k[:3] != "()@" and len(ranges.get(k, ())) > 1))
+        options = [ranges[k] for k in free] + [answers(c) if isinstance(c, ast.Call) else [
+            x for alt in ([c.body, c.orelse] if isinstance(c, ast.IfExp) else c.values) for x in spellings(alt) if x != "\2"] or ["\2"] for c in sides]
         if not options or math.prod(map(len, options)) > 32:
             return [spelled(node)]
         found, keys = [], free + [id(c) for c in sides]
@@ -2924,10 +2941,10 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
         for a in c.args[:1] + [k.value for k in c.keywords if k.arg == "input"]] + [
         (owner(k.value), a) for c in calls for k in c.keywords if k.arg == "file" and getattr(k.value, "attr", "") == "stdin"
         for a in c.args[:1]]  # what the program writes down a pipe, and to which process: communicate, stdin.write, print(file=p.stdin)
-    def descriptor(given) -> bool:  # a name given nothing but what os.open hands back
-        made = stores.get(getattr((given or [None])[0], "id", ""), [])
-        return bool(made) and all(isinstance(v, ast.Call) and source(v) is not None and (
-            modules.get(getattr(getattr(v.func, "value", None), "id", "")) == "os" or direct.get(getattr(v.func, "id", ""), ("",))[0] == "os") for v in made)
+    def descriptor(given) -> bool:  # a number, or a name given nothing but numbers and what os.open or mkstemp hands back
+        made = [(given or [None])[0]] if isinstance((given or [None])[0], ast.Constant) else stores.get(getattr((given or [None])[0], "id", ""), [])
+        return bool(made) and all((isinstance(v, ast.Constant) and (type(v.value) is int or v.value == "\2")) or (isinstance(v, ast.Call) and source(v) is not None and (
+            modules.get(getattr(getattr(v.func, "value", None), "id", "")) == "os" or direct.get(getattr(v.func, "id", ""), ("",))[0] == "os")) for v in made)
     hit = wrote = False
     for n in calls:
         base = n.func.value if isinstance(n.func, ast.Attribute) else None
