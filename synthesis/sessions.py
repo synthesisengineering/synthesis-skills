@@ -583,7 +583,10 @@ def _export(days: float, only: str) -> list:
         last.update(failed=len(waiting), reason=(failed or [entry["reason"] for entry in waiting.values()])[0], uncopied=waiting)
     else:
         last = {"complete": now}
-    paths.write_json(stamp, {**last, "exported": now})
+    try:
+        paths.write_json(stamp, {**last, "exported": now})
+    except OSError as exc:  # an archive that cannot be written is read as it is, as a busy one is
+        return [f"not exported: {exc}"] + report
     return report
 
 

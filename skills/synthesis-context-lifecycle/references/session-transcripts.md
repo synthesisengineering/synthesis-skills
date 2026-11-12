@@ -139,8 +139,9 @@ prompts in that workspace is not copied, it lists nothing and exits 2, since an 
 say what was typed: one this run could not copy, one an earlier run could not and none has since, or one that is
 gone and the principal has not cleared (`synthesis doctor` says how each is cleared). A transcript filed under
 another workspace, or last written before that day began, does not stop it, and neither does a sub-agent's or a
-reviewer's, which holds an agent's briefs and no word of the principal's. `--date` takes a date, and anything
-else lists nothing. Each line is
+reviewer's, which holds an agent's briefs and no word of the principal's. It also lists nothing while another
+export holds the archive or the archive cannot be written. `--date` takes a date, and anything else lists
+nothing. Each line is
 `<harness> <session> #<seq>  HH:MM  <the prompt's first words>`, with as much of the session's id as tells it from
 the archive's other sessions (eight characters, or more where two begin alike), then one line that counts:
 `2 of 31 prompts on <day> in <W> are cited by no record` (exit 1), or `all 31 prompts ... are cited by a record`
