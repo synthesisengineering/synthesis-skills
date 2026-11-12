@@ -44,14 +44,29 @@ _WILL = (r"(?:" + _ME + r"(?:['’]ll| will| shall|(?:['’]m| am|['’]re| are)
 _MUST = r"(?:" + _WILL + "|" + _ME + r" (?:(?:still|now|just|also|then|\w+ly) )?(?:(?:need|have|plan|intend|want) to|must) )"
 _HELP = r"(?:(?:be|keep|keep on|go on|carry on|continue to|have to|need to|be able to|go ahead and) )*"
 _GO = r"(?:continue(?! to\b)|resume|proceed|pick \w+(?: back)? up|finish|merge|follow up|(?:report|check|come|get) back|let you know)\b"
-_SUBJECT = (r"(?!(?: (?!(?:that|which|who|when|it|they|we|i)\b)[\w'’-]+){1,6}? "
-            r"(?:is|was|are|were|has|had|can|could|would|cause[sd]|took|takes|costs?)\b)")
+# "Waiting for X" is the subject of its sentence, an explanation, when a verb follows X: a helping verb, a verb of effect
+# ("blocks", "adds", "takes"), or any verb in -s before its object or "out", "up", "down", "off". The words between may
+# hold an infinitive ("the import to release its lock") but nothing that opens another clause (_STOP), so "waiting for
+# the reviewer to confirm the fix is right" stays an announcement (review round 2).
+_STOP = (r"that|which|who|whom|whose|what|where|why|how|whether|wh\w+ever|when|it|they|we|i|you|he|she|and|but|or|then|so|before"
+         r"|after|until|till|while|because|if|as|since|once|though|sure|word|news|notice|proof|signs?|signal|confirm\w*|say|report"
+         r"|verify|check|tell|decide|see|know|find|show|ensure|agree|learn|hear")
+_EFFECT = (r"(?:take|cost|add|waste|delay|slow|mean|make|block|stall|hurt|help|risk|keep|hold|tie|burn|defeat|prevent|guarantee"
+           r"|avoid|hide)s\b")
+_PRED = (r"(?:(?:never|always|often|usually|only|just|also|still|\w+ly) )?(?:(?:is|was|are|were|has|had|can|could|would|will"
+         r"|should|may|might|must|does|did)(?:n['’]t)?\b|cause[sd]\b|(?:took|cost|made|meant|(?:stall|block|delay|slow|wast|add)ed)\b"
+         r"|" + _EFFECT + r"|[a-z]+s (?:(?:out|up|down|off)\b|(?:a|an|the|its|their|our|every|each) [\w'’/.-]+"
+         r"(?: (?![\w'’-]*(?:s|ed)\b)[\w'’/.-]+)?(?=\W*$|,| (?:to|in|on|at|for|by|of|from|with|and|but|so|which|when|while|during"
+         r"|than|as|into|across|because|if|until)\b)))")
+_SUBJECT = r"(?!(?: (?!(?:" + _STOP + r")\b)[\w'’/.-]+){1,12}? " + _PRED + ")"
+_UNTIL = r"(?!(?: [\w'’/.-]+){2,12}? (?:took\b|cost\b|" + _EFFECT + "))"
 WAITS = re.compile(
     "(?i)" + _AM + r"a?waiting\b(?! (?:for|on)(?: you\b| from\b|\W*$))"
     "|" + _MUST + _HELP + r"(?:wait(?:ing)?\b|hold(?:ing)?\b(?=.{0,160}?\b(?:until|till)\b))(?! (?:for|on) you\b)"
     "|" + _WILL + _HELP + _GO + ".{0,160}?" + _WHEN + "|" + _WHEN + ".{0,160}?" + _WILL + _HELP + _GO
     + r"|\b(?:(?:when|once) it (?:lands|finishes|returns|arrives)|should (?:come|arrive) shortly),?(?: and)?(?: then)? " + _WILL
-    + r"|(?:^\W*|[:—–] ?| --? )" + _SOON + r"(?:waiting (?:(?:for|on)\b(?! you\b)" + _SUBJECT + r"|until\b)|awaiting\b" + _SUBJECT + ")")
+    + r"|(?:^\W*|[:—–] ?| --? )" + _SOON + r"(?:waiting (?:(?:for|on|to (?:hear|see|get|learn|find out))\b(?! you\b)" + _SUBJECT
+    + r"|until\b" + _UNTIL + r")|awaiting\b" + _SUBJECT + r"|holding\b(?=.{0,160}?\b(?:until|till)\b" + _UNTIL + "))")
 # The principal's own next move is what is awaited: "you" as the one who acts and not in the past ("once you approve";
 # "after you approved" and "as you want" are context), or an act of theirs. An act counts where it is the thing
 # awaited: after the wait's own word ("for", "on", "until", "once I have"), a colon, a dash or the clause's start, and
