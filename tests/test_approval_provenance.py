@@ -2621,6 +2621,7 @@ OTHER_WRITERS = [
     ("import dbm\nd = dbm.open('/tmp/pad/db', 'c')\nprint(dbm.open('{work}/abc/tool-results/index', 'r').keys())", False),
     ("import wave\nwave.open('{work}/x.wav', 'wb')", True),
     ("from PIL import Image\nprint(Image.open('{work}/abc/tool-results/shot.png').size)", False),
+    ("import sys\nsys.path.insert(0, '.')\nfrom synthesis import sessions\nsessions.export_file('claude-code', '{work}/s.jsonl')", False),   # an export reads what it is handed (the replay: four commands)
     ("class Notes:\n    def load(self, src):\n        return open(src).read()\n    def save(self, dst, text):\n        open(dst, 'w').write(text)\n"
      "n = Notes()\nn.save('/tmp/pad/o.txt', n.load('{work}/s.jsonl'))", False),                                           # what was read there is content
 ]

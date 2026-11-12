@@ -2105,9 +2105,9 @@ WALKS = ("walk", "fwalk", "glob", "iglob", "rglob")  # hand back what lies under
 LIBRARY_WRITES = ("basicConfig", "FileHandler", "RotatingFileHandler", "TimedRotatingFileHandler", "WatchedFileHandler", "urlretrieve",
                   "NamedTemporaryFile", "TemporaryFile", "SpooledTemporaryFile", "TemporaryDirectory", "mkstemp", "mkdtemp")
 # A writer by its name, in any library: the first thing it is handed (`to_csv`), the first or second (`save`,
-# `savefig`, `imwrite`, `export`), the second (`dump`); and, as a module's own function only, a deletion or a move
+# `savefig`, `imwrite`), the second (`dump`); and, as a module's own function only, a deletion or a move
 # (`send2trash`), since a list has a `remove` of its own. PATH_KEYS: the keywords such writers take a path under.
-BY_NAME = re.compile(r"(to_[a-z_]+)|(save\w*|imwrite|export\w*)|(dump)|((?:remove|delete|unlink|trash|send2trash|rmtree|move|rename|extract|unpack|truncate)\w*)")
+BY_NAME = re.compile(r"(to_[a-z_]+)|(save\w*|imwrite)|(dump)|((?:remove|delete|unlink|trash|send2trash|rmtree|move|rename|extract|unpack|truncate)\w*)")
 PATH_KEYS = ("path", "filepath", "file_path", "filename", "file", "fname", "fp", "f", "where", "dest", "dst", "target", "output", "out", "out_file",
              "outfile", "path_or_buf", "save_path", "output_path")
 STARTS = ("system", "popen", "create_subprocess_exec", "create_subprocess_shell", "spawn")  # os's, asyncio's and pty's ways to start a command
