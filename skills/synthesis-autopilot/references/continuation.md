@@ -202,6 +202,25 @@ over only past its `Silent after:` limit, otherwise message the owner and stop;
 check git and the files the plan cites; `cycle --advanced` or `--waiting-on`;
 then the next open item.
 
+Before the next open item, every wake checks what other people rely on:
+
+```sh
+python3 -S "$HOME/.synthesis/v5/current/skills/synthesis-daily-rituals/scripts/relied_on.py" --all
+```
+
+That is the daily-rituals skill's script, which the install keeps in the runtime
+beside `$AP`. It runs the health check each workspace declares in the ritual
+config (`relied_on`) and prints whatever is down first, as
+`DOWN <workspace>: <what> (relied on by <who>): <why>`. A `DOWN` line leads the
+wake's reply, before the run's own progress, and so does an exit of 2, which
+means nothing could be checked. It is an incident: the principal is told first,
+with who is affected and what the fix is, and the people affected are told only
+on the principal's approval, like any send. Write the result in the wake's
+cycle-ledger line; the run's `others-rely-on` standing item takes those lines as
+its evidence at close. A test two colleagues had come to rely on once stopped
+when the app that ran it restarted, and two scheduled check-ins ran without
+looking at it.
+
 ## Budget and runaway control
 
 **Budget and runaway control.** The twin fear of the silent stop is the
