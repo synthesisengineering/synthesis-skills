@@ -648,6 +648,95 @@ def test_a_citation_names_one_session_and_a_listing_of_what_is_open_cites_nothin
     assert cli.main(command) == 1 and "2 of 2 prompts" in capsys.readouterr().out
 
 
+def _listed(capsys, *words) -> str:
+    """What `synthesis sessions prompts` prints for acme on 2026-10-30 with these words."""
+    capsys.readouterr()
+    cli.main(["sessions", "prompts", "--workspace", "acme", "--date", "2026-10-30", *words])
+    return capsys.readouterr().out
+
+
+def test_the_listing_saved_among_the_records_cites_nothing_in_any_form(asked, capsys):
+    """2026-11-12, a second review: saved without `--records`, or with its JSON answer pretty-printed, the listing
+    cited every prompt it listed and the day closed clean. However it is saved, it is the tool's output and no
+    record of what was asked."""
+    found, kb = sessions.prompts("acme", "2026-10-30"), str(asked["kb"])
+    cites = [f"claude-code c1 #{p['seq']}" for p in found]
+    printed, answer = _listed(capsys), json.loads(_listed(capsys, "--records", kb, "--json"))
+    assert all(cite in printed for cite in cites) and answer["open"] == cites
+    lines = printed.splitlines()[:-1]                                                # without the line that counts
+    forms = {
+        "printed.txt": printed,                                                      # every prompt of the day, as printed
+        "open.txt": _listed(capsys, "--records", kb),                                # those no record cites, as printed
+        "narrow.md": _listed(capsys, "--width", "9"),                                # each prompt cut short,
+        "whole.md": _listed(capsys, "--width", "0"),                                 # and whole
+        "quoted.md": "Still open at five:\n\n" + "".join(f"> {line}\n" for line in lines),      # pasted into a record as a quote,
+        "listed.md": "".join(f"  - {line}\n" for line in lines) + "\r\n".join(lines) + "\r\n",  # as a list, and with another editor's line ends
+        "open.json": json.dumps(answer),                                             # the JSON answer on one line,
+        "pretty.json": json.dumps(answer, indent=2),                                 # pretty-printed,
+        "sorted.json": json.dumps(answer, sort_keys=True, separators=(",", ":")),    # as `jq -cS` writes it,
+        "log.jsonl": json.dumps({"ran": "synthesis sessions prompts", "answer": answer}) + "\n",   # inside a line of a log,
+        "fenced.md": "The day-end's answer:\n\n```json\n" + json.dumps(answer, indent=4) + "\n```\n",   # and in a record's fenced block
+    }
+    command = ["sessions", "prompts", "--workspace", "acme", "--date", "2026-10-30", "--records", kb]
+    wrong = []
+    for name, text in forms.items():
+        saved = asked["kb"] / "projects" / "alpha" / name
+        saved.write_text(text, encoding="utf-8")
+        if sessions.uncited(found, [kb]) != found or cli.main(command) != 1:
+            wrong.append(name)
+        saved.unlink()
+    capsys.readouterr()
+    assert wrong == []
+
+
+def test_at_width_0_the_listing_prints_each_prompt_whole(harness, capsys):
+    """`--width` says 0 is all of it, and for the listing it was none of it: a line with no words of the prompt."""
+    asked = "Draft the announcement. " + "It goes to every list we keep. " * 30 + "Do not send it before Friday."
+    _jsonl(harness["claude"], [_typed({"cwd": harness["work"], "sessionId": "c1"}, asked, "2026-10-30T15:00:00.000Z")])
+    command = ["sessions", "prompts", "--workspace", "acme", "--date", "2026-10-30"]
+    assert cli.main(command) == 0
+    assert capsys.readouterr().out.splitlines()[0].endswith(" ".join(asked.split())[:600])      # cut at 600, as before
+    assert cli.main(command + ["--width", "0"]) == 0
+    assert capsys.readouterr().out.splitlines()[0].endswith("Do not send it before Friday.")
+
+
+def _day_end(asked, tmp_path):
+    """A day-end record for acme on 2026-10-30 that checks its prompts against the records, run as the ritual runs
+    it, with this checkout's own `synthesis` on the PATH. Returns the function that records and the ritual log."""
+    import sys
+    root, state = Path(__file__).resolve().parents[1], tmp_path / "rituals"
+    command = tmp_path / "bin" / "synthesis"
+    command.parent.mkdir()
+    command.write_text(f"#!{sys.executable}\nimport sys\nsys.path.insert(0, {str(root)!r})\nfrom synthesis import cli\n"
+                       "sys.exit(cli.main(sys.argv[1:]))\n", encoding="utf-8")
+    command.chmod(0o755)
+    state.mkdir()
+    (state / "config.json").write_text(json.dumps({"workspaces": {"acme": {
+        "plans_dirs": [], "prompt_reconcile": {"records": [str(asked["kb"])]}}}}), encoding="utf-8")
+    env = {**os.environ, "RITUAL_STATE_DIR": str(state), "PATH": f"{command.parent}{os.pathsep}{os.environ['PATH']}"}
+
+    def record() -> subprocess.CompletedProcess:
+        return subprocess.run([sys.executable, str(root / "skills" / "synthesis-daily-rituals" / "scripts" / "ritual_state.py"),
+                               "record", "--direction", "day-end", "--workspace", "acme", "--date", "2026-10-30"],
+                              capture_output=True, text=True, env=env)
+    return record, state / "history.jsonl"
+
+
+def test_the_day_ends_own_refusal_saved_among_the_records_cites_nothing(asked, tmp_path):
+    """The day-end record lists what is open when it refuses a clean close. Pasted into the session log, that list is
+    the listing over again: it records nothing of what was asked, and the day still does not close clean."""
+    record, history = _day_end(asked, tmp_path)
+    first, second = sessions.prompts("acme", "2026-10-30")
+    refused = record()
+    assert refused.returncode and "2 of 2 prompts typed on 2026-10-30 are cited by no record" in refused.stderr
+    assert f"  claude-code c1 #{first['seq']}\n  claude-code c1 #{second['seq']}\n" in refused.stderr
+    asked["log"].write_text(f"## 2026-10-30 day-end\n\nThe record refused a clean close:\n\n{refused.stderr}\n", encoding="utf-8")
+    again = record()
+    assert again.returncode and "2 of 2 prompts typed on 2026-10-30" in again.stderr and not history.exists()
+    asked["log"].write_text("".join(f"> {line}\n" for line in refused.stderr.splitlines()), encoding="utf-8")   # and quoted
+    assert record().returncode and not history.exists()
+
+
 def test_the_listing_exports_first_and_stops_when_a_transcript_could_not_be_copied(asked, capsys, monkeypatch):
     """2026-11-12, a review: with an archive that could not be written the listing held no prompt, and the day
     closed clean. The listing brings the archive up to date itself, and says nothing was listed when it cannot."""
