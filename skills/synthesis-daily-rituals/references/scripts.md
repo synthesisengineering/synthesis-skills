@@ -58,7 +58,8 @@ than half-reading it.
   expanded: name a program on the PATH or give its full path. The thing is healthy when the check
   exits 0 within the timeout. `relied_on.py` runs every entry at each ritual, and an entry is added
   the day something is handed to another person to use. Declare it under the workspace it belongs
-  to: an entry under `defaults` is checked once for every workspace. The synthesis home is
+  to: an entry under `defaults` is checked for every workspace that declares none of its own. The
+  synthesis home is
   `~/.synthesis/v5` unless `SYNTHESIS_HOME` says otherwise; `RITUAL_STATE_DIR` or `--state-dir`
   points the tool at a copy to exercise.
 - The watermark store, `<synthesis home>/sync-watermarks/<W>.json` ([sync-watermarks.md](sync-watermarks.md)).
