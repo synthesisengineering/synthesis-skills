@@ -542,3 +542,21 @@ def test_an_entry_titled_like_a_block_with_no_clock_times_is_still_an_event(tmp_
     marker = {"summary": "Travel: to Lisbon", "start": {"date": "2026-11-13"}, "end": {"date": "2026-11-14"}, "location": "Lisbon"}
     code, report = check(tmp_path, [marker])                                                  # a block with no clock times is still a block
     assert code == 0 and report["in_person"] == 0, report
+
+
+def test_a_night_before_an_all_day_commitment_cannot_be_judged_and_says_so(tmp_path):
+    """The eleventh review: home at 23:20 with eight hours kept, and the next morning's commitment an all-day
+    workshop at a place: it holds no start, so it was left out, and the evening passed as if the night were whole."""
+    rested = {**CONFIG, "travel_policy": {**POLICY, "sleep_hours": 8}}
+    workshop = {"summary": "Workshop", "start": {"date": "2026-11-12"}, "end": {"date": "2026-11-13"},
+                "location": "12 Mill Lane, Harbor Town", "description": "Travel: none, a ride with a colleague"}
+    code, report = check(tmp_path, [RESOLVED, GOING, RETURNING, workshop], config=rested)
+    assert code == 1, report
+    night = next(item for item in lacks(report) if "home at 23:20" in item)
+    assert '"Workshop"' in night and "all day" in night and "cannot be judged" in night and "decision" in night, night
+    decided = dict(RETURNING, description=BACK + '\nDecision: "the workshop starts at ten; the night is fine"')
+    assert check(tmp_path, [RESOLVED, GOING, decided, workshop], config=rested)[0] == 0
+    later = dict(workshop, start={"date": "2026-11-13"}, end={"date": "2026-11-14"})        # the day after next is not that morning
+    assert check(tmp_path, [RESOLVED, GOING, RETURNING, later], config=rested)[0] == 0
+    timed = event("Workshop", "10:00", "17:00", "12 Mill Lane, Harbor Town", "Travel: none, a ride with a colleague", day="2026-11-12")
+    assert check(tmp_path, [RESOLVED, GOING, RETURNING, timed], config=rested)[0] == 0      # with a start, it is judged by it: 10 h 40 min

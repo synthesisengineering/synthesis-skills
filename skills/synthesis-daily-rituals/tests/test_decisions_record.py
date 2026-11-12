@@ -387,3 +387,45 @@ def test_a_closing_line_closes_only_when_it_says_what_was_decided(tmp_path, reco
     for blank in ("**Decided:**\n", "**Decision:** pending\n", "**Decided:** TBD\n", "**Decision needed:** by Friday\n"):
         code, _, refusal = record(workspace(tmp_path, INVITATION + blank))
         assert code != 0 and "book launch" in refusal, blank
+
+
+# --- the eleventh review round (2026-11-12) -------------------------------------------------------------------
+# Two choices under deeper headings, the first closed and the second lettered on from it (C and D after A and B),
+# were read as one closed choice; a sentence between a closed title and its options hid the title; and
+# "Recommendation: pending" counted as a recommendation, "Decision: undecided" as a decision.
+
+def test_each_deeper_heading_is_its_own_choice_whatever_its_options_are_lettered(tmp_path, record):
+    dinner = "#### Dinner with the board\n**Option A:** Accept\n**Option B:** Decline\n**Decision:** B, declined on Tuesday\n"
+    lunch = "#### Lunch on Friday\n**Option C:** Accept\n**Option D:** Decline\n"
+    code, _, refusal = record(workspace(tmp_path, dinner + "\n" + lunch))
+    assert code != 0 and "Lunch on Friday" in refusal and "Dinner with the board" not in refusal, refusal
+    code, out, refusal = record(workspace(tmp_path, dinner + "\n" + lunch + COSTS + VIEW))
+    assert code == 0 and "choices: 1 open" in out, refusal
+    bold = ("**Dinner with the board**\n**Option A:** Accept\n**Option B:** Decline\n**Decision:** B, declined\n\n"
+            "**Lunch on Friday**\n**Option C:** Accept\n**Option D:** Decline\n")
+    code, _, refusal = record(workspace(tmp_path, bold))
+    assert code != 0 and "Lunch on Friday" in refusal and "Dinner with the board" not in refusal, refusal
+
+
+def test_a_sentence_between_a_closed_title_and_its_options_leaves_it_closed(tmp_path, record):
+    for title in ("#### ~~Dinner with the board~~", "#### [x] Dinner with the board", "**~~Dinner with the board~~**"):
+        text = title + "\nIt was answered on Tuesday, by phone.\n\n" + OPTIONS
+        code, out, refusal = record(workspace(tmp_path, text))
+        assert code == 0 and "choices: 0 open" in out, (title, refusal)
+    code, _, refusal = record(workspace(tmp_path, "#### Dinner with the board\nThe invitation came on Monday.\n\n" + OPTIONS))
+    assert code != 0 and "Dinner with the board" in refusal and "Decisions needed" not in refusal, refusal   # and an open one is named by its own title
+
+
+@pytest.mark.parametrize("blank", ["pending", "undecided", "Pending his answer", "to be decided", "not yet", "unknown", "?",
+                                   "awaiting the venue's reply", "open"])
+def test_a_recommendation_or_a_decision_that_says_nothing_yet_is_none(tmp_path, record, blank):
+    code, _, refusal = record(workspace(tmp_path, INVITATION + COSTS + f"**Recommendation:** {blank}\n"))
+    assert code != 0 and "recommendation" in refusal, blank
+    code, _, refusal = record(workspace(tmp_path, INVITATION + f"**Decision:** {blank}\n"))
+    assert code != 0 and "book launch" in refusal, blank
+
+
+@pytest.mark.parametrize("view", ["Waiting costs nothing here, so B: decline.", "Open with a no: B, decline.", "B. Pending the venue, nothing else changes it."])
+def test_a_recommendation_that_begins_with_such_a_word_and_says_more_is_one(tmp_path, record, view):
+    code, out, refusal = record(workspace(tmp_path, INVITATION + COSTS + f"**Recommendation:** {view}\n"))
+    assert code == 0 and "choices: 1 open" in out, (view, refusal)

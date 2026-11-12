@@ -453,3 +453,56 @@ def test_an_outing_in_the_morning_is_not_a_night_out(tmp_path):
     code, report = check(tmp_path, "07:30", "08:30", day[:1], "--in-person", "--travel-before", "30", "--travel-after", "30",
                          config=rested, window=("2026-11-10", THURSDAY))                         # and the read must reach that next morning
     assert levels(report)["sleep"] == "NOTE" and "2026-11-13" in detail(report, "sleep"), detail(report, "sleep")
+
+
+# --- the eleventh review round (2026-11-12) -------------------------------------------------------------------
+# An all-day entry holds no clock time, so it was dropped: a slot proposed on a day the principal had blocked whole
+# read as free, and a night before an all-day commitment read as "8 hours or more". And two events at the slot's
+# own hours were both taken for the slot itself.
+
+def all_day(first, summary, last=None, **more):
+    return {"start": {"date": first}, "end": {"date": last or first}, "summary": summary, **more}
+
+
+def test_a_day_the_principal_blocked_whole_is_taken(tmp_path):
+    away = [all_day(THURSDAY, "Away #reserved", "2026-11-13")]
+    marked = {**OWN, "calendar_guardian": {**OWN["calendar_guardian"], "personal_markers": ["#reserved"]}}
+    code, report = check(tmp_path, "13:00", "13:30", away, "--attendee", "c@example.com", config=marked)
+    assert levels(report)["placement"] == "REVIEW" and '"Away #reserved"' in detail(report, "placement") and "whole day" in detail(report, "placement"), report
+    assert levels(report)["deep work"] == "REFUSE", detail(report, "deep work")                # nothing of the day is free
+    assert "0.50 hours" in detail(report, "meeting load")                                       # and it is no meeting
+    busy = [all_day(THURSDAY, "Offsite", transparency="opaque")]                                # an entry that says it is busy, marked or not
+    code, report = check(tmp_path, "13:00", "13:30", busy)
+    assert levels(report)["placement"] == "REVIEW" and '"Offsite"' in detail(report, "placement"), report
+    for note in (all_day(THURSDAY, "A colleague's birthday"), all_day(THURSDAY, "Public holiday", transparency="transparent")):
+        code, report = check(tmp_path, "13:00", "13:30", [note, *QUIET_DAY])                    # a note on the day takes none of it
+        assert code == 0 and levels(report)["deep work"] == "OK" and "beside Staff meeting" in detail(report, "placement"), report
+    code, report = check(tmp_path, "13:00", "13:30", [all_day("2026-11-13", "Away #reserved")], config=marked)
+    assert levels(report)["placement"] != "REVIEW" or "Away" not in detail(report, "placement")  # the next day's block is the next day's
+
+
+def test_a_night_before_an_all_day_commitment_is_not_called_enough(tmp_path):
+    rested = {**CONFIG, "travel_policy": {"sleep_hours": 8}}
+    args = ("--in-person", "--travel-before", "30", "--travel-after", "140")                    # home at 23:20
+    workshop = [all_day("2026-11-13", "Workshop", location="12 Mill Lane, Harbor Town")]
+    code, report = check(tmp_path, "19:00", "21:00", workshop, *args, config=rested)
+    said = detail(report, "sleep")
+    assert levels(report)["sleep"] == "REVIEW" and '"Workshop"' in said and "all day" in said and "cannot be judged" in said, said
+    assert "8 hours or more" not in said
+    code, report = check(tmp_path, "19:00", "21:00", [all_day("2026-11-13", "A colleague's birthday")], *args, config=rested)
+    assert levels(report)["sleep"] == "OK", detail(report, "sleep")                             # a note on the day is no commitment
+    both = workshop + [meeting("2026-11-13", "06:30", "07:00", "Call")]
+    code, report = check(tmp_path, "19:00", "21:00", both, *args, config=rested)
+    assert levels(report)["sleep"] == "REVIEW" and '"Call" starts 06:30' in detail(report, "sleep")   # an entry with a time is judged by it
+
+
+def test_two_events_at_the_slots_own_hours_are_not_both_the_slot(tmp_path):
+    pair = [meeting(THURSDAY, "16:00", "17:00", "Interview", ["a@example.com"]), meeting(THURSDAY, "16:00", "17:00", "Personal appointment")]
+    code, report = check(tmp_path, "16:00", "17:00", pair)
+    said = detail(report, "placement")
+    assert levels(report)["placement"] == "REVIEW" and "overlaps" in said and "(16:00-17:00)" in said, said
+    code, report = check(tmp_path, "16:00", "17:00", pair[:1])                                  # one such event is the slot, checked again
+    assert "overlaps" not in detail(report, "placement")
+    three = pair + [meeting(THURSDAY, "16:00", "17:00", "Review", ["b@example.com"])]
+    code, report = check(tmp_path, "16:00", "17:00", three)
+    assert levels(report)["placement"] == "REVIEW", detail(report, "placement")
