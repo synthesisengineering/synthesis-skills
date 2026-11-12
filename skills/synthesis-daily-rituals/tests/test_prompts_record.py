@@ -37,15 +37,15 @@ LEFT_OUT = "a field the answer leaves out"
 
 def listing(tmp_path: Path, monkeypatch, *left, total=3, workspace="desk", day=DAY, code=None, says="", prints=None, **other) -> Path:
     """A stand-in for the `synthesis` command on the PATH: it writes down the words it was run with and answers as
-    the listing would, naming the record folders it was given. `other` gives a field of the answer another value,
-    or LEFT_OUT to leave it out; `prints` is printed in place of the answer. With `says`, it answers on stderr only,
-    as a listing that could not be made does."""
+    the listing would, naming the record folders it was given as its walk reads them. `other` gives a field of the
+    answer another value, or LEFT_OUT to leave it out; `prints` is printed in place of the answer. With `says`, it
+    answers on stderr only, as a listing that could not be made does."""
     bin_, asked = tmp_path / "bin", tmp_path / "asked.json"
     bin_.mkdir(exist_ok=True)
     answer = {"workspace": workspace, "date": day, "prompts": total, "open": list(left), **other}
     (bin_ / "synthesis").write_text(
         f"#!{sys.executable}\nimport json, os, sys\njson.dump(sys.argv[1:], open({str(asked)!r}, 'w'))\n"
-        "held = [os.path.abspath(os.path.expanduser(sys.argv[at + 1])) for at, word in enumerate(sys.argv) if word == '--records']\n"
+        "held = [os.path.realpath(os.path.expanduser(sys.argv[at + 1])) for at, word in enumerate(sys.argv) if word == '--records']\n"
         f"answer = {{name: value for name, value in {{'records': held, **{answer!r}}}.items() if value != {LEFT_OUT!r}}}\n"
         + (f"sys.stderr.write({says!r})\n" if says else f"print({prints!r})\n" if prints is not None else "print(json.dumps(answer))\n")
         + f"sys.exit({(1 if left else 0) if code is None else code})\n", encoding="utf-8")
@@ -313,14 +313,28 @@ def test_a_day_the_listing_finds_nothing_under_is_refused_before_it_is_asked(tmp
         assert code != 0 and "is not YYYY-MM-DD" in refusal and history(state) == "" and not asked.exists(), outcome
 
 
-def test_a_folder_reached_through_a_link_and_its_parent_is_read_as_the_listing_names_it(tmp_path, record, monkeypatch):
-    """The listing names each folder by its full path with `..` taken out as written. A folder the config reaches
-    through a link and then `..` was resolved another way before the two were compared, and the listing's own
-    answer was refused as one held against another folder."""
+@pytest.mark.parametrize("written", ["{tmp}/link/../kb", "~/link/../kb", "link/../kb", "{tmp}/real/sub/../kb/", "{tmp}/records"])
+def test_a_folder_reached_through_a_link_and_its_parent_is_the_folder_the_listing_reads(tmp_path, record, monkeypatch, written):
+    """The listing names each folder as its walk reads it: links followed, and `..` taken from where a link leads. The
+    record read a folder its config reaches through a link and then `..` with the `..` taken out as written, which
+    names a folder beside the link that the listing never opens. Both now name the folder that is read, and an
+    answer held against the folder beside the link is one held against another folder."""
     (tmp_path / "real" / "sub").mkdir(parents=True)
+    (tmp_path / "real" / "kb").mkdir()
     (tmp_path / "link").symlink_to(tmp_path / "real" / "sub")
-    state = tmp_path / "state"
-    declare(state, desk={"plans_dirs": [], "prompt_reconcile": {"records": [str(tmp_path / "link" / ".." / "kb")]}})
+    (tmp_path / "records").symlink_to(tmp_path / "real" / "kb")
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.chdir(tmp_path)
+    state, read = tmp_path / "state", str(tmp_path / "real" / "kb")
+    declare(state, desk={"plans_dirs": [], "prompt_reconcile": {"records": [written.replace("{tmp}", str(tmp_path))]}})
     listing(tmp_path, monkeypatch)
     code, out, refusal = record(state)
     assert code == 0 and "prompts: all 3 typed on 2026-11-11 are cited by a record" in out, refusal
+    listing(tmp_path, monkeypatch, records=[read])                       # the same answer, with the folder written out
+    assert record(state)[0] == 0
+    closed = history(state)
+    listing(tmp_path, monkeypatch, records=[str(tmp_path / "kb")])        # what `..` taken out as written names
+    for outcome in ("clean", "partial"):
+        code, _, refusal = record(state, "--outcome", outcome)
+        assert code != 0 and history(state) == closed, outcome
+        assert f"against ['{tmp_path / 'kb'}']" in refusal and f"against ['{read}']" in refusal    # each side as it is read

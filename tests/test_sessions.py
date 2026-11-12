@@ -892,9 +892,10 @@ def test_at_width_0_the_listing_prints_each_prompt_whole(harness, capsys):
     assert capsys.readouterr().out.splitlines()[0].endswith("Do not send it before Friday.")
 
 
-def _day_end(asked, tmp_path):
+def _day_end(asked, tmp_path, records=None):
     """A day-end record for acme on 2026-10-30 that checks its prompts against the records, run as the ritual runs
-    it, with this checkout's own `synthesis` on the PATH. Returns the function that records and the ritual log."""
+    it, with this checkout's own `synthesis` on the PATH. Returns the function that records and the ritual log.
+    `records` is how the workspace's config writes its record folders, where that is not the folder's own path."""
     import sys
     root, state = Path(__file__).resolve().parents[1], tmp_path / "rituals"
     command = tmp_path / "bin" / "synthesis"
@@ -904,7 +905,7 @@ def _day_end(asked, tmp_path):
     command.chmod(0o755)
     state.mkdir()
     (state / "config.json").write_text(json.dumps({"workspaces": {"acme": {
-        "plans_dirs": [], "prompt_reconcile": {"records": [str(asked["kb"])]}}}}), encoding="utf-8")
+        "plans_dirs": [], "prompt_reconcile": {"records": records or [str(asked["kb"])]}}}}), encoding="utf-8")
     env = {**os.environ, "RITUAL_STATE_DIR": str(state), "PATH": f"{command.parent}{os.pathsep}{os.environ['PATH']}"}
 
     def record() -> subprocess.CompletedProcess:
@@ -984,6 +985,43 @@ def test_a_record_after_the_pasted_refusal_closes_what_it_cites_and_no_more(aske
         log.write(f"- drafted the announcement, in drafts/announcement.md (claude-code c1 #{second['seq']})\n")
     done = record()
     assert done.returncode == 0 and "prompts: all 2 typed on 2026-10-30 are cited by a record" in done.stdout and history.exists()
+
+
+def test_the_listing_names_each_records_folder_as_its_walk_reads_it(asked, tmp_path, monkeypatch, capsys):
+    """A folder given through a link and its parent (`<link>/../kb`) was walked where the link leads and named with
+    `..` taken out as written: the answer said the listing was held against a folder beside the link, one it never
+    opened. The answer names each folder as the walk reads it, however it was given, and the day-end record takes
+    that answer for the folder its config names."""
+    first, second = sessions.prompts("acme", "2026-10-30")
+    read, desk = os.path.realpath(asked["kb"]), tmp_path / "desk"
+    (tmp_path / "sub").mkdir()
+    (desk / "kb").mkdir(parents=True)                                  # what `..` taken out as written names: nothing reads it,
+    (desk / "kb" / "log.md").write_text(f"- the whole day (claude-code c1 #{first['seq']}-{second['seq']})\n", encoding="utf-8")
+    (desk / "link").symlink_to(tmp_path / "sub")                       # since the link leads beside the records themselves
+    (desk / "records").symlink_to(asked["kb"])
+    asked["log"].write_text(f"- planned the release (claude-code c1 #{first['seq']})\n", encoding="utf-8")
+    monkeypatch.setenv("HOME", str(desk))
+    monkeypatch.chdir(desk)
+    through = str(desk / "link" / ".." / "kb")
+    given = {"through a link and its parent": [through], "from the home folder": ["~/link/../kb"],
+             "from the working folder": ["link/../kb"], "a link to the folder": [str(desk / "records")],
+             "twice, written two ways": [through, str(asked["kb"])]}
+    command = ["sessions", "prompts", "--workspace", "acme", "--date", "2026-10-30", "--json"]
+    wrong = {}
+    for name, folders in given.items():
+        code = cli.main(command + [word for folder in folders for word in ("--records", folder)])
+        answer = json.loads(capsys.readouterr().out)                   # the records it read hold one of the two prompts
+        if (code, answer["records"], answer["open"]) != (1, [read] * len(folders), [f"claude-code c1 #{second['seq']}"]):
+            wrong[name] = answer["records"]
+    assert wrong == {}
+    record, history = _day_end(asked, tmp_path, [through])            # the record asks about the folder its config names,
+    left = record()
+    assert left.returncode and "1 of 2 prompts typed on 2026-10-30 is cited by no record" in left.stderr, left.stderr
+    with asked["log"].open("a", encoding="utf-8") as log:               # is answered about the folder that was read,
+        log.write(f"- drafted the announcement (claude-code c1 #{second['seq']})\n")
+    done = record()                                                    # and closes on what is written there
+    assert done.returncode == 0 and "prompts: all 2 typed on 2026-10-30 are cited by a record" in done.stdout, done.stderr
+    assert history.exists()
 
 
 def test_the_listing_exports_first_and_stops_when_a_transcript_could_not_be_copied(asked, capsys, monkeypatch):
