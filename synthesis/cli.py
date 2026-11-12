@@ -121,6 +121,9 @@ def cmd_msg(args) -> int:
     how = (wait.watching(reached, me) or "it reads it at its next prompt" + (f"; {wait.wake(target)}" if args.wake else "") if target
            else f"it is kept for every session that works on {name}" if args.durable
            else f"no session is bound to {name} now: it is kept for the next one that runs `synthesis resume {name}`")
+    if args.wake and not reached:  # a kept message names no one session: each live session on the project is nudged, once
+        how += "".join(f"; {s.short}: {wait.watching(s.session, me) or wait.wake(s)}" for s in board.sessions()
+                       if s.project == name and s.reachable and s.session != me)
     print(f"sent to {args.to}: {how}")
     return 0
 
