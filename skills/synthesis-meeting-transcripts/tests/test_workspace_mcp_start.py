@@ -15,6 +15,8 @@ import pytest
 
 SKILL = Path(__file__).resolve().parents[1]
 START = SKILL / "optional-workspace-mcp" / "start.sh"
+GUARD = SKILL.parents[1] / "synthesis" / "guards.py"
+PINNED = "2.1.0"  # the connector version whose rules for a local file the send guard copies
 
 
 def executable(path: Path, body: str) -> None:
@@ -51,7 +53,7 @@ def test_the_server_is_started_with_the_outbox_made_and_allowed(tmp_path: Path) 
     assert outbox.is_dir()
     assert served["ALLOWED_FILE_DIRS"] == str(outbox)
     # and nothing else about the start changes
-    assert arguments.startswith("workspace-mcp --single-user --transport streamable-http --tool-tier complete")
+    assert arguments.startswith(f"workspace-mcp@{PINNED} --single-user --transport streamable-http --tool-tier complete")
     assert served["WORKSPACE_MCP_PORT"] == "8765" and served["OAUTHLIB_INSECURE_TRANSPORT"] == "1"
 
 
@@ -112,3 +114,20 @@ def test_skill_md_says_where_to_read_it_and_keeps_its_size() -> None:
     skill = (SKILL / "SKILL.md").read_bytes()
     contents = " ".join(skill.decode("utf-8").split("## Contents", 1)[1].split("\n## ", 1)[0].split())
     assert "what `start.sh` sets for the server" in contents and len(skill) <= 8000
+
+
+def test_the_server_is_started_at_the_version_the_send_guard_read_its_rules_from(tmp_path: Path) -> None:
+    """The send guard refuses, before a send is approved, what the connector would refuse after: it copies the
+    connector's rules for a local file. Started with no version, the connector moved on at every restart while the
+    copy stayed, and the two could come to disagree with nothing to show it. One version is named in both places."""
+    import re
+    _, _, arguments = start(tmp_path)
+    assert arguments.split()[0] == f"workspace-mcp@{PINNED}"
+    _, _, by_hand = start(tmp_path, foreground=False)
+    assert by_hand.split()[0] == f"workspace-mcp@{PINNED}"
+    _, _, chosen = start(tmp_path, WORKSPACE_MCP_VERSION="2.2.0")  # a person who has checked a newer one may name it
+    assert chosen.split()[0] == "workspace-mcp@2.2.0"
+    said = re.search(r"its source \((\d+\.\d+\.\d+)\)", GUARD.read_text(encoding="utf-8"))
+    assert said and said.group(1) == PINNED, "the guard's note and the start script name one version"
+    readme = (SKILL / "optional-workspace-mcp" / "README.md").read_text(encoding="utf-8")
+    assert f"workspace-mcp@{PINNED}" in readme and "WORKSPACE_MCP_VERSION" in readme
