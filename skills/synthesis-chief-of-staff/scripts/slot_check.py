@@ -67,13 +67,23 @@ def span(gap: timedelta) -> str:
     return f"{hours} h {minutes:02d} min"
 
 
-def morning_after(home: datetime, entries: list, hours, starts: str = "") -> tuple | None:
+def hour(policy: dict, key: str) -> time | None:
+    """An hour the travel policy gives, None when it gives none. A value that is no time of day stops the check:
+    nothing is judged on a guess."""
+    value = str(policy.get(key) or "")
+    try:
+        return time.fromisoformat(value) if value else None
+    except ValueError:
+        stop(f"travel_policy.{key} is {value!r}, which is no time of day: write it as HH:MM")
+
+
+def morning_after(home: datetime, entries: list, hours, starts: time | None = None) -> tuple | None:
     """(start, title, the time between) for the next morning's first entry, when it starts less than `hours` after
     the principal gets home. The night is the one that begins on the day they get home, or on the day before when
     that is past midnight; an entry later the same night is not the morning. `starts` is the hour the policy says
     the morning begins, entry or none (its title is empty): the night ends at the earlier of the two."""
     night = home.date() if home.hour >= 12 else home.date() - timedelta(days=1)
-    begins = [(datetime.combine(night + timedelta(days=1), time.fromisoformat(starts), home.tzinfo), "")] if starts else []
+    begins = [(datetime.combine(night + timedelta(days=1), starts, home.tzinfo), "")] if starts else []
     first = min(((a, title) for a, title in [*entries, *begins] if a.date() == night + timedelta(days=1) and a > home), default=None)
     return (*first, first[0] - home) if first and hours and first[0] - home < timedelta(hours=float(hours)) else None
 
@@ -178,12 +188,12 @@ def judge(args, config: dict, read: dict) -> dict:
             else f"{hm(start - out)}-{hm(start)} there, {hm(end)}-{hm(end + back)} back, clear of other events")
     if back:  # what the evening costs is seen before the yes: when the principal is home, and what the night leaves
         policy, home = part(config, "travel_policy"), end + back
-        latest, keeps = str(policy.get("latest_return") or ""), policy.get("sleep_hours")
-        late = latest and (home.date() > start.date() or home.time() > time.fromisoformat(latest))
+        latest, keeps = hour(policy, "latest_return"), policy.get("sleep_hours")
+        late = latest and (home.date() > start.date() or home.time() > latest)
         add("return", "REVIEW" if late else "OK", f"home at {hm(home)}" + (
-            f", after {latest}: the principal's decision, made with the trip in front of them" if late else ""))
+            f", after {latest:%H:%M}: the principal's decision, made with the trip in front of them" if late else ""))
         morning = (home.date() if home.hour >= 12 else home.date() - timedelta(days=1)) + timedelta(days=1)
-        short = morning_after(home, [(a, s) for a, _, s, _ in events], keeps, str(policy.get("morning_starts") or ""))
+        short = morning_after(home, [(a, s) for a, _, s, _ in events], keeps, hour(policy, "morning_starts"))
         if keeps and short:  # short by an entry the read holds, or by the hour the policy says the morning starts
             add("sleep", "REVIEW", f"home at {hm(home)} and {first_thing(short)} the next morning: {span(short[2])} between, "
                                    f"under the {float(keeps):g} hours the policy keeps: the principal's decision")

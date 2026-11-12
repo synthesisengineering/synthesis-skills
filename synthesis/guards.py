@@ -2081,7 +2081,8 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
     while grew:
         grew = False
         for target, value in pairs + [(n.optional_vars, n.context_expr) for n in nodes if isinstance(n, ast.withitem) and n.optional_vars is not None]:
-            grew |= isinstance(target, ast.Name) and opened(value) and taint(["name of " + target.id])
+            same = opened(value) or "name of " + getattr(value, "id", "") in tainted  # the file itself, or another name for it
+            grew |= isinstance(target, ast.Name) and same and taint(["name of " + target.id])
         for target, value in pairs:
             grew |= named(value) and taint(held(target))
             if isinstance(target, ast.Name) and target.id in once and target.id not in bound and spelled(value)[:1] != "\0":

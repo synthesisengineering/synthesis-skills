@@ -173,7 +173,7 @@ def judge(args, config: dict, read: dict) -> dict:
                            else [nearest] if nearest and apart(block, nearest) <= NEAR else [])
     commitments = [c for c in commitments if c["days"][0] <= last and c["days"][1] >= first]  # under way on a day judged counts
     early, local = int(policy.get("arrive_early_minutes", 15)), int(policy.get("local_minutes", 15))
-    latest = str(policy.get("latest_return") or "")
+    latest = slot.hour(policy, "latest_return")
     events = []
     for c in sorted(commitments, key=lambda c: (c["days"][0], c["start"] or datetime.min.replace(tzinfo=zone))):
         lacks, found = [], {"summary": c["summary"], "start": c["start"].isoformat() if c["start"] else c["days"][0].isoformat(),
@@ -224,10 +224,10 @@ def judge(args, config: dict, read: dict) -> dict:
             decided = bool(after["said"].get("decision"))
             if after["start"] < c["end"] and not decided:
                 lacks.append(f"the block after leaves {slot.hm(after['start'])}, before the {slot.hm(c['end'])} end: {ASK}")
-            late = latest and (after["end"].date() > c["start"].date() or after["end"].time() > time.fromisoformat(latest))
+            late = latest and (after["end"].date() > c["start"].date() or after["end"].time() > latest)
             if late and not decided:
-                lacks.append(f"home at {slot.hm(after['end'])}, after {latest}: {ASK}")
-            short = slot.morning_after(after["end"], others, policy.get("sleep_hours"), str(policy.get("morning_starts") or ""))
+                lacks.append(f"home at {slot.hm(after['end'])}, after {latest:%H:%M}: {ASK}")
+            short = slot.morning_after(after["end"], others, policy.get("sleep_hours"), slot.hour(policy, "morning_starts"))
             if short and not decided:
                 lacks.append(f"home at {slot.hm(after['end'])} and {slot.first_thing(short)} the next morning: "
                              f"{slot.span(short[2])} between, under the {float(policy['sleep_hours']):g} hours the policy keeps: {ASK}")
