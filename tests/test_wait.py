@@ -8,6 +8,7 @@ pin what closes that: one command that waits and is its own record, a read that 
 what will deliver the message, and a turn-end check that sends back a reply which announces a wait with nothing
 armed. Committed before the code.
 """
+import errno
 import json
 import os
 import re
@@ -407,6 +408,73 @@ def test_a_command_is_tried_every_interval_and_not_once_more_on_the_edge_of_the_
     began = clock.now
     assert wait.main(["run", "--for", "45s", "--every", "30s", "--", "ci-check"], "S1") == 3
     assert tried == [0, 30.02] and "nothing arrived in 45 s" in capsys.readouterr().err
+
+
+# --- a command that cannot be started is refused, not tried again ---------------------------------------------------
+
+@pytest.mark.parametrize("named, why", [
+    ("a name that is not on PATH", "not found"),
+    ("a path that does not exist", "not found"),
+    ("a file that is not executable", "not executable"),
+    ("a directory", "not executable"),
+])
+def test_a_command_that_cannot_be_started_is_refused_at_once_in_one_line(two, tmp_path, named, why):
+    """2026-11-12, a third review: `wait run --for 1m -- no-such-command` ended in a Python traceback. No try of such a
+    command starts, so the wait refuses it the way it refuses a bound it cannot read: one line, exit 2, at once."""
+    from synthesis import paths
+    script, folder = tmp_path / "check.sh", tmp_path / "checks"
+    script.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    script.chmod(0o644)
+    folder.mkdir()
+    command = {"a name that is not on PATH": "synthesis-no-such-command", "a path that does not exist": str(tmp_path / "gone" / "check"),
+               "a file that is not executable": str(script), "a directory": str(folder)}[named]
+    began = time.time()
+    done = cli("wait", "run", "--for", "1m", "--", command, "--branch", "main")
+    assert done.returncode == 2 and time.time() - began < 20                          # at once: its bound is a minute on
+    assert done.stderr == f"`{command} --branch main` could not be started: {why}\n" and done.stdout == ""
+    assert not list((paths.board() / "waits").rglob("*.json"))                        # and it left no record of a wait behind
+
+
+def test_a_command_that_cannot_be_started_gets_no_second_try_and_one_that_starts_and_fails_does(two, clock, monkeypatch, capsys):
+    """Whatever the system says of a command it cannot run is the refusal, said once, with no sleep and no second try,
+    and so it is for a command that goes missing between two tries. A command that starts and exits with anything but
+    0, the 126 and 127 of a shell included, has failed a try: it is tried again until the bound."""
+    from synthesis import paths, wait
+    starts, tried, asked = [], [], signal.getsignal(signal.SIGTERM)
+
+    class Check:                                                                      # each start ends as the test set it: an exit code, or no start
+        def __init__(self, command, **kwargs):
+            tried.append(command)
+            self.code = starts.pop(0)
+            if isinstance(self.code, OSError):
+                raise self.code
+
+        def wait(self, timeout=None):
+            return self.code
+    monkeypatch.setattr(subprocess, "Popen", Check)
+    monkeypatch.setattr(wait, "_stop", lambda proc: None)
+
+    def run(*outcomes):
+        starts[:], tried[:], began = outcomes, [], clock.now
+        code = wait.main(["run", "--for", "45s", "--every", "30s", "--", "ci-check", "--branch", "main"], "S1")
+        said = capsys.readouterr()
+        assert not list((paths.board() / "waits").rglob("*.json")) and signal.getsignal(signal.SIGTERM) is asked
+        return code, said.out, said.err, len(tried), round(clock.now - began, 2)      # what it returned and printed, its tries, the seconds it took
+    refused = "`ci-check --branch main` could not be started: {}\n"
+    for error, why in ((FileNotFoundError(errno.ENOENT, "No such file or directory", "ci-check"), "not found"),
+                       (PermissionError(errno.EACCES, "Permission denied", "ci-check"), "not executable"),
+                       (OSError(errno.ENOEXEC, "Exec format error", "ci-check"), "Exec format error")):   # a file that is no program
+        assert run(error) == (2, "", refused.format(why), 1, 0)
+    gone = FileNotFoundError(errno.ENOENT, "No such file or directory", "ci-check")
+    assert run(1, gone) == (2, "", refused.format("not found"), 2, 30.02)             # it started and failed, then it was gone
+    assert run(127, 126) == (3, "", "nothing arrived in 45 s: still waiting for `ci-check --branch main` to succeed\n", 2, 45.02)
+
+
+def test_a_shell_that_cannot_find_its_command_has_started_and_failed_so_it_is_tried_again(two, tmp_path):
+    tries = tmp_path / "tries"
+    done = cli("wait", "run", "--every", "0.2s", "--for", "2s", "--", "sh", "-c", 'echo try >> "$1"; synthesis-no-such-command', "sh", str(tries))
+    assert done.returncode == 3 and "nothing arrived in 2 s" in done.stderr and "could not be started" not in done.stderr
+    assert len(tries.read_text(encoding="utf-8").splitlines()) >= 2
 
 
 def test_a_note_records_a_wait_the_harness_holds_and_the_list_shows_every_sessions(two):
