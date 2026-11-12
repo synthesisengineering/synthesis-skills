@@ -1208,8 +1208,7 @@ def test_a_run_that_could_not_copy_a_transcript_stays_visible_until_a_run_copies
     """2026-11-12: with every copy refused, the stamp still got a fresh time and the doctor answered ok."""
     from synthesis import doctor
     natives = [_jsonl(harness["claude"].with_name(f"{name}.jsonl"), _claude_rows(harness["work"])) for name in ("c1", "c2")]
-    stamp, plist = sessions.root() / ".state" / "export.json", tmp_path / "com.synthesis.sessions-export.plist"
-    plist.write_text("<plist/>", encoding="utf-8")
+    stamp, plist = sessions.root() / ".state" / "export.json", _scheduled(tmp_path)
 
     def doctors() -> tuple:
         found = doctor.check_sessions_export(plist, stamp, run=lambda argv, **kw: subprocess.CompletedProcess(argv, 0, "", ""))
@@ -1243,11 +1242,19 @@ def test_a_run_that_could_not_copy_a_transcript_stays_visible_until_a_run_copies
             native.chmod(0o644)
 
 
+def _scheduled(tmp_path) -> Path:
+    """The export's schedule file as the onboarding setup writes it for this home's own command."""
+    import plistlib
+    own, plist = sessions.paths.home() / "bin" / "synthesis", tmp_path / "com.synthesis.sessions-export.plist"
+    plist.write_bytes(plistlib.dumps({"Label": plist.stem, "ProgramArguments": [
+        "/bin/bash", "-lc", f'"{own}" sessions export --all; "{own}" sessions sync']}))
+    return plist
+
+
 def _checked(tmp_path) -> tuple:
     """The doctor's answer about the export where its schedule is loaded: the status, the words, the stamp it read."""
     from synthesis import doctor
-    stamp, plist = sessions.root() / ".state" / "export.json", tmp_path / "com.synthesis.sessions-export.plist"
-    plist.write_text("<plist/>", encoding="utf-8")
+    stamp, plist = sessions.root() / ".state" / "export.json", _scheduled(tmp_path)
     found = doctor.check_sessions_export(plist, stamp, run=lambda argv, **kw: subprocess.CompletedProcess(argv, 0, "", ""))
     return found.status, found.detail, json.loads(stamp.read_text())
 

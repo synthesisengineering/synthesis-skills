@@ -750,9 +750,57 @@ def test_another_installs_export_schedule_is_set_aside_before_this_one_replaces_
     kept = list((setup.install._home() / "archive").glob("*/com.synthesis.sessions-export.plist"))
     assert len(kept) == 1 and plistlib.loads(kept[0].read_bytes())["ProgramArguments"][-1] == other
     assert any("archived" in line and str(kept[0].parent) in line for line in lines)
-    assert setup._points_at(setup._export_plist(), setup.install._home() / "bin" / "synthesis")
+    assert setup.install.runs_only(setup._export_plist(), setup.install._home() / "bin" / "synthesis")
     assert not any("archived" in line for line in setup.register_sessions_export(load=False))        # its own is replaced in place
     assert len(list((setup.install._home() / "archive").glob("*/com.synthesis.sessions-export.plist"))) == 1
+
+
+# 2026-11-12: the doctor answered ok for a loaded schedule that ran another install's command, while this home's stamp
+# was fresh from its own sessions' exports. Whose schedule it is, is told in one place in the core, which the setup
+# asks before it replaces or removes one and the doctor asks before it calls the hourly copy healthy.
+
+def _doctor() -> tuple:
+    """What the doctor says of the hourly copy for this home, where launchd holds the schedule loaded and an export
+    has just finished: the status and the words."""
+    from datetime import datetime
+    stamp = setup.install._home() / "sessions" / ".state" / "export.json"
+    stamp.parent.mkdir(parents=True, exist_ok=True)
+    stamp.write_text(json.dumps({"exported": datetime.now().astimezone().isoformat(timespec="seconds")}))
+    found = setup.doctor.check_sessions_export(setup._export_plist(), stamp, run=lambda argv, **kw: subprocess.CompletedProcess(argv, 0, "", ""))
+    return found.status, found.detail
+
+
+@pytest.mark.parametrize("line", [*ANOTHERS.values(), *OWN.values()], ids=[*ANOTHERS, *OWN])
+def test_the_doctor_and_the_setup_tell_whose_schedule_it_is_the_same_way(day_end, line):
+    """Every schedule the uninstall keeps as not this install's, the doctor fails on; every one the uninstall removes
+    as this install's, the doctor takes for the hourly copy."""
+    own = str(setup.install._home() / "bin" / "synthesis")
+    named = [word.replace("{own}", own) if isinstance(word, str) else word for word in line] if isinstance(line, list) else \
+        line.replace(b"{own}", own.encode()) if isinstance(line, bytes) else line.replace("{own}", own)
+    _scheduled(named)
+    status, detail = _doctor()
+    kept = setup.unregister_sessions_export(dry_run=True)[0].startswith("would keep")
+    assert kept is (line in ANOTHERS.values()) and status == ("fail" if kept else "ok"), detail
+    assert not kept or ("not this install's ~/.synthesis/v5/bin/synthesis" in detail and "--sessions-export" in detail)
+    assert not hasattr(setup, "_points_at")                              # the setup keeps no test of its own
+
+
+def test_the_doctor_fails_once_another_installs_setup_has_replaced_this_schedule(day_end, tmp_path, monkeypatch):
+    """One label holds one schedule. A second install, made with a home of its own, schedules its hourly copy: this
+    install's schedule is set aside, and from then on nothing copies this home's transcripts on a schedule. This
+    home's doctor says so and names the command that runs, and this home's setup puts its own schedule back."""
+    setup.register_sessions_export(load=False)
+    assert _doctor()[0] == "ok"
+    with monkeypatch.context() as second:
+        second.setenv("SYNTHESIS_HOME", str(tmp_path / "second" / "v5"))
+        setup.install.install(tmp_path / "plugin")
+        assert any("archived another install's export schedule" in said for said in setup.register_sessions_export(load=False))
+        assert _doctor()[0] == "ok"                                      # the second home's hourly copy is its own
+    status, detail = _doctor()
+    assert status == "fail" and f"runs {tmp_path / 'second' / 'v5' / 'bin' / 'synthesis'}," in detail
+    assert "not this install's ~/.synthesis/v5/bin/synthesis" in detail and "--sessions-export" in detail
+    assert any("archived another install's export schedule" in said for said in setup.register_sessions_export(load=False))
+    assert _doctor()[0] == "ok"
 
 
 def test_the_export_schedule_before_install_says_what_to_run_first():
