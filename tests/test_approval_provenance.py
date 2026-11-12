@@ -2679,6 +2679,12 @@ SECOND = [
     ("import os, shutil\nfor root, dirs, files in os.walk('.'):\n    for f in files:\n        shutil.copy2(os.path.join('/tmp/pad', f), os.path.join(root, f))", None),
     ("import shutil\nfrom pathlib import Path\nfor i, p in enumerate(sorted(Path('.').glob('*.jsonl'), key=lambda p: p.stat().st_mtime)):\n"
      "    shutil.copy(p, f'/tmp/pad/{{i:03d}}.jsonl')", False),                                                                      # a count is no path
+    ("import os\nfrom pathlib import Path\ndef full(p):\n    return Path(os.path.expanduser(p)).resolve()\nsrc = full('{work}/s.jsonl')\ndst = full('/tmp/pad/out.txt')\n"
+     "dst.write_text(src.read_text()[:10])", False),                                                                             # a helper called for the file read and for the file written
+    ("import os\nfrom pathlib import Path\ndef full(p):\n    return Path(os.path.expanduser(p)).resolve()\nsrc = full('/tmp/pad/in.txt')\ndst = full('{work}/s.jsonl')\n"
+     "dst.write_text(src.read_text()[:10])", True),
+    ("import os\ndef under(base, name):\n    return os.path.join(base, name)\nopen(under('/tmp/pad', 'a.txt'), 'w').write(open(under('{work}', 's.jsonl')).read()[:10])", False),
+    ("import os, tempfile\nfd, name = tempfile.mkstemp()\nos.write(fd, b'x')\nos.close(fd)", False),                             # mkstemp's descriptor is a file it made
 ]
 
 
