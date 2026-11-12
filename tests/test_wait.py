@@ -198,6 +198,11 @@ ANNOUNCED = [
     "Their answer should come shortly, and then I will merge.",
     "Waiting for the vendor's confirmation before the next step.",
     "CI is still going. When it finishes I'll cut the release.",
+    "The registry update is the only action left; I'm waiting for the holder's reply as directed.",
+    "Only the calendar worker is still running. When it finishes, I'll send the plan.",
+    "I am waiting on the peer's answer before I continue.",
+    "I'll wait for the build and then merge.",
+    "Done so far: the draft.\n- Still waiting on the second reviewer's verdict.",
 ]
 
 
@@ -225,6 +230,17 @@ def test_an_armed_wait_passes(two, reply):
     "I will pick it up once you type the code.",
     "The rule bans \"waiting for\" with nothing armed, so I removed the line.",       # a phrase that is only named
     "Round 8 found nothing. The release is done and installed.",                      # no wait at all
+    # Ten days of real final replies (2026-11-12): most that said "waiting on" were the principal's move or someone else's wait.
+    "Still waiting on you from earlier: the two drafts.",
+    "Waiting on you:\n1. The three approval codes in my previous message\n2. The publish step",
+    "The publish step is waiting on your confirmation in the terminal tab.",
+    "The package is waiting for you in the terminal tab. Click into it and press Return.",
+    "Two drafts are waiting for you to send yourself.",
+    "These three are waiting on you before you fly:\n1. The meeting tomorrow\n2. The memo",
+    "He is still waiting on the call times promised for today.",                      # someone else's wait
+    "I'd add this question to the terms we're waiting on from the vendor.",
+    "The thread was waiting on a lock, which is why the test hung.",                  # an explanation
+    "I'm waiting on you for the last two answers.",
 ])
 def test_a_wait_on_the_principals_own_next_message_or_no_wait_at_all_passes(two, reply):
     assert reply_check.check({"last_assistant_message": reply, "session_id": "S1"}, {}) is None
