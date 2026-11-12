@@ -250,10 +250,21 @@ harness that gives no transcript cannot carry approved sends or deploys until it
      `pathlib` call that changes a file, a call into `os`, `shutil` or `subprocess`, a
      database opened, an archive unpacked, an in-place `fileinput`, the standard library's
      own writers (a log file `logging` is told to keep, `urlretrieve`, a temporary file
-     made in a folder `dir=` names), a call named as a writer in any library (`to_csv`,
-     `save`, `savefig`, `imwrite`, `dump`, a module's own function that removes
-     or moves, a store opened for writing: `shelve.open`, `dbm.open(path, "c")`), judged
-     where its path lands, however the call was imported or renamed. An archive is judged
+     made in a folder `dir=` names), a call named as a writer in any library, a module's
+     own function that removes or moves, and a store or a file a library opens to be
+     written (`shelve.open` and `dbm.open` unless told to read, `h5py.File(path, "w")`,
+     `ExcelWriter(path)`, `np.memmap(path)`, a tree's `write(path)`), however the call was
+     imported or renamed. A writer by its name is judged at the argument that writer
+     takes as its path: the first for `to_csv` and its kin, `tofile`, `savefig`, `imsave`,
+     `imwrite`, the `write_csv` family, a thing's own `save` and numpy's; the second for
+     `dump` and for `save` in the libraries that take the thing first (`torch.save`,
+     `joblib.dump`, `pd.to_pickle`); either, when it reads as a path, for a name the
+     reader does not know (`to_<anything else>`, `write_<anything else>`, another
+     module's `save(a, b)`). At the place a writer takes its path, a bare name is a
+     file where the program stands and a path built from a protected one is that path,
+     while an object, an open file or a buffer is no path; what is handed besides the
+     path is content, whatever it spells. A function of the program's own named like a
+     writer is read as it is written. An archive is judged
      where it lands: the archive unpacked and the folder packed are read. A link a program makes is judged at both ends, and none is made at
      a path that is the agent's own. A target the program spells out (a string, a name given
      one once, strings joined, a path built with `os.path.join` or `Path`) is judged where
@@ -265,13 +276,29 @@ harness that gives no transcript cannot carry approved sends or deploys until it
      the program's own function is read by what that call hands it and what the function
      then hands back. One of two values (`a if c else b`, `a or b`), what a loop visits (a
      list the program spells out, its rows, `zip`, `enumerate`, a table's values), what a
-     walk or a pattern finds (a path under the folder walked), a field of the program's own
-     object (`self.out`, a class's constant, a data class's or a named tuple's field, a
-     property, a parser's default, `SimpleNamespace`), an entry of a table it spells out
-     (by its key, by a key held in a name, a place in a list), a variable of the
-     environment with its default, a template filled (`format`, `%`, a list joined) and
-     `Path.home()` are read the same way. A target lands in a protected folder if any
-     reading does. A value the reader cannot read makes the target one it cannot read, and
+     walk or a pattern finds (a path under the folder walked) and a template filled
+     (`format`, `%`, a list joined) are read the same way. A member (`job.out`,
+     `cfg["out"]`, `cfg.get("out", x)`, `rows[0]`, `os.environ["OUT"]`, `Path.home()`) is
+     read by the thing that holds it. Each object, table and list the program makes is
+     one thing, known by the place that makes it, however many names it is kept under
+     and whatever it is handed to. It holds what it was made with: a table's entries (by
+     a key, by a key held in a name, any of them when the key cannot be read), a list's
+     places, what the `__init__` that runs gives each field from what that call hands it
+     (a class without one of its own is built by the one it inherits, and a base's is
+     followed through `super().__init__`), a data class's or a named tuple's field by
+     place or by name, the class's constants and properties, a parser's defaults. And it
+     holds whatever any statement gives it afterwards (`x.out = v`, `d["k"] = v`,
+     `update`, `append`, `setattr`), through any name it is reached by; what is given
+     through a name that cannot be followed may be in any of them, and a thing whose
+     maker cannot be read (`json.load(f)`) holds only what the program gives it. Along
+     one path from one name, in statements that run once and in order, the last plain
+     gift stands for those before it, so a table's entry read for a transcript and then
+     given the file to write is that file; in a function, and through any other name,
+     every gift counts. The environment is such a table: a variable holds what the
+     command gave it until the program gives it another value, and `Path.home()` and
+     `expanduser` use the home the program has where it asks. A table or a row spelled
+     out once and only read, handed as `f(**table)` or `f(*row)`, is read as if written
+     out. A target lands in a protected folder if any reading does. A value the reader cannot read makes the target one it cannot read, and
      that target is judged by what it is built from: a protected path in a string, or a
      name one reached through an assignment, a loop, a `with`, a default, a call to the
      program's own function or to one kept under a name, a list, an attribute, a class's
@@ -388,7 +415,10 @@ stay open, and no hook running as that same user can close them:
   archive, a configuration file given with `-f`), a script that is the output of a process
   substitution (`bash <(…)`), and a command handed to a scheduler to run later (`crontab`,
   `at`). So does a write the Python reader does not follow: a writer of another library
-  whose name says nothing of writing, a call reached through `getattr` or handed on with
+  whose name says nothing of writing (a method named `write` on anything but a tree or a
+  document writer, a store opened by a name the reader does not know), a path such a
+  library's writer takes in a place the reader does not expect, a call reached through
+  `getattr` or handed on with
   `functools.partial`, a path carried by an exception, a path built piece by piece so that
   no piece names the folder, a path the program reads out of a file or builds from a value
   the reader cannot read, a folder change or a mapping of variables
@@ -396,7 +426,11 @@ stay open, and no hook running as that same user can close them:
   only reads from, and a program that runs what its configuration or a pipe hands it (a
   makefile on `make`'s input, a git alias given with `-c`, an editor named in a variable).
   A shell function's own `$1` is not followed either: a function handed a protected path
-  is refused, also when it only reads it. A program the guard does not know may be handed
+  is refused, also when it only reads it. The Python reader also refuses some programs
+  that only write elsewhere, because it does not follow a test: a loop over a table's
+  `items()` that writes only under one key (`if k == "out":`) is read as writing every
+  value, and a thing given a protected path through a name the reader cannot follow is
+  taken to hold it wherever that thing is read. A program the guard does not know may be handed
   a folder that holds a protected one (an archive unpacked over it), and a program may
   list such a folder one level at a time and remove what it finds by a name it builds.
   A word handed to a program the guard does not know is read only where it starts as a

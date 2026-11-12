@@ -49,7 +49,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
     before the hour `travel_policy.morning_starts` gives the morning if that is earlier: a morning that begins at
     a fixed hour with nothing on the calendar cost nothing the check could see). A commitment already begun when
     the principal gets home leaves no night at all, and with no hour for the morning an outing that begins and ends
-    on one morning is judged against the next night.
+    on one morning is judged against the next night. An all-day commitment at a place the next morning gives no
+    hour, so both checks say the night cannot be judged and neither calls it enough; an all-day block the
+    principal marked as their own, or one that says it is busy, takes its whole day; and of several events at a
+    slot's own hours one is the slot and the rest are other events.
   - Chief of staff binding rule 14 and `references/asks-and-decisions.md`: every invitation, request or choice
     carries what it costs, a recommendation, and a plain challenge when the costs outweigh the event.
   - `ritual_state.py record` reads the day's plan in each declared plan folder and refuses while an open item that
@@ -62,7 +65,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
     a row of a table; a choice is titled by its own heading at any depth, by the entry its options and any sentence
     of explanation stand in, or by a line all in bold; a recommendation is also read as `Recommended:`, as
     `My recommendation:`, with a dash, or marked on the option; a sentence that begins "Option A was fine" is no
-    option; and a closing line closes a choice when it says what was decided. **This applies to every workspace that declares plan
+    option; and a closing line closes a choice when it says what was decided. Each deeper heading or bold title
+    begins its own choice whatever its options are lettered, a recommendation or a decision that only puts the
+    answer off ("pending", "undecided", "not yet") is none, and a pin or a tick before the label does not hide it. **This applies to every workspace that declares plan
     folders,** from its next ritual record.
   - The decision packet generator refuses a row that is not blind and recommends nothing. Until now one
     recommended row covered for rows with none.
@@ -80,8 +85,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
 - **The write guard reads a path however a command names it, passes a protected path only to a program it knows
   to only read it, and reads an inline Python program by its syntax** (core). It began as two faults: a write
   through a variable the command had just assigned was judged as a write somewhere else, and the file tools were
-  refused in a project's memory folder. Ten rounds of review by a second model, and this project's own probes
-  (more than 1,300 plain commands and programs) and replays while answering them, showed the guard was narrower
+  refused in a project's memory folder. Eleven rounds of review by a second model, and this project's own probes
+  (more than 1,900 plain commands and programs) and replays while answering them, showed the guard was narrower
   than what it guards against in four ways.
   - **How a path is read.** Every write in a command is resolved and judged, whether or not the command spells a
     protected folder out: relative to the session's folder, to a `cd` (`cd -`, `pushd` and `popd` are followed) or
@@ -125,18 +130,33 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
     alone, since a pattern over its text stopped at the first closing parenthesis and every heredoc of a line was
     read as one program. A write is a file opened to write, a `pathlib` call that changes a file, a call into
     `os`, `shutil` or `subprocess`, a database opened, an archive unpacked or made (judged where it lands), a call
-    named as a writer in any library (`to_csv`, `save`, `savefig`, `dump`, a file sent to the trash), a store
-    opened for writing, however the call was imported or renamed. A link a program makes is judged at both ends. A
+    named as a writer in any library, a store or a file a library opens to be written (`shelve.open`,
+    `h5py.File(path, "w")`, `ExcelWriter(path)`), however the call was imported or renamed. A writer by its name is
+    judged at the argument that writer takes as its path: the first (`df.to_csv`, `arr.tofile`, `savefig`, a
+    thing's own `save`, numpy's), the second (`dump`, and `save` where the library takes the thing first, as
+    `torch.save` does), either when the reader cannot tell; a bare name is a file where the program stands, what
+    is handed besides the path is content whatever it spells, and a function of the program's own named like a
+    writer is read as it is written. A link a program makes is judged at both ends. A
     target the program spells out is judged where it leads. A name is read through every value the program gives
     it: where it is read, the value its own body last gave it, with what a branch, a loop or another function may
     have given it since, and before any, what each caller handed the function. Each function is read by its own
-    names, and a call of the program's own function by what that call hands it. One of two values, what a loop or
-    a walk visits, a field of the program's own object (a class that keeps its folder, a data class, a parser's
-    default), an entry of its own table, the environment with its default and a template filled are read the same
-    way, and a target lands in a protected folder if any reading does. (Each review round had met one or two
+    names, and a call of the program's own function by what that call hands it. A member (`job.out`,
+    `cfg["out"]`, `rows[0]`, `os.environ["OUT"]`) is read by the thing that holds it: each object, table and list
+    the program makes is one thing, known by the place that makes it however many names it is kept under, and it
+    holds what it was made with (a table's entries; what the `__init__` that runs, its own or an inherited one,
+    gives each field from what that call hands it; the class's constants and properties) and whatever any
+    statement gives it afterwards. Along one path from one name, in statements that run once and in order, the
+    last plain gift stands for those before it; the environment is read the same way, and a home the program gives
+    itself counts from where it is given. One of two values, what a loop or a walk visits and a template filled
+    are read the same way, and a target lands in a protected folder if any reading does. (Each review round had met one or two
     needless refusals with one cause, a name read only when it was given one value, once, in one place: of the
     first hundred everyday programs this project then ran from inside a transcript folder thirty were refused for
-    it, and of the second hundred nineteen.) A target the reader cannot read is judged by what it is built from, a
+    it, and of the second hundred nineteen. The eleventh round then found the same merging one level up: a field
+    or a key had one set of values whatever carried it, so two objects of one class, a reader and a writer that
+    each keep a `path`, and a table whose entry is replaced before it is written were refused, and of two hundred
+    programs this project wrote on objects, tables and the environment 68 were judged wrongly, four of them
+    writes let through: a class that inherits its `__init__`, a field set through `__dict__`, a table reached
+    under a second name, a home set before it is asked for.) A target the reader cannot read is judged by what it is built from, a
     name followed through assignments, loops, `with`, defaults, the program's own functions, lists, attributes, a
     class's fields, a parser's defaults and the environment the program sets. The words after the program are placed where it reads
     `sys.argv[n]`, and a variable of the environment where it reads it by name; taken another way, one that names

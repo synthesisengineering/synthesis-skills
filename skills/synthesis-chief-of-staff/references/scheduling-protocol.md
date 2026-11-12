@@ -109,7 +109,13 @@ and recorded as [in-person-travel.md](in-person-travel.md) says.
 Whose timing binds: the addresses and patterns (`*@board.example.com`) in `tiers.priority`. A
 tier entry that is a name, or protected hours written as prose, cannot be matched; the report
 says so with a NOTE and the agent checks those by hand. The agent's own holds (events titled as
-`calendar_guardian.holds.title`) and all-day markers count as free time. The title is the whole
+`calendar_guardian.holds.title`) count as free time, and so does an all-day entry that is a note on
+the day (a birthday, a holiday). An all-day entry that carries one of the principal's
+`personal_markers`, or that says it is busy (`transparency: opaque`), takes its whole day: a slot on
+it is a REVIEW that names it, and the day has no free block. An all-day entry at a place holds the
+next morning without giving an hour, so the sleep check says the night cannot be judged from the
+read (REVIEW) and never that it is long enough. Of several events at a slot's own hours, one is the
+slot checked again and the others are other events. The title is the whole
 test: an event titled exactly that is read as a hold whoever made it and whoever is on it, so the
 title is one no meeting carries, and a hold that became a meeting is retitled.
 

@@ -150,7 +150,10 @@ What it takes each word to mean:
   whatever else it says: an online word in a venue's name, a map link beside it.
 - **The days it judges** are every day a commitment covers. One under way when the days begin is judged for
   its way back, and its way there is left to a read that holds its start. An all-day event counts on each day
-  it covers and needs its travel line; give it clock times to have its blocks checked.
+  it covers and needs its travel line; give it clock times to have its blocks checked. When the morning
+  after a return holds an all-day commitment at a place, the night cannot be judged from the read: the
+  event that returns the evening before lacks that, until the all-day one is given its times or the
+  return's block carries the principal's `Decision:`.
 - **Whose a block is** follows its `For:` lines, as above (quotes around a title do not matter). When a block
   beside an event belongs to another, the report says whose it is. One event read from two calendars is one
   event.
