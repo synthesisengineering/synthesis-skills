@@ -2329,3 +2329,26 @@ def test_the_ninth_reviews_programs(above, program, held, inside, tmp_path):
     command = "python3 - <<'EOF'\n" + program.format(**above) + "\nEOF"
     reason = guards.check("Bash", {"command": command}, {}, cwd=str(above["work"] if inside else here))
     assert (REFUSED in (reason or "")) == held, program
+
+
+# What this project's own probe of the ninth round's answer showed, before a tenth round saw it.
+
+@pytest.mark.parametrize("program, held", [
+    ("import os\nold = os.getcwd()\ntry:\n    os.chdir('/tmp/pad')\n    open('out.txt', 'w').write('x')\nfinally:\n    os.chdir(old)", False),   # a try runs in order too
+    ("import os\nold = os.getcwd()\ntry:\n    os.chdir('/tmp/pad')\n    open('out.txt', 'w').write('x')\nfinally:\n    os.chdir(old)\nopen('later.txt', 'w').write('x')", True),
+    ("import os\ntry:\n    os.chdir('/tmp/pad')\nexcept OSError:\n    pass\nopen('forged.json', 'w').write('x')", True),              # it may not have left
+    ("import os\ntry:\n    os.chdir('/tmp/pad')\nexcept OSError:\n    raise SystemExit(1)\nelse:\n    open('out.txt', 'w').write('x')", False),
+    ("import os\nif __name__ == '__main__':\n    os.chdir('/tmp/pad')\n    open('out.txt', 'w').write('x')", False),                  # the program's own main block
+    ("import os\ndef main():\n    os.chdir('/tmp/pad')\n    open('out.txt', 'w').write('x')\nif __name__ == '__main__':\n    main()", False),
+    ("import os\nos.chdir('/tmp/pad')\nos.fchdir(os.open('out', os.O_RDONLY))\nopen('x.txt', 'w').write('x')", False),              # opened and entered in one statement
+    ("import os\nif os.environ.get('GO'):\n    os.chdir('/tmp/pad')\nopen('forged.json', 'w').write('x')", True),                      # a branch may not be taken
+])
+def test_a_program_that_leaves_a_transcript_folder_inside_a_try_or_its_main_block(above, program, held, tmp_path):
+    command = "python3 - <<'EOF'\n" + program.format(**above) + "\nEOF"
+    assert (REFUSED in (guards.check("Bash", {"command": command}, {}, cwd=str(above["work"])) or "")) == held, program
+
+
+def test_a_shell_whose_own_output_is_sent_to_a_transcript(above, tmp_path):
+    for command in ("exec >> {work}/s.jsonl; echo x", "exec 3>> {work}/s.jsonl; echo x >&3"):
+        assert REFUSED in (guards.check("Bash", {"command": command.format(**above)}, {}, cwd=str(tmp_path)) or ""), command
+    assert guards.check("Bash", {"command": "exec 2>/dev/null; wc -l {work}/s.jsonl".format(**above)}, {}, cwd=str(tmp_path)) is None
