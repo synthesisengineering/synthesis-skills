@@ -12,7 +12,8 @@ so every view answers for one workspace, and an empty `--workspace ""` (an
 unset shell variable) is refused rather than read as "all workspaces".
 
     ritual_state.py record --direction day-end --workspace W --date YYYY-MM-DD \\
-        [--mode quick] [--outcome clean] [--session ID] [--pointer FILE] [--count sent=3] [--travel FILE]
+        [--mode quick] [--outcome clean] [--session ID] [--pointer FILE] [--count sent=3] [--travel FILE] \\
+        [--prompts FILE]
     ritual_state.py query summary|last|open|streak|weekly-review [--workspace W] [--json]
 
 `record` first reads the plan folders the workspace declares in the ritual config (`plans_dirs`,
@@ -26,6 +27,10 @@ that holds an in-person event without its travel, and the ritual is not recorded
 It also reads the day's plan in each declared plan folder: an open item that offers options with no
 recommendation, or with no word on what it costs where it would commit the principal's time, and the
 ritual is not recorded (the invitation to that evening had been put as a bare accept or decline).
+A workspace that turns prompt reconciliation on (`"prompt_reconcile": {"records": ["<folder>"]}`) must
+pass a day-end `--prompts`, the output of `synthesis sessions prompts --json` for that day: a clean
+outcome is refused while a prompt the principal typed that day is cited by no record, and a partial one
+says how many are open (2026-11-11: what he asked reached a record only if an agent remembered).
 
 The log is `<synthesis home>/rituals/history.jsonl` (`RITUAL_STATE_DIR` or
 `--state-dir` points elsewhere, to exercise a copy). Derivations live in the
@@ -170,6 +175,47 @@ ITEM = r"(?im)^ *(?:>\s*)*(?:[-*+] |\d+[.)] )?\**"  # a line of an item: plain, 
 OPTION = re.compile(ITEM + r"Option [A-Z0-9]+\b(.*)$")
 SAID = re.compile(ITEM + r"(Recommendation|Consequences|Commits)\**\s*:[*\s]*(.*)$")
 CLOSED = re.compile(ITEM + r"(?:Decided|Resolved|Released|Lapsed|Withdrawn)\**\s*:")
+def prompts(workspace: str, day: str, direction: str, outcome: str, given) -> str:
+    """The line a day-end prints about what the principal typed that day, or a refusal: no result, one for another
+    workspace or day, or a clean close while a prompt is cited by no record (2026-11-11: what he asked reached a
+    record only if an agent remembered)."""
+    wanted = rituals.settings(rituals.config(), workspace).get("prompt_reconcile")
+    if not wanted or direction != "day-end":
+        return ""
+    roots = wanted.get("records") if isinstance(wanted, dict) else None
+    if not (isinstance(roots, list) and roots and all(isinstance(r, str) and r for r in roots)):
+        refuse(f'{workspace} turns prompt_reconcile on without saying where its records are. In {rituals.state_dir() / "config.json"}, '
+               f'under workspaces.{workspace}, write "prompt_reconcile": {{"records": ["<folder of project records>"]}}')
+    again = (f"synthesis sessions export && synthesis sessions prompts --workspace {workspace} --date {day} "
+             + " ".join(f"--records {r}" for r in roots) + " --json")
+    if not given:
+        refuse(f"{workspace} checks that what the principal asked reached a record, and this record names no result. Run "
+               f"`{again}`, save what it prints and pass --prompts <that file>")
+    try:
+        found = json.loads(Path(given).read_text(encoding="utf-8"))
+        total, left = found["prompts"], found["open"]
+        sound = type(total) is int and isinstance(left, list) and all(isinstance(c, str) for c in left) and len(left) <= total
+        whose, when = found["workspace"], found["date"]
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        refuse(f"the prompts result {given} cannot be read ({exc!r}); run `{again}` again")
+    if not sound:
+        refuse(f"the prompts result {given} does not agree with itself (more prompts open than typed, or a field of "
+               f"another shape), so it is not what the command printed; run `{again}` again")
+    if (whose, when) != (workspace, day):
+        refuse(f"the prompts result is for {whose} on {when}, and this record is for {workspace} on {day}. Run `{again}`")
+    if left and outcome in CLEAN:
+        refuse(f"{len(left)} of {total} prompts typed on {day} {'is' if len(left) == 1 else 'are'} cited by no record, so "
+               f"outcome {outcome!r} would claim nothing was lost:\n" + "\n".join(f"  {c}" for c in left[:40])
+               + ("\n  ..." if len(left) > 40 else "")
+               + "\nRead each with `synthesis sessions show <session> --seq <n>`. Where its substance is in a record, "
+               "cite it there (`<harness> <session> #<seq>`, or `#<first>-<last>` for a stretch one entry covers); where "
+               "it is not, write the record first. Or record --outcome partial, which says the day left some open.")
+    if not total:
+        return f"\nprompts: none typed on {day}"
+    return (f"\nprompts: all {total} typed on {day} are cited by a record" if not left else
+            f"\nprompts: {len(left)} of {total} typed on {day} {'is' if len(left) == 1 else 'are'} cited by no record")
+
+
 FENCE = re.compile(r"(?ms)^\s*(```|~~~).*?^\s*\1[^\n]*$")  # a fenced block is an example, not the item's own lines
 NOTHING = re.compile(r"(?i)[*\s]*(?:tbd|tbc|none|n/?a|no recommendation|your call|up to you|either)?[\s.*]*")
 COMMITS = re.compile(r"(?i)\b(?:accept|decline|rsvp|attend|go|join|host|schedule|meet|say (?:yes|no))\b")
@@ -263,7 +309,7 @@ def cmd_record(args) -> int:
     if args.mode == "migration":
         refuse("mode 'migration' marks old bookkeeping and cannot be written")
     critical = (critical_deadlines(args.workspace, args.outcome) + travel(args.workspace, args.date, args.travel)
-                + choices(args.workspace, args.date))
+                + choices(args.workspace, args.date) + prompts(args.workspace, args.date, args.direction, args.outcome, args.prompts))
     record = {"ts": datetime.now().astimezone().isoformat(timespec="seconds"), "date": args.date,
               "direction": args.direction, "workspace": args.workspace, "mode": args.mode,
               "outcome": args.outcome}
@@ -371,6 +417,7 @@ def main(argv: list[str] | None = None) -> int:
     rec.add_argument("--note")
     rec.add_argument("--count", action="append", metavar="KEY=VALUE")
     rec.add_argument("--travel", help="the output of travel_check.py --json, for a workspace that checks travel")
+    rec.add_argument("--prompts", help="the output of synthesis sessions prompts --json, for a workspace that reconciles prompts")
     rec.set_defaults(fn=cmd_record)
     query = sub.add_parser("query", help="derive a view")
     query.add_argument("view", choices=VIEWS)
