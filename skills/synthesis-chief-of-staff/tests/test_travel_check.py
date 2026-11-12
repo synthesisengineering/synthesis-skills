@@ -441,3 +441,26 @@ def test_each_event_of_the_result_says_when_it_ends(tmp_path):
     """The record gate holds each event against the days the result claims, so the result gives the end as well."""
     code, report = check(tmp_path, [RESOLVED, GOING, RETURNING])
     assert all(e["end"] >= e["start"] for e in report["events"]) and report["events"][0]["end"].startswith("2026-11-")
+
+
+# --- a block that is there, in another form (2026-11-11) ---------------------------------------------------------
+# A Sunday session away had its travel on the calendar as "Pre-workout — pack & travel to Weehawken" and "Return
+# from Weehawken". The check said the event had no blocks, since neither title starts with the block's title, and a
+# seat reading that would look for a trip nobody had planned. A block in another form is still not the labeled
+# form (no route, no fare, no backup can be read from it), so the event stays flagged; the line now says the block
+# is there and what it needs.
+
+def test_a_block_in_another_form_is_named_not_reported_as_missing(tmp_path):
+    session = event("Training session", "06:45", "08:30", "The Boathouse, 77 Shore Rd, Harbor Town", "Travel: blocks before and after", day="2026-11-15")
+    old = [event("Pre-workout — pack & travel to Harbor Town #reserved", "06:00", "06:45", day="2026-11-15"),
+           event("Return from Harbor Town (walk, ferry, bike) #reserved", "08:30", "10:00", day="2026-11-15")]
+    code, report = check(tmp_path, [session, *old])
+    missing = lacks(report, "Training session")
+    assert code == 1 and len(missing) == 2, missing
+    assert "Pre-workout" in missing[0] and "06:00" in missing[0] and "labeled form" in missing[0] and "before" in missing[0], missing[0]
+    assert "Return from Harbor Town" in missing[1] and "08:30" in missing[1] and "labeled form" in missing[1], missing[1]
+    assert all('starts with "Travel"' in item for item in missing), missing
+    far = [event("Return the rental van", "13:00", "14:00", day="2026-11-15"), event("Commute planning with the team", "06:00", "06:40", "", "", day="2026-11-14")]
+    code, report = check(tmp_path, [session, *far])
+    missing = lacks(report, "Training session")
+    assert all("labeled form" not in item for item in missing) and "no travel block before it" in missing[0], missing   # not beside it: no block at all
