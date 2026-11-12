@@ -174,11 +174,12 @@ def travel(workspace: str, day: str, given) -> str:
 # A line of an item: plain, bold or italic, quoted, a list entry or a task-list box, a heading or a row of a table,
 # in any order and however deep (`- > **Option A:**` is a quote inside a list entry).
 ITEM = r"(?im)^ *(?:> *|\| *|#{1,6} +|(?:[-*+]|\d+[.)]) +(?:\[[ xX]\] +)?)*[*_]*"
+LED = r"(?:[^\w\s*_>|#+.\[\]()\"'`~:-]{1,3}\s*[*_]*)?"  # a pin, a pointing hand or a tick before the word
 # An option's label ends at the mark that closes its emphasis, or at a colon, a dash, a bracket, a full stop or the
 # end of the line: `Option A was fine last time` is a sentence.
 OPTION = re.compile(ITEM + r"Option [A-Z0-9]+(?![A-Za-z0-9])((?:[*_]+|\s*(?:$|[:\-–—().|])).*)$")
-SAID = re.compile(ITEM + r"(?:(?:My|Our|The) +)?(Recommend(?:ation|ed)s?|Consequences?|Commits)[*_]*\s*(?::|[-–—](?=[*_\s]))[*_\s]*(.*)$")
-CLOSED = re.compile(ITEM + r"(?:Decided|Decision|Resolved|Released|Lapsed|Withdrawn)[*_]*\s*:[*_\s]*(.*)$")
+SAID = re.compile(ITEM + LED + r"(?:(?:My|Our|The) +)?(Recommend(?:ation|ed)s?|Consequences?|Commits)[*_]*\s*(?::|[-–—](?=[*_\s]))[*_\s]*(.*)$")
+CLOSED = re.compile(ITEM + LED + r"(?:Decided|Decision|Resolved|Released|Lapsed|Withdrawn)[*_]*\s*:[*_\s]*(.*)$")
 # A line that says nothing yet, as a decision or as a recommendation: a word that puts it off, however the line goes
 # on, or one of three that are also the first word of a sentence that says something, when little follows.
 OPEN = re.compile(r"(?i)\W*(?:pending|undecided|unknown|unsure|awaiting|not yet|to be |\?|(?:open|waiting|needed)\b(?:\W+\w+){0,3}\W*$)")
