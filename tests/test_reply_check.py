@@ -409,3 +409,43 @@ def test_a_thing_of_the_principals_that_software_acts_on_is_the_sessions_own_wai
 @pytest.mark.parametrize("reply", _cases(THEIR_ACT_AWAITED))
 def test_an_act_of_the_principals_that_is_what_is_awaited_needs_no_watcher(reply):
     assert _sent_back(reply) is None
+
+
+# Finding 5 of the review: "Waiting for X" as the subject of a sentence explains; it announces nothing.
+R2_SUBJECT_REVIEW = {
+    "R2-N03": "Waiting for a database lock blocks a request thread, so the timeout belongs in the client.",
+    "R2-N04": "Waiting for the background import to release its lock is expected during shutdown.",
+}
+A_WAIT_AS_THE_SUBJECT = {
+    "adds": "Waiting on the DNS lookup adds forty milliseconds to every cold request.",
+    "stalled-after-an-infinitive": "Waiting for the garbage collector to finish stalled the benchmark twice, so I pinned the heap "
+                                   "size.",
+    "never-times-out": "Waiting for user input never times out in this mode, which is why the job looked hung.",
+    "awaiting-makes": "Awaiting each promise in a loop makes the requests run one after another.",
+    "is-what-made": "Waiting on a full table scan is what made the report slow; the new index removes it.",
+    "until-takes": "Waiting until the cache is warm takes about two minutes on a cold start.",
+    "costs-after-a-colon": "The trace is clear: waiting for the connection pool costs more than the query itself.",
+    "would-hide": "Waiting for the retry budget to drain would hide the real failure.",
+    "is-not-the-problem": "Waiting on the mutex isn't the problem; the lock is held across a network call.",
+    "guarantees": "Waiting for every shard to acknowledge the write guarantees consistency but doubles the latency.",
+}
+A_WAIT_THAT_OPENS_A_CLAUSE = {
+    "a-clause-after-confirm": "Waiting for the reviewer to confirm the fix is right.",
+    "a-relative-clause-without-that": "Waiting on the checks the release needs before I tag.",
+    "so-the-report-can-run": "Waiting for the migration to finish so the report can run.",
+    "that-are-still-in-flight": "Waiting on the two deploys that are still in flight.",
+    "which-are-due": "Still waiting for the vendor's logs, which are due today.",
+    "waiting-to-hear": "Waiting to hear back from the registrar about the transfer.",
+    "holding-until": "Holding the merge until the security scan is done.",
+}
+
+
+@pytest.mark.parametrize("reply", _cases(R2_SUBJECT_REVIEW, A_WAIT_AS_THE_SUBJECT))
+def test_waiting_as_the_subject_of_a_sentence_is_an_explanation(reply):
+    assert _sent_back(reply) is None
+
+
+@pytest.mark.parametrize("reply", _cases(A_WAIT_THAT_OPENS_A_CLAUSE))
+def test_a_clause_that_opens_with_the_wait_and_has_a_verb_further_on_is_still_an_announcement(reply):
+    reason = _sent_back(reply)
+    assert reason and "nothing is armed" in reason
