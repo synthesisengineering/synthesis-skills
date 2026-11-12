@@ -317,6 +317,12 @@ def message(to: str, sender: str, text: str, *, durable: bool = False) -> Path:
     return _post(target.session, {"to": to, "session": target.session, "from": sender, "text": text})
 
 
+def _held(session_id: str, box: str, read_too: bool = False):
+    """The messages a box holds for a session: those it has not been shown, or with read_too every one. The inbox and
+    the hint for a session bound to no project both read this, so they cannot disagree about what is delivered."""
+    return (f for f in sorted(_box(box).glob("*.json")) if read_too or not _read_marker(session_id, f.name).exists())
+
+
 def inbox(session_id: str, project: str = "", *, mark_read: bool = False, recent_hours: float = 0) -> list[dict]:
     """The session's unread messages, oldest first; with recent_hours, every message from that many hours
     back, read or not, so one that was cut or missed can be read again. Each carries its file name as `id`.
@@ -325,10 +331,7 @@ def inbox(session_id: str, project: str = "", *, mark_read: bool = False, recent
     since = time.time() - recent_hours * 3600 if recent_hours else None
     found = []
     for box in boxes:
-        directory = _box(box)
-        for file in sorted(directory.glob("*.json")) if directory.is_dir() else []:
-            if since is None and _read_marker(session_id, file.name).exists():
-                continue
+        for file in _held(session_id, box, since is not None):
             message = {**json.loads(file.read_text(encoding="utf-8")), "id": file.name}
             if since is None or message.get("at", 0) >= since:
                 found.append(message)
@@ -338,14 +341,11 @@ def inbox(session_id: str, project: str = "", *, mark_read: bool = False, recent
     return found
 
 
-def waiting(hours: float = 24) -> list[str]:
-    """Projects with mail from the last day that no session has read and no live session is bound to (2026-11-11:
-    a session bound to no project polled for half an hour beside mail addressed to its project)."""
-    root, since = paths.board() / "messages", time.time() - hours * 3600
-    bound = {s.project for s in sessions() if s.project and not s.stale}
-    return [box.name[len("project__"):] for box in sorted(root.glob("project__*")) if root.is_dir()
-            and box.name[len("project__"):] not in bound and any(
-                f.stat().st_mtime >= since and not any((paths.board() / "read").glob(f"*/{f.name}")) for f in box.glob("*.json"))]
+def waiting(session_id: str) -> list[str]:
+    """Projects whose mail this session's inbox would hold if it bound to one now (2026-11-11: a session bound to no
+    project polled for half an hour beside mail addressed to its project)."""
+    names = sorted(box.name[len("project__"):] for box in (paths.board() / "messages").glob("project__*"))
+    return [name for name in names if any(_held(session_id, f"project:{name}"))]
 
 
 def _read_marker(session_id: str, name: str) -> Path:
