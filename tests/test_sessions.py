@@ -986,6 +986,36 @@ def test_a_transcript_that_cannot_hold_the_days_prompts_does_not_stop_the_listin
     assert "Order the parts." in listed and "And the spares." not in listed and "1 prompts on 2026-10-30 in beta" in listed
 
 
+def test_a_sub_agents_transcript_that_is_not_copied_does_not_stop_the_listing(harness, capsys):
+    """A sub-agent is briefed by an agent, so its transcript holds nothing the principal typed. While it is not copied
+    the stamp names it for the doctor, and the day is still listed. A thread nothing is known of may be anyone's."""
+    _jsonl(harness["claude"], [_typed({"cwd": harness["work"], "sessionId": "c1"}, "Plan the release.", "2026-10-30T15:00:00.000Z")])
+    sub = _jsonl(harness["claude"].parent / "c1" / "subagents" / "agent-a1.jsonl", [
+        {"type": "user", "isSidechain": True, "cwd": harness["work"], "timestamp": "2026-10-30T15:00:05Z",
+         "message": {"role": "user", "content": "Check the script."}}])
+    spawned = _codex_child(harness, "01a1spwn-0000-7000-8000-000000000002",
+                           {"thread_spawn": {"parent_thread_id": "01a1parent-0000"}}, "Survey the test suite.", "Done.")
+    sessions.export_file("codex", spawned)                             # the archive knows this thread as a spawned agent's
+    _jsonl(spawned, [{"type": "response_item", "timestamp": "2026-10-30T15:10:00Z", "payload": {
+        "type": "message", "role": "assistant", "content": [{"type": "output_text", "text": "And the rest."}]}}])
+    command = ["sessions", "prompts", "--workspace", "acme", "--date", "2026-10-30"]
+    for native in (sub, spawned):
+        native.chmod(0o000)
+    try:
+        assert cli.main(command) == 0 and "Plan the release." in capsys.readouterr().out
+        named = json.loads((sessions.root() / ".state" / "export.json").read_text())["uncopied"]
+        assert sorted(named) == ["claude-code c1-agent-a1", "codex 01a1spwn-0000-7000-8000-000000000002"]
+        unknown = _codex_child(harness, "01a1othr-0000-7000-8000-000000000003", {"thread_spawn": {}}, "Count the files.", "Nine.")
+        unknown.chmod(0o000)                                           # never copied, so nothing says whose prompts it holds
+        try:
+            assert cli.main(command) == 2 and "codex 01a1othr-0000-7000-8000-000000000003: not exported" in capsys.readouterr().err
+        finally:
+            unknown.chmod(0o644)
+    finally:
+        for native in (sub, spawned):
+            native.chmod(0o644)
+
+
 def test_the_listing_of_an_older_day_copies_what_was_written_since_that_day_began(harness, capsys):
     """The listing brought the archive up to date for the last two days whichever day was asked about, so a transcript
     last written on an older day and not yet copied was not read for that day. The day is given as a date."""
