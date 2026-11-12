@@ -35,6 +35,7 @@ to its source, resolving drift by synthesis merge in source rather than by overw
 - [references/release.md](references/release.md): why release is a script, every refusal and why, each harness's commands, why self-reports are not evidence, the release train and stable-path history. Read before any release.
 - [references/source-update-protocol.md](references/source-update-protocol.md): the non-negotiable edit-commit-push-install-verify sequence, the must-nots, and the 2026-04-29 incident. Read before editing any skill.
 - [references/skills-and-provenance.md](references/skills-and-provenance.md): the three repositories, deployment targets, `.source.json` provenance, dependency hierarchy, configuration separation, the install/update/status/drift/merge commands and worked examples. Read when installing private or shared skills or resolving drift.
+- [references/directory-package.md](references/directory-package.md): the hook-free package of method skills for OpenAI's plugin directory: what it holds, the build and check commands, what fails a skill, what a submission asks of the owner. Read before building or submitting it, or when its check fails.
 - [references/coverage-map.md](references/coverage-map.md): where every section of 2.9.3 went (ruling D8).
 - [references/preserved.md](references/preserved.md) and [references/preserved-release-protocol.md](references/preserved-release-protocol.md): the 2.9.3 SKILL.md and release protocol verbatim. Read only to review what was cut.
 
