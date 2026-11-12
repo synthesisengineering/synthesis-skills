@@ -126,6 +126,11 @@ def critical_deadlines(workspace: str, outcome: str) -> str:
     return f"critical deadlines: {len(rows)} open, {sum(r['lead'] for r in rows)} within {decay_sweep.LEAD_DAYS} days"
 
 
+def _day(moment) -> str:
+    """The day of a whole date and time, as the travel check writes one; anything else is no result of that check."""
+    return datetime.fromisoformat(str(moment).replace("Z", "+00:00")).date().isoformat()
+
+
 def travel(workspace: str, day: str, given) -> str:
     """The line `record` prints about travel, or a refusal: no result, one for other days, an event without its travel."""
     wanted = rituals.settings(rituals.config(), workspace).get("travel_check")
@@ -144,8 +149,7 @@ def travel(workspace: str, day: str, given) -> str:
         bare = [e for e in events if e["lacks"]]
         sound = (isinstance(events, list) and all(isinstance(e["lacks"], list) for e in events) and
                  (found["in_person"], found["flagged"], found["verdict"]) == (len(events), len(bare), "REFUSE" if bare else "OK")
-                 and all(datetime.fromisoformat(str(e["start"]).replace("Z", "+00:00")).date().isoformat() <= through
-                         for e in events))  # each event within its days, its start a whole date and time
+                 and all(first <= _day(e["end"]) and _day(e["start"]) <= through for e in events))  # each event within its days
     except (OSError, ValueError, KeyError, TypeError) as exc:
         refuse(f"the travel result {given} cannot be read ({exc!r}); run {again} again")
     if not sound:  # a result edited by hand, or cut short
@@ -177,16 +181,22 @@ LABEL = re.compile(r"(?i)Option ([A-Z0-9]+)\b")
 
 def _items(text: str):
     """Each choice a plan puts, as its own lines, the title first. A choice is a run of options with the lines
-    around it: under a heading of its own, or one entry of a list under a shared heading, where options whose
-    label starts again (A after B) begin the next choice (the third review: decisions listed under a second-level
-    heading were not read, and a heading inside a fenced example was read as a choice)."""
+    around it: under a heading of its own, or one entry of a list under a shared heading. The list's next entry, or
+    options whose label starts again (A after B), begin the next choice; a bullet under an option does not (the
+    third and fourth reviews: decisions listed under a second-level heading were not read, a heading inside a fenced
+    example was read as a choice, and a second entry lettered C and D was read as more options of the first)."""
     for section in re.split(r"(?m)^#{1,3} ", FENCE.sub("", text)):
-        lines, firsts, label = section.splitlines(), [], None
+        lines, firsts, label, entry, fresh = section.splitlines(), [], None, -1, False
         for at, line in enumerate(lines):
+            listed = re.match(r"( *)(?:>\s*)*(?:[-*+] |\d+[.)] )", line) if at and not (SAID.match(line) or CLOSED.match(line)) else None
             if OPTION.match(line):
                 this = LABEL.search(line)[1].upper()
-                firsts += [at] if label is None or this <= label else []
-                label = this
+                firsts += [at] if label is None or this <= label or fresh else []
+                label, fresh = this, False
+            elif listed and (label is None or fresh):
+                entry = len(listed[1])  # the entry a choice's options stand under, by how far it is indented
+            elif listed and len(listed[1]) <= entry:
+                entry, fresh = len(listed[1]), True  # the list's next entry: its options are another choice, whatever their letters
         def titled(k):  # the line a choice starts at: the entry just above its options, else the section's own first line
             floor = firsts[k - 1] + 1 if k else 0
             above = next((j for j in range(firsts[k] - 1, floor - 1, -1) if lines[j].strip()

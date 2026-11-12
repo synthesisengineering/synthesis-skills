@@ -111,7 +111,7 @@ by its label alone or with a room or a note after it (`Office, 4th floor`). An a
 | `arrive_early_minutes` | how long before the start the outbound block must arrive |
 | `latest_return` | a return after this hour is the principal's to decide |
 | `sleep_hours` | the hours the principal keeps between getting home and the next morning's first commitment; a shorter night is theirs to decide. No key, no rule |
-| `morning_starts` | the hour the principal's morning begins whether or not the calendar holds an entry then (a workout, a routine nobody schedules). The night ends at the earlier of this hour and the first entry. Without it, a morning with no entry costs nothing the check can see |
+| `morning_starts` | the hour the principal's morning begins whether or not the calendar holds an entry then (a workout, a routine nobody schedules). The night ends at the earlier of this hour and the first entry, and an outing that began on an earlier day and ran past this hour left no night at all. Without it, a morning with no entry costs nothing the check can see |
 | `cost` | `personal` and `business`: the rule for each, in words |
 | `block_title` | the word a travel block's title starts with |
 | `online` | words that mark a location as not a place |

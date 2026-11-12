@@ -177,7 +177,7 @@ def judge(args, config: dict, read: dict) -> dict:
     events = []
     for c in sorted(commitments, key=lambda c: (c["days"][0], c["start"] or datetime.min.replace(tzinfo=zone))):
         lacks, found = [], {"summary": c["summary"], "start": c["start"].isoformat() if c["start"] else c["days"][0].isoformat(),
-                            "location": c["location"]}
+                            "end": c["end"].isoformat() if c["end"] else c["days"][-1].isoformat(), "location": c["location"]}
         if not exact(c["location"]):
             lacks.append(f'no exact address: the location reads "{c["location"]}"')
         travel = c["said"].get("travel", "").split("\n")[0]
@@ -227,10 +227,9 @@ def judge(args, config: dict, read: dict) -> dict:
             late = latest and (after["end"].date() > c["start"].date() or after["end"].time() > latest)
             if late and not decided:
                 lacks.append(f"home at {slot.hm(after['end'])}, after {latest:%H:%M}: {ASK}")
-            short = slot.morning_after(after["end"], others, policy.get("sleep_hours"), slot.hour(policy, "morning_starts"))
+            short = slot.morning_after(after["end"], others, policy.get("sleep_hours"), slot.hour(policy, "morning_starts"), c["start"])
             if short and not decided:
-                lacks.append(f"home at {slot.hm(after['end'])} and {slot.first_thing(short)} the next morning: "
-                             f"{slot.span(short[2])} between, under the {float(policy['sleep_hours']):g} hours the policy keeps: {ASK}")
+                lacks.append(f"home at {slot.hm(after['end'])} and {slot.first_thing(short, policy['sleep_hours'])}: {ASK}")
             found.update(home=slot.hm(after["end"]))
         events.append({**found, "lacks": lacks})
     flagged = sum(bool(e["lacks"]) for e in events)
