@@ -477,10 +477,16 @@ ROOT = Path(__file__).resolve().parents[1]
 # archive's member is unpacked where the call says, two files already open are judged where each is opened) and
 # _self_grant 2 (a copy into a memory folder is judged by the note it makes there). ritual_state.py 1: a pattern (a
 # recommendation on a choice's title line counts).
+# After a sixth review round, which found two ways through the rule the fifth had added and two refusals of ordinary
+# work, guards.py 22 more: _python_writes 18 (a command a program starts is judged in each folder the program may
+# have changed into, with the program's configuration, the variables it sets, a list handed to the shell and a script
+# fed on its input; a reading flag is known by its name in os; a name that walks a list of plain values is one of
+# them), _landing 2 (the folders find searches are its operands before the expression: a pattern or a type letter is
+# no file) and _self_grant 2 (a program that starts a refused command is told which rule refused it).
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # consolidate first).
-CORE_BUDGET = 9368
-PLUGIN_BUDGET = 29676
+CORE_BUDGET = 9390
+PLUGIN_BUDGET = 29698
 
 
 def _lines(files):

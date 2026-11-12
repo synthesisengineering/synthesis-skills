@@ -221,13 +221,14 @@ harness that gives no transcript cannot carry approved sends or deploys until it
      and names no path (the `.name` of a file it opened is that file's path), and a copy out
      of a protected folder changes only the copy. A command the program spells whole
      (`subprocess.run([...])`, `os.system("...")`) is judged as the shell guard judges that
-     command, in the folder it runs in; one built from values the reader cannot read is held
-     as a write while it names a protected path. A program that runs code it builds (`exec`,
-     `eval`, a module it names at run time) cannot be read: it is taken to write, and is
-     refused while it names a protected path, is handed one or runs inside one. A program
-     with a syntax error, and a script for another interpreter, is judged by its text: the
-     words it is given, or the heredoc it reads on its stdin (the whole command when its
-     text comes down a pipe).
+     command: in each folder the program may have changed into, with the variables it sets
+     for it, and with a script fed on its input read as that command's script; one built
+     from values the reader cannot read is held as a write while it names a protected path.
+     A program that runs code it builds (`exec`, `eval`, a module it names at run time)
+     cannot be read: it is taken to write, and is refused while it names a protected path,
+     is handed one or runs inside one. A program with a syntax error, and a script for
+     another interpreter, is judged by its text: the words it is given, or the heredoc it
+     reads on its stdin (the whole command when its text comes down a pipe).
    - **Standing in a protected folder.** A program can write where it stands without naming
      a file (an archive unpacked, a script file). Inside the state folder, the board or the
      sessions archive, where no session has reason to stand, only a command the guard can

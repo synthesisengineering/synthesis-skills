@@ -54,7 +54,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
 - **The write guard reads a path however a command names it, passes a protected path only to a program it knows
   to only read it, and reads an inline Python program by its syntax** (core). It began as two faults: a write
   through a variable the command had just assigned was judged as a write somewhere else, and the file tools were
-  refused in a project's memory folder. Five rounds of review by a second model, and this project's own probes
+  refused in a project's memory folder. Six rounds of review by a second model, and this project's own probes
   and replays while answering them, showed the guard was narrower than what it guards against in four ways.
   - **How a path is read.** Every write in a command is resolved and judged, whether or not the command spells a
     protected folder out: relative to the session's folder, to a `cd` (`cd -`, `pushd` and `popd` are followed) or
@@ -100,15 +100,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
     is handed its file.
   - **Measured before release.** 109,893 distinct shell commands from 30 days of one machine's transcripts were
     run through the 5.6.0 guard and this one, again after each change, and every command whose verdict changed was
-    read. The needless refusals each pass showed are now tests. At the end the new guard refused 5 commands the
+    read. The needless refusals each pass showed are now tests. At the end the new guard refused 6 commands the
     old one passed (three runs of a property-list tool from inside the sessions archive, a database tool opening a
-    session store, and a move of a saved tool result and a subagent's transcript to the Trash) and passed 80 the
-    old one refused: 51 inline programs that read a protected path and write somewhere else, 21 commands that
-    write what is the agent's own (memory notes and saved workflow scripts, 15 from the shell and 6 by program), 3
-    writes from inside a protected folder to a path elsewhere named through a variable, 3 programs judged by their
-    own text where a file the same line wrote named the guard's code, and 2 programs handed the hook's file. Of
-    the 54 it still refuses, 43 are commands whose own program names the guard's approval code (work on the guard
-    itself), 6 run the hook, and 5 are the ones above. The destructive guard newly refused 2 recursive deletes of
+    session store, a move of a saved tool result and a subagent's transcript to the Trash, and a program that ran
+    the hook through `subprocess`, which the same command typed in the shell always was) and passed 80 the old one
+    refused: 51 inline programs that read a protected path and write somewhere else, 21 commands that write what
+    is the agent's own (memory notes and saved workflow scripts, 15 from the shell and 6 by program), 3 writes
+    from inside a protected folder to a path elsewhere named through a variable, 3 programs judged by their own
+    text where a file the same line wrote named the guard's code, and 2 programs handed the hook's file. Of the 55
+    it still refuses, 43 are commands whose own program names the guard's approval code (work on the guard
+    itself), 6 run the hook, and 6 are the ones above. The destructive guard newly refused 2 recursive deletes of
     a scratch clone named through a variable, which it always refused when the path was written out.
     `docs/runtime-integration.md` says what the reader does not follow.
 - **The plugin's own Drive publisher waits for a code** (core, agent guardrails). A script wrote 36 files into a
