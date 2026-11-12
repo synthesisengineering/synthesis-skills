@@ -215,10 +215,11 @@ def main(env=None) -> int:
                         format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     if policy.operators:
         temporary = config.temporary(urlparse(settings.public_url).hostname)
-        LOG.warning("TEST ONLY: operator-only test mode at %s. %s Only %s can sign in.", settings.public_url,
-                    "The address is temporary and must not be given to anyone: a restart of this process, this machine "
-                    "or its tunnel ends it." if temporary else
-                    "Do not give this address to anyone while the mode is on.", ", ".join(sorted(policy.operators)))
+        loud = max(logging.WARNING, LOG.getEffectiveLevel())  # a warning, raised when KB_LOG_LEVEL would hide one
+        LOG.log(loud, "TEST ONLY: operator-only test mode at %s. %s Only %s can sign in.", settings.public_url,
+                "The address is temporary and must not be given to anyone: a restart of this process, this machine "
+                "or its tunnel ends it." if temporary else
+                "Do not give this address to anyone while the mode is on.", ", ".join(sorted(policy.operators)))
     if settings.oauth_store == "memory":
         LOG.warning("KB_OAUTH_STORE=memory: sign-ins live in this process only, so every restart signs everyone out")
     try:
