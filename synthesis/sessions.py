@@ -159,7 +159,7 @@ class _Session:
         self.offset, self.seq, self.segment = s.get("offset", 0), s.get("seq", 0), s.get("segment", 1)
         self.folder = Path(s["folder"]) if s.get("folder") else None
         self.seen, self.meta = set(s.get("seen", [])), s.get("meta", {})
-        self.model, self.last_user, self.lines = s.get("model", ""), s.get("last_user", ""), []
+        self.model, self.turn, self.lines = s.get("model", ""), s.get("turn", []), []
         self.skipped = collections.Counter(self.meta.get("skipped", {}))
 
     def once(self, rec: dict):
@@ -171,6 +171,17 @@ class _Session:
             return None
         self.seen.add(key)
         return rec
+
+    def mirrored(self, text: str, source: str) -> bool:
+        """Whether a prompt is the harness's other copy of a turn already kept: Codex writes a turn as a response item
+        and again as a UI event. The same words from the same source are a turn of their own (2026-11-12: a second
+        `Yes.` was removed as a copy of the first, so nothing listed it among what the principal typed)."""
+        key = hashlib.sha256(text.encode("utf-8", "replace")).hexdigest()[:16]
+        if self.turn[:1] == [key] and self.turn[1] != source and self.turn[2]:
+            self.turn[2] -= 1
+            return True
+        self.turn = [key, source, self.turn[2] + 1 if self.turn[:2] == [key, source] else 1]
+        return False
 
     def content(self, value) -> dict:
         """A tool result's or message's text and media: text blocks joined, base64 media written once as files."""
@@ -220,8 +231,6 @@ class _Session:
     def emit(self, rec: dict | None) -> None:
         if rec is None:
             return
-        if rec.get("kind") in ("user", "brief"):
-            self.last_user = rec.get("text", "")
         text = str(rec.get("text") or "")
         if rec.get("kind") == "system" and (rec.get("source") in HOOK_SOURCES or text.lstrip().startswith("Local time:")):
             for found in ACTIVE_PROJECT.findall(text):  # the session-start hook names the project the session works on
@@ -265,7 +274,7 @@ class _Session:
             paths.write_json(self.folder / "meta.json", self.meta)
         paths.write_json(self.file, {"offset": self.offset, "seq": self.seq, "segment": self.segment,
                                      "folder": str(self.folder or ""), "seen": sorted(self.seen), "meta": self.meta,
-                                     "model": self.model, "last_user": self.last_user[:2000]})
+                                     "model": self.model, "turn": self.turn})
         return written
 
 
@@ -333,6 +342,8 @@ def _codex(row: dict, s: _Session):
             s.meta["parent"] = p.get("parent_thread_id") or (sub.get("thread_spawn") or {}).get("parent_thread_id")
         if p.get("source") == "exec":  # `codex exec`: its prompt comes from a command line, a script's or another agent's
             s.meta["unattended"] = True
+        elif isinstance(p.get("source"), str):  # continued from another source (`cli`): what is typed from here is the person's
+            s.meta.pop("unattended", None)
         yield {"at": at, "kind": "session", "data": {k: p[k] for k in ("id", "cwd", "originator", "cli_version", "source",
                                                                        "parent_thread_id", "model_provider", "git") if k in p}}
         if p.get("instructions"):
@@ -347,7 +358,7 @@ def _codex(row: dict, s: _Session):
         if p.get("role") == "assistant":
             yield {"at": at, "kind": "assistant", **body, "model": s.model}
         elif p.get("role") == "user" and not _injected(text):
-            yield None if text == s.last_user else _prompt(s, at, body)
+            yield None if s.mirrored(text, "item") else _prompt(s, at, body)
         else:
             yield s.once({"at": at, "kind": "system", "source": p.get("role"), **body})
     elif t == "response_item" and kind == "reasoning":
@@ -364,7 +375,7 @@ def _codex(row: dict, s: _Session):
                "input": p.get("arguments") or p.get("input") or p.get("action")}
     elif t == "event_msg" and kind == "user_message":
         text = str(p.get("message") or "")
-        yield None if not text or text == s.last_user or _injected(text) else _prompt(s, at, {"text": text})
+        yield None if not text or _injected(text) or s.mirrored(text, "event") else _prompt(s, at, {"text": text})
     elif t == "compacted":
         s.skipped["compaction history items"] += len(p.get("replacement_history") or [])
         yield {"at": at, "kind": "compaction", "text": p.get("message")}
@@ -520,14 +531,22 @@ def _writer(wait: bool):
 
 def export(days: float = 0, only: str = "", wait: bool = True, rebuild: bool = False) -> list:
     """Export every native transcript changed in the last `days` days (all when 0); `only` names one session.
-    Without `wait` a busy archive is read as it is."""
+    Without `wait` a busy archive is read as it is. The stamp is the doctor's heartbeat for the scheduled export: a
+    run that found nothing new still ran, and a run that could not copy a transcript says how many and why until a
+    run of every transcript copies them all (2026-11-12: every copy was refused and the doctor answered ok)."""
     with _writer(wait) as busy:
         if busy:
             return [busy]
         moved = [f"previous archive moved to {_rebuild()}"] if rebuild else []
         report = moved + _export(0 if rebuild else days, only)
-        paths.write_json(root() / ".state" / "export.json", {"exported": datetime.now().astimezone().isoformat(timespec="seconds")})
-        return report  # the stamp is the doctor's heartbeat for the scheduled export: a run that found nothing new still ran
+        stamp, failed = root() / ".state" / "export.json", [line for line in report if ": not exported (" in line]
+        now, kept = datetime.now().astimezone().isoformat(timespec="seconds"), paths.read_json(stamp)
+        if failed:
+            kept.update(failed=len(failed), reason=failed[0])
+        elif not (kept.get("failed") and (days or only)):  # a run of part of the archive does not clear a failure
+            kept = {"complete": now}
+        paths.write_json(stamp, {**kept, "exported": now})
+        return report
 
 
 def _export(days: float, only: str) -> list:
@@ -597,9 +616,9 @@ def prompts(workspace: str, day: str) -> list:
             except ValueError:
                 continue
             if at.date().isoformat() == day:
-                found.append({"harness": meta.get("harness"), "session": meta.get("session"), "seq": int(rec.get("seq", -1)),
-                              "at": at.isoformat(timespec="minutes"), "text": str(rec.get("text", ""))})
-    return sorted(found, key=lambda p: (p["at"], str(p["session"]), p["seq"]))
+                found.append((at, {"harness": meta.get("harness"), "session": meta.get("session"), "seq": int(rec.get("seq", -1)),
+                                   "at": at.isoformat(timespec="minutes"), "text": str(rec.get("text", ""))}))
+    return [p for _, p in sorted(found, key=lambda f: (f[0], str(f[1]["session"]), f[1]["seq"]))]  # in the order typed; each keeps its minute
 
 
 def _shift(day: str, days: int) -> str:
@@ -641,8 +660,8 @@ def find(prefix: str) -> list:
 
 
 def around(folder: str, seq: int, span: int = 3) -> list:
-    """The record a citation names (`<harness> <session> #<seq>`, R10.5) with `span` records either side."""
-    return [r for r in records(folder) if abs(int(r.get("seq", -1)) - seq) <= span]
+    """The record a citation names (`<harness> <session> #<seq>`, R10.5), whole, with `span` records either side."""
+    return [_whole(r, Path(folder)) if r.get("seq") == seq else r for r in records(folder) if abs(int(r.get("seq", -1)) - seq) <= span]
 
 
 def _whole(rec: dict, folder: Path) -> dict:

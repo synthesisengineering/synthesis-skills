@@ -111,7 +111,7 @@ The principal should never have to say "make sure nothing is lost": every prompt
 transcript archive, and a record accounts for one by citing it.
 
 - [ ] Run `synthesis sessions export`, then `synthesis sessions prompts --workspace <W> --date <today> --records <each folder the config names>`. It lists each prompt of today's that no record cites, as `<harness> <session8> #<seq>  HH:MM  <first words>`.
-- [ ] For each line, open it with `synthesis sessions show <session8> --seq <n>`. Where its substance is in a record, cite it there (`<harness> <session8> #<seq>`, or `#<first>-<last>` for a stretch one entry covers). Where it is not, write the record first: the request into the plan with its tag, the decision or correction into the project's session log. Never cite a prompt in a record that does not hold it.
+- [ ] For each line, open it with `synthesis sessions show <session8> --seq <n>`, which prints the whole prompt. Where its substance is in a record, cite it there (`<harness> <session8> #<seq>`, or `#<first>-<last>` for a stretch one entry covers). Where it is not, write the record first: the request into the plan with its tag, the decision or correction into the project's session log. Never cite a prompt in a record that does not hold it.
 - [ ] Run the command again with `--json`, save what it prints, and pass it to the record as `--prompts <file>`. A clean close is refused while any prompt is left; `--outcome partial` records the day and says how many are open.
 
 ## 6. Career Amplification

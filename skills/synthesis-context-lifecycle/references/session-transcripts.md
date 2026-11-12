@@ -64,7 +64,9 @@ each harness writes its own transcript to disk as the session runs. The copy is 
   `synthesis sessions export --all` and `synthesis sessions sync` every hour and at login, so a transcript is
   copied whether or not any session remembers to. `synthesis doctor` fails when that schedule is not loaded or
   no export has finished in a day (2026-11-11: until then the archive had no trigger of its own, and a
-  transcript that no session exported within two days was skipped).
+  transcript that no session exported within two days was skipped). It also fails while an export could not
+  copy a transcript, naming how many and the first reason, until `synthesis sessions export --all` copies them
+  all: an export that reads only the last two days or one session does not clear it.
 
 ## Copying each workspace's conversation off the Mac
 
@@ -102,8 +104,9 @@ synthesis sessions search "<pattern>" --project <id>
 ```
 
 Cite the record behind a decision or quote as `<harness> <session8> #<seq>` (for example `codex 01a1b2c3 #4120`) in a
-session log or lesson, and open it with `synthesis sessions show <session8> --seq <n>`, which prints the record and
-three either side. A session id's first eight characters name the main session, never the sub-agents it started,
+session log or lesson, and open it with `synthesis sessions show <session8> --seq <n>`, which prints that record
+whole and three either side, each cut at `--width` characters. A session id's first eight characters name the
+main session, never the sub-agents it started,
 whose ids begin with the same characters; `meta.json` gives a sub-agent `role: subagent` and its `parent`. A quote or attribution read from the archive in the current session has a tool output behind it,
 as quote provenance requires. One entry that covers a stretch of a session cites it as a range:
 `claude-code d20ab7c4 #1500-1560`. `--json` prints one object per line for tools such as the Console. Keep the conversation out

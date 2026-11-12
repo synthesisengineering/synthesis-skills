@@ -233,7 +233,7 @@ def cmd_sessions(args) -> int:
         rows = (sessions.around(found[0]["folder"], args.seq) if args.seq is not None else
                 sessions.records(found[0]["folder"], kinds, whole=args.whole))
         for rec in rows:
-            out(rec, sessions.render(rec, 0 if args.whole else args.width))
+            out(rec, sessions.render(rec, 0 if args.whole or rec.get("seq") == args.seq else args.width))
     elif args.action == "prompts":
         if not args.workspace:
             print("name the workspace whose prompts to list: --workspace <name>", file=sys.stderr)
@@ -369,7 +369,7 @@ def parser() -> argparse.ArgumentParser:
     s.add_argument("--session", default="", help="export: only this session")
     s.add_argument("--rebuild", action="store_true", help="export: move the archive aside and export everything again")
     s.add_argument("--no-push", action="store_true", help="sync: commit in each sessions repo but do not push")
-    s.add_argument("--seq", type=int, help="show: the cited record and three either side")
+    s.add_argument("--seq", type=int, help="show: the cited record, whole, and three either side")
     s.add_argument("--date", default="", help="prompts: the day, YYYY-MM-DD (default today)")
     s.add_argument("--records", action="append", default=[], metavar="FOLDER",
                    help="prompts: list only those no text file under this folder cites; repeat for more; exit 1 while any is left")
