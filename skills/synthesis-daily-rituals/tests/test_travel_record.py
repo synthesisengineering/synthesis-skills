@@ -21,9 +21,9 @@ sys.path.insert(0, str(SCRIPTS))
 import ritual_state  # noqa: E402
 
 DAY = "2026-11-11"
-WHOLE = {"summary": "Book launch at the Grand Theatre", "start": "2026-11-11T19:00:00-05:00",
+WHOLE = {"summary": "Book launch at the Grand Theatre", "start": "2026-11-11T19:00:00-05:00", "end": "2026-11-11T22:00:00-05:00",
          "location": "The Grand Theatre, 149 Main St, Harbor Town", "lacks": [], "leave": "17:05", "home": "23:20"}
-BARE = {"summary": "Book launch at the Grand Theatre", "start": "2026-11-11T19:00:00-05:00",
+BARE = {"summary": "Book launch at the Grand Theatre", "start": "2026-11-11T19:00:00-05:00", "end": "2026-11-11T22:00:00-05:00",
         "location": "Harbor Town (address on the invitation)",
         "lacks": ['no exact address: the location reads "Harbor Town (address on the invitation)"',
                   "no travel block before it (leave, route, arrive, backup, fare, ticket)"]}
@@ -161,3 +161,18 @@ def test_an_event_whose_start_is_no_date_and_time_is_not_the_checks_own_output(t
     declare(state, desk={"plans_dirs": [], "travel_check": True})
     code, _, refusal = record(state, "--travel", result(tmp_path, dict(WHOLE, start=start)))
     assert code != 0 and "travel" in refusal and history(state) == ""
+
+
+def test_an_event_over_before_the_results_days_is_not_that_results(tmp_path, record):
+    """The fourth review: an event that started and ended years before the window was recorded, since only its
+    start was held against the window's last day. One still under way when the window opens stays."""
+    state = tmp_path / "state"
+    declare(state, desk={"plans_dirs": [], "travel_check": True})
+    past = dict(WHOLE, start="2020-01-01T19:00:00-05:00", end="2020-01-01T22:00:00-05:00")
+    code, _, refusal = record(state, "--travel", result(tmp_path, past))
+    assert code != 0 and "travel" in refusal and history(state) == ""
+    code, _, refusal = record(state, "--travel", result(tmp_path, {k: v for k, v in WHOLE.items() if k != "end"}))
+    assert code != 0 and history(state) == ""                                                # no end: not the check's own output
+    under_way = dict(WHOLE, start="2026-11-09T09:00:00-05:00", end="2026-11-12T17:00:00-05:00")
+    code, out, refusal = record(state, "--travel", result(tmp_path, under_way))
+    assert code == 0 and "each with its travel" in out, refusal

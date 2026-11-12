@@ -435,3 +435,9 @@ def test_punctuation_does_not_make_another_event_or_another_address(tmp_path):
     assert code == 0, report
     code, report = check(tmp_path, [event("Plumber", "09:00", "10:00", "10 River St., Example City")])  # the home, with a full stop
     assert code == 0 and report["in_person"] == 0, report
+
+
+def test_each_event_of_the_result_says_when_it_ends(tmp_path):
+    """The record gate holds each event against the days the result claims, so the result gives the end as well."""
+    code, report = check(tmp_path, [RESOLVED, GOING, RETURNING])
+    assert all(e["end"] >= e["start"] for e in report["events"]) and report["events"][0]["end"].startswith("2026-11-")

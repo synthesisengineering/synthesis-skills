@@ -278,3 +278,12 @@ def test_a_policy_hour_that_is_no_time_of_day_is_not_judged(tmp_path, key, value
     unreadable = {**CONFIG, "travel_policy": {"latest_return": "23:00", "sleep_hours": 8, key: value}}
     code, said = check(tmp_path, "19:00", "22:00", [], *EVENING, config=unreadable)
     assert code == 2 and key in said and "HH:MM" in said
+
+
+def test_a_return_after_the_morning_has_begun_leaves_no_night(tmp_path):
+    """The fourth review: home at or after the hour the morning starts was read as a whole night, since only a
+    morning still ahead was looked for."""
+    for back in ("600", "630"):                                                              # 19:00 to 21:00, then home at 07:00 and 07:30
+        code, report = check(tmp_path, "19:00", "21:00", [], "--in-person", "--travel-before", "30", "--travel-after", back,
+                             config={**CONFIG, "travel_policy": {"sleep_hours": 8, "morning_starts": "07:00"}})
+        assert levels(report)["sleep"] == "REVIEW" and "07:00" in detail(report, "sleep"), back

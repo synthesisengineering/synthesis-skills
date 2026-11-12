@@ -161,3 +161,18 @@ def test_a_listed_choice_that_is_struck_or_ticked_is_closed(tmp_path, record):
     closed = "1. ~~Dinner with the board~~\n   **Option A** - Accept\n   **Option B** - Decline\n- [x] The offsite\n  **Option A** - Go\n  **Option B** - Stay\n"
     code, out, refusal = record(workspace(tmp_path, closed))
     assert code == 0 and "choices: 0 open" in out, refusal
+
+
+def test_a_second_entry_whose_letters_go_on_is_still_its_own_choice(tmp_path, record):
+    """The fourth review: a second entry lettered C and D was read as more options of the first, so its missing
+    recommendation passed, and a first entry already decided hid it altogether."""
+    listed = ("1. Dinner with the board on Thursday\n   **Option A** - Accept\n   **Option B** - Decline\n" + "   " + COSTS + "   " + VIEW
+              + "2. The offsite in March\n   **Option C** - Go\n   **Option D** - Send a deputy\n")
+    code, _, refusal = record(workspace(tmp_path, listed))
+    assert code != 0 and "The offsite in March" in refusal and "Dinner with the board" not in refusal
+    decided = listed.replace("   " + VIEW, "   " + VIEW + "   **Decided:** Option B\n")
+    code, _, refusal = record(workspace(tmp_path, decided))
+    assert code != 0 and "The offsite in March" in refusal
+    notes = ("### 3. The launch\n**Option A:** Accept\n- it is three hours away\n- the fare is not expensable\n**Option B:** Decline\n" + COSTS + VIEW)
+    code, out, refusal = record(workspace(tmp_path, notes))                                   # bullets under an option are not a new choice
+    assert code == 0 and "choices: 1 open" in out, refusal

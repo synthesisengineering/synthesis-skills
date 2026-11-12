@@ -1415,3 +1415,81 @@ def test_the_third_reviews_everyday_commands_pass(saved, command, tmp_path):
 def test_a_helper_given_its_path_is_judged_by_every_path_it_is_given(saved, program, tmp_path):
     command = "cd {work} && python3 - <<'EOF'\n".format(**saved) + program + "\nEOF"
     assert REFUSED in (guards.check("Bash", {"command": command}, {}, cwd=str(tmp_path)) or ""), program
+
+
+# --- the fourth review round (2026-11-11), each as a test that failed first ------------------------------------
+# Round 3's findings held. This round found variants of them: a link copied into place, a file given by another
+# keyword, a folder change under another name, a command inside an awk string that changes folder or hands a
+# file to an unknown program, an awk file name in two strings, a wrapper inside a wrapper, a folder stack turned
+# by number. And refusals of what is the agent's own: a mode or a size read as a file, a copy onto a script.
+
+@pytest.mark.parametrize("program", [
+    "import shutil\nshutil.copy('/tmp/pad/link', '{work}/memory/note.md', follow_symlinks=False)\nopen('{work}/memory/note.md', 'w')",
+    "import shutil\nshutil.copytree('/tmp/pad/links', '{work}/memory/more', symlinks=True)",
+    "import gzip\ngzip.open(filename='{work}/s.jsonl', mode='w')",                                 # the file under its own keyword
+    "import bz2\nbz2.open(filename='{work}/s.jsonl', mode='wt').write('x')",
+    "import codecs\ncodecs.open(filename='{work}/s.jsonl', mode='w')",
+    "from os import chdir as move\nmove('{state}')\nopen('x', 'w').write('x')",                    # a folder change under another name
+    "import os\ngo = os.chdir\ngo('{state}')\nopen('x', 'w').write('x')",
+    "import os\nos.fdopen(os.open('{work}/s.jsonl', os.O_WRONLY | os.O_APPEND), 'a').write('x')",
+    "import fileinput\nfor line in fileinput.input(files='{work}/s.jsonl', inplace=True): print(line, end='')",
+    "import fileinput\nfor line in fileinput.input('{work}/s.jsonl', inplace=1): print(line, end='')",
+])
+def test_the_fourth_reviews_python_programs_are_refused(saved, program, tmp_path):
+    command = "python3 - <<'EOF'\n" + program.format(**saved) + "\nEOF"
+    assert REFUSED in (guards.check("Bash", {"command": command}, {}, cwd=str(tmp_path)) or ""), program
+
+
+@pytest.mark.parametrize("command", [
+    "awk 'BEGIN {{ system(\"cd {state} && echo x > forged\") }}'",                                 # a folder change inside the string
+    "awk 'BEGIN {{ system(\"sqlite3 {state}/x.db \\\"delete from t\\\"\") }}'",                    # a file handed to an unknown program
+    "awk 'BEGIN {{ \"cd {state} && echo x > forged\" | getline y }}'",
+    "awk 'BEGIN {{ print \"x\" > \"{claude}/-wo\" \"rk/s.jsonl\" }}'",                             # a file name in two strings
+    "env -C {state} env -C . tar xf /tmp/a.tar",                                                   # a wrapper inside a wrapper
+    "env --chdir={state} sudo -D . tar xf /tmp/a.tar",
+    "pushd {state}; pushd /tmp; pushd +1; pushd +1; pushd +1; pushd +1; tar xf /tmp/a.tar",        # the stack turned back round
+    "pushd {state}; pushd /tmp; pushd /var; pushd -0; tar xf /tmp/a.tar",
+    "pushd /tmp; pushd {state}; pushd /var; popd +0; tar xf /tmp/a.tar",
+])
+def test_the_fourth_reviews_commands_are_refused(saved, command, tmp_path):
+    assert REFUSED in (guards.check("Bash", {"command": command.format(**saved)}, {}, cwd=str(tmp_path)) or ""), command
+
+
+@pytest.mark.parametrize("command", [
+    "cd {work} && chmod 600 memory/note.md",                                                       # a mode is not a file
+    "cd {work} && truncate -s 0 memory/note.md",                                                   # nor is a size
+    "cd {work} && chown -h nobody memory/note.md",
+    "cp /tmp/pad/review-script.js {work}/abc/workflows/scripts/review-wf_1.js",                    # a copy onto the script, not into it
+    "cd {work} && cp /tmp/pad/review-script.js abc/workflows/scripts/review-wf_1.js",
+    "pushd {state}; pushd /tmp; pushd +1; pushd +1; pushd +1; tar xf /tmp/a.tar",                  # three turns end in /tmp
+    "python3 - <<'EOF'\nimport fileinput\nfor line in fileinput.input(files='{work}/s.jsonl', inplace=False): print(line)\nEOF",
+    "python3 - <<'EOF'\nimport os\nf = os.fdopen(os.open('{work}/s.jsonl', os.O_RDONLY), 'rb')\nprint(f.read(80))\nEOF",
+    "awk 'BEGIN {{ system(\"cd /tmp/pad && echo x > made\") }}' {work}/s.jsonl",
+    "env -C /tmp env -C pad tar xf /tmp/a.tar",
+])
+def test_the_fourth_reviews_everyday_commands_pass(saved, command, tmp_path):
+    assert guards.check("Bash", {"command": command.format(**saved)}, {}, cwd=str(tmp_path)) is None
+
+
+@pytest.mark.parametrize("program", [
+    "rows = [('s.jsonl', '/tmp/pad/out.txt')]\nfor src, dst in rows:\n    open(dst, 'w').write(open(src).read())",   # each row's own column
+    "def save(p='/tmp/pad/out.txt'):\n    open(p, 'w').write('x')\nsave()",                                             # a default nobody overrides
+    "def save(p, text, n=0):\n    if n:\n        return save(p, text, n - 1)\n    open(p, 'w').write(text)\nsave('/tmp/pad/out.txt', open('s.jsonl').read())",
+    "f = open('/tmp/pad/in.txt')\nopen(f.name + '.bak', 'w').write(f.read())",                                         # the name of a file elsewhere
+    "from pathlib import Path\nwith Path('/tmp/pad/in.txt').open() as f:\n    open(f.name + '.bak', 'w').write(f.read())",
+    "from pathlib import Path\np = Path('/tmp/pad/in.txt')\nf = p.open('rb')\nother = f\nopen(other.name + '.bak', 'wb').write(f.read())",
+])
+def test_from_inside_a_transcript_folder_these_programs_write_elsewhere_and_pass(saved, program, tmp_path):
+    command = "cd {work} && python3 - <<'EOF'\n".format(**saved) + program + "\nEOF"
+    assert guards.check("Bash", {"command": command}, {}, cwd=str(tmp_path)) is None, program
+
+
+@pytest.mark.parametrize("program", [
+    "rows = [('/tmp/pad/in.txt', 'out.txt')]\nfor src, dst in rows:\n    open(dst, 'w').write(open(src).read())",   # a bare name in the column
+    "def save(p='out.txt'):\n    open(p, 'w').write('x')\nsave()",
+    "def save(p='/tmp/pad/out.txt'):\n    open(p, 'w').write('x')\nsave()\nsave('out.txt')",
+    "f = open('s.jsonl')\nopen(f.name + '.bak', 'w').write(f.read())",                                              # beside the transcript
+])
+def test_and_from_inside_these_stay_refused(saved, program, tmp_path):
+    command = "cd {work} && python3 - <<'EOF'\n".format(**saved) + program + "\nEOF"
+    assert REFUSED in (guards.check("Bash", {"command": command}, {}, cwd=str(tmp_path)) or ""), program
