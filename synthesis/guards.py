@@ -2473,8 +2473,20 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
                 if isinstance(stmt, (ast.With, ast.AsyncWith)):  # its body runs once and in order: a change in it is as sure as one outside
                     at = walk(stmt.body, walk([ast.Expr(value=item.context_expr) for item in stmt.items], at))
                     continue
-                if isinstance(stmt, ast.If) and getattr(getattr(stmt.test, "left", None), "id", "") == "__name__" and not stmt.orelse:
-                    at = walk(stmt.body, at)  # the program's own main block
+                if isinstance(stmt, ast.If):  # each branch in order; its main block always runs, any other may not
+                    at = walk([ast.Expr(value=stmt.test)], at)
+                    main = getattr(getattr(stmt.test, "left", None), "id", "") == "__name__" and not stmt.orelse
+                    at = list(dict.fromkeys(walk(stmt.body, at) + (walk(stmt.orelse, at) if stmt.orelse or not main else [])))
+                    continue
+                if isinstance(stmt, (ast.For, ast.AsyncFor, ast.While)):  # its body in order, each time from wherever a round may have left it
+                    at = walk([ast.Expr(value=getattr(stmt, "iter", getattr(stmt, "test", None)))], at)
+                    for _ in range(2):
+                        now, mids = at, list(at)
+                        for part in stmt.body:
+                            now = walk([part], now)
+                            mids += now
+                        at = list(dict.fromkeys(mids))  # it may run no times, or leave at any point
+                    at = walk(stmt.orelse, at)
                     continue
                 if isinstance(stmt, (ast.Try, getattr(ast, "TryStar", ast.Try))):  # in order until something fails: a handler and the
                     now, mids = at, list(at)                                      # finally may start from any point of the body
