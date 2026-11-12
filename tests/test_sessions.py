@@ -417,3 +417,72 @@ def test_a_refused_month_leaves_nothing_staged_for_the_next_commit(synced, monke
     assert "acme: 2026-09: 1 session(s) committed" in report and report[-1].startswith("FAILED acme: commit for 2026-10")
     assert _git(synced["repo"], "diff", "--cached", "--name-only") == ""
     assert _git(synced["repo"], "log", "-1", "--name-only", "--format=").split()[0].startswith("2026-09/")
+
+
+# --- what the principal asked is accounted for (2026-11-11) ----------------------------------------------------
+# "Make sure nothing is lost" should not need saying. The archive holds every prompt the principal typed; a record
+# accounts for one by citing it (`<harness> <session> #<seq>`, alone or as a range), and what no record cites is
+# listed, so a day cannot be closed clean over a request that reached no record.
+
+def _typed(base: dict, text: str, at: str) -> dict:
+    return {**base, "timestamp": at, "type": "user", "message": {"role": "user", "content": text}}
+
+
+@pytest.fixture
+def asked(harness, tmp_path):
+    base = {"cwd": harness["work"], "sessionId": "c1"}
+    rows = _claude_rows(harness["work"]) + [
+        _typed(base, "Also draft the announcement.", "2026-10-30T15:00:00.000Z"),
+        _typed(base, "And one more thing tomorrow.", "2026-10-31T15:00:00.000Z"),
+        {**base, "timestamp": "2026-10-30T15:05:00.000Z", "type": "user", "isMeta": True,
+         "message": {"role": "user", "content": "<system-reminder>not his words</system-reminder>"}},
+    ]
+    _jsonl(harness["claude"], rows)
+    sessions.export(0)
+    kb = tmp_path / "kb"
+    (kb / "projects" / "alpha" / "sessions").mkdir(parents=True)
+    return {**harness, "kb": kb, "log": kb / "projects" / "alpha" / "sessions" / "2026-10.md"}
+
+
+def test_the_principals_prompts_of_a_day_are_listed_and_nothing_else(asked):
+    found = sessions.prompts("acme", "2026-10-30")
+    assert [p["text"] for p in found] == ["Please plan the release.", "Also draft the announcement."]
+    assert all(p["harness"] == "claude-code" and p["session"] == "c1" and isinstance(p["seq"], int) for p in found)
+    assert sessions.prompts("acme", "2026-10-31")[0]["text"] == "And one more thing tomorrow."
+    assert sessions.prompts("other", "2026-10-30") == [] and sessions.prompts("acme", "2026-10-29") == []
+
+
+def test_a_prompt_is_accounted_for_by_a_record_that_cites_it_alone_or_in_a_range(asked):
+    first, second = sessions.prompts("acme", "2026-10-30")
+    roots = [str(asked["kb"])]
+    assert sessions.uncited([first, second], roots) == [first, second]
+    asked["log"].write_text(f"- 10:00 planned the release (claude-code c1 #{first['seq']})\n", encoding="utf-8")
+    assert sessions.uncited([first, second], roots) == [second]
+    asked["log"].write_text(f"- the day's work, c1 #{first['seq']}-{second['seq']}\n", encoding="utf-8")
+    assert sessions.uncited([first, second], roots) == []
+    asked["log"].write_text(f"- c1 #{second['seq'] + 1}, c2 #{first['seq']}, c10 #{first['seq']}, c1 # {first['seq']}\n", encoding="utf-8")
+    assert sessions.uncited([first, second], roots) == [first, second]      # another record, another session, no citation
+    asked["log"].write_text(f"- c1 #{first['seq']} to #{second['seq']}\n", encoding="utf-8")
+    assert sessions.uncited([first, second], roots) == []
+    assert sessions.uncited([first], [str(asked["kb"] / "absent")]) == [first]
+
+
+def test_sessions_prompts_names_each_one_no_record_cites_and_exits_1_while_any_is_open(asked, capsys):
+    command = ["sessions", "prompts", "--workspace", "acme", "--date", "2026-10-30", "--records", str(asked["kb"])]
+    assert cli.main(command) == 1
+    out = capsys.readouterr().out.splitlines()
+    first, second = sessions.prompts("acme", "2026-10-30")
+    assert out[0].startswith(f"claude-code c1 #{first['seq']} ") and "Please plan the release." in out[0]
+    assert out[-1] == "2 of 2 prompts on 2026-10-30 in acme are cited by no record"
+    asked["log"].write_text(f"- c1 #{first['seq']}\n", encoding="utf-8")
+    assert cli.main(command) == 1
+    out = capsys.readouterr().out.splitlines()
+    assert len(out) == 2 and "Also draft the announcement." in out[0] and out[-1].startswith("1 of 2 prompts")
+    asked["log"].write_text(f"- c1 #{first['seq']}-{second['seq']}\n", encoding="utf-8")
+    assert cli.main(command) == 0
+    assert capsys.readouterr().out.strip() == "all 2 prompts on 2026-10-30 in acme are cited by a record"
+    assert cli.main(command[:-2]) == 0                                       # with no records given it only lists
+    assert len(capsys.readouterr().out.splitlines()) == 3
+    assert cli.main(command + ["--json"]) == 0
+    assert json.loads(capsys.readouterr().out) == {"workspace": "acme", "date": "2026-10-30", "prompts": 2, "open": []}
+    assert cli.main(["sessions", "prompts", "--date", "2026-10-30"]) == 2    # a workspace must be named
