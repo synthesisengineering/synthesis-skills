@@ -2589,3 +2589,44 @@ def test_a_home_the_command_sets_is_the_home_it_writes_to(above, command, held, 
     here.mkdir()
     reason = guards.check("Bash", {"command": command.format(**above)}, {}, cwd=str(here))
     assert (REFUSED in (reason or "")) == held, command
+
+
+# Writers that are not the standard library's (the same probe): a data frame's `to_csv`, an array's `save`, a
+# figure's `savefig`, an image's `save`, `joblib.dump`, `torch.save`, a file sent to the trash, and a store opened
+# for writing (`shelve.open`, `dbm.open(path, "c")`). Each was given a transcript and passed, since only the
+# standard library's writers were known. A call named as a writer is now judged where its path lands; what it is
+# handed besides a path is content.
+OTHER_WRITERS = [
+    ("import pandas as pd\ndf = pd.read_json('{work}/s.jsonl', lines=True)\ndf.to_csv('{work}/s.jsonl')", True),
+    ("import pandas as pd\ndf = pd.read_json('{work}/s.jsonl', lines=True)\ndf.to_csv('/tmp/pad/out.csv', sep=',', encoding='utf-8')", False),
+    ("import pandas as pd\npd.DataFrame([1]).to_json('{state}/x.json')", True),
+    ("import pandas as pd\npd.DataFrame([1]).to_sql('events', None)\nprint(pd.DataFrame([1]).to_dict('records'))", False),      # a name of a table is no file
+    ("import pandas as pd\npd.DataFrame([1]).to_csv('out.csv')", None),                                                     # a bare name: where it stands
+    ("import numpy as np\nnp.save('{work}/x.npy', np.zeros(3))", True),
+    ("import numpy as np\nnp.save('/tmp/pad/x.npy', np.zeros(3))", False),
+    ("import matplotlib.pyplot as plt\nplt.plot([1, 2])\nplt.savefig('{work}/fig.png')", True),
+    ("import matplotlib.pyplot as plt\nplt.plot([1, 2])\nplt.savefig('/tmp/pad/fig.png', dpi=100)", False),
+    ("from PIL import Image\nImage.new('RGB', (1, 1)).save('{state}/x.png')", True),
+    ("import joblib\njoblib.dump([1], '{state}/x.pkl')", True),
+    ("import torch\ntorch.save({{}}, '{work}/m.pt')", True),
+    ("import json\njson.dump('{work}/s.jsonl', open('/tmp/pad/where.json', 'w'))", False),                                   # a path dumped is content
+    ("import json, pickle\nwith open('/tmp/pad/x.json', 'w') as f:\n    json.dump([1], f)\nwith open('/tmp/pad/x.pkl', 'wb') as g:\n    pickle.dump([1], g)", False),
+    ("from send2trash import send2trash\nsend2trash('{work}/s.jsonl')", True),
+    ("import send2trash\nsend2trash.send2trash('/tmp/pad/old.txt')", False),
+    ("names = ['{work}/s.jsonl', '/tmp/pad/a.txt']\nnames.remove('{work}/s.jsonl')\nprint(names)", False),                   # a list's own remove takes no file away
+    ("import shelve\nd = shelve.open('{state}/db')\nd['a'] = 1", True),
+    ("import dbm\nd = dbm.open('{state}/db', 'c')", True),
+    ("import dbm\nd = dbm.open('/tmp/pad/db', 'c')\nprint(dbm.open('{work}/abc/tool-results/index', 'r').keys())", False),
+    ("import wave\nwave.open('{work}/x.wav', 'wb')", True),
+    ("from PIL import Image\nprint(Image.open('{work}/abc/tool-results/shot.png').size)", False),
+]
+
+
+@pytest.mark.parametrize("program, held", OTHER_WRITERS)
+@pytest.mark.parametrize("inside", [False, True])
+def test_a_call_named_as_a_writer_is_judged_where_its_path_lands(above, program, held, inside, tmp_path):
+    here = tmp_path / "elsewhere"
+    here.mkdir()
+    command = "python3 - <<'EOF'\n" + program.format(**above) + "\nEOF"
+    reason = guards.check("Bash", {"command": command}, {}, cwd=str(above["work"] if inside else here))
+    assert (REFUSED in (reason or "")) == (inside if held is None else held), program
