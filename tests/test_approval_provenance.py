@@ -1448,7 +1448,7 @@ def test_the_fourth_reviews_python_programs_are_refused(saved, program, tmp_path
     "env -C {state} env -C . tar xf /tmp/a.tar",                                                   # a wrapper inside a wrapper
     "env --chdir={state} sudo -D . tar xf /tmp/a.tar",
     "pushd {state}; pushd /tmp; pushd +1; pushd +1; pushd +1; pushd +1; tar xf /tmp/a.tar",        # the stack turned back round
-    "pushd {state}; pushd /tmp; pushd /var; pushd -0; tar xf /tmp/a.tar",
+    "pushd {state}; pushd /tmp; pushd /var; pushd -1; tar xf /tmp/a.tar",                         # counted from the oldest
     "pushd /tmp; pushd {state}; pushd /var; popd +0; tar xf /tmp/a.tar",
 ])
 def test_the_fourth_reviews_commands_are_refused(saved, command, tmp_path):

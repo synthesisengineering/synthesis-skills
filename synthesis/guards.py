@@ -947,7 +947,9 @@ def _commands(command: str, cwd: str, depth: int = 0, writes: list | None = None
         moved: list = []
         words, inner = _bare(words, moved)
         scripts = scripts + inner
-        here = os.path.normpath(os.path.join(cwd, os.path.expanduser(moved[-1]))) if moved else cwd
+        here = cwd
+        for folder in moved:  # `env -C a env -C b`: b is read from a
+            here = os.path.normpath(os.path.join(here, os.path.expanduser(folder)))
         if words:
             found.append((words, here))
             if runs is not None:
@@ -956,14 +958,17 @@ def _commands(command: str, cwd: str, depth: int = 0, writes: list | None = None
                 feeds.append("\n".join(text for text, _ in stdin))
             if words[0] in ("cd", "pushd", "popd"):  # where the next command runs: `cd -` goes back, `popd` to the folder pushd left
                 to = next((w for w in words[1:] if w == "-" or not re.match(r"[-+]", w)), None)
-                if words[0] == "popd" or (words[0] == "pushd" and to is None):
-                    cwd, back = (stack.pop() if stack else cwd), cwd
-                    stack += [back] if words[0] == "pushd" else []
-                elif to == "-":
-                    cwd, back = back, cwd
-                else:
-                    stack += [cwd] if words[0] == "pushd" else []
-                    cwd, back = os.path.normpath(os.path.join(cwd, os.path.expanduser(os.path.expandvars(to if to is not None else "~")))), cwd
+                turn = next((w for w in words[1:] if re.fullmatch(r"[-+]\d+", w)), "")  # +N from this folder, -N from the oldest
+                dirs = [cwd] + stack[::-1]  # the stack as the shell shows it: this folder first
+                at = (int(turn[1:]) if turn[:1] == "+" else len(dirs) - 1 - int(turn[1:])) % len(dirs) if turn else 0
+                went = back if to == "-" else os.path.normpath(os.path.join(cwd, os.path.expanduser(os.path.expandvars(to or "~"))))
+                if words[0] == "cd":
+                    dirs[0] = went if to is not None or not turn else dirs[at]
+                elif words[0] == "popd":
+                    dirs = (dirs[:at] + dirs[at + 1:]) if len(dirs) > 1 else dirs
+                else:  # pushd: a folder goes on top; a number turns the stack; alone, the top two change places
+                    dirs = [went] + dirs if to is not None else dirs[at:] + dirs[:at] if turn else dirs[1:2] + dirs[:1] + dirs[2:]
+                cwd, back, stack = dirs[0], cwd, dirs[1:][::-1]
             script, reads = _shell_input(words)
             if script is not None:
                 scripts.append(script)
@@ -1586,6 +1591,8 @@ def check_pr_gate(command: str, config: dict, cwd: str, session: dict | None = N
 
 COPIERS = frozenset({"cp", "mv", "ln", "install", "rsync", "ditto"})  # these write only where the copy lands
 PACKERS = frozenset({"gzip", "gunzip", "bzip2", "bunzip2", "xz", "unxz", "zstd", "compress", "uncompress"})  # replace their files
+VALUED = {"touch": ("-r", "--reference", "-t", "-d", "--date"), "truncate": ("-r", "--reference", "-s", "--size"),
+          "mkdir": ("-m", "--mode"), "install": ("-m", "--mode", "-o", "--owner", "-g", "--group")}  # options whose next word is no file
 WRITERS = COPIERS | PACKERS | {"tee", "touch", "truncate", "mkdir", "rmdir", "rm", "unlink", "shred", "chmod", "chown", "chgrp", "dd"}
 IN_PLACE = re.compile(r"-\w*i(?:\W.*)?|--in-place(?:=.*)?")  # sed -i, sed -Ei.bak, perl -pi
 INTO = re.compile(r"--target-directory(?:=(.*))?|-[A-Za-su-z]*t(.*)")  # cp -t DIR, mv -ft DIR, --target-directory=DIR
@@ -1709,8 +1716,10 @@ def _landing(words: list[str]) -> list[str]:
     lands, which is its last operand or the folder `-t` gives, and each source's name inside it in case that is a
     folder (2026-11-11: `cp -t <folder>`, `dd of=` and `perl -pi` wrote where no check was looking)."""
     head = os.path.basename(words[0])
-    refs = {i + 1 for i, w in enumerate(words) if w in ("-r", "--reference") and head in ("touch", "truncate")}
-    rest = [w for i, w in enumerate(words) if i and i not in refs and not w.startswith("-")]  # a reference file is only read
+    refs = {i + 1 for i, w in enumerate(words) if w in VALUED.get(head, ())}  # a reference file is only read; a size or a date is no file
+    rest = [w for i, w in enumerate(words) if i and i not in refs and not w.startswith("-")]
+    if head in ("chmod", "chown", "chgrp") and not any(w.startswith("--reference") for w in words):
+        rest = rest[1:]  # the mode or the owner comes first
     if head == "dd":
         return [w[3:] for w in rest if w.startswith("of=")]
     if head == "sort":  # a reader, unless told where to write
@@ -1760,7 +1769,8 @@ def _awk_writes(program: str) -> list[str]:
         last, i = token, m.start() + len(token)
     for at, token in enumerate(tokens):
         before, after = "".join(tokens[at - 1:at]), "".join(tokens[at + 1:at + 2])
-        outs += [token[1:-1] if token[:1] == '"' else "$"] if redirect else []
+        one = token[:1] == '"' and after in ("", ";", "}", "\n", ")")  # a name in two strings, or built from a field, cannot be read
+        outs += [token[1:-1] if one else "$"] if redirect else []
         depth += (token == "(") - (token == ")")
         redirect = printing and depth <= 0 and token in (">", ">>")
         printing = token in ("print", "printf") or (printing and token not in (";", "{", "}", "\n"))
@@ -1775,13 +1785,14 @@ def _awk_writes(program: str) -> list[str]:
 
 
 def _string_writes(command: str) -> list[str]:
-    """The files a command given as a plain string writes: its redirects and what its utilities change."""
+    """The files a command given as a plain string writes: its redirects and what its utilities change, each from
+    the folder the string's own `cd` leaves it in, and what it hands a program not known to only read it."""
     writes: list = []
     try:
         found = _commands(command.replace('\\"', '"'), "", writes=writes)
     except (Unreadable, StopIteration, IndexError, RecursionError):
         return ["$"]
-    return [t for t, _ in writes] + [w for words, _ in found for w in _landing(words)]
+    return [os.path.join(w, t) for t, w in writes] + [os.path.join(here, w) for words, here in found for w in _landing(words) + _named(words)]
 
 
 def _named(words: list[str]) -> list[str]:
@@ -1957,7 +1968,7 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
     def imported(node):  # the module a call imports by a name it spells out: __import__("os"), import_module("os")
         call = isinstance(node, ast.Call) and getattr(node.func, "id", getattr(node.func, "attr", "")) in ("__import__", "import_module")
         return said(node.args[0]) if call and node.args else None
-    modules, direct, stars, local, pairs, loops, tainted, bound = {}, {}, [], {}, [], [], set(), {}
+    modules, direct, stars, local, pairs, loops, tainted, bound, files, ranges = {}, {}, [], {}, [], [], set(), {}, {}, {}
     for n in nodes:  # what each name is: a module, a name taken from one, the program's own function, an assignment
         if isinstance(n, ast.Import):
             modules.update({(a.asname or a.name).split(".")[0]: a.name if a.asname else a.name.split(".")[0] for a in n.names})
@@ -2021,6 +2032,12 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
     loose = loose or (wild and (any(m in v for v in env.values() for m in names) or any(
         v[:1] == "/" and paths.inside(v, r) for v in env.values() for r in roots)))
 
+    def source(node):  # what an open call opens: its first argument, or the path whose own open() it is; None for any other node
+        if not (isinstance(node, ast.Call) and getattr(node.func, "attr", getattr(node.func, "id", "")) == "open"):
+            return None
+        whole = isinstance(node.func, ast.Name) or (isinstance(node.func.value, ast.Name) and node.func.value.id in modules)
+        return (node.args[:1] or [None])[0] if whole else node.func.value
+
     def opened(node) -> bool:  # a file opened from a protected path: what it holds is content, but its .name is that path
         return isinstance(node, ast.Call) and getattr(node.func, "attr", getattr(node.func, "id", "")) == "open" and any(
             map(named, [*node.args, *(k.value for k in node.keywords), *([node.func.value] if isinstance(node.func, ast.Attribute) else [])]))
@@ -2045,6 +2062,8 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
             return given.get(id(node), said(node))
         if isinstance(node, ast.Name):
             return bound.get(node.id, "\0")
+        if isinstance(node, ast.Attribute) and node.attr == "name" and getattr(node.value, "id", "") in files:
+            return files[node.value.id]  # the name of a file it opened is the path it opened
         if isinstance(node, ast.JoinedStr):
             return "".join(spelled(v.value if isinstance(v, ast.FormattedValue) else v) for v in node.values)
         if isinstance(node, ast.BinOp) and isinstance(node.op, (ast.Add, ast.Div)):
@@ -2083,6 +2102,9 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
         for target, value in pairs + [(n.optional_vars, n.context_expr) for n in nodes if isinstance(n, ast.withitem) and n.optional_vars is not None]:
             same = opened(value) or "name of " + getattr(value, "id", "") in tainted  # the file itself, or another name for it
             grew |= isinstance(target, ast.Name) and same and taint(["name of " + target.id])
+            was = files.get(getattr(value, "id", "")) if isinstance(value, ast.Name) else spelled(source(value)) if source(value) is not None else None
+            if isinstance(target, ast.Name) and target.id in once and target.id not in files and was and was[:1] != "\0":
+                files[target.id], grew = was, True
         for target, value in pairs:
             grew |= named(value) and taint(held(target))
             if isinstance(target, ast.Name) and target.id in once and target.id not in bound and spelled(value)[:1] != "\0":
@@ -2090,8 +2112,10 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
         for name, calls_of in callers.items():  # a helper called in one place spells what that caller hands it
             own = local[name][0]
             takers = [a.arg for a in own.posonlyargs + own.args]
+            given_by = dict(zip(takers[len(takers) - len(own.defaults):], own.defaults))  # a default stands where no caller says otherwise
             for at, taker in enumerate(takers):
-                handed = {spelled(c.args[at]) if at < len(c.args) else next((spelled(k.value) for k in c.keywords if k.arg == taker), "\0") for c in calls_of}
+                sent = [c.args[at] if at < len(c.args) else next((k.value for k in c.keywords if k.arg == taker), given_by.get(taker)) for c in calls_of]
+                handed = {spelled(a) if a is not None else "\0" for a in sent if getattr(a, "id", None) != taker}  # its call of itself hands the same on
                 if taker in once and taker not in bound and len(handed) == 1 and min(handed)[:1] != "\0":
                     bound[taker], grew = min(handed), True
         for n in loops:  # over rows the program spells out, each name takes its own column; over anything else, all of it
@@ -2100,6 +2124,10 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
             if each is not None and width and all(isinstance(r, (ast.Tuple, ast.List)) and len(r.elts) == width and not any(
                     isinstance(e, ast.Starred) for e in r.elts + n.target.elts) for r in each):
                 grew |= taint(x for r in each for t, v in zip(n.target.elts, r.elts) if named(v) for x in held(t))
+                for at, t in enumerate(n.target.elts):  # and each name is one of its column's values
+                    column = [spelled(r.elts[at]) for r in each]
+                    if isinstance(t, ast.Name) and t.id in once and ranges.get(t.id) != column:
+                        ranges[t.id], grew = column, True
             else:
                 grew |= named(n.iter) and taint(held(n.target))
         for n in nodes:
@@ -2132,7 +2160,9 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
     standing, moved = any(paths.inside(os.path.realpath(where), r) for r in roots), False
 
     def lands(node, folder: bool = False, link: bool = False) -> bool:  # whether a write's target is, or may be, in a protected folder
-        path = spelled(node)
+        return any(leads(path, node, folder, link) for path in ranges.get(getattr(node, "id", ""), [spelled(node)]))
+
+    def leads(path: str, node, folder: bool, link: bool) -> bool:  # one spelling of a target
         real = os.path.realpath(os.path.join(where, os.path.expanduser(path))) if "\0" not in path else ""
         inside = bool(real) and any(paths.inside(real, r) for r in roots)
         # A plain path is judged where it leads (one that names a protected folder and climbs away from it is not
@@ -2142,7 +2172,7 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
         lead = os.path.dirname(os.path.expanduser(path).split("\0")[0])
         led = os.path.realpath(lead) if os.path.isabs(lead) else ""
         return named(node) or ((standing or moved) and not (led and not any(paths.inside(led, r) or paths.inside(r, led) for r in roots)))
-    moved = any(getattr(n.func, "attr", getattr(n.func, "id", "")) in ("chdir", "fchdir")
+    moved = any(direct.get(getattr(n.func, "id", ""), ("", getattr(n.func, "attr", getattr(n.func, "id", ""))))[1] in ("chdir", "fchdir")
                 and any(map(lands, [*n.args, *(k.value for k in n.keywords)])) for n in calls)
     hit = wrote = False
     for n in calls:
@@ -2158,14 +2188,21 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
         method = base is not None and not imported(base) and not (isinstance(base, ast.Name) and base.id in modules)  # p.write_text(), not os.remove()
         mode = ((n.args[1:2] if opener else n.args[:1]) or [kw.get("mode")])[0]  # Path(p).open("w") takes its mode first
         writes = mode is not None and (said(mode) is None or bool(re.fullmatch(r"[rbtU]*[wax+][\w+:|]*", said(mode))))
+        flags = {x.attr if isinstance(x, ast.Attribute) else x.id for a in n.args[1:2] + [kw[k] for k in ("flags",) if k in kw]
+                 for x in ast.walk(a) if isinstance(x, (ast.Attribute, ast.Name))} - {"os"}
+        reads_only = bool(flags) and flags <= {"O_RDONLY", "O_CLOEXEC", "O_NONBLOCK", "O_NOFOLLOW", "O_DIRECTORY", "O_NOCTTY", "O_BINARY"}
+        told = kw.get("inplace", n.args[1] if len(n.args) > 1 else None)  # fileinput edits its files only when told to
+        edits = told is not None and not (isinstance(told, ast.Constant) and not told.value)
+        kept = [k for k, plain in (("follow_symlinks", True), ("symlinks", False)) if k in kw and getattr(kw[k], "value", None) is not plain]
         targets = [t for m in owners for t in (  # what a call into the standard library changes: a copy, only where it lands
             [] if m == "shutil" and label in ("which", "disk_usage", "get_terminal_size")
             else n.args[1:2] + [kw[k] for k in ("dst", "fdst") if k in kw] or every if m == "shutil" and label in COPIES
+            else [] if (m, label) == ("os", "open") and reads_only
             else every if m in ("shutil", "subprocess") or (m, label) == ("sqlite3", "connect") or (m == "os" and OS_WRITES.fullmatch(label))
-            or (m == "fileinput" and "inplace" in kw)
+            or (m == "fileinput" and edits)
             else [])]
         if opener and (writes or starred):  # open(path, "w") or open(file=path, mode="w")
-            targets += n.args[:1] or [kw[k] for k in ("file", "name") if k in kw]
+            targets += n.args[:1] or [kw[k] for k in ("file", "name", "filename") if k in kw]
         elif method and label in ("extractall", "extract"):  # an archive unpacked: where it is told, else where the program stands
             targets += every or [ast.Constant(value=".")]
         elif method and label in LINKS:  # the link and what it points at: written through, it writes there
@@ -2175,7 +2212,7 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
         elif method and label in ("rename", "replace") and len(n.args) + len(kw) == 1 and (n.args or "target" in kw):
             targets += [base] + every  # both ends change; str.replace takes two
         wrote = wrote or bool(targets)
-        hit = hit or any(lands(t, label in ("mkdir", "makedirs"), label in LINKS) for t in targets)
+        hit = hit or any(lands(t, label in ("mkdir", "makedirs"), label in LINKS or bool(kept)) for t in targets)  # a copy that keeps links may make one
     return hit or (wrote and loose), wrote
 
 
@@ -2214,8 +2251,11 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None) -> str |
         wheres.add(where)  # a redirect after `cd <root>` writes relative to that root
         if HOOK_RUN.search(words[0]) or ((SCRIPT.match(head) or head in SHELLS) and HOOK_RUN.search(_ran(words))):
             why = why or "runs the synthesis hook, which only the harness may run"
-        asked += [(os.path.expanduser(os.path.expandvars(w)), where) for w in _landing(words)]
-        led = [os.path.realpath(os.path.join(where, os.path.expanduser(w))) for w in _landing(words)] if head in ("ln", "mkdir") else []
+        landed = _landing(words)  # a copy onto a note or a script that is the agent's own lands on it, not inside it
+        firm = {w for w in landed if _own(os.path.realpath(os.path.join(where, os.path.expanduser(w))))}
+        landed = [w for w in landed if os.path.dirname(w) not in firm]
+        asked += [(os.path.expanduser(os.path.expandvars(w)), where) for w in landed]
+        led = [os.path.realpath(os.path.join(where, os.path.expanduser(w))) for w in landed] if head in ("ln", "mkdir") else []
         links, made = links + led * (head == "ln"), made + led * (head == "mkdir")
         aimed = [w for w in words[1:] if not w.startswith("-")][:1] if head == "ln" else []  # what a link made here points at
         soft = any(re.fullmatch(r"-[A-Za-z]*s[A-Za-z]*|--symbolic", w) for w in words[1:])  # its target is read from the link's own folder
