@@ -994,6 +994,9 @@ def _commands(command: str, cwd: str, depth: int = 0, writes: list | None = None
                 else:  # pushd: a folder goes on top; a number turns the stack; alone, the top two change places
                     dirs = [went] + dirs if to is not None else dirs[at:] + dirs[:at] if turn else dirs[1:2] + dirs[:1] + dirs[2:]
                 cwd, back, stack = dirs[0], cwd, dirs[1:][::-1]
+            if os.path.basename(words[0]) == "find":  # what it runs with -exec is a command of its own, `{}` being each folder it searches
+                roots, ran = _find(words)
+                scripts += [shlex.join(w.replace("{}", root) for w in run) for run in ran if run for root in roots]
             script, reads, given = _shell_input(words)
             if script is not None:
                 scripts.append(_placed(script, given))
@@ -1764,11 +1767,8 @@ def _landing(words: list[str]) -> list[str]:
         files = [w for w in rest if w and w not in scripts]
         return files if scripts or any(re.match(r"-\w*[ef].|--(?:expression|file)=", w) for w in words[1:]) else files[1:]
     if head == "find":  # it changes what it finds when told to delete, to write a list, or to run a command that does
-        runs = [list(itertools.takewhile(lambda w: w not in (";", "+"), words[i + 1:]))
-                for i, w in enumerate(words) if w.startswith(("-exec", "-ok"))]
+        roots, runs = _find(words)
         lists = [words[i + 1] for i, w in enumerate(words[:-1]) if w.startswith(("-fprint", "-fls"))]  # the list it writes is that file
-        roots = list(itertools.takewhile(lambda w: not w.startswith(("-", "(", "!")),  # the folders it searches come before its expression
-                                         itertools.dropwhile(lambda w: re.fullmatch(r"-[HLPEXdsx]+", w), words[1:]))) or ["."]
         return lists + (roots if "-delete" in words or any(map(_changes, runs)) else [])
     if head not in COPIERS or (head == "install" and any(re.fullmatch(r"-\w*d\w*|--directory", w) for w in words)):
         return rest if head in WRITERS else []
@@ -1776,6 +1776,13 @@ def _landing(words: list[str]) -> list[str]:
     into = [m[1] or m[2] or "".join(words[i + 1:i + 2]) for m, i in given if m] or rest[-1:]
     lands = into + [os.path.join(d, os.path.basename(s.rstrip("/"))) for d in into for s in rest if s not in into]
     return rest + lands if head == "mv" or "--remove-source-files" in words else lands  # these also take their sources away
+
+
+def _find(words: list[str]) -> tuple[list[str], list[list[str]]]:
+    """(the folders a `find` searches, which come before its expression; each command it runs with -exec or -ok)."""
+    runs = [list(itertools.takewhile(lambda w: w not in (";", "+"), words[i + 1:])) for i, w in enumerate(words) if w.startswith(("-exec", "-ok"))]
+    roots = list(itertools.takewhile(lambda w: not w.startswith(("-", "(", "!")), itertools.dropwhile(lambda w: re.fullmatch(r"-[HLPEXdsx]+", w), words[1:])))
+    return roots or ["."], runs
 
 
 def _awk_writes(program: str) -> list[str]:
@@ -1812,15 +1819,19 @@ def _awk_writes(program: str) -> list[str]:
     return outs
 
 
-def _string_writes(command: str) -> list[str]:
+def _string_writes(command: str, handed: bool = True) -> list[str]:
     """The files a command given as a plain string writes: its redirects and what its utilities change, each from
-    the folder the string's own `cd` leaves it in, and what it hands a program not known to only read it."""
+    the folder the string's own `cd` leaves it in, and what it hands a program not known to only read it. With
+    `handed` off the string is one word of a command the guard does not know (`watch`, `ssh`, `osascript`), which
+    may run it: only what it would plainly write counts, in it or in a quoted word of it, so a message that
+    mentions a folder is not held."""
     writes: list = []
     try:
         found = _commands(command.replace('\\"', '"'), "", writes=writes)
     except (Unreadable, StopIteration, IndexError, RecursionError):
         return ["$"]
-    return [os.path.join(w, t) for t, w in writes] + [os.path.join(here, w) for words, here in found for w in _landing(words) + _named(words)]
+    return [os.path.join(w, t) for t, w in writes] + [os.path.join(here, w) for words, here in found for w in _landing(words) + (
+        _named(words) if handed else [x for word in words[1:] if " " in word for x in _string_writes(word, False)])]
 
 
 def _named(words: list[str]) -> list[str]:
@@ -1831,13 +1842,17 @@ def _named(words: list[str]) -> list[str]:
     head = os.path.basename(words[0])
     if "/" in words[0] or head in READERS or head in WRITERS or head in OWN_RULES or head in SHELLS or SCRIPT.match(head):
         return []  # a program run by its path is a script the guard cannot read, like one run by its shell
-    return [part for w in words[1:] for part in {w, w.split("=", 1)[-1], "".join(re.findall(r"^-[^~/]*([~/].*)", w)) or w}]
+    return [part for w in words[1:] for part in {w, w.split("=", 1)[-1], "".join(re.findall(r"^-[^~/]*([~/].*)", w)) or w,
+                                                 *(_string_writes(w, False) if " " in w else ())}]  # and what a word writes if the program runs it
 
 
 def _changes(run: list[str]) -> bool:
     """Whether a command `find -exec` runs may change the files it is handed, where `{}` stands: a file utility or an
     unknown program given them, a shell or a script file (which cannot be read), or an inline program that writes."""
     head = os.path.basename(run[0]) if run else "echo"
+    script, _, given = _shell_input(run) if run else (None, False, [])
+    if script is not None:  # a shell's own script, `{}` put where it uses the word: what it writes there, or hands a program that may
+        return any(w.startswith(("{}", "$")) for w in _string_writes(_placed(script, given)))
     if SCRIPT.match(head) or head in SHELLS:
         flag = "-c" if head.startswith("python") else "-e"
         inline = run[run.index(flag) + 1] if head not in SHELLS and flag in run[:-1] else None
