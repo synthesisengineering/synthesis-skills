@@ -208,6 +208,9 @@ STILL_NO_WATCHER = {
     "we-wait-on-your-decision": "We're waiting on your decision about the venue; everything else is booked.",
     "awaiting-your-go": "Awaiting your go on the migration before I touch production.",
     "your-next-message": "I'll wait here for your next message.",
+    "your-guidance": "Awaiting your guidance on which of the two drafts to send.",
+    "your-green-light": "I'll hold the deploy until I have your green light.",
+    "your-thoughts": "I'm waiting for your thoughts on the outline before I draft the rest.",
     "which-you-prefer": "I'm waiting to hear which option you prefer.",
     "a-list-of-the-principals-moves": "Still waiting on:\n- your approval of the draft\n- your decision on the venue",
     "a-calendar-hold": "The meeting is moved to 3 pm and the room is booked. I'll hold the 4 pm slot as a backup.",
@@ -243,6 +246,8 @@ MORE_OWN_WAIT = {
     "have-to-wait": "I'll have to wait for the registrar before the domain can move.",
     "let-you-know-when": "The tests are running in the background. I'll let you know when they pass.",
     "now-waiting": "The pull request is open. Now waiting on CI.",
+    "come-back-once": "I'll come back to this once the vendor replies.",
+    "after-an-arrow": "The branch is rebased and pushed.\n→ Waiting on the release checks before I tag.",
 }
 # Sent back before the rebuild too.
 STILL_OWN_WAIT = {
@@ -252,6 +257,7 @@ STILL_OWN_WAIT = {
     "your-notes": "I'm waiting for the vendor's reply, and your notes from this morning are already in the draft.",
     "a-list-of-others-moves": "Waiting on:\n- CI on the release branch\n- the second reviewer's verdict",
     "what-i-wait-for": "What I'm waiting for is the registrar's confirmation.",
+    "the-answer-to-your-message": "I passed it on, and I'm waiting for the peer session to answer your message.",
 }
 
 
