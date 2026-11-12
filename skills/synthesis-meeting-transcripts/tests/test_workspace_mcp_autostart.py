@@ -262,3 +262,21 @@ def test_the_readme_says_what_each_script_does_about_the_outbox() -> None:
     table = (SCRIPTS / "README.md").read_text(encoding="utf-8").split("## What's here", 1)[1].split("\n## ", 1)[0]
     rows = {row.split("|")[1].strip(): row for row in table.splitlines() if row.startswith("| `")}
     assert "synthesis home" in rows["`install-autostart.sh`"] and "outbox" in rows["`doctor.sh`"]
+
+
+def test_a_checkout_under_a_folder_systemd_or_a_plist_would_misread_is_still_the_one_started(tmp_path: Path) -> None:
+    """ExecStart= is a command line: a space splits it, and systemd reads a quote, a backslash, a percent sign and a
+    dollar sign as its own. A checkout under such a folder gave a unit that started nothing. It is written in double
+    quotes with systemd's escapes, and an ordinary path is written as it was."""
+    import shutil
+    awkward = tmp_path / "my checkouts & more" / '50% "done" $HOME \\ v2' / "optional-workspace-mcp"
+    shutil.copytree(SCRIPTS, awkward)
+    start = awkward / "start.sh"
+    unit = written(tmp_path, "Linux", installer=awkward / "install-autostart.sh")
+    word = next(line for line in unit.splitlines() if line.startswith("ExecStart="))[len("ExecStart="):]
+    assert word.startswith('"') and word.endswith('"'), word
+    inside = word[1:-1]
+    assert "$" not in inside.replace("$$", ""), "a lone dollar sign is a variable to systemd"
+    assert unquoted(inside.replace("$$", "$")) == str(start)
+    assert plistlib.loads(written(tmp_path, "Darwin", installer=awkward / "install-autostart.sh").encode("utf-8"))["ProgramArguments"] == [str(start)]
+    assert f"\nExecStart={START}\n" in written(tmp_path, "Linux")

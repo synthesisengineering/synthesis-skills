@@ -287,3 +287,19 @@ def test_e26_sparse_path_finds_uvx_and_a_recycled_pid_is_not_a_running_server(tm
     assert result.returncode == 0, result.stdout + result.stderr
     assert "already running" not in result.stdout
     assert ran.read_text().startswith("workspace-mcp@2.1.0 --single-user --transport streamable-http")
+
+
+def test_a_start_path_the_unit_holds_in_quotes_is_read_back_as_the_path_it_is(tmp_path: Path) -> None:
+    """The installer writes a start path with a space or one of systemd's own signs in double quotes, escaped. The
+    doctor reads the path back out of them: taken with its quotes on, an installed unit looked like a moved checkout."""
+    environment = fixture(tmp_path, launch="", lsof_exit=0, curl='printf "406"\n', platform="Linux")
+    script = tmp_path / "my checkouts" / '50% "done" $x \\ v2' / "start.sh"
+    executable(script, "exit 0\n")
+    unit = tmp_path / "home" / ".config" / "systemd" / "user" / "workspace-mcp.service"
+    escaped = str(script).replace("\\", "\\\\").replace('"', '\\"').replace("%", "%%").replace("$", "$$")
+    unit.write_text(f'[Service]\nExecStart="{escaped}"\n', encoding="utf-8")
+    full = subprocess.run(["bash", str(DOCTOR)], env=environment, text=True, capture_output=True, check=False, timeout=10)
+    assert "does not exist" not in full.stdout and "could not read the start-script path" not in full.stdout, full.stdout
+    unit.write_text(f'[Service]\nExecStart="{escaped}-gone"\n', encoding="utf-8")
+    gone = subprocess.run(["bash", str(DOCTOR)], env=environment, text=True, capture_output=True, check=False, timeout=10)
+    assert "does not exist" in gone.stdout and f"{script}-gone" in gone.stdout, gone.stdout
