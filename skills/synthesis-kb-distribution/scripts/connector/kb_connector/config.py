@@ -2,11 +2,13 @@
 
 references/connector.md documents each variable. A required value that is missing or malformed
 stops the start (ConfigError lists them all); nothing falls back to serving without sign-in.
-KB_OPERATOR_TEST=1 with KB_OPERATOR_ADDRESSES is the operator-only test mode: nobody else signs in.
+KB_OPERATOR_TEST=1 with KB_OPERATOR_ADDRESSES is the operator-only test mode: nobody else signs in,
+and a temporary address (temporary() below) starts in that mode alone.
 """
 
 from __future__ import annotations
 
+import ipaddress
 import re
 import string
 from dataclasses import dataclass
@@ -15,6 +17,12 @@ from urllib.parse import urlparse
 from .access import listed
 
 STORES = ("memory", "firestore")
+# Hosts that last only as long as one machine or its tunnel: the tunnel services' own domains, and names only a
+# machine or its own network knows. A tunnel service that is not listed is not caught: add its domain here.
+TEMPORARY_HOSTS = ("trycloudflare.com", "ngrok.io", "ngrok.app", "ngrok.dev", "ngrok.pizza", "ngrok-free.app",
+                   "ngrok-free.dev", "ngrok-free.pizza", "loca.lt", "localtunnel.me", "serveo.net",
+                   "serveousercontent.com", "localhost.run", "lhr.life", "lhr.rocks", "pinggy.io", "pinggy.link",
+                   "pinggy-free.link", "devtunnels.ms", "app.github.dev", "localhost", "local")
 URL_FIELDS = ("id", "source_path", "commit")
 FERNET_KEY = re.compile(r"[A-Za-z0-9_-]{43}=")
 
@@ -57,6 +65,18 @@ class Settings:
     log_level: str
 
 
+def temporary(host) -> bool:
+    """True for an address that lasts only as long as one machine or its tunnel: a host in TEMPORARY_HOSTS or under
+    one, or an IP address the internet cannot reach. Read as a host: a look-alike or a name in a path does not count."""
+    host = (host or "").lower().rstrip(".")
+    if any(host == name or host.endswith("." + name) for name in TEMPORARY_HOSTS):
+        return True
+    try:
+        return not ipaddress.ip_address(host).is_global
+    except ValueError:  # a name, unless its last label is a number: an IP address in an old spelling, such as 127.1
+        return bool(re.fullmatch(r"\d+|0x[0-9a-f]*", host.rsplit(".", 1)[-1]))
+
+
 def _int(env, name, default, low, high, problems):
     raw = (env.get(name) or "").strip()
     if not raw:
@@ -82,6 +102,12 @@ def load(env) -> Settings:
     if test not in ("", "0", "1") or (test == "1") != bool(listed(operators)):
         problems.append("the operator-only test mode needs both KB_OPERATOR_TEST=1 and KB_OPERATOR_ADDRESSES, the "
                         "operator's own email address or addresses: set both, or neither")
+    if temporary(parsed.hostname) and test != "1":
+        problems.append(f"KB_PUBLIC_URL names a temporary or local address ({parsed.hostname}): it lasts only while "
+                        "this machine and its tunnel stay up, so nobody else may depend on it. To serve other people, "
+                        "deploy the connector to the organization's own infrastructure at a permanent address; for "
+                        "the operator's own test, set KB_OPERATOR_TEST=1 and KB_OPERATOR_ADDRESSES to the operator's "
+                        "own email address")
     for name in ("KB_GOOGLE_CLIENT_ID", "KB_GOOGLE_CLIENT_SECRET"):
         if not get(name):
             problems.append(f"{name} is required")
