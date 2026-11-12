@@ -650,3 +650,100 @@ def test_a_second_fresh_list_of_replies_that_need_no_watcher_passes(reply):
 def test_a_second_fresh_list_of_unarmed_waits_is_sent_back(reply):
     reason = _sent_back(reply)
     assert reason and "nothing is armed" in reason
+
+
+# A third pair of lists written the same way, in the voice of an assistant that handles mail, travel and code. Four
+# were wrong: a thing only the principal can supply ("your headcount"), the turn handed over in so many words ("it is
+# your move"), a verb of reporting ("I'll confirm the booking once"), and a longer object between "pick" and "up".
+BLIND3_NO_WATCHER = {
+    "CN01": 'The hotel has not confirmed the late checkout; they said they would email you directly.',
+    "CN02": 'I drafted the reply and left it in your drafts folder. It goes out when you press send.',
+    "CN03": 'Your passport renewal is still being processed, and the tracking page says to wait six weeks.',
+    "CN04": 'The caterer is waiting on the final headcount, which you said you would send on Friday.',
+    "CN05": "I'm waiting on your headcount before I confirm the caterer.",
+    "CN06": 'I will hold both table options until you tell me which you prefer.',
+    "CN07": "We're waiting for you to sign the lease; the landlord has already signed.",
+    "CN08": "Once you forward the receipt, I'll file the expense claim.",
+    "CN09": "I've paused here. I'll wait for your reply.",
+    "CN10": "I'll stop here and wait for your decision on the refund.",
+    "CN11": "Tell me when you have landed and I'll continue from there.",
+    "CN12": "I need one thing from you before I book: your loyalty number. I'm waiting on that.",
+    "CN13": "The airline's policy is that standby passengers wait until all confirmed passengers have boarded.",
+    "CN14": 'Waiting until the last minute to book would cost about two hundred dollars more.',
+    "CN15": 'Waiting for the next sale is an option, but the price history shows no dip in October.',
+    "CN16": 'The loader shows a spinner while it waits for the first response, then swaps in the table.',
+    "CN17": 'The lock is released when the writer finishes, so readers never wait more than a few milliseconds.',
+    "CN18": 'The old script waited for a keypress here; I removed that so it can run unattended.',
+    "CN19": 'The error message now says "Still waiting for the device to respond" instead of a bare timeout.',
+    "CN20": "I renamed the test to 'waits for the worker to drain' so the report reads clearly.",
+    "CN21": "The comment in the config reads:\n~~~yaml\n# awaiting the vendor's new endpoint; do not remove\nlegacy_url: "
+            'true\n~~~\nI left it in place.',
+    "CN22": 'Per the vendor: “We are waiting on parts and will ship when they arrive.” I added that to the order notes.',
+    "CN23": "I'll be waiting for your call at three.",
+    "CN24": "I'm awaiting your reply to the landlord's counter-offer.",
+    "CN25": "It is your move: I'm waiting for the signed form.",
+    "CN26": "The moment you approve the budget, I'll place the order.",
+    "CN27": "I'll continue the booking as soon as you've chosen a seat.",
+    "CN28": "I'm waiting to hear back from you about the Thursday slot.",
+    "CN29": 'Do you want me to keep waiting for the cheaper fare, or book now?',
+    "CN30": 'No reply from the venue yet. Their office reopens Monday, and nothing needs doing until then.',
+    "CN31": 'We have what we need: the vendor replied this morning and the contract is signed.',
+    "CN32": 'The report finished while I was waiting, so the numbers below are final.',
+    "CN33": "I'm done waiting for the mirror: I switched the build to the primary registry and it passed.",
+    "CN34": 'The build no longer waits for the cache; it starts cold in forty seconds.',
+    "CN35": "I'll wait for your go before I send anything to the client.",
+}
+BLIND3_OWN_WAIT = {
+    "CW01": "I emailed the venue and I'm waiting for their answer.",
+    "CW02": "I'm waiting to hear back from the airline about the refund.",
+    "CW03": "I'll confirm the booking once the hotel replies. ",
+    "CW04": "I'll come back to you when the visa office responds.",
+    "CW05": "We're still awaiting the landlord's countersignature.",
+    "CW06": "I'm waiting on the bank to release the hold on your card.",
+    "CW07": "I'll proceed with the booking once the fare class reopens.",
+    "CW08": "The form is submitted; I'm now waiting for the consulate to schedule the interview.",
+    "CW09": "I'm waiting for the tests to finish on your pull request.",
+    "CW10": "I'll get back to you after the nightly job has run.",
+    "CW11": 'I am still waiting on the vendor for the revised quote.',
+    "CW12": "I'll follow up once I hear from the caterer.",
+    "CW13": "I'm waiting until the embargo lifts at noon to send the announcement.",
+    "CW14": 'Awaiting confirmation from the registrar that the transfer went through.',
+    "CW15": "I'll finish the itinerary when the airline releases the schedule.",
+    "CW16": 'I will wait for the second reviewer to approve, then merge.',
+    "CW17": "We'll resume once the outage at the provider is over.",
+    "CW18": "I'm currently waiting for the page to be indexed.",
+    "CW19": "I'll check back once the courier has delivered your package.",
+    "CW20": "Then I'll wait for the migration to complete and verify the row counts.",
+    "CW21": "For the moment I'm waiting on the build queue.",
+    "CW22": "I'm waiting for the seller to accept your offer.",
+    "CW23": 'Waiting on the insurer; they have your claim form.',
+    "CW24": "I'll hold the reservation until the airline confirms the schedule change.",
+    "CW25": "I've asked the peer session and am waiting for its reply.",
+    "CW26": 'I will let you know when the refund reaches your account.',
+    "CW27": "I'll pick the thread back up when the landlord answers.",
+    "CW28": "I'm waiting on the vendor's answer to your question.",
+}
+WHAT_ONLY_THEY_CAN_SUPPLY = {
+    "your-dates": "We're waiting for your dates before we hold the room.",
+    "once-i-have-your-budget": "I'll book once I have your budget.",
+    "over-to-you": "Over to you: I'll wait for the corrected figures.",
+    "in-your-court": "The ball is in your court, so I'm waiting for the revised brief.",
+    "confirm-once-you-have-read-it": "I'll confirm once you've had a chance to read it.",
+}
+WHAT_SOFTWARE_DOES_WITH_IT = {
+    "numbers-that-sync": "I'm waiting for your numbers to sync from the spreadsheet.",
+    "confirm-once-the-supplier": "We'll confirm once the supplier sends the corrected invoice.",
+    "update-you-when": "I'll update you when the tracking page changes.",
+    "pick-two-threads-back-up": "I'll pick the two open threads back up when the landlord answers.",
+}
+
+
+@pytest.mark.parametrize("reply", _cases(BLIND3_NO_WATCHER, WHAT_ONLY_THEY_CAN_SUPPLY))
+def test_a_third_fresh_list_of_replies_that_need_no_watcher_passes(reply):
+    assert _sent_back(reply) is None
+
+
+@pytest.mark.parametrize("reply", _cases(BLIND3_OWN_WAIT, WHAT_SOFTWARE_DOES_WITH_IT))
+def test_a_third_fresh_list_of_unarmed_waits_is_sent_back(reply):
+    reason = _sent_back(reply)
+    assert reason and "nothing is armed" in reason
