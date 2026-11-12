@@ -2216,17 +2216,16 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
         return any(_reaches(os.path.realpath(os.path.join(spot, top)), r, label in ("walk", "fwalk", "rglob"), method)
                    for spot in ([""] if os.path.isabs(top) else places) if "\0" not in spot for r in folders_held)
 
-    def rooted_split(n) -> bool:  # split at the slashes
-        return bool(n.args) and (said(n.args[0]) == "/" or getattr(n.args[0], "attr", "") == "sep")
-
-    def rooted(n) -> bool:  # a path taken relative to a folder that holds it, or its last part cut off at a slash: it names no folder
+    def rooted(n) -> bool:  # what names no folder: a path taken relative to one that holds it, one part of a path, a path flattened, a digest
         label = getattr(getattr(n, "func", None), "attr", getattr(getattr(n, "func", None), "id", ""))
-        slashed = isinstance(n, ast.Call) and n.args[:1] and (said(n.args[0]) == "/" or getattr(n.args[0], "attr", "") == "sep")
+
+        def slashed(call) -> bool:  # its first argument is the slash
+            return isinstance(call, ast.Call) and bool(call.args) and (said(call.args[0]) == "/" or getattr(call.args[0], "attr", "") == "sep")
         if isinstance(n, ast.Subscript):  # one part of a path, counted from its end: p.parts[-1], path.split("/")[-2]
-            parts = getattr(n.value, "attr", "") == "parts" or (getattr(getattr(n.value, "func", None), "attr", "") in ("split", "rsplit") and rooted_split(n.value))
+            parts = getattr(n.value, "attr", "") == "parts" or (getattr(getattr(n.value, "func", None), "attr", "") in ("split", "rsplit") and slashed(n.value))
             return parts and isinstance(n.slice, ast.UnaryOp) and isinstance(n.slice.op, ast.USub) and isinstance(getattr(n.slice.operand, "value", None), int)
-        if label in ("hexdigest", "len", "hash") or (label == "replace" and slashed and len(n.args) == 2 and "/" not in (said(n.args[1]) or "/")):
-            return True  # a digest, a length, a path flattened into one name
+        if label in ("hexdigest", "len", "hash") or (label == "replace" and slashed(n) and len(n.args) == 2 and "/" not in (said(n.args[1]) or "/")):
+            return True
         given = n.args + [k.value for k in n.keywords if k.arg == "start"] if isinstance(n, ast.Call) else []
         if label not in ("relative_to", "relpath") or len(given) != 1 + (label == "relpath") or len(given) - len(n.args) != len(n.keywords):
             return False
