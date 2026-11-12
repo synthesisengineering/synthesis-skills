@@ -108,8 +108,8 @@ def _prompt(s: "_Session", at, body: dict, sidechain: bool = False):
     if s.meta.get("role") == "reviewer":  # Codex's approval reviewer is handed the whole conversation to judge
         s.skipped["reviewer's copy of the conversation"] += 1
         return None
-    agent = (sidechain or s.meta.get("role") == "subagent" or s.meta.get("unattended")
-             or body.get("text", "").lstrip().startswith(AGENT_WRITTEN))
+    began = s.trigger in ("exec", "guardian_review") if s.trigger else s.meta.get("unattended")  # the turn's own word, else the session's
+    agent = sidechain or s.meta.get("role") == "subagent" or began or body.get("text", "").lstrip().startswith(AGENT_WRITTEN)
     return {"at": at, "kind": "brief" if agent else "user", **body}
 
 
@@ -159,7 +159,7 @@ class _Session:
         self.offset, self.seq, self.segment = s.get("offset", 0), s.get("seq", 0), s.get("segment", 1)
         self.folder = Path(s["folder"]) if s.get("folder") else None
         self.seen, self.meta = set(s.get("seen", [])), s.get("meta", {})
-        self.model, self.turn, self.lines = s.get("model", ""), s.get("turn", []), []
+        self.model, self.turn, self.trigger, self.lines = s.get("model", ""), s.get("turn", []), s.get("trigger"), []
         self.skipped = collections.Counter(self.meta.get("skipped", {}))
 
     def once(self, rec: dict):
@@ -274,7 +274,7 @@ class _Session:
             paths.write_json(self.folder / "meta.json", self.meta)
         paths.write_json(self.file, {"offset": self.offset, "seq": self.seq, "segment": self.segment,
                                      "folder": str(self.folder or ""), "seen": sorted(self.seen), "meta": self.meta,
-                                     "model": self.model, "turn": self.turn})
+                                     "model": self.model, "turn": self.turn, "trigger": self.trigger})
         return written
 
 
@@ -376,6 +376,9 @@ def _codex(row: dict, s: _Session):
     elif t == "event_msg" and kind == "user_message":
         text = str(p.get("message") or "")
         yield None if not text or _injected(text) or s.mirrored(text, "event") else _prompt(s, at, {"text": text})
+    elif t == "event_msg" and kind == "task_started":  # how this turn began: `composer` for what a person typed, `exec` for a command line
+        s.trigger = str((p.get("turn_attribution") or {}).get("turn_trigger") or "") or s.trigger
+        s.skipped["event_msg:task_started"] += 1
     elif t == "compacted":
         s.skipped["compaction history items"] += len(p.get("replacement_history") or [])
         yield {"at": at, "kind": "compaction", "text": p.get("message")}
