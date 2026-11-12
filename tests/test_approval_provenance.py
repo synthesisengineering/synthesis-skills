@@ -2459,7 +2459,7 @@ SEVERAL = [
     ("def save(text, dst=None):\n    if dst is None:\n        dst = '/tmp/pad/x.txt'\n    open(dst, 'w').write(text)\nsave('x')", False),
     ("def save(text, dst=None):\n    dst = dst or '/tmp/pad/x.txt'\n    open(dst, 'w').write(text)\nsave('x', '{work}/s.jsonl')", True),
     ("out = '/tmp/pad/a.txt'\nout = input()\nopen(out, 'w').write('x')", None),                                             # one value it cannot read
-    ("out = 'a.txt'\nout = '/tmp/pad/b.txt'\nopen(out, 'w').write('x')", None),                                             # one that lands where it stands
+    ("import sys\nout = '/tmp/pad/b.txt'\nif len(sys.argv) > 5:\n    out = 'a.txt'\nopen(out, 'w').write('x')", None),              # one that lands where it stands
     ("outs = {{'a': '/tmp/pad/a.txt', 'b': '/tmp/pad/b.txt'}}\nfor k, v in outs.items():\n    open(v, 'w').write(k)", False),
     ("outs = {{'a': '/tmp/pad/a.txt', 'b': '{work}/s.jsonl'}}\nfor v in outs.values():\n    open(v, 'w').write('x')", True),
     ("import shutil\nfor src, dst in zip(['{work}/s.jsonl'], ['/tmp/pad/a.txt']):\n    shutil.copy(src, dst)", False),
