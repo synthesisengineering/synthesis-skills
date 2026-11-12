@@ -287,6 +287,10 @@
         "path": "skills/synthesis-voice-profiler/SKILL.md"
       },
       {
+        "id": "synthesis-waiting",
+        "path": "skills/synthesis-waiting/SKILL.md"
+      },
+      {
         "id": "synthesis-writing-craft",
         "path": "skills/synthesis-writing-craft/SKILL.md"
       },

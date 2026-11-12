@@ -1,6 +1,6 @@
 # Synthesis Skills
 
-Synthesis Skills is one plugin for Claude Code, Codex and Muse. It carries 70 skills
+Synthesis Skills is one plugin for Claude Code, Codex and Muse. It carries 72 skills
 for software engineering, writing, project management, correspondence and daily
 operations, plus a small runtime: a `synthesis` command and four lifecycle hooks. The
 skills follow the [Agent Skills](https://agentskills.io) standard. The runtime keeps
@@ -244,6 +244,7 @@ keeps Codex's skill catalog within its budget.
 | [synthesis-project-resume](skills/synthesis-project-resume/SKILL.md) | Start or resume a project in any harness on any Mac with verified context, respecting live claims and surfacing other Macs' changes. |
 | [synthesis-context-lifecycle](skills/synthesis-context-lifecycle/SKILL.md) | Keep a project's working memory small, current and durable: CONTEXT, REFERENCE and session logs, archiving, deletion units and the records doctor. |
 | [synthesis-checkpoint](skills/synthesis-checkpoint/SKILL.md) | Re-sync a session with ground truth: verified clock, project records, git, dated session entries and board claims. |
+| [synthesis-waiting](skills/synthesis-waiting/SKILL.md) | Arm a bounded watcher before a turn ends on an expected event: a peer's message, a CI run, a file, a clock time. |
 | [synthesis-autopilot](skills/synthesis-autopilot/SKILL.md) | Run an explicitly delegated whole task to the end from a plan file in the project, unattended when needed. |
 
 ### Engineering and review
@@ -332,6 +333,7 @@ keeps Codex's skill catalog within its budget.
 | [synthesis-knowledge-capture](skills/synthesis-knowledge-capture/SKILL.md) | Capture durable session facts in an OKF knowledge base with deduplication, confidentiality routing and provenance. |
 | [synthesis-kb-edit](skills/synthesis-kb-edit/SKILL.md) | Edit, validate and ship knowledge-base changes through the repository's `.agents/knowledge-base.yaml` workflow. |
 | [synthesis-okf](skills/synthesis-okf/SKILL.md) | Validate, convert and author content for Google's Open Knowledge Format (OKF v0.1). |
+| [synthesis-kb-distribution](skills/synthesis-kb-distribution/SKILL.md) | Publish an OKF knowledge base to Claude and ChatGPT as an organization plugin, and serve it to people outside those workspaces through a read-only connector. |
 
 ### Install, release and machines
 

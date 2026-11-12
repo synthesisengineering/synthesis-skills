@@ -1,0 +1,51 @@
+# Watchers, harness by harness
+
+What can wake a session differs by harness, and a watcher that cannot wake the seat is no watcher. Each line below
+says how it was learned and when. Where a capability was not shown, the table says "not shown" with the probe, never
+"missing": probe again before relying on either answer.
+
+## What wakes a session
+
+| Harness | What wakes an idle session | How it was learned |
+|---|---|---|
+| Claude Code | A background shell task that exits wakes the session once. | Used through a day of reviews, test runs and replays, 2026-11-11. |
+| Claude Code | An event stream the harness holds (its monitor tool) for a bounded time, re-armed after that. | The tool's own description, 2026-11-11. |
+| Claude Code | A scheduled prompt (a timer or a cron job of the harness). Each firing is a model turn. | Read in a session's transcript: the turn is recorded as scheduled, not typed. |
+| Claude Code desktop | A turn delivered by another session of the same app. | The tool's own description, 2026-11-11. |
+| Codex | `codex queue --thread <id> --message <text>` stores a message for an existing session. An ended non-interactive session did not take it, and resuming one from the queue needs a local daemon. A live desktop thread: not shown. | Run against a throwaway session, codex-cli 0.167.0-alpha.4.1, 2026-11-11. |
+| Codex | Its own finished background command: not shown. | Not probed. |
+| Muse | `muse session-message` sends to a live session; `muse sessions` lists them. With no live session there was nothing to send to. | `muse sessions` printed an empty list, 2026-11-11. |
+
+A turn that arrives by any of these routes is recorded as what it is. None counts as the principal's typed prompt,
+so none can grant an approval: the approval check reads only prompts the person typed.
+
+## Which watcher
+
+| Awaited | Claude Code | Codex | Muse |
+|---|---|---|---|
+| One event: a message, a file, a check | `synthesis wait …` as a background shell task. It costs nothing while it polls and wakes the session when it exits. | `synthesis wait …` in the foreground, up to the tool's time limit, and say that the seat is held for that long; for longer, a wait the person or a peer ends with `synthesis msg --wake`. | The same as Codex until a wake of its own is shown. |
+| Several events, their number unknown | The harness's event stream over `synthesis wait run`, bounded and re-armed, with `synthesis wait note` so the board shows it. | Not shown. | Not shown. |
+| A clock time | The harness's timer, with `synthesis wait note`. Each firing is a model turn: say so, and prefer one long timer to many short ones. | Not shown. | Its scheduling tools; not probed. |
+| Waking an idle peer | The app's own session-to-session message. `synthesis msg --wake` has no command for it and says so. | `synthesis msg --wake`, which runs `codex queue`. | `synthesis msg --wake`, which runs `muse session-message`. |
+
+## What a watcher costs
+
+- A shell command that polls (`synthesis wait message`, `file`, `run`) uses no model turn until it ends. Its cost is
+  the process, and the one turn that reads what it found.
+- A timer that prompts the model costs a full turn each time it fires, with the session's whole context. Sixty
+  one-minute checks cost sixty turns; one `synthesis wait run --every 60s --for 1h` costs one.
+- An event stream costs a turn for each event it delivers. Filter at the source so it delivers the event awaited
+  and nothing else.
+- `--wake` spends a turn of another session. Use it for something that needs action now.
+
+Where a shell watcher fits, use it without asking. Where only a model-driven watcher fits and the wait is long or
+its worth unclear, ask the principal once, with the recommendation first and the cost in turns.
+
+## When a wake did not arrive
+
+1. `synthesis wait list`: is the wait still on the board? A wait whose process died or whose bound passed is gone.
+2. `synthesis inbox --peek`: did the mail arrive unseen? A session bound to no project receives nothing addressed
+   to a project; `synthesis who` shows the binding, and `synthesis resume <project>` restores it.
+3. Was the message sent to this session? The sender's `synthesis msg` ended with what would deliver it.
+4. Did the watcher end at its bound (exit 3)? Then nothing arrived in time, and the next step is a decision, not a
+   longer silence.
