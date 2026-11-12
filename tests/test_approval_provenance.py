@@ -2632,3 +2632,61 @@ def test_a_call_named_as_a_writer_is_judged_where_its_path_lands(above, program,
     command = "python3 - <<'EOF'\n" + program.format(**above) + "\nEOF"
     reason = guards.check("Bash", {"command": command}, {}, cwd=str(above["work"] if inside else here))
     assert (REFUSED in (reason or "")) == (inside if held is None else held), program
+
+
+# A second hundred everyday programs (the same probe, 2026-11-12). Nineteen were refused from inside a transcript
+# folder: two functions that share a name for what they are handed, a name used for the file read and then for
+# the file written, what a function of the program's own hands back, a pair unpacked, a table read by a key held
+# in a name, a path filled into a template, a tree walked and copied elsewhere. Each has its twin aimed at a
+# protected folder, and the order of two assignments is pinned both ways.
+SECOND = [
+    ("import json\ndef read(path):\n    with open(path) as f:\n        for line in f:\n            yield json.loads(line)\ndef write(rows, path):\n    with open(path, 'w') as f:\n"
+     "        for r in rows:\n            f.write(json.dumps(r))\nwrite(read('{work}/s.jsonl'), '/tmp/pad/copy.jsonl')", False),      # each function's names are its own
+    ("import json\ndef read(path):\n    with open(path) as f:\n        for line in f:\n            yield json.loads(line)\ndef write(rows, path):\n    with open(path, 'w') as f:\n"
+     "        for r in rows:\n            f.write(json.dumps(r))\nwrite(read('/tmp/pad/in.jsonl'), '{work}/s.jsonl')", True),
+    ("path = '{work}/s.jsonl'\ntext = open(path).read()[:10]\npath = '/tmp/pad/x.txt'\nopen(path, 'w').write(text)", False),         # read under a name, then written under it
+    ("path = '{work}/s.jsonl'\nopen(path, 'w').write('x')\npath = '/tmp/pad/x.txt'\nprint(open(path).read())", True),
+    ("def run():\n    path = '{work}/s.jsonl'\n    text = open(path).read()[:10]\n    path = '/tmp/pad/x.txt'\n    open(path, 'w').write(text)\nrun()", False),
+    ("out = '/tmp/pad/x.txt'\nfor i in range(2):\n    open(out, 'w').write('x')\n    out = '{work}/s.jsonl'", True),                 # the second round writes the second value
+    ("out = '/tmp/pad/x.txt'\ndef save():\n    open(out, 'w').write('x')\nout = '{work}/s.jsonl'\nsave()", True),                    # a function runs when it is called
+    ("out = '/tmp/pad/x.txt'\ndef flip():\n    global out\n    out = '{work}/s.jsonl'\nflip()\nopen(out, 'w').write('x')", True),
+    ("import os\npath = '/tmp/pad'\npath = os.path.join(path, 'a')\npath = os.path.join(path, 'b.txt')\nopen(path, 'w').write('x')", False),
+    ("import os\npath = '/tmp'\npath = os.path.join(path, '..')\npath = path + '{work}/s.jsonl'\nopen(path, 'w').write('x')", True),
+    ("import os\ndef ensure(d):\n    os.makedirs(d, exist_ok=True)\n    return d\nbase = ensure('/tmp/pad/reports')\nopen(os.path.join(base, 'a.txt'), 'w').write('x')", False),   # what its own function hands back
+    ("import os\ndef ensure(d):\n    os.makedirs(d, exist_ok=True)\n    return d\nbase = ensure('{state}')\nopen(os.path.join(base, 'a.json'), 'w').write('x')", True),
+    ("import os\ndef save(name, text):\n    path = os.path.join('/tmp/pad', name)\n    with open(path, 'w') as f:\n        f.write(text)\n    return path\nprint(save('a.txt', 'x'), save('b.txt', 'y'))", False),
+    ("import os\ndef save(name, text):\n    path = os.path.join('{work}', name)\n    with open(path, 'w') as f:\n        f.write(text)\n    return path\nprint(save('a.txt', 'x'))", True),
+    ("import functools\nfrom pathlib import Path\n@functools.lru_cache\ndef out_dir():\n    d = Path('/tmp/pad') / 'out'\n    d.mkdir(exist_ok=True)\n    return d\n(out_dir() / 'a.txt').write_text('x')", False),
+    ("from pathlib import Path\nclass Job:\n    @property\n    def out(self):\n        return Path('/tmp/pad') / 'o.txt'\n    def run(self):\n        self.out.write_text('x')\nJob().run()", False),
+    ("import shutil\ndef paths():\n    return '{work}/s.jsonl', '/tmp/pad/copy.jsonl'\nsrc, dst = paths()\nshutil.copy(src, dst)", False),          # a pair unpacked
+    ("import shutil\ndef paths():\n    return '/tmp/pad/copy.jsonl', '{work}/s.jsonl'\nsrc, dst = paths()\nshutil.copy(src, dst)", True),
+    ("import shutil\npair = ('{work}/s.jsonl', '/tmp/pad/copy.jsonl')\nshutil.copy(pair[0], pair[1])", False),
+    ("import shutil\npair = ('/tmp/pad/copy.jsonl', '{work}/s.jsonl')\nshutil.copy(pair[0], pair[-1])", True),
+    ("import os, shutil, tempfile\nfd, name = tempfile.mkstemp(suffix='.json')\nwith os.fdopen(fd, 'w') as f:\n    f.write('x')\nshutil.move(name, '/tmp/pad/x.json')", False),
+    ("OUT = {{'users': '/tmp/pad/users.txt', 'tools': '/tmp/pad/tools.txt'}}\nfor kind in ('users', 'tools'):\n    open(OUT[kind], 'w').write(kind)", False),   # a key held in a name: any of its values
+    ("OUT = {{'users': '/tmp/pad/users.txt', 'tools': '{work}/s.jsonl'}}\nkind = input()\nopen(OUT[kind], 'w').write(kind)", True),
+    ("d = {{}}\nout = d.get('out', '/tmp/pad/x.txt')\nopen(out, 'w').write('x')\nopen(d.setdefault('log', '/tmp/pad/log.txt'), 'a').write('x')", False),
+    ("d = {{}}\nd['out'] = '{work}/s.jsonl'\nopen(d.get('out', '/tmp/pad/x.txt'), 'w').write('x')", True),
+    ("out = '{{}}/{{}}.txt'.format('/tmp/pad', 'summary')\nopen(out, 'w').write('x')", False),                                       # a path filled into a template
+    ("out = '{{}}/{{}}'.format('{work}', 's.jsonl')\nopen(out, 'w').write('x')", True),
+    ("out = '{{d}}/{{n:03d}}.txt'.format(d='/tmp/pad', n=7)\nopen(out, 'w').write('x')", False),
+    ("out = '%s/%s.txt' % ('/tmp/pad', 'summary')\nopen(out, 'w').write('x')", False),
+    ("out = '%s/s.jsonl' % '{work}'\nopen(out, 'w').write('x')", True),
+    ("import os\nout = os.sep.join(['/tmp/pad', 'a', 'b.txt'])\nopen(out, 'w').write('x')", False),
+    ("out = '/'.join(['{work}', 's.jsonl'])\nopen(out, 'w').write('x')", True),
+    ("import os, shutil\nfor root, dirs, files in os.walk('.'):\n    for f in files:\n        dst = os.path.join('/tmp/pad', 'mirror', root, f)\n"
+     "        os.makedirs(os.path.dirname(dst), exist_ok=True)\n        shutil.copy2(os.path.join(root, f), dst)", False),            # a tree walked here and copied there
+    ("import os, shutil\nfor root, dirs, files in os.walk('.'):\n    for f in files:\n        shutil.copy2(os.path.join('/tmp/pad', f), os.path.join(root, f))", None),
+    ("import shutil\nfrom pathlib import Path\nfor i, p in enumerate(sorted(Path('.').glob('*.jsonl'), key=lambda p: p.stat().st_mtime)):\n"
+     "    shutil.copy(p, f'/tmp/pad/{{i:03d}}.jsonl')", False),                                                                      # a count is no path
+]
+
+
+@pytest.mark.parametrize("program, held", SECOND)
+@pytest.mark.parametrize("inside", [False, True])
+def test_a_program_is_read_in_the_order_it_runs_and_each_function_by_its_own_names(above, program, held, inside, tmp_path):
+    here = tmp_path / "elsewhere"
+    here.mkdir()
+    command = "python3 - <<'EOF'\n" + program.format(**above) + "\nEOF"
+    reason = guards.check("Bash", {"command": command}, {}, cwd=str(above["work"] if inside else here))
+    assert (REFUSED in (reason or "")) == (inside if held is None else held), program
