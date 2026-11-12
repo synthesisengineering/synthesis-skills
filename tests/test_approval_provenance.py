@@ -1642,3 +1642,21 @@ def test_the_sixth_reviews_everyday_commands_pass(saved, command, tmp_path):
 ])
 def test_and_what_stays_refused_after_the_sixth_review(saved, command, tmp_path):
     assert REFUSED in (guards.check("Bash", {"command": command.format(**saved)}, {}, cwd=str(tmp_path)) or ""), command
+
+
+# What else a started command inherits (asked of the rule after the sixth review found the folder and the
+# configuration): the variables the program sets for it, a list handed to the shell, and a script fed on its input.
+
+@pytest.mark.parametrize("program, held", [
+    ("import os, subprocess\nos.environ['D'] = '{state}'\nsubprocess.run('echo x > $D/a.json', shell=True)", True),
+    ("import subprocess\nsubprocess.run('echo x > $D/a.json', shell=True, env={{'D': '{state}'}})", True),
+    ("import subprocess\nsubprocess.run(['echo x > {work}/s.jsonl'], shell=True)", True),                              # a list handed to the shell
+    ("import subprocess\nsubprocess.run(['bash'], input='echo x > {work}/s.jsonl', text=True)", True),                 # a script fed on its input
+    ("import subprocess\nsubprocess.run(['python3', '-'], input=\"open('{work}/s.jsonl', 'a').write('x')\", text=True)", True),
+    ("import subprocess\nsubprocess.run(['bash'], input='wc -l {work}/s.jsonl', text=True)", False),
+    ("import os, subprocess\nos.environ['OUT'] = '/tmp/pad'\nsubprocess.run('cat {work}/s.jsonl > $OUT/copy.txt', shell=True)", False),
+    ("import subprocess\nsubprocess.run(['grep', '-c', 'x', '{work}/s.jsonl'], env={{'LC_ALL': 'C'}})", False),
+])
+def test_a_started_command_is_judged_with_what_the_program_hands_it(saved, program, held, tmp_path):
+    command = "python3 - <<'EOF'\n" + program.format(**saved) + "\nEOF"
+    assert (REFUSED in (guards.check("Bash", {"command": command}, {}, cwd=str(tmp_path)) or "")) == held, program
