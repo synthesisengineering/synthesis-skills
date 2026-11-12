@@ -994,9 +994,9 @@ def _commands(command: str, cwd: str, depth: int = 0, writes: list | None = None
                 else:  # pushd: a folder goes on top; a number turns the stack; alone, the top two change places
                     dirs = [went] + dirs if to is not None else dirs[at:] + dirs[:at] if turn else dirs[1:2] + dirs[:1] + dirs[2:]
                 cwd, back, stack = dirs[0], cwd, dirs[1:][::-1]
-            if os.path.basename(words[0]) == "find":  # what it runs with -exec is a command of its own, `{}` being each folder it searches
+            if os.path.basename(words[0]) == "find":  # what it runs with -exec is a command of its own, `{}` a file under each folder it searches
                 roots, ran = _find(words)
-                scripts += [shlex.join(w.replace("{}", root) for w in run) for run in ran if run for root in roots]
+                scripts += [shlex.join(w.replace("{}", os.path.join(root, "{}")) for w in run) for run in ran if run for root in roots]
             script, reads, given = _shell_input(words)
             if script is not None:
                 scripts.append(_placed(script, given))
@@ -1628,6 +1628,7 @@ INTO = re.compile(r"--target-directory(?:=(.*))?|-[A-Za-su-z]*t(.*)")  # cp -t D
 # to an interpreter or a shell (judged by what it runs), and to git and synthesis's own CLI, which keep the approved
 # lines and the board. Any other program may change what it is given, so the guard does not pass it one (2026-11-11:
 # a gate passes what it can prove; a list of the utilities that write never ends).
+WHOLE = "/**"  # after a target: the command changes everything under that folder (rm -r, a move, a recursive copy onto it)
 READERS = frozenset(("cat head tail grep egrep fgrep rg ls stat wc file du diff cmp comm md5 md5sum shasum sha256sum "
                      "basename dirname realpath readlink test [ [[ echo printf cd pushd popd true false : export readonly "
                      "local declare typeset unset zcat gzcat strings od hexdump nl cut tr tac column jq date which "
@@ -1747,6 +1748,10 @@ def _landing(words: list[str]) -> list[str]:
     head = os.path.basename(words[0])
     refs = {i + 1 for i, w in enumerate(words) if w in VALUED.get(head, ())}  # a reference file is only read; a size or a date is no file
     rest = [w for i, w in enumerate(words) if i and i not in refs and not w.startswith("-")]
+    whole = head in ("ditto", "mv", "find") or any(re.fullmatch(r"-[A-Za-z]*[rRa][A-Za-z]*|--recursive|--archive", w) for w in words[1:])
+
+    def all_of(folders: list) -> list:  # a folder changed throughout, marked: one that holds a protected folder changes that folder
+        return [w.rstrip("/") + WHOLE for w in folders] if whole else []
     if head in ("chmod", "chown", "chgrp") and not any(w.startswith("--reference") for w in words):
         rest = rest[1:]  # the mode or the owner comes first
     if head == "dd":
@@ -1759,7 +1764,7 @@ def _landing(words: list[str]) -> list[str]:
     if head in AWKS:  # a reader, unless its program redirects or runs a command, or it edits in place
         return [out for w in rest for out in _awk_writes(w)] + (rest if "inplace" in words else [])  # `-F|` is an option, not a pipe
     if head in PACKERS:  # to its output, or only listed or tested, a file is read
-        return [] if any(re.fullmatch(r"-\w*[clt]\w*|--(?:stdout|to-stdout|list|test)", w) for w in words[1:]) else rest
+        return [] if any(re.fullmatch(r"-\w*[clt]\w*|--(?:stdout|to-stdout|list|test)", w) for w in words[1:]) else rest + all_of(rest)
     if head in ("sed", "perl"):  # its files, not its script: the word after -e or -f, or attached to one, else the first operand
         if not any(IN_PLACE.fullmatch(w) for w in words[1:]):
             return []
@@ -1769,13 +1774,15 @@ def _landing(words: list[str]) -> list[str]:
     if head == "find":  # it changes what it finds when told to delete, to write a list, or to run a command that does
         roots, runs = _find(words)
         lists = [words[i + 1] for i, w in enumerate(words[:-1]) if w.startswith(("-fprint", "-fls"))]  # the list it writes is that file
-        return lists + (roots if "-delete" in words or any(map(_changes, runs)) else [])
+        return lists + (roots + all_of(roots) if "-delete" in words or any(map(_changes, runs)) else [])
     if head not in COPIERS or (head == "install" and any(re.fullmatch(r"-\w*d\w*|--directory", w) for w in words)):
-        return rest if head in WRITERS else []
+        return rest + all_of(rest) * (head in ("rm", "chmod", "chown", "chgrp")) if head in WRITERS else []
     given = [(INTO.fullmatch(w), i) for i, w in enumerate(words)] if head != "rsync" else []
     into = [m[1] or m[2] or "".join(words[i + 1:i + 2]) for m, i in given if m] or rest[-1:]
     lands = into + [os.path.join(d, os.path.basename(s.rstrip("/"))) for d in into for s in rest if s not in into]
-    return rest + lands if head == "mv" or "--remove-source-files" in words else lands  # these also take their sources away
+    if head == "mv" or "--remove-source-files" in words:  # these also take their sources away
+        return rest + lands + all_of([s for s in rest if s not in into])
+    return lands + all_of(into) * (head in ("cp", "rsync", "ditto"))  # a tree copied over a folder lands in the folders it holds
 
 
 def _find(words: list[str]) -> tuple[list[str], list[list[str]]]:
@@ -1862,6 +1869,18 @@ def _changes(run: list[str]) -> bool:
 
 PATCH_PATHS = re.compile(r"(?m)^\*\*\* (?:Add|Update|Delete) File: (.+?)\s*$|^\*\*\* Move to: (.+?)\s*$")
 FILE_TOOLS = {"Write", "Edit", "MultiEdit", "NotebookEdit", "write_file", "edit_file", "apply_patch"}
+
+
+def _reaches(target: str, root: str, whole: bool = False, hidden: bool = False) -> bool:
+    """Whether a target that does not lie in a protected folder may still change it: a folder changed throughout
+    (`whole`) that holds it, or a pattern (`*`, `?`, `[`, `**`) that may name it or something in it. Each part of
+    the folder's path is matched against the target's; a part that starts with a pattern does not match a name
+    that starts with a dot, as the shell reads one, unless `hidden` (pathlib's patterns do) (2026-11-11: `rm -rf` of
+    the folder above the transcripts, and `rm` of `*/*/*.jsonl` under it, were no write)."""
+    have, want = ([part for part in paths.spelled(path).split("/") if part] for path in (target, root))
+    cut = have.index("**") if "**" in have else len(have)
+    met = all(fnmatch.fnmatchcase(w, h) and (hidden or h[:1] not in "*?[" or w[:1] != ".") for h, w in zip(have[:cut], want))
+    return met and (cut < len(have) or whole or len(have) >= len(want))
 
 
 def _protected_roots(config: dict | None) -> list[str]:
@@ -1978,6 +1997,7 @@ LINKS = ("symlink_to", "hardlink_to", "link_to", "symlink", "link")  # pathlib's
 MUTATORS = ("append", "extend", "insert", "add", "update", "setdefault", "appendleft", "extendleft", "put")
 CONTENT = ("open", "read", "readline", "readlines", "read_text", "read_bytes")  # hand back what a file holds, not where it is
 ARG_READERS = {"argparse", "optparse", "getopt", "fileinput", "click", "typer", "fire", "docopt"}  # take the arguments unseen
+WALKS = ("walk", "fwalk", "glob", "iglob", "rglob")  # hand back what lies under a folder, or what a pattern names
 STARTS = ("system", "popen", "create_subprocess_exec", "create_subprocess_shell", "spawn")  # os's, asyncio's and pty's ways to start a command
 PLACED = ("args", "shell", "cwd", "env", "input", "executable", "stdin", "stdout", "stderr")  # what a started command is given that the reader places or judges
 
@@ -2089,10 +2109,23 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
         return isinstance(node, ast.Call) and getattr(node.func, "attr", getattr(node.func, "id", "")) == "open" and any(
             map(named, [*node.args, *(k.value for k in node.keywords), *([node.func.value] if isinstance(node.func, ast.Attribute) else [])]))
 
+    store = paths.line_allowances(config or {})
+    folders_held = [r for r in roots if not store or r != os.path.realpath(str(store))]  # the approved lines are one file: nothing holds a folder of them
+
+    def over(n) -> bool:  # a walk or a pattern that may find what lies in a protected folder, from a folder that holds it
+        label = getattr(n.func, "attr", getattr(n.func, "id", ""))
+        method = isinstance(n.func, ast.Attribute) and not (isinstance(n.func.value, ast.Name) and n.func.value.id in modules)
+        top = spelled(n.func.value) if method else spelled((n.args[:1] or [n])[0])
+        top = os.path.join(top, said(n.args[0]) or "\0") if method and label == "glob" and n.args else top
+        top = os.path.join(where, os.path.expanduser(top)).replace("\0", "*")
+        return os.path.isabs(top) and any(_reaches(top, r, label in ("walk", "fwalk", "rglob"), method) for r in folders_held)
+
     def named(node) -> bool:  # built from a protected path: in a string, in an argument, or through a name or an attribute
         todo = [node]
         while todo:
             n = todo.pop()
+            if isinstance(n, ast.Call) and getattr(n.func, "attr", getattr(n.func, "id", "")) in WALKS and over(n):
+                return True  # what it finds under a folder that holds a protected one may lie in that one
             if isinstance(n, ast.Attribute) and n.attr == "name" and (opened(n.value) or "name of " + getattr(n.value, "id", "") in tainted):
                 return True
             field = isinstance(n, ast.Attribute) and not (isinstance(n.value, ast.Name) and n.value.id in modules) and (
@@ -2186,8 +2219,9 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
                     column = [spelled(r.elts[at]) for r in each]
                     if isinstance(t, ast.Name) and t.id in once and ranges.get(t.id) != column:
                         ranges[t.id], grew = column, True
-            else:
-                grew |= named(n.iter) and taint(held(n.target))
+            else:  # of what a walk hands back, the folder is a path; the names in it are not
+                walked = isinstance(n.target, ast.Tuple) and getattr(getattr(n.iter, "func", None), "attr", "") in ("walk", "fwalk")
+                grew |= named(n.iter) and taint(held(n.target.elts[0] if walked else n.target))
                 plain = [spelled(r) for r in each or ()]  # a name that walks a list of plain values is one of them
                 if each and isinstance(n.target, ast.Name) and n.target.id in once and ranges.get(n.target.id) != plain:
                     ranges[n.target.id], grew = plain, True
@@ -2224,16 +2258,19 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
         lead = spot if "\0" not in spot else os.path.dirname(spot.split("\0")[0])
         return os.path.isabs(lead) and any(paths.inside(os.path.realpath(lead), r) for r in roots)
 
-    def lands(node, folder: bool = False, link: bool = False, at=(where,)) -> bool:  # whether a write's target is, or may be, in a protected folder
-        return any(leads(path, node, folder, link, at) for path in ranges.get(getattr(node, "id", ""), [spelled(node)]))
+    def lands(node, folder: bool = False, link: bool = False, at=(where,), whole: bool = False) -> bool:  # whether a write's target is, or may be, in a protected folder
+        return any(leads(path, node, folder, link, at, whole) for path in ranges.get(getattr(node, "id", ""), [spelled(node)]))
 
-    def leads(raw: str, node, folder: bool, link: bool, at) -> bool:  # one spelling of a target, from each folder the call may be made in
+    def leads(raw: str, node, folder: bool, link: bool, at, whole: bool) -> bool:  # one spelling of a target, from each folder the call may be made in
         path = os.path.expanduser(raw)
         froms = [""] if os.path.isabs(path) else at
         # A plain path is judged where it leads (one that names a protected folder and climbs away from it is not
         # plain). Any other target is judged by what it is built from, and inside by the folder that leads it.
         if "\0" not in path:
-            inside = [real for real in (os.path.realpath(os.path.join(s, path)) for s in froms if "\0" not in s) if any(paths.inside(real, r) for r in roots)]
+            reals = [os.path.realpath(os.path.join(s, path)) for s in froms if "\0" not in s]
+            inside = [real for real in reals if any(paths.inside(real, r) for r in roots)]
+            if whole and any(_reaches(real, r, True) for real in reals for r in folders_held):
+                return True  # a folder removed, moved or copied over whole changes the protected folder it holds
             unread = any("\0" in s and within(s) for s in froms)  # from a folder it cannot read, under a protected one
             if inside or unread or not any(m in raw for m in names):
                 return unread or any(link or not _own(real, folder) for real in inside)  # no link is made there
@@ -2269,18 +2306,21 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
         def shift(spots, changes) -> list:  # where it may stand after each of those changes, from each folder it may stand in
             return [os.path.join(s, v) for s in spots for c in changes for v in change[id(c)]]
         deferred = [c for f in functions for c in ast.walk(f) if id(c) in change]
-        at = [where] + [stand_in] * bool(handed_on and names)  # a change handed on cannot be followed: it may stand in a folder the command names
-        for stmt in tree.body:
-            inner = [c for c in ast.walk(stmt) if id(c) in change]
-            mine = isinstance(stmt, ast.Expr) and isinstance(stmt.value, ast.Call) and (
-                modules.get(getattr(getattr(stmt.value.func, "value", None), "id", "")) == "os" or direct.get(getattr(stmt.value.func, "id", ""), ("",))[0] == "os")
-            sure = mine and inner == [stmt.value]  # os's own change, not another object's method of that name
-            before, at, maybe = at, shift(at, inner) if sure else at, deferred + inner * (not sure)
-            for _ in [v for c in maybe for v in change[id(c)]]:  # a change that may come, and come again after another
-                at = at + [f for f in dict.fromkeys(shift(at, maybe)) if f not in at][:64 - len(at)]
-            stood.update((id(c), before if sure else at) for c in ast.walk(stmt) if isinstance(c, ast.Call))
-            anywhere += [f for f in at if f not in anywhere]
-        stood.update((id(c), anywhere) for f in functions for c in ast.walk(f) if isinstance(c, ast.Call))  # a function runs wherever it is called
+
+        def walk(body: list, at: list) -> None:  # each statement in the order it runs, from the folders the program may stand in before it
+            for stmt in body:
+                inner = [c for c in ast.walk(stmt) if id(c) in change]
+                mine = isinstance(stmt, ast.Expr) and isinstance(stmt.value, ast.Call) and (
+                    modules.get(getattr(getattr(stmt.value.func, "value", None), "id", "")) == "os" or direct.get(getattr(stmt.value.func, "id", ""), ("",))[0] == "os")
+                sure = mine and inner == [stmt.value]  # os's own change, not another object's method of that name
+                before, at, maybe = at, list(dict.fromkeys(shift(at, inner))) if sure else at, deferred + inner * (not sure)
+                for _ in [v for c in maybe for v in change[id(c)]]:  # a change that may come, and come again after another
+                    at = at + [f for f in dict.fromkeys(shift(at, maybe)) if f not in at][:64 - len(at)]
+                stood.update((id(c), before if sure else at) for c in ast.walk(stmt) if isinstance(c, ast.Call))
+                anywhere.extend(f for f in at if f not in anywhere)
+        walk(tree.body, [where] + [stand_in] * bool(handed_on and names))  # a change handed on cannot be followed: it may stand in a folder the command names
+        for f, spots in [(f, list(anywhere)) for f in functions]:  # a function runs wherever it is called: its own statements in order from there
+            walk(f.body if isinstance(f.body, list) else [ast.Expr(value=f.body)], spots)
 
     # What a command the program starts is given besides its words: the variables the program has put in
     # os.environ or in the mapping it hands over as `env`, however it keeps that mapping (the seventh review: a
@@ -2399,7 +2439,10 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
         elif method and label in ("rename", "replace") and len(n.args) + len(kw) == 1 and (n.args or "target" in kw):
             targets += [base] + every  # both ends change; str.replace takes two
         wrote = wrote or bool(targets)
-        hit = hit or any(lands(t, label in ("mkdir", "makedirs"), label in LINKS or bool(kept), at) for t in targets)  # a copy that keeps links may make one
+        swept = ([base] if method and label in ("rename", "replace") else n.args[1:2] + [kw[k] for k in ("dst",) if k in kw] if label == "copytree"
+                 else (n.args[:1] or [kw[k] for k in ("src", "path") if k in kw]) if label in ("rmtree", "move", "rename", "renames", "replace") else [])
+        hit = hit or any(lands(t, label in ("mkdir", "makedirs"), label in LINKS or bool(kept), at, any(t is x for x in swept))
+                         for t in targets)  # a copy that keeps links may make one; a tree removed, moved or copied over is changed throughout
     return hit or (wrote and loose), wrote
 
 
@@ -2505,6 +2548,11 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None) -> str |
     if not why and any(paths.inside(t, os.path.realpath(r)) for t in real for r in raw
                        if t in links or not (_own(t) or (t in made and _own(t, True)))):
         why = "writes into the synthesis state folder, a harness's session transcripts or the approved commit lines"
+    apart = [t for t in real if not any(paths.inside(t, os.path.realpath(r)) for r in raw)]  # as written, in no protected folder
+    if not why and any(_reaches(t[:-len(WHOLE)] if t.endswith(WHOLE) else t, os.path.realpath(r), t.endswith(WHOLE)) for t in apart for r in raw
+                       if (t.endswith(WHOLE) and (not store or r != str(store))) or re.search(r"[*?\[]", t)):
+        why = ("changes a whole folder that holds the synthesis state folder, its board, the session archive or a harness's "
+               "session transcripts, or names by a pattern what may lie in one (name what is to change, beside those folders)")
     given = "" if why else next((head for head, word, path in handed if (word == HANDED and names) or (not _material(path) and not _own(path) and any(
         paths.inside(path, os.path.realpath(r)) for r in raw))), "")  # HANDED: files from xargs, which cannot be read here
     if given:
@@ -2858,7 +2906,7 @@ def check(tool: str, tool_input: dict, config: dict, cwd: str | None = None, ses
         cwd = os.path.normpath(os.path.join(cwd, os.path.expanduser(str(tool_input["cwd"]))))
     if shell_tool(tool):
         command = shell_command(tool_input)
-        return (check_self_grant(command, cwd, config) or check_destructive(command, config, cwd)
+        return (check_destructive(command, config, cwd) or check_self_grant(command, cwd, config)  # a recursive delete is named as one
                 or check_pr_gate(command, config, cwd, session)
                 or check_deploy(command, config, cwd, session) or check_outgoing(command, config, cwd, session)
                 or check_claimed(_shell_writes(command, cwd), cwd, session))
