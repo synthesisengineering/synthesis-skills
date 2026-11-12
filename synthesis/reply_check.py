@@ -34,7 +34,7 @@ DEFAULT_PHRASES = [
 # stands in. Config `wait_phrases` adds plain phrases.
 # "once" is a conjunction here, not a count: not "at once", "once more", "once on staging", "once a day".
 _ONCE = r"(?<!\bat )once(?! (?:more|again|a|an|per|every|each|or|and|only|on|in|at|for|with|to|by|upon|daily|weekly)\b)"
-_ME, _WHEN = r"\b(?:i|we)", r"\b(?:" + _ONCE + r"|when|after|until|as soon as|the moment)\b"
+_ME, _WHEN = r"\b(?:i|we)", r"\b(?:" + _ONCE + r"|when|after|until|as soon as|the (?:moment|minute|instant))\b"
 # Ordinary grammar between a subject and its verb (review round 2): any run of adverbs ("currently still", "then",
 # "simply"; "not" and "no longer" are none), helping verbs ("continue to wait", "be able to resume", "go ahead and
 # merge"), "going to" and "need to" for "will", and a subject left out ("Will report back", "I pushed it and will").
@@ -52,14 +52,16 @@ _GO = (r"(?:continue(?! to\b)|resume|proceed|pick (?:[\w'’-]+ ){1,4}?(?:back )
 # as the run finishes", "once their quote arrives, I'll update the sheet", "I'll check them when it's done".
 _I = (r"(?:\bi(?:['’]ll| will| shall|(?:['’]m| am) going to)|\bwe(?:['’]ll| will)(?! (?:want|need|have|be|see|know|likely|probably)\b)"
       r"|^\W*will|\bi\b[^:]{0,120}?\b(?:and|but|then) will)" + _ASIDE + _SOON)
-_THEN = r"(?:" + _ONCE + r"|as soon as(?! (?:possible|practical)\b)|the moment) (?!(?:i|we)\b)(?=\w)"
+_THEN = r"(?:" + _ONCE + r"|as soon as(?! (?:possible|practical)\b)|the (?:moment|minute|instant)) (?!(?:i|we)\b)(?=\w)"
 # After "when" or "after", an arrival is an event to come ("when the second pass comes back"); "when the network is down" is a case.
-_COMES = (r"(?:when|after) (?!(?:i|we|a|an|any|each|every|some|no)\b)(?:[\w'’-]+ ){1,5}?(?:comes?|arrives?|lands?|shows? up|finish(?:es)?"
+_COMES = (r"(?:when|after|the (?:day|minute|instant)) (?!(?:i|we)\b)(?:[\w'’-]+ ){1,5}?(?:comes?|arrives?|lands?|shows? up"
+          r"|opens?(?: up)?|frees? up|becomes? (?:available|free)|finish(?:es)?"
           r"|completes?|returns?|repl(?:y|ies)|responds?|answers?|confirms?|approves?|signs?|accepts?|ships?|delivers?|clears?|posts?"
           r"|settles?|pass(?:es)?|goes (?:green|through|live|out)|reopens?|lifts?|ends?|issues?|renews?|resets?|propagates?|exits?"
           r"|(?:is|are|has been|have been) (?:done|ready|back|in|out|through|over|up|live|green|available|here|\w+ed))\b")
-_SAYS = r"(?:(?!\b(?:that|because|since|which|if|whether|what|how|why|where)\b)[^;:]){1,100}?"  # not "I'll note that once ..."
-_DONE = (r"(?:when|once|after) (?:it|they|that|this|everything)(?:(?:['’]s|['’]re| is| are| has| have)(?: been)? (?:done|ready"
+_SAYS = (r"(?!(?:not|never|no longer)\b)(?:(?!\b(?:that|because|since|which|if|whether|what|how|why|where)\b)[^;:]){1,100}?")  # not "I'll
+#                                                                                                    note that once ...", not "I will not"
+_DONE = (r"(?:when|once|after|as soon as|the (?:day|moment|minute|instant)) (?:it|they|that|this|everything)(?:(?:['’]s|['’]re| is| are| has| have)(?: been)? (?:done|ready"
          r"|finished|completed?|through|over|back|in|up|live|green|available|out|here|merged|published|released)\b| (?:lands?"
          r"|finish(?:es)?|completes?|ends?|returns?|arrives?|pass(?:es)?|comes?)\b| (?:does|do|has|have|is|are)\b(?=\W*$|,))")
 # The event in front, after "when" or "after", with any verb: "when the bank confirms, I will record it". An event named with
@@ -74,10 +76,10 @@ _HELD = r"\b(?=.{0,160}?\b(?:until|till)\b)"  # a hold is a wait when it runs un
 # hold an infinitive ("the import to release its lock") but nothing that opens another clause (_STOP), so "waiting for
 # the reviewer to confirm the fix is right" stays an announcement (review round 2).
 _STOP = (r"that|which|who|whom|whose|what|where|why|how|whether|wh\w+ever|when|it|they|we|i|you|he|she|and|but|or|then|so"
-         r"|before|after|while|until|till|because|if|as|since|once|though|sure|word|news|notice|proof|signs?|signal"
-         r"|confirm\w*"
-         r"|(?:say|report|check|tell|decide|see|know|find|show|ensure|learn|hear)s?|verif(?:y|ies)")
-_WORD = r"(?: (?!(?:" + _STOP + r")\b)[\w'’/.-]+)"
+         r"|before|after|while|until|till|because|if|as|since|once|though")
+_SAID = (r"sure|word|news|notice|proof|signs?|signal|confirm\w*|(?:say|report|check|tell|decide|see|know|find|show|ensure|learn"
+         r"|hear)s?|verif(?:y|ies)")  # what may open a clause of its own: "to confirm the fix is right"
+_WORD, _ANY = r"(?: (?!(?:" + _STOP + "|" + _SAID + r")\b)[\w'’/.-]+)", r"(?: (?!(?:" + _STOP + r")\b)[\w'’/.-]+)"
 _EFFECT = (r"(?:take|cost|add|waste|delay|slow|mean|make|block|stall|hurt|help|risk|keep|hold|tie|burn|defeat|prevent|guarantee"
            r"|avoid|hide|explain|account|produce|create|trigger|introduce|require|force|starve|mask|dominate|double)s\b")
 _OFTEN = r"(?:(?:never|always|often|usually|only|just|also|still|\w+ly) )?"
@@ -96,7 +98,8 @@ _VALUE = (r"(?:the|a|an|what|why|how|risky|safer?|slow(?:er)?|fast(?:er)?|fine|o
 _TAIL = r"(?:" + _WORD + r"| (?:before|after|during|in|on|at))"
 _LATER = (_WORD + r"{1,10}?(?:" + _TAIL + r"{0,8}? " + _OFTEN + r"(?:(?:is|was)(?:n['’]t| not)? " + _VALUE
           + r"|(?:would|will|should|may|might|must)(?:n['’]t)?\b|took\b|cost\b|" + _EFFECT + r")| (?!(?:" + _STOP
-          + r")\b)(?:is|are|was|were|has|have|had|[a-z]+(?:s|ed))\b" + _WORD + r"{0,6}? " + _OFTEN + r"(?:is|was|can|could|has|does)(?:n['’]t| not)?\b)")
+          + "|" + _SAID + r")\b)(?:is|are|was|were|has|have|had|[a-z]+(?:s|ed))\b" + _WORD + r"{0,6}? " + _OFTEN
+          + r"(?:is|was|can|could|has|does)(?:n['’]t| not)?\b|" + _ANY + r"{1,14}? " + _OFTEN + r"(?:took\b|cost\b|" + _EFFECT + "))")
 SUBJECT = re.compile("(?i)(?:" + _WORD + r"{1,12}? " + _PRED + "|" + _WORD + r"{0,8}? (?:before|after|while|until|till|when|once)" + _LATER + ")")
 UNTIL = re.compile("(?i)" + _LATER)
 WAITS = re.compile(  # a clause that opens with the wait is tested as a subject afterwards: group "on" by SUBJECT, "till" by UNTIL
@@ -106,6 +109,7 @@ WAITS = re.compile(  # a clause that opens with the wait is tested as a subject 
     + r"|\b(?:until|till)\b.{0,160}?(?:" + _MUST + _HELP + r"(?:hold|pause)\b|" + _AM + r"(?:holding|pausing)\b)"
     + "|" + _I + _SAYS + r"\b(?:" + _THEN + "|" + _DONE + "|" + _COMES + r")|\b" + _THEN + r"[^,;:]{0,100},? (?:and )?(?:then )?" + _I
     + r"|\b(?:" + _DONE + r"|should (?:come|arrive) shortly),?(?: and)?(?: then)? " + _WILL + "|" + _FIRST + _I
+    + r"|^\W*" + _COMES + r"[^,;:]{0,80}?,? (?:and )?(?:then )?" + _I + "|" + _ME + r"(?:['’]ve| have) (?:paused|held)" + _HELD
     + r"|(?:^\W*|[:—–] ?| --? )" + _SOON + r"(?:(?P<on>waiting (?:for|on|to (?:hear|see|get|learn|find out))\b(?! you\b)|awaiting\b)"
     r"|(?P<till>waiting until\b|(?:holding|standing by|pausing)\b.{0,160}?\b(?:until|till)\b|" + _GOING
     + r"[^;:]{0,100}?\b(?:when|after|as soon as|" + _ONCE + r")\b))")
@@ -121,7 +125,7 @@ _ACT = (r"answers?|repl(?:y|ies)|response|go(?:-ahead)?|word|approval|decision|c
 # What only they can supply. With "to" and a verb after it, software is acting on it ("your code to compile").
 _THING = r"codes?|headcount|numbers?|figures|dates?|availability|address|details|list|budget|requirements|priorities"
 _HEAD = (r"(?=\W*$|[^\w\s-]| (?:of|on|about|for|before|in|at|by|from|with|regarding|as|after|until|since|over|and|or|but|so|then"
-         r"|that|whether|if|when|once|while|because|is|are|was|will|would|comes?|arrives?|lands?|reaches|gets|here|there|first"
+         r"|that|whether|if|when|once|while|because|between|among|around|concerning|within|is|are|was|will|would|comes?|arrives?|lands?|reaches|gets|here|there|first"
          r"|now|today|tonight|tomorrow|soon|too|either|again|instead|please|yet|still|also|back|i|we|it|you|not|to{})\b)")
 THEIRS = re.compile(
     r"(?i)\b(?:from|by|until|till|once|when(?:ever)?|after|as soon as) you\b"
@@ -130,7 +134,9 @@ THEIRS = re.compile(
     r"|\b(?:hear|know|learn|see|find out) (?:back )?(?:which|what|whether|how|when|where|who|if)\b[^,;:]*?(?<!\bto )(?<!\bwith )"
     r"(?<!\babout )\byou\b"  # a question the principal answers: "to hear which date works for you"
     r"|\b(?:your (?:move|turn)\b|(?:up|over) to you\b|in your court\b|(?:is|are) yours\b)"  # the turn handed over in so many words
-    r"|^\W*(?:please )?(?:(?:send|tell|give|show) me\b|let me know\b|(?:paste|type|reply|forward|share|confirm)\b(?![\w-]))"  # or asked for
+    r"|(?:^\W*|\b(?:and|then) )(?:please )?(?:(?:send|tell|give|show) me\b|let me know\b)"  # or asked for: a request put to them
+    r"|^\W*(?:please )?(?:(?:paste|type|reply|forward|share|confirm)\b(?![\w-])|(?:read|review|check|choose|pick|decide|approve|sign"
+    r"|answer|select) (?:the|this|that|these|those|it|them|which|whether|one|both|my|our|your)\b)"
     r"|(?:\b(?:for|on|until|till|once|when|after|as soon as|await(?:ing)?|needs?|is|are|was) |['’]s |(?:[:—–]| -) |^\W*"
     r"|\b(?:until|till|once|when|after|as soon as) (?:i|we)(?:['’]ve| have)? (?:have|get|got|receive[sd]?|see|hear|read|know|learn) "
     r"|\bto (?:have|get|receive|see|hear|read|know|learn) )(?:(?:only|just|both|either|also|still|now) )?"
