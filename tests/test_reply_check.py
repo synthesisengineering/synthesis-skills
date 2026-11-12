@@ -843,3 +843,144 @@ def test_a_fourth_fresh_list_of_replies_that_need_no_watcher_passes(reply):
 def test_a_fourth_fresh_list_of_unarmed_waits_is_sent_back(reply):
     reason = _sent_back(reply)
     assert reason and "nothing is armed" in reason
+
+
+# A fifth pair, written by a second agent that was told what the check is for and never saw its code, as the review's
+# lists are. Ten were wrong, nine of them waits that passed: a future with any verb and "once" or "as soon as" ("I'll
+# send you the comparison as soon as the run finishes"), "when it's done", a clause that opens with "Resuming" or
+# "Standing by until", and "I'm holding ... until". One explanation was sent back: "before merging" inside a subject.
+INDEPENDENT_NO_WATCHER = {
+    "EN01": "Both layouts are in the draft folder. I'll wait for your decision before I touch the stylesheet.",
+    "EN02": "Until you choose between the morning and the evening flight, I'll hold off on booking either one.",
+    "EN03": 'I am currently still waiting for your answer on the retention period, so the cleanup change stays unmerged.',
+    "EN04": 'Will merge once you approve the pull request.',
+    "EN05": "I'll continue to wait for your go-ahead before changing anything in production.",
+    "EN06": 'I will be able to resume the sign-in as soon as you type the six-digit code from your authenticator app.',
+    "EN07": "Once you've pushed your local commits, I can rebase the feature branch on top of them; I can't see them from"
+            ' here.',
+    "EN08": "We'll hold the invitation until you confirm the guest list.",
+    "EN09": "After you review the migration plan, I'll start on the schema changes.",
+    "EN10": 'Waiting for your approval of the budget line before I submit the expense report.',
+    "EN11": "Your decision on the venue is the only thing I'm waiting for; everything else in the event plan is settled.",
+    "EN12": "I'm standing by for the confirmation code that was emailed to you; paste it here and I'll complete the "
+            'registration.',
+    "EN13": "I'll pick the refactor back up after your answer about whether the legacy endpoint can be removed.",
+    "EN14": 'Do you want me to wait for the nightly build before tagging, or tag the release from the current commit?',
+    "EN15": "Nothing moves on the contract until you sign page four, so I've left the envelope in draft.",
+    "EN16": "When you've decided who should receive the summary, I'll resume and send it.",
+    "EN17": "Paused at the payment step: only you can enter the card details, and I'll carry on from the confirmation "
+            'page once you have.',
+    "EN18": "I'll wait for your answer to the reviewer's question before changing the API.",
+    "EN19": "I'll wait for your decision on the vendor's quote; the three options are summarized in the table above.",
+    "EN20": 'Holding for your sign-off on the release notes.',
+    "EN21": 'Waiting for a lock blocks the worker thread, which is why the second request stalled; I replaced the mutex '
+            'with a queue and the test passes.',
+    "EN22": 'In this pipeline the deploy stage waits for the test stage to succeed; that ordering is declared in the '
+            '`needs` key of the workflow definition.',
+    "EN23": "Waiting for DNS propagation is what made yesterday's cutover slow. Every record resolves to the new address "
+            'now.',
+    "EN24": 'As a general rule, an agent that waits on a long job inside a turn burns context, which is why background '
+            'tasks exist. I added that paragraph to the runbook as you asked.',
+    "EN25": 'The polling loop continues until the queue is empty, which matches the behaviour you described; the only '
+            'thing I changed is the batch size.',
+    "EN26": 'For future runs: wait for the green check before merging, because the first two minutes of output are only '
+            'cache restores.',
+    "EN27": 'Waiting on every reviewer before merging would add about a day per change, so the new policy asks for one '
+            'approval. The policy page is updated.',
+    "EN28": 'The scheduler holds a job until its dependencies have finished and then releases it to the first free '
+            'runner. This patch does not change that behaviour.',
+    "EN29": 'Here is how the checkout page behaves: after the customer clicks Pay, the browser waits for the payment '
+            'provider to respond and then redirects to the receipt.',
+    "EN30": 'I waited for the full test suite to finish; all 412 tests passed and the branch is merged.',
+    "EN31": 'Status for your notes: the supplier is still waiting on its bank, which is outside anything I can act on. '
+            'The ledger entry is updated and my part is finished.',
+    "EN32": 'I did not wait for the nightly build, since this change only touches documentation. It is merged.',
+    "EN33": "Earlier I was waiting on the vendor's reply; it arrived at noon and the invoice is reconciled.",
+    "EN34": 'There is nothing to wait for: the certificate was issued this morning and the site already serves it.',
+    "EN35": 'After the index rebuild finished, I resumed the import and loaded the remaining 2,300 rows. The table is '
+            'complete.',
+    "EN36": 'Once the airline confirmed the seat change, I updated the itinerary; it now shows 14C on both legs.',
+    "EN37": 'The runner\'s last log line reads "waiting for the build to finish", but that message is stale: the run '
+            'completed and passed.',
+    "EN38": "The vendor's auto-reply says:\n> We are waiting for our finance team to release the payment.\nI saved it to "
+            'the thread notes; the reconciliation itself is finished.',
+    "EN39": "A reply that should trip the check looks like this:\n```\nI'm waiting for the CI run to finish and will merge "
+            'after.\n```\nI added it to the fixtures as a failing case.',
+    "EN40": 'The status line now prints `waiting for deploy job...` while the spinner is active. That string is the only '
+            'thing I changed.',
+    "EN41": 'I added the error text ‘Still waiting on the upstream service’ to the translations for all four languages.',
+    "EN42": 'The ticket is titled “Waiting for vendor to confirm delivery date”; I closed it because the delivery arrived'
+            ' on Monday.',
+    "EN43": 'The docs now show the expected output in a tilde fence:\n~~~\nWaiting for the database to accept '
+            'connections...\nReady.\n~~~\nIt matches what the script prints.',
+    "EN44": "Your colleague's note in the thread says 'I'll resume once the audit finishes'. I copied it into the meeting"
+            ' summary and changed nothing else.',
+    "EN45": 'The email template opens with "We will continue as soon as the bank confirms the transfer", which reads '
+            'fine, so I left it unchanged.',
+}
+INDEPENDENT_OWN_WAIT = {
+    "EW01": 'I am currently still waiting for the integration tests to finish on the release branch.',
+    "EW02": "I'll continue to wait for the export job to complete, then attach the file to the ticket.",
+    "EW03": 'The fix is pushed. I will be able to resume once the branch has been rebuilt.',
+    "EW04": 'Will merge once the checks pass.',
+    "EW05": "We're waiting on the certificate authority to issue the new certificate; the server configuration is ready "
+            'for it.',
+    "EW06": "I'll send you the comparison as soon as the benchmark run finishes.",
+    "EW07": 'Holding off on the release until the security scan comes back clean.',
+    "EW08": 'I will pick this up again after the nightly import has run.',
+    "EW09": 'Resuming when the index rebuild is done.',
+    "EW10": 'Standing by until the container image has been published to the registry.',
+    "EW11": "The request is with the vendor. Once their quote arrives, I'll update the renewal sheet.",
+    "EW12": 'After the database snapshot has completed, we will proceed with the cutover.',
+    "EW13": "I'm waiting for your build to finish before I run the smoke tests.",
+    "EW14": "I'll continue once your code has finished compiling.",
+    "EW15": 'Waiting for the review bot to answer your review request.',
+    "EW16": "I'm holding the announcement until your deployment pipeline reports success.",
+    "EW17": 'Waiting for the vendor to reply to your email about the corrected invoice.',
+    "EW18": "I'll wait for the reviewer's answer to your question before changing the API.",
+    "EW19": 'Waiting for the DNS change to propagate.',
+    "EW20": 'Pushed the commit. Waiting for CI.',
+    "EW21": "Waiting for the other pipeline's lock on the deploy environment to be released; I'll start the rollout right"
+            ' after.',
+    "EW22": "You approved the merge, so I'm now waiting for the pipeline to finish.",
+    "EW23": "Since you already signed the form, I'm waiting for the supplier to countersign it.",
+    "EW24": 'Your approval is recorded; waiting for the deploy job to complete before I close the ticket.',
+    "EW25": "You kicked off the build ten minutes ago, and I'm waiting for it to finish before tagging the release.",
+    "EW26": 'I\'m waiting for the "nightly-build" job to finish, and then I\'ll publish the package.',
+    "EW27": "Will deploy once the 'lint' and 'unit' checks go green.",
+    "EW28": "I'll resume once `deploy-prod` completes.",
+    "EW29": "The vendor wrote “we will get back to you shortly”, so I'm waiting for their confirmation before I place the"
+            ' order.',
+    "EW30": "The CI bot commented:\n> Build queued.\nI'm waiting for that build to finish before I merge.",
+    "EW31": "The tag push triggered the release workflow:\n```\nrelease  queued  2m ago\n```\nWaiting for it to finish; I'll "
+            'upload the artifacts afterwards.',
+    "EW32": "As soon as the airline confirms the seat change, I'll finalize the itinerary.",
+    "EW33": "I'll request your approval as soon as the staging deploy finishes.",
+    "EW34": "Until the migration job finishes I can't verify the row counts; I'll check them when it's done.",
+    "EW35": "I've asked the organizer for a new time and am waiting for them to accept before I move the other meetings.",
+}
+MORE_OF_THE_FIFTH_LISTS_CLASSES = {
+    "once-as-one-time": "I'll run the migration once on staging and once on production.",
+    "as-soon-as-possible": "I'll update the changelog as soon as possible.",
+    "advice-for-later": "We'll want to rotate the key once the audit ends; I added a reminder to the runbook.",
+    "once-i-have-read": "I'll have a fuller answer once I've read the vendor's contract.",
+    "merging-as-a-subject": "Merging after CI passes is the rule in this repository, so I left the branch protection as it is.",
+    "before-signing-in-a-subject": "Waiting on legal before signing was the right call.",
+}
+MORE_WAITS_OF_THE_FIFTH_LISTS_CLASSES = {
+    "i-am-standing-by-until": "I'm standing by until the certificate is issued.",
+    "continuing-once": "Continuing once the lock is released.",
+    "when-they-are-in": "I'll post the numbers when they're in.",
+    "i-am-holding-until": "I'm holding the release until the canary has run for an hour.",
+}
+
+
+@pytest.mark.parametrize("reply", _cases(INDEPENDENT_NO_WATCHER, MORE_OF_THE_FIFTH_LISTS_CLASSES))
+def test_a_list_written_without_sight_of_the_code_of_replies_that_need_no_watcher_passes(reply):
+    assert _sent_back(reply) is None
+
+
+@pytest.mark.parametrize("reply", _cases(INDEPENDENT_OWN_WAIT, MORE_WAITS_OF_THE_FIFTH_LISTS_CLASSES))
+def test_a_list_written_without_sight_of_the_code_of_unarmed_waits_is_sent_back(reply):
+    reason = _sent_back(reply)
+    assert reason and "nothing is armed" in reason
