@@ -776,7 +776,7 @@ def connector_files(platform: str = sys.platform) -> tuple:
 
 def started_with(pid: str, run=subprocess.run, proc: Path = Path("/proc")) -> dict:
     """The environment a running process was started with; {} when the system does not show it. Linux keeps it
-    under /proc. macOS's `ps -E` prints it after the command, never for Apple's own programs or past a sandbox."""
+    under /proc. macOS's `ps -E` prints it after the command, never for the system's own programs or past a sandbox."""
     try:
         if (proc / pid).is_dir():
             text = (proc / pid / "environ").read_text(encoding="utf-8", errors="replace")

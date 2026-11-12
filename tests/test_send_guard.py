@@ -277,7 +277,7 @@ def _attached(file, tool: str = SEND, key: str = "path", config: dict = CONFIG):
     return guards.check(tool, {**MAIL, "attachments": [{key: str(file)}]}, config)
 
 
-@pytest.mark.parametrize("tool", [SEND, "mcp__workspace_mcp__draft_gmail_message", "mcp__google_workspace__send_gmail_message"])
+@pytest.mark.parametrize("tool", [SEND, "mcp__workspace_mcp__draft_gmail_message", "mcp__mail_server__send_gmail_message"])
 @pytest.mark.parametrize("key", ["path", "file_path", "filePath"])
 def test_a_file_outside_the_folders_the_connector_reads_is_refused_with_no_code_and_passes_once_staged(tool, key, scratch):
     outside = scratch / "plan.pdf"
