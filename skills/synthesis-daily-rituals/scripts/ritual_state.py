@@ -31,7 +31,8 @@ with `"from": "YYYY-MM-DD"` for the first day it applies) a day-end record runs
 `synthesis sessions prompts` itself over that day and those folders: a clean outcome is refused while
 a prompt the principal typed that day is cited by no record, a partial one says how many are open, and
 nothing is recorded when the listing cannot be made (2026-11-11: what he asked reached a record only
-if an agent remembered).
+if an agent remembered). Only a missing key or `false` turns it off: any other value that is not that
+setting is refused, and so is a first day that is not a day.
 
 The log is `<synthesis home>/rituals/history.jsonl` (`RITUAL_STATE_DIR` or
 `--state-dir` points elsewhere, to exercise a copy). Derivations live in the
@@ -139,6 +140,14 @@ def _day(moment) -> str:
     return datetime.fromisoformat(str(moment).replace("Z", "+00:00")).date().isoformat()
 
 
+def _is_day(text) -> bool:
+    """Whether text is one day written YYYY-MM-DD: Python 3.11 and later also read 20261112 and 2026-W46-4 as dates."""
+    try:
+        return bool(re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", text)) and bool(date.fromisoformat(text))
+    except (TypeError, ValueError):
+        return False
+
+
 def travel(workspace: str, day: str, given) -> str:
     """The line `record` prints about travel, or a refusal: no result, one for other days, an event without its travel."""
     wanted = rituals.settings(rituals.config(), workspace).get("travel_check")
@@ -180,17 +189,24 @@ SAID = re.compile(ITEM + r"(Recommendation|Consequences|Commits)\**\s*:[*\s]*(.*
 CLOSED = re.compile(ITEM + r"(?:Decided|Resolved|Released|Lapsed|Withdrawn)\**\s*:")
 def prompts(workspace: str, day: str, direction: str, outcome: str) -> str:
     """The line a day-end prints about what the principal typed that day, or a refusal: the listing cannot be made,
-    it answers for another workspace or day, or the close is clean while a prompt is cited by no record
-    (2026-11-11: what he asked reached a record only if an agent remembered). The record lists the prompts itself:
-    a result made earlier, or against other folders, says nothing about now (2026-11-12, a review)."""
-    wanted = rituals.settings(rituals.config(), workspace).get("prompt_reconcile")
-    if wanted in (None, False) or direction != "day-end":
+    it answers for another workspace, day or set of folders or at odds with itself, or the close is clean while a
+    prompt is cited by no record (2026-11-11: what he asked reached a record only if an agent remembered). The
+    record lists the prompts itself: a result made earlier, or against other folders, says nothing about now
+    (2026-11-12, a review)."""
+    wanted = rituals.settings(rituals.config(), workspace).get("prompt_reconcile", False)
+    if wanted is False or direction != "day-end":  # off by a missing key or `false` alone: null and 0 closed a day unchecked
         return ""
     roots = wanted.get("records") if isinstance(wanted, dict) else None
+    where = f'{rituals.state_dir() / "config.json"}, under workspaces.{workspace}'
     if not (isinstance(roots, list) and roots and all(isinstance(r, str) and r for r in roots)):
-        refuse(f'{workspace} turns prompt_reconcile on without saying where its records are. In {rituals.state_dir() / "config.json"}, '
-               f'under workspaces.{workspace}, write "prompt_reconcile": {{"records": ["<folder of project records>"]}}')
-    since = str(wanted.get("from") or "")
+        refuse(f"{workspace} sets prompt_reconcile to {json.dumps(wanted)[:80]}, which names no folder of records: the check can "
+               f'neither run nor count as off, so this ritual is not recorded. In {where}, write "prompt_reconcile": '
+               '{"records": ["<folder of project records>"]}; only false, or no key at all, turns the check off')
+    since = wanted.get("from", "")
+    if "from" in wanted and not _is_day(since):  # compared as text, `tomorrow` or a number put every day before it
+        refuse(f'{workspace} starts prompt_reconcile "from" {json.dumps(since)[:80]}, which is not a day written YYYY-MM-DD, so no '
+               f'day can be told to come before it and this ritual is not recorded. In {where}, write "from": "YYYY-MM-DD", '
+               "or leave it out")
     if day < since:  # a session exported before the workspace turned this on keeps the kinds its records were given
         return f"\nprompts: checked from {since}"
     tool, again = shutil.which("synthesis"), f"synthesis sessions prompts --workspace {workspace} --date {day} " + " ".join(
@@ -205,16 +221,21 @@ def prompts(workspace: str, day: str, direction: str, outcome: str) -> str:
                f"{(done.stderr or done.stdout).strip()[:400]}\nRun `{again}` to see it")
     try:
         found = json.loads(done.stdout)
-        total, left = found["prompts"], found["open"]
-        sound = type(total) is int and isinstance(left, list) and all(isinstance(c, str) for c in left) and len(left) <= total
-        whose, when = found["workspace"], found["date"]
+        total, left, held = found["prompts"], found["open"], found["records"]
+        if not isinstance(held, list):
+            raise TypeError(f"records is {held!r}, not a list of folders")
+        sound = (type(total) is int and isinstance(left, list) and all(isinstance(c, str) and c for c in left)
+                 and len(set(left)) == len(left) <= total and done.returncode == (1 if left else 0))
+        answered = (found["workspace"], found["date"], [os.path.realpath(os.path.expanduser(r)) for r in held])
     except (ValueError, KeyError, TypeError) as exc:
         refuse(f"the listing of {day}'s prompts cannot be read ({exc!r}); run `{again} --json` to see it")
-    if not sound:
-        refuse(f"the listing of {day}'s prompts does not agree with itself (more prompts open than typed, or a field of "
-               f"another shape); run `{again} --json` to see it")
-    if (whose, when) != (workspace, day):
-        refuse(f"the listing answered for {whose} on {when}, and this record is for {workspace} on {day}. Run `{again}`")
+    if not sound:  # 2026-11-12: an exit of 1 with `prompts: 1, open: []` was taken as a clean day
+        refuse(f"the listing of {day}'s prompts does not agree with itself: it exits 1 exactly while it lists a prompt open, "
+               f"lists no more than were typed and each once, and this answer exited {done.returncode} (or a field has another "
+               f"shape), so nothing is recorded; run `{again} --json` to see it")
+    if answered != (workspace, day, [os.path.realpath(os.path.abspath(os.path.expanduser(r))) for r in roots]):  # as the listing names a folder
+        refuse(f"the listing answered for {answered[0]} on {answered[1]} against {held}, and this record is for {workspace} on "
+               f"{day} against {roots}. Run `{again}`")
     if left and outcome in CLEAN:
         refuse(f"{len(left)} of {total} prompts typed on {day} {'is' if len(left) == 1 else 'are'} cited by no record, so "
                f"outcome {outcome!r} would claim nothing was lost:\n" + "\n".join(f"  {c}" for c in left[:40])
@@ -314,9 +335,7 @@ def choices(workspace: str, day: str) -> str:
 
 def cmd_record(args) -> int:
     check_workspace(args.workspace, "record --direction <direction> --workspace <workspace> --date YYYY-MM-DD")
-    try:
-        date.fromisoformat(args.date)
-    except ValueError:
+    if not _is_day(args.date):  # 20261111 or 2026-W46-3, a date to Python 3.11, names no day a listing or a view finds
         refuse(f"--date {args.date!r} is not YYYY-MM-DD; the logical workday is required and never inferred")
     if args.mode == "migration":
         refuse("mode 'migration' marks old bookkeeping and cannot be written")

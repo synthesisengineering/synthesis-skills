@@ -19,6 +19,7 @@ import argparse
 import json
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -437,6 +438,13 @@ def first_config(interactive: bool) -> list:
 
 LAUNCHCTL = "launchctl"
 NUDGE_LABEL = "com.synthesis.day-end-nudge"
+HOMES = ("SYNTHESIS_HOME", "CLAUDE_CONFIG_DIR", "CODEX_HOME", "XDG_DATA_HOME")  # the runtime's folder, and where each harness keeps transcripts
+
+
+def _homes() -> str:
+    """The start of a scheduled job's line: each of HOMES this install was made with, set after the login shell's
+    own. A job that carried none ran this install's command on the default home (2026-11-12, a second review)."""
+    return "".join(f"export {name}={shlex.quote(os.environ[name])}; " for name in HOMES if os.environ.get(name))
 
 
 def _nudge_plist() -> Path:
@@ -444,10 +452,26 @@ def _nudge_plist() -> Path:
 
 
 def _points_at(plist: Path, target: Path) -> bool:
+    """Whether a schedule is this install's: the program of every command its line runs is `target`, the whole path.
+    One whose command only ends like that path, or hands it to another program as a word, is another's, and so is a
+    file that cannot be read (2026-11-12, a second review: a schedule running `echo <target>` was unloaded and removed)."""
     import plistlib
     try:
-        return bool(re.search(re.escape(str(target)) + r'(?=["\'\s]|$)', " ".join(plistlib.loads(plist.read_bytes()).get("ProgramArguments") or [])))  # the whole path
-    except (OSError, ValueError):
+        job = plistlib.loads(plist.read_bytes())
+        args = [job["Program"]] if "Program" in job else job["ProgramArguments"]  # launchd runs `Program` when a job names one
+        if not (isinstance(args, list) and len(args) == 3 and args[:2] == ["/bin/bash", "-lc"]):
+            return isinstance(args, list) and args[:1] == [str(target)]  # no shell line: the program is the first word
+        words = shlex.shlex(args[2].replace("\n", ";"), posix=True, punctuation_chars=True)
+        words.whitespace_split, words.commenters = True, ""  # split as a shell does: `#` and `-` stay in their word
+        commands = [[]]
+        for word in words:
+            if word and not word.strip(words.punctuation_chars):  # `;`, `&&` and `|` end a command
+                commands.append([])
+            else:
+                commands[-1].append(word)
+        programs = [(c[1:] if c[0] == "exec" else c)[:1] for c in commands if c and c[0] != "export"]  # `export` runs nothing
+        return bool(programs) and all(program == [str(target)] for program in programs)
+    except Exception:  # cut short, or of another shape: not this install's
         return False
 
 
@@ -470,7 +494,7 @@ def register_day_end(agent: str = "auto", load: bool = True) -> list:
         lines.append(f"linked {link} -> {launcher} (opens {agent})")
     template = REPO / "skills" / "synthesis-daily-rituals" / "scripts" / f"{NUDGE_LABEL}.plist"
     spec = plistlib.loads(template.read_bytes())
-    spec["ProgramArguments"] = ["/bin/bash", "-lc", f'exec "{nudge}"']  # a login shell, for the user's PATH
+    spec["ProgramArguments"] = ["/bin/bash", "-lc", f'{_homes()}exec "{nudge}"']  # a login shell, for the user's PATH
     if plist.exists() and not _points_at(plist, nudge):
         lines.append(f"archived the previous nudge schedule to {workspace_archive([plist])}")
     plist.parent.mkdir(parents=True, exist_ok=True)
@@ -494,7 +518,7 @@ def unregister_day_end(dry_run: bool = False) -> list:
             plist.unlink()
         lines.append(f"{'would remove' if dry_run else 'removed'} the nudge schedule {plist}")
     elif plist.exists():
-        lines.append(f"{'would keep' if dry_run else 'kept'} {plist}: it runs another install's nudge")
+        lines.append(f"{'would keep' if dry_run else 'kept'} {plist}: its command is not this install's nudge")
     if link.is_symlink() and os.path.realpath(link) == os.path.realpath(home / "bin" / "day-end"):
         if not dry_run:
             link.unlink()
@@ -516,7 +540,7 @@ def _export_plist() -> Path:
 def register_sessions_export(load: bool = True) -> list:
     """Schedule, every hour and at login, the copy of every harness's session transcripts into the archive and of
     each workspace's conversation into its sessions repo (2026-11-11: until then a transcript was copied only when
-    some session ran resume, handoff or a ritual)."""
+    some session ran resume, handoff or a ritual). The job runs with the homes this install was made with."""
     import plistlib
     command, plist = install._home() / "bin" / "synthesis", _export_plist()
     if not command.is_file():
@@ -524,7 +548,10 @@ def register_sessions_export(load: bool = True) -> list:
     log = f"/tmp/{EXPORT_LABEL}.log"
     spec = {"Label": EXPORT_LABEL, "StartInterval": 3600, "RunAtLoad": True, "ProcessType": "Background",
             "StandardOutPath": log, "StandardErrorPath": log,  # a login shell, for the user's PATH and git credentials
-            "ProgramArguments": ["/bin/bash", "-lc", f'"{command}" sessions export --all; "{command}" sessions sync']}
+            "ProgramArguments": ["/bin/bash", "-lc", f'{_homes()}"{command}" sessions export --all; "{command}" sessions sync']}
+    lines = []
+    if plist.exists() and not _points_at(plist, command):  # one label holds one schedule: another install's copy stops here
+        lines.append(f"archived another install's export schedule to {workspace_archive([plist])}")
     plist.parent.mkdir(parents=True, exist_ok=True)
     plist.write_bytes(plistlib.dumps(spec))
     if load:
@@ -533,18 +560,18 @@ def register_sessions_export(load: bool = True) -> list:
         loaded = run([LAUNCHCTL, "bootstrap", domain, str(plist)], 30)
         if loaded.returncode:
             raise SetupError(f"launchctl could not load {plist}: {_tail(loaded)}")
-    return [f"session transcripts copied every hour and at login ({plist}{'' if load else ', not loaded'}; it writes {log})"]
+    return lines + [f"session transcripts copied every hour and at login ({plist}{'' if load else ', not loaded'}; it writes {log})"]
 
 
 def unregister_sessions_export(dry_run: bool = False) -> list:
-    """Remove only an export schedule that runs this install's command."""
+    """Remove only an export schedule whose every command is this install's."""
     plist = _export_plist()
     if plist.exists() and _points_at(plist, install._home() / "bin" / "synthesis"):
         if not dry_run:
             run([LAUNCHCTL, "bootout", f"gui/{os.getuid()}/{EXPORT_LABEL}"], 30)
             plist.unlink()
         return [f"{'would remove' if dry_run else 'removed'} the export schedule {plist}"]
-    return [f"{'would keep' if dry_run else 'kept'} {plist}: it runs another install's command"] if plist.exists() else []
+    return [f"{'would keep' if dry_run else 'kept'} {plist}: its command is not this install's"] if plist.exists() else []
 
 
 def workspace_archive(paths: list) -> Path:

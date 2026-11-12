@@ -331,6 +331,15 @@ def test_a_record_needs_its_logical_date(tmp_path: Path) -> None:
     assert not (tmp_path / "history.jsonl").exists()
 
 
+@pytest.mark.parametrize("day", ["20260914", "2026-W38-1", "2026-W38", "2026-09-14T09:00", "2026-9-14", "14/09/2026", " 2026-09-14"])
+def test_a_day_written_any_other_way_is_refused_on_every_python(tmp_path: Path, day: str) -> None:
+    """Python 3.11 and later read `20260914` and `2026-W38-1` as dates, so a record was appended under a date no
+    view matches: the command said the day was recorded, and every view went on showing it open."""
+    done = run(tmp_path, "record", "--direction", "day-end", "--workspace", "alpha", "--date", day)
+    assert done.returncode != 0 and "is not YYYY-MM-DD" in done.stderr
+    assert not (tmp_path / "history.jsonl").exists()
+
+
 def test_an_early_weekly_review_recorded_for_its_friday_is_not_owed_on_friday(tmp_path: Path) -> None:
     """2026-08-27 lesson: a review pulled forward to Thursday is recorded with the
     date of the Friday it satisfies, so Friday's obligation reads as met."""

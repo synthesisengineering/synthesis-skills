@@ -108,13 +108,15 @@ A quote or timestamp written into a record must come from something a tool actua
 
 Applies where the workspace's ritual config has `"prompt_reconcile": {"records": ["<folder of project records>"]}`
 (with `"from": "YYYY-MM-DD"` for the first day it applies: turn it on from the day after the upgrade that brings it,
-since a session exported before then keeps the kinds its records were given).
+since a session exported before then keeps the kinds its records were given). Only leaving the key out, or `false`,
+turns it off: any other value that is not that setting (`null`, `0`, `{}`, a folder outside a `records` list), and a
+`from` that is not a day written `YYYY-MM-DD`, is refused when the day-end is recorded, with the value named.
 The principal should never have to say "make sure nothing is lost": every prompt they typed today is in the
 transcript archive, and a record accounts for one by citing it.
 
 - [ ] Run `synthesis sessions prompts --workspace <W> --date <today> --records <each folder the config names>`. It first copies every transcript written since the day began, and stops, listing nothing, while one that may hold the day's prompts is not copied (`synthesis doctor` says how each is cleared). Then it lists each prompt of today's that no record cites, as `<harness> <session> #<seq>  HH:MM  <first words>`, with as much of each session's id as tells it from the others (eight characters, or more).
 - [ ] For each line, open it with `synthesis sessions show <session> --seq <n>`, which prints the whole prompt. Where its substance is in a record, cite it there (`<harness> <session> #<seq>` as the listing prints it, or `#<first>-<last>` for a stretch one entry covers). The listing's own output, saved among the records in any form, cites nothing, and neither does the list the record prints when it refuses; what you write beside either is read. Where it is not, write the record first: the request into the plan with its tag, the decision or correction into the project's session log. Never cite a prompt in a record that does not hold it.
-- [ ] Record the day-end. The record runs the same listing itself: a clean close is refused while any prompt is left, `--outcome partial` records the day and says how many are open, and nothing is recorded when the listing cannot be made.
+- [ ] Record the day-end. The record runs the same listing itself: a clean close is refused while any prompt is left, `--outcome partial` records the day and says how many are open, and nothing is recorded when the listing cannot be made, or when its answer is not the listing's own: one that is for another workspace, day or set of folders, that leaves a field out, or whose exit status, count and list of open prompts disagree (an exit of 1 with none open, an exit of 0 with one open, more open than typed, one listed twice).
 
 ## 6. Career Amplification
 

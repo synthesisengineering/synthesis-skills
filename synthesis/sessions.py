@@ -175,8 +175,10 @@ class _Session:
 
     def mirrored(self, text: str, source: str) -> bool:
         """Whether a prompt is the harness's other copy of a turn already kept: Codex writes a turn as a response item
-        and again as a UI event. The same words from the same source are a turn of their own (2026-11-12: a second
-        `Yes.` was removed as a copy of the first, so nothing listed it among what the principal typed)."""
+        and again as a UI event, side by side. The same words from the same source are a turn of their own, and so
+        are the same words once a turn began, a session line was written or the agent did anything: each clears
+        what is remembered here (2026-11-12: a second `Yes.` was removed as a copy of the first, and then one kept
+        only as a UI event as a copy of an earlier turn's response item, so nothing listed it among what was typed)."""
         key = hashlib.sha256(text.encode("utf-8", "replace")).hexdigest()[:16]
         if self.turn[:1] == [key] and self.turn[1] != source and self.turn[2]:
             self.turn[2] -= 1
@@ -233,6 +235,8 @@ class _Session:
         if rec is None:
             return
         text = str(rec.get("text") or "")
+        if rec.get("kind") in ("assistant", "reasoning", "tool_call", "tool_result", "compaction"):
+            self.turn = []  # the agent answered or acted: the same words after this are another prompt, never a copy
         if rec.get("kind") == "system" and (rec.get("source") in HOOK_SOURCES or text.lstrip().startswith("Local time:")):
             for found in ACTIVE_PROJECT.findall(text):  # the session-start hook names the project the session works on
                 if found not in self.meta.setdefault("projects", []):
@@ -345,6 +349,7 @@ def _codex(row: dict, s: _Session):
             s.meta["unattended"] = True
         elif isinstance(p.get("source"), str):  # continued from another source (`cli`): what is typed from here is the person's
             s.meta.pop("unattended", None)
+        s.trigger, s.turn = "", []  # a new run of the session: the turn before it is over, with its word for how it began and its copies
         yield {"at": at, "kind": "session", "data": {k: p[k] for k in ("id", "cwd", "originator", "cli_version", "source",
                                                                        "parent_thread_id", "model_provider", "git") if k in p}}
         if p.get("instructions"):
@@ -377,8 +382,9 @@ def _codex(row: dict, s: _Session):
     elif t == "event_msg" and kind == "user_message":
         text = str(p.get("message") or "")
         yield None if not text or _injected(text) or s.mirrored(text, "event") else _prompt(s, at, {"text": text})
-    elif t == "event_msg" and kind == "task_started":  # how this turn began: `composer` for what a person typed, `exec` for a command line
-        s.trigger = str((p.get("turn_attribution") or {}).get("turn_trigger") or "") or s.trigger
+    elif t == "event_msg" and kind == "task_started":  # a turn begins, and may say how: `composer` for what a person typed, `exec` for a command line
+        said = p.get("turn_attribution")  # a turn that says nothing is read by the session line, never by the turn before
+        s.trigger, s.turn = str(said.get("turn_trigger") or "") if isinstance(said, dict) else "", []  # and no prompt before it is its copy
         s.skipped["event_msg:task_started"] += 1
     elif t == "compacted":
         s.skipped["compaction history items"] += len(p.get("replacement_history") or [])

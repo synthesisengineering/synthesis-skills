@@ -148,20 +148,34 @@ Every install copies the rituals skill's `day-end` launcher and `day-end-nudge.s
 file at that name is refused, never replaced), records which agent the launcher opens
 (`~/.synthesis/v5/agent-cli`), and writes the LaunchAgent
 `~/Library/LaunchAgents/com.synthesis.day-end-nudge.plist`, which runs the installed nudge
-at 16:55 on weekdays. An older schedule under that label is archived first and unloaded;
+at 16:55 on weekdays, with the folders the install was made with (as the hourly copy
+below). An older schedule under that label is archived first and unloaded;
 the new one is loaded with `launchctl bootstrap`, or only written with `--no-launchctl`.
 The banner text is generic and fixed (others see banners on screen-shares). Uninstall
-unloads and removes only a schedule and a link that point at this install's copies.
+unloads and removes only a schedule and a link that point at this install's copies: a
+schedule is this install's when the program its line runs is this install's nudge, the
+whole path (see the next section).
 
 ## The hourly copy of session transcripts
 
 `--sessions-export` writes the LaunchAgent `~/Library/LaunchAgents/com.synthesis.sessions-export.plist`, which
 runs the installed `synthesis sessions export --all` and then `synthesis sessions sync` every hour and at login,
 through a login shell so git finds the person's credentials. It writes `/tmp/com.synthesis.sessions-export.log`.
-An older schedule under that label is unloaded first; `--no-launchctl` writes the file without loading it.
+The job runs with the folders the install was made with: each of `SYNTHESIS_HOME`, `CLAUDE_CONFIG_DIR`, `CODEX_HOME`
+and `XDG_DATA_HOME` that was set when the schedule was installed is set again in the job, after the login shell's
+own, so the job reads the transcripts and writes the archive of the install whose command it runs. One that was
+not set is left to the login shell. After moving any of those folders, run the command again. The weekday nudge's
+job carries them the same way.
+One label holds one schedule: another install's schedule under that label is archived first
+(`<synthesis home>/archive/<time>/`, and the setup says where), since its hourly copy stops when this one
+replaces it; this install's own older schedule is replaced in place. Whichever was loaded is unloaded first;
+`--no-launchctl` writes the file without loading it.
 `synthesis doctor` then checks that the schedule is loaded and that an export finished within a day. Uninstall
-unloads and removes only a schedule that runs this install's command. Without it, transcripts are copied only
-when a session runs resume, handoff or a ritual.
+unloads and removes only a schedule whose every command is this install's: the program each command of its line
+runs is this install's `synthesis`, the whole path. A schedule whose command only ends or begins like that path,
+that hands the path to another program (`echo`, `env`, a shell's words) or sets it as a variable, that runs
+another program beside it, or whose file cannot be read, is not this install's: it is kept, and the uninstall
+says so. Without the schedule, transcripts are copied only when a session runs resume, handoff or a ritual.
 
 ## First config
 
