@@ -1028,7 +1028,7 @@ def _commands(command: str, cwd: str, depth: int = 0, writes: list | None = None
         # Read out of a word that may be a message, a line counts as a command only when it starts as one the guard
         # knows (a shell, an interpreter, a file utility): `select ... where n > 5` and `Example: echo x > file` are words.
         taken = not prose or head in STARTERS or head in SHELLS or bool(SCRIPT.match(head)) or head in WRITERS or head in OWN_RULES or (
-            head in OPAQUE or head in ("sort", "uniq"))
+            head in OPAQUE or head in READERS - WORDS)  # a reader may still redirect: `date >> file`
         if writes is not None and taken:
             writes += [(t, cwd) for t in targets]
         if words and (not taken or (_named(words) and head not in PROMPTED)):  # a word it is handed may be a script it runs: read as one
@@ -1709,6 +1709,8 @@ READERS = frozenset(("cat head tail grep egrep fgrep rg ls stat wc file du diff 
                      "local declare typeset unset zcat gzcat strings od hexdump nl cut tr tac column jq date which "
                      "for case select read fold fmt expand paste join rev sort uniq less more sleep kill wait exit return "
                      "break continue shift trap seq expr bc ps pgrep uname hostname whoami id git synthesis").split())
+WORDS = frozenset("for case select read test [ [[ : true false export readonly local declare typeset unset less more sleep kill wait exit "
+                  "return break continue shift trap which file id synthesis".split())  # a shell's own words, and words a sentence starts with
 AWKS = ("awk", "gawk", "mawk", "nawk")
 AWK_TOKEN = re.compile(r'"(?:[^"\\]|\\.)*"|/(?:[^/\\\n]|\\.)+/|>>?|\|\||\||[;{}\n]|\bprintf?\b|\bsystem\s*\(|\S')
 OWN_RULES = ("sed", "perl", "find", "xxd", "source", ".", "eval", "apply_patch", *AWKS)  # each is read where it is handled
@@ -2475,8 +2477,9 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
                     at = walk([ast.Expr(value=h) for h in heads if id(h) not in change], at)
                     for h in [h for h in heads if id(h) in change]:  # `with contextlib.chdir(folder):` the body runs there
                         stood[id(h)], at = at, list(dict.fromkeys(shift(at, [h])))
-                    at = walk(stmt.body, at)
-                    at = back if any(id(h) in change for h in heads) else at  # and the program goes back after
+                    passed = any(getattr(getattr(h, "func", None), "attr", getattr(getattr(h, "func", None), "id", "")) == "suppress" for h in heads)
+                    at = walk(stmt.body, at) + back * passed  # under `suppress` a change may have failed and been passed over
+                    at = back if any(id(h) in change for h in heads) else list(dict.fromkeys(at))  # and after `with chdir` it is back
                     continue
                 if isinstance(stmt, ast.If):  # each branch in order; its main block always runs, any other may not
                     at = walk([ast.Expr(value=stmt.test)], at)
