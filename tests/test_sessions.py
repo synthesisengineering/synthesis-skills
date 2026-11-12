@@ -1652,6 +1652,17 @@ def test_the_export_command_exits_1_once_it_has_stamped_what_it_could_not_copy(h
             folder.chmod(0o755)
 
 
+def test_the_export_command_says_an_archive_was_not_written_wherever_that_line_stands(capsys, monkeypatch):
+    """After a rebuild the line that says the archive was not written is the report's second, behind where the old
+    archive went. The command then gave a count read from a stamp that had not been left."""
+    report = ["previous archive moved to /old", "not exported: [Errno 28] No space left on device",
+              "claude-code c1: not exported ([Errno 28] No space left on device)"]
+    monkeypatch.setattr(sessions, "export", lambda *args, **kwargs: list(report))
+    assert cli.main(["sessions", "export", "--rebuild"]) == 1
+    said = capsys.readouterr()
+    assert said.err.strip() == report[1] and said.out.splitlines()[:3] == report
+
+
 def test_a_run_started_by_a_command_line_is_briefed_not_prompted(harness):
     """`codex exec` and `claude -p` take their prompt from a script or another agent (2026-11-11: eight review
     briefs an agent wrote were listed among the principal's own prompts of the day)."""
