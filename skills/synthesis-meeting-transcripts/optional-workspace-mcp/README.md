@@ -8,7 +8,7 @@ If you use Anthropic's hosted Gmail + Drive connectors and a single Google accou
 
 | File | Purpose |
 |------|---------|
-| `start.sh` | Launches the workspace-mcp server in the background (macOS/Linux) |
+| `start.sh` | Launches the workspace-mcp server in the background (macOS/Linux), with the synthesis outbox among the folders it may read local files from |
 | `stop.sh` | Stops the running workspace-mcp server |
 | `fetch-meeting.py` | Cross-platform script that fetches a meeting transcript deterministically — bypasses the LLM. Use from a shell, cron, or a skill that wants speed over flexibility |
 | `install-autostart.sh` | Installs a launchd user LaunchAgent (macOS) or systemd user unit (Linux) so workspace-mcp auto-starts on login |
@@ -108,6 +108,38 @@ construction:
 
 Consider wiring `./doctor.sh --quiet` into a daily ritual or login check. A guard with
 no heartbeat is indistinguishable from a guard that is working.
+
+## Local files the server reads: the outbox
+
+workspace-mcp reads a local file (a mail attachment given as a path, a Drive upload
+from a path) only from its own attachment folder (`WORKSPACE_ATTACHMENT_DIR`, by
+default `~/.workspace-mcp/attachments`) and from the folders `ALLOWED_FILE_DIRS` names.
+It checks when the tool runs, so a send that attached a file from anywhere else was
+refused after it had been approved.
+
+`start.sh` therefore makes the synthesis outbox, `~/.synthesis/v5/outbox`
+(`$SYNTHESIS_HOME/outbox` when `SYNTHESIS_HOME` is set), and exports
+`ALLOWED_FILE_DIRS` with that folder added to whatever the variable already holds
+(folders separated by `:`). Agents stage outgoing attachments there, and the synthesis
+send guard refuses a mail call that attaches any other path before an approval is asked
+for. If the folder cannot be made, `start.sh` says so on stderr and still starts the
+server.
+
+A server that is already running keeps the folders it was started with, so restart it
+after updating these scripts:
+
+```bash
+./stop.sh && ./start.sh                                       # started by hand
+launchctl kickstart -k gui/$UID/com.synthesis.workspace-mcp   # macOS, under launchd
+systemctl --user restart workspace-mcp.service                # Linux, under systemd
+```
+
+`synthesis doctor` reports the result on its `outbox` line: the folder is there to
+write, and the running server was started with it among `ALLOWED_FILE_DIRS`. A server
+started without it fails that line, and `./doctor.sh` does not look at it. The launchd
+and systemd units pass only the variables `install-autostart.sh` writes, and
+`ALLOWED_FILE_DIRS` and `SYNTHESIS_HOME` are not among them: a supervised server reads
+the default outbox and its own attachment folder.
 
 ## Prerequisites
 

@@ -1,11 +1,12 @@
 # Channels, gates and sending
 
-What each channel discloses on its own, the three gates every message passes, how email and other posts are built and verified, and the related skills, as written in 3.1.2. Signature-link rendering stays in SKILL.md.
+What each channel discloses on its own, the three gates every message passes, how email and other posts are built and verified, and the related skills, as written in 3.1.2. Signature-link rendering stays in SKILL.md. The section on attachments is newer: it came with the outbox.
 
 Contents:
 - Channel disclosure is a fact, not a preference
 - Three gates: reply history before composing, voice and anti-slop before drafting, relevance and grounding at send time
 - Email construction and verification, and other human-readable posts
+- Attachments: stage the file in the outbox first
 - Related
 
 ## Channel disclosure is a fact, not a preference
@@ -57,6 +58,43 @@ authorized post back through its transport. Intentional poetry and address block
 require an owner-approved override (`message_format.allow_line_breaks_in_paragraphs`);
 never normalize significant whitespace. Retain post IDs, retrieval evidence and any
 missing-readback gap.
+
+## Attachments: stage the file in the outbox first
+
+Stage every file attachment in the outbox before filing the send. The outbox is one
+folder, `~/.synthesis/v5/outbox` (`$SYNTHESIS_HOME/outbox` when that is set). Copy the
+file there, then attach the copy by its full path: `{"path": "<outbox>/<name>"}`.
+
+Why: a self-hosted mail connector reads a local file only from the folders it was
+started to read. workspace-mcp reads its own attachment folder
+(`WORKSPACE_ATTACHMENT_DIR`, by default `~/.workspace-mcp/attachments`) and the folders
+in `ALLOWED_FILE_DIRS`, where its `start.sh` (in `synthesis-meeting-transcripts`) names
+the outbox. It checks the path when the tool runs, which is after the principal approved
+the call. A file left in a session's scratch folder was refused there, so the send cost
+the principal that approval and a second one. When one attachment can be read and
+another cannot, the connector (2.1.0) sends the message without the second.
+
+The send guard refuses first. A workspace-mcp `send_gmail_message` or
+`draft_gmail_message` call whose attachment names a path (`path`, `file_path` or
+`filePath`) is blocked before any approval code is issued when that path is not a full
+path, names no file, or lies outside the outbox, the connector's attachment folder and
+the `ALLOWED_FILE_DIRS` of the guard's own environment. The refusal names the file:
+``the attachment <path> is outside the folders the mail connector reads: copy the file
+into <outbox> (make the folder if it is missing), give that copy's full path as the
+attachment's `path`, and file this send again``. Do that, and make the call again.
+
+- Give the path whole, under the key `path`, the one the connector reads. It resolves
+  a relative path in its own folder, expands no `~`, follows links, and then compares
+  the letters as written.
+- An attachment passed as content needs no staging: base64 `content` with a
+  `filename`, or a `url` (the connector's own download link for a Drive file is one).
+- The approval covers the path as written, not the file's bytes. Leave the staged copy
+  as it is until the call has gone. Every session shares the one outbox, so give the
+  copy a name no other session would pick; a subfolder of your own inside the outbox is
+  still inside it.
+- `synthesis doctor` has an `outbox` line: the folder is there to write, and a running
+  connector was started with it. A connector started before its `start.sh` named the
+  outbox keeps refusing a staged file until it is restarted.
 
 ## Related
 

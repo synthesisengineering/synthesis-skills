@@ -92,6 +92,7 @@ The 1.x ledger's attestations, now the agent's own check before showing the prin
 | A line break inside a paragraph | Email plain parts; every chat message | `<field>: a line break falls inside a paragraph ...` |
 | Persona signature shown as a bare domain | Any message carrying a configured persona marker | `the signature shows <domain> as text ...` |
 | A person's official first name (whole word, case-sensitive), outside the address fields | Any message whose call carries one of that person's `preferred_names` identifiers (an address, a Slack user or DM id) | `this message involves someone who goes by <preferred>; write <preferred>, not <official>` |
+| A file attached by its path (`path`, `file_path` or `filePath`) that the connector would not read: the path is not whole, names no file, or lies outside the outbox, the connector's attachment folder and the folders in `ALLOWED_FILE_DIRS` | Workspace connector: `send_gmail_message`, `draft_gmail_message` | `the attachment <path> is outside the folders the mail connector reads: copy the file into <outbox> ..., and file this send again` (or `is not a full path`, `does not exist`, `is not a file`) |
 
 Blank lines separate paragraphs. A line starting a list item (`-`, `*`, `•`, `+`, `1.`),
 a quote (`>`) or a table row (`|`) starts its own line, and fenced code keeps its lines.
@@ -114,6 +115,14 @@ seat's write replace another's, and the refusal blamed an edit that never happen
 A `send_message` tool counts as email when it carries `to`, `cc`, `bcc`, `subject`,
 `htmlBody` or `body_format`; one that carries a `session_id` is a session-to-session
 message and not correspondence at all.
+
+The workspace connector reads an attachment given as a `path` from its own disk, and only
+from the folders it was started to read, so a file is staged in the outbox
+(`~/.synthesis/v5/outbox`) before the call is made. A path is judged as the connector
+reads it: whole (no `~`, nothing relative), links followed, letters as written. An
+attachment given as `content` or a `url` is not a file read and is left as it is. The
+rule, its reason and the refusal in full are in `synthesis-agent-correspondence`,
+references/gates-and-sending.md.
 
 ## Approval: only the principal's own prompt
 
