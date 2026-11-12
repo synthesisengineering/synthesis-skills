@@ -533,3 +533,37 @@ def test_uninstall_removes_only_a_schedule_and_link_that_point_at_this_install(d
 def test_day_end_before_install_says_what_to_run_first():
     with pytest.raises(setup.SetupError, match="not installed"):
         setup.register_day_end()
+
+
+# ---- the hourly copy of session transcripts -------------------------------------
+# 2026-11-11: the archive had no trigger of its own. A transcript was copied only when some session ran resume,
+# handoff or a ritual, and one that no session exported in time was skipped.
+
+def test_the_hourly_export_is_scheduled_to_run_the_installed_command(day_end):
+    import plistlib
+    lines = setup.register_sessions_export()
+    command = setup.install._home() / "bin" / "synthesis"
+    spec = plistlib.loads(setup._export_plist().read_bytes())
+    assert spec["Label"] == "com.synthesis.sessions-export" and spec["StartInterval"] == 3600 and spec["RunAtLoad"] is True
+    assert f'"{command}" sessions export --all' in spec["ProgramArguments"][-1]
+    assert f'"{command}" sessions sync' in spec["ProgramArguments"][-1]
+    assert calls(day_end)[-1].startswith("bootstrap gui/") and any("every hour" in line for line in lines)
+
+
+def test_the_export_schedule_without_launchctl_is_written_and_not_loaded(day_end):
+    setup.register_sessions_export(load=False)
+    assert setup._export_plist().exists() and calls(day_end) == []
+
+
+def test_uninstall_removes_only_an_export_schedule_that_runs_this_install(day_end):
+    setup.register_sessions_export(load=False)
+    assert any("removed the export schedule" in line for line in setup.unregister_sessions_export())
+    assert not setup._export_plist().exists() and calls(day_end)[-1].startswith("bootout gui/")
+    plist = setup._export_plist()
+    plist.write_text("<plist><dict><key>ProgramArguments</key><array><string>/other/synthesis sessions export</string></array></dict></plist>")
+    assert plist.exists() and any(line.startswith("kept") for line in setup.unregister_sessions_export())
+
+
+def test_the_export_schedule_before_install_says_what_to_run_first():
+    with pytest.raises(setup.SetupError, match="not installed"):
+        setup.register_sessions_export()

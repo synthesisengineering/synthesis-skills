@@ -1030,3 +1030,24 @@ def test_each_sessions_repo_is_checked_for_clone_recent_sync_and_size(tmp_path):
     assert found["sessions repo a"].status == "ok"
     assert found["sessions repo b"].status == "warn" and "not cloned" in found["sessions repo b"].detail
     assert found["sessions repo c"].status == "warn" and "last synced 2026-10-20" in found["sessions repo c"].detail
+
+
+def test_the_hourly_export_is_checked_for_its_schedule_and_its_last_run(tmp_path):
+    plist, stamp = tmp_path / "com.synthesis.sessions-export.plist", tmp_path / "export.json"
+    loaded = lambda argv, **kw: subprocess.CompletedProcess(argv, 0, "", "")           # noqa: E731
+    absent = lambda argv, **kw: subprocess.CompletedProcess(argv, 113, "", "Could not find service")  # noqa: E731
+    from datetime import datetime
+    now = datetime.fromisoformat("2026-11-12T09:00:00-05:00").timestamp()
+    found = doctor.check_sessions_export(plist, stamp, now, loaded)
+    assert found.status == "warn" and "not scheduled" in found.detail and "--sessions-export" in found.detail
+    plist.write_text("<plist/>", encoding="utf-8")
+    found = doctor.check_sessions_export(plist, stamp, now, absent)
+    assert found.status == "fail" and "not loaded" in found.detail
+    found = doctor.check_sessions_export(plist, stamp, now, loaded)
+    assert found.status == "fail" and "no export has finished" in found.detail
+    stamp.write_text(json.dumps({"exported": "2026-11-11T08:00:00-05:00"}), encoding="utf-8")
+    found = doctor.check_sessions_export(plist, stamp, now, loaded)
+    assert found.status == "fail" and "25 hours" in found.detail
+    stamp.write_text(json.dumps({"exported": "2026-11-12T08:20:00-05:00"}), encoding="utf-8")
+    found = doctor.check_sessions_export(plist, stamp, now, loaded)
+    assert found.status == "ok" and "every hour" in found.detail and "40 min ago" in found.detail

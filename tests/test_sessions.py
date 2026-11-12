@@ -488,3 +488,13 @@ def test_sessions_prompts_names_each_one_no_record_cites_and_exits_1_while_any_i
     assert cli.main(["sessions", "prompts", "--date", "2026-10-30"]) == 2    # a workspace must be named
     assert cli.main(["sessions", "prompts", "--workspace", "acme"]) == 0     # with no date: today
     assert capsys.readouterr().out.strip().startswith("0 prompts on 20")
+
+
+def test_an_export_that_finishes_says_when_and_a_busy_one_does_not(harness):
+    _jsonl(harness["claude"], _claude_rows(harness["work"]))
+    stamp = sessions.root() / ".state" / "export.json"
+    assert not stamp.exists()
+    sessions.export(0)
+    first = json.loads(stamp.read_text())["exported"]
+    assert re.fullmatch(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d[+-]\d\d:\d\d", first)
+    assert sessions.export(0) == [] and json.loads(stamp.read_text())["exported"] >= first    # nothing new still counts as a run
