@@ -144,7 +144,11 @@ the archive's other sessions (eight characters, or more where two begin alike), 
 `2 of 31 prompts on <day> in <W> are cited by no record` (exit 1), or `all 31 prompts ... are cited by a record`
 (exit 0). `--records` reads the text files under that folder changed since the day began; repeat it for more. A
 citation names one session: its id in full, or eight or more of its first characters that no other session listed
-shares. The listing's own output saved among the records cites nothing. `--json` prints
+shares. The listing's own output saved among the records cites nothing, however it was saved: a line that holds
+only what the listing prints for a prompt (its citation, its minute and its first words), the JSON answer in any
+layout, and the list the day-end record prints when it refuses. Only those are set aside: what is written beside
+them in the same file is read, and a listing line with what became of the prompt written on it is a record.
+`--json` prints
 `{"workspace", "date", "prompts", "open": [...], "records": [...]}`; the day-end record runs it itself.
 
 For each prompt left: open it (`synthesis sessions show <session> --seq <n>`), and where its substance is
