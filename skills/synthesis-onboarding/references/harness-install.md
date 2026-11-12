@@ -148,7 +148,8 @@ Every install copies the rituals skill's `day-end` launcher and `day-end-nudge.s
 file at that name is refused, never replaced), records which agent the launcher opens
 (`~/.synthesis/v5/agent-cli`), and writes the LaunchAgent
 `~/Library/LaunchAgents/com.synthesis.day-end-nudge.plist`, which runs the installed nudge
-at 16:55 on weekdays. An older schedule under that label is archived first and unloaded;
+at 16:55 on weekdays, with the folders the install was made with (as the hourly copy
+below). An older schedule under that label is archived first and unloaded;
 the new one is loaded with `launchctl bootstrap`, or only written with `--no-launchctl`.
 The banner text is generic and fixed (others see banners on screen-shares). Uninstall
 unloads and removes only a schedule and a link that point at this install's copies: a
@@ -163,7 +164,8 @@ through a login shell so git finds the person's credentials. It writes `/tmp/com
 The job runs with the folders the install was made with: each of `SYNTHESIS_HOME`, `CLAUDE_CONFIG_DIR`, `CODEX_HOME`
 and `XDG_DATA_HOME` that was set when the schedule was installed is set again in the job, after the login shell's
 own, so the job reads the transcripts and writes the archive of the install whose command it runs. One that was
-not set is left to the login shell. After moving any of those folders, run the command again.
+not set is left to the login shell. After moving any of those folders, run the command again. The weekday nudge's
+job carries them the same way.
 An older schedule under that label is unloaded first; `--no-launchctl` writes the file without loading it.
 `synthesis doctor` then checks that the schedule is loaded and that an export finished within a day. Uninstall
 unloads and removes only a schedule whose every command is this install's: the program each command of its line
