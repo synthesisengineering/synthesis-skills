@@ -2220,6 +2220,8 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
             if parts:  # one word of a list is one file: a word it found in a protected folder stands for a file there, an unread end for a name
                 parts = [w.replace("\0", "x") if w[:1] != "\0" else names[0] + "/x" if names and named(e) else w for w, e in zip(parts, first.elts)]
             ran = shlex.join(parts) if parts else spelled(first) if first is not None and parts is None else "\0"
+            fed_code = any(os.path.basename(w) in SHELLS or SCRIPT.match(os.path.basename(w)) for w in (parts[:1] if parts else ran.split())) and (
+                not parts or _program(parts)[0] == "stdin")  # a shell or an interpreter with no script of its own runs what it is fed
             if parts and "shell" in kw and getattr(kw["shell"], "value", True):
                 ran = parts[0]  # a list handed to the shell: its first word is the command line
             sets = dict(setenv)  # the variables the program hands the command: those it puts in os.environ, and env={...}
@@ -2233,8 +2235,8 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
             folders = [os.path.join(spot, os.path.expanduser(spelled(kw["cwd"]))) for spot in spots] if "cwd" in kw else spots
             if "\0" not in ran + "".join(folders):  # a command it spells whole is judged as the shell guard judges one, wherever it may run
                 hit = hit or next(filter(None, (check_self_grant(ran, folder, config) for folder in folders)), False)  # the refusal itself
-                if "\0" not in fed:  # with an input it cannot read, the command's words are judged above and the older rule still holds below
-                    continue
+                if "\0" not in fed or not fed_code:  # an input it cannot read is a script only for a shell or an interpreter: the older
+                    continue                             # rule then holds the command below; its words are judged above either way
         told = kw.get("inplace", n.args[1] if len(n.args) > 1 else None)  # fileinput edits its files only when told to
         edits = told is not None and not (isinstance(told, ast.Constant) and not told.value)
         kept = [k for k, plain in (("follow_symlinks", True), ("symlinks", False)) if k in kw and getattr(kw[k], "value", None) is not plain]
