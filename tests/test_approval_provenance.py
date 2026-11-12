@@ -3201,12 +3201,78 @@ TWELFTH = [
     ("template = '{root}/report.jsonl'\nopen(template.format(root=W), 'w').write('x')", True),
     ("template = '%s/report.txt'\nopen(template % P, 'w').write(open(T).read())", False),
     ("template = '%s/report.jsonl'\nopen(template % W, 'w').write('x')", True),
+    ("pairs = [('src', P + '/a.txt')]\npairs.append(('out', T))\ncfg = dict(pairs)\nopen(cfg['out'], 'w').write('x')", True),       # rows added after the list is made
+    ("pairs = [('src', T)]\npairs.append(('out', P + '/a.txt'))\ncfg = dict(pairs)\nopen(cfg['out'], 'w').write(open(cfg['src']).read())", False),
+    ("pairs = [('src', P + '/a.txt')]\npairs += [('out', T)]\ncfg = dict(pairs)\nopen(cfg['out'], 'w').write('x')", True),
+    ("names = ['out']\ncfg = dict(names)\nopen(cfg['out'], 'w').write('x')\nopen(T, 'a').write('x')", True),
 ]
 
 
 @pytest.mark.parametrize("program, held", TWELFTH)
 @pytest.mark.parametrize("inside", [False, True])
 def test_the_twelfth_reviews_programs(above, program, held, inside, tmp_path):
+    here = tmp_path / "elsewhere"
+    here.mkdir()
+    command = "python3 - <<'EOF'\n" + MEMBERS.format(**above) + program + "\nEOF"
+    reason = guards.check("Bash", {"command": command}, {}, cwd=str(above["work"] if inside else here))
+    assert (REFUSED in (reason or "")) == held, program
+
+
+def test_what_the_twelfth_rounds_answers_must_not_open(above, tmp_path):
+    """Each answer to the twelfth round was read once more for what it might let through: a path object brought in
+    from another module and opened to write from inside a transcript folder, and the environment's reader kept
+    under another name while the command gives it a transcript."""
+    inside = "python3 - <<'EOF'\nfrom settings import OUT\nOUT.open('w').write('x')\nEOF"
+    assert REFUSED in (guards.check("Bash", {"command": inside}, {}, cwd=str(above["work"])) or "")
+    renamed = "OUT={work}/s.jsonl python3 -c \"import os; g = os.getenv; open(g('OUT'), 'w').write('x')\"".format(**above)
+    assert REFUSED in (guards.check("Bash", {"command": renamed}, {}, cwd=str(tmp_path)) or "")
+
+
+# What this project's own probe of the twelfth round's answers found before any reader of them: rows added to a
+# list after it is made and then copied into a table were not among what the table was given, because what each
+# thing is given was gathered in one pass. It is now gathered until it settles. Each way of hiding a transcript in
+# a table, a list or an object that the probe tried is pinned here as refused.
+HIDDEN = [
+    ("cfg = dict.fromkeys(['out'], T)\nopen(cfg['out'], 'w').write('x')", True),  # fromkeys
+    ("cfg = {}\ncfg.update([('out', T)])\nopen(cfg['out'], 'w').write('x')", True),  # update with pairs
+    ("from collections import OrderedDict\ncfg = OrderedDict([('out', T)])\nopen(cfg['out'], 'w').write('x')", True),  # ordered dict pairs
+    ("from collections import OrderedDict\ncfg = OrderedDict(out=T)\nopen(cfg['out'], 'w').write('x')", True),  # ordered dict keyword
+    ("cfg = {k: v for k, v in [('out', T)]}\nopen(cfg['out'], 'w').write('x')", True),  # dict comprehension pairs
+    ("import argparse\nns = argparse.Namespace(out=T)\nopen(ns.out, 'w').write('x')", True),  # namespace keyword
+    ('cfg = json.loads(\'{"out": "%s"}\' % T)\nopen(cfg[\'out\'], \'w\').write(\'x\')', True),  # json loads
+    ("d = {}\nd.setdefault('paths', {})['out'] = T\nopen(d['paths']['out'], 'w').write('x')", True),  # setdefault then entry
+    ("x = [P + '/a.txt']\ny = x\ny[0] = T\nopen(x[0], 'w').write('x')", True),  # list entry via alias
+    ("class C:\n    out = T\nname = 'out'\nopen(getattr(C, name), 'w').write('x')", True),  # getattr name in a name
+    ("paths = [P + '/a.txt', T]\nopen(paths[1:][0], 'w').write('x')", True),  # slice then place
+    ("a, *rest = [P + '/a.txt', T]\nopen(rest[0], 'w').write('x')", True),  # starred rest
+    ("if (out := T):\n    open(out, 'w').write('x')", True),  # walrus
+    ("def f(cfg={'out': T}):\n    open(cfg['out'], 'w').write('x')\nf()", True),  # default table arg
+    ("def f(**kw):\n    open(kw['out'], 'w').write('x')\nf(out=T)", True),  # kwargs table
+    ("a = b = {'out': P + '/a.txt'}\nb['out'] = T\nopen(a['out'], 'w').write('x')", True),  # chained assignment
+    ("a = {'out': P + '/a.txt'}\nb = {'out': T}\ncfg = a if len(sys.argv) > 5 else b\nopen(cfg['out'], 'w').write('x')", True),  # table picked by a test
+    ("class Job:\n    def __init__(self, p):\n        self.path = p\ndef make(p):\n    return Job(p)\nj = make(P + '/a.txt')\nj.path = T\nopen(j.path, 'w').write('x')", True),  # factory then field set
+    ("class Job:\n    def __init__(self, p):\n        self.path = p\ndef make(p):\n    p = T\n    return Job(p)\nj = make(P + '/a.txt')\nopen(j.path, 'w').write('x')", True),  # factory rebinds its name
+    ("class Job:\n    def __init__(self, p):\n        self.path = p\nwhere = T\ndef make(p):\n    return Job(where)\nj = make(P + '/a.txt')\nopen(j.path, 'w').write('x')", True),  # factory picks a global
+    ("class Job:\n    def __init__(self, p):\n        self.path = p\ndef make(ps):\n    return [Job(p) for p in ps]\nfor j in make([P + '/a.txt', T]):\n    open(j.path, 'w').write('x')", True),  # factory through a list
+    ("class Job:\n    def __init__(self, p):\n        self.path = p\ndef tag(j):\n    j.path = T\n    return j\ndst = tag(Job(P + '/a.txt'))\nopen(dst.path, 'w').write('x')", True),  # identity then set
+    ("rows = [('src', P + '/a.txt')]\nrows.append(('out', T))\ncfg = {}\nfor key, value in rows:\n    cfg[key] = value\nopen(cfg['out'], 'w').write('x')", True),  # rows with a later row
+    ("cfg = {}\nfor key, value in [('out', P + '/a.txt')]:\n    value = T\n    cfg[key] = value\nopen(cfg['out'], 'w').write('x')", True),  # rows value rebound
+    ("cfg = {'out': P + '/a.txt'} | {'x': 1} | {'out': T}\nopen(cfg['out'], 'w').write('x')", True),  # union three
+    ("extra = {'OUT': T}\nos.environ.update(extra)\nopen(os.environ['OUT'], 'w').write('x')", True),  # environ update table
+    ("env = os.environ\nenv.update(OUT=T)\nopen(os.getenv('OUT'), 'w').write('x')", True),  # environ alias update
+    ("template = W + '/{name}.jsonl'\nopen(template.format(name='x'), 'w').write('x')", True),  # template of the folder
+    ("template = '{root}/a.txt' if len(sys.argv) > 5 else W + '/{root}.jsonl'\nopen(template.format(root=P), 'w').write('x')", True),  # template picked
+    ("modes = {'w': 'w'}\nopen(T, modes['w']).write('x')", True),  # mode from a table
+    ("def mode():\n    return 'a'\nopen(T, mode()).write('x')", True),  # mode from a function
+    ("from dataclasses import dataclass\n@dataclass\nclass Base:\n    path: str = T\n@dataclass\nclass Out(Base):\n    mode: str = 'w'\no = Out()\nopen(o.path, o.mode).write('x')", True),  # inherited field default
+    ("from dataclasses import dataclass, field\ndef where():\n    return T\n@dataclass\nclass Job:\n    out: str = field(default_factory=where)\nopen(Job().out, 'w').write('x')", True),  # default factory function
+    ("from PIL import Image\nImage.open(P + '/a.png').save(T.replace('.jsonl', '.png'))", True),  # image save into folder
+]
+
+
+@pytest.mark.parametrize("program, held", HIDDEN)
+@pytest.mark.parametrize("inside", [False, True])
+def test_a_transcript_hidden_in_a_table_a_list_or_an_object_is_still_found(above, program, held, inside, tmp_path):
     here = tmp_path / "elsewhere"
     here.mkdir()
     command = "python3 - <<'EOF'\n" + MEMBERS.format(**above) + program + "\nEOF"
