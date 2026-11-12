@@ -25,12 +25,14 @@ that need nothing from the runtime, each file copied byte for byte, with a manif
 registers no hook, as one ZIP. It is cut from the same commit as a plugin release and
 has no release train of its own.
 
-It is not the synthesis system. An install without hooks has no guard: nothing checks a
-send, a deploy, a commit, a calendar write or a destructive command, and no approval code
-exists. It has no session brief, no reply check and no `synthesis` command, and so no
-board, claims, doctor or handoff. The package's name and description say so. A skill
-that promised a guard, in a package that has none, would leave its reader trusting a
-protection that is not there; the check below exists to keep such a line out.
+It is not the synthesis system, and it adds nothing to it: the plugin holds every skill
+in the package, so a person installs one or the other. An install without hooks has no
+guard: nothing checks a send, a deploy, a commit, a calendar write or a destructive
+command, and no approval code exists. It has no session brief, no reply check and no
+`synthesis` command, and so no board, claims, doctor or handoff. The package's name and
+description say so. A skill that promised a guard, in a package that has none, would
+leave its reader trusting a protection that is not there; the check below exists to keep
+such a line out.
 
 Building the package submits nothing. The upload is the owner's step: the owner is the
 person who publishes this plugin and makes the policy attestations a submission asks for.
