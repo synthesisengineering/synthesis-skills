@@ -289,7 +289,7 @@ def _unread_files(tool: str, tool_input: dict, bound: dict | None = None) -> lis
         if not isinstance(entry, dict):
             problems.append(f"attachment {place} is not an object{rule}")
             continue
-        sources =[k for k in ENTRY_KEYS[:3] if (k in entry if k == "url" else entry.get(k))]  # a `url` key leads, even empty
+        sources = [k for k in ENTRY_KEYS[:3] if (k in entry if k == "url" else entry.get(k))]  # a `url` key leads, even empty
         which = f"attachment {place}" + (f" ({entry['filename']})" if entry.get("filename") else "")
         unknown, url = ", ".join(f"`{k}`" for k in entry if k not in ENTRY_KEYS), entry.get("url")
         if sources == ["path"]:
@@ -327,7 +327,7 @@ def _sha256(file: str, until: float) -> str:
     with open(file, "rb") as handle:
         for chunk in iter(lambda: handle.read(1 << 20), b""):
             digest.update(chunk)
-            if time.monotonic() > until:
+            if time.monotonic() >= until:
                 raise TimeoutError(f"not within the {HASH_SECONDS:g} s the guard may spend reading the files a call names")
     return digest.hexdigest()
 

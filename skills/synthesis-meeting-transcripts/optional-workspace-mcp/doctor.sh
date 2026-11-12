@@ -220,7 +220,7 @@ UNIT_HOME="${UNIT_HOME%/}"
 OUTBOX="$UNIT_HOME/outbox"
 if [ "$UNIT_HOME" != "$HERE_HOME" ]; then
   fail "the unit starts the server to read the outbox $OUTBOX, and this shell's synthesis home puts it at $HERE_HOME/outbox" \
-       "run ./uninstall-autostart.sh, then ./install-autostart.sh, from this shell: the unit is written with its SYNTHESIS_HOME and loaded afresh (a restart alone keeps the unit that is loaded)"
+       "run ./uninstall-autostart.sh, then ./install-autostart.sh, from this shell: the unit is written for this shell's synthesis home and loaded afresh (a restart alone keeps the unit that is loaded)"
 elif [ -e "$OUTBOX" ] && [ ! -d "$OUTBOX" ]; then
   fail "the outbox $OUTBOX is not a folder" "move it away, then restart the service: start.sh makes the folder"
 elif [ ! -d "$OUTBOX" ]; then
