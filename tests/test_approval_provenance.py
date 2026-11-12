@@ -2379,3 +2379,53 @@ def test_a_shell_whose_own_output_is_sent_to_a_transcript(above, tmp_path):
     for command in ("exec >> {work}/s.jsonl; echo x", "exec 3>> {work}/s.jsonl; echo x >&3"):
         assert REFUSED in (guards.check("Bash", {"command": command.format(**above)}, {}, cwd=str(tmp_path)) or ""), command
     assert guards.check("Bash", {"command": "exec 2>/dev/null; wc -l {work}/s.jsonl".format(**above)}, {}, cwd=str(tmp_path)) is None
+
+
+# --- the tenth review round (2026-11-12) ----------------------------------------------------------------------
+# Twelve findings, again at the edges of the round before: a program handed in double quotes kept its keyword as
+# the shell's variable, a descriptor opened beside another lost the first one's folder, `trap --` hid its action,
+# a message value that is itself a path was held when given apart from its option, an archive's source was taken
+# for its destination, and a method's own parameter could not be read.
+
+@pytest.mark.parametrize("command, held", [
+    ("python3 -c \"import subprocess; D='{state}'; subprocess.run('touch \\$OUT/forged.json', shell=True, env=dict(OUT=D))\"", True),
+    ("python3 -c \"import subprocess\nD='/tmp/pad'\nsubprocess.run(\n    'head {work}/s.jsonl > \\\"\\$OUT/x.txt\\\"',\n    shell=True,\n    env=dict(OUT=D),\n)\"", False),
+    ("python3 - <<'EOF'\nimport subprocess\nD = '{state}'\nenv = dict(\n    OUT=D,\n)\nsubprocess.run('touch $OUT/forged.json', shell=True, env=env)\nEOF", True),
+    ("trap -- 'rm -f {work}/s.jsonl' EXIT", True),                              # the action after `--`
+    ("bash -c \"trap -- 'echo x >> {work}/s.jsonl' EXIT\"", True),
+    ("trap -p EXIT; wc -l {work}/s.jsonl", False),
+    ("terminal-notifier -message {work}/s.jsonl", False),                       # a message that is a path, given apart from its option
+    ("notify --body {work}/s.jsonl", False),
+    ("notify --prompt {work}/s.jsonl", False),
+    ("notify -m {work}/s.jsonl", False),
+    ("convert --output {work}/s.jsonl /tmp/pad/in.png", True),                  # any other option's value is still a file
+])
+@pytest.mark.parametrize("inside", [False, True])
+def test_the_tenth_reviews_commands(above, command, held, inside, tmp_path):
+    here = tmp_path / "elsewhere"
+    here.mkdir()
+    reason = guards.check("Bash", {"command": command.format(**above)}, {}, cwd=str(above["work"] if inside else here))
+    assert (REFUSED in (reason or "")) == held, command
+
+
+@pytest.mark.parametrize("program, held", [
+    ("import os\nroot = os.open('{work}', os.O_RDONLY)\nfd = os.open('.', os.O_RDONLY, dir_fd=root)\nos.unlink('s.jsonl', dir_fd=fd)", True),   # a descriptor opened beside another
+    ("import os\nroot = os.open('/tmp/pad', os.O_RDONLY)\nfd = os.open('out', os.O_RDONLY, dir_fd=root)\nos.unlink('old.txt', dir_fd=fd)", False),
+    ("import os\nfrom os import open as op\nos.chdir('/tmp/pad')\nfd = op('out', os.O_RDONLY)\nos.chdir('{work}')\nos.fchdir(fd)\nopen('copy.txt', 'w').write('x')", False),
+    ("import os\nfrom os import open as op\nfd = op('{work}', os.O_RDONLY)\nos.chdir('/tmp/pad')\nos.fchdir(fd)\nopen('forged.json', 'w').write('x')", True),
+    ("import shutil\nshutil.unpack_archive('{work}/abc/tool-results/a.zip', '/tmp/pad/unpacked')", False),             # the archive is read; the folder is written
+    ("import shutil\nshutil.unpack_archive('/tmp/pad/a.zip', '{work}')", True),
+    ("import shutil\nshutil.unpack_archive('/tmp/pad/a.zip', extract_dir='{state}')", True),
+    ("import shutil\nshutil.make_archive('/tmp/pad/backup', 'zip', '{work}')", False),                                  # the folder is read; the archive is written
+    ("import shutil\nshutil.make_archive('{work}/backup', 'zip', '/tmp/pad')", True),
+    ("class Report:\n    def save(self, dst):\n        open(dst, 'w').write('x')\nReport().save('/tmp/pad/report.txt')", False),   # a method's own parameter
+    ("class Report:\n    def save(self, dst):\n        open(dst, 'w').write('x')\nReport().save('{work}/s.jsonl')", True),
+    ("class Report:\n    def save(self, dst):\n        open(dst, 'w').write('x')\nr = Report()\nr.save('forged.json')", None),       # a bare name: where it stands
+])
+@pytest.mark.parametrize("inside", [False, True])
+def test_the_tenth_reviews_programs(above, program, held, inside, tmp_path):
+    here = tmp_path / "elsewhere"
+    here.mkdir()
+    command = "python3 - <<'EOF'\n" + program.format(**above) + "\nEOF"
+    reason = guards.check("Bash", {"command": command}, {}, cwd=str(above["work"] if inside else here))
+    assert (REFUSED in (reason or "")) == (inside if held is None else held), program
