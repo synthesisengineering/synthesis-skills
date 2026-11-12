@@ -805,7 +805,7 @@ def peek(days: float = 2) -> list:
                         continue
                     for rec in ADAPTERS[harness](row, s) if isinstance(row, dict) else ():
                         s.emit(rec)
-        except OSError:  # the harness moved or removed the file meanwhile
+        except Exception:  # the harness moved or removed the file meanwhile, or it holds a row the adapter cannot read
             continue
         found.append(({**s.meta, "harness": harness, "session": s.session, "folder": str(s.folder)},
                       [json.loads(line) for line in s.lines]))
