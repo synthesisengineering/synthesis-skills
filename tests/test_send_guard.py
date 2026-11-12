@@ -5,12 +5,14 @@ message-guard skill (skills/synthesis-message-guard/config.example.json) and say
 """
 
 import json
+import os
 import re
+import shutil
 from pathlib import Path
 
 import pytest
 
-from synthesis import guards
+from synthesis import approvals, guards, paths, sends
 
 CONFIG = json.loads((Path(__file__).resolve().parents[1] / "skills" / "synthesis-message-guard" / "config.example.json")
                     .read_text(encoding="utf-8"))
@@ -237,3 +239,124 @@ def test_no_preferred_names_key_means_no_name_check():
     config = {k: v for k, v in CONFIG.items() if k != "preferred_names"}
     assert "approval" in guards.check(DRAFT, BOB_EMAIL, config)
     assert "approval" in guards.check(SLACK, {"channel_id": "U0EXAMPLE", "message": "Robert, the plan is attached."}, config)
+
+
+# --- a file attached by its path ---------------------------------------------------------------------------
+# The workspace connector's mail tools read an attachment given as a path from the connector's own disk, and
+# only from its attachment folder and the folders it was started with (ALLOWED_FILE_DIRS, where its start script
+# names the synthesis outbox). A file anywhere else was refused after the principal had approved the send; with
+# a second attachment the connector could read, the message went out without the first. The guard refuses such
+# a call before any code is issued and says where to put the file.
+
+SEND = "mcp__workspace-mcp__send_gmail_message"
+MAIL = {"to": "a@example.com", "subject": "Plan", "body": "<p>The plan is attached.</p>", "body_format": "html",
+        "user_google_email": "me@example.com"}
+AS_CONTENT = [{"filename": "plan.pdf", "content": "UEsDBA=="},
+              {"url": "https://files.example.com/plan.pdf", "filename": "plan.pdf"},
+              {"file_id": "1aBcD3fGh1jK", "filename": "plan.pdf"}, {"driveFileId": "1aBcD3fGh1jK"}]
+
+
+def _put(folder: Path, name: str = "plan.pdf") -> Path:
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / name).write_bytes(b"%PDF-1.4\n")
+    return folder / name
+
+
+@pytest.fixture
+def scratch(tmp_path, monkeypatch):
+    """A file in a session's scratch folder, a temporary home with an outbox, and none of the connector's
+    settings inherited from the machine the tests run on."""
+    for key in ("ALLOWED_FILE_DIRS", "WORKSPACE_ATTACHMENT_DIR"):
+        monkeypatch.delenv(key, raising=False)
+    monkeypatch.setenv("HOME", str(tmp_path / "user"))
+    paths.outbox().mkdir(parents=True)
+    return _put(tmp_path / "scratch").parent
+
+
+def _attached(file, tool: str = SEND, key: str = "path", config: dict = CONFIG):
+    return guards.check(tool, {**MAIL, "attachments": [{key: str(file)}]}, config)
+
+
+@pytest.mark.parametrize("tool", [SEND, "mcp__workspace_mcp__draft_gmail_message", "mcp__google_workspace__send_gmail_message"])
+@pytest.mark.parametrize("key", ["path", "file_path", "filePath"])
+def test_a_file_outside_the_folders_the_connector_reads_is_refused_with_no_code_and_passes_once_staged(tool, key, scratch):
+    outside = scratch / "plan.pdf"
+    reason = _attached(outside, tool, key)
+    assert f"the attachment {outside} is outside the folders the mail connector reads" in reason
+    assert f"copy the file into {paths.outbox()}" in reason and "file this send again" in reason
+    assert "approve" not in reason and approvals.pending() == []
+    staged = shutil.copy(outside, paths.outbox() / "plan.pdf")
+    assert "approval" in _attached(staged, tool, key) and len(approvals.pending()) == 1
+
+
+def test_content_a_url_or_a_drive_id_is_no_file_read_and_only_the_file_beside_it_is_judged(scratch):
+    for given in ("absent", None, [], {}, AS_CONTENT, json.dumps(AS_CONTENT), "not a list"):
+        call = dict(MAIL) if given == "absent" else {**MAIL, "attachments": given}
+        assert "approval" in guards.check(SEND, call, CONFIG), given
+    outside = scratch / "plan.pdf"
+    mixed = AS_CONTENT + [{"path": str(outside), "filename": "plan.pdf"}]
+    for given in (mixed, json.dumps(mixed)):  # some clients send a list as its JSON text, and the connector reads it
+        reason = guards.check(SEND, {**MAIL, "attachments": given}, CONFIG)
+        assert reason.count("copy the file into") == 1 and str(outside) in reason and "approve" not in reason, given
+
+
+def test_the_rule_is_the_workspace_connectors_and_another_mail_tool_is_as_it_was(scratch):
+    """Another connector reads no path from this disk under these folders: its call is not this rule's to judge."""
+    outside = scratch / "plan.pdf"
+    for entry in ({"filename": "plan.pdf", "content": f"sha256:{'0' * 64}:{outside}"}, {"path": str(outside)}):
+        assert "approval" in guards.check(DRAFT, {**EMAIL, "attachments": [entry]}, CONFIG), entry
+    assert "approve" not in _attached(outside)
+
+
+def test_the_connectors_own_folder_and_each_folder_it_is_started_with_count_and_no_other(scratch, monkeypatch, tmp_path):
+    default = _put(Path.home() / ".workspace-mcp" / "attachments")
+    own, extra, other, beside = (_put(tmp_path / name) for name in ("own", "extra", "other", "extra-more"))
+    assert "approval" in _attached(default) and "approval" in _attached(_put(paths.outbox() / "deck"))
+    assert all("approve" not in _attached(file) for file in (own, extra, other, beside))
+    monkeypatch.setenv("WORKSPACE_ATTACHMENT_DIR", str(own.parent))  # the connector's folder is this one, not the default
+    assert "approval" in _attached(own) and "approve" not in _attached(default)
+    monkeypatch.setenv("ALLOWED_FILE_DIRS", os.pathsep.join(["/srv/reports", f" {extra.parent} ", ""]))
+    assert "approval" in _attached(extra) and "approval" in _attached(own)
+    assert all("approve" not in _attached(file) for file in (other, beside))  # a name that only starts the same
+    monkeypatch.setenv("ALLOWED_FILE_DIRS", os.sep)
+    assert "approval" in _attached(other)
+
+
+def test_a_path_is_read_as_the_connector_reads_it(scratch, monkeypatch, tmp_path):
+    """Links are followed before the comparison. The path must be whole: the connector resolves a relative one in
+    its own folder and expands no `~`. And it must name a file that is there."""
+    outbox, outside = paths.outbox(), scratch / "plan.pdf"
+    staged = _put(outbox, "staged.pdf")
+    (outbox / "leads-out.pdf").symlink_to(outside)  # in the outbox by name, elsewhere in fact
+    (scratch / "leads-in.pdf").symlink_to(staged)  # elsewhere by name, in the outbox in fact
+    (tmp_path / "also-the-outbox").symlink_to(outbox, target_is_directory=True)
+    assert "outside the folders" in _attached(outbox / "leads-out.pdf")
+    assert "approval" in _attached(scratch / "leads-in.pdf")
+    assert "approval" in _attached(tmp_path / "also-the-outbox" / "staged.pdf")
+    assert f"the attachment {outbox / 'gone.pdf'} does not exist" in _attached(outbox / "gone.pdf")
+    (outbox / "deck").mkdir()
+    assert f"the attachment {outbox / 'deck'} is not a file" in _attached(outbox / "deck")
+    _put(Path.home() / ".workspace-mcp" / "attachments")
+    monkeypatch.chdir(outbox)
+    for partial in ("staged.pdf", "./staged.pdf", "~/.workspace-mcp/attachments/plan.pdf"):
+        assert f"the attachment {partial} is not a full path" in _attached(partial)
+    assert len(approvals.pending()) == 2  # the two files that are in the outbox in fact
+
+
+def test_a_staged_file_that_has_gone_is_refused_again_and_its_code_is_kept_for_when_it_is_back(scratch):
+    staged = Path(shutil.copy(scratch / "plan.pdf", paths.outbox() / "plan.pdf"))
+    _approve(_attached(staged))
+    staged.unlink()
+    assert "does not exist" in _attached(staged)
+    shutil.copy(scratch / "plan.pdf", staged)
+    assert _attached(staged) is None  # not spent on the call the connector would have refused
+    assert "approval" in _attached(staged)  # and spent once
+
+
+def test_a_send_window_lets_no_unreadable_file_through_and_spends_no_send_on_it(scratch):
+    config = {**CONFIG, "send_window_signatures": ["The plan is attached"]}
+    sends.open_window(1, ["email"], count=1)
+    assert "outside the folders" in _attached(scratch / "plan.pdf", config=config)
+    assert "1 of 1 sends left" in sends.describe(sends.window())
+    staged = shutil.copy(scratch / "plan.pdf", paths.outbox() / "plan.pdf")
+    assert _attached(staged, config=config) is None and sends.window() == {}
