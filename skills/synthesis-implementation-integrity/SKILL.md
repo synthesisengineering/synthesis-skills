@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "2.0.0"
+  version: "2.1.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
   format: v5
@@ -29,6 +29,7 @@ not cover. Find and repair concrete gaps, then make an acceptance decision.
 7. **Verification has an endpoint.** When the required evidence is complete, return the verdict and advance; reopen accepted work only for a specific unresolved criterion or counterexample.
 8. **For autopilot task contracts, use the [software](references/autopilot-software-quality.md) and [data/document](references/autopilot-data-quality.md) methods.** A disconnected or fixed-answer check is a substantive defect.
 9. **Releases need executable acceptance (PR CI on the exact head), extracted values and boundary authority,** as the three sections below set out. A verifier is evidence; it never grants approval.
+10. **Nothing is handed to another person on test ground.** Before anyone but the principal is given something to use, pass the [handoff gate](references/handoff-gate.md): where it runs, a permanent address, state that survives a restart, a watched health check, a named owner, each with evidence. A miss blocks the handoff.
 
 ## Contents
 
@@ -36,6 +37,7 @@ not cover. Find and repair concrete gaps, then make an acceptance decision.
 - [references/passes.md](references/passes.md): the seven integrity passes and the five-minute quick check. Read the passes that fit the change; use the quick check for small ones.
 - [references/domain-checks.md](references/domain-checks.md): checklists for database/ORM, API, frontend/UI, configuration and deployment. Read the one the change touches.
 - [references/verification-custody.md](references/verification-custody.md): verifying in a shared workspace. Read it before any verification.
+- [references/handoff-gate.md](references/handoff-gate.md): the five lines to pass before another person is given something to use, and what follows a handoff. Read it before any handoff.
 - [references/autopilot-software-quality.md](references/autopilot-software-quality.md) and [references/autopilot-data-quality.md](references/autopilot-data-quality.md): outcome review methods for autopilot task contracts.
 - [references/background.md](references/background.md): the verification chain, anti-patterns, and related skills. Read it when choosing between this skill and preflight, code-audit, pr-review or codebase-review.
 - [references/coverage-map.md](references/coverage-map.md): where each part of the 1.4.1 text and each script change now lives.
