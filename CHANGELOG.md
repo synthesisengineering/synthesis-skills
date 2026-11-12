@@ -83,8 +83,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
     `sys.argv[n]`, and a variable of the environment where it reads it by name; taken another way, one that names
     a protected path makes any write a refusal. What the program reads from a file is content and names no path
     (the `.name` of a file it opened is that file's path). A copy out of a protected folder changes only the copy.
-    A program that runs code it builds (`exec`, `eval`, a module named at run time) is taken to write. A script on
-    stdin for another interpreter is judged by its own heredoc.
+    A command the program spells whole is judged as the shell guard judges that command. A program that runs code
+    it builds (`exec`, `eval`, a module named at run time) is taken to write. A script on stdin for another
+    interpreter is judged by its own heredoc.
   - **Standing in a protected folder.** A program can write where it stands without naming a file. Inside the
     state folder, the board or the sessions archive only a command the guard can read runs: a reader, a file
     utility, a script given inline, `git` only reading. Inside a harness's transcript folder, where sessions work
