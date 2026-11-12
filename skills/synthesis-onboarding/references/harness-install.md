@@ -158,6 +158,10 @@ unloads and removes only a schedule and a link that point at this install's copi
 `--sessions-export` writes the LaunchAgent `~/Library/LaunchAgents/com.synthesis.sessions-export.plist`, which
 runs the installed `synthesis sessions export --all` and then `synthesis sessions sync` every hour and at login,
 through a login shell so git finds the person's credentials. It writes `/tmp/com.synthesis.sessions-export.log`.
+The job runs with the folders the install was made with: each of `SYNTHESIS_HOME`, `CLAUDE_CONFIG_DIR`, `CODEX_HOME`
+and `XDG_DATA_HOME` that was set when the schedule was installed is set again in the job, after the login shell's
+own, so the job reads the transcripts and writes the archive of the install whose command it runs. One that was
+not set is left to the login shell. After moving any of those folders, run the command again.
 An older schedule under that label is unloaded first; `--no-launchctl` writes the file without loading it.
 `synthesis doctor` then checks that the schedule is loaded and that an export finished within a day. Uninstall
 unloads and removes only a schedule that runs this install's command. Without it, transcripts are copied only

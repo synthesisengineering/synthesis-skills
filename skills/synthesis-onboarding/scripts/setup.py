@@ -19,6 +19,7 @@ import argparse
 import json
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -507,6 +508,7 @@ def unregister_day_end(dry_run: bool = False) -> list:
 # ---- the hourly copy of session transcripts ---------------------------------------
 
 EXPORT_LABEL = "com.synthesis.sessions-export"
+HOMES = ("SYNTHESIS_HOME", "CLAUDE_CONFIG_DIR", "CODEX_HOME", "XDG_DATA_HOME")  # the runtime's folder, and where each harness keeps transcripts
 
 
 def _export_plist() -> Path:
@@ -516,15 +518,17 @@ def _export_plist() -> Path:
 def register_sessions_export(load: bool = True) -> list:
     """Schedule, every hour and at login, the copy of every harness's session transcripts into the archive and of
     each workspace's conversation into its sessions repo (2026-11-11: until then a transcript was copied only when
-    some session ran resume, handoff or a ritual)."""
+    some session ran resume, handoff or a ritual). The job runs with each of HOMES this install was made with, set
+    after the login shell's own (2026-11-12: it carried none, and ran this install's command on the default home)."""
     import plistlib
     command, plist = install._home() / "bin" / "synthesis", _export_plist()
     if not command.is_file():
         raise SetupError("the synthesis command is not installed; run setup.py plugin (or start a session) first")
     log = f"/tmp/{EXPORT_LABEL}.log"
+    homes = "".join(f"export {name}={shlex.quote(os.environ[name])}; " for name in HOMES if os.environ.get(name))
     spec = {"Label": EXPORT_LABEL, "StartInterval": 3600, "RunAtLoad": True, "ProcessType": "Background",
             "StandardOutPath": log, "StandardErrorPath": log,  # a login shell, for the user's PATH and git credentials
-            "ProgramArguments": ["/bin/bash", "-lc", f'"{command}" sessions export --all; "{command}" sessions sync']}
+            "ProgramArguments": ["/bin/bash", "-lc", f'{homes}"{command}" sessions export --all; "{command}" sessions sync']}
     plist.parent.mkdir(parents=True, exist_ok=True)
     plist.write_bytes(plistlib.dumps(spec))
     if load:
