@@ -530,6 +530,22 @@ def test_uninstall_removes_only_a_schedule_and_link_that_point_at_this_install(d
     assert plist.exists() and link.is_symlink() and len([l for l in lines if l.startswith("kept")]) == 2
 
 
+@pytest.mark.parametrize("login", [False, True], ids=["a login shell that defines none", "a login shell that defines another"])
+@pytest.mark.parametrize("chosen", [False, True], ids=["installed with no home of its own", "installed with a home of its own"])
+def test_the_weekday_nudge_runs_with_the_home_selected_at_install(day_end, tmp_path, monkeypatch, chosen, login):
+    """The nudge asks the ritual log under the synthesis home which workspaces still owe a close. Scheduled by an
+    install made with a home of its own, its job carried no home: it ran that install's script on the default
+    home's log, as the hourly copy of transcripts did."""
+    home = setup.install._home()
+    if not chosen:
+        monkeypatch.delenv("SYNTHESIS_HOME")                          # the default home, the same folder here
+    setup.register_day_end(load=False)
+    monkeypatch.delenv("SYNTHESIS_HOME", raising=False)               # launchd starts the job with none of the installer's shell
+    runs = _started_by_launchd(tmp_path, "export SYNTHESIS_HOME=/elsewhere/home\n" if login else "", nudge=True)
+    assert [(run["words"], run["SYNTHESIS_HOME"]) for run in runs] == [([], str(home) if chosen else "/elsewhere/home" if login else None)]
+    assert any("removed the nudge schedule" in said for said in setup.unregister_day_end())    # and it is still this install's
+
+
 def test_day_end_before_install_says_what_to_run_first():
     with pytest.raises(setup.SetupError, match="not installed"):
         setup.register_day_end()
@@ -559,13 +575,14 @@ HOMES = ("SYNTHESIS_HOME", "CLAUDE_CONFIG_DIR", "CODEX_HOME", "XDG_DATA_HOME")  
 CHOSEN = {"none": (), **{name: (name,) for name in HOMES}, "all four": HOMES}
 
 
-def _started_by_launchd(tmp_path, profile: str = "") -> list:
+def _started_by_launchd(tmp_path, profile: str = "", nudge: bool = False) -> list:
     """What the scheduled job's command is given when launchd starts the job: the job's own program arguments and
     environment variables, the person's login shell (`profile` is what theirs defines) and nothing of the shell
-    the installer ran in. The installed command is replaced by one that writes down its words and its homes."""
+    the installer ran in. The installed command is replaced by one that writes down its words and its homes.
+    The job is the hourly copy's, or with `nudge` the weekday nudge's."""
     import plistlib
-    spec, seen = plistlib.loads(setup._export_plist().read_bytes()), tmp_path / "seen.jsonl"
-    (setup.install._home() / "bin" / "synthesis").write_text(
+    spec, seen = plistlib.loads((setup._nudge_plist() if nudge else setup._export_plist()).read_bytes()), tmp_path / "seen.jsonl"
+    (setup.install._home() / "bin" / ("day-end-nudge.sh" if nudge else "synthesis")).write_text(
         f"#!{sys.executable}\nimport json, os, sys\nopen({str(seen)!r}, 'a').write(json.dumps("
         f"{{'words': sys.argv[1:], **{{name: os.environ.get(name) for name in {HOMES!r}}}}}) + '\\n')\n")
     (Path.home() / ".bash_profile").write_text(profile)
