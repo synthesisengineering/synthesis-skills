@@ -214,3 +214,21 @@ def test_the_plist_the_installer_writes_is_read_back_by_the_real_plutil(tmp_path
         assert report.returncode == 0 and f"ok    outbox {home / 'outbox'}" in report.stdout, report.stdout + report.stderr
         lint = subprocess.run(["plutil", "-lint", str(unit_file(tmp_path / "home", "Darwin"))], capture_output=True, text=True)
         assert lint.returncode == 0, lint.stdout
+
+
+# ---- the documents say the same ---------------------------------------------------------------------------------
+
+@pytest.mark.parametrize("document", ["references/setup.md", "optional-workspace-mcp/README.md"])
+def test_the_setup_documents_say_what_the_unit_carries_and_what_the_doctor_reports(document: str) -> None:
+    text = " ".join((SCRIPTS.parent / document).read_text(encoding="utf-8").split())  # the documents wrap their lines
+    for said in ("`SYNTHESIS_HOME` is among them when it is set at install", "`ALLOWED_FILE_DIRS` is not",
+                 "`./doctor.sh` reports the outbox the unit gives the server", "run `./install-autostart.sh` again"):
+        assert said in text, said
+    for earlier in ("`./doctor.sh` does not look at it", "`ALLOWED_FILE_DIRS` and `SYNTHESIS_HOME` are not among them"):
+        assert earlier not in text, earlier
+
+
+def test_the_readme_says_what_each_script_does_about_the_outbox() -> None:
+    table = (SCRIPTS / "README.md").read_text(encoding="utf-8").split("## What's here", 1)[1].split("\n## ", 1)[0]
+    rows = {row.split("|")[1].strip(): row for row in table.splitlines() if row.startswith("| `")}
+    assert "synthesis home" in rows["`install-autostart.sh`"] and "outbox" in rows["`doctor.sh`"]

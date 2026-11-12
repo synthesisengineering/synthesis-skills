@@ -306,6 +306,17 @@ def test_configure_codex_backs_up_before_writing(tmp_path, monkeypatch):
     assert setup.paths.board().is_dir() and setup.paths.outbox().is_dir()  # the sandbox may write inside them, never make them
 
 
+def test_the_install_reference_and_the_readme_name_both_folders_setup_lets_codex_write():
+    reference = " ".join((Path(setup.__file__).resolve().parents[1] / "references" / "harness-install.md")
+                         .read_text(encoding="utf-8").split())
+    readme = " ".join((setup.REPO / "README.md").read_text(encoding="utf-8").split())
+    for folder in ("`~/.synthesis/v5/board`", "`~/.synthesis/v5/outbox`"):
+        assert folder in reference and folder in readme, folder
+    assert "Only the board is granted" not in reference  # the earlier text
+    for said in ("stage a file", "Only those two are granted", "`~/.synthesis/v5/state`"):
+        assert said in reference, said
+
+
 # ---- runtime, prompts, interruption and the restart line -------------------------
 
 def test_runtime_installs_and_links_the_cli_only_when_the_name_is_free(tmp_path):

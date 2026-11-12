@@ -1249,3 +1249,70 @@ def test_the_doctor_reports_the_outbox_on_this_machine(machine):
         child.kill()
         child.wait()
     assert after.status == "ok" and "started to read it" in after.detail
+
+
+# ---- the audit reference lists every check the doctor runs --------------------
+# The conformance skill's audit reference says what each line of `synthesis doctor` means. Its list had fallen behind
+# the checks: the config, the board's place, the sessions repos, Claude Code's transcripts, the outbox, the PR gate
+# and the release comparison had no line. The names are read from doctor.py's own source, so a check added there
+# with no line here fails this file.
+
+AUDIT = ROOT / "skills" / "synthesis-agent-conformance" / "references" / "audit.md"
+
+
+def check_names(source: str = "") -> dict:
+    """{each name a check in doctor.py carries: the functions that build it}, read from its source. A name built
+    with a value in it is written with the value's own name in angle brackets, `<harness> plugin`."""
+    import ast
+    tree, found = ast.parse(source or Path(doctor.__file__).read_text(encoding="utf-8")), {}
+
+    def spelled(node) -> str:
+        if isinstance(node, ast.JoinedStr):
+            return "".join(part.value if isinstance(part, ast.Constant) else f"<{ast.unparse(part.value)}>" for part in node.values)
+        assert isinstance(node, ast.Constant) and isinstance(node.value, str), ast.dump(node)  # a name this reader cannot follow
+        return node.value
+
+    for function in (n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef)):
+        given = {t.id: n.value for n in ast.walk(function) if isinstance(n, ast.Assign) for t in n.targets if isinstance(t, ast.Name)}
+        for call in (n for n in ast.walk(function) if isinstance(n, ast.Call) and getattr(n.func, "id", "") == "Check"):
+            name = call.args[1]
+            found.setdefault(spelled(given[name.id] if isinstance(name, ast.Name) else name), set()).add(function.name)
+    return found
+
+
+def audit_lines() -> dict:
+    """{check name: the line that explains it}, from the list under the reference's doctor section: each item opens
+    with the names it covers, in backticks, before its first colon."""
+    section = AUDIT.read_text(encoding="utf-8").split("\n## Installed: what doctor checks\n", 1)[1].split("\n## ", 1)[0]
+    items = [" ".join(item.split()) for item in re.split(r"\n- ", "\n" + section.split("\n- ", 1)[1])]
+    return {name: item for item in items for name in re.findall(r"`([^`]+)`", item.split(": ", 1)[0])}
+
+
+def test_the_audit_reference_has_a_line_for_every_check_the_doctor_runs_and_for_no_other():
+    ran, lines = check_names(), audit_lines()
+    assert len(ran) >= 28 and {"runtime", "outbox", "<harness> plugin", "<harness> package", "sessions repo <ws>"} <= set(ran)
+    assert sorted(set(ran) - set(lines)) == [], "a check the doctor runs has no line in the audit reference"
+    assert sorted(set(lines) - set(ran)) == [], "the audit reference has a line for a check the doctor does not run"
+    assert all(len(line.split(": ", 1)[1].split()) >= 5 for line in lines.values())  # each line says what its check looks at
+    # Each check function is one the doctor runs, and none builds a line the reader above cannot see.
+    source = Path(doctor.__file__).read_text(encoding="utf-8")
+    run = source[source.index("\ndef harness_checks("):source.index("\ndef _background(")] + source[source.index("\ndef run_checks("):]
+    functions = set(re.findall(r"^def (check_\w+)\(", source, re.M))
+    assert functions and all(f"{name}(" in run for name in functions), sorted(n for n in functions if f"{n}(" not in run)
+    assert functions <= {name for builders in ran.values() for name in builders}
+
+
+def test_a_check_added_to_the_doctor_without_its_line_fails_the_audit_test():
+    """The test above is alive: a check built in any of the ways the doctor builds one is seen, and has no line."""
+    source = Path(doctor.__file__).read_text(encoding="utf-8")
+    added = source + ('\n\ndef check_one(home):\n    return Check("ok", "a new check", "fine")\n'
+                      '\n\ndef check_two(kind):\n    name = f"{kind} thing"\n    return Check("warn", name, "look")\n')
+    assert set(check_names(added)) - set(audit_lines()) == {"a new check", "<kind> thing"}
+
+
+def test_the_audit_reference_says_what_the_newer_checks_look_at():
+    lines = audit_lines()
+    assert "outbox" in lines["codex board access"] and "state folder" in lines["codex board access"]
+    assert "`ALLOWED_FILE_DIRS`" in lines["outbox"] and "auto-start" in lines["outbox"]
+    assert "`--latest`" in lines["latest release"] and "`pr_gated`" in lines["pr gate"]
+    assert "`cleanupPeriodDays`" in lines["claude transcripts"] and "`config.json`" in lines["config"]

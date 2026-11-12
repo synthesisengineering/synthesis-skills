@@ -466,6 +466,35 @@ def test_the_composing_reference_lists_this_check_with_the_words_the_guard_block
     assert all(f"`{name}`" in listed for name in ("path", *sorted(guards.FILE_MAIL_TOOLS), "ALLOWED_FILE_DIRS"))
 
 
+def test_the_composing_reference_lists_what_counts_as_attached_the_drive_tools_and_the_bytes_an_approval_covers(scratch):
+    """Each check the guard gained is in the reference's table with the words the guard blocks with, and the
+    sentence an approval request ends with for a call that names files is in both references word for word."""
+    skills = Path(__file__).resolve().parents[1] / "skills"
+    listed = " ".join((skills / "synthesis-message-guard" / "references" / "composing.md").read_text(encoding="utf-8").split())
+    sending = " ".join((skills / "synthesis-agent-correspondence" / "references" / "gates-and-sending.md")
+                       .read_text(encoding="utf-8").split())
+    assert "`path`, `file_path` or `filePath`" not in listed  # the earlier row, which had a file go under three keys
+    staged = _staged(scratch)
+    entries = {"has none of `path`, `content` and `url`": {"file_path": str(staged)},
+               "the mail connector reads only the": {"path": str(staged), "content": "UEsDBA==", "filename": "plan.pdf"},
+               "gives `content` with no `filename`": {"content": "UEsDBA=="},
+               "gives `content` that is not standard base64": {"filename": "plan.pdf", "content": "UEsDBA"},
+               "has an empty `url`": {"url": ""},
+               "is one the mail connector never reads": {"path": str(_put(paths.outbox(), ".env"))}}
+    for words, entry in entries.items():
+        assert words in guards.check(SEND, {**MAIL, "attachments": [entry]}, CONFIG) and words in listed, words
+    upload = _uploaded(scratch / "plan.pdf")
+    for words in ("is outside the folders the connector reads", "make this call again"):
+        assert words in upload and words in listed, words
+    for name in (*guards.FILE_DRIVE_TOOLS, *set(guards.FILE_DRIVE_TOOLS.values()), "file://"):
+        assert f"`{name}`" in listed, name
+    asked = _attached(staged)
+    covers = asked.split("Then make this identical call again. ", 1)[1]
+    assert covers.startswith("The approval covers each file") and covers in listed and covers in sending
+    for words in ("cannot be read", f"{guards.HASH_SECONDS:g} seconds", "hash of that file's bytes"):
+        assert words in listed, words
+
+
 # --- a local file a Drive tool reads ---------------------------------------------------------------------------
 # The same connector reads a local file for five Drive tools, under the same folder rule (2.1.0: drive_tools.py
 # and drive_helpers._resolve_import_media). update_drive_file and import_to_google_doc, _sheets and _slides take
