@@ -2289,6 +2289,11 @@ def test_the_folder_a_command_was_in_reaches_a_program_on_its_input(above, tmp_p
     ("trap \"rm -f {work}/s.jsonl\" EXIT INT", True),
     ("trap - EXIT; wc -l {work}/s.jsonl", False),
     ("notify --title=Done --body=\"wrote > 3 files beside {work}\"", False),
+    ("watch -n 5 'date >> {work}/s.jsonl'", True),                             # a handed line that starts with a reader and redirects
+    ("ssh localhost \"git log --oneline > {work}/s.jsonl\"", True),
+    ("watch 'grep -c user {work}/s.jsonl > /tmp/pad/n.txt'", False),
+    ("psql -c \"select case when n > 5 then 1 end from t where path = '{work}/s.jsonl'\"", False),   # a query's words start no command
+    ("llm \"for each row where n > 5, read {work}/s.jsonl\"", False),
     ("printf 'x\\nx\\n' | uniq - {work}/s.jsonl", True),
     ("printf 'x\\n' | uniq - /tmp/pad/out.txt", False),
     ("xxd -r -p - /tmp/pad/out.bin < /tmp/pad/hex", False),
@@ -2362,6 +2367,8 @@ def test_the_ninth_reviews_programs(above, program, held, inside, tmp_path):
     ("import contextlib\nwith contextlib.chdir('/tmp/pad'):\n    open('out.txt', 'w').write('x')", False),                              # the body of `with chdir` runs there
     ("import contextlib\nwith contextlib.chdir('/tmp/pad'):\n    pass\nopen('forged.json', 'w').write('x')", True),                    # and it goes back after
     ("import contextlib, os\nos.chdir('/tmp/pad')\nwith contextlib.chdir('{work}'):\n    open('forged.json', 'w').write('x')", True),
+    ("import contextlib, os\nwith contextlib.suppress(OSError):\n    os.chdir('/tmp/absent')\nopen('forged.json', 'w').write('x')", True),   # a failure passed over: it may not have left
+    ("import contextlib, os\nwith contextlib.suppress(FileNotFoundError):\n    os.remove('/tmp/pad/old.txt')\nos.chdir('/tmp/pad')\nopen('new.txt', 'w').write('x')", False),
 ])
 def test_a_program_that_leaves_a_transcript_folder_inside_a_try_or_its_main_block(above, program, held, tmp_path):
     command = "python3 - <<'EOF'\n" + program.format(**above) + "\nEOF"
