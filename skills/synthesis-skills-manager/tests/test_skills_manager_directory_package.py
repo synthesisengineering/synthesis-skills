@@ -138,6 +138,7 @@ def test_every_packaged_file_is_byte_identical_to_its_source(built):
 def test_a_script_keeps_its_executable_bit_and_a_build_is_repeatable(zip_path):
     with zipfile.ZipFile(zip_path) as archive:
         modes = {entry.filename: entry.external_attr >> 16 for entry in archive.infolist()}
+        assert {entry.date_time for entry in archive.infolist()} == {(1980, 1, 1, 0, 0, 0)}  # no build's own clock
     executable = {name.split("\t", 1)[1] for name in git(ROOT, "ls-files", "-s", "-z").split("\0")
                   if name.startswith("100755")}
     assert {name for name, mode in modes.items() if mode & 0o111} == executable & set(modes)
@@ -387,6 +388,21 @@ def test_an_untracked_file_in_a_listed_skill_is_not_packaged(tmp_path):
         assert "skills/alpha/notes-not-committed.md" not in archive.namelist()
 
 
+def test_a_symbolic_link_in_a_listed_skill_stops_the_build(tmp_path, capsys):
+    """Followed, a link could carry a file from outside its skill, or from the machine that builds."""
+    repo = checkout(tmp_path, {"alpha": skill("alpha")})
+    outside = tmp_path / "outside.md"
+    outside.write_text("Not the skill's.\n")
+    (repo / "skills" / "alpha" / "references").mkdir()
+    (repo / "skills" / "alpha" / "references" / "linked.md").symlink_to(outside)
+    git(repo, "add", ".")
+    git(repo, "commit", "-qm", "a link")
+    for argv in (("--check",), (tmp_path / "methods.zip",)):
+        code, lines = run(capsys, *argv, "--repo-root", repo)
+        assert code == 2 and "skills/alpha/references/linked.md is a symbolic link" in lines[0]
+    assert not (tmp_path / "methods.zip").exists()
+
+
 def rewritten(data: bytes, change: dict) -> bytes:
     """The archive with members added or replaced ({name: bytes}) or removed ({name: None})."""
     with zipfile.ZipFile(io.BytesIO(data)) as archive:
@@ -437,8 +453,9 @@ def test_a_build_writes_the_zip_and_says_what_it_holds(tmp_path, capsys):
     assert git(repo, "status", "--porcelain") == ""  # nothing is written into the checkout
 
 
-def test_check_verifies_and_writes_nothing(tmp_path, capsys):
+def test_check_verifies_and_writes_nothing(tmp_path, capsys, monkeypatch):
     repo = checkout(tmp_path, {"alpha": skill("alpha")})
+    monkeypatch.chdir(tmp_path)  # a file written beside the caller would show below too
     before = sorted(path for path in tmp_path.rglob("*") if ".git" not in path.parts)
     code, lines = run(capsys, "--check", "--repo-root", repo)
     assert code == 0 and len(lines) == 1
@@ -488,6 +505,17 @@ def test_changed_since_names_the_listed_skills_that_changed(tmp_path, capsys):
         (1, ["changed since v5.8.0: alpha, beta; a new submission is due"])
 
 
+def test_a_file_moved_between_listed_skills_changes_both(tmp_path, capsys):
+    repo = checkout(tmp_path, {"alpha": {**skill("alpha"), "references/shared.md": "A shared method.\n" * 20},
+                               "beta": skill("beta")})
+    git(repo, "tag", "v5.8.0")
+    (repo / "skills" / "beta" / "references").mkdir()
+    git(repo, "mv", "skills/alpha/references/shared.md", "skills/beta/references/shared.md")
+    git(repo, "commit", "-qm", "moved")
+    assert run(capsys, "--changed-since", "v5.8.0", "--repo-root", repo) == \
+        (1, ["changed since v5.8.0: alpha, beta; a new submission is due"])
+
+
 def test_changed_since_counts_a_change_to_the_list_itself(tmp_path, capsys):
     repo = checkout(tmp_path, {"alpha": skill("alpha")})
     git(repo, "tag", "v5.8.0")
@@ -502,6 +530,8 @@ def test_what_cannot_be_read_exits_2_and_says_why(tmp_path, capsys):
     repo = checkout(tmp_path, {"alpha": skill("alpha")})
     code, lines = run(capsys, "--changed-since", "v0.0.0", "--repo-root", repo)
     assert code == 2 and lines[0].startswith("cannot continue: ")
+    code, lines = run(capsys, tmp_path / "no-such-folder" / "methods.zip", "--repo-root", repo)
+    assert code == 2 and lines[0].startswith("cannot continue: ")  # a ZIP that cannot be written
     (repo / package.LIST).write_text("{")
     for argv in (("--check",), (tmp_path / "methods.zip",), ("--changed-since", "v0.0.0")):
         code, lines = run(capsys, *argv, "--repo-root", repo)
