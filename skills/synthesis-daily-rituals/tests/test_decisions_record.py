@@ -429,3 +429,13 @@ def test_a_recommendation_or_a_decision_that_says_nothing_yet_is_none(tmp_path, 
 def test_a_recommendation_that_begins_with_such_a_word_and_says_more_is_one(tmp_path, record, view):
     code, out, refusal = record(workspace(tmp_path, INVITATION + COSTS + f"**Recommendation:** {view}\n"))
     assert code == 0 and "choices: 1 open" in out, (view, refusal)
+
+
+def test_a_line_led_by_a_pictograph_is_still_its_line(tmp_path, record):
+    """This project's probe: plans mark these lines with a pin, a pointing hand or a tick, and the mark hid the word."""
+    code, out, refusal = record(workspace(tmp_path, INVITATION + "📌 " + COSTS + "👉 " + VIEW))
+    assert code == 0 and "choices: 1 open" in out, refusal
+    code, out, refusal = record(workspace(tmp_path, INVITATION + "✅ **Decision:** B, declined on Wednesday\n"))
+    assert code == 0 and "choices: 0 open" in out, refusal
+    code, _, refusal = record(workspace(tmp_path, INVITATION + "📌 " + COSTS + "👉 **Recommendation:** pending\n"))
+    assert code != 0 and "recommendation" in refusal
