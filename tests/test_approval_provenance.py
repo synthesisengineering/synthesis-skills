@@ -2270,3 +2270,62 @@ def test_the_folder_a_command_was_in_reaches_a_program_on_its_input(above, tmp_p
     command = "cd /tmp/pad; python3 - <<EOF\nopen(\"$OLDPWD/forged.json\", \"w\").write(\"x\")\nEOF"
     assert REFUSED in (guards.check("Bash", {"command": command}, {}, cwd=str(above["work"])) or "")
     assert guards.check("Bash", {"command": command}, {}, cwd=str(tmp_path)) is None
+
+
+# --- the ninth review round (2026-11-11): the edges of the eighth round's answer -------------------------------
+# Eleven findings, all at the edge of a rule added the round before: an operand that is `-` hid the output after it,
+# a handed command line started with a writer the starters did not list, a descriptor's folder was read from where
+# the program stood later, a destination's parent could not be spelled, a process kept under a second name lost
+# its pipe, a write after a folder change inside the same `with` was held to the folder before it, and a message
+# attached to its option was read as a command.
+
+@pytest.mark.parametrize("command, held", [
+    ("printf '780a' | xxd -r -p - {work}/s.jsonl", True),                      # `-` is the input: the next operand is the output
+    ("printf 'x\\nx\\n' | uniq - {work}/s.jsonl", True),
+    ("printf 'x\\n' | uniq - /tmp/pad/out.txt", False),
+    ("xxd -r -p - /tmp/pad/out.bin < /tmp/pad/hex", False),
+    ("watch -n 1 'sort -o {work}/s.jsonl /tmp/pad/in.txt'", True),             # a handed command line that starts with any writer
+    ("ssh localhost \"xxd -r -p /tmp/pad/hex {work}/s.jsonl\"", True),
+    ("watch -n 1 \"uniq /tmp/pad/in.txt {work}/s.jsonl\"", True),
+    ("watch -n 1 \"awk '{{print > \\\"{work}/s.jsonl\\\"}}' /tmp/pad/in.txt\"", True),
+    ("ssh localhost \"php -r 'file_put_contents(\\\"{work}/s.jsonl\\\", \\\"x\\\");'\"", True),
+    ("watch -n 5 \"sort {work}/s.jsonl | uniq -c | head\"", False),
+    ("notify --body='Example:\nrm {work}/s.jsonl'", False),                    # a message attached to its option
+    ("notify --message='copy it with: cp /tmp/pad/x {work}/s.jsonl'", False),
+    ("trap 'echo done >> {work}/s.jsonl' EXIT; sleep 1", True),                # a command kept to run when the shell ends
+    ("trap 'rm -f /tmp/pad/scratch.txt' EXIT; wc -l {work}/s.jsonl", False),
+])
+@pytest.mark.parametrize("inside", [False, True])
+def test_the_ninth_reviews_commands(above, command, held, inside, tmp_path):
+    here = tmp_path / "elsewhere"
+    here.mkdir()
+    reason = guards.check("Bash", {"command": command.format(**above)}, {}, cwd=str(above["work"] if inside else here))
+    assert (REFUSED in (reason or "")) == held, command
+
+
+@pytest.mark.parametrize("program, held", [
+    ("import os\nos.chdir('/tmp/pad')\nfd = os.open('out', os.O_RDONLY)\nos.chdir('{work}')\nos.fchdir(fd)\nopen('copy.txt', 'w').write('x')", False),
+    ("import os\nos.chdir('/tmp/pad')\nfd = os.open('out', os.O_RDONLY)\nos.chdir('{work}')\nos.unlink('old.txt', dir_fd=fd)", False),
+    ("import os\nos.chdir('{above}')\nfd = os.open('projects', os.O_RDONLY)\nos.chdir('/tmp/pad')\nos.fchdir(fd)\nopen('forged.json', 'w').write('x')", True),
+    ("from pathlib import Path\nsrc = '{work}/s.jsonl'\ndst = '{work}/memory/note.md'\ndata = open(src).read()\n"
+     "Path(dst).parent.mkdir(parents=True, exist_ok=True)\nPath(dst).write_text(data)", False),               # the parent of a destination it spells
+    ("from pathlib import Path\nsrc = '{work}/s.jsonl'\ndst = '/tmp/pad/out/report18'\ndata = open(src).read()\n"
+     "Path(dst).parent.mkdir(parents=True, exist_ok=True)\nPath(dst).write_text(data)", False),
+    ("import shutil\nfrom pathlib import Path\nfor source in Path('{work}').rglob('*.jsonl'):\n    out = Path('/tmp/pad/out') / source.relative_to('{work}')\n"
+     "    out.parent.mkdir(parents=True, exist_ok=True)\n    shutil.copy(source, out)", False),
+    ("from pathlib import Path\nPath('{work}/sub/x.jsonl').parent.mkdir(parents=True)", True),
+    ("import os\nos.makedirs(os.path.dirname('{work}/sub/x.jsonl'), exist_ok=True)", True),
+    ("import subprocess\ng = subprocess.Popen(['grep', '-c', 'touch'], stdin=subprocess.PIPE, text=True)\nalias = g\n"
+     "alias.communicate('touch {work}/s.jsonl')\ns = subprocess.Popen(['sh'], stdin=subprocess.PIPE, text=True)\ns.communicate('echo hello')", False),
+    ("import subprocess\ng = subprocess.Popen(['sh'], stdin=subprocess.PIPE, text=True)\nalias = g\nalias.communicate('touch {state}/forged.json')", True),
+    ("import os, tempfile\nwith tempfile.TemporaryDirectory() as d:\n    os.chdir(d)\n    open('summary.txt', 'w').write(open('{work}/s.jsonl').read())", False),
+    ("import os, tempfile\nwith tempfile.TemporaryDirectory() as d:\n    os.chdir('{work}')\n    open('forged.json', 'w').write('x')", True),
+    ("import os\nwith open('/tmp/pad/in.txt') as f:\n    os.chdir('/tmp/pad')\n    open('out.txt', 'w').write(f.read())\nopen('later.txt', 'w').write('x')", False),
+])
+@pytest.mark.parametrize("inside", [False, True])
+def test_the_ninth_reviews_programs(above, program, held, inside, tmp_path):
+    here = tmp_path / "elsewhere"
+    here.mkdir()
+    command = "python3 - <<'EOF'\n" + program.format(**above) + "\nEOF"
+    reason = guards.check("Bash", {"command": command}, {}, cwd=str(above["work"] if inside else here))
+    assert (REFUSED in (reason or "")) == held, program

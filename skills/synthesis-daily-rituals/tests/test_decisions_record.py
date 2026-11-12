@@ -230,3 +230,24 @@ def test_an_example_inside_a_quote_is_still_an_example(tmp_path, record):
     quoted = INVITATION + COSTS + "\n> **Recommendation:** B, decline: the trip outweighs the event.\n"
     code, out, refusal = record(workspace(tmp_path, quoted))                                  # a quoted line that is no example still counts
     assert code == 0 and "choices: 1 open" in out, refusal
+
+
+# --- the ninth review (2026-11-11) --------------------------------------------------------------------------
+
+def test_a_quoted_example_under_a_list_entry_a_closed_title_in_bold_and_a_fence_left_open(tmp_path, record):
+    """The ninth review: a recommendation quoted and indented as code under a numbered entry counted; a title struck
+    or ticked inside bold was read as open; and options in a fenced example whose fence runs to the end of the file
+    were read as a choice."""
+    for entry in ("1. Dinner", "10. Dinner"):
+        quoted = (f"{entry}\n    **Option A** - Accept\n    **Option B** - Decline\n    **Consequences:** Three hours and $30.\n\n"
+                  "    > For example:\n    >\n    >     **Recommendation:** B, decline\n")
+        code, _, refusal = record(workspace(tmp_path, quoted))
+        assert code != 0 and "recommendation" in refusal, entry
+    for title in ("### **~~Dinner~~**", "### **[x] Dinner**", "### __~~Dinner~~__"):
+        code, out, refusal = record(workspace(tmp_path, title + "\n**Option A:** Accept\n**Option B:** Decline\n"))
+        assert code == 0 and "choices: 0 open" in out, (title, refusal)
+    code, _, refusal = record(workspace(tmp_path, "### **Dinner**\n**Option A:** Accept\n**Option B:** Decline\n"))
+    assert code != 0 and "Dinner" in refusal                                                 # bold alone closes nothing
+    left_open = "### How a choice is written\n\n```markdown\n### Dinner\n**Option A:** Accept\n**Option B:** Decline\n"
+    code, out, refusal = record(workspace(tmp_path, left_open))
+    assert code == 0 and "choices: 0 open" in out, refusal

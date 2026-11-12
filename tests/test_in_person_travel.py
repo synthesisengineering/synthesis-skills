@@ -69,7 +69,8 @@ def test_a_travel_block_is_not_itself_asked_for_travel(config):
 
 
 @pytest.mark.parametrize("summary, block", [("Travelogue discussion", False), ("Travelers' dinner", False), ("Travel", True),
-                                             ("Travel: to the Grand Theatre", True), ("TRAVEL to the theatre", True)])
+                                             ("Travel: to the Grand Theatre", True), ("TRAVEL to the theatre", True),
+                                             ("Travel planning workshop", False), ("Travel - home", True), ("Travel home", True)])
 def test_only_a_title_that_starts_with_the_block_word_itself_is_a_travel_block(config, summary, block):
     """The third review: any title starting with the letters of the block word was let through, so an ordinary
     event called "Travelogue discussion" needed no travel line."""
@@ -173,3 +174,10 @@ def test_a_street_number_that_only_contains_the_home_number_is_another_address(c
 @pytest.mark.parametrize("line", ["Travel: locally unavailable", "Travel: by car", "Travel: none", "Travel: 80 min train; local transfer, 5 min walk"])
 def test_a_line_that_is_not_one_of_the_three_forms_is_no_travel_line(config, line):
     assert refused(guards.check(CREATE, event(description=line), config))
+
+
+def test_an_event_that_only_begins_with_the_block_word_is_a_block_when_it_carries_a_blocks_lines(config):
+    """The ninth review: a block is known by its title's form or by its lines, not by its first word alone."""
+    lines = "For: Book launch\nLeave: 17:05 from Home\nRoute: Line 1\nArrive: 18:30"
+    block = event(location="Central Station, 1 Station Sq", summary="Travel planning for the evening", description=lines)
+    assert guards.check(CREATE, block, config) is None

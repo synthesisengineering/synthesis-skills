@@ -475,3 +475,22 @@ def test_an_event_at_a_place_with_no_start_stops_the_check(tmp_path):
     online = {"summary": "Weekly call", "location": "Zoom", "start": None, "end": None}
     code, report = check(tmp_path, [online])                                                # nothing to travel to: not this check's to judge
     assert code == 0
+
+
+def test_an_event_whose_title_only_begins_with_the_block_word_is_an_event(tmp_path):
+    """The ninth review: "Travel planning workshop", three hours at a place with no address, was read as a travel
+    block and passed over. A block's title is the word alone, or the word and then a colon, a dash or a direction."""
+    workshop = event("Travel planning workshop", "19:00", "22:00", "Harbor Town (address on the invitation)")
+    code, report = check(tmp_path, [workshop])
+    assert code == 1 and report["in_person"] == 1
+    missing = " | ".join(lacks(report, "Travel planning workshop"))
+    assert "exact address" in missing and "travel line" in missing
+    code, report = check(tmp_path, [RESOLVED, GOING, RETURNING])                              # real blocks are still blocks
+    assert code == 0 and report["in_person"] == 1, report
+    plain = [RESOLVED, event("Travel to the Grand Theatre", "17:05", "18:30", "Central Station, 1 Station Sq", OUT),
+             event("Travel home", "22:13", "23:20", "", BACK)]
+    code, report = check(tmp_path, plain)
+    assert code == 0 and report["in_person"] == 1, report
+    labeled = [RESOLVED, event("Travel planning for the evening", "17:05", "18:30", "", OUT), RETURNING]
+    code, report = check(tmp_path, labeled)                                                   # one that carries a block's lines is a block
+    assert code == 0 and report["in_person"] == 1, report
