@@ -22,13 +22,16 @@ DEFAULT_PHRASES = [
     "document-and-defer", "execute or defer", "defer this", "deferred to", "out of scope for now",
     "any message from you", "ping me when",  # an external wait handed back to the principal (2026-11-02)
 ]
-# A wait announced with nothing armed (2026-11-11: "should be asking you soon", and the turn ended; a board message
-# reaches a session only at its next prompt). The list grows from real misses, as the one above does.
-WAIT_PHRASES = [
-    "i'll pick it up once", "i will pick it up once", "when it lands", "once it lands", "should come shortly",
-    "should arrive shortly", "waiting for", "waiting on", "when it finishes", "once it finishes", "when it returns",
-    "once it returns",
-]
+# A wait the session itself announces with nothing armed (2026-11-11: "should be asking you soon", and the turn
+# ended; a board message reaches a session only at its next prompt): its own wait in the first person, one that
+# opens a sentence with no subject, or an event it says it will act on. "Waiting on you" is the principal's move
+# and "he is still waiting on the times" is someone else's wait: of 24 final replies in ten days that a list of
+# bare phrases would have sent back, 20 said "waiting on", and most were one of those two (2026-11-12). Config
+# `wait_phrases` adds plain phrases; this grows from real misses, as the list above does.
+WAITS = re.compile(r"(?i)\bi(?:['’]m| am)(?: still)? waiting (?:for|on)\b(?!\s+you)"
+                   r"|\bi(?:['’]ll| will) (?:wait (?:for|on|until)|pick it up once)\b(?!\s+you)"
+                   r"|(?:^|[.!?:;]\s+|\n\s*(?:[-*+] |\d+[.)] )?)(?:still )?waiting (?:for|on)\b(?!\s+you)"
+                   r"|\b(?:when|once) it (?:lands|finishes|returns|arrives)\b|\bshould (?:come|arrive) shortly\b")
 ON_PRINCIPAL = re.compile(r"(?i)\byou(?:r|'ll|'ve)?\b[^.\n]{0,80}\b(?:answers?|repl(?:y|ies)|go|word|code|approv\w+|decision|decide|"
                           r"say|type|typed?|confirm|read|review|choose|pick|want)\b|\?\s*$")
 CODE = re.compile(r"```.*?```|`[^`\n]*`", re.S)
@@ -65,8 +68,8 @@ def unarmed_wait(reply: str, payload: dict, config: dict) -> list[str]:
     session, no autopilot run it owns, and not the principal's own next message (the reply asks them, or names
     their answer, their go or their code)."""
     plain = QUOTED.sub(" ", CODE.sub(" ", reply))
-    hits = sorted({p for p in WAIT_PHRASES + [str(e).lower() for e in config.get("wait_phrases", [])]
-                   if re.search(rf"\b{re.escape(p)}\b", plain.lower())})
+    hits = sorted({" ".join(m.group(0).lower().split()).strip(".:;!?-*+ ") for m in WAITS.finditer(plain)}
+                  | {p for p in (str(e).lower() for e in config.get("wait_phrases", [])) if re.search(rf"\b{re.escape(p)}\b", plain.lower())})
     if not hits or ON_PRINCIPAL.search(plain.strip()):
         return []
     from synthesis import autopilot, paths, wait
