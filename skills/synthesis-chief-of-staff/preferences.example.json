@@ -6,6 +6,7 @@
     "end": "17:00"
   },
   "protected_hours": [],
+  "principal_addresses": [],
   "tiers": {
     "priority": [],
     "peer": [],
@@ -34,6 +35,7 @@
       "expire": "end-of-day",
       "engine": "scripts/holds_state.py — append-only; never hand-edit"
     },
+    "personal_markers": [],
     "same_day_exceptions": "reuse the tiers section",
     "weekly_review_day": "Friday"
   },

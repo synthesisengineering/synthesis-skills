@@ -169,6 +169,7 @@ Under `calendar_guardian` in the private preferences file:
       "ledger": "~/.synthesis/chief-of-staff/holds/events.jsonl",
       "expire": "end-of-day"
     },
+    "personal_markers": ["#reserved"],
     "same_day_exceptions": "reuse the tiers section",
     "weekly_review_day": "Friday"
   }
@@ -177,3 +178,8 @@ Under `calendar_guardian` in the private preferences file:
 
 Thresholds are the principal's to tune; the defaults above are a starting
 point, not a claim about anyone's ideal day.
+
+`personal_markers` are words a title carries when the event is the principal's
+own block (a reserved hold, training with a coach). Such an event is taken time
+for every check and no part of the day's meeting load, as is any event no one
+else is on (`slot_check.py`, [scheduling-protocol.md](scheduling-protocol.md)).

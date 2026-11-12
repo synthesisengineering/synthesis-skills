@@ -18,6 +18,8 @@ away was placed with no travel time at all). It reads two files and writes nothi
 `read.json` is the calendar read, saved with the days it covers:
 `{"window": {"from": "YYYY-MM-DD", "through": "YYYY-MM-DD"}, "events": [{"start", "end", "summary",
 "attendees"}]}`; `start` and `end` are ISO strings or the connector's `{"dateTime"}` / `{"date"}`.
+Give every event of those days, the principal's own blocks included, with its attendees as the calendar
+gives them: an event someone else is on is a meeting, any other is the principal's own time.
 Exit 0 for OK or REVIEW, 1 for REFUSE, 2 when it was not shown enough to judge.
 """
 from __future__ import annotations
@@ -107,7 +109,12 @@ def first_thing(short: tuple, keeps) -> str:
 
 
 def clock(day: date, text: str, zone: ZoneInfo) -> datetime:
-    return datetime.combine(day, time.fromisoformat(text), zone)
+    """An hour of a day; 24:00 is the midnight that ends it. A value that is no time of day stops the check."""
+    text, late = str(text).strip(), str(text).strip().startswith("24:")
+    try:
+        return datetime.combine(day + timedelta(days=late), time.fromisoformat("00" + text[2:] if late else text), zone)
+    except ValueError:
+        stop(f"{text!r} in the preferences is no time of day: write it as HH:MM")
 
 
 def free_blocks(busy: list, start: datetime, end: datetime) -> list:
@@ -143,12 +150,21 @@ def judge(args, config: dict, read: dict) -> dict:
     people = {a.lower() for a in [*args.attendee, *([args.requester] if args.requester else [])]}
     binds = sorted(p for p in people if any(fnmatch.fnmatchcase(p, e) for e in senior))
 
-    events = []
+    # A meeting is an event someone else is on. The principal's own blocks (a routine, training, a reserved hold)
+    # are taken time for every other check and no part of the meeting load (2026-11-11: a day read 7.08 hours of
+    # meetings against a limit of 5, and 4.5 of them were the principal's own).
+    own = [str(address).lower() for address in config.get("principal_addresses") or []]
+    marks = [str(mark).lower() for mark in guardian.get("personal_markers") or []]
+    events, joined, marked = [], set(), set()
     for entry in read.get("events") or []:
         a, b = moment(entry.get("start"), zone), moment(entry.get("end"), zone)
         if a and b and b > a and str(entry.get("summary") or "").strip().lower() != hold:
-            events.append((a, b, str(entry.get("summary") or "a meeting"),
-                           {x.lower() for x in ADDRESS.findall(json.dumps(entry.get("attendees") or []))}))
+            title, guests = str(entry.get("summary") or "a meeting"), entry.get("attendees") or []
+            who = {x.lower() for x in ADDRESS.findall(json.dumps(guests))}
+            me = {x.lower() for g in guests if isinstance(g, dict) and g.get("self") for x in ADDRESS.findall(json.dumps(g))}
+            events.append((a, b, title, who))
+            joined |= {(a, b, title)} if any(not any(fnmatch.fnmatchcase(p, e) for e in own) for p in who - me) else set()
+            marked |= {(a, b, title)} if any(mark in title.lower() for mark in marks) else set()
     that_day = [(a, b, s) for a, b, s, _ in events if a.date() == start.date() and (a, b) != (start, end)]
     checks = []
 
@@ -164,17 +180,25 @@ def judge(args, config: dict, read: dict) -> dict:
         add("same day", "OK", f"today, for someone whose timing binds ({', '.join(binds)})" if start.date() == today and binds
             else "today, which the preferences allow" if start.date() == today else f"{(start.date() - today).days} day(s) out")
 
+    # Protected hours are a list of windows, or a section that holds a `windows` list beside lines of prose another
+    # reader depends on. A line of prose is named as unchecked unless a window gives it as its `source`.
     protected = config.get("protected_hours") or []
-    if isinstance(protected, list) and all(isinstance(p, dict) and p.get("start") and p.get("end") for p in protected):
-        hit = next((p for p in protected if start.weekday() in p.get("days", range(7))
-                    and start < clock(start.date(), p["end"], zone) and end > clock(start.date(), p["start"], zone)), None)
+    windows = protected.get("windows") or [] if isinstance(protected, dict) else protected
+    prose = sorted(k for k, v in protected.items() if isinstance(v, str) and not k.startswith("_") and not any(
+        str(w.get("source") or "").split(".")[-1] == k for w in windows if isinstance(w, dict))) if isinstance(protected, dict) else []
+    unread = f"the preferences describe protected hours in prose ({', '.join(prose)}), which this cannot read: check them yourself"
+    if isinstance(windows, list) and (windows or not prose) and all(isinstance(p, dict) and p.get("start") and p.get("end") for p in windows):
+        hit = next((p for day in sorted({start.date(), end.date()}) for p in windows if day.weekday() in p.get("days", range(7))
+                    and start < clock(day, p["end"], zone) and end > clock(day, p["start"], zone)), None)
         if hit and not binds:
             add("protected hours", "REFUSE", f"inside protected hours {hit['start']}-{hit['end']}"
                 + (f" ({hit['label']})" if hit.get("label") else ""))
-        else:
+        elif hit or not prose:
             add("protected hours", "OK", "inside protected hours, for someone whose timing binds" if hit else "outside protected hours")
+        else:
+            add("protected hours", "NOTE", f"outside the protected windows; {unread}")
     else:
-        add("protected hours", "NOTE", "the preferences describe protected hours in prose, which this cannot read: check them yourself")
+        add("protected hours", "NOTE", unread if prose else "the preferences describe protected hours in a form this cannot read: check them yourself")
 
     hours = part(config, "working_hours")
     opens, closes = clock(start.date(), hours.get("start", "09:00"), zone), clock(start.date(), hours.get("end", "17:00"), zone)
@@ -214,9 +238,12 @@ def judge(args, config: dict, read: dict) -> dict:
         elif keeps:
             add("sleep", "OK", f"{float(keeps):g} hours or more between getting home and the next morning's first commitment")
 
-    load = sum(((b - a).total_seconds() for a, b, _ in that_day), (end - start).total_seconds()) / 3600
-    most = float(limits.get("max_meeting_hours_per_day", 5))
-    add("meeting load", "REFUSE" if load > most else "OK", f"{load:.2f} hours of meetings that day with this one (limit {most:g})")
+    counted = [e for e in that_day if e not in marked and (e in joined or not joined)]  # a read that names no one else tells no block from a meeting
+    load = sum(((b - a).total_seconds() for a, b, _ in counted), (end - start).total_seconds()) / 3600
+    most, left = float(limits.get("max_meeting_hours_per_day", 5)), len(that_day) - len(counted)
+    add("meeting load", "REFUSE" if load > most else "OK", f"{load:.2f} hours of meetings that day with this one (limit {most:g})" + (
+        f"; {left} of the day's {len(that_day)} events are the principal's own blocks and are not counted" if left else "") + (
+        "; the read names no one else on any event, so each is counted as a meeting" if counted and not joined else ""))
 
     near = next((s for a, b, s in that_day if abs(start - b) <= BESIDE or abs(a - end) <= BESIDE), None)
     block = next((g for g in free_blocks([(a, b) for a, b, _ in that_day], opens, closes) if g[0] <= start and end <= g[1]), None)

@@ -91,13 +91,13 @@ slot Thu 2026-11-12 15:30-16:00: REVIEW
 | Check | REFUSE when | REVIEW when | Reads from the preferences |
 |---|---|---|---|
 | same day | the slot is today (or past) and no attendee's timing binds | | `meeting_defaults.same_day_meetings` (true allows today) |
-| protected hours | it overlaps a protected window and no attendee's timing binds | | `protected_hours`: `[{"start": "09:00", "end": "11:00", "days": [0, 1, 2, 3, 4], "label": "..."}]` (`days` optional, Monday is 0) |
+| protected hours | it overlaps a protected window and no attendee's timing binds | | `protected_hours`: `[{"start": "09:00", "end": "11:00", "days": [0, 1, 2, 3, 4], "label": "..."}]` (`days` optional, Monday is 0; `24:00` ends a day), or a section that holds that list as `windows` beside lines of prose. Prose is named as unchecked unless a window gives the line as its `source` |
 | working hours | | it falls outside them | `working_hours.start`, `.end` |
 | deep work | it leaves fewer free blocks of the set length than the day must keep, the trip there and back counted as taken | | `calendar_guardian.thresholds.maker_block_minutes` (default 120), `.min_maker_blocks_per_day` (1) |
 | travel | the trip there or back runs through another event (only with `--travel-before` or `--travel-after`) | | |
 | return | | home after `travel_policy.latest_return`: the principal's decision (only with `--travel-after`; the line always gives the time home) | |
 | sleep | | less than `travel_policy.sleep_hours` between getting home and the next morning's first commitment, or the hour `travel_policy.morning_starts` gives the morning if that is earlier | the read ends before the next morning and the policy's hour leaves the night long enough |
-| meeting load | the day's meetings with this one exceed the limit | | `.max_meeting_hours_per_day` (5) |
+| meeting load | the day's meetings with this one exceed the limit. A meeting is an event someone else is on: the principal's own blocks (no other attendee, or a title carrying a personal marker) are taken time for every other check and are not counted, and the line says how many were left out. A read that names no one else on any event counts each one, and says so | | `.max_meeting_hours_per_day` (5), `.personal_markers` (titles, for example `["#reserved"]`), `principal_addresses` (the principal's own, patterns allowed) |
 | placement | | it sits in the middle of a free block long enough for deep work, away from any meeting | |
 | existing touchpoint | | a meeting with one of the same people is already on the calendar within the look-ahead | `.touchpoint_days` (7) |
 | deadline | the requester's timing binds and the slot is after their date | | |
