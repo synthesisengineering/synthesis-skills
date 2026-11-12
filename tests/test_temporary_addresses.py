@@ -1,0 +1,142 @@
+"""Nothing another person is given stands on an address that can change.
+
+2026-11-12: a connector tested on a laptop behind a quick tunnel was handed to two colleagues in direct messages
+that carried the tunnel's address. One relied on it for real work, and when the laptop's app restarted the address
+was gone for good. With `temporary_addresses` in the config, a send, draft or post whose text holds a quick-tunnel
+host or an address only this machine answers is refused, and the ordinary approval of the message does not release
+it: only an approval of the address itself does. Starting a quick tunnel waits for a code of its own. No key, no rule.
+"""
+
+import pytest
+
+from synthesis import approvals, guards
+from test_desktop_sends import CONFIG as DESKTOP, TYPE, WHATSAPP
+
+SEND, DRAFT = "mcp__chat__slack_send_message", "mcp__mail__draft_gmail_message"
+CONFIG = {"send_tools": ["mcp__*__slack_send_message", "mcp__*__draft_gmail_message"], "temporary_addresses": {}}
+TUNNEL = "https://quiet-river-1234.trycloudflare.com/mcp"
+
+
+def said(text, tool=SEND, config=CONFIG, session=None):
+    return guards.check(tool, {"channel_id": "D1", "message": text}, config, cwd="/tmp", session=session)
+
+
+def held_for_the_address(reason) -> bool:
+    return bool(reason) and "never given to anyone" in reason
+
+
+def test_a_message_that_carries_a_quick_tunnels_address_is_refused_and_no_send_code_is_issued():
+    reason = said(f"Here are the setup steps. The address is {TUNNEL}")
+    assert held_for_the_address(reason) and "quiet-river-1234.trycloudflare.com" in reason
+    assert "permanent address" in reason and "Sending needs" not in reason
+    assert len(approvals.pending()) == 1                                # the address's own code, not the message's
+
+
+def test_the_ordinary_approval_of_the_message_does_not_release_it(principal):
+    call = {"channel_id": "D1", "message": f"Use {TUNNEL}"}
+    code = approvals.request("send", {"tool": SEND, "input": call}, "an ordinary send")
+    principal(f"code {code}")
+    assert held_for_the_address(guards.check(SEND, call, CONFIG, cwd="/tmp"))
+
+
+def test_an_approval_of_the_address_itself_lets_the_message_go_on_to_its_own_approval(principal):
+    text = f"My own test is at {TUNNEL}"
+    principal(said(text))                                               # the principal approves this address
+    reason = said(text)
+    assert "Sending needs the principal's approval" in reason           # and now the message, as any send
+    principal(reason)
+    assert said(text) is None
+
+
+def test_the_approval_names_the_address_and_covers_no_other(principal):
+    principal(said(f"My own test is at {TUNNEL}"))
+    other = said("And the second one: https://other-name-99.trycloudflare.com")
+    assert held_for_the_address(other) and "other-name-99" in other
+
+
+@pytest.mark.parametrize("text", [
+    "https://abc.trycloudflare.com", "abc.trycloudflare.com", "HTTPS://ABC.TRYCLOUDFLARE.COM/x", "see abc.ngrok.io:443/path",
+    "https://a1b2.ngrok-free.app", "https://a1b2.ngrok.app", "https://a1b2.ngrok.dev", "http://shy-cat.loca.lt",
+    "https://abc.localtunnel.me", "https://x.serveo.net", "https://abc.lhr.life", "https://abc.localhost.run",
+    "https://rnd.a.pinggy.link", "<a href=\"https://abc.trycloudflare.com\">the tool</a>", "(abc.trycloudflare.com)."])
+def test_each_quick_tunnel_host_is_read_however_it_is_written(text):
+    assert held_for_the_address(said(text))
+
+
+@pytest.mark.parametrize("text", [
+    "http://localhost:8787/mcp", "localhost:3000", "http://127.0.0.1:8000", "127.0.0.1", "0.0.0.0:8000", "http://[::1]:8080/",
+    "http://my-laptop.local:8080", "my-laptop.local:3000", "http://192.168.1.20:8000", "http://10.0.0.5:3000/x",
+    "http://172.16.4.2:9000", "https://app.localhost/x"])
+def test_an_address_only_this_machine_or_its_network_answers_is_refused(text):
+    assert held_for_the_address(said(f"The tool is at {text} for now"))
+    assert "Sending needs" in said(f"The tool is at {text} for now", config={**CONFIG, "temporary_addresses": {"local": False}})
+
+
+@pytest.mark.parametrize("text", [
+    "It ran on localhost during my test.", "Copy .env.local and settings.local.json first.", "Version 10.2.3.4 fixes it.",
+    "nottrycloudflare.com is someone else's site", "https://trycloudflare.com.example.org/x", "ngrok.io.evil.example",
+    "Read the trycloudflare docs before the call.", "The meeting is at 10:30 and 127 people joined.", "user@local.example.com",
+    "https://docs.example.com/local/setup", "the 192.168 range is private", "at 172.16.4.2 pm"])
+def test_words_that_are_no_address_someone_could_be_sent_to_go_on_to_the_ordinary_approval(text):
+    assert "Sending needs the principal's approval" in said(text)
+
+
+def test_a_host_the_config_adds_counts_and_its_subdomains_too():
+    config = {**CONFIG, "temporary_addresses": {"hosts": ["preview.example.dev"]}}
+    assert held_for_the_address(said("https://pr-12.preview.example.dev", config=config))
+    assert held_for_the_address(said("https://abc.trycloudflare.com", config=config))   # the built-in ones stay
+    assert "Sending needs" in said("https://example.dev", config=config)
+
+
+def test_a_draft_a_shell_post_and_typed_words_are_read_the_same(isolated_home):
+    assert held_for_the_address(guards.check(DRAFT, {"to": "a@example.com", "subject": "Setup", "body": f"Open {TUNNEL}"}, CONFIG, cwd="/tmp"))
+    assert held_for_the_address(guards.check("Bash", {"command": f'gh pr comment 12 -R team/app --body "Try it at {TUNNEL}"'}, CONFIG, cwd="/tmp"))
+    session = {"session_id": "S-principal"}
+    desktop = {**DESKTOP, "temporary_addresses": {}}
+    assert guards.check("mcp__computer-use__request_access", {"apps": ["WhatsApp"], "reason": "test"}, desktop, session=session) is None
+    typed = guards.check(TYPE, {"app": WHATSAPP, "text": f"The address is {TUNNEL}"}, desktop, session=session)
+    assert held_for_the_address(typed)
+
+
+def test_no_key_is_no_rule_and_a_setting_that_cannot_be_read_stops_the_send():
+    assert "Sending needs" in said(f"Use {TUNNEL}", config={"send_tools": CONFIG["send_tools"]})
+    for broken in ("yes", ["trycloudflare.com"], {"hosts": "trycloudflare.com"}, {"hosts": [1]}, {"local": "no"}):
+        reason = said("An ordinary note.", config={**CONFIG, "temporary_addresses": broken})
+        assert "temporary_addresses" in reason and "Sending needs" not in reason
+
+
+STARTS_A_TUNNEL = [
+    "cloudflared tunnel --url http://localhost:8787", "cloudflared tunnel --url=http://localhost:8787 --no-autoupdate",
+    "nohup cloudflared tunnel --url http://localhost:8787 > /tmp/t.log 2>&1 &", "env X=1 ngrok http 8080", "ngrok tcp 22",
+    "ngrok start web", "npx localtunnel --port 3000", "lt --port 3000 --subdomain shy-cat", "bunx localtunnel -p 3000",
+    "ssh -R 80:localhost:8080 serveo.net", "ssh -o StrictHostKeyChecking=no -R 80:localhost:3000 nokey@localhost.run",
+    "cd /tmp && cloudflared tunnel --url http://127.0.0.1:9000", "/opt/homebrew/bin/cloudflared tunnel --url http://localhost:1"]
+NO_TUNNEL = [
+    "cloudflared tunnel run production", "cloudflared tunnel list", "cloudflared --version", "ngrok config check", "ngrok version",
+    "echo cloudflared tunnel --url http://localhost:1", "grep -rn 'ngrok http' docs/", "brew install cloudflared",
+    "ssh -R 9000:localhost:9000 build.example.com", "lt --help"]
+
+
+@pytest.mark.parametrize("command", STARTS_A_TUNNEL)
+def test_starting_a_quick_tunnel_waits_for_a_code_of_its_own(command, principal):
+    reason = guards.check("Bash", {"command": command}, CONFIG, cwd="/tmp")
+    assert reason and "temporary tunnel" in reason and "never given to anyone" in reason and "own test" in reason
+    principal(reason)
+    assert guards.check("Bash", {"command": command}, CONFIG, cwd="/tmp") is None
+    assert "temporary tunnel" in guards.check("Bash", {"command": command}, CONFIG, cwd="/tmp")     # one approval, one start
+
+
+@pytest.mark.parametrize("command", NO_TUNNEL)
+def test_a_named_tunnel_a_lookup_and_words_about_a_tunnel_start_nothing(command):
+    assert guards.check("Bash", {"command": command}, CONFIG, cwd="/tmp") is None
+
+
+def test_without_the_key_a_tunnel_starts_as_before():
+    assert guards.check("Bash", {"command": STARTS_A_TUNNEL[0]}, {}, cwd="/tmp") is None
+
+
+def test_the_doctor_proves_the_rule_is_wired():
+    from synthesis import doctor
+    ok = doctor.check_temporary_addresses(CONFIG)
+    assert ok.status == "ok" and "refused" in ok.detail
+    assert doctor.check_temporary_addresses({**CONFIG, "temporary_addresses": {"hosts": "x"}}).status == "fail"
