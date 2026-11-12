@@ -2068,6 +2068,8 @@ def test_the_folder_that_holds_the_approved_lines_is_not_removed_or_moved_whole(
     ("cd \"$(mktemp -d)\" && cp {work}/s.jsonl . && wc -l s.jsonl > count.txt", False),     # a fresh temporary folder is elsewhere
     ("cd $(mktemp -d /tmp/work.XXXXXX) && cp {work}/s.jsonl copy.jsonl", False),
     ("cd \"$(dirname '{work}/s.jsonl')\" && rm s.jsonl", True),
+    ("find {work} -name '*.jsonl' -exec sh -c 'cd \"$(dirname \"$1\")\" && touch forged.json' _ {{}} +", True),   # quoting starts over inside $( )
+    ("sh -c 'd=`dirname \"$1\"`; cd \"$d\" && touch forged.json' sh {work}/s.jsonl", True),
     ("sqlite3 /tmp/pad/x.db \"select count(*) from t where n > 5\"", False),             # a comparison is not a redirect
     ("llm \"explain what this does: echo x > {work}/s.jsonl\"", False),                  # words for a reader that show a command
     ("notify \"copy finished: 3 files\"", False),
