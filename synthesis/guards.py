@@ -901,7 +901,7 @@ def _placed(script: str, given: list[str]) -> str:
     as the shell takes it: nothing inside single quotes, whole inside double quotes, split at its spaces outside
     them. A script that gives them other values is left as written (2026-11-11, the seventh review: a list handed
     to the shell lost the words after its script, and `sh -s <state folder>` read its script with no $1)."""
-    out, i, single, double = [], 0, False, False
+    out, i, single, double, outer = [], 0, False, False, []  # outer: for each open substitution, how it opened and the quoting around it
     while i < len(script) and not REBOUND.search(script):
         use = POSITIONAL.match(script, i) if script[i] == "$" and not single else None
         if use or (script[i] == "\\" and not single):
@@ -911,6 +911,11 @@ def _placed(script: str, given: list[str]) -> str:
                        if double else " ".join(shlex.quote(part) for w in took for part in w.split()))
             i = use.end() if use else i + 2
             continue
+        if not single and (script[i:i + 2] == "$(" or script[i] == "`" and "`" not in outer[-1:]):
+            outer, double = outer + [script[i], double], False  # inside a substitution quoting starts over
+        elif not single and not double and outer and script[i] in ("`" if outer[-2] == "`" else ")"):
+            double = outer.pop()
+            outer.pop()
         single, double = single if double else (script[i] == "'") != single, double if single else (script[i] == '"') != double
         out.append(script[i])
         i += 1
@@ -940,6 +945,25 @@ def _shell_input(words: list[str]) -> tuple[str | None, bool, list[str]]:
         command, fed = command or bool(re.fullmatch(r"-[A-Za-z]*c[A-Za-z]*", word)), fed or bool(re.fullmatch(r"-[A-Za-z]*s[A-Za-z]*", word))
         i += 1
     return None, not command, words[:1]
+
+
+def _led(folder: str, cwd: str) -> str:
+    """Where a `cd` leads when its folder is a substitution this can read: the folder of a path that is spelled out,
+    a fresh temporary folder, the folder the command is in. Any other substitution, or a variable the command does
+    not set, stays as written: a bare name written after it is a write the guard cannot place (2026-11-11:
+    `cd "$(dirname <transcript>)" && touch forged.json` was a write beside where the session stood)."""
+    found = re.fullmatch(r"\$\(\s*(dirname|realpath|mktemp|pwd)\b\s*(.*?)\s*\)", folder)
+    try:
+        words = shlex.split(found[2]) if found else []
+    except ValueError:
+        return folder
+    if found and found[1] == "pwd" and not words:
+        return cwd
+    if found and found[1] == "mktemp" and "-d" in words and not any(re.search(r"[$`]", w) for w in words):
+        return os.path.join(next((w for w in words if "/" in w and not w.startswith("-")), os.path.join("/tmp", "tmp.made")))
+    if found and found[1] in ("dirname", "realpath") and len(words) == 1 and not re.search(r"[$`*?]", words[0]):
+        return os.path.dirname(words[0]) if found[1] == "dirname" else words[0]
+    return folder
 
 
 class Quoted(str):
@@ -1015,7 +1039,7 @@ def _commands(command: str, cwd: str, depth: int = 0, writes: list | None = None
                 turn = next((w for w in words[1:] if re.fullmatch(r"[-+]\d+", w)), "")  # +N from this folder, -N from the oldest
                 dirs = [cwd] + stack[::-1]  # the stack as the shell shows it: this folder first
                 at = (int(turn[1:]) if turn[:1] == "+" else len(dirs) - 1 - int(turn[1:])) % len(dirs) if turn else 0
-                aim = os.path.expanduser(os.path.expandvars(to or "~"))  # a folder named by a substitution or an unset variable stays as written
+                aim = _led(os.path.expanduser(os.path.expandvars(to or "~")), cwd)
                 went = back if to == "-" else aim if aim[:1] in ("$", "`") else os.path.normpath(os.path.join(cwd, aim))
                 if words[0] == "cd":
                     dirs[0] = went if to is not None or not turn else dirs[at]
