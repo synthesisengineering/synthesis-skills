@@ -233,7 +233,7 @@ def prompts(workspace: str, day: str, direction: str, outcome: str) -> str:
         refuse(f"the listing of {day}'s prompts does not agree with itself: it exits 1 exactly while it lists a prompt open, "
                f"lists no more than were typed and each once, and this answer exited {done.returncode} (or a field has another "
                f"shape), so nothing is recorded; run `{again} --json` to see it")
-    if answered != (workspace, day, [os.path.realpath(os.path.expanduser(r)) for r in roots]):
+    if answered != (workspace, day, [os.path.realpath(os.path.abspath(os.path.expanduser(r))) for r in roots]):  # as the listing names a folder
         refuse(f"the listing answered for {answered[0]} on {answered[1]} against {held}, and this record is for {workspace} on "
                f"{day} against {roots}. Run `{again}`")
     if left and outcome in CLEAN:
