@@ -19,6 +19,12 @@ says how it was learned and when. Where a capability was not shown, the table sa
 A turn that arrives by any of these routes is recorded as what it is. None counts as the principal's typed prompt,
 so none can grant an approval: the approval check reads only prompts the person typed.
 
+In Claude Code the turn-end check reads the first two rows from the session's own transcript: a background agent,
+shell task, workflow or monitor the session started, with no task notification for it yet, is a wait the harness
+holds, and a reply that announces a wait beside it passes without a `synthesis wait`. In thirty days of recorded
+turn ends, five of every six replies that announced a wait were of this kind (the agent-guardrails reference has the
+count). A timer and a turn from another session are not read: record those with `synthesis wait note`.
+
 ## Which watcher
 
 | Awaited | Claude Code | Codex | Muse |

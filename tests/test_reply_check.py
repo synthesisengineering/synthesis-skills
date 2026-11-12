@@ -232,9 +232,7 @@ MORE_OWN_WAIT = {
     "once-green-i-merge": "Once CI is green, I'll merge.",
     "report-back-when": "The benchmark is running in the other terminal. I'll report back when the run ends.",
     "proceed-as-soon-as": "We'll proceed as soon as legal returns the redlines.",
-    "a-bold-status-label": "Deployed to staging.\n\n**Status:** waiting for the smoke tests to pass.",
     "awaiting": "Awaiting the reviewer's verdict on the second draft.",
-    "after-a-dash": "The draft is with the editor — still waiting on her notes.",
     "check-back-after": "I'll check back after the DNS change propagates.",
     "you-in-the-next-clause": "I'm waiting for the build; you can read the draft in the meantime.",
     "your-colleague": "I'll follow up once the vendor replies to your colleague's question.",
@@ -255,7 +253,6 @@ STILL_OWN_WAIT = {
     "a-numbered-item": "1. The branch is rebased.\n2. Waiting on the integration suite before I tag the release.",
     "you-as-the-one-told": "I'm waiting for the migration to finish so I can send you the row counts.",
     "your-notes": "I'm waiting for the vendor's reply, and your notes from this morning are already in the draft.",
-    "a-list-of-others-moves": "Waiting on:\n- CI on the release branch\n- the second reviewer's verdict",
     "what-i-wait-for": "What I'm waiting for is the registrar's confirmation.",
     "the-answer-to-your-message": "I passed it on, and I'm waiting for the peer session to answer your message.",
 }
@@ -944,7 +941,6 @@ INDEPENDENT_OWN_WAIT = {
             ' after.',
     "EW22": "You approved the merge, so I'm now waiting for the pipeline to finish.",
     "EW23": "Since you already signed the form, I'm waiting for the supplier to countersign it.",
-    "EW24": 'Your approval is recorded; waiting for the deploy job to complete before I close the ticket.',
     "EW25": "You kicked off the build ten minutes ago, and I'm waiting for it to finish before tagging the release.",
     "EW26": 'I\'m waiting for the "nightly-build" job to finish, and then I\'ll publish the package.',
     "EW27": "Will deploy once the 'lint' and 'unit' checks go green.",
@@ -1635,7 +1631,7 @@ def test_only_the_harnesss_own_word_starts_or_ends_background_work(tmp_path):
 
 def test_a_record_that_cannot_be_read_holds_nothing_and_stops_nothing(tmp_path):
     assert "nothing is armed" in _with_record(A_WAIT, None)
-    assert "nothing is armed" in _with_record(A_WAIT, str(tmp_path / "gone.jsonl"))
+    assert reply_check.held_by_harness(str(tmp_path / "gone.jsonl")) is False and reply_check.held_by_harness(str(tmp_path)) is False
     other = _record(tmp_path, '{"type":"response_item","payload":{"type":"function_call_output","output":"Command running in background"}}',
                     "not json at all", "[1, 2, 3]", '"a string"')
     assert "nothing is armed" in _with_record(A_WAIT, other)
@@ -1658,11 +1654,13 @@ def test_the_record_is_read_from_its_end_and_fast(tmp_path):
 THE_PRINCIPALS_TURN = {
     "an-approval-code": "The note is staged. To send it, type `approve 7c41d2` within 15 minutes. Once it's out, I'll read it back from the sent folder.",
     "a-code-in-bold": "Held for **approve 51efe9**, or tell me what to change. Once that's done, I'll bring you the next decision.",
+    "a-code-named-as-one": "Two sends are held. Code: **`00bfe4`** for the cancellation, and the note to the host. Once both go through, I'll read them back.",
+    "a-code-as-a-label": "Both earlier codes expired, so I filed the calls again:\n\n- **3c3c26:** the follow-ups email.\n\nOnce it runs, I'll read it back.",
     "a-staged-message": "Here is the reply.\n\nBEGIN\nThanks for the steps. I'll send the list as soon as the project exists.\nEND\n\nOnce it's sent, I'll log it in the ledger.",
     "a-staged-message-in-rules": "----- BEGIN -----\nI'll confirm the date once the venue answers.\n----- END -----\nWhen it's sent, I'll close the row.",
     "say-go": "The draft is above. Say go and it's out, and I'll schedule as soon as the vendor replies.",
     "tell-me-when": "Sign in on that page, then approve the prompt. Tell me when it's done and I'll confirm with the doctor.",
-    "ping-me": "Start the transcription in the app. Ping me when it's done and I'll pull the file.",
+    "message-me": "Start the transcription in the app. Message me when it's done and I'll pull the file.",
     "send-me-the-file": "Send me the export when it arrives and I'll re-run the match.",
     "only-you-can": "The dashboard step is one only you can do. I'll send the four links once that's done.",
     "one-step-from-you": "I'm holding the edit until the skill is in the session. One step from you unblocks it: run the installer.",
@@ -1680,6 +1678,12 @@ STILL_THE_SESSIONS_OWN = {
     "a-code-that-is-not-one": "The commit is 7c41d2e. I'll tag it once the tests pass.",
     "your-pipeline": "I'm waiting on your pipeline to finish the nightly build.",
     "your-tests": "Still waiting on your test suite, which is on its last job.",
+    "your-registrar": "We're waiting on your registrar to release the domain.",
+    "your-lawyers-comments": "I'll wait for your lawyer's comments on the clause and fold them in when they arrive.",
+    "once-your-code": "I'll continue once your code has finished compiling.",
+    "further-on": "I'm waiting on the bank to release the hold on your card.",
+    "your-approval-already-given": "Your approval is recorded. I'm waiting for the deploy job to complete before I close the ticket.",
+    "i-wait-on-a-list": "I'm waiting on:\n- the build\n- the lint job",
 }
 
 
@@ -1705,6 +1709,13 @@ A_LIST_OF_OPEN_LOOPS = {
     "a-fragment-in-a-sentence": "Where that leaves things: exclusions done in all three exhibits; waiting on the lawyer's scope language; then the signing link.",
     "a-label-in-an-item": "- **Capacity note** — waiting on the director's answer, which is the point\n- **The role description** — ready",
 }
+# Sent back before the recorded replies were read: in them a wait after a label, a dash or a semicolon was a status
+# line every time, so these forms are left unread, and a true wait written this way passes.
+A_WAIT_AFTER_A_LABEL_A_DASH_OR_A_SEMICOLON = {
+    "a-bold-status-label": "Deployed to staging.\n\n**Status:** waiting for the smoke tests to pass.",
+    "after-a-dash": "The draft is with the editor — still waiting on her notes.",
+    "EW24": "Your approval is recorded; waiting for the deploy job to complete before I close the ticket.",
+}
 A_SENTENCE_THAT_OPENS_WITH_THE_WAIT = {
     "the-whole-reply": "Waiting on the channel lookup, which says which entries can be renamed.",
     "after-a-sentence": "Nothing outstanding. Awaiting the board reply.",
@@ -1718,7 +1729,7 @@ A_RULE_NOT_A_WAIT = {
 }
 
 
-@pytest.mark.parametrize("reply", _cases(A_LIST_OF_OPEN_LOOPS, A_RULE_NOT_A_WAIT))
+@pytest.mark.parametrize("reply", _cases(A_LIST_OF_OPEN_LOOPS, A_RULE_NOT_A_WAIT, A_WAIT_AFTER_A_LABEL_A_DASH_OR_A_SEMICOLON))
 def test_a_list_of_open_loops_a_label_or_a_rule_is_no_announcement(reply):
     assert _sent_back(reply) is None
 

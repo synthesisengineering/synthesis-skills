@@ -61,8 +61,8 @@ Sent back when nothing is armed:
   `when` or `after` and an arrival (`when the second pass comes back`), `when it's done`;
   and the same with the event stated first (`when the bank confirms, I'll record it`);
 - a subject left out: `Will merge once the checks pass`, `I pushed it and will merge once`;
-- a clause, or what follows a colon or a dash, that opens with `Waiting for`, `Waiting on`,
-  `Waiting until`, `Waiting to hear`, `Awaiting`, `Holding ... until` or `Resuming when`.
+- a sentence that opens with `Waiting for`, `Waiting on`, `Waiting until`, `Waiting to
+  hear`, `Awaiting`, `Holding ... until` or `Resuming when`.
 
 Passes:
 
@@ -82,18 +82,44 @@ Passes:
 - a short wait that points back (`I'll wait`, `I'm waiting on that`, `until I have it`)
   when the clause before it names their move, asks them for something or ends in a
   question mark;
-- a reply that ends by asking them; a live `synthesis wait` of the session; an autopilot
-  run it owns.
+- `your` and a thing named in a few words straight after the wait's own word (`waiting on
+  your sign-in retry`, `waiting on your two answers before I write the log`);
+- a reply that hands them the turn, whatever else it waits for: it ends by asking them; it
+  shows a message staged for their go between a `BEGIN` line and an `END` line; it asks
+  for an approval code or names a held action's code; it asks them to act in so many words
+  (`Say go and it's out`, `Tell me when it's done and I'll confirm`, `only you can`, `one
+  step from you`);
+- a list of open loops, which names what is outstanding and announces nothing: a label
+  before a colon (`Waiting on others: ...`, `What we're waiting on others for: ...`), a
+  heading, a table row, and a wait after a label, a dash or a semicolon inside a sentence
+  (`- The venue — sent; awaiting their pick`);
+- a rule for next time (`from now on`, `next time`, `whenever`, `every time`);
+- an armed wait: a live `synthesis wait` of the session; an autopilot run it owns; in
+  Claude Code, background work the session started that has not reported yet (an agent, a
+  shell command, a workflow, a monitor), since the harness wakes the session when it
+  does. That is read from the last four megabytes of the transcript: a tool's result that
+  opens with the harness's launch line starts it, and a task notification naming that
+  call ends it.
 
 A thing that belongs to the principal is not their move. `your review bot`, `your code to
-compile`, `the service to answer your review request` and `per your instructions` leave a
-wait on software as the session's own. What they already did exempts nothing (`your review
+compile`, `your registrar to release the domain`, `your lawyer's comments`, `the service to
+answer your review request`, `the hold on your card` and `per your instructions` leave a
+wait on software or on someone else as the session's own. What they already did exempts nothing (`your review
 is filed and I'm waiting on the pipeline`, `after you approved`).
 
 The check reads patterns, not meaning. Each fresh list written against it has found forms
 it did not know, most of them waits said with a verb or a conjunction outside these lists;
 `Standing by for` is one that is left to `wait_phrases`. A reply that passes is no proof
 that nothing is awaited: the rule in synthesis-waiting binds whether or not the check fires.
+
+What it is measured against is recorded replies, not invented ones. Run over thirty days
+of turn-ending replies on one machine (4,443 delivered, November 2026), the forms above
+read 542 as a wait; in 452 the harness held background work, and 90 were sent back, about
+three a day. Of those, read one by one, three in four were the session's own wait with
+nothing to end it. The rest awaited a step of the principal's said in words the check
+does not read (`once it's sent, I'll read it back`, after a send they have yet to
+approve). What it lets pass on purpose: a wait in a reply that also asks the principal
+for something, and a wait written after a label, a dash or a semicolon.
 
 ## The file-link rule
 
