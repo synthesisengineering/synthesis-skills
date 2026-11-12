@@ -52,6 +52,11 @@ THREAD_HEADERS = ("in_reply_to", "references", "inReplyTo", "in_reply_to_id")
 # Fields that never render a link: an RSVP's comment reaches the organizer as plain text, so a signature there
 # names its domain in words (2026-10-22: a declined invitation could not carry its signed note).
 PLAIN_FIELDS = frozenset({"rsvp_comment", "responseComment"})
+# The workspace connector's mail tools read an attachment given as a path from the connector's own disk, and only
+# from its attachment folder and the folders ALLOWED_FILE_DIRS names, where its start script names the outbox. A
+# file elsewhere was refused after the send was approved; beside one it could read, the mail went without it (2026-11-12).
+FILE_MAIL_TOOLS = frozenset({"send_gmail_message", "draft_gmail_message"})
+FILE_KEYS = ("path", "file_path", "filePath")
 HTML_TAGS = frozenset({"p", "div", "span", "a", "em", "strong", "b", "i", "u", "ul", "ol", "li", "blockquote",
                        "html", "body", "br"})
 LOOKS_HTML = re.compile(r"</?(?:p|div|span|br|a|b|i|em|strong|u|ul|ol|li|blockquote|html|body|table|img|pre|h[1-6])"
@@ -207,7 +212,32 @@ def message_problems(tool: str, tool_input: dict, config: dict, chans: set | Non
         if official and any(i and str(i).lower() in raw.lower() for i in person.get("identifiers", [])) and any(
                 k not in ADDRESSED and re.search(rf"\b{re.escape(official)}\b", t) for k, t in strings):
             problems.append(f"this message involves someone who goes by {preferred}; write {preferred}, not {official}")
-    return problems
+    return problems + _unread_files(tool, tool_input)
+
+
+def _unread_files(tool: str, tool_input: dict) -> list[str]:
+    """Each file a workspace-connector mail call attaches by path that the connector would not read, judged as it
+    reads one: the path whole (it resolves a relative one in its own folder and expands no `~`), links followed,
+    letters as written, the file inside the outbox, the connector's attachment folder or a folder of
+    ALLOWED_FILE_DIRS as this process has it. An attachment given as content, a URL or a Drive id is no file read."""
+    given = tool_input.get("attachments") if tool.rsplit("__", 1)[-1] in FILE_MAIL_TOOLS else None
+    if isinstance(given, str):  # some clients send the list as its JSON text, which the connector reads too
+        try:
+            given = json.loads(given)
+        except ValueError:
+            return []
+    files = [str(e[k]) for e in (given if isinstance(given, list) else [given]) if isinstance(e, dict) for k in FILE_KEYS if e.get(k)]
+    roots = tuple(os.path.realpath(os.path.expanduser(r.strip())).rstrip(os.sep) + os.sep for r in (
+        str(paths.outbox()), os.environ.get("WORKSPACE_ATTACHMENT_DIR") or "~/.workspace-mcp/attachments",
+        *os.environ.get("ALLOWED_FILE_DIRS", "").split(os.pathsep)) if r.strip())
+
+    def why(file: str) -> str:
+        real = os.path.realpath(file)
+        return ("is not a full path" if not os.path.isabs(file) else "does not exist" if not os.path.exists(real)
+                else "is not a file" if not os.path.isfile(real) else "" if real.startswith(roots)
+                else "is outside the folders the mail connector reads")
+    return [f"the attachment {file} {why(file)}: copy the file into {paths.outbox()} (make the folder if it is missing), give "
+            "that copy's full path as the attachment's `path`, and file this send again" for file in files if why(file)]
 
 
 def check_send(tool: str, tool_input: dict, config: dict, session: dict | None = None) -> str | None:
