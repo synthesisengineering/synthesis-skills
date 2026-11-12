@@ -47,6 +47,8 @@ UNIT = re.compile(r"(?i)\s*(?:room|rm|suite|ste|floor|fl|level|hall|gate|pier|st
 CJK = re.compile(r"[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af]")  # an address in these scripts runs number and name together
 CAR = re.compile(r"(?i)\b(?:car|uber|lyft|taxi|cab|rideshare|ride[ -]share|limo|car service)\b")
 NEAR = timedelta(hours=12)  # farther than this from every commitment, a block with no `For:` line serves none
+BESIDE = timedelta(hours=1)  # an entry this close to a commitment, titled like a trip, is its travel in another form
+TRIP = re.compile(r"(?i)\b(?:travel|return|commute)\b")
 ASK = "the principal's decision, written on a `Decision:` line of that block"
 
 
@@ -142,7 +144,7 @@ def judge(args, config: dict, read: dict) -> dict:
         stop(f"the calendar read does not cover {first} through {last} (it covers {covered[0]} through {covered[1]}); "
              "read the calendar for those days first")
     title = str(policy.get("block_title") or "Travel").lower()
-    blocks, commitments, others = [], [], []
+    blocks, commitments, others, loose = [], [], [], []
     entries = read.get("events")
     if not isinstance(entries, list) or not all(isinstance(e, dict) for e in entries):
         stop('the calendar read\'s "events" is not a list of entries, so it cannot be judged: save the read again')
@@ -157,6 +159,7 @@ def judge(args, config: dict, read: dict) -> dict:
             names = [" ".join(name.lower().split()).strip("\"'“”‘’ .:;,!") for name in said.get("for", "").splitlines()]
             blocks += [{"start": a, "end": b, "said": said, "names": names}] if a and b else []
             continue
+        loose += [(a, b, summary)] if a and b and (TRIP.search(summary) or title in summary.lower()) else []
         span, spot = days(entry, a, b), tidy(entry.get("location"))
         found = {"summary": summary, "title": " ".join(summary.lower().split()), "start": a, "end": b or a,
                  "days": span, "said": said, "location": spot}
@@ -205,9 +208,16 @@ def judge(args, config: dict, read: dict) -> dict:
             if not block:
                 beside = next((b for b in blocks if b not in mine and apart(b, c) <= NEAR and (b["start"] < c["start"]) == (side == "before")), None)
                 whose = beside and ("; ".join(beside["said"].get("for", "").splitlines()) or beside["serves"][0]["summary"])
-                lacks.append(f"no travel block {side} it (leave, route, arrive, backup, fare, ticket)" + (
-                    f'; the block at {slot.hm(beside["start"])} is for "{whose}", and a block serves only the events its `For:` lines name'
-                    if beside else ""))
+                # An entry beside the event that is titled like a trip is its travel written another way: it is named,
+                # since "no block" sends a reader looking for a trip nobody planned (2026-11-11).
+                other = next(((a, s) for a, b, s in loose if s != c["summary"] and timedelta(0) <= (
+                    c["start"] - b if side == "before" else a - c["end"]) <= BESIDE), None)
+                lacks.append((f'"{other[1]}" at {slot.hm(other[0])} stands {side} it and is not in the labeled form: a travel block\'s '
+                              f'title starts with "{str(policy.get("block_title") or "Travel")}" and its description gives leave, route, '
+                              "arrive, backup, fare and ticket") if other and not beside else (
+                    f"no travel block {side} it (leave, route, arrive, backup, fare, ticket)" + (
+                        f'; the block at {slot.hm(beside["start"])} is for "{whose}", and a block serves only the events its `For:` lines name'
+                        if beside else "")))
                 continue
             lacks += [f"the block {side} has no `{line}:` line" for line in LINES if not block["said"].get(line.lower())]
             if (CAR.search(block["said"].get("route", "")) and "personal" in block["said"].get("paid by", "").lower()

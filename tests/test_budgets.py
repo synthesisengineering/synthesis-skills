@@ -483,10 +483,30 @@ ROOT = Path(__file__).resolve().parents[1]
 # fed on its input; a reading flag is known by its name in os; a name that walks a list of plain values is one of
 # them), _landing 2 (the folders find searches are its operands before the expression: a pattern or a type letter is
 # no file) and _self_grant 2 (a program that starts a refused command is told which rule refused it).
+# After a seventh review round, which found four ways through what a command a program starts is given, one choice read
+# as an example and one refusal of ordinary work, and after the same question was then put to the shell guard and to a
+# folder that holds a protected one, guards.py 191 more. _python_writes 123: the folder each call is made in, followed
+# in the order the program's statements run and a function's too, a descriptor standing for the folder it was opened
+# on, 38; the variables a program keeps for a command however the mapping is kept, and a script written down a pipe,
+# 39; a started command judged as the program it really runs, with the words after a shell's script, asyncio's and
+# pty's ways to start one, and from the part of a folder that can be read, 13; a target judged from each folder the
+# call may be made in, 11; what a walk or a pattern finds under a folder that holds a protected one, 13; a file named
+# beside a descriptor and a tree removed, moved or copied over whole, 5; sys.executable, a walk's folder apart from its
+# names and what a helper's one caller hands it, 4. _placed 21 with POSITIONAL, REBOUND, _shell_input 2 and _program 1
+# (the words after a shell's script are put where the script uses them; sh -s reads its script on stdin). _reaches 10,
+# _self_grant 5, _landing 3, _protected_roots 2 and WHOLE (a target outside a protected folder that changes it: a
+# folder changed throughout that holds it, a pattern that reaches in). _find 7, _commands 3 and _changes 3 (each
+# command find runs is a command of its own, a shell it runs read by its script). _string_writes 4 and _named 1 (a word
+# handed to a program the guard does not know is read as a command line). WALKS, STARTS and PLACED, one line each.
+# ritual_state.py 18: _shown 15, _items 2 and ENTRY (an example is what Markdown shows as code, so options indented
+# under a list entry are read). slot_check.py 27: judge 20, clock 5 and the docstring 2 (the meeting load counts only
+# events someone else is on; protected windows stand beside prose; 24:00 ends a day).
+# travel_check.py 10: judge 8, BESIDE and TRIP (an entry beside an event that is titled like a trip is named as its
+# travel in another form, not reported as no block).
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # consolidate first).
-CORE_BUDGET = 9390
-PLUGIN_BUDGET = 29698
+CORE_BUDGET = 9581
+PLUGIN_BUDGET = 29944
 
 
 def _lines(files):

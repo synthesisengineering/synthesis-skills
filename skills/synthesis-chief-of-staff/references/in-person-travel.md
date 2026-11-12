@@ -152,6 +152,9 @@ What it takes each word to mean:
 - **Whose a block is** follows its `For:` lines, as above (quotes around a title do not matter). When a block
   beside an event belongs to another, the report says whose it is. One event read from two calendars is one
   event.
+- **A block in another form** (an entry beside the event titled like a trip, such as "Return from …", without
+  the block's title or its lines) is named in the event's line as its travel in another form. It does not
+  count as a block: no route, fare or backup can be read from it. Rewrite it in the labeled form.
 - **The next morning's first commitment** is the earliest timed entry of the day after, a trip included. Exit 0 when every in-person event is whole, 1 when one is flagged, 2 when it was not
 shown enough (no `travel_policy`, a read that does not cover the days, events that are not a list of entries,
 a read it cannot make sense of). `--json` gives the same per event,
