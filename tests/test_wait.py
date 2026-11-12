@@ -11,6 +11,7 @@ armed. Committed before the code.
 import json
 import os
 import re
+import signal
 import subprocess
 import sys
 import time
@@ -172,6 +173,90 @@ def test_a_command_still_running_at_the_bound_is_stopped_and_the_wait_exits_3(tw
     assert done.returncode == 3 and "nothing arrived in 2 s" in done.stderr and time.time() - began < 15
     with pytest.raises(ProcessLookupError):                                           # the check was stopped, not left to run on
         os.kill(int(pid.read_text()), 0)
+
+
+# --- a try is stopped with every process it started ----------------------------------------------------------------
+
+# A check that starts a worker, as a script that puts a job in the background does. Once the worker is up it writes
+# down its own process and the worker's, one try to a line, stays for the seconds it is given, then fails.
+CHECK = ("import os, subprocess, sys, time; "
+         "worker = subprocess.Popen([sys.executable, '-c', sys.argv[2], sys.argv[1]], stdout=subprocess.PIPE); "
+         "worker.stdout.readline(); open(sys.argv[1], 'a').write(f'{os.getpid()} {worker.pid}\\n'); "
+         "time.sleep(float(sys.argv[3])); sys.exit(1)")
+IDLE = "print('up', flush=True); import time; time.sleep(30)"
+TIDY = ("import signal, sys, time; "                                                  # asked to end, it says so and ends
+        "signal.signal(signal.SIGTERM, lambda *_: (open(sys.argv[1] + '.asked', 'w').close(), sys.exit(0))); "
+        "print('up', flush=True); time.sleep(30)")
+DEAF = "import signal; signal.signal(signal.SIGTERM, signal.SIG_IGN); "               # asked to end, it stays
+
+
+def left(mark):
+    """The processes still running whose command line names a test's own file: a wait, its check and each worker."""
+    listed = subprocess.run(["ps", "-A", "-ww", "-o", "pid=", "-o", "stat=", "-o", "command="], capture_output=True, text=True)
+    return [int(row.split()[0]) for row in listed.stdout.splitlines() if str(mark) in row and not row.split()[1].startswith("Z")]
+
+
+def running_on(mark, within=5):
+    """What is still running once it has had `within` seconds to end."""
+    deadline = time.time() + within
+    while left(mark) and time.time() < deadline:
+        time.sleep(0.1)
+    return left(mark)
+
+
+@pytest.fixture
+def pids(tmp_path):
+    """The file a check writes its processes to. Its path is on the command line of the check and of each worker,
+    which is how a test finds what still runs, and how whatever a failing test left running is killed when it ends."""
+    file = tmp_path / "pids"
+    try:
+        yield file
+    finally:
+        for pid in left(file):
+            try:
+                os.kill(pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+
+
+def test_a_worker_the_check_started_is_stopped_with_it_at_the_bound(two, pids):
+    """2026-11-12, a second review: `wait run --for 1s` on a check that had started a 30-second worker and then slept
+    exited 3 at the bound with the check stopped and its worker still running. Only the check itself was stopped."""
+    began = time.time()
+    done = cli("wait", "run", "--for", "2s", "--", sys.executable, "-c", CHECK, str(pids), TIDY, "30")
+    assert done.returncode == 3 and "nothing arrived in 2 s" in done.stderr and time.time() - began < 15
+    assert len(pids.read_text().split()) == 2 and running_on(pids) == []              # the check and its worker: neither runs on
+    assert Path(f"{pids}.asked").exists()                                             # and the worker was asked to end before anything was killed
+
+
+def test_what_does_not_end_when_asked_is_killed(two, pids):
+    began = time.time()
+    done = cli("wait", "run", "--for", "3s", "--", sys.executable, "-c", DEAF + CHECK, str(pids), DEAF + IDLE, "30")
+    assert done.returncode == 3 and "nothing arrived in 3 s" in done.stderr and time.time() - began < 20
+    assert len(pids.read_text().split()) == 2 and running_on(pids) == []
+
+
+def test_a_try_that_fails_leaves_nothing_it_started_running(two, pids):
+    """A check that starts a worker and fails at once is run again and again: no try's worker is left behind it, so
+    when the bound comes nothing the command started is running."""
+    done = cli("wait", "run", "--every", "0.4s", "--for", "2s", "--", sys.executable, "-c", CHECK, str(pids), IDLE, "0")
+    assert done.returncode == 3 and "nothing arrived in 2 s" in done.stderr
+    assert len(pids.read_text().splitlines()) >= 2 and running_on(pids) == []         # several tries, each with a worker of its own
+
+
+def test_a_wait_that_is_told_to_end_stops_the_try_it_is_running(two, pids):
+    """A try runs in a process group of its own, so a signal sent to the wait and its group no longer reaches the try
+    by itself: the wait stops the try before it goes."""
+    from synthesis import wait
+    proc = start("wait", "run", "--for", "60s", "--", sys.executable, "-c", CHECK, str(pids), IDLE, "30")
+    deadline = time.time() + 10
+    while not (pids.exists() and pids.read_text().strip()) and time.time() < deadline:
+        time.sleep(0.05)
+    assert len(pids.read_text().split()) == 2                                         # the check and its worker are up
+    proc.terminate()
+    proc.communicate(timeout=15)
+    assert proc.returncode not in (0, 3) and running_on(pids) == []                   # no success, no bound: it was ended, and so was its try
+    assert wait.live("S1") == []
 
 
 def test_a_note_records_a_wait_the_harness_holds_and_the_list_shows_every_sessions(two):
