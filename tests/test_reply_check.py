@@ -1174,3 +1174,201 @@ def test_a_second_list_written_without_sight_of_the_code_of_replies_that_need_no
 def test_a_second_list_written_without_sight_of_the_code_of_unarmed_waits_is_sent_back(reply):
     reason = _sent_back(reply)
     assert reason and "nothing is armed" in reason
+
+
+# A third list from an agent that never saw the code, across support, contracts, publishing, experiments, security and
+# events. Eleven were wrong, nine of them waits that passed: any verb before "when" or "after" and an arrival ("I'll
+# proof the pages when the second pass comes back"), "the moment", "we'll" with any verb before "once", and "pausing
+# until". Two were sent back needlessly: "until I have it" after the principal's decision, and "waiting until every RSVP
+# is in is not realistic". One stays wrong: "Standing by for their reply" is no built-in form (the test above pins
+# that; `wait_phrases` adds it), so GW33 is marked as the miss it is.
+INDEPENDENT3_NO_WATCHER = {
+    "GN01": "Both replies to the customer are saved as drafts. I'm waiting on your review of the second one before either"
+            ' is sent.',
+    "GN02": 'The carrier\'s tracking page now reads "We will attempt delivery again once the recipient confirms an '
+            'address." I copied that line into the case notes so the next person sees it.',
+    "GN03": 'Here is a holding reply you can paste into the ticket:\n```\nWe are waiting for our shipping partner to '
+            'confirm the delivery date and will write to you as soon as they do.\n```\nChange the sign-off to match your '
+            "team's style.",
+    "GN04": 'My suggestion for the follow-up: when the customer writes back with the serial number, look it up in the '
+            'warranty table before you offer a replacement. The table is on the second tab of the sheet.',
+    "GN05": "The courier's system shows the parcel waiting at the depot until customs clears it. That is the status I "
+            'passed on to the customer, and the ticket is closed on our side.',
+    "GN06": "Waiting for the counterparty's redline before commenting on indemnity was the right call last quarter; it "
+            'saved a full round of edits. The memo you asked for summarises that history.',
+    "GN07": "Clause 14 works like an escrow: the buyer's payment is held until the inspector files a clean report and is "
+            'released automatically after that. Nothing in the clause lets either side shorten the holding period.',
+    "GN08": "Once you choose between the two governing-law options, I'll finish section 12 and renumber the cross-"
+            'references. Everything else in the draft is complete.',
+    "GN09": "Opposing counsel's email is short:\n> We will send our comments once our client has reviewed the liability "
+            'cap.\nI filed it under correspondence and changed nothing in the draft.',
+    "GN10": "A party that waits for the other side's signature before performing is usually on safer ground, because "
+            'starting work early can be read as accepting the unsigned terms. That is the reasoning behind the note I '
+            'added to clause 3.',
+    "GN11": 'The two versions of the non-compete differ only in duration. Read both when you have a moment and tell me '
+            "which one you prefer; I'll wait.",
+    "GN12": "I will, of course, send nothing to the tenant's solicitor until I have your signature on the notice. The "
+            'final text is attached for you to read.',
+    "GN13": 'The copyedit of chapters one to six is done and my queries are in the margins. Will resume with chapter '
+            "seven as soon as you've answered them.",
+    "GN14": 'I read the manuscript through once for continuity and once more for house style. All 31 changes are tracked,'
+            ' and none of them touches the dialogue.',
+    "GN15": "The style guide's own example is the clearest: “We will publish the correction once the author confirms the "
+            'figure.” I matched the wording of your correction notice to it.',
+    "GN16": 'My plan for the next pass is simple: tighten the introduction first, and once that reads cleanly, rework the'
+            ' conclusion to echo it. Both steps use only the text already in the file.',
+    "GN17": 'Holding the cover reveal until the endorsements arrive would cost the book its place in the spring '
+            'catalogue. I recommend revealing now and adding the quotes to the second printing.',
+    "GN18": "This is the notice the journal's system shows authors at this stage:\n~~~\nYour manuscript is awaiting "
+            'reviewer reports, and we will contact you when a decision has been made.\n~~~\nIt is a standard message and '
+            'says nothing about your paper in particular.',
+    "GN19": 'I held the newsletter until the legal team cleared the headline, which they did at noon, and it went out at '
+            "12:15. Open rates so far are in line with last month's.",
+    "GN20": 'The early-stopping callback waits until validation loss has failed to improve for five epochs and then '
+            'restores the best weights. That is why the run ended at epoch 37 and not at the configured 60.',
+    "GN21": 'Both sweeps finished overnight. I waited for the last seed before averaging, so the table covers all five '
+            'runs, and the larger learning rate wins by 0.8 points.',
+    "GN22": 'The line `waiting for checkpoint, will resume when available` in the trainer log is harmless. It is printed '
+            'on every start and does not mean the job has stalled.',
+    "GN23": 'When the next batch of labels comes back from the annotators, you should rerun the agreement script before '
+            'merging them into the training set. A kappa below 0.6 would mean the guidelines need another revision.',
+    "GN24": 'Waiting until the loss curve flattened would have burned another six GPU hours for no gain, so I stopped at '
+            'step 40,000 and saved the checkpoint. The evaluation numbers are in the table above.',
+    "GN25": 'The scheduler releases a node only after every process on it has exited, which is why your queue position '
+            'did not move during the evaluation. Nothing was wrong with the submission.',
+    "GN26": 'Containment is complete: the laptop was isolated, and after the forensic image finished I verified its hash '
+            'against the original. The timeline is in the incident record.',
+    "GN27": 'The runbook says an account stays disabled until its owner has re-enrolled a hardware key, and the help desk'
+            ' re-enables it once that is logged. I added that paragraph to the summary for the affected staff.',
+    "GN28": "I've listed the six firewall rules I would remove, with the reason for each. Nothing changes until I have "
+            'your approval.',
+    "GN29": "The alert text is misleading. It says 'holding session until the scanner returns a verdict', but that is the"
+            ' proxy describing its own behaviour, not a sign of compromise.',
+    "GN30": 'As soon as the vendor publishes the patch, apply it to the mail gateway first and the file servers second. '
+            'The temporary rule I described covers the gap in the meantime.',
+    "GN31": "The sign-in page is asking for the six-digit code from your authenticator app. I'll continue once you've "
+            'typed it in.',
+    "GN32": 'The credential-stuffing rule fired once in the past thirty days, on the 3rd, and the source address was '
+            'already on the blocklist. The threshold needs no change.',
+    "GN33": "I have two workable seating plans for the dinner. Pick one when you've had a look, and we'll wait to print "
+            'the place cards until then.',
+    "GN34": 'The registration form closes itself when the two-hundredth guest signs up, and anyone after that goes onto '
+            'the waiting list. I tested it with a dummy entry and deleted the entry afterwards.',
+    "GN35": 'Once the florist sends the final invoice, pay it from the events account and not the general one. That keeps'
+            ' the conference budget report accurate.',
+    "GN36": 'For the save-the-date, a line such as "We\'ll share the full programme as soon as the speakers confirm" sets '
+            'the right expectation. I left it as the last sentence of the draft.',
+    "GN37": "The shuttle schedule depends on your decision about the Saturday start time. I'm holding the booking request"
+            ' until I have it.',
+    "GN38": 'Waiting until every RSVP is in is not realistic for a dinner of 300; caterers want a number ten days out. I '
+            'based the order on the 240 guests confirmed so far.',
+    "GN39": 'The passport renewal form is filled in except for the emergency contact, which only you can supply. Send me '
+            "the name and number whenever it suits you. I'll wait.",
+    "GN40": 'Your insurance claim was approved yesterday after three weeks in review, and the payment reached your '
+            "account this morning. I've marked the item closed on your list.",
+    "GN41": 'The bank holds a mobile deposit until the cheque clears, usually two working days, and then the funds show '
+            'as available. That is why your balance and your available balance differ today.',
+    "GN42": "Compare the new premium with this year's when the renewal notice arrives next spring, and switch insurers if"
+            " the increase is above ten percent. I've saved this year's figures in the household folder for that purpose.",
+    "GN43": "After I finish reconciling March, I'll go straight on to April; both statements are already downloaded and "
+            'nothing else is needed. The February summary is attached.',
+    "GN44": "The letter to the school is drafted. I'll finalise it once your edits are in, and it can go in tomorrow's "
+            'post.',
+    "GN45": "The accountant is waiting for last year's donation receipts, which are in your desk and not in any folder I "
+            'can reach. Everything else on the checklist has been sent.',
+}
+INDEPENDENT3_OWN_WAIT = {
+    "GW01": 'The warehouse team wrote back "stock count in progress" and nothing more. I\'ll write to the customer with a '
+            'delivery date as soon as they confirm the count.',
+    "GW02": "Waiting for the payment processor to post the reversal; once it shows on the account, I'll send the customer"
+            ' the confirmation and close the ticket.',
+    "GW03": 'The escalation is with tier two now. When their engineer replies, I will summarise the fix for the customer '
+            'and update the help article.',
+    "GW04": "Your refund request has gone to the billing system, which normally approves these within a few minutes. I'll"
+            " check the outcome when it's done and then email the customer the receipt.",
+    "GW05": "Still waiting on the courier's answer about the lost parcel, so the claim form stays open; I'll file it the "
+            'moment they respond.',
+    "GW06": "The revised agreement is out for signature with the supplier. Once it has been countersigned, I'll file the "
+            'executed copy and update the renewal tracker.',
+    "GW07": "I'll wait for your lawyer's comments on the indemnity clause and fold them into the draft when they arrive.",
+    "GW08": 'Opposing counsel has the redline. I am holding the cover letter until their response comes in, and I will '
+            'revise the liability section to match whatever they accept.',
+    "GW09": "The court's e-filing system is still processing the motion. I'll serve the other side and calendar the "
+            'response deadline after it issues the stamped copy.',
+    "GW10": "You signed the engagement letter yesterday, so the only thing outstanding is the conflict check the firm's "
+            "system is running. I'll open the matter file as soon as that check comes back.",
+    "GW11": "The typesetter has the corrected files. I'll proof the new pages against your markup when the second pass "
+            'comes back.',
+    "GW12": 'Waiting for the "Final Proof" PDF from the printer; when it lands I\'ll check the page breaks and the running'
+            ' heads.',
+    "GW13": "Your manuscript is with the two peer reviewers now. As soon as both reports are in, I'll draft the response "
+            'letter and mark up the revisions.',
+    "GW14": "We are, I'm afraid, stuck until the rights holder answers the permission request for the two photographs. "
+            "I'll place the images and finish the captions once the licence arrives.",
+    "GW15": 'The plagiarism scan on chapter four is running. Will send you the similarity report and my notes when it '
+            'finishes.',
+    "GW16": 'Will resume the write-up once the fine-tuning run completes; it is at epoch 3 of 10 and the baseline numbers'
+            ' are already in the table.',
+    "GW17": 'Kicked off the hyperparameter sweep on the shared cluster. Holding the analysis notebook until all twelve '
+            "trials have been scored by the evaluation harness; then I'll rank them and plot the top three.",
+    "GW18": "I'll rerun the comparison as soon as the `eval-nightly` job posts its numbers.",
+    "GW19": "The annotation vendor still owes us the last 500 labels. Until those are delivered, I'm pausing the "
+            "retraining, and I'll restart it when the file shows up in the bucket.",
+    "GW20": 'After the data-export job finishes writing the shards, I will launch the tokenizer and start the first pass.'
+            ' Nothing else is blocking the experiment.',
+    "GW21": "The full-disk scan on the finance server is about a third done. I'll let you know what it flags the moment "
+            'it completes.',
+    "GW22": "Waiting until the identity provider finishes revoking the old tokens, then I'll re-enable the service "
+            'accounts one at a time.',
+    "GW23": "I've asked the hosting provider to preserve the logs for the affected hour. As soon as their abuse desk "
+            'sends the archive, I will rebuild the timeline and attach it to the incident record.',
+    "GW24": "Your password reset has been submitted and is sitting in the directory's sync queue. I'm going to wait for "
+            'the sync to go through and then test the sign-in.',
+    "GW25": "The sandbox is detonating the attachment now, and we'll release or quarantine the message once it returns a "
+            'verdict.',
+    "GW26": "The hotel has the room-block request and promised an answer today. I'll have to wait for their confirmation "
+            'before sending the booking link to the guests.',
+    "GW27": 'Holding the invitations until the venue confirms the date; they go out the moment it does.',
+    "GW28": "I have not heard back from the keynote speaker's office. I'll come back to the running order when they reply"
+            ' with the travel dates, and book the flights then.',
+    "GW29": "Pausing here until the ticketing platform finishes importing the attendee list; I'll run the duplicate check"
+            ' right after.',
+    "GW30": "You approved the menu on Monday, and the caterer is now pricing it. I'll update the budget sheet when their "
+            'quote comes through.',
+    "GW31": "You've uploaded the scans, and the tax portal is validating them now. I'll wait, then file the return when "
+            'the validation is finished.',
+    "GW32": 'Your visa application is with the consulate, and nothing more can be done from here until they issue a '
+            'decision. I will book the flights when the approval comes through.',
+    "GW33": "I've asked the landlord's office for the countersigned lease. Standing by for their reply; the utilities "
+            'transfer gets scheduled as soon as I have it.',
+    "GW34": "Waiting on the bank's review of your dispute over the duplicate charge. After the provisional credit has "
+            "been posted, I'll reconcile the statement and close the item on your list.",
+    "GW35": 'I will just wait for the pharmacy to confirm the prescription is ready and then arrange the courier pickup.',
+}
+NOT_BUILT_IN = {"GW33": "\"standing by for\" is not a built-in form; config `wait_phrases` adds it"}
+MORE_OF_THE_SEVENTH_LISTS_CLASSES = {
+    "cached-copy-when-the-network-is-down": "I'll use the cached copy when the network is down.",
+    "flag-it-when-it-happens-again": "I'll flag it when it happens again.",
+    "we-will-need-to-once": "We'll need to revisit the pricing once the vendor publishes the new tiers; I noted it in the plan.",
+}
+MORE_WAITS_OF_THE_SEVENTH_LISTS_CLASSES = {
+    "continue-once-i-have-it": "The export is still running. I'll continue once I have it.",
+    "i-will-pause-until": "I'll pause the rollout until the error budget recovers.",
+    "we-will-file-once": "We'll file the amended return once the bank reissues the statement.",
+}
+
+
+def _marked(group, misses):
+    return [pytest.param(reply, id=name, marks=[pytest.mark.xfail(strict=True, reason=misses[name])] if name in misses else [])
+            for name, reply in group.items()]
+
+
+@pytest.mark.parametrize("reply", _cases(INDEPENDENT3_NO_WATCHER, MORE_OF_THE_SEVENTH_LISTS_CLASSES))
+def test_a_third_list_written_without_sight_of_the_code_of_replies_that_need_no_watcher_passes(reply):
+    assert _sent_back(reply) is None
+
+
+@pytest.mark.parametrize("reply", _marked(INDEPENDENT3_OWN_WAIT, NOT_BUILT_IN) + _cases(MORE_WAITS_OF_THE_SEVENTH_LISTS_CLASSES))
+def test_a_third_list_written_without_sight_of_the_code_of_unarmed_waits_is_sent_back(reply):
+    reason = _sent_back(reply)
+    assert reason and "nothing is armed" in reason
