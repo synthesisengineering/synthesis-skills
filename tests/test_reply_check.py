@@ -449,3 +449,41 @@ def test_waiting_as_the_subject_of_a_sentence_is_an_explanation(reply):
 def test_a_clause_that_opens_with_the_wait_and_has_a_verb_further_on_is_still_an_announcement(reply):
     reason = _sent_back(reply)
     assert reason and "nothing is armed" in reason
+
+
+# Finding 6 of the review: the principal's move may stand before the words of the wait, in the same clause.
+R2_MOVE_FIRST_REVIEW = {
+    "R2-N13": "Until you choose the venue, I'll wait.",
+    "R2-N14": "Your answer is the only thing I'm awaiting.",
+}
+THEIR_MOVE_STATED_FIRST = {
+    "once-you-have-signed": "Once you've signed the form, I'll wait for the bank's confirmation and file both.",
+    "go-ahead-is-what-we-await": "Your go-ahead is what we're still awaiting.",
+    "until-you-tell-me-i-hold": "Until you tell me which region to use, I'll hold.",
+    "when-you-reply": "When you reply with the date, I'll be waiting with the draft ready.",
+    "the-code-from-you": "The approval code from you is the last thing I'm awaiting.",
+    "after-you-approve": "After you approve the budget, I'll wait for the vendor's invoice.",
+    "it-is-your-decision": "It's your decision that I'm awaiting.",
+    "whichever-you-pick": "Whichever date you pick is the one I'll wait for.",
+    "until-your-review-comes-back": "Until your review comes back, I'll wait.",
+}
+THEIR_PAST_MOVE_STATED_FIRST = {
+    "review-filed-and-waiting": "Your review is filed and I'm now waiting on the deploy pipeline.",
+    "with-your-go-ahead": "With your go-ahead in hand, I started the migration and I'm waiting for it to finish.",
+    "after-you-approved": "After you approved the plan this morning, I kicked off the rebuild and I'm waiting for it to complete.",
+    "per-your-instructions-first": "Per your instructions, I'll wait for the nightly export before I rebuild the index.",
+    "applied-your-feedback": "I applied your feedback, and I'm waiting for the preview build.",
+    "until-the-vendor-i-hold": "Until the vendor replies, I'll hold the release.",
+    "you-approved-so": "You approved the change, so I'll merge once the checks pass.",
+}
+
+
+@pytest.mark.parametrize("reply", _cases(R2_MOVE_FIRST_REVIEW, THEIR_MOVE_STATED_FIRST))
+def test_the_principals_move_stated_before_the_wait_needs_no_watcher(reply):
+    assert _sent_back(reply) is None
+
+
+@pytest.mark.parametrize("reply", _cases(THEIR_PAST_MOVE_STATED_FIRST))
+def test_what_the_principal_already_did_stated_before_the_wait_exempts_nothing(reply):
+    reason = _sent_back(reply)
+    assert reason and "nothing is armed" in reason
