@@ -533,3 +533,120 @@ def test_a_wait_inside_quotation_marks_a_fence_or_a_quoted_line_is_not_the_sessi
 def test_quoted_words_beside_the_sessions_own_wait_do_not_hide_it(reply):
     reason = _sent_back(reply)
     assert reason and "nothing is armed" in reason
+
+
+# A second pair of lists, written without looking at the patterns after the five classes were fixed, as the review
+# writes its own: every reply is kept, whatever the check made of it. Two were sent back needlessly, each a class of
+# its own: the thing awaited is "that" or "it" and stands in the sentence before, or it is a question the principal
+# answers ("which of the dates works for you").
+BLIND_NO_WATCHER = {
+    "BN01": 'The uploader retries three times and then waits for the operator to press Resume.',
+    "BN02": 'Nothing is merged until both checks have passed; that rule is in the branch settings.',
+    "BN03": 'The export was held until the audit finished last week, which is why the numbers are late.',
+    "BN04": 'We were waiting on the certificate for two days in March; the renewal is automatic now.',
+    "BN05": "I'm not waiting on anything: the release is tagged and the notes are published.",
+    "BN06": "Once it's approved by you, I'll merge and tag.",
+    "BN07": "I'll continue as soon as I hear from you.",
+    "BN08": "I'll hold off on the email until you've read the draft.",
+    "BN09": "We'll wait for your word before we touch the production database.",
+    "BN10": "I'm waiting for you to choose between the two layouts.",
+    "BN11": "I'll proceed when you give me the go-ahead.",
+    "BN12": 'Waiting for a slow disk is the usual reason this test flakes.',
+    "BN13": 'Waiting on the scheduler can add a full minute, so I raised the timeout.',
+    "BN14": 'Awaiting a response from a dead peer hangs the whole pool, which the new heartbeat prevents.',
+    "BN15": 'The fix is simple: waiting for the socket to drain was never needed.',
+    "BN16": 'Polling is cheaper here because waiting on the webhook means keeping a public endpoint.',
+    "BN17": "The onboarding email says 'We will let you know when your account is ready', which I left unchanged.",
+    "BN18": 'Her reply reads: "We\'re waiting for the bank to release the funds." I filed it under the vendor thread.',
+    "BN19": 'The README example is:\n```bash\n# waiting for the database\nuntil pg_isready; do sleep 1; done\n```\nI did not '
+            'change it.',
+    "BN20": 'The CI log shows:\n~~~\nWaiting for runner to come online...\n~~~\nand the job started nine seconds later.',
+    "BN21": 'I quoted the vendor in the summary:\n\n> We are still waiting on customs and will ship once the hold '
+            'clears.\n\nThe rest of the summary is mine.',
+    "BN22": 'The status page said “We’ll resume service when the provider recovers” for about an hour.',
+    "BN23": "The function is named `wait_until_ready`, and I'll keep that name.",
+    "BN24": "Your approval is the only thing left; I'm waiting on that.",
+    "BN25": "I'm waiting on your answer to the pricing question.",
+    "BN26": "As soon as you confirm the address, I'll send the order.",
+    "BN27": "I'll wait to hear which of the three dates works for you.",
+    "BN28": 'The deploy is done. I waited for the health checks to pass before reporting.',
+    "BN29": 'I had to wait for the lock twice, but both migrations are applied now.',
+    "BN30": 'If the job fails again, the runbook says to wait for the on-call engineer.',
+    "BN31": 'I recommend waiting until the vendor publishes the fix rather than patching it ourselves.',
+    "BN32": 'Should I wait for the nightly build, or ship the hotfix now?',
+    "BN33": "The queue drains when the consumer catches up, and the alert clears once it's empty.",
+    "BN34": "We'll continue to use the old endpoint until the client is updated next quarter.",
+    "BN35": "I'll resume the migration when you say so.",
+    "BN36": 'The meeting is confirmed, and the room is held until noon.',
+    "BN37": "You'll get an email once the transfer completes; nothing more is needed from me.",
+    "BN38": 'The tests wait for the server to start, which takes about four seconds.',
+    "BN39": "I'll pick this up again whenever you want.",
+    "BN40": 'I am awaiting your instructions on the second contract.',
+    "BN41": 'The session will be woken when a message arrives, because a watcher is armed for it.',
+    "BN42": "I'll be here when you're back.",
+}
+BLIND_OWN_WAIT = {
+    "BW01": "I'm just waiting on the build now.",
+    "BW02": "We are still awaiting the registrar's response.",
+    "BW03": 'I will then continue once the artifact has been uploaded.',
+    "BW04": "I'll hold off on merging until the scan completes.",
+    "BW05": "We'll get back to this when the provider answers the ticket.",
+    "BW06": "I'm currently waiting for the data import to complete before running the report.",
+    "BW07": "Once the DNS record propagates, I'll finish the setup.",
+    "BW08": "After the review bot posts its verdict, we'll proceed.",
+    "BW09": "I'll check back when the batch job is done.",
+    "BW10": "I'm waiting until the rate limit resets.",
+    "BW11": "Still waiting on the peer session's answer.",
+    "BW12": "Now awaiting the second approver on the vendor's side.",
+    "BW13": "I'll follow up as soon as the courier updates the tracking page.",
+    "BW14": "The branch is pushed; I'll merge when the pipeline goes green.",
+    "BW15": 'I am waiting for the certificate to be issued by the authority.',
+    "BW16": "We're waiting on your hosting provider to lift the block.",
+    "BW17": "I'm waiting for the migration on your staging server to finish.",
+    "BW18": "I'll let you know once your build passes.",
+    "BW19": "I'm waiting for your CI to finish before I rebase.",
+    "BW20": "I'll resume when your domain's DNS has propagated.",
+    "BW21": "I'm waiting for the vendor to answer your question about the invoice.",
+    "BW22": "I've kicked off the export and am waiting for it to finish.",
+    "BW23": "I'll wait until the queue is empty, then restart the worker.",
+    "BW24": 'Will merge once the required checks pass.',
+    "BW25": "I'm going to hold the release until the canary has run for an hour.",
+    "BW26": "I'll continue after the other session confirms the handoff.",
+    "BW27": "I'm waiting to see whether the retry succeeds.",
+    "BW28": "We'll report back after the load test finishes tonight.",
+    "BW29": "The tests are running; I'm waiting for them.",
+    "BW30": "I'll come back to this after the upstream release.",
+    "BW31": "Then I'll wait for the reviewer's comments.",
+    "BW32": "I'm now only waiting for the mirror, which usually takes ten minutes.",
+    "BW33": 'Pushed. Waiting for CI.',
+    "BW34": "I'll finish the write-up when the numbers come in from the benchmark.",
+    "BW35": "I'm waiting on a reply from the vendor's support desk.",
+}
+THEIR_MOVE_IN_THE_SENTENCE_BEFORE = {
+    "waiting-for-that": "The only open item is your sign-off on the budget. I'm waiting for that.",
+    "waiting-on-it": "I need the approval code from you. Waiting on it.",
+    "i-will-wait": "Send the signed copy whenever you can. I'll wait.",
+    "until-then-i-hold": "I need your decision on the venue first. Until then, I'll hold.",
+    "what-you-think": "I'm waiting to hear what you think of the second option.",
+    "whether-you-want": "I'll wait to see whether you want the long version or the short one.",
+    "how-you-would-like": "Waiting to hear how you'd like the invoice split.",
+}
+ANOTHERS_MOVE_IN_THE_SENTENCE_BEFORE = {
+    "the-deploy-then-it": "The deploy is running; I'm waiting on it.",
+    "it-is-the-pipeline": "Your review is filed. The pipeline is running and I'm waiting on it.",
+    "waiting-for-theirs": "I sent your reply to the vendor; now I'm waiting for theirs.",
+    "whether-the-vendor-can": "I'm waiting to hear whether the vendor can deliver by Friday.",
+    "how-the-canary-behaves": "I'll wait to see how the canary behaves on your account's traffic.",
+    "the-build-then-i-wait": "The build is running. I'll wait.",
+}
+
+
+@pytest.mark.parametrize("reply", _cases(BLIND_NO_WATCHER, THEIR_MOVE_IN_THE_SENTENCE_BEFORE))
+def test_a_second_fresh_list_of_replies_that_need_no_watcher_passes(reply):
+    assert _sent_back(reply) is None
+
+
+@pytest.mark.parametrize("reply", _cases(BLIND_OWN_WAIT, ANOTHERS_MOVE_IN_THE_SENTENCE_BEFORE))
+def test_a_second_fresh_list_of_unarmed_waits_is_sent_back(reply):
+    reason = _sent_back(reply)
+    assert reason and "nothing is armed" in reason
