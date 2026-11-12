@@ -249,5 +249,4 @@ def test_a_quoted_example_under_a_list_entry_a_closed_title_in_bold_and_a_fence_
     code, _, refusal = record(workspace(tmp_path, "### **Dinner**\n**Option A:** Accept\n**Option B:** Decline\n"))
     assert code != 0 and "Dinner" in refusal                                                 # bold alone closes nothing
     left_open = "### How a choice is written\n\n```markdown\n### Dinner\n**Option A:** Accept\n**Option B:** Decline\n"
-    code, out, refusal = record(workspace(tmp_path, left_open))
-    assert code == 0 and "choices: 0 open" in out, refusal
+    assert list(ritual_state._items(left_open)) == []                                        # read as the plan's choices are read

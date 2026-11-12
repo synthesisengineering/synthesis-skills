@@ -175,8 +175,8 @@ ITEM = r"(?im)^ *(?:>\s*)*(?:[-*+] |\d+[.)] )?\**"  # a line of an item: plain, 
 OPTION = re.compile(ITEM + r"Option [A-Z0-9]+\b(.*)$")
 SAID = re.compile(ITEM + r"(Recommendation|Consequences|Commits)\**\s*:[*\s]*(.*)$")
 CLOSED = re.compile(ITEM + r"(?:Decided|Resolved|Released|Lapsed|Withdrawn)\**\s*:")
-FENCE = re.compile(r"(?ms)^\s*(?:>\s*)*(```|~~~).*?^\s*(?:>\s*)*\1[^\n]*$")  # a fenced block, quoted or not, is an example
-QUOTE = re.compile(r"^ {0,3}(?:> ?)+")  # what marks a line as quoted: the line is read as the one it quotes
+FENCE = re.compile(r"(?ms)^\s*(?:>\s*)*(```|~~~).*?(?:^\s*(?:>\s*)*\1[^\n]*$|\Z)")  # a fenced block, quoted or not, closed or not, is an example
+QUOTE = re.compile(r"^( *)(?:> ?)+")  # what marks a line as quoted: the line is read as the one it quotes, as far in as the quote stands
 NOTHING = re.compile(r"(?i)[*\s]*(?:tbd|tbc|none|n/?a|no recommendation|your call|up to you|either)?[\s.*]*")
 COMMITS = re.compile(r"(?i)\b(?:accept|decline|rsvp|attend|go|join|host|schedule|meet|say (?:yes|no))\b")
 
@@ -193,7 +193,7 @@ def _shown(text: str) -> str:
     by four under a numbered entry are that entry's own lines, and were read as an example)."""
     lines, columns, blank, example = [], [], True, False
     for line in FENCE.sub("", text).expandtabs(4).splitlines():
-        body = QUOTE.sub("", line)
+        body = QUOTE.sub(r"\1", line)
         indent, entry = len(body) - len(body.lstrip(" ")), ENTRY.match(body)
         if body.strip():
             while columns and indent < columns[-1] and (blank or entry or body.lstrip().startswith("#")):
@@ -245,7 +245,7 @@ def choices(workspace: str, day: str) -> str:
         text = plan.read_text(encoding="utf-8", errors="replace") if plan.is_file() else ""
         for item in _items(text):
             title, options = MARK.sub("", item.splitlines()[0]).strip(), OPTION.findall(item)
-            if not options or CLOSED.search(item) or title.startswith(("~~", "[x]", "[X]", "✓", "✔")) or "✅" in title:
+            if not options or CLOSED.search(item) or title.lstrip("*_ ").startswith(("~~", "[x]", "[X]", "✓", "✔")) or "✅" in title:
                 continue
             said = {m[1].lower(): m[2] for m in [*SAID.finditer(item), *TITLED.finditer(title)] if not NOTHING.fullmatch(m[2])}
             needs = ["recommendation"] + ["consequences"] * ("commits" in said or any(map(COMMITS.search, options)))

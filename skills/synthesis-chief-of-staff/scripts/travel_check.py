@@ -56,6 +56,17 @@ def stop(message: str):
     raise SystemExit(f"travel_check: {message}")
 
 
+STEP = re.compile(r"(?i)\s*(?:$|[:\-–—]|(?:to|from|home|back|there)\b)")  # what follows the block's word in a block's title
+
+
+def is_block(summary: str, said: dict, title: str) -> bool:
+    """Whether an entry is a travel block: titled with the block's word alone, or with it and then a colon, a dash or
+    a direction (`Travel: to the theatre`, `Travel home`), or titled with it and carrying one of a block's lines. An
+    event whose title only begins with the word (`Travel planning workshop`) is an event (the ninth review)."""
+    found = re.match(rf"(?i){re.escape(title)}\b(.*)", summary.strip())
+    return bool(found) and bool(STEP.match(found[1]) or {"for", *(line.lower() for line in LINES)} & set(said))
+
+
 def lines(description: str) -> dict:
     """The labeled lines of a description, a placeholder counting as no line and a label given twice keeping both
     values, one to a line. HTML is read as the text it shows."""
@@ -155,7 +166,7 @@ def judge(args, config: dict, read: dict) -> dict:
         except SystemExit as exc:
             stop(f'the start or end of "{summary}": ' + str(exc.code).split(": ", 1)[-1])
         others += [(a, summary)] if a else []  # every timed entry, a trip included: what a night runs into the next morning
-        if re.match(rf"{re.escape(title)}\b", summary.lower()):
+        if is_block(summary, said, title) or (not (a and b) and re.match(rf"{re.escape(title)}\b", summary.lower())):
             names = [" ".join(name.lower().split()).strip("\"'“”‘’ .:;,!") for name in said.get("for", "").splitlines()]
             blocks += [{"start": a, "end": b, "said": said, "names": names}] if a and b else []
             continue
