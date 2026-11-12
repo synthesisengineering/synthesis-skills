@@ -86,7 +86,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   to only read it, and reads an inline Python program by its syntax** (core). It began as two faults: a write
   through a variable the command had just assigned was judged as a write somewhere else, and the file tools were
   refused in a project's memory folder. Eleven rounds of review by a second model, and this project's own probes
-  (more than 1,900 plain commands and programs) and replays while answering them, showed the guard was narrower
+  (more than 2,000 plain commands and programs) and replays while answering them, showed the guard was narrower
   than what it guards against in four ways.
   - **How a path is read.** Every write in a command is resolved and judged, whether or not the command spells a
     protected folder out: relative to the session's folder, to a `cd` (`cd -`, `pushd` and `popd` are followed) or
@@ -212,7 +212,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
     hold, once the replay had shown two faults in it that the probes had not: the reader stopped on 180 recorded
     commands that loop over an attribute or an entry, and `export` taken as a writer's name refused 4 that exported
     a transcript into another archive. On the 300 longest recorded Python commands (9 to 32 thousand characters)
-    the guard takes 9 ms at the median and 46 ms at the ninetieth percentile, where it took 5 and 10. The destructive guard newly refused 2 recursive deletes of
+    the guard takes 9 ms at the median and 46 ms at the ninetieth percentile, where it took 5 and 10. After the eleventh
+    round the 30 days then current were replayed again (110,444 commands): eight of those nine newly refused, 79
+    newly passed, and none on which the reader raised, once the replay had shown two recorded commands on which
+    the member model raised and two on which it did not come back (a table rebuilt from itself). Over all 27,497
+    recorded commands that hand Python a program the guard takes 6 ms at the median, 14 ms at the ninetieth
+    percentile and 52 ms at the ninety-ninth. The destructive guard newly refused 2 recursive deletes of
     a scratch clone named through a variable, which it always refused when the path was written out.
     `docs/runtime-integration.md` says what the reader does not follow.
 - **The plugin's own Drive publisher waits for a code** (core, agent guardrails). A script wrote 36 files into a
