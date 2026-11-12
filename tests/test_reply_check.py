@@ -366,3 +366,46 @@ def test_a_wait_is_read_through_adverbs_helping_verbs_and_a_subject_left_out(rep
 @pytest.mark.parametrize("reply", _cases(GRAMMAR_NO_WATCHER))
 def test_a_wait_refused_advised_or_done_by_software_is_no_announcement(reply):
     assert _sent_back(reply) is None
+
+
+# Finding 4 of the review: "your code" and "your review" name what belongs to the principal, not what they do next.
+R2_OWNERSHIP_REVIEW = {
+    "R2-W14": "I'm waiting for your code to compile on the remote builder.",
+    "R2-W20": "I'm still waiting for the service to answer your review bot.",
+}
+THEIR_THING_SOFTWARE_ACTS = {
+    "approval-workflow": "I'm waiting for your approval workflow to finish its run.",
+    "answer-file": "I'll continue once the registrar processes your answer file.",
+    "review-request": "We're waiting on the scanner to clear your review request.",
+    "go-the-language": "I'm waiting for your Go tests to pass on the build farm.",
+    "code-that-compiles": "I'll resume when your code compiles on the second runner.",
+    "decision-log": "I'm waiting for the sync job to pick up your decision log.",
+    "per-your-instructions": "I'm waiting for CI to finish, per your instructions.",
+    "confirmation-token": "I'll merge once the pipeline accepts your confirmation token.",
+    "a-reply-already-sent": "Waiting for the mail server to deliver your reply to the vendor.",
+    "code-changes": "I'm waiting for your code changes to deploy to staging.",
+    "as-you-want": "I'll wait for the build as you want, then tag it.",
+}
+THEIR_ACT_AWAITED = {
+    "approval-to-merge": "I'm waiting for your approval to merge the branch.",
+    "until-sign-off-arrives": "I'll hold the tag until your sign-off arrives.",
+    "decision-then-a-comma": "We're waiting on your decision, not on anything technical.",
+    "once-i-have-your-answer": "I'll continue once I have your answer on the venue.",
+    "awaiting-your-call": "Awaiting your call on the headline.",
+    "review-before-i-publish": "I'm waiting for your review before I publish the page.",
+    "approval-code": "I'm waiting for your approval code.",
+    "when-your-review-is-in": "I'll merge when your review is in.",
+    "your-edits": "I'm waiting for your edits to the second section.",
+    "your-signature": "I'll wait for your signature on the contract.",
+}
+
+
+@pytest.mark.parametrize("reply", _cases(R2_OWNERSHIP_REVIEW, THEIR_THING_SOFTWARE_ACTS))
+def test_a_thing_of_the_principals_that_software_acts_on_is_the_sessions_own_wait(reply):
+    reason = _sent_back(reply)
+    assert reason and "nothing is armed" in reason
+
+
+@pytest.mark.parametrize("reply", _cases(THEIR_ACT_AWAITED))
+def test_an_act_of_the_principals_that_is_what_is_awaited_needs_no_watcher(reply):
+    assert _sent_back(reply) is None
