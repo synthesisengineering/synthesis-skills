@@ -110,15 +110,15 @@ def cmd_who(args) -> int:
 def cmd_msg(args) -> int:
     """Send, and say what will deliver it (2026-11-11: mail to a project no session was bound to sat unseen)."""
     from synthesis import wait
+    me = _session(args)
     try:
-        sent = board.message(args.to, _session(args), args.text, durable=args.durable)
+        sent = board.message(args.to, me, args.text, durable=args.durable)
     except board.AddressError as exc:
         print(f"refused: {exc}", file=sys.stderr)
         return 1
     reached, name = str(paths.read_json(sent).get("session") or ""), args.to.strip()[len("project:"):]
     target = board.load(reached) if reached else None
-    how = ("it is watching and wakes within seconds" if target and wait.watching(target.session, _session(args))
-           else "it reads it at its next prompt" + (f"; {wait.wake(target)}" if args.wake else "") if target
+    how = (wait.watching(reached, me) or "it reads it at its next prompt" + (f"; {wait.wake(target)}" if args.wake else "") if target
            else f"it is kept for every session that works on {name}" if args.durable
            else f"no session is bound to {name} now: it is kept for the next one that runs `synthesis resume {name}`")
     print(f"sent to {args.to}: {how}")

@@ -39,19 +39,20 @@ def span(text: str) -> float:
 
 
 def said(seconds: float) -> str:
-    hours, minutes = divmod(int(round(seconds / 60)), 60)
-    return f"{int(seconds)} s" if seconds < 60 else " ".join([f"{hours} h"] * bool(hours) + [f"{minutes} min"] * bool(minutes))
+    hours, minutes, rest = int(seconds) // 3600, int(seconds) % 3600 // 60, int(seconds) % 60
+    return " ".join([f"{hours} h"] * bool(hours) + [f"{minutes} min"] * bool(minutes) + [f"{rest} s"] * bool(rest or seconds < 60))
 
 
 def _folder(session_id: str) -> Path:
     return paths.board() / "waits" / board._session_file(session_id).stem
 
 
-def record(session_id: str, what: str, until: float, *, pid: int = 0, by: str = "", sender: str = "") -> Path:
-    """One wait a session holds: what is awaited, until when, and the process that watches (0 for a watcher the
-    harness holds, which `by` names)."""
+def record(session_id: str, what: str, until: float, *, pid: int = 0, by: str = "", sender: str = "", every: float = 0) -> Path:
+    """One wait a session holds: what is awaited, until when, and the process that watches with how often it looks
+    (both 0 for a watcher the harness holds, which `by` names)."""
     path = _folder(session_id) / f"{time.time_ns()}-{pid}.json"
-    paths.write_json(path, {"session": session_id, "what": what, "since": time.time(), "until": until, "pid": pid, "by": by, "from": sender})
+    paths.write_json(path, {"session": session_id, "what": what, "since": time.time(), "until": until, "pid": pid, "by": by, "from": sender,
+                            "every": every})
     return path
 
 
@@ -92,9 +93,12 @@ def unread(session_id: str, sender: str = "") -> list[dict]:
     return [m for m in board.inbox(session_id, me.project if me else "") if sent_by(m, sender)]
 
 
-def watching(session_id: str, sender: str) -> bool:
-    """A live wait of that session for a message this sender's would end."""
-    return any(w["what"].startswith("a message") and sent_by({"from": sender}, w.get("from", "")) for w in live(session_id))
+def watching(session_id: str, sender: str) -> str:
+    """What a live watcher of that session does with a message this sender's would end, said with how often it looks
+    (2026-11-12: "within seconds" was printed for one that looked every five minutes); "" when it has none."""
+    every = min((w["every"] for w in live(session_id) if w.get("every") and w["what"].startswith("a message")
+                 and sent_by({"from": sender}, w.get("from", ""))), default=0)
+    return "it is watching and " + ("wakes within seconds" if every < 10 else f"checks every {said(every)}") if every else ""
 
 
 def wake(target, run=subprocess.run) -> str:
@@ -111,7 +115,7 @@ def wake(target, run=subprocess.run) -> str:
 
 
 def _watch(session_id: str, what: str, until: float, seconds: float, every: float, ready, sender: str = "") -> int:
-    held = record(session_id, what, until, pid=os.getpid(), sender=sender)
+    held = record(session_id, what, until, pid=os.getpid(), sender=sender, every=every)
     try:
         while True:
             line = ready()
