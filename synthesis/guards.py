@@ -2320,7 +2320,7 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
         return any(paths.inside(os.path.realpath(start), r) or paths.inside(r, os.path.realpath(start)) for r in roots)
 
     def named(node, apart=()) -> bool:  # built from a protected path: in a string, in an argument, or through a name or an attribute
-        todo = [node]
+        todo, met = [node], set()
         while todo:
             n = todo.pop()
             if isinstance(n, ast.Name) and n.id in apart:
@@ -2329,7 +2329,8 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
             if all(v is not None for v, _ in held_):  # a member of something the program makes: built from what that member holds, not from all the thing holds
                 if any(isinstance(v, str) and any(m in v for m in names) for v, _ in held_):
                     return True
-                todo += [v for v, _ in held_ if isinstance(v, ast.AST)]
+                todo += [v for v, _ in held_ if isinstance(v, ast.AST)] if id(n) not in met else []  # once: a member may hold what is built from itself
+                met.add(id(n))
                 continue
             if isinstance(n, ast.Call) and getattr(n.func, "attr", getattr(n.func, "id", "")) in WALKS and over(n):
                 return True  # what it finds under a folder that holds a protected one may lie in that one
@@ -2689,7 +2690,11 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
     # that cannot be followed may be in any of them (the eleventh review, and this project's probe after it: one set
     # of values stood for a field or a key whatever carried it, so two objects of a class, a table whose entry is
     # replaced, a key kept in a name and a class that inherits its __init__ were all read wrongly).
-    given_m, loose_m, removed, born, slots = {}, [], set(), {}, {}
+    given_m, loose_m, removed, born, slots, memo = {}, {}, set(), {}, {}, {}  # what each thing is given, by its maker's id, then kind and key; memo: readings kept between settlings
+
+    def gifts(store, kind, key) -> list:  # what one such store holds for a member: its own key's, any key's, and all of them when the key cannot be read
+        by = store.get(kind, {})
+        return [x for values in by.values() for x in values] if key is None else by.get(key, []) + by.get(None, [])
     fields_given = {t.attr for t in nodes if isinstance(t, ast.Attribute) and isinstance(t.ctx, ast.Store)}
     LISTS = (ast.List, ast.Tuple, ast.Set, ast.ListComp, ast.SetComp, ast.GeneratorExp)
     tops = {id(v) for f in defs for s in f.body if isinstance(s, (ast.Assign, ast.AnnAssign)) and s.value is not None
@@ -2711,9 +2716,20 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
             every = [x for c in callers[id(f.args)][1] for x in resolve(c.func.value, seen + (id(f),))]
         return [x for x in every if x is not None] + [c for c in calls if builds(c) and asked(c)[0] in kin[name]] * (None in every or not every)
 
+    cuts = [0, 0]  # how often a reading was cut short (a thing reached through itself, too deep, too much), and the steps of the reading in hand
+
     def resolve(node, seen: tuple = ()) -> list:  # each thing an expression may be, as the node that makes it; None for one that cannot be told
-        if node is None or len(seen) > 12:
+        plain, cuts[1] = not any(this.values()), cuts[1] + 1 if seen else 0
+        if plain and ("r", id(node)) in memo:
+            return memo["r", id(node)]
+        if node is None or len(seen) > 60 or cuts[1] > 4000:  # too deep or too much to follow: it cannot be told
+            cuts[0] += node is not None
             return [None]
+        before, found = cuts[0], list(dict.fromkeys(follow(node, seen)))
+        memo.update({("r", id(node)): found} if plain and cuts[0] == before else {})  # kept when nothing under it was cut short
+        return found
+
+    def follow(node, seen: tuple) -> list:
         if holder(node) == "environ":
             return [ENV]
         if isinstance(node, ast.Name) and node.id in ("self", "cls") and id(node) in inside and id(inside[id(node)]) in of_class:
@@ -2724,6 +2740,7 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
             key = key_of(node)
             if node.id in classes and node.id not in total:
                 return [classes[node.id]]
+            cuts[0] += key in seen
             return [] if key in seen else [c for name, c in classes.items() if name == node.id] + [  # a class's name given a value besides: either
                 x for v in live.get(key, [None]) + [None] * (total.get(node.id, 0) > sites.get(node.id, 0))
                 for x in ([None] if v is None or isinstance(v, str) else resolve(v, seen + (key,)))]
@@ -2735,10 +2752,11 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
         if own is not None and name not in classes and id(own) in rets:  # what the program's own function hands back
             was, this[id(own)] = this.get(id(own)), resolve(node.func.value, seen) if isinstance(node.func, ast.Attribute) else None
             found = [x for r in rets[id(own)] for x in resolve(r, seen + (id(own),))] if id(own) not in seen else []
-            this[id(own)] = was
+            this[id(own)], cuts[0] = was, cuts[0] + (id(own) in seen)
             return found
         if isinstance(node, ast.Call) and label in ("copy", "deepcopy", "list", "tuple", "sorted", "reversed") and len(node.args) + isinstance(node.func, ast.Attribute) >= 1:
             return resolve(node.args[0] if node.args else node.func.value, seen)  # a copy holds what the thing it copies holds
+        cuts[0] += id(node) in seen
         if id(node) not in seen and isinstance(getattr(node, "ctx", None) or ast.Load(), ast.Load) and sel_of(node):
             return [x for v, _ in members(node, seen + (id(node),)) for x in ([None] if v is None or isinstance(v, str) else resolve(v, seen + (id(node),)))]
         return [node]
@@ -2777,8 +2795,9 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
     def part(c, sel, n=None, seen: tuple = ()) -> list:  # (a value, the calls it is read under) for each thing one member of one thing may hold
         (kind, key), label = sel, getattr(getattr(c, "func", None), "attr", getattr(getattr(c, "func", None), "id", ""))
         kw = {k.arg: k.value for k in getattr(c, "keywords", [])}
-        if c is None:
-            return [(None, ())]
+        if c is None or id(c) in seen:
+            return [(None, ())] * (c is None)  # a thing that holds itself (`cfg = {**cfg, ...}`) is read once
+        seen += (id(c),)
         if c is ENV:
             made = [(env[key], ())] if key in env and not re.search(r"[$`]", env[key]) else [] if key is not None else [(None, ())] + [
                 (v, ()) for v in env.values() if any(m in v for m in names) or (v[:1] == "/" and any(paths.inside(v, r) for r in roots))]  # any of them: one may name a protected path
@@ -2807,21 +2826,26 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
             made = [(slots.setdefault((id(c), key), fresh()), ())] if key is not None else [(v, ()) for (owner, _), v in slots.items() if owner == id(c)]  # the list it makes for each key
         else:
             made = [(None, ())]  # what something else made: all it holds is what the program gives it
-        shared = [g for k in lineage(asked(c)[0]) for g in given_m.get(id(classes[k]), [])] if builds(c) else []  # an object also holds what its class is given later
-        gifts = [(v, t) for s, v, t in given_m.get(id(c), []) + shared + loose_m if s[0] == kind and (s[1] == key or None in (s[1], key))]
+        shared = [given_m.get(id(classes[k]), {}) for k in lineage(asked(c)[0])] if builds(c) else []  # an object also holds what its class is given later
+        given = [x for store in (given_m.get(id(c), {}), *shared, loose_m) for x in gifts(store, kind, key)]
         if n is not None and id(n) in reach_m:  # along its own path: the last plain gift before it stands for all before, and in a program's own statements none comes after
             way, body, (lastv, lastat), top = reach_m[id(n)]
-            gifts = [(v, t) for v, t in gifts if not (t and t[:2] == (way, body) and (top or t[2] <= lastat))]
+            given = [(v, t) for v, t in given if not (t and t[:2] == (way, body) and (top or t[2] <= lastat))]
             made = [(lastv, ())] if lastv is not None else made
-        found = made + [(v, ()) for v, _ in gifts]
+        found = made + [(v, ()) for v, _ in given]
         return found or [(None, ())] * (kind == "a" and not isinstance(c, ast.Call) or builds(c))
 
     def members(n, seen: tuple = ()) -> list:  # (a value, the calls it is read under) for each thing a member read may give; a value of None cannot be told, "\2" is none at all
+        plain = not seen and not any(this.values())  # read with no call in hand: the same at every asking until the names are read again
+        if plain and id(n) in memo:
+            return memo[id(n)]
         base, sel, default = sel_of(n)
         things = resolve(base, seen) or [None]
         found = [x for c in things for x in part(c, sel, n if len(things) == 1 else None, seen)]
-        spare = default is not None and (not found or loose_m or any(v is None for v, _ in found) or any(id(c) in removed for c in things))
-        return found + [(default, ())] * spare or [("\2", ())]
+        spare = default is not None and bool(not found or loose_m or any(v is None for v, _ in found) or any(id(c) in removed for c in things))
+        found = found + [(default, ())] * spare or [("\2", ())]
+        memo.update({id(n): found} if plain else {})
+        return found
 
     def under(calls_):  # each reading of the calls a value is read under: a function's own names as that call hands them, `self` as the object it is called on
         if not calls_:
@@ -3000,6 +3024,7 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
         while grew:
             grew = False
             live.update(gather())
+            memo.clear()
             for key, values in list(live.items()):  # each name is every value it is given: a second assignment, two callers, what a loop visits
                 name = key.split("~")[0]
                 found = values_of(key, values) + ["\0"] * (total.get(name, 0) > sites.get(name, 0))
@@ -3072,7 +3097,7 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
                                 x for k in n.keywords if named(k.value) for x in ([worded[k.arg]] if k.arg in worded else extra)])
     def keep(of, sel, value) -> None:  # one thing given to a member: to each thing its holder may be, or to any when that cannot be told
         for c in resolve(of) or [None]:
-            (given_m.setdefault(id(c), []) if c is not None else loose_m).append((sel, value, tags.get(id(value))))
+            (given_m.setdefault(id(c), {}) if c is not None else loose_m).setdefault(sel[0], {}).setdefault(sel[1], []).append((value, tags.get(id(value))))
     for _ in range(2):  # twice: what a loop visits depends on what its names are, and those on what loops visit
         live.update(gather())
         primed.append(1)
@@ -3103,7 +3128,7 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
                     keep(base, ("k", None), v)
         elif base is not None and label in ("pop", "popitem", "clear", "remove", "discard"):
             removed.update(id(c) for c in resolve(base))
-    kn.clear(), walked.clear()
+    kn.clear(), walked.clear(), memo.clear()
     settle()
     stand_in = os.path.expanduser(next((m for m in names if m[:1] in ("/", "~")), "".join(names[:1])))  # a protected folder, for one built from it that cannot be spelled
 
