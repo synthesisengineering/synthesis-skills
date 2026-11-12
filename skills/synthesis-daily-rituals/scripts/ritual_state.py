@@ -5,8 +5,8 @@ There is no mutable state file. On 2026-09-02 one seat's close overwrote
 another's single `last_day_end` slot; a lock would not have helped, because the
 second writer still replaces the slot. So records are appended and every view
 is derived. Each record carries two clocks: `date`, the logical workday opened
-or closed (required, never inferred: a close written at 01:30 belongs to the
-day before), and `ts`, when it was written. On 2026-09-14 an unscoped weekly
+or closed (required, never inferred, never a day ahead: a close written at 01:30
+belongs to the day before), and `ts`, when it was written. On 2026-09-14 an unscoped weekly
 review query let one workspace's Friday review silence every other workspace,
 so every view answers for one workspace, and an empty `--workspace ""` (an
 unset shell variable) is refused rather than read as "all workspaces".
@@ -336,6 +336,12 @@ def cmd_record(args) -> int:
     check_workspace(args.workspace, "record --direction <direction> --workspace <workspace> --date YYYY-MM-DD")
     if not _is_day(args.date):  # 20261111 or 2026-W46-3, a date to Python 3.11, names no day a listing or a view finds
         refuse(f"--date {args.date!r} is not YYYY-MM-DD; the logical workday is required and never inferred")
+    now, review = today(), args.direction == "weekly-review"
+    early = rituals.friday(now + timedelta(days=6)).isoformat()  # the Friday a weekly review done before it satisfies
+    if args.date > now.isoformat() and not (review and args.date == early):  # 2026-11-12: tomorrow closed clean, `prompts: none typed`
+        refuse(f"--date {args.date} has not come: today is {now}. A ritual is recorded for the workday it opened or closed, and "
+               "nothing has been typed, planned or decided on a day ahead, so every check would pass over nothing. Record it on "
+               "that day" + (f". A weekly review done early takes the Friday it satisfies, {early}, and no other day ahead" * review))
     if args.mode == "migration":
         refuse("mode 'migration' marks old bookkeeping and cannot be written")
     critical = (critical_deadlines(args.workspace, args.outcome) + travel(args.workspace, args.date, args.travel)

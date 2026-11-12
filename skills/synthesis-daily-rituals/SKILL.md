@@ -28,7 +28,7 @@ slips silently. Each workspace runs its own; a project supplement may add repos 
 3. **A run proves its own coverage:** open with `sync_watermark.py begin`, take every window from `window`, gate with `status --since run`. A read from this morning is not current now (2026-09-01: a 09:15 read hid a 09:27 answer).
 4. **Every repo, mailbox and target lands in one named state with a denominator;** unscanned never reads as empty, and any surface not swept is named.
 5. **Nothing decay-tagged passes its date silently:** send (on the principal's approval), re-date with a reason, or release. An item that passed its date with no decision is marked Lapsed and gets an append-only lapse-register row.
-6. **Record every ritual,** in every mode, with `ritual_state.py record` and the logical workday as `--date`. A weekly review done early is recorded with the Friday it satisfies.
+6. **Record every ritual,** in every mode, with `ritual_state.py record` and the logical workday as `--date`. A weekly review done early is recorded with the Friday it satisfies; any other date after today is refused.
 7. **Nothing sends without the principal's approval of the exact text.** Every draft is grounded in primary sources and re-checked against the live thread at send time.
 8. **Workspace content stays in that workspace's records,** so deleting the workspace erases it; the person-side plan is a shell with pointers.
 9. **Banners and spoken alerts carry counts and a pointer only,** never a client, repo, workspace or person name, and honor `~/.synthesis/quiet-audio`. Speakers are overheard and banners are screen-shared.
