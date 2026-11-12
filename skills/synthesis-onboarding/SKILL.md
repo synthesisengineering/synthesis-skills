@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "3.3.2"
+  version: "3.4.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
   format: v5
@@ -56,7 +56,7 @@ S=~/.synthesis/v5/source/skills/synthesis-onboarding/scripts/setup.py
 `python3 "$S"` installs the plugin in every harness found, sets Codex's keys, installs
 the runtime, asks about the commit check (`--git-hooks`) and a first config, and offers
 to bring a workspace. `--day-end [auto|codex|claude]` also links the day-end launcher and
-schedules the weekday nudge. Read each line: `<harness>: installed …`, `… not found; skipped`,
+schedules the weekday nudge; `--sessions-export` schedules the hourly copy of session transcripts. Read each line: `<harness>: installed …`, `… not found; skipped`,
 `codex config: …`, `synthesis runtime <hash> at …`, then the restart sentence. Then run
 `synthesis doctor` and relay anything waiting for the person's hook approval. A person
 with no knowledge repository yet starts one with `python3 "$S" workspace --new NAME`

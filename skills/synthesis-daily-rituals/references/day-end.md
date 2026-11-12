@@ -8,7 +8,7 @@ boundary, and writes the one close-out with its coverage line
 
 Contents: Day-end modes · 1 Transcript sync · 2 Source-code sync · 3 Integration sweep · 4
 Communications: the send-or-release pass (4a Calendar Guardian, 4b deadlines and lapses) · 5
-Lessons learned · 5a Native-memory sweep · 5b Provenance scan · 6 Career amplification · 7
+Lessons learned · 5a Native-memory sweep · 5b Provenance scan · 5c What was asked reached a record · 6 Career amplification · 7
 Context capture · 8 Skills maintenance · 9 Machine sync · 10 Weekly loose-ends review · 11
 Remote readiness and final verification · Publishing at day-end.
 
@@ -103,6 +103,16 @@ Native memory stays ON in every harness as a capture buffer; synthesis records a
 A quote or timestamp written into a record must come from something a tool actually read. An agent once fabricated a chat message by tweaking a real message's timestamp.
 
 - [ ] Run `python3 <synthesis-agent-guardrails>/scripts/provenance_scan.py --since <today> <today's transcripts, daily plan, and the CONTEXT.md and session logs written today>`, with `--records <folder>` for each plan folder the workspace declares (`plans_dirs` in the ritual config) that is not named `daily-plans`, `ritual-workers` or `drafts`: a plan kept somewhere else is a record too, and the line the scan ends with says how many records it read. Each Slack timestamp written today must match a synced read; the scan names every one that does not. Fix or remove each named line before the close (correct it from the source, or mark it unverified); never "fix" it by inventing a source.
+
+## 5c. What Was Asked Reached A Record
+
+Applies where the workspace's ritual config has `"prompt_reconcile": {"records": ["<folder of project records>"]}`.
+The principal should never have to say "make sure nothing is lost": every prompt they typed today is in the
+transcript archive, and a record accounts for one by citing it.
+
+- [ ] Run `synthesis sessions export`, then `synthesis sessions prompts --workspace <W> --date <today> --records <each folder the config names>`. It lists each prompt of today's that no record cites, as `<harness> <session8> #<seq>  HH:MM  <first words>`.
+- [ ] For each line, open it with `synthesis sessions show <session8> --seq <n>`. Where its substance is in a record, cite it there (`<harness> <session8> #<seq>`, or `#<first>-<last>` for a stretch one entry covers). Where it is not, write the record first: the request into the plan with its tag, the decision or correction into the project's session log. Never cite a prompt in a record that does not hold it.
+- [ ] Run the command again with `--json`, save what it prints, and pass it to the record as `--prompts <file>`. A clean close is refused while any prompt is left; `--outcome partial` records the day and says how many are open.
 
 ## 6. Career Amplification
 

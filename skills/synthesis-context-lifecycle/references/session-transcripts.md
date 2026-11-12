@@ -60,6 +60,11 @@ each harness writes its own transcript to disk as the session runs. The copy is 
 - `synthesis handoff` and the day-end ritual run `synthesis sessions sync`, which exports first; the conversations
   leave the Mac at the same moments as the records, so the two never disagree about where the work stood.
 - Anyone may run `synthesis sessions export` (add `--all` for everything on the Mac) before reading or citing.
+- On a Mac where the onboarding setup scheduled it (`setup.py plugin --sessions-export`), a LaunchAgent runs
+  `synthesis sessions export --all` and `synthesis sessions sync` every hour and at login, so a transcript is
+  copied whether or not any session remembers to. `synthesis doctor` fails when that schedule is not loaded or
+  no export has finished in a day (2026-11-11: until then the archive had no trigger of its own, and a
+  transcript that no session exported within two days was skipped).
 
 ## Copying each workspace's conversation off the Mac
 
@@ -100,5 +105,29 @@ Cite the record behind a decision or quote as `<harness> <session8> #<seq>` (for
 session log or lesson, and open it with `synthesis sessions show <session8> --seq <n>`, which prints the record and
 three either side. A session id's first eight characters name the main session, never the sub-agents it started,
 whose ids begin with the same characters; `meta.json` gives a sub-agent `role: subagent` and its `parent`. A quote or attribution read from the archive in the current session has a tool output behind it,
-as quote provenance requires. `--json` prints one object per line for tools such as the Console. Keep the conversation out
+as quote provenance requires. One entry that covers a stretch of a session cites it as a range:
+`claude-code d20ab7c4 #1500-1560`. `--json` prints one object per line for tools such as the Console. Keep the conversation out
 of CONTEXT.md and project folders: it would break their size budgets (R1.5) and flood every search of the project.
+
+## What the principal asked
+
+Every prompt the principal typed is in the archive as a `user` record. A record accounts for one by citing it,
+alone or inside a range. What no record cites is a request, a decision or a correction that reached no record:
+
+```bash
+synthesis sessions export                                   # the archive first
+synthesis sessions prompts --workspace <W> [--date YYYY-MM-DD]                    # each prompt of that day
+synthesis sessions prompts --workspace <W> --records <folder of records> [--json]  # only those no record cites
+```
+
+Each line is `<harness> <session8> #<seq>  HH:MM  <the prompt's first words>`, then one line that counts:
+`2 of 31 prompts on <day> in <W> are cited by no record` (exit 1), or `all 31 prompts ... are cited by a record`
+(exit 0). `--records` reads the text files under that folder changed since the day began; repeat it for more.
+`--json` prints `{"workspace", "date", "prompts", "open": [...]}`, the form the day-end record takes.
+
+For each prompt left: open it (`synthesis sessions show <session8> --seq <n>`), and where its substance is
+already in a record, cite it there; where it is not, write the record first, then cite. A prompt that needs no
+record (a greeting, a go already recorded with its question) is cited in the session-log entry for that stretch,
+which says so. The citation is the agent's statement that the record covers the prompt, and the principal can
+open either. Each session does this for its own prompts when it writes its session log, so the day-end finds
+few left. A workspace turns the day-end check on in the ritual config (see the daily rituals' day-end).

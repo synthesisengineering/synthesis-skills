@@ -7,6 +7,7 @@
 - [Codex settings setup owns](#codex-settings-setup-owns)
 - [The runtime, the commit check and the CLI](#the-runtime-the-commit-check-and-the-cli)
 - [The day-end launcher and nudge](#the-day-end-launcher-and-nudge)
+- [The hourly copy of session transcripts](#the-hourly-copy-of-session-transcripts)
 - [First config](#first-config)
 - [Hook trust stays with the person](#hook-trust-stays-with-the-person)
 - [Restart, verify, uninstall](#restart-verify-uninstall)
@@ -151,6 +152,16 @@ at 16:55 on weekdays. An older schedule under that label is archived first and u
 the new one is loaded with `launchctl bootstrap`, or only written with `--no-launchctl`.
 The banner text is generic and fixed (others see banners on screen-shares). Uninstall
 unloads and removes only a schedule and a link that point at this install's copies.
+
+## The hourly copy of session transcripts
+
+`--sessions-export` writes the LaunchAgent `~/Library/LaunchAgents/com.synthesis.sessions-export.plist`, which
+runs the installed `synthesis sessions export --all` and then `synthesis sessions sync` every hour and at login,
+through a login shell so git finds the person's credentials. It writes `/tmp/com.synthesis.sessions-export.log`.
+An older schedule under that label is unloaded first; `--no-launchctl` writes the file without loading it.
+`synthesis doctor` then checks that the schedule is loaded and that an export finished within a day. Uninstall
+unloads and removes only a schedule that runs this install's command. Without it, transcripts are copied only
+when a session runs resume, handoff or a ritual.
 
 ## First config
 

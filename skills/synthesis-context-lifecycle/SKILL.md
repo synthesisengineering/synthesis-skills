@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "2.2.1"
+  version: "2.3.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
   format: v5
@@ -31,7 +31,7 @@ AI collaborators start every session with zero context; their effectiveness depe
 12. **Same Mac: the files are the handoff. Another Mac: `synthesis handoff`.** Never a workspace-wide commit; never bypass hooks.
 13. **A doctor that cannot tell exits 2, never 0.**
 14. **Transcripts are the evidence beneath the records.** `synthesis sessions export` keeps every harness's sessions in one form, outside project folders, and `synthesis sessions sync` copies each workspace's conversation to its own sessions repo at handoff and day-end. Never paste the conversation into a record. `synthesis resume` shows the project's latest prompts and replies from any harness.
-15. **A session-log entry cites the record behind each decision or quote** as `<harness> <session8> #<seq>`; `synthesis sessions show <session8> --seq <n>` opens it.
+15. **A session-log entry cites the record behind each decision or quote** as `<harness> <session8> #<seq>`; `synthesis sessions show <session8> --seq <n>` opens it. An entry also cites the principal's prompts it covers, as a range (`#<first>-<last>`), so `synthesis sessions prompts --records <folder>` lists none of them as reaching no record.
 
 ## Contents
 
