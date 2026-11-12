@@ -381,16 +381,15 @@ def parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
-    if "wait" in argv:  # its own options, and a command after `--`
+    split = next((i for i, w in enumerate(argv) if not w.startswith("-") and argv[i - 1:i] != ["--session"]), len(argv))
+    name = "".join(argv[split:split + 1])  # the command is the first word that is no option of the CLI's own, not a word of a message
+    if name == "wait":  # its own options, and a command after `--`
         from synthesis import wait
-        split = argv.index("wait")
         return wait.main(argv[split + 1:], _session(parser().parse_args(argv[:split] + ["wait"])))
-    for name, fn in (("worktree", cmd_worktree), ("doctor", cmd_doctor)):
-        if name in argv:  # hand everything after it to that command's own parser untouched
-            split = argv.index(name)
-            args = parser().parse_args(argv[:split] + [name])
-            args.rest = argv[split + 1:]
-            return fn(args)
+    if name in ("worktree", "doctor"):  # hand everything after it to that command's own parser untouched
+        args = parser().parse_args(argv[:split] + [name])
+        args.rest = argv[split + 1:]
+        return {"worktree": cmd_worktree, "doctor": cmd_doctor}[name](args)
     args = parser().parse_args(argv)
     return args.fn(args)
 
