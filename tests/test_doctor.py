@@ -1073,3 +1073,28 @@ def test_the_hourly_export_fails_while_a_transcript_it_tried_is_not_copied(tmp_p
     plist.unlink()                       # with no schedule a session's own export still failed: a failure, not a warning
     found = doctor.check_sessions_export(plist, stamp, now, loaded)
     assert found.status == "fail" and "1 transcript(s) could not be copied" in found.detail
+
+
+def test_the_hourly_export_names_a_transcript_that_is_gone_and_who_clears_it(tmp_path):
+    """2026-11-12: a transcript the harness removed after its copy failed was forgotten by the next run, and this check
+    answered ok. The stamp keeps its name; a run cannot copy it any more, so only the principal clears it."""
+    plist, stamp = tmp_path / "com.synthesis.sessions-export.plist", tmp_path / "export.json"
+    plist.write_text("<plist/>", encoding="utf-8")
+    loaded = lambda argv, **kw: subprocess.CompletedProcess(argv, 0, "", "")           # noqa: E731
+    from datetime import datetime
+    now = datetime.fromisoformat("2026-11-12T09:00:00-05:00").timestamp()
+    refused = f"codex 01a1: not exported ([Errno 13] Permission denied: '{Path.home()}/x.jsonl')"
+    there = {"native": f"{Path.home()}/y.jsonl", "at": "2026-11-12T08:20:00-05:00", "reason": refused.replace("01a1", "01a2")}
+    gone = {"native": f"{Path.home()}/x.jsonl", "at": "2026-11-10T07:15:00-05:00", "reason": refused, "gone": "2026-11-12T08:20:00-05:00"}
+    stamp.write_text(json.dumps({"exported": "2026-11-12T08:20:00-05:00", "failed": 2, "reason": refused,
+                                 "uncopied": {"codex 01a1": gone, "codex 01a2": there}}), encoding="utf-8")
+    found = doctor.check_sessions_export(plist, stamp, now, loaded)
+    assert found.status == "fail" and "2 transcript(s) could not be copied" in found.detail
+    assert "codex 01a1 (its copy last failed 2026-11-10T07:15)" in found.detail and "codex 01a2 (its" not in found.detail
+    assert "`synthesis sessions export --lost <session>`" in found.detail and "principal" in found.detail
+    assert "run `synthesis sessions export --all`" in found.detail          # the other may yet be copied
+    stamp.write_text(json.dumps({"exported": "2026-11-12T08:20:00-05:00", "failed": 1, "reason": refused,
+                                 "uncopied": {"codex 01a1": gone}}), encoding="utf-8")
+    found = doctor.check_sessions_export(plist, stamp, now, loaded)
+    assert found.status == "fail" and "codex 01a1 (its copy last failed 2026-11-10T07:15)" in found.detail
+    assert "export --all" not in found.detail and "export --lost" in found.detail      # no run can copy it now

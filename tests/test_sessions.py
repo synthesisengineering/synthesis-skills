@@ -486,18 +486,23 @@ def test_sync_takes_the_same_writer_lock_as_export(synced):
 
 def test_a_sync_whose_export_could_not_copy_a_transcript_leaves_that_in_the_stamp(synced):
     """Handoff and the day-end copy through `sync`, which exports first (2026-11-12: a copy that export could not make
-    was in no report and no stamp, so nothing said a conversation had stayed behind)."""
+    was in no report and no stamp, so nothing said a conversation had stayed behind). The failure is over when the
+    transcript is copied, by whichever run copies it, and not before."""
     native = _jsonl(synced["claude"], _claude_rows(synced["work"]))
+    stamp, written = sessions.root() / ".state" / "export.json", native.stat().st_mtime
     native.chmod(0o000)
     try:
         sessions.sync(push=False)
-        kept = json.loads((sessions.root() / ".state" / "export.json").read_text())
+        kept = json.loads(stamp.read_text())
         assert kept["failed"] == 1 and "claude-code c1: not exported" in kept["reason"] and "complete" not in kept
     finally:
         native.chmod(0o644)
-    sessions.sync(push=False)                                    # the two days a sync reads: the failure stands
-    assert json.loads((sessions.root() / ".state" / "export.json").read_text())["failed"] == 1
-    assert sessions.export(0) == [] and "failed" not in json.loads((sessions.root() / ".state" / "export.json").read_text())
+    os.utime(native, (written - 3 * 86400, written - 3 * 86400))
+    sessions.sync(push=False)                                    # the two days a sync reads do not reach it: the failure stands
+    assert json.loads(stamp.read_text())["failed"] == 1
+    os.utime(native, (written, written))
+    sessions.sync(push=False)                                    # within them, the sync's own export copies it,
+    assert "failed" not in json.loads(stamp.read_text()) and sessions.export(0) == []      # and nothing is left to copy
 
 
 def test_masking_covers_the_principals_tier_0_list_as_the_commit_check_loads_it(harness, monkeypatch):
@@ -937,6 +942,101 @@ def test_a_run_that_could_not_copy_a_transcript_stays_visible_until_a_run_copies
     finally:
         for native in natives:
             native.chmod(0o644)
+
+
+def _checked(tmp_path) -> tuple:
+    """The doctor's answer about the export where its schedule is loaded: the status, the words, the stamp it read."""
+    from synthesis import doctor
+    stamp, plist = sessions.root() / ".state" / "export.json", tmp_path / "com.synthesis.sessions-export.plist"
+    plist.write_text("<plist/>", encoding="utf-8")
+    found = doctor.check_sessions_export(plist, stamp, run=lambda argv, **kw: subprocess.CompletedProcess(argv, 0, "", ""))
+    return found.status, found.detail, json.loads(stamp.read_text())
+
+
+def test_a_transcript_removed_before_it_was_copied_stays_named_until_the_principal_clears_it(principal, harness, tmp_path, capsys):
+    """2026-11-12, a second review: a copy failed, the harness then removed the transcript, and the next run of
+    everything found nothing to copy, erased the failure and stamped complete. The doctor answered ok for a
+    conversation that was never copied."""
+    _, gone = [_jsonl(harness["claude"].with_name(f"{name}.jsonl"), _claude_rows(harness["work"])) for name in ("c1", "c2")]
+    gone.chmod(0o000)
+    try:
+        sessions.export(0)
+    finally:
+        gone.chmod(0o644)
+    status, _, first = _checked(tmp_path)
+    assert status == "fail" and first["failed"] == 1
+    gone.unlink()                                                                                     # the harness removes it
+    report = sessions.export(0)
+    status, detail, stamp = _checked(tmp_path)
+    assert status == "fail" and stamp["failed"] == 1 and "complete" not in stamp                      # never copied, and still said
+    named, when = stamp["uncopied"], first["uncopied"]["claude-code c2"]["at"]
+    assert list(named) == ["claude-code c2"] and named["claude-code c2"]["native"] == str(gone)       # which transcript,
+    assert named["claude-code c2"]["at"] == when and re.fullmatch(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d[+-]\d\d:\d\d", when)   # when its copy last failed,
+    assert named["claude-code c2"]["gone"] >= when                                                    # and when a run first found it gone
+    assert [line for line in report if line.startswith("claude-code c2: ") and when[:16] in line and "--lost c2" in line]
+    assert "claude-code c2 (its copy last failed " + when[:16] in detail and "export --lost" in detail and "principal" in detail
+    for again in (lambda: sessions.export(2), lambda: sessions.export(0, only="c1"), lambda: sessions.export(0)):
+        again()                                                                                       # whichever run comes next
+        assert _checked(tmp_path)[0] == "fail" and _checked(tmp_path)[2]["uncopied"]["claude-code c2"]["at"] == when
+    clear = ["sessions", "export", "--lost", "c2"]
+    assert cli.main(["sessions", "export", "--lost", "c9"]) == 1 and "claude-code c2" in capsys.readouterr().err   # it says what is recorded
+    assert cli.main(clear) == 2                                                                       # an agent cannot call it lost:
+    refused = capsys.readouterr().err
+    assert "type approve" in refused and _checked(tmp_path)[0] == "fail"
+    principal(refused)                                                                                # the principal can
+    assert cli.main(clear) == 0
+    assert "claude-code c2" in capsys.readouterr().out
+    status, detail, stamp = _checked(tmp_path)
+    assert status == "ok" and not {"failed", "reason", "uncopied"} & set(stamp)
+    lost = [json.loads(line) for line in (sessions.root() / ".state" / "lost.jsonl").read_text(encoding="utf-8").splitlines()]
+    assert [(row["transcript"], row["native"], row["at"]) for row in lost] == [("claude-code c2", str(gone), when)] and lost[0]["cleared"]
+    assert cli.main(clear) == 1 and "c2" in capsys.readouterr().err                                   # and nothing is left to clear
+    assert sessions.export(0) is not None and _checked(tmp_path)[2]["complete"]                       # the next run copies everything there is
+
+
+def test_only_a_transcript_that_is_gone_is_lost(principal, harness, tmp_path, monkeypatch, capsys):
+    """A copy that failed is a loss only once no run can make it. A transcript still there is not cleared; a run that
+    does not look where it is does not call it gone; one the harness moved is copied from where it is; and a
+    rebuild forgets neither what is not copied nor what was lost."""
+    thread = "01a18a2b-0000-7000-8000-000000000001"
+    codex = _jsonl(Path(os.environ["CODEX_HOME"]) / "sessions" / "2026" / "10" / "30" / f"rollout-2026-10-30T10-00-00-{thread}.jsonl", [
+        {"type": "session_meta", "timestamp": "2026-10-30T10:00:00Z", "payload": {"id": "x", "cwd": harness["work"]}},
+        {"type": "response_item", "timestamp": "2026-10-30T10:00:02Z", "payload": {
+            "type": "message", "role": "user", "content": [{"type": "input_text", "text": "Fix the build."}]}}])
+    one, two = [_jsonl(harness["claude"].with_name(f"{name}.jsonl"), _claude_rows(harness["work"])) for name in ("c1", "c2")]
+    for native in (codex, one, two):
+        native.chmod(0o000)
+    try:
+        sessions.export(0)
+        assert sorted(_checked(tmp_path)[2]["uncopied"]) == ["claude-code c1", "claude-code c2", f"codex {thread}"]
+        for name, native in (("c1", one), (thread, codex)):                    # still there, so not lost: a run may yet copy it
+            assert cli.main(["sessions", "export", "--lost", name]) == 1
+            assert "is not lost" in capsys.readouterr().err and len(_checked(tmp_path)[2]["uncopied"]) == 3
+        with monkeypatch.context() as away:                                    # a run that looks somewhere else finds none of them,
+            away.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "away"))
+            away.setenv("CODEX_HOME", str(tmp_path / "away"))
+            assert sessions.export(0) == []
+        named = _checked(tmp_path)[2]["uncopied"]
+        assert len(named) == 3 and not any("gone" in entry for entry in named.values())   # and calls none of them gone
+    finally:
+        for native in (codex, one, two):
+            native.chmod(0o644)
+    archived = codex.parents[4] / "archived_sessions" / codex.name            # Codex archives the session: the same transcript, elsewhere
+    archived.parent.mkdir(parents=True)
+    codex.rename(archived)
+    assert cli.main(["sessions", "export", "--lost", thread]) == 1 and str(archived) in capsys.readouterr().err
+    one.unlink()
+    two.unlink()                                                               # the other two are removed, and the principal clears one
+    assert cli.main(["sessions", "export", "--lost", "c2"]) == 2
+    principal(capsys.readouterr().err)
+    assert cli.main(["sessions", "export", "--lost", "c2"]) == 0
+    report = sessions.export(rebuild=True)                                     # a rebuild reads everything again
+    status, detail, stamp = _checked(tmp_path)
+    assert f"codex {thread}: 2 record(s)" in report                            # the moved one is copied,
+    assert list(stamp["uncopied"]) == ["claude-code c1"] and stamp["uncopied"]["claude-code c1"]["gone"]     # the removed one is still named,
+    assert status == "fail" and "claude-code c1 (its copy last failed" in detail
+    lost = (sessions.root() / ".state" / "lost.jsonl").read_text(encoding="utf-8").splitlines()
+    assert [json.loads(line)["transcript"] for line in lost] == ["claude-code c2"]                              # and the cleared one still on record
 
 
 def test_a_run_started_by_a_command_line_is_briefed_not_prompted(harness):
