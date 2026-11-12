@@ -265,6 +265,89 @@ def test_a_wait_that_is_told_to_end_stops_the_try_it_is_running(two, pids):
     assert wait.live("S1") == []
 
 
+# --- what comes after the bound is not the event -------------------------------------------------------------------
+
+@pytest.fixture
+def clock(monkeypatch):
+    """A clock the test moves. A sleep ends two hundredths of a second late, as real sleeps end late, and what the
+    test has set for a moment inside one happens at that moment."""
+    class Clock:
+        late = 0.02
+
+        def __init__(self):
+            self.now, self.due = time.time(), []
+
+        def after(self, seconds, happen):
+            self.due.append((self.now + seconds, happen))
+
+        def sleep(self, seconds):
+            ends = self.now + seconds + self.late
+            for moment, happen in sorted(self.due, key=lambda due: due[0]):
+                if moment <= ends:
+                    self.due.remove((moment, happen))
+                    self.now = max(self.now, moment)
+                    happen()
+            self.now = ends
+    moved = Clock()
+    monkeypatch.setattr(time, "time", lambda: moved.now)
+    monkeypatch.setattr(time, "sleep", moved.sleep)
+    return moved
+
+
+@pytest.mark.parametrize("bound, every, arrives", [
+    ("1s", "2s", 1.01),                                                               # the review's input
+    ("30m", "2s", 1800.01),                                                           # a wait of half an hour
+    ("45s", "5m", 45.01),                                                             # one that looks less often than its bound is long
+])
+def test_a_message_that_arrives_after_the_bound_is_not_the_event(two, clock, capsys, bound, every, arrives):
+    """2026-11-12, a second review: mail that arrived 1.01 seconds into a wait of one second ended the wait with 0 and
+    was reported as arrived. The wait looked once more after its bound and counted what that look found."""
+    from synthesis import wait
+    clock.after(arrives, lambda: board.message("S1", "S2", "the review is in"))
+    assert wait.main(["message", "--for", bound, "--every", every], "S1") == 3
+    said = capsys.readouterr()
+    assert said.out == "" and "nothing arrived in" in said.err and "still waiting for a message" in said.err
+    assert wait.live("S1") == [] and len(board.inbox("S1", "alpha")) == 1             # it came, too late: unread, and the next wait finds it at once
+    assert wait.main(["message", "--for", bound, "--every", every], "S1") == 0 and "(1 unread)" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("there", [False, True], ids=["appears", "changes"])
+def test_a_file_that_appears_or_changes_after_the_bound_is_not_the_event(two, clock, capsys, tmp_path, there):
+    from synthesis import wait
+    target = tmp_path / "result.json"
+    if there:
+        target.write_text("{}", encoding="utf-8")
+
+    def written():
+        target.write_text('{"done": true}', encoding="utf-8")
+        os.utime(target, (time.time() + 5, time.time() + 5))                          # a later time, whatever the file system's grain
+    clock.after(1.01, written)
+    assert wait.main(["file", str(target), "--for", "1s"], "S1") == 3
+    said = capsys.readouterr()
+    assert said.out == "" and "nothing arrived in 1 s: still waiting for the file" in said.err
+    assert target.read_text(encoding="utf-8") == '{"done": true}' and wait.live("S1") == []   # it was written, after the bound
+
+
+def test_a_look_that_ends_after_the_bound_finds_nothing_in_time(two, clock, capsys):
+    """The review ran the loop itself on a clock of its own: what turned up at 1.01 seconds of a bound of one second
+    was the event. A look that begins inside the bound and ends after it has not found it in time either."""
+    from synthesis import wait
+
+    def watch(ready):
+        began = clock.now
+        return wait._watch("S1", "a message", began + 1, 1, 2, lambda: ready(began))
+    assert watch(lambda began: "it is here" if clock.now - began >= 1.01 else "") == 3
+    clock.late = 0                                                                    # now sleeps end on time, and a look takes 0.03 s
+
+    def slow(began):
+        clock.now += 0.03
+        return "it is here" if clock.now - began >= 1.01 else ""
+    assert watch(slow) == 3
+    said = capsys.readouterr()
+    assert said.out == "" and said.err.count("nothing arrived in 1 s: still waiting for a message") == 2
+    assert wait.live("S1") == []
+
+
 def test_a_note_records_a_wait_the_harness_holds_and_the_list_shows_every_sessions(two):
     from synthesis import wait
     made = cli("wait", "note", "the CI run on the release branch", "--by", "a background task that exits when CI ends", "--for", "2h")
