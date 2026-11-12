@@ -2227,8 +2227,8 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
     # variable was refused for a transcript's path in another).
     env, keyed = env or {}, set()
 
-    def home(path: str) -> str:  # `~` as the command's own HOME gives it, else as the hook's
-        mine = env.get("HOME", "")
+    def home(path: str) -> str:  # `~` as the program's own HOME gives it, else the command's, else the hook's
+        mine = ([spelled(v) for k, v in mapped.get("environ", ()) if k == "HOME"] or [env.get("HOME", "")])[-1]
         return mine + path[1:] if mine and not re.search(r"[$`]", mine) and (path == "~" or path[:2] == "~/") else os.path.expanduser(path)
     for n in nodes:
         holder = n.value if isinstance(n, ast.Subscript) else n.func.value if isinstance(n, ast.Call) and getattr(n.func, "attr", "") == "get" else None
