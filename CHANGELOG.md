@@ -52,7 +52,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
     on one morning is judged against the next night. An all-day commitment at a place the next morning gives no
     hour, so both checks say the night cannot be judged and neither calls it enough; an all-day block the
     principal marked as their own, or one that says it is busy, takes its whole day; and of several events at a
-    slot's own hours one is the slot and the rest are other events.
+    slot's own hours one is the slot and the rest are other events. The night before an all-day commitment at
+    the principal's own office is unjudged too, a trip back that runs into a day blocked whole is no clear trip,
+    and the agent's own hold kept all day is still a hold.
   - Chief of staff binding rule 14 and `references/asks-and-decisions.md`: every invitation, request or choice
     carries what it costs, a recommendation, and a plain challenge when the costs outweigh the event.
   - `ritual_state.py record` reads the day's plan in each declared plan folder and refuses while an open item that
@@ -67,7 +69,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
     `My recommendation:`, with a dash, or marked on the option; a sentence that begins "Option A was fine" is no
     option; and a closing line closes a choice when it says what was decided. Each deeper heading or bold title
     begins its own choice whatever its options are lettered, a recommendation or a decision that only puts the
-    answer off ("pending", "undecided", "not yet") is none, and a pin or a tick before the label does not hide it. **This applies to every workspace that declares plan
+    answer off ("pending", "undecided", "not yet") is none, a pin or a tick before the label does not hide it, and
+    a fenced example that begins a list entry is an example (the deadline sweep reads such a fence the same way). **This applies to every workspace that declares plan
     folders,** from its next ritual record.
   - The decision packet generator refuses a row that is not blind and recommends nothing. Until now one
     recommended row covered for rows with none.
@@ -85,8 +88,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
 - **The write guard reads a path however a command names it, passes a protected path only to a program it knows
   to only read it, and reads an inline Python program by its syntax** (core). It began as two faults: a write
   through a variable the command had just assigned was judged as a write somewhere else, and the file tools were
-  refused in a project's memory folder. Eleven rounds of review by a second model, and this project's own probes
-  (more than 2,000 plain commands and programs) and replays while answering them, showed the guard was narrower
+  refused in a project's memory folder. Twelve rounds of review by a second model, and this project's own probes
+  (more than 2,100 plain commands and programs) and replays while answering them, showed the guard was narrower
   than what it guards against in four ways.
   - **How a path is read.** Every write in a command is resolved and judged, whether or not the command spells a
     protected folder out: relative to the session's folder, to a `cd` (`cd -`, `pushd` and `popd` are followed) or
@@ -158,7 +161,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
     writes let through: a class that inherits its `__init__`, a field set through `__dict__`, a table reached
     under a second name, a home set before it is asked for. A third pass found one more that had been there since
     the tenth round: a function that gives its own name another value in a branch and hands it back was read by
-    the caller's value alone.) A target the reader cannot read is judged by what it is built from, a
+    the caller's value alone. The twelfth round found one write the member model itself had let through (a table
+    made from pairs, `dict([("out", path)])`, was read as holding nothing, and nothing is no target) and eight
+    kinds of everyday program refused: a mode kept in a name, a factory called once for the transcript and once
+    for the file elsewhere, an inherited data-class field, a table filled from literal rows, a union of two
+    tables, the environment given a value through `update`, a template kept in a name. Each is fixed with a test
+    that failed first. No round was clean; the release goes out on the principal's ruling that every finding is
+    fixed and nothing measured got worse, with review continuing after it.) A target the reader cannot read is judged by what it is built from, a
     name followed through assignments, loops, `with`, defaults, the program's own functions, lists, attributes, a
     class's fields, a parser's defaults and the environment the program sets. The words after the program are placed where it reads
     `sys.argv[n]`, and a variable of the environment where it reads it by name; taken another way, one that names

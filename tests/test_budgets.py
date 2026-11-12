@@ -617,10 +617,20 @@ ROOT = Path(__file__).resolve().parents[1]
 # ritual_state.py 12: _items 9 (a heading or a bold title after a choice's options begins another; a sentence
 # between a title and its options), OPEN 2 (a recommendation or a decision that only puts the answer off), LED 1
 # (a line led by a pictograph).
+# The twelfth review round adds 56, 52 of them in guards.py (the principal's ruling of 2026-11-12: fix its twelve
+# findings with tests first, show nothing got worse, and release). In _python_writes: census 37, less 13 from the
+# body and 3 from keep, which it takes in (what each thing is given is gathered until it settles: rows added to a
+# list and then copied into a table were missed in one pass), inlined 12 (what a function hands back, written with
+# what this call hands it, so a factory called twice makes two objects), rowed 9 (a table filled from rows keeps
+# each row's key with its value), part 4 (a table made from pairs or from another table; the round's one write
+# let through), follow 3 (a union of two tables), spelled 2 (a template kept in a name), built 1 (a default made
+# by a function written in place). slot_check.py 1 and travel_check.py 2 (an all-day hold; a trip into a day
+# blocked whole; an all-day commitment at the principal's own place), decay_sweep.py 1 (a fence on a list mark's
+# line).
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # consolidate first).
-CORE_BUDGET = 10563
-PLUGIN_BUDGET = 31043
+CORE_BUDGET = 10615
+PLUGIN_BUDGET = 31099
 
 
 def _lines(files):

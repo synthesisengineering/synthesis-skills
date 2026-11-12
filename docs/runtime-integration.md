@@ -282,16 +282,21 @@ harness that gives no transcript cannot carry approved sends or deploys until it
      `cfg["out"]`, `cfg.get("out", x)`, `rows[0]`, `os.environ["OUT"]`, `Path.home()`) is
      read by the thing that holds it. Each object, table and list the program makes is
      one thing, known by the place that makes it, however many names it is kept under
-     and whatever it is handed to. It holds what it was made with: a table's entries (by
-     a key, by a key held in a name, any of them when the key cannot be read), a list's
-     places, what the `__init__` that runs gives each field from what that call hands it
+     and whatever it is handed to; what a function of the program's own hands back is
+     read with what that call hands it, so a factory called for a transcript and for a
+     file elsewhere makes two objects. It holds what it was made with: a table's entries (by
+     a key, by a key held in a name, any of them when the key cannot be read; a table
+     made from pairs, from another table or from a union holds what those hold, and one
+     made from rows that cannot be read may hold anything), a list's places, what the `__init__` that runs gives each field from what that call hands it
      (a class without one of its own is built by the one it inherits, and a base's is
      followed through `super().__init__`), a data class's or a named tuple's field by
      place or by name, the class's constants and properties, a parser's defaults, and for
      a class that keeps its keywords as its fields (`self.__dict__.update(kw)` in its
      `__init__`) the keywords it is built with. And it
      holds whatever any statement gives it afterwards (`x.out = v`, `d["k"] = v`,
-     `update`, `append`, `setattr`), through any name it is reached by; what is given
+     `update`, `append`, `setattr`), through any name it is reached by, and a table
+     filled from literal rows (`for key, value in rows: cfg[key] = value`) keeps each
+     row's value under that row's key; what is given
      through a name that cannot be followed may be in any of them, and a thing whose
      maker cannot be read (`json.load(f)`) holds only what the program gives it. Along
      one path from one name, in statements that run once and in order, the last plain
