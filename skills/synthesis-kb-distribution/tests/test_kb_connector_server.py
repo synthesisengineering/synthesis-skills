@@ -603,3 +603,15 @@ def test_main_warns_at_every_start_that_the_memory_store_signs_everyone_out(publ
     caplog.clear()
     assert server.main({**env, "KB_OAUTH_STORE": "firestore", "KB_STORAGE_ENCRYPTION_KEY": "A" * 43 + "="}) == 0
     assert len(served) == 4 and not [message for message in caplog.messages if "KB_OAUTH_STORE" in message]
+
+
+def test_no_log_level_hides_the_test_only_line(published, monkeypatch, caplog):
+    env = {"KB_SOURCE_DIR": str(published), "KB_PUBLIC_URL": "http://localhost:8080", "KB_GOOGLE_CLIENT_ID": CLIENT_ID,
+           "KB_GOOGLE_CLIENT_SECRET": "test-secret", "KB_ALLOWED_EMAILS": "lead@example.com", "KB_REFRESH_SECONDS": "0",
+           **OPERATOR}
+    monkeypatch.setattr(server.FastMCP, "run", lambda self, **kwargs: None)
+    caplog.set_level(logging.ERROR, logger="kb_connector")  # what KB_LOG_LEVEL=ERROR does to the connector's own lines
+    assert server.main(env) == 0
+    (line,) = [record for record in caplog.records if record.getMessage().startswith("TEST ONLY")]
+    assert line.levelno == logging.ERROR and "must not be given to anyone" in line.getMessage()
+    assert not [message for message in caplog.messages if "KB_OAUTH_STORE=memory" in message]  # an ordinary warning
