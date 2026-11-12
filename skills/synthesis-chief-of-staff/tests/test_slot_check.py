@@ -391,3 +391,65 @@ def test_only_2400_ends_a_day(tmp_path):
     late = {**CONFIG, "protected_hours": [{"start": "21:00", "end": "24:30"}]}
     code, got = check(tmp_path, "14:00", "14:30", QUIET_DAY, "--attendee", "a@example.com", config=late)
     assert code == 2 and "24:30" in got and "HH:MM" in got
+
+
+# --- the tenth review (2026-11-12), each as a test that failed first ------------------------------------------
+
+def test_a_block_that_began_the_day_before_is_still_taken_time(tmp_path):
+    """The tenth review: a personal block from 23:00 the night before to 11:00 was left out of the day it ran into,
+    so a trip through it read as clear and the morning as free; a return trip that ran into the next day's first
+    entry met nothing either. Every check now reads each event for the time it covers."""
+    night = {"start": "2026-11-11T23:00", "end": f"{THURSDAY}T11:00", "summary": "Sleep #reserved", "attendees": []}
+    code, report = check(tmp_path, "10:00", "10:30", [night], "--in-person", "--travel-before", "30", "--travel-after", "30", config=OWN)
+    assert code == 1 and levels(report)["travel"] == "REFUSE" and "overlaps Sleep #reserved" in detail(report, "travel")
+    assert levels(report)["placement"] == "REVIEW" and "overlaps Sleep #reserved (23:00-11:00)" in detail(report, "placement")
+    assert "first 11:00-17:00" in detail(report, "deep work"), detail(report, "deep work")       # the morning is not free
+    code, report = check(tmp_path, "13:00", "13:30", [night], config=OWN)                        # clear of it: the block ends at 11:00
+    assert "overlaps" not in detail(report, "placement") and "0.50 hours" in detail(report, "meeting load")
+    pickup = [meeting("2026-11-13", "00:30", "01:30", "Airport pickup")]
+    code, report = check(tmp_path, "21:00", "23:30", pickup, "--in-person", "--travel-before", "30", "--travel-after", "75", config=OWN)
+    assert levels(report)["travel"] == "REFUSE" and "the trip back (23:30-00:45) overlaps Airport pickup" in detail(report, "travel")
+
+
+def test_a_meeting_that_runs_over_midnight_counts_for_the_hours_it_takes_of_each_day(tmp_path):
+    release = [{"start": "2026-11-11T22:00", "end": f"{THURSDAY}T02:00", "summary": "Release night", "attendees": ["a@example.com"]}]
+    code, report = check(tmp_path, "13:30", "14:00", release, "--attendee", "c@example.com", config=OWN)
+    assert "2.50 hours" in detail(report, "meeting load"), detail(report, "meeting load")        # two of its four hours, and this half hour
+
+
+def test_a_slot_on_top_of_another_event_says_so(tmp_path):
+    code, report = check(tmp_path, "13:15", "13:45", QUIET_DAY)
+    assert levels(report)["placement"] == "REVIEW" and "overlaps Staff meeting (13:00-14:00)" in detail(report, "placement")
+    code, report = check(tmp_path, "13:00", "14:00", QUIET_DAY)                                 # the event's own hour is that event, checked again
+    assert "overlaps" not in detail(report, "placement")
+    code, report = check(tmp_path, "14:00", "14:30", QUIET_DAY)                                 # beside it is beside it
+    assert levels(report)["placement"] == "OK" and "beside Staff meeting" in detail(report, "placement")
+
+
+def test_a_commitment_already_begun_when_the_principal_gets_home_leaves_no_night(tmp_path):
+    """The tenth review: a 07:00 commitment the morning after, with the return ending at 07:30, was left out
+    because it had begun before the return, and the night read as whole."""
+    rested = {**CONFIG, "travel_policy": {"sleep_hours": 8}}
+    early = [meeting("2026-11-13", "07:00", "08:00", "Training session")]
+    code, report = check(tmp_path, "19:00", "21:00", early, "--in-person", "--travel-before", "30", "--travel-after", "630", config=rested)
+    said = detail(report, "sleep")                                                               # home at 07:30 the next day
+    assert levels(report)["sleep"] == "REVIEW" and '"Training session" began at 07:00 before the return' in said and "no night" in said, said
+    code, report = check(tmp_path, "19:00", "21:00", [meeting(THURSDAY, "17:00", "18:00", "Review")], "--in-person",
+                         "--travel-before", "30", "--travel-after", "630", config=rested)        # what ended before the outing began is no part of it
+    assert "Review" not in detail(report, "sleep")
+    again = [meeting(THURSDAY, "19:00", "21:00", "Dinner")]                                      # the slot itself, already on the calendar
+    code, report = check(tmp_path, "19:00", "21:00", again, "--in-person", "--travel-before", "30", "--travel-after", "45", config=rested)
+    assert levels(report)["sleep"] == "OK", detail(report, "sleep")
+
+
+def test_an_outing_in_the_morning_is_not_a_night_out(tmp_path):
+    """Found by this project's own probe after the tenth review: with no hour given for the morning, a breakfast
+    across town and a meeting an hour after it read as a night of one hour. An outing that begins and ends on one
+    morning comes after the night, and the night it is judged against is the next one."""
+    rested = {**CONFIG, "protected_hours": [], "working_hours": {"start": "07:00", "end": "17:00"}, "travel_policy": {"sleep_hours": 8}}
+    day = [meeting(THURSDAY, "09:30", "10:00", "Standup"), meeting("2026-11-13", "09:00", "10:00", "Planning")]
+    code, report = check(tmp_path, "07:30", "08:30", day, "--in-person", "--travel-before", "30", "--travel-after", "30", config=rested)
+    assert levels(report)["sleep"] == "OK", detail(report, "sleep")
+    code, report = check(tmp_path, "07:30", "08:30", day[:1], "--in-person", "--travel-before", "30", "--travel-after", "30",
+                         config=rested, window=("2026-11-10", THURSDAY))                         # and the read must reach that next morning
+    assert levels(report)["sleep"] == "NOTE" and "2026-11-13" in detail(report, "sleep"), detail(report, "sleep")

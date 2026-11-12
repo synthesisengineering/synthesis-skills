@@ -270,3 +270,51 @@ def test_a_comment_is_not_shown_and_underscores_mark_emphasis_too(tmp_path, reco
     underscored = INVITATION + "__Consequences:__ Three hours and $30.\n_Recommendation:_ B, decline: the trip outweighs it.\n"
     code, out, refusal = record(workspace(tmp_path, underscored))
     assert code == 0 and "choices: 1 open" in out, refusal
+
+
+# --- the tenth review (2026-11-12), each as a test that failed first ----------------------------------------
+
+def test_underscores_mark_a_label_a_placeholder_and_a_field_of_the_title(tmp_path, record):
+    """The tenth review: `__Option A__` was no option, `_TBD_` was a recommendation, and `__Recommendation:__ B`
+    on a title line was none."""
+    under = "### Dinner on Thursday\n__Option A__ - Accept\n__Option B__ - Decline\n"
+    code, _, refusal = record(workspace(tmp_path, under))
+    assert code != 0 and "Dinner on Thursday" in refusal and "recommendation" in refusal
+    for empty in ("_TBD_", "__tbd__", "*TBD*", "_none_."):
+        code, _, refusal = record(workspace(tmp_path, INVITATION + COSTS + f"**Recommendation:** {empty}\n"))
+        assert code != 0 and "recommendation" in refusal, empty
+    titled = "### Dinner with the board — __Recommendation:__ B, decline\n**Option A:** Accept\n**Option B:** Decline\n" + COSTS
+    code, out, refusal = record(workspace(tmp_path, titled))
+    assert code == 0 and "choices: 1 open" in out, refusal
+
+
+def test_a_quote_inside_a_list_entry_and_an_explanation_above_the_options(tmp_path, record):
+    """The tenth review: options quoted inside a list entry (`- > **Option A:**`) were not read, and a closed list
+    entry with a sentence between its title and its options became an open choice titled by the section."""
+    quoted = "### Dinner on Thursday\n- > **Option A:** Accept\n- > **Option B:** Decline\n"
+    code, _, refusal = record(workspace(tmp_path, quoted))
+    assert code != 0 and "Dinner on Thursday" in refusal
+    closed = ("1. **[x] Dinner with the board**\n   It was answered last week; the options stay for the record.\n"
+              "   **Option A:** Accept\n   **Option B:** Decline\n")
+    code, out, refusal = record(workspace(tmp_path, closed))
+    assert code == 0 and "choices: 0 open" in out, refusal
+    code, _, refusal = record(workspace(tmp_path, closed.replace("[x] ", "")))
+    assert code != 0 and "Dinner with the board" in refusal and "Decisions needed" not in refusal   # named by its entry, not by the section
+    spaced = closed.replace("record.\n", "record.\n\n   A second paragraph of it.\n\n")
+    code, out, refusal = record(workspace(tmp_path, spaced))
+    assert code == 0 and "choices: 0 open" in out, refusal
+
+
+def test_a_longer_fence_holds_a_shorter_one(tmp_path, record):
+    """The tenth review: three backticks inside a four-backtick fence closed it, and the options of the example
+    after them were read as a choice."""
+    for mark in ("`", "~"):
+        shown = (f"### How a choice is written\n\n{mark * 4}markdown\n{mark * 3}markdown\n**Option A:** Accept\n**Option B:** Decline\n"
+                 f"{mark * 3}\n{mark * 4}\n")
+        code, out, refusal = record(workspace(tmp_path, shown))
+        assert code == 0 and "choices: 0 open" in out, (mark, refusal)
+        code, _, refusal = record(workspace(tmp_path, shown + "\n" + INVITATION))             # after the closed fence the plan goes on
+        assert code != 0 and "book launch" in refusal, mark
+    opened = "### How a fence is opened\n\n```markdown\n```python\n**Option A:** Accept\n**Option B:** Decline\n```\n\n" + INVITATION
+    code, _, refusal = record(workspace(tmp_path, opened))                                    # a fence line with a word after it opens, never closes
+    assert code != 0 and "book launch" in refusal and "How a fence" not in refusal

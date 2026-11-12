@@ -494,3 +494,51 @@ def test_an_event_whose_title_only_begins_with_the_block_word_is_an_event(tmp_pa
     labeled = [RESOLVED, event("Travel planning for the evening", "17:05", "18:30", "", OUT), RETURNING]
     code, report = check(tmp_path, labeled)                                                   # one that carries a block's lines is a block
     assert code == 0 and report["in_person"] == 1, report
+
+
+# --- the tenth review (2026-11-12), each as a test that failed first ------------------------------------------
+
+def test_a_commitment_begun_before_the_return_ends_leaves_no_night(tmp_path):
+    """The tenth review: the return ended at 07:30 the next day, a commitment had begun at 07:00, and the check
+    said OK: an entry that began before the principal was home was not looked at."""
+    rested = {**CONFIG, "travel_policy": {**{k: v for k, v in POLICY.items() if k != "latest_return"}, "sleep_hours": 8}}
+    slow = dict(RETURNING, end="2026-11-12T07:30", description=BACK.replace("Arrive: 23:20", "Arrive: 07:30"))
+    early = event("Training session", "07:00", "08:00", "Office", day="2026-11-12")
+    code, report = check(tmp_path, [RESOLVED, GOING, slow, early], config=rested)
+    assert code == 1, report
+    night = next(item for item in lacks(report) if "home at 07:30" in item)
+    assert '"Training session" began at 07:00 before the return' in night and "no night" in night and "decision" in night, night
+    decided = dict(slow, description=slow["description"] + '\nDecision: "the first train home, and the session is on the way"')
+    assert check(tmp_path, [RESOLVED, GOING, decided, early], config=rested)[0] == 0
+    assert check(tmp_path, [RESOLVED, GOING, slow], config=rested)[0] == 0                    # its own way home is no commitment
+
+
+def test_a_mornings_outing_is_not_a_night_out(tmp_path):
+    """Found by this project's own probe after the tenth review: with no hour given for the morning, a breakfast
+    across town, home at 09:00 and a call at 09:30 read as a night of half an hour."""
+    rested = {**CONFIG, "travel_policy": {**POLICY, "sleep_hours": 8}}
+    day = "2026-11-12"
+    said = lambda text, leave, arrive: (text.replace("Book launch at the Grand Theatre", "Breakfast with the board")  # noqa: E731
+                                        .replace(text.split("Leave: ")[1][:5], leave).replace(text.split("Arrive: ")[1][:5], arrive))
+    outing = [event("Breakfast with the board", "07:30", "08:30", "Cafe Aroma, 5 Dock St, Harbor Town", "Travel: blocks before and after", day),
+              event("Travel: to breakfast", "06:40", "07:10", "", said(OUT, "06:40", "07:10"), day),
+              event("Travel: back from breakfast", "08:30", "09:00", "", said(BACK, "08:30", "09:00"), day),
+              event("Standup", "09:30", "10:00", "Zoom", day=day)]
+    code, report = check(tmp_path, outing, config=rested)
+    assert code == 0, report
+
+
+def test_an_entry_titled_like_a_block_with_no_clock_times_is_still_an_event(tmp_path):
+    """The tenth review: "Travel planning workshop" with no start, or all day, was passed over as a block: the
+    older test of a title's first word had been kept for entries without clock times."""
+    place = "Harbor Town (address on the invitation)"
+    code, report = check(tmp_path, [{"summary": "Travel planning workshop", "start": None, "end": None, "location": place}])
+    assert code == 2 and "Travel planning workshop" in report and "start" in report, report
+    all_day = {"summary": "Travel planning workshop", "start": {"date": "2026-11-13"}, "end": {"date": "2026-11-14"}, "location": place}
+    code, report = check(tmp_path, [all_day])
+    assert code == 1 and report["in_person"] == 1, report
+    missing = " | ".join(lacks(report, "Travel planning workshop"))
+    assert "exact address" in missing and "travel line" in missing
+    marker = {"summary": "Travel: to Lisbon", "start": {"date": "2026-11-13"}, "end": {"date": "2026-11-14"}, "location": "Lisbon"}
+    code, report = check(tmp_path, [marker])                                                  # a block with no clock times is still a block
+    assert code == 0 and report["in_person"] == 0, report
