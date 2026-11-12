@@ -158,5 +158,6 @@ def test_the_check_starts_on_the_day_the_workspace_names(tmp_path, record, monke
     asked = listing(tmp_path, monkeypatch, "claude-code d20ab7c4 #41")
     code, out, refusal = record(state)
     assert code == 0 and not asked.exists() and "prompts: checked from 2026-11-12" in out, refusal
+    listing(tmp_path, monkeypatch, "claude-code d20ab7c4 #41", day="2026-11-12")
     code, _, refusal = record(state, day="2026-11-12")
     assert code != 0 and "1 of 3" in refusal

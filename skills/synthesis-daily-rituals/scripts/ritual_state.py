@@ -12,8 +12,7 @@ so every view answers for one workspace, and an empty `--workspace ""` (an
 unset shell variable) is refused rather than read as "all workspaces".
 
     ritual_state.py record --direction day-end --workspace W --date YYYY-MM-DD \\
-        [--mode quick] [--outcome clean] [--session ID] [--pointer FILE] [--count sent=3] [--travel FILE] \\
-        [--prompts FILE]
+        [--mode quick] [--outcome clean] [--session ID] [--pointer FILE] [--count sent=3] [--travel FILE]
     ritual_state.py query summary|last|open|streak|weekly-review [--workspace W] [--json]
 
 `record` first reads the plan folders the workspace declares in the ritual config (`plans_dirs`,
@@ -27,10 +26,12 @@ that holds an in-person event without its travel, and the ritual is not recorded
 It also reads the day's plan in each declared plan folder: an open item that offers options with no
 recommendation, or with no word on what it costs where it would commit the principal's time, and the
 ritual is not recorded (the invitation to that evening had been put as a bare accept or decline).
-A workspace that turns prompt reconciliation on (`"prompt_reconcile": {"records": ["<folder>"]}`) must
-pass a day-end `--prompts`, the output of `synthesis sessions prompts --json` for that day: a clean
-outcome is refused while a prompt the principal typed that day is cited by no record, and a partial one
-says how many are open (2026-11-11: what he asked reached a record only if an agent remembered).
+For a workspace that turns prompt reconciliation on (`"prompt_reconcile": {"records": ["<folder>"]}`,
+with `"from": "YYYY-MM-DD"` for the first day it applies) a day-end record runs
+`synthesis sessions prompts` itself over that day and those folders: a clean outcome is refused while
+a prompt the principal typed that day is cited by no record, a partial one says how many are open, and
+nothing is recorded when the listing cannot be made (2026-11-11: what he asked reached a record only
+if an agent remembered).
 
 The log is `<synthesis home>/rituals/history.jsonl` (`RITUAL_STATE_DIR` or
 `--state-dir` points elsewhere, to exercise a copy). Derivations live in the
@@ -44,6 +45,8 @@ import fcntl
 import json
 import os
 import re
+import shutil
+import subprocess
 import sys
 from datetime import date, datetime, time, timedelta
 from pathlib import Path
@@ -175,34 +178,43 @@ ITEM = r"(?im)^ *(?:>\s*)*(?:[-*+] |\d+[.)] )?\**"  # a line of an item: plain, 
 OPTION = re.compile(ITEM + r"Option [A-Z0-9]+\b(.*)$")
 SAID = re.compile(ITEM + r"(Recommendation|Consequences|Commits)\**\s*:[*\s]*(.*)$")
 CLOSED = re.compile(ITEM + r"(?:Decided|Resolved|Released|Lapsed|Withdrawn)\**\s*:")
-def prompts(workspace: str, day: str, direction: str, outcome: str, given) -> str:
-    """The line a day-end prints about what the principal typed that day, or a refusal: no result, one for another
-    workspace or day, or a clean close while a prompt is cited by no record (2026-11-11: what he asked reached a
-    record only if an agent remembered)."""
+def prompts(workspace: str, day: str, direction: str, outcome: str) -> str:
+    """The line a day-end prints about what the principal typed that day, or a refusal: the listing cannot be made,
+    it answers for another workspace or day, or the close is clean while a prompt is cited by no record
+    (2026-11-11: what he asked reached a record only if an agent remembered). The record lists the prompts itself:
+    a result made earlier, or against other folders, says nothing about now (2026-11-12, a review)."""
     wanted = rituals.settings(rituals.config(), workspace).get("prompt_reconcile")
-    if not wanted or direction != "day-end":
+    if wanted in (None, False) or direction != "day-end":
         return ""
     roots = wanted.get("records") if isinstance(wanted, dict) else None
     if not (isinstance(roots, list) and roots and all(isinstance(r, str) and r for r in roots)):
         refuse(f'{workspace} turns prompt_reconcile on without saying where its records are. In {rituals.state_dir() / "config.json"}, '
                f'under workspaces.{workspace}, write "prompt_reconcile": {{"records": ["<folder of project records>"]}}')
-    again = (f"synthesis sessions export && synthesis sessions prompts --workspace {workspace} --date {day} "
-             + " ".join(f"--records {r}" for r in roots) + " --json")
-    if not given:
-        refuse(f"{workspace} checks that what the principal asked reached a record, and this record names no result. Run "
-               f"`{again}`, save what it prints and pass --prompts <that file>")
+    since = str(wanted.get("from") or "")
+    if day < since:  # a session exported before the workspace turned this on keeps the kinds its records were given
+        return f"\nprompts: checked from {since}"
+    tool, again = shutil.which("synthesis"), f"synthesis sessions prompts --workspace {workspace} --date {day} " + " ".join(
+        f"--records {r}" for r in roots)
+    if not tool:
+        refuse(f"{workspace} checks that what the principal asked reached a record, and the `synthesis` command is not on "
+               f"the PATH to list it. Nothing is recorded until `{again}` can run")
+    done = subprocess.run([tool, "sessions", "prompts", "--workspace", workspace, "--date", day,
+                           *[word for r in roots for word in ("--records", r)], "--json"], capture_output=True, text=True)
+    if done.returncode not in (0, 1):
+        refuse(f"what the principal typed on {day} could not be listed, so nothing is recorded: "
+               f"{(done.stderr or done.stdout).strip()[:400]}\nRun `{again}` to see it")
     try:
-        found = json.loads(Path(given).read_text(encoding="utf-8"))
+        found = json.loads(done.stdout)
         total, left = found["prompts"], found["open"]
         sound = type(total) is int and isinstance(left, list) and all(isinstance(c, str) for c in left) and len(left) <= total
         whose, when = found["workspace"], found["date"]
-    except (OSError, ValueError, KeyError, TypeError) as exc:
-        refuse(f"the prompts result {given} cannot be read ({exc!r}); run `{again}` again")
+    except (ValueError, KeyError, TypeError) as exc:
+        refuse(f"the listing of {day}'s prompts cannot be read ({exc!r}); run `{again} --json` to see it")
     if not sound:
-        refuse(f"the prompts result {given} does not agree with itself (more prompts open than typed, or a field of "
-               f"another shape), so it is not what the command printed; run `{again}` again")
+        refuse(f"the listing of {day}'s prompts does not agree with itself (more prompts open than typed, or a field of "
+               f"another shape); run `{again} --json` to see it")
     if (whose, when) != (workspace, day):
-        refuse(f"the prompts result is for {whose} on {when}, and this record is for {workspace} on {day}. Run `{again}`")
+        refuse(f"the listing answered for {whose} on {when}, and this record is for {workspace} on {day}. Run `{again}`")
     if left and outcome in CLEAN:
         refuse(f"{len(left)} of {total} prompts typed on {day} {'is' if len(left) == 1 else 'are'} cited by no record, so "
                f"outcome {outcome!r} would claim nothing was lost:\n" + "\n".join(f"  {c}" for c in left[:40])
@@ -309,7 +321,7 @@ def cmd_record(args) -> int:
     if args.mode == "migration":
         refuse("mode 'migration' marks old bookkeeping and cannot be written")
     critical = (critical_deadlines(args.workspace, args.outcome) + travel(args.workspace, args.date, args.travel)
-                + choices(args.workspace, args.date) + prompts(args.workspace, args.date, args.direction, args.outcome, args.prompts))
+                + choices(args.workspace, args.date) + prompts(args.workspace, args.date, args.direction, args.outcome))
     record = {"ts": datetime.now().astimezone().isoformat(timespec="seconds"), "date": args.date,
               "direction": args.direction, "workspace": args.workspace, "mode": args.mode,
               "outcome": args.outcome}
@@ -417,7 +429,6 @@ def main(argv: list[str] | None = None) -> int:
     rec.add_argument("--note")
     rec.add_argument("--count", action="append", metavar="KEY=VALUE")
     rec.add_argument("--travel", help="the output of travel_check.py --json, for a workspace that checks travel")
-    rec.add_argument("--prompts", help="the output of synthesis sessions prompts --json, for a workspace that reconciles prompts")
     rec.set_defaults(fn=cmd_record)
     query = sub.add_parser("query", help="derive a view")
     query.add_argument("view", choices=VIEWS)

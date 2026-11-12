@@ -120,17 +120,21 @@ Every prompt the principal typed is in the archive as a `user` record. A record 
 alone or inside a range. What no record cites is a request, a decision or a correction that reached no record:
 
 ```bash
-synthesis sessions export                                   # the archive first
 synthesis sessions prompts --workspace <W> [--date YYYY-MM-DD]                    # each prompt of that day
 synthesis sessions prompts --workspace <W> --records <folder of records> [--json]  # only those no record cites
 ```
 
-Each line is `<harness> <session8> #<seq>  HH:MM  <the prompt's first words>`, then one line that counts:
+The listing brings the archive up to date first; when a transcript could not be copied it lists nothing and exits
+2, since an archive that is not current cannot say what was typed. Each line is
+`<harness> <session> #<seq>  HH:MM  <the prompt's first words>`, with as much of the session's id as tells it from
+the archive's other sessions (eight characters, or more where two begin alike), then one line that counts:
 `2 of 31 prompts on <day> in <W> are cited by no record` (exit 1), or `all 31 prompts ... are cited by a record`
-(exit 0). `--records` reads the text files under that folder changed since the day began; repeat it for more.
-`--json` prints `{"workspace", "date", "prompts", "open": [...]}`, the form the day-end record takes.
+(exit 0). `--records` reads the text files under that folder changed since the day began; repeat it for more. A
+citation names one session: its id in full, or eight or more of its first characters that no other session listed
+shares. The listing's own output saved among the records cites nothing. `--json` prints
+`{"workspace", "date", "prompts", "open": [...], "records": [...]}`; the day-end record runs it itself.
 
-For each prompt left: open it (`synthesis sessions show <session8> --seq <n>`), and where its substance is
+For each prompt left: open it (`synthesis sessions show <session> --seq <n>`), and where its substance is
 already in a record, cite it there; where it is not, write the record first, then cite. A prompt that needs no
 record (a greeting, a go already recorded with its question) is cited in the session-log entry for that stretch,
 which says so. The citation is the agent's statement that the record covers the prompt, and the principal can

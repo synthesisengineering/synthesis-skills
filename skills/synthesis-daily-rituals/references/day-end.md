@@ -106,13 +106,15 @@ A quote or timestamp written into a record must come from something a tool actua
 
 ## 5c. What Was Asked Reached A Record
 
-Applies where the workspace's ritual config has `"prompt_reconcile": {"records": ["<folder of project records>"]}`.
+Applies where the workspace's ritual config has `"prompt_reconcile": {"records": ["<folder of project records>"]}`
+(with `"from": "YYYY-MM-DD"` for the first day it applies: turn it on from the day after the upgrade that brings it,
+since a session exported before then keeps the kinds its records were given).
 The principal should never have to say "make sure nothing is lost": every prompt they typed today is in the
 transcript archive, and a record accounts for one by citing it.
 
-- [ ] Run `synthesis sessions export`, then `synthesis sessions prompts --workspace <W> --date <today> --records <each folder the config names>`. It lists each prompt of today's that no record cites, as `<harness> <session8> #<seq>  HH:MM  <first words>`.
-- [ ] For each line, open it with `synthesis sessions show <session8> --seq <n>`, which prints the whole prompt. Where its substance is in a record, cite it there (`<harness> <session8> #<seq>`, or `#<first>-<last>` for a stretch one entry covers). Where it is not, write the record first: the request into the plan with its tag, the decision or correction into the project's session log. Never cite a prompt in a record that does not hold it.
-- [ ] Run the command again with `--json`, save what it prints, and pass it to the record as `--prompts <file>`. A clean close is refused while any prompt is left; `--outcome partial` records the day and says how many are open.
+- [ ] Run `synthesis sessions prompts --workspace <W> --date <today> --records <each folder the config names>`. It brings the archive up to date first (and stops, listing nothing, when a transcript could not be copied), then lists each prompt of today's that no record cites, as `<harness> <session> #<seq>  HH:MM  <first words>`, with as much of each session's id as tells it from the others (eight characters, or more).
+- [ ] For each line, open it with `synthesis sessions show <session> --seq <n>`, which prints the whole prompt. Where its substance is in a record, cite it there (`<harness> <session> #<seq>` as the listing prints it, or `#<first>-<last>` for a stretch one entry covers). The listing's own output, saved among the records, cites nothing. Where it is not, write the record first: the request into the plan with its tag, the decision or correction into the project's session log. Never cite a prompt in a record that does not hold it.
+- [ ] Record the day-end. The record runs the same listing itself: a clean close is refused while any prompt is left, `--outcome partial` records the day and says how many are open, and nothing is recorded when the listing cannot be made.
 
 ## 6. Career Amplification
 
