@@ -2107,3 +2107,135 @@ def test_a_folder_the_guard_cannot_read_holds_nothing_when_no_protected_folder_i
     stays = "cd \"$(pwd)\" && touch made.txt"                                             # the folder it is in, by a substitution
     assert guards.check("Bash", {"command": stays}, {}, cwd=str(here)) is None
     assert REFUSED in (guards.check("Bash", {"command": stays}, {}, cwd=str(above["work"])) or "")
+
+
+# --- before the ninth review round (2026-11-11): this project's own second probe ------------------------------
+# The eighth round's answer was probed again, with 190 plain commands and programs, before a ninth round saw it. A
+# keyword argument in a program (`env=dict(os.environ, OUT=target)`) had been read as the shell's own `OUT=...`, so
+# `$OUT` in the command the program started was filled in with the argument's name. `$PWD` was taken from the
+# guard's own environment. A command `find -execdir` runs without `{}` was read at the top of the search only. A
+# list word built from a path it found lost that path. And ordinary work was refused: a temporary file named
+# through a variable, the top of a repository, a tree mirrored by `relative_to`.
+
+@pytest.mark.parametrize("program, held", [
+    ("import os, subprocess\nD = '{state}'\nsubprocess.run('touch \"$OUT/forged.json\"', shell=True, env=dict(os.environ, OUT=D))", True),
+    ("import os, subprocess\nenv = os.environ.copy()\nT = '{work}/s.jsonl'\nenv.update(OUT=T)\nsubprocess.run('echo x >> $OUT', shell=True, env=env)", True),
+    ("import subprocess\nW = '{work}'\nsubprocess.run(['sh', '-c', 'echo x >> \"$OUT\"'], env=dict(OUT=W + '/s.jsonl'))", True),
+    ("import os\nS = '{state}'\nos.environ.update(D=S)\nos.system('touch \"$D/forged.json\"')", True),
+    ("import os\nS = '{state}'\nos.environ |= dict(D=S)\nos.system('touch \"$D/forged.json\"')", True),
+    ("import os, subprocess\nS = '{state}'\nenv = dict(os.environ)\nenv |= dict(D=S)\nsubprocess.run('touch \"$D/forged.json\"', shell=True, env=env)", True),
+    ("import os, subprocess\nS = '{state}'\nsubprocess.run('touch \"$D/forged.json\"', shell=True, env=dict(**os.environ, D=S))", True),
+    ("import os, subprocess\nPAD = '/tmp/pad'\nsubprocess.run('cat {work}/s.jsonl > \"$OUT/x.txt\"', shell=True, env=dict(os.environ, OUT=PAD))", False),
+    ("import subprocess\nn=3\nsubprocess.run('head -n 3 {work}/s.jsonl > /tmp/pad/h.txt', shell=True)", False),   # a statement of the program
+])
+def test_a_keyword_in_a_program_is_not_a_variable_of_the_command(saved, program, held, tmp_path):
+    command = "python3 - <<'EOF'\n" + program.format(**saved) + "\nEOF"
+    assert (REFUSED in (guards.check("Bash", {"command": command}, {}, cwd=str(tmp_path)) or "")) == held, program
+
+
+def test_a_variable_the_command_exports_still_reaches_the_program(saved, tmp_path):
+    held = "export OUT={work}/s.jsonl; python3 - <<'EOF'\nimport os, subprocess\nsubprocess.run('echo x >> $OUT', shell=True, env=dict(os.environ, LANG='C'))\nEOF"
+    free = "export OUT=/tmp/pad; python3 - <<'EOF'\nimport os, subprocess\nsubprocess.run('wc -l {work}/s.jsonl > \"$OUT/n.txt\"', shell=True, env=dict(os.environ, LANG='C'))\nEOF"
+    assert REFUSED in (guards.check("Bash", {"command": held.format(**saved)}, {}, cwd=str(tmp_path)) or "")
+    assert guards.check("Bash", {"command": free.format(**saved)}, {}, cwd=str(tmp_path)) is None
+
+
+@pytest.mark.parametrize("command, held", [
+    ("out=$(mktemp); grep -c user {work}/s.jsonl > \"$out\"; cat \"$out\"", False),          # a fresh temporary file, through a variable
+    ("D=$(mktemp -d); cp {work}/s.jsonl \"$D/\" && jq -c . \"$D/s.jsonl\" > \"$D/out.jsonl\"", False),
+    ("sh -c 'cp \"$1\" \"$(mktemp -d)/\"' sh {work}/s.jsonl", False),
+    ("D=$(mktemp -d {work}/tmp.XXXXXX); touch \"$D/x\"", True),                             # made where its template says
+    ("sh -c 'touch \"$(dirname \"$1\")/forged.json\"' sh {work}/s.jsonl", True),
+    ("cd {work} && echo x > \"$PWD/forged.json\"", True),                                   # $PWD is the folder the command is in
+    ("cd {work} && cd /tmp/pad && echo x > \"$OLDPWD/forged.json\"", True),
+    ("cd /tmp/pad && grep -c x {work}/s.jsonl > \"$PWD/made.txt\"", False),
+    ("find {above} -name '*.jsonl' -execdir touch forged.json SEMI", True),                 # run in each folder under the search
+    ("find {above} -name '*.jsonl' -execdir sh -c 'echo x > note.txt' SEMI", True),
+    ("find {above} -name '*.jsonl' -execdir wc -l {{}} +", False),
+    ("find {above} -name '*.jsonl' -execdir sh -c 'wc -l \"$1\" > /tmp/pad/n.txt' _ {{}} SEMI", False),
+    ("find /tmp/pad -name '*.txt' -execdir touch seen SEMI", False),
+    ("printf 'echo x >> %s\\n' {work}/s.jsonl | bash", True),                               # a format printed into a shell
+    ("printf '%s\\n' {work}/s.jsonl | xargs wc -l", False),
+    ("printf 'x\\n' | sh -c 'cat > /tmp/pad/x'", False),
+    ("php -r 'file_put_contents(\"{work}/s.jsonl\", \"x\", FILE_APPEND);'", True),          # a program for an interpreter the guard cannot read
+    ("lua -e 'io.open(\"{work}/s.jsonl\", \"a\"):write(\"x\")'", True),
+    ("Rscript -e 'cat(\"x\", file=\"{work}/s.jsonl\", append=TRUE)'", True),
+    ("php -r 'echo strlen(\"x\");' > /tmp/pad/n.txt", False),
+])
+@pytest.mark.parametrize("inside", [False, True])
+def test_what_the_second_probe_showed_of_commands(above, command, held, inside, tmp_path):
+    here = tmp_path / "elsewhere"
+    here.mkdir()
+    command = command.format(**above).replace("SEMI", chr(92) + ";")
+    reason = guards.check("Bash", {"command": command}, {}, cwd=str(above["work"] if inside else here))
+    assert (REFUSED in (reason or "")) == held, command
+
+
+def test_the_folder_a_command_is_in_is_its_own_not_the_guards(above, tmp_path, monkeypatch):
+    here = tmp_path / "elsewhere"
+    here.mkdir()
+    monkeypatch.setenv("PWD", str(here))                                   # the hook's own folder is not the session's
+    monkeypatch.setenv("OLDPWD", str(here))
+    program = "python3 - <<'EOF'\nimport os\nopen(os.path.join(os.environ['PWD'], 'made.txt'), 'w').write('x')\nEOF"
+    for command in ("echo x > \"$PWD/made.txt\"", "echo x > \"${PWD}/made.txt\"", program):
+        assert guards.check("Bash", {"command": command}, {}, cwd=str(here)) is None, command
+        assert REFUSED in (guards.check("Bash", {"command": command}, {}, cwd=str(above["work"])) or ""), command
+
+
+def test_the_top_of_a_repository_is_this_folder_or_one_above_it(above, tmp_path):
+    here = tmp_path / "elsewhere"
+    here.mkdir()
+    for command in ("cd \"$(git rev-parse --show-toplevel)\" && grep -c user {work}/s.jsonl > counts.txt",
+                    "ROOT=$(git rev-parse --show-toplevel); wc -l {work}/s.jsonl > \"$ROOT/n.txt\""):
+        assert guards.check("Bash", {"command": command.format(**above)}, {}, cwd=str(here)) is None, command
+        assert REFUSED in (guards.check("Bash", {"command": command.format(**above)}, {}, cwd=str(above["work"])) or ""), command
+    down = os.path.relpath(above["work"] / "s.jsonl", tmp_path)            # from a folder above, the transcript by its relative path
+    reach = f"cd \"$(git rev-parse --show-toplevel)\" && echo x >> {down}"
+    assert REFUSED in (guards.check("Bash", {"command": reach}, {}, cwd=str(here)) or "")
+
+
+@pytest.mark.parametrize("program, held", [
+    ("import os\nf = os.popen('sh', 'w')\nf.write('touch {state}/forged.json\\n')\nf.close()", True),          # a command fed through os.popen
+    ("import os\nos.popen('sh', 'w').write('echo x >> {work}/s.jsonl')", True),
+    ("import os\nwith os.popen('sort > /tmp/pad/sorted.txt', 'w') as f:\n    f.write(open('{work}/s.jsonl').read())", False),
+    ("import os\nprint(os.popen('wc -l {work}/s.jsonl').read())", False),
+    ("import subprocess\nT = '{work}/s.jsonl'\nsubprocess.run(['python3', '-c', 'open(%r, \"a\").write(\"x\")' % T])", True),   # a word built round a path
+    ("import subprocess\nfrom pathlib import Path\nfor p in Path('{work}').glob('*.jsonl'):\n    subprocess.run(['sh', '-c', 'echo x >> ' + str(p)])", True),
+    ("import subprocess\nfrom pathlib import Path\nfor p in Path('{work}').glob('*.jsonl'):\n    subprocess.run(['sh', '-c', 'echo x >> {{}}'.format(p)])", True),
+    ("import subprocess\nfrom pathlib import Path\nfor p in Path('{work}').glob('*.jsonl'):\n    subprocess.run(['sh', '-c', ' '.join(['echo', 'x', '>>', str(p)])])", True),
+    ("import subprocess\nfrom pathlib import Path\nfor p in Path('{work}').glob('*.jsonl'):\n    subprocess.run(['sh', '-c', 'wc -l ' + str(p)])", False),
+    ("import subprocess\nfrom pathlib import Path\nfor p in Path('{work}').glob('*.jsonl'):\n    subprocess.run(['grep', '-c', 'user', '--file=/tmp/pad/words.txt', str(p)])", False),
+    ("import tempfile\nf = tempfile.NamedTemporaryFile(dir='{work}', delete=False)\nf.write(b'x')", True),      # the standard library's own writers
+    ("import tempfile\nfd, name = tempfile.mkstemp(dir='{work}', suffix='.jsonl')", True),
+    ("import logging\nlogging.basicConfig(filename='{work}/s.jsonl', format='%(message)s')\nlogging.warning('x')", True),
+    ("import logging\nlogging.getLogger().addHandler(logging.FileHandler('{work}/s.jsonl'))", True),
+    ("import logging.handlers\nh = logging.handlers.RotatingFileHandler('{state}/x.log')", True),
+    ("import urllib.request\nurllib.request.urlretrieve('https://example.com/x', '{work}/s.jsonl')", True),
+    ("import logging\nlogging.basicConfig(filename='/tmp/pad/run.log')\nlogging.warning(open('{work}/s.jsonl').readline())", False),
+    ("import tempfile, shutil\nwith tempfile.NamedTemporaryFile(suffix='.jsonl') as f:\n    shutil.copyfileobj(open('{work}/s.jsonl', 'rb'), f)", False),
+    ("import tempfile, shutil\nd = tempfile.mkdtemp(prefix='work-')\nshutil.copy('{work}/s.jsonl', d)", False),
+])
+def test_what_the_second_probe_showed_of_programs(above, program, held, tmp_path):
+    here = tmp_path / "elsewhere"
+    here.mkdir()
+    command = "python3 - <<'EOF'\n" + program.format(**above) + "\nEOF"
+    assert (REFUSED in (guards.check("Bash", {"command": command}, {}, cwd=str(here)) or "")) == held, program
+
+
+@pytest.mark.parametrize("program, held", [
+    ("import shutil\nfrom pathlib import Path\nOUT = Path('/tmp/pad')\nfor p in Path('{claude}').rglob('*.jsonl'):\n    dst = OUT / p.relative_to('{claude}')\n"
+     "    dst.parent.mkdir(parents=True, exist_ok=True)\n    shutil.copy2(p, dst)", False),                     # a tree mirrored somewhere else
+    ("import os, shutil\nfor root, dirs, files in os.walk('{work}'):\n    for f in files:\n        src = os.path.join(root, f)\n"
+     "        dst = os.path.join('/tmp/pad', os.path.relpath(src, '{work}'))\n        os.makedirs(os.path.dirname(dst), exist_ok=True)\n        shutil.copy2(src, dst)", False),
+    ("import os, shutil\nrel = os.path.relpath('{work}/s.jsonl', '{claude}')\nshutil.copy('{work}/s.jsonl', os.path.join('/tmp/pad', rel))", False),
+    ("T = '{work}/s.jsonl'\nname = T.split('/')[-1]\nopen('/tmp/pad/' + name, 'w').write('x')", False),          # the last part of a path names no folder
+    ("T = '{work}/s.jsonl'\nname = T.rsplit('/', 1)[-1]\nopen('/tmp/pad/' + name, 'w').write('x')", False),
+    ("import os\nrel = os.path.relpath('{work}/s.jsonl', '/tmp/pad')\nopen(os.path.join('/tmp/pad', rel), 'w').write('x')", True),   # one that climbs back
+    ("import os\nfrom pathlib import Path\nos.chdir('{work}')\nopen(Path('{work}/s.jsonl').relative_to('{work}'), 'w').write('x')", True),   # where it stands
+    ("T = '{work}/s.jsonl'\nopen(T.rsplit('/', 1)[0] + '/forged.json', 'w').write('x')", True),                  # the folder part is a folder
+])
+def test_a_path_taken_relative_to_a_folder_names_no_folder(above, program, held, tmp_path):
+    here = tmp_path / "elsewhere"
+    here.mkdir()
+    command = "python3 - <<'EOF'\n" + program.format(**above) + "\nEOF"
+    assert (REFUSED in (guards.check("Bash", {"command": command}, {}, cwd=str(here)) or "")) == held, program
