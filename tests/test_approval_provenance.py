@@ -2281,6 +2281,14 @@ def test_the_folder_a_command_was_in_reaches_a_program_on_its_input(above, tmp_p
 
 @pytest.mark.parametrize("command, held", [
     ("printf '780a' | xxd -r -p - {work}/s.jsonl", True),                      # `-` is the input: the next operand is the output
+    ("xxd -p -r -c 30 - {work}/s.jsonl < /tmp/pad/hex", True),
+    ("uniq -c - {work}/s.jsonl < /tmp/pad/in.txt", True),
+    ("uniq -f 1 - /tmp/pad/out.txt < /tmp/pad/in.txt", False),
+    ("watch \"tee -a {work}/s.jsonl < /tmp/pad/x\"", True),
+    ("ssh localhost 'sort -u /tmp/pad/in.txt -o {work}/s.jsonl'", True),
+    ("trap \"rm -f {work}/s.jsonl\" EXIT INT", True),
+    ("trap - EXIT; wc -l {work}/s.jsonl", False),
+    ("notify --title=Done --body=\"wrote > 3 files beside {work}\"", False),
     ("printf 'x\\nx\\n' | uniq - {work}/s.jsonl", True),
     ("printf 'x\\n' | uniq - /tmp/pad/out.txt", False),
     ("xxd -r -p - /tmp/pad/out.bin < /tmp/pad/hex", False),
@@ -2342,6 +2350,15 @@ def test_the_ninth_reviews_programs(above, program, held, inside, tmp_path):
     ("import os\ndef main():\n    os.chdir('/tmp/pad')\n    open('out.txt', 'w').write('x')\nif __name__ == '__main__':\n    main()", False),
     ("import os\nos.chdir('/tmp/pad')\nos.fchdir(os.open('out', os.O_RDONLY))\nopen('x.txt', 'w').write('x')", False),              # opened and entered in one statement
     ("import os\nif os.environ.get('GO'):\n    os.chdir('/tmp/pad')\nopen('forged.json', 'w').write('x')", True),                      # a branch may not be taken
+    ("import os\nif os.environ.get('GO'):\n    os.chdir('/tmp/pad')\n    open('out.txt', 'w').write('x')", False),                     # inside the branch it has left
+    ("import os\nif os.environ.get('GO'):\n    os.chdir('/tmp/pad')\nelse:\n    os.chdir('/tmp/other')\nopen('out.txt', 'w').write('x')", False),
+    ("import os, tempfile\nfrom pathlib import Path\nfor p in sorted(Path('.').glob('*.jsonl')):\n    with tempfile.TemporaryDirectory() as d:\n"
+     "        os.chdir(d)\n        Path('n.txt').write_text(str(len(p.name)))", False),                                               # a loop's body runs in order each time
+    ("import os\nfor d in ('/tmp/pad', '/tmp/other'):\n    open('forged.json', 'w').write('x')\n    os.chdir(d)", True),               # the first time round it has not left
+    ("import os\nfor d in ('/tmp/pad',):\n    os.chdir(d)\nopen('forged.json', 'w').write('x')", True),                              # a loop may run no times
+    ("import os\nfor d in ('/tmp/pad', '/tmp/other'):\n    os.chdir(d)\n    if d.endswith('pad'):\n        continue\n    os.chdir('{work}')\n"
+     "    open('forged.json', 'w').write('x')", True),
+    ("import os\nwhile True:\n    os.chdir('/tmp/pad')\n    open('out.txt', 'w').write('x')\n    break", False),
 ])
 def test_a_program_that_leaves_a_transcript_folder_inside_a_try_or_its_main_block(above, program, held, tmp_path):
     command = "python3 - <<'EOF'\n" + program.format(**above) + "\nEOF"
