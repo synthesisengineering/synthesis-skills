@@ -490,6 +490,105 @@ def test_a_note_records_a_wait_the_harness_holds_and_the_list_shows_every_sessio
     assert cli("wait", "note", "something", "--for", "2h").returncode == 2             # a note says what will wake the seat
 
 
+# --- a note is taken down once what it awaited is handled ----------------------------------------------------------
+
+def note(what, session="S1", bound="12h"):
+    made = cli("wait", "note", what, "--by", "the harness's timer", "--for", bound, session=session)
+    assert made.returncode == 0, made.stderr
+
+
+def outcome(done):
+    return done.returncode, done.stdout, done.stderr
+
+
+def test_a_note_is_withdrawn_by_the_seat_that_made_it_one_by_its_words_or_all_at_once(two):
+    """2026-11-12, a third review: a note stood until its bound. When what it awaited was handled an hour into a note
+    of twelve, the board and the turn-end check showed a wait that was over for eleven hours more."""
+    from synthesis import paths, wait
+    for what in ("the CI run on the release branch", "a reply from the vendor", "the nightly export"):
+        note(what)
+    assert outcome(cli("wait", "clear", "a reply from the vendor")) == (0, "cleared: a reply from the vendor\n", "")
+    assert [w["what"] for w in wait.live("S1")] == ["the CI run on the release branch", "the nightly export"]
+    assert outcome(cli("wait", "clear")) == (0, "cleared: the CI run on the release branch\ncleared: the nightly export\n", "")
+    assert wait.live("S1") == [] and not list((paths.board() / "waits").rglob("*.json"))
+
+
+def test_clearing_when_no_such_note_is_held_says_so_and_withdraws_nothing(two):
+    from synthesis import wait
+    assert outcome(cli("wait", "clear")) == (0, "this session holds no note\n", "")
+    assert outcome(cli("wait", "clear", "the CI run")) == (0, "this session holds no note 'the CI run'\n", "")
+    note("the CI run")
+    assert outcome(cli("wait", "clear", "the CI rnu")) == (0, "this session holds no note 'the CI rnu'\n", "")   # its words, mistyped
+    assert outcome(cli("wait", "clear", "the CI")) == (0, "this session holds no note 'the CI'\n", "")           # and a part of them
+    assert [w["what"] for w in wait.live("S1")] == ["the CI run"]
+    wait.record("S1", "the old build", time.time() - 1, by="the harness's timer")     # a note whose bound has passed is over already
+    assert outcome(cli("wait", "clear", "the old build")) == (0, "this session holds no note 'the old build'\n", "")
+    assert outcome(cli("wait", "clear")) == (0, "cleared: the CI run\n", "")
+
+
+def test_clearing_never_touches_another_sessions_note(two, capsys):
+    from synthesis import wait
+    note("the CI run", session="S2")
+    assert outcome(cli("wait", "clear")) == (0, "this session holds no note\n", "")      # S1 holds none: S2's is not its to clear,
+    assert outcome(cli("wait", "clear", "the CI run")) == (0, "this session holds no note 'the CI run'\n", "")   # by its words either,
+    note("the CI run")
+    assert outcome(cli("wait", "clear", "the CI run")) == (0, "cleared: the CI run\n", "")   # and of two that say the same, its own goes
+    assert wait.live("S1") == [] and [(w["session"], w["what"]) for w in wait.live("S2")] == [("S2", "the CI run")]
+    other = cli("--session", "S2", "wait", "clear")                                  # a shell acts only as the session it belongs to
+    assert other.returncode != 0 and "cannot act as S2" in other.stderr and len(wait.live("S2")) == 1
+    for session in ("a b", "a_b"):                                                    # two ids the board keeps under one folder name
+        wait.record(session, "the deploy", time.time() + 600, by="the harness's timer")
+    assert wait.main(["clear"], "a b") == 0 and capsys.readouterr().out == "cleared: the deploy\n"
+    assert [w["session"] for w in wait.live("a_b")] == ["a_b"]
+
+
+def test_clearing_leaves_a_running_watchers_record_and_its_watcher_alone(two, tmp_path):
+    """A record with a process is taken down by the end of that process and by nothing else: a seat that could clear it
+    would show nothing armed while its watcher still ran."""
+    from synthesis import wait
+    target = tmp_path / "result.json"
+    proc = start("wait", "file", str(target), "--for", "60s", "--every", "0.2s")
+    try:
+        deadline = time.time() + 10
+        while not wait.live("S1") and time.time() < deadline:
+            time.sleep(0.05)
+        watched = wait.live("S1")[0]["what"]
+        note("the CI run")
+        assert outcome(cli("wait", "clear", watched)) == (0, f"this session holds no note {watched!r}\n", "")   # a watcher's words name no note
+        assert outcome(cli("wait", "clear")) == (0, "cleared: the CI run\n", "")
+        assert outcome(cli("wait", "clear")) == (0, "this session holds no note\n", "")
+        assert [(w["what"], w["pid"]) for w in wait.live("S1")] == [(watched, proc.pid)] and proc.poll() is None
+        target.write_text("{}", encoding="utf-8")                                     # and the watcher still does its work
+        out, _ = proc.communicate(timeout=15)
+        assert proc.returncode == 0 and "result.json appeared" in out and wait.live("S1") == []
+    finally:
+        if proc.poll() is None:
+            proc.kill()
+            proc.communicate()
+
+
+def test_a_cleared_note_is_gone_from_the_list_from_who_and_from_the_turn_end_check(two):
+    reply = {"last_assistant_message": ANNOUNCED[0], "session_id": "S1"}
+    for session in ("S1", "S2"):
+        note("the CI run", session=session, bound="2h")
+    quiet("S1")                                                                       # S1 was last seen hours ago, S2 a moment ago
+
+    def who(*options):                                                                # each seat's row by its session
+        return {row.split()[1]: row for row in cli("who", *options).stdout.splitlines() if re.match(r"[a-z2-7]{6} ", row)}
+
+    def listed():                                                                     # the short names of the seats `wait list` shows
+        return [row.split()[0] for row in cli("wait", "list").stdout.splitlines()]
+    rows = who()
+    assert set(rows) == {"S1", "S2"} and re.search(r"min ago  STALE  waiting until \d\d:\d\d$", rows["S1"])
+    assert re.search(r"min ago  waiting until \d\d:\d\d$", rows["S2"])
+    assert listed() == [board.short_name("S1"), board.short_name("S2")] and reply_check.check(reply, {}) is None
+    assert outcome(cli("wait", "clear")) == (0, "cleared: the CI run\n", "")
+    assert set(who()) == {"S2"} and who("--all")["S1"].endswith("min ago  STALE")     # quiet and waiting for nothing: stale, as before its note
+    assert listed() == [board.short_name("S2")] and "nothing is armed" in reply_check.check(reply, {})
+    assert outcome(cli("wait", "clear", session="S2")) == (0, "cleared: the CI run\n", "")
+    assert who()["S2"].endswith("min ago") and listed() == []
+
+
 def test_a_wait_cannot_run_past_twelve_hours_or_without_a_bound_it_can_read(two):
     assert cli("wait", "message", "--for", "13h").returncode == 2
     assert cli("wait", "message", "--for", "soon").returncode == 2
