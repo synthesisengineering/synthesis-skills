@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import io
 import json
+import os
 import re
 import subprocess
 import sys
@@ -47,17 +48,15 @@ PLUGIN_MANIFESTS = (".claude-plugin/plugin.json", ".codex-plugin/plugin.json", "
 EVERY_KIND = {"a hook claim", "a guard claim", "an approval-code claim", "a runtime need"}
 
 
-@pytest.fixture(autouse=True)
-def isolated(tmp_path, monkeypatch):
-    """Git in a test reads none of the machine's settings: its hooks, signing and identity stay out."""
-    gitconfig = tmp_path / "gitconfig"
-    gitconfig.write_text("[user]\n\temail = t@example.com\n\tname = t\n[init]\n\tdefaultBranch = main\n")
-    monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(gitconfig))
-    monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
+# A checkout a test makes is written with none of the machine's git settings: its hooks, signing and identity
+# stay out. The real checkout is read with the settings it was cloned under.
+OWN_GIT = {**os.environ, "GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_NOSYSTEM": "1", "GIT_AUTHOR_NAME": "t",
+           "GIT_AUTHOR_EMAIL": "t@example.com", "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@example.com"}
 
 
 def git(repo, *args):
-    return subprocess.run(["git", "-C", str(repo), *args], check=True, capture_output=True, text=True).stdout
+    return subprocess.run(["git", "-C", str(repo), *args], check=True, capture_output=True, text=True,
+                          env=None if repo == ROOT else OWN_GIT).stdout
 
 
 def is_test(name: str) -> bool:
@@ -314,7 +313,7 @@ def checkout(tmp_path, skills, listed=None, manifest=None, version="5.8.0"):
     for name, text in files.items():
         (repo / name).parent.mkdir(parents=True, exist_ok=True)
         (repo / name).write_text(text, encoding="utf-8")
-    subprocess.run(["git", "init", "-q", str(repo)], check=True)
+    git(repo, "init", "-q")
     git(repo, "add", ".")
     git(repo, "commit", "-qm", "init")
     return repo
