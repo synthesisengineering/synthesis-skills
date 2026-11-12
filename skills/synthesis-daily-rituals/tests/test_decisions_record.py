@@ -446,7 +446,7 @@ def test_a_line_led_by_a_pictograph_is_still_its_line(tmp_path, record):
 def test_a_fenced_example_that_begins_a_list_entry_is_an_example(tmp_path, record):
     """The fence opened on the line of the list mark (`- ```md`), so it was not seen as a fence and its options
     were read as a choice."""
-    for mark in ("- ", "* ", "1. ", "- > "):
+    for mark in ("- ", "* ", "1. ", "10) "):
         text = "### How a choice is written\n" + mark + "```md\n  Option A: Accept\n  Option B: Decline\n  ```\n"
         code, out, refusal = record(workspace(tmp_path, text))
         assert code == 0 and "choices: 0 open" in out, (mark, refusal)

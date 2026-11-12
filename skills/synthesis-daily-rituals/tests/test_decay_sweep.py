@@ -239,3 +239,14 @@ def skill_prose(folder: Path) -> str:
     files = [folder / "SKILL.md", *sorted((folder / "references").glob("*.md"))]
     return "\n".join(f.read_text(encoding="utf-8") for f in files
                      if not f.name.startswith(("preserved", "version-history", "coverage-map")))
+
+
+@pytest.mark.parametrize("mark", ["- ", "* ", "1. ", "10) "])
+def test_a_fenced_example_that_begins_a_list_entry_is_closed_by_its_own_fence(tmp_path, mark):
+    """The twelfth review of the choices reader showed the same in this one: a fence opened on the line of a list
+    mark was not seen as opened, so the line that closed it was read as opening one that never closed, and the
+    plan could not be read whole."""
+    plan(tmp_path, "2026-09-08", "### How an item is written\n" + mark + "```md\n  **Decays:** 2026-09-08 (an example)\n  ```\n\n" + item())
+    code, report = run(tmp_path)
+    assert not report["gaps"], report["gaps"]
+    assert len(report["due"]) == 1, report["due"]                                               # the example is no item, the item after it is
