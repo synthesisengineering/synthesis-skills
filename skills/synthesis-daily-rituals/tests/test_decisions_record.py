@@ -176,3 +176,17 @@ def test_a_second_entry_whose_letters_go_on_is_still_its_own_choice(tmp_path, re
     notes = ("### 3. The launch\n**Option A:** Accept\n- it is three hours away\n- the fare is not expensable\n**Option B:** Decline\n" + COSTS + VIEW)
     code, out, refusal = record(workspace(tmp_path, notes))                                   # bullets under an option are not a new choice
     assert code == 0 and "choices: 1 open" in out, refusal
+
+
+def test_a_recommendation_on_the_title_line_counts_and_a_check_marked_title_is_closed(tmp_path, record):
+    """The fifth review: `### Dinner — Recommendation: A` was read as having no recommendation, and a title marked
+    with a plain check mark as still open."""
+    titled = "### 4. Dinner with the board — Recommendation: B, decline\n**Option A:** Accept\n**Option B:** Decline\n" + COSTS
+    code, out, refusal = record(workspace(tmp_path, titled))
+    assert code == 0 and "choices: 1 open" in out, refusal
+    for mark in ("✓", "✔"):
+        done = f"### {mark} Dinner with the board\n**Option A:** Accept\n**Option B:** Decline\n"
+        code, out, refusal = record(workspace(tmp_path, done))
+        assert code == 0 and "choices: 0 open" in out, (mark, refusal)
+    bare = "### 5. Dinner, no recommendation yet\n**Option A:** Accept\n**Option B:** Decline\n" + COSTS
+    assert record(workspace(tmp_path, bare))[0] != 0                                          # the word in a title is not a view

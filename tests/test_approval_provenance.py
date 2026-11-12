@@ -1504,3 +1504,62 @@ def test_a_link_made_and_moved_in_one_command_is_still_that_link(saved, command,
     """Found writing the runtime doc's list of what the fourth review closed: a link moved after it was made was
     judged as an ordinary file at its new place."""
     assert REFUSED in (guards.check("Bash", {"command": command.format(**saved)}, {}, cwd=str(tmp_path)) or ""), command
+
+
+# --- the fifth review round (2026-11-11): a verification, and what it showed -----------------------------------
+# Round 4's fixes held and no unsafe route passed. What it found were ten refusals of ordinary work, each a test
+# here: reading flags spelled another way, a note copied into its folder, a listing written elsewhere, a
+# keyword-only parameter, two files opened in one `with`, an archive member unpacked elsewhere, a file name
+# built with % or a base name, and a program that runs `cat`.
+
+@pytest.mark.parametrize("command", [
+    "python3 - <<'EOF'\nimport os as o\nf = o.fdopen(o.open('{work}/s.jsonl', o.O_RDONLY), 'rb')\nprint(f.read(80))\nEOF",
+    "python3 - <<'EOF'\nimport os\nf = os.fdopen(os.open('{work}/s.jsonl', 0), 'rb')\nprint(f.read(80))\nEOF",
+    "python3 - <<'EOF'\nimport os\nflags = os.O_RDONLY\nf = os.fdopen(os.open('{work}/s.jsonl', flags), 'rb')\nprint(f.read(80))\nEOF",
+    "cp /tmp/pad/note.md {work}/memory/",                                                            # a note copied into its folder
+    "find {work} -name '*.jsonl' -fprint /tmp/pad/list.txt",                                         # a listing written elsewhere
+    "python3 - <<'EOF'\nfrom pathlib import Path\nout = Path('/tmp/pad') / Path('{work}/s.jsonl').name\nout.write_text('copy')\nEOF",
+    "python3 - <<'EOF'\nimport os\nopen(os.path.join('/tmp/pad', os.path.basename('{work}/s.jsonl')), 'w').write('copy')\nEOF",
+    "python3 - <<'EOF'\nimport subprocess\nprint(subprocess.run(['cat', '{work}/s.jsonl'], capture_output=True, text=True).stdout[:80])\nEOF",
+    "python3 - <<'EOF'\nimport subprocess\nn = subprocess.check_output('wc -l {work}/s.jsonl | cut -d\" \" -f1', shell=True)\nprint(n)\nEOF",
+])
+def test_the_fifth_reviews_everyday_commands_pass(saved, command, tmp_path):
+    assert guards.check("Bash", {"command": command.format(**saved)}, {}, cwd=str(tmp_path)) is None
+
+
+@pytest.mark.parametrize("program", [
+    "def save(*, dst='/tmp/pad/out.txt'):\n    open(dst, 'w').write('x')\nsave()",                                      # a keyword-only parameter
+    "def save(*, dst='/tmp/pad/out.txt'):\n    open(dst, 'w').write('x')\nsave(dst='/tmp/pad/other.txt')",
+    "import shutil\nwith open('s.jsonl', 'rb') as src, open('/tmp/pad/copy.bin', 'wb') as dst:\n    shutil.copyfileobj(src, dst)",
+    "import zipfile\nzipfile.ZipFile('/tmp/pad/a.zip').extract('report.csv', path='/tmp/pad/unpacked')",                # a member, unpacked elsewhere
+    "import tarfile\ntarfile.open('/tmp/pad/a.tar').extract('report.csv', '/tmp/pad/unpacked')",
+    "import zipfile\nzipfile.ZipFile('/tmp/pad/a.zip').extractall('/tmp/pad/unpacked')",
+    "for i, line in enumerate(open('s.jsonl')):\n    open('/tmp/pad/line-%d.txt' % i, 'w').write(line)",                # a name built with %
+    "for i, line in enumerate(open('s.jsonl')):\n    open('/tmp/pad/line-{{}}.txt'.format(i), 'w').write(line)",
+    "import subprocess\nsubprocess.run(['wc', '-l', 's.jsonl'])",                                                       # a reader run from inside
+])
+def test_from_inside_a_transcript_folder_the_fifth_reviews_programs_pass(saved, program, tmp_path):
+    command = "cd {work} && python3 - <<'EOF'\n".format(**saved) + program.format(**saved) + "\nEOF"
+    assert guards.check("Bash", {"command": command}, {}, cwd=str(tmp_path)) is None, program
+
+
+@pytest.mark.parametrize("command", [
+    "python3 - <<'EOF'\nimport os\nos.fdopen(os.open('{work}/s.jsonl', os.O_RDWR), 'r+').write('x')\nEOF",          # flags that write
+    "python3 - <<'EOF'\nimport os\nflags = os.O_WRONLY\nos.write(os.open('{work}/s.jsonl', flags), b'x')\nEOF",
+    "cp /tmp/pad/data.json {work}/memory/",                                                                         # not a note
+    "cp /tmp/pad/note.md {work}/",                                                                                   # not its folder
+    "find {work} -name '*.jsonl' -fprint {work}/list.txt",                                                           # a listing written inside
+    "find {work} -name 'x*.jsonl' -delete",
+    "python3 - <<'EOF'\nimport zipfile\nzipfile.ZipFile('/tmp/pad/a.zip').extract('report.csv', path='{state}')\nEOF",
+    "python3 - <<'EOF'\nfor i in range(2): open('{state}/line-%d.json' % i, 'w')\nEOF",
+    "python3 - <<'EOF'\nfrom pathlib import Path\nout = Path('{work}') / Path('/tmp/pad/x.jsonl').name\nout.write_text('x')\nEOF",
+    "python3 - <<'EOF'\nimport subprocess\nsubprocess.run(['python3', '-c', \"open('{work}/s.jsonl', 'a').write('x')\"])\nEOF",
+    "python3 - <<'EOF'\nimport subprocess\nsubprocess.run(['tar', 'xf', '/tmp/a.tar'], cwd='{state}')\nEOF",
+    "python3 - <<'EOF'\nimport subprocess\nsubprocess.run('cat /tmp/pad/x > {work}/s.jsonl', shell=True)\nEOF",
+    "python3 - <<'EOF'\nimport subprocess\nsubprocess.run(['sqlite3', '{state}/x.db', 'delete from t'])\nEOF",
+    "cd {work} && python3 - <<'EOF'\ndef save(*, dst='out.txt'):\n    open(dst, 'w').write('x')\nsave()\nEOF",
+    "cd {work} && python3 - <<'EOF'\nimport zipfile\nzipfile.ZipFile('/tmp/pad/a.zip').extract('report.csv')\nEOF",  # unpacked where it stands
+    "cd {work} && python3 - <<'EOF'\nfor i in range(2): open('line-%d.txt' % i, 'w')\nEOF",
+])
+def test_and_what_stays_refused_after_the_fifth_review(saved, command, tmp_path):
+    assert REFUSED in (guards.check("Bash", {"command": command.format(**saved)}, {}, cwd=str(tmp_path)) or ""), command
