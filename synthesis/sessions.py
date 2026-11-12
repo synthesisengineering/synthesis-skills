@@ -683,12 +683,15 @@ def _record(text: str, typed: dict) -> str:
     return LISTED.sub(line, REFUSED.sub("\0\n", text))
 
 
-def short(session: str) -> str:
+def short(session: str, known: list | None = None) -> str:
     """As much of a session's id as names it alone among the archive's main sessions: eight characters, or more
-    where two begin alike (2026-11-12: a citation of eight shared characters cleared both and opened neither)."""
-    others = [str(m.get("session")) for m in catalog() if m.get("role") not in ("subagent", "reviewer") and "-agent-" not in str(m.get("session"))]
-    size = min(8, len(session))
-    while size < len(session) and any(o != session and o.startswith(session[:size]) for o in others):
+    where two begin alike (2026-11-12: a citation of eight shared characters cleared both and opened neither). A
+    sub-agent's id begins with its parent's, so only the whole of it names it. `known` is the catalog, for a
+    caller that names several sessions."""
+    mains = [str(m.get("session")) for m in (catalog() if known is None else known)
+             if m.get("role") not in ("subagent", "reviewer") and "-agent-" not in str(m.get("session"))]
+    size = min(8, len(session)) if session in mains else len(session)
+    while size < len(session) and any(o != session and o.startswith(session[:size]) for o in mains):
         size += 1
     return session[:size]
 

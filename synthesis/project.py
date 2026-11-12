@@ -308,8 +308,9 @@ def _recent_conversation(pid: str, session_id: str) -> list[str]:
         return ["", f"Recent conversation: not read ({exc})."]
     if not turns:
         return []
+    known = sessions.catalog()
     return ["", "Recent conversation in this project (any harness; `synthesis sessions show <session>` has all of it):"] + [
-        f"  [{r.get('harness')} {str(r.get('session'))[:8]}] {sessions.render(r, 400)}" for r in turns]
+        f"  [{r.get('harness')} {sessions.short(str(r.get('session')), known)}] {sessions.render(r, 400)}" for r in turns]
 
 
 def _handoff_repo(repo: Path, specs: list[str], message: str, claims: list[str]) -> tuple[bool, list[str]]:

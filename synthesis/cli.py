@@ -247,7 +247,8 @@ def cmd_sessions(args) -> int:
             return 2
         found = sessions.prompts(args.workspace, day)
         left = sessions.uncited(found, args.records) if args.records else found
-        names = {session: sessions.short(session) for session in {str(p["session"]) for p in left}}
+        known = sessions.catalog() if left else []
+        names = {session: sessions.short(session, known) for session in {str(p["session"]) for p in left}}
         cites = [f"{p['harness']} {names[str(p['session'])]} #{p['seq']}" for p in left]
         if args.json:
             print(json.dumps({"workspace": args.workspace, "date": day, "prompts": len(found), "open": cites if args.records else [],
@@ -259,12 +260,13 @@ def cmd_sessions(args) -> int:
                   f"all {len(found)} prompts on {day} in {args.workspace} are cited by a record" if not left else
                   f"{len(left)} of {len(found)} prompts on {day} in {args.workspace} {'is' if len(left) == 1 else 'are'} cited by no record")
         return 1 if args.records and left else 0
-    elif args.action == "recent":
-        for rec in sessions.recent(args.project, args.workspace, args.limit):
-            out(rec, f"[{rec.get('harness')} {str(rec.get('session'))[:8]}] {sessions.render(rec, args.width)}")
-    else:
-        for rec in sessions.search(args.target, args.workspace, args.project, kinds)[:args.limit]:
-            out(rec, f"[{rec.get('harness')} {str(rec.get('session'))[:8]}] {sessions.render(rec, args.width)}")
+    else:  # recent, search: each record under as much of its session's id as cites it and opens it
+        rows = (sessions.recent(args.project, args.workspace, args.limit) if args.action == "recent" else
+                sessions.search(args.target, args.workspace, args.project, kinds)[:args.limit])
+        known = sessions.catalog() if rows else []
+        names = {session: sessions.short(session, known) for session in {str(r.get("session")) for r in rows}}
+        for rec in rows:
+            out(rec, f"[{rec.get('harness')} {names[str(rec.get('session'))]}] {sessions.render(rec, args.width)}")
     return 0
 
 

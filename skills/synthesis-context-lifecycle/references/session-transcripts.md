@@ -105,12 +105,14 @@ synthesis sessions show <session> --whole         # tool output and injected tex
 synthesis sessions search "<pattern>" --project <id>
 ```
 
-Cite the record behind a decision or quote as `<harness> <session8> #<seq>` (for example `codex 01a1b2c3 #4120`) in a
-session log or lesson, and open it with `synthesis sessions show <session8> --seq <n>`, which prints that record
-whole and three either side, each cut at `--width` characters. A session id's first eight characters name the
-main session, never the sub-agents it started,
-whose ids begin with the same characters; `meta.json` gives a sub-agent `role: subagent` and its `parent`. A quote or attribution read from the archive in the current session has a tool output behind it,
-as quote provenance requires. One entry that covers a stretch of a session cites it as a range:
+Cite the record behind a decision or quote as `<harness> <session> #<seq>` (for example `codex 01a1b2c3 #4120`) in a
+session log or lesson, and open it with `synthesis sessions show <session> --seq <n>`, which prints that record
+whole and three either side, each cut at `--width` characters. Write as much of the session's id as the commands
+print for it (`prompts`, `recent`, `search` and `resume`): eight characters, or more where two sessions begin
+alike. Characters that two sessions share name neither: such a citation does not count, and `show` asks for more
+of the id. What is printed for a main session never names the sub-agents it started, whose ids begin with its
+whole id and are printed whole; `meta.json` gives a sub-agent `role: subagent` and its `parent`. A quote or
+attribution read from the archive in the current session has a tool output behind it, as quote provenance requires. One entry that covers a stretch of a session cites it as a range:
 `claude-code d20ab7c4 #1500-1560`. `--json` prints one object per line for tools such as the Console. Keep the conversation out
 of CONTEXT.md and project folders: it would break their size budgets (R1.5) and flood every search of the project.
 
