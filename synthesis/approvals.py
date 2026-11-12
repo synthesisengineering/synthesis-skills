@@ -204,6 +204,19 @@ def held(kind: str, subject) -> bool:
     return data.get("kind") == kind and time.time() - float(data.get("at", 0)) <= TTL_SECONDS
 
 
+def backed(kind: str, subject, session: dict | None = None) -> bool:
+    """A live grant of exactly this subject that the principal's own prompt backs. Spends nothing: it holds until it
+    expires, for an approval of a thing (an address) that each call it lets through still waits on its own."""
+    data = paths.read_json(_dir("approvals") / f"{digest(kind, subject)}.json")
+    if data.get("kind") != kind or time.time() - float(data.get("at", 0)) > TTL_SECONDS:
+        return False
+    try:
+        return bool(transcript(session)) and typed(transcript(session), str(data.get("code", "")),
+                                                   max(float(data.get("asked", 0)), time.time() - TTL_SECONDS), paths.session_id(session))
+    except OSError:
+        return False
+
+
 def consume(kind: str, subject, session: dict | None = None) -> bool:
     """True once for a live grant of exactly this subject that the principal's own prompt backs. The
     grant is spent either way; when the record does not back it, files the request again and raises."""

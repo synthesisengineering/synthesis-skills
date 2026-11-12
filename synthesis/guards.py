@@ -142,9 +142,41 @@ def _is_email(tool: str, tool_input: dict) -> bool:
         k in tool_input for k in ("to", "cc", "bcc", "subject", "htmlBody", "body_format")))
 
 
-def message_problems(tool: str, tool_input: dict, config: dict, chans: set | None = None) -> list[str]:
+# 2026-11-12: a connector tested on a laptop behind a quick tunnel was handed to two colleagues in direct messages that
+# carried the tunnel's address. One relied on it, and a restart of the laptop's app took the address away for good.
+TUNNELS = (".trycloudflare.com", ".ngrok.io", ".ngrok.app", ".ngrok.dev", ".ngrok-free.app", ".ngrok-free.dev", ".loca.lt",
+           ".localtunnel.me", ".serveo.net", ".localhost.run", ".lhr.life", ".pinggy.io", ".pinggy.link")
+HOSTNAME = re.compile(r"(?<![\w.@-])(?:[a-z0-9-]+\.)+[a-z][a-z0-9-]*(?![\w-])")
+_NAME = r"(?:localhost|[a-z0-9-]+(?:\.[a-z0-9-]+)*\.local(?:host)?|\[::1\])"
+_NET = r"(?:10(?:\.\d{1,3}){3}|192\.168(?:\.\d{1,3}){2}|172\.(?:1[6-9]|2\d|3[01])(?:\.\d{1,3}){2})"
+LOCAL = re.compile(rf"https?://((?:{_NAME}|{_NET})(?::\d+)?)(?![\w-])|(?<![\w.@-])((?:{_NAME}|{_NET}):\d{{2,5}})\b"
+                   r"|(?<![\w.@-])((?:127(?:\.\d{1,3}){3}|0\.0\.0\.0)(?::\d+)?)(?![\w]|\.\d)")
+
+
+def temporary_addresses(texts: list, config: dict):
+    """The addresses in these words that can change, or that only this machine or its network answers: a quick tunnel's
+    host (a subdomain of a tunnel service, or a host the config names and its subdomains) and, unless `local` is false,
+    a local name or a private address written with a scheme or a port, and a loopback address however written. A
+    string when the setting cannot be read. {"temporary_addresses": {"hosts": ["<more>"], "local": true}}; no key, no rule."""
+    rule = config.get("temporary_addresses")
+    if rule is None:
+        return []
+    more, local = (rule.get("hosts", []), rule.get("local", True)) if isinstance(rule, dict) else (None, None)
+    if not isinstance(more, list) or not all(isinstance(h, str) and h.strip() for h in more) or not isinstance(local, bool):
+        return ('temporary_addresses in the synthesis config needs "hosts" as a list of host names and "local" as true or '
+                "false (either may be absent); sends are blocked until it is fixed")
+    exact = {h.strip().lower().lstrip(".") for h in more}
+    ends, found = TUNNELS + tuple("." + h for h in exact), set()
+    for low in (str(text).lower() for text in texts):
+        found |= {h for h in HOSTNAME.findall(low) if h in exact or h.endswith(ends)}
+        found |= {next(g for g in m.groups() if g) for m in LOCAL.finditer(low)} if local else set()
+    return sorted(found)
+
+
+def message_problems(tool: str, tool_input: dict, config: dict, chans: set | None = None, session: dict | None = None) -> list[str]:
     """Why this outgoing message can't go as written, before anyone is asked to approve it. A register rule naming
-    channels holds only there (2026-10-27: a line that fits scheduling went out on Jira answers)."""
+    channels holds only there (2026-10-27: a line that fits scheduling went out on Jira answers). An address that can
+    change is released only by the principal's approval of the address itself, which the message's own never is."""
     from synthesis import sends
     fmt, chans = config.get("message_format") or {}, chans or {sends.channel(tool, tool_input)}
     breaks_ok = bool(fmt.get("allow_line_breaks_in_paragraphs")) or any(  # a document's lines are its own
@@ -157,6 +189,15 @@ def message_problems(tool: str, tool_input: dict, config: dict, chans: set | Non
             shown, with_links, markup = _rendered(text, breaks_ok)
             texts.append(with_links)  # markup and entities must not hide a banned phrase (2026-07-29)
             html_parts.append((key, shown, markup))
+    held = temporary_addresses(texts, config)
+    if isinstance(held, str):
+        return [held]
+    if held and not approvals.backed("temporary-address", held, session):
+        code = approvals.request("temporary-address", held, "an address that can change, in a message: " + ", ".join(held)[:140])
+        return [f"it holds an address that can change or that only this machine answers ({', '.join(held)}). Such an address "
+                "is never given to anyone: what another person uses runs at a permanent address, on infrastructure that outlives "
+                f"this machine. If the principal means to send exactly this (their own test), they type {approvals.how(code)} "
+                "for the address itself; the message then still waits for its own approval"]
     for rule in config.get("forbidden_phrases", []):
         # Case-insensitive unless the rule says otherwise: a rule against a miscased brand
         # must not block the correctly cased one (2026-08-03).
@@ -212,7 +253,7 @@ def message_problems(tool: str, tool_input: dict, config: dict, chans: set | Non
 
 def check_send(tool: str, tool_input: dict, config: dict, session: dict | None = None) -> str | None:
     """session: the hook payload, whose transcript shows who typed an approval (a shell's script passes none)."""
-    problems = message_problems(tool, tool_input, config)
+    problems = message_problems(tool, tool_input, config, session=session)
     if problems:
         return "This message can't go out as written: " + "; ".join(problems[:6]) + "."
     from synthesis import sends
@@ -1425,6 +1466,35 @@ def check_deploy(command: str, config: dict, cwd: str | None = None, session: di
            "deploys on push." if unknown else "This publishes to production.")
     return (f"{why} Show the principal this exact command and ask them to type {approvals.how(code)}. "
             "Then run the identical command again.")
+
+
+TUNNEL_SSH = ("serveo.net", "localhost.run", "pinggy.io")
+RUNNERS = ("npx", "bunx", "pnpx", "pnpm", "yarn")
+
+
+def _tunnels(words: list[str]) -> bool:
+    """Does this command start a quick tunnel: an address handed out for as long as the command runs?"""
+    name, rest = os.path.basename(words[0]), words[1:]
+
+    def flag(*names):
+        return any(w in names or w.startswith(tuple(n + "=" for n in names)) for w in rest)
+    return bool(name == "cloudflared" and "tunnel" in rest and flag("--url")
+                or name == "ngrok" and rest[:1] in (["http"], ["tcp"], ["tls"], ["start"], ["start-all"])
+                or (name in ("lt", "localtunnel") or name in RUNNERS and "localtunnel" in rest) and flag("--port", "-p")
+                or name == "ssh" and any(w.startswith("-R") for w in rest) and any(w.rsplit("@", 1)[-1].endswith(TUNNEL_SSH) for w in rest))
+
+
+def check_tunnel(command: str, config: dict, cwd: str, session: dict | None = None) -> str | None:
+    """Starting a quick tunnel waits for the principal's code, where the config has `temporary_addresses`: its address
+    is gone when the command stops, so it serves their own test and nothing another person is given."""
+    if config.get("temporary_addresses") is None or not any(_tunnels(words) for words, _ in _parse(command, cwd)[0] if words):
+        return None
+    if approvals.consume("tunnel", command, session):
+        return None
+    code = approvals.request("tunnel", command, f"a temporary tunnel: {command[:150]}")
+    return ("This starts a temporary tunnel: its address is gone for good when the command stops. It serves the principal's "
+            "own test and is never given to anyone; what another person uses is deployed at a permanent address first. Show "
+            f"them this exact command and ask them to type {approvals.how(code)}. Then run the identical command again.")
 
 
 # --- destruction (R3.4) -------------------------------------------------------------------------
@@ -3795,7 +3865,7 @@ def check_desktop(name: str, tool: str, tool_input: dict, config: dict, session:
         kind == "click" and not s.strip() or kind == "menu" and re.search(r"(?:^|> )send\b", v, re.I)
         or kind == "key" and _sends_key(v, reached) or kind == "type" and re.search(r"[\r\n]", v) and _sends_key("return", reached))]
     problems = message_problems("desktop_type", {"message_text": "\n\n".join(typed)}, config,
-                                {c for c, _ in reached.values()}) if typed and (reached or sending) else []
+                                {c for c, _ in reached.values()}, session) if typed and (reached or sending) else []
     if problems:
         return "These words can't go out as written: " + "; ".join(problems[:6]) + "."
     if not sending:
@@ -3901,7 +3971,7 @@ def check_outgoing(command: str, config: dict, cwd: str, session: dict | None = 
     if not posts:
         return None
     text, chans = "\n\n".join(t for _, t, _ in posts), sorted({c for c, _, _ in posts})
-    problems = message_problems("Bash", {"message_text": text}, config, set(chans))
+    problems = message_problems("Bash", {"message_text": text}, config, set(chans), session)
     if problems:
         return "This command posts a message that can't go out as written: " + "; ".join(problems[:6]) + "."
     dirs = sorted({w for _, _, w in posts})  # where it runs, after its own cd: a re-run elsewhere is the same send
@@ -3942,7 +4012,8 @@ def check(tool: str, tool_input: dict, config: dict, cwd: str | None = None, ses
         command = shell_command(tool_input)
         return (check_destructive(command, config, cwd) or check_self_grant(command, cwd, config)  # a recursive delete is named as one
                 or check_pr_gate(command, config, cwd, session)
-                or check_deploy(command, config, cwd, session) or check_outgoing(command, config, cwd, session)
+                or check_deploy(command, config, cwd, session) or check_tunnel(command, config, cwd, session)
+                or check_outgoing(command, config, cwd, session)
                 or check_claimed(_shell_writes(command, cwd), cwd, session))
     if tool in FILE_TOOLS:
         return check_file_write(tool, tool_input, cwd, config) or check_claimed(_file_targets(tool, tool_input), cwd, session)

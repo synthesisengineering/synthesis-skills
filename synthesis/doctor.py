@@ -159,6 +159,16 @@ def check_wait_check() -> Check:
     return Check("fail", "wait check", "a reply that announced a wait with nothing armed was not sent back: waits can end a turn unseen")
 
 
+def check_temporary_addresses(config: dict) -> Check:
+    """Under this config a message that carries a quick tunnel's address must be read as one."""
+    from synthesis import guards
+    found = guards.temporary_addresses(["https://doctor-probe.trycloudflare.com/x"], config)
+    if found and not isinstance(found, str):
+        return Check("ok", "temporary addresses", "a message that carries a quick tunnel's address is refused until the "
+                     "principal approves the address itself, and starting a quick tunnel waits for a code")
+    return Check("fail", "temporary addresses", found or "a quick tunnel's address in a message was not read: it could reach other people")
+
+
 def check_shell_name(home: Path, harness: str, tool: str, run=subprocess.run) -> Check:
     """Does the guard treat this harness's own shell tool name as a shell?"""
     if run_hook(home, {**SELF_TEST, "tool_name": tool}, run)[0]:
@@ -1177,6 +1187,8 @@ def run_checks(home: Path | None = None, find=find_client, latest_ref: str = "",
                check_home_paths([home / "config.json"]), check_packets(project.roots())]
     if config.get("pr_gated") is not None:
         checks.append(check_pr_gate(config["pr_gated"], repos))
+    if config.get("temporary_addresses") is not None:
+        checks.append(check_temporary_addresses(config))
     if latest_ref:
         checks.append(check_latest(versions, latest_ref))
     try:
