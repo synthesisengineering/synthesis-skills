@@ -149,11 +149,11 @@ def judge(args, config: dict, read: dict) -> dict:
     if not isinstance(entries, list) or not all(isinstance(e, dict) for e in entries):
         stop('the calendar read\'s "events" is not a list of entries, so it cannot be judged: save the read again')
     for entry in entries:
+        summary, said = str(entry.get("summary") or "an event"), lines(entry.get("description"))
         try:
             a, b = slot.moment(entry.get("start"), zone), slot.moment(entry.get("end"), zone)
         except SystemExit as exc:
-            stop(str(exc.code).split(": ", 1)[-1])
-        summary, said = str(entry.get("summary") or "an event"), lines(entry.get("description"))
+            stop(f'"{summary}": ' + str(exc.code).split(": ", 1)[-1])
         others += [(a, summary)] if a else []  # every timed entry, a trip included: what a night runs into the next morning
         if re.match(rf"{re.escape(title)}\b", summary.lower()):
             names = [" ".join(name.lower().split()).strip("\"'“”‘’ .:;,!") for name in said.get("for", "").splitlines()]
@@ -161,6 +161,8 @@ def judge(args, config: dict, read: dict) -> dict:
             continue
         loose += [(a, b, summary)] if a and b and (TRIP.search(summary) or title in summary.lower()) else []
         span, spot = days(entry, a, b), tidy(entry.get("location"))
+        if not span and place(spot, policy) == "away":
+            stop(f'"{summary}" is at a place and has no start this can read, so it cannot be judged: read the calendar again')  # never passed over
         found = {"summary": summary, "title": " ".join(summary.lower().split()), "start": a, "end": b or a,
                  "days": span, "said": said, "location": spot}
         if span and place(spot, policy) == "away" and found not in commitments:  # one event read from two calendars is one event

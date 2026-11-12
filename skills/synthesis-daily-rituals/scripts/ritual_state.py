@@ -126,9 +126,13 @@ def critical_deadlines(workspace: str, outcome: str) -> str:
     return f"critical deadlines: {len(rows)} open, {sum(r['lead'] for r in rows)} within {decay_sweep.LEAD_DAYS} days"
 
 
+def _when(moment) -> datetime:
+    """A whole date and time, as the travel check writes one; anything else is no result of that check."""
+    return datetime.fromisoformat(str(moment).replace("Z", "+00:00"))
+
+
 def _day(moment) -> str:
-    """The day of a whole date and time, as the travel check writes one; anything else is no result of that check."""
-    return datetime.fromisoformat(str(moment).replace("Z", "+00:00")).date().isoformat()
+    return _when(moment).date().isoformat()
 
 
 def travel(workspace: str, day: str, given) -> str:
@@ -149,7 +153,8 @@ def travel(workspace: str, day: str, given) -> str:
         bare = [e for e in events if e["lacks"]]
         sound = (isinstance(events, list) and all(isinstance(e["lacks"], list) for e in events) and
                  (found["in_person"], found["flagged"], found["verdict"]) == (len(events), len(bare), "REFUSE" if bare else "OK")
-                 and all(first <= _day(e["end"]) and _day(e["start"]) <= through for e in events))  # each event within its days
+                 and all(first <= _day(e["end"]) and _day(e["start"]) <= through and _when(e["start"]) <= _when(e["end"])
+                         for e in events))  # each event within its days, and ending after it starts
     except (OSError, ValueError, KeyError, TypeError) as exc:
         refuse(f"the travel result {given} cannot be read ({exc!r}); run {again} again")
     if not sound:  # a result edited by hand, or cut short
@@ -170,7 +175,8 @@ ITEM = r"(?im)^ *(?:>\s*)*(?:[-*+] |\d+[.)] )?\**"  # a line of an item: plain, 
 OPTION = re.compile(ITEM + r"Option [A-Z0-9]+\b(.*)$")
 SAID = re.compile(ITEM + r"(Recommendation|Consequences|Commits)\**\s*:[*\s]*(.*)$")
 CLOSED = re.compile(ITEM + r"(?:Decided|Resolved|Released|Lapsed|Withdrawn)\**\s*:")
-FENCE = re.compile(r"(?ms)^\s*(```|~~~).*?^\s*\1[^\n]*$")  # a fenced block is an example, not the item's own lines
+FENCE = re.compile(r"(?ms)^\s*(?:>\s*)*(```|~~~).*?^\s*(?:>\s*)*\1[^\n]*$")  # a fenced block, quoted or not, is an example
+QUOTE = re.compile(r"^ {0,3}(?:> ?)+")  # what marks a line as quoted: the line is read as the one it quotes
 NOTHING = re.compile(r"(?i)[*\s]*(?:tbd|tbc|none|n/?a|no recommendation|your call|up to you|either)?[\s.*]*")
 COMMITS = re.compile(r"(?i)\b(?:accept|decline|rsvp|attend|go|join|host|schedule|meet|say (?:yes|no))\b")
 
@@ -187,14 +193,15 @@ def _shown(text: str) -> str:
     by four under a numbered entry are that entry's own lines, and were read as an example)."""
     lines, columns, blank, example = [], [], True, False
     for line in FENCE.sub("", text).expandtabs(4).splitlines():
-        indent, entry = len(line) - len(line.lstrip(" ")), ENTRY.match(line)
-        if line.strip():
-            while columns and indent < columns[-1] and (blank or entry or line.lstrip().startswith("#")):
+        body = QUOTE.sub("", line)
+        indent, entry = len(body) - len(body.lstrip(" ")), ENTRY.match(body)
+        if body.strip():
+            while columns and indent < columns[-1] and (blank or entry or body.lstrip().startswith("#")):
                 columns.pop()  # the line stands left of that entry's text: the entry is over
             example = indent - (columns[-1] if columns else 0) >= 4 and (blank or example)
             columns += [len(entry[0])] if entry and not example else []
         lines.append("" if example else line)
-        blank = not line.strip()
+        blank = not body.strip()
     return "\n".join(lines)
 
 

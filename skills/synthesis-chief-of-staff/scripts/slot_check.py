@@ -110,7 +110,7 @@ def first_thing(short: tuple, keeps) -> str:
 
 def clock(day: date, text: str, zone: ZoneInfo) -> datetime:
     """An hour of a day; 24:00 is the midnight that ends it. A value that is no time of day stops the check."""
-    text, late = str(text).strip(), str(text).strip().startswith("24:")
+    text, late = str(text).strip(), str(text).strip() == "24:00"
     try:
         return datetime.combine(day + timedelta(days=late), time.fromisoformat("00" + text[2:] if late else text), zone)
     except ValueError:
@@ -155,6 +155,10 @@ def judge(args, config: dict, read: dict) -> dict:
     # meetings against a limit of 5, and 4.5 of them were the principal's own).
     own = [str(address).lower() for address in config.get("principal_addresses") or []]
     marks = [str(mark).lower() for mark in guardian.get("personal_markers") or []]
+    worded = [mark for mark in marks if not re.search(r"[^\w\s]", mark)]
+    if worded:  # a word would hide every meeting whose title carries it (a marker `training`, "Training with the team")
+        stop(f"calendar_guardian.personal_markers holds {worded[0]!r}, a plain word a meeting's title might carry: a marker is a "
+             "tag the principal puts on their own blocks, such as #reserved")
     events, joined, marked = [], set(), set()
     for entry in read.get("events") or []:
         a, b = moment(entry.get("start"), zone), moment(entry.get("end"), zone)
@@ -164,7 +168,7 @@ def judge(args, config: dict, read: dict) -> dict:
             me = {x.lower() for g in guests if isinstance(g, dict) and g.get("self") for x in ADDRESS.findall(json.dumps(g))}
             events.append((a, b, title, who))
             joined |= {(a, b, title)} if any(not any(fnmatch.fnmatchcase(p, e) for e in own) for p in who - me) else set()
-            marked |= {(a, b, title)} if any(mark in title.lower() for mark in marks) else set()
+            marked |= {(a, b, title)} if any(re.search(rf"(?<!\w){re.escape(mark)}(?!\w)", title.lower()) for mark in marks) else set()
     that_day = [(a, b, s) for a, b, s, _ in events if a.date() == start.date() and (a, b) != (start, end)]
     checks = []
 

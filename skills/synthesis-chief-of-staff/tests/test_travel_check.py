@@ -199,7 +199,7 @@ def test_an_all_day_event_with_a_place_is_asked_for_its_line(tmp_path):
 
 
 def test_an_entry_with_no_start_is_passed_over_and_the_rest_are_judged(tmp_path):
-    code, report = check(tmp_path, [{"summary": "A note with no time", "location": "Somewhere 5"}, LAUNCH])
+    code, report = check(tmp_path, [{"summary": "A note with no time"}, LAUNCH])          # no time and no place: no event
     assert code == 1 and report["in_person"] == 1 and report["events"][0]["summary"].startswith("Book launch")
 
 
