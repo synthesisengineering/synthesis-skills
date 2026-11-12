@@ -282,6 +282,14 @@ stay open, and no hook running as that same user can close them:
   `getattr`, a method kept under another name, a path the program reads out of a file or
   builds from a value the reader cannot read, and a command an awk program builds in a
   variable and only reads from.
+- The shell guard reads the text of a command. It follows the ordinary ways a command names
+  a file, runs in a folder and hands a file on, and each of those has a test. A spelling
+  made to get past that reading may get through until it is added: four review rounds by a
+  second model each found more of them (a folder stack turned by number, a wrapper inside a
+  wrapper, a file name split across two strings, a link moved into place within one
+  command), and each was closed with a test. There is always another. What the guard is
+  measured on is the other direction as well: 30 days of recorded commands, where it must
+  not refuse ordinary work.
 - A prompt another process injects into the session through the harness's own CLI
   (`claude -p --resume`, `codex queue`, `muse session-message`) is recorded as a typed
   prompt. The shell guard refuses such a command when it carries a pending code; one
