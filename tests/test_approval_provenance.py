@@ -1660,3 +1660,19 @@ def test_and_what_stays_refused_after_the_sixth_review(saved, command, tmp_path)
 def test_a_started_command_is_judged_with_what_the_program_hands_it(saved, program, held, tmp_path):
     command = "python3 - <<'EOF'\n" + program.format(**saved) + "\nEOF"
     assert (REFUSED in (guards.check("Bash", {"command": command}, {}, cwd=str(tmp_path)) or "")) == held, program
+
+
+def test_an_input_the_guard_cannot_read_does_not_hide_what_the_commands_words_show(saved, tmp_path):
+    """The replay after the sixth review: a program that ran the hook through `subprocess` with an input it built
+    at run time passed again, because an input that could not be read sent the whole command back to the older
+    rule. The words of the command are judged whatever its input is."""
+    hook = ("import json, subprocess\npayload = json.dumps({'tool_name': 'Bash'})\n"
+            "subprocess.run(['/usr/bin/python3', '-S', 'synthesis/hook.py', 'pre-tool-use'], input=payload, capture_output=True, text=True)")
+    reason = guards.check("Bash", {"command": "python3 - <<'EOF'\n" + hook + "\nEOF"}, {}, cwd=str(tmp_path))
+    assert REFUSED in (reason or "") and "runs the synthesis hook" in reason
+    copy = "import subprocess, sys\nsubprocess.run(['cp', '/tmp/pad/x', '{work}/s.jsonl'], input=sys.stdin.read())".format(**saved)
+    assert REFUSED in (guards.check("Bash", {"command": "python3 - <<'EOF'\n" + copy + "\nEOF"}, {}, cwd=str(tmp_path)) or "")
+    reads = "import subprocess, sys\nprint(subprocess.run(['grep', '-c', 'x', '{work}/s.jsonl'], input=sys.stdin.read(), text=True))".format(**saved)
+    assert guards.check("Bash", {"command": "python3 - <<'EOF'\n" + reads + "\nEOF"}, {}, cwd=str(tmp_path)) is None
+    shell = "import subprocess, sys\nsubprocess.run(['bash'], input=sys.stdin.read() + ' {work}/s.jsonl', text=True)".format(**saved)
+    assert REFUSED in (guards.check("Bash", {"command": "python3 - <<'EOF'\n" + shell + "\nEOF"}, {}, cwd=str(tmp_path)) or "")   # a script it cannot read, naming the file
