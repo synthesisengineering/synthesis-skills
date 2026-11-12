@@ -2473,10 +2473,22 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
                 if isinstance(stmt, (ast.With, ast.AsyncWith)):  # its body runs once and in order: a change in it is as sure as one outside
                     at = walk(stmt.body, walk([ast.Expr(value=item.context_expr) for item in stmt.items], at))
                     continue
+                if isinstance(stmt, ast.If) and getattr(getattr(stmt.test, "left", None), "id", "") == "__name__" and not stmt.orelse:
+                    at = walk(stmt.body, at)  # the program's own main block
+                    continue
+                if isinstance(stmt, (ast.Try, getattr(ast, "TryStar", ast.Try))):  # in order until something fails: a handler and the
+                    now, mids = at, list(at)                                      # finally may start from any point of the body
+                    for part in stmt.body:
+                        now = walk([part], now)
+                        mids += now
+                    done, mids = walk(stmt.orelse, now), list(dict.fromkeys(mids))
+                    at = walk(stmt.finalbody, list(dict.fromkeys(done + [f for h in stmt.handlers for f in walk(h.body, mids)] + mids)))
+                    continue
                 inner = [c for c in ast.walk(stmt) if id(c) in change]
                 mine = isinstance(stmt, ast.Expr) and isinstance(stmt.value, ast.Call) and (
                     modules.get(getattr(getattr(stmt.value.func, "value", None), "id", "")) == "os" or direct.get(getattr(stmt.value.func, "id", ""), ("",))[0] == "os")
                 sure = mine and inner == [stmt.value]  # os's own change, not another object's method of that name
+                stood.update((id(c), at) for c in ast.walk(stmt) if sure and isinstance(c, ast.Call))  # what it is handed was made before it
                 before, at, maybe = at, list(dict.fromkeys(shift(at, inner))) if sure else at, deferred + inner * (not sure)
                 for _ in [v for c in maybe for v in change[id(c)]]:  # a change that may come, and come again after another
                     at = at + [f for f in dict.fromkeys(shift(at, maybe)) if f not in at][:64 - len(at)]
