@@ -895,6 +895,93 @@ def test_the_listing_exports_first_and_stops_when_a_transcript_could_not_be_copi
     assert said.out == "" and "not exported" in said.err and "2026-10-30" in said.err
 
 
+def test_a_day_is_not_listed_while_a_transcript_that_may_hold_its_prompts_is_not_copied(asked, capsys):
+    """2026-11-12, a second review: a transcript whose copy had failed lay outside the two days the listing exports.
+    Its failure stayed in the stamp, the listing of that older day held none of its prompts and exited 0, and the
+    day closed clean."""
+    from datetime import datetime
+    other = _jsonl(asked["claude"].with_name("c2.jsonl"),
+                   [_typed({"cwd": asked["work"], "sessionId": "c2"}, "Book the venue.", "2026-10-30T15:30:00.000Z")])
+    stamp = sessions.root() / ".state" / "export.json"
+    command = ["sessions", "prompts", "--workspace", "acme", "--date", "2026-10-30"]
+    that_day, day_before = datetime(2026, 10, 30, 16).timestamp(), datetime(2026, 10, 29, 12).timestamp()
+    other.chmod(0o000)
+    try:
+        sessions.export(0)                                             # the hourly run cannot read it,
+        assert json.loads(stamp.read_text())["failed"] == 1
+        os.utime(other, (that_day, that_day))                          # and it was last written on the day asked about, days ago
+        assert cli.main(command) == 2
+        said = capsys.readouterr()
+        assert said.out == "" and "claude-code c2: not exported" in said.err and "2026-10-30" in said.err
+        assert cli.main(command + ["--records", str(asked["kb"]), "--json"]) == 2 and capsys.readouterr().out == ""
+        assert cli.main(["sessions", "prompts", "--workspace", "elsewhere", "--date", "2026-10-30"]) == 2    # nothing says whose it is
+        os.utime(other, (day_before, day_before))                      # last written before that day began, it holds nothing typed on it:
+        capsys.readouterr()
+        assert cli.main(command) == 0                                   # the day is listed,
+        assert "2 prompts on 2026-10-30 in acme" in capsys.readouterr().out
+        assert cli.main(command[:-1] + ["2026-10-29"]) == 2            # and the day before it is not
+        assert "claude-code c2: not exported" in capsys.readouterr().err
+    finally:
+        other.chmod(0o644)
+    os.utime(other, (that_day, that_day))
+    sessions.export(0)                                                 # a later run of everything copies it,
+    assert "failed" not in json.loads(stamp.read_text())
+    assert cli.main(command) == 0 and "Book the venue." in capsys.readouterr().out          # and the day is listed with what it held
+
+
+def test_a_transcript_that_cannot_hold_the_days_prompts_does_not_stop_the_listing(harness, tmp_path, monkeypatch, capsys):
+    """What is not copied is weighed for the workspace and the day asked about. A transcript filed under another
+    workspace holds nothing of this one's. One that is gone may have held anything written until a run found it
+    gone, so it stops the listing of those days until the principal accepts the loss."""
+    import types
+    from datetime import date, timedelta
+    beta = tmp_path / "workspaces" / "beta" / "repo"
+    beta.mkdir(parents=True)
+    _jsonl(harness["claude"], [_typed({"cwd": harness["work"], "sessionId": "c1"}, "Plan the release.", "2026-10-30T15:00:00.000Z")])
+    theirs = _jsonl(harness["claude"].with_name("b1.jsonl"),
+                    [_typed({"cwd": str(beta), "sessionId": "b1"}, "Order the parts.", "2026-10-30T15:00:00.000Z")])
+    sessions.export(0)
+    _jsonl(theirs, [_typed({"cwd": str(beta), "sessionId": "b1"}, "And the spares.", "2026-10-30T15:30:00.000Z")])
+    theirs.chmod(0o000)                                                # what beta's session gained cannot be copied
+    here, there = (["sessions", "prompts", "--workspace", name, "--date", "2026-10-30"] for name in ("acme", "beta"))
+    try:
+        assert cli.main(here) == 0 and "Plan the release." in capsys.readouterr().out      # which is nothing of acme's,
+        assert cli.main(there) == 2                                                         # and may be something of beta's
+        said = capsys.readouterr()
+        assert said.out == "" and "claude-code b1: not exported" in said.err
+    finally:
+        theirs.chmod(0o644)
+    theirs.unlink()                                                    # the harness removes it before a run copies the rest
+    assert cli.main(there) == 2 and "claude-code b1: not exported" in capsys.readouterr().err
+    sessions.export(0)                                                 # a run of everything finds it gone,
+    assert cli.main(there) == 2 and "claude-code b1: not exported" in capsys.readouterr().err
+    assert cli.main(here) == 0
+    tomorrow = (date.today() + timedelta(days=1)).isoformat()         # and nothing typed after that can have been in it
+    assert cli.main(there[:-1] + [tomorrow]) == 0 and f"0 prompts on {tomorrow} in beta" in capsys.readouterr().out
+    monkeypatch.setattr("sys.stdin", types.SimpleNamespace(isatty=lambda: True))
+    assert cli.main(["sessions", "export", "--lost", "b1"]) == 0      # the principal accepts the loss,
+    capsys.readouterr()
+    assert cli.main(there) == 0                                        # and the day lists what the archive holds of it
+    listed = capsys.readouterr().out
+    assert "Order the parts." in listed and "And the spares." not in listed and "1 prompts on 2026-10-30 in beta" in listed
+
+
+def test_the_listing_of_an_older_day_copies_what_was_written_since_that_day_began(harness, capsys):
+    """The listing brought the archive up to date for the last two days whichever day was asked about, so a transcript
+    last written on an older day and not yet copied was not read for that day. The day is given as a date."""
+    from datetime import datetime
+    native = _jsonl(harness["claude"], [_typed({"cwd": harness["work"], "sessionId": "c1"}, "Plan the release.", "2026-10-30T15:00:00.000Z")])
+    written = datetime(2026, 10, 30, 16).timestamp()
+    os.utime(native, (written, written))
+    command = ["sessions", "prompts", "--workspace", "acme", "--date"]
+    assert cli.main(command + ["2026-10-30"]) == 0 and "Plan the release." in capsys.readouterr().out
+    assert cli.main(command + ["2026-10-30T09:00", "--json"]) == 0                     # a time of that day is that day,
+    assert json.loads(capsys.readouterr().out) == {"workspace": "acme", "date": "2026-10-30", "prompts": 1, "open": [], "records": []}
+    assert cli.main(command + ["tomorrow"]) == 2                                       # and what is no date lists nothing
+    said = capsys.readouterr()
+    assert said.out == "" and "tomorrow" in said.err
+
+
 def test_an_export_that_finishes_says_when_and_a_busy_one_does_not(harness):
     _jsonl(harness["claude"], _claude_rows(harness["work"]))
     stamp = sessions.root() / ".state" / "export.json"
