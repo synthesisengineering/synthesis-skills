@@ -2104,12 +2104,24 @@ ARG_READERS = {"argparse", "optparse", "getopt", "fileinput", "click", "typer", 
 WALKS = ("walk", "fwalk", "glob", "iglob", "rglob")  # hand back what lies under a folder, or what a pattern names
 LIBRARY_WRITES = ("basicConfig", "FileHandler", "RotatingFileHandler", "TimedRotatingFileHandler", "WatchedFileHandler", "urlretrieve",
                   "NamedTemporaryFile", "TemporaryFile", "SpooledTemporaryFile", "TemporaryDirectory", "mkstemp", "mkdtemp")
-# A writer by its name, in any library: the first thing it is handed (`to_csv`), the first or second (`save`,
-# `savefig`, `imwrite`), the second (`dump`); and, as a module's own function only, a deletion or a move
-# (`send2trash`), since a list has a `remove` of its own. PATH_KEYS: the keywords such writers take a path under.
-BY_NAME = re.compile(r"(to_[a-z_]+)|(save\w*|imwrite)|(dump)|((?:remove|delete|unlink|trash|send2trash|rmtree|move|rename|extract|unpack|truncate)\w*)")
+# A writer by its name, in any library, and where it takes its path: first (`df.to_csv`, `arr.tofile`, `savefig`,
+# a thing's own `save`, numpy's), second (`dump`, and `save` in the libraries that take the thing first), either
+# when the reader cannot tell (`to_<anything else>`, `write_<anything else>`, another module's `save(a, b)`); and,
+# as a module's own function only, a deletion or a move (`send2trash`), since a list has a `remove` of its own.
+# PATH_KEYS: the keywords such writers take a path under.
+BY_NAME = re.compile(r"(to_(?:csv|json|excel|parquet|pickle|feather|hdf|stata|html|latex|xml|markdown|orc|string|file|netcdf|zarr|disk)|tofile|writeto|savefig|imsave|imwrite"
+                     r"|mimsave|mimwrite|dump_stats|write_(?:csv|json|parquet|excel|ipc|ndjson|avro|image|html|videofile|audiofile|gif|png|pdf|svg))"
+                     r"|(to_[a-z_]+|write_\w+)|(save\w*)|(dump)|((?:remove|delete|unlink|trash|send2trash|rmtree|move|rename|extract|unpack|truncate)\w*)")
+OBJECT_FIRST = {"torch", "joblib", "pickle", "dill", "cloudpickle", "nibabel", "torchvision", "tensorflow", "keras", "pandas", "pyarrow", "networkx"}  # save(what, where)
+PATH_FIRST = {"numpy", "cv2", "imageio", "scipy", "skimage", "matplotlib", "tifffile", "PIL"}  # save(where, what)
+OPENED = re.compile(r"\w*(?:File|Store|Writer)|Dataset|open_\w+|memmap|get_writer")  # a library's own way to open a file: h5py.File(path, "w"), ExcelWriter(path)
+STRINGS = ("join", "joinpath", "Path", "PurePath", "PosixPath", "str", "fspath", "expanduser", "expandvars", "abspath", "realpath", "normpath", "resolve", "absolute",
+           "with_suffix", "with_name", "with_stem", "format", "replace", "dirname", "basename", "getcwd", "cwd", "home", "mkdtemp", "mktemp", "gettempdir", "strip",
+           "rstrip", "lstrip", "lower", "upper", "removesuffix", "removeprefix", "relative_to", "relpath", "getenv")  # hand back a string or a path
+FOREIGN = ("open", "Path", "str", "StringIO", "BytesIO", "ZipFile", "TarFile", "NamedTemporaryFile", "TemporaryFile", "Popen", "popen", "connect", "cursor",
+           "getLogger", "ArgumentParser", "writer", "reader", "DictWriter", "DictReader", "fdopen", "urlopen", "GzipFile", "TextIOWrapper", "compile")  # make no object of the program's own
 PATH_KEYS = ("path", "filepath", "file_path", "filename", "file", "fname", "fp", "f", "where", "dest", "dst", "target", "output", "out", "out_file",
-             "outfile", "path_or_buf", "save_path", "output_path")
+             "outfile", "path_or_buf", "buf", "excel_writer", "uri", "save_path", "output_path")
 STARTS = ("system", "popen", "create_subprocess_exec", "create_subprocess_shell", "spawn")  # os's, asyncio's and pty's ways to start a command
 PLACED = ("args", "shell", "cwd", "env", "input", "executable", "stdin", "stdout", "stderr")  # what a started command is given that the reader places or judges
 
@@ -2162,6 +2174,24 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
                 n.id = names.get(n.id, n.id)
         for f in [n for n in own if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda))]:
             scope(f.body if isinstance(f.body, list) else [f.body], names, f)
+    whole_tree, count = list(ast.walk(tree)), {}
+    for n in whole_tree:
+        name = n.id if isinstance(n, ast.Name) and not isinstance(n.ctx, ast.Load) else getattr(n, "arg", None) if isinstance(n, ast.arg) else None
+        count[name] = count.get(name, 0) + 1
+    only_read = {id(x.value) for c in whole_tree if isinstance(c, ast.Call) for x in c.keywords + c.args if getattr(x, "arg", 0) is None or isinstance(x, ast.Starred)} | {
+        id(n.value) for n in whole_tree if isinstance(n, ast.Subscript) and isinstance(n.ctx, ast.Load)}
+    spelt_once = {s.targets[0].id: s.value for s in whole_tree if isinstance(s, ast.Assign) and len(s.targets) == 1 and isinstance(s.targets[0], ast.Name)
+             and count.get(s.targets[0].id) == 1 and (all(isinstance(k, ast.Constant) and isinstance(k.value, str) for k in s.value.keys) if isinstance(s.value, ast.Dict)
+                                                      else isinstance(s.value, (ast.List, ast.Tuple)) and not any(isinstance(e, ast.Starred) for e in s.value.elts))}
+    spelt_once = {name: v for name, v in spelt_once.items() if all(id(n) in only_read for n in whole_tree if isinstance(n, ast.Name) and n.id == name and isinstance(n.ctx, ast.Load))}
+
+    def one(name, key):  # one entry of a table or a row the program spells out once and only reads
+        return ast.Subscript(value=ast.Name(id=name, ctx=ast.Load()), slice=ast.Constant(value=key), ctx=ast.Load())
+    for c in [c for c in whole_tree if isinstance(c, ast.Call)]:  # f(**table) and f(*row) of such a one: as if each entry were written out
+        c.keywords = [x for k in c.keywords for x in ([ast.keyword(arg=key.value, value=one(k.value.id, key.value)) for key in spelt_once[k.value.id].keys]
+                                                     if k.arg is None and isinstance(spelt_once.get(getattr(k.value, "id", None)), ast.Dict) else [k])]
+        c.args = [x for a in c.args for x in ([one(a.value.id, i) for i in range(len(spelt_once[a.value.id].elts))]
+                                             if isinstance(a, ast.Starred) and isinstance(spelt_once.get(getattr(a.value, "id", None)), (ast.List, ast.Tuple)) else [a])]
     scope(tree.body, {})
     nodes = list(ast.walk(tree))
 
@@ -2225,20 +2255,22 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
     # os.getenv("X")) has the value the command gives it, when that value is plain. Read any other way, a variable
     # that carries a protected path makes any write a refusal (30 days: a program that read the time from one
     # variable was refused for a transcript's path in another).
-    env, keyed = env or {}, set()
+    env, keyed, env_given = env or {}, set(), {}
 
     def home(path: str) -> str:  # `~` as the program's own HOME gives it, else the command's, else the hook's
         mine = ([spelled(v) for k, v in mapped.get("environ", ()) if k == "HOME"] or [env.get("HOME", "")])[-1]
         return mine + path[1:] if mine and not re.search(r"[$`]", mine) and (path == "~" or path[:2] == "~/") else os.path.expanduser(path)
     for n in nodes:
-        holder = n.value if isinstance(n, ast.Subscript) else n.func.value if isinstance(n, ast.Call) and getattr(n.func, "attr", "") == "get" else None
+        holder = n.value if isinstance(n, ast.Subscript) else n.func.value if isinstance(n, ast.Call) and getattr(n.func, "attr", "") in ("get", "setdefault", "pop") else None
         key = said(n.slice) if isinstance(n, ast.Subscript) else said(n.args[0]) if isinstance(n, ast.Call) and n.args else None
         if key is not None and (getattr(holder, "attr", getattr(holder, "id", "")) == "environ" or (
                 holder is None and isinstance(n, ast.Call) and getattr(n.func, "attr", getattr(n.func, "id", "")) == "getenv")):
             keyed.add(id(holder if holder is not None else n.func))
             if key in env and not re.search(r"[$`]", env[key]):
-                given[id(n)] = env[key]
-    wild = any(getattr(n, "attr", getattr(n, "id", "")) in ("environ", "environb", "getenv", "putenv") and id(n) not in keyed for n in nodes)
+                env_given[id(n)] = env[key]  # what the command gave it; the program may give it another value before it reads it
+    keyed |= {id(x) for n in nodes if isinstance(n, ast.Call) for x in n.args[:getattr(n.func, "id", "") == "dict"] + [k.value for k in n.keywords if k.arg == "env"] + [
+        getattr(n.func, "value", None)] * (getattr(n.func, "attr", "") == "copy")} | {id(v) for n in nodes if isinstance(n, ast.Dict) for k, v in zip(n.keys, n.values) if k is None}
+    wild = any(getattr(n, "attr", getattr(n, "id", "")) in ("environ", "environb", "getenv", "putenv") and id(n) not in keyed for n in nodes)  # copied whole for a child, it is read through the copy
     loose = loose or (wild and (any(m in v for v in env.values() for m in names) or any(
         v[:1] == "/" and paths.inside(v, r) for v in env.values() for r in roots)))
 
@@ -2293,6 +2325,12 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
             n = todo.pop()
             if isinstance(n, ast.Name) and n.id in apart:
                 continue  # what a walk found from where the program stands: after a folder elsewhere it only goes further in
+            held_ = members(n) if is_member(n) else [(None, ())]
+            if all(v is not None for v, _ in held_):  # a member of something the program makes: built from what that member holds, not from all the thing holds
+                if any(isinstance(v, str) and any(m in v for m in names) for v, _ in held_):
+                    return True
+                todo += [v for v, _ in held_ if isinstance(v, ast.AST)]
+                continue
             if isinstance(n, ast.Call) and getattr(n.func, "attr", getattr(n.func, "id", "")) in WALKS and over(n):
                 return True  # what it finds under a folder that holds a protected one may lie in that one
             if isinstance(n, ast.Attribute) and n.attr == "name" and (opened(n.value) or "name of " + getattr(n.value, "id", "") in tainted):
@@ -2300,8 +2338,16 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
             field = (isinstance(n, ast.Attribute) and not (isinstance(n.value, ast.Name) and n.value.id in modules) and (
                 "." + n.attr in tainted or (n.attr in tainted and n.attr in classed))) or (".environ" in tainted and (
                 getattr(n, "attr", "") == "environ" or getattr(getattr(n, "func", None), "attr", getattr(getattr(n, "func", None), "id", "")) == "getenv"))
-            if field or (isinstance(n, ast.Name) and n.id in tainted) or any(m in (said(n) or given.get(id(n), "")) for m in names):
+            if field or (isinstance(n, ast.Name) and n.id in tainted) or any(m in (said(n) or given.get(id(n)) or env_given.get(id(n), "")) for m in names):
                 return True
+            if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute) and (key_of(n) or "")[:3] == "()@":
+                if n.func.attr in tainted:
+                    return True
+                todo += n.args + [k.value for k in n.keywords]  # the program's own method: by what it hands back and is handed, not by all its object holds
+                continue
+            if isinstance(n, (ast.ListComp, ast.SetComp, ast.GeneratorExp, ast.DictComp)):
+                todo += [n.key, n.value] if isinstance(n, ast.DictComp) else [n.elt]  # what a comprehension makes: built from what it makes each one of
+                continue
             leaf = (isinstance(n, ast.Attribute) and n.attr in ("name", "stem", "suffix")) or (
                 isinstance(n, ast.Call) and getattr(n.func, "attr", getattr(n.func, "id", "")) == "basename") or rooted(n)
             if not leaf and not (isinstance(n, ast.Call) and getattr(n.func, "attr", getattr(n.func, "id", "")) in CONTENT):
@@ -2313,7 +2359,10 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
         if id(node) in given or said(node) is not None:
             return given.get(id(node), said(node))
         if id(node) in picked:
-            return picked[id(node)]  # one side of `a if c else b` or `a or b`, or what this call of the program's own function hands back
+            return picked[id(node)]  # one side of `a if c else b` or `a or b`, what this call of the program's own function hands back, one value a member holds
+        if is_member(node):
+            found = read_as(node)
+            return found[0] if len(found) == 1 else "\0"
         key = key_of(node)
         if key is not None and (key in picked or len(ranges.get(key, ())) == 1):
             return picked[key] if key in picked else ranges[key][0]  # the one value it holds, or the one this reading takes
@@ -2357,6 +2406,8 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
                 return os.path.join(*([spelled(node.func.value)] if label == "joinpath" else []), *parts)
             if label in ("str", "fspath", "expanduser", "abspath", "realpath", "normpath", "resolve", "absolute", "encode") and len(parts) <= 1:
                 whole = parts[0] if parts else spelled(node.func.value) if isinstance(node.func, ast.Attribute) else "\0"
+                if label == "expanduser" and whole[:1] == "~" and id(node) in homes:
+                    whole = spelled(homes[id(node)]) + whole[1:]  # the home it has where it asks
                 made = label in ("abspath", "realpath", "resolve", "absolute") and whole[:1] not in ("/", "~", "\0", "\1")
                 return f"\1{id(node)}\1" * made + whole  # a relative path made whole is whole from where the program stood at this call
             if label in ("getcwd", "cwd") and not parts:
@@ -2377,14 +2428,29 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
         return bool(new)
 
     def held(target) -> set:  # what a binding gives a value to: a name, an attribute (as ".attr"), the holder of a key
-        return ({target.id} if isinstance(target, ast.Name) else {"." + target.attr} if isinstance(target, ast.Attribute)
+        return ({target.id} if isinstance(target, ast.Name)
+                else {"." + target.attr} | (held(target.value) if target.attr == "__dict__" else set()) if isinstance(target, ast.Attribute)
                 else held(target.value) if isinstance(target, (ast.Subscript, ast.Starred))
-                else {x for e in getattr(target, "elts", []) for x in held(e)})
+                else {x for e in getattr(target, "elts", getattr(target, "args", [])) for x in held(e)})  # obj.__dict__["k"] and vars(obj)["k"] give to obj
     classes = {c.name: c for c in nodes if isinstance(c, ast.ClassDef)}
     classed = {x for c in classes.values() for b in c.body for t in getattr(b, "targets", [getattr(b, "target", None)])
                if t is not None for x in held(t)} | {b.name for c in classes.values() for b in c.body if isinstance(
                    b, (ast.FunctionDef, ast.AsyncFunctionDef))}  # a name given in a class body is read as an attribute, a property too
-    inits = {name: next((f.args for f in c.body if isinstance(f, ast.FunctionDef) and f.name == "__init__"), None) for name, c in classes.items()}
+
+    def lineage(name, seen: tuple = ()) -> list:  # a class of the program's own, then each it inherits from, nearest first
+        return [name] + [x for b in classes[name].bases for x in lineage(getattr(b, "id", ""), seen + (name,))] if name in classes and name not in seen else []
+    inits = {name: next((f.args for k in lineage(name) for f in classes[k].body if isinstance(f, ast.FunctionDef) and f.name == "__init__"), None)
+             for name in classes}  # the __init__ that builds each: its own, or the one it inherits
+    defs = [f for f in nodes if isinstance(f, (ast.FunctionDef, ast.AsyncFunctionDef))]
+    bodies, inside = {id(f.args): f for f in defs}, {id(n): f for f in defs for n in nodes_of(f.body)}  # each function by its arguments; the function each node is written in
+    of_class = {id(f): c.name for c in classes.values() for f in c.body if isinstance(f, (ast.FunctionDef, ast.AsyncFunctionDef))}
+    kin = {name: {name} for name in classes}  # the classes one inherits from or is inherited by: an object of one may be handled as any
+    for name in classes:
+        group = set().union(*(kin[k] for k in lineage(name)))
+        kin.update(dict.fromkeys(group, group))
+    grown = {id(n.value): n.op for n in nodes if isinstance(n, ast.AugAssign)}  # `out += x` gives out + x
+    withs = [(w.optional_vars, w.context_expr) for w in nodes if isinstance(w, ast.withitem) and w.optional_vars is not None]
+    once_value = {**given_once, **{t.id: v for t, v in withs if isinstance(t, ast.Name) and t.id in once}}
     methods = {id(b.args) for c in classes.values() for b in c.body if isinstance(b, (ast.FunctionDef, ast.AsyncFunctionDef))}
     mutated = {getattr(kept, "id", "") for kept in [n.func.value for n in calls if getattr(n.func, "attr", "") in MUTATORS] + [
         getattr(t, "value", None) for t, _ in pairs]}  # a list that gains a row later is not the list as written
@@ -2392,22 +2458,35 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
     def asked(c) -> tuple:  # (the name, the arguments) of the program's own function a call reaches: f(...), obj.method(...), a class of its own
         method = isinstance(c.func, ast.Attribute) and not (isinstance(c.func.value, ast.Name) and c.func.value.id in modules)
         name = c.func.id if isinstance(c.func, ast.Name) else c.func.attr if method else None
+        home, on = of_class.get(id(inside.get(id(c)))), once_value.get(getattr(getattr(c.func, "value", None), "id", ""), getattr(c.func, "value", None))
+        if home and (name == "cls" or (name == "__init__" and getattr(getattr(on, "func", None), "id", "") == "super")):
+            name = home if name == "cls" else (lineage(home)[1:] or [None])[0]  # cls(...) builds the class it is written in; super().__init__(...) runs its base's
+        elif method and (isinstance(on, (ast.Constant, ast.JoinedStr, ast.BinOp, ast.List, ast.Tuple, ast.Dict, ast.Set)) or (
+                isinstance(on, ast.Attribute) and getattr(on.value, "id", "") in modules) or getattr(getattr(on, "func", None), "attr", getattr(
+                    getattr(on, "func", None), "id", "")) in FOREIGN):
+            return None, None  # called on a file it opened, a string, a list, sys.stdout: no object of the program's own
         own = inits[name] if name in classes else local[name][0] if name and len(local.get(name, ())) == 1 else None
+        if method and own is None and name not in classes and len(local.get(name, ())) > 1:  # two classes with a method of that name: the one of what it is called on
+            k = home if getattr(on, "id", "") == "self" else getattr(getattr(on, "func", None), "id", "")
+            own = next((f.args for x in lineage(k or "") for f in classes[x].body if getattr(f, "name", "") == name), None)
         return (name, own) if own is None or name in classes or method == (id(own) in methods) else (None, None)  # f.write(...) is no call of the program's own write()
     plainly = [n for n in calls if asked(n)[1] is not None
                and not any(isinstance(a, ast.Starred) for a in n.args) and None not in [k.arg for k in n.keywords]]
     mapcalls = [c for c in calls if getattr(c.func, "id", "") == "map" and len(c.args) == 2 and not c.keywords and isinstance(c.args[0], ast.Name)
                 and c.args[0].id not in classes and len(local.get(c.args[0].id, ())) == 1]  # map(f, values): each is handed to f's first name
     called = {id(c.func) for c in calls} | {id(c.args[0]) for c in mapcalls}  # a function also handed on, kept under another name or called another way has other callers
-    loose_names = {n.id for n in nodes if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Load) and id(n) not in called} | {
-        asked(c)[0] for c in calls if asked(c)[0] and c not in plainly} | {n.attr for n in nodes if isinstance(n, ast.Attribute) and id(n) not in called}
+    based_on = {id(b) for c in classes.values() for b in c.bases}  # a class named as another's base is not handed on
+    loose_names = {n.id for n in nodes if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Load) and id(n) not in called | based_on} | {
+        asked(c)[0] for c in calls if asked(c)[0] and c not in plainly} | {n.attr for n in nodes if isinstance(n, ast.Attribute) and id(n) not in called} | {
+        c.func.attr for c in calls if isinstance(c.func, ast.Attribute) and len(local.get(c.func.attr, ())) > 1 and asked(c)[1] is None}
+    loose_owns = {id(inits[n]) if n in classes else id(local[n][0]) for n in loose_names if (n in classes and inits[n]) or len(local.get(n, ())) == 1}
     fixed = {id(f.args) for f in nodes if isinstance(f, (ast.FunctionDef, ast.AsyncFunctionDef)) and f.name not in total and not any(
         isinstance(t, ast.Attribute) and t.attr == f.name for t, _ in pairs) and all(
         getattr(d, "id", getattr(d, "attr", "")) in ("staticmethod", "classmethod", "lru_cache", "cache", "cached_property", "property") for d in f.decorator_list)} | {
         id(v.args) for t, v in pairs if isinstance(t, ast.Name) and isinstance(v, ast.Lambda) and total.get(t.id) == 1}  # still itself: not wrapped, not given another value
     callers = {}  # each function of the program's own whose every caller is seen: (its arguments, those calls, whether it is a class's __init__)
     for name, own, call in [(*asked(c), c) for c in plainly] + [(c.args[0].id, local[c.args[0].id][0], None) for c in mapcalls]:
-        if name not in loose_names and id(own) in fixed:
+        if name not in loose_names and id(own) in fixed and id(own) not in loose_owns:  # a base's __init__ is reached under each class's name
             callers.setdefault(id(own), (own, [], name in classes))[1].extend([call] if call is not None else [])
 
     def hands(own, calls_of, init: bool = False, kept={}) -> dict:  # what each caller hands each of a function's own names; a default stands where a caller gives none
@@ -2464,14 +2543,10 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
     # (this project's probe after the tenth review: thirty everyday programs were refused from inside a transcript
     # folder because a name was read only when it was given one value, once).
     picked, stores, sites, turns, finds, deep = {}, {}, {}, {}, set(), []
-    grown = {id(n.value): n.op for n in nodes if isinstance(n, ast.AugAssign)}  # `out += x` gives out + x
-    withs = [(w.optional_vars, w.context_expr) for w in nodes if isinstance(w, ast.withitem) and w.optional_vars is not None]
-    once_value = {**given_once, **{t.id: v for t, v in withs if isinstance(t, ast.Name) and t.id in once}}
 
     def given_to(key, values, site: int = 0) -> None:
         stores.setdefault(key, []).extend(values)
         sites[key] = sites.get(key, 0) + site
-    defs = [f for f in nodes if isinstance(f, (ast.FunctionDef, ast.AsyncFunctionDef))]
     rets = {id(f.args): [None] if any(isinstance(r, (ast.Yield, ast.YieldFrom)) for r in nodes_of(f.body)) else [
         r.value for r in nodes_of(f.body) if isinstance(r, ast.Return) and r.value is not None] for f in defs if id(f.args) in fixed}
     rets.update({id(v.args): [v.body] for _, v in pairs if isinstance(v, ast.Lambda) and id(v.args) in fixed})  # what each function of its own hands back
@@ -2488,7 +2563,9 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
             sides = ([[e] for e in value.elts] if isinstance(value, (ast.Tuple, ast.List)) else [[e] for e in rows[value.id]] if getattr(value, "id", None) in rows
                      else [[ast.Constant(value="\2")], [ast.BinOp(left=kw["dir"], op=ast.Add(), right=ast.Constant(value="/\0")) if "dir" in kw else ast.Constant(value="/tmp/tmp.made")]]
                      if label == "mkstemp" else [[r.elts[at] for r in back] for at in range(len(wide))]
-                     if back and all(isinstance(r, ast.Tuple) and len(r.elts) == len(wide) for r in back) else [])  # a pair, a row, mkstemp's, its own function's
+                     if back and all(isinstance(r, ast.Tuple) and len(r.elts) == len(wide) for r in back)
+                     else [[ast.Subscript(value=value, slice=ast.Constant(value=at), ctx=ast.Load())] for at in range(len(wide))]
+                     if isinstance(value, (ast.Call, ast.Name, ast.Subscript, ast.Attribute)) else [])  # a pair, a row, mkstemp's, its own function's, else each by its place
             if len(sides) == len(wide) and not any(isinstance(e, ast.Starred) for e in wide + [x for side in sides for x in side if x is not None]):
                 found += [(t, side) for t, side in zip(wide, sides) if isinstance(t, ast.Name)]
         return found
@@ -2498,21 +2575,95 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
     for target, value in pairs + withs:
         if isinstance(target, ast.Name) and any(target is t for t, _ in withs):
             given_to(target.id, [value], 1)
-        elif isinstance(target, ast.Attribute) and not (isinstance(target.value, ast.Name) and target.value.id in modules):
-            given_to("." + target.attr, [ast.BinOp(left=target, op=grown[id(value)], right=value) if id(value) in grown else value])
     # Where a name is read, the value it holds is the one its own body last gave it by a plain assignment, with
     # whatever a branch, a loop or another function may have given it since; before any, what the function was
-    # handed (a name read for a transcript and then given the file to write was held to the transcript).
-    reach, plain_stores = {}, set()
+    # handed (a name read for a transcript and then given the file to write was held to the transcript). A member
+    # (`job.out`, `cfg["out"]`, `os.environ["OUT"]`) is read the same way along the path it is reached by.
+    reach, plain_stores, reach_m, tags, live, this, selfish, walked, kn, primed = {}, set(), {}, {}, {}, {}, {}, {}, {}, []
+    pair_of, ENV = {id(t): v for t, v in pairs}, ast.Name(id="environ", ctx=ast.Load())  # what each target is given; the environment, as a table of its own
+    homes = {id(n): ast.Call(func=ast.Attribute(value=ast.Name(id="Path", ctx=ast.Load()), attr="home", ctx=ast.Load()), args=[], keywords=[])
+             for n in calls if getattr(n.func, "attr", getattr(n.func, "id", "")) == "expanduser"}  # the home each expanduser() asks for, where it asks
+    loose_fields = any(getattr(n, "attr", getattr(n, "id", getattr(n, "name", ""))) in ("__dict__", "vars", "__setattr__", "__getattr__", "__getattribute__")
+                       for n in nodes)  # fields given some other way: none of them is read
+    hidden = any(getattr(n, "id", "") in ("globals", "locals") for n in nodes)
+    tainted.update(total if hidden and any(m in (said(n) or "") for n in nodes for m in names) else ())  # any name may be given what the program names
+    shapes = {t.id: (said(v.args[1]) or "").replace(",", " ").split() or [said(e) or "" for e in getattr(v.args[1], "elts", [])] for t, v in pairs
+              if isinstance(t, ast.Name) and isinstance(v, ast.Call) and getattr(v.func, "attr", getattr(v.func, "id", "")) == "namedtuple" and len(v.args) > 1}
+    fields_of = {**{c.name: [b.target.id for b in c.body if isinstance(b, ast.AnnAssign) and isinstance(b.target, ast.Name)]
+                    for c in classes.values() if inits[c.name] is None}, **shapes}  # a class with fields and no __init__ of its own, a named tuple
+    parsed = {}  # an argument parser's defaults, under the name it gives each argument; a word of the command line may replace one
+    for n in calls:
+        label, kw = getattr(n.func, "attr", getattr(n.func, "id", "")), {k.arg: k.value for k in n.keywords}
+        if label in ("SimpleNamespace", "Namespace", "set_defaults", "replace", "_replace"):
+            loose_fields = loose_fields or None in kw
+            for k, v in kw.items() if label == "set_defaults" else []:
+                parsed.setdefault(str(k), []).append(v)
+        elif label == "add_argument":
+            flags = [said(a) or "" for a in n.args]
+            dest = said(kw["dest"]) if "dest" in kw else next((f for f in flags if f.startswith("--")), "".join(flags[:1]))
+            parsed.setdefault(str(dest).lstrip("-").replace("-", "_"), []).extend([kw.get("default")] + [None] * (len(argv) > 1))
+        elif label == "setattr" and len(n.args) == 3:
+            loose_fields = loose_fields or said(n.args[1]) is None
+            given_to(str(said(n.args[1])), [n.args[2]])  # on the program's own module it is a name
 
-    def order(body, mine) -> None:
-        last = {}
-        for stmt in body:
-            reach.update((id(n), last.get(n.id)) for n in nodes_of([stmt]) if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Load) and mine(n.id))
-            for t, values in gives(stmt) if isinstance(stmt, (ast.Assign, ast.AnnAssign)) and stmt.value is not None else []:
+    def key_at(n):  # the key a read or a store spells: a string, a place, or what the name it is kept under was last plainly given; None for any other
+        n = reach[id(n)] if isinstance(n, ast.Name) and isinstance(reach.get(id(n)), ast.Constant) else n
+        if isinstance(n, ast.UnaryOp) and isinstance(n.op, ast.USub) and type(getattr(n.operand, "value", None)) is int:
+            return -n.operand.value
+        return n.value if isinstance(n, ast.Constant) and type(n.value) in (str, int) else None
+
+    def sel_of(n):  # (what it is a member of, which member, a default) for x.a, x["k"], x[0], x.get("k", d), getattr(x, "a", d), os.getenv("K", d), Path.home()
+        label = getattr(getattr(n, "func", None), "attr", getattr(getattr(n, "func", None), "id", ""))
+        if isinstance(n, ast.Attribute):
+            lone = isinstance(n.value, ast.Name) and n.value.id in modules
+            return None if lone or loose_fields or id(n) in called or holder(n) == "environ" else (n.value, ("a", n.attr), None)
+        if isinstance(n, ast.Subscript):
+            return None if isinstance(n.slice, ast.Slice) else (n.value, ("k", key_at(n.slice)), None)
+        if not isinstance(n, ast.Call) or n.keywords or any(isinstance(a, ast.Starred) for a in n.args) or asked(n)[1] is not None:
+            return None
+        if label == "home" and not n.args:
+            return ENV, ("k", "HOME"), ast.Constant(value="~")
+        if label == "getenv" and 1 <= len(n.args) <= 2:
+            return ENV, ("k", key_at(n.args[0])), (n.args[1:] or [None])[0]
+        if label == "getattr" and isinstance(n.func, ast.Name) and 2 <= len(n.args) <= 3 and not loose_fields:
+            return n.args[0], ("a", key_at(n.args[1])), (n.args[2:] or [None])[0]
+        if label in ("get", "setdefault", "pop") and isinstance(n.func, ast.Attribute) and (label == "pop") <= len(n.args) + (label == "pop") <= 2 + (label == "pop") and len(
+                n.args) <= 2 and not (isinstance(n.func.value, ast.Name) and n.func.value.id in modules):
+            return n.func.value, ("k", key_at(n.args[0]) if n.args else None), (n.args[1:] or [None])[0]
+        return None
+
+    def path_of(n):  # a member as (the name it is reached from, the way from it, that name's node): ("cfg", "k'paths'k'out'", cfg); None when it has no such spelling
+        m = sel_of(n)
+        if not m or m[1][1] is None:
+            return None
+        lead = ("environ", "", None) if holder(m[0]) == "environ" else (m[0].id, "", m[0]) if isinstance(m[0], ast.Name) else path_of(m[0])
+        return (lead[0], f"{lead[1]}{m[1][0]}{m[1][1]!r}", lead[2]) if lead else None
+
+    def flat(body) -> list:  # a program's statements with its `if __name__ == "__main__":` block in line: it runs once, in order
+        return [x for s in body for x in (flat(s.body) if isinstance(s, ast.If) and not s.orelse and getattr(getattr(s.test, "left", None), "id", "") == "__name__" else [s])]
+
+    def order(body, mine, top: bool = False) -> None:
+        last, lasts = {}, {}
+        for at, stmt in enumerate(body):
+            seen = list(nodes_of([stmt]))
+            reach.update((id(n), last.get(n.id)) for n in seen if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Load) and mine(n.id))
+            for n in [m for n in seen for m in (n, homes.get(id(n))) if m is not None]:  # a member read: what its own path was last plainly given here
+                p = path_of(n) if isinstance(n, ast.Call) or isinstance(getattr(n, "ctx", None), ast.Load) else None
+                if p and mine(p[0]):
+                    reach_m[id(n)] = (p[:2], id(body), lasts.get(p[:2], (None, -1)), top)
+            plain = isinstance(stmt, (ast.Assign, ast.AnnAssign)) and stmt.value is not None
+            for t, values in gives(stmt) if plain else []:
                 last[t.id] = values[0] if len(values) == 1 and isinstance(values[0], ast.AST) and mine(t.id) else None
                 plain_stores.update([id(last[t.id])] * (last[t.id] is not None))
-    order(tree.body, lambda name: "@" not in name)
+                for p in [p for p in lasts if p[0] == t.id]:
+                    del lasts[p]  # a name given a new thing: what the old one's members were given is not this one's
+            for t in [n for n in seen if isinstance(n, (ast.Attribute, ast.Subscript)) and isinstance(n.ctx, ast.Store) and id(n) in pair_of] if plain else []:
+                p = path_of(t)
+                if p and mine(p[0]) and id(pair_of[id(t)]) not in grown:
+                    for q in [q for q in lasts if q[0] == p[0] and q[1].startswith(p[1])]:
+                        del lasts[q]  # and what lay under a member is gone with it
+                    lasts[p[:2]], tags[id(pair_of[id(t)])] = (pair_of[id(t)], at), (p[:2], id(body), at)
+    order(flat(tree.body), lambda name: "@" not in name, True)
     for f in defs:
         order(f.body, lambda name, mark=f"@{id(f)}": name.endswith(mark))
     for n in nodes:  # a store whose values are read elsewhere, or that gives none: a function's own name, a loop's, a name only annotated
@@ -2520,90 +2671,206 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
                 n.target] if isinstance(n, ast.AnnAssign) and n.value is None else []:
             if isinstance(t, (ast.arg, ast.Name)):  # a loop over `x.y` or `x[0]` gives no name a value
                 given_to(getattr(t, "arg", getattr(t, "id", "")), [], 1)
-    loose_fields = any(getattr(n, "attr", getattr(n, "id", getattr(n, "name", ""))) in ("__dict__", "vars", "__setattr__", "__getattr__", "__getattribute__")
-                       for n in nodes)  # fields given some other way: none of them is read
-    hidden = any(getattr(n, "id", "") in ("globals", "locals") for n in nodes)
-    tainted.update(total if hidden and any(m in (said(n) or "") for n in nodes for m in names) else ())  # any name may be given what the program names
-    for b in [b for c in classes.values() for b in c.body]:  # a property is what it hands back, a method is no path; a constant or a field's default is a value
-        owned = any(getattr(d, "id", getattr(d, "attr", "")) in ("property", "cached_property") for d in getattr(b, "decorator_list", []))
-        for t in [b] if isinstance(b, (ast.FunctionDef, ast.AsyncFunctionDef)) else getattr(b, "targets", [getattr(b, "target", None)]) * (
-                getattr(b, "value", None) is not None):
-            given_to("." + getattr(t, "name", getattr(t, "id", "")), rets.get(id(b.args), [None]) if owned else [getattr(b, "value", None)])
-    for attr in {n.attr for n in nodes if isinstance(n, ast.Attribute) and isinstance(n.ctx, ast.Store)}:
-        if sum(isinstance(n, ast.Attribute) and isinstance(n.ctx, ast.Store) and n.attr == attr for n in nodes) > sum(
-                isinstance(t, ast.Attribute) and t.attr == attr for t, _ in pairs + withs):
-            given_to("." + attr, [None])  # given some other way: by unpacking, as a loop's own name
-    shapes = {t.id: (said(v.args[1]) or "").replace(",", " ").split() or [said(e) or "" for e in getattr(v.args[1], "elts", [])] for t, v in pairs
-              if isinstance(t, ast.Name) and isinstance(v, ast.Call) and getattr(v.func, "attr", getattr(v.func, "id", "")) == "namedtuple" and len(v.args) > 1}
-    fields_of = {**{c.name: [b.target.id for b in c.body if isinstance(b, ast.AnnAssign) and isinstance(b.target, ast.Name)]
-                    for c in classes.values() if inits[c.name] is None}, **shapes}  # a class with fields and no __init__ of its own, a named tuple
-    for call in [n for n in calls if getattr(n.func, "id", None) in fields_of]:  # each field is handed in order, or by name
-        unread = any(isinstance(a, ast.Starred) for a in call.args) or None in [k.arg for k in call.keywords]
-        fields = fields_of[call.func.id]
-        for f, a in [(f, None) for f in fields] if unread else list(zip(fields, call.args)) + [(k.arg, k.value) for k in call.keywords]:
-            given_to("." + f, [a])
-    for n in calls:
-        label, kw = getattr(n.func, "attr", getattr(n.func, "id", "")), {k.arg: k.value for k in n.keywords}
-        if label in ("SimpleNamespace", "Namespace", "set_defaults", "replace", "_replace"):
-            loose_fields = loose_fields or None in kw
-            for k, v in kw.items():
-                given_to("." + str(k), [v])
-        elif label == "add_argument":  # a parser's default, under the name it gives the argument; a word of the command line may replace it
-            flags = [said(a) or "" for a in n.args]
-            dest = said(kw["dest"]) if "dest" in kw else next((f for f in flags if f.startswith("--")), "".join(flags[:1]))
-            given_to("." + str(dest).lstrip("-").replace("-", "_"), [kw.get("default")] + [None] * (len(argv) > 1))
-        elif label == "setattr" and len(n.args) == 3:
-            loose_fields = loose_fields or said(n.args[1]) is None
-            given_to("." + str(said(n.args[1])), [n.args[2]])
-            given_to(str(said(n.args[1])), [n.args[2]])  # on the program's own module it is a name
-    kinds = {t.id for t, v in pairs + withs if isinstance(t, ast.Name) and isinstance(v, ast.Call)
-             and getattr(v.func, "attr", getattr(v.func, "id", "")) in {*classes, *shapes, "SimpleNamespace", "Namespace", "parse_args", "replace", "_replace"}}
 
-    def entry_of(n):  # (the table, the key, the default) of an entry read by a key the program spells: d["k"], d.get("k", x), os.getenv("K", x)
-        label = getattr(getattr(n, "func", None), "attr", getattr(getattr(n, "func", None), "id", ""))
-        if isinstance(n, ast.Subscript) and isinstance(n.ctx, ast.Load) and holder(n.value) and not isinstance(n.slice, ast.Slice):
-            at = -n.slice.operand.value if isinstance(n.slice, ast.UnaryOp) and isinstance(n.slice.op, ast.USub) and type(
-                getattr(n.slice.operand, "value", None)) is int else getattr(n.slice, "value", None)
-            return holder(n.value), said(n.slice) if said(n.slice) is not None else f"#{at}" if type(at) is int else "*", None  # a key, a place, or any of them
-        if isinstance(n, ast.Call) and n.args and said(n.args[0]) is not None and not n.keywords and len(n.args) <= 2 and (
-                label == "getenv" or (label in ("get", "setdefault", "pop") and isinstance(n.func, ast.Attribute) and holder(n.func.value))):
-            return "environ" if label == "getenv" else holder(n.func.value), said(n.args[0]), (n.args[1:] or [None])[0]
-        return None
-
-    def key_of(n):  # the name a value is read under: a name where it is read, a field of the program's own object, an entry of its own table, its own function's answer
+    def key_of(n):  # the name a value is read under: a name where it is read, or its own function's answer
         if isinstance(n, ast.Name):
             return n.id if id(n) not in reach else f"{n.id}~{id(reach[id(n)]) if reach[id(n)] is not None else ''}"
-        if isinstance(n, ast.Attribute):  # self.x, an object of a class of its own, the class itself
-            ours = isinstance(n.value, ast.Name) and n.value.id not in modules and (n.value.id in ("self", "cls") or n.value.id in classes or n.value.id in kinds)
-            return "." + n.attr if ours and isinstance(n.ctx, ast.Load) and not loose_fields else None
-        entry = entry_of(n) if isinstance(n, (ast.Subscript, ast.Call)) else None
-        name, own = asked(n) if isinstance(n, ast.Call) and not entry else (None, None)
+        name, own = asked(n) if isinstance(n, ast.Call) else (None, None)
         if own is not None and name not in classes and id(own) in rets and isinstance(n.func, ast.Attribute) == (id(own) in methods):
             return f"()@{id(own)}"  # what the program's own function hands back
-        return f"[{entry[0]}]{entry[1]}" if entry else None
+        return None
 
-    renamed = [(x, y) for t, v in pairs if isinstance(t, ast.Name) and isinstance(v, ast.Name) for x, y in ((t.id, v.id), (v.id, t.id))]
-    also, reads, selfish, walked = {}, list({entry_of(n) for n in nodes if isinstance(n, (ast.Subscript, ast.Call))} - {None}), {}, {}
+    # A member is read by the thing that holds it. Each table, list or object the program makes is one thing, known by
+    # the place that makes it, however many names it is kept under and whatever it is handed to; a thing holds what
+    # it was made with (a table's entries, what an object's __init__ gives its fields from what that call hands it,
+    # its class's constants and properties) and whatever any statement gives it afterwards. Along one path from one
+    # name, in statements that run once and in order, the last plain gift replaces what came before it. A thing whose
+    # maker cannot be read (`json.load(f)`) holds only what the program gives it, and what is given through a name
+    # that cannot be followed may be in any of them (the eleventh review, and this project's probe after it: one set
+    # of values stood for a field or a key whatever carried it, so two objects of a class, a table whose entry is
+    # replaced, a key kept in a name and a class that inherits its __init__ were all read wrongly).
+    given_m, loose_m, removed, born, slots = {}, [], set(), {}, {}
+    fields_given = {t.attr for t in nodes if isinstance(t, ast.Attribute) and isinstance(t.ctx, ast.Store)}
+    LISTS = (ast.List, ast.Tuple, ast.Set, ast.ListComp, ast.SetComp, ast.GeneratorExp)
+    tops = {id(v) for f in defs for s in f.body if isinstance(s, (ast.Assign, ast.AnnAssign)) and s.value is not None
+            for v in [s.value] + list(getattr(s.value, "elts", []))}
+    for t in [t for t in nodes if isinstance(t, ast.Attribute) and isinstance(t.ctx, ast.Store) and getattr(t.value, "id", "") == "self"]:
+        f = inside.get(id(t))  # what an __init__ gives each field of the object it builds, and whether by a statement of its own body
+        if f is not None and f.name in ("__init__", "__post_init__") and id(f) in of_class:
+            v = None if id(pair_of.get(id(t))) in grown else pair_of.get(id(t))
+            born.setdefault((id(f), t.attr), []).append((v, id(v) in tops))
 
-    def table(h, k, default) -> list:  # what a table of the program's own holds under a key, and the default a read of it names
-        if h in rows:  # a list or a tuple it spells out and never changes: the one place, or any
-            return rows[h][int(k[1:]):int(k[1:]) + 1 or None] if k[:1] == "#" and -len(rows[h]) <= int(k[1:]) < len(rows[h]) else rows[h] * (k == "*")
-        same = also.setdefault(h, {h})
-        for _ in range(3 * (len(same) == 1)):  # the table under another name: an assignment either way, or a function's own name handed it
-            same |= {x for x, y in renamed if y in same} | {taker for own, calls_of, init in callers.values()
-                                                            for taker, sent in hands(own, calls_of, init).items() if any(getattr(a, "id", None) in same for a in sent)}
-        probe = ast.Name(id=h)
-        found = handed(probe) + [x for name in same - {h} for x in mapped.get(name, ())]
-        if all(isinstance(v, ast.Dict) or getattr(getattr(v, "func", None), "id", "") == "dict" for v in stores.get(h) or [None]):
-            found = [x for x in found if x[1] is not probe]  # a table it spells out, empty or not, holds what it is then given
-        values = [v for key, v in found if key == k or k == "*"] + [None] * any(not isinstance(key, str) for key, _ in found)
-        values += [os.environ[k]] if h == "environ" and k in os.environ else []  # the environment the command runs in, as the hook sees it
-        return values + [default] * (default is not None) or ["\2"] * (h == "environ")
+    def builds(c) -> bool:  # a call that makes an object of a class of the program's own
+        return isinstance(c, ast.Call) and asked(c)[0] in classes and getattr(c.func, "attr", "") != "__init__"
+
+    def selves(f, seen: tuple = ()) -> list:  # the objects `self` may be in a function: those it is called on, or every one the program makes of that class and its kin
+        name, every = of_class.get(id(f)), []
+        if name is None or id(f) in seen:
+            return []
+        if f.name not in ("__init__", "__post_init__") and id(f.args) in callers:
+            every = [x for c in callers[id(f.args)][1] for x in resolve(c.func.value, seen + (id(f),))]
+        return [x for x in every if x is not None] + [c for c in calls if builds(c) and asked(c)[0] in kin[name]] * (None in every or not every)
+
+    def resolve(node, seen: tuple = ()) -> list:  # each thing an expression may be, as the node that makes it; None for one that cannot be told
+        if node is None or len(seen) > 12:
+            return [None]
+        if holder(node) == "environ":
+            return [ENV]
+        if isinstance(node, ast.Name) and node.id in ("self", "cls") and id(node) in inside and id(inside[id(node)]) in of_class:
+            f = inside[id(node)]
+            now = [x for o in this.get(id(f.args)) or [None] for x in ([o] if o is not None else selves(f, seen))]
+            return [classes[of_class[id(f)]]] if node.id == "cls" else now or [None]
+        if isinstance(node, ast.Name):
+            key = key_of(node)
+            if node.id in classes and node.id not in total:
+                return [classes[node.id]]
+            return [] if key in seen else [c for name, c in classes.items() if name == node.id] + [  # a class's name given a value besides: either
+                x for v in live.get(key, [None]) + [None] * (total.get(node.id, 0) > sites.get(node.id, 0))
+                for x in ([None] if v is None or isinstance(v, str) else resolve(v, seen + (key,)))]
+        if isinstance(node, (ast.IfExp, ast.BoolOp, ast.NamedExpr)):
+            return [x for v in ([node.body, node.orelse] if isinstance(node, ast.IfExp) else getattr(node, "values", [getattr(node, "value", None)]))
+                    for x in resolve(v, seen)]
+        label = getattr(getattr(node, "func", None), "attr", getattr(getattr(node, "func", None), "id", ""))
+        name, own = asked(node) if isinstance(node, ast.Call) else (None, None)
+        if own is not None and name not in classes and id(own) in rets:  # what the program's own function hands back
+            was, this[id(own)] = this.get(id(own)), resolve(node.func.value, seen) if isinstance(node.func, ast.Attribute) else None
+            found = [x for r in rets[id(own)] for x in resolve(r, seen + (id(own),))] if id(own) not in seen else []
+            this[id(own)] = was
+            return found
+        if isinstance(node, ast.Call) and label in ("copy", "deepcopy", "list", "tuple", "sorted", "reversed") and len(node.args) + isinstance(node.func, ast.Attribute) >= 1:
+            return resolve(node.args[0] if node.args else node.func.value, seen)  # a copy holds what the thing it copies holds
+        if id(node) not in seen and isinstance(getattr(node, "ctx", None) or ast.Load(), ast.Load) and sel_of(node):
+            return [x for v, _ in members(node, seen + (id(node),)) for x in ([None] if v is None or isinstance(v, str) else resolve(v, seen + (id(node),)))]
+        return [node]
+
+    def built(c, a, seen: tuple = ()) -> list:  # what a field holds as an object is made: (the value, the calls it is read under)
+        name, obj = (c.name, None) if isinstance(c, ast.ClassDef) else (asked(c)[0], [c])
+
+        def by(f, under_) -> list:  # what one __init__ gives the field: the last its own statements give it, with each a branch of it may; else its base's, as it calls it
+            got = born.get((id(f), a), []) if f is not None and id(f) not in [id(x[0]) for x in under_[:-1]] else []
+            plain = [v for v, top in got if top]
+            return [(v, under_) for v, top in got if not top] + [(v, under_) for v in plain[-1:]] or [
+                x for s in calls if f is not None and inside.get(id(s)) is f and getattr(s.func, "attr", "") == "__init__" and asked(s)[0] in classes
+                for x in by(bodies.get(id(asked(s)[1])), under_ + ((asked(s)[1], s, obj),))]
+        init = bodies.get(id(inits.get(name)))
+        post = next((f for k in lineage(name) for f in classes[k].body if getattr(f, "name", "") == "__post_init__"), None)
+        found = (by(init, ((init.args, c, obj),)) if init is not None and obj else []) + (by(post, ((post.args, None, obj),)) if post is not None and obj else [])
+        if not found and obj and a in fields_of.get(name, ()):  # a class with fields and no __init__ of its own: handed by place or by name
+            found = handed_field(c, name, a)
+        for b in [b for k in lineage(name) for b in classes[k].body] if not found else []:  # else what the class body gives: a constant, a field's default, a property's answer
+            mine_ = isinstance(b, (ast.Assign, ast.AnnAssign)) and b.value is not None and any(
+                getattr(t, "id", None) == a for t in getattr(b, "targets", [getattr(b, "target", None)]))
+            made = getattr(getattr(b, "value", None), "func", None)
+            if mine_ and getattr(made, "attr", getattr(made, "id", "")) == "field":  # dataclasses.field(default=...)
+                found += [(k.value, ()) for k in b.value.keywords if k.arg == "default"] or [(None, ())]
+            elif mine_:
+                found.append((b.value, ()))
+            elif getattr(b, "name", None) == a and any(getattr(d, "id", getattr(d, "attr", "")) in ("property", "cached_property") for d in b.decorator_list):
+                found += [(r, ((b.args, None, obj),)) for r in rets.get(id(b.args), [None])]
+        return found
+
+    def handed_field(c, name, a) -> list:  # a field handed by place or by name: a named tuple's, a class with fields and no __init__ of its own
+        unread = any(isinstance(x, ast.Starred) for x in c.args) or None in [k.arg for k in c.keywords]
+        at = fields_of[name].index(a)
+        return [(None, ())] if unread else [(v, ()) for v in c.args[at:at + 1] + [k.value for k in c.keywords if k.arg == a]]
+
+    def part(c, sel, n=None, seen: tuple = ()) -> list:  # (a value, the calls it is read under) for each thing one member of one thing may hold
+        (kind, key), label = sel, getattr(getattr(c, "func", None), "attr", getattr(getattr(c, "func", None), "id", ""))
+        kw = {k.arg: k.value for k in getattr(c, "keywords", [])}
+        if c is None:
+            return [(None, ())]
+        if c is ENV:
+            made = [(env[key], ())] if key in env and not re.search(r"[$`]", env[key]) else [] if key is not None else [(None, ())] + [
+                (v, ()) for v in env.values() if any(m in v for m in names) or (v[:1] == "/" and any(paths.inside(v, r) for r in roots))]  # any of them: one may name a protected path
+        elif isinstance(c, ast.Dict):
+            made = [x for k, v in zip(c.keys, c.values) for x in (
+                [y for o in resolve(v, seen) or [None] for y in part(o, sel, None, seen)] if k is None else [(v, ())] * (key is None or key_at(k) in (key, None)))]
+        elif isinstance(c, (ast.List, ast.Tuple, ast.Set)):
+            whole = not any(isinstance(e, ast.Starred) for e in c.elts)
+            made = [(c.elts[key], ())] if whole and type(key) is int and -len(c.elts) <= key < len(c.elts) else [
+                (e, ()) for e in c.elts] * (key is None or not whole) + [(None, ())] * (not whole)
+        elif isinstance(c, (ast.DictComp, ast.ListComp, ast.SetComp, ast.GeneratorExp)):
+            made = [(getattr(c, "value", getattr(c, "elt", None)), ())]
+        elif isinstance(c, ast.ClassDef) or builds(c):
+            made = built(c, key, seen) if kind == "a" and key is not None else [(None, ())]
+        elif label in shapes and kind == "a" and key in shapes[label]:
+            made = handed_field(c, label, key)
+        elif isinstance(c, ast.Call) and label in ("SimpleNamespace", "Namespace", "dict"):
+            made = [(v, ()) for k, v in kw.items() if key is None or k in (key, None)] + [
+                x for a in c.args for o in resolve(a, seen) or [None] for x in part(o, sel, None, seen)]
+        elif isinstance(c, ast.Call) and label in ("replace", "_replace"):
+            made = [(kw[key], ())] if key in kw else [x for o in resolve(c.args[0] if c.args else c.func.value, seen) or [None] for x in part(o, sel, None, seen)]
+        elif isinstance(c, ast.Call) and label == "parse_args":
+            made = [(v, ()) for v in parsed.get(key, [None])]
+        elif isinstance(c, ast.Call) and label == "defaultdict" and getattr((c.args[:1] or [None])[0], "id", "") in ("list", "set", "dict") and kind == "k":
+            fresh = (lambda: ast.Dict(keys=[], values=[])) if c.args[0].id == "dict" else (lambda: ast.List(elts=[], ctx=ast.Load()))
+            made = [(slots.setdefault((id(c), key), fresh()), ())] if key is not None else [(v, ()) for (owner, _), v in slots.items() if owner == id(c)]  # the list it makes for each key
+        else:
+            made = [(None, ())]  # what something else made: all it holds is what the program gives it
+        shared = [g for k in lineage(asked(c)[0]) for g in given_m.get(id(classes[k]), [])] if builds(c) else []  # an object also holds what its class is given later
+        gifts = [(v, t) for s, v, t in given_m.get(id(c), []) + shared + loose_m if s[0] == kind and (s[1] == key or None in (s[1], key))]
+        if n is not None and id(n) in reach_m:  # along its own path: the last plain gift before it stands for all before, and in a program's own statements none comes after
+            way, body, (lastv, lastat), top = reach_m[id(n)]
+            gifts = [(v, t) for v, t in gifts if not (t and t[:2] == (way, body) and (top or t[2] <= lastat))]
+            made = [(lastv, ())] if lastv is not None else made
+        found = made + [(v, ()) for v, _ in gifts]
+        return found or [(None, ())] * (kind == "a" and not isinstance(c, ast.Call) or builds(c))
+
+    def members(n, seen: tuple = ()) -> list:  # (a value, the calls it is read under) for each thing a member read may give; a value of None cannot be told, "\2" is none at all
+        base, sel, default = sel_of(n)
+        things = resolve(base, seen) or [None]
+        found = [x for c in things for x in part(c, sel, n if len(things) == 1 else None, seen)]
+        spare = default is not None and (not found or loose_m or any(v is None for v, _ in found) or any(id(c) in removed for c in things))
+        return found + [(default, ())] * spare or [("\2", ())]
+
+    def under(calls_):  # each reading of the calls a value is read under: a function's own names as that call hands them, `self` as the object it is called on
+        if not calls_:
+            yield
+            return
+        own, c, obj = calls_[0]
+        sent = {t: a[0] for t, a in hands(own, [c], asked(c)[0] in classes).items() if a[0] is not None} if c is not None else {}
+        options = [spellings(a) for a in sent.values()]
+        if any(d is own for d in deep) or len(deep) > 3 or math.prod(map(len, options)) > 8:
+            sent, options = {}, []  # a function that calls itself, or too many readings: whatever any call may hand it
+        deep.append(own)
+        was, this[id(own)] = this.get(id(own)), obj or this.get(id(own))
+        for combo in itertools.product(*options):
+            picked.update(x for t, v in zip(sent, combo) for x in ((t, v), (t + "~", v)))
+            yield from under(calls_[1:])
+        for t in sent:
+            picked.pop(t, None), picked.pop(t + "~", None)
+        deep.pop()
+        this[id(own)] = was
+
+    def read_as(n) -> list:  # every spelling a member read may have
+        found = []
+        for v, calls_ in members(n):
+            for _ in under(calls_) if isinstance(v, ast.AST) else [0]:
+                found += ["\0"] if v is None else [v] if isinstance(v, str) else ["\2"] if isinstance(v, ast.Constant) and v.value is None else spellings(v)
+        found = list(dict.fromkeys(found))
+        return ["\0"] if len(found) > 12 else found
+
+    def is_member(n) -> bool:  # a member read of something the program makes: read by what that thing holds
+        if not primed or not isinstance(n, (ast.Attribute, ast.Subscript, ast.Call)) or not isinstance(getattr(n, "ctx", None) or ast.Load(), ast.Load):
+            return False
+        if id(n) not in kn:
+            kn[id(n)] = sel_of(n) is not None and any(v is not None for v, _ in members(n))
+        return kn[id(n)]
+
+    def stringy(a, depth: int = 0) -> bool:  # reads as a path or a string the program builds, through each name it is kept under: no object, no open file
+        label = getattr(getattr(a, "func", None), "attr", getattr(getattr(a, "func", None), "id", ""))
+        if isinstance(a, (ast.JoinedStr, ast.BinOp)) or said(a) is not None or (isinstance(a, ast.Call) and label in STRINGS):
+            return True
+        if depth > 4 or not isinstance(a, (ast.Name, ast.Attribute, ast.Subscript, ast.Call)):
+            return False
+        own = asked(a)[1] if isinstance(a, ast.Call) else None
+        values = rets.get(id(own), [None]) if own is not None else [v for v, _ in members(a)] if is_member(a) else live.get(key_of(a), [None]) if isinstance(a, ast.Name) else [None]
+        return bool(values) and all(isinstance(v, str) or (v is not None and stringy(v, depth + 1)) for v in values)
 
     def elements(node, seen: tuple = ()):  # what a loop over it visits, as values or as the spelled folder a walk's finds lie under; None when it cannot be read
-        if isinstance(node, ast.Name):
-            return rows[node.id] if node.id in rows else elements(once_value[node.id], seen + (node.id,)) if (
-                node.id in once_value and node.id not in seen and node.id not in mutated and not isinstance(once_value[node.id], (ast.List, ast.Tuple))) else None
+        if isinstance(node, ast.Name) and (node.id in rows or (node.id in once_value and node.id not in seen and node.id not in mutated
+                                                              and isinstance(once_value[node.id], ast.Call))):
+            return rows[node.id] if node.id in rows else elements(once_value[node.id], seen + (node.id,))
         if isinstance(node, (ast.List, ast.Tuple, ast.Set)):
             return list(node.elts)
         if isinstance(node, ast.Subscript) and isinstance(node.slice, ast.Slice):
@@ -2613,7 +2880,7 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
         if isinstance(node, ast.Call) and label in ("sorted", "list", "reversed", "tuple", "set", "iter", "islice", "tqdm", "filter") and node.args:
             return elements(node.args[label == "filter" and len(node.args) > 1], seen)  # the same things, in another order or fewer
         if isinstance(node, ast.Call) and label == "values" and method:
-            return [None if k is None else v for k, v in handed(node.func.value)]
+            return [v for c in resolve(node.func.value) or [None] for v, _ in part(c, ("k", None))] if primed else None
         if isinstance(node, ast.Call) and label in ("glob", "iglob") and not method and node.args:  # what a pattern finds lies under the folder before its first wildcard
             top = os.path.join(*[spelled(k.value) for k in node.keywords if k.arg == "root_dir"], spelled(node.args[0]))
             cut = re.split(r"[*?\[]", top, 1)
@@ -2624,7 +2891,8 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
             return None
         if isinstance(node, ast.Call) and ((method and label in ("glob", "rglob", "iterdir")) or (not method and label in ("scandir", "walk", "fwalk"))):
             return [spelled(node.func.value if method else (node.args[:1] or [ast.Constant(value=".")])[0]) + "/\0"]
-        return None
+        things = resolve(node) if primed and not isinstance(node, ast.Call) else [None]  # a list the program makes, however it is reached: what it was made with and given since
+        return [v for c in things for v, _ in part(c, ("k", None))] if things and all(isinstance(c, LISTS) for c in things) else None
 
     def columns(n) -> dict:  # what each name of a loop's target is given: values, or None for what cannot be read
         it, names_ = n.iter, getattr(n.target, "elts", None)
@@ -2666,40 +2934,32 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
             live[name + "~"] = handed_in.get(name, []) + rest  # read before its body's first plain assignment
             live.update((f"{name}~{id(v)}", [v] + rest) for v in plain)  # read after one of them
         live.update((f"()@{key}", back or [ast.Constant(value=None)]) for key, back in rets.items())
-        for found in reads:
-            live.setdefault(f"[{found[0]}]{found[1]}", []).extend(table(*found))
         return live
 
-    def outer(node):  # a value's nodes down to each `a if c else b` and `a or b`, read by its sides, and each call of the program's own function, read by what it hands back
+    def outer(node):  # a value's nodes down to each `a if c else b` and `a or b`, read by its sides, each call of the program's own function, read by what it hands back, and each member read
         yield node
-        if not (isinstance(node, ast.IfExp) or (isinstance(node, ast.BoolOp) and isinstance(node.op, ast.Or)) or (key_of(node) or "")[:3] == "()@"):
+        if id(node) in homes:
+            yield homes[id(node)]
+        if not (isinstance(node, ast.IfExp) or (isinstance(node, ast.BoolOp) and isinstance(node.op, ast.Or)) or (key_of(node) or "")[:3] == "()@" or is_member(node)):
             for child in ast.iter_child_nodes(node):
                 yield from outer(child)
 
-    def answers(c) -> list:  # what one call of the program's own function hands back, read with what this call hands it
+    def answers(c) -> list:  # what one call of the program's own function hands back, read with what this call hands it and the object it is called on
         own = asked(c)[1]
-        sent = {t: a[0] for t, a in hands(own, [c]).items() if a[0] is not None}
-        options = [spellings(a) for a in sent.values()]
-        if any(asked(d)[1] is own for d in deep) or len(deep) > 2 or math.prod(map(len, options)) > 8:
-            return ranges.get(key_of(c)) or ["\0"]  # a function that calls itself, or too many readings: whatever any call may hand back
-        found = []
-        deep.append(c)
-        for combo in itertools.product(*options):
-            picked.update(x for t, v in zip(sent, combo) for x in ((t, v), (t + "~", v)))
-            found += [x for r in rets[id(own)] for x in (spellings(r) if r is not None else ["\0"])]
-        for t in sent:
-            picked.pop(t, None), picked.pop(t + "~", None)
-        deep.pop()
+        if any(d is own for d in deep) or len(deep) > 2:
+            return ranges.get(key_of(c)) or ["\0"]  # a function that calls itself, or too deep: whatever any call may hand back
+        obj = resolve(c.func.value) if isinstance(c.func, ast.Attribute) else None
+        found = [x for _ in under(((own, c, obj),)) for r in rets[id(own)] for x in (spellings(r) if r is not None else ["\0"])]
         return list(dict.fromkeys(found)) or ["\2"]
 
     def spellings(node) -> list:  # each path a node may spell, one for every value its names may hold; as `spelled` reads it when they are too many
         if walked.get(id(node), (None,))[0] is not node:  # walked once: a value is read again at each settling
             seen = list(outer(node))
             walked[id(node)] = (node, [c for c in seen if isinstance(c, ast.IfExp) or (isinstance(c, ast.BoolOp) and isinstance(c.op, ast.Or))
-                                       or (key_of(c) or "")[:3] == "()@"], list(dict.fromkeys(k for k in map(key_of, seen) if k is not None and k[:3] != "()@")))
+                                       or (key_of(c) or "")[:3] == "()@" or is_member(c)], list(dict.fromkeys(k for k in map(key_of, seen) if k is not None and k[:3] != "()@")))
         sides = [c for c in walked[id(node)][1] if id(c) not in picked]
         free = [k for k in walked[id(node)][2] if k not in picked and len(ranges.get(k, ())) > 1]
-        options = [ranges[k] for k in free] + [answers(c) if isinstance(c, ast.Call) else [
+        options = [ranges[k] for k in free] + [read_as(c) if is_member(c) else answers(c) if isinstance(c, ast.Call) else [
             x for alt in ([c.body, c.orelse] if isinstance(c, ast.IfExp) else c.values) for x in spellings(alt) if x != "\2"] or ["\2"] for c in sides]
         if not options or math.prod(map(len, options)) > 32:
             return [spelled(node)]
@@ -2739,7 +2999,8 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
         grew = True
         while grew:
             grew = False
-            for key, values in gather().items():  # each name is every value it is given: a second assignment, two callers, what a loop visits
+            live.update(gather())
+            for key, values in list(live.items()):  # each name is every value it is given: a second assignment, two callers, what a loop visits
                 name = key.split("~")[0]
                 found = values_of(key, values) + ["\0"] * (total.get(name, 0) > sites.get(name, 0))
                 found = ["\0"] if hidden and name in total else found  # given through globals() or locals(): no name is read
@@ -2771,7 +3032,9 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
                 else:  # of what a walk hands back, the folder is a path; the names in it are not
                     walked = isinstance(n.target, ast.Tuple) and getattr(getattr(n.iter, "func", None), "attr", "") in ("walk", "fwalk")
                     counted = isinstance(n.target, ast.Tuple) and len(n.target.elts) == 2 and getattr(getattr(n.iter, "func", None), "id", "") == "enumerate"
-                    grew |= named(n.iter) and taint(held(n.target.elts[0] if walked else n.target.elts[1] if counted else n.target))  # a count is no path
+                    cols = {name: vs for name, vs in columns(n).items() if vs and all(isinstance(v, ast.AST) for v in vs)}  # a name whose every visit can be read
+                    grew |= taint(name for name, vs in cols.items() if any(map(named, vs)))
+                    grew |= named(n.iter) and taint(held(n.target.elts[0] if walked else n.target.elts[1] if counted else n.target) - set(cols))  # a count is no path
             for n in nodes:
                 if isinstance(n, ast.withitem) and n.optional_vars is not None:
                     grew |= named(n.context_expr) and taint(held(n.optional_vars))
@@ -2791,13 +3054,13 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
                         grew |= taint([root.id] if root.id not in modules else [".environ"] * (getattr(n.func.value, "attr", "") == "environ"))
                     if label in fields_of:  # a class with fields and no __init__ of its own keeps what it is handed in them
                         grew |= taint("." + f for f in fields_of[label])
-                    if not local.get(label) and (not isinstance(n.func, (ast.Name, ast.Attribute)) or label in stores or "." + label in stores
+                    if not local.get(label) and (not isinstance(n.func, (ast.Name, ast.Attribute)) or label in stores or label in fields_given
                                                  or any(isinstance(a, ast.Lambda) for a in n.args)):
                         grew |= taint(a.arg for a in nodes if isinstance(a, ast.arg))  # handed to a function kept under a name, or to one written in place: any may take it
                     if label == "setattr" and len(n.args) == 3 and named(n.args[2]):
                         grew |= taint(held(n.args[0]) | {"." + (said(n.args[1]) or "")})
                     for name in [label] + [a.id for a in n.args if isinstance(a, ast.Name)]:  # handed to the program's own function
-                        for own in local.get(name, ()):
+                        for own in [*local.get(name, ()), *filter(None, [inits.get(name)])]:  # a class is built by the __init__ it inherits
                             takers = [a.arg for a in own.posonlyargs + own.args]
                             takers = takers[takers[:1] in (["self"], ["cls"]):]
                             if name != label or any(isinstance(a, ast.Starred) for a in n.args) or None in [k.arg for k in n.keywords]:
@@ -2807,6 +3070,40 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
                             worded = {t.split("@")[0]: t for t in takers + [a.arg for a in own.kwonlyargs]}  # a keyword names it as it was written
                             grew |= taint([x for i, a in enumerate(n.args) if named(a) for x in takers[i:i + 1] or spare] + [
                                 x for k in n.keywords if named(k.value) for x in ([worded[k.arg]] if k.arg in worded else extra)])
+    def keep(of, sel, value) -> None:  # one thing given to a member: to each thing its holder may be, or to any when that cannot be told
+        for c in resolve(of) or [None]:
+            (given_m.setdefault(id(c), []) if c is not None else loose_m).append((sel, value, tags.get(id(value))))
+    for _ in range(2):  # twice: what a loop visits depends on what its names are, and those on what loops visit
+        live.update(gather())
+        primed.append(1)
+    for t in [n for n in nodes if isinstance(n, (ast.Attribute, ast.Subscript)) and isinstance(n.ctx, (ast.Store, ast.Del))]:
+        m, f = sel_of(t), inside.get(id(t))
+        if isinstance(t.ctx, ast.Del) or m is None:
+            removed.update(id(c) for c in resolve(t.value)) if isinstance(t.ctx, ast.Del) else keep(t.value, ("k", None), None) if isinstance(t, ast.Subscript) else None
+        elif not (m[1][0] == "a" and getattr(m[0], "id", "") == "self" and f is not None and f.name in ("__init__", "__post_init__") and id(f) in of_class):
+            keep(m[0], m[1], None if id(pair_of.get(id(t))) in grown else pair_of.get(id(t)))  # what an __init__ gives self is read as the object is built
+    for n in calls:
+        label, base, kw = getattr(n.func, "attr", getattr(n.func, "id", "")), getattr(n.func, "value", None), {k.arg: k.value for k in n.keywords}
+        if label == "putenv" and len(n.args) == 2:
+            keep(ENV, ("k", key_at(n.args[0])), n.args[1])
+        elif label == "setattr" and len(n.args) == 3:
+            keep(n.args[0], ("a", key_at(n.args[1])), n.args[2])
+        elif base is not None and label in ("setdefault", "__setitem__") and len(n.args) == 2:
+            keep(base, ("k", key_at(n.args[0])), n.args[1])
+        elif base is not None and label == "update":
+            for k, v in [(k, v) for k, v in kw.items()] + [(None, None)] * (None in kw):
+                keep(base, ("k", k), v if k is not None else None)
+            for o in [o for a in n.args for o in resolve(a) or [None]]:
+                spelt_out = isinstance(o, ast.Dict) and None not in o.keys
+                for k, v in zip(o.keys, o.values) if spelt_out else [(None, None)]:
+                    keep(base, ("k", key_at(k) if spelt_out else None), v)
+        elif base is not None and label in ("append", "add", "insert", "extend", "appendleft", "extendleft"):
+            for a in n.args[label == "insert":]:
+                for v in (elements(a) or [None]) if "extend" in label else [a]:
+                    keep(base, ("k", None), v)
+        elif base is not None and label in ("pop", "popitem", "clear", "remove", "discard"):
+            removed.update(id(c) for c in resolve(base))
+    kn.clear(), walked.clear()
     settle()
     stand_in = os.path.expanduser(next((m for m in names if m[:1] in ("/", "~")), "".join(names[:1])))  # a protected folder, for one built from it that cannot be spelled
 
@@ -3033,7 +3330,7 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
             else [] if (m, label) == ("os", "open") and reads_only
             else n.args[:1] or [kw[k] for k in ("path",) if k in kw] if (m, label) == ("os", "open")  # its flags and its mode are no file
             else [] if (m, label) == ("os", "write") and descriptor(n.args[:1])  # to a descriptor os.open made: its open is judged where it is made
-            else every if m == "shutil" or starts or (m, label) == ("sqlite3", "connect") or (m == "os" and OS_WRITES.fullmatch(label))
+            else every if m == "shutil" or starts or (label == "connect" and m in ("sqlite3", "duckdb", "apsw")) or (m == "os" and OS_WRITES.fullmatch(label))
             or (m == "fileinput" and edits)
             else [])]
         if opener and (writes or starred):  # open(path, "w") or open(file=path, mode="w"); a descriptor os.open made was judged there
@@ -3047,13 +3344,30 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
         elif method and label in ("rename", "replace") and len(n.args) + len(kw) == 1 and (n.args or "target" in kw):
             targets += [base] + every  # both ends change; str.replace takes two
         flag = (n.args[1:2] or [kw.get("mode", kw.get("flag"))])[0]
-        writer = BY_NAME.fullmatch(label) if not targets and not opener and not local.get(label) else None
-        if label == "open" and owners and not method and not opener and "os" not in owners and ("shelve" in owners or (
-                flag is not None and (said(flag) is None or re.search(r"[wax+cn]", said(flag))))):
-            targets += n.args[:1] or [kw[k] for k in PATH_KEYS if k in kw]  # another library's store opened for writing: shelve, dbm, wave
-        elif writer and (not writer[4] or (owners and not method)):  # a call named as a writer: judged where its path lands, the rest being content
-            targets += [a for a in (n.args[:1] if writer[1] else n.args[1:2] if writer[3] else n.args[:2] if writer[2] else n.args) + [
-                kw[k] for k in PATH_KEYS if k in kw] if spelled(a)[:1] not in ("\0", "\2") and (named(a) or re.search(r"/|^~|\.\w{1,6}$", spelled(a)))]
+        aims = flag is not None and (said(flag) is None or bool(re.search(r"[wax+cn]", said(flag))))  # opened to be written
+        writer = BY_NAME.fullmatch(label) if not targets and not opener and asked(n)[1] is None else None  # the program's own save() is read as it is written
+        lib = set() if method else {m.split(".")[0] for m in owners}
+        made_by = [v for v in ([base] if isinstance(base, ast.Call) else live.get(key_of(base), []) if isinstance(base, ast.Name) else []) if isinstance(v, ast.Call)]
+        sure, maybe = [], []  # what it takes as its path, and what may be its path
+        if label == "open" and owners and not method and not opener and "os" not in owners:  # another library's store: shelve and dbm make one unless told to read
+            sure = (n.args[:1] or [kw[k] for k in PATH_KEYS if k in kw]) * (aims or (flag is None and bool({"shelve", "dbm"} & set(owners))))
+        elif writer is None and not targets and not opener and asked(n)[1] is None and OPENED.fullmatch(label) and (
+                label.endswith(("Writer", "Store", "_writer")) or label == "memmap" if flag is None or label.endswith("Writer") else aims):
+            sure = n.args[:1] or [kw[k] for k in PATH_KEYS if k in kw]  # h5py.File(path, "w"), ExcelWriter(path), np.memmap(path)
+        elif method and label == "write" and any(re.fullmatch(r"ElementTree|parse|\w*(?:Writer|Merger)", getattr(v.func, "attr", getattr(v.func, "id", ""))) for v in made_by):
+            sure = n.args[:1]  # a tree's or a document's own write(path); a file's write(text) is content
+        elif writer and writer[4]:  # dump(what, where); a thing's own dump(where)
+            sure, maybe = n.args[1:2], n.args[:1] * (method and len(n.args) == 1)
+        elif writer and lib & OBJECT_FIRST and not writer[5]:  # torch.save(what, where), pd.to_pickle(what, where)
+            sure = n.args[1:2]
+        elif writer and (writer[1] or (writer[3] and (method or lib & PATH_FIRST or len(n.args) == 1))):
+            sure, maybe = n.args[:1], n.args[1:2] * bool(method and writer[3])
+        elif writer:  # to_<anything else>, write_<anything else>, another module's save(a, b): either may be the path; a deletion, as a module's own function
+            maybe = (n.args if owners and not method else []) if writer[5] else n.args[:1 + (not method)]
+        sure += [kw[k] for k in PATH_KEYS if k in kw] if writer else []
+        led = {id(a): [s for s in spellings(a) if s[:1] not in ("\0", "\2")] for a in sure + maybe}  # each reading with a lead that can be read
+        targets += [a for a in sure if led[id(a)] or stringy(a)] + [
+            a for a in maybe if led[id(a)] and (named(a) or any(re.search(r"/|^~|\.\w{1,6}$", s) for s in led[id(a)]))]
         if label in LIBRARY_WRITES:  # the standard library's own writers: a log file, a download, a temporary file made where it is told
             targets += [kw[k] for k in ("filename", "dir") if k in kw] + (
                 n.args[1:2] if label == "urlretrieve" else n.args[:1] if "Handler" in label else n.args[2:3] if label.startswith(("mk", "TemporaryD")) else [])
