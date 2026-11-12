@@ -178,7 +178,7 @@ def judge(args, config: dict, read: dict) -> dict:
                  "days": span, "said": said, "location": spot}
         if span and place(spot, policy) == "away" and found not in commitments:  # one event read from two calendars is one event
             commitments.append(found)
-    timed = [c for c in commitments if c["start"]]
+    timed, untimed = [c for c in commitments if c["start"]], [c for c in commitments if not c["start"]]
 
     def apart(block, c):  # how far a block stands from a commitment
         return min(abs(c["start"] - block["end"]), abs(block["start"] - c["end"]))
@@ -253,8 +253,13 @@ def judge(args, config: dict, read: dict) -> dict:
             apart_from = {b["entry"] for b in (before, after) if b}  # the outing's own way there and back is no commitment of the next morning
             short = slot.morning_after(after["end"], [(a, s) for a, s, entry in others if entry not in apart_from],
                                        policy.get("sleep_hours"), slot.hour(policy, "morning_starts"), c["start"])
+            morning = slot.morning_day(after["end"], slot.hour(policy, "morning_starts"), c["start"])
+            blank = next((u["summary"] for u in untimed if u is not c and u["days"][0] <= morning <= u["days"][1]), None)
             if short and not decided:
                 lacks.append(f"home at {slot.hm(after['end'])} and {slot.first_thing(short, policy['sleep_hours'])}: {ASK}")
+            elif blank and policy.get("sleep_hours") and not decided:  # a commitment that holds that day and gives no hour
+                lacks.append(f'home at {slot.hm(after["end"])} and "{blank}" the next morning is all day, with no hour this can read, '
+                             f"so the night cannot be judged: give it its times, or {ASK}")
             found.update(home=slot.hm(after["end"]))
         events.append({**found, "lacks": lacks})
     flagged = sum(bool(e["lacks"]) for e in events)

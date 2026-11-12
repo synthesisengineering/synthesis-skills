@@ -179,7 +179,9 @@ ITEM = r"(?im)^ *(?:> *|\| *|#{1,6} +|(?:[-*+]|\d+[.)]) +(?:\[[ xX]\] +)?)*[*_]*
 OPTION = re.compile(ITEM + r"Option [A-Z0-9]+(?![A-Za-z0-9])((?:[*_]+|\s*(?:$|[:\-–—().|])).*)$")
 SAID = re.compile(ITEM + r"(?:(?:My|Our|The) +)?(Recommend(?:ation|ed)s?|Consequences?|Commits)[*_]*\s*(?::|[-–—](?=[*_\s]))[*_\s]*(.*)$")
 CLOSED = re.compile(ITEM + r"(?:Decided|Decision|Resolved|Released|Lapsed|Withdrawn)[*_]*\s*:[*_\s]*(.*)$")
-OPEN = re.compile(r"(?i)\W*(?:pending|open\b|awaiting|waiting|needed|not yet|to be )")  # a closing line that closes nothing
+# A line that says nothing yet, as a decision or as a recommendation: a word that puts it off, however the line goes
+# on, or one of three that are also the first word of a sentence that says something, when little follows.
+OPEN = re.compile(r"(?i)\W*(?:pending|undecided|unknown|unsure|awaiting|not yet|to be |\?|(?:open|waiting|needed)\b(?:\W+\w+){0,3}\W*$)")
 # What Markdown does not show as the plan's own text: a fenced block (quoted or not, closed or not), which is an
 # example, and an HTML comment. Whichever opens first runs to its own end: a fence closes at a line of its own
 # mark alone, at least as long as the one that opened it, so four backticks hold a sample fenced with three.
@@ -233,6 +235,8 @@ def _items(text: str):
                 entry = len(listed[1])  # the entry a choice's options stand under, by how far it is indented
             elif listed and len(listed[1]) <= entry:
                 entry, fresh = len(listed[1]), True  # the list's next entry: its options are another choice, whatever their letters
+            elif label is not None and HEAD.match(line) and not (SAID.match(line) or CLOSED.match(line)):
+                fresh = True  # a deeper heading or a bold title after a choice's options: what follows is another choice
         def depth(j):  # how far in a line's own text stands, its quote marks set aside
             return len(QUOTE.sub(r"\1", lines[j])) - len(QUOTE.sub(r"\1", lines[j]).lstrip(" "))
         def titled(k):  # the line a choice starts at: the entry just above its options, else the section's own first line
@@ -249,6 +253,13 @@ def _items(text: str):
                         break
                     if lines[j].strip() and depth(j) < depth(above):
                         break  # a line left of it that is no entry: the sentence stands in no list
+            if above is not None and not depth(above) and not (ENTRY.match(lines[above]) or HEAD.match(lines[above])):
+                # a sentence between a title and its options: the title is the nearest heading or bold line above it
+                for j in range(above - 1, floor - 1, -1):
+                    if HEAD.match(lines[j]) and not (SAID.match(lines[j]) or CLOSED.match(lines[j])):
+                        above = j
+                    if HEAD.match(lines[j]) or OPTION.match(lines[j]) or ENTRY.match(lines[j]):
+                        break
             entry = above is not None and (len(firsts) > 1 or ENTRY.match(lines[above]) or HEAD.match(lines[above]))
             return above if entry else 0 if k == 0 else firsts[k]
         starts = [titled(k) for k in range(len(firsts))]
@@ -271,7 +282,7 @@ def choices(workspace: str, day: str) -> str:
             if not options or done or title.lstrip("*_ ").startswith(("~~", "[x]", "[X]", "✓", "✔")) or "✅" in title:
                 continue
             said = {"recommendation" if m[1].lower().startswith("recommend") else "consequences" if m[1].lower().startswith("consequence") else m[1].lower(): m[2]
-                    for m in [*SAID.finditer(item), *TITLED.finditer(title)] if not NOTHING.fullmatch(m[2])}
+                    for m in [*SAID.finditer(item), *TITLED.finditer(title)] if not NOTHING.fullmatch(m[2]) and not OPEN.match(m[2])}
             said.update({"recommendation": "on the option"} if any(re.search(r"(?i)(?<!not )\brecommended\b", option) for option in options) else {})
             needs = ["recommendation"] + ["consequences"] * ("commits" in said or any(map(COMMITS.search, options)))
             lacks = [word for word in needs if word not in said]

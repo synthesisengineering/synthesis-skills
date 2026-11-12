@@ -55,6 +55,17 @@ def moment(value, zone: ZoneInfo):
     return (parsed.astimezone(zone) if parsed.tzinfo else parsed.replace(tzinfo=zone)).replace(second=0, microsecond=0)
 
 
+def whole_days(entry: dict):
+    """(first day, last day) of an all-day entry, None for any other. Calendars give an all-day end as the day after
+    its last."""
+    try:
+        first, last = (date.fromisoformat(str(v.get("date") if isinstance(v, dict) else v).strip()[:10])
+                       for v in (entry.get("start"), entry.get("end") or entry.get("start")))
+    except (ValueError, AttributeError):
+        return None
+    return first, max(first, last - timedelta(days=1))
+
+
 def part(holder: dict, name: str) -> dict:
     """A section of the preferences, or {} when it is absent or written another way."""
     return holder[name] if isinstance(holder.get(name), dict) else {}
@@ -172,11 +183,17 @@ def judge(args, config: dict, read: dict) -> dict:
     if worded:  # a word would hide every meeting whose title carries it (a marker `training`, "Training with the team")
         stop(f"calendar_guardian.personal_markers holds {worded[0]!r}, a plain word a meeting's title might carry: a marker is a "
              "tag the principal puts on their own blocks, such as #reserved")
-    events, joined, marked = [], set(), set()
+    events, joined, marked, whole, untimed = [], set(), set(), [], []
     for entry in read.get("events") or []:
         a, b = moment(entry.get("start"), zone), moment(entry.get("end"), zone)
+        title, days = str(entry.get("summary") or "a meeting"), whole_days(entry) if not a else None
+        mine = any(re.search(rf"(?<!\w){re.escape(mark)}(?!\w)", title.lower()) for mark in marks)
+        if days and (mine or str(entry.get("transparency") or "").lower() == "opaque"):  # the principal's own block, or one that says it is busy
+            whole.append((datetime.combine(days[0], time.min, zone), datetime.combine(days[1], time.min, zone) + timedelta(days=1), title))
+        elif days and str(entry.get("location") or "").strip():  # at a place, with no hour: a commitment whose start cannot be read
+            untimed.append((*days, title))
         if a and b and b > a and str(entry.get("summary") or "").strip().lower() != hold:
-            title, guests = str(entry.get("summary") or "a meeting"), entry.get("attendees") or []
+            guests = entry.get("attendees") or []
             who = {x.lower() for x in ADDRESS.findall(json.dumps(guests))}
             me = {x.lower() for g in guests if isinstance(g, dict) and g.get("self") for x in ADDRESS.findall(json.dumps(g))}
             events.append((a, b, title, who))
@@ -184,8 +201,9 @@ def judge(args, config: dict, read: dict) -> dict:
             marked |= {(a, b, title)} if any(re.search(rf"(?<!\w){re.escape(mark)}(?!\w)", title.lower()) for mark in marks) else set()
     # An event is taken time on each day it covers: a block from 23:00 the night before is part of this morning,
     # and a trip back past midnight meets the next day's first entry. The slot's own hour, when the read holds it,
-    # is the event being checked again.
-    others = [(a, b, s) for a, b, s, _ in events if (a, b) != (start, end)]
+    # is the event being checked again: one such entry, since a second at the same hours is another event.
+    itself = next((i for i, e in enumerate(events) if e[:2] == (start, end)), None)
+    others = [(a, b, s) for i, (a, b, s, _) in enumerate(events) if i != itself]
     dawn = datetime.combine(start.date(), time.min, zone)
     dusk = dawn + timedelta(days=1)
     that_day = [(a, b, s) for a, b, s in others if a < dusk and b > dawn]
@@ -230,8 +248,9 @@ def judge(args, config: dict, read: dict) -> dict:
 
     need, blocks = int(limits.get("maker_block_minutes", 120)), int(limits.get("min_maker_blocks_per_day", 1))
     long_enough = lambda gaps: [g for g in gaps if g[1] - g[0] >= timedelta(minutes=need)]  # noqa: E731
-    before = long_enough(free_blocks([(a, b) for a, b, _ in that_day], opens, closes))
-    after = long_enough(free_blocks([(a, b) for a, b, _ in that_day] + [(start - out, end + back)], opens, closes))
+    taken = [(a, b) for a, b, _ in that_day + whole]  # a day blocked whole is taken whole
+    before = long_enough(free_blocks(taken, opens, closes))
+    after = long_enough(free_blocks(taken + [(start - out, end + back)], opens, closes))
     if len(after) < blocks:
         broke = next((g for g in before if g not in after), None)
         add("deep work", "REFUSE", (f"it would break the day's last {need}-minute free block ({hm(broke[0])}-{hm(broke[1])})" if broke
@@ -254,8 +273,13 @@ def judge(args, config: dict, read: dict) -> dict:
             f", after {latest:%H:%M}: the principal's decision, made with the trip in front of them" if late else ""))
         morning = morning_day(home, hour(policy, "morning_starts"), start - out)
         short = morning_after(home, [(a, s) for a, _, s in others], keeps, hour(policy, "morning_starts"), start - out)
+        blank = next((s for first, last, s in untimed + [(a.date(), (b - timedelta(minutes=1)).date(), s) for a, b, s in whole]
+                      if first <= morning <= last), None)  # an entry that holds that whole day and gives no hour
         if keeps and short:  # short by an entry the read holds, or by the hour the policy says the morning starts
             add("sleep", "REVIEW", f"home at {hm(home)} and {first_thing(short, keeps)}: the principal's decision")
+        elif keeps and blank:
+            add("sleep", "REVIEW", f'home at {hm(home)} and "{blank}" the next morning is all day, with no hour this can read, so the night '
+                                   "cannot be judged: find when it starts; the principal's decision")
         elif keeps and window["through"] < morning.isoformat():
             add("sleep", "NOTE", f"the calendar read ends before {morning}, so the night cannot be judged: read through that day")
         elif keeps:
@@ -271,7 +295,10 @@ def judge(args, config: dict, read: dict) -> dict:
     near = next((s for a, b, s in that_day if abs(start - b) <= BESIDE or abs(a - end) <= BESIDE), None)
     block = next((g for g in free_blocks([(a, b) for a, b, _ in that_day], opens, closes) if g[0] <= start and end <= g[1]), None)
     over = next(((a, b, s) for a, b, s in others if a < end and b > start), None)
-    if over:  # on top of another event: never placed as if the time were free
+    held = next((s for a, b, s in whole if a < end and b > start), None)
+    if held:  # on a day blocked whole
+        add("placement", "REVIEW", f'it falls on "{held}", which holds the whole day: the principal\'s decision, or another day')
+    elif over:  # on top of another event: never placed as if the time were free
         add("placement", "REVIEW", f"it overlaps {over[2]} ({hm(over[0])}-{hm(over[1])}): the principal's decision, or another time")
     elif near:
         add("placement", "OK", f"beside {near}")
@@ -282,7 +309,7 @@ def judge(args, config: dict, read: dict) -> dict:
                                    "or at an edge of that block")
 
     horizon = today + timedelta(days=int(limits.get("touchpoint_days", 7)))
-    met = [(a, s) for a, b, s, who in events if today <= a.date() <= horizon and (a, b) != (start, end) and who & people]
+    met = [(a, s) for i, (a, b, s, who) in enumerate(events) if today <= a.date() <= horizon and i != itself and who & people]
     if met:
         add("existing touchpoint", "REVIEW", "already meeting the same people: "
             + "; ".join(f"{s} on {a.strftime('%a %Y-%m-%d %H:%M')}" for a, s in sorted(met)[:3])
