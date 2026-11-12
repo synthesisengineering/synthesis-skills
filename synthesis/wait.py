@@ -6,7 +6,7 @@ which marks what it prints, and waited half an hour on mail addressed to a proje
     synthesis wait message [--from <session|short|project:id>] [--for 30m] [--every 2s]
     synthesis wait file <path> [--for 30m] [--every 2s]
     synthesis wait run [--every 30s] [--for 30m] -- <command>
-    synthesis wait note "<what>" --by "<what will wake this seat>" [--for 2h]
+    synthesis wait note "<what>" --by "<what will wake this seat>" [--for 30m]
     synthesis wait list
 
 A wait prints one line when its event happens and exits 0; at its bound it exits 3 and says nothing arrived, so

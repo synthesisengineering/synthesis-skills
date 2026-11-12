@@ -432,6 +432,23 @@ def test_the_hint_names_exactly_the_projects_whose_mail_a_session_that_binds_now
     assert board.waiting("S8") == ["lambda", "sigma"]                                 # read once, it waits no longer
 
 
+def test_the_hint_names_the_newest_mail_first_and_counts_the_rest(isolated_home, tmp_path):
+    """A board that has run for months holds a box for every project; a session that has read none of it is told
+    the eight with the newest mail and how many more there are."""
+    board.touch("S2", project="kappa", harness="claude-code")
+    for at, name in enumerate("abcdefghij"):
+        board.touch(f"T{at}", project=name, harness="claude-code")                    # each project's one session ended hours ago
+        quiet(f"T{at}")
+        sent = board.message(f"project:{name}", "S2", f"for {name}", durable=True)
+        os.utime(sent, (time.time() - at * 3600,) * 2)                                # a is the newest, j the oldest
+    board.touch("S8", harness="claude-code")
+    assert board.waiting("S8") == list("abcdefghij")
+    out = subprocess.run([sys.executable, "-S", str(ROOT / "synthesis" / "hook.py"), "session-start"], capture_output=True, text=True,
+                         cwd=tmp_path, input=json.dumps({"session_id": "S8", "cwd": str(tmp_path)})).stdout
+    said = json.loads(out)["hookSpecificOutput"]["additionalContext"]
+    assert "waiting for: a, b, c, d, e, f, g, h and 2 more." in said and "synthesis resume a" in said, said
+
+
 # --- the doctor ----------------------------------------------------------------------------------------------------
 
 def test_the_doctor_runs_the_turn_end_check_on_a_canned_reply(monkeypatch):

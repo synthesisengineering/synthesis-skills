@@ -342,10 +342,11 @@ def inbox(session_id: str, project: str = "", *, mark_read: bool = False, recent
 
 
 def waiting(session_id: str) -> list[str]:
-    """Projects whose mail this session's inbox would hold if it bound to one now (2026-11-11: a session bound to no
-    project polled for half an hour beside mail addressed to its project)."""
+    """Projects whose mail this session's inbox would hold if it bound to one now, the newest mail first (2026-11-11:
+    a session bound to no project polled for half an hour beside mail addressed to its project)."""
     names = sorted(box.name[len("project__"):] for box in (paths.board() / "messages").glob("project__*"))
-    return [name for name in names if any(_held(session_id, f"project:{name}"))]
+    newest = {name: max((f.stat().st_mtime for f in _held(session_id, f"project:{name}")), default=None) for name in names}
+    return sorted((name for name in names if newest[name] is not None), key=lambda name: -newest[name])
 
 
 def _read_marker(session_id: str, name: str) -> Path:

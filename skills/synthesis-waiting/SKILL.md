@@ -50,7 +50,7 @@ synthesis msg <to> "<text>" [--wake]
 - `wait list` prints one line for each live wait on the board: the session, what it awaits, since and until, and whether a watcher is running or what will wake it.
 - Exit codes: 0 when the event happened; 3 at the bound, with `nothing arrived in <how long>: still waiting for <what>` on stderr; 2 for a bound it cannot read or one over twelve hours.
 - `inbox --peek` lists unread mail and marks none of it.
-- `msg` ends with what will deliver the message: `it is watching and wakes within seconds`, `it reads it at its next prompt`, or that no session is bound to that project and the message is kept for the next one that runs `synthesis resume <project>`. `--wake` also nudges an idle recipient through its own harness, where a command can.
+- `msg` ends with what will deliver the message: `it is watching and wakes within seconds` (`checks every 5 min` for a watcher that looks less often), `it reads it at its next prompt`, or that no session is bound to that project and the message is kept for the next one that runs `synthesis resume <project>`. `--wake` also nudges an idle recipient through its own harness, where a command can; with `--durable`, each live session on the project.
 
 ## Procedure
 

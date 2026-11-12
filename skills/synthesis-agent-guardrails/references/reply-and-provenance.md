@@ -28,6 +28,11 @@ the reply back once with `Before this reply goes out, revise it: ...` when the r
 - uses lazy-shortcut phrasing (the built-in list, plus `shortcut_phrases` from config):
   do the work or name the real blocker. A phrase inside quotation marks or code is exempt,
   so naming a rule does not trip it;
+- announces a wait of the session's own that nothing is armed to end (`I'm waiting for CI`,
+  `I'll merge once the checks pass`, a clause that opens `Waiting on the reviewer`), read
+  clause by clause; a clause that awaits the principal's own move, a reply that ends by
+  asking them, a live `synthesis wait` of the session and an autopilot run it owns pass.
+  `wait_phrases` in the config adds phrases (synthesis-waiting has the rule and the commands);
 - quotes someone (said, wrote, replied, ...: "twelve or more characters") with words that
   appear nowhere in this session's transcript: quote only what a tool surfaced;
 - names a file without a clickable absolute-path link, when `reply_file_links` is true;

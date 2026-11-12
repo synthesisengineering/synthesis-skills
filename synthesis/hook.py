@@ -98,7 +98,7 @@ def session_start(payload):
     notes += [f"{len(unread)} unread board message(s): run `synthesis inbox`."] if unread else []
     kept = [] if session.project else board.waiting(session_id)
     notes += [f"This session is bound to no project, so mail addressed to one does not reach it. Mail it has not read is "
-              f"waiting for: {', '.join(kept)}. If this session works on one of them, `synthesis resume "
+              f"waiting for: {', '.join(kept[:8])}{f' and {len(kept) - 8} more' if len(kept) > 8 else ''}. If this session works on one of them, `synthesis resume "
               f"{kept[0]}` binds it and delivers the mail."] if kept else []
     notes += [n for n in [_window_note()] if n]
     return _emit("SessionStart", context="\n\n".join(notes))
