@@ -9,6 +9,8 @@ Ritual · Autonomous Work and Audio Alerts.
 
 ## Mid-Day Sync Protocol
 
+**First, at every sync, check what other people rely on:** `python3 <rituals>/scripts/relied_on.py --workspace <W>`, before any surface is read. **A `DOWN` line is the first thing in the plan and in the reply to the principal, before anything else,** the critical deadlines included. It is an incident, so the principal is told first, with who is affected and what the fix is, and the people affected are told only on the principal's approval. Exit 2 means nothing was checked, and that is said in the same place ([day-start.md](day-start.md), Step 1).
+
 The day-start checklist does a full sync. The user will ask for syncs repeatedly throughout the day ("sync from Slack", "what's new", "check channels"). **A sync request covers EVERY surface the workspace routinely syncs — not Slack alone, and not only chat surfaces (v2.19.0):**
 
 1. **Slack** — always.
@@ -63,6 +65,7 @@ From the normal Day-End:
 ### What Observer Mode Keeps (Non-Negotiable)
 
 - Date verification
+- The check of what other people rely on (`relied_on.py --workspace <W>`), run first: a `DOWN` line opens the plan and the reply in this mode too
 - Full Slack sync (no channels or DMs skipped, no threads skipped)
 - Transcript capture
 - Daily plan creation (in observer format)
@@ -87,6 +90,7 @@ Use this variant whenever the board (`synthesis who`) shows other live seats —
 ### What Concurrent-Seats Mode Keeps (Non-Negotiable)
 
 - Board + inbox read at start (`synthesis who`, `synthesis inbox`), and the ritual's own seat registered with its file claims
+- The check of what other people rely on (`relied_on.py --workspace <W>`): it only reads, so it runs whoever else is live
 - Full sync reads (fetch, channel reads, transcript capture) — reads never need a window
 - Daily plan creation with the `decision`/`deferred` lines the rules above produce
 - CONTEXT.md + session archive updates for the ritual's own files

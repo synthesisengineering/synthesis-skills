@@ -144,6 +144,15 @@ def test_nothing_declared_is_one_line_and_no_failure(tmp_path):
         assert (code, lines) == (0, ["nothing another person relies on is declared for desk"]), declared
 
 
+def test_an_entry_under_defaults_is_checked_for_every_workspace_that_declares_none_of_its_own(tmp_path):
+    """The settings are read the way every ritual script reads them: the defaults, then the workspace's own."""
+    config = json.dumps({"defaults": {"relied_on": [entry()]},
+                         "workspaces": {"desk": {}, "lab": {"relied_on": [entry("the build cache")]}, "attic": {"relied_on": []}}})
+    code, lines, _ = run(tmp_path, "--all", config=config)
+    assert (code, lines) == (0, ["ok desk: the intake form", "ok lab: the build cache",
+                                 "nothing another person relies on is declared for attic", "2 relied on, 0 down"])
+
+
 def test_whatever_is_down_prints_first_whatever_its_place_in_the_config(tmp_path):
     found = [entry(name, check=HEALTHY if name in "ace" else failing()) for name in "abcde"]
     code, lines, _ = run(tmp_path, "--workspace", "desk", desk=found)
