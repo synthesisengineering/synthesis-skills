@@ -318,3 +318,72 @@ def test_a_longer_fence_holds_a_shorter_one(tmp_path, record):
     opened = "### How a fence is opened\n\n```markdown\n```python\n**Option A:** Accept\n**Option B:** Decline\n```\n\n" + INVITATION
     code, _, refusal = record(workspace(tmp_path, opened))                                    # a fence line with a word after it opens, never closes
     assert code != 0 and "book launch" in refusal and "How a fence" not in refusal
+
+
+# --- this project's own probe after the tenth review (2026-11-12), each as a test that failed first --------
+# Thirty-six ordinary shapes of a plan were put to the reader. It refused a closed choice under a fourth-level
+# heading or a bold title, read a sentence that begins "Option A was fine" as an option, did not read options
+# written as headings or table rows, and did not take a recommendation written with a dash, as "Recommended:", as
+# "My recommendation:" or on the option itself.
+
+OPTIONS = "**Option A:** Accept\n**Option B:** Decline\n"
+
+
+def test_a_choice_under_a_deeper_heading_or_a_bold_title_is_read_by_its_own_title(tmp_path, record):
+    for title in ("#### ~~2. Dinner with the board~~", "##### [x] Dinner with the board", "**~~3. Dinner with the board~~**",
+                  "**[x] 3. Dinner with the board**\n"):
+        code, out, refusal = record(workspace(tmp_path, title + "\n" + OPTIONS))
+        assert code == 0 and "choices: 0 open" in out, (title, refusal)
+    code, _, refusal = record(workspace(tmp_path, "#### ~~1. Lunch~~\n" + OPTIONS + "\n#### 2. Dinner on Friday\n" + OPTIONS))
+    assert code != 0 and "Dinner on Friday" in refusal and "Lunch" not in refusal
+    code, _, refusal = record(workspace(tmp_path, "**3. Dinner with the board**\n" + OPTIONS))
+    assert code != 0 and "Dinner with the board" in refusal and "Decisions needed" not in refusal
+    parted = "### ~~2. Dinner with the board~~\nIt was answered on Tuesday.\n\n#### Options\n" + OPTIONS
+    code, out, refusal = record(workspace(tmp_path, parted))                                  # a heading that only says "Options" is no title
+    assert code == 0 and "choices: 0 open" in out, refusal
+
+
+def test_options_written_as_headings_or_as_rows_of_a_table_are_options(tmp_path, record):
+    headed = "### 2. Dinner on Friday\n#### Option A: Accept\nGo.\n#### Option B: Decline\nStay.\n"
+    code, _, refusal = record(workspace(tmp_path, headed))
+    assert code != 0 and "Dinner on Friday" in refusal
+    code, out, refusal = record(workspace(tmp_path, headed + COSTS + VIEW))
+    assert code == 0 and "choices: 1 open" in out, refusal
+    table = "### Dinner on Friday\n| Option | What |\n|---|---|\n| **Option A** | Accept |\n| **Option B** | Decline |\n"
+    code, _, refusal = record(workspace(tmp_path, table))
+    assert code != 0 and "Dinner on Friday" in refusal
+
+
+def test_a_sentence_that_begins_with_the_word_is_no_option(tmp_path, record):
+    notes = "### Notes from yesterday\nOption A was fine last time, so there is nothing to decide.\nOption B never came up.\n"
+    code, out, refusal = record(workspace(tmp_path, notes))
+    assert code == 0 and "choices: 0 open" in out, refusal
+    for written in ("Option A: Accept\nOption B: Decline\n", "**Option A** Accept the invitation\n**Option B** Decline it\n",
+                    "Option A) Accept\nOption B) Decline\n", "- Option A - Accept\n- Option B - Decline\n"):
+        code, _, refusal = record(workspace(tmp_path, "### Dinner on Friday\n" + written))
+        assert code != 0 and "Dinner on Friday" in refusal, written
+
+
+@pytest.mark.parametrize("view", ["**Recommendation** - B, decline.\n", "**Recommended:** B, decline.\n", "**My recommendation:** B, decline.\n",
+                                  "**Recommendation —** B, decline.\n", "#### Recommendation: B, decline\n"])
+def test_a_recommendation_is_read_as_it_is_commonly_written(tmp_path, record, view):
+    code, out, refusal = record(workspace(tmp_path, INVITATION + COSTS + view))
+    assert code == 0 and "choices: 1 open" in out, refusal
+
+
+def test_one_consequence_and_an_option_marked_as_the_recommended_one(tmp_path, record):
+    code, out, refusal = record(workspace(tmp_path, INVITATION + COSTS.replace("Consequences", "Consequence") + VIEW))
+    assert code == 0 and "choices: 1 open" in out, refusal
+    marked = "### Dinner on Friday\n**Option A:** Accept\n**Option B (recommended):** Decline\n" + COSTS
+    code, out, refusal = record(workspace(tmp_path, marked))
+    assert code == 0 and "choices: 1 open" in out, refusal
+    code, _, refusal = record(workspace(tmp_path, marked.replace(" (recommended)", " (not recommended)").replace(COSTS, "")))
+    assert code != 0 and "consequences" in refusal                                            # a mark on an option is a view, never the costs
+
+
+def test_a_closing_line_closes_only_when_it_says_what_was_decided(tmp_path, record):
+    code, out, refusal = record(workspace(tmp_path, INVITATION + "**Decision:** B, declined on Wednesday\n"))
+    assert code == 0 and "choices: 0 open" in out, refusal
+    for blank in ("**Decided:**\n", "**Decision:** pending\n", "**Decided:** TBD\n", "**Decision needed:** by Friday\n"):
+        code, _, refusal = record(workspace(tmp_path, INVITATION + blank))
+        assert code != 0 and "book launch" in refusal, blank
