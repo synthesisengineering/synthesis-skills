@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 """Find chat timestamps and quotes written into records that no source shows.
 
-    provenance_scan.py --since YYYY-MM-DD [--sources DIR]... [PATH ...]
+    provenance_scan.py --since YYYY-MM-DD [--sources DIR]... [--records FOLDER]... [PATH ...]
 
-Records: each PATH that is a file, and the files under each PATH that is a folder (default: the
-current directory), that sit in transcripts/, daily-plans/ or projects/<id>/sessions/, or are a
-project's CONTEXT.md or REFERENCE.md, and changed since the date.
+Records: each PATH that is a file; the files under each PATH that is a folder (default: the
+current directory) that sit in transcripts/, daily-plans/, ritual-workers/, drafts/ or
+projects/<id>/sessions/, or are a project's CONTEXT.md or REFERENCE.md; and every file under each
+--records FOLDER, for a plan folder a workspace keeps under another name. Each must have changed
+since the date.
 What a record gained since then (against its last commit before the date) is checked: every
 Slack timestamp (1234567890.123456, or the p1234567890123456 permalink form) and every
 attributed quote (said, wrote, replied ...: "twelve or more characters").
@@ -29,7 +31,7 @@ import subprocess
 import sys
 import time
 
-RECORD = re.compile(r"(^|/)(transcripts/|daily-plans/|projects/[^/]+/sessions/|projects/[^/]+/(CONTEXT|REFERENCE)\.md$)")
+RECORD = re.compile(r"(^|/)(transcripts/|daily-plans/|ritual-workers/|drafts/|projects/[^/]+/sessions/|projects/[^/]+/(CONTEXT|REFERENCE)\.md$)")
 STAMP = re.compile(r"\b(\d{10})\.(\d{6})\b|/p(\d{10})(\d{6})\b")
 QUOTE = re.compile(r"\b(?:said|says|wrote|writes|replied|asked|told \w+|warned|noted|added)\s*[:,]?\s*"
                    r"(?:\"([^\"\n]{12,400})\"|“([^”\n]{12,400})”)", re.I)
@@ -46,16 +48,21 @@ def words(text: str) -> str:
     return " ".join(re.findall(r"[a-z0-9]+", text.lower()))
 
 
-def records(roots: list, since: float):
-    """Record files under each root (a root may be one file) changed since the date."""
-    for root in roots:
-        walk = [(os.path.dirname(root), [], [os.path.basename(root)])] if os.path.isfile(root) else os.walk(root)
+def records(roots: list, since: float, declared: tuple = ()):
+    """Record files changed since the date: under each root, the ones a record's place names; a root that is one
+    file; and every file under a declared folder (2026-11-11: a plan kept in ritual-workers/ was never read)."""
+    seen = set()
+    for root, whole in [(r, False) for r in roots] + [(d, True) for d in declared]:
+        named = os.path.isfile(root)
+        walk = [(os.path.dirname(root), [], [os.path.basename(root)])] if named else os.walk(root)
         for top, dirs, files in walk:
             dirs[:] = [d for d in dirs if not d.startswith(".") and d != "node_modules"]
             for name in files:
-                path = os.path.join(top, name)
-                if RECORD.search(os.path.abspath(path).replace(os.sep, "/")) and name.endswith((".md", ".txt", ".jsonl", ".json")) and os.path.getmtime(path) >= since:
-                    yield path
+                path = os.path.abspath(os.path.join(top, name))
+                if (named or whole or RECORD.search(path.replace(os.sep, "/"))) and name.endswith((".md", ".txt", ".jsonl", ".json")) and (
+                        os.path.getmtime(path) >= since and path not in seen):
+                    seen.add(path)
+                    yield os.path.join(top, name)
 
 
 def before(path: str, day: str) -> str:
@@ -133,10 +140,10 @@ def sourced(needles: dict, dirs: list, since: float) -> tuple[set, int]:
     return found, logs
 
 
-def scan(roots: list, day: str, source_dirs: list) -> tuple[list, dict]:
+def scan(roots: list, day: str, source_dirs: list, declared: tuple = ()) -> tuple[list, dict]:
     since = time.mktime(time.strptime(day, "%Y-%m-%d"))
     gained, checked = [], 0
-    for path in records(roots, since):
+    for path in records(roots, since, declared):
         checked += 1
         with open(path, encoding="utf-8", errors="replace") as handle:
             now = handle.read()
@@ -163,6 +170,8 @@ def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--since", required=True, help="YYYY-MM-DD: check what records gained from this day on")
     parser.add_argument("--sources", action="append", help="a session log folder; repeat for more (default: Claude Code and Codex)")
+    parser.add_argument("--records", action="append", default=[], metavar="FOLDER",
+                        help="a folder whose every file is a record, such as a plan folder the workspace declares; repeat for more")
     parser.add_argument("paths", nargs="*", default=["."])
     args = parser.parse_args(argv)
     if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", args.since):
@@ -172,7 +181,11 @@ def main(argv=None) -> int:
     if not sources:
         print("provenance scan: no session log folder to check against; pass --sources", file=sys.stderr)
         return 2
-    found, read = scan(args.paths, args.since, sources)
+    absent = [folder for folder in args.records if not os.path.isdir(os.path.expanduser(folder))]
+    if absent:
+        print(f"provenance scan: {absent[0]} is no folder, so the records it holds cannot be read", file=sys.stderr)
+        return 2
+    found, read = scan(args.paths, args.since, sources, tuple(os.path.expanduser(folder) for folder in args.records))
     for path, kind, value in found:
         print(f"{path}: {kind} {value}")
     print(f"provenance scan since {args.since}: {len(found)} unsourced; read {read['records']} records "
