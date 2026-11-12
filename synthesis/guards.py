@@ -2261,6 +2261,10 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None) -> str |
         soft = any(re.fullmatch(r"-[A-Za-z]*s[A-Za-z]*|--symbolic", w) for w in words[1:])  # its target is read from the link's own folder
         linked += [(link, os.path.realpath(os.path.join(os.path.dirname(link) if soft else where, os.path.expanduser(aimed[0]))))
                    for link in led if aimed]
+        moves = [os.path.realpath(os.path.join(where, os.path.expanduser(w))) for w in words[1:] if not w.startswith("-")] if head == "mv" else []
+        for link, aim in [pair for pair in linked if pair[0] in moves[:-1]]:  # a link made here and then moved is that link at its new place
+            for spot in (moves[-1], os.path.join(moves[-1], os.path.basename(link))):
+                links, linked = links + [spot], linked + [(spot, aim)]
         within = any(paths.inside(os.path.realpath(where), os.path.realpath(r)) for r in raw)
         for word in _named(words) if readable else ():  # words the parser could not read name no program
             led = os.path.realpath(os.path.join(where, os.path.expanduser(os.path.expandvars(word))))

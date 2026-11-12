@@ -286,8 +286,8 @@ stay open, and no hook running as that same user can close them:
   a file, runs in a folder and hands a file on, and each of those has a test. A spelling
   made to get past that reading may get through until it is added: four review rounds by a
   second model each found more of them (a folder stack turned by number, a wrapper inside a
-  wrapper, a file name split across two strings, a link moved into place within one
-  command), and each was closed with a test. There is always another. What the guard is
+  wrapper, a file name split across two strings, a link made and then moved into place),
+  and each was closed with a test. There is always another. What the guard is
   measured on is the other direction as well: 30 days of recorded commands, where it must
   not refuse ordinary work.
 - A prompt another process injects into the session through the harness's own CLI
