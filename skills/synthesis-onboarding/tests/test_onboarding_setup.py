@@ -555,6 +555,63 @@ def test_the_export_schedule_without_launchctl_is_written_and_not_loaded(day_end
     assert setup._export_plist().exists() and calls(day_end) == []
 
 
+HOMES = ("SYNTHESIS_HOME", "CLAUDE_CONFIG_DIR", "CODEX_HOME", "XDG_DATA_HOME")  # the runtime's folder, and where each harness keeps transcripts
+CHOSEN = {"none": (), **{name: (name,) for name in HOMES}, "all four": HOMES}
+
+
+def _started_by_launchd(tmp_path, profile: str = "") -> list:
+    """What the scheduled job's command is given when launchd starts the job: the job's own program arguments and
+    environment variables, the person's login shell (`profile` is what theirs defines) and nothing of the shell
+    the installer ran in. The installed command is replaced by one that writes down its words and its homes."""
+    import plistlib
+    spec, seen = plistlib.loads(setup._export_plist().read_bytes()), tmp_path / "seen.jsonl"
+    (setup.install._home() / "bin" / "synthesis").write_text(
+        f"#!{sys.executable}\nimport json, os, sys\nopen({str(seen)!r}, 'a').write(json.dumps("
+        f"{{'words': sys.argv[1:], **{{name: os.environ.get(name) for name in {HOMES!r}}}}}) + '\\n')\n")
+    (Path.home() / ".bash_profile").write_text(profile)
+    done = subprocess.run(spec["ProgramArguments"], capture_output=True, text=True, timeout=60,
+                          env={"HOME": str(Path.home()), "PATH": "/usr/bin:/bin", **spec.get("EnvironmentVariables", {})})
+    assert done.returncode == 0, done.stderr
+    return [json.loads(line) for line in seen.read_text().splitlines()]
+
+
+@pytest.mark.parametrize("login", [False, True], ids=["a login shell that defines none", "a login shell that defines others"])
+@pytest.mark.parametrize("chosen", CHOSEN.values(), ids=CHOSEN.keys())
+def test_the_scheduled_copy_runs_with_each_home_selected_at_install(day_end, tmp_path, monkeypatch, chosen, login):
+    """2026-11-12, a second review: an install made with homes of its own (`SYNTHESIS_HOME` for the runtime, the
+    three folders the harnesses keep transcripts under) scheduled a job that carried none of them, so the job ran
+    that install's command against the default home. Each one set when the schedule is installed goes with the
+    job, also where the login shell defines another; one not set is left to the login shell, as before."""
+    picked = {"SYNTHESIS_HOME": str(setup.install._home()), "CLAUDE_CONFIG_DIR": str(tmp_path / "custom" / "claude config"),
+              "CODEX_HOME": str(tmp_path / "custom" / "it's $HOME; \"codex\""), "XDG_DATA_HOME": str(tmp_path / "custom" / "xdg")}
+    for name in HOMES:
+        if name in chosen:
+            monkeypatch.setenv(name, picked[name])
+        else:
+            monkeypatch.delenv(name, raising=False)
+    setup.register_sessions_export(load=False)
+    for name in HOMES:                                         # launchd starts the job with none of the installer's shell
+        monkeypatch.delenv(name, raising=False)
+    elsewhere = {name: f"/elsewhere/{name.lower()}" for name in HOMES}
+    runs = _started_by_launchd(tmp_path, "".join(f"export {name}={folder}\n" for name, folder in elsewhere.items()) if login else "")
+    assert [run["words"] for run in runs] == [["sessions", "export", "--all"], ["sessions", "sync"]]
+    for name in HOMES:
+        wanted = picked[name] if name in chosen else elsewhere[name] if login else None
+        assert [run[name] for run in runs] == [wanted, wanted], name
+
+
+def test_a_home_set_to_nothing_at_install_is_left_to_the_login_shell(day_end, tmp_path, monkeypatch):
+    """A variable set to an empty string selects the default folder, as an unset one does: nothing goes with the job."""
+    for name in HOMES[1:]:
+        monkeypatch.setenv(name, "")
+    setup.register_sessions_export(load=False)
+    for name in HOMES:
+        monkeypatch.delenv(name, raising=False)
+    runs = _started_by_launchd(tmp_path)
+    assert len(runs) == 2 and all(run[name] is None for run in runs for name in HOMES[1:])
+    assert all(run["SYNTHESIS_HOME"] == str(setup.install._home()) for run in runs)
+
+
 def test_uninstall_removes_only_an_export_schedule_that_runs_this_install(day_end):
     setup.register_sessions_export(load=False)
     assert any("removed the export schedule" in line for line in setup.unregister_sessions_export())
