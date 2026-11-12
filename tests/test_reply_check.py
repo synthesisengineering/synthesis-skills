@@ -1372,3 +1372,190 @@ def test_a_third_list_written_without_sight_of_the_code_of_replies_that_need_no_
 def test_a_third_list_written_without_sight_of_the_code_of_unarmed_waits_is_sent_back(reply):
     reason = _sent_back(reply)
     assert reason and "nothing is armed" in reason
+
+
+# A fourth list from an agent that never saw the code, run against the check as it stood after the third: six of 80
+# were wrong. Sent back needlessly: "your decision between ...", a short wait after "Please read ... and tell me", and a
+# past hold judged by what it cost. Passed: "the day the file comes in", "the day it does", "I have paused ... until",
+# and an event stated first whose subject is "a seat".
+INDEPENDENT4_NO_WATCHER = {
+    "HN01": 'The `await` on line 42 suspends the handler until the database call returns, so nothing blocks the event '
+            'loop. That is expected behavior and I left it alone.',
+    "HN02": 'You approved the change this morning; CI took eleven minutes, and after it passed I merged the branch and '
+            'deleted it. The release notes are in the changelog.',
+    "HN03": "I'm deliberately holding the merge until you've looked at the two open comments on the diff. Everything else"
+            ' in the pull request is ready.',
+    "HN04": 'Here is the status line the bot could post while a release is in flight:\n```\nWaiting for the build to '
+            "finish; I'll publish the package once it passes.\n```\nThat text is only a template for you to edit.",
+    "HN05": 'Waiting for the flaky test to pass on a rerun would only have hidden the race condition. The fix I committed'
+            ' removes the shared fixture instead.',
+    "HN06": 'I reproduced the crash once in forty runs, and that one time the cache was cold. The stack trace is attached'
+            ' to the ticket.',
+    "HN07": "The parser refactor is done. Next I'll update the call sites, and once I've finished those I'll rewrite the "
+            'two tests that depended on the old signature.',
+    "HN08": 'When the next minor version ships, remember to drop the compatibility flag from the config. Until then it '
+            'does no harm.',
+    "HN09": 'The autoscaler adds a node only after pending pods have been unschedulable for thirty seconds, which '
+            'explains the delay you saw. No configuration change is needed.',
+    "HN10": 'We held the rollout until the canary error rate settled, and it has been serving all traffic since 09:40. '
+            'Latency is back to baseline.',
+    "HN11": "Once I have your approval for the maintenance window, I'll start the `db-failover` runbook. The steps are "
+            'listed above.',
+    "HN12": 'The provider\'s status page says "We are waiting on a fix from our network team and will post an update once '
+            'traffic recovers," so the packet loss is on their side. Our own health checks have been green all morning.',
+    "HN13": 'Holding a deploy until the queue drains is the standard way to avoid dropped messages with this broker. The '
+            'script already does that on line 18.',
+    "HN14": "You'll need to wait for the DNS change to propagate before the new hostname resolves, which usually takes "
+            'under an hour. After that, check that the load balancer is serving the new certificate chain.',
+    "HN15": 'The disk alert fired once, at 03:12, when the log rotation ran late. It cleared by itself four minutes '
+            'later.',
+    "HN16": 'Your "March cohort" export sat in the queue for an hour; once it finished I loaded it, and the totals now '
+            'include the late-arriving rows. Revenue for the quarter comes to 4.2 million.',
+    "HN17": 'The cohort definition is the one open point. Waiting on your decision between the 30-day and 90-day windows;'
+            " I'll rerun the retention table as soon as I have it.",
+    "HN18": 'The scheduler pauses the aggregation step until both upstream loads report success, which is why the task '
+            'showed as pending this morning. That dependency is intentional.',
+    "HN19": 'The notebook prints `waiting for query... will plot once results arrive` on every poll, which is why the '
+            'output cell looks so long. I collapsed it; the charts below are unaffected.',
+    "HN20": "Once next month's data lands, you should rerun the seasonality check before trusting the forecast. The "
+            'current fit rests on only eleven months.',
+    "HN21": 'Waiting until a survey closes before weighting the responses is standard practice, because early respondents'
+            ' tend to skew younger. The interim numbers above are unweighted for that reason.',
+    "HN22": 'Please read the revised discussion section and tell me whether the limitation paragraph says what you '
+            "intended. I'll wait.",
+    "HN23": 'The journal sends proofs only after the copyright form has been received, and it allows 48 hours for '
+            'corrections. Both rules are stated in the acceptance letter.',
+    "HN24": "The second reviewer's comment reads:\n> I will wait for the authors to share the replication code and will "
+            'complete my report once it arrives.\n\nI have added the repository link to the response letter.',
+    "HN25": "The reference list still follows the old style. Whenever you've decided which journal to target, let me know"
+            " and I'll continue with the formatting.",
+    "HN26": 'Wait until both reviewer reports are in before you start the response letter, since the editor wants a '
+            'single consolidated reply. A point-by-point table usually works best for that.',
+    "HN27": "The literature table is complete. I'll draft the methods section next, and after that I'll go back and "
+            'reconcile the citation keys.',
+    "HN28": "We'll keep the purchase order in draft until your sign-off on the revised quantities. The supplier's quote "
+            'is valid through the 30th.',
+    "HN29": 'Under the contract, the supplier invoices only after delivery is confirmed at the dock, and payment is due '
+            '45 days later. Nothing is owed on the second shipment yet.',
+    "HN30": "The account manager's email says “we’re waiting on our finance team and will send the countersigned order "
+            'form as soon as they approve it,” and it is dated Monday. I filed it under the renewal thread.',
+    "HN31": "The prospect's buyer replied after two reminders, and once their redlines arrived I updated the proposal. "
+            'The discount now stands at 12% on a three-year term.',
+    "HN32": 'As soon as the trial ends, ask the vendor for usage figures before you negotiate seat counts. Those numbers '
+            'are the strongest argument you will have.',
+    "HN33": 'Holding the order until the supplier confirmed the lead time cost us nothing last quarter, and it avoided a '
+            'double shipment. It is a reasonable default for long-lead parts.',
+    "HN34": "The airline's site says it sent a six-digit code to your phone. Paste it here when you have it and I'll "
+            'continue with the seat change.',
+    "HN35": 'Refunds on this fare are issued only after the airline confirms the cancellation, and they usually reach the'
+            ' card within seven to ten business days. The cancellation itself went through at 14:05.',
+    "HN36": "A sample auto-reply you could set while you travel:\n~~~\nI'm waiting on the carrier to confirm my new flight "
+            'and will answer as soon as I land.\n~~~\nChange the wording however you like.',
+    "HN37": "Both itineraries are on hold with the fare locked for 24 hours. I'll resume the booking as soon as I have "
+            'your answer on the layover.',
+    "HN38": "When the gate is announced, you'll want to check the walking time between terminals, because the connection "
+            'is only 50 minutes. Online check-in opens 24 hours before departure.',
+    "HN39": 'I held the two rooms until the rate dropped yesterday and then booked both at the lower price. The '
+            'confirmation numbers are in the itinerary document.',
+    "HN40": "The referral packet is assembled and ready to submit. I'm holding it for your confirmation of the diagnosis "
+            'code, since only you can verify that against the chart.',
+    "HN41": 'Prior authorization requests for this payer sit in a queue until a nurse reviewer picks them up, which '
+            'typically takes three to five business days. That is the reason the two June referrals moved slowly.',
+    "HN42": "The scheduling note says 'waiting for the insurer to approve; will call the patient once the authorization "
+            "arrives', and it was written by the front desk on the 4th. No later entry appears in the record.",
+    "HN43": 'Waiting on prior authorization is the main reason these imaging referrals take two weeks. Of the 31 I '
+            'reviewed, 24 spent more than nine days in that step.',
+    "HN44": 'After the payer posts its updated fee schedule in January, it is worth comparing it with the charge master '
+            "before the first claims go out. Last year's mismatch caused most of the denials.",
+    "HN45": 'The claim was resubmitted on the 2nd, and after the payer reprocessed it the remittance posted for the full '
+            'amount. I closed the denial in the work queue.',
+}
+INDEPENDENT4_OWN_WAIT = {
+    "HW01": "Pushed the fix to `fix/session-timeout`. Waiting for CI to finish, then I'll merge and tag v2.4.1.",
+    "HW02": "I'll rerun `make integration` once the `db-restore` job finishes. The unit tests already pass locally.",
+    "HW03": 'The pull request is with the second reviewer now. As soon as she approves, I will squash the commits and '
+            'merge.',
+    "HW04": "You approved the release plan earlier, so the package build is already running. I'll publish to the registry"
+            ' when it completes.',
+    "HW05": "We are, at this point, just waiting on the nightly build to be published by the release bot. I'll start the "
+            'bisect as soon as that artifact is available.',
+    "HW06": "The snapshot restore is in progress on the replica. Once it has been restored, I'll repoint the read traffic"
+            ' and drop the old instance.',
+    "HW07": "Holding the cutover until replication lag reaches zero. I'll flip the DNS record the moment it does.",
+    "HW08": "I'm going to wait for the certificate authority to issue the renewed certificate and then install it on both"
+            ' load balancers.',
+    "HW09": 'Your cluster upgrade is still rolling through the node pools. After the last pool finishes, I will rerun the'
+            ' conformance checks and send you the results.',
+    "HW10": "The provider has an open incident on the storage tier, so I can't finish the migration yet. Will resume the "
+            'copy when their status page shows the incident resolved.',
+    "HW11": 'I need to wait for the March backfill to show "SUCCEEDED" in the warehouse console before I rebuild the '
+            'revenue dashboard. Everything else in the report is current.',
+    "HW12": 'Waiting for the "Q3 actuals" export to land in the shared bucket; once it\'s there I\'ll recompute the '
+            'variance table.',
+    "HW13": "Thanks for confirming the cohort definition. The query is in the queue now, and as soon as it returns I'll "
+            'continue with the retention chart and the summary.',
+    "HW14": "I still need the vendor's data team to resend the corrected file. Until that arrives, I'm leaving the churn "
+            "model untouched, and I'll refit it the day the file comes in.",
+    "HW15": 'Your training job is at epoch 14 of 20 on the shared cluster. When it finishes I will pull the validation '
+            'metrics and compare them against the baseline.',
+    "HW16": "Proofs are due from the journal's production office this week. I'll check them against our corrections list "
+            'as soon as they are sent out.',
+    "HW17": "We're waiting on the ethics committee's decision on the amended protocol. Once it is approved, I'll update "
+            'the consent form version number and the recruitment materials.',
+    "HW18": "The request for the raw data went to the original authors' lab this morning. Standing by for their reply, "
+            "and I'll rerun the meta-analysis with the full sample when it comes.",
+    "HW19": 'Your grant application shows as "under administrative review" in the funder\'s portal. I\'ll download the '
+            'reviewer summary and draft the response once the portal releases it.',
+    "HW20": 'The simulation batch is still running on the department cluster, with 62 of 200 runs complete. I will be '
+            'waiting for the rest to finish before I compute the confidence intervals.',
+    "HW21": "The prospect's security questionnaire is still with their IT team. I'll pick the proposal back up once their"
+            ' answers arrive.',
+    "HW22": "Until the vendor's legal team returns the redlined agreement, I'm keeping the order form in draft. I'll "
+            'route it for signature the moment their markup arrives.',
+    "HW23": "You've already signed the renewal, so it is with the reseller for countersignature. When the countersigned "
+            "copy comes back, I'll file it and update the contract register.",
+    "HW24": "Waiting until the distributor confirms stock on the 40 units, then I'll place the order against the approved"
+            ' budget line.',
+    "HW25": "Your purchase request is sitting in the finance system's approval queue. As soon as it is released by the "
+            'budget office, I will send the order to the supplier.',
+    "HW26": "I am waiting for the airline to finish processing the schedule change. I'll reissue the ticket and send the "
+            'new itinerary once the change is confirmed.',
+    "HW27": "I won't book the hotel until the airline confirms the new arrival time. Once it does, I'll reserve the room "
+            'you picked for the right night.',
+    "HW28": 'Your visa application is marked "in process" at the consulate. I\'m holding the flight purchase until the '
+            "visa is issued, and I'll buy the refundable fare right after.",
+    "HW29": "The waitlist for the direct flight hasn't cleared. When a seat opens up, I'll move the booking over and "
+            'cancel the connection.',
+    "HW30": "You chose the aisle seat on the outbound leg, and that request is in. We'll just have to wait for the "
+            "carrier's system to release seats for the return, after which I'll match it.",
+    "HW31": "The prior authorization request went to the payer on Monday. I'm waiting on their approval, and I'll "
+            'schedule the MRI as soon as it is posted to the portal.',
+    "HW32": "Waiting on the lab interface to deliver the pending culture result. I'll add it to the discharge summary and"
+            ' close the encounter after it arrives.',
+    "HW33": "Your signed referral was faxed to the specialist's office at 10:20. Once their intake team accepts it, I'll "
+            'book the first available slot and notify the patient.',
+    "HW34": 'The clearinghouse has not yet returned the eligibility response for the three new patients. I have paused '
+            'their registrations until it comes back, and I will complete them the day it does.',
+    "HW35": "I'll now simply wait for the payer to reprocess the corrected claim, and when the remittance posts I'll "
+            'reconcile it against the ledger.',
+}
+MORE_OF_THE_EIGHTH_LISTS_CLASSES = {
+    "please-pick-one": "Please pick one of the two titles. I'm waiting on that.",
+    "retry-when-a-request-fails": "I'll retry when a request fails with a timeout.",
+}
+MORE_WAITS_OF_THE_EIGHTH_LISTS_CLASSES = {
+    "review-is-pending-elsewhere": "Review is pending on the vendor's side. I'll wait.",
+    "when-an-earlier-slot-opens-up": "When an earlier slot opens up, I'll move the appointment.",
+    "the-vendor-to-tell-me": "I'm waiting on the vendor to tell me the delivery date.",
+}
+
+
+@pytest.mark.parametrize("reply", _cases(INDEPENDENT4_NO_WATCHER, MORE_OF_THE_EIGHTH_LISTS_CLASSES))
+def test_a_fourth_list_written_without_sight_of_the_code_of_replies_that_need_no_watcher_passes(reply):
+    assert _sent_back(reply) is None
+
+
+@pytest.mark.parametrize("reply", _cases(INDEPENDENT4_OWN_WAIT, MORE_WAITS_OF_THE_EIGHTH_LISTS_CLASSES))
+def test_a_fourth_list_written_without_sight_of_the_code_of_unarmed_waits_is_sent_back(reply):
+    reason = _sent_back(reply)
+    assert reason and "nothing is armed" in reason
