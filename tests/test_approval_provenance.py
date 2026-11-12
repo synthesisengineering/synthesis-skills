@@ -2149,6 +2149,8 @@ def test_a_variable_the_command_exports_still_reaches_the_program(saved, tmp_pat
     ("cd {work} && echo x > \"$PWD/forged.json\"", True),                                   # $PWD is the folder the command is in
     ("cd {work} && cd /tmp/pad && echo x > \"$OLDPWD/forged.json\"", True),
     ("cd /tmp/pad && grep -c x {work}/s.jsonl > \"$PWD/made.txt\"", False),
+    ("sh -c 'cd {work} && echo x > \"$PWD/forged.json\"'", True),                           # a script's own $PWD is where that script is
+    ("env -C {work} sh -c 'echo x > \"$PWD/forged.json\"'", True),
     ("find {above} -name '*.jsonl' -execdir touch forged.json SEMI", True),                 # run in each folder under the search
     ("find {above} -name '*.jsonl' -execdir sh -c 'echo x > note.txt' SEMI", True),
     ("find {above} -name '*.jsonl' -execdir wc -l {{}} +", False),
@@ -2177,7 +2179,7 @@ def test_the_folder_a_command_is_in_is_its_own_not_the_guards(above, tmp_path, m
     monkeypatch.setenv("PWD", str(here))                                   # the hook's own folder is not the session's
     monkeypatch.setenv("OLDPWD", str(here))
     program = "python3 - <<'EOF'\nimport os\nopen(os.path.join(os.environ['PWD'], 'made.txt'), 'w').write('x')\nEOF"
-    for command in ("echo x > \"$PWD/made.txt\"", "echo x > \"${PWD}/made.txt\"", program):
+    for command in ("echo x > \"$PWD/made.txt\"", "echo x > \"${PWD}/made.txt\"", "find \"$PWD\" -name '*.tmp' -delete", program):
         assert guards.check("Bash", {"command": command}, {}, cwd=str(here)) is None, command
         assert REFUSED in (guards.check("Bash", {"command": command}, {}, cwd=str(above["work"])) or ""), command
 
@@ -2189,8 +2191,10 @@ def test_the_top_of_a_repository_is_this_folder_or_one_above_it(above, tmp_path)
                     "ROOT=$(git rev-parse --show-toplevel); wc -l {work}/s.jsonl > \"$ROOT/n.txt\""):
         assert guards.check("Bash", {"command": command.format(**above)}, {}, cwd=str(here)) is None, command
         assert REFUSED in (guards.check("Bash", {"command": command.format(**above)}, {}, cwd=str(above["work"])) or ""), command
-    down = os.path.relpath(above["work"] / "s.jsonl", tmp_path)            # from a folder above, the transcript by its relative path
+    down = os.path.relpath(above["work"] / "s.jsonl", tmp_path)            # from the top of a repository, the transcript by its relative path
     reach = f"cd \"$(git rev-parse --show-toplevel)\" && echo x >> {down}"
+    assert guards.check("Bash", {"command": reach}, {}, cwd=str(here)) is None      # no repository: it stays where it is
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
     assert REFUSED in (guards.check("Bash", {"command": reach}, {}, cwd=str(here)) or "")
 
 
@@ -2233,9 +2237,36 @@ def test_what_the_second_probe_showed_of_programs(above, program, held, tmp_path
     ("import os\nrel = os.path.relpath('{work}/s.jsonl', '/tmp/pad')\nopen(os.path.join('/tmp/pad', rel), 'w').write('x')", True),   # one that climbs back
     ("import os\nfrom pathlib import Path\nos.chdir('{work}')\nopen(Path('{work}/s.jsonl').relative_to('{work}'), 'w').write('x')", True),   # where it stands
     ("T = '{work}/s.jsonl'\nopen(T.rsplit('/', 1)[0] + '/forged.json', 'w').write('x')", True),                  # the folder part is a folder
+    ("import os, shutil\nfrom pathlib import Path\nfor p in Path('{work}').glob('*.jsonl'):\n    shutil.copy(p, os.path.join('/tmp/pad', os.path.relpath(p, start='{work}')))", False),
+    ("from pathlib import Path\nfor p in Path('{work}').glob('*.jsonl'):\n    open('/tmp/pad/' + p.parts[-1], 'w').write('x')", False),
+    ("T = '{work}/s.jsonl'\nproject = T.split('/')[-2]\nopen('/tmp/pad/' + project + '.md', 'w').write('x')", False),   # one part of a path is a name
+    ("T = '{work}/s.jsonl'\nopen('/tmp/pad/' + T.replace('/', '_'), 'w').write('x')", False),                    # a path flattened into a name
+    ("import hashlib\nT = '{work}/s.jsonl'\nopen('/tmp/pad/' + hashlib.md5(T.encode()).hexdigest() + '.json', 'w').write('x')", False),
+    ("T = '{work}/s.jsonl'\nopen('/tmp/pad/n-' + str(len(T)) + '.txt', 'w').write('x')", False),
+    ("T = '{work}/s.jsonl'\nopen(T.replace('s.jsonl', 'forged.json'), 'w').write('x')", True),
+    ("T = '{work}/s.jsonl'\nopen('/'.join(T.split('/')[:-1]) + '/forged.json', 'w').write('x')", True),
 ])
 def test_a_path_taken_relative_to_a_folder_names_no_folder(above, program, held, tmp_path):
     here = tmp_path / "elsewhere"
     here.mkdir()
     command = "python3 - <<'EOF'\n" + program.format(**above) + "\nEOF"
     assert (REFUSED in (guards.check("Bash", {"command": command}, {}, cwd=str(here)) or "")) == held, program
+
+
+@pytest.mark.parametrize("program", [
+    "import os, subprocess, sys, tempfile\nd = tempfile.mkdtemp()\nos.chdir(d)\nsubprocess.run([sys.executable, '-m', 'pytest', '-q'])\nopen('log.txt', 'w').write('x')",
+    "import shutil, subprocess, tempfile\nwith tempfile.TemporaryDirectory() as d:\n    shutil.copy('{work}/s.jsonl', d)\n    subprocess.run(['ls', '-la', d])",
+    "import os, tempfile\nout = os.path.join(tempfile.gettempdir(), 'count.txt')\nopen(out, 'w').write(str(len(open('s.jsonl').read())))",
+])
+def test_a_fresh_temporary_folder_is_a_folder_somewhere_else(above, program, tmp_path):
+    command = "python3 - <<'EOF'\n" + program.format(**above) + "\nEOF"
+    assert guards.check("Bash", {"command": command}, {}, cwd=str(above["work"])) is None, program   # also from inside a transcript folder
+    for call in ("mkdtemp(dir='{work}')", "mkdtemp(None, 'run-', '{work}')"):                                 # made where it is told
+        made = ("python3 - <<'EOF'\nimport tempfile\nd = tempfile." + call + "\nprint(d)\nEOF").format(**above)
+        assert REFUSED in (guards.check("Bash", {"command": made}, {}, cwd=str(tmp_path)) or ""), call
+
+
+def test_the_folder_a_command_was_in_reaches_a_program_on_its_input(above, tmp_path):
+    command = "cd /tmp/pad; python3 - <<EOF\nopen(\"$OLDPWD/forged.json\", \"w\").write(\"x\")\nEOF"
+    assert REFUSED in (guards.check("Bash", {"command": command}, {}, cwd=str(above["work"])) or "")
+    assert guards.check("Bash", {"command": command}, {}, cwd=str(tmp_path)) is None
