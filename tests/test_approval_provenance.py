@@ -1875,3 +1875,78 @@ def test_another_objects_chdir_does_not_move_the_program(saved, tmp_path):
 def test_other_spellings_of_what_a_shell_or_another_command_runs(saved, command, held, tmp_path):
     command = command.format(**saved).replace("SEMI", chr(92) + ";")  # the semicolon find takes, escaped from the shell
     assert (REFUSED in (guards.check("Bash", {"command": command}, {}, cwd=str(tmp_path)) or "")) == held, command
+
+
+# --- a folder that holds a protected one (2026-11-11, found reading the replay after the seventh round) --------
+# The replay showed `find <folder> -exec rm -rf {} +` newly refused as a recursive delete of the folder searched:
+# `{}` had been given that folder, where it is a file under it. Asking what a command aimed at a whole folder
+# changes then showed the opposite gap, in the guard since it was written: a target was judged only when it lay
+# inside a protected folder, so `rm -rf` of the folder above the transcripts, a `find -delete` over it, or that
+# folder moved away and back with a file added, were no write at all.
+
+@pytest.fixture
+def above(saved):
+    return {**saved, "above": saved["claude"].parent}
+
+
+@pytest.mark.parametrize("command", [
+    "rm -rf {above}",
+    "rm -rf {above}/*",
+    "cd {above}/.. && rm -r claude",
+    "mv {above} /tmp/pad/old",                                               # moved away, a file added there, moved back
+    "find {above} -name '*.jsonl' -delete",
+    "find {above} -name '*.jsonl' -exec rm {{}} +",
+    "find {above} -type f -mtime +30 -exec sh -c 'rm \"$1\"' _ {{}} SEMI",
+    "chmod -R a-w {above}",
+    "cp -R /tmp/pad/c/. {above}/",                                           # a tree copied over it lands in the folders it holds
+    "rsync -a --delete /tmp/pad/empty/ {above}/",
+    "python3 - <<'EOF'\nimport shutil\nshutil.rmtree('{above}')\nEOF",
+    "python3 - <<'EOF'\nimport os\nos.rename('{above}', '/tmp/pad/old')\nEOF",
+    "python3 - <<'EOF'\nimport shutil\nshutil.move('{above}', '/tmp/pad/old')\nEOF",
+    "python3 - <<'EOF'\nimport shutil\nshutil.copytree('/tmp/pad/c', '{above}', dirs_exist_ok=True)\nEOF",
+    "python3 - <<'EOF'\nfrom pathlib import Path\nPath('{above}').rename('/tmp/pad/old')\nEOF",
+])
+def test_a_change_to_a_whole_folder_that_holds_a_protected_one_is_refused(above, command, tmp_path):
+    command = command.format(**above).replace("SEMI", chr(92) + ";")
+    assert REFUSED in (guards.check("Bash", {"command": command}, {}, cwd=str(tmp_path)) or ""), command
+
+
+@pytest.mark.parametrize("command", [
+    "cp -a {above} /tmp/pad/backup",                                         # a copy out of it
+    "rsync -a {above}/ /tmp/pad/backup/",
+    "cp /tmp/pad/settings.json {above}/",                                    # one file put into it
+    "mv /tmp/pad/settings.json {above}/settings.json",
+    "rm -rf {above}/plugins/cache/x",                                        # a folder beside the protected one
+    "find {above} -name '*.jsonl' -exec wc -l {{}} +",
+    "find {above}/plugins -name '*.tmp' -delete",
+    "du -sh {above}; ls -la {above}",
+    "tar -czf /tmp/pad/backup.tgz {above}/settings.json",
+    "python3 - <<'EOF'\nimport shutil\nshutil.copytree('{above}', '/tmp/pad/backup')\nEOF",
+    "python3 - <<'EOF'\nimport shutil\nshutil.rmtree('{above}/plugins/cache')\nEOF",
+    "python3 - <<'EOF'\nimport shutil\nshutil.move('/tmp/pad/settings.json', '{above}/settings.json')\nEOF",
+])
+def test_and_what_only_reads_it_or_changes_one_thing_beside_passes(above, command, tmp_path):
+    assert guards.check("Bash", {"command": command.format(**above)}, {}, cwd=str(tmp_path)) is None, command
+
+
+def test_what_find_hands_a_command_is_a_file_under_the_folder_searched(tmp_path):
+    """`find . -name __pycache__ -exec rm -rf {} +` at the top of a repository removes what it finds there, not the
+    repository: read with the folder itself where the command says `{}`, it was refused as a recursive delete of a
+    repository (one such command in 30 days of recorded use)."""
+    repo = tmp_path / "repo"
+    (repo / ".git").mkdir(parents=True)
+    for command in ("find . -name __pycache__ -type d -exec rm -rf {} +", "find . -maxdepth 1 -not -name .git -not -name . -exec rm -rf {} +"):
+        assert guards.check("Bash", {"command": command}, {}, cwd=str(repo)) is None, command
+    assert "recursive delete" in (guards.check("Bash", {"command": "find /tmp/pad -maxdepth 0 -exec rm -rf . +"}, {}, cwd=str(repo)) or "")
+
+
+@pytest.mark.parametrize("program, held", [
+    ("import os\ndef work(d):\n    os.chdir(d)\n    open('made.txt', 'w').write('x')\nwork('/tmp/pad')", False),          # a function that leaves first
+    ("import os\ndef main():\n    os.chdir('/tmp/pad')\n    data = open('{work}/s.jsonl').read()\n    open('copy.txt', 'w').write(data)\nif __name__ == '__main__':\n    main()", False),
+    ("import os\ndef main():\n    open('s.jsonl', 'a').write('x')\n    os.chdir('/tmp/pad')\nmain()", True),              # written before it left
+    ("import os\ndef main():\n    os.chdir('/tmp/pad')\n    back()\n    open('s.jsonl', 'a').write('x')\ndef back():\n    os.chdir('{work}')\nmain()", True),
+    ("import os\ndef main():\n    if os.environ.get('X'):\n        os.chdir('/tmp/pad')\n    open('s.jsonl', 'a').write('x')\nmain()", True),
+])
+def test_inside_a_function_the_folder_is_followed_statement_by_statement_too(saved, program, held, tmp_path):
+    command = "python3 - <<'EOF'\n" + program.format(**saved) + "\nEOF"
+    assert (REFUSED in (guards.check("Bash", {"command": command}, {}, cwd=str(saved["work"])) or "")) == held, program
