@@ -53,9 +53,13 @@ _GO = (r"(?:continue(?! to\b)|resume|proceed|pick (?:[\w'’-]+ ){1,4}?(?:back )
 _I = (r"(?:\bi(?:['’]ll| will| shall|(?:['’]m| am) going to)|^\W*will|\bi\b[^:]{0,120}?\b(?:and|but|then) will)" + _ASIDE + _SOON)
 _THEN = r"(?:" + _ONCE + r"|as soon as(?! (?:possible|practical)\b)) (?!(?:i|we)\b)(?=\w)"
 _SAYS = r"(?:(?!\b(?:that|because|since|which|if|whether|what|how|why|where)\b)[^;:]){1,100}?"  # not "I'll note that once ..."
-_DONE = (r"(?:when|once) (?:it|they|that|this|everything)(?:(?:['’]s|['’]re| is| are| has| have)(?: been)? (?:done|ready|finished"
-         r"|completed?|through|over|back|in|up|live|green|available|out|here|merged|published|released)| (?:lands?|finish(?:es)?"
-         r"|completes?|ends?|returns?|arrives?|pass(?:es)?|comes?))\b")
+_DONE = (r"(?:when|once|after) (?:it|they|that|this|everything)(?:(?:['’]s|['’]re| is| are| has| have)(?: been)? (?:done|ready"
+         r"|finished|completed?|through|over|back|in|up|live|green|available|out|here|merged|published|released)\b| (?:lands?"
+         r"|finish(?:es)?|completes?|ends?|returns?|arrives?|pass(?:es)?|comes?)\b| (?:does|do|has|have|is|are)\b(?=\W*$|,))")
+# The event in front, after "when" or "after", with any verb: "when the bank confirms, I will record it". An event named with
+# "a" or "any" is a rule ("when a build fails, I'll read the first error"), and "after that" is the session's own next step.
+_FIRST = (r"^\W*(?:after|when) (?!(?:i|we|a|an|any|each|every|some|no|in|that|this|needed|necessary|possible|asked|prompted)\b)"
+          r"[^,;:]{2,100}?,? (?:and )?(?:then )?")
 _GOING = (r"(?:resuming|continuing(?! to\b)|proceeding|merging|finishing|following up|circling back|(?:reporting|checking|coming"
           r"|getting) back|picking (?:[\w'’-]+ ){1,4}?(?:back )?up)\b")
 _HELD = r"\b(?=.{0,160}?\b(?:until|till)\b)"  # a hold is a wait when it runs until something
@@ -64,7 +68,7 @@ _HELD = r"\b(?=.{0,160}?\b(?:until|till)\b)"  # a hold is a wait when it runs un
 # hold an infinitive ("the import to release its lock") but nothing that opens another clause (_STOP), so "waiting for
 # the reviewer to confirm the fix is right" stays an announcement (review round 2).
 _STOP = (r"that|which|who|whom|whose|what|where|why|how|whether|wh\w+ever|when|it|they|we|i|you|he|she|and|but|or|then|so"
-         r"|(?:before|after|while)(?! \w+ing\b)|until|till|because|if|as|since|once|though|sure|word|news|notice|proof|signs?|signal"
+         r"|before|after|while|until|till|because|if|as|since|once|though|sure|word|news|notice|proof|signs?|signal"
          r"|confirm\w*"
          r"|(?:say|report|check|tell|decide|see|know|find|show|ensure|learn|hear)s?|verif(?:y|ies)")
 _WORD = r"(?: (?!(?:" + _STOP + r")\b)[\w'’/.-]+)"
@@ -76,23 +80,26 @@ _PRED = (_OFTEN + r"(?:(?:is|was|are|were|has|had|can|could|would|will|should|ma
          r"|what)\b|(?:a|an|the|its|their|our|every|each|last|next|most|much|many|some|no) [\w'’/.-]+"
          r"(?: (?![\w-]*(?:s|ed)(?=\W*$|[ ,]))[\w'’/.-]+){0,3}?(?=\W*$|,| (?:to|in|on|at|for|by|of|from|with|and|but|so|which|when"
          r"|while|during|than|as|into|across|because|if|until)\b)))")
-SUBJECT = re.compile("(?i)" + _WORD + r"{1,12}? " + _PRED)
-# "Waiting until X" may hold a verb of its own (X's): "is" or "can" makes it a subject only after that verb ("waiting
-# until CI is green" announces; "waiting until every replica agrees is safer" explains), or before a judgment ("waiting
-# until Friday is risky"); "would" or a verb of effect makes it one at once.
-_VALUE = (r"(?:the|a|an|what|why|how|not|risky|safer?|slow(?:er)?|fast(?:er)?|fine|ok(?:ay)?|expected|standard|normal|common|wasteful"
-          r"|pointless|harmless|better|worse|best|wrong|right|correct|costly|expensive|cheaper?|unnecessary|necessary|required"
-          r"|recommended|optional|allowed|forbidden)\b")
-UNTIL = re.compile("(?i)" + _WORD + r"{1,10}? (?:(?!(?:" + _STOP + r")\b)(?:is|are|was|were|has|have|had|[a-z]+(?:s|ed))\b" + _WORD
-                   + r"{0,6}? " + _OFTEN + r"(?:is|was|can|could|has|does)(?:n['’]t)?\b|" + _OFTEN + r"(?:(?:is|was)(?:n['’]t)? " + _VALUE
-                   + r"|(?:would|will|should|may|might|must)(?:n['’]t)?\b|took\b|cost\b|" + _EFFECT + "))")
+# After "until", "when", "after" or "before" the words may hold a verb of their own, so "is" makes a subject only before a
+# judgment ("waiting until Friday is risky", "resuming after a crash is handled by the checkpoint file"; "waiting until CI is
+# green" announces), "can" or "has" only after that verb, "would" or a verb of effect always.
+_VALUE = (r"(?:the|a|an|what|why|how|risky|safer?|slow(?:er)?|fast(?:er)?|fine|ok(?:ay)?|expected|standard|normal|common|typical|usual"
+          r"|rare|wasteful|pointless|harmless|better|worse|best|wrong|right|correct|costly|expensive|cheaper?|unnecessary|necessary"
+          r"|required|recommended|optional|allowed|forbidden|possible|impossible|easy|hard|tricky|trivial|automatic|idempotent"
+          r"|handled|managed|covered|supported|controlled|governed|performed|implemented|meant|supposed|intended)\b")
+_TAIL = r"(?:" + _WORD + r"| (?:before|after|during|in|on|at))"
+_LATER = (_WORD + r"{1,10}?(?:" + _TAIL + r"{0,8}? " + _OFTEN + r"(?:(?:is|was)(?:n['’]t| not)? " + _VALUE
+          + r"|(?:would|will|should|may|might|must)(?:n['’]t)?\b|took\b|cost\b|" + _EFFECT + r")| (?!(?:" + _STOP
+          + r")\b)(?:is|are|was|were|has|have|had|[a-z]+(?:s|ed))\b" + _TAIL + r"{0,8}? " + _OFTEN + r"(?:can|could|has|does)(?:n['’]t)?\b)")
+SUBJECT = re.compile("(?i)(?:" + _WORD + r"{1,12}? " + _PRED + "|" + _WORD + r"{0,8}? (?:before|after|while|until|till|when|once)" + _LATER + ")")
+UNTIL = re.compile("(?i)" + _LATER)
 WAITS = re.compile(  # a clause that opens with the wait is tested as a subject afterwards: group "on" by SUBJECT, "till" by UNTIL
     "(?i)" + _AM + r"(?:a?waiting\b(?! (?:for|on)(?: you\b| from\b|\W*$))|(?:holding|standing by)" + _HELD + ")"
     "|" + _MUST + _HELP + r"(?:wait(?:ing)?\b|(?:hold(?:ing)?|stand(?:ing)? by)" + _HELD + r")(?! (?:for|on) you\b)"
     "|" + _WILL + _HELP + _GO + ".{0,160}?" + _WHEN + "|" + _WHEN + ".{0,160}?" + _WILL + _HELP + _GO
     + r"|\b(?:until|till)\b.{0,160}?" + _MUST + _HELP + r"hold(?:ing)?\b"
     + "|" + _I + _SAYS + r"\b(?:" + _THEN + "|" + _DONE + r")|\b" + _THEN + r"[^,;:]{0,100},? (?:and )?(?:then )?" + _I
-    + r"|\b(?:" + _DONE + r"|should (?:come|arrive) shortly),?(?: and)?(?: then)? " + _WILL
+    + r"|\b(?:" + _DONE + r"|should (?:come|arrive) shortly),?(?: and)?(?: then)? " + _WILL + "|" + _FIRST + _I
     + r"|(?:^\W*|[:—–] ?| --? )" + _SOON + r"(?:(?P<on>waiting (?:for|on|to (?:hear|see|get|learn|find out))\b(?! you\b)|awaiting\b)"
     r"|(?P<till>waiting until\b|(?:holding|standing by)\b.{0,160}?\b(?:until|till)\b|" + _GOING
     + r"[^;:]{0,100}?\b(?:when|after|as soon as|" + _ONCE + r")\b))")
@@ -117,6 +124,7 @@ THEIRS = re.compile(
     r"|\b(?:hear|know|learn|see|find out) (?:back )?(?:which|what|whether|how|when|where|who|if)\b[^,;:]*?(?<!\bto )(?<!\bwith )"
     r"(?<!\babout )\byou\b"  # a question the principal answers: "to hear which date works for you"
     r"|\b(?:your (?:move|turn)\b|(?:up|over) to you\b|in your court\b|(?:is|are) yours\b)"  # the turn handed over in so many words
+    r"|^\W*(?:please )?(?:(?:send|tell|give|show) me\b|let me know\b|(?:paste|type|reply|forward|share|confirm)\b(?![\w-]))"  # or asked for
     r"|(?:\b(?:for|on|until|till|once|when|after|as soon as|await(?:ing)?|needs?|is|are|was) |['’]s |(?:[:—–]| -) |^\W*"
     r"|\b(?:until|till|once|when|after|as soon as) (?:i|we)(?:['’]ve| have)? (?:have|get|got|receive[sd]?|see|hear|read|know|learn) "
     r"|\bto (?:have|get|receive|see|hear|read|know|learn) )(?:(?:only|just|both|either|also|still|now) )?"
@@ -126,7 +134,8 @@ FRONT = ("until", "till", "once", "when", "after", "as soon as", "your move", "y
          "is your", "'s your", "’s your", "are yours")  # how a move of theirs opens when it stands in front of the wait and counts
 OPEN = re.compile(r"(?i)(?:(?<=awaiting)|(?<=await)) (?:on|in|at|from|with|about|regarding|before|by)\b.*$"  # nothing is named after
                   r"|(?: (?:for|on))?(?: (?:right now|now|here|today|still|at this point))?\W*$")           # the wait
-BACK = re.compile(r"(?i)(?: (?:for|on))?(?: (?:that|this|it|them|those|both|here|now))?\W*$")      # or only a word that points back
+BACK = re.compile(r"(?i)(?: (?:for|on))?(?: (?:that|this|it|them|those|both|here|now))?"            # or only a word that points back
+                  r"(?:,? (?:before|so|then|and nothing else|only|alone)\b.*)?\W*$")
 LEAD = re.compile(r"(?i)(?:(?:and|so|but|now|then|until then|till then|meanwhile),? )?")           # before a wait that opens its clause
 MARKS = re.compile(r"^[ \t]*>.*|[*_#]+|^[ \t]*(?:[-+•]|\d+[.)])[ \t]+", re.M)  # a quoted line; emphasis, heading and list marks
 EDGE = re.compile(r"(?<=[.!?])\s+|;|(?<![:\s])\s*\n\s*")  # a sentence's or a line's end, a semicolon; after a colon the line runs on
@@ -173,10 +182,10 @@ def _theirs(text: str, m: re.Match, before: str) -> bool:
     front of them as a condition ("until you choose, I'll wait", "once you sign, I'll wait for the bank"); or anywhere
     in front when nothing is named after the wait ("your answer is the only thing I'm awaiting"). What stands in front
     otherwise is context ("your review is filed and I'm waiting on CI"). A wait that opens its clause and names nothing,
-    or only "that" or "it", awaits what the clause before it names ("your approval is all that is left; I'm waiting on
-    that")."""
+    or only "that" or "it", awaits what the clause before it names: their move ("your approval is all that is left; I'm
+    waiting on that"), a request to them, or a question."""
     if THEIRS.search(text, m.start()) or (before and LEAD.fullmatch(text, 0, m.start()) and BACK.match(text, m.end())
-                                          and THEIRS.search(before)):
+                                          and (before.endswith("?") or THEIRS.search(before))):
         return True
     bare = m.group(0).lower().endswith(("wait", "waiting")) and OPEN.match(text, m.end())
     return any(bare or t.group(0).lower().startswith(FRONT) for t in THEIRS.finditer(text, 0, m.start()))
