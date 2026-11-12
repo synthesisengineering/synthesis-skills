@@ -300,6 +300,9 @@ def test_a_sheet_upload_is_free_only_by_the_plugin_script_to_a_listed_host(site,
 
 @pytest.mark.parametrize("command, held", [
     ("python3 skills/synthesis-kb-distribution/scripts/publish_drive.py --tree build/kb", True),
+    ("python3 -W ignore skills/synthesis-kb-distribution/scripts/publish_drive.py --tree build/kb", True),   # an option that takes a value
+    ("python3 -X dev skills/synthesis-kb-distribution/scripts/publish_drive.py --tree build/kb", True),
+    ("python3 -Wignore -B skills/synthesis-kb-distribution/scripts/publish_drive.py --tree build/kb", True),
     ("cd skills/synthesis-kb-distribution/scripts && python3 publish_drive.py --tree ../../../build/kb", True),
     ("python3 skills/synthesis-kb-distribution/scripts/publish_drive.py --tree build/kb --dry-run", False),
     ("python3 skills/synthesis-kb-distribution/scripts/publish_drive.py --help", False),

@@ -503,10 +503,134 @@ ROOT = Path(__file__).resolve().parents[1]
 # events someone else is on; protected windows stand beside prose; 24:00 ends a day).
 # travel_check.py 10: judge 8, BESIDE and TRIP (an entry beside an event that is titled like a trip is named as its
 # travel in another form, not reported as no block).
+# After an eighth review round, which found twelve more of the same kinds (a command another command runs, a value a
+# program keeps before it moves, a pipe, a variable, an example read as a choice, a time that cannot be judged), and
+# after the guard's own probes of a folder it cannot read, guards.py 103 more. _python_writes 39: a relative path made
+# whole (abspath, realpath, resolve, absolute, getcwd, cwd) judged from where the program stood at that call, in a
+# target and in a started command, 11; a pipe judged with the process it belongs to, by the name the process is kept
+# under, and what is written down it piece after piece read as one script, 10; the names' fixed point as a function,
+# run again once the folders the program may stand in are known, 9; with_suffix, with_name and with_stem spelled, 4; a
+# walk or a pattern from a relative folder, glob's root_dir and a folder reached through a link, 2; a protected path
+# kept in any mapping beside a variable the started command leaves to its environment, 2; a tree removed or moved away
+# apart from one copied over, 1. _commands 21, Quoted 6, MESSAGE 3, STARTERS 2 and PROMPTED 1 (a word handed to a
+# program the guard does not know is read as a command line only where it starts as a command, the value of a message
+# option is words for a reader, and a command read that way is judged for what it writes, runs and starts; find's
+# -execdir runs in the folder of what it found). _led 17 (a cd into the folder of a spelled path, a fresh temporary
+# folder or the folder it is in is followed; any other substitution is a folder the guard cannot read). _self_grant 7
+# (a relative write in a folder the guard cannot read, in a command that names a protected folder; the approved
+# lines' folder removed or moved away whole). _placed 5 (quoting starts over inside a substitution). _find 5 (-execdir,
+# -okdir and BSD's -f). _landing 2 and VALUED 1 (xxd's second operand is its output), GONE and OVER in place of WHOLE 1,
+# less 4 in _string_writes, 2 in _deploys (the publisher is found past the interpreter's options by _program) and 1 in
+# _named. slot_check.py 4: judge (a personal marker is a tag matched as a whole word; a plain word stops the check).
+# travel_check.py 2: judge (an event at a place with no start it can read stops the check and is named).
+# ritual_state.py 7: _when 3, _day 1, travel 1, QUOTE and _shown 2 (a quoted example is an example; an event that ends
+# before it starts is refused).
+# Before the ninth review round, after 254 plain commands and programs of this project's own were put to the eighth
+# round's answer, guards.py 84 more. _python_writes 41: what names no folder (a path taken relative to a folder that
+# holds it, one part of a path, a path flattened into a name, a digest, a length), and that relative path itself when
+# both ends are spelled, 26; a word of a list built round a path the program found keeps that path, and a script it
+# cannot read is refused, 5; a fresh temporary folder is a folder somewhere else, also when `with` names it, 4; what
+# is written to os.popen is the command's input, 3; the standard library's own writers (a log file, a download, a
+# temporary file made in a folder it is told), 3. _own_text 16 (a keyword argument or a statement of a program handed
+# to another interpreter is not a variable the command sets). _commands 8 ($PWD and $OLDPWD are the folder each
+# command is in and the one before, in its own words and targets and not in a script it hands a shell; what printf
+# prints into a shell is its format with its words put in). _self_grant 6 (a command find -execdir runs is judged at
+# the top of the search and in each protected folder under it). _led 5 (any word that starts with a substitution the
+# guard can read: a temporary file, the top of the repository). _put 2, PLACE and DEEP (the folder a command is in).
+# LIBRARY_WRITES 2. OPAQUE and _named 2 (a program for an interpreter the guard cannot read is held for each path it
+# names).
+# After a ninth review round (eleven findings at the edges of the eighth round's answer) and the probes that followed,
+# guards.py 56 more. _python_writes 47: the folder a call is made in is followed through a `with`, a `try`, a branch,
+# a loop and the program's main block, each in the order its statements run (a branch may not be taken, a loop may
+# run no times or leave at any point, a handler and a finally may start from any point of the try, the body of
+# `with contextlib.chdir` runs in that folder, and a change passed over by `suppress` may not have happened), 34; a
+# descriptor stands for its folder as it stood when it was opened, 5; a process kept under a second name is the same
+# process, 5; the parent of a path and `dirname`, 3. _commands 2, WORDS 2 and _named 1 (a handed command line starts
+# as a command with any program the guard has a rule for, a reader included since it may redirect, and not with a
+# shell's own word or a word a sentence starts with; a message attached to its option, `--body=...`, is words for a
+# reader). _landing 2 (an operand that is `-` is the input, so the operand after it is still the output). _bare 2
+# (what `trap` keeps to run when the shell ends). travel_check.py 11: is_block 10 and STEP (a travel block is known
+# by the form of its title or by its lines, so an event whose title only begins with the block's word is an event).
+# ritual_state.py 2: FENCE (a fence left open and an HTML comment are not the plan's own text).
+# After a tenth review round (twelve findings) and this project's own probes of its answer (452 commands and
+# programs and 36 plan shapes), guards.py 394 more. The probes showed one cause behind the needless refusals each
+# round had met a case or two of: a name was read only when it was given one value, once, in one place (30 of the
+# first hundred everyday programs run from inside a transcript folder were refused for it, 19 of the second).
+# _python_writes 382. A program is read through every value a name may hold: its body 123 (what the program gives
+# each name, each field of its own object and each entry of its own table: its assignments, a class's constants and
+# fields, a data class's and a named tuple's, a parser's defaults, setattr; which functions' callers are all seen
+# (not wrapped, not given another value, map) and what each hands back; the rule for a call named as a writer),
+# gather 24 (what each function is handed, what each loop visits, each name where it is read), elements 25 and
+# columns 18 (what a loop visits: a list, its rows, zip, enumerate, a table's values, what a walk or a pattern
+# finds), spellings 18, values_of 14 and outer 5 (a target read once for each value; one of two values), key_of 11,
+# entry_of 10 and table 14 (a field, an entry by its key or by a key held in a name, a place in a list, the
+# environment with its default), spelled 20 (those readings, a template filled, a list joined, Path.home()),
+# given_to 3. Each function by its own names: scope 16 and nodes_of 7. Each name where it is read, in the order the
+# program runs: gives 16 (what an assignment gives, a pair unpacked, mkstemp's) and order 7. A call of the
+# program's own function read by what that call hands it: answers 15, hands 10 (taken out of settle, kept between
+# settlings) and asked 5 (a method is told from a function of the same name; a class reaches its __init__).
+# folders 7 (a descriptor opened beside another), descriptor 4 (a number, and what os.open or mkstemp hands back,
+# is no path), home 3 (the home a command or a program gives itself), elsewhere 3 and inward 2 (what a walk found
+# from where the program stands only goes further into a folder named before it), named 3 (that, and the
+# environment the program sets), settle 1, less 2 in leads. BY_NAME 4 and PATH_KEYS 2 (a call named as a writer in
+# any library is judged where its path lands). check_self_grant 3 (a command that gives HOME its own value).
+# _bare 1 (`trap --`), _own_text 1 (a program handed in double quotes), _named 1 (a message value given apart from
+# its option).
+# slot_check.py 22: morning_day 9 (a morning's outing is judged against the next night), judge 9 (an event is taken
+# time on each day it covers; a slot on top of another event says so), morning_after 3 and first_thing 1 (a
+# commitment begun before the return leaves no night). travel_check.py 2: judge (a block-titled entry with no clock
+# times is an event; the outing's own way there and back is no commitment of the next morning).
+# ritual_state.py 23: _items 12 (the entry an explanation stands in; a deeper heading or a bold line is a title),
+# choices 3 (a closing line closes when it says what was decided; a recommendation marked on the option), ITEM 2,
+# OPTION 2, FENCE 2, OPEN 1 and HEAD 1 (a quote inside a list entry, a heading or a row of a table as an option, a
+# sentence that begins with the word, a fence longer than the one it holds).
+# The eleventh review round, and the probes and the replay after it, add 389 to the plugin, 345 of them in
+# guards.py (the bar the principal set on 2026-11-11: a round with no ordinary way through and no ordinary work
+# refused). The round's eight findings in the Python reader were one gap, a field or a key read as one set of
+# values whatever carried it, so a member is now read by the thing that holds it. In _python_writes: its own body
+# 100 (a table or a row spelled out once and only read, handed as `f(**table)` or `f(*row)`, written out; each
+# class's lineage, the __init__ that builds it, its kin and the function each node is written in; an argument
+# parser's defaults; a class that keeps its keywords as its fields; the census of what each thing is given after
+# it is made; where a writer by its name takes its path), part 42 (what one member of one thing holds: a table's
+# entry, a list's place, an object's field, the environment's variable, and what it was given since, the last
+# plain gift along one path standing for those before it; a thing that holds itself read once), resolve 10 and
+# follow 30 (each thing an expression may be, as the place that makes it; a finished reading kept, one that runs
+# away cut short, after the replay met two recorded commands that did not come back), built 27 (what an object's
+# field holds as it is made: what the __init__ that runs gives it from what that call hands it, a base's through
+# super().__init__, a field handed by place or by name, the class's constants and properties), under 19 (a value
+# read with what one call hands the function and the object it is called on; a name the function gives another
+# value is either, which a function that rebinds what it is handed had slipped past since the tenth round),
+# sel_of 17 and path_of 6 (a member read or store, and the path it is reached by), named 15 (a member is built
+# from what it holds, the program's own function from what it hands back, a comprehension from what it makes
+# each one of; one member followed once), order 14 and flat 2 (the last plain gift before each read; a main block
+# in line), members 11 (with its default; kept between settlings), asked 10 (`cls(...)`, `super().__init__(...)`,
+# a method by the class of what it is called on, and a call on a file or a string is no call of the program's own
+# method), stringy 9 (what reads as a path and not as an object or an open file), selves 7, read_as 7, is_member
+# 6, spelled 5, key_at 5, handed_field 4, settle 4, gifts 3, keep 3, one 2, lineage 2, gives 2 (a pair unpacked
+# from anything is its first and its second), elements 2, builds 2, outer 2, held 1; less table 14, answers 8,
+# entry_of 8, key_of 4 and gather 2, which the member model replaces. BY_NAME 4, STRINGS 3, FOREIGN 2,
+# OBJECT_FIRST 1, PATH_FIRST 1 and OPENED 1 (a writer in another library takes its path first, second or either;
+# a library's own way to open a file).
+# slot_check.py 27: judge 16 and whole_days 11 (an all-day block the principal marked, or one that says it is busy,
+# takes its day; a night before an all-day commitment is not called enough; of several events at a slot's own
+# hours one is the slot). travel_check.py 5: judge (the same night, said in the event's own lacks).
+# ritual_state.py 12: _items 9 (a heading or a bold title after a choice's options begins another; a sentence
+# between a title and its options), OPEN 2 (a recommendation or a decision that only puts the answer off), LED 1
+# (a line led by a pictograph).
+# The twelfth review round adds 56, 52 of them in guards.py (the principal's ruling of 2026-11-12: fix its twelve
+# findings with tests first, show nothing got worse, and release). In _python_writes: census 37, less 13 from the
+# body and 3 from keep, which it takes in (what each thing is given is gathered until it settles: rows added to a
+# list and then copied into a table were missed in one pass), inlined 12 (what a function hands back, written with
+# what this call hands it, so a factory called twice makes two objects), rowed 9 (a table filled from rows keeps
+# each row's key with its value), part 4 (a table made from pairs or from another table; the round's one write
+# let through), follow 3 (a union of two tables), spelled 2 (a template kept in a name), built 1 (a default made
+# by a function written in place). slot_check.py 1 and travel_check.py 2 (an all-day hold; a trip into a day
+# blocked whole; an all-day commitment at the principal's own place), decay_sweep.py 1 (a fence on a list mark's
+# line).
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # consolidate first).
-CORE_BUDGET = 9581
-PLUGIN_BUDGET = 29944
+CORE_BUDGET = 10615
+PLUGIN_BUDGET = 31099
 
 
 def _lines(files):

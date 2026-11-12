@@ -377,7 +377,7 @@ def check_travel(tool: str, tool_input: dict, config: dict) -> str | None:
             name = next((said[k] for k in ("summary", "title", "subject", "name") if said.get(k)), "an event")
             notes = "\n".join(said.get(k, "") for k in ("description", "notes", "body", "details"))
             spot = ", ".join(_place(event))
-            block = re.match(rf"{re.escape(title)}\b", name.lower())  # the word itself, as the travel check reads it: not "Travelogue"
+            block = reader.is_block(name, reader.lines(notes), title)  # a block as the travel check knows one: by its title's form or its lines
             if reader.place(spot, policy) == "away" and not block and not reader.form(reader.lines(notes).get("travel")):
                 return (f"Refused: this writes \"{name}\" at a place ({spot}) and says nothing about how the "
                         "principal gets there. Work the trip out first (synthesis-chief-of-staff, references/in-person-travel.md): "
@@ -871,6 +871,9 @@ def _bare(words: list[str], moved: list | None = None) -> tuple[list[str], list[
             return [], scripts + [" ".join(words[1:])]
         if head == "command" and words[1:2] in (["-v"], ["-V"]):
             return [], scripts  # a lookup, not a run
+        if head == "trap":  # what it keeps to run when the shell ends or a signal comes: the word before its signals, past `--`
+            rest = list(itertools.dropwhile(lambda w: w in ("--", "-l", "-p"), words[1:]))
+            scripts += [w for w in rest[:1] if len(rest) > 1 and w != "-"]
         if head not in WRAPPERS:
             break
         takes, i = WRAPPERS[head], 1
@@ -901,7 +904,7 @@ def _placed(script: str, given: list[str]) -> str:
     as the shell takes it: nothing inside single quotes, whole inside double quotes, split at its spaces outside
     them. A script that gives them other values is left as written (2026-11-11, the seventh review: a list handed
     to the shell lost the words after its script, and `sh -s <state folder>` read its script with no $1)."""
-    out, i, single, double = [], 0, False, False
+    out, i, single, double, outer = [], 0, False, False, []  # outer: for each open substitution, how it opened and the quoting around it
     while i < len(script) and not REBOUND.search(script):
         use = POSITIONAL.match(script, i) if script[i] == "$" and not single else None
         if use or (script[i] == "\\" and not single):
@@ -911,6 +914,11 @@ def _placed(script: str, given: list[str]) -> str:
                        if double else " ".join(shlex.quote(part) for w in took for part in w.split()))
             i = use.end() if use else i + 2
             continue
+        if not single and (script[i:i + 2] == "$(" or script[i] == "`" and "`" not in outer[-1:]):
+            outer, double = outer + [script[i], double], False  # inside a substitution quoting starts over
+        elif not single and not double and outer and script[i] in ("`" if outer[-2] == "`" else ")"):
+            double = outer.pop()
+            outer.pop()
         single, double = single if double else (script[i] == "'") != single, double if single else (script[i] == '"') != double
         out.append(script[i])
         i += 1
@@ -942,8 +950,47 @@ def _shell_input(words: list[str]) -> tuple[str | None, bool, list[str]]:
     return None, not command, words[:1]
 
 
+def _led(word: str, cwd: str) -> str:
+    """A word that starts with a substitution this can read, with what that names put in: the folder of a path that
+    is spelled out, a fresh temporary file or folder (made where its template says, else somewhere of its own), the
+    folder the command is in, the top of the repository it is in (asked of git, as the command will ask). Any other
+    substitution, or a variable the command does not set, stays as written: a bare name written after a `cd` into
+    it is a write the guard cannot place (2026-11-11: `cd "$(dirname <transcript>)" && touch forged.json` was a
+    write beside where the session stood; a temporary file kept in a variable was refused as unreadable)."""
+    found = re.match(r"\$\(\s*(dirname|realpath|mktemp|pwd|git rev-parse --show-toplevel)\b\s*(.*?)\s*\)", word)
+    try:
+        words = shlex.split(found[2]) if found else []
+    except ValueError:
+        return word
+    if not found or any(re.search(r"[$`*?]", w) for w in words):
+        return word
+    kind, rest = found[1], word[found.end():]
+    if kind == "mktemp":
+        return next((w.split("=", 1)[-1] for w in words if "/" in w), os.path.join("/tmp", "tmp.made")) + rest
+    if kind in ("dirname", "realpath") and len(words) == 1:
+        return (os.path.dirname(words[0]) if kind == "dirname" else words[0]) + rest
+    if words or kind in ("dirname", "realpath"):
+        return word
+    return ((_run_git(cwd, "rev-parse", "--show-toplevel")[1].strip() if kind != "pwd" else "") or cwd) + rest
+
+
+class Quoted(str):
+    """The folder of a command read out of a word that was handed to a program the guard does not know (`watch`,
+    `ssh`, `osascript`), which may run it. Such a command is judged for what it writes, runs and starts; it is not
+    held for a path it is merely handed, since the word may be a message that mentions one."""
+
+
+PLACE = re.compile(r"\$(?:(OLD)?PWD\b|\{(OLD)?PWD\})")  # the folder a command is in, and the one it was in before
+DEEP = "/**"  # after a folder a command runs in: that folder or any under it (`find -execdir` runs in the folder of what it found)
+OPAQUE = frozenset({"php", "lua", "luajit", "Rscript", "julia", "swift", "tclsh", "groovy", "scala", "elixir", "pwsh", "jshell"})
+MESSAGE = re.compile(r"--?(?:m|msg|message|body|title|subtitle|subject|description|notes?|comment|text|caption|summary|prompt)")  # its value is words for a reader
+PROMPTED = frozenset({"codex", "claude", "muse", "gh"})  # their words are prompts and messages: each runs under its own guards
+STARTERS = frozenset({"echo", "printf", "cat", "cd", "pushd", "find", "sed", "perl", "tee", "touch", "truncate", "mkdir", "rmdir", "rm",
+                      "unlink", "shred", "chmod", "chown", "chgrp", "dd", "cp", "mv", "ln", "install", "rsync", "ditto", "gzip", "gunzip"})
+
+
 def _commands(command: str, cwd: str, depth: int = 0, writes: list | None = None, runs: list | None = None,
-              feeds: list | None = None) -> list[tuple[list[str], str]]:
+              feeds: list | None = None, prose: bool = False) -> list[tuple[list[str], str]]:
     """Each simple command a shell line runs, with the directory it runs in. Follows `cd`,
     subshells, substitutions, `bash -c`, eval, and scripts a shell reads from its stdin. `writes`
     collects (file, directory) for every redirect that writes a file. `runs` collects, for each
@@ -964,8 +1011,7 @@ def _commands(command: str, cwd: str, depth: int = 0, writes: list | None = None
         chain = chain if link == "&&" else object()
         opening = words[:next((i for i, w in enumerate(words) if w not in KEYWORDS), len(words))]
         needed = link != "||" and "!" not in opening  # after `||` it may be skipped; under `!` its failure is what counts
-        if writes is not None:
-            writes += [(t, cwd) for t in targets]
+        stdin = [(text if literal else PLACE.sub(lambda m: back if m[1] or m[2] else cwd, text), literal) for text, literal in stdin]
         for text, literal in stdin:
             if not literal:  # an unquoted heredoc expands its substitutions
                 _dquote(text, 0, scripts, "")
@@ -975,6 +1021,31 @@ def _commands(command: str, cwd: str, depth: int = 0, writes: list | None = None
         here = cwd
         for folder in moved:  # `env -C a env -C b`: b is read from a
             here = os.path.normpath(os.path.join(here, os.path.expanduser(folder)))
+        head, script = os.path.basename(words[0]) if words else "", words
+        # $PWD and $OLDPWD in a command's own words and targets are the folder it is in and the one before. A script it
+        # hands a shell is left as written: that script puts its own, where it runs.
+        words, targets = [[PLACE.sub(lambda m: back if m[1] or m[2] else cwd, w) for w in each] for each in (words, targets)]
+        words = script if words and _shell_input(script)[0] is not None else words
+        # Read out of a word that may be a message, a line counts as a command only when it starts as one the guard
+        # knows (a shell, an interpreter, a file utility): `select ... where n > 5` and `Example: echo x > file` are words.
+        taken = not prose or head in STARTERS or head in SHELLS or bool(SCRIPT.match(head)) or head in WRITERS or head in OWN_RULES or (
+            head in OPAQUE or head in READERS - WORDS)  # a reader may still redirect: `date >> file`
+        if writes is not None and taken:
+            writes += [(t, cwd) for t in targets]
+        if words and (not taken or (_named(words) and head not in PROMPTED)):  # a word it is handed may be a script it runs: read as one
+            for at, word in enumerate(words[1:], 1):
+                held = ([], [], [])
+                try:
+                    said = MESSAGE.fullmatch(words[at - 1]) or (word.startswith("-") and MESSAGE.fullmatch(word.split("=", 1)[0]))
+                    inner = _commands(word, here, depth + 1, *held, prose=True) if " " in word and not said else []  # --body TEXT, --body=TEXT
+                except (Unreadable, StopIteration, IndexError, RecursionError):
+                    continue
+                found += [(w, Quoted(h)) for w, h in inner]
+                for mine, more in zip((writes, runs, feeds), held):
+                    if mine is not None:
+                        mine += more
+        if not taken:
+            continue
         if words:
             found.append((words, here))
             if runs is not None:
@@ -986,7 +1057,8 @@ def _commands(command: str, cwd: str, depth: int = 0, writes: list | None = None
                 turn = next((w for w in words[1:] if re.fullmatch(r"[-+]\d+", w)), "")  # +N from this folder, -N from the oldest
                 dirs = [cwd] + stack[::-1]  # the stack as the shell shows it: this folder first
                 at = (int(turn[1:]) if turn[:1] == "+" else len(dirs) - 1 - int(turn[1:])) % len(dirs) if turn else 0
-                went = back if to == "-" else os.path.normpath(os.path.join(cwd, os.path.expanduser(os.path.expandvars(to or "~"))))
+                aim = _led(os.path.expanduser(os.path.expandvars(to or "~")), cwd)
+                went = back if to == "-" else aim if aim[:1] in ("$", "`") else os.path.normpath(os.path.join(cwd, aim))
                 if words[0] == "cd":
                     dirs[0] = went if to is not None or not turn else dirs[at]
                 elif words[0] == "popd":
@@ -994,15 +1066,19 @@ def _commands(command: str, cwd: str, depth: int = 0, writes: list | None = None
                 else:  # pushd: a folder goes on top; a number turns the stack; alone, the top two change places
                     dirs = [went] + dirs if to is not None else dirs[at:] + dirs[:at] if turn else dirs[1:2] + dirs[:1] + dirs[2:]
                 cwd, back, stack = dirs[0], cwd, dirs[1:][::-1]
-            if os.path.basename(words[0]) == "find":  # what it runs with -exec is a command of its own, `{}` a file under each folder it searches
-                roots, ran = _find(words)
-                scripts += [shlex.join(w.replace("{}", os.path.join(root, "{}")) for w in run) for run in ran if run for root in roots]
+            if os.path.basename(words[0]) == "find":  # what it runs with -exec is a command of its own, `{}` a file under each folder it
+                roots, ran = _find(words)[0], _find(script)[1]  # searches; with -execdir it runs in the folder of what it found
+                scripts += [f"cd {shlex.quote(root.rstrip('/') + DEEP)} && " + shlex.join(w.replace("{}", "./{}") for w in run) if there
+                            else shlex.join(w.replace("{}", os.path.join(root, "{}")) for w in run) for run, there in ran if run for root in roots]
             script, reads, given = _shell_input(words)
             if script is not None:
                 scripts.append(_placed(script, given))
             elif reads:  # the shell runs whatever reaches its stdin
                 scripts += [_placed(text, given) for text in [text for text, _ in stdin] + ([upstream] if piped else [])]
-        upstream = "\n".join([t for t, _ in stdin] + words[1:]).replace("\\n", "\n")
+        said, fill = words[1:], iter(words[2:])
+        if head == "printf":  # what it prints: its format with its words put in
+            said = [re.sub(r"%[-0-9.]*[sbqd]", lambda m: next(fill, ""), w) for w in said[:1]]
+        upstream = "\n".join([t for t, _ in stdin] + said).replace("\\n", "\n")
         for script in scripts:
             found += _commands(script, here, depth + 1, writes, runs, feeds)
     return found
@@ -1161,11 +1237,9 @@ def _deploys(words: list[str], patterns: list[str]) -> bool:
     if "--dry-run" in words or "--help" in words:
         return False
     forms = [[os.path.basename(words[0])] + words[1:]]
-    if INTERPRETER.match(forms[0][0]):
-        rest = words[1:]
-        while rest and rest[0].startswith("-") and rest[0] != "-m":
-            rest = rest[1:]
-        forms.append(rest[1:] if rest[:1] == ["-m"] else rest)
+    if INTERPRETER.match(forms[0][0]):  # the script it runs, or the module after -m, past its options and their values
+        kind, at, name = _program(words)
+        forms.append([name] + words[at + 1 + (words[at:at + 2] == [words[at], name] and words[at] != name):] if kind == "file" else [])
     return any(form and re.match(p, " ".join(form)) for form in forms for p in patterns)
 
 
@@ -1620,7 +1694,8 @@ def check_pr_gate(command: str, config: dict, cwd: str, session: dict | None = N
 COPIERS = frozenset({"cp", "mv", "ln", "install", "rsync", "ditto"})  # these write only where the copy lands
 PACKERS = frozenset({"gzip", "gunzip", "bzip2", "bunzip2", "xz", "unxz", "zstd", "compress", "uncompress"})  # replace their files
 VALUED = {"touch": ("-r", "--reference", "-t", "-d", "--date"), "truncate": ("-r", "--reference", "-s", "--size"),
-          "mkdir": ("-m", "--mode"), "install": ("-m", "--mode", "-o", "--owner", "-g", "--group")}  # options whose next word is no file
+          "mkdir": ("-m", "--mode"), "install": ("-m", "--mode", "-o", "--owner", "-g", "--group"),
+          "xxd": ("-c", "-cols", "-g", "-groupsize", "-l", "-len", "-s", "-seek", "-o", "-n", "-name")}  # options whose next word is no file
 WRITERS = COPIERS | PACKERS | {"tee", "touch", "truncate", "mkdir", "rmdir", "rm", "unlink", "shred", "chmod", "chown", "chgrp", "dd"}
 IN_PLACE = re.compile(r"-\w*i(?:\W.*)?|--in-place(?:=.*)?")  # sed -i, sed -Ei.bak, perl -pi
 INTO = re.compile(r"--target-directory(?:=(.*))?|-[A-Za-su-z]*t(.*)")  # cp -t DIR, mv -ft DIR, --target-directory=DIR
@@ -1628,15 +1703,18 @@ INTO = re.compile(r"--target-directory(?:=(.*))?|-[A-Za-su-z]*t(.*)")  # cp -t D
 # to an interpreter or a shell (judged by what it runs), and to git and synthesis's own CLI, which keep the approved
 # lines and the board. Any other program may change what it is given, so the guard does not pass it one (2026-11-11:
 # a gate passes what it can prove; a list of the utilities that write never ends).
-WHOLE = "/**"  # after a target: the command changes everything under that folder (rm -r, a move, a recursive copy onto it)
+GONE = "/**"  # after a target: the command removes or moves away everything under that folder (rm -r, a move's source)
+OVER = "/**/*"  # after a target: the command changes or searches throughout it (a recursive copy onto it, chmod -R, find)
 READERS = frozenset(("cat head tail grep egrep fgrep rg ls stat wc file du diff cmp comm md5 md5sum shasum sha256sum "
                      "basename dirname realpath readlink test [ [[ echo printf cd pushd popd true false : export readonly "
                      "local declare typeset unset zcat gzcat strings od hexdump nl cut tr tac column jq date which "
                      "for case select read fold fmt expand paste join rev sort uniq less more sleep kill wait exit return "
                      "break continue shift trap seq expr bc ps pgrep uname hostname whoami id git synthesis").split())
+WORDS = frozenset("for case select read test [ [[ : true false export readonly local declare typeset unset less more sleep kill wait exit "
+                  "return break continue shift trap which file id synthesis".split())  # a shell's own words, and words a sentence starts with
 AWKS = ("awk", "gawk", "mawk", "nawk")
 AWK_TOKEN = re.compile(r'"(?:[^"\\]|\\.)*"|/(?:[^/\\\n]|\\.)+/|>>?|\|\||\||[;{}\n]|\bprintf?\b|\bsystem\s*\(|\S')
-OWN_RULES = ("sed", "perl", "find", "source", ".", "eval", "apply_patch", *AWKS)  # each is read where it is handled
+OWN_RULES = ("sed", "perl", "find", "xxd", "source", ".", "eval", "apply_patch", *AWKS)  # each is read where it is handled
 GIT_READS = frozenset({"status", "log", "diff", "show", "ls-files", "rev-parse", "blame", "grep", "describe", "cat-file", "shortlog"})
 SCRIPT = re.compile(r"(?:python[\d.]*|node|bun|deno|perl|ruby)$")
 # What makes a script able to write, not words a reader also uses (json.dumps, str.replace, d["x"] refused a
@@ -1656,7 +1734,7 @@ SCRIPTED_WRITE = re.compile(
 SELF_GRANT_CALLS = re.compile(r"\b(?:open_window|grant_from_prompt|consume|_window_file)\b|\bpaths\.state\b[\s\S]*\b(?:"
                               r"write_json|write_text|touch|unlink)\b|\b(?:write_json|write_text|touch|unlink)\b[\s\S]*\bpaths\.state\b")
 HOOK_RUN = re.compile(r"(?:^|/)(?:synthesis-hook|synthesis/hook\.py)$|^synthesis\.hook$")
-ASSIGNED = re.compile(r"(?:^|(?<=[\s;&|({'\"]))([A-Za-z_]\w*)(\+?)=(\"[^\"\n]*\"|'[^'\n]*'|[^\s;&|()<>\"']*)")
+ASSIGNED = re.compile(r"(?:^|(?<=[\s;&|({'\"]))([A-Za-z_]\w*)(\+?)=(\"[^\"\n]*\"|'[^'\n]*'|\$\([^()\n]*\)[^\s;&|()<>\"']*|[^\s;&|()<>\"']*)")
 LOOPED = re.compile(r"\bfor\s+([A-Za-z_]\w*)\s+in\s+([^;\n]*)")
 USED = re.compile(r"\$\{([A-Za-z_]\w*)(?:(%%?|##?|:?[-=?+])([^{}$`'\"]*))?\}|\$([A-Za-z_]\w*)")
 READINGS = 32  # past this many, a variable the command gives several values stays as written
@@ -1666,6 +1744,8 @@ def _put(use, values: dict) -> str:
     """What the shell puts for one use of a variable: its value from the command or the environment, the default
     the use carries, or the value with an end trimmed. The use as written when that cannot be told."""
     name, op, word = use[1] or use[4], use[2] or "", use[3] or ""
+    if name in ("PWD", "OLDPWD") and name not in values:
+        return use[0]  # the folder each command is in: the parser puts it, not the guard's own environment
     value = values.get(name, os.environ.get(name))
     if name in values and value is None:
         return use[0]
@@ -1712,6 +1792,23 @@ def _ran(words: list[str]) -> str:
     return name if kind == "file" else ""
 
 
+def _own_text(text: str) -> str:
+    """A command with each program it hands another interpreter, inline or on that command's own stdin, blanked out.
+    `NAME=value` in one is that program's text, a keyword argument or a statement, not a variable the command sets
+    (2026-11-11: `env=dict(os.environ, OUT=target)` was read as the shell's `OUT=target`, and `$OUT` in the command
+    the program started was filled in with the argument's name)."""
+    if not (ASSIGNED.search(text) and re.search(r"python|node|bun|deno|perl|ruby", text)):
+        return text
+    feeds: list = []
+    found = _parse(text, "/", feeds=feeds)[0]
+    for (words, _), fed in zip(found, feeds + [""] * len(found)):
+        kind, _, given = _program(words) if SCRIPT.match(os.path.basename(words[0])) else ("", 0, "")
+        body = fed if kind == "stdin" else given if kind == "inline" else ""
+        spot = re.search("".join("\\\\?" + re.escape(c) for c in body), text) if ASSIGNED.search(body) and len(body) < 20000 else None
+        text = text[:spot.start()] + " " * (spot.end() - spot.start()) + text[spot.end():] if spot else text  # in double quotes it is spelled with backslashes
+    return text
+
+
 def _resolved(text: str) -> list[str]:
     """Every reading of a command with its variables put where they are used: a value the command gives one (`D=…`,
     after `export`, `readonly` or `env`, in a `for … in` list, inside a quoted script), else the environment's
@@ -1719,7 +1816,7 @@ def _resolved(text: str) -> list[str]:
     A variable given several values gives a reading for each, since which one a command gets depends on the order
     things run in. A variable neither sets stays as written."""
     found: dict = {}
-    for m in ASSIGNED.finditer(text):
+    for m in ASSIGNED.finditer(_own_text(text)):
         for before in (list(found.get(m[1], {})) or [os.environ.get(m[1], "")]) if m[2] else [""]:  # `D+=…` adds to each value D had
             found.setdefault(m[1], {})[before + m[3].strip("'\"")] = None
     for m in LOOPED.finditer(text):  # a list a command prints cannot be read: `$` stands for it
@@ -1750,8 +1847,8 @@ def _landing(words: list[str]) -> list[str]:
     rest = [w for i, w in enumerate(words) if i and i not in refs and not w.startswith("-")]
     whole = head in ("ditto", "mv", "find") or any(re.fullmatch(r"-[A-Za-z]*[rRa][A-Za-z]*|--recursive|--archive", w) for w in words[1:])
 
-    def all_of(folders: list) -> list:  # a folder changed throughout, marked: one that holds a protected folder changes that folder
-        return [w.rstrip("/") + WHOLE for w in folders] if whole else []
+    def all_of(folders: list, how: str = GONE) -> list:  # a folder changed throughout, marked: one that holds a protected folder changes it
+        return [w.rstrip("/") + how for w in folders] if whole else []
     if head in ("chmod", "chown", "chgrp") and not any(w.startswith("--reference") for w in words):
         rest = rest[1:]  # the mode or the owner comes first
     if head == "dd":
@@ -1759,12 +1856,16 @@ def _landing(words: list[str]) -> list[str]:
     if head == "sort":  # a reader, unless told where to write
         return [m[1] or m[2] or "".join(words[i + 1:i + 2]) for i, w in enumerate(words)
                 for m in [re.fullmatch(r"-o(.*)|--output(?:=(.*))?", w)] if m]
+    ops = [w for i, w in enumerate(words) if i and i not in refs and (w == "-" or not w.startswith("-"))]  # `-` is an operand: the input
+    if head == "xxd":  # a hex dump reads its first file; a second names its output
+        return [w for w in ops[1:2] if w != "-"]
     if head == "uniq":  # its second operand is its output; the value of -f, -s or -w is no operand
-        return [w for i, w in enumerate(words) if i and not w.startswith("-") and not re.fullmatch(r"-[fsw]|--(?:skip-fields|skip-chars|check-chars)", words[i - 1])][1:2]
+        return [w for i, w in enumerate(words) if i and (w == "-" or not w.startswith("-")) and not re.fullmatch(
+            r"-[fsw]|--(?:skip-fields|skip-chars|check-chars)", words[i - 1])][1:2]
     if head in AWKS:  # a reader, unless its program redirects or runs a command, or it edits in place
         return [out for w in rest for out in _awk_writes(w)] + (rest if "inplace" in words else [])  # `-F|` is an option, not a pipe
     if head in PACKERS:  # to its output, or only listed or tested, a file is read
-        return [] if any(re.fullmatch(r"-\w*[clt]\w*|--(?:stdout|to-stdout|list|test)", w) for w in words[1:]) else rest + all_of(rest)
+        return [] if any(re.fullmatch(r"-\w*[clt]\w*|--(?:stdout|to-stdout|list|test)", w) for w in words[1:]) else rest + all_of(rest, OVER)
     if head in ("sed", "perl"):  # its files, not its script: the word after -e or -f, or attached to one, else the first operand
         if not any(IN_PLACE.fullmatch(w) for w in words[1:]):
             return []
@@ -1774,21 +1875,26 @@ def _landing(words: list[str]) -> list[str]:
     if head == "find":  # it changes what it finds when told to delete, to write a list, or to run a command that does
         roots, runs = _find(words)
         lists = [words[i + 1] for i, w in enumerate(words[:-1]) if w.startswith(("-fprint", "-fls"))]  # the list it writes is that file
-        return lists + (roots + all_of(roots) if "-delete" in words or any(map(_changes, runs)) else [])
+        return lists + (roots + all_of(roots, OVER) if "-delete" in words or any(_changes(run) for run, _ in runs) else [])
     if head not in COPIERS or (head == "install" and any(re.fullmatch(r"-\w*d\w*|--directory", w) for w in words)):
-        return rest + all_of(rest) * (head in ("rm", "chmod", "chown", "chgrp")) if head in WRITERS else []
+        return rest + all_of(rest, GONE if head == "rm" else OVER) * (head in ("rm", "chmod", "chown", "chgrp")) if head in WRITERS else []
     given = [(INTO.fullmatch(w), i) for i, w in enumerate(words)] if head != "rsync" else []
     into = [m[1] or m[2] or "".join(words[i + 1:i + 2]) for m, i in given if m] or rest[-1:]
     lands = into + [os.path.join(d, os.path.basename(s.rstrip("/"))) for d in into for s in rest if s not in into]
     if head == "mv" or "--remove-source-files" in words:  # these also take their sources away
         return rest + lands + all_of([s for s in rest if s not in into])
-    return lands + all_of(into) * (head in ("cp", "rsync", "ditto"))  # a tree copied over a folder lands in the folders it holds
+    return lands + all_of(into, OVER) * (head in ("cp", "rsync", "ditto"))  # a tree copied over a folder lands in the folders it holds
 
 
-def _find(words: list[str]) -> tuple[list[str], list[list[str]]]:
-    """(the folders a `find` searches, which come before its expression; each command it runs with -exec or -ok)."""
-    runs = [list(itertools.takewhile(lambda w: w not in (";", "+"), words[i + 1:])) for i, w in enumerate(words) if w.startswith(("-exec", "-ok"))]
-    roots = list(itertools.takewhile(lambda w: not w.startswith(("-", "(", "!")), itertools.dropwhile(lambda w: re.fullmatch(r"-[HLPEXdsx]+", w), words[1:])))
+def _find(words: list[str]) -> tuple[list[str], list[tuple[list[str], bool]]]:
+    """(the folders a `find` searches: its operands before the expression, and BSD's `-f <folder>`; each command it
+    runs with -exec or -ok, and whether it runs it in the folder of what it found, as -execdir and -okdir do)."""
+    runs = [(list(itertools.takewhile(lambda w: w not in (";", "+"), words[i + 1:])), w.endswith("dir"))
+            for i, w in enumerate(words) if w.startswith(("-exec", "-ok"))]
+    at, roots = 1, []
+    while at < len(words) and (re.fullmatch(r"-[HLPEXdsx]+|-f", words[at]) or not words[at].startswith(("-", "(", "!"))):
+        roots += [words[at]] * (not words[at].startswith("-"))
+        at += 1
     return roots or ["."], runs
 
 
@@ -1826,19 +1932,15 @@ def _awk_writes(program: str) -> list[str]:
     return outs
 
 
-def _string_writes(command: str, handed: bool = True) -> list[str]:
+def _string_writes(command: str) -> list[str]:
     """The files a command given as a plain string writes: its redirects and what its utilities change, each from
-    the folder the string's own `cd` leaves it in, and what it hands a program not known to only read it. With
-    `handed` off the string is one word of a command the guard does not know (`watch`, `ssh`, `osascript`), which
-    may run it: only what it would plainly write counts, in it or in a quoted word of it, so a message that
-    mentions a folder is not held."""
+    the folder the string's own `cd` leaves it in, and what it hands a program not known to only read it."""
     writes: list = []
     try:
         found = _commands(command.replace('\\"', '"'), "", writes=writes)
     except (Unreadable, StopIteration, IndexError, RecursionError):
         return ["$"]
-    return [os.path.join(w, t) for t, w in writes] + [os.path.join(here, w) for words, here in found for w in _landing(words) + (
-        _named(words) if handed else [x for word in words[1:] if " " in word for x in _string_writes(word, False)])]
+    return [os.path.join(w, t) for t, w in writes] + [os.path.join(here, w) for words, here in found for w in _landing(words) + _named(words)]
 
 
 def _named(words: list[str]) -> list[str]:
@@ -1849,8 +1951,10 @@ def _named(words: list[str]) -> list[str]:
     head = os.path.basename(words[0])
     if "/" in words[0] or head in READERS or head in WRITERS or head in OWN_RULES or head in SHELLS or SCRIPT.match(head):
         return []  # a program run by its path is a script the guard cannot read, like one run by its shell
-    return [part for w in words[1:] for part in {w, w.split("=", 1)[-1], "".join(re.findall(r"^-[^~/]*([~/].*)", w)) or w,
-                                                 *(_string_writes(w, False) if " " in w else ())}]  # and what a word writes if the program runs it
+    inner = [path for w in words[1:] for path in re.findall(r"[~/][\w./~+@%-]*", w)] if head in OPAQUE else []  # each path its program names
+    told = [w for at, w in enumerate(words) if at and not (w.startswith("-") and MESSAGE.fullmatch(w.split("=", 1)[0]))
+            and not MESSAGE.fullmatch(words[at - 1])]  # --body=TEXT and --body TEXT are words for a reader
+    return [part for w in told for part in {w, w.split("=", 1)[-1], "".join(re.findall(r"^-[^~/]*([~/].*)", w)) or w}] + inner
 
 
 def _changes(run: list[str]) -> bool:
@@ -1994,10 +2098,30 @@ OPENERS = ("builtins", "io", "codecs", "gzip", "bz2", "lzma", "tarfile", "zipfil
 COPIES = ("copy", "copy2", "copyfile", "copytree", "copymode", "copystat", "copyfileobj")  # shutil's: only the second place changes
 PATH_WRITES = ("write_text", "write_bytes", "touch", "mkdir", "rmdir", "unlink", "chmod", "lchmod", "truncate")
 LINKS = ("symlink_to", "hardlink_to", "link_to", "symlink", "link")  # pathlib's and os's: a link made at a path that is the agent's own is still a link
-MUTATORS = ("append", "extend", "insert", "add", "update", "setdefault", "appendleft", "extendleft", "put")
+MUTATORS = ("append", "extend", "insert", "add", "update", "setdefault", "appendleft", "extendleft", "put", "put_nowait", "add_argument", "set_defaults")
 CONTENT = ("open", "read", "readline", "readlines", "read_text", "read_bytes")  # hand back what a file holds, not where it is
 ARG_READERS = {"argparse", "optparse", "getopt", "fileinput", "click", "typer", "fire", "docopt"}  # take the arguments unseen
 WALKS = ("walk", "fwalk", "glob", "iglob", "rglob")  # hand back what lies under a folder, or what a pattern names
+LIBRARY_WRITES = ("basicConfig", "FileHandler", "RotatingFileHandler", "TimedRotatingFileHandler", "WatchedFileHandler", "urlretrieve",
+                  "NamedTemporaryFile", "TemporaryFile", "SpooledTemporaryFile", "TemporaryDirectory", "mkstemp", "mkdtemp")
+# A writer by its name, in any library, and where it takes its path: first (`df.to_csv`, `arr.tofile`, `savefig`,
+# a thing's own `save`, numpy's), second (`dump`, and `save` in the libraries that take the thing first), either
+# when the reader cannot tell (`to_<anything else>`, `write_<anything else>`, another module's `save(a, b)`); and,
+# as a module's own function only, a deletion or a move (`send2trash`), since a list has a `remove` of its own.
+# PATH_KEYS: the keywords such writers take a path under.
+BY_NAME = re.compile(r"(to_(?:csv|json|excel|parquet|pickle|feather|hdf|stata|html|latex|xml|markdown|orc|string|file|netcdf|zarr|disk)|tofile|writeto|savefig|imsave|imwrite"
+                     r"|mimsave|mimwrite|dump_stats|write_(?:csv|json|parquet|excel|ipc|ndjson|avro|image|html|videofile|audiofile|gif|png|pdf|svg))"
+                     r"|(to_[a-z_]+|write_\w+)|(save\w*)|(dump)|((?:remove|delete|unlink|trash|send2trash|rmtree|move|rename|extract|unpack|truncate)\w*)")
+OBJECT_FIRST = {"torch", "joblib", "pickle", "dill", "cloudpickle", "nibabel", "torchvision", "tensorflow", "keras", "pandas", "pyarrow", "networkx"}  # save(what, where)
+PATH_FIRST = {"numpy", "cv2", "imageio", "scipy", "skimage", "matplotlib", "tifffile", "PIL"}  # save(where, what)
+OPENED = re.compile(r"\w*(?:File|Store|Writer)|Dataset|open_\w+|memmap|get_writer")  # a library's own way to open a file: h5py.File(path, "w"), ExcelWriter(path)
+STRINGS = ("join", "joinpath", "Path", "PurePath", "PosixPath", "str", "fspath", "expanduser", "expandvars", "abspath", "realpath", "normpath", "resolve", "absolute",
+           "with_suffix", "with_name", "with_stem", "format", "replace", "dirname", "basename", "getcwd", "cwd", "home", "mkdtemp", "mktemp", "gettempdir", "strip",
+           "rstrip", "lstrip", "lower", "upper", "removesuffix", "removeprefix", "relative_to", "relpath", "getenv")  # hand back a string or a path
+FOREIGN = ("open", "Path", "str", "StringIO", "BytesIO", "ZipFile", "TarFile", "NamedTemporaryFile", "TemporaryFile", "Popen", "popen", "connect", "cursor",
+           "getLogger", "ArgumentParser", "writer", "reader", "DictWriter", "DictReader", "fdopen", "urlopen", "GzipFile", "TextIOWrapper", "compile")  # make no object of the program's own
+PATH_KEYS = ("path", "filepath", "file_path", "filename", "file", "fname", "fp", "f", "where", "dest", "dst", "target", "output", "out", "out_file",
+             "outfile", "path_or_buf", "buf", "excel_writer", "uri", "save_path", "output_path")
 STARTS = ("system", "popen", "create_subprocess_exec", "create_subprocess_shell", "spawn")  # os's, asyncio's and pty's ways to start a command
 PLACED = ("args", "shell", "cwd", "env", "input", "executable", "stdin", "stdout", "stderr")  # what a started command is given that the reader places or judges
 
@@ -2019,12 +2143,57 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
     `where` is the folder it runs in, and inside a protected folder, or after a chdir into one, every write must
     be led by a plain folder elsewhere."""
     import ast
+    import copy
     try:
         tree = ast.parse(source) if source.strip() else None
     except (SyntaxError, ValueError, RecursionError):
         tree = None
     if tree is None:
         return None, None
+
+    def nodes_of(body):  # the nodes of some statements, down to each function written in them: its defaults and decorators are read where it is written
+        todo = list(body)
+        while todo:
+            n = todo.pop()
+            yield n
+            todo += (getattr(n, "decorator_list", []) + n.args.defaults + [d for d in n.args.kw_defaults if d is not None]
+                     if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)) else ast.iter_child_nodes(n))
+
+    def scope(body: list, outer: dict, func=None) -> None:
+        """Each function's own names get a name no other function shares (`path@…`), so two functions that both
+        call what they are handed `path` are read apart; a name it only reads is the enclosing function's or the
+        program's, as Python reads it."""
+        own = list(nodes_of(body))
+        params = [a for a in func.args.posonlyargs + func.args.args + func.args.kwonlyargs + [func.args.vararg, func.args.kwarg] if a] if func else []
+        mine = ({a.arg for a in params} | {n.id for n in own if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Store)}) - {"self", "cls"} - {
+            x for n in own if isinstance(n, (ast.Global, ast.Nonlocal)) for x in n.names} if func else set()
+        names = {**outer, **{x: x for n in own if isinstance(n, ast.Global) for x in n.names}, **{name: f"{name}@{id(func)}" for name in mine}}
+        for n in params + own:
+            if isinstance(n, ast.arg):
+                n.arg = names.get(n.arg, n.arg)
+            elif isinstance(n, ast.Name):
+                n.id = names.get(n.id, n.id)
+        for f in [n for n in own if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda))]:
+            scope(f.body if isinstance(f.body, list) else [f.body], names, f)
+    whole_tree, count = list(ast.walk(tree)), {}
+    for n in whole_tree:
+        name = n.id if isinstance(n, ast.Name) and not isinstance(n.ctx, ast.Load) else getattr(n, "arg", None) if isinstance(n, ast.arg) else None
+        count[name] = count.get(name, 0) + 1
+    only_read = {id(x.value) for c in whole_tree if isinstance(c, ast.Call) for x in c.keywords + c.args if getattr(x, "arg", 0) is None or isinstance(x, ast.Starred)} | {
+        id(n.value) for n in whole_tree if isinstance(n, ast.Subscript) and isinstance(n.ctx, ast.Load)}
+    spelt_once = {s.targets[0].id: s.value for s in whole_tree if isinstance(s, ast.Assign) and len(s.targets) == 1 and isinstance(s.targets[0], ast.Name)
+             and count.get(s.targets[0].id) == 1 and (all(isinstance(k, ast.Constant) and isinstance(k.value, str) for k in s.value.keys) if isinstance(s.value, ast.Dict)
+                                                      else isinstance(s.value, (ast.List, ast.Tuple)) and not any(isinstance(e, ast.Starred) for e in s.value.elts))}
+    spelt_once = {name: v for name, v in spelt_once.items() if all(id(n) in only_read for n in whole_tree if isinstance(n, ast.Name) and n.id == name and isinstance(n.ctx, ast.Load))}
+
+    def one(name, key):  # one entry of a table or a row the program spells out once and only reads
+        return ast.Subscript(value=ast.Name(id=name, ctx=ast.Load()), slice=ast.Constant(value=key), ctx=ast.Load())
+    for c in [c for c in whole_tree if isinstance(c, ast.Call)]:  # f(**table) and f(*row) of such a one: as if each entry were written out
+        c.keywords = [x for k in c.keywords for x in ([ast.keyword(arg=key.value, value=one(k.value.id, key.value)) for key in spelt_once[k.value.id].keys]
+                                                     if k.arg is None and isinstance(spelt_once.get(getattr(k.value, "id", None)), ast.Dict) else [k])]
+        c.args = [x for a in c.args for x in ([one(a.value.id, i) for i in range(len(spelt_once[a.value.id].elts))]
+                                             if isinstance(a, ast.Starred) and isinstance(spelt_once.get(getattr(a.value, "id", None)), (ast.List, ast.Tuple)) else [a])]
+    scope(tree.body, {})
     nodes = list(ast.walk(tree))
 
     def said(node):  # the text of a string, None for anything else
@@ -2066,7 +2235,8 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
         elif isinstance(target, ast.Name) and imported(value):
             modules[target.id] = imported(value)
     stored = [n.id for n in nodes if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Store)] + [n.arg for n in nodes if isinstance(n, ast.arg)]
-    once = {name for name, same in itertools.groupby(sorted(stored)) if len(list(same)) == 1}  # names given a value exactly once
+    total = {name: len(list(same)) for name, same in itertools.groupby(sorted(stored))}
+    once = {name for name, count in total.items() if count == 1}  # names given a value exactly once
     calls = [n for n in nodes if isinstance(n, ast.Call)]
     given_once = {t.id: v for t, v in pairs if isinstance(t, ast.Name) and t.id in once}  # what a name given one value once was given
     # The words after the program are its arguments, and `sys.argv[2]` is the second of them. Taken another way (a
@@ -2086,16 +2256,24 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
     # os.getenv("X")) has the value the command gives it, when that value is plain. Read any other way, a variable
     # that carries a protected path makes any write a refusal (30 days: a program that read the time from one
     # variable was refused for a transcript's path in another).
-    env, keyed = env or {}, set()
+    env, keyed, env_given = env or {}, set(), {}
+
+    def home(path: str) -> str:  # `~` as the program's own HOME gives it, else the command's, else the hook's
+        mine = ([spelled(v) for k, v in mapped.get("environ", ()) if k == "HOME"] or [env.get("HOME", "")])[-1]
+        return mine + path[1:] if mine and not re.search(r"[$`]", mine) and (path == "~" or path[:2] == "~/") else os.path.expanduser(path)
     for n in nodes:
-        holder = n.value if isinstance(n, ast.Subscript) else n.func.value if isinstance(n, ast.Call) and getattr(n.func, "attr", "") == "get" else None
+        holder = n.value if isinstance(n, ast.Subscript) else n.func.value if isinstance(n, ast.Call) and getattr(n.func, "attr", "") in ("get", "setdefault", "pop") else None
         key = said(n.slice) if isinstance(n, ast.Subscript) else said(n.args[0]) if isinstance(n, ast.Call) and n.args else None
         if key is not None and (getattr(holder, "attr", getattr(holder, "id", "")) == "environ" or (
                 holder is None and isinstance(n, ast.Call) and getattr(n.func, "attr", getattr(n.func, "id", "")) == "getenv")):
             keyed.add(id(holder if holder is not None else n.func))
             if key in env and not re.search(r"[$`]", env[key]):
-                given[id(n)] = env[key]
-    wild = any(getattr(n, "attr", getattr(n, "id", "")) in ("environ", "environb", "getenv", "putenv") and id(n) not in keyed for n in nodes)
+                env_given[id(n)] = env[key]  # what the command gave it; the program may give it another value before it reads it
+    keyed |= {id(x) for n in nodes if isinstance(n, ast.Call) for x in n.args[:getattr(n.func, "id", "") == "dict"] + [k.value for k in n.keywords if k.arg == "env"] + [
+        getattr(n.func, "value", None)] * (getattr(n.func, "attr", "") == "copy")} | {id(v) for n in nodes if isinstance(n, ast.Dict) for k, v in zip(n.keys, n.values) if k is None}
+    keyed |= {id(n.func.value) for n in nodes if isinstance(n, ast.Call) and getattr(n.func, "attr", "") == "update"} | {id(v) for t, v in pairs if isinstance(t, ast.Name) and getattr(v, "attr", getattr(v, "id", "")) == "environ"} | {
+        id(c) for n in nodes if isinstance(n, ast.Compare) and any(isinstance(o, (ast.In, ast.NotIn)) for o in n.ops) for c in n.comparators}  # given a value, kept under a name, asked for a name: each read as the table it is
+    wild = any(getattr(n, "attr", getattr(n, "id", "")) in ("environ", "environb", "getenv", "putenv") and id(n) not in keyed for n in nodes)  # copied whole for a child, it is read through the copy
     loose = loose or (wild and (any(m in v for v in env.values() for m in names) or any(
         v[:1] == "/" and paths.inside(v, r) for v in env.values() for r in roots)))
 
@@ -2117,23 +2295,65 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
         method = isinstance(n.func, ast.Attribute) and not (isinstance(n.func.value, ast.Name) and n.func.value.id in modules)
         top = spelled(n.func.value) if method else spelled((n.args[:1] or [n])[0])
         top = os.path.join(top, said(n.args[0]) or "\0") if method and label == "glob" and n.args else top
-        top = os.path.join(where, os.path.expanduser(top)).replace("\0", "*")
-        return os.path.isabs(top) and any(_reaches(top, r, label in ("walk", "fwalk", "rglob"), method) for r in folders_held)
+        top = os.path.join(*[spelled(k.value) for k in n.keywords if k.arg == "root_dir"], top)  # glob's root_dir leads its pattern
+        top = home(top[top.rfind("\1") + 1:]).replace("\0", "*")
+        return any(_reaches(os.path.realpath(os.path.join(spot, top)), r, label in ("walk", "fwalk", "rglob"), method)
+                   for spot in ([""] if os.path.isabs(top) else places) if "\0" not in spot for r in folders_held)
 
-    def named(node) -> bool:  # built from a protected path: in a string, in an argument, or through a name or an attribute
-        todo = [node]
+    def rooted(n) -> bool:  # what names no folder: a path taken relative to one that holds it, one part of a path, a path flattened, a digest
+        label = getattr(getattr(n, "func", None), "attr", getattr(getattr(n, "func", None), "id", ""))
+
+        def slashed(call) -> bool:  # its first argument is the slash
+            return isinstance(call, ast.Call) and bool(call.args) and (said(call.args[0]) == "/" or getattr(call.args[0], "attr", "") == "sep")
+        if isinstance(n, ast.Subscript):  # one part of a path, counted from its end: p.parts[-1], path.split("/")[-2]
+            parts = getattr(n.value, "attr", "") == "parts" or (getattr(getattr(n.value, "func", None), "attr", "") in ("split", "rsplit") and slashed(n.value))
+            return parts and isinstance(n.slice, ast.UnaryOp) and isinstance(n.slice.op, ast.USub) and isinstance(getattr(n.slice.operand, "value", None), int)
+        if label in ("hexdigest", "len", "hash") or (label == "replace" and slashed(n) and len(n.args) == 2 and "/" not in (said(n.args[1]) or "/")):
+            return True
+        given = n.args + [k.value for k in n.keywords if k.arg == "start"] if isinstance(n, ast.Call) else []
+        if label not in ("relative_to", "relpath") or len(given) != 1 + (label == "relpath") or len(given) - len(n.args) != len(n.keywords):
+            return False
+        if label == "relative_to":
+            return True  # it raises unless the path lies under that folder
+        path, start = (home(spelled(a)) for a in given)
+        if re.search("[\0\1]", start) or not os.path.isabs(start) or "\1" in path:
+            return False
+        if "\0" not in path:  # spelled out: it must not climb
+            return os.path.isabs(path) and ".." not in os.path.relpath(path, start).split(os.sep)
+        return any(paths.inside(os.path.realpath(start), r) or paths.inside(r, os.path.realpath(start)) for r in roots)
+
+    def named(node, apart=()) -> bool:  # built from a protected path: in a string, in an argument, or through a name or an attribute
+        todo, met = [node], set()
         while todo:
             n = todo.pop()
+            if isinstance(n, ast.Name) and n.id in apart:
+                continue  # what a walk found from where the program stands: after a folder elsewhere it only goes further in
+            held_ = members(n) if is_member(n) else [(None, ())]
+            if all(v is not None for v, _ in held_):  # a member of something the program makes: built from what that member holds, not from all the thing holds
+                if any(isinstance(v, str) and any(m in v for m in names) for v, _ in held_):
+                    return True
+                todo += [v for v, _ in held_ if isinstance(v, ast.AST)] if id(n) not in met else []  # once: a member may hold what is built from itself
+                met.add(id(n))
+                continue
             if isinstance(n, ast.Call) and getattr(n.func, "attr", getattr(n.func, "id", "")) in WALKS and over(n):
                 return True  # what it finds under a folder that holds a protected one may lie in that one
             if isinstance(n, ast.Attribute) and n.attr == "name" and (opened(n.value) or "name of " + getattr(n.value, "id", "") in tainted):
                 return True
-            field = isinstance(n, ast.Attribute) and not (isinstance(n.value, ast.Name) and n.value.id in modules) and (
-                "." + n.attr in tainted or (n.attr in tainted and n.attr in classed))
-            if field or (isinstance(n, ast.Name) and n.id in tainted) or any(m in (said(n) or given.get(id(n), "")) for m in names):
+            field = (isinstance(n, ast.Attribute) and not (isinstance(n.value, ast.Name) and n.value.id in modules) and (
+                "." + n.attr in tainted or (n.attr in tainted and n.attr in classed))) or (".environ" in tainted and (
+                getattr(n, "attr", "") == "environ" or getattr(getattr(n, "func", None), "attr", getattr(getattr(n, "func", None), "id", "")) == "getenv"))
+            if field or (isinstance(n, ast.Name) and n.id in tainted) or any(m in (said(n) or given.get(id(n)) or env_given.get(id(n), "")) for m in names):
                 return True
+            own_ = asked(n)[1] if isinstance(n, ast.Call) and (key_of(n) or "")[:3] == "()@" else None
+            if own_ is not None and id(own_) in bodies:  # the program's own function: built from what it hands back, not from what it is handed or all its object holds
+                if bodies[id(own_)].name in tainted:
+                    return True
+                continue
+            if isinstance(n, (ast.ListComp, ast.SetComp, ast.GeneratorExp, ast.DictComp)):
+                todo += [n.key, n.value] if isinstance(n, ast.DictComp) else [n.elt]  # what a comprehension makes: built from what it makes each one of
+                continue
             leaf = (isinstance(n, ast.Attribute) and n.attr in ("name", "stem", "suffix")) or (
-                isinstance(n, ast.Call) and getattr(n.func, "attr", getattr(n.func, "id", "")) == "basename")
+                isinstance(n, ast.Call) and getattr(n.func, "attr", getattr(n.func, "id", "")) == "basename") or rooted(n)
             if not leaf and not (isinstance(n, ast.Call) and getattr(n.func, "attr", getattr(n.func, "id", "")) in CONTENT):
                 todo += ast.iter_child_nodes(n)  # what a file holds is not where it is, and the last part of a path names no folder
         return False
@@ -2142,26 +2362,70 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
         label = getattr(getattr(node, "func", None), "attr", getattr(getattr(node, "func", None), "id", ""))
         if id(node) in given or said(node) is not None:
             return given.get(id(node), said(node))
+        if id(node) in picked:
+            return picked[id(node)]  # one side of `a if c else b` or `a or b`, what this call of the program's own function hands back, one value a member holds
+        if is_member(node):
+            found = read_as(node)
+            return found[0] if len(found) == 1 else "\0"
+        key = key_of(node)
+        if key is not None and (key in picked or len(ranges.get(key, ())) == 1):
+            return picked[key] if key in picked else ranges[key][0]  # the one value it holds, or the one this reading takes
         if isinstance(node, ast.Name):
             return bound.get(node.id, "\0")
+        if isinstance(node, ast.Attribute) and node.attr == "path" and getattr(node.value, "id", None) in finds:
+            return spelled(node.value)  # what os.scandir found: its path
+        if label == "home" and isinstance(node, ast.Call) and not node.args:
+            return "~"  # Path.home()
         if isinstance(node, ast.Attribute) and node.attr == "name" and getattr(node.value, "id", "") in files:
             return files[node.value.id]  # the name of a file it opened is the path it opened
+        if (isinstance(node, ast.Attribute) and node.attr == "parent") or (label == "dirname" and len(node.args) == 1 and not node.keywords):
+            whole = spelled(node.value if isinstance(node, ast.Attribute) else node.args[0])  # the folder of a path it spells
+            return whole if "\0" in whole else os.path.dirname(whole) or whole[:whole.rfind("\1") + 1] + "."
         if isinstance(node, ast.Attribute) and node.attr == "executable" and modules.get(getattr(node.value, "id", "")) == "sys":
             return "python3"  # sys.executable: the interpreter the program itself runs under
         if isinstance(node, ast.JoinedStr):
             return "".join(spelled(v.value if isinstance(v, ast.FormattedValue) else v) for v in node.values)
         if isinstance(node, ast.BinOp) and isinstance(node.op, (ast.Add, ast.Div)):
             return spelled(node.left) + "/" * isinstance(node.op, ast.Div) + spelled(node.right)
-        if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Mod) and said(node.left) is not None:  # "line-%d.txt" % i
-            return re.sub(r"%(?:\(\w*\))?[-#0 +]*\d*(?:\.\d+)?[a-zA-Z]", "\0", said(node.left))
-        if label == "format" and isinstance(node.func, ast.Attribute) and said(node.func.value) is not None:  # "line-{}.txt".format(i)
-            return re.sub(r"\{[^{}]*\}", "\0", said(node.func.value))
+        shape = node.left if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Mod) else node.func.value if label == "format" and isinstance(node.func, ast.Attribute) else None
+        shape = None if shape is None else said(shape) if said(shape) is not None else spelled(shape)  # the template itself, or the one a name holds
+        if isinstance(node, ast.BinOp) and shape is not None and not re.search("[\0\1\2]", shape):  # "%s/line-%d.txt" % (folder, i): each filled in its turn
+            filled = iter(node.right.elts if isinstance(node.right, ast.Tuple) else [node.right])
+            return re.sub(r"%(?:\(\w*\))?[-#0 +]*\d*(?:\.\d+)?[a-zA-Z%]", lambda m: "%" if m[0] == "%%" else (
+                lambda a: spelled(a) if a is not None and m[0] == "%s" else "\0")(next(filled, None)), shape)
+        if label == "format" and shape is not None and not re.search("[\0\1\2]", shape):  # "{}/line-{:03d}.txt".format(folder, i)
+            filled, worded = iter(node.args), {k.arg: k.value for k in node.keywords}
+
+            def fill(m):
+                name = re.split(r"[!:.\[]", m[1], 1)[0]
+                a = next(filled, None) if not name else node.args[int(name)] if name.isdigit() and int(name) < len(node.args) else worded.get(name)
+                return spelled(a) if a is not None and not isinstance(a, ast.Starred) else "\0"
+            return re.sub(r"\{([^{}]*)\}", fill, shape.replace("{{", "\3").replace("}}", "\4")).replace("\3", "{").replace("\4", "}")
+        if label == "join" and isinstance(node.func, ast.Attribute) and len(node.args) == 1 and isinstance(node.args[0], (ast.List, ast.Tuple)) and (
+                said(node.func.value) is not None or getattr(node.func.value, "attr", "") == "sep"):  # "/".join([folder, name])
+            return (said(node.func.value) if said(node.func.value) is not None else "/").join(spelled(e) for e in node.args[0].elts)
+        if label in ("mkdtemp", "TemporaryDirectory", "gettempdir") and len(node.args) < 3 and "dir" not in [k.arg for k in node.keywords]:
+            return os.path.join("/tmp", "tmp.made")  # a fresh folder of its own, or the folder they are made in: somewhere else
         if isinstance(node, ast.Call) and not node.keywords:
             parts = [spelled(a) for a in node.args]
             if label in ("join", "joinpath", "Path", "PurePath", "PosixPath") and parts:
                 return os.path.join(*([spelled(node.func.value)] if label == "joinpath" else []), *parts)
             if label in ("str", "fspath", "expanduser", "abspath", "realpath", "normpath", "resolve", "absolute", "encode") and len(parts) <= 1:
-                return parts[0] if parts else spelled(node.func.value) if isinstance(node.func, ast.Attribute) else "\0"
+                whole = parts[0] if parts else spelled(node.func.value) if isinstance(node.func, ast.Attribute) else "\0"
+                if label == "expanduser" and whole[:1] == "~" and id(node) in homes:
+                    whole = spelled(homes[id(node)]) + whole[1:]  # the home it has where it asks
+                made = label in ("abspath", "realpath", "resolve", "absolute") and whole[:1] not in ("/", "~", "\0", "\1")
+                return f"\1{id(node)}\1" * made + whole  # a relative path made whole is whole from where the program stood at this call
+            if label in ("getcwd", "cwd") and not parts:
+                return f"\1{id(node)}\1."
+            if label in ("relative_to", "relpath") and rooted(node):  # spelled out at both ends, it is that relative path
+                ends = [home(x) for x in ([spelled(node.func.value)] if label == "relative_to" else parts[:1]) + parts[-1:]]
+                if all(os.path.isabs(x) and not re.search("[\0\1]", x) for x in ends):
+                    return os.path.relpath(*ends)
+            if label in ("with_suffix", "with_name", "with_stem") and isinstance(node.func, ast.Attribute) and len(parts) == 1:
+                folder, name = os.path.split(spelled(node.func.value))
+                stem, suffix = os.path.splitext(name)
+                return os.path.join(folder, parts[0] if label == "with_name" else stem + parts[0] if label == "with_suffix" else parts[0] + suffix)
         return "\0"
 
     def taint(found) -> bool:
@@ -2170,158 +2434,77 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
         return bool(new)
 
     def held(target) -> set:  # what a binding gives a value to: a name, an attribute (as ".attr"), the holder of a key
-        return ({target.id} if isinstance(target, ast.Name) else {"." + target.attr} if isinstance(target, ast.Attribute)
+        return ({target.id} if isinstance(target, ast.Name)
+                else {"." + target.attr} | (held(target.value) if target.attr == "__dict__" else set()) if isinstance(target, ast.Attribute)
                 else held(target.value) if isinstance(target, (ast.Subscript, ast.Starred))
-                else {x for e in getattr(target, "elts", []) for x in held(e)})
-    classed = {x for c in nodes if isinstance(c, ast.ClassDef) for b in c.body for t in getattr(b, "targets", [getattr(b, "target", None)])
-               if t is not None for x in held(t)}  # a name given in a class body is read as an attribute
-    rows = {t.id: v.elts for t, v in pairs if isinstance(t, ast.Name) and t.id in once and isinstance(v, (ast.List, ast.Tuple))}
-    for holder in [n.func.value for n in calls if getattr(n.func, "attr", "") in MUTATORS] + [getattr(t, "value", None) for t, _ in pairs]:
-        rows.pop(getattr(holder, "id", ""), None)  # a list that gains a row later is not the list as written
-    plainly = [n for n in calls if isinstance(n.func, ast.Name) and len(local.get(n.func.id, ())) == 1
+                else {x for e in getattr(target, "elts", getattr(target, "args", [])) for x in held(e)})  # obj.__dict__["k"] and vars(obj)["k"] give to obj
+    classes = {c.name: c for c in nodes if isinstance(c, ast.ClassDef)}
+    classed = {x for c in classes.values() for b in c.body for t in getattr(b, "targets", [getattr(b, "target", None)])
+               if t is not None for x in held(t)} | {b.name for c in classes.values() for b in c.body if isinstance(
+                   b, (ast.FunctionDef, ast.AsyncFunctionDef))}  # a name given in a class body is read as an attribute, a property too
+
+    def lineage(name, seen: tuple = ()) -> list:  # a class of the program's own, then each it inherits from, nearest first
+        return [name] + [x for b in classes[name].bases for x in lineage(getattr(b, "id", ""), seen + (name,))] if name in classes and name not in seen else []
+    inits = {name: next((f.args for k in lineage(name) for f in classes[k].body if isinstance(f, ast.FunctionDef) and f.name == "__init__"), None)
+             for name in classes}  # the __init__ that builds each: its own, or the one it inherits
+    defs = [f for f in nodes if isinstance(f, (ast.FunctionDef, ast.AsyncFunctionDef))]
+    bodies, inside = {id(f.args): f for f in defs}, {id(n): f for f in defs for n in nodes_of(f.body)}  # each function by its arguments; the function each node is written in
+    of_class = {id(f): c.name for c in classes.values() for f in c.body if isinstance(f, (ast.FunctionDef, ast.AsyncFunctionDef))}
+    kin = {name: {name} for name in classes}  # the classes one inherits from or is inherited by: an object of one may be handled as any
+    for name in classes:
+        group = set().union(*(kin[k] for k in lineage(name)))
+        kin.update(dict.fromkeys(group, group))
+    grown = {id(n.value): n.op for n in nodes if isinstance(n, ast.AugAssign)}  # `out += x` gives out + x
+    withs = [(w.optional_vars, w.context_expr) for w in nodes if isinstance(w, ast.withitem) and w.optional_vars is not None]
+    once_value = {**given_once, **{t.id: v for t, v in withs if isinstance(t, ast.Name) and t.id in once}}
+    methods = {id(b.args) for c in classes.values() for b in c.body if isinstance(b, (ast.FunctionDef, ast.AsyncFunctionDef))}
+    mutated = {getattr(kept, "id", "") for kept in [n.func.value for n in calls if getattr(n.func, "attr", "") in MUTATORS] + [
+        getattr(t, "value", None) for t, _ in pairs]}  # a list that gains a row later is not the list as written
+    rows = {t.id: v.elts for t, v in pairs if isinstance(t, ast.Name) and t.id in once - mutated and isinstance(v, (ast.List, ast.Tuple))}
+    def asked(c) -> tuple:  # (the name, the arguments) of the program's own function a call reaches: f(...), obj.method(...), a class of its own
+        method = isinstance(c.func, ast.Attribute) and not (isinstance(c.func.value, ast.Name) and c.func.value.id in modules)
+        name = c.func.id if isinstance(c.func, ast.Name) else c.func.attr if method else None
+        home, on = of_class.get(id(inside.get(id(c)))), once_value.get(getattr(getattr(c.func, "value", None), "id", ""), getattr(c.func, "value", None))
+        if home and (name == "cls" or (name == "__init__" and getattr(getattr(on, "func", None), "id", "") == "super")):
+            name = home if name == "cls" else (lineage(home)[1:] or [None])[0]  # cls(...) builds the class it is written in; super().__init__(...) runs its base's
+        elif method and (isinstance(on, (ast.Constant, ast.JoinedStr, ast.BinOp, ast.List, ast.Tuple, ast.Dict, ast.Set)) or (
+                isinstance(on, ast.Attribute) and getattr(on.value, "id", "") in modules) or getattr(getattr(on, "func", None), "attr", getattr(
+                    getattr(on, "func", None), "id", "")) in FOREIGN):
+            return None, None  # called on a file it opened, a string, a list, sys.stdout: no object of the program's own
+        own = inits[name] if name in classes else local[name][0] if name and len(local.get(name, ())) == 1 else None
+        if method and own is None and name not in classes and len(local.get(name, ())) > 1:  # two classes with a method of that name: the one of what it is called on
+            k = home if getattr(on, "id", "") == "self" else getattr(getattr(on, "func", None), "id", "")
+            own = next((f.args for x in lineage(k or "") for f in classes[x].body if getattr(f, "name", "") == name), None)
+        return (name, own) if own is None or name in classes or method == (id(own) in methods) else (None, None)  # f.write(...) is no call of the program's own write()
+    plainly = [n for n in calls if asked(n)[1] is not None
                and not any(isinstance(a, ast.Starred) for a in n.args) and None not in [k.arg for k in n.keywords]]
-    called = {id(c.func) for c in calls}  # a function also handed on, kept under another name or called another way has other callers
-    loose_names = {n.id for n in nodes if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Load) and id(n) not in called} | {
-        c.func.id for c in calls if isinstance(c.func, ast.Name) and c not in plainly}
-    callers = {name: [c for c in plainly if c.func.id == name] for name in {c.func.id for c in plainly} - loose_names}
-    grew = True
-    while grew:
-        grew = False
-        for target, value in pairs + [(n.optional_vars, n.context_expr) for n in nodes if isinstance(n, ast.withitem) and n.optional_vars is not None]:
-            same = opened(value) or "name of " + getattr(value, "id", "") in tainted  # the file itself, or another name for it
-            grew |= isinstance(target, ast.Name) and same and taint(["name of " + target.id])
-            was = files.get(getattr(value, "id", "")) if isinstance(value, ast.Name) else spelled(source(value)) if source(value) is not None else None
-            if isinstance(target, ast.Name) and target.id in once and target.id not in files and was and was[:1] != "\0":
-                files[target.id], grew = was, True
-        for target, value in pairs:
-            grew |= named(value) and taint(held(target))
-            if isinstance(target, ast.Name) and target.id in once and target.id not in bound and spelled(value)[:1] != "\0":
-                bound[target.id], grew = spelled(value), True  # a name given one value once spells what that value spells
-        for name, calls_of in callers.items():  # a helper called in one place spells what that caller hands it
-            own = local[name][0]
-            takers = [a.arg for a in own.posonlyargs + own.args]
-            given_by = dict(zip(takers[len(takers) - len(own.defaults):], own.defaults))  # a default stands where no caller says otherwise
-            given_by.update({a.arg: d for a, d in zip(own.kwonlyargs, own.kw_defaults) if d is not None})
-            for at, taker in enumerate(takers + [a.arg for a in own.kwonlyargs]):
-                sent = [c.args[at] if at < min(len(c.args), len(takers)) else next((k.value for k in c.keywords if k.arg == taker), given_by.get(taker))
-                        for c in calls_of]
-                handed = {spelled(a) if a is not None else "\0" for a in sent if getattr(a, "id", None) != taker}  # its call of itself hands the same on
-                sent_to[taker] = [a for a in sent if a is not None and getattr(a, "id", None) != taker] if taker in once else []
-                if taker in once and taker not in bound and len(handed) == 1 and min(handed)[:1] != "\0":
-                    bound[taker], grew = min(handed), True
-        for n in loops:  # over rows the program spells out, each name takes its own column; over anything else, all of it
-            each = n.iter.elts if isinstance(n.iter, (ast.List, ast.Tuple)) else rows.get(getattr(n.iter, "id", ""))
-            width = len(getattr(n.target, "elts", []))
-            if each is not None and width and all(isinstance(r, (ast.Tuple, ast.List)) and len(r.elts) == width and not any(
-                    isinstance(e, ast.Starred) for e in r.elts + n.target.elts) for r in each):
-                grew |= taint(x for r in each for t, v in zip(n.target.elts, r.elts) if named(v) for x in held(t))
-                for at, t in enumerate(n.target.elts):  # and each name is one of its column's values
-                    column = [spelled(r.elts[at]) for r in each]
-                    if isinstance(t, ast.Name) and t.id in once and ranges.get(t.id) != column:
-                        ranges[t.id], grew = column, True
-            else:  # of what a walk hands back, the folder is a path; the names in it are not
-                walked = isinstance(n.target, ast.Tuple) and getattr(getattr(n.iter, "func", None), "attr", "") in ("walk", "fwalk")
-                grew |= named(n.iter) and taint(held(n.target.elts[0] if walked else n.target))
-                plain = [spelled(r) for r in each or ()]  # a name that walks a list of plain values is one of them
-                if each and isinstance(n.target, ast.Name) and n.target.id in once and ranges.get(n.target.id) != plain:
-                    ranges[n.target.id], grew = plain, True
-        for n in nodes:
-            if isinstance(n, ast.withitem) and n.optional_vars is not None:
-                grew |= named(n.context_expr) and taint(held(n.optional_vars))
-            elif isinstance(n, ast.arguments):  # a default
-                takers, values = n.posonlyargs + n.args + n.kwonlyargs, [None] * (len(n.posonlyargs + n.args) - len(n.defaults)) + n.defaults + n.kw_defaults
-                grew |= taint(a.arg for a, v in zip(takers, values) if v is not None and named(v))
-            elif isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)):  # what the program's own function hands back
-                grew |= any(isinstance(r, (ast.Return, ast.Yield, ast.YieldFrom)) and r.value is not None and named(r.value)
-                            for r in ast.walk(n)) and taint([n.name])
-            elif isinstance(n, ast.Call) and any(named(a) for a in n.args + [k.value for k in n.keywords]):
-                label, root = getattr(n.func, "attr", getattr(n.func, "id", "")), getattr(n.func, "value", None)
-                while isinstance(root, (ast.Attribute, ast.Subscript)):
-                    root = root.value
-                if label in MUTATORS and isinstance(root, ast.Name) and root.id not in modules:  # kept in a list, a set or a dict
-                    grew |= taint([root.id])
-                if label == "setattr" and len(n.args) == 3 and named(n.args[2]):
-                    grew |= taint(held(n.args[0]) | {"." + (said(n.args[1]) or "")})
-                for name in [label] + [a.id for a in n.args if isinstance(a, ast.Name)]:  # handed to the program's own function
-                    for own in local.get(name, ()):
-                        takers = [a.arg for a in own.posonlyargs + own.args]
-                        takers = takers[takers[:1] in (["self"], ["cls"]):]
-                        if name != label or any(isinstance(a, ast.Starred) for a in n.args) or None in [k.arg for k in n.keywords]:
-                            grew |= taint(a.arg for a in ast.walk(own) if isinstance(a, ast.arg))  # through map or *args: any of them
-                            continue
-                        spare, extra = [own.vararg.arg] if own.vararg else [], [own.kwarg.arg] if own.kwarg else []
-                        grew |= taint([x for i, a in enumerate(n.args) if named(a) for x in takers[i:i + 1] or spare] + [
-                            x for k in n.keywords if named(k.value) for x in ([k.arg] if k.arg in takers + [a.arg for a in own.kwonlyargs] else extra)])
-    stand_in = os.path.expanduser(next((m for m in names if m[:1] in ("/", "~")), "".join(names[:1])))  # a protected folder, for one built from it that cannot be spelled
+    mapcalls = [c for c in calls if getattr(c.func, "id", "") == "map" and len(c.args) == 2 and not c.keywords and isinstance(c.args[0], ast.Name)
+                and c.args[0].id not in classes and len(local.get(c.args[0].id, ())) == 1]  # map(f, values): each is handed to f's first name
+    called = {id(c.func) for c in calls} | {id(c.args[0]) for c in mapcalls}  # a function also handed on, kept under another name or called another way has other callers
+    based_on = {id(b) for c in classes.values() for b in c.bases}  # a class named as another's base is not handed on
+    loose_names = {n.id for n in nodes if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Load) and id(n) not in called | based_on} | {
+        asked(c)[0] for c in calls if asked(c)[0] and c not in plainly} | {n.attr for n in nodes if isinstance(n, ast.Attribute) and id(n) not in called} | {
+        c.func.attr for c in calls if isinstance(c.func, ast.Attribute) and len(local.get(c.func.attr, ())) > 1 and asked(c)[1] is None}
+    loose_owns = {id(inits[n]) if n in classes else id(local[n][0]) for n in loose_names if (n in classes and inits[n]) or len(local.get(n, ())) == 1}
+    fixed = {id(f.args) for f in nodes if isinstance(f, (ast.FunctionDef, ast.AsyncFunctionDef)) and f.name not in total and not any(
+        isinstance(t, ast.Attribute) and t.attr == f.name for t, _ in pairs) and all(
+        getattr(d, "id", getattr(d, "attr", "")) in ("staticmethod", "classmethod", "lru_cache", "cache", "cached_property", "property") for d in f.decorator_list)} | {
+        id(v.args) for t, v in pairs if isinstance(t, ast.Name) and isinstance(v, ast.Lambda) and total.get(t.id) == 1}  # still itself: not wrapped, not given another value
+    callers = {}  # each function of the program's own whose every caller is seen: (its arguments, those calls, whether it is a class's __init__)
+    for name, own, call in [(*asked(c), c) for c in plainly] + [(c.args[0].id, local[c.args[0].id][0], None) for c in mapcalls]:
+        if name not in loose_names and id(own) in fixed and id(own) not in loose_owns:  # a base's __init__ is reached under each class's name
+            callers.setdefault(id(own), (own, [], name in classes))[1].extend([call] if call is not None else [])
 
-    def within(spot: str) -> bool:  # a folder the program may stand in lies in a protected one; an end that cannot be read lies under the part that can
-        lead = spot if "\0" not in spot else os.path.dirname(spot.split("\0")[0])
-        return os.path.isabs(lead) and any(paths.inside(os.path.realpath(lead), r) for r in roots)
-
-    def lands(node, folder: bool = False, link: bool = False, at=(where,), whole: bool = False) -> bool:  # whether a write's target is, or may be, in a protected folder
-        return any(leads(path, node, folder, link, at, whole) for path in ranges.get(getattr(node, "id", ""), [spelled(node)]))
-
-    def leads(raw: str, node, folder: bool, link: bool, at, whole: bool) -> bool:  # one spelling of a target, from each folder the call may be made in
-        path = os.path.expanduser(raw)
-        froms = [""] if os.path.isabs(path) else at
-        # A plain path is judged where it leads (one that names a protected folder and climbs away from it is not
-        # plain). Any other target is judged by what it is built from, and inside by the folder that leads it.
-        if "\0" not in path:
-            reals = [os.path.realpath(os.path.join(s, path)) for s in froms if "\0" not in s]
-            inside = [real for real in reals if any(paths.inside(real, r) for r in roots)]
-            if whole and any(_reaches(real, r, True) for real in reals for r in folders_held):
-                return True  # a folder removed, moved or copied over whole changes the protected folder it holds
-            unread = any("\0" in s and within(s) for s in froms)  # from a folder it cannot read, under a protected one
-            if inside or unread or not any(m in raw for m in names):
-                return unread or any(link or not _own(real, folder) for real in inside)  # no link is made there
-        lead = os.path.dirname(path.split("\0")[0])
-        led = os.path.realpath(lead) if os.path.isabs(lead) else ""
-        return named(node) or (any(map(within, at)) and not (led and not any(paths.inside(led, r) or paths.inside(r, led) for r in roots)))
-
-    # Where the program stands when it makes each call. A folder change that is a statement of the program's own
-    # body is sure: after it the program stands there, taken from wherever it stood. A change inside a loop, a
-    # branch or a `with` may not have happened, so from its statement on the program may stand in either place, and
-    # one inside a function may come at any time. A descriptor stands for the folder it was opened on (the seventh
-    # review: of two changes one after the other only the first was followed, `fchdir` not at all, and a program
-    # that had left a transcript folder for good was still held to it).
-    def opened_on(node, seen: tuple = ()) -> list:  # what a descriptor stands for: the path each `open` that made it was given
-        made = [v for t, v in pairs if isinstance(t, ast.Name) and t.id == getattr(node, "id", None) and t.id not in seen] or [node]
-        return [x for v in made for x in (
-            (v.args[:1] or [k.value for k in v.keywords if k.arg in ("path", "file")] or [v])[:1]
-            if isinstance(v, ast.Call) and getattr(v.func, "attr", getattr(v.func, "id", "")) == "open"
-            else opened_on(v, seen + (node.id,)) if isinstance(v, ast.Name) and v is not node else [v])]  # kept under another name
-
-    def folders(given, descriptor: bool = False) -> list:  # each folder those arguments may name, "\0" for a part that cannot be read
-        return [v if v[:1] != "\0" else stand_in if names and named(a) else v
-                for arg in given for a in (opened_on(arg) if descriptor else [arg])
-                for v in map(os.path.expanduser, ranges.get(getattr(a, "id", ""), [spelled(a)]))]
-
-    def changer(n) -> str:  # "chdir" or "fchdir" for a name of either, under any name it was imported by
-        found = direct.get(getattr(n, "id", ""), ("", getattr(n, "attr", getattr(n, "id", ""))))[1]
-        return found if found in ("chdir", "fchdir") else ""
-    change = {id(n): folders([*n.args, *(k.value for k in n.keywords)], changer(n.func) == "fchdir") for n in calls if changer(n.func)}
-    handed_on = any(isinstance(n, (ast.Attribute, ast.Name)) and id(n) not in called and changer(n) for n in nodes)  # map(os.chdir, ...)
-    stood, anywhere, functions = {}, [where], [f for f in nodes if isinstance(f, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda))]
-    if change or handed_on:
-        def shift(spots, changes) -> list:  # where it may stand after each of those changes, from each folder it may stand in
-            return [os.path.join(s, v) for s in spots for c in changes for v in change[id(c)]]
-        deferred = [c for f in functions for c in ast.walk(f) if id(c) in change]
-
-        def walk(body: list, at: list) -> None:  # each statement in the order it runs, from the folders the program may stand in before it
-            for stmt in body:
-                inner = [c for c in ast.walk(stmt) if id(c) in change]
-                mine = isinstance(stmt, ast.Expr) and isinstance(stmt.value, ast.Call) and (
-                    modules.get(getattr(getattr(stmt.value.func, "value", None), "id", "")) == "os" or direct.get(getattr(stmt.value.func, "id", ""), ("",))[0] == "os")
-                sure = mine and inner == [stmt.value]  # os's own change, not another object's method of that name
-                before, at, maybe = at, list(dict.fromkeys(shift(at, inner))) if sure else at, deferred + inner * (not sure)
-                for _ in [v for c in maybe for v in change[id(c)]]:  # a change that may come, and come again after another
-                    at = at + [f for f in dict.fromkeys(shift(at, maybe)) if f not in at][:64 - len(at)]
-                stood.update((id(c), before if sure else at) for c in ast.walk(stmt) if isinstance(c, ast.Call))
-                anywhere.extend(f for f in at if f not in anywhere)
-        walk(tree.body, [where] + [stand_in] * bool(handed_on and names))  # a change handed on cannot be followed: it may stand in a folder the command names
-        for f, spots in [(f, list(anywhere)) for f in functions]:  # a function runs wherever it is called: its own statements in order from there
-            walk(f.body if isinstance(f.body, list) else [ast.Expr(value=f.body)], spots)
-
+    def hands(own, calls_of, init: bool = False, kept={}) -> dict:  # what each caller hands each of a function's own names; a default stands where a caller gives none
+        if (id(own), len(calls_of), id(calls_of[0]) if calls_of else 0) in kept:
+            return kept[id(own), len(calls_of), id(calls_of[0]) if calls_of else 0]  # asked again for each settling
+        takers = [a.arg for a in own.posonlyargs + own.args]
+        takers = takers[takers[:1] in (["self"], ["cls"]) and (init or all(isinstance(c.func, ast.Attribute) for c in calls_of)):]  # a method's own first
+        given_by = dict(zip(takers[len(takers) - len(own.defaults):], own.defaults))
+        given_by.update({a.arg: d for a, d in zip(own.kwonlyargs, own.kw_defaults) if d is not None})
+        return kept.setdefault((id(own), len(calls_of), id(calls_of[0]) if calls_of else 0), {
+            taker: [c.args[at] if at < min(len(c.args), len(takers)) else next((k.value for k in c.keywords if k.arg == taker.split("@")[0]), given_by.get(taker))
+                    for c in calls_of] for at, taker in enumerate(takers + [a.arg for a in own.kwonlyargs])})
     # What a command the program starts is given besides its words: the variables the program has put in
     # os.environ or in the mapping it hands over as `env`, however it keeps that mapping (the seventh review: a
     # mapping kept under a name, a copy of the environment, `os.environ.update`), and a script written down a pipe.
@@ -2357,16 +2540,805 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
             x for v in [v for t, v in pairs if not isinstance(t, ast.Subscript) and holder(t) == name and holder(v) != name] + sent_to.get(name, [])
             for x in handed(v, seen + (name,))] if name and name not in seen else []  # what it was given, or what its one caller hands it
         return found if found or name == "environ" else [(None, node)]
-    piped = [a for c in calls if getattr(c.func, "attr", "") == "communicate" or (
-        getattr(c.func, "attr", "") in ("write", "writelines") and getattr(c.func.value, "attr", "") == "stdin") or any(
-        k.arg == "file" and getattr(k.value, "attr", "") == "stdin" for k in c.keywords)  # print(script, file=p.stdin)
-        for a in c.args[:1] + [k.value for k in c.keywords if k.arg == "input"]]  # what the program writes down a pipe to a command
+
+    # A name may be given more than one value: a second assignment, one of two, a value in each of two functions,
+    # what each of two callers hands it, what a loop visits. A target is read once for each value its names may hold,
+    # and lands in a protected folder if any reading does. `stores` holds, under each name, the values the program
+    # gives it (None for one that cannot be read, a string for one already spelled); a field of the program's own
+    # object stands under ".field" and an entry of its own table under "[table]key". "\2" is no value at all: None
+    # (this project's probe after the tenth review: thirty everyday programs were refused from inside a transcript
+    # folder because a name was read only when it was given one value, once).
+    picked, stores, sites, turns, finds, deep = {}, {}, {}, {}, set(), []
+
+    def given_to(key, values, site: int = 0) -> None:
+        stores.setdefault(key, []).extend(values)
+        sites[key] = sites.get(key, 0) + site
+    rets = {id(f.args): [None] if any(isinstance(r, (ast.Yield, ast.YieldFrom)) for r in nodes_of(f.body)) else [
+        r.value for r in nodes_of(f.body) if isinstance(r, ast.Return) and r.value is not None] for f in defs if id(f.args) in fixed}
+    rets.update({id(v.args): [v.body] for _, v in pairs if isinstance(v, ast.Lambda) and id(v.args) in fixed})  # what each function of its own hands back
+
+    def gives(n, kept={}) -> list:  # (name, values) for each name an assignment gives a value: plainly, side by side, or unpacked from a pair it can read
+        found = kept.setdefault(id(n), [])  # read once: a value it makes up for a name is the same value wherever it is asked for
+        for target in (n.targets if isinstance(n, ast.Assign) else [n.target]) if not found else []:
+            value, wide = ast.BinOp(left=target, op=n.op, right=n.value) if isinstance(n, ast.AugAssign) else n.value, getattr(target, "elts", None)
+            if wide is None:
+                found += [(target, [value])] * isinstance(target, ast.Name)
+                continue
+            label, kw = getattr(getattr(value, "func", None), "attr", getattr(getattr(value, "func", None), "id", "")), {k.arg: k.value for k in getattr(value, "keywords", [])}
+            back = rets.get(id(asked(value)[1]), []) if isinstance(value, ast.Call) and asked(value)[0] not in classes else []
+            sides = ([[e] for e in value.elts] if isinstance(value, (ast.Tuple, ast.List)) else [[e] for e in rows[value.id]] if getattr(value, "id", None) in rows
+                     else [[ast.Constant(value="\2")], [ast.BinOp(left=kw["dir"], op=ast.Add(), right=ast.Constant(value="/\0")) if "dir" in kw else ast.Constant(value="/tmp/tmp.made")]]
+                     if label == "mkstemp" else [[r.elts[at] for r in back] for at in range(len(wide))]
+                     if back and all(isinstance(r, ast.Tuple) and len(r.elts) == len(wide) for r in back)
+                     else [[ast.Subscript(value=value, slice=ast.Constant(value=at), ctx=ast.Load())] for at in range(len(wide))]
+                     if isinstance(value, (ast.Call, ast.Name, ast.Subscript, ast.Attribute)) else [])  # a pair, a row, mkstemp's, its own function's, else each by its place
+            if len(sides) == len(wide) and not any(isinstance(e, ast.Starred) for e in wide + [x for side in sides for x in side if x is not None]):
+                found += [(t, side) for t, side in zip(wide, sides) if isinstance(t, ast.Name)]
+        return found
+    for n in nodes:
+        for t, values in gives(n) if isinstance(n, (ast.Assign, ast.AnnAssign, ast.AugAssign, ast.NamedExpr)) and n.value is not None else []:
+            given_to(t.id, values, 1)
+    for target, value in pairs + withs:
+        if isinstance(target, ast.Name) and any(target is t for t, _ in withs):
+            given_to(target.id, [value], 1)
+    # Where a name is read, the value it holds is the one its own body last gave it by a plain assignment, with
+    # whatever a branch, a loop or another function may have given it since; before any, what the function was
+    # handed (a name read for a transcript and then given the file to write was held to the transcript). A member
+    # (`job.out`, `cfg["out"]`, `os.environ["OUT"]`) is read the same way along the path it is reached by.
+    reach, plain_stores, reach_m, tags, live, this, selfish, walked, kn, primed = {}, set(), {}, {}, {}, {}, {}, {}, {}, []
+    pair_of, ENV = {id(t): v for t, v in pairs}, ast.Name(id="environ", ctx=ast.Load())  # what each target is given; the environment, as a table of its own
+    homes = {id(n): ast.Call(func=ast.Attribute(value=ast.Name(id="Path", ctx=ast.Load()), attr="home", ctx=ast.Load()), args=[], keywords=[])
+             for n in calls if getattr(n.func, "attr", getattr(n.func, "id", "")) == "expanduser"}  # the home each expanduser() asks for, where it asks
+    kept_kw = {id(n.func.value): inside[id(n)] for n in calls if getattr(n.func, "attr", "") == "update" and getattr(n.func.value, "attr", "") == "__dict__"
+               and getattr(n.func.value.value, "id", "") == "self" and len(n.args) == 1 and not n.keywords and id(n) in inside and inside[id(n)].name == "__init__"
+               and getattr(inside[id(n)].args.kwarg, "arg", None) == getattr(n.args[0], "id", "")}  # `self.__dict__.update(kw)` in an __init__: its keywords are its fields
+    loose_fields = any(getattr(n, "attr", getattr(n, "id", getattr(n, "name", ""))) in ("__dict__", "vars", "__setattr__", "__getattr__", "__getattribute__")
+                       and id(n) not in kept_kw for n in nodes)  # fields given some other way: none of them is read
+    hidden = any(getattr(n, "id", "") in ("globals", "locals") for n in nodes)
+    tainted.update(total if hidden and any(m in (said(n) or "") for n in nodes for m in names) else ())  # any name may be given what the program names
+    shapes = {t.id: (said(v.args[1]) or "").replace(",", " ").split() or [said(e) or "" for e in getattr(v.args[1], "elts", [])] for t, v in pairs
+              if isinstance(t, ast.Name) and isinstance(v, ast.Call) and getattr(v.func, "attr", getattr(v.func, "id", "")) == "namedtuple" and len(v.args) > 1}
+    fields_of = {**{c.name: [b.target.id for k in reversed(lineage(c.name)) for b in classes[k].body if isinstance(b, ast.AnnAssign) and isinstance(b.target, ast.Name)]
+                    for c in classes.values() if inits[c.name] is None}, **shapes}  # a class with fields and no __init__ of its own, a named tuple
+    parsed = {}  # an argument parser's defaults, under the name it gives each argument; a word of the command line may replace one
+    for n in calls:
+        label, kw = getattr(n.func, "attr", getattr(n.func, "id", "")), {k.arg: k.value for k in n.keywords}
+        if label in ("SimpleNamespace", "Namespace", "set_defaults", "replace", "_replace"):
+            loose_fields = loose_fields or None in kw
+            for k, v in kw.items() if label == "set_defaults" else []:
+                parsed.setdefault(str(k), []).append(v)
+        elif label == "add_argument":
+            flags = [said(a) or "" for a in n.args]
+            dest = said(kw["dest"]) if "dest" in kw else next((f for f in flags if f.startswith("--")), "".join(flags[:1]))
+            parsed.setdefault(str(dest).lstrip("-").replace("-", "_"), []).extend([kw.get("default")] + [None] * (len(argv) > 1))
+        elif label == "setattr" and len(n.args) == 3:
+            loose_fields = loose_fields or said(n.args[1]) is None
+            given_to(str(said(n.args[1])), [n.args[2]])  # on the program's own module it is a name
+
+    def key_at(n):  # the key a read or a store spells: a string, a place, or what the name it is kept under was last plainly given; None for any other
+        n = reach[id(n)] if isinstance(n, ast.Name) and isinstance(reach.get(id(n)), ast.Constant) else n
+        if isinstance(n, ast.UnaryOp) and isinstance(n.op, ast.USub) and type(getattr(n.operand, "value", None)) is int:
+            return -n.operand.value
+        return n.value if isinstance(n, ast.Constant) and type(n.value) in (str, int) else None
+
+    def sel_of(n):  # (what it is a member of, which member, a default) for x.a, x["k"], x[0], x.get("k", d), getattr(x, "a", d), os.getenv("K", d), Path.home()
+        label = getattr(getattr(n, "func", None), "attr", getattr(getattr(n, "func", None), "id", ""))
+        if isinstance(n, ast.Attribute):
+            lone = isinstance(n.value, ast.Name) and n.value.id in modules
+            return None if lone or loose_fields or id(n) in called or holder(n) == "environ" else (n.value, ("a", n.attr), None)
+        if isinstance(n, ast.Subscript):
+            return None if isinstance(n.slice, ast.Slice) else (n.value, ("k", key_at(n.slice)), None)
+        if not isinstance(n, ast.Call) or n.keywords or any(isinstance(a, ast.Starred) for a in n.args) or asked(n)[1] is not None:
+            return None
+        if label == "home" and not n.args:
+            return ENV, ("k", "HOME"), ast.Constant(value="~")
+        if label == "getenv" and 1 <= len(n.args) <= 2:
+            return ENV, ("k", key_at(n.args[0])), (n.args[1:] or [None])[0]
+        if label == "getattr" and isinstance(n.func, ast.Name) and 2 <= len(n.args) <= 3 and not loose_fields:
+            return n.args[0], ("a", key_at(n.args[1])), (n.args[2:] or [None])[0]
+        if label in ("get", "setdefault", "pop") and isinstance(n.func, ast.Attribute) and (label == "pop") <= len(n.args) + (label == "pop") <= 2 + (label == "pop") and len(
+                n.args) <= 2 and not (isinstance(n.func.value, ast.Name) and n.func.value.id in modules):
+            return n.func.value, ("k", key_at(n.args[0]) if n.args else None), (n.args[1:] or [None])[0]
+        return None
+
+    def path_of(n):  # a member as (the name it is reached from, the way from it, that name's node): ("cfg", "k'paths'k'out'", cfg); None when it has no such spelling
+        m = sel_of(n)
+        if not m or m[1][1] is None:
+            return None
+        lead = ("environ", "", None) if holder(m[0]) == "environ" else (m[0].id, "", m[0]) if isinstance(m[0], ast.Name) else path_of(m[0])
+        return (lead[0], f"{lead[1]}{m[1][0]}{m[1][1]!r}", lead[2]) if lead else None
+
+    def flat(body) -> list:  # a program's statements with its `if __name__ == "__main__":` block in line: it runs once, in order
+        return [x for s in body for x in (flat(s.body) if isinstance(s, ast.If) and not s.orelse and getattr(getattr(s.test, "left", None), "id", "") == "__name__" else [s])]
+
+    def order(body, mine, top: bool = False) -> None:
+        last, lasts = {}, {}
+        for at, stmt in enumerate(body):
+            seen = list(nodes_of([stmt]))
+            reach.update((id(n), last.get(n.id)) for n in seen if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Load) and mine(n.id))
+            for n in [m for n in seen for m in (n, homes.get(id(n))) if m is not None]:  # a member read: what its own path was last plainly given here
+                p = path_of(n) if isinstance(n, ast.Call) or isinstance(getattr(n, "ctx", None), ast.Load) else None
+                if p and mine(p[0]):
+                    reach_m[id(n)] = (p[:2], id(body), lasts.get(p[:2], (None, -1)), top)
+            plain = isinstance(stmt, (ast.Assign, ast.AnnAssign)) and stmt.value is not None
+            for t, values in gives(stmt) if plain else []:
+                last[t.id] = values[0] if len(values) == 1 and isinstance(values[0], ast.AST) and mine(t.id) else None
+                plain_stores.update([id(last[t.id])] * (last[t.id] is not None))
+                for p in [p for p in lasts if p[0] == t.id]:
+                    del lasts[p]  # a name given a new thing: what the old one's members were given is not this one's
+            for t in [n for n in seen if isinstance(n, (ast.Attribute, ast.Subscript)) and isinstance(n.ctx, ast.Store) and id(n) in pair_of] if plain else []:
+                p = path_of(t)
+                if p and mine(p[0]) and id(pair_of[id(t)]) not in grown:
+                    for q in [q for q in lasts if q[0] == p[0] and q[1].startswith(p[1])]:
+                        del lasts[q]  # and what lay under a member is gone with it
+                    lasts[p[:2]], tags[id(pair_of[id(t)])] = (pair_of[id(t)], at), (p[:2], id(body), at)
+    order(flat(tree.body), lambda name: "@" not in name, True)
+    for f in defs:
+        order(f.body, lambda name, mark=f"@{id(f)}": name.endswith(mark))
+    for n in nodes:  # a store whose values are read elsewhere, or that gives none: a function's own name, a loop's, a name only annotated
+        for t in [n] if isinstance(n, ast.arg) else getattr(n.target, "elts", [n.target]) if isinstance(n, (ast.For, ast.AsyncFor, ast.comprehension)) else [
+                n.target] if isinstance(n, ast.AnnAssign) and n.value is None else []:
+            if isinstance(t, (ast.arg, ast.Name)):  # a loop over `x.y` or `x[0]` gives no name a value
+                given_to(getattr(t, "arg", getattr(t, "id", "")), [], 1)
+
+    def key_of(n):  # the name a value is read under: a name where it is read, or its own function's answer
+        if isinstance(n, ast.Name):
+            return n.id if id(n) not in reach else f"{n.id}~{id(reach[id(n)]) if reach[id(n)] is not None else ''}"
+        name, own = asked(n) if isinstance(n, ast.Call) else (None, None)
+        if own is not None and name not in classes and id(own) in rets and isinstance(n.func, ast.Attribute) == (id(own) in methods):
+            return f"()@{id(own)}"  # what the program's own function hands back
+        return None
+
+    # A member is read by the thing that holds it. Each table, list or object the program makes is one thing, known by
+    # the place that makes it, however many names it is kept under and whatever it is handed to; a thing holds what
+    # it was made with (a table's entries, what an object's __init__ gives its fields from what that call hands it,
+    # its class's constants and properties) and whatever any statement gives it afterwards. Along one path from one
+    # name, in statements that run once and in order, the last plain gift replaces what came before it. A thing whose
+    # maker cannot be read (`json.load(f)`) holds only what the program gives it, and what is given through a name
+    # that cannot be followed may be in any of them (the eleventh review, and this project's probe after it: one set
+    # of values stood for a field or a key whatever carried it, so two objects of a class, a table whose entry is
+    # replaced, a key kept in a name and a class that inherits its __init__ were all read wrongly).
+    given_m, loose_m, removed, born, slots, memo, copies = {}, {}, set(), {}, {}, {}, {}  # what each thing is given, by its maker's id, then kind and key; memo: readings kept between settlings
+
+    def gifts(store, kind, key) -> list:  # what one such store holds for a member: its own key's, any key's, and all of them when the key cannot be read
+        by = store.get(kind, {})
+        return [x for values in by.values() for x in values] if key is None else by.get(key, []) + by.get(None, [])
+    fields_given = {t.attr for t in nodes if isinstance(t, ast.Attribute) and isinstance(t.ctx, ast.Store)}
+    LISTS = (ast.List, ast.Tuple, ast.Set, ast.ListComp, ast.SetComp, ast.GeneratorExp)
+    tops = {id(v) for f in defs for s in f.body if isinstance(s, (ast.Assign, ast.AnnAssign)) and s.value is not None
+            for v in [s.value] + list(getattr(s.value, "elts", []))}
+    for t in [t for t in nodes if isinstance(t, ast.Attribute) and isinstance(t.ctx, ast.Store) and getattr(t.value, "id", "") == "self"]:
+        f = inside.get(id(t))  # what an __init__ gives each field of the object it builds, and whether by a statement of its own body
+        if f is not None and f.name in ("__init__", "__post_init__") and id(f) in of_class:
+            v = None if id(pair_of.get(id(t))) in grown else pair_of.get(id(t))
+            born.setdefault((id(f), t.attr), []).append((v, id(v) in tops))
+
+    def builds(c) -> bool:  # a call that makes an object of a class of the program's own
+        return isinstance(c, ast.Call) and asked(c)[0] in classes and getattr(c.func, "attr", "") != "__init__"
+
+    def selves(f, seen: tuple = ()) -> list:  # the objects `self` may be in a function: those it is called on, or every one the program makes of that class and its kin
+        name, every = of_class.get(id(f)), []
+        if name is None or id(f) in seen:
+            return []
+        if f.name not in ("__init__", "__post_init__") and id(f.args) in callers:
+            every = [x for c in callers[id(f.args)][1] for x in resolve(c.func.value, seen + (id(f),))]
+        return [x for x in every if x is not None] + [c for c in calls if builds(c) and asked(c)[0] in kin[name]] * (None in every or not every)
+
+    def inlined(r, call, sent: dict):  # what a function hands back, written with what this call hands it, so each call's object is its own
+        def written(n):
+            if isinstance(n, ast.Name) and n.id in sent and isinstance(n.ctx, ast.Load):
+                return sent[n.id]  # a name the function is handed and never gives another value
+            if not isinstance(n, ast.AST):
+                return n
+            new = copy.copy(n)
+            for field, value in ast.iter_fields(n):
+                setattr(new, field, [written(v) for v in value] if isinstance(value, list) else written(value))
+            inside.update({id(new): inside[id(n)]} if id(n) in inside else {})
+            return new
+        return r if r is None or not sent else copies.setdefault((id(r), id(call)), written(r))
+
+    cuts = [0, 0]  # how often a reading was cut short (a thing reached through itself, too deep, too much), and the steps of the reading in hand
+
+    def resolve(node, seen: tuple = ()) -> list:  # each thing an expression may be, as the node that makes it; None for one that cannot be told
+        plain, cuts[1] = not any(this.values()), cuts[1] + 1 if seen else 0
+        if plain and ("r", id(node)) in memo:
+            return memo["r", id(node)]
+        if node is None or len(seen) > 60 or cuts[1] > 4000:  # too deep or too much to follow: it cannot be told
+            cuts[0] += node is not None
+            return [None]
+        before, found = cuts[0], list(dict.fromkeys(follow(node, seen)))
+        memo.update({("r", id(node)): found} if plain and cuts[0] == before else {})  # kept when nothing under it was cut short
+        return found
+
+    def follow(node, seen: tuple) -> list:
+        if holder(node) == "environ":
+            return [ENV]
+        if isinstance(node, ast.Name) and node.id in ("self", "cls") and id(node) in inside and id(inside[id(node)]) in of_class:
+            f = inside[id(node)]
+            now = [x for o in this.get(id(f.args)) or [None] for x in ([o] if o is not None else selves(f, seen))]
+            return [classes[of_class[id(f)]]] if node.id == "cls" else now or [None]
+        if isinstance(node, ast.Name):
+            key = key_of(node)
+            if node.id in classes and node.id not in total:
+                return [classes[node.id]]
+            cuts[0] += key in seen
+            return [] if key in seen else [c for name, c in classes.items() if name == node.id] + [  # a class's name given a value besides: either
+                x for v in live.get(key, [None]) + [None] * (total.get(node.id, 0) > sites.get(node.id, 0))
+                for x in ([None] if v is None or isinstance(v, str) else resolve(v, seen + (key,)))]
+        if isinstance(node, (ast.IfExp, ast.BoolOp, ast.NamedExpr)):
+            return [x for v in ([node.body, node.orelse] if isinstance(node, ast.IfExp) else getattr(node, "values", [getattr(node, "value", None)]))
+                    for x in resolve(v, seen)]
+        label = getattr(getattr(node, "func", None), "attr", getattr(getattr(node, "func", None), "id", ""))
+        name, own = asked(node) if isinstance(node, ast.Call) else (None, None)
+        if own is not None and name not in classes and id(own) in rets:  # what the program's own function hands back
+            was, this[id(own)] = this.get(id(own)), resolve(node.func.value, seen) if isinstance(node.func, ast.Attribute) else None
+            sent = {t: a[0] for t, a in hands(own, [node], False).items() if a[0] is not None and total.get(t) == 1} if any(node is c for c in plainly) else {}
+            found = [x for r in rets[id(own)] for x in resolve(inlined(r, node, sent), seen + (id(own),))] if id(own) not in seen else []
+            this[id(own)], cuts[0] = was, cuts[0] + (id(own) in seen)
+            return found
+        if isinstance(node, ast.BinOp) and isinstance(node.op, ast.BitOr):
+            return resolve(node.left, seen) + resolve(node.right, seen)  # a | b holds what either holds
+        if isinstance(node, ast.Call) and label in ("copy", "deepcopy", "list", "tuple", "sorted", "reversed") and len(node.args) + isinstance(node.func, ast.Attribute) >= 1:
+            return resolve(node.args[0] if node.args else node.func.value, seen)  # a copy holds what the thing it copies holds
+        cuts[0] += id(node) in seen
+        if id(node) not in seen and isinstance(getattr(node, "ctx", None) or ast.Load(), ast.Load) and sel_of(node):
+            return [x for v, _ in members(node, seen + (id(node),)) for x in ([None] if v is None or isinstance(v, str) else resolve(v, seen + (id(node),)))]
+        return [node]
+
+    def built(c, a, seen: tuple = ()) -> list:  # what a field holds as an object is made: (the value, the calls it is read under)
+        name, obj = (c.name, None) if isinstance(c, ast.ClassDef) else (asked(c)[0], [c])
+
+        def by(f, under_) -> list:  # what one __init__ gives the field: the last its own statements give it, with each a branch of it may; else its base's, as it calls it
+            got = born.get((id(f), a), []) if f is not None and id(f) not in [id(x[0]) for x in under_[:-1]] else []
+            plain = [v for v, top in got if top]
+            return [(v, under_) for v, top in got if not top] + [(v, under_) for v in plain[-1:]] or [
+                x for s in calls if f is not None and inside.get(id(s)) is f and getattr(s.func, "attr", "") == "__init__" and asked(s)[0] in classes
+                for x in by(bodies.get(id(asked(s)[1])), under_ + ((asked(s)[1], s, obj),))]
+        init = bodies.get(id(inits.get(name)))
+        post = next((f for k in lineage(name) for f in classes[k].body if getattr(f, "name", "") == "__post_init__"), None)
+        found = (by(init, ((init.args, c, obj),)) if init is not None and obj else []) + (by(post, ((post.args, None, obj),)) if post is not None and obj else [])
+        if not found and obj and a in fields_of.get(name, ()):  # a class with fields and no __init__ of its own: handed by place or by name
+            found = handed_field(c, name, a)
+        if not found and obj and init in kept_kw.values():  # a class that keeps its keywords as its fields
+            found = [(None, ())] if None in [k.arg for k in c.keywords] else [(k.value, ()) for k in c.keywords if k.arg == a]
+        for b in [b for k in lineage(name) for b in classes[k].body] if not found else []:  # else what the class body gives: a constant, a field's default, a property's answer
+            mine_ = isinstance(b, (ast.Assign, ast.AnnAssign)) and b.value is not None and any(
+                getattr(t, "id", None) == a for t in getattr(b, "targets", [getattr(b, "target", None)]))
+            made = getattr(getattr(b, "value", None), "func", None)
+            if mine_ and getattr(made, "attr", getattr(made, "id", "")) == "field":  # dataclasses.field(default=...)
+                found += [(k.value.body if k.arg == "default_factory" else k.value, ()) for k in b.value.keywords if k.arg == "default" or (
+                    k.arg == "default_factory" and isinstance(k.value, ast.Lambda))] or [(None, ())]
+            elif mine_:
+                found.append((b.value, ()))
+            elif getattr(b, "name", None) == a and any(getattr(d, "id", getattr(d, "attr", "")) in ("property", "cached_property") for d in b.decorator_list):
+                found += [(r, ((b.args, None, obj),)) for r in rets.get(id(b.args), [None])]
+        return found
+
+    def handed_field(c, name, a) -> list:  # a field handed by place or by name: a named tuple's, a class with fields and no __init__ of its own
+        unread = any(isinstance(x, ast.Starred) for x in c.args) or None in [k.arg for k in c.keywords]
+        at = fields_of[name].index(a)
+        return [(None, ())] if unread else [(v, ()) for v in c.args[at:at + 1] + [k.value for k in c.keywords if k.arg == a]]
+
+    def part(c, sel, n=None, seen: tuple = ()) -> list:  # (a value, the calls it is read under) for each thing one member of one thing may hold
+        (kind, key), label = sel, getattr(getattr(c, "func", None), "attr", getattr(getattr(c, "func", None), "id", ""))
+        kw = {k.arg: k.value for k in getattr(c, "keywords", [])}
+        if c is None or id(c) in seen:
+            return [(None, ())] * (c is None)  # a thing that holds itself (`cfg = {**cfg, ...}`) is read once
+        seen += (id(c),)
+        if c is ENV:
+            made = [(env[key], ())] if key in env and not re.search(r"[$`]", env[key]) else [] if key is not None else [(None, ())] + [
+                (v, ()) for v in env.values() if any(m in v for m in names) or (v[:1] == "/" and any(paths.inside(v, r) for r in roots))]  # any of them: one may name a protected path
+        elif isinstance(c, ast.Dict):
+            made = [x for k, v in zip(c.keys, c.values) for x in (
+                [y for o in resolve(v, seen) or [None] for y in part(o, sel, None, seen)] if k is None else [(v, ())] * (key is None or key_at(k) in (key, None)))]
+        elif isinstance(c, (ast.List, ast.Tuple, ast.Set)):
+            whole = not any(isinstance(e, ast.Starred) for e in c.elts)
+            made = [(c.elts[key], ())] if whole and type(key) is int and -len(c.elts) <= key < len(c.elts) else [
+                (e, ()) for e in c.elts] * (key is None or not whole) + [(None, ())] * (not whole)
+        elif isinstance(c, (ast.DictComp, ast.ListComp, ast.SetComp, ast.GeneratorExp)):
+            made = [(getattr(c, "value", getattr(c, "elt", None)), ())]
+        elif isinstance(c, ast.ClassDef) or builds(c):
+            made = built(c, key, seen) if kind == "a" and key is not None else [(None, ())]
+        elif label in shapes and kind == "a" and key in shapes[label]:
+            made = handed_field(c, label, key)
+        elif isinstance(c, ast.Call) and label in ("SimpleNamespace", "Namespace", "dict"):
+            made = [(v, ()) for k, v in kw.items() if k is not None and (key is None or k == key)]
+            for o in [o for a in c.args + [k.value for k in c.keywords if k.arg is None] for o in resolve(a, seen) or [None]]:
+                rows_ = [v for v, _ in part(o, ("k", None), None, seen)] if isinstance(o, (ast.List, ast.Tuple)) else [None]  # the rows it was made with and given since
+                pairs_ = all(isinstance(r, (ast.Tuple, ast.List)) and len(r.elts) == 2 for r in rows_)
+                made += ([(r.elts[1], ()) for r in rows_ if key is None or key_at(r.elts[0]) in (key, None)] if pairs_  # dict([("k", v)]): each row's second, by its first
+                         else [(None, ())] if isinstance(o, LISTS) else part(o, sel, None, seen))  # what another table holds; rows it cannot read may hold anything
+        elif isinstance(c, ast.Call) and label in ("replace", "_replace"):
+            made = [(kw[key], ())] if key in kw else [x for o in resolve(c.args[0] if c.args else c.func.value, seen) or [None] for x in part(o, sel, None, seen)]
+        elif isinstance(c, ast.Call) and label == "parse_args":
+            made = [(v, ()) for v in parsed.get(key, [None])]
+        elif isinstance(c, ast.Call) and label == "defaultdict" and getattr((c.args[:1] or [None])[0], "id", "") in ("list", "set", "dict") and kind == "k":
+            fresh = (lambda: ast.Dict(keys=[], values=[])) if c.args[0].id == "dict" else (lambda: ast.List(elts=[], ctx=ast.Load()))
+            made = [(slots.setdefault((id(c), key), fresh()), ())] if key is not None else [(v, ()) for (owner, _), v in slots.items() if owner == id(c)]  # the list it makes for each key
+        else:
+            made = [(None, ())]  # what something else made: all it holds is what the program gives it
+        shared = [given_m.get(id(classes[k]), {}) for k in lineage(asked(c)[0])] if builds(c) else []  # an object also holds what its class is given later
+        given = [x for store in (given_m.get(id(c), {}), *shared, loose_m) for x in gifts(store, kind, key)]
+        if n is not None and id(n) in reach_m:  # along its own path: the last plain gift before it stands for all before, and in a program's own statements none comes after
+            way, body, (lastv, lastat), top = reach_m[id(n)]
+            given = [(v, t) for v, t in given if not (t and t[:2] == (way, body) and (top or t[2] <= lastat))]
+            made = [(lastv, ())] if lastv is not None else made
+        found = made + [(v, ()) for v, _ in given]
+        return found or [(None, ())] * (kind == "a" and not isinstance(c, ast.Call) or builds(c))
+
+    def members(n, seen: tuple = ()) -> list:  # (a value, the calls it is read under) for each thing a member read may give; a value of None cannot be told, "\2" is none at all
+        plain = not seen and not any(this.values())  # read with no call in hand: the same at every asking until the names are read again
+        if plain and id(n) in memo:
+            return memo[id(n)]
+        base, sel, default = sel_of(n)
+        things = resolve(base, seen) or [None]
+        found = [x for c in things for x in part(c, sel, n if len(things) == 1 else None, seen)]
+        spare = default is not None and bool(not found or loose_m or any(v is None for v, _ in found) or any(id(c) in removed for c in things))
+        found = found + [(default, ())] * spare or [("\2", ())]
+        memo.update({id(n): found} if plain else {})
+        return found
+
+    def under(calls_):  # each reading of the calls a value is read under: a function's own names as that call hands them, `self` as the object it is called on
+        if not calls_:
+            yield
+            return
+        own, c, obj = calls_[0]
+        sent = {t: a[0] for t, a in hands(own, [c], asked(c)[0] in classes).items() if a[0] is not None} if c is not None else {}
+        options = [list(dict.fromkeys((["\2"] if isinstance(a, ast.Constant) and a.value is None else spellings(a)) + [  # what it is handed, or what the function gives the name itself
+            x for v in stores.get(t, []) for x in (["\0"] if v is None else [v] if isinstance(v, str) else spellings(v))])) for t, a in sent.items()]
+        if any(d is own for d in deep) or len(deep) > 3 or math.prod(map(len, options)) > 8:
+            sent, options = {}, []  # a function that calls itself, or too many readings: whatever any call may hand it
+        deep.append(own)
+        was, this[id(own)] = this.get(id(own)), obj or this.get(id(own))
+        for combo in itertools.product(*options):
+            picked.update(x for t, v in zip(sent, combo) for x in ((t, v), (t + "~", v)))
+            yield from under(calls_[1:])
+        for t in sent:
+            picked.pop(t, None), picked.pop(t + "~", None)
+        deep.pop()
+        this[id(own)] = was
+
+    def read_as(n) -> list:  # every spelling a member read may have
+        found = []
+        for v, calls_ in members(n):
+            for _ in under(calls_) if isinstance(v, ast.AST) else [0]:
+                found += ["\0"] if v is None else [v] if isinstance(v, str) else ["\2"] if isinstance(v, ast.Constant) and v.value is None else spellings(v)
+        found = list(dict.fromkeys(found))
+        return ["\0"] if len(found) > 12 else found
+
+    def is_member(n) -> bool:  # a member read of something the program makes: read by what that thing holds
+        if not primed or not isinstance(n, (ast.Attribute, ast.Subscript, ast.Call)) or not isinstance(getattr(n, "ctx", None) or ast.Load(), ast.Load):
+            return False
+        if id(n) not in kn:
+            kn[id(n)] = sel_of(n) is not None and any(v is not None for v, _ in members(n))
+        return kn[id(n)]
+
+    def stringy(a, depth: int = 0) -> bool:  # reads as a path or a string the program builds, through each name it is kept under: no object, no open file
+        label = getattr(getattr(a, "func", None), "attr", getattr(getattr(a, "func", None), "id", ""))
+        if isinstance(a, (ast.JoinedStr, ast.BinOp)) or said(a) is not None or (isinstance(a, ast.Call) and label in STRINGS):
+            return True
+        if depth > 4 or not isinstance(a, (ast.Name, ast.Attribute, ast.Subscript, ast.Call)):
+            return False
+        own = asked(a)[1] if isinstance(a, ast.Call) else None
+        values = rets.get(id(own), [None]) if own is not None else [v for v, _ in members(a)] if is_member(a) else live.get(key_of(a), [None]) if isinstance(a, ast.Name) else [None]
+        return bool(values) and all(isinstance(v, str) or (v is not None and stringy(v, depth + 1)) for v in values)
+
+    def elements(node, seen: tuple = ()):  # what a loop over it visits, as values or as the spelled folder a walk's finds lie under; None when it cannot be read
+        if isinstance(node, ast.Name) and (node.id in rows or (node.id in once_value and node.id not in seen and node.id not in mutated
+                                                              and isinstance(once_value[node.id], ast.Call))):
+            return rows[node.id] if node.id in rows else elements(once_value[node.id], seen + (node.id,))
+        if isinstance(node, (ast.List, ast.Tuple, ast.Set)):
+            return list(node.elts)
+        if isinstance(node, ast.Subscript) and isinstance(node.slice, ast.Slice):
+            return elements(node.value, seen)  # some of them
+        label, method = getattr(getattr(node, "func", None), "attr", getattr(getattr(node, "func", None), "id", "")), isinstance(
+            getattr(node, "func", None), ast.Attribute) and not (isinstance(node.func.value, ast.Name) and node.func.value.id in modules)
+        if isinstance(node, ast.Call) and label in ("sorted", "list", "reversed", "tuple", "set", "iter", "islice", "tqdm", "filter") and node.args:
+            return elements(node.args[label == "filter" and len(node.args) > 1], seen)  # the same things, in another order or fewer
+        if isinstance(node, ast.Call) and label == "values" and method:
+            return [v for c in resolve(node.func.value) or [None] for v, _ in part(c, ("k", None))] if primed else None
+        if isinstance(node, ast.Call) and label in ("glob", "iglob") and not method and node.args:  # what a pattern finds lies under the folder before its first wildcard
+            top = os.path.join(*[spelled(k.value) for k in node.keywords if k.arg == "root_dir"], spelled(node.args[0]))
+            cut = re.split(r"[*?\[]", top, 1)
+            lead = os.path.dirname(cut[0])
+            return [top] if len(cut) == 1 else None if ".." in cut[1].split("/") else [lead + "/\0" if lead else "\0"]  # a pattern that climbs finds what lies elsewhere
+        if isinstance(node, ast.Call) and method and label in ("glob", "rglob") and (
+                not node.args or said(node.args[0]) is None or said(node.args[0])[:1] == "/" or ".." in said(node.args[0]).split("/")):
+            return None
+        if isinstance(node, ast.Call) and ((method and label in ("glob", "rglob", "iterdir")) or (not method and label in ("scandir", "walk", "fwalk"))):
+            return [spelled(node.func.value if method else (node.args[:1] or [ast.Constant(value=".")])[0]) + "/\0"]
+        things = resolve(node) if primed and not isinstance(node, ast.Call) else [None]  # a list the program makes, however it is reached: what it was made with and given since
+        return [v for c in things for v, _ in part(c, ("k", None))] if things and all(isinstance(c, LISTS) for c in things) else None
+
+    def columns(n) -> dict:  # what each name of a loop's target is given: values, or None for what cannot be read
+        it, names_ = n.iter, getattr(n.target, "elts", None)
+        label = getattr(getattr(it, "func", None), "attr", getattr(getattr(it, "func", None), "id", ""))
+        if names_ is None:
+            return {n.target.id: elements(it)} if isinstance(n.target, ast.Name) else {}
+        each, wide = elements(it), len(names_)
+        if label == "zip" and len(it.args) == wide:
+            sides = [elements(a) for a in it.args]
+        elif label in ("items", "enumerate") and wide == 2:
+            sides = [None, elements(ast.Call(func=ast.Attribute(value=it.func.value, attr="values"), args=[], keywords=[])) if label == "items" and isinstance(
+                it.func, ast.Attribute) else elements(it.args[0]) if label == "enumerate" and it.args else None]
+        elif label in ("walk", "fwalk"):
+            sides = [each] + [None] * (wide - 1)
+        elif each and all(isinstance(r, (ast.Tuple, ast.List)) and len(r.elts) == wide and not any(isinstance(e, ast.Starred) for e in r.elts) for r in each):
+            sides = [[r.elts[at] for r in each] for at in range(wide)]
+        else:
+            sides = [None] * wide
+        return {t.id: side for t, side in zip(names_, sides) if isinstance(t, ast.Name)}
+
+    def gather() -> dict:  # every value each name is given, as the program now reads
+        live, handed_in, visited = {key: list(values) for key, values in stores.items()}, {}, {}
+        finds.clear()
+        for own in [f.args for f in nodes if isinstance(f, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda))]:  # what each function's own names are handed
+            _, calls_of, init = callers.get(id(own), (own, None, False))
+            got = hands(own, calls_of, init) if calls_of is not None else {}
+            for a in own.posonlyargs + own.args + own.kwonlyargs + [x for x in (own.vararg, own.kwarg) if x]:
+                via = [e for c in mapcalls if local[c.args[0].id][0] is own and a.arg == next(iter(got), None) for e in (elements(c.args[1]) or [None])]
+                handed_in.setdefault(a.arg, []).extend([v for v in got[a.arg] if getattr(v, "id", None) != a.arg] + via if a.arg in got
+                                                       else [] if a.arg in ("self", "cls") else [None])
+        for n in loops:
+            for name, values in columns(n).items():
+                visited.setdefault(name, []).extend([None] if values is None else values)
+                finds.update([name] * bool(values and all(isinstance(v, str) for v in values)))
+        for name in [k for k in {*stores, *handed_in, *visited} if k[:1] not in (".", "[")]:
+            plain = [v for v in stores.get(name, []) if isinstance(v, ast.AST) and id(v) in plain_stores]
+            rest = [v for v in stores.get(name, []) if not any(v is x for x in plain)] + visited.get(name, [])
+            live[name] = plain + handed_in.get(name, []) + rest  # read where the order is not known: any of them
+            live[name + "~"] = handed_in.get(name, []) + rest  # read before its body's first plain assignment
+            live.update((f"{name}~{id(v)}", [v] + rest) for v in plain)  # read after one of them
+        live.update((f"()@{key}", back or [ast.Constant(value=None)]) for key, back in rets.items())
+        return live
+
+    def outer(node):  # a value's nodes down to each `a if c else b` and `a or b`, read by its sides, each call of the program's own function, read by what it hands back, and each member read
+        yield node
+        if id(node) in homes:
+            yield homes[id(node)]
+        if not (isinstance(node, ast.IfExp) or (isinstance(node, ast.BoolOp) and isinstance(node.op, ast.Or)) or (key_of(node) or "")[:3] == "()@" or is_member(node)):
+            for child in ast.iter_child_nodes(node):
+                yield from outer(child)
+
+    def answers(c) -> list:  # what one call of the program's own function hands back, read with what this call hands it and the object it is called on
+        own = asked(c)[1]
+        if any(d is own for d in deep) or len(deep) > 2:
+            return ranges.get(key_of(c)) or ["\0"]  # a function that calls itself, or too deep: whatever any call may hand back
+        obj = resolve(c.func.value) if isinstance(c.func, ast.Attribute) else None
+        found = [x for _ in under(((own, c, obj),)) for r in rets[id(own)] for x in (spellings(r) if r is not None else ["\0"])]
+        return list(dict.fromkeys(found)) or ["\2"]
+
+    def spellings(node) -> list:  # each path a node may spell, one for every value its names may hold; as `spelled` reads it when they are too many
+        if walked.get(id(node), (None,))[0] is not node:  # walked once: a value is read again at each settling
+            seen = list(outer(node))
+            walked[id(node)] = (node, [c for c in seen if isinstance(c, ast.IfExp) or (isinstance(c, ast.BoolOp) and isinstance(c.op, ast.Or))
+                                       or (key_of(c) or "")[:3] == "()@" or is_member(c)], list(dict.fromkeys(k for k in map(key_of, seen) if k is not None and k[:3] != "()@")))
+        sides = [c for c in walked[id(node)][1] if id(c) not in picked]
+        free = [k for k in walked[id(node)][2] if k not in picked and len(ranges.get(k, ())) > 1]
+        options = [ranges[k] for k in free] + [read_as(c) if is_member(c) else answers(c) if isinstance(c, ast.Call) else [
+            x for alt in ([c.body, c.orelse] if isinstance(c, ast.IfExp) else c.values) for x in spellings(alt) if x != "\2"] or ["\2"] for c in sides]
+        if not options or math.prod(map(len, options)) > 32:
+            return [spelled(node)]
+        found, keys = [], free + [id(c) for c in sides]
+        for combo in itertools.product(*options):
+            picked.update(zip(keys, combo))
+            found.append(spelled(node))
+        for key in keys:
+            picked.pop(key, None)
+        return list(dict.fromkeys(x for x in found if "\2" not in x or x == "\2"))
+
+    def values_of(key, values) -> list:  # every spelling the values given under one name may have
+        own_ = [v for v in values if isinstance(v, ast.AST) and (
+            selfish[key, id(v)] if (key, id(v)) in selfish else selfish.setdefault((key, id(v)), key in map(key_of, ast.walk(v))))]  # built from the name's own: `out += x`
+        base = [x for v in values if not any(v is o for o in own_) for x in (
+            ["\0"] if v is None else [v] if isinstance(v, str) else ["\2"] if isinstance(v, ast.Constant) and v.value is None else spellings(v))]
+        for _ in own_[:3]:  # from each value it may have had, once for each such statement
+            more = []
+            for had in dict.fromkeys(base):
+                picked[key] = had
+                more += [x for v in own_ for x in spellings(v)]
+                del picked[key]
+            base += more
+        found = list(dict.fromkeys(base))
+        return ["\0"] if len(found) > 12 else found
+
+    places = [where]  # each folder the program may stand in at some time, whatever the order: filled in below
+
+    def elsewhere(raw: str) -> bool:  # a plain folder elsewhere leads this spelling, whatever its end
+        lead = os.path.dirname(home(raw).split("\0")[0]) if "\1" not in raw else ""
+        return os.path.isabs(lead) and not any(paths.inside(os.path.realpath(lead), r) or paths.inside(r, os.path.realpath(lead)) for r in roots)
+
+    def inward(raw: str) -> set:  # the names that hold what a walk found from where the program stands: under such a folder they only go further in
+        return {k for k in finds if all(v[:1] not in ("/", "~", "\0", "\1") and ".." not in v.split("/") for v in ranges.get(k + "~", ["/"]))} if elsewhere(raw) else set()
+
+    def settle() -> None:  # what each name is built from and spells, to a fixed point
+        grew = True
+        while grew:
+            grew = False
+            live.update(gather())
+            memo.clear()
+            for key, values in list(live.items()):  # each name is every value it is given: a second assignment, two callers, what a loop visits
+                name = key.split("~")[0]
+                found = values_of(key, values) + ["\0"] * (total.get(name, 0) > sites.get(name, 0))
+                found = ["\0"] if hidden and name in total else found  # given through globals() or locals(): no name is read
+                if found != ranges.get(key, []) and turns.get(key, 0) < 8:  # names built from each other in a ring are not read
+                    turns[key] = turns.get(key, 0) + 1
+                    ranges[key], grew = found if turns[key] < 8 else ["\0"], True
+            for target, value in pairs + [(n.optional_vars, n.context_expr) for n in nodes if isinstance(n, ast.withitem) and n.optional_vars is not None]:
+                same = opened(value) or "name of " + getattr(value, "id", "") in tainted  # the file itself, or another name for it
+                grew |= isinstance(target, ast.Name) and same and taint(["name of " + target.id])
+                was = files.get(getattr(value, "id", "")) if isinstance(value, ast.Name) else spelled(source(value)) if source(value) is not None else None
+                if isinstance(target, ast.Name) and target.id in once and target.id not in files and was and was[:1] != "\0":
+                    files[target.id], grew = was, True
+            for target, value in pairs:
+                grew |= named(value, inward(spelled(value))) and taint(held(target))
+                if isinstance(target, ast.Name) and target.id in once and target.id not in bound and spelled(value)[:1] != "\0":
+                    bound[target.id], grew = spelled(value), True  # a name given one value once spells what that value spells
+            for own, calls_of, init in callers.values():  # a helper called in one place spells what that caller hands it
+                for taker, sent in hands(own, calls_of, init).items():
+                    sent_as = {spelled(a) if a is not None else "\0" for a in sent if getattr(a, "id", None) != taker}  # its call of itself hands the same on
+                    sent_to[taker] = [a for a in sent if a is not None and getattr(a, "id", None) != taker] if taker in once else []
+                    if taker in once and taker not in bound and len(sent_as) == 1 and min(sent_as)[:1] != "\0":
+                        bound[taker], grew = min(sent_as), True
+            for n in loops:  # over rows the program spells out, each name takes its own column; over anything else, all of it
+                each = n.iter.elts if isinstance(n.iter, (ast.List, ast.Tuple)) else rows.get(getattr(n.iter, "id", ""))
+                width = len(getattr(n.target, "elts", []))
+                if each is not None and width and all(isinstance(r, (ast.Tuple, ast.List)) and len(r.elts) == width and not any(
+                        isinstance(e, ast.Starred) for e in r.elts + n.target.elts) for r in each):
+                    grew |= taint(x for r in each for t, v in zip(n.target.elts, r.elts) if named(v) for x in held(t))
+                else:  # of what a walk hands back, the folder is a path; the names in it are not
+                    walked = isinstance(n.target, ast.Tuple) and getattr(getattr(n.iter, "func", None), "attr", "") in ("walk", "fwalk")
+                    counted = isinstance(n.target, ast.Tuple) and len(n.target.elts) == 2 and getattr(getattr(n.iter, "func", None), "id", "") == "enumerate"
+                    cols = {name: vs for name, vs in columns(n).items() if vs and all(isinstance(v, ast.AST) for v in vs)}  # a name whose every visit can be read
+                    grew |= taint(name for name, vs in cols.items() if any(map(named, vs)))
+                    grew |= named(n.iter) and taint(held(n.target.elts[0] if walked else n.target.elts[1] if counted else n.target) - set(cols))  # a count is no path
+            for n in nodes:
+                if isinstance(n, ast.withitem) and n.optional_vars is not None:
+                    grew |= named(n.context_expr) and taint(held(n.optional_vars))
+                    if getattr(n.optional_vars, "id", None) in once - set(bound) and spelled(n.context_expr)[:1] != "\0":
+                        bound[n.optional_vars.id], grew = spelled(n.context_expr), True  # `with TemporaryDirectory() as d`
+                elif isinstance(n, ast.arguments):  # a default
+                    takers, values = n.posonlyargs + n.args + n.kwonlyargs, [None] * (len(n.posonlyargs + n.args) - len(n.defaults)) + n.defaults + n.kw_defaults
+                    grew |= taint(a.arg for a, v in zip(takers, values) if v is not None and named(v))
+                elif isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)):  # what the program's own function hands back
+                    grew |= any(isinstance(r, (ast.Return, ast.Yield, ast.YieldFrom)) and r.value is not None and named(r.value)
+                                for r in ast.walk(n)) and taint([n.name])
+                elif isinstance(n, ast.Call) and any(named(a) for a in n.args + [k.value for k in n.keywords]):
+                    label, root = getattr(n.func, "attr", getattr(n.func, "id", "")), getattr(n.func, "value", None)
+                    while isinstance(root, (ast.Attribute, ast.Subscript)):
+                        root = root.value
+                    if label in MUTATORS and isinstance(root, ast.Name):  # kept in a list, a set, a dict, a parser's defaults, the environment
+                        grew |= taint([root.id] if root.id not in modules else [".environ"] * (getattr(n.func.value, "attr", "") == "environ"))
+                    if label in fields_of:  # a class with fields and no __init__ of its own keeps what it is handed in them
+                        grew |= taint("." + f for f in fields_of[label])
+                    if not local.get(label) and (not isinstance(n.func, (ast.Name, ast.Attribute)) or label in stores or label in fields_given
+                                                 or any(isinstance(a, ast.Lambda) for a in n.args)):
+                        grew |= taint(a.arg for a in nodes if isinstance(a, ast.arg))  # handed to a function kept under a name, or to one written in place: any may take it
+                    if label == "setattr" and len(n.args) == 3 and named(n.args[2]):
+                        grew |= taint(held(n.args[0]) | {"." + (said(n.args[1]) or "")})
+                    for name in [label] + [a.id for a in n.args if isinstance(a, ast.Name)]:  # handed to the program's own function
+                        for own in [*local.get(name, ()), *filter(None, [inits.get(name)])]:  # a class is built by the __init__ it inherits
+                            takers = [a.arg for a in own.posonlyargs + own.args]
+                            takers = takers[takers[:1] in (["self"], ["cls"]):]
+                            if name != label or any(isinstance(a, ast.Starred) for a in n.args) or None in [k.arg for k in n.keywords]:
+                                grew |= taint(a.arg for a in ast.walk(own) if isinstance(a, ast.arg))  # through map or *args: any of them
+                                continue
+                            spare, extra = [own.vararg.arg] if own.vararg else [], [own.kwarg.arg] if own.kwarg else []
+                            worded = {t.split("@")[0]: t for t in takers + [a.arg for a in own.kwonlyargs]}  # a keyword names it as it was written
+                            grew |= taint([x for i, a in enumerate(n.args) if named(a) for x in takers[i:i + 1] or spare] + [
+                                x for k in n.keywords if named(k.value) for x in ([worded[k.arg]] if k.arg in worded else extra)])
+    def rowed(key, value) -> list:  # (key, value) for each row, when both are the names of one loop over rows the program spells out and neither is given anything else
+        names_ = [getattr(key, "id", None), getattr(value, "id", "")]
+        for n in [n for n in loops if [getattr(e, "id", 0) for e in getattr(n.target, "elts", [])] == names_ and all(total.get(x) == 1 for x in names_)]:
+            cols, table_ = columns(n), resolve(n.iter.func.value) if getattr(getattr(n.iter, "func", None), "attr", "") == "items" else []
+            if all(cols.get(x) and all(isinstance(v, ast.AST) for v in cols[x]) for x in names_):
+                return list(zip(cols[names_[0]], cols[names_[1]]))
+            if len(table_) == 1 and isinstance(table_[0], ast.Dict) and None not in table_[0].keys and not given_m.get(id(table_[0])):
+                return list(zip(table_[0].keys, table_[0].values))
+        return []
+
+    def census() -> tuple:  # what each thing is given after it is made, and what is taken from it: read with what the pass before found
+        given_, loose_, gone = {}, {}, set()
+
+        def keep(of, sel, value) -> None:  # one thing given to a member: to each thing its holder may be, or to any when that cannot be told
+            for c in resolve(of) or [None]:
+                (given_.setdefault(id(c), {}) if c is not None else loose_).setdefault(sel[0], {}).setdefault(sel[1], []).append((value, tags.get(id(value))))
+        for t in [n for n in nodes if isinstance(n, (ast.Attribute, ast.Subscript)) and isinstance(n.ctx, (ast.Store, ast.Del))]:
+            m, f = sel_of(t), inside.get(id(t))
+            if isinstance(t.ctx, ast.Del) or m is None:
+                gone.update(id(c) for c in resolve(t.value)) if isinstance(t.ctx, ast.Del) else keep(t.value, ("k", None), None) if isinstance(t, ast.Subscript) else None
+            elif m[1][1] is None and isinstance(t, ast.Subscript) and rowed(t.slice, pair_of.get(id(t))):
+                for k, v in rowed(t.slice, pair_of[id(t)]):  # `for key, value in rows: cfg[key] = value`: each row's value under that row's key
+                    keep(m[0], ("k", key_at(k)), v)
+            elif not (m[1][0] == "a" and getattr(m[0], "id", "") == "self" and f is not None and f.name in ("__init__", "__post_init__") and id(f) in of_class):
+                keep(m[0], m[1], None if id(pair_of.get(id(t))) in grown else pair_of.get(id(t)))  # what an __init__ gives self is read as the object is built
+        for n in calls:
+            label, base, kw = getattr(n.func, "attr", getattr(n.func, "id", "")), getattr(n.func, "value", None), {k.arg: k.value for k in n.keywords}
+            if label == "putenv" and len(n.args) == 2:
+                keep(ENV, ("k", key_at(n.args[0])), n.args[1])
+            elif label == "setattr" and len(n.args) == 3:
+                keep(n.args[0], ("a", key_at(n.args[1])), n.args[2])
+            elif base is not None and label in ("setdefault", "__setitem__") and len(n.args) == 2:
+                keep(base, ("k", key_at(n.args[0])), n.args[1])
+            elif base is not None and label == "update":
+                for k, v in [(k, v) for k, v in kw.items()] + [(None, None)] * (None in kw):
+                    keep(base, ("k", k), v if k is not None else None)
+                for o in [o for a in n.args for o in resolve(a) or [None]]:
+                    spelt_out = isinstance(o, ast.Dict) and None not in o.keys
+                    for k, v in zip(o.keys, o.values) if spelt_out else [(None, None)]:
+                        keep(base, ("k", key_at(k) if spelt_out else None), v)
+            elif base is not None and label in ("append", "add", "insert", "extend", "appendleft", "extendleft"):
+                for a in n.args[label == "insert":]:
+                    for v in (elements(a) or [None]) if "extend" in label else [a]:
+                        keep(base, ("k", None), v)
+            elif base is not None and label in ("pop", "popitem", "clear", "remove", "discard"):
+                gone.update(id(c) for c in resolve(base))
+        return given_, loose_, gone
+    for _ in range(2):  # twice: what a loop visits depends on what its names are, and those on what loops visit
+        live.update(gather())
+        primed.append(1)
+    for _ in range(4):  # until it settles: what a thing is given may be reached through what another was given (rows added to a list, then copied into a table)
+        found = census()
+        if found == (given_m, loose_m, removed):
+            break
+        given_m.clear(), loose_m.clear(), removed.clear(), memo.clear(), kn.clear()
+        given_m.update(found[0]), loose_m.update(found[1]), removed.update(found[2])
+        live.update(gather())
+    kn.clear(), walked.clear(), memo.clear()
+    settle()
+    stand_in = os.path.expanduser(next((m for m in names if m[:1] in ("/", "~")), "".join(names[:1])))  # a protected folder, for one built from it that cannot be spelled
+
+    def within(spot: str) -> bool:  # a folder the program may stand in lies in a protected one; an end that cannot be read lies under the part that can
+        lead = spot if "\0" not in spot else os.path.dirname(spot.split("\0")[0])
+        return os.path.isabs(lead) and any(paths.inside(os.path.realpath(lead), r) for r in roots)
+
+    def lands(node, folder: bool = False, link: bool = False, at=(where,), reach=()) -> bool:  # whether a write's target is, or may be, in a protected folder
+        return any(leads(path, node, folder, link, at, reach) for path in spellings(node) if "\2" not in path)  # no value at all writes nothing
+
+    def leads(raw: str, node, folder: bool, link: bool, at, reach) -> bool:  # one spelling of a target, from each folder the call may be made in
+        made = re.search("\1(\\d+)\1[^\1]*$", raw)  # made whole at an earlier call: from where the program stood then
+        raw, at = (raw[raw.rfind("\1") + 1:], stood.get(int(made[1]), [where]) if made else places) if "\1" in raw else (raw, at)
+        path = home(raw)
+        froms = [""] if os.path.isabs(path) else at
+        # A plain path is judged where it leads (one that names a protected folder and climbs away from it is not
+        # plain). Any other target is judged by what it is built from, and inside by the folder that leads it.
+        if "\0" not in path:
+            reals = [os.path.realpath(os.path.join(s, path)) for s in froms if "\0" not in s]
+            inside = [real for real in reals if any(paths.inside(real, r) for r in roots)]
+            if any(_reaches(real, r, True) for real in reals if real not in inside for r in reach):
+                return True  # a folder removed, moved or copied over whole changes the protected folder it holds
+            unread = any("\0" in s and within(s) for s in froms)  # from a folder it cannot read, under a protected one
+            if inside or unread or not any(m in raw for m in names):
+                return unread or any(link or not _own(real, folder) for real in inside)  # no link is made there
+        return named(node, inward(path)) or (any(map(within, at)) and not elsewhere(path))
+
+    # Where the program stands when it makes each call. A folder change that is a statement of the program's own
+    # body is sure: after it the program stands there, taken from wherever it stood. A change inside a loop, a
+    # branch or a `with` may not have happened, so from its statement on the program may stand in either place, and
+    # one inside a function may come at any time. A descriptor stands for the folder it was opened on (the seventh
+    # review: of two changes one after the other only the first was followed, `fchdir` not at all, and a program
+    # that had left a transcript folder for good was still held to it).
+    def opened_on(node, seen: tuple = ()) -> list:  # what a descriptor stands for: the path each `open` that made it was given, and that call
+        made = [v for t, v in pairs if isinstance(t, ast.Name) and t.id == getattr(node, "id", None) and t.id not in seen] or [node]
+        return [x for v in made for x in (
+            [((v.args[:1] or [k.value for k in v.keywords if k.arg in ("path", "file")] or [v])[0], v)]
+            if isinstance(v, ast.Call) and getattr(v.func, "attr", direct.get(getattr(v.func, "id", ""), ("", getattr(v.func, "id", "")))[1]) == "open"
+            else opened_on(v, seen + (node.id,)) if isinstance(v, ast.Name) and v is not node else [(v, None)])]  # kept under another name
+
+    def folders(given, descriptor: bool = False, depth: int = 0) -> list:  # each folder those arguments may name, "\0" for a part that cannot be read
+        found = []
+        for a, call in [pair for arg in given for pair in (opened_on(arg) if descriptor else [(arg, None)])]:
+            beside = [k.value for k in getattr(call, "keywords", ()) if k.arg == "dir_fd"] if depth < 4 else []
+            for v in map(home, [x for x in spellings(a) if "\2" not in x]):
+                if v[:1] == "\0":
+                    found.append(stand_in if names and named(a) else v)
+                elif beside and not os.path.isabs(v):  # opened beside another descriptor: under that one's folder
+                    found += [os.path.join(base, v) for base in folders(beside, True, depth + 1)]
+                else:
+                    found.append((f"\1{id(call)}\1" if call is not None else "\1") * (descriptor and v[:1] not in ("/", "\1")) + v)
+        return found
+
+    def based(v: str, spots) -> list:  # the folders a path is read from: where the program stood at the call that opened it or made it whole
+        made = re.search("\1(\\d+)\1", v)
+        return (stood.get(int(made[1]), places) if made else places) if "\1" in v else spots
+
+    def shift(spots, changes) -> list:  # where it may stand after each of those changes, from each folder it may stand in
+        return [os.path.join(s, v[v.rfind("\1") + 1:]) for c in changes for v in change[id(c)] for s in based(v, spots)]
+
+    def changer(n) -> str:  # "chdir" or "fchdir" for a name of either, under any name it was imported by
+        found = direct.get(getattr(n, "id", ""), ("", getattr(n, "attr", getattr(n, "id", ""))))[1]
+        return found if found in ("chdir", "fchdir") else ""
+    handed_on = any(isinstance(n, (ast.Attribute, ast.Name)) and id(n) not in called and changer(n) for n in nodes)  # map(os.chdir, ...)
+    stood, anywhere, functions = {}, [where], [f for f in nodes if isinstance(f, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda))]
+    for _ in range(2):  # twice: what a walk finds depends on where the program may stand, and where it may stand on what its names spell
+        change = {id(n): folders([*n.args, *(k.value for k in n.keywords)], changer(n.func) == "fchdir") for n in calls if changer(n.func)}
+        places[:] = [where] + [stand_in] * bool(handed_on and names)  # a change handed on cannot be followed: it may stand in a folder the command names
+        for _ in [v for values in change.values() for v in values]:
+            places += [f for f in dict.fromkeys(shift(places, [n for n in calls if id(n) in change])) if f not in places][:64 - len(places)]
+        settle()
+    if change or handed_on:
+        deferred = [c for f in functions for c in ast.walk(f) if id(c) in change]
+
+        def walk(body: list, at: list) -> list:  # each statement in the order it runs, from the folders the program may stand in before it
+            for stmt in body:
+                if isinstance(stmt, (ast.With, ast.AsyncWith)):  # its body runs once and in order: a change in it is as sure as one outside
+                    heads, back = [item.context_expr for item in stmt.items], at
+                    at = walk([ast.Expr(value=h) for h in heads if id(h) not in change], at)
+                    for h in [h for h in heads if id(h) in change]:  # `with contextlib.chdir(folder):` the body runs there
+                        stood[id(h)], at = at, list(dict.fromkeys(shift(at, [h])))
+                    passed = any(getattr(getattr(h, "func", None), "attr", getattr(getattr(h, "func", None), "id", "")) == "suppress" for h in heads)
+                    at = walk(stmt.body, at) + back * passed  # under `suppress` a change may have failed and been passed over
+                    at = back if any(id(h) in change for h in heads) else list(dict.fromkeys(at))  # and after `with chdir` it is back
+                    continue
+                if isinstance(stmt, ast.If):  # each branch in order; its main block always runs, any other may not
+                    at = walk([ast.Expr(value=stmt.test)], at)
+                    main = getattr(getattr(stmt.test, "left", None), "id", "") == "__name__" and not stmt.orelse
+                    at = list(dict.fromkeys(walk(stmt.body, at) + (walk(stmt.orelse, at) if stmt.orelse or not main else [])))
+                    continue
+                if isinstance(stmt, (ast.For, ast.AsyncFor, ast.While)):  # its body in order, each time from wherever a round may have left it
+                    at = walk([ast.Expr(value=getattr(stmt, "iter", getattr(stmt, "test", None)))], at)
+                    for _ in range(2):
+                        now, mids = at, list(at)
+                        for part in stmt.body:
+                            now = walk([part], now)
+                            mids += now
+                        at = list(dict.fromkeys(mids))  # it may run no times, or leave at any point
+                    at = walk(stmt.orelse, at)
+                    continue
+                if isinstance(stmt, (ast.Try, getattr(ast, "TryStar", ast.Try))):  # in order until something fails: a handler and the
+                    now, mids = at, list(at)                                      # finally may start from any point of the body
+                    for part in stmt.body:
+                        now = walk([part], now)
+                        mids += now
+                    done, mids = walk(stmt.orelse, now), list(dict.fromkeys(mids))
+                    at = walk(stmt.finalbody, list(dict.fromkeys(done + [f for h in stmt.handlers for f in walk(h.body, mids)] + mids)))
+                    continue
+                inner = [c for c in ast.walk(stmt) if id(c) in change]
+                mine = isinstance(stmt, ast.Expr) and isinstance(stmt.value, ast.Call) and (
+                    modules.get(getattr(getattr(stmt.value.func, "value", None), "id", "")) == "os" or direct.get(getattr(stmt.value.func, "id", ""), ("",))[0] == "os")
+                sure = mine and inner == [stmt.value]  # os's own change, not another object's method of that name
+                stood.update((id(c), at) for c in ast.walk(stmt) if sure and isinstance(c, ast.Call))  # what it is handed was made before it
+                before, at, maybe = at, list(dict.fromkeys(shift(at, inner))) if sure else at, deferred + inner * (not sure)
+                for _ in [v for c in maybe for v in change[id(c)]]:  # a change that may come, and come again after another
+                    at = at + [f for f in dict.fromkeys(shift(at, maybe)) if f not in at][:64 - len(at)]
+                stood.update((id(c), before if sure else at) for c in ast.walk(stmt) if isinstance(c, ast.Call))
+                anywhere.extend(f for f in at if f not in anywhere)
+            return at
+        walk(tree.body, [where] + [stand_in] * bool(handed_on and names))
+        for f, spots in [(f, list(anywhere)) for f in functions]:  # a function runs wherever it is called: its own statements in order from there
+            walk(f.body if isinstance(f.body, list) else [ast.Expr(value=f.body)], spots)
+
+    stored = any(named(v) for entries in mapped.values() for _, v in entries)  # a protected path kept in some mapping, under any name
+
+    same = {t.id: v.id for t, v in pairs if isinstance(t, ast.Name) and isinstance(v, ast.Name) and t.id in once}  # alias = process
+
+    def owner(node):  # whose pipe: the name the process is kept under, the call that started it, None when it cannot be told
+        node = node.value if getattr(node, "attr", "") == "stdin" else node
+        name = getattr(node, "id", None)
+        for _ in range(8):  # a second name for it is the same process
+            name = same.get(name, name)
+        return name if isinstance(node, ast.Name) else node if isinstance(node, ast.Call) else None
+    begun = [c for c in calls if getattr(c.func, "attr", getattr(c.func, "id", "")) in ("Popen", "popen", "create_subprocess_exec", "create_subprocess_shell")]
+    tied = begun + [t.id for t, v in pairs + withs if isinstance(t, ast.Name) and any(v is c for c in begun)]  # each process, and the names it is kept under
+    fed_by = [c for c in begun if getattr(c.func, "attr", getattr(c.func, "id", "")) == "popen"]  # os.popen(command, "w"): what is written to it is the command's input
+    fed_by += [t.id for t, v in pairs + withs if isinstance(t, ast.Name) and any(v is c for c in fed_by)]
+    piped = [(owner(c.func.value), a) for c in calls if isinstance(c.func, ast.Attribute) and (c.func.attr == "communicate" or (
+        c.func.attr in ("write", "writelines") and (getattr(c.func.value, "attr", "") == "stdin" or any(
+            c.func.value is f or getattr(c.func.value, "id", None) == f for f in fed_by))))
+        for a in c.args[:1] + [k.value for k in c.keywords if k.arg == "input"]] + [
+        (owner(k.value), a) for c in calls for k in c.keywords if k.arg == "file" and getattr(k.value, "attr", "") == "stdin"
+        for a in c.args[:1]]  # what the program writes down a pipe, and to which process: communicate, stdin.write, print(file=p.stdin)
+    def descriptor(given) -> bool:  # a number, or a name given nothing but numbers and what os.open or mkstemp hands back
+        made = [(given or [None])[0]] if isinstance((given or [None])[0], ast.Constant) else stores.get(getattr((given or [None])[0], "id", ""), [])
+        return bool(made) and all((isinstance(v, ast.Constant) and (type(v.value) is int or v.value == "\2")) or (isinstance(v, ast.Call) and source(v) is not None and (
+            modules.get(getattr(getattr(v.func, "value", None), "id", "")) == "os" or direct.get(getattr(v.func, "id", ""), ("",))[0] == "os")) for v in made)
     hit = wrote = False
     for n in calls:
         base = n.func.value if isinstance(n.func, ast.Attribute) else None
         label, kw = n.func.attr if base is not None else getattr(n.func, "id", ""), {k.arg: k.value for k in n.keywords}
         fds = [kw[k] for k in ("dir_fd", "src_dir_fd", "dst_dir_fd") if k in kw]  # a name given beside a descriptor is read from its folder
-        at = folders(fds, True) + stood.get(id(n), [where]) * ("dir_fd" not in kw) if fds else stood.get(id(n), [where])
+        at = stood.get(id(n), [where])
+        at = [os.path.join(s, v[v.rfind("\1") + 1:]) for v in folders(fds, True) for s in based(v, [""])] + at * ("dir_fd" not in kw) if fds else at
         plain = base is None and label not in direct and label not in local  # a builtin, or a name a star import brought
         owners = ([modules.get(base.id, base.id)] if isinstance(base, ast.Name) else [imported(base).split(".")[0]] if imported(base)
                   else [direct[label][0]] if base is None and label in direct else stars if plain else [])
@@ -2376,7 +3348,9 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
         starred = any(isinstance(a, ast.Starred) for a in n.args) or None in kw  # open(*pair): the mode cannot be read
         method = base is not None and not imported(base) and not (isinstance(base, ast.Name) and base.id in modules)  # p.write_text(), not os.remove()
         mode = ((n.args[1:2] if opener else n.args[:1]) or [kw.get("mode")])[0]  # Path(p).open("w") takes its mode first
-        writes = mode is not None and (said(mode) is None or bool(re.fullmatch(r"[rbtU]*[wax+][\w+:|]*", said(mode))))
+        def says(node, pattern) -> bool:  # a mode or a flag opens to write: as each value it may hold reads, and one that cannot be read may
+            return any("\0" in text or "\1" in text or bool(re.search(pattern, text)) for text in ([said(node)] if said(node) is not None else spellings(node)))
+        writes = mode is not None and says(mode, r"^[rbtU]*[wax+][\w+:|]*$")
         how = (n.args[1:2] or [kw.get("flags")])[0]
         how = given_once.get(getattr(how, "id", ""), how)  # flags kept under a name given them once
         flags = {x.attr if isinstance(x, ast.Attribute) else direct.get(x.id, ("", x.id))[1] for x in (ast.walk(how) if how is not None else ())
@@ -2388,8 +3362,13 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
             first = ast.List(elts=n.args) if label == "create_subprocess_exec" else (n.args[:1] or [kw.get("args")])[0]
             first = given_once.get(getattr(first, "id", ""), first)  # a command kept under a name given it once
             parts = [spelled(e) for e in first.elts] if isinstance(first, (ast.List, ast.Tuple)) else None
-            if parts:  # one word of a list is one file: a word it found in a protected folder stands for a file there, an unread end for a name
-                parts = [w.replace("\0", "x") if w[:1] != "\0" else stand_in + "/x" if names and named(e) else w for w, e in zip(parts, first.elts)]
+            if parts:  # one word of a list is one file: what it found in a protected folder stands for a file there, any other unread part for a name
+                reads = os.path.basename(parts[0]) in SHELLS or bool(SCRIPT.match(os.path.basename(parts[0])))
+                kind, code, _ = _program([w.replace("\0", "x") for w in parts]) if reads else ("", 0, "")
+                code = 0 if "shell" in kw and getattr(kw["shell"], "value", True) else code - 1 if kind == "inline" else len(parts)
+                hit = hit or (code < len(parts) and parts[code][:1] == "\0" and named(first.elts[code]))  # a script it cannot read, built from a protected path
+                parts = [w.replace("\0", stand_in + "/x" if names and named(e) else "x") if w[:1] != "\0" else stand_in + "/x" if names and named(e) else w
+                         for w, e in zip(parts, first.elts)]
                 parts[:1] = [spelled(kw["executable"])] if "executable" in kw else parts[:1]  # the program it really runs
             ran = shlex.join(parts) if parts else spelled(first) if first is not None and parts is None else "\0"
             fed_code = any(os.path.basename(w) in SHELLS or SCRIPT.match(os.path.basename(w)) for w in (parts[:1] if parts else ran.split())) and (
@@ -2403,17 +3382,22 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
                     ran = f"{key}={shlex.quote(put)}; {ran}"
                 else:
                     hit = hit or named(value)  # a protected path under a name it cannot tell: any command it starts may use it
-            feeds = [kw["input"]] if "input" in kw else piped if getattr(kw.get("stdin"), "attr", getattr(kw.get("stdin"), "id", "")) == "PIPE" else []
-            texts = [spelled(a) for a in feeds]  # a script fed on its input is that command's script
-            dark = fed_code and [a for a, text in zip(feeds, texts) if "\0" in text]  # one it cannot read is a script only for a shell or an interpreter
-            spots = [os.path.join(spot, v) for spot in at for v in folders([kw["cwd"]])] if "cwd" in kw else at
+            mine = {t.id for t, v in pairs + withs if v is n and isinstance(t, ast.Name)}  # the names this process is kept under
+            feeds = [kw["input"]] if "input" in kw else [a for who, a in piped if who is n or who in mine or who not in tied] if label == "popen" or getattr(
+                kw.get("stdin"), "attr", getattr(kw.get("stdin"), "id", "")) == "PIPE" else []  # its own pipe, and any that is no one's
+            texts = ["".join(spelled(a) for a in feeds)] * bool(feeds)  # what it is fed, piece after piece, is that command's script
+            dark = fed_code and "\0" in "".join(texts) and feeds  # one it cannot read is a script only for a shell or an interpreter
+            was = [f for call in re.findall("\1(\\d+)\1", ran + "".join(texts)) for f in stood.get(int(call), [where])]
+            at = (was or places) if "\1" in ran + "".join(texts) else at  # a word made whole earlier: from where the program stood then
+            ran, texts = re.sub("\1(?:\\d+\1)?", "", ran), [re.sub("\1(?:\\d+\1)?", "", text) for text in texts]
+            spots = [os.path.join(spot, v[v.rfind("\1") + 1:]) for spot in at for v in folders([kw["cwd"]])] if "cwd" in kw else at
             known = [os.path.realpath(f) if os.path.isabs(f) else f  # a folder it cannot read whole is judged from the part it can
                      for f in (spot if "\0" not in spot else os.path.dirname(spot.split("\0")[0]) for spot in spots)]
             if "\0" not in ran:  # a command it spells whole is judged as the shell guard judges one, wherever it may run
                 for text in [t for t in texts if "\0" not in t] or [""]:
                     line = f"{ran} <<'INPUT_OF_THE_COMMAND'\n{text}\nINPUT_OF_THE_COMMAND" if text else ran
                     hit = hit or next(filter(None, (check_self_grant(line, f, config) for f in known)), False)  # the refusal itself
-                hit = hit or (bool(dark) and any(map(named, dark)))
+                hit = hit or (bool(dark) and any(map(named, dark))) or (stored and any(USED.search(text) for text in _resolved(ran)))
                 if not dark and not unplaced:  # everything it is given was placed: nothing is left for the older rule,
                     continue                   # which holds a command handed anything built from a protected path
             hit = hit or any(map(named, feeds))  # a command it cannot read, fed what is built from a protected path
@@ -2423,13 +3407,17 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
         targets = [t for m in owners for t in (  # what a call into the standard library changes: a copy, only where it lands
             [] if m == "shutil" and label in ("which", "disk_usage", "get_terminal_size")
             else [] if (m, label) == ("shutil", "copyfileobj")  # two files already open: each open is judged where it is made
+            else n.args[1:2] + [kw[k] for k in ("extract_dir",) if k in kw] or [ast.Constant(value=".")] if (m, label) == ("shutil", "unpack_archive")
+            else n.args[:1] + [kw[k] for k in ("base_name",) if k in kw] if (m, label) == ("shutil", "make_archive")  # the folder it packs is read
             else n.args[1:2] + [kw[k] for k in ("dst", "fdst") if k in kw] or every if m == "shutil" and label in COPIES
             else [] if (m, label) == ("os", "open") and reads_only
-            else every if m == "shutil" or starts or (m, label) == ("sqlite3", "connect") or (m == "os" and OS_WRITES.fullmatch(label))
+            else n.args[:1] or [kw[k] for k in ("path",) if k in kw] if (m, label) == ("os", "open")  # its flags and its mode are no file
+            else [] if (m, label) == ("os", "write") and descriptor(n.args[:1])  # to a descriptor os.open made: its open is judged where it is made
+            else every if m == "shutil" or starts or (label == "connect" and m in ("sqlite3", "duckdb", "apsw")) or (m == "os" and OS_WRITES.fullmatch(label))
             or (m == "fileinput" and edits)
             else [])]
-        if opener and (writes or starred):  # open(path, "w") or open(file=path, mode="w")
-            targets += n.args[:1] or [kw[k] for k in ("file", "name", "filename") if k in kw]
+        if opener and (writes or starred):  # open(path, "w") or open(file=path, mode="w"); a descriptor os.open made was judged there
+            targets += [a for a in n.args[:1] or [kw[k] for k in ("file", "name", "filename") if k in kw] if not descriptor([a])]
         elif method and label in ("extractall", "extract"):  # an archive unpacked: where it is told, else where the program stands
             targets += n.args[label == "extract":][:1] or [kw[k] for k in ("path",) if k in kw] or [ast.Constant(value=".")]
         elif method and label in LINKS:  # the link and what it points at: written through, it writes there
@@ -2438,17 +3426,50 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
             targets.append(base)
         elif method and label in ("rename", "replace") and len(n.args) + len(kw) == 1 and (n.args or "target" in kw):
             targets += [base] + every  # both ends change; str.replace takes two
+        flag = (n.args[1:2] or [kw.get("mode", kw.get("flag"))])[0]
+        aims = flag is not None and says(flag, r"[wax+cn]")  # opened to be written
+        writer = BY_NAME.fullmatch(label) if not targets and not opener and asked(n)[1] is None else None  # the program's own save() is read as it is written
+        lib = set() if method else {m.split(".")[0] for m in owners}
+        made_by = [v for v in ([base] if isinstance(base, ast.Call) else live.get(key_of(base), []) if isinstance(base, ast.Name) else []) if isinstance(v, ast.Call)]
+        sure, maybe = [], []  # what it takes as its path, and what may be its path
+        if label == "open" and owners and not method and not opener and "os" not in owners:  # another library's store: shelve and dbm make one unless told to read
+            sure = (n.args[:1] or [kw[k] for k in PATH_KEYS if k in kw]) * (aims or (flag is None and bool({"shelve", "dbm"} & set(owners))))
+        elif writer is None and not targets and not opener and asked(n)[1] is None and OPENED.fullmatch(label) and (
+                label.endswith(("Writer", "Store", "_writer")) or label == "memmap" if flag is None or label.endswith("Writer") else aims):
+            sure = n.args[:1] or [kw[k] for k in PATH_KEYS if k in kw]  # h5py.File(path, "w"), ExcelWriter(path), np.memmap(path)
+        elif method and label == "write" and any(re.fullmatch(r"ElementTree|parse|\w*(?:Writer|Merger)", getattr(v.func, "attr", getattr(v.func, "id", ""))) for v in made_by):
+            sure = n.args[:1]  # a tree's or a document's own write(path); a file's write(text) is content
+        elif writer and writer[4]:  # dump(what, where); a thing's own dump(where)
+            sure, maybe = n.args[1:2], n.args[:1] * (method and len(n.args) == 1)
+        elif writer and lib & OBJECT_FIRST and not writer[5]:  # torch.save(what, where), pd.to_pickle(what, where)
+            sure = n.args[1:2]
+        elif writer and (writer[1] or (writer[3] and (method or lib & PATH_FIRST or len(n.args) == 1))):
+            sure, maybe = n.args[:1], n.args[1:2] * bool(method and writer[3])
+        elif writer:  # to_<anything else>, write_<anything else>, another module's save(a, b): either may be the path; a deletion, as a module's own function
+            maybe = (n.args if owners and not method else []) if writer[5] else n.args[:1 + (not method)]
+        sure += [kw[k] for k in PATH_KEYS if k in kw] if writer else []
+        led = {id(a): [s for s in spellings(a) if s[:1] not in ("\0", "\2")] for a in sure + maybe}  # each reading with a lead that can be read
+        targets += [a for a in sure if led[id(a)] or stringy(a)] + [
+            a for a in maybe if led[id(a)] and (named(a) or any(re.search(r"/|^~|\.\w{1,6}$", s) for s in led[id(a)]))]
+        if label in LIBRARY_WRITES:  # the standard library's own writers: a log file, a download, a temporary file made where it is told
+            targets += [kw[k] for k in ("filename", "dir") if k in kw] + (
+                n.args[1:2] if label == "urlretrieve" else n.args[:1] if "Handler" in label else n.args[2:3] if label.startswith(("mk", "TemporaryD")) else [])
         wrote = wrote or bool(targets)
-        swept = ([base] if method and label in ("rename", "replace") else n.args[1:2] + [kw[k] for k in ("dst",) if k in kw] if label == "copytree"
-                 else (n.args[:1] or [kw[k] for k in ("src", "path") if k in kw]) if label in ("rmtree", "move", "rename", "renames", "replace") else [])
-        hit = hit or any(lands(t, label in ("mkdir", "makedirs"), label in LINKS or bool(kept), at, any(t is x for x in swept))
-                         for t in targets)  # a copy that keeps links may make one; a tree removed, moved or copied over is changed throughout
+        gone = ([base] if method and label in ("rename", "replace") else (n.args[:1] or [kw[k] for k in ("src", "path") if k in kw])
+                if label in ("rmtree", "move", "rename", "renames", "replace") else [])  # a tree removed or moved away whole takes all it holds
+        over_it = n.args[1:2] + [kw[k] for k in ("dst",) if k in kw] if label == "copytree" else []  # one copied over a folder lands in what it holds
+        hit = hit or any(lands(t, label in ("mkdir", "makedirs"), label in LINKS or bool(kept), at,
+                               roots if any(t is x for x in gone) else folders_held if any(t is x for x in over_it) else ())
+                         for t in targets)  # a copy that keeps links may make one
     return hit or (wrote and loose), wrote
 
 
 def check_self_grant(command: str, cwd: str, config: dict | None = None) -> str | None:
     home = os.path.expanduser("~")
-    readings = _resolved(command.replace("${HOME}", home).replace("$HOME", home))
+    if re.search(r"(?:^|[\s;&|(])(?:export\s+)?HOME=", command):  # a command that gives HOME its own value: `~` is that value too
+        readings = _resolved(re.sub(r"(?<![\w$~./-])~(?=/|\s|$)", "$HOME", command))
+    else:
+        readings = _resolved(command.replace("${HOME}", home).replace("$HOME", home))
     return next(filter(None, (_self_grant(command, text, cwd, config) for text in readings)), None)
 
 
@@ -2466,17 +3487,23 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None) -> str |
         _commands(text, cwd, writes=redirects)  # folder or to a `cd` was never looked at); a `>` inside quotes is not one
     except (Unreadable, StopIteration, IndexError):
         readable = False
-    asked = [(os.path.expanduser(os.path.expandvars(t)), w) for t, w in redirects]  # each write's target, and where it runs
+    held = [os.path.realpath(r) for r in raw if not store or r != str(store)]
+
+    def spots(where: str) -> list:  # where a command runs; for one `find -execdir` runs, the top of its search and each protected folder under it
+        top = where[:-len(DEEP)]
+        return [top] + [r for r in held if paths.inside(r, os.path.realpath(top))] if where.endswith(DEEP) else [where]
+    asked = [(_led(os.path.expanduser(os.path.expandvars(t)), spot), spot) for t, w in redirects for spot in spots(w)]  # each write's target, and where it runs
     asked += [(t.strip("'\""), cwd) for t in re.findall(r">{1,2}\|?\s*([^\s;&|<>()]+)", text)] if names and not readable else []
     why, wheres, handed, links, made, linked = "", {cwd}, [], [], [], []
     if codes and re.search(r"(?i)\b(?:%s)\b" % "|".join(map(re.escape, codes)), command):
         why = "carries a pending approval code (to see pending requests, run `synthesis approvals`)"
     feeds, env = [], dict(os.environ)
     found = _parse(text, cwd, feeds=feeds)[0]
-    for m in ASSIGNED.finditer(text):  # the value the command gives a variable; given two, the one that names a protected path
+    for m in ASSIGNED.finditer(_own_text(text)):  # the value the command gives a variable; given two, the one that names a protected path
         if not m[2] and (env.get(m[1]) is None or m[1] in os.environ or any(n in m[3] for n in names)):
             env[m[1]] = m[3].strip("'\"")
-    for (words, where), fed in zip(found, feeds + [""] * len(found)):  # each command with what it reads on its own stdin
+    for (words, where), fed in [((words, spot), fed) for (words, where), fed in zip(found, feeds + [""] * len(found))
+                                for spot in spots(where)]:  # each command, where it runs, with what it reads on its own stdin
         head, own = os.path.basename(words[0]), " ".join(words[1:])
         wheres.add(where)  # a redirect after `cd <root>` writes relative to that root
         if HOOK_RUN.search(words[0]) or ((SCRIPT.match(head) or head in SHELLS) and HOOK_RUN.search(_ran(words))):
@@ -2486,7 +3513,7 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None) -> str |
         roomy = {w for w in landed if head in COPIERS and _own(os.path.realpath(os.path.join(where, os.path.expanduser(w))), True)
                  and w not in firm and any(os.path.dirname(x.rstrip("/")) == w.rstrip("/") for x in landed if x != w)}
         landed = [w for w in landed if os.path.dirname(w) not in firm and w not in roomy]  # into its memory folder: the note it makes there
-        asked += [(os.path.expanduser(os.path.expandvars(w)), where) for w in landed]
+        asked += [(_led(os.path.expanduser(os.path.expandvars(w)), where), where) for w in landed]
         led = [os.path.realpath(os.path.join(where, os.path.expanduser(w))) for w in landed] if head in ("ln", "mkdir") else []
         links, made = links + led * (head == "ln"), made + led * (head == "mkdir")
         aimed = [w for w in words[1:] if not w.startswith("-")][:1] if head == "ln" else []  # what a link made here points at
@@ -2498,8 +3525,9 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None) -> str |
             for spot in (moves[-1], os.path.join(moves[-1], os.path.basename(link))):
                 links, linked = links + [spot], linked + [(spot, aim)]
         within = any(paths.inside(os.path.realpath(where), os.path.realpath(r)) for r in raw)
-        for word in _named(words) if readable else ():  # words the parser could not read name no program
-            led = os.path.realpath(os.path.join(where, os.path.expanduser(os.path.expandvars(word))))
+        quoted = isinstance(where, Quoted)  # read out of a word handed to another program: judged for what it writes, runs and starts
+        for word in _named(words) if readable and (not quoted or head in OPAQUE) else ():  # words the parser could not read name no program
+            led = os.path.realpath(os.path.join(where, _led(os.path.expanduser(os.path.expandvars(word)), where)))
             if not within or word[:1] in ("~", "/") or word == HANDED or os.path.lexists(led):  # inside the folder, a file that is there
                 handed.append((head, word, led))
         script = (fed or text) if _program(words)[0] == "stdin" else own  # read from stdin: its own heredoc, else whatever the line pipes in
@@ -2512,14 +3540,15 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None) -> str |
         # environment, or through arguments it takes unseen, any write it makes is refused. Another script is
         # judged by the words it is given, or, read from stdin, by the whole command.
         try:
-            hit, wrote = _python_writes(source, names, [os.path.realpath(r) for r in raw], where, argv, env, config) if source else (None, None)
+            hit, wrote = _python_writes(source, names, [os.path.realpath(r) for r in raw], where, argv, dict(env, PWD=where), config) if source else (None, None)
         except RecursionError:  # nested too deeply to follow: judged by its text
             hit, wrote = None, None
         wrote = bool(re.search(SCRIPTED_WRITE, source or script)) if wrote is None else wrote  # by its syntax, else by its text
         carried = re.search(r"\b(?:environ|getenv|ENV)\b|\.env\b", script) and (any(n in m[3] for m in ASSIGNED.finditer(text) for n in names) or any(
             v[:1] == "/" and paths.inside(v, os.path.realpath(r)) for v in os.environ.values() for r in raw))
         reaches = hit is None and (carried or any(n in w for w in words[1:] if w != source for n in names))  # read by its syntax, both are placed
-        if SCRIPT.match(head) and (hit or (wrote and (reaches or (hit is None and (within or any(n in script for n in names)))))):
+        lost = where[:1] in ("$", "`") and bool(names)  # it runs in a folder the guard cannot read, in a command that names a protected one
+        if SCRIPT.match(head) and (hit or (wrote and (reaches or lost or (hit is None and (within or any(n in script for n in names)))))):
             inner = re.search(r"this command (.*?)\. Approvals come", hit) if isinstance(hit, str) else None
             why = why or (f"runs a program that starts a command this guard refuses: it {inner[1]}" if inner else
                           "runs a script that writes where the synthesis state, its board or a harness's transcripts live, or that "
@@ -2529,13 +3558,14 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None) -> str |
         reads = sub is None or sub in GIT_READS or (sub == "remote" and words[words.index(sub) + 1:words.index(sub) + 2] in (
             [], ["-v"], ["get-url"], ["show"])) or any(w.startswith(("$", "`")) for w in words[1:words.index(sub)])
         stood = any(paths.inside(os.path.realpath(acts), os.path.realpath(str(r))) for r in (paths.state(), paths.board(), paths.sessions()))
-        if stood and readable and not ((head in READERS and reads) or head in WRITERS or head in OWN_RULES or (
+        if stood and readable and not quoted and not ((head in READERS and reads) or head in WRITERS or head in OWN_RULES or (
                 (SCRIPT.match(head) or head in SHELLS) and (source or not _ran(words)))):  # it names nothing, yet may write where it stands
             why = why or (f"runs `{head}` inside the synthesis state folder, its board or the session archive, where a "
                           "program this guard cannot read may write without naming a file (run it from another folder)")
         if head == "apply_patch":  # Codex's file editor, run as a command: the patch names every file it writes
             asked += [(a or b, where) for a, b in PATCH_PATHS.findall(text)]
-    if not why and names and any(t.startswith(("$", "`")) for t, _ in asked):  # only asked of a command that names a protected folder
+    unread = ("$", "`")  # a target, or for a relative one the folder it is written in, that the command does not spell
+    if not why and names and any(t.startswith(unread) or (not os.path.isabs(t) and str(w).startswith(unread)) for t, w in asked):
         why = ("writes to a place this guard cannot read (the target starts with a variable or a substitution the command "
                "does not set) while it names the synthesis state folder, its board or a harness's transcripts")
     targets = [os.path.join(w, t) for t, w in asked]
@@ -2548,9 +3578,13 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None) -> str |
     if not why and any(paths.inside(t, os.path.realpath(r)) for t in real for r in raw
                        if t in links or not (_own(t) or (t in made and _own(t, True)))):
         why = "writes into the synthesis state folder, a harness's session transcripts or the approved commit lines"
-    apart = [t for t in real if not any(paths.inside(t, os.path.realpath(r)) for r in raw)]  # as written, in no protected folder
-    if not why and any(_reaches(t[:-len(WHOLE)] if t.endswith(WHOLE) else t, os.path.realpath(r), t.endswith(WHOLE)) for t in apart for r in raw
-                       if (t.endswith(WHOLE) and (not store or r != str(store))) or re.search(r"[*?\[]", t)):
+    # A target outside every protected folder may still change one. The approved lines are one file in a working
+    # repository: removing or moving its folder removes it, while a search or a copy across that folder is judged by
+    # what it names.
+    apart = [t for t in real if not any(paths.inside(t, os.path.realpath(r)) for r in raw)]
+    if not why and any(_reaches(t[:-len(end)] if end else t, os.path.realpath(r), bool(end)) for t in apart for r in raw
+                       for end in [next((e for e in (OVER, GONE) if t.endswith(e)), "")]
+                       if (end == GONE or (end and (not store or r != str(store)))) or (not end and re.search(r"[*?\[]", t))):
         why = ("changes a whole folder that holds the synthesis state folder, its board, the session archive or a harness's "
                "session transcripts, or names by a pattern what may lie in one (name what is to change, beside those folders)")
     given = "" if why else next((head for head, word, path in handed if (word == HANDED and names) or (not _material(path) and not _own(path) and any(

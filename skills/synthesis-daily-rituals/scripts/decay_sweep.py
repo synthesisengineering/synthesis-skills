@@ -67,7 +67,8 @@ def operative_lines(text: str, errors: list[str]):
             if number > 1 and line.strip() == "---":
                 frontmatter = False
             continue
-        marker = re.match(r"^\s{0,3}(`{3,}|~{3,})(.*)$", line)
+        # A fence may open on the line of a list mark (`- ```md`); the line that closes it stands as far in as the entry's text.
+        marker = re.match(r"^\s*(`{3,}|~{3,})(.*)$" if fence else r"^\s{0,3}(?:(?:[-*+]|\d+[.)])\s+)*(`{3,}|~{3,})(.*)$", line)
         if fence:
             if marker and marker[1][0] == fence[0] and len(marker[1]) >= len(fence) and not marker[2].strip():
                 fence = None
