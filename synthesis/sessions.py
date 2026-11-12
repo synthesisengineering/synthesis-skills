@@ -617,16 +617,17 @@ def behind(workspace: str, day: str) -> list:
     """The transcripts not copied that may hold what was typed in a workspace on a day, each as the export named it
     (2026-11-12: one whose copy had failed lay outside the days the listing exports, so the listing of that day held
     none of its prompts and the day closed clean). One filed under another workspace holds nothing of this one's;
-    one last written before the day began holds nothing typed on it; one that is gone may have held anything
-    written until a run found it gone."""
+    one last written before the day began holds nothing typed on it; a sub-agent's or a reviewer's holds an agent's
+    briefs, never the principal's words; one that is gone may have held anything written until a run found it gone."""
     start, found = datetime.fromisoformat(day).timestamp(), []
     for name, entry in (paths.read_json(root() / ".state" / "export.json").get("uncopied") or {}).items():
-        folder = _Session(name.partition(" ")[0], Path(entry["native"]), name.partition(" ")[2]).folder
+        kept = _Session(name.partition(" ")[0], Path(entry["native"]), name.partition(" ")[2])
         try:
             written = os.path.getmtime(entry["native"])
         except OSError:
             written = datetime.fromisoformat(entry["gone"]).timestamp() if entry.get("gone") else time.time()
-        if written >= start and (not folder or folder.parts[-3] == workspace):
+        briefed = "-agent-" in kept.session or kept.meta.get("role") in ("subagent", "reviewer")
+        if written >= start and not briefed and (not kept.folder or kept.folder.parts[-3] == workspace):
             found.append(f"{entry['reason']} (last tried {entry['at'][:16]})")
     return found
 
