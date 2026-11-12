@@ -29,6 +29,7 @@ from synthesis import board, paths
 
 MAX_SECONDS = 12 * 3600
 GRACE = 2  # the seconds a process that was asked to end has before it is killed
+EDGE = 0.25  # the seconds before its bound from which a wait for a message or a file looks every 0.05 s
 NUDGE = "A board message is waiting for this session. Run `synthesis inbox` to read it."  # fixed, so it carries nothing else
 
 
@@ -161,18 +162,22 @@ def attempt(command: list[str], until: float) -> bool:
     return done
 
 
-def _watch(session_id: str, what: str, until: float, seconds: float, every: float, ready, sender: str = "") -> int:
+def _watch(session_id: str, what: str, until: float, seconds: float, every: float, ready, sender: str = "", edge: float = EDGE) -> int:
+    """Look every `every` seconds until a look finds the event or the bound comes. What a look that ends after the bound
+    finds came too late (2026-11-12: mail that came 1.01 s into a wait of 1 s was reported as arrived), so from `edge`
+    seconds before the bound, where a sleep that ends a little late still ends inside it, a look is made every 0.05 s."""
     held = record(session_id, what, until, pid=os.getpid(), sender=sender, every=every)
     try:
         while True:
-            line = ready()
-            if line:
+            line, now = ready(), time.time()
+            if line and now <= until:
                 print(line)
                 return 0
-            if time.time() >= until:
+            if now >= until:
                 print(f"nothing arrived in {said(seconds)}: still waiting for {what}", file=sys.stderr)
                 return 3
-            time.sleep(max(0.05, min(every, until - time.time())))
+            left = until - now
+            time.sleep(max(0.05, min(every, left - edge)) if left > edge else min(every, left, 0.05))
     finally:
         held.unlink(missing_ok=True)
 
@@ -227,6 +232,6 @@ def main(argv: list[str], session_id: str) -> int:
         def ready():  # a try has only the time left: none starts when none is left, and none counts after the bound
             tries.append(until > time.time() and attempt(command, until))
             return f"{shown} exited 0 after {len(tries)} tr{'y' if len(tries) == 1 else 'ies'}" if tries[-1] else ""
-        return _watch(session_id, f"{shown} to succeed", until, seconds, every, ready)
+        return _watch(session_id, f"{shown} to succeed", until, seconds, every, ready, edge=0)  # a try takes time: none starts on the bound's edge
     print("give the file to wait for, or the command after `--`", file=sys.stderr)
     return 2

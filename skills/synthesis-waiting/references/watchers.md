@@ -62,4 +62,5 @@ would ask for a password there fails instead of asking.
    to a project; `synthesis who` shows the binding, and `synthesis resume <project>` restores it.
 3. Was the message sent to this session? The sender's `synthesis msg` ended with what would deliver it.
 4. Did the watcher end at its bound (exit 3)? Then nothing arrived in time, and the next step is a decision, not a
-   longer silence.
+   longer silence. What came after the bound is still there to find: mail stays unread until `synthesis inbox`
+   reads it, and a file that turned up late is in place, so a new `wait file` waits for its next change.

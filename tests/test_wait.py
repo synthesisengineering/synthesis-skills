@@ -348,6 +348,67 @@ def test_a_look_that_ends_after_the_bound_finds_nothing_in_time(two, clock, caps
     assert wait.live("S1") == []
 
 
+@pytest.mark.parametrize("bound, every, arrives", [
+    ("1s", "2s", 0.5),                                                                # between two looks `--every` apart
+    ("1s", "2s", 0.9),                                                                # a tenth of a second before the bound
+    ("30m", "2s", 1799.9),
+    ("45s", "5m", 20),                                                                # the wait looks less often than its bound is long
+    ("12h", "5m", 43199.9),
+])
+def test_a_message_that_arrives_inside_the_bound_is_found_however_seldom_the_wait_looks(two, clock, capsys, bound, every, arrives):
+    """The other side of the same edge. A look that ends after the bound counts for nothing, so the wait looks again
+    just inside it: mail that came a tenth of a second before the bound is not said to have never come."""
+    from synthesis import wait
+    clock.after(arrives, lambda: board.message("S1", "S2", "the review is in"))
+    assert wait.main(["message", "--for", bound, "--every", every], "S1") == 0
+    said = capsys.readouterr()
+    assert "(1 unread)" in said.out and said.err == ""
+
+
+@pytest.mark.parametrize("there", [False, True], ids=["appears", "changes"])
+def test_a_file_that_appears_or_changes_just_inside_the_bound_is_found(two, clock, capsys, tmp_path, there):
+    from synthesis import wait
+    target = tmp_path / "result.json"
+    if there:
+        target.write_text("{}", encoding="utf-8")
+
+    def written():
+        target.write_text('{"done": true}', encoding="utf-8")
+        os.utime(target, (time.time() + 5, time.time() + 5))
+    clock.after(0.9, written)
+    assert wait.main(["file", str(target), "--for", "1s"], "S1") == 0
+    assert capsys.readouterr().out == f"{target} {'changed' if there else 'appeared'}\n"
+
+
+def test_a_look_that_ends_on_the_bound_still_counts(two, clock, capsys):
+    """On a clock whose sleeps end on time the last look falls on the bound itself, and what is ready at that moment,
+    not before, is the event."""
+    from synthesis import wait
+    clock.late = 0
+    until = clock.now + 1
+    assert wait._watch("S1", "a message", until, 1, 2, lambda: "it is here" if clock.now >= until else "") == 0
+    assert capsys.readouterr().out == "it is here\n" and clock.now == until
+
+
+def test_a_command_is_tried_every_interval_and_not_once_more_on_the_edge_of_the_bound(two, clock, monkeypatch, capsys):
+    """A look for mail costs nothing, so one is made just inside the bound. A try of a command takes time and would be
+    stopped a moment after it began: `wait run` keeps to its interval."""
+    from synthesis import wait
+    tried = []
+
+    class Check:                                                                      # a check that fails at once
+        def __init__(self, command, **kwargs):
+            tried.append(round(clock.now - began, 2))
+
+        def wait(self, timeout=None):
+            return 1
+    monkeypatch.setattr(subprocess, "Popen", Check)
+    monkeypatch.setattr(wait, "_stop", lambda proc: None)
+    began = clock.now
+    assert wait.main(["run", "--for", "45s", "--every", "30s", "--", "ci-check"], "S1") == 3
+    assert tried == [0, 30.02] and "nothing arrived in 45 s" in capsys.readouterr().err
+
+
 def test_a_note_records_a_wait_the_harness_holds_and_the_list_shows_every_sessions(two):
     from synthesis import wait
     made = cli("wait", "note", "the CI run on the release branch", "--by", "a background task that exits when CI ends", "--for", "2h")
