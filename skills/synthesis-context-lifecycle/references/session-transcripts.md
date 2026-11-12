@@ -133,8 +133,12 @@ synthesis sessions prompts --workspace <W> [--date YYYY-MM-DD]                  
 synthesis sessions prompts --workspace <W> --records <folder of records> [--json]  # only those no record cites
 ```
 
-The listing brings the archive up to date first; when a transcript could not be copied it lists nothing and exits
-2, since an archive that is not current cannot say what was typed. Each line is
+The listing first copies every transcript written since that day began. While one that may hold that day's
+prompts in that workspace is not copied, it lists nothing and exits 2, since an archive that is not current cannot
+say what was typed: one this run could not copy, one an earlier run could not and none has since, or one that is
+gone and the principal has not cleared (`synthesis doctor` says how each is cleared). A transcript filed under
+another workspace, or last written before that day began, does not stop it. `--date` takes a date, and anything
+else lists nothing. Each line is
 `<harness> <session> #<seq>  HH:MM  <the prompt's first words>`, with as much of the session's id as tells it from
 the archive's other sessions (eight characters, or more where two begin alike), then one line that counts:
 `2 of 31 prompts on <day> in <W> are cited by no record` (exit 1), or `all 31 prompts ... are cited by a record`

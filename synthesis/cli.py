@@ -8,6 +8,7 @@ import os
 import subprocess
 import sys
 import time
+from datetime import datetime
 from pathlib import Path
 
 from synthesis import __version__, board, paths, project
@@ -254,11 +255,18 @@ def cmd_sessions(args) -> int:
         if not args.workspace:
             print("name the workspace whose prompts to list: --workspace <name>", file=sys.stderr)
             return 2
-        day = args.date or time.strftime("%Y-%m-%d")
-        late = [line for line in sessions.export(2) if "not exported" in line]  # the archive holds what was typed up to now, or nothing is said
+        try:
+            day = datetime.fromisoformat(args.date).date().isoformat() if args.date else time.strftime("%Y-%m-%d")
+        except ValueError:
+            print(f"--date {args.date!r} is not a day: write it YYYY-MM-DD", file=sys.stderr)
+            return 2
+        reach = max(2.0, (time.time() - datetime.fromisoformat(day).timestamp()) / 86400 + 1)  # whatever was written since that day began
+        busy = [line for line in sessions.export(reach) if line.startswith("not exported")]
+        late = busy or sessions.behind(args.workspace, day)  # the archive holds what was typed that day, or nothing is said
         if late:
             print(f"the archive is not current, so what was typed on {day} cannot all be listed: {late[0]}"
-                  + (f" (and {len(late) - 1} more)" if len(late) > 1 else ""), file=sys.stderr)
+                  + (f" (and {len(late) - 1} more)" if len(late) > 1 else "")
+                  + ("" if busy else ". `synthesis doctor` says how each is cleared"), file=sys.stderr)
             return 2
         found = sessions.prompts(args.workspace, day)
         left = sessions.uncited(found, args.records) if args.records else found

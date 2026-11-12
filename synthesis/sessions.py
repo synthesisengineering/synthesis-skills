@@ -613,6 +613,24 @@ def lost(session: str, clear: bool = True) -> str:
         return f"cleared: {said}. What it held is not in the archive; {stamp.parent / 'lost.jsonl'} keeps the loss on record"
 
 
+def behind(workspace: str, day: str) -> list:
+    """The transcripts not copied that may hold what was typed in a workspace on a day, each as the export named it
+    (2026-11-12: one whose copy had failed lay outside the days the listing exports, so the listing of that day held
+    none of its prompts and the day closed clean). One filed under another workspace holds nothing of this one's;
+    one last written before the day began holds nothing typed on it; one that is gone may have held anything
+    written until a run found it gone."""
+    start, found = datetime.fromisoformat(day).timestamp(), []
+    for name, entry in (paths.read_json(root() / ".state" / "export.json").get("uncopied") or {}).items():
+        folder = _Session(name.partition(" ")[0], Path(entry["native"]), name.partition(" ")[2]).folder
+        try:
+            written = os.path.getmtime(entry["native"])
+        except OSError:
+            written = datetime.fromisoformat(entry["gone"]).timestamp() if entry.get("gone") else time.time()
+        if written >= start and (not folder or folder.parts[-3] == workspace):
+            found.append(f"{entry['reason']} (last tried {entry['at'][:16]})")
+    return found
+
+
 # --- reading what was kept ------------------------------------------------------------------------------------
 
 
