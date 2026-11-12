@@ -589,7 +589,7 @@ def prompts(workspace: str, day: str) -> list:
     text and a tool's result are not prompts. Export first: this reads only what the archive holds."""
     found = []
     for meta in catalog(workspace, local_only=True):
-        if str(meta.get("last", "9"))[:10] < _shift(day, -1) or str(meta.get("first", ""))[:10] > _shift(day, 1):
+        if str(meta.get("last", "9"))[:10] < _shift(day, -1) or str(meta.get("started", ""))[:10] > _shift(day, 1):
             continue  # a session over before that day or begun after it (a day's slack: the archive keeps UTC)
         for rec in records(meta["folder"], ("user",)):
             try:
