@@ -382,8 +382,26 @@ def test_a_name_that_only_resembles_one_is_read_and_a_folder_of_keys_under_an_al
         assert "never reads" in _attached(file), file
 
 
+@pytest.mark.parametrize("given,said", [
+    ({}, "`attachments` is neither a list of entries nor the JSON text of one"),
+    ({"path": "<staged>"}, "`attachments` is neither a list of entries nor the JSON text of one"),  # one entry, not in a list
+    (json.dumps({"path": "<staged>"}), "`attachments` is neither a list of entries nor the JSON text of one"),
+    ("not a list", "`attachments` is neither a list of entries nor the JSON text of one"),
+    ("", "`attachments` is neither a list of entries nor the JSON text of one"),
+    ("null", "`attachments` is neither a list of entries nor the JSON text of one"),
+    (["<staged>"], "attachment 1 is not an object"),  # a list of paths
+    ([{"path": "<staged>"}, 7], "attachment 2 is not an object"),
+])
+def test_attachments_in_a_shape_the_connector_refuses_are_refused_with_no_code(given, said, scratch):
+    """Its parameter takes a list of objects, or the JSON text of one, and nothing else: each shape here was put to
+    the connector's own parameter type (2.1.0), which refuses it. The call cost an approval first."""
+    staged = str(_staged(scratch))
+    given = json.loads(json.dumps(given).replace("<staged>", staged))
+    _refused(given, said, "file this send again")
+
+
 def test_content_or_a_url_is_no_file_read_and_only_the_file_beside_it_is_judged(scratch):
-    for given in ("absent", None, [], {}, AS_CONTENT, json.dumps(AS_CONTENT), "not a list"):
+    for given in ("absent", None, [], "[]", AS_CONTENT, json.dumps(AS_CONTENT)):
         call = dict(MAIL) if given == "absent" else {**MAIL, "attachments": given}
         assert "approval" in guards.check(SEND, call, CONFIG), given
     outside = scratch / "plan.pdf"
@@ -483,6 +501,8 @@ def test_the_composing_reference_lists_what_counts_as_attached_the_drive_tools_a
                "is one the mail connector never reads": {"path": str(_put(paths.outbox(), ".env"))}}
     for words, entry in entries.items():
         assert words in guards.check(SEND, {**MAIL, "attachments": [entry]}, CONFIG) and words in listed, words
+    words = "is neither a list of entries nor the JSON text of one"
+    assert words in guards.check(SEND, {**MAIL, "attachments": {"path": str(staged)}}, CONFIG) and words in listed
     upload = _uploaded(scratch / "plan.pdf")
     for words in ("is outside the folders the connector reads", "make this call again"):
         assert words in upload and words in listed, words

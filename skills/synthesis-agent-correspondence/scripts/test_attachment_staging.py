@@ -77,6 +77,9 @@ def test_the_reference_says_only_what_the_connector_reads_counts_and_its_words_f
         assert len(problems) == 1 and words in problems[0] and words in FLAT, words
     for named in ("`file_path`", "`filePath`", "`filename`", "`data:`"):  # the keys that are not read, and what content needs
         assert named in REFERENCE, named
+    alone = guards.message_problems("mcp__workspace-mcp__send_gmail_message", {"attachments": {"path": str(staged)}}, {})
+    words = "is neither a list of entries nor the JSON text of one"  # one entry given bare, where the connector takes a list
+    assert len(alone) == 1 and words in alone[0] and words in FLAT
 
 
 def test_the_reference_names_each_drive_tool_that_reads_a_local_file_with_its_parameter_and_refusal(home) -> None:
