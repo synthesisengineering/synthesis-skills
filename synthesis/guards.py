@@ -235,13 +235,13 @@ def _unread_files(tool: str, tool_input: dict, bound: dict | None = None) -> lis
     it would read goes into it under its real path with the hash of its bytes, and one that cannot be read is a problem."""
     name = tool.rsplit("__", 1)[-1]
     key, given = FILE_DRIVE_TOOLS.get(name), tool_input.get("attachments") if name in FILE_MAIL_TOOLS else None
-    if not key and not given:
+    if not key and given is None:
         return []
-    if isinstance(given, str):  # some clients send the list as its JSON text, which the connector reads too
-        try:
-            given = json.loads(given)
-        except ValueError:
-            return []
+    try:  # some clients send the list as its JSON text, which the connector reads too: a list's text and no other
+        parsed = json.loads(given) if isinstance(given, str) else None
+        given = parsed if isinstance(parsed, list) else given
+    except ValueError:
+        pass
     outbox, problems, until = paths.outbox(), [], time.monotonic() + HASH_SECONDS
     roots = tuple(os.path.realpath(os.path.expanduser(r.strip())).rstrip(os.sep) + os.sep for r in (
         str(outbox), os.environ.get("WORKSPACE_ATTACHMENT_DIR") or "~/.workspace-mcp/attachments",
@@ -282,10 +282,14 @@ def _unread_files(tool: str, tool_input: dict, bound: dict | None = None) -> lis
         problems.append(f"`file_url` is fetched over http or https, and {remote} is a file on this disk: copy the file into "
                         f"{outbox} (make the folder if it is missing), give that copy's full path as `file_path` and make "
                         "this call again")
-    for place, entry in enumerate((given if isinstance(given, list) else [given]) if given else [], 1):
+    if given is not None and not isinstance(given, list):
+        problems.append("`attachments` is neither a list of entries nor the JSON text of one, and the mail connector "
+                        "refuses any other shape: give a list with one entry for each file and file this send again")
+    for place, entry in enumerate(given if isinstance(given, list) else [], 1):
         if not isinstance(entry, dict):
+            problems.append(f"attachment {place} is not an object{rule}")
             continue
-        sources = [k for k in ENTRY_KEYS[:3] if (k in entry if k == "url" else entry.get(k))]  # a `url` key leads, even empty
+        sources =[k for k in ENTRY_KEYS[:3] if (k in entry if k == "url" else entry.get(k))]  # a `url` key leads, even empty
         which = f"attachment {place}" + (f" ({entry['filename']})" if entry.get("filename") else "")
         unknown, url = ", ".join(f"`{k}`" for k in entry if k not in ENTRY_KEYS), entry.get("url")
         if sources == ["path"]:

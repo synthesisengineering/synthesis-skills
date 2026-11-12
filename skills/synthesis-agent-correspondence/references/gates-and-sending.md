@@ -96,6 +96,11 @@ file this send again``. Do that, and make the call again. For a file the connect
 reads it says to leave the file out and tell the principal, since staging it again
 changes nothing.
 
+`attachments` itself is a list of such entries, or the JSON text of that list. The
+connector refuses the call for any other shape (one entry given bare, a list of paths),
+and so does the guard, before any code: `` `attachments` is neither a list of entries nor
+the JSON text of one``, or `attachment <n> is not an object`.
+
 The same rule holds for the connector's Drive tools that read a local file.
 `update_drive_file`, `import_to_google_doc`, `import_to_google_sheets` and
 `import_to_google_slides` take it as `file_path`, a full path or a `file://` URL;
