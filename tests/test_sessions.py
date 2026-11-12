@@ -462,6 +462,22 @@ def test_sync_takes_the_same_writer_lock_as_export(synced):
     assert sessions.sync()[-1] == "acme: ai-sessions-acme up to date"
 
 
+def test_a_sync_whose_export_could_not_copy_a_transcript_leaves_that_in_the_stamp(synced):
+    """Handoff and the day-end copy through `sync`, which exports first (2026-11-12: a copy that export could not make
+    was in no report and no stamp, so nothing said a conversation had stayed behind)."""
+    native = _jsonl(synced["claude"], _claude_rows(synced["work"]))
+    native.chmod(0o000)
+    try:
+        sessions.sync(push=False)
+        kept = json.loads((sessions.root() / ".state" / "export.json").read_text())
+        assert kept["failed"] == 1 and "claude-code c1: not exported" in kept["reason"] and "complete" not in kept
+    finally:
+        native.chmod(0o644)
+    sessions.sync(push=False)                                    # the two days a sync reads: the failure stands
+    assert json.loads((sessions.root() / ".state" / "export.json").read_text())["failed"] == 1
+    assert sessions.export(0) == [] and "failed" not in json.loads((sessions.root() / ".state" / "export.json").read_text())
+
+
 def test_masking_covers_the_principals_tier_0_list_as_the_commit_check_loads_it(harness, monkeypatch):
     """2026-10-30: a quoted pattern matched only by the principal's tier-0 list stopped the first sync. The policy here
     is made up, so this file holds nothing credential-shaped; the key header follows test_commit_policy's convention."""
