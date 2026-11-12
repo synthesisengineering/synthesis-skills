@@ -229,8 +229,8 @@ def test_a_worker_the_check_started_is_stopped_with_it_at_the_bound(two, pids):
     """2026-11-12, a second review: `wait run --for 1s` on a check that had started a 30-second worker and then slept
     exited 3 at the bound with the check stopped and its worker still running. Only the check itself was stopped."""
     began = time.time()
-    done = cli("wait", "run", "--for", "2s", "--", sys.executable, "-c", CHECK, str(pids), TIDY, "30")
-    assert done.returncode == 3 and "nothing arrived in 2 s" in done.stderr and time.time() - began < 15
+    done = cli("wait", "run", "--for", "3s", "--", sys.executable, "-c", CHECK, str(pids), TIDY, "30")
+    assert done.returncode == 3 and "nothing arrived in 3 s" in done.stderr and time.time() - began < 15
     assert len(pids.read_text().split()) == 2 and running_on(pids) == []              # the check and its worker: neither runs on
     assert Path(f"{pids}.asked").exists()                                             # and the worker was asked to end before anything was killed
 
@@ -245,8 +245,8 @@ def test_what_does_not_end_when_asked_is_killed(two, pids):
 def test_a_try_that_fails_leaves_nothing_it_started_running(two, pids):
     """A check that starts a worker and fails at once is run again and again: no try's worker is left behind it, so
     when the bound comes nothing the command started is running."""
-    done = cli("wait", "run", "--every", "0.4s", "--for", "2s", "--", sys.executable, "-c", CHECK, str(pids), IDLE, "0")
-    assert done.returncode == 3 and "nothing arrived in 2 s" in done.stderr
+    done = cli("wait", "run", "--every", "0.2s", "--for", "3s", "--", sys.executable, "-c", CHECK, str(pids), IDLE, "0")
+    assert done.returncode == 3 and "nothing arrived in 3 s" in done.stderr
     assert len(pids.read_text().splitlines()) >= 2 and running_on(pids) == []         # several tries, each with a worker of its own
 
 
@@ -477,10 +477,10 @@ def test_a_seat_in_a_live_wait_is_listed_for_the_whole_bound_of_its_wait(two, tm
         seat.seen = now - 9 * 3600
         board.save(seat)
 
-    def who(*options):
+    def who(*options):                                                                # what it printed, and each seat's row by its session
         assert cli.main(["who", *options]) == 0
         said = capsys.readouterr().out
-        return said, {row.split()[1]: row for row in said.splitlines() if not row.startswith(" ")}
+        return said, {row.split()[1]: row for row in said.splitlines() if re.match(r"[a-z2-7]{6} ", row)}
 
     def until(hours):
         return "waiting until " + time.strftime("%H:%M", time.localtime(now + hours * 3600))
