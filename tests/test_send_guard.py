@@ -10,6 +10,7 @@ import os
 import re
 import shutil
 from pathlib import Path
+from urllib.parse import quote
 
 import pytest
 
@@ -463,3 +464,109 @@ def test_the_composing_reference_lists_this_check_with_the_words_the_guard_block
     for words, file in said.items():
         assert words in _attached(file) and words in listed, words
     assert all(f"`{name}`" in listed for name in ("path", *sorted(guards.FILE_MAIL_TOOLS), "ALLOWED_FILE_DIRS"))
+
+
+# --- a local file a Drive tool reads ---------------------------------------------------------------------------
+# The same connector reads a local file for five Drive tools, under the same folder rule (2.1.0: drive_tools.py
+# and drive_helpers._resolve_import_media). update_drive_file and import_to_google_doc, _sheets and _slides take
+# `file_path`, a path or a file:// URL; create_drive_file takes `fileUrl`, a file on this disk when it is a file://
+# URL. update_drive_file waits for a code, since it changes a document others read; the others ask for none.
+
+UPDATE = "mcp__workspace-mcp__update_drive_file"
+DOC_IMPORT = "mcp__workspace-mcp__import_to_google_doc"
+NEW_FILE = "mcp__workspace-mcp__create_drive_file"
+NO_CODE = [(DOC_IMPORT, "file_path"), ("mcp__workspace_mcp__import_to_google_sheets", "file_path"),
+           ("mcp__drive_server__import_to_google_slides", "file_path"), (NEW_FILE, "fileUrl")]
+DRIVE = {"user_google_email": "me@example.com", "file_name": "Plan", "file_id": "1aBcD3fGh1jK"}
+
+
+def _uploaded(named, tool: str = UPDATE, key: str = "file_path", config: dict = CONFIG):
+    """The guard's answer to a Drive call that names this local file for the connector to read."""
+    return guards.check(tool, {**DRIVE, key: str(named)}, config)
+
+
+def test_a_drive_update_from_a_file_outside_the_folders_is_refused_with_no_code_and_asks_once_staged(scratch):
+    outside = scratch / "plan.pdf"
+    for named in (outside, outside.as_uri()):
+        reason = _uploaded(named)
+        assert f"the file {outside} is outside the folders the connector reads" in reason, reason
+        assert f"copy the file into {paths.outbox()}" in reason and "full path as `file_path`" in reason
+        assert "make this call again" in reason and "approve" not in reason and approvals.pending() == []
+    staged = Path(shutil.copy(outside, paths.outbox() / "plan.pdf"))
+    assert "approval" in _uploaded(staged) and "approval" in _uploaded(staged.as_uri())
+    for as_it_was in ({"content": "# Plan"}, {"file_url": "https://files.example.com/plan.docx"}, {"name": "Plan v2"},
+                      {"file_path": None}):
+        assert "approval" in guards.check(UPDATE, {**DRIVE, **as_it_was}, CONFIG), as_it_was
+
+
+@pytest.mark.parametrize("tool,key", NO_CODE)
+def test_a_drive_tool_that_asks_for_no_code_is_refused_for_a_file_outside_the_folders_and_goes_once_staged(tool, key, scratch):
+    def named(file) -> str:
+        return Path(file).as_uri() if key == "fileUrl" else str(file)
+
+    outside = scratch / "plan.pdf"
+    reason = _uploaded(named(outside), tool, key)
+    assert f"the file {outside} is outside the folders the connector reads" in reason, reason
+    assert f"copy the file into {paths.outbox()}" in reason and f"`{key}`" in reason and "make this call again" in reason
+    assert ("after `file://`" in reason) is (key == "fileUrl")
+    staged = shutil.copy(outside, paths.outbox() / "plan.pdf")
+    assert _uploaded(named(staged), tool, key) is None
+    assert guards.check(tool, {**DRIVE, "content": "# Plan"}, CONFIG) is None  # nothing read from this disk
+    assert approvals.pending() == []
+    asks = {**CONFIG, "send_tools": [f"mcp__*__{tool.rsplit('__', 1)[-1]}"]}  # where the principal made it wait for a code
+    assert "outside the folders" in _uploaded(named(outside), tool, key, asks) and approvals.pending() == []
+    assert "approval" in _uploaded(named(staged), tool, key, asks)
+
+
+def test_a_drive_file_is_read_as_the_connector_reads_it(scratch, monkeypatch):
+    """Whole, there, a file, links followed, and not one it reads from no folder: the rule a mail attachment has."""
+    outbox, outside = paths.outbox(), scratch / "plan.pdf"
+    _put(outbox, "staged.pdf")
+    (outbox / "leads-out.pdf").symlink_to(outside)
+    assert "outside the folders" in _uploaded(outbox / "leads-out.pdf")
+    assert f"the file {outbox / 'gone.docx'} does not exist" in _uploaded(outbox / "gone.docx")
+    assert f"the file {outbox} is not a file" in _uploaded(outbox)
+    monkeypatch.chdir(outbox)
+    for partial in ("staged.pdf", "", "file:staged.pdf", "https://files.example.com/plan.docx"):  # an empty one is still a path to it
+        assert "is not a full path" in _uploaded(partial), partial
+    never = _uploaded(_put(outbox, ".env"))
+    assert "is one the connector never reads" in never and "copy the file into" not in never
+    assert approvals.pending() == []
+
+
+def test_a_file_url_is_turned_into_a_path_as_the_connector_turns_it(scratch):
+    """It takes the URL's path, percent-decoded, without its query or fragment, and puts any host but localhost in
+    front of it, which names no file on this disk."""
+    spaced = _put(paths.outbox(), "plan v2 100%.docx")
+    for url in (spaced.as_uri(), "file://localhost" + quote(str(spaced)), "file://LOCALHOST" + quote(str(spaced)),
+                "file:" + quote(str(spaced)), spaced.as_uri() + "?download=1#page=2"):
+        assert "%20" in url and "%25" in url
+        assert "approval" in _uploaded(url), url
+        assert _uploaded(url, NEW_FILE, "fileUrl") is None, url
+    elsewhere = "file://fileserver" + quote(str(spaced))
+    for reason in (_uploaded(elsewhere), _uploaded(elsewhere, NEW_FILE, "fileUrl")):
+        assert f"the file //fileserver{spaced} does not exist" in reason and "approve" not in reason, reason
+    assert len(approvals.pending()) == 5  # one for each spelling of the staged file's URL in an update
+
+
+@pytest.mark.parametrize("tool", [UPDATE, DOC_IMPORT])
+def test_a_file_on_this_disk_given_as_file_url_is_refused_since_the_connector_fetches_only_http_there(tool, scratch):
+    """`file_url` is fetched over http or https: the connector refuses a file:// URL there, which for an update is
+    after the principal's code. A file on this disk goes under `file_path`."""
+    staged = Path(shutil.copy(scratch / "plan.pdf", paths.outbox() / "plan.pdf"))
+    reason = guards.check(tool, {**DRIVE, "file_url": staged.as_uri()}, CONFIG)
+    assert "`file_url`" in reason and "full path as `file_path`" in reason and "make this call again" in reason
+    assert "approve" not in reason and approvals.pending() == []
+    remote = guards.check(tool, {**DRIVE, "file_url": "https://files.example.com/plan.docx"}, CONFIG)
+    assert remote is None if tool == DOC_IMPORT else "approval" in remote  # an address it does fetch is as it was
+
+
+def test_the_rule_is_these_five_tools_and_a_remote_address_or_another_tool_is_as_it_was(scratch):
+    outside = scratch / "plan.pdf"
+    for tool in ("mcp__workspace-mcp__get_drive_file_content", "mcp__files__upload_file", "mcp__workspace-mcp__create_drive_folder"):
+        assert guards.check(tool, {**DRIVE, "file_path": str(outside), "fileUrl": outside.as_uri()}, CONFIG) is None, tool
+    edit = {"document_id": "doc-1", "text": "Agenda", "file_path": str(outside)}
+    assert "approval" in guards.check("mcp__workspace-mcp__modify_doc_text", edit, CONFIG)
+    for remote in ("https://files.example.com/plan.pdf", "http://files.example.com/plan.pdf", str(outside)):
+        assert _uploaded(remote, NEW_FILE, "fileUrl") is None, remote  # fetched, or no URL at all: nothing read from this disk
+    assert _uploaded(outside.as_uri(), NEW_FILE, "file_path") is None  # the key this tool reads is `fileUrl`
