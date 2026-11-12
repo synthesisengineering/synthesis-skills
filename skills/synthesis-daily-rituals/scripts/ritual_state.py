@@ -335,9 +335,7 @@ def choices(workspace: str, day: str) -> str:
 
 def cmd_record(args) -> int:
     check_workspace(args.workspace, "record --direction <direction> --workspace <workspace> --date YYYY-MM-DD")
-    try:
-        date.fromisoformat(args.date)
-    except ValueError:
+    if not _is_day(args.date):  # 20261111 or 2026-W46-3, a date to Python 3.11, names no day a listing or a view finds
         refuse(f"--date {args.date!r} is not YYYY-MM-DD; the logical workday is required and never inferred")
     if args.mode == "migration":
         refuse("mode 'migration' marks old bookkeeping and cannot be written")
