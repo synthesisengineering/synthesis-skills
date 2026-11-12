@@ -11,7 +11,8 @@
       "non_working_dates": ["2026-12-25"],
       "plans_dirs": ["~/workspaces/work/knowledge/daily-plans"],
       "artifacts_dirs": ["~/workspaces/work/knowledge/ritual-workers"],
-      "records_dirs": ["~/workspaces/work/knowledge/drafts"]
+      "records_dirs": ["~/workspaces/work/knowledge/drafts"],
+      "travel_check": true
     },
     "advisory": {
       "quiet_after_days": 21,

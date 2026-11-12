@@ -260,7 +260,7 @@ def test_e53_fewer_than_five_rows_is_flagged_and_needs_allow_small(tmp_path):
     (lambda s: s["options"][0].update(value=1), "must be a non-empty string"),
     (lambda s: s["options"][0].update(tone="loud"), "tone"),
     (lambda s: s["rows"][0].update(recommendation="publish"), "is not one of its options"),
-    (lambda s: [r.pop("recommendation") for r in s["rows"]], "questionnaire"),
+    (lambda s: [r.pop("recommendation") for r in s["rows"]], "without a recommendation"),
     (lambda s: s["rows"][0].update(impact={"accept": "x"}), "impact needs both"),
     (lambda s: s["rows"][0].update(disagreement={"a": {"who": "A", "view": "x"}}), "disagreement needs both"),
     (lambda s: s["rows"][0].update(links=[{"label": "x", "href": "javascript:alert(1)"}]), "scheme"),
@@ -496,5 +496,18 @@ def test_a_blind_row_carries_no_recommendation_and_a_blind_packet_needs_none():
         swayed["rows"][0].update(change)
         assert any("blind is only true" in p for p in hard(bp.validate(swayed))), change
     mixed = json.loads(json.dumps(blind))
-    del mixed["rows"][0]["blind"]  # one ordinary row, and nothing recommended anywhere
-    assert any("no row carries a recommendation" in p for p in hard(bp.validate(mixed)))
+    del mixed["rows"][0]["blind"]  # one ordinary row, with nothing recommended
+    assert any("rows without a recommendation: S0" in p for p in hard(bp.validate(mixed)))
+
+
+def test_every_row_that_is_not_blind_carries_a_recommendation():
+    """2026-11-11: a principal was shown "Option A: Accept / Option B: Decline" for an evening three hours of travel
+    away, with no recommendation, and said yes. A choice put with no view is not neutral: it defaults to yes. One
+    recommended row no longer covers for the others."""
+    current = spec()
+    del current["rows"][1]["recommendation"], current["rows"][3]["recommendation"]
+    problem = next(p for p in hard(bp.validate(current)) if "without a recommendation" in p)
+    assert current["rows"][1]["id"] in problem and current["rows"][3]["id"] in problem and current["rows"][0]["id"] not in problem
+    assert "defaults to yes" in problem and "blind" in problem
+    current["rows"][1]["recommendation"] = current["rows"][3]["recommendation"] = current["rows"][0]["recommendation"]
+    assert not hard(bp.validate(current))

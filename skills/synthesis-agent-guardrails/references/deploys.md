@@ -32,6 +32,10 @@ loaded. This guard gates the act.
   the generator's page and only behind a verified Cloudflare Access sign-in, so the principal's
   listing stands in for a code. A script of that name anywhere else, or an upload to an unlisted
   project, is a deploy like any other.
+- The knowledge base's Drive copy, written by `publish_drive.py` (synthesis-kb-distribution). An edit to a
+  Drive file's contents is published in the principal's name, and the guard cannot see what a script sends,
+  so the script is named (2026-11-11: it wrote 36 files with no hold). `--dry-run` passes. A script of the
+  principal's own that writes to Drive is not seen.
 - A shell script a command runs from a file (`bash publish-site.sh`, `./publish-site.sh`, `sh -e wrapper.sh`),
   read up to 256 KB and three scripts deep, when anything in it is a deploy (2026-10-30: `bash
   scripts/publish-site.sh` published a site, because the `wrangler` call inside the script never reached the

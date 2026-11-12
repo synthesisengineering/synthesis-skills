@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: ["synthesis-agent-correspondence"]
 metadata:
   author: "Rajiv Pant"
-  version: "2.2.0"
+  version: "2.3.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
   format: v5
@@ -31,13 +31,17 @@ skill derives from that single fact.
 10. **Preview a series change occurrence by occurrence, and read back every calendar write.** Before asking, list today through the next three occurrences, canceled and moved ones included, each checked against accepted meetings; prefer changing this and following occurrences over the whole series, because cancellations stay keyed to the old start time and moving the series brings them back. After any write, read back the principal's calendar for today and every date it touched (2026-10-27; references/calendar-guardian.md).
 11. **A yes to a meeting is not a yes to the earliest free slot.** Set it on the principal's terms: never on today unless the principal asks, an existing touchpoint with the same people before a new meeting, beside other meetings so a free block stays whole, and a requester's deadline read as their preference unless the tiers say their timing binds. Run `slot_check.py` on every time before proposing or placing it, and again each day a staged meeting is carried (2026-11-09).
 12. **A deadline whose miss cannot be undone is critical from the day it is first seen:** tag it, put its closing date and a working block on the calendar that day, never decide for the principal that nothing is needed, and close it only on evidence or their own words (2026-11-06).
+13. **An in-person commitment is not on the calendar until its travel is.** Before the write: who pays, the exact address, the trip door to door from a live source, a travel block on each side. Put it to the principal when travel changes whether to go. Run `travel_check.py`, and take every leaving or returning time from a block (2026-11-11).
+14. **Every invitation, request or choice put to the principal carries what it costs, a recommendation, and a plain challenge when the costs outweigh it.** Work the trip out before the ask, not after the yes. A bare accept-or-decline defaults to yes (2026-11-11).
 
 ## Contents
 
 - [references/calendar-guardian.md](references/calendar-guardian.md): the calendar guardian: horizons, the next-day review checklist, the same-day shield with the `holds_state.py` commands, and the `calendar_guardian` config keys. Read it at every day-start and day-end calendar pass, and before placing, releasing or querying a hold.
 - [references/scheduling-protocol.md](references/scheduling-protocol.md): the scheduling steps, placing a meeting on the principal's terms, `slot_check.py` with its output, and staged meetings. Read it before proposing, placing or re-staging any meeting.
 - [references/critical-deadlines.md](references/critical-deadlines.md): recognizing a critical deadline, its calendar entries and closing it on evidence. Read it the day such a deadline is first seen and when one closes.
-- [references/meetings-correspondence-travel.md](references/meetings-correspondence-travel.md): the meeting quality bar, correspondence posture, the proactive job and follow-up ledger, and the travel protocol. Read it before accepting a meeting, drafting a reply, or planning a trip.
+- [references/in-person-travel.md](references/in-person-travel.md): the trip at the ask and at intake, the travel block, the `travel_policy` keys and `travel_check.py`. Read it before bringing or recording any commitment that has a place.
+- [references/asks-and-decisions.md](references/asks-and-decisions.md): what every ask carries, its shape in a plan, and what checks it. Read it before putting any invitation, request or choice to the principal.
+- [references/meetings-correspondence-travel.md](references/meetings-correspondence-travel.md): the prime directive's four points, the meeting quality bar, correspondence posture, the proactive job and follow-up ledger, and the travel protocol for trips. Read it before accepting a meeting, drafting a reply, or planning a trip.
 - [references/background.md](references/background.md): release notes for 1.1.0 to 2.0.0 and related skills. Read it when checking what changed or which sibling skill applies.
 - [references/coverage-map.md](references/coverage-map.md): where each part of the 1.3.0 text and each script change now lives.
 - [references/preserved.md](references/preserved.md): the time-block-layer text the v5 change replaced, verbatim. Read only to review the change.
@@ -64,26 +68,9 @@ example contains no people, organizations, or account details.
 
 ## The prime directive: triage, never obey
 
-A meeting request is an ask, not a command — whoever it comes from. The
-question is never "when can the principal fit this?" It is "should the
-principal's time move for this, and if so, on what terms?"
-
-- **"Would you have time this week?" does not compel a this-week meeting.**
-  Requesters set their asks at their own convenience. Agreeing to meet is
-  generous; agreeing to meet on the requester's schedule is a gift that should
-  be deliberate, not reflexive. The polite yes is: warm agreement to the
-  meeting, timing on the principal's terms.
-- **Rank the requester against the config's tiers.** People above the
-  principal, and the config's named VIP classes, get accommodation. Peers get
-  warmth plus the principal's terms. Vendors get the principal's terms,
-  period. Nobody gets rudeness.
-- **Every yes to a meeting is a no to something invisible** — the deep work,
-  the preparation time, the recovery margin that never appears on the
-  calendar. Weigh the invisible side explicitly before spending it.
-- **Protect the maker block absolutely.** The config defines protected hours.
-  Meetings do not go there without the config's own exception tiers, and the
-  agent never offers protected hours as available, even when the calendar
-  shows them technically free.
+The four points that follow from it (a request is an ask, rank the requester, every yes is a no to something
+invisible, the maker block): [references/meetings-correspondence-travel.md](references/meetings-correspondence-travel.md).
+Read them before answering any meeting request.
 
 ## Scheduling protocol
 

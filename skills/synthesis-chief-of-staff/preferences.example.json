@@ -6,6 +6,7 @@
     "end": "17:00"
   },
   "protected_hours": [],
+  "principal_addresses": [],
   "tiers": {
     "priority": [],
     "peer": [],
@@ -34,6 +35,7 @@
       "expire": "end-of-day",
       "engine": "scripts/holds_state.py — append-only; never hand-edit"
     },
+    "personal_markers": [],
     "same_day_exceptions": "reuse the tiers section",
     "weekly_review_day": "Friday"
   },
@@ -45,5 +47,42 @@
     "classes": "Any deadline whose miss causes harm that cannot be undone or fixed until the next cycle: benefits and insurance enrollment, taxes, legal and patent filings, immigration and identity documents, pay, time-off and award actions for reports, account-security checks.",
     "calendar": "The same day it is first seen: an all-day marker on the closing date and a working block early in the window, on the primary calendar.",
     "standing_reminders": []
+  },
+  "travel_policy": {
+    "home": {
+      "label": "Home",
+      "address": "",
+      "area": ""
+    },
+    "places": [],
+    "car": true,
+    "modes": [
+      "walk",
+      "subway",
+      "bus",
+      "commuter rail",
+      "ferry",
+      "bike share",
+      "car"
+    ],
+    "local_minutes": 15,
+    "arrive_early_minutes": 15,
+    "latest_return": "23:30",
+    "sleep_hours": 8,
+    "morning_starts": "07:00",
+    "cost": {
+      "personal": "the cheapest reliable option, bought ahead where that is cheaper; a car only on the principal's decision",
+      "business": "an expensable car where policy allows and it saves real time"
+    },
+    "block_title": "Travel",
+    "online": [
+      "zoom",
+      "microsoft teams",
+      "google meet",
+      "video call",
+      "phone",
+      "online",
+      "virtual"
+    ]
   }
 }

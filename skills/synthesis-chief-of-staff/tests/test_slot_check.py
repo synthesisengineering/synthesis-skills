@@ -174,3 +174,358 @@ def test_the_text_report_leads_with_the_verdict(tmp_path):
     lines = done.stdout.splitlines()
     assert done.returncode == 1 and lines[0] == "slot Thu 2026-11-12 14:00-14:30: REFUSE"
     assert any(line.startswith("  REFUSE  same day:") for line in lines)
+
+
+# --- a slot that needs a trip (2026-11-11) ------------------------------------------------------
+# An in-person meeting takes the time to get there and back as well as its own. A slot that looked free was
+# judged without either, so the travel is now part of what the slot takes.
+
+def test_the_trip_counts_as_taken_time(tmp_path):
+    code, report = check(tmp_path, "14:30", "15:30", QUIET_DAY, "--travel-before", "45", "--travel-after", "45")
+    assert code == 1 and levels(report)["travel"] == "REFUSE"
+    assert "the trip there (13:45-14:30) overlaps Staff meeting" in detail(report, "travel")
+    code, report = check(tmp_path, "15:00", "16:00", QUIET_DAY, "--travel-before", "45", "--travel-after", "45")
+    assert levels(report)["travel"] == "OK" and "14:15-15:00 there, 16:00-16:45 back" in detail(report, "travel")
+    code, report = check(tmp_path, "11:30", "12:15", QUIET_DAY, "--travel-before", "30", "--travel-after", "50")
+    assert levels(report)["travel"] == "REFUSE" and "the trip back (12:15-13:05) overlaps Staff meeting" in detail(report, "travel")
+
+
+def test_the_deep_work_block_is_judged_with_the_trip_in_it(tmp_path):
+    day = [meeting(THURSDAY, "09:30", "10:30", "Standup"), meeting(THURSDAY, "11:00", "12:00", "Review"),
+           meeting(THURSDAY, "16:00", "17:00", "Wrap-up")]
+    code, report = check(tmp_path, "15:00", "15:30", day)          # 12:00-15:00 stays free: three hours
+    assert levels(report)["deep work"] == "OK"
+    code, report = check(tmp_path, "15:00", "15:30", day, "--travel-before", "75")  # 13:45 on is the trip: 1 h 45 left
+    assert code == 1 and levels(report)["deep work"] == "REFUSE"
+
+
+def test_a_slot_with_no_trip_has_no_travel_line_and_an_in_person_slot_must_give_one(tmp_path):
+    code, report = check(tmp_path, "15:00", "16:00", QUIET_DAY)
+    assert "travel" not in levels(report)
+    code, said = check(tmp_path, "15:00", "16:00", QUIET_DAY, "--in-person")
+    assert code == 2 and "--travel-before" in said and "work out the trip first" in said
+    code, report = check(tmp_path, "15:00", "16:00", QUIET_DAY, "--in-person", "--travel-before", "10", "--travel-after", "10")
+    assert code in (0, 1) and levels(report)["travel"] == "OK"
+
+
+# --- what an evening away costs, seen at the ask (2026-11-11) ----------------------------------------------
+# A principal said yes to an evening event without seeing the trip: three hours of travel and home near midnight
+# before an early morning. With the trip's minutes given, the check now says when the principal is home, and
+# sends a return past the policy's latest hour or a night shorter than the policy keeps to the principal.
+
+RESTED = {**CONFIG, "travel_policy": {"latest_return": "23:00", "sleep_hours": 8}}
+EARLY = [meeting("2026-11-13", "07:30", "08:30", "Training session")]
+EVENING = ("--in-person", "--travel-before", "85", "--travel-after", "108")
+
+
+def test_an_evening_away_shows_when_the_principal_is_home_and_what_the_night_leaves(tmp_path):
+    code, report = check(tmp_path, "19:00", "22:00", EARLY, *EVENING, config=RESTED)
+    assert levels(report)["return"] == "REVIEW" and "home at 23:48, after 23:00" in detail(report, "return")
+    assert levels(report)["sleep"] == "REVIEW"
+    assert "Training session" in detail(report, "sleep") and "07:30" in detail(report, "sleep") and "7 h 42 min" in detail(report, "sleep")
+    assert report["verdict"] != "OK"
+
+
+def test_a_trip_that_is_home_in_time_says_so(tmp_path):
+    code, report = check(tmp_path, "12:00", "13:00", EARLY, "--in-person", "--travel-before", "30", "--travel-after", "30", config=RESTED)
+    assert levels(report)["return"] == "OK" and "home at 13:30" in detail(report, "return")
+    assert levels(report)["sleep"] == "OK"
+
+
+def test_without_the_policys_hours_only_the_time_home_is_shown(tmp_path):
+    code, report = check(tmp_path, "19:00", "22:00", EARLY, *EVENING)
+    assert levels(report)["return"] == "OK" and "home at 23:48" in detail(report, "return") and "sleep" not in levels(report)
+
+
+def test_a_read_that_ends_before_the_next_morning_cannot_judge_the_night(tmp_path):
+    code, report = check(tmp_path, "19:00", "22:00", [], *EVENING, config=RESTED, window=("2026-11-10", "2026-11-12"))
+    assert levels(report)["sleep"] == "NOTE" and "2026-11-13" in detail(report, "sleep")
+
+
+# --- the morning begins whether or not the calendar says so (2026-11-11) -----------------------------------
+# The night was measured to the next morning's first calendar entry, so a late return cost nothing the check could
+# see when the morning held none: a principal's mornings began at a fixed hour with no entry. The policy can say
+# when the morning starts, and the night ends at the earlier of that hour and the first entry.
+
+MORNING = {**CONFIG, "travel_policy": {"latest_return": "23:00", "sleep_hours": 8, "morning_starts": "06:30"}}
+
+
+def test_a_morning_with_no_entry_still_begins_at_the_policys_hour(tmp_path):
+    code, report = check(tmp_path, "19:00", "22:00", [], *EVENING, config=MORNING)          # home 23:48, so 6 h 42 min
+    assert levels(report)["sleep"] == "REVIEW"
+    assert "the morning starts 06:30" in detail(report, "sleep") and "6 h 42 min" in detail(report, "sleep")
+    code, report = check(tmp_path, "19:00", "22:00", EARLY, *EVENING, config=MORNING)       # an entry at 07:30: the earlier of the two
+    assert "the morning starts 06:30" in detail(report, "sleep") and "Training session" not in detail(report, "sleep")
+    sooner = [meeting("2026-11-13", "05:45", "06:15", "Airport check-in")]
+    code, report = check(tmp_path, "19:00", "22:00", sooner, *EVENING, config=MORNING)
+    assert "Airport check-in" in detail(report, "sleep") and "05:45" in detail(report, "sleep")
+    code, report = check(tmp_path, "12:00", "13:00", [], "--in-person", "--travel-before", "30", "--travel-after", "30", config=MORNING)
+    assert levels(report)["sleep"] == "OK"                                                   # home at 13:30: the night is whole
+
+
+def test_the_policys_hour_judges_the_night_even_when_the_read_ends_before_the_morning(tmp_path):
+    code, report = check(tmp_path, "19:00", "22:00", [], *EVENING, config=MORNING, window=("2026-11-10", "2026-11-12"))
+    assert levels(report)["sleep"] == "REVIEW" and "the morning starts 06:30" in detail(report, "sleep")
+    code, report = check(tmp_path, "12:00", "13:00", [], "--in-person", "--travel-before", "30", "--travel-after", "30",
+                         config=MORNING, window=("2026-11-10", "2026-11-12"))
+    assert levels(report)["sleep"] == "NOTE"                                                 # long enough by the policy; an entry could be earlier
+
+
+@pytest.mark.parametrize("key, value", [("latest_return", "10pm"), ("morning_starts", "6am"), ("morning_starts", "25:00")])
+def test_a_policy_hour_that_is_no_time_of_day_is_not_judged(tmp_path, key, value):
+    """A value that is no time of day raised an error that left the script with the exit code of a refusal. The
+    check says which key it could not read and exits 2: nothing is judged on a guess."""
+    unreadable = {**CONFIG, "travel_policy": {"latest_return": "23:00", "sleep_hours": 8, key: value}}
+    code, said = check(tmp_path, "19:00", "22:00", [], *EVENING, config=unreadable)
+    assert code == 2 and key in said and "HH:MM" in said
+
+
+def test_a_return_after_the_morning_has_begun_leaves_no_night(tmp_path):
+    """The fourth review: home at or after the hour the morning starts was read as a whole night, since only a
+    morning still ahead was looked for."""
+    for back in ("600", "630"):                                                              # 19:00 to 21:00, then home at 07:00 and 07:30
+        code, report = check(tmp_path, "19:00", "21:00", [], "--in-person", "--travel-before", "30", "--travel-after", back,
+                             config={**CONFIG, "travel_policy": {"sleep_hours": 8, "morning_starts": "07:00"}})
+        assert levels(report)["sleep"] == "REVIEW" and "07:00" in detail(report, "sleep"), back
+
+
+# --- the meeting load counts meetings (2026-11-11) -------------------------------------------------------------
+# A Friday noon slot was refused at 7.08 hours of meetings against a limit of 5. Most of those hours were the
+# principal's own blocks (a morning routine, training, rituals, reserved holds); with meetings only the day held
+# 2.58. The same read feeds the free-time checks, where those blocks belong, so leaving them out of the read is no
+# fix: the load has to tell a meeting from a block.
+
+OWN = {**CONFIG, "protected_hours": [], "principal_addresses": ["me@example.com", "*@me.example.org"],
+       "calendar_guardian": {**CONFIG["calendar_guardian"], "personal_markers": ["#reserved"]}}
+BLOCKS = [meeting(THURSDAY, "06:30", "08:30", "Training"), meeting(THURSDAY, "09:00", "10:00", "Morning ritual"),
+          meeting(THURSDAY, "12:00", "13:00", "Lunch with the coach #reserved", ["coach@example.com"]),
+          meeting(THURSDAY, "16:30", "17:00", "Review my week", ["me@example.com", "self@me.example.org"]),
+          {"start": f"{THURSDAY}T17:00", "end": f"{THURSDAY}T18:00", "summary": "Evening ritual",
+           "attendees": [{"email": "owner@elsewhere.example", "self": True}]}]
+MEETINGS = [meeting(THURSDAY, "10:00", "11:00", "Planning", ["a@example.com"]),
+            meeting(THURSDAY, "15:00", "16:30", "Review", ["b@example.com", "me@example.com"])]
+
+
+def test_the_principals_own_blocks_are_not_meeting_hours(tmp_path):
+    code, got = check(tmp_path, "13:30", "14:00", BLOCKS + MEETINGS, "--attendee", "c@example.com", config=OWN)
+    said = detail(got, "meeting load")
+    assert levels(got)["meeting load"] == "OK" and "3.00 hours" in said, said                 # 1 h, 1 h 30 min and this half hour
+    assert "5 of the day's 7 events" in said and "own" in said, said                          # and it says what it left out
+    more = MEETINGS + [meeting(THURSDAY, "11:00", "13:30", "Offsite", ["d@example.com"])]
+    code, got = check(tmp_path, "13:30", "14:00", BLOCKS[:2] + more, "--attendee", "c@example.com", config=OWN)
+    assert code == 1 and levels(got)["meeting load"] == "REFUSE" and "5.50 hours" in detail(got, "meeting load")
+
+
+def test_a_read_that_names_no_one_else_counts_every_event_and_says_so(tmp_path):
+    bare = [meeting(THURSDAY, "11:00", "13:00"), meeting(THURSDAY, "13:00", "15:45", "Offsite")]
+    code, got = check(tmp_path, "15:45", "16:15", bare, "--attendee", "a@example.com")
+    said = detail(got, "meeting load")
+    assert code == 1 and levels(got)["meeting load"] == "REFUSE" and "5.25 hours" in said
+    assert "names no one else" in said, said
+
+
+def test_own_blocks_still_count_as_taken_time(tmp_path):
+    day = [meeting(THURSDAY, "09:00", "12:00", "Writing block"), meeting(THURSDAY, "12:30", "17:00", "Training camp"),
+           meeting("2026-11-13", "10:00", "10:30", "Planning", ["a@example.com"])]
+    code, got = check(tmp_path, "12:00", "12:30", day, "--attendee", "c@example.com", config=OWN)
+    assert levels(got)["meeting load"] == "OK" and "0.50 hours" in detail(got, "meeting load")
+    assert code == 1 and levels(got)["deep work"] == "REFUSE", got                           # the day has no free block left
+
+
+# --- protected windows beside prose (2026-11-11) -----------------------------------------------------------------
+# A principal's preferences described protected hours in prose that another reader depends on, so the check could
+# only say "check them yourself", and his night rule (in bed by an hour, nothing before another) bound nothing.
+# Windows can now stand inside that section beside the prose; what stays in prose is still named as unchecked.
+
+NIGHT = {**CONFIG, "protected_hours": {
+    "maker_mornings": "Protect 09:00-11:00 for deep work. Strongly minimize meetings in this window.",
+    "hard_floor": "No meetings before 10:00 unless the requester's timing binds.",
+    "windows": [{"start": "21:00", "end": "24:00", "label": "the night", "source": "sleep.ordinary_nights"},
+                {"start": "00:00", "end": "10:00", "label": "nothing before ten", "source": "protected_hours.hard_floor"}]}}
+
+
+def test_windows_inside_a_section_of_prose_are_checked_and_the_prose_is_still_named(tmp_path):
+    code, got = check(tmp_path, "21:30", "22:00", QUIET_DAY, "--attendee", "a@example.com", config=NIGHT)
+    assert code == 1 and levels(got)["protected hours"] == "REFUSE" and "the night" in detail(got, "protected hours")
+    code, got = check(tmp_path, "08:00", "08:30", QUIET_DAY, "--attendee", "a@example.com", config=NIGHT)
+    assert code == 1 and "nothing before ten" in detail(got, "protected hours") and "00:00-10:00" in detail(got, "protected hours")
+    code, got = check(tmp_path, "08:00", "08:30", QUIET_DAY, "--attendee", "chief@example.com", config=NIGHT)
+    assert levels(got)["protected hours"] == "OK"                                             # someone whose timing binds
+    code, got = check(tmp_path, "14:00", "14:30", QUIET_DAY, "--attendee", "a@example.com", config=NIGHT)
+    said = detail(got, "protected hours")
+    assert levels(got)["protected hours"] == "NOTE" and "maker_mornings" in said and "hard_floor" not in said, said   # the window stands for that line
+
+
+def test_a_slot_that_runs_past_midnight_meets_the_next_days_windows(tmp_path):
+    late = {**NIGHT, "protected_hours": {"windows": [{"start": "00:00", "end": "06:00", "label": "the small hours"}]}}
+    done = subprocess.run([sys.executable, str(SCRIPT), "--start", f"{THURSDAY}T23:30", "--end", "2026-11-13T00:30", "--events",
+                           str(tmp_path / "events.json"), "--config", str(tmp_path / "preferences.json"), "--today", "2026-11-10", "--json"],
+                          capture_output=True, text=True) if check(tmp_path, "14:00", "14:30", QUIET_DAY, config=late) else None
+    got = json.loads(done.stdout)
+    assert done.returncode == 1 and levels(got)["protected hours"] == "REFUSE" and "the small hours" in detail(got, "protected hours")
+
+
+def test_a_window_that_is_no_time_of_day_stops_the_check(tmp_path):
+    wrong = {**CONFIG, "protected_hours": {"windows": [{"start": "9pm", "end": "24:00"}]}}
+    code, got = check(tmp_path, "14:00", "14:30", QUIET_DAY, "--attendee", "a@example.com", config=wrong)
+    assert code == 2 and "9pm" in got and "HH:MM" in got
+
+
+# --- the eighth review (2026-11-11) -------------------------------------------------------------------------------
+
+def test_a_personal_marker_is_a_tag_not_a_word_a_meeting_might_carry(tmp_path):
+    """A marker `training` hid a six-hour "Training with the team" from the load. A marker is a tag the principal
+    puts on their own blocks (`#reserved`): a plain word would hide meetings, so the check stops on one."""
+    worded = {**OWN, "calendar_guardian": {**OWN["calendar_guardian"], "personal_markers": ["training"]}}
+    day = [meeting(THURSDAY, "09:00", "15:00", "Training with the team", ["a@example.com", "me@example.com"])]
+    code, got = check(tmp_path, "15:30", "16:00", day, "--attendee", "c@example.com", config=worded)
+    assert code == 2 and "training" in got and "#reserved" in got
+    code, got = check(tmp_path, "15:30", "16:00", day, "--attendee", "c@example.com", config=OWN)
+    assert code == 1 and levels(got)["meeting load"] == "REFUSE" and "6.50 hours" in detail(got, "meeting load")
+    tagged = [meeting(THURSDAY, "09:00", "15:00", "Offsite #reservedness", ["a@example.com"])]   # the tag as a whole word only
+    code, got = check(tmp_path, "15:30", "16:00", tagged, "--attendee", "c@example.com", config=OWN)
+    assert levels(got)["meeting load"] == "REFUSE"
+
+
+def test_only_2400_ends_a_day(tmp_path):
+    late = {**CONFIG, "protected_hours": [{"start": "21:00", "end": "24:30"}]}
+    code, got = check(tmp_path, "14:00", "14:30", QUIET_DAY, "--attendee", "a@example.com", config=late)
+    assert code == 2 and "24:30" in got and "HH:MM" in got
+
+
+# --- the tenth review (2026-11-12), each as a test that failed first ------------------------------------------
+
+def test_a_block_that_began_the_day_before_is_still_taken_time(tmp_path):
+    """The tenth review: a personal block from 23:00 the night before to 11:00 was left out of the day it ran into,
+    so a trip through it read as clear and the morning as free; a return trip that ran into the next day's first
+    entry met nothing either. Every check now reads each event for the time it covers."""
+    night = {"start": "2026-11-11T23:00", "end": f"{THURSDAY}T11:00", "summary": "Sleep #reserved", "attendees": []}
+    code, report = check(tmp_path, "10:00", "10:30", [night], "--in-person", "--travel-before", "30", "--travel-after", "30", config=OWN)
+    assert code == 1 and levels(report)["travel"] == "REFUSE" and "overlaps Sleep #reserved" in detail(report, "travel")
+    assert levels(report)["placement"] == "REVIEW" and "overlaps Sleep #reserved (23:00-11:00)" in detail(report, "placement")
+    assert "first 11:00-17:00" in detail(report, "deep work"), detail(report, "deep work")       # the morning is not free
+    code, report = check(tmp_path, "13:00", "13:30", [night], config=OWN)                        # clear of it: the block ends at 11:00
+    assert "overlaps" not in detail(report, "placement") and "0.50 hours" in detail(report, "meeting load")
+    pickup = [meeting("2026-11-13", "00:30", "01:30", "Airport pickup")]
+    code, report = check(tmp_path, "21:00", "23:30", pickup, "--in-person", "--travel-before", "30", "--travel-after", "75", config=OWN)
+    assert levels(report)["travel"] == "REFUSE" and "the trip back (23:30-00:45) overlaps Airport pickup" in detail(report, "travel")
+
+
+def test_a_meeting_that_runs_over_midnight_counts_for_the_hours_it_takes_of_each_day(tmp_path):
+    release = [{"start": "2026-11-11T22:00", "end": f"{THURSDAY}T02:00", "summary": "Release night", "attendees": ["a@example.com"]}]
+    code, report = check(tmp_path, "13:30", "14:00", release, "--attendee", "c@example.com", config=OWN)
+    assert "2.50 hours" in detail(report, "meeting load"), detail(report, "meeting load")        # two of its four hours, and this half hour
+
+
+def test_a_slot_on_top_of_another_event_says_so(tmp_path):
+    code, report = check(tmp_path, "13:15", "13:45", QUIET_DAY)
+    assert levels(report)["placement"] == "REVIEW" and "overlaps Staff meeting (13:00-14:00)" in detail(report, "placement")
+    code, report = check(tmp_path, "13:00", "14:00", QUIET_DAY)                                 # the event's own hour is that event, checked again
+    assert "overlaps" not in detail(report, "placement")
+    code, report = check(tmp_path, "14:00", "14:30", QUIET_DAY)                                 # beside it is beside it
+    assert levels(report)["placement"] == "OK" and "beside Staff meeting" in detail(report, "placement")
+
+
+def test_a_commitment_already_begun_when_the_principal_gets_home_leaves_no_night(tmp_path):
+    """The tenth review: a 07:00 commitment the morning after, with the return ending at 07:30, was left out
+    because it had begun before the return, and the night read as whole."""
+    rested = {**CONFIG, "travel_policy": {"sleep_hours": 8}}
+    early = [meeting("2026-11-13", "07:00", "08:00", "Training session")]
+    code, report = check(tmp_path, "19:00", "21:00", early, "--in-person", "--travel-before", "30", "--travel-after", "630", config=rested)
+    said = detail(report, "sleep")                                                               # home at 07:30 the next day
+    assert levels(report)["sleep"] == "REVIEW" and '"Training session" began at 07:00 before the return' in said and "no night" in said, said
+    code, report = check(tmp_path, "19:00", "21:00", [meeting(THURSDAY, "17:00", "18:00", "Review")], "--in-person",
+                         "--travel-before", "30", "--travel-after", "630", config=rested)        # what ended before the outing began is no part of it
+    assert "Review" not in detail(report, "sleep")
+    again = [meeting(THURSDAY, "19:00", "21:00", "Dinner")]                                      # the slot itself, already on the calendar
+    code, report = check(tmp_path, "19:00", "21:00", again, "--in-person", "--travel-before", "30", "--travel-after", "45", config=rested)
+    assert levels(report)["sleep"] == "OK", detail(report, "sleep")
+
+
+def test_an_outing_in_the_morning_is_not_a_night_out(tmp_path):
+    """Found by this project's own probe after the tenth review: with no hour given for the morning, a breakfast
+    across town and a meeting an hour after it read as a night of one hour. An outing that begins and ends on one
+    morning comes after the night, and the night it is judged against is the next one."""
+    rested = {**CONFIG, "protected_hours": [], "working_hours": {"start": "07:00", "end": "17:00"}, "travel_policy": {"sleep_hours": 8}}
+    day = [meeting(THURSDAY, "09:30", "10:00", "Standup"), meeting("2026-11-13", "09:00", "10:00", "Planning")]
+    code, report = check(tmp_path, "07:30", "08:30", day, "--in-person", "--travel-before", "30", "--travel-after", "30", config=rested)
+    assert levels(report)["sleep"] == "OK", detail(report, "sleep")
+    code, report = check(tmp_path, "07:30", "08:30", day[:1], "--in-person", "--travel-before", "30", "--travel-after", "30",
+                         config=rested, window=("2026-11-10", THURSDAY))                         # and the read must reach that next morning
+    assert levels(report)["sleep"] == "NOTE" and "2026-11-13" in detail(report, "sleep"), detail(report, "sleep")
+
+
+# --- the eleventh review round (2026-11-12) -------------------------------------------------------------------
+# An all-day entry holds no clock time, so it was dropped: a slot proposed on a day the principal had blocked whole
+# read as free, and a night before an all-day commitment read as "8 hours or more". And two events at the slot's
+# own hours were both taken for the slot itself.
+
+def all_day(first, summary, last=None, **more):
+    return {"start": {"date": first}, "end": {"date": last or first}, "summary": summary, **more}
+
+
+def test_a_day_the_principal_blocked_whole_is_taken(tmp_path):
+    away = [all_day(THURSDAY, "Away #reserved", "2026-11-13")]
+    marked = {**OWN, "calendar_guardian": {**OWN["calendar_guardian"], "personal_markers": ["#reserved"]}}
+    code, report = check(tmp_path, "13:00", "13:30", away, "--attendee", "c@example.com", config=marked)
+    assert levels(report)["placement"] == "REVIEW" and '"Away #reserved"' in detail(report, "placement") and "whole day" in detail(report, "placement"), report
+    assert levels(report)["deep work"] == "REFUSE", detail(report, "deep work")                # nothing of the day is free
+    assert "0.50 hours" in detail(report, "meeting load")                                       # and it is no meeting
+    busy = [all_day(THURSDAY, "Offsite", transparency="opaque")]                                # an entry that says it is busy, marked or not
+    code, report = check(tmp_path, "13:00", "13:30", busy)
+    assert levels(report)["placement"] == "REVIEW" and '"Offsite"' in detail(report, "placement"), report
+    for note in (all_day(THURSDAY, "A colleague's birthday"), all_day(THURSDAY, "Public holiday", transparency="transparent")):
+        code, report = check(tmp_path, "14:00", "14:30", [note, *QUIET_DAY])                    # a note on the day takes none of it
+        assert code == 0 and levels(report)["deep work"] == "OK" and "beside Staff meeting" in detail(report, "placement"), report
+    code, report = check(tmp_path, "13:00", "13:30", [all_day("2026-11-13", "Away #reserved")], config=marked)
+    assert levels(report)["placement"] != "REVIEW" or "Away" not in detail(report, "placement")  # the next day's block is the next day's
+
+
+def test_a_night_before_an_all_day_commitment_is_not_called_enough(tmp_path):
+    rested = {**CONFIG, "travel_policy": {"sleep_hours": 8}}
+    args = ("--in-person", "--travel-before", "30", "--travel-after", "140")                    # home at 23:20
+    workshop = [all_day("2026-11-13", "Workshop", location="12 Mill Lane, Harbor Town")]
+    code, report = check(tmp_path, "19:00", "21:00", workshop, *args, config=rested)
+    said = detail(report, "sleep")
+    assert levels(report)["sleep"] == "REVIEW" and '"Workshop"' in said and "all day" in said and "cannot be judged" in said, said
+    assert "8 hours or more" not in said
+    code, report = check(tmp_path, "19:00", "21:00", [all_day("2026-11-13", "A colleague's birthday")], *args, config=rested)
+    assert levels(report)["sleep"] == "OK", detail(report, "sleep")                             # a note on the day is no commitment
+    both = workshop + [meeting("2026-11-13", "06:30", "07:00", "Call")]
+    code, report = check(tmp_path, "19:00", "21:00", both, *args, config=rested)
+    assert levels(report)["sleep"] == "REVIEW" and '"Call" starts 06:30' in detail(report, "sleep")   # an entry with a time is judged by it
+
+
+def test_two_events_at_the_slots_own_hours_are_not_both_the_slot(tmp_path):
+    pair = [meeting(THURSDAY, "16:00", "17:00", "Interview", ["a@example.com"]), meeting(THURSDAY, "16:00", "17:00", "Personal appointment")]
+    code, report = check(tmp_path, "16:00", "17:00", pair)
+    said = detail(report, "placement")
+    assert levels(report)["placement"] == "REVIEW" and "overlaps" in said and "(16:00-17:00)" in said, said
+    code, report = check(tmp_path, "16:00", "17:00", pair[:1])                                  # one such event is the slot, checked again
+    assert "overlaps" not in detail(report, "placement")
+    three = pair + [meeting(THURSDAY, "16:00", "17:00", "Review", ["b@example.com"])]
+    code, report = check(tmp_path, "16:00", "17:00", three)
+    assert levels(report)["placement"] == "REVIEW", detail(report, "placement")
+
+
+def test_a_trip_back_that_runs_into_a_day_blocked_whole_is_no_clear_trip(tmp_path):
+    """The twelfth review: a slot at 23:00 with ninety minutes home ran an hour into a day blocked whole, and the
+    travel line said it was clear of other events."""
+    away = [all_day("2026-11-13", "Away", transparency="opaque")]
+    late = {**CONFIG, "protected_hours": [], "working_hours": {"start": "09:00", "end": "23:59"}}
+    code, report = check(tmp_path, "23:00", "23:30", away, "--in-person", "--travel-before", "30", "--travel-after", "90", config=late)
+    assert levels(report)["travel"] == "REFUSE" and "Away" in detail(report, "travel") and "trip back" in detail(report, "travel"), report
+    code, report = check(tmp_path, "20:00", "20:30", away, "--in-person", "--travel-before", "30", "--travel-after", "90", config=late)
+    assert levels(report)["travel"] == "OK", detail(report, "travel")                           # home at 22:00: the next day is not touched
+
+
+def test_an_all_day_hold_is_a_hold(tmp_path):
+    """The twelfth review: the agent's own tentative hold, kept all day and marked busy, took the whole day."""
+    hold = [all_day(THURSDAY, "Hold", transparency="opaque"), *QUIET_DAY]
+    code, report = check(tmp_path, "14:00", "14:30", hold)
+    assert code == 0 and levels(report)["deep work"] == "OK" and "beside Staff meeting" in detail(report, "placement"), report
+    named = {**CONFIG, "calendar_guardian": {**CONFIG["calendar_guardian"], "holds": {"title": "Tentative"}}}
+    code, report = check(tmp_path, "14:00", "14:30", [all_day(THURSDAY, "tentative", transparency="opaque"), *QUIET_DAY], config=named)
+    assert code == 0 and "beside Staff meeting" in detail(report, "placement"), report          # by the title the preferences give, in any case
+    code, report = check(tmp_path, "14:00", "14:30", [all_day(THURSDAY, "Hold the date", transparency="opaque"), *QUIET_DAY])
+    assert levels(report)["placement"] == "REVIEW", report                                      # a title that only begins with the word is an event

@@ -6,6 +6,26 @@ design choices, the config schemas each version introduced — so the main
 document can stay within the repository's 500-line budget without losing
 the reasoning. Newest first.
 
+## v3.9.0 — Travel for in-person events
+
+v3.9.0 (2026-11-11) makes travel a mechanical part of the rituals. A workspace turns the check on
+with `travel_check` in the ritual config. Day-start, mid-day and day-end then run
+`travel_check.py` (in synthesis-chief-of-staff) over that day and the six after, put each flagged
+event in the plan under `## Travel: needs your attention`, and read the live source again for the
+travel blocks of today and tomorrow. `ritual_state.py record` takes the result as `--travel` and
+refuses without it, with one for other days, or while it holds an event that lacks its travel. A
+leaving or returning time in a plan or draft comes from a travel block. An evening event 28 miles
+from a principal's home had been carried through three plans and a day-start with no way to get
+there, and two estimated times had gone out.
+
+The same release reads the plan's choices. The invitation to that evening had been put to the
+principal as a bare accept or decline, with no recommendation and no trip, and he said yes.
+`ritual_state.py record` now reads the day's plan in each declared plan folder and refuses while an
+open item that offers options has no `Recommendation:` line, or, when it is an accept-or-decline or
+carries a `Commits:` line, no `Consequences:` line (binding rule 15, `plan-format.md`). A travel
+result must also agree with itself: its dates are read as dates, and its counts and verdict are
+checked against its events.
+
 ## v3.8.0 — LinkedIn messages; deadlines that live in drafts
 
 v3.8.0 (2026-11-11) adds LinkedIn messages as a declared surface: `linkedin_messages.py` reads the

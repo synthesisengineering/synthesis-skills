@@ -47,6 +47,10 @@ the burden of structuring the response falls on the person, every time, for ever
 
 ## Changelog
 
+- **2.4.0 (2026-11-11)** — every row that is not blind carries a recommendation. Until now one
+  recommended row covered for rows with none. A principal had been shown a bare accept-or-decline
+  for an evening three hours of travel away, with no recommendation and no trip, and said yes: a
+  choice put with no view is not neutral, it defaults to yes. The generator names each such row.
 - **2.1.0 (2026-10-13)** — a comfortable reading path (binding rule 15), from the principal's
   review of a three-decision packet on 2026-10-08: changes against a reviewed `baseline` shown
   first, identical material shown once, HTML messages read as their words with the exact markup

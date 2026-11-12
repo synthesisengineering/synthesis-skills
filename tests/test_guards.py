@@ -205,3 +205,32 @@ def test_a_spent_or_expired_approval_leaves_no_file_behind(isolated_home, monkey
         os.utime(f, (old, old))
     code = approvals.request("send", "fresh", "fresh")
     assert [f.stem for f in (isolated_home / "state" / "approval-requests").iterdir()] == [code]
+
+
+# --- a protected root named another way (2026-11-11) -------------------------------------------------------
+# Found while a review of the write guard was being answered: this guard read a delete's target and a push's
+# branch as written, so a variable the same command assigned, a loop's list or another spelling of the folder on
+# a file system that ignores case walked a recursive delete or a force push past it.
+
+@pytest.mark.parametrize("command", [
+    "D={root}; rm -rf \"$D\"",
+    "R={root}/repo; rm -rf \"$R\"",
+    "for d in {root} /tmp/elsewhere; do rm -rf \"$d\"; done",
+    "rm -rf {upper}",
+    "B=main; git push -f origin \"$B\"",
+    "B=+main; git push origin $B",
+])
+def test_a_protected_root_named_through_a_variable_or_in_another_case_is_still_protected(tmp_path, command):
+    root = tmp_path / "keep"
+    (root / "repo" / ".git").mkdir(parents=True)
+    command = command.format(root=root, upper=str(root).upper())
+    assert guards.check("Bash", {"command": command}, {"protected_roots": [str(root)]}, cwd=str(tmp_path)) is not None
+
+
+@pytest.mark.parametrize("command", ["T=$(mktemp -d); rm -rf \"$T\"", "D={scratch}; rm -rf \"$D\"",
+                                     "for d in {scratch}/a {scratch}/b; do rm -rf \"$d\"; done", "B=feature/x; git push -f origin \"$B\""])
+def test_a_variable_that_names_no_protected_root_changes_nothing(tmp_path, command):
+    root = tmp_path / "keep"
+    root.mkdir()
+    command = command.format(scratch=tmp_path / "scratch")
+    assert guards.check("Bash", {"command": command}, {"protected_roots": [str(root)]}, cwd=str(tmp_path)) is None

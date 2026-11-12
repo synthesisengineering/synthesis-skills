@@ -12,13 +12,20 @@ so every view answers for one workspace, and an empty `--workspace ""` (an
 unset shell variable) is refused rather than read as "all workspaces".
 
     ritual_state.py record --direction day-end --workspace W --date YYYY-MM-DD \\
-        [--mode quick] [--outcome clean] [--session ID] [--pointer FILE] [--count sent=3]
+        [--mode quick] [--outcome clean] [--session ID] [--pointer FILE] [--count sent=3] [--travel FILE]
     ritual_state.py query summary|last|open|streak|weekly-review [--workspace W] [--json]
 
 `record` first reads the plan folders the workspace declares in the ritual config (`plans_dirs`,
 `artifacts_dirs`) with the deadline sweep. It refuses while a critical deadline is past due and open,
 and refuses a clean outcome over plans it could not read whole (2026-11-06: an enrollment window
 closed unanswered and the day was recorded clean). A workspace that declares neither key is refused.
+A workspace that turns the travel check on (`"travel_check": true`, or `{"days": N}`) must also pass
+`--travel`, the output of `travel_check.py --json` for that day and the days ahead: no result, or one
+that holds an in-person event without its travel, and the ritual is not recorded (2026-11-11: an evening
+28 miles from home had been carried through three plans and a day-start with no way to get there).
+It also reads the day's plan in each declared plan folder: an open item that offers options with no
+recommendation, or with no word on what it costs where it would commit the principal's time, and the
+ritual is not recorded (the invitation to that evening had been put as a bare accept or decline).
 
 The log is `<synthesis home>/rituals/history.jsonl` (`RITUAL_STATE_DIR` or
 `--state-dir` points elsewhere, to exercise a copy). Derivations live in the
@@ -31,8 +38,9 @@ import argparse
 import fcntl
 import json
 import os
+import re
 import sys
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timedelta
 from pathlib import Path
 
 _PLUGIN = Path(__file__).resolve().parents[3]
@@ -118,6 +126,178 @@ def critical_deadlines(workspace: str, outcome: str) -> str:
     return f"critical deadlines: {len(rows)} open, {sum(r['lead'] for r in rows)} within {decay_sweep.LEAD_DAYS} days"
 
 
+def _when(moment) -> datetime:
+    """A whole date and time, as the travel check writes one; anything else is no result of that check."""
+    return datetime.fromisoformat(str(moment).replace("Z", "+00:00"))
+
+
+def _day(moment) -> str:
+    return _when(moment).date().isoformat()
+
+
+def travel(workspace: str, day: str, given) -> str:
+    """The line `record` prints about travel, or a refusal: no result, one for other days, an event without its travel."""
+    wanted = rituals.settings(rituals.config(), workspace).get("travel_check")
+    if not wanted:
+        return ""
+    days = int(wanted.get("days", 7)) if isinstance(wanted, dict) else 7
+    last = (date.fromisoformat(day) + timedelta(days=days - 1)).isoformat()
+    again = "travel_check.py --json (in synthesis-chief-of-staff)"
+    if not given:
+        refuse(f"{workspace} checks travel, and this record names no result. Read the calendar for the next {days} days, run "
+               f"{again} over it, save what it prints and pass --travel <that file>")
+    try:
+        found = json.loads(Path(given).read_text(encoding="utf-8"))
+        first, through = (date.fromisoformat(found["window"][key]).isoformat() for key in ("from", "through"))
+        events = found["events"]
+        bare = [e for e in events if e["lacks"]]
+        sound = (isinstance(events, list) and all(isinstance(e["lacks"], list) for e in events) and
+                 (found["in_person"], found["flagged"], found["verdict"]) == (len(events), len(bare), "REFUSE" if bare else "OK")
+                 and all(first <= _day(e["end"]) and _day(e["start"]) <= through and _when(e["start"]) <= _when(e["end"])
+                         for e in events))  # each event within its days, and ending after it starts
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        refuse(f"the travel result {given} cannot be read ({exc!r}); run {again} again")
+    if not sound:  # a result edited by hand, or cut short
+        refuse(f"the travel result {given} does not agree with itself (its counts, its verdict and its events differ), "
+               f"so it is not what {again} printed; run it again")
+    if first != day or through < last:
+        refuse(f"the travel result covers {first} through {through}, and this record needs {day} "
+               f"through {last}. Run {again} for those days")
+    if bare:
+        refuse(f"{len(bare)} in-person event(s) through {last} lack their travel, so this ritual is not recorded:\n"
+               + "\n".join(f"  {str(e.get('start'))[:16]} {e.get('summary')}: " + "; ".join(map(str, e["lacks"])) for e in bare)
+               + "\nWork each trip out from a live source and add its blocks, or put the event to the principal. Never "
+               "write a time that no block gives.")
+    return f"\ntravel: {len(events)} in-person event{'s' * (len(events) != 1)} through {last}, each with its travel"
+
+
+# A line of an item: plain, bold or italic, quoted, a list entry or a task-list box, a heading or a row of a table,
+# in any order and however deep (`- > **Option A:**` is a quote inside a list entry).
+ITEM = r"(?im)^ *(?:> *|\| *|#{1,6} +|(?:[-*+]|\d+[.)]) +(?:\[[ xX]\] +)?)*[*_]*"
+LED = r"(?:[^\w\s*_>|#+.\[\]()\"'`~:-]{1,3}\s*[*_]*)?"  # a pin, a pointing hand or a tick before the word
+# An option's label ends at the mark that closes its emphasis, or at a colon, a dash, a bracket, a full stop or the
+# end of the line: `Option A was fine last time` is a sentence.
+OPTION = re.compile(ITEM + r"Option [A-Z0-9]+(?![A-Za-z0-9])((?:[*_]+|\s*(?:$|[:\-–—().|])).*)$")
+SAID = re.compile(ITEM + LED + r"(?:(?:My|Our|The) +)?(Recommend(?:ation|ed)s?|Consequences?|Commits)[*_]*\s*(?::|[-–—](?=[*_\s]))[*_\s]*(.*)$")
+CLOSED = re.compile(ITEM + LED + r"(?:Decided|Decision|Resolved|Released|Lapsed|Withdrawn)[*_]*\s*:[*_\s]*(.*)$")
+# A line that says nothing yet, as a decision or as a recommendation: a word that puts it off, however the line goes
+# on, or one of three that are also the first word of a sentence that says something, when little follows.
+OPEN = re.compile(r"(?i)\W*(?:pending|undecided|unknown|unsure|awaiting|not yet|to be |\?|(?:open|waiting|needed)\b(?:\W+\w+){0,3}\W*$)")
+# What Markdown does not show as the plan's own text: a fenced block (quoted or not, closed or not), which is an
+# example, and an HTML comment. Whichever opens first runs to its own end: a fence closes at a line of its own
+# mark alone, at least as long as the one that opened it, so four backticks hold a sample fenced with three.
+FENCE = re.compile(r"(?ms)^\s*(?:>\s*|(?:[-*+]|\d+[.)])\s+)*(?P<fence>(?P<mark>[`~])(?P=mark){2,}).*?(?:^\s*(?:>\s*)*(?P=fence)(?P=mark)*[ \t]*$|\Z)"
+                   r"|<!--.*?(?:-->|\Z)")
+QUOTE = re.compile(r"^( *)(?:> ?)+")  # what marks a line as quoted: the line is read as the one it quotes, as far in as the quote stands
+NOTHING = re.compile(r"(?i)[*_\s]*(?:tbd|tbc|none|n/?a|no recommendation|your call|up to you|either)?[\s.*_]*")
+COMMITS = re.compile(r"(?i)\b(?:accept|decline|rsvp|attend|go|join|host|schedule|meet|say (?:yes|no))\b")
+
+
+TITLED = re.compile(r"(?i)(?<![A-Za-z0-9])(Recommendation|Consequences|Commits)[*_]*\s*:[*_\s]*(.*)$")  # the same word and colon on a title line
+MARK = re.compile(r"^ *(?:> *|#{1,6} +|(?:[-*+]|\d+[.)]) +)*")  # what stands before a title that is a list entry or a heading; a task-list box stays, since a ticked one closes it
+HEAD = re.compile(r"(?i) *(?:#{4,6} +(?!(?:the +)?(?:options?|choices?)\W*$)\S|(?:\*\*|__)[^*_\n].*(?:\*\*|__)\s*$)")  # a deeper heading or a line all in bold: a title
+ENTRY = re.compile(r" *(?:>\s*)*(?:[-*+] |\d+[.)] )")  # a list entry, up to where its own text starts
+LABEL = re.compile(r"(?i)Option ([A-Z0-9]+)(?![A-Za-z0-9])")
+
+
+def _shown(text: str) -> str:
+    """A plan without its examples: a fenced block, and a block Markdown shows as code, which is one indented four
+    or more past the text of the list entry it stands in, after an empty line (the seventh review: options indented
+    by four under a numbered entry are that entry's own lines, and were read as an example)."""
+    lines, columns, blank, example = [], [], True, False
+    for line in FENCE.sub("", text).expandtabs(4).splitlines():
+        body = QUOTE.sub(r"\1", line)
+        indent, entry = len(body) - len(body.lstrip(" ")), ENTRY.match(body)
+        if body.strip():
+            while columns and indent < columns[-1] and (blank or entry or body.lstrip().startswith("#")):
+                columns.pop()  # the line stands left of that entry's text: the entry is over
+            example = indent - (columns[-1] if columns else 0) >= 4 and (blank or example)
+            columns += [len(entry[0])] if entry and not example else []
+        lines.append("" if example else line)
+        blank = not body.strip()
+    return "\n".join(lines)
+
+
+def _items(text: str):
+    """Each choice a plan puts, as its own lines, the title first. A choice is a run of options with the lines
+    around it: under a heading of its own, or one entry of a list under a shared heading. The list's next entry, or
+    options whose label starts again (A after B), begin the next choice; a bullet under an option does not (the
+    third and fourth reviews: decisions listed under a second-level heading were not read, a heading inside a fenced
+    example was read as a choice, and a second entry lettered C and D was read as more options of the first)."""
+    for section in re.split(r"(?im)^#{1,3} (?![*_]*Option [A-Z0-9])", _shown(text)):
+        lines, firsts, label, entry, fresh = section.splitlines(), [], None, -1, False
+        for at, line in enumerate(lines):
+            listed = re.match(r"( *)(?:>\s*)*(?:[-*+] |\d+[.)] )", line) if at and not (SAID.match(line) or CLOSED.match(line)) else None
+            if OPTION.match(line):
+                this = LABEL.search(line)[1].upper()
+                firsts += [at] if label is None or this <= label or fresh else []
+                label, fresh = this, False
+            elif listed and (label is None or fresh):
+                entry = len(listed[1])  # the entry a choice's options stand under, by how far it is indented
+            elif listed and len(listed[1]) <= entry:
+                entry, fresh = len(listed[1]), True  # the list's next entry: its options are another choice, whatever their letters
+            elif label is not None and HEAD.match(line) and not (SAID.match(line) or CLOSED.match(line)):
+                fresh = True  # a deeper heading or a bold title after a choice's options: what follows is another choice
+        def depth(j):  # how far in a line's own text stands, its quote marks set aside
+            return len(QUOTE.sub(r"\1", lines[j])) - len(QUOTE.sub(r"\1", lines[j]).lstrip(" "))
+        def titled(k):  # the line a choice starts at: the entry just above its options, else the section's own first line
+            floor = firsts[k - 1] + 1 if k else 0
+            above = next((j for j in range(firsts[k] - 1, floor - 1, -1) if lines[j].strip()
+                          and not (OPTION.match(lines[j]) or SAID.match(lines[j]) or CLOSED.match(lines[j]))), None)
+            if above is not None and depth(above) and not ENTRY.match(QUOTE.sub(r"\1", lines[above])):
+                # a sentence of explanation between an entry and its options: the entry is the one it stands in,
+                # the nearest above whose own text begins at or left of it
+                for j in range(above - 1, floor - 1, -1):
+                    found = ENTRY.match(QUOTE.sub(r"\1", lines[j]))
+                    if found and len(found[0]) <= depth(above):
+                        above = j
+                        break
+                    if lines[j].strip() and depth(j) < depth(above):
+                        break  # a line left of it that is no entry: the sentence stands in no list
+            if above is not None and not depth(above) and not (ENTRY.match(lines[above]) or HEAD.match(lines[above])):
+                # a sentence between a title and its options: the title is the nearest heading or bold line above it
+                for j in range(above - 1, floor - 1, -1):
+                    if HEAD.match(lines[j]) and not (SAID.match(lines[j]) or CLOSED.match(lines[j])):
+                        above = j
+                    if HEAD.match(lines[j]) or OPTION.match(lines[j]) or ENTRY.match(lines[j]):
+                        break
+            entry = above is not None and (len(firsts) > 1 or ENTRY.match(lines[above]) or HEAD.match(lines[above]))
+            return above if entry else 0 if k == 0 else firsts[k]
+        starts = [titled(k) for k in range(len(firsts))]
+        for k, start in enumerate(starts):
+            yield "\n".join(lines[start:starts[k + 1] if k + 1 < len(starts) else len(lines)])
+
+
+def choices(workspace: str, day: str) -> str:
+    """The line `record` prints about the choices the day's plan puts to the principal, or a refusal: an open item
+    that offers options with no recommendation, or, when it would commit their time (an accept or decline, or a
+    `Commits:` line), with no word on what it costs (2026-10-30: a bare accept-or-decline got a yes to an evening
+    three hours of travel away)."""
+    roots = decay_sweep.declared(rituals.config(), workspace) or []
+    open_items, bare = 0, []
+    for plan in (folder / f"{day}.md" for folder, kind in roots if kind == "plans"):
+        text = plan.read_text(encoding="utf-8", errors="replace") if plan.is_file() else ""
+        for item in _items(text):
+            title, options = MARK.sub("", item.splitlines()[0]).strip(), OPTION.findall(item)
+            done = any(not NOTHING.fullmatch(m[1]) and not OPEN.match(m[1]) for m in CLOSED.finditer(item))  # it says what was decided
+            if not options or done or title.lstrip("*_ ").startswith(("~~", "[x]", "[X]", "✓", "✔")) or "✅" in title:
+                continue
+            said = {"recommendation" if m[1].lower().startswith("recommend") else "consequences" if m[1].lower().startswith("consequence") else m[1].lower(): m[2]
+                    for m in [*SAID.finditer(item), *TITLED.finditer(title)] if not NOTHING.fullmatch(m[2]) and not OPEN.match(m[2])}
+            said.update({"recommendation": "on the option"} if any(re.search(r"(?i)(?<!not )\brecommended\b", option) for option in options) else {})
+            needs = ["recommendation"] + ["consequences"] * ("commits" in said or any(map(COMMITS.search, options)))
+            lacks = [word for word in needs if word not in said]
+            open_items += 1
+            bare += [f"  {plan.name}: {title}: lacks its {' and its '.join(lacks)}"] if lacks else []
+    if bare:
+        refuse(f"{len(bare)} choice(s) in today's plan are put to the principal unfinished, so this ritual is not recorded:\n"
+               + "\n".join(bare) + "\nA choice put with no view is not neutral: it defaults to yes. Under each, write "
+               "`**Consequences:**` (what each answer costs the principal: the time, the trip door to door, the money, when "
+               "they are home, the sleep it leaves, what it collides with that day and the next morning) and "
+               "`**Recommendation:**` (which you would take and why; say decline plainly when the costs outweigh the event).")
+    return f"\nchoices: {open_items} open in today's plan, each with a recommendation" if roots else ""
+
+
 def cmd_record(args) -> int:
     check_workspace(args.workspace, "record --direction <direction> --workspace <workspace> --date YYYY-MM-DD")
     try:
@@ -126,7 +306,8 @@ def cmd_record(args) -> int:
         refuse(f"--date {args.date!r} is not YYYY-MM-DD; the logical workday is required and never inferred")
     if args.mode == "migration":
         refuse("mode 'migration' marks old bookkeeping and cannot be written")
-    critical = critical_deadlines(args.workspace, args.outcome)
+    critical = (critical_deadlines(args.workspace, args.outcome) + travel(args.workspace, args.date, args.travel)
+                + choices(args.workspace, args.date))
     record = {"ts": datetime.now().astimezone().isoformat(timespec="seconds"), "date": args.date,
               "direction": args.direction, "workspace": args.workspace, "mode": args.mode,
               "outcome": args.outcome}
@@ -233,6 +414,7 @@ def main(argv: list[str] | None = None) -> int:
     rec.add_argument("--pointer", help="the session log that holds the narrative")
     rec.add_argument("--note")
     rec.add_argument("--count", action="append", metavar="KEY=VALUE")
+    rec.add_argument("--travel", help="the output of travel_check.py --json, for a workspace that checks travel")
     rec.set_defaults(fn=cmd_record)
     query = sub.add_parser("query", help="derive a view")
     query.add_argument("view", choices=VIEWS)

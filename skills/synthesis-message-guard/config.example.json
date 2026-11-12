@@ -38,6 +38,9 @@
     "exempt": ["chief@example.test", "*@board.example.test"],
     "own": ["me@personal.example.test"]
   },
+  "in_person_travel": {
+    "preferences": "~/.synthesis/chief-of-staff/preferences.json"
+  },
   "preferred_names": [
     {
       "official": "Robert",
