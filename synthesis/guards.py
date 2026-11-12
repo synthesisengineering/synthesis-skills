@@ -2205,7 +2205,10 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
             "O_RDONLY", "O_CLOEXEC", "O_NONBLOCK", "O_NOFOLLOW", "O_DIRECTORY", "O_NOCTTY", "O_BINARY"})
         if "subprocess" in owners or ("os" in owners and label in ("system", "popen")):
             first = (n.args[:1] or [kw.get("args")])[0]
+            first = given_once.get(getattr(first, "id", ""), first)  # a command kept under a name given it once
             parts = [spelled(e) for e in first.elts] if isinstance(first, (ast.List, ast.Tuple)) else None
+            if parts:  # one word of a list is one file: a word it found in a protected folder stands for a file there, an unread end for a name
+                parts = [w.replace("\0", "x") if w[:1] != "\0" else names[0] + "/x" if names and named(e) else w for w, e in zip(parts, first.elts)]
             ran = shlex.join(parts) if parts else spelled(first) if first is not None and parts is None else "\0"
             folder = os.path.join(where, os.path.expanduser(spelled(kw["cwd"]))) if "cwd" in kw else where
             if "\0" not in ran + folder:  # a command it spells whole is judged as the shell guard judges a command, where it runs

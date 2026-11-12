@@ -469,16 +469,17 @@ ROOT = Path(__file__).resolve().parents[1]
 # after the morning has begun leaves no night). travel_check.py 1 less (the night is said by the slot check).
 # ritual_state.py 10: _items 6 (the list's next entry begins another choice), _day 3 and travel 1 (each event's start
 # and end is a whole date and time within the result's days).
-# After a fifth review round, which found the fourth's fixes holding and ten refusals of ordinary work, guards.py 23
-# more: _python_writes 21 (a command the program spells whole is judged as the shell guard judges a command, reading
-# flags are read however they are spelled, a name built with % or format keeps its folder, the last part of a path
-# names no folder, a helper's keyword-only parameters are bound, an archive's member is unpacked where the call says,
-# two files already open are judged where each is opened) and _self_grant 2 (a copy into a memory folder is judged by
-# the note it makes there). ritual_state.py 1: a pattern (a recommendation on a choice's title line counts).
+# After a fifth review round, which found the fourth's fixes holding and ten refusals of ordinary work, guards.py 26
+# more: _python_writes 24 (a command the program spells whole is judged as the shell guard judges a command, a file
+# it found standing in for one word of it, reading flags are read however they are spelled, a name built with % or
+# format keeps its folder, the last part of a path names no folder, a helper's keyword-only parameters are bound, an
+# archive's member is unpacked where the call says, two files already open are judged where each is opened) and
+# _self_grant 2 (a copy into a memory folder is judged by the note it makes there). ritual_state.py 1: a pattern (a
+# recommendation on a choice's title line counts).
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # consolidate first).
-CORE_BUDGET = 9365
-PLUGIN_BUDGET = 29673
+CORE_BUDGET = 9368
+PLUGIN_BUDGET = 29676
 
 
 def _lines(files):
