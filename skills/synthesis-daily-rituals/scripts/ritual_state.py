@@ -189,9 +189,10 @@ SAID = re.compile(ITEM + r"(Recommendation|Consequences|Commits)\**\s*:[*\s]*(.*
 CLOSED = re.compile(ITEM + r"(?:Decided|Resolved|Released|Lapsed|Withdrawn)\**\s*:")
 def prompts(workspace: str, day: str, direction: str, outcome: str) -> str:
     """The line a day-end prints about what the principal typed that day, or a refusal: the listing cannot be made,
-    it answers for another workspace or day, or the close is clean while a prompt is cited by no record
-    (2026-11-11: what he asked reached a record only if an agent remembered). The record lists the prompts itself:
-    a result made earlier, or against other folders, says nothing about now (2026-11-12, a review)."""
+    it answers for another workspace, day or set of folders or at odds with itself, or the close is clean while a
+    prompt is cited by no record (2026-11-11: what he asked reached a record only if an agent remembered). The
+    record lists the prompts itself: a result made earlier, or against other folders, says nothing about now
+    (2026-11-12, a review)."""
     wanted = rituals.settings(rituals.config(), workspace).get("prompt_reconcile", False)
     if wanted is False or direction != "day-end":  # off by a missing key or `false` alone: null and 0 closed a day unchecked
         return ""
@@ -220,16 +221,21 @@ def prompts(workspace: str, day: str, direction: str, outcome: str) -> str:
                f"{(done.stderr or done.stdout).strip()[:400]}\nRun `{again}` to see it")
     try:
         found = json.loads(done.stdout)
-        total, left = found["prompts"], found["open"]
-        sound = type(total) is int and isinstance(left, list) and all(isinstance(c, str) for c in left) and len(left) <= total
-        whose, when = found["workspace"], found["date"]
+        total, left, held = found["prompts"], found["open"], found["records"]
+        if not isinstance(held, list):
+            raise TypeError(f"records is {held!r}, not a list of folders")
+        sound = (type(total) is int and isinstance(left, list) and all(isinstance(c, str) and c for c in left)
+                 and len(set(left)) == len(left) <= total and done.returncode == (1 if left else 0))
+        answered = (found["workspace"], found["date"], [os.path.realpath(os.path.expanduser(r)) for r in held])
     except (ValueError, KeyError, TypeError) as exc:
         refuse(f"the listing of {day}'s prompts cannot be read ({exc!r}); run `{again} --json` to see it")
-    if not sound:
-        refuse(f"the listing of {day}'s prompts does not agree with itself (more prompts open than typed, or a field of "
-               f"another shape); run `{again} --json` to see it")
-    if (whose, when) != (workspace, day):
-        refuse(f"the listing answered for {whose} on {when}, and this record is for {workspace} on {day}. Run `{again}`")
+    if not sound:  # 2026-11-12: an exit of 1 with `prompts: 1, open: []` was taken as a clean day
+        refuse(f"the listing of {day}'s prompts does not agree with itself: it exits 1 exactly while it lists a prompt open, "
+               f"lists no more than were typed and each once, and this answer exited {done.returncode} (or a field has another "
+               f"shape), so nothing is recorded; run `{again} --json` to see it")
+    if answered != (workspace, day, [os.path.realpath(os.path.expanduser(r)) for r in roots]):
+        refuse(f"the listing answered for {answered[0]} on {answered[1]} against {held}, and this record is for {workspace} on "
+               f"{day} against {roots}. Run `{again}`")
     if left and outcome in CLEAN:
         refuse(f"{len(left)} of {total} prompts typed on {day} {'is' if len(left) == 1 else 'are'} cited by no record, so "
                f"outcome {outcome!r} would claim nothing was lost:\n" + "\n".join(f"  {c}" for c in left[:40])
