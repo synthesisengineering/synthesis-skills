@@ -24,14 +24,15 @@ DEFAULT_PHRASES = [
 ]
 # A wait the session itself announces with nothing armed (2026-11-11: "should be asking you soon", and the turn
 # ended; a board message reaches a session only at its next prompt). Read clause by clause (EDGE), a clause is one
-# when it has: (a) "I'm" or "we're" waiting or awaiting, unless its "for" or "on" has no object after it ("the terms
-# we're waiting on from the vendor" names a thing); (b) "I'll" or "we'll" wait, or hold until something; (c) "I'll"
-# or "we'll" with a verb of carrying on and once, when, after, until or as soon as, in either order, or straight
-# after "when it finishes" or "should come shortly", which alone are an event or an explanation; (d) "Waiting for",
-# "on" or "until", or "Awaiting", opening it or after a colon or dash, unless that is the sentence's subject
-# ("waiting for a runner was the cause"). Phrases read anywhere in a reply sent back 15 of 34 that need no watcher
-# and passed 9 of 17 waits (review, 2026-11-12). THEIRS, the principal's own next move, exempts only the clause it
-# stands in. Config `wait_phrases` adds plain phrases.
+# when it has: "I'm" or "we're" waiting or awaiting, unless its "for" or "on" has no object after it ("the terms we're
+# waiting on from the vendor" names a thing); "I'll" or "we'll" wait, or hold, pause or stand by until something; a
+# future with a verb of carrying on (_GO) and once, when, after, until or as soon as, in either order; the session's
+# own future with any verb and an event still to come (_THEN, _DONE, _COMES, _FIRST); "Waiting for", "on" or "until",
+# "Awaiting", "Holding ... until" or "Resuming when" opening it or after a colon or dash, unless that is the
+# sentence's subject (SUBJECT, UNTIL). Phrases read anywhere in a reply sent back 15 of 34 that need no watcher and
+# passed 9 of 17 waits (review round 1, 2026-11-12); round 2 found 6 of 32 and 5 of 20, each a class of grammar, and
+# seven more fresh lists found the rest of what is read here. THEIRS, the principal's own next move, exempts the
+# clause it stands in (_theirs says where in it). Config `wait_phrases` adds plain phrases.
 # "once" is a conjunction here, not a count: not "at once", "once more", "once on staging", "once a day".
 _ONCE = r"(?<!\bat )once(?! (?:more|again|a|an|per|every|each|or|and|only|on|in|at|for|with|to|by|upon|daily|weekly)\b)"
 _ME, _WHEN = r"\b(?:i|we)", r"\b(?:" + _ONCE + r"|when|after|until|as soon as|the (?:moment|minute|instant))\b"
@@ -59,11 +60,12 @@ _COMES = (r"(?:when|after|the (?:day|minute|instant)) (?!(?:i|we)\b)(?:[\w'’-]
           r"|completes?|returns?|repl(?:y|ies)|responds?|answers?|confirms?|approves?|signs?|accepts?|ships?|delivers?|clears?|posts?"
           r"|settles?|pass(?:es)?|goes (?:green|through|live|out)|reopens?|lifts?|ends?|issues?|renews?|resets?|propagates?|exits?"
           r"|(?:is|are|has been|have been) (?:done|ready|back|in|out|through|over|up|live|green|available|here|\w+ed))\b")
-_SAYS = (r"(?!(?:not|never|no longer)\b)(?:(?!\b(?:that|because|since|which|if|whether|what|how|why|where)\b)[^;:]){1,100}?")  # not "I'll
-#                                                                                                    note that once ...", not "I will not"
-_DONE = (r"(?:when|once|after|as soon as|the (?:day|moment|minute|instant)) (?:it|they|that|this|everything)(?:(?:['’]s|['’]re| is| are| has| have)(?: been)? (?:done|ready"
-         r"|finished|completed?|through|over|back|in|up|live|green|available|out|here|merged|published|released)\b| (?:lands?"
-         r"|finish(?:es)?|completes?|ends?|returns?|arrives?|pass(?:es)?|comes?)\b| (?:does|do|has|have|is|are)\b(?=\W*$|,))")
+# Not "I'll note that once ..." (how something behaves), and not "I will not ...".
+_SAYS = r"(?!(?:not|never|no longer)\b)(?:(?!\b(?:that|because|since|which|if|whether|what|how|why|where)\b)[^;:]){1,100}?"
+_DONE = (r"(?:when|once|after|as soon as|the (?:day|moment|minute|instant)) (?:it|they|that|this|everything)(?:(?:['’]s|['’]re"
+         r"| is| are| has| have)(?: been)? (?:done|ready|finished|completed?|through|over|back|in|up|live|green|available|out|here"
+         r"|merged|published|released)\b| (?:lands?|finish(?:es)?|completes?|ends?|returns?|arrives?|pass(?:es)?|comes?)\b"
+         r"| (?:does|do|has|have|is|are)\b(?=\W*$|,))")
 # The event in front, after "when" or "after", with any verb: "when the bank confirms, I will record it". An event named with
 # "a" or "any" is a rule ("when a build fails, I'll read the first error"), and "after that" is the session's own next step.
 _FIRST = (r"^\W*(?:after|when) (?!(?:i|we|a|an|any|each|every|some|no|in|that|this|needed|necessary|possible|asked|prompted)\b)"
@@ -100,7 +102,8 @@ _LATER = (_WORD + r"{1,10}?(?:" + _TAIL + r"{0,8}? " + _OFTEN + r"(?:(?:is|was)(
           + r"|(?:would|will|should|may|might|must)(?:n['’]t)?\b|took\b|cost\b|" + _EFFECT + r")| (?!(?:" + _STOP
           + "|" + _SAID + r")\b)(?:is|are|was|were|has|have|had|[a-z]+(?:s|ed))\b" + _WORD + r"{0,6}? " + _OFTEN
           + r"(?:is|was|can|could|has|does)(?:n['’]t| not)?\b|" + _ANY + r"{1,14}? " + _OFTEN + r"(?:took\b|cost\b|" + _EFFECT + "))")
-SUBJECT = re.compile("(?i)(?:" + _WORD + r"{1,12}? " + _PRED + "|" + _WORD + r"{0,8}? (?:before|after|while|until|till|when|once)" + _LATER + ")")
+SUBJECT = re.compile("(?i)(?:" + _WORD + r"{1,12}? " + _PRED + "|" + _WORD + r"{0,8}? (?:before|after|while|until|till|when|once)"
+                     + _LATER + ")")
 UNTIL = re.compile("(?i)" + _LATER)
 WAITS = re.compile(  # a clause that opens with the wait is tested as a subject afterwards: group "on" by SUBJECT, "till" by UNTIL
     "(?i)" + _AM + r"(?:a?waiting\b(?! (?:for|on)(?: you\b| from\b|\W*$))|(?:holding|standing by|paus(?:ing|ed))" + _HELD + ")"
@@ -125,8 +128,9 @@ _ACT = (r"answers?|repl(?:y|ies)|response|go(?:-ahead)?|word|approval|decision|c
 # What only they can supply. With "to" and a verb after it, software is acting on it ("your code to compile").
 _THING = r"codes?|headcount|numbers?|figures|dates?|availability|address|details|list|budget|requirements|priorities"
 _HEAD = (r"(?=\W*$|[^\w\s-]| (?:of|on|about|for|before|in|at|by|from|with|regarding|as|after|until|since|over|and|or|but|so|then"
-         r"|that|whether|if|when|once|while|because|between|among|around|concerning|within|is|are|was|will|would|comes?|arrives?|lands?|reaches|gets|here|there|first"
-         r"|now|today|tonight|tomorrow|soon|too|either|again|instead|please|yet|still|also|back|i|we|it|you|not|to{})\b)")
+         r"|that|whether|if|when|once|while|because|between|among|around|concerning|within|is|are|was|will|would|comes?|arrives?"
+         r"|lands?|reaches|gets|here|there|first|now|today|tonight|tomorrow|soon|too|either|again|instead|please|yet|still|also"
+         r"|back|i|we|it|you|not|to{})\b)")
 THEIRS = re.compile(
     r"(?i)\b(?:from|by|until|till|once|when(?:ever)?|after|as soon as) you\b"
     r"(?! (?:\w+[^e\W]ed|sent|gave|said|told|chose|wrote|made|did|were|had|got|agreed)\b)|\bfor you to\b"

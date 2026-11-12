@@ -28,11 +28,10 @@ the reply back once with `Before this reply goes out, revise it: ...` when the r
 - uses lazy-shortcut phrasing (the built-in list, plus `shortcut_phrases` from config):
   do the work or name the real blocker. A phrase inside quotation marks or code is exempt,
   so naming a rule does not trip it;
-- announces a wait of the session's own that nothing is armed to end (`I'm waiting for CI`,
-  `I'll merge once the checks pass`, a clause that opens `Waiting on the reviewer`), read
-  clause by clause; a clause that awaits the principal's own move, a reply that ends by
-  asking them, a live `synthesis wait` of the session and an autopilot run it owns pass.
-  `wait_phrases` in the config adds phrases (synthesis-waiting has the rule and the commands);
+- announces a wait of the session's own that nothing is armed to end, read clause by clause
+  (a clause ends at a sentence's end, a semicolon or a line's end; [what it reads as a
+  wait](#what-the-reply-check-reads-as-a-wait) has the forms and what passes). `wait_phrases`
+  in the config adds phrases (synthesis-waiting has the rule and the commands);
 - quotes someone (said, wrote, replied, ...: "twelve or more characters") with words that
   appear nowhere in this session's transcript: quote only what a tool surfaced;
 - names a file without a clickable absolute-path link, when `reply_file_links` is true;
@@ -45,6 +44,56 @@ the reply back once with `Before this reply goes out, revise it: ...` when the r
 It never sends a reply back twice in a row and lets the reply through on any internal
 error: a turn-end check that fails closed loops forever. When a reply is sent back, revise
 exactly what it names.
+
+### What the reply check reads as a wait
+
+Sent back when nothing is armed:
+
+- `I'm` or `we're waiting` or `awaiting`, through adverbs and words between commas
+  (`currently still`, `I am, however, still waiting`), and `and am waiting` after `I`;
+- `I'll`, `I'm going to`, `I need to` or `I have to wait`, through helping verbs (`continue
+  to wait`, `keep waiting`); `hold`, `pause` or `stand by` with `until`, in either order;
+- a future with a verb of carrying on (continue, resume, proceed, pick up, finish, merge,
+  confirm, follow up, report back, get back, let you know, update you) and `once`, `when`,
+  `after`, `until`, `as soon as` or `the moment`, in either order;
+- the session's own future with any verb before an event still to come: `once` or `as soon
+  as` and something other than `I` or `we` (`I'll send it as soon as the run finishes`),
+  `when` or `after` and an arrival (`when the second pass comes back`), `when it's done`;
+  and the same with the event stated first (`when the bank confirms, I'll record it`);
+- a subject left out: `Will merge once the checks pass`, `I pushed it and will merge once`;
+- a clause, or what follows a colon or a dash, that opens with `Waiting for`, `Waiting on`,
+  `Waiting until`, `Waiting to hear`, `Awaiting`, `Holding ... until` or `Resuming when`.
+
+Passes:
+
+- an explanation, where the phrase is the subject of its sentence: `Waiting for a lock
+  blocks a thread`, `Waiting until Friday is risky`; software's own behavior (`the worker
+  resumes once the queue has items`); a rule (`when a build fails, I'll read the first
+  error`); advice (`we'll want to rotate the key once the audit ends`); a wait refused, in
+  the past, or as a count (`once a day`, `as soon as possible`);
+- text in quotation marks (double, single or curly), in inline code, in a fence of
+  backticks or of tildes, and on a quoted line. A name set aside this way still counts as
+  the thing awaited: `still waiting on` and a job's name in code is a wait;
+- a clause that awaits the principal's own move, wherever in the clause it stands: `you` as
+  the one who acts and not in the past (`until you choose, I'll wait`), an act of theirs or
+  a thing only they supply as the thing awaited (`your approval`, `your code`, `your dates`,
+  `your answer is the only thing I'm awaiting`), the turn handed over (`it is your move`), a
+  question they answer (`waiting to hear which date works for you`);
+- a short wait that points back (`I'll wait`, `I'm waiting on that`, `until I have it`)
+  when the clause before it names their move, asks them for something or ends in a
+  question mark;
+- a reply that ends by asking them; a live `synthesis wait` of the session; an autopilot
+  run it owns.
+
+A thing that belongs to the principal is not their move. `your review bot`, `your code to
+compile`, `the service to answer your review request` and `per your instructions` leave a
+wait on software as the session's own. What they already did exempts nothing (`your review
+is filed and I'm waiting on the pipeline`, `after you approved`).
+
+The check reads patterns, not meaning. Each fresh list written against it has found forms
+it did not know, most of them waits said with a verb or a conjunction outside these lists;
+`Standing by for` is one that is left to `wait_phrases`. A reply that passes is no proof
+that nothing is awaited: the rule in synthesis-waiting binds whether or not the check fires.
 
 ## The file-link rule
 
