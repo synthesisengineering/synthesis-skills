@@ -311,3 +311,16 @@ def test_a_day_the_listing_finds_nothing_under_is_refused_before_it_is_asked(tmp
     for outcome in ("clean", "partial"):
         code, _, refusal = record(state, "--outcome", outcome, day=day)
         assert code != 0 and "is not YYYY-MM-DD" in refusal and history(state) == "" and not asked.exists(), outcome
+
+
+def test_a_folder_reached_through_a_link_and_its_parent_is_read_as_the_listing_names_it(tmp_path, record, monkeypatch):
+    """The listing names each folder by its full path with `..` taken out as written. A folder the config reaches
+    through a link and then `..` was resolved another way before the two were compared, and the listing's own
+    answer was refused as one held against another folder."""
+    (tmp_path / "real" / "sub").mkdir(parents=True)
+    (tmp_path / "link").symlink_to(tmp_path / "real" / "sub")
+    state = tmp_path / "state"
+    declare(state, desk={"plans_dirs": [], "prompt_reconcile": {"records": [str(tmp_path / "link" / ".." / "kb")]}})
+    listing(tmp_path, monkeypatch)
+    code, out, refusal = record(state)
+    assert code == 0 and "prompts: all 3 typed on 2026-11-11 are cited by a record" in out, refusal
