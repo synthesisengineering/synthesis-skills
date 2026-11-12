@@ -30,8 +30,8 @@ DEFAULT_PHRASES = [
 # after "when it finishes" or "should come shortly", which alone are an event or an explanation; (d) "Waiting for",
 # "on" or "until", or "Awaiting", opening it or after a colon or dash, unless that is the sentence's subject
 # ("waiting for a runner was the cause"). Phrases read anywhere in a reply sent back 15 of 34 that need no watcher
-# and passed 9 of 17 waits (review, 2026-11-12). THEIRS, the principal's own next move ("you" as the one who acts,
-# "your" before an act of theirs), exempts only the clause it stands in. Config `wait_phrases` adds plain phrases.
+# and passed 9 of 17 waits (review, 2026-11-12). THEIRS, the principal's own next move, exempts only the clause it
+# stands in. Config `wait_phrases` adds plain phrases.
 _ME, _WHEN = r"\b(?:i|we)", r"\b(?:once|when|after|until|as soon as)\b"
 # Ordinary grammar between a subject and its verb (review round 2): any run of adverbs ("currently still", "then",
 # "simply"; "not" and "no longer" are none), helping verbs ("continue to wait", "be able to resume", "go ahead and
@@ -52,12 +52,27 @@ WAITS = re.compile(
     "|" + _WILL + _HELP + _GO + ".{0,160}?" + _WHEN + "|" + _WHEN + ".{0,160}?" + _WILL + _HELP + _GO
     + r"|\b(?:(?:when|once) it (?:lands|finishes|returns|arrives)|should (?:come|arrive) shortly),?(?: and)?(?: then)? " + _WILL
     + r"|(?:^\W*|[:—–] ?| --? )" + _SOON + r"(?:waiting (?:(?:for|on)\b(?! you\b)" + _SUBJECT + r"|until\b)|awaiting\b" + _SUBJECT + ")")
+# The principal's own next move is what is awaited: "you" as the one who acts and not in the past ("once you approve";
+# "after you approved" and "as you want" are context), or an act of theirs. An act counts where it is the thing
+# awaited: after the wait's own word ("for", "on", "until", "once I have"), a colon, a dash or the clause's start, and
+# as the head of its phrase. "your review bot", "your code to compile" and "the service to answer your review" name a
+# thing of theirs that software acts on (review round 2).
+_ACT = (r"answers?|repl(?:y|ies)|response|go(?:-ahead)?|word|codes?|approval|decision|confirmation|yes|ok(?:ay)?|input|review"
+        r"|call|choice|ruling|sign-off|permission|instructions?|direction|feedback|guidance|clarification|consent|preference"
+        r"|selection|pick|verdict|signal|thoughts|nod|say-so|green light|thumbs-up|signature|vote|edits|corrections|comments"
+        r"|notes|authori[sz]ation")
+_HEAD = (r"(?=\W*$|[^\w\s-]| (?:of|on|about|for|before|in|at|by|from|with|regarding|as|after|until|since|over|and|or|but|so|then"
+         r"|that|whether|if|when|once|while|because|is|are|was|will|would|comes?|arrives?|lands?|reaches|gets|here|there|first"
+         r"|now|today|tonight|tomorrow|soon|too|either|again|instead|please|yet|still|also|back|i|we|it|you|not|to)\b)"
+         r"(?!(?:(?<=code)|(?<=codes)) to (?!(?:proceed|continue|go ahead|move forward|start|begin)\b))")
 THEIRS = re.compile(
-    r"(?i)\b(?:from|until|till|once|when|after|as soon as) you\b|\bfor you to\b"
-    r"|\byou (?:promised|owe|decide|choose|pick|prefer|want|approve|confirm|say)\b|\byour (?:next (?:message|prompt)"
-    r"|(?:(?:next|final|explicit|written) )?(?:answers?|repl(?:y|ies)|response|go(?:-ahead)?|word|codes?|approval|decision"
-    r"|confirmation|yes|ok(?:ay)?|input|review|call|choice|ruling|sign-off|permission|instructions?|direction|feedback|guidance"
-    r"|clarification|consent|preference|selection|pick|verdict|signal|thoughts|nod|say-so|green light|thumbs-up))(?![\w-])")
+    r"(?i)\b(?:from|by|until|till|once|when|after|as soon as) you\b"
+    r"(?! (?:\w+[^e\W]ed|sent|gave|said|told|chose|wrote|made|did|were|had|got|agreed)\b)|\bfor you to\b"
+    r"|(?<!\bas )(?<!\blike )\byou (?:promised|owe|decide|choose|pick|prefer|want|approve|confirm|say)\b"
+    r"|(?:\b(?:for|on|until|till|once|when|after|as soon as|await(?:ing)?|is|are|was) |(?:[:—–]| -) |^\W*"
+    r"|\b(?:until|till|once|when|after|as soon as) (?:i|we)(?:['’]ve| have)? (?:have|get|got|receive[sd]?|see|hear|read|know|learn) "
+    r"|\bto (?:have|get|receive|see|hear|read|know|learn) )(?:(?:only|just|both|either|also|still|now) )?"
+    r"your (?:next (?:message|prompt)\b|(?:(?:next|final|explicit|written|own|" + _ACT + r") )*(?:" + _ACT + ")" + _HEAD + ")")
 MARKS = re.compile(r"^[ \t]*>.*|[*_#]+|^[ \t]*(?:[-+•]|\d+[.)])[ \t]+", re.M)  # a quoted line; emphasis, heading and list marks
 EDGE = re.compile(r"(?<=[.!?])\s+|;|(?<![:\s])\s*\n\s*")  # a sentence's or a line's end, a semicolon; after a colon the line runs on
 CODE = re.compile(r"```.*?```|`[^`\n]*`", re.S)
