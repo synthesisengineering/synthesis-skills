@@ -43,7 +43,8 @@ _WILL = (r"(?:" + _ME + r"(?:['’]ll| will| shall|(?:['’]m| am|['’]re| are)
          + r"\b[^:]{0,120}?\b(?:and|but|then) will),? " + _SOON)
 _MUST = r"(?:" + _WILL + "|" + _ME + r" (?:(?:still|now|just|also|then|\w+ly) )?(?:(?:need|have|plan|intend|want) to|must) )"
 _HELP = r"(?:(?:be|keep|keep on|go on|carry on|continue to|have to|need to|be able to|go ahead and) )*"
-_GO = r"(?:continue(?! to\b)|resume|proceed|pick \w+(?: back)? up|finish|merge|follow up|(?:report|check|come|get) back|let you know)\b"
+_GO = (r"(?:continue(?! to\b)|resume|proceed|pick (?:[\w'’-]+ ){1,4}?(?:back )?up|finish|merge|confirm|follow up|circle back"
+       r"|(?:report|check|come|get) back|let you know|(?:update|notify|tell|ping|message) you)\b")
 # "Waiting for X" is the subject of its sentence, an explanation, when a verb follows X: a helping verb, a verb of effect
 # ("blocks", "adds", "takes"), or any verb in -s before its object or "out", "up", "down", "off". The words between may
 # hold an infinitive ("the import to release its lock") but nothing that opens another clause (_STOP), so "waiting for
@@ -73,24 +74,29 @@ WAITS = re.compile(
 # awaited: after the wait's own word ("for", "on", "until", "once I have"), a colon, a dash or the clause's start, and
 # as the head of its phrase. "your review bot", "your code to compile" and "the service to answer your review" name a
 # thing of theirs that software acts on (review round 2).
-_ACT = (r"answers?|repl(?:y|ies)|response|go(?:-ahead)?|word|codes?|approval|decision|confirmation|yes|ok(?:ay)?|input|review"
-        r"|call|choice|ruling|sign-off|permission|instructions?|direction|feedback|guidance|clarification|consent|preference"
+_ACT = (r"answers?|repl(?:y|ies)|response|go(?:-ahead)?|word|approval|decision|confirmation|yes|ok(?:ay)?|input|review|call"
+        r"|choice|ruling|sign-off|permission|instructions?|direction|feedback|guidance|clarification|consent|preferences?"
         r"|selection|pick|verdict|signal|thoughts|nod|say-so|green light|thumbs-up|signature|vote|edits|corrections|comments"
-        r"|notes|authori[sz]ation")
+        r"|notes|authori[sz]ation|rsvp")
+# What only they can supply. With "to" and a verb after it, software is acting on it ("your code to compile").
+_THING = r"codes?|headcount|numbers?|figures|dates?|availability|address|details|list|budget|requirements|priorities"
 _HEAD = (r"(?=\W*$|[^\w\s-]| (?:of|on|about|for|before|in|at|by|from|with|regarding|as|after|until|since|over|and|or|but|so|then"
          r"|that|whether|if|when|once|while|because|is|are|was|will|would|comes?|arrives?|lands?|reaches|gets|here|there|first"
-         r"|now|today|tonight|tomorrow|soon|too|either|again|instead|please|yet|still|also|back|i|we|it|you|not|to)\b)"
-         r"(?!(?:(?<=code)|(?<=codes)) to (?!(?:proceed|continue|go ahead|move forward|start|begin)\b))")
+         r"|now|today|tonight|tomorrow|soon|too|either|again|instead|please|yet|still|also|back|i|we|it|you|not|to{})\b)")
 THEIRS = re.compile(
     r"(?i)\b(?:from|by|until|till|once|when(?:ever)?|after|as soon as) you\b"
     r"(?! (?:\w+[^e\W]ed|sent|gave|said|told|chose|wrote|made|did|were|had|got|agreed)\b)|\bfor you to\b"
     r"|(?<!\bas )(?<!\blike )\byou (?:promised|owe|decide|choose|pick|prefer|want|approve|confirm|say)\b"
     r"|\b(?:hear|know|learn|see|find out) (?:back )?(?:which|what|whether|how|when|where|who|if)\b[^,;:]*?(?<!\bto )(?<!\bwith )"
     r"(?<!\babout )\byou\b"  # a question the principal answers: "to hear which date works for you"
+    r"|\b(?:your (?:move|turn)\b|(?:up|over) to you\b|in your court\b)"  # the turn handed over in so many words
     r"|(?:\b(?:for|on|until|till|once|when|after|as soon as|await(?:ing)?|needs?|is|are|was) |['’]s |(?:[:—–]| -) |^\W*"
     r"|\b(?:until|till|once|when|after|as soon as) (?:i|we)(?:['’]ve| have)? (?:have|get|got|receive[sd]?|see|hear|read|know|learn) "
     r"|\bto (?:have|get|receive|see|hear|read|know|learn) )(?:(?:only|just|both|either|also|still|now) )?"
-    r"your (?:next (?:message|prompt)\b|(?:(?:next|final|explicit|written|own|" + _ACT + r") )*(?:" + _ACT + ")" + _HEAD + ")")
+    r"your (?:next (?:message|prompt)\b|(?:(?:next|final|explicit|written|own|" + _ACT + "|" + _THING + r") )*(?:(?:" + _ACT + ")"
+    + _HEAD.format("") + "|(?:" + _THING + ")" + _HEAD.format(" (?:proceed|continue|go ahead|move forward|start|begin)") + "))")
+FRONT = ("until", "till", "once", "when", "after", "as soon as", "your move", "your turn", "up to you", "over to you", "in your court",
+         "is your", "'s your", "’s your")  # how a move of theirs opens when it stands in front of the wait and counts
 OPEN = re.compile(r"(?: (?:for|on))?(?: (?:right now|now|here|today|still|at this point))?\W*$")  # nothing is named after the wait
 BACK = re.compile(r"(?i)(?: (?:for|on))?(?: (?:that|this|it|them|those|both|here|now))?\W*$")      # or only a word that points back
 LEAD = re.compile(r"(?i)(?:(?:and|so|but|now|then|until then|till then|meanwhile),? )?")           # before a wait that opens its clause
@@ -139,8 +145,7 @@ def _theirs(text: str, m: re.Match, before: str) -> bool:
                                           and THEIRS.search(before)):
         return True
     bare = m.group(0).lower().endswith(("wait", "waiting")) and OPEN.match(text, m.end())
-    return any(bare or t.group(0).lower().startswith(("until", "till", "once", "when", "after", "as soon as"))
-               for t in THEIRS.finditer(text, 0, m.start()))
+    return any(bare or t.group(0).lower().startswith(FRONT) for t in THEIRS.finditer(text, 0, m.start()))
 
 
 def unarmed_wait(reply: str, payload: dict, config: dict) -> list[str]:
