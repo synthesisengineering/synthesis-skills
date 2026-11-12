@@ -55,8 +55,15 @@ PLAIN_FIELDS = frozenset({"rsvp_comment", "responseComment"})
 # The workspace connector's mail tools read an attachment given as a path from the connector's own disk, and only
 # from its attachment folder and the folders ALLOWED_FILE_DIRS names, where its start script names the outbox. A
 # file elsewhere was refused after the send was approved; beside one it could read, the mail went without it (2026-11-12).
+# What counts as attached is what its source (2.1.0) reads: the entry's `url`, else the file at its `path`, else base64
+# `content` with a `filename`, an entry it cannot read that way being left out (gmail_tools._prepare_gmail_message);
+# and from no folder a file whose name or folder marks secrets (core.utils.validate_file_path, copied here).
 FILE_MAIL_TOOLS = frozenset({"send_gmail_message", "draft_gmail_message"})
-FILE_KEYS = ("path", "file_path", "filePath")
+ENTRY_KEYS = ("url", "path", "content", "filename", "mime_type", "content_id")  # the first three are where it reads from
+SECRET_NAMES = frozenset({".credentials", ".credentials.json", "credentials.json", "client_secret.json", "client_secrets.json",
+                          "service_account.json", "service-account.json", ".npmrc", ".pypirc", ".netrc", ".git-credentials"})
+SECRET_FOLDERS = ("/proc", "/sys", "/dev", "/etc/shadow", "/etc/passwd", "/private/etc/shadow", "/private/etc/passwd",
+                  "~/.kube", "~/.gnupg", "~/.config/gcloud")
 HTML_TAGS = frozenset({"p", "div", "span", "a", "em", "strong", "b", "i", "u", "ul", "ol", "li", "blockquote",
                        "html", "body", "br"})
 LOOKS_HTML = re.compile(r"</?(?:p|div|span|br|a|b|i|em|strong|u|ul|ol|li|blockquote|html|body|table|img|pre|h[1-6])"
@@ -216,28 +223,66 @@ def message_problems(tool: str, tool_input: dict, config: dict, chans: set | Non
 
 
 def _unread_files(tool: str, tool_input: dict) -> list[str]:
-    """Each file a workspace-connector mail call attaches by path that the connector would not read, judged as it
-    reads one: the path whole (it resolves a relative one in its own folder and expands no `~`), links followed,
-    letters as written, the file inside the outbox, the connector's attachment folder or a folder of
-    ALLOWED_FILE_DIRS as this process has it. An attachment given as content, a URL or a Drive id is no file read."""
+    """Why a workspace-connector mail call would not attach what it names, each entry judged as the connector reads
+    it. A file is judged as it reads one: the path whole (it resolves a relative one in its own folder and expands
+    no `~`), links followed, letters as written, the file inside the outbox, the connector's attachment folder or a
+    folder of ALLOWED_FILE_DIRS as this process has it, and not one it reads from nowhere."""
     given = tool_input.get("attachments") if tool.rsplit("__", 1)[-1] in FILE_MAIL_TOOLS else None
     if isinstance(given, str):  # some clients send the list as its JSON text, which the connector reads too
         try:
             given = json.loads(given)
         except ValueError:
             return []
-    files = [str(e[k]) for e in (given if isinstance(given, list) else [given]) if isinstance(e, dict) for k in FILE_KEYS if e.get(k)]
+    outbox, problems = paths.outbox(), []
     roots = tuple(os.path.realpath(os.path.expanduser(r.strip())).rstrip(os.sep) + os.sep for r in (
-        str(paths.outbox()), os.environ.get("WORKSPACE_ATTACHMENT_DIR") or "~/.workspace-mcp/attachments",
+        str(outbox), os.environ.get("WORKSPACE_ATTACHMENT_DIR") or "~/.workspace-mcp/attachments",
         *os.environ.get("ALLOWED_FILE_DIRS", "").split(os.pathsep)) if r.strip())
+    rule = (": the mail connector takes an attachment only from its `url`, the file at its `path` or standard base64 "
+            "`content` with a `filename`, so this one would not go as given. Give one of the three (a file by its full "
+            f"path, staged in {outbox}) and file this send again")
 
-    def why(file: str) -> str:
+    def unread(file: str) -> str:
         real = os.path.realpath(file)
-        return ("is not a full path" if not os.path.isabs(file) else "does not exist" if not os.path.exists(real)
-                else "is not a file" if not os.path.isfile(real) else "" if real.startswith(roots)
-                else "is outside the folders the mail connector reads")
-    return [f"the attachment {file} {why(file)}: copy the file into {paths.outbox()} (make the folder if it is missing), give "
-            "that copy's full path as the attachment's `path`, and file this send again" for file in files if why(file)]
+        names = real.lower().split(os.sep)
+        why = ("is not a full path" if not os.path.isabs(file) else "does not exist" if not os.path.exists(real)
+               else "is not a file" if not os.path.isfile(real) else "")
+        if not why and (names[-1] in SECRET_NAMES or any(n in (".env", ".ssh", ".aws") or n.startswith(".env.") for n in names)
+                        or any((real + os.sep).startswith(os.path.expanduser(f) + os.sep) for f in SECRET_FOLDERS)):
+            return (f"the attachment {file} is one the mail connector never reads, whatever folder holds it, since its name "
+                    "or a folder above it marks secrets (a .env, key or credentials file): leave it out and tell the principal")
+        why = why or ("" if real.startswith(roots) else "is outside the folders the mail connector reads")
+        return why and (f"the attachment {file} {why}: copy the file into {outbox} (make the folder if it is missing), give "
+                        "that copy's full path as the attachment's `path`, and file this send again")
+
+    for place, entry in enumerate((given if isinstance(given, list) else [given]) if given else [], 1):
+        if not isinstance(entry, dict):
+            continue
+        sources = [k for k in ENTRY_KEYS[:3] if (k in entry if k == "url" else entry.get(k))]  # a `url` key leads, even empty
+        which = f"attachment {place}" + (f" ({entry['filename']})" if entry.get("filename") else "")
+        unknown, url = ", ".join(f"`{k}`" for k in entry if k not in ENTRY_KEYS), entry.get("url")
+        if sources == ["path"]:
+            problems.append(unread(str(entry["path"])))
+        elif len(sources) > 1:
+            problems.append(f"{which} gives {' and '.join(f'`{s}`' for s in sources)}: the mail connector reads only the "
+                            f"`{sources[0]}` of such an entry, empty or not, and never the rest; give one of them and file "
+                            "this send again")
+        else:
+            fault = ("has none of `path`, `content` and `url`" + (f" ({unknown}: not read)" if unknown else "") if not sources
+                     else ("" if isinstance(url, str) and url.strip() else "has an empty `url`") if sources == ["url"]
+                     else "gives `content` with no `filename`" if not entry.get("filename")
+                     else "" if _standard_base64(entry["content"]) else "gives `content` that is not standard base64")
+            problems.append(fault and f"{which} {fault}{rule}")
+    return [p for p in problems if p]
+
+
+def _standard_base64(text) -> bool:
+    """Whether the connector's decoder gives back the bytes this encodes. It skips every letter outside the standard
+    alphabet, so URL-safe text or a `data:` prefix decodes to other bytes, or to nothing it can attach."""
+    import base64
+    try:
+        return isinstance(text, str) and base64.b64decode("".join(text.split()), validate=True) is not None
+    except ValueError:
+        return False
 
 
 def check_send(tool: str, tool_input: dict, config: dict, session: dict | None = None) -> str | None:
