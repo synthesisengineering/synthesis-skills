@@ -498,3 +498,24 @@ def test_an_export_that_finishes_says_when_and_a_busy_one_does_not(harness):
     first = json.loads(stamp.read_text())["exported"]
     assert re.fullmatch(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d[+-]\d\d:\d\d", first)
     assert sessions.export(0) == [] and json.loads(stamp.read_text())["exported"] >= first    # nothing new still counts as a run
+
+
+def test_a_run_started_by_a_command_line_is_briefed_not_prompted(harness):
+    """`codex exec` and `claude -p` take their prompt from a script or another agent (2026-11-11: eight review
+    briefs an agent wrote were listed among the principal's own prompts of the day)."""
+    codex = _jsonl(Path(os.environ["CODEX_HOME"]) / "sessions" / "2026" / "10" / "30" / "rollout-2026-10-30T10-00-00-x9.jsonl", [
+        {"type": "session_meta", "timestamp": "2026-10-30T10:00:00Z", "payload": {
+            "id": "x9", "cwd": harness["work"], "originator": "codex_exec", "source": "exec"}},
+        {"type": "response_item", "timestamp": "2026-10-30T10:00:02Z", "payload": {
+            "type": "message", "role": "user", "content": [{"type": "input_text", "text": "Review this branch."}]}},
+    ])
+    base = {"cwd": harness["work"], "sessionId": "c1", "timestamp": "2026-10-30T10:00:00.000Z"}
+    _jsonl(harness["claude"], [
+        {**base, "entrypoint": "sdk-cli", "type": "user", "message": {"role": "user", "content": "Summarize the diff."}},
+        {**base, "entrypoint": "claude-desktop", "type": "user", "message": {"role": "user", "content": "Now ship it."}},
+    ])
+    sessions.export(0)
+    kinds = {r["text"]: r["kind"] for native in (codex, harness["claude"]) for r in sessions.records(_meta(native)["folder"])
+             if r.get("kind") in ("user", "brief")}
+    assert kinds == {"Review this branch.": "brief", "Summarize the diff.": "brief", "Now ship it.": "user"}
+    assert [p["text"] for p in sessions.prompts("acme", "2026-10-30")] == ["Now ship it."]
