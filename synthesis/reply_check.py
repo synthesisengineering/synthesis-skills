@@ -92,8 +92,11 @@ THEIRS = re.compile(
 OPEN = re.compile(r"(?: (?:for|on))?(?: (?:right now|now|here|today|still|at this point))?\W*$")  # nothing is named after the wait
 MARKS = re.compile(r"^[ \t]*>.*|[*_#]+|^[ \t]*(?:[-+•]|\d+[.)])[ \t]+", re.M)  # a quoted line; emphasis, heading and list marks
 EDGE = re.compile(r"(?<=[.!?])\s+|;|(?<![:\s])\s*\n\s*")  # a sentence's or a line's end, a semicolon; after a colon the line runs on
-CODE = re.compile(r"```.*?```|`[^`\n]*`", re.S)
-QUOTED = re.compile(r"\"[^\"\n]{1,400}\"|“[^”\n]{1,400}”")
+# Code and quoted text are not the reply's own words: a fence of three or more backticks, or of tildes at a line's start,
+# up to the same fence; inline code; double quotes; single quotes, which open after a space or a bracket and close
+# before one, so the apostrophe in "the caterer's estimate" ends nothing (review round 2).
+CODE = re.compile(r"(?:(`{3,})|^[ \t]*(~{3,})).*?(?:\1|\2)|``[^\n]*?``|`[^`\n]*`", re.S | re.M)
+QUOTED = re.compile(r"\"[^\"\n]{1,400}\"|“[^”\n]{1,400}”|(?<![\w'’])['‘](?=[^\s\d])[^\n]{0,400}?(?<=\S)['’](?![\w'’])")
 ATTRIBUTED = re.compile(
     r"\b(?:said|says|wrote|writes|replied|asked|told \w+|warned|noted|added)\s*[:,]?\s*(?:\"([^\"\n]{12,400})\"|“([^”\n]{12,400})”)",
     re.I)
@@ -137,7 +140,7 @@ def unarmed_wait(reply: str, payload: dict, config: dict) -> list[str]:
     """The words with which a reply announces the session's own wait that nothing will end: no live `synthesis wait`
     of this session, no autopilot run it owns. A clause that awaits the principal's own next move is no such wait,
     and a reply that ends by asking them has none."""
-    plain = MARKS.sub("", QUOTED.sub(" ", CODE.sub(" ", reply))).strip()
+    plain = MARKS.sub("", QUOTED.sub(" something ", CODE.sub(" something ", reply))).strip()  # a name set aside is still a thing awaited
     forms = [WAITS] + [re.compile(rf"(?i)\b{re.escape(str(p))}\b") for p in config.get("wait_phrases") or [] if str(p).strip()]
     hits = {m.group(0).lower().strip(" :—–-") for clause in ([] if plain.endswith("?") else EDGE.split(plain))
             for text in [" ".join(clause.split())] for form in forms for m in form.finditer(text) if not _theirs(text, m)}
