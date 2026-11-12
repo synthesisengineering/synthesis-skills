@@ -1,8 +1,10 @@
-# Release notes: 1.0.1, 1.0.0, 0.14.0, 0.13.0, and v0.2.0 to v0.5.3
+# Release notes: 1.1.1, 1.1.0, 1.0.1, 1.0.0, 0.14.0, 0.13.0, and v0.2.0 to v0.5.3
 
-Release notes that opened the 0.14.0 SKILL.md, in their original order. The v0.4.0 and v0.5.0 notes carry live rules, so they are in [transcript-primary-and-commit-gate.md](transcript-primary-and-commit-gate.md); v0.6.0 to v0.11.0 are in [earlier-version-history.md](earlier-version-history.md).
+The notes for 1.0.0 and later, newest first, then the release notes that opened the 0.14.0 SKILL.md, in their original order. The v0.4.0 and v0.5.0 notes carry live rules, so they are in [transcript-primary-and-commit-gate.md](transcript-primary-and-commit-gate.md); v0.6.0 to v0.11.0 are in [earlier-version-history.md](earlier-version-history.md).
 
 Contents:
+- 1.1.1: the second image host
+- 1.1.0: the window never suggests passing a meeting still under way
 - 1.0.1: saved meetings found by their blockquote source line
 - 1.0.0: the v5 script verdicts
 - 0.14.0 and 0.13.0

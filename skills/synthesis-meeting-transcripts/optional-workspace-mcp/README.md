@@ -11,8 +11,8 @@ If you use Anthropic's hosted Gmail + Drive connectors and a single Google accou
 | `start.sh` | Launches the workspace-mcp server in the background (macOS/Linux), with the synthesis outbox among the folders it may read local files from |
 | `stop.sh` | Stops the running workspace-mcp server |
 | `fetch-meeting.py` | Cross-platform script that fetches a meeting transcript deterministically — bypasses the LLM. Use from a shell, cron, or a skill that wants speed over flexibility |
-| `install-autostart.sh` | Installs a launchd user LaunchAgent (macOS) or systemd user unit (Linux) so workspace-mcp auto-starts on login |
-| `doctor.sh` | Health check for the auto-start service — verifies the unit exists, points at a start script that still exists, is loaded, and is actually serving |
+| `install-autostart.sh` | Installs a launchd user LaunchAgent (macOS) or systemd user unit (Linux) so workspace-mcp auto-starts on login, with the synthesis home it is installed with |
+| `doctor.sh` | Health check for the auto-start service — verifies the unit exists, points at a start script that still exists, is loaded, and is actually serving, and reports the outbox the unit gives the server |
 | `uninstall-autostart.sh` | Removes the auto-start configuration |
 | `mcp_client.py` | Small JSON-RPC client used by `fetch-meeting.py` to call MCP tools over HTTP |
 
@@ -121,9 +121,9 @@ refused after it had been approved.
 (`$SYNTHESIS_HOME/outbox` when `SYNTHESIS_HOME` is set), and exports
 `ALLOWED_FILE_DIRS` with that folder added to whatever the variable already holds
 (folders separated by `:`). Agents stage outgoing attachments there, and the synthesis
-send guard refuses a mail call that attaches any other path before an approval is asked
-for. If the folder cannot be made, `start.sh` says so on stderr and still starts the
-server.
+send guard refuses a mail call or a Drive upload that names any other local file before
+an approval is asked for. If the folder cannot be made, `start.sh` says so on stderr and
+still starts the server.
 
 A server that is already running keeps the folders it was started with, so restart it
 after updating these scripts:
@@ -136,10 +136,18 @@ systemctl --user restart workspace-mcp.service                # Linux, under sys
 
 `synthesis doctor` reports the result on its `outbox` line: the folder is there to
 write, and the running server was started with it among `ALLOWED_FILE_DIRS`. A server
-started without it fails that line, and `./doctor.sh` does not look at it. The launchd
-and systemd units pass only the variables `install-autostart.sh` writes, and
-`ALLOWED_FILE_DIRS` and `SYNTHESIS_HOME` are not among them: a supervised server reads
-the default outbox and its own attachment folder.
+started without it fails that line.
+
+The launchd and systemd units pass only the variables `install-autostart.sh` writes.
+`SYNTHESIS_HOME` is among them when it is set at install, so a supervised server reads
+the outbox of the synthesis home it was installed with; installed with none, it reads
+the default. `ALLOWED_FILE_DIRS` is not: a supervised server reads the outbox and its
+own attachment folder.
+
+`./doctor.sh` reports the outbox the unit gives the server: the folder is there to
+write, and it is the outbox of the shell the doctor runs in. When the unit carries
+another synthesis home than that shell's, no restart helps: run `./install-autostart.sh`
+again from that shell, which writes its home into the unit, then restart the service.
 
 ## Prerequisites
 

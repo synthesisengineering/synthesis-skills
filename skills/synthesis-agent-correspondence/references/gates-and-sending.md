@@ -74,27 +74,65 @@ the call. A file left in a session's scratch folder was refused there, so the se
 the principal that approval and a second one. When one attachment can be read and
 another cannot, the connector (2.1.0) sends the message without the second.
 
-The send guard refuses first. A workspace-mcp `send_gmail_message` or
-`draft_gmail_message` call whose attachment names a path (`path`, `file_path` or
-`filePath`) is blocked before any approval code is issued when that path is not a full
-path, names no file, or lies outside the outbox, the connector's attachment folder and
-the `ALLOWED_FILE_DIRS` of the guard's own environment. The refusal names the file:
-``the attachment <path> is outside the folders the mail connector reads: copy the file
-into <outbox> (make the folder if it is missing), give that copy's full path as the
-attachment's `path`, and file this send again``. Do that, and make the call again.
+**Only what the connector reads counts as attached.** It takes each attachment from the
+entry's `url`, else the file at its `path`, else base64 `content` with a `filename`, and
+from nothing else in the entry. The send guard reads a workspace-mcp `send_gmail_message`
+or `draft_gmail_message` call the same way and refuses first: an entry the connector
+would not attach as given is blocked before any approval code is issued.
+
+| The entry | What the connector does with it | The refusal says |
+|---|---|---|
+| Names its file under `file_path`, `filePath` or any key but `path`, or gives nothing to read | Leaves it out of the mail | ``attachment <n> has none of `path`, `content` and `url` `` |
+| Gives two of `url`, `path` and `content` | Reads the first of them and never the other | ``attachment <n> gives `url` and `path`: the mail connector reads only the `url` of such an entry`` |
+| Gives `content` with no `filename` | Leaves it out | ``attachment <n> gives `content` with no `filename` `` |
+| Gives `content` that is not standard base64: the URL-safe letters, a `data:` prefix, wrong padding | Leaves it out, or skips the letters it does not know and attaches other bytes | ``attachment <n> gives `content` that is not standard base64`` |
+| Carries an empty `url` | Fetches nothing, and reads no `path` beside it | ``attachment <n> has an empty `url` `` |
+| Names a `path` that is not a full path, names no file, or lies outside the outbox, the connector's attachment folder and the `ALLOWED_FILE_DIRS` of the guard's own environment | Refuses the file | `the attachment <path> is outside the folders the mail connector reads` (or `is not a full path`, `does not exist`, `is not a file`) |
+| Names a file whose name or folder marks secrets (a `.env`, key or credentials file), staged or not | Reads it from no folder | `the attachment <path> is one the mail connector never reads` |
+
+For a file in the wrong place the refusal goes on: ``copy the file into <outbox> (make
+the folder if it is missing), give that copy's full path as the attachment's `path`, and
+file this send again``. Do that, and make the call again. For a file the connector never
+reads it says to leave the file out and tell the principal, since staging it again
+changes nothing.
+
+The same rule holds for the connector's Drive tools that read a local file.
+`update_drive_file`, `import_to_google_doc`, `import_to_google_sheets` and
+`import_to_google_slides` take it as `file_path`, a full path or a `file://` URL;
+`create_drive_file` takes it as `fileUrl` when that is a `file://` URL.
+`update_drive_file` waits for a code and is refused before one is issued; the others ask
+for none and are refused before the call is made: ``the file <path> is outside the
+folders the connector reads: copy the file into <outbox> (make the folder if it is
+missing), give that copy's full path as `file_path` and make this call again``. Their
+`file_url` is fetched over http or https and never read from this disk, so a `file://`
+URL there is refused with `file_path` named.
 
 - Give the path whole, under the key `path`, the one the connector reads. It resolves
   a relative path in its own folder, expands no `~`, follows links, and then compares
   the letters as written.
-- An attachment passed as content needs no staging: base64 `content` with a
+- An attachment passed as content needs no staging: standard base64 `content` with a
   `filename`, or a `url` (the connector's own download link for a Drive file is one).
-- The approval covers the path as written, not the file's bytes. Leave the staged copy
-  as it is until the call has gone. Every session shares the one outbox, so give the
-  copy a name no other session would pick; a subfolder of your own inside the outbox is
-  still inside it.
+- The approval covers the file's bytes, not only its path. The guard hashes each file
+  the connector will read when it asks for the code and again when the call is made, so
+  a copy replaced in between needs a new approval. The request ends `The approval covers
+  each file the call has the connector read as it is now, so name those files to the
+  principal too: one changed before the call needs a new code.` Show the principal each
+  file's name with the text. A file that cannot be read when the call is made refuses
+  it (`<path> cannot be read (<why>)`), and so does one the guard cannot hash in 2
+  seconds, since a harness passes over a hook that runs past its time. Leave the staged
+  copy as it is until the call has returned: the connector reads it a moment after the
+  guard does.
+- Every session shares the one outbox, so give the copy a name no other session would
+  pick; a subfolder of your own inside the outbox is still inside it.
+- A sandboxed Codex session may write the outbox once setup has granted it, as it has
+  the board. `synthesis doctor` fails its `codex board access` line when either folder
+  is left out, and running the onboarding setup for Codex again grants it.
 - `synthesis doctor` has an `outbox` line: the folder is there to write, and a running
   connector was started with it. A connector started before its `start.sh` named the
-  outbox keeps refusing a staged file until it is restarted.
+  outbox keeps refusing a staged file until it is restarted. One kept running by its
+  auto-start reads the outbox of the synthesis home its unit carries: `doctor.sh` beside
+  `start.sh` says which, and `install-autostart.sh` run again from the session's shell
+  repairs a unit that carries another.
 
 ## Related
 

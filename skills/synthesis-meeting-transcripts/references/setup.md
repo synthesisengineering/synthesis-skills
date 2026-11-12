@@ -104,13 +104,14 @@ The skill's Step 2 and Step 3 work identically across all three paths. Config on
 
 The outbox is `~/.synthesis/v5/outbox`, or `$SYNTHESIS_HOME/outbox` when `SYNTHESIS_HOME` is set. It is the one folder agents stage a file in before attaching it to a message (`synthesis-agent-correspondence`, references/gates-and-sending.md).
 
-Why it is there: workspace-mcp reads a local file (a mail attachment given as a path, a Drive upload from a path) only from its own attachment folder (`WORKSPACE_ATTACHMENT_DIR`, by default `~/.workspace-mcp/attachments`) and from the folders `ALLOWED_FILE_DIRS` names. It checks when the tool runs, so a send that attached a file from anywhere else was refused after the principal had approved it. With the outbox allowed, a staged file is read, and the send guard refuses any other path before an approval is asked for.
+Why it is there: workspace-mcp reads a local file (a mail attachment given as a path, a Drive upload from a path) only from its own attachment folder (`WORKSPACE_ATTACHMENT_DIR`, by default `~/.workspace-mcp/attachments`) and from the folders `ALLOWED_FILE_DIRS` names. It checks when the tool runs, so a send that attached a file from anywhere else was refused after the principal had approved it. With the outbox allowed, a staged file is read, and the send guard refuses any other path, in a mail call or a Drive upload, before an approval is asked for.
 
-Three things follow:
+Four things follow:
 
 - A server that is already running keeps the folders it was started with. After updating, restart it: `./stop.sh && ./start.sh` by hand, `launchctl kickstart -k gui/$UID/com.synthesis.workspace-mcp` under launchd, `systemctl --user restart workspace-mcp.service` under systemd.
 - `synthesis doctor` reports it on its `outbox` line: the folder is there to write, and the running server was started with it among `ALLOWED_FILE_DIRS`. A server started without it fails that line; one whose environment cannot be read is a warning.
-- A launchd or systemd unit passes only the variables `install-autostart.sh` writes into it. `ALLOWED_FILE_DIRS` and `SYNTHESIS_HOME` are not among them, so a supervised server reads the default outbox and its own attachment folder. A server started by hand keeps whatever `ALLOWED_FILE_DIRS` its shell had, with the outbox added.
+- A launchd or systemd unit passes only the variables `install-autostart.sh` writes into it. `SYNTHESIS_HOME` is among them when it is set at install, so a supervised server reads the outbox of the synthesis home it was installed with; installed with none, it reads the default. `ALLOWED_FILE_DIRS` is not: a supervised server reads the outbox and its own attachment folder, while a server started by hand keeps whatever `ALLOWED_FILE_DIRS` its shell had, with the outbox added.
+- `./doctor.sh` reports the outbox the unit gives the server: the folder is there to write, and it is the outbox of the shell the doctor runs in. When the unit carries another synthesis home than that shell's, no restart helps: run `./install-autostart.sh` again from that shell, which writes its home into the unit, then restart the service.
 
 If the outbox cannot be made, `start.sh` says so on stderr and still starts the server, which does much besides mail.
 

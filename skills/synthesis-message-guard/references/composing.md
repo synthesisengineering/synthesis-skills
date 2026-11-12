@@ -92,7 +92,12 @@ The 1.x ledger's attestations, now the agent's own check before showing the prin
 | A line break inside a paragraph | Email plain parts; every chat message | `<field>: a line break falls inside a paragraph ...` |
 | Persona signature shown as a bare domain | Any message carrying a configured persona marker | `the signature shows <domain> as text ...` |
 | A person's official first name (whole word, case-sensitive), outside the address fields | Any message whose call carries one of that person's `preferred_names` identifiers (an address, a Slack user or DM id) | `this message involves someone who goes by <preferred>; write <preferred>, not <official>` |
-| A file attached by its path (`path`, `file_path` or `filePath`) that the connector would not read: the path is not whole, names no file, or lies outside the outbox, the connector's attachment folder and the folders in `ALLOWED_FILE_DIRS` | Workspace connector: `send_gmail_message`, `draft_gmail_message` | `the attachment <path> is outside the folders the mail connector reads: copy the file into <outbox> ..., and file this send again` (or `is not a full path`, `does not exist`, `is not a file`) |
+| An attachment the connector would not attach as given: its file under any key but `path`, or none of `path`, `content` and `url`; two of the three; `content` with no `filename` or not in standard base64; an empty `url` | Workspace connector: `send_gmail_message`, `draft_gmail_message` | ``attachment <n> has none of `path`, `content` and `url` ...``, ``... gives `url` and `path`: the mail connector reads only the `url` ...``, ``... gives `content` with no `filename` ...``, ``... gives `content` that is not standard base64 ...``, ``... has an empty `url` ...`` |
+| A file the connector would not read: the path is not whole, names no file, or lies outside the outbox, the connector's attachment folder and the folders in `ALLOWED_FILE_DIRS`; or its name or folder marks secrets | Workspace connector: an attachment's `path` in the two mail tools; `file_path` (a path or a `file://` URL) in `update_drive_file`, `import_to_google_doc`, `import_to_google_sheets` and `import_to_google_slides`; `fileUrl` as a `file://` URL in `create_drive_file` | `the attachment <path> is outside the folders the mail connector reads: copy the file into <outbox> ..., and file this send again` (or `is not a full path`, `does not exist`, `is not a file`, `is one the mail connector never reads ...`); for a Drive tool, `the file <path> is outside the folders the connector reads: ... and make this call again` |
+| A file the call names that cannot be read when the call is made, or that the guard cannot hash in 2 seconds | The same tools, in a call that waits for a code | `the attachment <path> cannot be read (<why>)` |
+
+A Drive tool that asks for no code (the three imports and `create_drive_file`) is
+refused the same way, after `This call can't go as written:`.
 
 Blank lines separate paragraphs. A line starting a list item (`-`, `*`, `•`, `+`, `1.`),
 a quote (`>`) or a table row (`|`) starts its own line, and fenced code keeps its lines.
@@ -103,6 +108,14 @@ attachment references included, keyed by digest. Object-key ordering does not ch
 it; array ordering and any field change do. Two sessions composing different messages
 get different codes and never share a slot (2026-09-02: a single shared slot let one
 seat's write replace another's, and the refusal blamed an edit that never happened).
+
+For a file the workspace connector reads from its own disk (an attachment's `path`, a
+Drive tool's `file_path` or `file://` `fileUrl`), the digest also takes in the hash of
+that file's bytes, read when the code is asked for and again when the call is made. A
+file replaced in between needs a new approval, and the request ends `The approval covers
+each file the call has the connector read as it is now, so name those files to the
+principal too: one changed before the call needs a new code.` The read is bounded,
+because a harness passes over a hook that runs past its time.
 
 ## Email transports and their fields
 
@@ -120,8 +133,10 @@ The workspace connector reads an attachment given as a `path` from its own disk,
 from the folders it was started to read, so a file is staged in the outbox
 (`~/.synthesis/v5/outbox`) before the call is made. A path is judged as the connector
 reads it: whole (no `~`, nothing relative), links followed, letters as written. An
-attachment given as `content` or a `url` is not a file read and is left as it is. The
-rule, its reason and the refusal in full are in `synthesis-agent-correspondence`,
+attachment given as a `url`, or as standard base64 `content` with a `filename`, is not a
+file read. Only what the connector reads counts as attached: a file under any other key
+is not read at all. Its Drive tools read a local file under the same rule. The rule, its
+reason and each refusal are in `synthesis-agent-correspondence`,
 references/gates-and-sending.md.
 
 ## Approval: only the principal's own prompt
@@ -167,7 +182,8 @@ the call through, before the harness's own permission prompt or MCP approval pol
 the harness or the principal then declines the call (Codex with `approval_policy =
 never`, or a declined permission prompt), the approval is gone and the identical call
 asks again. That is deliberate: a single-use approval fails safe. Tell the principal
-why the code changed.
+why the code changed. A second code is also asked when a file the call names changed
+after the approval, which covered the bytes the file had then.
 
 ## Known limits — stated, not hidden
 

@@ -50,27 +50,54 @@ config a skill documents as fail-closed ships an example.
 release exists (its only network call, so it runs only on request). Doctor never writes
 harness state. It finds each CLI on PATH or in the vendor's install folders (the Codex
 CLI ships inside the ChatGPT desktop app), rejecting a stale Codex launcher with a
-bounded `--version` probe. Checks:
+bounded `--version` probe.
 
-- the stable runtime, its hook script, and a self-test that the real hook denies
-  `rm -rf ~` within the latency budget;
-- per harness: the plugin installed and enabled, its code equal to the runtime (never a
-  version label), all four events wired to the stable hook;
-- Codex: `[features] hooks = true`, `project_doc_max_bytes` at least 98,304, the board
-  writable from the sandbox (by the permissions profile in use, or the older writable
-  roots while `sandbox_mode` is set) and nothing over the state folder, the
+Each line carries its check's name. Every name has an item below, which opens with the
+names it covers (`<harness>` is `claude`, `codex` or `muse`; `<ws>` is a workspace).
+`tests/test_doctor.py` reads the names from `synthesis/doctor.py`, so a check added
+there with no item here fails:
+
+- `runtime`, `hook script`, `hook self-test`: the stable runtime resolves to an installed
+  release whose files are as installed, its hook script is the shipped text, and the
+  real hook denies `rm -rf ~` within the latency budget;
+- `config`: `config.json` parses as an object; when it is missing the guards run on
+  defaults, and one that does not parse makes the send and deploy guards block everything;
+- `board`: no board file is left under `state/`, where no session has read one since
+  5.1.18;
+- `sessions repo <ws>`: each workspace's sessions repository is cloned where the config
+  says, was synced within two days, and is under 3 GB;
+- `harnesses`: at least one of the three harnesses was found on this Mac;
+- `<harness> plugin`, `<harness> package`, `<harness> hooks`: per harness, the plugin
+  installed and enabled, its code equal to the runtime (never a version label), all four
+  events wired to the stable hook;
+- `claude transcripts`: Claude Code keeps transcripts past its 30-day default
+  (`cleanupPeriodDays` is set, and to a year or more);
+- `codex hooks feature`, `codex instruction bytes`, `codex board access`,
+  `codex instruction chain`, `codex hook trust`, `codex skill catalog`: for Codex,
+  `[features] hooks = true`, `project_doc_max_bytes` at least 98,304, the board and the
+  outbox writable from the sandbox (by the permissions profile in use, or the older
+  writable roots while `sandbox_mode` is set) and nothing over the state folder, the
   instruction chain for the current folder under the limit minus 4 KiB, every hook
   trusted, and the skill catalog (asked of `codex app-server`) within budget with every
   shipped skill discoverable;
-- Muse: hooks approved, and its shell tool name treated as a shell by the guard;
-- harness versions equal (or a release visibly in progress, never repaired);
-- every workspace folder and repository under `~/workspaces/*` (or the configured
-  `workspace_roots`) has `AGENTS.md` with `CLAUDE.md` importing it, so Claude Code and
-  Codex read the same instructions;
-- no worktree, live session or virtual environment under a temporary folder;
-- no literal home path in the synced config;
-- every decision packet is the generator's output;
-- the global `core.hooksPath` (report only).
+- `muse hook approval`, `<harness> shell guard`: for Muse, hooks approved, and its shell
+  tool name treated as a shell by the guard;
+- `versions`: harness versions equal (or a release visibly in progress, never repaired);
+- `instruction adapters`: every workspace folder and repository under `~/workspaces/*`
+  (or the configured `workspace_roots`) has `AGENTS.md` with `CLAUDE.md` importing it, so
+  Claude Code and Codex read the same instructions;
+- `durable storage`: no worktree, live session or virtual environment under a temporary
+  folder;
+- `home paths`: no literal home path in the synced config;
+- `decision packets`: every decision packet and action sheet is its generator's output;
+- `outbox`: the folder agents stage outgoing attachments in is there to write, and a
+  mail connector kept running by its auto-start was started with it among
+  `ALLOWED_FILE_DIRS` (one whose start cannot be read is a warning, never a pass);
+- `pr gate`: when `pr_gated` is configured, every commit on a gated repository's default
+  branch since its gate began came through a pull request;
+- `latest release`: only with `--latest`, whether an installed harness is behind the
+  published release;
+- `git hooks`: the global `core.hooksPath` (report only).
 
 ## Live: proving the harness ran it
 
