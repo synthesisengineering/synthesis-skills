@@ -7,6 +7,8 @@ import sys
 import time
 from pathlib import Path
 
+import pytest
+
 from synthesis import reply_check
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -140,3 +142,178 @@ def test_a_calendar_write_with_no_read_after_it_sends_the_reply_back(tmp_path):
     assert "delete_event" in reply_check.check(payload, {})
     _turn(record, _prompt("Thanks."))
     assert reply_check.check(payload, {}) is None  # a new turn starts clean
+
+
+# --- an announced wait, read clause by clause ----------------------------------------------------------------------
+# Review round 1 of 5.8.0 (2026-11-12): the check read its phrases anywhere in a reply. It sent back 15 of 34 replies
+# that need no watcher (an explanation of code, a status report, a wait on the principal's own next move) and let
+# through 9 of 17 that announce the session's own wait. Each reply below is its own case; the N and W ids are the
+# review's, and the rest are written as an agent ends a turn.
+
+NO_WATCHER_NEEDED = {
+    "N05": "The function returns when it finishes reading the file.",
+    "N06": "The child process is reaped once it returns.",
+    "N07": "The response is queued; the callback runs when it arrives.",
+    "N08": "The handler queues a retry when it finishes.",
+    "N09": "When it finishes, the job writes its result to disk.",
+    "N11": "The package should arrive shortly; the courier has your phone number.",
+    "N16": "I'm waiting for a yes from you.",
+    "N17": "I'll wait for the approval code from you.",
+    "N18": "Waiting for the decision you promised.",
+    "N22": "Your refund is pending and should arrive shortly. No further action is needed.",
+    "N23": "The release was blocked yesterday: waiting for a runner was the cause.",
+    "N26": "The server returns a response when it finishes processing the request.",
+    "N27": "The recruiter should come shortly to escort you upstairs.",
+    "N29": "Your download starts once it arrives at the front of the queue.",
+    "N32": "The waiter told the kitchen that the order should come shortly.",
+}
+OWN_WAIT = {
+    "W07": "I'm awaiting the vendor's confirmation before continuing.",
+    "W08": "I'll continue once the reviewer responds.",
+    "W09": "I will resume when the build completes.",
+    "W10": "We're waiting for the second reviewer before I merge.",
+    "W11": "I'm still waiting for CI to finish; your code review comments are already applied.",
+    "W12": "I'll wait for the build. You can review the draft while it runs.",
+    "W13": "Waiting for the vendor. I will update your decision log after the reply.",
+    "W16": "Waiting until the vendor replies before I continue.",
+    "W17": "I'll wait for your colleague to reply, then finish the review.",
+}
+# Sent back before the rebuild, as the review's fifteen were.
+MORE_NO_WATCHER = {
+    "a-fix-explained": "Fixed. The worker no longer blocks when it finishes a batch, and retries are capped at three.",
+    "a-cache-explained": "I could not reproduce the hang. The cache entry is evicted once it returns to the pool, which is why "
+                         "the second read was slow.",
+    "a-hook-explained": "The hook was right to block the commit: the linter exits non-zero when it finishes with warnings.",
+    "a-travel-status": "Your flight is on time, and the car should arrive shortly before nine. Nothing needs your attention "
+                       "tonight.",
+    "a-wait-as-the-cause": "Root cause found. Waiting on the license server was what stalled every build; the tests "
+                           "themselves ran in four minutes.",
+    "a-wait-as-a-hazard": "Waiting for a lock inside the handler can deadlock, so I moved the call outside the critical section.",
+    "a-test-described": "I added a test that fails when it returns early, and it passes with the fix.",
+    "a-third-party-report": "The vendor wrote that the invoice should arrive shortly, and I filed their note in the project record.",
+    "a-deploy-described": "You'll see the banner once it lands in production; the change is merged and deployed to staging.",
+    "numbers-you-promised": "The draft is ready to send. I'm waiting for the two numbers you promised.",
+    "go-ahead-from-you": "Both deploys are staged. I'll wait for the go-ahead from you.",
+    "form-from-you": "Still waiting for the signed form from you; everything else on the list is done.",
+    "two-things-from-you": "I'm waiting on two things from you:\n1. The approval code for the deploy\n2. Which title to use",
+    "your-sign-off-after-a-colon": "I'm waiting on one thing before I send it: your sign-off on the last paragraph.",
+    "a-draft-in-a-block-quote": "The draft is below; send it as it is, or tell me what to change.\n\n> Thanks for the note. I'm "
+                                "waiting for the venue's answer and will confirm the time as soon as I have it.",
+}
+# Passed before the rebuild too. Each stands beside a form the rebuild reads, so none of those forms may catch it.
+STILL_NO_WATCHER = {
+    "merge-once-you-approve": "I'll merge once you approve the pull request.",
+    "once-you-confirm-i-proceed": "Once you confirm the date, I'll proceed with the booking.",
+    "hold-until-you-type": "I'll hold the release until you type the approval code.",
+    "we-wait-on-your-decision": "We're waiting on your decision about the venue; everything else is booked.",
+    "awaiting-your-go": "Awaiting your go on the migration before I touch production.",
+    "your-next-message": "I'll wait here for your next message.",
+    "your-guidance": "Awaiting your guidance on which of the two drafts to send.",
+    "your-green-light": "I'll hold the deploy until I have your green light.",
+    "your-thoughts": "I'm waiting for your thoughts on the outline before I draft the rest.",
+    "which-you-prefer": "I'm waiting to hear which option you prefer.",
+    "a-list-of-the-principals-moves": "Still waiting on:\n- your approval of the draft\n- your decision on the venue",
+    "a-calendar-hold": "The meeting is moved to 3 pm and the room is booked. I'll hold the 4 pm slot as a backup.",
+    "a-meeting-held": "We'll hold the review meeting on Tuesday at ten; the agenda is in the invitation.",
+    "our-wait-in-a-quoted-draft": "Here is the reply for you to send:\n\n> We're still waiting on the venue, so the time is not "
+                                  "fixed yet.",
+    "a-thing-waited-on": "I'd add the delivery date to the list of things we're waiting on from the printer.",
+    "a-wait-refused": "I will not wait for the second review: the first one covered the change, so I merged.",
+    "continue-to-support": "We will continue to support the old flag until the next major version.",
+    "someone-elses-wait": "The reviewer is still waiting for access to the staging site; I asked the administrator to grant it.",
+    "a-past-wait": "I was waiting on the lock for nine seconds in the trace, which explains the timeout.",
+    "ends-with-a-question": "I'm waiting for the build to finish. Should I keep polling it or stop here?",
+}
+# Passed before the rebuild, as the review's nine did.
+MORE_OWN_WAIT = {
+    "now-waiting-on": "The pull request is open and I'm now waiting on CI.",
+    "we-are-still-waiting": "We are still waiting for the vendor's signed contract.",
+    "hold-until": "I pushed the fix. I'll hold the merge until the second reviewer signs off.",
+    "once-green-i-merge": "Once CI is green, I'll merge.",
+    "report-back-when": "The benchmark is running in the other terminal. I'll report back when the run ends.",
+    "proceed-as-soon-as": "We'll proceed as soon as legal returns the redlines.",
+    "a-bold-status-label": "Deployed to staging.\n\n**Status:** waiting for the smoke tests to pass.",
+    "awaiting": "Awaiting the reviewer's verdict on the second draft.",
+    "after-a-dash": "The draft is with the editor — still waiting on her notes.",
+    "check-back-after": "I'll check back after the DNS change propagates.",
+    "you-in-the-next-clause": "I'm waiting for the build; you can read the draft in the meantime.",
+    "your-colleague": "I'll follow up once the vendor replies to your colleague's question.",
+    "pick-this-back-up": "I'll pick this back up when the upstream fix is released.",
+    "your-settings-in-the-next-clause": "We're awaiting the registrar's confirmation; your domain settings are unchanged.",
+    "be-waiting": "I'll be waiting for the vendor's reply to the security questionnaire.",
+    "in-bold": "**Waiting on the second reviewer.** Nothing else is open.",
+    "when-it-completes-i-resume": "When the export completes, I'll resume the import from row 40,001.",
+    "have-to-wait": "I'll have to wait for the registrar before the domain can move.",
+    "let-you-know-when": "The tests are running in the background. I'll let you know when they pass.",
+    "now-waiting": "The pull request is open. Now waiting on CI.",
+    "come-back-once": "I'll come back to this once the vendor replies.",
+    "after-an-arrow": "The branch is rebased and pushed.\n→ Waiting on the release checks before I tag.",
+}
+# Sent back before the rebuild too.
+STILL_OWN_WAIT = {
+    "wait-until": "I will wait until the nightly export completes, then rebuild the index.",
+    "a-numbered-item": "1. The branch is rebased.\n2. Waiting on the integration suite before I tag the release.",
+    "you-as-the-one-told": "I'm waiting for the migration to finish so I can send you the row counts.",
+    "your-notes": "I'm waiting for the vendor's reply, and your notes from this morning are already in the draft.",
+    "a-list-of-others-moves": "Waiting on:\n- CI on the release branch\n- the second reviewer's verdict",
+    "what-i-wait-for": "What I'm waiting for is the registrar's confirmation.",
+    "the-answer-to-your-message": "I passed it on, and I'm waiting for the peer session to answer your message.",
+}
+
+
+def _cases(*groups):
+    return [pytest.param(reply, id=name) for group in groups for name, reply in group.items()]
+
+
+def _sent_back(reply, config=None, session="S1"):
+    return reply_check.check({"last_assistant_message": reply, "session_id": session}, config or {})
+
+
+@pytest.mark.parametrize("reply", _cases(NO_WATCHER_NEEDED))
+def test_the_reviews_replies_that_need_no_watcher_pass(reply):
+    assert _sent_back(reply) is None
+
+
+@pytest.mark.parametrize("reply", _cases(OWN_WAIT))
+def test_the_reviews_unarmed_waits_are_sent_back(reply):
+    reason = _sent_back(reply)
+    assert reason and "nothing is armed" in reason
+
+
+@pytest.mark.parametrize("reply", _cases(MORE_NO_WATCHER, STILL_NO_WATCHER))
+def test_an_explanation_a_status_report_or_the_principals_move_needs_no_watcher(reply):
+    assert _sent_back(reply) is None
+
+
+@pytest.mark.parametrize("reply", _cases(MORE_OWN_WAIT, STILL_OWN_WAIT))
+def test_the_sessions_own_wait_is_sent_back_in_each_of_its_forms(reply):
+    reason = _sent_back(reply)
+    assert reason and "nothing is armed" in reason
+
+
+def test_the_principals_move_exempts_only_the_clause_it_stands_in():
+    assert _sent_back("I'm waiting for your review of the second draft.") is None
+    assert _sent_back("I'm waiting for the second reviewer. Your review of the first draft is filed.")
+    assert _sent_back("I'll continue once you send the second file.") is None
+    assert _sent_back("I'll continue once the second file arrives; you sent the first this morning.")
+    assert _sent_back("Waiting on a yes from you.") is None
+    assert _sent_back("Waiting on the bank.\nA yes from you is already on file.")
+
+
+def test_a_configured_phrase_is_judged_in_its_own_clause():
+    config = {"wait_phrases": ["standing by"]}
+    assert _sent_back("Standing by for the vendor.") is None                          # not a built-in form
+    assert "standing by" in _sent_back("Standing by for the vendor.", config)
+    assert _sent_back("Standing by for the vendor. You can review the draft meanwhile.", config)
+    assert _sent_back("Standing by until you send the code.", config) is None
+    assert _sent_back(OWN_WAIT["W08"], {"wait_phrases": None})                        # a null list is no list, not an error
+
+
+def test_a_live_wait_and_a_reply_already_sent_back_once_still_pass(isolated_home):
+    from synthesis import wait
+    reply = OWN_WAIT["W08"]
+    assert _sent_back(reply)
+    assert reply_check.check({"last_assistant_message": reply, "session_id": "S1", "stop_hook_active": True}, {}) is None
+    wait.record("S1", "the reviewer's answer", time.time() + 600, pid=os.getpid())
+    assert _sent_back(reply) is None
+    assert _sent_back(reply, session="S2")                                            # another session's watcher is not this one's

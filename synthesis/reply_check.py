@@ -23,17 +23,34 @@ DEFAULT_PHRASES = [
     "any message from you", "ping me when",  # an external wait handed back to the principal (2026-11-02)
 ]
 # A wait the session itself announces with nothing armed (2026-11-11: "should be asking you soon", and the turn
-# ended; a board message reaches a session only at its next prompt): its own wait in the first person, one that
-# opens a sentence with no subject, or an event it says it will act on. "Waiting on you" is the principal's move
-# and "he is still waiting on the times" is someone else's wait: of 24 final replies in ten days that a list of
-# bare phrases would have sent back, 20 said "waiting on", and most were one of those two (2026-11-12). Config
-# `wait_phrases` adds plain phrases; this grows from real misses, as the list above does.
-WAITS = re.compile(r"(?i)\bi(?:['’]m| am)(?: still)? waiting (?:for|on)\b(?!\s+you)"
-                   r"|\bi(?:['’]ll| will) (?:wait (?:for|on|until)|pick it up once)\b(?!\s+you)"
-                   r"|(?:^|[.!?:;]\s+|\n\s*(?:[-*+] |\d+[.)] )?)(?:still )?waiting (?:for|on)\b(?!\s+you)"
-                   r"|\b(?:when|once) it (?:lands|finishes|returns|arrives)\b|\bshould (?:come|arrive) shortly\b")
-ON_PRINCIPAL = re.compile(r"(?i)\byou(?:r|'ll|'ve)?\b[^.\n]{0,80}\b(?:answers?|repl(?:y|ies)|go|word|code|approv\w+|decision|decide|"
-                          r"say|type|typed?|confirm|read|review|choose|pick|want)\b|\?\s*$")
+# ended; a board message reaches a session only at its next prompt). Read clause by clause (EDGE), a clause is one
+# when it has: (a) "I'm" or "we're" waiting or awaiting, unless its "for" or "on" has no object after it ("the terms
+# we're waiting on from the vendor" names a thing); (b) "I'll" or "we'll" wait, or hold until something; (c) "I'll"
+# or "we'll" with a verb of carrying on and once, when, after, until or as soon as, in either order, or straight
+# after "when it finishes" or "should come shortly", which alone are an event or an explanation; (d) "Waiting for",
+# "on" or "until", or "Awaiting", opening it or after a colon or dash, unless that is the sentence's subject
+# ("waiting for a runner was the cause"). Phrases read anywhere in a reply sent back 15 of 34 that need no watcher
+# and passed 9 of 17 waits (review, 2026-11-12). THEIRS, the principal's own next move ("you" as the one who acts,
+# "your" before an act of theirs), exempts only the clause it stands in. Config `wait_phrases` adds plain phrases.
+_ME, _SOON, _WHEN = r"\b(?:i|we)", r"(?:(?:still|now|just|currently) )?", r"\b(?:once|when|after|until|as soon as)\b"
+_WILL = _ME + r"(?:['’]ll| will) " + _SOON
+_GO = r"(?:continue(?! to\b)|resume|proceed|pick \w+(?: back)? up|finish|merge|follow up|(?:report|check|come|get) back|let you know)\b"
+_SUBJECT = (r"(?!(?: (?!(?:that|which|who|when|it|they|we|i)\b)[\w'’-]+){1,6}? "
+            r"(?:is|was|are|were|has|had|can|could|would|cause[sd]|took|takes|costs?)\b)")
+WAITS = re.compile(
+    "(?i)" + _ME + r"(?:['’]m| am|['’]re| are) " + _SOON + r"a?waiting\b(?! (?:for|on)(?: you\b| from\b|\W*$))"
+    "|" + _WILL + r"(?:(?:be|keep|have to|need to) )?(?:wait(?:ing)?\b|hold(?:ing)?\b(?=.{0,160}?\b(?:until|till)\b))(?! (?:for|on) you\b)"
+    "|" + _WILL + _GO + ".{0,160}?" + _WHEN + "|" + _WHEN + ".{0,160}?" + _WILL + _GO
+    + r"|\b(?:(?:when|once) it (?:lands|finishes|returns|arrives)|should (?:come|arrive) shortly),?(?: and)?(?: then)? " + _WILL
+    + r"|(?:^\W*|[:—–] ?| --? )" + _SOON + r"(?:waiting (?:(?:for|on)\b(?! you\b)" + _SUBJECT + r"|until\b)|awaiting\b" + _SUBJECT + ")")
+THEIRS = re.compile(
+    r"(?i)\b(?:from|until|till|once|when|after|as soon as) you\b|\bfor you to\b"
+    r"|\byou (?:promised|owe|decide|choose|pick|prefer|want|approve|confirm|say)\b|\byour (?:next (?:message|prompt)"
+    r"|(?:(?:next|final|explicit|written) )?(?:answers?|repl(?:y|ies)|response|go(?:-ahead)?|word|codes?|approval|decision"
+    r"|confirmation|yes|ok(?:ay)?|input|review|call|choice|ruling|sign-off|permission|instructions?|direction|feedback|guidance"
+    r"|clarification|consent|preference|selection|pick|verdict|signal|thoughts|nod|say-so|green light|thumbs-up))(?![\w-])")
+MARKS = re.compile(r"^[ \t]*>.*|[*_#]+|^[ \t]*(?:[-+•]|\d+[.)])[ \t]+", re.M)  # a quoted line; emphasis, heading and list marks
+EDGE = re.compile(r"(?<=[.!?])\s+|;|(?<![:\s])\s*\n\s*")  # a sentence's or a line's end, a semicolon; after a colon the line runs on
 CODE = re.compile(r"```.*?```|`[^`\n]*`", re.S)
 QUOTED = re.compile(r"\"[^\"\n]{1,400}\"|“[^”\n]{1,400}”")
 ATTRIBUTED = re.compile(
@@ -64,17 +81,18 @@ def shortcut_hits(reply: str, extra: list[str]) -> list[str]:
 
 
 def unarmed_wait(reply: str, payload: dict, config: dict) -> list[str]:
-    """The phrases with which a reply announces a wait that nothing will end: no live `synthesis wait` of this
-    session, no autopilot run it owns, and not the principal's own next message (the reply asks them, or names
-    their answer, their go or their code)."""
-    plain = QUOTED.sub(" ", CODE.sub(" ", reply))
-    hits = sorted({" ".join(m.group(0).lower().split()).strip(".:;!?-*+ ") for m in WAITS.finditer(plain)}
-                  | {p for p in (str(e).lower() for e in config.get("wait_phrases", [])) if re.search(rf"\b{re.escape(p)}\b", plain.lower())})
-    if not hits or ON_PRINCIPAL.search(plain.strip()):
+    """The words with which a reply announces the session's own wait that nothing will end: no live `synthesis wait`
+    of this session, no autopilot run it owns. A clause that awaits the principal's own next move is no such wait,
+    and a reply that ends by asking them has none."""
+    plain = MARKS.sub("", QUOTED.sub(" ", CODE.sub(" ", reply))).strip()
+    forms = [WAITS] + [re.compile(rf"(?i)\b{re.escape(str(p))}\b") for p in config.get("wait_phrases") or [] if str(p).strip()]
+    hits = {m.group(0).lower().strip(" :—–-") for clause in ([] if plain.endswith("?") else EDGE.split(plain))
+            for text in [" ".join(clause.split())] for form in forms for m in form.finditer(text) if not THEIRS.search(text, m.start())}
+    if not hits:
         return []
     from synthesis import autopilot, paths, wait
     session = paths.session_id(payload)
-    return [] if session and (wait.live(session) or autopilot.brief(payload)) else hits
+    return [] if session and (wait.live(session) or autopilot.brief(payload)) else sorted(hits)
 
 
 def _probe(quote: str) -> bytes:

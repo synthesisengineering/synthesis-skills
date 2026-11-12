@@ -8,6 +8,7 @@ import importlib.util
 import json
 import os
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -128,3 +129,85 @@ def test_a_file_named_outright_is_a_record_wherever_it_lies(kb, logs, capsys):
     assert scan.main(["--since", "2026-01-02", "--sources", str(logs), str(kb / "notes.md")]) == 1
     out = capsys.readouterr().out
     assert "notes.md" in out and "read 1 records" in out
+
+
+# Review round 1 of 5.8.0 (2026-11-12): a YAML plan named outright was scanned as "read 0 records" with exit 0, and a
+# folder given with --records still left files out by their suffix and by their folder's name.
+
+def test_a_file_named_outright_is_a_record_whatever_its_suffix(kb, logs, capsys):
+    for name in ("2026-01-02.yaml", "today"):
+        plan = kb / "plans" / name
+        plan.parent.mkdir(exist_ok=True)
+        plan.write_text(f"items:\n  - reply to the thread at {MADE_UP}\n", encoding="utf-8")
+        assert scan.main(["--since", "2026-01-02", "--sources", str(logs), str(plan)]) == 1
+        out = capsys.readouterr().out
+        assert f"plans/{name}: timestamp {MADE_UP}" in out and "read 1 records" in out
+
+
+def test_every_file_under_a_declared_folder_is_read_at_any_depth_hidden_folders_too(kb, logs, capsys):
+    plans = kb / "plans"
+    kept = ("week/2026-01-02.yaml", ".archive/old/2026-01-01.md", "notes", "node_modules/pkg/readme.md", ".hidden")
+    for rel in kept + (".git/COMMIT_EDITMSG", "week/.git/ORIG_HEAD"):
+        file = plans / rel
+        file.parent.mkdir(parents=True, exist_ok=True)
+        file.write_text(f"- [ ] reply to the thread at {MADE_UP}\n", encoding="utf-8")
+    assert scan.main(["--since", "2026-01-02", "--sources", str(logs), "--records", str(plans), str(kb)]) == 1
+    out = capsys.readouterr().out
+    assert [rel for rel in kept if f"plans/{rel}: timestamp {MADE_UP}" not in out] == []
+    assert ".git/" not in out and "read 7 records" in out                     # the five, the project's context and the daily plan
+    assert scan.main(["--since", "2026-01-02", "--sources", str(logs), str(kb)]) == 1
+    assert "kb/plans/" not in capsys.readouterr().out                         # without --records, a record's place still decides
+
+
+def test_a_record_that_is_not_text_is_named_unreadable_and_not_counted_as_read(tmp_path, logs, capsys):
+    plans = tmp_path / "plans"
+    plans.mkdir()
+    (plans / "scan.png").write_bytes(b"\x89PNG\r\n\x1a\n" + bytes(range(128, 256)))
+    (plans / "index.db").write_bytes(b"format 3\x00\x10\x00\x01\x01\x00 1700000000.000201 \x00")   # every byte is ASCII
+    (plans / "2026-01-02.md").write_text("- [ ] nothing from a chat here\n", encoding="utf-8")
+    assert scan.main(["--since", "2026-01-02", "--sources", str(logs), "--records", str(plans), str(plans)]) == 1
+    out = capsys.readouterr().out
+    assert "scan.png: unreadable" in out and "index.db: unreadable" in out
+    assert "0 unsourced, 2 unreadable; read 1 records" in out
+    assert scan.main(["--since", "2026-01-02", "--sources", str(logs), str(plans / "scan.png")]) == 1     # named outright
+    assert "scan.png: unreadable" in capsys.readouterr().out
+    (plans / "scan.png").unlink()
+    (plans / "index.db").unlink()
+    assert scan.main(["--since", "2026-01-02", "--sources", str(logs), "--records", str(plans), str(plans)]) == 0
+    assert "0 unsourced; read 1 records" in capsys.readouterr().out            # nothing unreadable: the line as it was
+
+
+@pytest.mark.skipif(not hasattr(os, "geteuid") or os.geteuid() == 0, reason="the superuser opens anything")
+def test_a_record_or_a_folder_that_cannot_be_opened_is_named_unreadable(tmp_path, logs, capsys):
+    plans = tmp_path / "plans"
+    locked, sealed = plans / "locked.md", plans / "sealed"
+    sealed.mkdir(parents=True)
+    for file in (locked, sealed / "inside.md"):
+        file.write_text(f"- [ ] reply to the thread at {MADE_UP}\n", encoding="utf-8")
+    locked.chmod(0)
+    sealed.chmod(0)
+    try:
+        code = scan.main(["--since", "2026-01-02", "--sources", str(logs), "--records", str(plans), str(plans)])
+    finally:
+        locked.chmod(0o600)
+        sealed.chmod(0o700)
+    out = capsys.readouterr().out
+    assert code == 1 and "locked.md: unreadable" in out and "sealed: unreadable" in out
+    assert "0 unsourced, 2 unreadable; read 0 records" in out
+
+
+def test_a_path_that_names_no_file_or_folder_stops_the_scan(kb, logs, capsys):
+    absent = kb / "daily-plans" / "2026-01-03.md"
+    assert scan.main(["--since", "2026-01-02", "--sources", str(logs), str(kb), str(absent)]) == 2
+    assert "2026-01-03.md" in capsys.readouterr().err
+
+
+@pytest.mark.skipif(not hasattr(os, "mkfifo"), reason="no named pipes here")
+def test_a_pipe_in_a_declared_folder_is_no_record_and_never_holds_the_scan(tmp_path, logs):
+    plans = tmp_path / "plans"
+    plans.mkdir()
+    os.mkfifo(plans / "feed")
+    (plans / "2026-01-02.md").write_text("- [ ] nothing from a chat here\n", encoding="utf-8")
+    done = subprocess.run([sys.executable, str(SCRIPT), "--since", "2026-01-02", "--sources", str(logs), "--records", str(plans),
+                           str(plans)], capture_output=True, text=True, timeout=60)
+    assert done.returncode == 0 and "0 unsourced; read 1 records" in done.stdout

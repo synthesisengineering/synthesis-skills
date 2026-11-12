@@ -37,7 +37,7 @@ Waiting for an expected event is a task. A board message, a finished job or a pe
 synthesis wait message [--from <session|short|project:id>] [--for 30m] [--every 2s]
 synthesis wait file <path> [--for 30m] [--every 2s]
 synthesis wait run [--every 30s] [--for 30m] -- <command>
-synthesis wait note "<what>" --by "<what will wake this seat>" [--for 2h]
+synthesis wait note "<what>" --by "<what will wake this seat>" [--for 30m]
 synthesis wait list
 synthesis inbox --peek
 synthesis msg <to> "<text>" [--wake]
