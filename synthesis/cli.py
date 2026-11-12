@@ -108,13 +108,20 @@ def cmd_who(args) -> int:
 
 
 def cmd_msg(args) -> int:
+    """Send, and say what will deliver it (2026-11-11: mail to a project no session was bound to sat unseen)."""
+    from synthesis import wait
     try:
         sent = board.message(args.to, _session(args), args.text, durable=args.durable)
     except board.AddressError as exc:
         print(f"refused: {exc}", file=sys.stderr)
         return 1
-    fallback = not args.durable and sent.parent == board._box(args.to.strip())
-    print(f"sent to {args.to}" + (" (no live session on it: kept for its next session)" if fallback else ""))
+    reached, name = str(paths.read_json(sent).get("session") or ""), args.to.strip()[len("project:"):]
+    target = board.load(reached) if reached else None
+    how = ("it is watching and wakes within seconds" if target and wait.watching(target.session, _session(args))
+           else "it reads it at its next prompt" + (f"; {wait.wake(target)}" if args.wake else "") if target
+           else f"it is kept for every session that works on {name}" if args.durable
+           else f"no session is bound to {name} now: it is kept for the next one that runs `synthesis resume {name}`")
+    print(f"sent to {args.to}: {how}")
     return 0
 
 
@@ -126,7 +133,7 @@ def cmd_worktree(args) -> int:
 def cmd_inbox(args) -> int:
     session_id = _session(args)
     me = board.load(session_id)
-    for m in board.inbox(session_id, me.project if me else "", mark_read=True, recent_hours=args.recent):
+    for m in board.inbox(session_id, me.project if me else "", mark_read=not args.peek, recent_hours=args.recent):
         print(f"--- {time.strftime('%Y-%m-%d %H:%M', time.localtime(m['at']))} from {m['from']} to {m['to']}\n{m['text']}")
     return 0
 
@@ -305,12 +312,15 @@ def parser() -> argparse.ArgumentParser:
     s.add_argument("to")
     s.add_argument("text")
     s.add_argument("--durable", action="store_true", help="reach every session that works on the project")
+    s.add_argument("--wake", action="store_true", help="also nudge an idle recipient through its own harness, where a command can")
     s.set_defaults(fn=cmd_msg)
     s = sub.add_parser("worktree", help="create, retire or land a worktree", add_help=False)
     s.add_argument("rest", nargs=argparse.REMAINDER)
     s.set_defaults(fn=cmd_worktree)
     s = sub.add_parser("inbox", help="show and mark unread messages")
     s.add_argument("--recent", type=float, default=0, metavar="HOURS", help="every message from the last HOURS, read or not")
+    s.add_argument("--peek", action="store_true", help="show unread messages and mark none")
+    sub.add_parser("wait", help="wait for a message, a file or a command, holding a record on the board", add_help=False)
     s.set_defaults(fn=cmd_inbox)
     s = sub.add_parser("sends", help="open, close or show the send window; list the day's sends")
     s.add_argument("action", choices=["open", "close", "status", "log"])
@@ -368,6 +378,10 @@ def parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
+    if "wait" in argv:  # its own options, and a command after `--`
+        from synthesis import wait
+        split = argv.index("wait")
+        return wait.main(argv[split + 1:], _session(parser().parse_args(argv[:split] + ["wait"])))
     for name, fn in (("worktree", cmd_worktree), ("doctor", cmd_doctor)):
         if name in argv:  # hand everything after it to that command's own parser untouched
             split = argv.index(name)

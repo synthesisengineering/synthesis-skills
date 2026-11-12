@@ -156,10 +156,13 @@ def test_a_wait_cannot_run_past_twelve_hours_or_without_a_bound_it_can_read(two)
 def test_the_sender_is_told_what_will_deliver_the_message(two):
     idle = cli("msg", "S1", "are you there", session="S2")
     assert idle.returncode == 0 and "reads it at its next prompt" in idle.stdout
+    cli("inbox")                                                                      # read, so the wait below has nothing yet
     proc = start("wait", "message", "--for", "30s", "--every", "0.2s")
     from synthesis import wait
-    while not wait.live("S1"):
+    deadline = time.time() + 10
+    while not wait.live("S1") and time.time() < deadline:
         time.sleep(0.05)
+    assert wait.live("S1")
     watched = cli("msg", "S1", "now you are watching", session="S2")
     proc.communicate(timeout=15)
     assert "is watching" in watched.stdout and proc.returncode == 0
