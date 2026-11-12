@@ -464,3 +464,14 @@ def test_a_block_in_another_form_is_named_not_reported_as_missing(tmp_path):
     code, report = check(tmp_path, [session, *far])
     missing = lacks(report, "Training session")
     assert all("labeled form" not in item for item in missing) and "no travel block before it" in missing[0], missing   # not beside it: no block at all
+
+
+def test_an_event_at_a_place_with_no_start_stops_the_check(tmp_path):
+    """The eighth review: an in-person event whose start was absent or empty was left out, and the check said OK."""
+    for start in (None, "", {}):
+        entry = {"summary": "Dinner at Rosa's", "location": "Rosa's, 12 Smith St, Harbor Town", "start": start, "end": f"{DAY}T21:00"}
+        code, report = check(tmp_path, [entry])
+        assert code == 2 and "Dinner at Rosa's" in report and "start" in report, (start, report)
+    online = {"summary": "Weekly call", "location": "Zoom", "start": None, "end": None}
+    code, report = check(tmp_path, [online])                                                # nothing to travel to: not this check's to judge
+    assert code == 0

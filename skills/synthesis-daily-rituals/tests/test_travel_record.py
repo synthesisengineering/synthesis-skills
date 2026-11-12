@@ -176,3 +176,12 @@ def test_an_event_over_before_the_results_days_is_not_that_results(tmp_path, rec
     under_way = dict(WHOLE, start="2026-11-09T09:00:00-05:00", end="2026-11-12T17:00:00-05:00")
     code, out, refusal = record(state, "--travel", result(tmp_path, under_way))
     assert code == 0 and "each with its travel" in out, refusal
+
+
+def test_a_result_whose_event_ends_before_it_starts_is_not_what_the_check_printed(tmp_path, record):
+    """The eighth review: an event starting at 22:00 and ending at 19:00 passed the gate."""
+    state = tmp_path / "state"
+    declare(state, desk={"plans_dirs": [], "travel_check": True})
+    backwards = {**WHOLE, "start": "2026-11-11T22:00:00-05:00", "end": "2026-11-11T19:00:00-05:00"}
+    code, _, refusal = record(state, "--travel", result(tmp_path, backwards))
+    assert code != 0 and "does not agree with itself" in refusal and history(state) == ""

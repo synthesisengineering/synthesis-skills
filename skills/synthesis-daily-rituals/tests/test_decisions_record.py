@@ -215,3 +215,18 @@ def test_options_indented_under_a_list_entry_are_that_entrys_options(tmp_path, r
     apart = "### How a choice is written\n\nFor example:\n\n    1. An example\n       **Option A:** Accept\n       **Option B:** Decline\n"
     code, out, refusal = record(workspace(tmp_path, apart))                                  # and a whole example indented by four is none
     assert code == 0 and "choices: 0 open" in out, refusal
+
+
+# --- the eighth review (2026-11-11) -------------------------------------------------------------------------
+
+def test_an_example_inside_a_quote_is_still_an_example(tmp_path, record):
+    """The eighth review: a recommendation inside a quoted fenced block, or quoted and indented as code, counted."""
+    fenced = INVITATION + COSTS + "\n> For example:\n>\n> ```markdown\n> **Recommendation:** B, decline\n> ```\n"
+    code, _, refusal = record(workspace(tmp_path, fenced))
+    assert code != 0 and "recommendation" in refusal
+    indented = INVITATION + COSTS + "\n> For example:\n>\n>     **Recommendation:** B, decline\n"
+    code, _, refusal = record(workspace(tmp_path, indented))
+    assert code != 0 and "recommendation" in refusal
+    quoted = INVITATION + COSTS + "\n> **Recommendation:** B, decline: the trip outweighs the event.\n"
+    code, out, refusal = record(workspace(tmp_path, quoted))                                  # a quoted line that is no example still counts
+    assert code == 0 and "choices: 1 open" in out, refusal

@@ -369,3 +369,25 @@ def test_a_window_that_is_no_time_of_day_stops_the_check(tmp_path):
     wrong = {**CONFIG, "protected_hours": {"windows": [{"start": "9pm", "end": "24:00"}]}}
     code, got = check(tmp_path, "14:00", "14:30", QUIET_DAY, "--attendee", "a@example.com", config=wrong)
     assert code == 2 and "9pm" in got and "HH:MM" in got
+
+
+# --- the eighth review (2026-11-11) -------------------------------------------------------------------------------
+
+def test_a_personal_marker_is_a_tag_not_a_word_a_meeting_might_carry(tmp_path):
+    """A marker `training` hid a six-hour "Training with the team" from the load. A marker is a tag the principal
+    puts on their own blocks (`#reserved`): a plain word would hide meetings, so the check stops on one."""
+    worded = {**OWN, "calendar_guardian": {**OWN["calendar_guardian"], "personal_markers": ["training"]}}
+    day = [meeting(THURSDAY, "09:00", "15:00", "Training with the team", ["a@example.com", "me@example.com"])]
+    code, got = check(tmp_path, "15:30", "16:00", day, "--attendee", "c@example.com", config=worded)
+    assert code == 2 and "training" in got and "#reserved" in got
+    code, got = check(tmp_path, "15:30", "16:00", day, "--attendee", "c@example.com", config=OWN)
+    assert code == 1 and levels(got)["meeting load"] == "REFUSE" and "6.50 hours" in detail(got, "meeting load")
+    tagged = [meeting(THURSDAY, "09:00", "15:00", "Offsite #reservedness", ["a@example.com"])]   # the tag as a whole word only
+    code, got = check(tmp_path, "15:30", "16:00", tagged, "--attendee", "c@example.com", config=OWN)
+    assert levels(got)["meeting load"] == "REFUSE"
+
+
+def test_only_2400_ends_a_day(tmp_path):
+    late = {**CONFIG, "protected_hours": [{"start": "21:00", "end": "24:30"}]}
+    code, got = check(tmp_path, "14:00", "14:30", QUIET_DAY, "--attendee", "a@example.com", config=late)
+    assert code == 2 and "24:30" in got and "HH:MM" in got
