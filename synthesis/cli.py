@@ -225,6 +225,11 @@ def cmd_sessions(args) -> int:
     elif args.action == "export":
         report = sessions.export(0 if args.all else args.days, args.session or "", rebuild=args.rebuild)
         print("\n".join(report[:1] + report[1:][-50:] + [f"{len(report)} line(s)"]) if report else "nothing new to export")
+        if any("not exported" in line or "not copied" in line for line in report):  # 2026-11-12: every copy was refused, and it exited 0
+            stamp = sessions.root() / ".state" / "export.json"  # left before this is said, unless the archive itself cannot be written
+            print(report[0] if report[0].startswith("not exported") else f"{paths.read_json(stamp).get('failed')} transcript(s) could "
+                  f"not be copied: `synthesis doctor` says how each is cleared, and {stamp} names each with why", file=sys.stderr)
+            return 1
     elif args.action == "sync":
         report = sessions.sync(args.workspace, push=not args.no_push)
         print("\n".join(report) or "no sessions repo configured (config sessions_repos)")

@@ -72,13 +72,31 @@ each harness writes its own transcript to disk as the session runs. The copy is 
   tried, and so does the export a sync runs first. On any Mac `synthesis doctor` then fails,
   with how many and the first reason, until a run copies each one: `synthesis sessions export --all` tries them
   all, and an export of the last two days or of one session clears only what it copied.
+- A folder the search for transcripts cannot list is named in the stamp the same way, as `<harness> <folder>`
+  with why: a harness's transcript folder, a project's, a day's, or the folder above them, closed to the process
+  that runs the export. It may hold a transcript of any workspace written on any day, so the doctor fails, the
+  listing of every day stops, and no transcript of that harness is called gone while it stands. It clears when a
+  run of everything lists the folder or finds it removed. A transcript the search can name and not look at is
+  named as one not copied (2026-11-12: the search passed over a folder closed to it, the run found nothing there
+  to copy and stamped complete).
 - A transcript the harness removed before any run copied it can no longer be copied. A run of everything says
   so, the stamp keeps its name with when its copy last failed and when it was found gone, and the doctor keeps
   failing. What it held is not in the archive, and only the principal can accept that:
   `synthesis sessions export --lost <session>` clears it. Run by an agent, it asks for the principal's approval
   code first; typed by the principal in a terminal of their own, it needs none. It refuses a transcript that is
-  still there or that the harness only moved, and it appends each loss it clears to
-  `<synthesis home>/sessions/.state/lost.jsonl`. `--rebuild` carries the stamp and that file into the new archive.
+  still there, that the harness only moved, or whose harness has a folder that cannot be listed, and it appends
+  each loss it clears to `<synthesis home>/sessions/.state/lost.jsonl`. `--rebuild` carries the stamp and that
+  file into the new archive.
+- `synthesis sessions export` says in its exit status whether everything it was asked for was copied:
+
+  | Status | What happened |
+  |---|---|
+  | 0 | Everything asked for was copied, also when nothing was new. An export of two days or of one session exits 0 when what it was asked for was copied, whatever an earlier run left in the stamp. |
+  | 1 | Something was not copied: a transcript this run could not copy, a folder it could not list, a transcript a run of everything found gone and not yet cleared, or an archive that could not be written. The stamp is left first; then one line on stderr says how many are not copied and points to `synthesis doctor` and the stamp. An archive that cannot be written leaves no stamp, and the line says why instead. |
+  | 2 | `--lost` only: it needs the principal's code, or one is on record that the session's transcript does not show the principal typing. Nothing is cleared. |
+
+  `--lost` exits 0 when it clears a loss, and 1 for a transcript the stamp does not name or one not known to be
+  gone. The scheduled job runs `sessions sync` after the export whatever the export's status.
 
 ## Copying each workspace's conversation off the Mac
 

@@ -1593,7 +1593,7 @@ def test_a_transcript_is_not_called_gone_while_the_folder_it_was_in_cannot_be_li
     with _closed(at["claude"].parent):
         report = sessions.export(0)
         status, detail, stamp = _checked(tmp_path)
-        assert sorted(stamp["uncopied"]) == ["claude-code c1", f"claude-code {at['claude'].parent}"] and stamp["failed"] == 2
+        assert set(stamp["uncopied"]) == {"claude-code c1", f"claude-code {at['claude'].parent}"} and stamp["failed"] == 2
         assert "gone" not in stamp["uncopied"]["claude-code c1"] and not [line for line in report if "removed" in line]
         assert status == "fail" and "Gone before a copy was made" not in detail and "export --all" in detail
         assert cli.main(["sessions", "export", "--lost", "c1"]) == 1                # not known to be gone: no code is asked for

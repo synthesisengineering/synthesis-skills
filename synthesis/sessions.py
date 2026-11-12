@@ -499,14 +499,30 @@ def export_file(harness: str, native: Path, project: str = "") -> int:
     return s.flush(end)
 
 
-def natives(days: float = 0) -> list:
-    """(harness, path) for every native transcript, or those changed in the last `days` days."""
-    since, found = time.time() - days * 86400 if days else 0, []
+def natives(days: float = 0, unread: list | None = None) -> list:
+    """(harness, path) for every native transcript, or those changed in the last `days` days. What the search cannot
+    read is not passed over (2026-11-12: with a harness's transcript folder closed to it, a run found nothing to
+    copy and stamped complete): a folder it cannot list goes into `unread` as (harness, folder, why), and a
+    transcript it can name and not look at is returned, so that its copy fails by name."""
+    since, found, absent = time.time() - days * 86400 if days else 0, [], (FileNotFoundError, NotADirectoryError)
     for harness, base in paths.transcript_roots().items():
-        pattern = {"claude-code": "*/**/*.jsonl", "codex": "**/rollout-*.jsonl", "muse": "*/*/*/*/session.jsonl"}[harness]
-        bases = [base, base.parent / "archived_sessions"] if harness == "codex" else [base]  # Codex moves archived ones
-        found += [(harness, p) for b in bases for p in b.glob(pattern) if p.is_file() and p.stat().st_mtime >= since
-                  and p.name != "journal.jsonl"]  # a Claude Code workflow's run journal, not a conversation
+        pattern = {"claude-code": "*/**/*.jsonl", "codex": "**/rollout-*.jsonl", "muse": "*/*/*/*"}[harness]
+        for b in [base, base.parent / "archived_sessions"] if harness == "codex" else [base]:  # Codex moves archived ones
+            def shut(exc, harness=harness):  # a folder that is not there holds no transcript
+                unread.extend([] if isinstance(exc, absent) else [(harness, str(exc.filename), exc.strerror or str(exc))])
+            for top, dirs, _ in os.walk(b, onerror=shut) if unread is not None else ():
+                if harness == "muse" and top.count(os.sep) - str(b).count(os.sep) >= 3:
+                    dirs.clear()  # a Muse session's own folder is looked into, never listed
+            try:
+                named = [p / "session.jsonl" if harness == "muse" else p for p in b.glob(pattern)]
+            except OSError:  # the folder above cannot be searched, and the walk has said so
+                named = []
+            for p in named:
+                try:  # journal.jsonl is a Claude Code workflow's run journal, not a conversation
+                    kept = p.name != "journal.jsonl" and p.is_file() and p.stat().st_mtime >= since
+                except OSError as exc:  # named and closed to a look: its copy says why; one removed meanwhile is no transcript
+                    kept = not isinstance(exc, absent)
+                found += [(harness, p)] if kept else []
     return found
 
 
@@ -556,14 +572,15 @@ def export(days: float = 0, only: str = "", wait: bool = True, rebuild: bool = F
 def _export(days: float, only: str) -> list:
     """Every run, a sync's too, leaves a stamp, the doctor's heartbeat for the scheduled export: a run that found
     nothing new still ran, and a transcript a run could not copy is named there, with why and when, until a run
-    copies it (2026-11-12: every copy was refused and the doctor answered ok). One that a run of everything no
-    longer finds can never be copied: the stamp says since when, and only the principal clears it (`lost`; the same
-    day: a harness removed a transcript whose copy had failed, and the next run stamped complete)."""
+    copies it (2026-11-12: every copy was refused and the doctor answered ok), as is a folder the search could not
+    list, until a run of everything lists it. A transcript that a run of everything no longer finds can never be
+    copied: the stamp says since when, and only the principal clears it (`lost`; the same day: a harness removed a
+    transcript whose copy had failed, and the next run stamped complete)."""
     from synthesis import board
     stamp = root() / ".state" / "export.json"
     last, now = paths.read_json(stamp), datetime.now().astimezone().isoformat(timespec="seconds")
-    report, failed, tried, waiting = [], [], set(), dict(last.get("uncopied") or {})
-    for harness, native in natives(days):
+    report, failed, tried, waiting, unread = [], [], set(), dict(last.get("uncopied") or {}), []
+    for harness, native in natives(days, unread):
         session = _identity(harness, native)
         if only and only not in (session, native.stem, str(native)):
             continue
@@ -579,8 +596,16 @@ def _export(days: float, only: str) -> list:
         waiting.pop(f"{harness} {session}", None)  # copied, whichever run this is
         if kept:
             report.append(f"{harness} {session}: {kept} record(s)")
+    shut = {f"{harness} {folder}": why for harness, folder, why in unread}  # what the search could not list may hold any transcript
+    if not (days or only):  # a run of everything: a folder it listed, or that is no longer there, is not waiting
+        waiting = {name: entry for name, entry in waiting.items() if not entry.get("folder") or name in shut}
+    for name, why in shut.items():
+        failed.append(f"{name}: not exported (cannot be listed: {why})")
+        waiting[name] = {"native": name.partition(" ")[2], "at": now, "reason": failed[-1], "folder": True}
+        report.append(failed[-1])
+    blind = {name.partition(" ")[0] for name in shut}  # a harness with a folder not listed was not looked through: none of its own is gone
     for name, entry in waiting.items() if not (days or only) else ():  # a run of everything looked wherever a harness keeps one
-        if name not in tried and not os.path.exists(entry["native"]):
+        if name not in tried and name.partition(" ")[0] not in blind and not os.path.exists(entry["native"]):
             entry.setdefault("gone", now)
             report.append(f"{name}: not copied before its transcript was removed (its copy last failed {entry['at'][:16]}); "
                           f"what it held is not in the archive, and `synthesis sessions export --lost {name.partition(' ')[2]}` clears it "
@@ -606,16 +631,19 @@ def lost(session: str) -> str:
         stamp = root() / ".state" / "export.json"
         last = paths.read_json(stamp)
         waiting = dict(last.get("uncopied") or {})
-        names = [name for name in waiting if session in (name, name.partition(" ")[2])]
+        names = [name for name, entry in waiting.items() if not entry.get("folder") and session in (name, name.partition(" ")[2])]
         if busy or len(names) != 1:
             raise ValueError(busy or f"{session!r} names {len(names)} of the transcripts the export could not copy: "
                              + (", ".join(sorted(waiting)) or "none is recorded"))
-        entry, (harness, _, sid) = waiting.pop(names[0]), names[0].partition(" ")
-        there = [str(p) for h, p in natives() if h == harness and _identity(h, p) == sid] + (
+        entry, (harness, _, sid), unread = waiting.pop(names[0]), names[0].partition(" "), []
+        there = [str(p) for h, p in natives(0, unread) if h == harness and _identity(h, p) == sid] + (
             [entry["native"]] if os.path.exists(entry["native"]) else [])
         if there:
             raise ValueError(f"{names[0]} is not lost: its transcript is at {there[0]}, and `synthesis sessions export "
                              f"--session {sid}` copies it or says why it cannot")
+        if harness in [h for h, _, _ in unread]:  # where it may still be was not looked through
+            raise ValueError(f"{names[0]} is not known to be lost: {next(f for h, f, _ in unread if h == harness)} cannot be listed, "
+                             "and its transcript may be there")
         said = f"{names[0]}, whose copy last failed {entry['at'][:16]} ({entry['reason']})"
         agent = paths.harness() != "unknown" or not sys.stdin.isatty()
         if agent and not approvals.consume("sessions-lost", names[0], {"session_id": paths.session_id()}):
@@ -635,7 +663,8 @@ def behind(workspace: str, day: str) -> list:
     (2026-11-12: one whose copy had failed lay outside the days the listing exports, so the listing of that day held
     none of its prompts and the day closed clean). One filed under another workspace holds nothing of this one's;
     one last written before the day began holds nothing typed on it; a sub-agent's or a reviewer's holds an agent's
-    briefs, never the principal's words; one that is gone may have held anything written until a run found it gone."""
+    briefs, never the principal's words; one that is gone may have held anything written until a run found it gone;
+    a folder that could not be listed may hold a transcript of any workspace, written on any day."""
     start, found = datetime.fromisoformat(day).timestamp(), []
     for name, entry in (paths.read_json(root() / ".state" / "export.json").get("uncopied") or {}).items():
         kept = _Session(name.partition(" ")[0], Path(entry["native"]), name.partition(" ")[2])
@@ -644,7 +673,7 @@ def behind(workspace: str, day: str) -> list:
         except OSError:
             written = datetime.fromisoformat(entry["gone"]).timestamp() if entry.get("gone") else time.time()
         briefed = "-agent-" in kept.session or kept.meta.get("role") in ("subagent", "reviewer")
-        if written >= start and not briefed and (not kept.folder or kept.folder.parts[-3] == workspace):
+        if entry.get("folder") or written >= start and not briefed and (not kept.folder or kept.folder.parts[-3] == workspace):
             found.append(f"{entry['reason']} (last tried {entry['at'][:16]})")
     return found
 

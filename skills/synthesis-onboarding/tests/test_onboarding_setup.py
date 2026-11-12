@@ -629,6 +629,21 @@ def test_a_home_set_to_nothing_at_install_is_left_to_the_login_shell(day_end, tm
     assert all(run["SYNTHESIS_HOME"] == str(setup.install._home()) for run in runs)
 
 
+@pytest.mark.parametrize("status", [1, 2, 0])
+def test_the_scheduled_job_runs_the_sync_whatever_the_exports_exit_status(day_end, tmp_path, status):
+    """The export exits 1 when it could not copy something. The job's line runs the sync after it all the same, so
+    what was copied still reaches the sessions repos, and the job ends with the sync's own status."""
+    import plistlib
+    setup.register_sessions_export(load=False)
+    spec, seen = plistlib.loads(setup._export_plist().read_bytes()), tmp_path / "seen.txt"
+    (setup.install._home() / "bin" / "synthesis").write_text(
+        f"#!{sys.executable}\nimport sys\nopen({str(seen)!r}, 'a').write(' '.join(sys.argv[1:]) + '\\n')\n"
+        f"sys.exit({status} if sys.argv[1:3] == ['sessions', 'export'] else 0)\n")
+    done = subprocess.run(spec["ProgramArguments"], capture_output=True, text=True, timeout=60,
+                          env={"HOME": str(Path.home()), "PATH": "/usr/bin:/bin"})
+    assert seen.read_text().splitlines() == ["sessions export --all", "sessions sync"] and done.returncode == 0, done.stderr
+
+
 def test_uninstall_removes_only_an_export_schedule_that_runs_this_install(day_end):
     setup.register_sessions_export(load=False)
     assert any("removed the export schedule" in line for line in setup.unregister_sessions_export())

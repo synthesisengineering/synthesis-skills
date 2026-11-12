@@ -161,6 +161,8 @@ whole path (see the next section).
 `--sessions-export` writes the LaunchAgent `~/Library/LaunchAgents/com.synthesis.sessions-export.plist`, which
 runs the installed `synthesis sessions export --all` and then `synthesis sessions sync` every hour and at login,
 through a login shell so git finds the person's credentials. It writes `/tmp/com.synthesis.sessions-export.log`.
+The sync runs whatever the export's exit status: an export that could not copy something exits 1, and what it
+did copy still reaches the sessions repos.
 The job runs with the folders the install was made with: each of `SYNTHESIS_HOME`, `CLAUDE_CONFIG_DIR`, `CODEX_HOME`
 and `XDG_DATA_HOME` that was set when the schedule was installed is set again in the job, after the login shell's
 own, so the job reads the transcripts and writes the archive of the install whose command it runs. One that was
