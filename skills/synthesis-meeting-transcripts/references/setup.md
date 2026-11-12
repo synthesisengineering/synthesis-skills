@@ -1,12 +1,13 @@
 # Setup: configuration, prerequisites and accounts
 
-What the skill needs before its first fetch, as written in 0.14.0: the per-project config, prerequisites, the multi-account options, and why the skill is tool-agnostic.
+What the skill needs before its first fetch, as written in 0.14.0: the per-project config, prerequisites, the multi-account options, and why the skill is tool-agnostic. The section on what `start.sh` sets is newer: it came with the outbox.
 
 Contents:
 - Protocol and config, and the tools the skill works with
 - Configuration: `.agents/meeting-transcripts.yaml`
 - Prerequisites
 - When Multi-Account Matters
+- What `start.sh` sets for the server
 - Why Tool-Agnostic Matters
 
 ## Protocol and config
@@ -88,6 +89,31 @@ Anthropic's hosted Gmail and Drive connectors support **one Google account each*
 3. **Use one Claude account per Google account.** Claude Desktop can run two separate instances (macOS: `open -n -a "Claude" --args --user-data-dir=...`), each signed into a different Claude account with different connectors. Heaviest setup.
 
 The skill's Step 2 and Step 3 work identically across all three paths. Config only needs to specify `google_account`; how authentication is wired up is the user's problem to solve once.
+
+## What `start.sh` sets for the server
+
+`optional-workspace-mcp/start.sh` starts workspace-mcp with these in its environment:
+
+| Variable | Value |
+|---|---|
+| `PATH` | `~/.local/bin` first, where `uv` puts `uvx` |
+| `WORKSPACE_MCP_PORT` | What is set, else 8765 |
+| `GOOGLE_MCP_CREDENTIALS_DIR` | What is set, else `~/.google_workspace_mcp/credentials`; the folder is made |
+| `OAUTHLIB_INSECURE_TRANSPORT` | `1`, since the sign-in redirect is `http://localhost` |
+| `ALLOWED_FILE_DIRS` | The synthesis outbox, added to whatever the variable already holds (folders separated by `:`); the folder is made |
+
+The outbox is `~/.synthesis/v5/outbox`, or `$SYNTHESIS_HOME/outbox` when `SYNTHESIS_HOME` is set. It is the one folder agents stage a file in before attaching it to a message (`synthesis-agent-correspondence`, references/gates-and-sending.md).
+
+Why it is there: workspace-mcp reads a local file (a mail attachment given as a path, a Drive upload from a path) only from its own attachment folder (`WORKSPACE_ATTACHMENT_DIR`, by default `~/.workspace-mcp/attachments`) and from the folders `ALLOWED_FILE_DIRS` names. It checks when the tool runs, so a send that attached a file from anywhere else was refused after the principal had approved it. With the outbox allowed, a staged file is read, and the send guard refuses any other path, in a mail call or a Drive upload, before an approval is asked for.
+
+Four things follow:
+
+- A server that is already running keeps the folders it was started with. After updating, restart it: `./stop.sh && ./start.sh` by hand, `launchctl kickstart -k gui/$UID/com.synthesis.workspace-mcp` under launchd, `systemctl --user restart workspace-mcp.service` under systemd.
+- `synthesis doctor` reports it on its `outbox` line: the folder is there to write, and the running server was started with it among `ALLOWED_FILE_DIRS`. A server started without it fails that line; one whose environment cannot be read is a warning.
+- A launchd or systemd unit passes only the variables `install-autostart.sh` writes into it. `SYNTHESIS_HOME` is among them when it is set at install, so a supervised server reads the outbox of the synthesis home it was installed with; installed with none, it reads the default. `ALLOWED_FILE_DIRS` is not: a supervised server reads the outbox and its own attachment folder, while a server started by hand keeps whatever `ALLOWED_FILE_DIRS` its shell had, with the outbox added.
+- `./doctor.sh` reports the outbox the unit gives the server: the folder is there to write, and it is the outbox of the shell the doctor runs in. When the unit carries another synthesis home than that shell's, no restart helps, and neither does installing over it, since a supervisor keeps the unit it has loaded until it is unloaded: run `./uninstall-autostart.sh` and then `./install-autostart.sh` from that shell, which writes its home into the unit and loads it afresh.
+
+If the outbox cannot be made, `start.sh` says so on stderr and still starts the server, which does much besides mail.
 
 ## Why Tool-Agnostic Matters
 

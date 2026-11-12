@@ -17,14 +17,20 @@ def state() -> Path:
 
 
 def board() -> Path:
-    """Sessions, claims, messages and the snapshot journal: the one v5 folder a sandboxed agent may write (Codex's
-    writable root), so nothing in it grants anything. Approvals and send windows stay in state()."""
+    """Sessions, claims, messages and the snapshot journal: with the outbox, the v5 folders a sandboxed agent may
+    write (Codex's writable roots), so nothing in it grants anything. Approvals and send windows stay in state()."""
     return home() / "board"
 
 
 def sessions() -> Path:
     """Agent session transcripts from every harness, in one form (sessions.py); only the exporter writes here."""
     return home() / "sessions"
+
+
+def outbox() -> Path:
+    """Where an agent stages a file before attaching it to a message: the one folder the workspace-mcp connector is
+    started to read (its start.sh names it in ALLOWED_FILE_DIRS), so the send guard passes a file here."""
+    return home() / "outbox"
 
 
 BOARD_FILES = ("sessions", "messages", "sent", "read", "claims.jsonl", "claims.lock", "journal.jsonl")

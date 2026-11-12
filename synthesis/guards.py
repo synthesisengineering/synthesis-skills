@@ -52,6 +52,23 @@ THREAD_HEADERS = ("in_reply_to", "references", "inReplyTo", "in_reply_to_id")
 # Fields that never render a link: an RSVP's comment reaches the organizer as plain text, so a signature there
 # names its domain in words (2026-10-22: a declined invitation could not carry its signed note).
 PLAIN_FIELDS = frozenset({"rsvp_comment", "responseComment"})
+# The workspace connector's mail tools read an attachment given as a path from the connector's own disk, and only
+# from its attachment folder and the folders ALLOWED_FILE_DIRS names, where its start script names the outbox. A
+# file elsewhere was refused after the send was approved; beside one it could read, the mail went without it (2026-11-12).
+# What counts as attached is what its source (2.1.0) reads: the entry's `url`, else the file at its `path`, else base64
+# `content` with a `filename`, an entry it cannot read that way being left out (gmail_tools._prepare_gmail_message);
+# and from no folder a file whose name or folder marks secrets (core.utils.validate_file_path, copied here).
+# Five Drive tools read a local file under the same rule: `file_path`, a path or a file:// URL, for update_drive_file
+# and the three imports (drive_helpers._resolve_import_media); `fileUrl`, when it is a file:// URL, for
+# create_drive_file. Their `file_url`, and any other `fileUrl`, is fetched over http or https and is no file here.
+FILE_MAIL_TOOLS = frozenset({"send_gmail_message", "draft_gmail_message"})
+FILE_DRIVE_TOOLS = {"update_drive_file": "file_path", "import_to_google_doc": "file_path", "import_to_google_sheets": "file_path",
+                    "import_to_google_slides": "file_path", "create_drive_file": "fileUrl"}
+ENTRY_KEYS = ("url", "path", "content", "filename", "mime_type", "content_id")  # the first three are where it reads from
+SECRET_NAMES = frozenset({".credentials", ".credentials.json", "credentials.json", "client_secret.json", "client_secrets.json",
+                          "service_account.json", "service-account.json", ".npmrc", ".pypirc", ".netrc", ".git-credentials"})
+SECRET_FOLDERS = ("/proc", "/sys", "/dev", "/etc/shadow", "/etc/passwd", "/private/etc/shadow", "/private/etc/passwd",
+                  "~/.kube", "~/.gnupg", "~/.config/gcloud")
 HTML_TAGS = frozenset({"p", "div", "span", "a", "em", "strong", "b", "i", "u", "ul", "ol", "li", "blockquote",
                        "html", "body", "br"})
 LOOKS_HTML = re.compile(r"</?(?:p|div|span|br|a|b|i|em|strong|u|ul|ol|li|blockquote|html|body|table|img|pre|h[1-6])"
@@ -248,16 +265,130 @@ def message_problems(tool: str, tool_input: dict, config: dict, chans: set | Non
         if official and any(i and str(i).lower() in raw.lower() for i in person.get("identifiers", [])) and any(
                 k not in ADDRESSED and re.search(rf"\b{re.escape(official)}\b", t) for k, t in strings):
             problems.append(f"this message involves someone who goes by {preferred}; write {preferred}, not {official}")
-    return problems
+    return problems + _unread_files(tool, tool_input)
+
+
+def _unread_files(tool: str, tool_input: dict, bound: dict | None = None) -> list[str]:
+    """Why a workspace-connector call would not attach or upload what it names, judged as the connector reads it. A
+    file is judged as it reads one: the path whole (it resolves a relative one in its own folder and expands no
+    `~`), links followed, letters as written, the file inside the outbox, the connector's attachment folder or a
+    folder of ALLOWED_FILE_DIRS as this process has it, and not one it reads from nowhere. Given `bound`, each file
+    it would read goes into it under its real path with the hash of its bytes, and one that cannot be read is a problem."""
+    name = tool.rsplit("__", 1)[-1]
+    key, given = FILE_DRIVE_TOOLS.get(name), tool_input.get("attachments") if name in FILE_MAIL_TOOLS else None
+    if not key and given is None:
+        return []
+    try:  # some clients send the list as its JSON text, which the connector reads too: a list's text and no other
+        parsed = json.loads(given) if isinstance(given, str) else None
+        given = parsed if isinstance(parsed, list) else given
+    except ValueError:
+        pass
+    outbox, problems, until = paths.outbox(), [], time.monotonic() + HASH_SECONDS
+    roots = tuple(os.path.realpath(os.path.expanduser(r.strip())).rstrip(os.sep) + os.sep for r in (
+        str(outbox), os.environ.get("WORKSPACE_ATTACHMENT_DIR") or "~/.workspace-mcp/attachments",
+        *os.environ.get("ALLOWED_FILE_DIRS", "").split(os.pathsep)) if r.strip())
+    rule = (": the mail connector takes an attachment only from its `url`, the file at its `path` or standard base64 "
+            "`content` with a `filename`, so this one would not go as given. Give one of the three (a file by its full "
+            f"path, staged in {outbox}) and file this send again")
+
+    def unread(file: str, what: str = "the attachment", who: str = "the mail connector",
+               give: str = "as the attachment's `path`, and file this send again") -> str:
+        real = os.path.realpath(file)
+        names = real.lower().split(os.sep)
+        why = ("is not a full path" if not os.path.isabs(file) else "does not exist" if not os.path.exists(real)
+               else "is not a file" if not os.path.isfile(real) else "")
+        if not why and (names[-1] in SECRET_NAMES or any(n in (".env", ".ssh", ".aws") or n.startswith(".env.") for n in names)
+                        or any((real + os.sep).startswith(os.path.expanduser(f) + os.sep) for f in SECRET_FOLDERS)):
+            return (f"{what} {file} is one {who} never reads, whatever folder holds it, since its name "
+                    "or a folder above it marks secrets (a .env, key or credentials file): leave it out and tell the principal")
+        why = why or ("" if real.startswith(roots) else f"is outside the folders {who} reads")
+        try:
+            if not why and bound is not None:
+                bound[real] = _sha256(real, until)
+        except OSError as exc:
+            return f"{what} {file} cannot be read ({exc.strerror or exc})"
+        return why and (f"{what} {file} {why}: copy the file into {outbox} (make the folder if it is missing), give "
+                        f"that copy's full path {give}")
+
+    named, remote = tool_input.get(key) if key else None, tool_input.get("file_url") if key == "file_path" else None
+    if isinstance(named, str):
+        from urllib.parse import unquote, urlparse
+        url = urlparse(named)  # a file:// URL is the path in it, percent-decoded, led by any host but localhost
+        if url.scheme == "file":
+            named = unquote(("//" + url.netloc if url.netloc.lower() not in ("", "localhost") else "") + url.path)
+        if url.scheme == "file" or key == "file_path":
+            problems.append(unread(named, "the file", "the connector", f"as `{key}`"
+                                   + (", after `file://`," if key == "fileUrl" else "") + " and make this call again"))
+    if isinstance(remote, str) and (remote.lower().startswith("file:") or os.path.isabs(remote)):
+        problems.append(f"`file_url` is fetched over http or https, and {remote} is a file on this disk: copy the file into "
+                        f"{outbox} (make the folder if it is missing), give that copy's full path as `file_path` and make "
+                        "this call again")
+    if given is not None and not isinstance(given, list):
+        problems.append("`attachments` is neither a list of entries nor the JSON text of one, and the mail connector "
+                        "refuses any other shape: give a list with one entry for each file and file this send again")
+    for place, entry in enumerate(given if isinstance(given, list) else [], 1):
+        if not isinstance(entry, dict):
+            problems.append(f"attachment {place} is not an object{rule}")
+            continue
+        sources = [k for k in ENTRY_KEYS[:3] if (k in entry if k == "url" else entry.get(k))]  # a `url` key leads, even empty
+        which = f"attachment {place}" + (f" ({entry['filename']})" if entry.get("filename") else "")
+        unknown, url = ", ".join(f"`{k}`" for k in entry if k not in ENTRY_KEYS), entry.get("url")
+        if sources == ["path"]:
+            problems.append(unread(str(entry["path"])))
+        elif len(sources) > 1:
+            problems.append(f"{which} gives {' and '.join(f'`{s}`' for s in sources)}: the mail connector reads only the "
+                            f"`{sources[0]}` of such an entry, empty or not, and never the rest; give one of them and file "
+                            "this send again")
+        else:
+            fault = ("has none of `path`, `content` and `url`" + (f" ({unknown}: not read)" if unknown else "") if not sources
+                     else ("" if isinstance(url, str) and url.strip() else "has an empty `url`") if sources == ["url"]
+                     else "gives `content` with no `filename`" if not entry.get("filename")
+                     else "" if _standard_base64(entry["content"]) else "gives `content` that is not standard base64")
+            problems.append(fault and f"{which} {fault}{rule}")
+    return [p for p in problems if p]
+
+
+def _standard_base64(text) -> bool:
+    """Whether the connector's decoder gives back the bytes this encodes. It skips every letter outside the standard
+    alphabet, so URL-safe text or a `data:` prefix decodes to other bytes, or to nothing it can attach."""
+    import base64
+    try:
+        return isinstance(text, str) and base64.b64decode("".join(text.split()), validate=True) is not None
+    except ValueError:
+        return False
+
+
+HASH_SECONDS = 2.0  # of the 5 a pre-tool-use hook is given: a harness passes over a hook that runs past its time
+
+
+def _sha256(file: str, until: float) -> str:
+    """The hash of a file's bytes, read before `until`: a file that takes longer is one the guard cannot bind."""
+    import hashlib
+    digest = hashlib.sha256()
+    with open(file, "rb") as handle:
+        for chunk in iter(lambda: handle.read(1 << 20), b""):
+            digest.update(chunk)
+            if time.monotonic() >= until:
+                raise TimeoutError(f"not within the {HASH_SECONDS:g} s the guard may spend reading the files a call names")
+    return digest.hexdigest()
+
+
+def check_upload(tool: str, tool_input: dict) -> str | None:
+    """A Drive upload that asks for no code still names a file the connector must read: one it would not read is
+    refused here, as a send's is before its code."""
+    unread = _unread_files(tool, tool_input)
+    return "This call can't go as written: " + "; ".join(unread) + "." if unread else None
 
 
 def check_send(tool: str, tool_input: dict, config: dict, session: dict | None = None) -> str | None:
     """session: the hook payload, whose transcript shows who typed an approval (a shell's script passes none)."""
-    problems = message_problems(tool, tool_input, config, session=session)
+    files: dict = {}  # each file the connector will read, with the hash of its bytes: an approval of a path alone let
+    # a copy replaced in the outbox after the principal's code go out in its place (as the iMessage sender binds a photo)
+    problems = message_problems(tool, tool_input, config, session=session) or _unread_files(tool, tool_input, files)
     if problems:
         return "This message can't go out as written: " + "; ".join(problems[:6]) + "."
     from synthesis import sends
-    subject, chan = {"tool": tool, "input": tool_input}, sends.channel(tool, tool_input)
+    subject, chan = {"tool": tool, "input": tool_input, **({"files": files} if files else {})}, sends.channel(tool, tool_input)
     summary = f"{tool}: " + " ".join(t for _, t in _strings(tool_input))[:160]
     others = _invited_today(tool, tool_input, config)  # a meeting on today has an approval of its own; no window covers it
     if isinstance(others, str):
@@ -281,7 +412,9 @@ def check_send(tool: str, tool_input: dict, config: dict, session: dict | None =
                 "unless the principal asked for today. If they did, show them the exact event and ask them to type "
                 f"{approvals.how(code)} for this same-day meeting. Then make this identical call again." + reshape)
     return ("Sending needs the principal's approval of this exact message. Show them the exact text and "
-            f"recipient and ask them to type {approvals.how(code)}. Then make this identical call again." + reshape)
+            f"recipient and ask them to type {approvals.how(code)}. Then make this identical call again." + reshape
+            + (" The approval covers each file the call has the connector read as it is now, so name those files to the "
+               "principal too: one changed before the call needs a new code." if files else ""))
 
 
 # 2026-10-27: a series moved to a new hour brought back an occurrence canceled at the old hour, double-booked.
@@ -4025,4 +4158,4 @@ def check(tool: str, tool_input: dict, config: dict, cwd: str | None = None, ses
     # The account is checked before the send approval, so no approval is spent on the wrong account.
     reason = routed(tool, tool_input) and check_account(tool, tool_input, config, cwd)
     return reason or check_travel(tool, tool_input, config) or (
-        check_send(tool, tool_input, config, session) if _sends(tool, tool_input, config) else None)
+        check_send(tool, tool_input, config, session) if _sends(tool, tool_input, config) else check_upload(tool, tool_input))
