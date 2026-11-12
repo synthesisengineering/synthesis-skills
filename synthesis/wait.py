@@ -7,6 +7,7 @@ which marks what it prints, and waited half an hour on mail addressed to a proje
     synthesis wait file <path> [--for 30m] [--every 2s]
     synthesis wait run [--every 30s] [--for 30m] -- <command>
     synthesis wait note "<what>" --by "<what will wake this seat>" [--for 30m]
+    synthesis wait clear ["<what>"]
     synthesis wait list
 
 A wait prints one line when its event happens and exits 0; at its bound it exits 3 and says nothing arrived, so
@@ -72,14 +73,14 @@ def _alive(pid: int) -> bool:
 
 
 def live(session_id: str = "") -> list[dict]:
-    """The waits still held, of one session or of all: inside their bound and, where a process watches, that
-    process alive. A record alone proves nothing, and one that is over is removed."""
+    """The waits still held, of one session or of all: inside their bound and, where a process watches, that process
+    alive. A record alone proves nothing, and one that is over is removed. Each carries its file, as `record`."""
     root = _folder(session_id) if session_id else paths.board() / "waits"
     found = []
     for file in sorted(root.rglob("*.json")) if root.is_dir() else []:
         held = paths.read_json(file)
         if held.get("until", 0) > time.time() and (not held.get("pid") or _alive(int(held["pid"]))):
-            found.append(held)
+            found.append({**held, "record": file})
         else:
             file.unlink(missing_ok=True)
     return found
@@ -189,7 +190,7 @@ def _watch(session_id: str, what: str, until: float, seconds: float, every: floa
 def main(argv: list[str], session_id: str) -> int:
     command = argv[argv.index("--") + 1:] if "--" in argv else []
     p = argparse.ArgumentParser(prog="synthesis wait", description=__doc__.split("\n\n")[0])
-    p.add_argument("kind", choices=["message", "file", "run", "note", "list"])
+    p.add_argument("kind", choices=["message", "file", "run", "note", "clear", "list"])
     p.add_argument("target", nargs="?", default="")
     p.add_argument("--from", dest="sender", default="")
     p.add_argument("--for", dest="bound", default="30m")
@@ -200,6 +201,12 @@ def main(argv: list[str], session_id: str) -> int:
         for w in live():
             print(f"{board.short_name(w['session'])}  {w['what']}  since {time.strftime('%H:%M', time.localtime(w['since']))} "
                   f"until {time.strftime('%H:%M', time.localtime(w['until']))}  ({'woken by ' + w['by'] if w.get('by') else 'a watcher is running'})")
+        return 0
+    if args.kind == "clear":  # a note has no process whose end takes it down: its own seat does, and a watcher's record is not a note
+        gone = [w for w in live(session_id) if w["session"] == session_id and not w.get("pid") and args.target in ("", w["what"])]
+        for w in gone:
+            w["record"].unlink(missing_ok=True)
+        print("\n".join(f"cleared: {w['what']}" for w in gone) or "this session holds no note" + f" {args.target!r}" * bool(args.target))
         return 0
     try:  # `span` refuses a bound it cannot keep and `attempt` a command it cannot start: each says why, and the wait exits 2
         seconds, every = span(args.bound), span(args.every or ("30s" if args.kind == "run" else "2s"))
