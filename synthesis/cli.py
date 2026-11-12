@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 import time
@@ -239,12 +240,18 @@ def cmd_sessions(args) -> int:
             print("name the workspace whose prompts to list: --workspace <name>", file=sys.stderr)
             return 2
         day = args.date or time.strftime("%Y-%m-%d")
+        late = [line for line in sessions.export(2) if "not exported" in line]  # the archive holds what was typed up to now, or nothing is said
+        if late:
+            print(f"the archive is not current, so what was typed on {day} cannot all be listed: {late[0]}"
+                  + (f" (and {len(late) - 1} more)" if len(late) > 1 else ""), file=sys.stderr)
+            return 2
         found = sessions.prompts(args.workspace, day)
         left = sessions.uncited(found, args.records) if args.records else found
         names = {session: sessions.short(session) for session in {str(p["session"]) for p in left}}
         cites = [f"{p['harness']} {names[str(p['session'])]} #{p['seq']}" for p in left]
         if args.json:
-            print(json.dumps({"workspace": args.workspace, "date": day, "prompts": len(found), "open": cites if args.records else []}))
+            print(json.dumps({"workspace": args.workspace, "date": day, "prompts": len(found), "open": cites if args.records else [],
+                              "records": [os.path.abspath(os.path.expanduser(r)) for r in args.records or []]}))
         else:
             for cite, p in zip(cites, left):
                 print(f"{cite}  {p['at'][11:16]}  {' '.join(p['text'].split())[:args.width]}")
