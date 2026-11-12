@@ -2687,6 +2687,7 @@ SECOND = [
      "dst.write_text(src.read_text()[:10])", True),
     ("import os\ndef under(base, name):\n    return os.path.join(base, name)\nopen(under('/tmp/pad', 'a.txt'), 'w').write(open(under('{work}', 's.jsonl')).read()[:10])", False),
     ("import os, tempfile\nfd, name = tempfile.mkstemp()\nos.write(fd, b'x')\nos.close(fd)", False),                             # mkstemp's descriptor is a file it made
+    ("import json\nrow = {{}}\nfor row['k'] in ('a', 'b'):\n    pass\nopen('/tmp/pad/x.txt', 'w').write(json.dumps(row))", False),            # a loop that names no name (the replay: 180 commands)
 ]
 
 

@@ -2515,7 +2515,8 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
     for n in nodes:  # a store whose values are read elsewhere, or that gives none: a function's own name, a loop's, a name only annotated
         for t in [n] if isinstance(n, ast.arg) else getattr(n.target, "elts", [n.target]) if isinstance(n, (ast.For, ast.AsyncFor, ast.comprehension)) else [
                 n.target] if isinstance(n, ast.AnnAssign) and n.value is None else []:
-            given_to(getattr(t, "arg", getattr(t, "id", None)), [], 1)
+            if isinstance(t, (ast.arg, ast.Name)):  # a loop over `x.y` or `x[0]` gives no name a value
+                given_to(getattr(t, "arg", getattr(t, "id", "")), [], 1)
     loose_fields = any(getattr(n, "attr", getattr(n, "id", getattr(n, "name", ""))) in ("__dict__", "vars", "__setattr__", "__getattr__", "__getattribute__")
                        for n in nodes)  # fields given some other way: none of them is read
     hidden = any(getattr(n, "id", "") in ("globals", "locals") for n in nodes)
