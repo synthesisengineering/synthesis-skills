@@ -166,7 +166,7 @@ def travel(workspace: str, day: str, given) -> str:
     return f"\ntravel: {len(events)} in-person event{'s' * (len(events) != 1)} through {last}, each with its travel"
 
 
-ITEM = r"(?im)^ {0,3}(?:>\s*)*(?:[-*+] |\d+[.)] )?\**"  # a line of an item: plain, bold, quoted or a list entry; indented by four, an example
+ITEM = r"(?im)^ *(?:>\s*)*(?:[-*+] |\d+[.)] )?\**"  # a line of an item: plain, bold, quoted or a list entry, however deep in its list
 OPTION = re.compile(ITEM + r"Option [A-Z0-9]+\b(.*)$")
 SAID = re.compile(ITEM + r"(Recommendation|Consequences|Commits)\**\s*:[*\s]*(.*)$")
 CLOSED = re.compile(ITEM + r"(?:Decided|Resolved|Released|Lapsed|Withdrawn)\**\s*:")
@@ -176,8 +176,26 @@ COMMITS = re.compile(r"(?i)\b(?:accept|decline|rsvp|attend|go|join|host|schedule
 
 
 TITLED = re.compile(r"(?i)\b(Recommendation|Consequences|Commits)\**\s*:[*\s]*(.*)$")  # the same word and colon on a title line
-MARK = re.compile(r"^ {0,3}(?:>\s*)*(?:[-*+] |\d+[.)] )?")  # what stands before a title that is a list entry
+MARK = re.compile(r"^ *(?:>\s*)*(?:[-*+] |\d+[.)] )?")  # what stands before a title that is a list entry
+ENTRY = re.compile(r" *(?:>\s*)*(?:[-*+] |\d+[.)] )")  # a list entry, up to where its own text starts
 LABEL = re.compile(r"(?i)Option ([A-Z0-9]+)\b")
+
+
+def _shown(text: str) -> str:
+    """A plan without its examples: a fenced block, and a block Markdown shows as code, which is one indented four
+    or more past the text of the list entry it stands in, after an empty line (the seventh review: options indented
+    by four under a numbered entry are that entry's own lines, and were read as an example)."""
+    lines, columns, blank, example = [], [], True, False
+    for line in FENCE.sub("", text).expandtabs(4).splitlines():
+        indent, entry = len(line) - len(line.lstrip(" ")), ENTRY.match(line)
+        if line.strip():
+            while columns and indent < columns[-1] and (blank or entry or line.lstrip().startswith("#")):
+                columns.pop()  # the line stands left of that entry's text: the entry is over
+            example = indent - (columns[-1] if columns else 0) >= 4 and (blank or example)
+            columns += [len(entry[0])] if entry and not example else []
+        lines.append("" if example else line)
+        blank = not line.strip()
+    return "\n".join(lines)
 
 
 def _items(text: str):
@@ -186,7 +204,7 @@ def _items(text: str):
     options whose label starts again (A after B), begin the next choice; a bullet under an option does not (the
     third and fourth reviews: decisions listed under a second-level heading were not read, a heading inside a fenced
     example was read as a choice, and a second entry lettered C and D was read as more options of the first)."""
-    for section in re.split(r"(?m)^#{1,3} ", FENCE.sub("", text)):
+    for section in re.split(r"(?m)^#{1,3} ", _shown(text)):
         lines, firsts, label, entry, fresh = section.splitlines(), [], None, -1, False
         for at, line in enumerate(lines):
             listed = re.match(r"( *)(?:>\s*)*(?:[-*+] |\d+[.)] )", line) if at and not (SAID.match(line) or CLOSED.match(line)) else None
@@ -202,7 +220,7 @@ def _items(text: str):
             floor = firsts[k - 1] + 1 if k else 0
             above = next((j for j in range(firsts[k] - 1, floor - 1, -1) if lines[j].strip()
                           and not (OPTION.match(lines[j]) or SAID.match(lines[j]) or CLOSED.match(lines[j]))), None)
-            entry = above is not None and (len(firsts) > 1 or re.match(r" {0,3}(?:>\s*)*(?:[-*+] |\d+[.)] )", lines[above]))
+            entry = above is not None and (len(firsts) > 1 or ENTRY.match(lines[above]))
             return above if entry else 0 if k == 0 else firsts[k]
         starts = [titled(k) for k in range(len(firsts))]
         for k, start in enumerate(starts):
