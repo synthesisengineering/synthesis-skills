@@ -146,25 +146,31 @@ def test_a_command_still_running_at_the_bound_is_stopped_and_the_wait_exits_3(tw
     """2026-11-12, a review: `wait run --for 1s` on a check that took two minutes exited 0 two minutes later. The check
     was given no time limit, and its exit code was read before the bound was."""
     from synthesis import wait
-    clock, given = [time.time()], []
+    clock, given, stopped = [time.time()], [], []
     began = clock[0]
 
-    def check(command, timeout=None, **kwargs):                                       # it takes two minutes, then exits 0
-        given.append(timeout)
-        if timeout is not None and timeout < 120:
-            clock[0] += timeout
-            raise subprocess.TimeoutExpired(command, timeout)
-        clock[0] += 120
-        return subprocess.CompletedProcess(command, 0)
+    class Check:                                                                      # the process of a check that takes two minutes, then exits 0
+        def __init__(self, command, **kwargs):
+            self.command = command
+
+        def wait(self, timeout=None):
+            given.append(timeout)
+            if timeout is not None and timeout < 120:
+                clock[0] += timeout
+                raise subprocess.TimeoutExpired(self.command, timeout)
+            clock[0] += 120
+            return 0
     with monkeypatch.context() as fake:
         fake.setattr(time, "time", lambda: clock[0])
         fake.setattr(time, "sleep", lambda seconds: clock.__setitem__(0, clock[0] + seconds))
-        fake.setattr(subprocess, "run", check)
+        fake.setattr(subprocess, "Popen", Check)
+        fake.setattr(wait, "_stop", stopped.append)                                   # no signal is sent for a process that is not there
         assert wait.main(["run", "--for", "1s", "--", "ci-check"], "S1") == 3
         said = capsys.readouterr()
         assert "nothing arrived in 1 s" in said.err and "exited 0" not in said.out
         assert given == [pytest.approx(1)] and clock[0] - began == pytest.approx(1)   # one try, given the time left, stopped at the bound
-        fake.setattr(subprocess, "run", lambda command, **kwargs: check(command))     # a runner that lets it end after the bound: no success
+        assert len(stopped) == 1 and stopped[0].command == ["ci-check"]
+        fake.setattr(Check, "wait", lambda self, timeout=None: clock.__setitem__(0, clock[0] + 120) or 0)   # it ends after the bound: no success
         assert wait.main(["run", "--for", "1s", "--", "ci-check"], "S1") == 3 and "exited 0" not in capsys.readouterr().out
         assert wait.live("S1") == []
     pid, began = tmp_path / "pid", time.time()

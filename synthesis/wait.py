@@ -18,14 +18,17 @@ from __future__ import annotations
 import argparse
 import os
 import re
+import signal
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 
 from synthesis import board, paths
 
 MAX_SECONDS = 12 * 3600
+GRACE = 2  # the seconds a process that was asked to end has before it is killed
 NUDGE = "A board message is waiting for this session. Run `synthesis inbox` to read it."  # fixed, so it carries nothing else
 
 
@@ -114,6 +117,50 @@ def wake(target, run=subprocess.run) -> str:
     return "woken through its own harness" if done.returncode == 0 else f"it could not be woken ({(done.stderr or '').strip()[:120]})"
 
 
+def _signal(proc: subprocess.Popen, sig: int) -> bool:
+    """Send a signal to each process of the group a try ran in; whether a process is left in it."""
+    proc.poll()  # once collected, the try's own first process is no longer one that is left
+    try:
+        os.killpg(proc.pid, sig)
+    except ProcessLookupError:
+        return False
+    except PermissionError:  # one of them runs as another user: the others got the signal
+        pass
+    return True
+
+
+def _stop(proc: subprocess.Popen) -> None:
+    """End what is left of the group a try ran in: each process is asked to end, and what is still there GRACE seconds
+    later is killed. A process that moved itself to another group or session, as a daemon does, has left the try."""
+    left, ends = _signal(proc, signal.SIGTERM), time.monotonic() + GRACE
+    while left and time.monotonic() < ends:
+        time.sleep(0.05)
+        left = _signal(proc, 0)
+    if left:
+        _signal(proc, signal.SIGKILL)
+    proc.wait()
+
+
+def attempt(command: list[str], until: float) -> bool:
+    """One try of a command: whether it exits 0 by `until`. It runs in a session of its own, so all it starts is one
+    process group, and unless it succeeds in time that group is stopped with it: at the bound, when the try fails, and
+    when this wait is itself told to end (2026-11-12: a worker a check had started ran on after the bound)."""
+    quits = (signal.SIGTERM, signal.SIGHUP) if threading.current_thread() is threading.main_thread() else ()
+    kept = {s: signal.signal(s, lambda number, frame: sys.exit(128 + number)) for s in quits if signal.getsignal(s) == signal.SIG_DFL}
+    proc, done = None, False
+    try:
+        proc = subprocess.Popen(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+        done = proc.wait(timeout=until - time.time()) == 0 and time.time() <= until
+    except subprocess.TimeoutExpired:
+        pass
+    finally:
+        if proc and not done:
+            _stop(proc)
+        for s, handler in kept.items():
+            signal.signal(s, handler)
+    return done
+
+
 def _watch(session_id: str, what: str, until: float, seconds: float, every: float, ready, sender: str = "") -> int:
     held = record(session_id, what, until, pid=os.getpid(), sender=sender, every=every)
     try:
@@ -177,13 +224,9 @@ def main(argv: list[str], session_id: str) -> int:
     if args.kind == "run" and command:
         tries, shown = [], f"`{' '.join(command)}`"
 
-        def ready():  # a try has only the time left: one still running at the bound is stopped, and none counts after it
-            left = until - time.time()
-            try:
-                tries.append(left > 0 and subprocess.run(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=left).returncode == 0)
-            except subprocess.TimeoutExpired:
-                tries.append(False)
-            return f"{shown} exited 0 after {len(tries)} tr{'y' if len(tries) == 1 else 'ies'}" if tries[-1] and time.time() <= until else ""
+        def ready():  # a try has only the time left: none starts when none is left, and none counts after the bound
+            tries.append(until > time.time() and attempt(command, until))
+            return f"{shown} exited 0 after {len(tries)} tr{'y' if len(tries) == 1 else 'ies'}" if tries[-1] else ""
         return _watch(session_id, f"{shown} to succeed", until, seconds, every, ready)
     print("give the file to wait for, or the command after `--`", file=sys.stderr)
     return 2

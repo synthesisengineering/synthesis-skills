@@ -29,7 +29,7 @@ Waiting for an expected event is a task. A board message, a finished job or a pe
 
 - **The commands** (below): each form of `synthesis wait`, the peek, the sender's line, and what each prints. Read before arming a wait.
 - **Procedure** (below): the five steps, from naming the event to reading the mail.
-- [references/watchers.md](references/watchers.md): what wakes a session in Claude Code, Codex and Muse; which watcher fits one event, several events, a clock time and an idle peer; what each costs; what was probed and when. Read when choosing a watcher in a harness for the first time, or when a wake did not arrive.
+- [references/watchers.md](references/watchers.md): what wakes a session in Claude Code, Codex and Muse; which watcher fits one event, several events, a clock time and an idle peer; what each costs; what `wait run` does with the processes its command starts; what was probed and when. Read when choosing a watcher in a harness for the first time, when a check starts processes of its own, or when a wake did not arrive.
 
 ## The commands
 
@@ -45,7 +45,7 @@ synthesis msg <to> "<text>" [--wake]
 
 - `wait message` ends when unread mail for this session exists (from the named sender, when `--from` is given) and prints `message from <names> (N unread): run `synthesis inbox` to read`. It names the sender and never prints the message: a notification can cut text off, and reading is what marks mail read.
 - `wait file` prints `<path> appeared` or `<path> changed`.
-- `wait run` runs the command every `--every` until it exits 0, then prints `` `<command>` exited 0 after N tries ``. Use it for a CI check, a page that must answer, a status that must turn.
+- `wait run` runs the command every `--every` until it exits 0, then prints `` `<command>` exited 0 after N tries ``. Use it for a CI check, a page that must answer, a status that must turn. Each try runs in a process group of its own: one that fails, or is still running at the bound, is stopped with every process it started, and what a try that exits 0 started is left running.
 - `wait note` records a wait that the harness itself holds (a timer, an event stream) and prints `noted: <what>, for <how long>, woken by <what>`. It starts no process, so the turn-end check and `wait list` still see the wait.
 - `wait list` prints one line for each live wait on the board: the session, what it awaits, since and until, and whether a watcher is running or what will wake it.
 - Exit codes: 0 when the event happened; 3 at the bound, with `nothing arrived in <how long>: still waiting for <what>` on stderr; 2 for a bound it cannot read or one over twelve hours.

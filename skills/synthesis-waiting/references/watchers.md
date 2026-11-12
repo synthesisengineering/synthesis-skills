@@ -41,6 +41,20 @@ so none can grant an approval: the approval check reads only prompts the person 
 Where a shell watcher fits, use it without asking. Where only a model-driven watcher fits and the wait is long or
 its worth unclear, ask the principal once, with the recommendation first and the cost in turns.
 
+## What `wait run` does with the command's processes
+
+Each try of `synthesis wait run` runs in a process group of its own, with no controlling terminal: a command that
+would ask for a password there fails instead of asking.
+
+- A try that exits 0 in time ends the wait. What it started is left running.
+- A try that fails, or is still running at the bound, is stopped with every process it started: each is asked to
+  end (SIGTERM), and what is still there two seconds later is killed. So a wait may return up to two seconds
+  after its bound, and a helper that later tries need is started before the wait, not inside the check.
+- A process that moved itself to another process group or session, as a daemon does, has left the try and is not
+  stopped.
+- A wait that is told to end (SIGTERM, a closed terminal, Ctrl-C) stops the try it is running first. One that is
+  killed outright (SIGKILL) cannot: its try runs on until the command ends.
+
 ## When a wake did not arrive
 
 1. `synthesis wait list`: is the wait still on the board? A wait whose process died or whose bound passed is gone.
