@@ -2535,3 +2535,57 @@ def test_a_program_is_read_through_every_value_a_name_may_hold(above, program, h
     command = "python3 - <<'EOF'\n" + program.format(**above) + "\nEOF"
     reason = guards.check("Bash", {"command": command}, {}, cwd=str(above["work"] if inside else here))
     assert (REFUSED in (reason or "")) == (inside if held is None else held), program
+
+
+# What the same probe found once names were read through every value: ways a protected path could reach a write
+# past that reading (a table under a second name, a field given by unpacking, a function wrapped or kept under
+# another name, a name given through globals(), a pattern that climbs), and the wrappers a loop is often written
+# with. Each is pinned in both directions.
+FOLLOWED = [
+    ("cfg = {{'out': '/tmp/pad/x.txt'}}\nc2 = cfg\nc2['out'] = '{work}/s.jsonl'\nopen(cfg['out'], 'w').write('x')", True),                  # the table under a second name
+    ("cfg = {{'out': '/tmp/pad/x.txt'}}\ndef fix(c):\n    c['out'] = '{work}/s.jsonl'\nfix(cfg)\nopen(cfg['out'], 'w').write('x')", True),
+    ("class J:\n    pass\nj = J()\nj.out = '/tmp/pad/x.txt'\npair = ('/tmp/pad', '{work}/s.jsonl')\nj.src, j.out = pair\nopen(j.out, 'w').write('x')", True),
+    ("import dataclasses\n@dataclasses.dataclass\nclass J:\n    out: str\nj = dataclasses.replace(J('/tmp/pad/x.txt'), out='{work}/s.jsonl')\nopen(j.out, 'w').write('x')", True),
+    ("def swap(f):\n    def inner(dst):\n        return f('{work}/s.jsonl')\n    return inner\n@swap\ndef save(dst):\n    open(dst, 'w').write('x')\nsave('/tmp/pad/x.txt')", True),
+    ("def save(dst):\n    open(dst, 'w').write('x')\nkeep = save\ndef save(dst):\n    keep('{work}/s.jsonl')\nsave('/tmp/pad/x.txt')", True),
+    ("def real(dst):\n    open(dst, 'w').write('x')\ngo = real\ngo('{work}/s.jsonl')", True),                                              # kept under another name
+    ("f = '/tmp/pad/x.txt'\nlist(map(lambda f: open(f, 'w').write('x'), ['{work}/s.jsonl']))", True),
+    ("out = '/tmp/pad/x.txt'\nglobals()['out'] = '{work}/s.jsonl'\nopen(out, 'w').write('x')", True),
+    ("import sys\nout = '/tmp/pad/x.txt'\nsetattr(sys.modules[__name__], 'out', '{work}/s.jsonl')\nopen(out, 'w').write('x')", True),
+    ("from pathlib import Path\nfor f in Path('/tmp/pad').glob('../..{work}/*.jsonl'):\n    f.unlink()", True),                               # a pattern that climbs
+    ("import glob, os\nfiles = glob.glob('/tmp/pad/*.tmp')\nfiles.append('{work}/s.jsonl')\nfor f in files:\n    os.remove(f)", True),
+    ("import glob, os\nfor f in glob.glob('/tmp/pad/*.tmp') + ['{work}/s.jsonl']:\n    os.remove(f)", True),
+    ("import os, subprocess\np = subprocess.Popen(['sh'], stdin=subprocess.PIPE)\nos.write(p.stdin.fileno(), ('echo x >> {work}/s.jsonl\\n').encode())\np.stdin.close()", True),
+    ("import glob, os\nfor f in sorted(glob.glob('/tmp/pad/*.tmp'))[:10]:\n    os.remove(f)", False),                                        # the same finds, fewer or in another order
+    ("import glob, os\nfrom itertools import islice\nfor f in islice(glob.glob('/tmp/pad/*.tmp'), 5):\n    os.remove(f)", False),
+    ("import glob, os\nfor f in filter(os.path.isfile, glob.glob('/tmp/pad/*')):\n    os.remove(f)", False),
+    ("from collections import namedtuple\nJob = namedtuple('Job', 'src out')\nj = Job('{work}/s.jsonl', '/tmp/pad/o.json')\nopen(j.out, 'w').write(open(j.src).read()[:10])", False),
+    ("from collections import namedtuple\nJob = namedtuple('Job', ['src', 'out'])\nj = Job('/tmp/pad/o.json', '{work}/s.jsonl')\nopen(j.out, 'w').write('x')", True),
+]
+
+
+@pytest.mark.parametrize("program, held", FOLLOWED)
+@pytest.mark.parametrize("inside", [False, True])
+def test_a_value_carried_past_the_reading_is_still_followed(above, program, held, inside, tmp_path):
+    here = tmp_path / "elsewhere"
+    here.mkdir()
+    command = "python3 - <<'EOF'\n" + program.format(**above) + "\nEOF"
+    reason = guards.check("Bash", {"command": command}, {}, cwd=str(above["work"] if inside else here))
+    assert (REFUSED in (reason or "")) == held, program
+
+
+@pytest.mark.parametrize("command, held", [
+    ("HOME={state}; echo 1 > ~/x.json", True),                                  # a command that gives HOME its own value: `~` is that value
+    ("HOME={state} sh -c 'echo 1 > $HOME/x.json'", True),
+    ("HOME={state} python3 -c \"import os; open(os.path.expanduser('~/x.json'), 'w').write('1')\"", True),
+    ("HOME={state} python3 -c \"from pathlib import Path; (Path.home() / 'x.json').write_text('1')\"", True),
+    ("HOME=/tmp/pad/home python3 -c \"import os; open(os.path.expanduser('~/x.json'), 'w').write('1')\"", False),
+    ("HOME=/tmp/pad/home sh -c 'echo 1 > ~/x.json'", False),
+    ("notify --subtitle {work}/s.jsonl", False),                                # a message, whatever the option is called
+    ("notify --msg {work}/s.jsonl", False),
+])
+def test_a_home_the_command_sets_is_the_home_it_writes_to(above, command, held, tmp_path):
+    here = tmp_path / "elsewhere"
+    here.mkdir()
+    reason = guards.check("Bash", {"command": command.format(**above)}, {}, cwd=str(here))
+    assert (REFUSED in (reason or "")) == held, command
