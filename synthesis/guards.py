@@ -58,7 +58,12 @@ PLAIN_FIELDS = frozenset({"rsvp_comment", "responseComment"})
 # What counts as attached is what its source (2.1.0) reads: the entry's `url`, else the file at its `path`, else base64
 # `content` with a `filename`, an entry it cannot read that way being left out (gmail_tools._prepare_gmail_message);
 # and from no folder a file whose name or folder marks secrets (core.utils.validate_file_path, copied here).
+# Five Drive tools read a local file under the same rule: `file_path`, a path or a file:// URL, for update_drive_file
+# and the three imports (drive_helpers._resolve_import_media); `fileUrl`, when it is a file:// URL, for
+# create_drive_file. Their `file_url`, and any other `fileUrl`, is fetched over http or https and is no file here.
 FILE_MAIL_TOOLS = frozenset({"send_gmail_message", "draft_gmail_message"})
+FILE_DRIVE_TOOLS = {"update_drive_file": "file_path", "import_to_google_doc": "file_path", "import_to_google_sheets": "file_path",
+                    "import_to_google_slides": "file_path", "create_drive_file": "fileUrl"}
 ENTRY_KEYS = ("url", "path", "content", "filename", "mime_type", "content_id")  # the first three are where it reads from
 SECRET_NAMES = frozenset({".credentials", ".credentials.json", "credentials.json", "client_secret.json", "client_secrets.json",
                           "service_account.json", "service-account.json", ".npmrc", ".pypirc", ".netrc", ".git-credentials"})
@@ -223,11 +228,14 @@ def message_problems(tool: str, tool_input: dict, config: dict, chans: set | Non
 
 
 def _unread_files(tool: str, tool_input: dict) -> list[str]:
-    """Why a workspace-connector mail call would not attach what it names, each entry judged as the connector reads
-    it. A file is judged as it reads one: the path whole (it resolves a relative one in its own folder and expands
-    no `~`), links followed, letters as written, the file inside the outbox, the connector's attachment folder or a
+    """Why a workspace-connector call would not attach or upload what it names, judged as the connector reads it. A
+    file is judged as it reads one: the path whole (it resolves a relative one in its own folder and expands no
+    `~`), links followed, letters as written, the file inside the outbox, the connector's attachment folder or a
     folder of ALLOWED_FILE_DIRS as this process has it, and not one it reads from nowhere."""
-    given = tool_input.get("attachments") if tool.rsplit("__", 1)[-1] in FILE_MAIL_TOOLS else None
+    name = tool.rsplit("__", 1)[-1]
+    key, given = FILE_DRIVE_TOOLS.get(name), tool_input.get("attachments") if name in FILE_MAIL_TOOLS else None
+    if not key and not given:
+        return []
     if isinstance(given, str):  # some clients send the list as its JSON text, which the connector reads too
         try:
             given = json.loads(given)
@@ -241,19 +249,33 @@ def _unread_files(tool: str, tool_input: dict) -> list[str]:
             "`content` with a `filename`, so this one would not go as given. Give one of the three (a file by its full "
             f"path, staged in {outbox}) and file this send again")
 
-    def unread(file: str) -> str:
+    def unread(file: str, what: str = "the attachment", who: str = "the mail connector",
+               give: str = "as the attachment's `path`, and file this send again") -> str:
         real = os.path.realpath(file)
         names = real.lower().split(os.sep)
         why = ("is not a full path" if not os.path.isabs(file) else "does not exist" if not os.path.exists(real)
                else "is not a file" if not os.path.isfile(real) else "")
         if not why and (names[-1] in SECRET_NAMES or any(n in (".env", ".ssh", ".aws") or n.startswith(".env.") for n in names)
                         or any((real + os.sep).startswith(os.path.expanduser(f) + os.sep) for f in SECRET_FOLDERS)):
-            return (f"the attachment {file} is one the mail connector never reads, whatever folder holds it, since its name "
+            return (f"{what} {file} is one {who} never reads, whatever folder holds it, since its name "
                     "or a folder above it marks secrets (a .env, key or credentials file): leave it out and tell the principal")
-        why = why or ("" if real.startswith(roots) else "is outside the folders the mail connector reads")
-        return why and (f"the attachment {file} {why}: copy the file into {outbox} (make the folder if it is missing), give "
-                        "that copy's full path as the attachment's `path`, and file this send again")
+        why = why or ("" if real.startswith(roots) else f"is outside the folders {who} reads")
+        return why and (f"{what} {file} {why}: copy the file into {outbox} (make the folder if it is missing), give "
+                        f"that copy's full path {give}")
 
+    named, remote = tool_input.get(key) if key else None, tool_input.get("file_url") if key == "file_path" else None
+    if isinstance(named, str):
+        from urllib.parse import unquote, urlparse
+        url = urlparse(named)  # a file:// URL is the path in it, percent-decoded, led by any host but localhost
+        if url.scheme == "file":
+            named = unquote(("//" + url.netloc if url.netloc.lower() not in ("", "localhost") else "") + url.path)
+        if url.scheme == "file" or key == "file_path":
+            problems.append(unread(named, "the file", "the connector", f"as `{key}`"
+                                   + (", after `file://`," if key == "fileUrl" else "") + " and make this call again"))
+    if isinstance(remote, str) and remote.lower().startswith("file:"):
+        problems.append(f"`file_url` is fetched over http or https, and {remote} is a file on this disk: copy the file into "
+                        f"{outbox} (make the folder if it is missing), give that copy's full path as `file_path` and make "
+                        "this call again")
     for place, entry in enumerate((given if isinstance(given, list) else [given]) if given else [], 1):
         if not isinstance(entry, dict):
             continue
@@ -283,6 +305,13 @@ def _standard_base64(text) -> bool:
         return isinstance(text, str) and base64.b64decode("".join(text.split()), validate=True) is not None
     except ValueError:
         return False
+
+
+def check_upload(tool: str, tool_input: dict) -> str | None:
+    """A Drive upload that asks for no code still names a file the connector must read: one it would not read is
+    refused here, as a send's is before its code."""
+    unread = _unread_files(tool, tool_input)
+    return "This call can't go as written: " + "; ".join(unread) + "." if unread else None
 
 
 def check_send(tool: str, tool_input: dict, config: dict, session: dict | None = None) -> str | None:
@@ -3977,4 +4006,4 @@ def check(tool: str, tool_input: dict, config: dict, cwd: str | None = None, ses
     # The account is checked before the send approval, so no approval is spent on the wrong account.
     reason = routed(tool, tool_input) and check_account(tool, tool_input, config, cwd)
     return reason or check_travel(tool, tool_input, config) or (
-        check_send(tool, tool_input, config, session) if _sends(tool, tool_input, config) else None)
+        check_send(tool, tool_input, config, session) if _sends(tool, tool_input, config) else check_upload(tool, tool_input))
