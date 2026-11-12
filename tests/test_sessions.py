@@ -1197,6 +1197,23 @@ def test_in_a_terminal_of_their_own_the_principal_clears_a_loss_without_a_code(h
     assert _checked(tmp_path)[0] == "ok"
 
 
+def test_a_loss_is_cleared_on_the_principals_code_however_the_clearing_is_called(principal, harness, tmp_path):
+    """The command asked for the principal's code, and the function under it did not: a script that called it cleared
+    a loss with no code at all."""
+    gone = _jsonl(harness["claude"], _claude_rows(harness["work"]))
+    gone.chmod(0o000)
+    try:
+        sessions.export(0)
+    finally:
+        gone.chmod(0o644)
+    gone.unlink()
+    with pytest.raises(PermissionError) as refused:
+        sessions.lost("c1")
+    assert "type approve" in str(refused.value) and _checked(tmp_path)[0] == "fail"
+    principal(str(refused.value))
+    assert sessions.lost("claude-code c1").startswith("cleared: claude-code c1") and _checked(tmp_path)[0] == "ok"   # by either name
+
+
 def test_a_transcript_an_adapter_cannot_read_is_named_and_the_run_goes_on(harness, tmp_path, capsys):
     """A row of a shape an adapter does not expect stopped the whole run where it stood: the transcripts after it
     were not copied and no stamp was left, so the doctor answered ok until a day had passed."""
