@@ -299,6 +299,60 @@ def test_a_turn_that_says_how_it_began_is_read_by_that(harness):
                      ("brief", "Judge this command."), ("user", "Something else.")]      # a trigger it does not know is listed, never lost
 
 
+def _codex_line(harness, source: str, at: str) -> dict:
+    """A session line: a run of the session begins, from a command line (`exec`) or a person's terminal (`cli`)."""
+    return {"type": "session_meta", "timestamp": at, "payload": {"id": "t1", "cwd": harness["work"], "source": source}}
+
+
+def _codex_task(at: str, said=None) -> dict:
+    """The row a turn begins with. `said` is how it says it began: a trigger, or the whole attribution where that
+    has another shape. None is a row that says nothing."""
+    attribution = {} if said is None else {"turn_attribution": {"turn_id": at, "turn_trigger": said} if isinstance(said, str) else said}
+    return {"type": "event_msg", "timestamp": at, "payload": {"type": "task_started", "turn_id": at, **attribution}}
+
+
+def _codex_export(name: str, rows: list, whole: bool = True) -> list:
+    """Write a rollout and export it, at once or with an export after every row (an export may end anywhere).
+    Returns each prompt kept, with its kind."""
+    native = Path(os.environ["CODEX_HOME"]) / "sessions" / "2026" / "10" / "30" / f"rollout-2026-10-30T10-00-00-{name}.jsonl"
+    for part in [rows] if whole else [[row] for row in rows]:
+        _jsonl(native, part)
+        sessions.export_file("codex", native)
+    return [(r["kind"], r["text"]) for r in sessions.records(_meta(native)["folder"]) if r["kind"] in ("user", "brief")]
+
+
+NO_ROW = "no task_started row"
+RUNS = {  # each turn: the session line before it (None: the same run goes on), how its first row says it began, what its prompt is
+    "a command line's run that a person continues": [("exec", "exec", "brief"), ("cli", None, "user")],
+    "a person's run that a command line continues": [("cli", "composer", "user"), ("exec", None, "brief")],
+    "command line, person, command line": [("exec", "exec", "brief"), ("cli", None, "user"), ("exec", None, "brief")],
+    "person, command line, person": [("cli", "composer", "user"), ("exec", None, "brief"), ("cli", None, "user")],
+    "a person continues, and the turn has no first row": [("exec", "exec", "brief"), ("cli", NO_ROW, "user")],
+    "a command line continues, and the turn has no first row": [("cli", "composer", "user"), ("exec", NO_ROW, "brief")],
+    "a person's run: a silent turn after the reviewer's": [("cli", "guardian_review", "brief"), (None, None, "user")],
+    "a command line's run: a silent turn after a person's": [("exec", "composer", "user"), (None, None, "brief")],
+    "an attribution that names no trigger": [("exec", "exec", "brief"), ("cli", {"turn_id": "t", "turn_trigger": None}, "user")],
+    "an attribution of a shape not seen before": [("cli", "exec", "brief"), (None, ["composer"], "user")],
+}
+
+
+@pytest.mark.parametrize("whole", [True, False], ids=["one export", "an export after every row"])
+@pytest.mark.parametrize("turns", RUNS.values(), ids=RUNS.keys())
+def test_a_turn_that_does_not_say_how_it_began_is_read_by_the_runs_source_never_by_the_turn_before(harness, turns, whole):
+    """Each turn is read by its own first row. Where that row says nothing, or the turn has none, the session line
+    current at that turn decides (2026-11-12, a second review: after a command line's turn, a person continued the
+    run and their prompt stayed a brief, because the earlier turn's `exec` was still in force; the other way round
+    a command line's prompt was listed as the person's)."""
+    rows = []
+    for at, (source, said, _) in enumerate(turns, 1):
+        rows += [_codex_line(harness, source, f"2026-10-30T10:{at}0:00Z")] if source else []
+        rows += [_codex_task(f"2026-10-30T10:{at}0:01Z", said)] if said != NO_ROW else []
+        rows += _codex_turn(f"Prompt {at}.", f"2026-10-30T10:{at}0:02Z")
+    wanted = [(kind, f"Prompt {at}.") for at, (_, _, kind) in enumerate(turns, 1)]
+    assert _codex_export("t1", rows, whole) == wanted
+    assert [p["text"] for p in sessions.prompts("acme", "2026-10-30")] == [text for kind, text in wanted if kind == "user"]
+
+
 def test_a_sub_agent_belongs_to_the_workspace_its_parent_started_in_and_workflow_journals_are_not_transcripts(harness, tmp_path):
     folder = re.sub(r"[^A-Za-z0-9]", "-", os.path.realpath(tmp_path / "workspaces" / "acme"))
     sub = Path(os.environ["CLAUDE_CONFIG_DIR"]) / "projects" / folder / "parent" / "subagents"
