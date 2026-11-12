@@ -1950,3 +1950,29 @@ def test_what_find_hands_a_command_is_a_file_under_the_folder_searched(tmp_path)
 def test_inside_a_function_the_folder_is_followed_statement_by_statement_too(saved, program, held, tmp_path):
     command = "python3 - <<'EOF'\n" + program.format(**saved) + "\nEOF"
     assert (REFUSED in (guards.check("Bash", {"command": command}, {}, cwd=str(saved["work"])) or "")) == held, program
+
+
+# The same question asked of a pattern and of a walk: a name the shell or a program finds under such a folder may
+# lie in the protected one.
+
+@pytest.mark.parametrize("command, held", [
+    ("rm {above}/*/*/*.jsonl", True),                                        # a pattern that reaches into the transcripts
+    ("rm -f {above}/**/*.jsonl", True),
+    ("truncate -s 0 {above}/p*/-work/s.jsonl", True),
+    ("mv {above}/*/-work /tmp/pad/", True),
+    ("rm -rf {above}/p*", True),
+    ("python3 - <<'EOF'\nimport glob, os\nfor f in glob.glob('{above}/**/*.jsonl', recursive=True):\n    os.remove(f)\nEOF", True),
+    ("python3 - <<'EOF'\nimport os\nfor root, dirs, files in os.walk('{above}'):\n    for name in files:\n        os.remove(os.path.join(root, name))\nEOF", True),
+    ("python3 - <<'EOF'\nfrom pathlib import Path\nfor p in Path('{above}').rglob('*.jsonl'):\n    p.unlink()\nEOF", True),
+    ("python3 - <<'EOF'\nfrom pathlib import Path\nold = list(Path('{above}').glob('*/*/*.jsonl'))\nfor p in old:\n    p.write_text('')\nEOF", True),
+    ("rm {above}/*.log", False),                                             # one that cannot reach that deep
+    ("rm -rf {above}/plugins/*/cache", False),
+    ("rm -f /tmp/pad/*/*/*.jsonl", False),
+    ("ls {above}/*/*/*.jsonl | head -3", False),
+    ("python3 - <<'EOF'\nimport glob, os\nfor f in glob.glob('{above}/*.log'):\n    os.remove(f)\nEOF", False),
+    ("python3 - <<'EOF'\nimport glob\nprint(len(glob.glob('{above}/**/*.jsonl', recursive=True)))\nEOF", False),
+    ("python3 - <<'EOF'\nimport os, shutil\nfor root, dirs, files in os.walk('{above}'):\n    for name in files:\n        shutil.copy(os.path.join(root, name), '/tmp/pad/' + name)\nEOF", False),
+    ("python3 - <<'EOF'\nimport os, shutil\nfor root, dirs, files in os.walk('{work}'):\n    for name in files:\n        shutil.copy(os.path.join(root, name), '/tmp/pad/' + name)\nEOF", False),
+])
+def test_a_pattern_or_a_walk_that_may_find_what_lies_in_a_protected_folder(above, command, held, tmp_path):
+    assert (REFUSED in (guards.check("Bash", {"command": command.format(**above)}, {}, cwd=str(tmp_path)) or "")) == held, command
