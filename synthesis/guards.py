@@ -2471,7 +2471,12 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
         def walk(body: list, at: list) -> list:  # each statement in the order it runs, from the folders the program may stand in before it
             for stmt in body:
                 if isinstance(stmt, (ast.With, ast.AsyncWith)):  # its body runs once and in order: a change in it is as sure as one outside
-                    at = walk(stmt.body, walk([ast.Expr(value=item.context_expr) for item in stmt.items], at))
+                    heads, back = [item.context_expr for item in stmt.items], at
+                    at = walk([ast.Expr(value=h) for h in heads if id(h) not in change], at)
+                    for h in [h for h in heads if id(h) in change]:  # `with contextlib.chdir(folder):` the body runs there
+                        stood[id(h)], at = at, list(dict.fromkeys(shift(at, [h])))
+                    at = walk(stmt.body, at)
+                    at = back if any(id(h) in change for h in heads) else at  # and the program goes back after
                     continue
                 if isinstance(stmt, ast.If):  # each branch in order; its main block always runs, any other may not
                     at = walk([ast.Expr(value=stmt.test)], at)
