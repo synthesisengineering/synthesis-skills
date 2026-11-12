@@ -487,3 +487,49 @@ def test_the_principals_move_stated_before_the_wait_needs_no_watcher(reply):
 def test_what_the_principal_already_did_stated_before_the_wait_exempts_nothing(reply):
     reason = _sent_back(reply)
     assert reason and "nothing is armed" in reason
+
+
+# Finding 7 of the review: an example in single quotes or in a tilde fence is quoted text, not the session's words.
+R2_QUOTED_REVIEW = {
+    "R2-N19": "The draft says 'We are waiting for the caterer's estimate.' You can send it yourself.",
+    "R2-N23": "The documented log example is:\n~~~text\nWe are waiting for the venue's deposit receipt.\n~~~",
+}
+A_WAIT_THAT_IS_ONLY_QUOTED = {
+    "single-quotes": "I changed the status line from 'We'll proceed once the audit closes' to a plain date.",
+    "curly-single-quotes": "The banner now reads ‘We’re still waiting on the printer’s proof’ until the order ships.",
+    "double-quotes": "Her last message was \"I'm waiting for the courier to arrive\", which I logged in the thread notes.",
+    "curly-double-quotes": "The template opens with “Awaiting the client’s countersignature” and then lists the open items.",
+    "a-four-backtick-fence": "The log line you asked about:\n````\nworker-2: waiting for the lease to expire\n````\nIt is printed "
+                             "once per retry.",
+    "a-tilde-fence": "Here is the commit message I used:\n~~~\nWaiting on the upstream fix, so pin the old version.\n~~~\nThe pin "
+                     "is in the lockfile.",
+    "a-block-quote": "The vendor's note, for your records:\n> We will resume once the customs hold is lifted.\nNothing is needed "
+                     "from you today.",
+    "inline-code": "The spinner text is `Waiting for the build…` and it now clears when the task ends.",
+    "an-indented-fence-with-a-language": "The handler prints:\n\n   ```python\n   print(\"We're waiting for the leader election to "
+                                         "finish\")\n   ```\n\nand then exits.",
+    "single-quotes-around-a-plural-possessive": "The old copy ('We'll follow up when the reviewers' comments arrive') is gone "
+                                                "from the page.",
+    "a-quoted-label": "The checklist item 'awaiting sign-off' is now ticked for all three tickets.",
+    "two-quoted-sentences": "The thread holds \"I'm waiting on legal.\" and then \"We'll proceed after the board meets.\" a day "
+                            "later.",
+}
+A_WAIT_BESIDE_QUOTED_WORDS = {
+    "a-name-in-code-ends-the-clause": "I'm still waiting on `integration-tests`.",
+    "a-name-in-single-quotes": "I'll merge once the job named 'release-gate' turns green.",
+    "a-name-in-double-quotes": "Waiting for \"deploy-prod\" to finish before I announce it.",
+    "plural-possessives-are-no-quotes": "The vendors' portal is down, so I'm waiting for the reviewers' sign-off by email.",
+    "apostrophes-then-a-quoted-flag": "It's the registrar's turn; I'm waiting for the 'pending transfer' flag to clear.",
+    "names-in-a-fence-after-a-colon": "I'm waiting on:\n```\nci/build\nci/lint\n```",
+}
+
+
+@pytest.mark.parametrize("reply", _cases(R2_QUOTED_REVIEW, A_WAIT_THAT_IS_ONLY_QUOTED))
+def test_a_wait_inside_quotation_marks_a_fence_or_a_quoted_line_is_not_the_sessions(reply):
+    assert _sent_back(reply) is None
+
+
+@pytest.mark.parametrize("reply", _cases(A_WAIT_BESIDE_QUOTED_WORDS))
+def test_quoted_words_beside_the_sessions_own_wait_do_not_hide_it(reply):
+    reason = _sent_back(reply)
+    assert reason and "nothing is armed" in reason
