@@ -153,7 +153,7 @@ def judge(args, config: dict, read: dict) -> dict:
         try:
             a, b = slot.moment(entry.get("start"), zone), slot.moment(entry.get("end"), zone)
         except SystemExit as exc:
-            stop(f'"{summary}": ' + str(exc.code).split(": ", 1)[-1])
+            stop(f'the start or end of "{summary}": ' + str(exc.code).split(": ", 1)[-1])
         others += [(a, summary)] if a else []  # every timed entry, a trip included: what a night runs into the next morning
         if re.match(rf"{re.escape(title)}\b", summary.lower()):
             names = [" ".join(name.lower().split()).strip("\"'“”‘’ .:;,!") for name in said.get("for", "").splitlines()]
