@@ -663,7 +663,9 @@ def records(folder: str, kinds: tuple = (), whole: bool = False) -> list:
     return rows
 
 
-CITED = re.compile(r"(?<![\w.-])([A-Za-z0-9][\w.-]*)\s+#(\d+)(?:\s*(?:-|–|—|to|through)\s*#?(\d+))?")  # `<session> #<seq>`, or a range of them
+# `<session> #<seq>`, or a range of them. A dash joins on the line of the first number, and the range ends in a number
+# of its own (2026-11-12: `c1 #2`, then the list item `- 2026-10-30 ...` under it, read as #2 to #2026).
+CITED = re.compile(r"(?<![\w.-])([A-Za-z0-9][\w.-]*)\s+#(\d+)(?:(?:[^\S\n]*(?:-|–|—)|\s*(?:to|through))\s*#?(\d+)(?![-./:]?\d))?")
 # The listing's own output as it may be saved. LISTED: a line it prints for a prompt, alone or behind a quote mark
 # or a list marker. ANSWER: where its JSON answer may begin, however it is laid out and its keys ordered. REFUSED:
 # the day-end record's list of what is open, under the line that counts them.
@@ -718,8 +720,8 @@ def uncited(found: list, roots: list) -> list:
                     continue
                 for cited, first, last in CITED.findall(_record(text, typed)):
                     named = [s for s in ids if s == cited] or [s for s in ids if len(cited) >= 8 and s.startswith(cited)]
-                    if len(named) == 1:  # a few characters that two sessions share name neither
-                        spans[named[0]].append((int(first), int(last or first)))
+                    if len(named) == 1:  # a few characters that two sessions share name neither; a lower number ends no range
+                        spans[named[0]].append((int(first), max(int(first), int(last or first))))
     return [p for p in found if not any(first <= p["seq"] <= last for first, last in spans[str(p["session"])])]
 
 
