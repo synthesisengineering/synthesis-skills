@@ -560,3 +560,19 @@ def test_a_night_before_an_all_day_commitment_cannot_be_judged_and_says_so(tmp_p
     assert check(tmp_path, [RESOLVED, GOING, RETURNING, later], config=rested)[0] == 0
     timed = event("Workshop", "10:00", "17:00", "12 Mill Lane, Harbor Town", "Travel: none, a ride with a colleague", day="2026-11-12")
     assert check(tmp_path, [RESOLVED, GOING, RETURNING, timed], config=rested)[0] == 0      # with a start, it is judged by it: 10 h 40 min
+
+
+def test_an_all_day_commitment_at_the_principals_own_office_leaves_the_night_unjudged_too(tmp_path):
+    """The twelfth review: the all-day workshop the next morning was at the office the policy names, which is no
+    place to travel to, so it never reached the night check and the evening passed."""
+    rested = {**CONFIG, "travel_policy": {**POLICY, "sleep_hours": 8}}
+    workshop = {"summary": "Workshop", "start": {"date": "2026-11-12"}, "end": {"date": "2026-11-13"}, "location": "200 Market St, Example City"}
+    code, report = check(tmp_path, [RESOLVED, GOING, RETURNING, workshop], config=rested)
+    assert code == 1, report
+    night = next(item for item in lacks(report) if "home at 23:20" in item)
+    assert '"Workshop"' in night and "all day" in night and "cannot be judged" in night, night
+    assert [e["summary"] for e in report["events"]] == ["Book launch at the Grand Theatre"]      # and it is still no trip of its own
+    hours = {**CONFIG, "travel_policy": {**POLICY, "sleep_hours": 8, "morning_starts": "09:00"}}
+    assert check(tmp_path, [RESOLVED, GOING, RETURNING, workshop], config=hours)[0] == 1        # an hour for the morning does not give the workshop one
+    note = {"summary": "A colleague's birthday", "start": {"date": "2026-11-12"}, "end": {"date": "2026-11-13"}}
+    assert check(tmp_path, [RESOLVED, GOING, RETURNING, note], config=rested)[0] == 0          # an entry at no place is a note on the day

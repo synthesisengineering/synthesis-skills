@@ -506,3 +506,26 @@ def test_two_events_at_the_slots_own_hours_are_not_both_the_slot(tmp_path):
     three = pair + [meeting(THURSDAY, "16:00", "17:00", "Review", ["b@example.com"])]
     code, report = check(tmp_path, "16:00", "17:00", three)
     assert levels(report)["placement"] == "REVIEW", detail(report, "placement")
+
+
+def test_a_trip_back_that_runs_into_a_day_blocked_whole_is_no_clear_trip(tmp_path):
+    """The twelfth review: a slot at 23:00 with ninety minutes home ran an hour into a day blocked whole, and the
+    travel line said it was clear of other events."""
+    away = [all_day("2026-11-13", "Away", transparency="opaque")]
+    late = {**CONFIG, "protected_hours": [], "working_hours": {"start": "09:00", "end": "23:59"}}
+    code, report = check(tmp_path, "23:00", "23:30", away, "--in-person", "--travel-before", "30", "--travel-after", "90", config=late)
+    assert levels(report)["travel"] == "REFUSE" and "Away" in detail(report, "travel") and "trip back" in detail(report, "travel"), report
+    code, report = check(tmp_path, "20:00", "20:30", away, "--in-person", "--travel-before", "30", "--travel-after", "90", config=late)
+    assert levels(report)["travel"] == "OK", detail(report, "travel")                           # home at 22:00: the next day is not touched
+
+
+def test_an_all_day_hold_is_a_hold(tmp_path):
+    """The twelfth review: the agent's own tentative hold, kept all day and marked busy, took the whole day."""
+    hold = [all_day(THURSDAY, "Hold", transparency="opaque"), *QUIET_DAY]
+    code, report = check(tmp_path, "14:00", "14:30", hold)
+    assert code == 0 and levels(report)["deep work"] == "OK" and "beside Staff meeting" in detail(report, "placement"), report
+    named = {**CONFIG, "calendar_guardian": {**CONFIG["calendar_guardian"], "holds": {"title": "Tentative"}}}
+    code, report = check(tmp_path, "14:00", "14:30", [all_day(THURSDAY, "tentative", transparency="opaque"), *QUIET_DAY], config=named)
+    assert code == 0 and "beside Staff meeting" in detail(report, "placement"), report          # by the title the preferences give, in any case
+    code, report = check(tmp_path, "14:00", "14:30", [all_day(THURSDAY, "Hold the date", transparency="opaque"), *QUIET_DAY])
+    assert levels(report)["placement"] == "REVIEW", report                                      # a title that only begins with the word is an event

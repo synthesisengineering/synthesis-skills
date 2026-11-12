@@ -3137,3 +3137,78 @@ def test_a_name_a_function_gives_another_value_is_either(above, program, held, i
     command = "python3 - <<'EOF'\n" + MEMBERS.format(**above) + program + "\nEOF"
     reason = guards.check("Bash", {"command": command}, {}, cwd=str(above["work"] if inside else here))
     assert (REFUSED in (reason or "")) == held, program
+
+
+# --- the twelfth review round (2026-11-12) --------------------------------------------------------------------
+# One write let through, which the member model itself had opened: a table made from pairs (`dict([("out", T)])`)
+# was read as holding nothing, and nothing is no target. And eight kinds of everyday program refused: a mode kept
+# in a name, an image opened to be read, a factory or a class method called once for the transcript and once for
+# the file elsewhere, an inherited data-class field and a default factory, a table filled from literal rows, a
+# union of two tables, the environment given a value through `update` or under a second name, a template kept in
+# a name. Each is here with its twin.
+TWELFTH = [
+    ("cfg = dict([('out', T)])\nopen(cfg['out'], 'w').write('x')", True),
+    ("cfg = dict([('src', T), ('out', P + '/a.txt')])\nopen(cfg['out'], 'w').write(open(cfg['src']).read())", False),
+    ("cfg = dict(zip(['out'], [T]))\nopen(cfg['out'], 'w').write('x')", True),
+    ("cfg = dict(**{'out': T})\nopen(cfg['out'], 'w').write('x')", True),
+    ("base = {'out': T}\ncfg = dict(base)\nopen(cfg['out'], 'w').write('x')", True),
+    ("base = {'out': P + '/a.txt'}\ncfg = dict(base, src=T)\nopen(cfg['out'], 'w').write(open(cfg['src']).read())", False),
+    ("from types import SimpleNamespace\nns = SimpleNamespace(**{'out': T})\nopen(ns.out, 'w').write('x')", True),
+    ("mode = 'r'\nprint(open(T, mode).read()[:10])", False),
+    ("mode = 'w'\nopen(T, mode).write('x')", True),
+    ("mode = 'r' if len(sys.argv) > 5 else 'a'\nopen(T, mode).write('x')", True),
+    ("import shelve\nflag = 'r'\ndb = shelve.open(W + '/snap', flag)\nprint(list(db))", False),
+    ("import shelve\nflag = 'c'\ndb = shelve.open(W + '/snap', flag)", True),
+    ("import h5py\nmode = 'r'\nf = h5py.File(W + '/a.h5', mode)\nprint(list(f))", False),
+    ("import h5py\nmode = 'w'\nf = h5py.File(W + '/a.h5', mode)", True),
+    ("from PIL import Image\nImage.open(T).save(P + '/a.png', format='PNG')", False),
+    ("from PIL import Image\nImage.open(P + '/a.png').save(W + '/a.png', format='PNG')", True),
+    ("from PIL import Image\nclass Thumb:\n    def __init__(self, src):\n        self.src = src\n    def save(self, out):\n        Image.open(self.src).save(out, format='PNG')\n"
+     "Thumb(T).save(P + '/a.png')", False),
+    ("class Job:\n    def __init__(self, p):\n        self.path = p\ndef make(p):\n    return Job(p)\nsrc = make(T)\ndst = make(P + '/a.txt')\n"
+     "open(dst.path, 'w').write(open(src.path).read())", False),
+    ("class Job:\n    def __init__(self, p):\n        self.path = p\ndef make(p):\n    return Job(p)\nsrc = make(P + '/a.txt')\ndst = make(T)\nopen(dst.path, 'w').write('x')", True),
+    ("class Job:\n    def __init__(self, p):\n        self.path = p\ndef same(j):\n    return j\nsrc = same(Job(T))\ndst = same(Job(P + '/a.txt'))\n"
+     "open(dst.path, 'w').write(open(src.path).read())", False),
+    ("class Job:\n    def __init__(self, p):\n        self.path = p\ndef same(j):\n    return j\ndst = same(Job(T))\nopen(dst.path, 'w').write('x')", True),
+    ("class Job:\n    def __init__(self, p):\n        self.path = p\n    @classmethod\n    def at(cls, p):\n        return cls(p)\nsrc = Job.at(T)\ndst = Job.at(P + '/a.txt')\n"
+     "open(dst.path, 'w').write(open(src.path).read())", False),
+    ("class Job:\n    def __init__(self, p):\n        self.path = p\n    @classmethod\n    def at(cls, p):\n        return cls(p)\nsrc = Job.at(P + '/a.txt')\ndst = Job.at(T)\n"
+     "open(dst.path, 'w').write('x')", True),
+    ("class Job:\n    def __init__(self, p):\n        self.path = p\ndef make(p):\n    j = Job(p)\n    j.path = T\n    return j\ndst = make(P + '/a.txt')\nopen(dst.path, 'w').write('x')", True),
+    ("from dataclasses import dataclass\n@dataclass\nclass Base:\n    path: str\n@dataclass\nclass Out(Base):\n    mode: str = 'w'\no = Out(P + '/a.txt')\n"
+     "open(o.path, o.mode).write(open(T).read())", False),
+    ("from dataclasses import dataclass\n@dataclass\nclass Base:\n    path: str\n@dataclass\nclass Out(Base):\n    mode: str = 'w'\no = Out(T)\nopen(o.path, o.mode).write('x')", True),
+    ("from dataclasses import dataclass, field\n@dataclass\nclass Job:\n    src: str\n    out: str = field(default_factory=lambda: P + '/a.txt')\nj = Job(T)\n"
+     "open(j.out, 'w').write(open(j.src).read())", False),
+    ("from dataclasses import dataclass, field\n@dataclass\nclass Job:\n    out: str = field(default_factory=lambda: T)\nj = Job()\nopen(j.out, 'w').write('x')", True),
+    ("cfg = {}\nfor key, value in [('src', T), ('out', P + '/a.txt')]:\n    cfg[key] = value\nopen(cfg['out'], 'w').write(open(cfg['src']).read())", False),
+    ("cfg = {}\nfor key, value in [('src', P + '/a.txt'), ('out', T)]:\n    cfg[key] = value\nopen(cfg['out'], 'w').write('x')", True),
+    ("given = {'src': T, 'out': P + '/a.txt'}\ncfg = {}\nfor key, value in given.items():\n    cfg[key] = value\nopen(cfg['out'], 'w').write(open(cfg['src']).read())", False),
+    ("given = {'src': P + '/a.txt', 'out': T}\ncfg = {}\nfor key, value in given.items():\n    cfg[key] = value\nopen(cfg['out'], 'w').write('x')", True),
+    ("cfg = {}\nfor key, value in [('src', P + '/a.txt'), ('out', P + '/b.txt')]:\n    cfg[key] = T\nopen(cfg['out'], 'w').write('x')", True),
+    ("cfg = {'src': T} | {'out': P + '/a.txt'}\nopen(cfg['out'], 'w').write(open(cfg['src']).read())", False),
+    ("cfg = {'src': P + '/a.txt'} | {'out': T}\nopen(cfg['out'], 'w').write('x')", True),
+    ("cfg = {'src': T}\ncfg |= {'out': P + '/a.txt'}\nopen(cfg['out'], 'w').write(open(cfg['src']).read())", False),
+    ("cfg = {'out': P + '/a.txt'}\ncfg |= {'out': T}\nopen(cfg['out'], 'w').write('x')", True),
+    ("os.environ.update(OUT=P + '/a.txt')\nopen(os.environ['OUT'], 'w').write(open(T).read())", False),
+    ("os.environ.update(OUT=T)\nopen(os.environ['OUT'], 'w').write('x')", True),
+    ("os.environ.update({'OUT': T})\nopen(os.getenv('OUT'), 'w').write('x')", True),
+    ("env = os.environ\nenv['OUT'] = P + '/a.txt'\nopen(os.getenv('OUT'), 'w').write(open(T).read())", False),
+    ("env = os.environ\nenv['OUT'] = T\nopen(os.getenv('OUT'), 'w').write('x')", True),
+    ("out = P + '/a.txt'\nif 'SYN_PROBE_OUT' in os.environ:\n    out = os.environ['SYN_PROBE_OUT']\nopen(out, 'w').write(open(T).read())", False),
+    ("template = '{root}/report.txt'\nopen(template.format(root=P), 'w').write(open(T).read())", False),
+    ("template = '{root}/report.jsonl'\nopen(template.format(root=W), 'w').write('x')", True),
+    ("template = '%s/report.txt'\nopen(template % P, 'w').write(open(T).read())", False),
+    ("template = '%s/report.jsonl'\nopen(template % W, 'w').write('x')", True),
+]
+
+
+@pytest.mark.parametrize("program, held", TWELFTH)
+@pytest.mark.parametrize("inside", [False, True])
+def test_the_twelfth_reviews_programs(above, program, held, inside, tmp_path):
+    here = tmp_path / "elsewhere"
+    here.mkdir()
+    command = "python3 - <<'EOF'\n" + MEMBERS.format(**above) + program + "\nEOF"
+    reason = guards.check("Bash", {"command": command}, {}, cwd=str(above["work"] if inside else here))
+    assert (REFUSED in (reason or "")) == held, program
