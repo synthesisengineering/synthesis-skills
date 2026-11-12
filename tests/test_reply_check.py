@@ -984,3 +984,37 @@ def test_a_list_written_without_sight_of_the_code_of_replies_that_need_no_watche
 def test_a_list_written_without_sight_of_the_code_of_unarmed_waits_is_sent_back(reply):
     reason = _sent_back(reply)
     assert reason and "nothing is armed" in reason
+
+
+# The edges of the rules the fifth list added: a time or a noun after "until" or "after" with a judgment on it, and a
+# future that only reports how something behaves.
+A_JUDGMENT_OR_A_DESCRIPTION = {
+    "merging-after-review-is-standard": "Merging after review is standard practice here.",
+    "until-friday-is-risky": "Waiting until Friday is risky, so I booked the earlier slot.",
+    "note-that-once": "I'll note in the runbook that once the cache is warm the page loads in 200 ms.",
+    "document-what-happens-once": "I'll document what happens once the token expires.",
+    "explain-how-as-soon-as": "I'll explain how the job resumes as soon as the lock clears.",
+    "the-bot-merges-then-i-close": "Once the build is green, the bot merges it, and I'll close the ticket then.",
+    "once-per-run": "I'll use the staging key once per run.",
+    "until-tomorrow-is-fine": "Waiting until tomorrow is fine with the vendor, who confirmed by email.",
+    "continuing-to-poll": "Continuing to poll after the deploy is harmless, so I left the loop in.",
+}
+AN_EVENT_THAT_IS_STILL_TO_COME = {
+    "resuming-after-it-is-done": "Resuming after the rebuild is done.",
+    "until-the-cache-is-warm": "Waiting until the cache is warm.",
+    "ask-again-once": "I'll ask the vendor again once the contract is signed.",
+    "until-the-change-is-live": "Waiting until the registrar's change is live.",
+    "merging-once": "Merging once the last check is green.",
+    "rerun-as-soon-as": "I'll rerun the suite as soon as the fix has landed upstream.",
+}
+
+
+@pytest.mark.parametrize("reply", _cases(A_JUDGMENT_OR_A_DESCRIPTION))
+def test_a_judgment_on_a_wait_or_a_description_of_what_happens_once_is_no_announcement(reply):
+    assert _sent_back(reply) is None
+
+
+@pytest.mark.parametrize("reply", _cases(AN_EVENT_THAT_IS_STILL_TO_COME))
+def test_a_wait_until_a_state_that_is_still_to_come_is_sent_back(reply):
+    reason = _sent_back(reply)
+    assert reason and "nothing is armed" in reason
