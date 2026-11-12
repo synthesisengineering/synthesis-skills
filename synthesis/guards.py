@@ -2922,7 +2922,7 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
             targets += n.args[:1] or [kw[k] for k in PATH_KEYS if k in kw]  # another library's store opened for writing: shelve, dbm, wave
         elif writer and (not writer[4] or (owners and not method)):  # a call named as a writer: judged where its path lands, the rest being content
             targets += [a for a in (n.args[:1] if writer[1] else n.args[1:2] if writer[3] else n.args[:2] if writer[2] else n.args) + [
-                kw[k] for k in PATH_KEYS if k in kw] if named(a) or (spelled(a)[:1] not in ("\0", "\2") and re.search(r"/|^~|\.\w{1,6}$", spelled(a)))]
+                kw[k] for k in PATH_KEYS if k in kw] if spelled(a)[:1] not in ("\0", "\2") and (named(a) or re.search(r"/|^~|\.\w{1,6}$", spelled(a)))]
         if label in LIBRARY_WRITES:  # the standard library's own writers: a log file, a download, a temporary file made where it is told
             targets += [kw[k] for k in ("filename", "dir") if k in kw] + (
                 n.args[1:2] if label == "urlretrieve" else n.args[:1] if "Handler" in label else n.args[2:3] if label.startswith(("mk", "TemporaryD")) else [])
