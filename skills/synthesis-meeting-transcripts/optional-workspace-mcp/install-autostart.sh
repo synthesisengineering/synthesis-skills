@@ -48,10 +48,18 @@ SYN_HOME="${SYNTHESIS_HOME:-}"
 # systemd reads a backslash, a quote and a percent sign as its own. Every value
 # the person chose goes through one of them (a client secret under a folder
 # named with an ampersand gave a plist that did not parse). A value with none of
-# those characters is written exactly as before. ExecStart= is a command line,
-# which has rules of its own, and is written as it was.
+# those characters is written exactly as before. ExecStart= is a command line:
+# a space splits it and a dollar sign is a variable there, so a path that holds
+# anything but plain letters is written in double quotes with a dollar sign
+# doubled too (a checkout under "my checkouts" gave a unit that started nothing).
 as_xml()  { printf '%s' "$1" | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g'; }
 as_unit() { printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/%/%%/g'; }
+as_exec() {
+  case "$1" in
+    *[!A-Za-z0-9_./+:@,=-]*) printf '"%s"' "$(as_unit "$1" | sed -e 's/\$/$$/g')" ;;
+    *) printf '%s' "$1" ;;
+  esac
+}
 
 install_macos() {
   local label="com.synthesis.workspace-mcp"
@@ -153,7 +161,7 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-ExecStart=$START_SCRIPT
+ExecStart=$(as_exec "$START_SCRIPT")
 Environment="GOOGLE_CLIENT_SECRET_PATH=$(as_unit "$GOOGLE_CLIENT_SECRET_PATH")"
 Environment="WORKSPACE_MCP_PORT=$(as_unit "$PORT")"
 Environment="WORKSPACE_MCP_TOOL_TIER=$(as_unit "$TIER")"

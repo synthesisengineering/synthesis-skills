@@ -87,7 +87,9 @@ def carried(platform: str, unit: str, start: Path = START) -> dict:
         parsed = plistlib.loads(unit.encode("utf-8"))
         assert parsed["ProgramArguments"] == [str(start)]
         return parsed["EnvironmentVariables"]
-    assert f"\nExecStart={start}\n" in unit
+    word = next(line for line in unit.splitlines() if line.startswith("ExecStart="))[len("ExecStart="):]
+    quoted = word.startswith('"') and word.endswith('"')  # a path with a space or one of systemd's signs is quoted
+    assert (unquoted(word[1:-1].replace("$$", "$")) if quoted else word) == str(start)
     lines = [re.fullmatch(r'Environment="(\w+)=(.*)"', line) for line in unit.splitlines()]
     return {m[1]: unquoted(m[2]) for m in lines if m}
 

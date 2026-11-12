@@ -294,6 +294,7 @@ def test_a_start_path_the_unit_holds_in_quotes_is_read_back_as_the_path_it_is(tm
     doctor reads the path back out of them: taken with its quotes on, an installed unit looked like a moved checkout."""
     environment = fixture(tmp_path, launch="", lsof_exit=0, curl='printf "406"\n', platform="Linux")
     script = tmp_path / "my checkouts" / '50% "done" $x \\ v2' / "start.sh"
+    script.parent.mkdir(parents=True)
     executable(script, "exit 0\n")
     unit = tmp_path / "home" / ".config" / "systemd" / "user" / "workspace-mcp.service"
     escaped = str(script).replace("\\", "\\\\").replace('"', '\\"').replace("%", "%%").replace("$", "$$")

@@ -65,6 +65,10 @@ if [ -n "$UNIT" ]; then
       UNIT_PATH_TARGET="$(plutil -extract ProgramArguments.0 raw "$UNIT" 2>/dev/null || true)"
     else
       UNIT_PATH_TARGET="$(sed -n 's/^ExecStart=//p' "$UNIT" | head -1)"
+      case "$UNIT_PATH_TARGET" in  # in quotes, as the installer writes a path with a space or one of systemd's signs
+        \"*\") UNIT_PATH_TARGET="$(printf '%s' "$UNIT_PATH_TARGET" \
+                  | sed -e 's/^"//' -e 's/"$//' -e 's/\$\$/$/g' -e 's/%%/%/g' -e 's/\\\(.\)/\1/g')" ;;
+      esac
     fi
 
     if [ -z "$UNIT_PATH_TARGET" ]; then
