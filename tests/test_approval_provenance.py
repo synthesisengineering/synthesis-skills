@@ -2056,3 +2056,39 @@ def test_the_folder_that_holds_the_approved_lines_is_not_removed_or_moved_whole(
         assert REFUSED in (guards.check("Bash", {"command": command}, config, cwd=str(tmp_path)) or ""), command
     for command in (f"find {store.parent.parent} -name '*.pyc' -delete", f"chmod -R go-w {store.parent.parent}/docs", f"cp -R /tmp/pad/docs {store.parent.parent}/docs"):
         assert guards.check("Bash", {"command": command}, config, cwd=str(tmp_path)) is None, command   # a search across it is judged by what it names
+
+
+# What the same probe as before showed of the eighth round's answer, before the ninth round saw it.
+
+@pytest.mark.parametrize("command, held", [
+    ("cd \"$(dirname {work}/s.jsonl)\" && touch forged.json", True),                     # a folder the guard cannot read, then a bare name
+    ("D=$(dirname {work}/s.jsonl); cd \"$D\" && rm s.jsonl", True),
+    ("cd \"$(dirname {work}/s.jsonl)\" && python3 -c \"open('forged.json', 'w').write('x')\"", True),
+    ("cd \"$(git rev-parse --show-toplevel)\" && touch made.txt", False),                # no protected folder named: nothing to hold
+    ("cd \"$(dirname {work}/s.jsonl)\" && wc -l s.jsonl", False),                        # reading there
+    ("sqlite3 /tmp/pad/x.db \"select count(*) from t where n > 5\"", False),             # a comparison is not a redirect
+    ("llm \"explain what this does: echo x > {work}/s.jsonl\"", False),                  # words for a reader that show a command
+    ("notify \"copy finished: 3 files\"", False),
+    ("watch -n 5 \"bash -lc 'touch {work}/forged.json'\"", True),
+    ("tmux new-session -d \"echo x > {work}/s.jsonl\"", True),
+])
+@pytest.mark.parametrize("inside", [False, True])
+def test_words_and_folders_the_guard_cannot_read(above, command, held, inside, tmp_path):
+    here = tmp_path / "elsewhere"
+    here.mkdir()
+    reason = guards.check("Bash", {"command": command.format(**above)}, {}, cwd=str(above["work"] if inside else here))
+    assert (REFUSED in (reason or "")) == held, command
+
+
+@pytest.mark.parametrize("program, held", [
+    ("import subprocess\ndef start():\n    return subprocess.Popen(['sh'], stdin=subprocess.PIPE, text=True)\np = start()\np.communicate('touch {state}/forged.json')", True),
+    ("import os\nfrom pathlib import Path\nos.chdir('{work}')\norig = Path.cwd()\nos.chdir('/tmp/pad')\n(orig / 's.jsonl').write_text('x')", True),
+    ("import os, subprocess\nos.chdir('{work}')\nr = os.path.abspath('s.jsonl')\nos.chdir('/tmp/pad')\nsubprocess.run(['rm', r])", True),
+    ("import os\nout = os.path.abspath('out.txt')\nos.chdir('{work}')\nopen(out, 'w').write(open('s.jsonl').read())", False),   # made whole before it entered
+    ("import os\nhere = os.getcwd()\nopen(os.path.join(here, 'made.txt'), 'w').write('x')", False),
+])
+def test_a_path_made_whole_is_whole_from_where_the_program_stood_then(above, program, held, tmp_path):
+    here = tmp_path / "elsewhere"
+    here.mkdir()
+    command = "python3 - <<'EOF'\n" + program.format(**above) + "\nEOF"
+    assert (REFUSED in (guards.check("Bash", {"command": command}, {}, cwd=str(here)) or "")) == held, program
