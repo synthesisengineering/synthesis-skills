@@ -446,7 +446,7 @@ def _nudge_plist() -> Path:
 def _points_at(plist: Path, target: Path) -> bool:
     import plistlib
     try:
-        return str(target) in " ".join(plistlib.loads(plist.read_bytes()).get("ProgramArguments") or [])
+        return bool(re.search(re.escape(str(target)) + r'(?=["\'\s]|$)', " ".join(plistlib.loads(plist.read_bytes()).get("ProgramArguments") or [])))  # the whole path
     except (OSError, ValueError):
         return False
 
