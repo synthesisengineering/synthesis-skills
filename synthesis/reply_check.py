@@ -34,7 +34,7 @@ DEFAULT_PHRASES = [
 # stands in. Config `wait_phrases` adds plain phrases.
 # "once" is a conjunction here, not a count: not "at once", "once more", "once on staging", "once a day".
 _ONCE = r"(?<!\bat )once(?! (?:more|again|a|an|per|every|each|or|and|only|on|in|at|for|with|to|by|upon|daily|weekly)\b)"
-_ME, _WHEN = r"\b(?:i|we)", r"\b(?:" + _ONCE + r"|when|after|until|as soon as)\b"
+_ME, _WHEN = r"\b(?:i|we)", r"\b(?:" + _ONCE + r"|when|after|until|as soon as|the moment)\b"
 # Ordinary grammar between a subject and its verb (review round 2): any run of adverbs ("currently still", "then",
 # "simply"; "not" and "no longer" are none), helping verbs ("continue to wait", "be able to resume", "go ahead and
 # merge"), "going to" and "need to" for "will", and a subject left out ("Will report back", "I pushed it and will").
@@ -50,8 +50,14 @@ _GO = (r"(?:continue(?! to\b)|resume|proceed|pick (?:[\w'’-]+ ){1,4}?(?:back )
        r"|(?:report|check|come|get) back|let you know|(?:update|notify|tell|ping|message) you)\b")
 # The session itself ("I", not the "we" of advice) with any verb before an event that is still to come: "I'll send it as soon
 # as the run finishes", "once their quote arrives, I'll update the sheet", "I'll check them when it's done".
-_I = (r"(?:\bi(?:['’]ll| will| shall|(?:['’]m| am) going to)|^\W*will|\bi\b[^:]{0,120}?\b(?:and|but|then) will)" + _ASIDE + _SOON)
-_THEN = r"(?:" + _ONCE + r"|as soon as(?! (?:possible|practical)\b)) (?!(?:i|we)\b)(?=\w)"
+_I = (r"(?:\bi(?:['’]ll| will| shall|(?:['’]m| am) going to)|\bwe(?:['’]ll| will)(?! (?:want|need|have|be|see|know|likely|probably)\b)"
+      r"|^\W*will|\bi\b[^:]{0,120}?\b(?:and|but|then) will)" + _ASIDE + _SOON)
+_THEN = r"(?:" + _ONCE + r"|as soon as(?! (?:possible|practical)\b)|the moment) (?!(?:i|we)\b)(?=\w)"
+# After "when" or "after", an arrival is an event to come ("when the second pass comes back"); "when the network is down" is a case.
+_COMES = (r"(?:when|after) (?!(?:i|we|a|an|any|each|every|some|no)\b)(?:[\w'’-]+ ){1,5}?(?:comes?|arrives?|lands?|shows? up|finish(?:es)?"
+          r"|completes?|returns?|repl(?:y|ies)|responds?|answers?|confirms?|approves?|signs?|accepts?|ships?|delivers?|clears?|posts?"
+          r"|settles?|pass(?:es)?|goes (?:green|through|live|out)|reopens?|lifts?|ends?|issues?|renews?|resets?|propagates?|exits?"
+          r"|(?:is|are|has been|have been) (?:done|ready|back|in|out|through|over|up|live|green|available|here|\w+ed))\b")
 _SAYS = r"(?:(?!\b(?:that|because|since|which|if|whether|what|how|why|where)\b)[^;:]){1,100}?"  # not "I'll note that once ..."
 _DONE = (r"(?:when|once|after) (?:it|they|that|this|everything)(?:(?:['’]s|['’]re| is| are| has| have)(?: been)? (?:done|ready"
          r"|finished|completed?|through|over|back|in|up|live|green|available|out|here|merged|published|released)\b| (?:lands?"
@@ -90,18 +96,18 @@ _VALUE = (r"(?:the|a|an|what|why|how|risky|safer?|slow(?:er)?|fast(?:er)?|fine|o
 _TAIL = r"(?:" + _WORD + r"| (?:before|after|during|in|on|at))"
 _LATER = (_WORD + r"{1,10}?(?:" + _TAIL + r"{0,8}? " + _OFTEN + r"(?:(?:is|was)(?:n['’]t| not)? " + _VALUE
           + r"|(?:would|will|should|may|might|must)(?:n['’]t)?\b|took\b|cost\b|" + _EFFECT + r")| (?!(?:" + _STOP
-          + r")\b)(?:is|are|was|were|has|have|had|[a-z]+(?:s|ed))\b" + _TAIL + r"{0,8}? " + _OFTEN + r"(?:can|could|has|does)(?:n['’]t)?\b)")
+          + r")\b)(?:is|are|was|were|has|have|had|[a-z]+(?:s|ed))\b" + _WORD + r"{0,6}? " + _OFTEN + r"(?:is|was|can|could|has|does)(?:n['’]t| not)?\b)")
 SUBJECT = re.compile("(?i)(?:" + _WORD + r"{1,12}? " + _PRED + "|" + _WORD + r"{0,8}? (?:before|after|while|until|till|when|once)" + _LATER + ")")
 UNTIL = re.compile("(?i)" + _LATER)
 WAITS = re.compile(  # a clause that opens with the wait is tested as a subject afterwards: group "on" by SUBJECT, "till" by UNTIL
-    "(?i)" + _AM + r"(?:a?waiting\b(?! (?:for|on)(?: you\b| from\b|\W*$))|(?:holding|standing by)" + _HELD + ")"
-    "|" + _MUST + _HELP + r"(?:wait(?:ing)?\b|(?:hold(?:ing)?|stand(?:ing)? by)" + _HELD + r")(?! (?:for|on) you\b)"
+    "(?i)" + _AM + r"(?:a?waiting\b(?! (?:for|on)(?: you\b| from\b|\W*$))|(?:holding|standing by|paus(?:ing|ed))" + _HELD + ")"
+    "|" + _MUST + _HELP + r"(?:wait(?:ing)?\b|(?:hold(?:ing)?|stand(?:ing)? by|paus(?:e|ing))" + _HELD + r")(?! (?:for|on) you\b)"
     "|" + _WILL + _HELP + _GO + ".{0,160}?" + _WHEN + "|" + _WHEN + ".{0,160}?" + _WILL + _HELP + _GO
-    + r"|\b(?:until|till)\b.{0,160}?" + _MUST + _HELP + r"hold(?:ing)?\b"
-    + "|" + _I + _SAYS + r"\b(?:" + _THEN + "|" + _DONE + r")|\b" + _THEN + r"[^,;:]{0,100},? (?:and )?(?:then )?" + _I
+    + r"|\b(?:until|till)\b.{0,160}?(?:" + _MUST + _HELP + r"(?:hold|pause)\b|" + _AM + r"(?:holding|pausing)\b)"
+    + "|" + _I + _SAYS + r"\b(?:" + _THEN + "|" + _DONE + "|" + _COMES + r")|\b" + _THEN + r"[^,;:]{0,100},? (?:and )?(?:then )?" + _I
     + r"|\b(?:" + _DONE + r"|should (?:come|arrive) shortly),?(?: and)?(?: then)? " + _WILL + "|" + _FIRST + _I
     + r"|(?:^\W*|[:—–] ?| --? )" + _SOON + r"(?:(?P<on>waiting (?:for|on|to (?:hear|see|get|learn|find out))\b(?! you\b)|awaiting\b)"
-    r"|(?P<till>waiting until\b|(?:holding|standing by)\b.{0,160}?\b(?:until|till)\b|" + _GOING
+    r"|(?P<till>waiting until\b|(?:holding|standing by|pausing)\b.{0,160}?\b(?:until|till)\b|" + _GOING
     + r"[^;:]{0,100}?\b(?:when|after|as soon as|" + _ONCE + r")\b))")
 # The principal's own next move is what is awaited: "you" as the one who acts and not in the past ("once you approve";
 # "after you approved" and "as you want" are context), or an act of theirs. An act counts where it is the thing
@@ -135,7 +141,8 @@ FRONT = ("until", "till", "once", "when", "after", "as soon as", "your move", "y
 OPEN = re.compile(r"(?i)(?:(?<=awaiting)|(?<=await)) (?:on|in|at|from|with|about|regarding|before|by)\b.*$"  # nothing is named after
                   r"|(?: (?:for|on))?(?: (?:right now|now|here|today|still|at this point))?\W*$")           # the wait
 BACK = re.compile(r"(?i)(?: (?:for|on))?(?: (?:that|this|it|them|those|both|here|now))?"            # or only a word that points back
-                  r"(?:,? (?:before|so|then|and nothing else|only|alone)\b.*)?\W*$")
+                  r"(?:,? (?:before|so|then|and nothing else|only|alone)\b.*)?\W*$|.{0,80}?\b(?:until|till|once|when|after|as soon as) "
+                  r"(?:(?:i|we)(?:['’]ve)? (?:have|get|got|receive|hear|see|know) )?(?:it|that|them|those|then)\W*$")
 LEAD = re.compile(r"(?i)(?:(?:and|so|but|now|then|until then|till then|meanwhile),? )?")           # before a wait that opens its clause
 MARKS = re.compile(r"^[ \t]*>.*|[*_#]+|^[ \t]*(?:[-+•]|\d+[.)])[ \t]+", re.M)  # a quoted line; emphasis, heading and list marks
 EDGE = re.compile(r"(?<=[.!?])\s+|;|(?<![:\s])\s*\n\s*")  # a sentence's or a line's end, a semicolon; after a colon the line runs on
