@@ -36,11 +36,12 @@ _ME, _WHEN = r"\b(?:i|we)", r"\b(?:once|when|after|until|as soon as)\b"
 # Ordinary grammar between a subject and its verb (review round 2): any run of adverbs ("currently still", "then",
 # "simply"; "not" and "no longer" are none), helping verbs ("continue to wait", "be able to resume", "go ahead and
 # merge"), "going to" and "need to" for "will", and a subject left out ("Will report back", "I pushed it and will").
-_SOON = (r"(?:(?:still|now|just|also|then|again|already|here|right now|at this point|stuck|blocked|idle"
+_SOON = (r"(?:(?:still|now|just|also|then|again|already|here|both|all|each|right now|at this point|stuck|blocked|idle"
          r"|(?!hardly|barely|rarely|scarcely)\w+ly),? ){0,3}")
-_AM = r"(?:" + _ME + r"(?:['’]m| am|['’]re| are)|\b(?:and|but) am),? " + _SOON
+_ASIDE = r"(?:, [^,;:]{1,40},|,)? "  # words between commas after the helping verb: "I will, for my part, continue"
+_AM = r"(?:" + _ME + r"(?:['’]m| am|['’]re| are)|\b(?:and|but) am)" + _ASIDE + _SOON
 _WILL = (r"(?:" + _ME + r"(?:['’]ll| will| shall|(?:['’]m| am|['’]re| are) going to)|^\W*will|" + _ME
-         + r"\b[^:]{0,120}?\b(?:and|but|then) will),? " + _SOON)
+         + r"\b[^:]{0,120}?\b(?:and|but|then) will)" + _ASIDE + _SOON)
 _MUST = r"(?:" + _WILL + "|" + _ME + r" (?:(?:still|now|just|also|then|\w+ly) )?(?:(?:need|have|plan|intend|want) to|must) )"
 _HELP = r"(?:(?:be|keep|keep on|go on|carry on|continue to|have to|need to|be able to|go ahead and) )*"
 _GO = (r"(?:continue(?! to\b)|resume|proceed|pick (?:[\w'’-]+ ){1,4}?(?:back )?up|finish|merge|confirm|follow up|circle back"
@@ -50,17 +51,23 @@ _GO = (r"(?:continue(?! to\b)|resume|proceed|pick (?:[\w'’-]+ ){1,4}?(?:back )
 # hold an infinitive ("the import to release its lock") but nothing that opens another clause (_STOP), so "waiting for
 # the reviewer to confirm the fix is right" stays an announcement (review round 2).
 _STOP = (r"that|which|who|whom|whose|what|where|why|how|whether|wh\w+ever|when|it|they|we|i|you|he|she|and|but|or|then|so|before"
-         r"|after|until|till|while|because|if|as|since|once|though|sure|word|news|notice|proof|signs?|signal|confirm\w*|say|report"
-         r"|verify|check|tell|decide|see|know|find|show|ensure|agree|learn|hear")
+         r"|after|until|till|while|because|if|as|since|once|though|sure|word|news|notice|proof|signs?|signal|confirm\w*"
+         r"|(?:say|report|check|tell|decide|see|know|find|show|ensure|learn|hear)s?|verif(?:y|ies)")
+_WORD = r"(?: (?!(?:" + _STOP + r")\b)[\w'’/.-]+)"
 _EFFECT = (r"(?:take|cost|add|waste|delay|slow|mean|make|block|stall|hurt|help|risk|keep|hold|tie|burn|defeat|prevent|guarantee"
-           r"|avoid|hide)s\b")
-_PRED = (r"(?:(?:never|always|often|usually|only|just|also|still|\w+ly) )?(?:(?:is|was|are|were|has|had|can|could|would|will"
-         r"|should|may|might|must|does|did)(?:n['’]t)?\b|cause[sd]\b|(?:took|cost|made|meant|(?:stall|block|delay|slow|wast|add)ed)\b"
-         r"|" + _EFFECT + r"|[a-z]+s (?:(?:out|up|down|off)\b|(?:a|an|the|its|their|our|every|each) [\w'’/.-]+"
-         r"(?: (?![\w'’-]*(?:s|ed)\b)[\w'’/.-]+)?(?=\W*$|,| (?:to|in|on|at|for|by|of|from|with|and|but|so|which|when|while|during"
-         r"|than|as|into|across|because|if|until)\b)))")
-_SUBJECT = r"(?!(?: (?!(?:" + _STOP + r")\b)[\w'’/.-]+){1,12}? " + _PRED + ")"
-_UNTIL = r"(?!(?: [\w'’/.-]+){2,12}? (?:took\b|cost\b|" + _EFFECT + "))"
+           r"|avoid|hide|explain|account|produce|create|trigger|introduce|require|force|starve|mask|dominate|double)s\b")
+_OFTEN = r"(?:(?:never|always|often|usually|only|just|also|still|\w+ly) )?"
+_PRED = (_OFTEN + r"(?:(?:is|was|are|were|has|had|can|could|would|will|should|may|might|must|does|did)(?:n['’]t)?\b|cause[sd]\b"
+         r"|(?:took|cost|made|meant|(?:stall|block|delay|slow|wast|add)ed)\b|" + _EFFECT + r"|[a-z]+s (?:(?:out|up|down|off|why|how"
+         r"|what)\b|(?:a|an|the|its|their|our|every|each|last|next|most|much|many|some|no) [\w'’/.-]+"
+         r"(?: (?![\w-]*(?:s|ed)(?=\W*$|[ ,]))[\w'’/.-]+){0,3}?(?=\W*$|,| (?:to|in|on|at|for|by|of|from|with|and|but|so|which|when"
+         r"|while|during|than|as|into|across|because|if|until)\b)))")
+_SUBJECT = r"(?!" + _WORD + r"{1,12}? " + _PRED + ")"
+# "Waiting until X" may hold a verb of its own (X's): "is" or "can" makes it a subject only after that verb ("waiting
+# until CI is green" announces; "waiting until every replica agrees is safer" explains), "would" or a verb of effect at once.
+_UNTIL = (r"(?!" + _WORD + r"{1,10}? (?:(?!(?:" + _STOP + r")\b)(?:is|are|was|were|has|have|had|[a-z]+(?:s|ed))\b" + _WORD + r"{0,6}? "
+          + _OFTEN + r"(?:is|was|can|could|has|does)(?:n['’]t)?\b|" + _OFTEN + r"(?:(?:would|will|should|may|might|must)(?:n['’]t)?\b"
+          r"|took\b|cost\b|" + _EFFECT + ")))")
 WAITS = re.compile(
     "(?i)" + _AM + r"a?waiting\b(?! (?:for|on)(?: you\b| from\b|\W*$))"
     "|" + _MUST + _HELP + r"(?:wait(?:ing)?\b|hold(?:ing)?\b(?=.{0,160}?\b(?:until|till)\b))(?! (?:for|on) you\b)"
@@ -89,15 +96,16 @@ THEIRS = re.compile(
     r"|(?<!\bas )(?<!\blike )\byou (?:promised|owe|decide|choose|pick|prefer|want|approve|confirm|say)\b"
     r"|\b(?:hear|know|learn|see|find out) (?:back )?(?:which|what|whether|how|when|where|who|if)\b[^,;:]*?(?<!\bto )(?<!\bwith )"
     r"(?<!\babout )\byou\b"  # a question the principal answers: "to hear which date works for you"
-    r"|\b(?:your (?:move|turn)\b|(?:up|over) to you\b|in your court\b)"  # the turn handed over in so many words
+    r"|\b(?:your (?:move|turn)\b|(?:up|over) to you\b|in your court\b|(?:is|are) yours\b)"  # the turn handed over in so many words
     r"|(?:\b(?:for|on|until|till|once|when|after|as soon as|await(?:ing)?|needs?|is|are|was) |['’]s |(?:[:—–]| -) |^\W*"
     r"|\b(?:until|till|once|when|after|as soon as) (?:i|we)(?:['’]ve| have)? (?:have|get|got|receive[sd]?|see|hear|read|know|learn) "
     r"|\bto (?:have|get|receive|see|hear|read|know|learn) )(?:(?:only|just|both|either|also|still|now) )?"
     r"your (?:next (?:message|prompt)\b|(?:(?:next|final|explicit|written|own|" + _ACT + "|" + _THING + r") )*(?:(?:" + _ACT + ")"
     + _HEAD.format("") + "|(?:" + _THING + ")" + _HEAD.format(" (?:proceed|continue|go ahead|move forward|start|begin)") + "))")
 FRONT = ("until", "till", "once", "when", "after", "as soon as", "your move", "your turn", "up to you", "over to you", "in your court",
-         "is your", "'s your", "’s your")  # how a move of theirs opens when it stands in front of the wait and counts
-OPEN = re.compile(r"(?: (?:for|on))?(?: (?:right now|now|here|today|still|at this point))?\W*$")  # nothing is named after the wait
+         "is your", "'s your", "’s your", "are yours")  # how a move of theirs opens when it stands in front of the wait and counts
+OPEN = re.compile(r"(?i)(?:(?<=awaiting)|(?<=await)) (?:on|in|at|from|with|about|regarding|before|by)\b.*$"  # nothing is named after
+                  r"|(?: (?:for|on))?(?: (?:right now|now|here|today|still|at this point))?\W*$")           # the wait
 BACK = re.compile(r"(?i)(?: (?:for|on))?(?: (?:that|this|it|them|those|both|here|now))?\W*$")      # or only a word that points back
 LEAD = re.compile(r"(?i)(?:(?:and|so|but|now|then|until then|till then|meanwhile),? )?")           # before a wait that opens its clause
 MARKS = re.compile(r"^[ \t]*>.*|[*_#]+|^[ \t]*(?:[-+•]|\d+[.)])[ \t]+", re.M)  # a quoted line; emphasis, heading and list marks
