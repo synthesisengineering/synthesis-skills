@@ -250,3 +250,20 @@ def test_a_quoted_example_under_a_list_entry_a_closed_title_in_bold_and_a_fence_
     assert code != 0 and "Dinner" in refusal                                                 # bold alone closes nothing
     left_open = "### How a choice is written\n\n```markdown\n### Dinner\n**Option A:** Accept\n**Option B:** Decline\n"
     assert list(ritual_state._items(left_open)) == []                                        # read as the plan's choices are read
+
+
+def test_a_comment_is_not_shown_and_underscores_mark_emphasis_too(tmp_path, record):
+    """Found by this project's own probe after the ninth review: a recommendation left as a placeholder inside an
+    HTML comment counted, though Markdown shows none of it; and a line marked with underscores was not read."""
+    hidden = INVITATION + COSTS + "<!-- **Recommendation:** say which you would take and why -->\n"
+    code, _, refusal = record(workspace(tmp_path, hidden))
+    assert code != 0 and "recommendation" in refusal
+    spread = INVITATION + COSTS + "<!--\n**Recommendation:** B, decline\n-->\n"
+    code, _, refusal = record(workspace(tmp_path, spread))
+    assert code != 0 and "recommendation" in refusal
+    template = "<!--\n### An example choice\n**Option A:** Accept\n**Option B:** Decline\n-->\n"
+    code, out, refusal = record(workspace(tmp_path, template))                                # options inside a comment are no choice
+    assert code == 0 and "choices: 0 open" in out, refusal
+    underscored = INVITATION + "__Consequences:__ Three hours and $30.\n_Recommendation:_ B, decline: the trip outweighs it.\n"
+    code, out, refusal = record(workspace(tmp_path, underscored))
+    assert code == 0 and "choices: 1 open" in out, refusal
