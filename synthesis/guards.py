@@ -2410,13 +2410,16 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
         if name not in loose_names and id(own) in fixed:
             callers.setdefault(id(own), (own, [], name in classes))[1].extend([call] if call is not None else [])
 
-    def hands(own, calls_of, init: bool = False) -> dict:  # what each caller hands each of a function's own names; a default stands where a caller gives none
+    def hands(own, calls_of, init: bool = False, kept={}) -> dict:  # what each caller hands each of a function's own names; a default stands where a caller gives none
+        if (id(own), len(calls_of), id(calls_of[0]) if calls_of else 0) in kept:
+            return kept[id(own), len(calls_of), id(calls_of[0]) if calls_of else 0]  # asked again for each settling
         takers = [a.arg for a in own.posonlyargs + own.args]
         takers = takers[takers[:1] in (["self"], ["cls"]) and (init or all(isinstance(c.func, ast.Attribute) for c in calls_of)):]  # a method's own first
         given_by = dict(zip(takers[len(takers) - len(own.defaults):], own.defaults))
         given_by.update({a.arg: d for a, d in zip(own.kwonlyargs, own.kw_defaults) if d is not None})
-        return {taker: [c.args[at] if at < min(len(c.args), len(takers)) else next((k.value for k in c.keywords if k.arg == taker.split("@")[0]), given_by.get(taker))
-                        for c in calls_of] for at, taker in enumerate(takers + [a.arg for a in own.kwonlyargs])}
+        return kept.setdefault((id(own), len(calls_of), id(calls_of[0]) if calls_of else 0), {
+            taker: [c.args[at] if at < min(len(c.args), len(takers)) else next((k.value for k in c.keywords if k.arg == taker.split("@")[0]), given_by.get(taker))
+                    for c in calls_of] for at, taker in enumerate(takers + [a.arg for a in own.kwonlyargs])})
     # What a command the program starts is given besides its words: the variables the program has put in
     # os.environ or in the mapping it hands over as `env`, however it keeps that mapping (the seventh review: a
     # mapping kept under a name, a copy of the environment, `os.environ.update`), and a script written down a pipe.
@@ -2579,14 +2582,16 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
             return f"()@{id(own)}"  # what the program's own function hands back
         return f"[{entry[0]}]{entry[1]}" if entry else None
 
+    renamed = [(x, y) for t, v in pairs if isinstance(t, ast.Name) and isinstance(v, ast.Name) for x, y in ((t.id, v.id), (v.id, t.id))]
+    also, reads, selfish, walked = {}, list({entry_of(n) for n in nodes if isinstance(n, (ast.Subscript, ast.Call))} - {None}), {}, {}
+
     def table(h, k, default) -> list:  # what a table of the program's own holds under a key, and the default a read of it names
         if h in rows:  # a list or a tuple it spells out and never changes: the one place, or any
             return rows[h][int(k[1:]):int(k[1:]) + 1 or None] if k[:1] == "#" and -len(rows[h]) <= int(k[1:]) < len(rows[h]) else rows[h] * (k == "*")
-        same = {h}
-        for _ in range(3):  # the table under another name: an assignment either way, or a function's own name handed it
-            same |= {x for t, v in pairs for x, y in ((getattr(t, "id", None), getattr(v, "id", None)), (getattr(v, "id", None), getattr(t, "id", None)))
-                     if x and y in same and isinstance(v, ast.Name)} | {taker for own, calls_of, init in callers.values()
-                                                                       for taker, sent in hands(own, calls_of, init).items() if any(getattr(a, "id", None) in same for a in sent)}
+        same = also.setdefault(h, {h})
+        for _ in range(3 * (len(same) == 1)):  # the table under another name: an assignment either way, or a function's own name handed it
+            same |= {x for x, y in renamed if y in same} | {taker for own, calls_of, init in callers.values()
+                                                            for taker, sent in hands(own, calls_of, init).items() if any(getattr(a, "id", None) in same for a in sent)}
         probe = ast.Name(id=h)
         found = handed(probe) + [x for name in same - {h} for x in mapped.get(name, ())]
         if all(isinstance(v, ast.Dict) or getattr(getattr(v, "func", None), "id", "") == "dict" for v in stores.get(h) or [None]):
@@ -2661,7 +2666,7 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
             live[name + "~"] = handed_in.get(name, []) + rest  # read before its body's first plain assignment
             live.update((f"{name}~{id(v)}", [v] + rest) for v in plain)  # read after one of them
         live.update((f"()@{key}", back or [ast.Constant(value=None)]) for key, back in rets.items())
-        for found in {entry_of(n) for n in nodes if isinstance(n, (ast.Subscript, ast.Call))} - {None}:
+        for found in reads:
             live.setdefault(f"[{found[0]}]{found[1]}", []).extend(table(*found))
         return live
 
@@ -2688,10 +2693,12 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
         return list(dict.fromkeys(found)) or ["\2"]
 
     def spellings(node) -> list:  # each path a node may spell, one for every value its names may hold; as `spelled` reads it when they are too many
-        seen = list(outer(node))
-        sides = [c for c in seen if id(c) not in picked and (isinstance(c, ast.IfExp) or (isinstance(c, ast.BoolOp) and isinstance(c.op, ast.Or))
-                                                           or (key_of(c) or "")[:3] == "()@")]
-        free = list(dict.fromkeys(k for k in map(key_of, seen) if k is not None and k not in picked and k[:3] != "()@" and len(ranges.get(k, ())) > 1))
+        if walked.get(id(node), (None,))[0] is not node:  # walked once: a value is read again at each settling
+            seen = list(outer(node))
+            walked[id(node)] = (node, [c for c in seen if isinstance(c, ast.IfExp) or (isinstance(c, ast.BoolOp) and isinstance(c.op, ast.Or))
+                                       or (key_of(c) or "")[:3] == "()@"], list(dict.fromkeys(k for k in map(key_of, seen) if k is not None and k[:3] != "()@")))
+        sides = [c for c in walked[id(node)][1] if id(c) not in picked]
+        free = [k for k in walked[id(node)][2] if k not in picked and len(ranges.get(k, ())) > 1]
         options = [ranges[k] for k in free] + [answers(c) if isinstance(c, ast.Call) else [
             x for alt in ([c.body, c.orelse] if isinstance(c, ast.IfExp) else c.values) for x in spellings(alt) if x != "\2"] or ["\2"] for c in sides]
         if not options or math.prod(map(len, options)) > 32:
@@ -2705,7 +2712,8 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
         return list(dict.fromkeys(x for x in found if "\2" not in x or x == "\2"))
 
     def values_of(key, values) -> list:  # every spelling the values given under one name may have
-        own_ = [v for v in values if isinstance(v, ast.AST) and key in map(key_of, ast.walk(v))]  # built from the name's own: `out += x`, `dst = dst or x`
+        own_ = [v for v in values if isinstance(v, ast.AST) and (
+            selfish[key, id(v)] if (key, id(v)) in selfish else selfish.setdefault((key, id(v)), key in map(key_of, ast.walk(v))))]  # built from the name's own: `out += x`
         base = [x for v in values if not any(v is o for o in own_) for x in (
             ["\0"] if v is None else [v] if isinstance(v, str) else ["\2"] if isinstance(v, ast.Constant) and v.value is None else spellings(v))]
         for _ in own_[:3]:  # from each value it may have had, once for each such statement
