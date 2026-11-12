@@ -2429,3 +2429,109 @@ def test_the_tenth_reviews_programs(above, program, held, inside, tmp_path):
     command = "python3 - <<'EOF'\n" + program.format(**above) + "\nEOF"
     reason = guards.check("Bash", {"command": command}, {}, cwd=str(above["work"] if inside else here))
     assert (REFUSED in (reason or "")) == (inside if held is None else held), program
+
+
+# --- this project's own probe after the tenth round (2026-11-12) ---------------------------------------------
+# Each round had found one or two more everyday programs refused from inside a transcript folder, and each had the
+# same cause: a name was read only when it was given one value once, in one place. A name given a second value,
+# one of two values, a value in each of two functions, or handed two things by two callers could not be read, and
+# a program that cannot be read is held to the folder it stands in. The probe wrote a hundred such programs; these
+# are the kinds it found, each with the same program aimed at a protected folder. It also found four ways through
+# from outside, where a protected path was carried by something the reader did not follow: a class's fields, an
+# argument parser's default, the environment the program sets itself, and a property.
+
+SEVERAL = [
+    ("out = '/tmp/pad/a.json'\nopen(out, 'w').write('1')\nout = '/tmp/pad/b.json'\nopen(out, 'w').write('2')", False),      # given a second value
+    ("out = '/tmp/pad/a.json'\nopen(out, 'w').write('1')\nout = '{work}/s.jsonl'\nopen(out, 'w').write('2')", True),
+    ("def a():\n    out = '/tmp/pad/a.txt'\n    open(out, 'w').write('x')\ndef b():\n    out = '/tmp/pad/b.txt'\n    open(out, 'w').write('x')\na()\nb()", False),
+    ("import sys\nif len(sys.argv) > 5:\n    out = '/tmp/pad/a.txt'\nelse:\n    out = '/tmp/pad/b.txt'\nopen(out, 'w').write('x')", False),
+    ("import sys\nif len(sys.argv) > 5:\n    out = '/tmp/pad/a.txt'\nelse:\n    out = '{state}/x.json'\nopen(out, 'w').write('x')", True),
+    ("import sys\nout = '/tmp/pad/a.txt' if len(sys.argv) > 5 else '/tmp/pad/b.txt'\nopen(out, 'w').write('x')", False),      # one of two values
+    ("import sys\nout = '/tmp/pad/a.txt' if len(sys.argv) > 5 else '{work}/s.jsonl'\nopen(out, 'w').write('x')", True),
+    ("out = '/tmp/pad'\nout += '/a.txt'\nopen(out, 'w').write('x')", False),
+    ("out = '{work}'\nout += '/s.jsonl'\nopen(out, 'w').write('x')", True),
+    ("base = '/tmp/pad'\nopen(base + '/a.txt', 'w').write('x')\nbase = '/tmp/pad/sub'\nopen(base + '/b.txt', 'w').write('x')", False),
+    ("def dump(path, rows):\n    open(path, 'w').write(str(rows))\ndump('/tmp/pad/a.json', 1)\ndump('/tmp/pad/b.json', 2)", False),   # handed two things
+    ("def dump(path, rows):\n    open(path, 'w').write(str(rows))\ndump('/tmp/pad/a.json', 1)\ndump('{work}/s.jsonl', 2)", True),
+    ("import os\ndef dump(folder, rows):\n    open(os.path.join(folder, 'out.json'), 'w').write(str(rows))\ndump('/tmp/pad/a', 1)\ndump('/tmp/pad/b', 2)", False),
+    ("import os\ndef dump(folder, rows):\n    open(os.path.join(folder, 'out.json'), 'w').write(str(rows))\ndump('/tmp/pad/a', 1)\ndump('{state}', 2)", True),
+    ("def save(text, dst=None):\n    dst = dst or '/tmp/pad/x.txt'\n    open(dst, 'w').write(text)\nsave('x')", False),
+    ("def save(text, dst=None):\n    if dst is None:\n        dst = '/tmp/pad/x.txt'\n    open(dst, 'w').write(text)\nsave('x')", False),
+    ("def save(text, dst=None):\n    dst = dst or '/tmp/pad/x.txt'\n    open(dst, 'w').write(text)\nsave('x', '{work}/s.jsonl')", True),
+    ("out = '/tmp/pad/a.txt'\nout = input()\nopen(out, 'w').write('x')", None),                                             # one value it cannot read
+    ("out = 'a.txt'\nout = '/tmp/pad/b.txt'\nopen(out, 'w').write('x')", None),                                             # one that lands where it stands
+    ("outs = {{'a': '/tmp/pad/a.txt', 'b': '/tmp/pad/b.txt'}}\nfor k, v in outs.items():\n    open(v, 'w').write(k)", False),
+    ("outs = {{'a': '/tmp/pad/a.txt', 'b': '{work}/s.jsonl'}}\nfor v in outs.values():\n    open(v, 'w').write('x')", True),
+    ("import shutil\nfor src, dst in zip(['{work}/s.jsonl'], ['/tmp/pad/a.txt']):\n    shutil.copy(src, dst)", False),
+    ("import shutil\nfor src, dst in zip(['/tmp/pad/a.txt'], ['{work}/s.jsonl']):\n    shutil.copy(src, dst)", True),
+    ("with open('/tmp/pad/a.txt', 'w') as f:\n    f.write('x')\nwith open('/tmp/pad/b.txt', 'w') as f:\n    f.write('y')", False),
+]
+WALKED = [
+    ("import glob, os\nfor f in glob.glob('/tmp/pad/*.tmp'):\n    os.remove(f)", False),                                      # what a pattern finds lies under its folder
+    ("import glob, os\nfor f in glob.glob('{work}/*.jsonl'):\n    os.remove(f)", True),
+    ("import glob, os\nfor f in glob.glob('*.tmp'):\n    os.remove(f)", None),
+    ("import glob, os\nfiles = sorted(glob.glob('/tmp/pad/**/*.tmp', recursive=True))\nfor f in files:\n    os.remove(f)", False),
+    ("import glob, os\n[os.remove(f) for f in glob.glob('/tmp/pad/*.tmp')]", False),
+    ("from pathlib import Path\nfor f in Path('/tmp/pad').glob('*.bak'):\n    f.unlink()", False),
+    ("from pathlib import Path\nfor f in sorted(Path('/tmp/pad').rglob('*.bak')):\n    f.unlink()", False),
+    ("from pathlib import Path\nfor f in Path('/tmp/pad').iterdir():\n    if f.suffix == '.tmp':\n        f.unlink()", False),
+    ("from pathlib import Path\nfor f in Path('{work}').iterdir():\n    f.unlink()", True),
+    ("import os\nfor e in os.scandir('/tmp/pad'):\n    if e.name.endswith('.tmp'):\n        os.remove(e.path)", False),
+    ("import os\nfor e in os.scandir('{work}'):\n    os.remove(e.path)", True),
+    ("import os\nfor root, dirs, files in os.walk('/tmp/pad'):\n    for n in files:\n        os.remove(os.path.join(root, n))", False),
+    ("import os\nfor root, dirs, files in os.walk('{work}'):\n    for n in files:\n        os.remove(os.path.join(root, n))", True),
+    ("import os\nfor n in os.listdir('/tmp/pad'):\n    os.remove(os.path.join('/tmp/pad', n))", False),
+    ("import os\nfor n in os.listdir('/tmp/pad'):\n    os.remove(n)", None),                                                  # a bare name: where it stands
+    ("import glob, os\nfor f in glob.glob('/tmp/pad/*.tmp'):\n    os.remove(f)\nfor f in glob.glob('/tmp/pad/*.bak'):\n    os.remove(f)", False),
+]
+PLACES = [
+    ("import os\nfd = os.open('/tmp/pad/x.txt', os.O_WRONLY | os.O_CREAT, 0o644)\nos.write(fd, b'x')\nos.close(fd)", False),   # the flags are no file
+    ("import os\nfd = os.open('{work}/s.jsonl', os.O_WRONLY | os.O_CREAT, 0o644)\nos.write(fd, b'x')\nos.close(fd)", True),
+    ("import os\nout = os.environ.get('SYNTHESIS_NO_SUCH_VARIABLE', '/tmp/pad')\nopen(os.path.join(out, 'x.txt'), 'w').write('x')", False),
+    ("import os\nout = os.getenv('SYNTHESIS_NO_SUCH_VARIABLE', '/tmp/pad')\nopen(os.path.join(out, 'x.txt'), 'w').write('x')", False),
+    ("import os\nout = os.environ.get('SYNTHESIS_NO_SUCH_VARIABLE', '{state}')\nopen(os.path.join(out, 'x.json'), 'w').write('x')", True),
+    ("import os\nout = os.environ.get('SYNTHESIS_NO_SUCH_VARIABLE') or '/tmp/pad/b.txt'\nopen(out, 'w').write('x')", False),
+    ("import os\nos.environ['OUT'] = '{work}/s.jsonl'\nopen(os.environ['OUT'], 'w').write('x')", True),                     # the environment the program sets itself
+    ("import os\nos.environ.update(OUT='{state}/x.json')\nopen(os.getenv('OUT'), 'w').write('x')", True),
+    ("import os\nos.environ['OUT'] = '/tmp/pad/x.txt'\nopen(os.environ['OUT'], 'w').write('x')", False),
+    ("from pathlib import Path\n(Path.home() / 'Downloads' / 'summary.json').write_text('x')", False),
+]
+CARRIED = [
+    ("class Report:\n    def __init__(self, dst):\n        self.dst = dst\n    def save(self):\n        open(self.dst, 'w').write('x')\nReport('/tmp/pad/report.txt').save()", False),
+    ("class Report:\n    def __init__(self, dst):\n        self.dst = dst\n    def save(self):\n        open(self.dst, 'w').write('x')\nReport('{work}/s.jsonl').save()", True),
+    ("from pathlib import Path\nclass Job:\n    def __init__(self, src, out):\n        self.src = src\n        self.out = Path(out)\n    def run(self):\n"
+     "        self.out.write_text(open(self.src).read()[:10])\nJob('{work}/s.jsonl', '/tmp/pad/o.txt').run()", False),
+    ("from pathlib import Path\nclass Job:\n    def __init__(self, src, out):\n        self.src = src\n        self.out = Path(out)\n    def run(self):\n"
+     "        self.out.write_text(open(self.src).read()[:10])\nJob('/tmp/pad/o.txt', '{work}/s.jsonl').run()", True),
+    ("class Job:\n    OUT = '/tmp/pad/o.txt'\n    def run(self):\n        open(self.OUT, 'w').write('x')\nJob().run()", False),          # a class's own constant
+    ("class Job:\n    OUT = '{state}/o.json'\n    def run(self):\n        open(self.OUT, 'w').write('x')\nJob().run()", True),
+    ("from dataclasses import dataclass\n@dataclass\nclass Job:\n    out: str\n    def run(self):\n        open(self.out, 'w').write('x')\nJob('/tmp/pad/o.txt').run()", False),
+    ("from dataclasses import dataclass\n@dataclass\nclass Job:\n    out: str\n    def run(self):\n        open(self.out, 'w').write('x')\nJob('{work}/s.jsonl').run()", True),
+    ("from dataclasses import dataclass\n@dataclass\nclass Job:\n    src: str\n    out: str = '/tmp/pad/o.txt'\n    def run(self):\n        open(self.out, 'w').write('x')\n"
+     "Job('{work}/s.jsonl').run()", False),
+    ("class Job:\n    @property\n    def out(self):\n        return '{work}/s.jsonl'\n    def run(self):\n        open(self.out, 'w').write('x')\nJob().run()", True),
+    ("class Job:\n    def run(self):\n        open(self.out, 'w').write('x')\nj = Job()\nj.out = '/tmp/pad/o.txt'\nj.run()", False),
+    ("class Job:\n    def run(self):\n        open(self.out, 'w').write('x')\nj = Job()\nj.out = '{work}/s.jsonl'\nj.run()", True),
+    ("import json\nCFG = {{'src': '{work}/s.jsonl', 'out': '/tmp/pad/summary.json'}}\njson.dump([1], open(CFG['out'], 'w'))", False),      # a table of its own settings
+    ("import json\nCFG = {{'src': '/tmp/pad/in.json', 'out': '{state}/summary.json'}}\njson.dump([1], open(CFG['out'], 'w'))", True),
+    ("CFG = dict(out='/tmp/pad/summary.json')\nopen(CFG.get('out'), 'w').write('x')", False),
+    ("CFG = dict(out='/tmp/pad/summary.json')\nCFG['out'] = '{work}/s.jsonl'\nopen(CFG['out'], 'w').write('x')", True),
+    ("import argparse\np = argparse.ArgumentParser()\np.add_argument('--out', default='/tmp/pad/o.json')\nargs = p.parse_args()\nopen(args.out, 'w').write('x')", False),
+    ("import argparse\np = argparse.ArgumentParser()\np.add_argument('--out', default='{state}/o.json')\nargs = p.parse_args()\nopen(args.out, 'w').write('x')", True),
+    ("import argparse\np = argparse.ArgumentParser()\np.set_defaults(out='{work}/s.jsonl')\nargs = p.parse_args()\nopen(args.out, 'w').write('x')", True),
+    ("import types\ncfg = types.SimpleNamespace(out='/tmp/pad/o.json')\nopen(cfg.out, 'w').write('x')", False),
+    ("import types\ncfg = types.SimpleNamespace(out='{work}/s.jsonl')\nopen(cfg.out, 'w').write('x')", True),
+    ("def save(dst):\n    open(dst, 'w').write('x')\nlist(map(save, ['/tmp/pad/a.txt', '/tmp/pad/b.txt']))", False),
+    ("def save(dst):\n    open(dst, 'w').write('x')\nlist(map(save, ['/tmp/pad/a.txt', '{work}/s.jsonl']))", True),
+]
+
+
+@pytest.mark.parametrize("program, held", SEVERAL + WALKED + PLACES + CARRIED)
+@pytest.mark.parametrize("inside", [False, True])
+def test_a_program_is_read_through_every_value_a_name_may_hold(above, program, held, inside, tmp_path, monkeypatch):
+    monkeypatch.delenv("SYNTHESIS_NO_SUCH_VARIABLE", raising=False)
+    here = tmp_path / "elsewhere"
+    here.mkdir()
+    command = "python3 - <<'EOF'\n" + program.format(**above) + "\nEOF"
+    reason = guards.check("Bash", {"command": command}, {}, cwd=str(above["work"] if inside else here))
+    assert (REFUSED in (reason or "")) == (inside if held is None else held), program
