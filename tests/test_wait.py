@@ -413,25 +413,30 @@ def test_a_command_is_tried_every_interval_and_not_once_more_on_the_edge_of_the_
 # --- a command that cannot be started is refused, not tried again ---------------------------------------------------
 
 @pytest.mark.parametrize("named, why", [
-    ("a name that is not on PATH", "not found"),
-    ("a path that does not exist", "not found"),
-    ("a file that is not executable", "not executable"),
-    ("a directory", "not executable"),
+    ("a name that is not on PATH", "was not found"),
+    ("a path that does not exist", "was not found"),
+    ("a file that is not executable", "is not executable"),
+    ("a directory", "is not executable"),
+    ("a whole command given as one word", "was not found"),
 ])
 def test_a_command_that_cannot_be_started_is_refused_at_once_in_one_line(two, tmp_path, named, why):
     """2026-11-12, a third review: `wait run --for 1m -- no-such-command` ended in a Python traceback. No try of such a
-    command starts, so the wait refuses it the way it refuses a bound it cannot read: one line, exit 2, at once."""
+    command starts, so the wait refuses it the way it refuses a bound it cannot read: one line, exit 2, at once. The
+    line names the program as it was given, which the traceback did: a command quoted whole after `--` is one word,
+    and reads as a program that was not found only when that word is shown."""
     from synthesis import paths
     script, folder = tmp_path / "check.sh", tmp_path / "checks"
     script.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
     script.chmod(0o644)
     folder.mkdir()
-    command = {"a name that is not on PATH": "synthesis-no-such-command", "a path that does not exist": str(tmp_path / "gone" / "check"),
-               "a file that is not executable": str(script), "a directory": str(folder)}[named]
+    program = {"a name that is not on PATH": "synthesis-no-such-command", "a path that does not exist": str(tmp_path / "gone" / "check"),
+               "a file that is not executable": str(script), "a directory": str(folder),
+               "a whole command given as one word": "synthesis-no-such-command --branch main"}[named]
+    words = [program] if " " in program else [program, "--branch", "main"]
     began = time.time()
-    done = cli("wait", "run", "--for", "1m", "--", command, "--branch", "main")
+    done = cli("wait", "run", "--for", "1m", "--", *words)
     assert done.returncode == 2 and time.time() - began < 20                          # at once: its bound is a minute on
-    assert done.stderr == f"`{command} --branch main` could not be started: {why}\n" and done.stdout == ""
+    assert done.stderr == f"`{' '.join(words)}` could not be started: its program {program!r} {why}\n" and done.stdout == ""
     assert not list((paths.board() / "waits").rglob("*.json"))                        # and it left no record of a wait behind
 
 
@@ -460,13 +465,13 @@ def test_a_command_that_cannot_be_started_gets_no_second_try_and_one_that_starts
         said = capsys.readouterr()
         assert not list((paths.board() / "waits").rglob("*.json")) and signal.getsignal(signal.SIGTERM) is asked
         return code, said.out, said.err, len(tried), round(clock.now - began, 2)      # what it returned and printed, its tries, the seconds it took
-    refused = "`ci-check --branch main` could not be started: {}\n"
-    for error, why in ((FileNotFoundError(errno.ENOENT, "No such file or directory", "ci-check"), "not found"),
-                       (PermissionError(errno.EACCES, "Permission denied", "ci-check"), "not executable"),
-                       (OSError(errno.ENOEXEC, "Exec format error", "ci-check"), "Exec format error")):   # a file that is no program
+    refused = "`ci-check --branch main` could not be started: its program 'ci-check' {}\n"
+    for error, why in ((FileNotFoundError(errno.ENOENT, "No such file or directory", "ci-check"), "was not found"),
+                       (PermissionError(errno.EACCES, "Permission denied", "ci-check"), "is not executable"),
+                       (OSError(errno.ENOEXEC, "Exec format error", "ci-check"), "cannot be run (Exec format error)")):   # a file that is no program
         assert run(error) == (2, "", refused.format(why), 1, 0)
     gone = FileNotFoundError(errno.ENOENT, "No such file or directory", "ci-check")
-    assert run(1, gone) == (2, "", refused.format("not found"), 2, 30.02)             # it started and failed, then it was gone
+    assert run(1, gone) == (2, "", refused.format("was not found"), 2, 30.02)         # it started and failed, then it was gone
     assert run(127, 126) == (3, "", "nothing arrived in 45 s: still waiting for `ci-check --branch main` to succeed\n", 2, 45.02)
 
 
