@@ -57,6 +57,9 @@ listed until it is classified: tag it, or write `**Critical:** no (<why this one
 - **Further out than seven days,** one line under the plan's status line is enough:
   `Critical ahead: 2, the next closes 2026-12-15`. The sweep keeps tracking the item from the
   plan that first carried it; it does not need re-listing every day.
+- **One section stands above it:** `## Down: needs your attention`, while something another
+  person relies on is down ([plan-format.md](plan-format.md)). What is broken for other people
+  now comes before a deadline that is days away.
 
 ## The sweep's critical view
 

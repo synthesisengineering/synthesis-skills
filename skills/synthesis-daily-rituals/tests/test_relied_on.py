@@ -241,6 +241,7 @@ def test_the_plan_opens_with_what_is_down():
     assert "## Down: needs your attention" in plan
     assert plan.index("## Down: needs your attention") < plan.index("## Critical deadlines: needs your attention")
     assert "`## Down: needs your attention`" in reference("day-start.md").split("\n## 6. ")[1].split("\n## ")[0]
+    assert "`## Down: needs your attention`" in reference("critical-deadlines.md").split("\n## Where it lives in the plan\n")[1].split("\n## ")[0]
 
 
 def test_the_scripts_page_shows_the_command_and_the_key_and_the_example_config_declares_one():
