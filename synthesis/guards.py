@@ -2143,6 +2143,7 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
     `where` is the folder it runs in, and inside a protected folder, or after a chdir into one, every write must
     be led by a plain folder elsewhere."""
     import ast
+    import copy
     try:
         tree = ast.parse(source) if source.strip() else None
     except (SyntaxError, ValueError, RecursionError):
@@ -2270,6 +2271,8 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
                 env_given[id(n)] = env[key]  # what the command gave it; the program may give it another value before it reads it
     keyed |= {id(x) for n in nodes if isinstance(n, ast.Call) for x in n.args[:getattr(n.func, "id", "") == "dict"] + [k.value for k in n.keywords if k.arg == "env"] + [
         getattr(n.func, "value", None)] * (getattr(n.func, "attr", "") == "copy")} | {id(v) for n in nodes if isinstance(n, ast.Dict) for k, v in zip(n.keys, n.values) if k is None}
+    keyed |= {id(n.func.value) for n in nodes if isinstance(n, ast.Call) and getattr(n.func, "attr", "") == "update"} | {id(v) for t, v in pairs if isinstance(t, ast.Name) and getattr(v, "attr", getattr(v, "id", "")) == "environ"} | {
+        id(c) for n in nodes if isinstance(n, ast.Compare) and any(isinstance(o, (ast.In, ast.NotIn)) for o in n.ops) for c in n.comparators}  # given a value, kept under a name, asked for a name: each read as the table it is
     wild = any(getattr(n, "attr", getattr(n, "id", "")) in ("environ", "environb", "getenv", "putenv") and id(n) not in keyed for n in nodes)  # copied whole for a child, it is read through the copy
     loose = loose or (wild and (any(m in v for v in env.values() for m in names) or any(
         v[:1] == "/" and paths.inside(v, r) for v in env.values() for r in roots)))
@@ -2384,18 +2387,20 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
             return "".join(spelled(v.value if isinstance(v, ast.FormattedValue) else v) for v in node.values)
         if isinstance(node, ast.BinOp) and isinstance(node.op, (ast.Add, ast.Div)):
             return spelled(node.left) + "/" * isinstance(node.op, ast.Div) + spelled(node.right)
-        if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Mod) and said(node.left) is not None:  # "%s/line-%d.txt" % (folder, i): each filled in its turn
+        shape = node.left if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Mod) else node.func.value if label == "format" and isinstance(node.func, ast.Attribute) else None
+        shape = None if shape is None else said(shape) if said(shape) is not None else spelled(shape)  # the template itself, or the one a name holds
+        if isinstance(node, ast.BinOp) and shape is not None and not re.search("[\0\1\2]", shape):  # "%s/line-%d.txt" % (folder, i): each filled in its turn
             filled = iter(node.right.elts if isinstance(node.right, ast.Tuple) else [node.right])
             return re.sub(r"%(?:\(\w*\))?[-#0 +]*\d*(?:\.\d+)?[a-zA-Z%]", lambda m: "%" if m[0] == "%%" else (
-                lambda a: spelled(a) if a is not None and m[0] == "%s" else "\0")(next(filled, None)), said(node.left))
-        if label == "format" and isinstance(node.func, ast.Attribute) and said(node.func.value) is not None:  # "{}/line-{:03d}.txt".format(folder, i)
+                lambda a: spelled(a) if a is not None and m[0] == "%s" else "\0")(next(filled, None)), shape)
+        if label == "format" and shape is not None and not re.search("[\0\1\2]", shape):  # "{}/line-{:03d}.txt".format(folder, i)
             filled, worded = iter(node.args), {k.arg: k.value for k in node.keywords}
 
             def fill(m):
                 name = re.split(r"[!:.\[]", m[1], 1)[0]
                 a = next(filled, None) if not name else node.args[int(name)] if name.isdigit() and int(name) < len(node.args) else worded.get(name)
                 return spelled(a) if a is not None and not isinstance(a, ast.Starred) else "\0"
-            return re.sub(r"\{([^{}]*)\}", fill, said(node.func.value).replace("{{", "\3").replace("}}", "\4")).replace("\3", "{").replace("\4", "}")
+            return re.sub(r"\{([^{}]*)\}", fill, shape.replace("{{", "\3").replace("}}", "\4")).replace("\3", "{").replace("\4", "}")
         if label == "join" and isinstance(node.func, ast.Attribute) and len(node.args) == 1 and isinstance(node.args[0], (ast.List, ast.Tuple)) and (
                 said(node.func.value) is not None or getattr(node.func.value, "attr", "") == "sep"):  # "/".join([folder, name])
             return (said(node.func.value) if said(node.func.value) is not None else "/").join(spelled(e) for e in node.args[0].elts)
@@ -2593,7 +2598,7 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
     tainted.update(total if hidden and any(m in (said(n) or "") for n in nodes for m in names) else ())  # any name may be given what the program names
     shapes = {t.id: (said(v.args[1]) or "").replace(",", " ").split() or [said(e) or "" for e in getattr(v.args[1], "elts", [])] for t, v in pairs
               if isinstance(t, ast.Name) and isinstance(v, ast.Call) and getattr(v.func, "attr", getattr(v.func, "id", "")) == "namedtuple" and len(v.args) > 1}
-    fields_of = {**{c.name: [b.target.id for b in c.body if isinstance(b, ast.AnnAssign) and isinstance(b.target, ast.Name)]
+    fields_of = {**{c.name: [b.target.id for k in reversed(lineage(c.name)) for b in classes[k].body if isinstance(b, ast.AnnAssign) and isinstance(b.target, ast.Name)]
                     for c in classes.values() if inits[c.name] is None}, **shapes}  # a class with fields and no __init__ of its own, a named tuple
     parsed = {}  # an argument parser's defaults, under the name it gives each argument; a word of the command line may replace one
     for n in calls:
@@ -2693,7 +2698,7 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
     # that cannot be followed may be in any of them (the eleventh review, and this project's probe after it: one set
     # of values stood for a field or a key whatever carried it, so two objects of a class, a table whose entry is
     # replaced, a key kept in a name and a class that inherits its __init__ were all read wrongly).
-    given_m, loose_m, removed, born, slots, memo = {}, {}, set(), {}, {}, {}  # what each thing is given, by its maker's id, then kind and key; memo: readings kept between settlings
+    given_m, loose_m, removed, born, slots, memo, copies = {}, {}, set(), {}, {}, {}, {}  # what each thing is given, by its maker's id, then kind and key; memo: readings kept between settlings
 
     def gifts(store, kind, key) -> list:  # what one such store holds for a member: its own key's, any key's, and all of them when the key cannot be read
         by = store.get(kind, {})
@@ -2718,6 +2723,19 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
         if f.name not in ("__init__", "__post_init__") and id(f.args) in callers:
             every = [x for c in callers[id(f.args)][1] for x in resolve(c.func.value, seen + (id(f),))]
         return [x for x in every if x is not None] + [c for c in calls if builds(c) and asked(c)[0] in kin[name]] * (None in every or not every)
+
+    def inlined(r, call, sent: dict):  # what a function hands back, written with what this call hands it, so each call's object is its own
+        def written(n):
+            if isinstance(n, ast.Name) and n.id in sent and isinstance(n.ctx, ast.Load):
+                return sent[n.id]  # a name the function is handed and never gives another value
+            if not isinstance(n, ast.AST):
+                return n
+            new = copy.copy(n)
+            for field, value in ast.iter_fields(n):
+                setattr(new, field, [written(v) for v in value] if isinstance(value, list) else written(value))
+            inside.update({id(new): inside[id(n)]} if id(n) in inside else {})
+            return new
+        return r if r is None or not sent else copies.setdefault((id(r), id(call)), written(r))
 
     cuts = [0, 0]  # how often a reading was cut short (a thing reached through itself, too deep, too much), and the steps of the reading in hand
 
@@ -2754,9 +2772,12 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
         name, own = asked(node) if isinstance(node, ast.Call) else (None, None)
         if own is not None and name not in classes and id(own) in rets:  # what the program's own function hands back
             was, this[id(own)] = this.get(id(own)), resolve(node.func.value, seen) if isinstance(node.func, ast.Attribute) else None
-            found = [x for r in rets[id(own)] for x in resolve(r, seen + (id(own),))] if id(own) not in seen else []
+            sent = {t: a[0] for t, a in hands(own, [node], False).items() if a[0] is not None and total.get(t) == 1} if any(node is c for c in plainly) else {}
+            found = [x for r in rets[id(own)] for x in resolve(inlined(r, node, sent), seen + (id(own),))] if id(own) not in seen else []
             this[id(own)], cuts[0] = was, cuts[0] + (id(own) in seen)
             return found
+        if isinstance(node, ast.BinOp) and isinstance(node.op, ast.BitOr):
+            return resolve(node.left, seen) + resolve(node.right, seen)  # a | b holds what either holds
         if isinstance(node, ast.Call) and label in ("copy", "deepcopy", "list", "tuple", "sorted", "reversed") and len(node.args) + isinstance(node.func, ast.Attribute) >= 1:
             return resolve(node.args[0] if node.args else node.func.value, seen)  # a copy holds what the thing it copies holds
         cuts[0] += id(node) in seen
@@ -2785,7 +2806,8 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
                 getattr(t, "id", None) == a for t in getattr(b, "targets", [getattr(b, "target", None)]))
             made = getattr(getattr(b, "value", None), "func", None)
             if mine_ and getattr(made, "attr", getattr(made, "id", "")) == "field":  # dataclasses.field(default=...)
-                found += [(k.value, ()) for k in b.value.keywords if k.arg == "default"] or [(None, ())]
+                found += [(k.value.body if k.arg == "default_factory" else k.value, ()) for k in b.value.keywords if k.arg == "default" or (
+                    k.arg == "default_factory" and isinstance(k.value, ast.Lambda))] or [(None, ())]
             elif mine_:
                 found.append((b.value, ()))
             elif getattr(b, "name", None) == a and any(getattr(d, "id", getattr(d, "attr", "")) in ("property", "cached_property") for d in b.decorator_list):
@@ -2820,8 +2842,12 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
         elif label in shapes and kind == "a" and key in shapes[label]:
             made = handed_field(c, label, key)
         elif isinstance(c, ast.Call) and label in ("SimpleNamespace", "Namespace", "dict"):
-            made = [(v, ()) for k, v in kw.items() if key is None or k in (key, None)] + [
-                x for a in c.args for o in resolve(a, seen) or [None] for x in part(o, sel, None, seen)]
+            made = [(v, ()) for k, v in kw.items() if k is not None and (key is None or k == key)]
+            for o in [o for a in c.args + [k.value for k in c.keywords if k.arg is None] for o in resolve(a, seen) or [None]]:
+                rows_ = [v for v, _ in part(o, ("k", None), None, seen)] if isinstance(o, (ast.List, ast.Tuple)) else [None]  # the rows it was made with and given since
+                pairs_ = all(isinstance(r, (ast.Tuple, ast.List)) and len(r.elts) == 2 for r in rows_)
+                made += ([(r.elts[1], ()) for r in rows_ if key is None or key_at(r.elts[0]) in (key, None)] if pairs_  # dict([("k", v)]): each row's second, by its first
+                         else [(None, ())] if isinstance(o, LISTS) else part(o, sel, None, seen))  # what another table holds; rows it cannot read may hold anything
         elif isinstance(c, ast.Call) and label in ("replace", "_replace"):
             made = [(kw[key], ())] if key in kw else [x for o in resolve(c.args[0] if c.args else c.func.value, seen) or [None] for x in part(o, sel, None, seen)]
         elif isinstance(c, ast.Call) and label == "parse_args":
@@ -3101,39 +3127,63 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
                             worded = {t.split("@")[0]: t for t in takers + [a.arg for a in own.kwonlyargs]}  # a keyword names it as it was written
                             grew |= taint([x for i, a in enumerate(n.args) if named(a) for x in takers[i:i + 1] or spare] + [
                                 x for k in n.keywords if named(k.value) for x in ([worded[k.arg]] if k.arg in worded else extra)])
-    def keep(of, sel, value) -> None:  # one thing given to a member: to each thing its holder may be, or to any when that cannot be told
-        for c in resolve(of) or [None]:
-            (given_m.setdefault(id(c), {}) if c is not None else loose_m).setdefault(sel[0], {}).setdefault(sel[1], []).append((value, tags.get(id(value))))
+    def rowed(key, value) -> list:  # (key, value) for each row, when both are the names of one loop over rows the program spells out and neither is given anything else
+        names_ = [getattr(key, "id", None), getattr(value, "id", "")]
+        for n in [n for n in loops if [getattr(e, "id", 0) for e in getattr(n.target, "elts", [])] == names_ and all(total.get(x) == 1 for x in names_)]:
+            cols, table_ = columns(n), resolve(n.iter.func.value) if getattr(getattr(n.iter, "func", None), "attr", "") == "items" else []
+            if all(cols.get(x) and all(isinstance(v, ast.AST) for v in cols[x]) for x in names_):
+                return list(zip(cols[names_[0]], cols[names_[1]]))
+            if len(table_) == 1 and isinstance(table_[0], ast.Dict) and None not in table_[0].keys and not given_m.get(id(table_[0])):
+                return list(zip(table_[0].keys, table_[0].values))
+        return []
+
+    def census() -> tuple:  # what each thing is given after it is made, and what is taken from it: read with what the pass before found
+        given_, loose_, gone = {}, {}, set()
+
+        def keep(of, sel, value) -> None:  # one thing given to a member: to each thing its holder may be, or to any when that cannot be told
+            for c in resolve(of) or [None]:
+                (given_.setdefault(id(c), {}) if c is not None else loose_).setdefault(sel[0], {}).setdefault(sel[1], []).append((value, tags.get(id(value))))
+        for t in [n for n in nodes if isinstance(n, (ast.Attribute, ast.Subscript)) and isinstance(n.ctx, (ast.Store, ast.Del))]:
+            m, f = sel_of(t), inside.get(id(t))
+            if isinstance(t.ctx, ast.Del) or m is None:
+                gone.update(id(c) for c in resolve(t.value)) if isinstance(t.ctx, ast.Del) else keep(t.value, ("k", None), None) if isinstance(t, ast.Subscript) else None
+            elif m[1][1] is None and isinstance(t, ast.Subscript) and rowed(t.slice, pair_of.get(id(t))):
+                for k, v in rowed(t.slice, pair_of[id(t)]):  # `for key, value in rows: cfg[key] = value`: each row's value under that row's key
+                    keep(m[0], ("k", key_at(k)), v)
+            elif not (m[1][0] == "a" and getattr(m[0], "id", "") == "self" and f is not None and f.name in ("__init__", "__post_init__") and id(f) in of_class):
+                keep(m[0], m[1], None if id(pair_of.get(id(t))) in grown else pair_of.get(id(t)))  # what an __init__ gives self is read as the object is built
+        for n in calls:
+            label, base, kw = getattr(n.func, "attr", getattr(n.func, "id", "")), getattr(n.func, "value", None), {k.arg: k.value for k in n.keywords}
+            if label == "putenv" and len(n.args) == 2:
+                keep(ENV, ("k", key_at(n.args[0])), n.args[1])
+            elif label == "setattr" and len(n.args) == 3:
+                keep(n.args[0], ("a", key_at(n.args[1])), n.args[2])
+            elif base is not None and label in ("setdefault", "__setitem__") and len(n.args) == 2:
+                keep(base, ("k", key_at(n.args[0])), n.args[1])
+            elif base is not None and label == "update":
+                for k, v in [(k, v) for k, v in kw.items()] + [(None, None)] * (None in kw):
+                    keep(base, ("k", k), v if k is not None else None)
+                for o in [o for a in n.args for o in resolve(a) or [None]]:
+                    spelt_out = isinstance(o, ast.Dict) and None not in o.keys
+                    for k, v in zip(o.keys, o.values) if spelt_out else [(None, None)]:
+                        keep(base, ("k", key_at(k) if spelt_out else None), v)
+            elif base is not None and label in ("append", "add", "insert", "extend", "appendleft", "extendleft"):
+                for a in n.args[label == "insert":]:
+                    for v in (elements(a) or [None]) if "extend" in label else [a]:
+                        keep(base, ("k", None), v)
+            elif base is not None and label in ("pop", "popitem", "clear", "remove", "discard"):
+                gone.update(id(c) for c in resolve(base))
+        return given_, loose_, gone
     for _ in range(2):  # twice: what a loop visits depends on what its names are, and those on what loops visit
         live.update(gather())
         primed.append(1)
-    for t in [n for n in nodes if isinstance(n, (ast.Attribute, ast.Subscript)) and isinstance(n.ctx, (ast.Store, ast.Del))]:
-        m, f = sel_of(t), inside.get(id(t))
-        if isinstance(t.ctx, ast.Del) or m is None:
-            removed.update(id(c) for c in resolve(t.value)) if isinstance(t.ctx, ast.Del) else keep(t.value, ("k", None), None) if isinstance(t, ast.Subscript) else None
-        elif not (m[1][0] == "a" and getattr(m[0], "id", "") == "self" and f is not None and f.name in ("__init__", "__post_init__") and id(f) in of_class):
-            keep(m[0], m[1], None if id(pair_of.get(id(t))) in grown else pair_of.get(id(t)))  # what an __init__ gives self is read as the object is built
-    for n in calls:
-        label, base, kw = getattr(n.func, "attr", getattr(n.func, "id", "")), getattr(n.func, "value", None), {k.arg: k.value for k in n.keywords}
-        if label == "putenv" and len(n.args) == 2:
-            keep(ENV, ("k", key_at(n.args[0])), n.args[1])
-        elif label == "setattr" and len(n.args) == 3:
-            keep(n.args[0], ("a", key_at(n.args[1])), n.args[2])
-        elif base is not None and label in ("setdefault", "__setitem__") and len(n.args) == 2:
-            keep(base, ("k", key_at(n.args[0])), n.args[1])
-        elif base is not None and label == "update":
-            for k, v in [(k, v) for k, v in kw.items()] + [(None, None)] * (None in kw):
-                keep(base, ("k", k), v if k is not None else None)
-            for o in [o for a in n.args for o in resolve(a) or [None]]:
-                spelt_out = isinstance(o, ast.Dict) and None not in o.keys
-                for k, v in zip(o.keys, o.values) if spelt_out else [(None, None)]:
-                    keep(base, ("k", key_at(k) if spelt_out else None), v)
-        elif base is not None and label in ("append", "add", "insert", "extend", "appendleft", "extendleft"):
-            for a in n.args[label == "insert":]:
-                for v in (elements(a) or [None]) if "extend" in label else [a]:
-                    keep(base, ("k", None), v)
-        elif base is not None and label in ("pop", "popitem", "clear", "remove", "discard"):
-            removed.update(id(c) for c in resolve(base))
+    for _ in range(4):  # until it settles: what a thing is given may be reached through what another was given (rows added to a list, then copied into a table)
+        found = census()
+        if found == (given_m, loose_m, removed):
+            break
+        given_m.clear(), loose_m.clear(), removed.clear(), memo.clear(), kn.clear()
+        given_m.update(found[0]), loose_m.update(found[1]), removed.update(found[2])
+        live.update(gather())
     kn.clear(), walked.clear(), memo.clear()
     settle()
     stand_in = os.path.expanduser(next((m for m in names if m[:1] in ("/", "~")), "".join(names[:1])))  # a protected folder, for one built from it that cannot be spelled
@@ -3298,7 +3348,9 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
         starred = any(isinstance(a, ast.Starred) for a in n.args) or None in kw  # open(*pair): the mode cannot be read
         method = base is not None and not imported(base) and not (isinstance(base, ast.Name) and base.id in modules)  # p.write_text(), not os.remove()
         mode = ((n.args[1:2] if opener else n.args[:1]) or [kw.get("mode")])[0]  # Path(p).open("w") takes its mode first
-        writes = mode is not None and (said(mode) is None or bool(re.fullmatch(r"[rbtU]*[wax+][\w+:|]*", said(mode))))
+        def says(node, pattern) -> bool:  # a mode or a flag opens to write: as each value it may hold reads, and one that cannot be read may
+            return any("\0" in text or "\1" in text or bool(re.search(pattern, text)) for text in ([said(node)] if said(node) is not None else spellings(node)))
+        writes = mode is not None and says(mode, r"^[rbtU]*[wax+][\w+:|]*$")
         how = (n.args[1:2] or [kw.get("flags")])[0]
         how = given_once.get(getattr(how, "id", ""), how)  # flags kept under a name given them once
         flags = {x.attr if isinstance(x, ast.Attribute) else direct.get(x.id, ("", x.id))[1] for x in (ast.walk(how) if how is not None else ())
@@ -3375,7 +3427,7 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
         elif method and label in ("rename", "replace") and len(n.args) + len(kw) == 1 and (n.args or "target" in kw):
             targets += [base] + every  # both ends change; str.replace takes two
         flag = (n.args[1:2] or [kw.get("mode", kw.get("flag"))])[0]
-        aims = flag is not None and (said(flag) is None or bool(re.search(r"[wax+cn]", said(flag))))  # opened to be written
+        aims = flag is not None and says(flag, r"[wax+cn]")  # opened to be written
         writer = BY_NAME.fullmatch(label) if not targets and not opener and asked(n)[1] is None else None  # the program's own save() is read as it is written
         lib = set() if method else {m.split(".")[0] for m in owners}
         made_by = [v for v in ([base] if isinstance(base, ast.Call) else live.get(key_of(base), []) if isinstance(base, ast.Name) else []) if isinstance(v, ast.Call)]
