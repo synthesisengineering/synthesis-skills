@@ -96,3 +96,35 @@ def test_a_single_record_file_can_be_named(kb, logs, capsys):
     assert scan.main(["--since", "2026-01-02", "--sources", str(logs), str(plan)]) == 1
     out = capsys.readouterr().out
     assert "1700000000.000400" in out and "read 1 records" in out
+
+
+# 2026-11-11: a workspace kept its daily plan in ritual-workers/, so neither its plan nor its close was ever read
+# (36 records read, 0 unsourced, the plan unchecked).
+
+def test_a_plan_kept_in_ritual_workers_or_drafts_is_a_record(kb, logs, capsys):
+    for folder in ("ritual-workers", "drafts"):
+        plan = kb / folder / "2026-01-02-plan.md"
+        plan.parent.mkdir()
+        plan.write_text(f"- [ ] reply to the thread at {MADE_UP}\n", encoding="utf-8")
+    assert scan.main(["--since", "2026-01-02", "--sources", str(logs), str(kb)]) == 1
+    out = capsys.readouterr().out
+    assert "ritual-workers/2026-01-02-plan.md" in out and "drafts/2026-01-02-plan.md" in out
+    assert "read 4 records" in out
+
+
+def test_a_folder_the_workspace_declares_is_read_whatever_its_name(kb, logs, capsys):
+    plan = kb / "plans" / "week" / "2026-01-02.md"
+    plan.parent.mkdir(parents=True)
+    plan.write_text(f"- [ ] reply to the thread at {MADE_UP}\n", encoding="utf-8")
+    assert scan.main(["--since", "2026-01-02", "--sources", str(logs), str(kb)]) == 1
+    assert "plans/week/2026-01-02.md" not in capsys.readouterr().out          # not a record by its place alone
+    assert scan.main(["--since", "2026-01-02", "--sources", str(logs), "--records", str(kb / "plans"), str(kb)]) == 1
+    out = capsys.readouterr().out
+    assert "plans/week/2026-01-02.md" in out and "read 3 records" in out
+    assert scan.main(["--since", "2026-01-02", "--sources", str(logs), "--records", str(kb / "absent"), str(kb)]) == 2
+
+
+def test_a_file_named_outright_is_a_record_wherever_it_lies(kb, logs, capsys):
+    assert scan.main(["--since", "2026-01-02", "--sources", str(logs), str(kb / "notes.md")]) == 1
+    out = capsys.readouterr().out
+    assert "notes.md" in out and "read 1 records" in out
