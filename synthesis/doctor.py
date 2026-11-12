@@ -370,15 +370,20 @@ def check_sessions_repos(repos: dict, state: Path, now: float = 0) -> list:
 
 
 def check_sessions_export(plist: Path, stamp: Path, now: float = 0, run=subprocess.run) -> Check:
-    """The hourly copy of session transcripts (2026-11-11: the archive had no trigger of its own): scheduled, loaded,
-    an export finished within the last day, by this job or by any session, and none left a transcript it could not copy."""
+    """The hourly copy of session transcripts (2026-11-11: the archive had no trigger of its own): no export left a
+    transcript it could not copy; then scheduled, loaded, and an export finished within the last day, by this job or any session."""
     how = "python3 <synthesis-onboarding>/scripts/setup.py plugin --sessions-export"
+    last = paths.read_json(stamp)
+    if last.get("failed"):
+        since = f"since {str(last['complete'])[:16]}" if last.get("complete") else "yet"
+        return Check("fail", "sessions export", f"{last['failed']} transcript(s) could not be copied ("
+                     + str(last.get("reason", "")).replace(str(Path.home()), "~") + f"), and no run has copied everything {since}: "
+                     "run `synthesis sessions export --all` and read its lines")
     if not plist.exists():
         return Check("warn", "sessions export", "not scheduled: transcripts are copied only when a session runs resume, "
                      f"handoff or a ritual ({how})")
     if run(["launchctl", "print", f"gui/{os.getuid()}/{plist.stem}"], capture_output=True, text=True).returncode:
         return Check("fail", "sessions export", f"{_short(plist)} is not loaded, so nothing copies transcripts on a schedule ({how})")
-    last = paths.read_json(stamp)
     try:
         age = ((now or time.time()) - datetime.fromisoformat(last.get("exported", "")).timestamp()) / 3600
     except ValueError:
@@ -386,11 +391,6 @@ def check_sessions_export(plist: Path, stamp: Path, now: float = 0, run=subproce
     if age is None or age > 24:
         return Check("fail", "sessions export", "scheduled, and no export has finished " + ("yet" if age is None else f"in {age:.0f} hours")
                      + f": read /tmp/{plist.stem}.log")
-    if last.get("failed"):
-        since = f"since {str(last['complete'])[:16]}" if last.get("complete") else "yet"
-        return Check("fail", "sessions export", f"{last['failed']} transcript(s) could not be copied ("
-                     + str(last.get("reason", "")).replace(str(Path.home()), "~") + f"), and no run has copied everything {since}: "
-                     "run `synthesis sessions export --all` and read its lines")
     return Check("ok", "sessions export", f"every hour; the last one finished {age * 60:.0f} min ago")
 
 

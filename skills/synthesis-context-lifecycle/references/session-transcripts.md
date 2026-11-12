@@ -64,9 +64,10 @@ each harness writes its own transcript to disk as the session runs. The copy is 
   `synthesis sessions export --all` and `synthesis sessions sync` every hour and at login, so a transcript is
   copied whether or not any session remembers to. `synthesis doctor` fails when that schedule is not loaded or
   no export has finished in a day (2026-11-11: until then the archive had no trigger of its own, and a
-  transcript that no session exported within two days was skipped). It also fails while an export could not
-  copy a transcript, naming how many and the first reason, until `synthesis sessions export --all` copies them
-  all: an export that reads only the last two days or one session does not clear it.
+  transcript that no session exported within two days was skipped).
+- An export that could not copy a transcript says so in its report, and on any Mac `synthesis doctor` then fails,
+  naming how many and the first reason, until `synthesis sessions export --all` copies them all: an export of
+  the last two days or of one session does not clear it.
 
 ## Copying each workspace's conversation off the Mac
 
