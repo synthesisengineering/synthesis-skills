@@ -1741,7 +1741,9 @@ def _landing(words: list[str]) -> list[str]:
         runs = [list(itertools.takewhile(lambda w: w not in (";", "+"), words[i + 1:]))
                 for i, w in enumerate(words) if w.startswith(("-exec", "-ok"))]
         lists = [words[i + 1] for i, w in enumerate(words[:-1]) if w.startswith(("-fprint", "-fls"))]  # the list it writes is that file
-        return lists + (rest if "-delete" in words or any(map(_changes, runs)) else [])
+        roots = list(itertools.takewhile(lambda w: not w.startswith(("-", "(", "!")),  # the folders it searches come before its expression
+                                         itertools.dropwhile(lambda w: re.fullmatch(r"-[HLPEXdsx]+", w), words[1:]))) or ["."]
+        return lists + (roots if "-delete" in words or any(map(_changes, runs)) else [])
     if head not in COPIERS or (head == "install" and any(re.fullmatch(r"-\w*d\w*|--directory", w) for w in words)):
         return rest if head in WRITERS else []
     given = [(INTO.fullmatch(w), i) for i, w in enumerate(words)] if head != "rsync" else []
@@ -1938,7 +1940,7 @@ ARG_READERS = {"argparse", "optparse", "getopt", "fileinput", "click", "typer", 
 
 
 def _python_writes(source: str, names: list, roots: list | tuple = (), where: str = "", argv: list | tuple = (),
-                   env: dict | None = None) -> tuple:
+                   env: dict | None = None, config: dict | None = None) -> tuple:
     """(whether a Python program writes into a protected path, whether it writes at all; the first is the refusal's own
     text when it is a command the program starts that is refused); (None, None) when it cannot
     be told (no source, a syntax error), and (None, True) for a program that runs code it builds (exec, eval,
@@ -2140,6 +2142,9 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
                         ranges[t.id], grew = column, True
             else:
                 grew |= named(n.iter) and taint(held(n.target))
+                plain = [spelled(r) for r in each or ()]  # a name that walks a list of plain values is one of them
+                if each and isinstance(n.target, ast.Name) and n.target.id in once and ranges.get(n.target.id) != plain:
+                    ranges[n.target.id], grew = plain, True
         for n in nodes:
             if isinstance(n, ast.withitem) and n.optional_vars is not None:
                 grew |= named(n.context_expr) and taint(held(n.optional_vars))
@@ -2182,8 +2187,11 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
         lead = os.path.dirname(os.path.expanduser(path).split("\0")[0])
         led = os.path.realpath(lead) if os.path.isabs(lead) else ""
         return named(node) or ((standing or moved) and not (led and not any(paths.inside(led, r) or paths.inside(r, led) for r in roots)))
-    moved = any(direct.get(getattr(n.func, "id", ""), ("", getattr(n.func, "attr", getattr(n.func, "id", ""))))[1] in ("chdir", "fchdir")
-                and any(map(lands, [*n.args, *(k.value for k in n.keywords)])) for n in calls)
+    gone = [a for n in calls if direct.get(getattr(n.func, "id", ""), ("", getattr(n.func, "attr", getattr(n.func, "id", ""))))[1] in (
+        "chdir", "fchdir") for a in [*n.args, *(k.value for k in n.keywords)]]  # each folder the program changes into, under any name
+    moved = any(map(lands, gone))
+    spots = [where] + [os.path.join(where, os.path.expanduser(v)) if "\0" not in v else os.path.expanduser(names[0]) if names and named(a) else "\0"
+                       for a in gone for v in ranges.get(getattr(a, "id", ""), [spelled(a)])]  # where it may stand when it starts a command
     hit = wrote = False
     for n in calls:
         base = n.func.value if isinstance(n.func, ast.Attribute) else None
@@ -2200,8 +2208,8 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
         writes = mode is not None and (said(mode) is None or bool(re.fullmatch(r"[rbtU]*[wax+][\w+:|]*", said(mode))))
         how = (n.args[1:2] or [kw.get("flags")])[0]
         how = given_once.get(getattr(how, "id", ""), how)  # flags kept under a name given them once
-        flags = {x.attr if isinstance(x, ast.Attribute) else x.id for x in (ast.walk(how) if how is not None else ())
-                 if isinstance(x, (ast.Attribute, ast.Name))} - set(modules)
+        flags = {x.attr if isinstance(x, ast.Attribute) else direct.get(x.id, ("", x.id))[1] for x in (ast.walk(how) if how is not None else ())
+                 if isinstance(x, (ast.Attribute, ast.Name))} - set(modules)  # by the name each flag has in os
         reads_only = (isinstance(how, ast.Constant) and how.value == 0) or (bool(flags) and flags <= {
             "O_RDONLY", "O_CLOEXEC", "O_NONBLOCK", "O_NOFOLLOW", "O_DIRECTORY", "O_NOCTTY", "O_BINARY"})
         if "subprocess" in owners or ("os" in owners and label in ("system", "popen")):
@@ -2211,9 +2219,9 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
             if parts:  # one word of a list is one file: a word it found in a protected folder stands for a file there, an unread end for a name
                 parts = [w.replace("\0", "x") if w[:1] != "\0" else names[0] + "/x" if names and named(e) else w for w, e in zip(parts, first.elts)]
             ran = shlex.join(parts) if parts else spelled(first) if first is not None and parts is None else "\0"
-            folder = os.path.join(where, os.path.expanduser(spelled(kw["cwd"]))) if "cwd" in kw else where
-            if "\0" not in ran + folder:  # a command it spells whole is judged as the shell guard judges a command, where it runs
-                hit = hit or check_self_grant(ran, folder) or False  # the refusal itself, so the program is told which rule
+            folders = [os.path.join(spot, os.path.expanduser(spelled(kw["cwd"]))) for spot in spots] if "cwd" in kw else spots
+            if "\0" not in ran + "".join(folders):  # a command it spells whole is judged as the shell guard judges one, wherever it may run
+                hit = hit or next(filter(None, (check_self_grant(ran, folder, config) for folder in folders)), False)  # the refusal itself
                 continue
         told = kw.get("inplace", n.args[1] if len(n.args) > 1 else None)  # fileinput edits its files only when told to
         edits = told is not None and not (isinstance(told, ast.Constant) and not told.value)
@@ -2307,7 +2315,7 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None) -> str |
         # environment, or through arguments it takes unseen, any write it makes is refused. Another script is
         # judged by the words it is given, or, read from stdin, by the whole command.
         try:
-            hit, wrote = _python_writes(source, names, [os.path.realpath(r) for r in raw], where, argv, env) if source else (None, None)
+            hit, wrote = _python_writes(source, names, [os.path.realpath(r) for r in raw], where, argv, env, config) if source else (None, None)
         except RecursionError:  # nested too deeply to follow: judged by its text
             hit, wrote = None, None
         wrote = bool(re.search(SCRIPTED_WRITE, source or script)) if wrote is None else wrote  # by its syntax, else by its text
