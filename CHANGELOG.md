@@ -156,7 +156,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
     each keep a `path`, and a table whose entry is replaced before it is written were refused, and of two hundred
     programs this project wrote on objects, tables and the environment 68 were judged wrongly, four of them
     writes let through: a class that inherits its `__init__`, a field set through `__dict__`, a table reached
-    under a second name, a home set before it is asked for.) A target the reader cannot read is judged by what it is built from, a
+    under a second name, a home set before it is asked for. A third pass found one more that had been there since
+    the tenth round: a function that gives its own name another value in a branch and hands it back was read by
+    the caller's value alone.) A target the reader cannot read is judged by what it is built from, a
     name followed through assignments, loops, `with`, defaults, the program's own functions, lists, attributes, a
     class's fields, a parser's defaults and the environment the program sets. The words after the program are placed where it reads
     `sys.argv[n]`, and a variable of the environment where it reads it by name; taken another way, one that names

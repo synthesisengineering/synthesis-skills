@@ -274,7 +274,8 @@ harness that gives no transcript cannot carry approved sends or deploys until it
      each caller handed the function. Each function is read by its own names, so two
      functions that both call what they are handed `path` are read apart, and a call of
      the program's own function is read by what that call hands it and what the function
-     then hands back. One of two values (`a if c else b`, `a or b`), what a loop visits (a
+     then hands back; a name the function itself gives another value, in a branch or a
+     loop, is that value or the one it was handed, and a default of `None` is no value. One of two values (`a if c else b`, `a or b`), what a loop visits (a
      list the program spells out, its rows, `zip`, `enumerate`, a table's values), what a
      walk or a pattern finds (a path under the folder walked) and a template filled
      (`format`, `%`, a list joined) are read the same way. A member (`job.out`,
@@ -286,7 +287,9 @@ harness that gives no transcript cannot carry approved sends or deploys until it
      places, what the `__init__` that runs gives each field from what that call hands it
      (a class without one of its own is built by the one it inherits, and a base's is
      followed through `super().__init__`), a data class's or a named tuple's field by
-     place or by name, the class's constants and properties, a parser's defaults. And it
+     place or by name, the class's constants and properties, a parser's defaults, and for
+     a class that keeps its keywords as its fields (`self.__dict__.update(kw)` in its
+     `__init__`) the keywords it is built with. And it
      holds whatever any statement gives it afterwards (`x.out = v`, `d["k"] = v`,
      `update`, `append`, `setattr`), through any name it is reached by; what is given
      through a name that cannot be followed may be in any of them, and a thing whose
@@ -429,8 +432,9 @@ stay open, and no hook running as that same user can close them:
   is refused, also when it only reads it. The Python reader also refuses some programs
   that only write elsewhere, because it does not follow a test: a loop over a table's
   `items()` that writes only under one key (`if k == "out":`) is read as writing every
-  value, and a thing given a protected path through a name the reader cannot follow is
-  taken to hold it wherever that thing is read. A program the guard does not know may be handed
+  value, what a method stores under a key it is handed (`cfg.set("out", path)`) is read
+  as stored under any key, and a thing given a protected path through a name the reader
+  cannot follow is taken to hold it wherever that thing is read. A program the guard does not know may be handed
   a folder that holds a protected one (an archive unpacked over it), and a program may
   list such a folder one level at a time and remove what it finds by a name it builds.
   A word handed to a program the guard does not know is read only where it starts as a
