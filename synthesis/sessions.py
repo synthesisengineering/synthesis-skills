@@ -7,7 +7,8 @@ session, incrementally, into <home>/sessions/<workspace>/<YYYY-MM>/<harness>-<se
 the principal's prompts, replies, reasoning, tool calls and results, compactions, the models that answered. Secrets are
 masked with the commit check's credential patterns, images are kept once as files named by their hash, and text a
 harness repeats every turn is kept once. A native file is read only past the offset already exported. Only the
-principal's own words are `user` records: a prompt one agent writes to another is a `brief`, and an approval reviewer's
+principal's own words are `user` records: a prompt one agent writes to another, or a command line hands a run
+(`codex exec`, `claude -p`), is a `brief`, and an approval reviewer's
 copy of the conversation is counted, not kept (R10.1). `sync` copies each workspace's conversation and tool calls into
 that workspace's own sessions repo (R10.2, R10.3). Nothing here runs in a hook (R8.3): resume, handoff, checkpoints
 and the rituals call it.
@@ -107,7 +108,8 @@ def _prompt(s: "_Session", at, body: dict, sidechain: bool = False):
     if s.meta.get("role") == "reviewer":  # Codex's approval reviewer is handed the whole conversation to judge
         s.skipped["reviewer's copy of the conversation"] += 1
         return None
-    agent = sidechain or s.meta.get("role") == "subagent" or body.get("text", "").lstrip().startswith(AGENT_WRITTEN)
+    agent = (sidechain or s.meta.get("role") == "subagent" or s.meta.get("unattended")
+             or body.get("text", "").lstrip().startswith(AGENT_WRITTEN))
     return {"at": at, "kind": "brief" if agent else "user", **body}
 
 
@@ -301,7 +303,7 @@ def _claude(row: dict, s: _Session):
                     rec = {"at": at, "kind": who, **s.content([b])}
                     yield s.once(rec) if who == "system" else rec
                 else:  # a sub-agent's prompts (isSidechain) are written by the agent that started it
-                    yield _prompt(s, at, s.content([b]), bool(row.get("isSidechain")))
+                    yield _prompt(s, at, s.content([b]), bool(row.get("isSidechain")) or row.get("entrypoint") == "sdk-cli")  # `claude -p`
     elif t == "system":
         sub = row.get("subtype")
         if sub == "compact_boundary":
@@ -329,6 +331,8 @@ def _codex(row: dict, s: _Session):
         if isinstance(sub, dict):  # a child thread: Codex's approval reviewer ("guardian") or a spawned agent
             s.meta["role"] = "reviewer" if sub.get("other") == "guardian" else "subagent"
             s.meta["parent"] = p.get("parent_thread_id") or (sub.get("thread_spawn") or {}).get("parent_thread_id")
+        if p.get("source") == "exec":  # `codex exec`: its prompt comes from a command line, a script's or another agent's
+            s.meta["unattended"] = True
         yield {"at": at, "kind": "session", "data": {k: p[k] for k in ("id", "cwd", "originator", "cli_version", "source",
                                                                        "parent_thread_id", "model_provider", "git") if k in p}}
         if p.get("instructions"):
