@@ -475,7 +475,7 @@ def test_a_day_the_principal_blocked_whole_is_taken(tmp_path):
     code, report = check(tmp_path, "13:00", "13:30", busy)
     assert levels(report)["placement"] == "REVIEW" and '"Offsite"' in detail(report, "placement"), report
     for note in (all_day(THURSDAY, "A colleague's birthday"), all_day(THURSDAY, "Public holiday", transparency="transparent")):
-        code, report = check(tmp_path, "13:00", "13:30", [note, *QUIET_DAY])                    # a note on the day takes none of it
+        code, report = check(tmp_path, "14:00", "14:30", [note, *QUIET_DAY])                    # a note on the day takes none of it
         assert code == 0 and levels(report)["deep work"] == "OK" and "beside Staff meeting" in detail(report, "placement"), report
     code, report = check(tmp_path, "13:00", "13:30", [all_day("2026-11-13", "Away #reserved")], config=marked)
     assert levels(report)["placement"] != "REVIEW" or "Away" not in detail(report, "placement")  # the next day's block is the next day's
