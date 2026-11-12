@@ -59,7 +59,9 @@ would ask for a password there fails instead of asking.
 
 1. `synthesis wait list`: is the wait still on the board? A wait whose process died or whose bound passed is gone.
 2. `synthesis inbox --peek`: did the mail arrive unseen? A session bound to no project receives nothing addressed
-   to a project; `synthesis who` shows the binding, and `synthesis resume <project>` restores it.
+   to a project; `synthesis who` shows the binding, and `synthesis resume <project>` restores it. A seat that holds
+   a live wait is listed there for the wait's whole bound, marked `waiting until HH:MM`. Once it has been quiet
+   for eight hours its row also says `STALE`: its claims go stale as any seat's do, while mail still reaches it.
 3. Was the message sent to this session? The sender's `synthesis msg` ended with what would deliver it.
 4. Did the watcher end at its bound (exit 3)? Then nothing arrived in time, and the next step is a decision, not a
    longer silence. What came after the bound is still there to find: mail stays unread until `synthesis inbox`

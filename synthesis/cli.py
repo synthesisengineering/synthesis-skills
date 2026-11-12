@@ -92,16 +92,22 @@ def cmd_index(args) -> int:
 
 
 def cmd_who(args) -> int:
+    """The seats that can be reached, with their claims; --all adds the stale ones. A seat that holds a live wait is
+    reachable for the wait's whole bound (2026-11-12: nine hours into a wait this list left it out), and its row says
+    until when it waits; STALE stays what it was, a seat quiet past the threshold, whose claims no longer block."""
+    from synthesis import wait
     now = time.time()
     found = board.sessions()
     for name in board.NEWER:
         print(f"note: session file {name} was written by a newer synthesis (schema above {board.SCHEMA}); "
               "update this plugin to read it fully, and never edit the file by hand")
     for s in sorted(found, key=lambda s: -s.seen):
-        if s.stale and not args.all:
+        until = max((w["until"] for w in wait.live(s.session)), default=0)
+        if s.stale and not until and not args.all:
             continue
         age = int((now - s.seen) / 60)
-        print(f"{s.short or '-':<7} {s.session}  {s.harness:<11} {s.project or '-':<34} {age:>4} min ago{'  STALE' if s.stale else ''}")
+        print(f"{s.short or '-':<7} {s.session}  {s.harness:<11} {s.project or '-':<34} {age:>4} min ago{'  STALE' if s.stale else ''}"
+              + (f"  waiting until {time.strftime('%H:%M', time.localtime(until))}" if until else ""))
         for c in s.claims:
             print(f"    {c}")
     return 0
