@@ -10,6 +10,7 @@ armed. Committed before the code.
 """
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -36,6 +37,13 @@ def start(*args, session="S1"):
 def two():
     board.touch("S1", project="alpha", harness="claude-code")
     board.touch("S2", project="beta", harness="claude-code")
+
+
+def quiet(session_id):
+    """Last seen past the threshold, as a session that ended hours ago is."""
+    gone = board.load(session_id)
+    gone.seen = time.time() - board.STALE_SECONDS - 5
+    board.save(gone)
 
 
 # --- a read that consumes nothing ---------------------------------------------------------------------------------
@@ -133,6 +141,39 @@ def test_a_wait_for_a_command_returns_when_it_succeeds_and_at_its_bound_when_it_
     assert cli("wait", "run", "--every", "0.2s", "--for", "1s", "--", "false").returncode == 3
 
 
+def test_a_command_still_running_at_the_bound_is_stopped_and_the_wait_exits_3(two, tmp_path, monkeypatch, capsys):
+    """2026-11-12, a review: `wait run --for 1s` on a check that took two minutes exited 0 two minutes later. The check
+    was given no time limit, and its exit code was read before the bound was."""
+    from synthesis import wait
+    clock, given = [time.time()], []
+    began = clock[0]
+
+    def check(command, timeout=None, **kwargs):                                       # it takes two minutes, then exits 0
+        given.append(timeout)
+        if timeout is not None and timeout < 120:
+            clock[0] += timeout
+            raise subprocess.TimeoutExpired(command, timeout)
+        clock[0] += 120
+        return subprocess.CompletedProcess(command, 0)
+    with monkeypatch.context() as fake:
+        fake.setattr(time, "time", lambda: clock[0])
+        fake.setattr(time, "sleep", lambda seconds: clock.__setitem__(0, clock[0] + seconds))
+        fake.setattr(subprocess, "run", check)
+        assert wait.main(["run", "--for", "1s", "--", "ci-check"], "S1") == 3
+        said = capsys.readouterr()
+        assert "nothing arrived in 1 s" in said.err and "exited 0" not in said.out
+        assert given == [pytest.approx(1)] and clock[0] - began == pytest.approx(1)   # one try, given the time left, stopped at the bound
+        fake.setattr(subprocess, "run", lambda command, **kwargs: check(command))     # a runner that lets it end after the bound: no success
+        assert wait.main(["run", "--for", "1s", "--", "ci-check"], "S1") == 3 and "exited 0" not in capsys.readouterr().out
+        assert wait.live("S1") == []
+    pid, began = tmp_path / "pid", time.time()
+    done = cli("wait", "run", "--for", "2s", "--", sys.executable, "-c",
+               "import os, sys, time; open(sys.argv[1], 'w').write(str(os.getpid())); time.sleep(30)", str(pid))
+    assert done.returncode == 3 and "nothing arrived in 2 s" in done.stderr and time.time() - began < 15
+    with pytest.raises(ProcessLookupError):                                           # the check was stopped, not left to run on
+        os.kill(int(pid.read_text()), 0)
+
+
 def test_a_note_records_a_wait_the_harness_holds_and_the_list_shows_every_sessions(two):
     from synthesis import wait
     made = cli("wait", "note", "the CI run on the release branch", "--by", "a background task that exits when CI ends", "--for", "2h")
@@ -149,6 +190,35 @@ def test_a_note_records_a_wait_the_harness_holds_and_the_list_shows_every_sessio
 def test_a_wait_cannot_run_past_twelve_hours_or_without_a_bound_it_can_read(two):
     assert cli("wait", "message", "--for", "13h").returncode == 2
     assert cli("wait", "message", "--for", "soon").returncode == 2
+
+
+def test_a_session_stays_addressable_for_the_whole_bound_of_its_wait(two, monkeypatch, capsys):
+    """2026-11-12, a review: nine hours into a twelve-hour wait, a message to the waiting session was refused as sent
+    to a stale one. Its watcher was running, and nothing counted that."""
+    from synthesis import cli, wait
+    for other in ("S3", "S4"):
+        board.touch(other, project="gamma", harness="claude-code")
+    assert wait.main(["note", "the CI run", "--by", "the harness's timer", "--for", "12h"], "S4") == 0
+    clock, sent = [time.time()], []
+    began, seen = clock[0], board.load("S1").seen
+
+    def sleep(seconds):                                                               # nine hours on, between two looks, a peer writes
+        clock[0] += seconds
+        if clock[0] - began >= 9 * 3600 and not sent:
+            sent.append(cli.main(["--session", "S2", "msg", "S1", "the review is in"]))
+            sent.append(cli.main(["--session", "S2", "msg", "project:alpha", "and so is its summary"]))
+    monkeypatch.setattr(time, "time", lambda: clock[0])
+    monkeypatch.setattr(time, "sleep", sleep)
+    ended = wait.main(["message", "--for", "12h", "--every", "5m"], "S1")
+    said = capsys.readouterr()
+    assert sent == [0, 0], said.err                                                   # neither was refused as sent to a stale session
+    assert "sent to S1: it is watching" in said.out and "sent to project:alpha: it is watching" in said.out
+    assert ended == 0 and "(2 unread)" in said.out and clock[0] - began < 10 * 3600
+    assert board.resolve("S4").session == "S4"                                        # a wait the harness holds keeps its seat addressable too
+    for over in ("S1", "S3"):                                                         # S1's wait is over, S3 never had one: both quiet nine hours
+        with pytest.raises(board.AddressError, match="stale"):
+            board.resolve(over)
+    assert board.load("S1").seen == seen                                              # and a watcher never writes its session's record
 
 
 # --- the sender is told what will deliver the message --------------------------------------------------------------
@@ -189,6 +259,53 @@ def test_a_wake_goes_through_the_recipients_own_harness_with_a_fixed_text(two):
     claude = board.touch("T-claude", project="beta", harness="claude-code")
     assert "no command" in wait.wake(claude, run=fake) and len(ran) == 2              # nothing was run for it
     assert "approve" not in wait.NUDGE.lower() and "synthesis inbox" in wait.NUDGE    # the text carries no instruction but where to look
+
+
+def test_a_durable_message_sent_with_wake_nudges_each_live_session_on_the_project_once(monkeypatch, capsys):
+    """2026-11-12, a review: `msg project:<id> --durable --wake` woke no one. A durable message names no one session,
+    and the wake was taken from the one session a message names."""
+    from synthesis import cli, wait
+    ran, wake = [], wait.wake
+    fake = lambda command, **kw: ran.append(command) or subprocess.CompletedProcess(command, 0, "", "")  # noqa: E731
+    monkeypatch.setattr(wait, "wake", lambda target: wake(target, run=fake))          # no harness command is ever run
+    for name, harness in (("SENDER", "codex"), ("T-codex", "codex"), ("T-muse", "muse"), ("T-claude", "claude-code"), ("T-quiet", "codex")):
+        board.touch(name, project="alpha", harness=harness)
+    board.touch("T-elsewhere", project="beta", harness="codex")
+    quiet("T-quiet")
+    send = ["--session", "SENDER", "msg", "project:alpha"]
+    assert cli.main(send + ["the release is cut", "--durable", "--wake"]) == 0
+    line = capsys.readouterr().out
+    assert [c[:2] for c in ran] == [["codex", "queue"], ["muse", "session-message"]] and "T-codex" in ran[0] and "T-muse" in ran[1]
+    assert line.startswith("sent to project:alpha: it is kept for every session that works on alpha") and line.count("\n") == 1
+    assert line.count("woken through its own harness") == 2 and "no command wakes a claude-code session" in line
+    assert all(line.count(board.short_name(name)) == 1 for name in ("T-codex", "T-muse", "T-claude"))
+    assert not any(board.short_name(name) in line for name in ("SENDER", "T-quiet", "T-elsewhere"))   # itself, a stale one, another project's
+    assert all(len(board.inbox(name, "alpha")) == 1 for name in ("T-codex", "T-muse", "T-claude", "T-quiet"))   # and each still reads it
+    assert cli.main(send + ["and the notes are filed", "--durable"]) == 0 and len(ran) == 2   # no --wake, no nudge
+    wait.record("T-muse", "a message", time.time() + 600, pid=os.getpid(), every=300)   # T-muse now watches: it is told so and left alone
+    capsys.readouterr()
+    assert cli.main(send + ["and the tag is pushed", "--durable", "--wake"]) == 0 and [c[0] for c in ran[2:]] == ["codex"]
+    assert f"{board.short_name('T-muse')}: it is watching and checks every 5 min" in capsys.readouterr().out
+    assert cli.main(["--session", "SENDER", "msg", "T-codex", "one more thing", "--wake"]) == 0 and len(ran) == 4   # one session, one nudge
+    assert "reads it at its next prompt; woken through its own harness" in capsys.readouterr().out
+
+
+def test_the_sender_is_told_how_often_a_watcher_looks(two, monkeypatch, capsys):
+    """2026-11-12, a review: "it is watching and wakes within seconds" was printed for a watcher started with
+    `--every 5m`, which finds mail only at its next look, up to five minutes on."""
+    from synthesis import cli, wait
+    told = []
+
+    def sleep(seconds):                                                               # while the watcher sleeps between two looks, a peer sends
+        told.append((wait.live("S1")[0].get("every"), cli.main(["--session", "S2", "msg", "S1", f"note {len(told)}"])))
+    monkeypatch.setattr(time, "sleep", sleep)
+    for every, line in (("5m", "it is watching and checks every 5 min"), ("90s", "it is watching and checks every 1 min 30 s"),
+                        ("2s", "it is watching and wakes within seconds")):
+        assert wait.main(["message", "--for", "30m", "--every", every], "S1") == 0
+        out = capsys.readouterr().out
+        assert f"sent to S1: {line}\n" in out, (every, out)
+        board.inbox("S1", "alpha", mark_read=True)                                    # read, so the next watcher starts with nothing
+    assert told == [(300, 0), (90, 0), (2, 0)]                                        # how often it looks is in the wait's record
 
 
 # --- the turn-end check --------------------------------------------------------------------------------------------
@@ -275,6 +392,35 @@ def test_a_session_bound_to_no_project_is_told_at_its_start_which_projects_have_
     bound = subprocess.run([sys.executable, "-m", "synthesis.hook", "session-start"], input=json.dumps({"session_id": "S2", "cwd": str(ROOT)}),
                            capture_output=True, text=True, cwd=ROOT).stdout
     assert "bound to no project" not in bound
+
+
+def test_the_hint_names_exactly_the_projects_whose_mail_a_session_that_binds_now_would_find(isolated_home, tmp_path):
+    """2026-11-12, a review: the hint left out mail more than a day old sent while no session was on its project, and
+    durable mail an earlier session had read, though the inbox of a session that bound to the project held both."""
+    board.touch("S2", project="kappa", harness="claude-code")
+    for session, name in (("S5", "omega"), ("S6", "lambda"), ("S7", "sigma")):       # three projects whose one session ended hours ago
+        board.touch(session, project=name, harness="claude-code")
+        quiet(session)
+    old = board.message("project:sigma", "S2", "sent two days ago, with no session on sigma")
+    os.utime(old, (time.time() - 48 * 3600,) * 2)
+    board.message("project:lambda", "S2", "for every session on lambda", durable=True)
+    assert len(board.inbox("S6", "lambda", mark_read=True)) == 1                      # an earlier session read it
+    board.message("project:omega", "S2", "this one S8 has read")
+    assert len(board.inbox("S8", "omega", mark_read=True)) == 1
+    board.message("project:kappa", "S7", "for every session on kappa", durable=True)  # a live session is on kappa; S8 has not read this
+    board.touch("S8", harness="claude-code")
+    board.message("S8", "S2", "to S8 itself, about no project")
+    out = subprocess.run([sys.executable, "-S", str(ROOT / "synthesis" / "hook.py"), "session-start"], capture_output=True, text=True,
+                         cwd=tmp_path, input=json.dumps({"session_id": "S8", "cwd": str(tmp_path)})).stdout
+    said = json.loads(out)["hookSpecificOutput"]["additionalContext"]
+    hint = "".join(note for note in said.split("\n\n") if "bound to no project" in note)
+    assert re.findall(r"for: ([^.]+)\.", hint) == ["kappa, lambda, sigma"] and "synthesis resume kappa" in hint, said
+    own = len(board.inbox("S8"))
+    assert own == 1 and board.waiting("S8") == ["kappa", "lambda", "sigma"]
+    for name in ("kappa", "lambda", "sigma", "omega", "delta"):                       # the hint and the inbox never disagree
+        assert (name in board.waiting("S8")) == (len(board.inbox("S8", name)) > own), name
+    board.inbox("S8", "kappa", mark_read=True)
+    assert board.waiting("S8") == ["lambda", "sigma"]                                 # read once, it waits no longer
 
 
 # --- the doctor ----------------------------------------------------------------------------------------------------
