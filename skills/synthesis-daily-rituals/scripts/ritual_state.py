@@ -175,6 +175,7 @@ NOTHING = re.compile(r"(?i)[*\s]*(?:tbd|tbc|none|n/?a|no recommendation|your cal
 COMMITS = re.compile(r"(?i)\b(?:accept|decline|rsvp|attend|go|join|host|schedule|meet|say (?:yes|no))\b")
 
 
+TITLED = re.compile(r"(?i)\b(Recommendation|Consequences|Commits)\**\s*:[*\s]*(.*)$")  # the same word and colon on a title line
 MARK = re.compile(r"^ {0,3}(?:>\s*)*(?:[-*+] |\d+[.)] )?")  # what stands before a title that is a list entry
 LABEL = re.compile(r"(?i)Option ([A-Z0-9]+)\b")
 
@@ -219,9 +220,9 @@ def choices(workspace: str, day: str) -> str:
         text = plan.read_text(encoding="utf-8", errors="replace") if plan.is_file() else ""
         for item in _items(text):
             title, options = MARK.sub("", item.splitlines()[0]).strip(), OPTION.findall(item)
-            if not options or CLOSED.search(item) or title.startswith(("~~", "[x]", "[X]")) or "✅" in title:
+            if not options or CLOSED.search(item) or title.startswith(("~~", "[x]", "[X]", "✓", "✔")) or "✅" in title:
                 continue
-            said = {m[1].lower(): m[2] for m in SAID.finditer(item) if not NOTHING.fullmatch(m[2])}
+            said = {m[1].lower(): m[2] for m in [*SAID.finditer(item), *TITLED.finditer(title)] if not NOTHING.fullmatch(m[2])}
             needs = ["recommendation"] + ["consequences"] * ("commits" in said or any(map(COMMITS.search, options)))
             lacks = [word for word in needs if word not in said]
             open_items += 1

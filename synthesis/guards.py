@@ -1740,8 +1740,8 @@ def _landing(words: list[str]) -> list[str]:
     if head == "find":  # it changes what it finds when told to delete, to write a list, or to run a command that does
         runs = [list(itertools.takewhile(lambda w: w not in (";", "+"), words[i + 1:]))
                 for i, w in enumerate(words) if w.startswith(("-exec", "-ok"))]
-        acts = any(w == "-delete" or w.startswith(("-fprint", "-fls")) for w in words) or any(map(_changes, runs))
-        return rest if acts else []
+        lists = [words[i + 1] for i, w in enumerate(words[:-1]) if w.startswith(("-fprint", "-fls"))]  # the list it writes is that file
+        return lists + (rest if "-delete" in words or any(map(_changes, runs)) else [])
     if head not in COPIERS or (head == "install" and any(re.fullmatch(r"-\w*d\w*|--directory", w) for w in words)):
         return rest if head in WRITERS else []
     given = [(INTO.fullmatch(w), i) for i, w in enumerate(words)] if head != "rsync" else []
@@ -2002,6 +2002,7 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
     stored = [n.id for n in nodes if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Store)] + [n.arg for n in nodes if isinstance(n, ast.arg)]
     once = {name for name, same in itertools.groupby(sorted(stored)) if len(list(same)) == 1}  # names given a value exactly once
     calls = [n for n in nodes if isinstance(n, ast.Call)]
+    given_once = {t.id: v for t, v in pairs if isinstance(t, ast.Name) and t.id in once}  # what a name given one value once was given
     # The words after the program are its arguments, and `sys.argv[2]` is the second of them. Taken another way (a
     # slice, a loop, an argument parser), or after a word the shell fills in, they cannot be placed, and then any
     # write is refused while one of them names a protected path (30 days: four programs that read their first
@@ -2052,8 +2053,10 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
                 "." + n.attr in tainted or (n.attr in tainted and n.attr in classed))
             if field or (isinstance(n, ast.Name) and n.id in tainted) or any(m in (said(n) or given.get(id(n), "")) for m in names):
                 return True
-            if not (isinstance(n, ast.Call) and getattr(n.func, "attr", getattr(n.func, "id", "")) in CONTENT):
-                todo += ast.iter_child_nodes(n)  # what a file holds is not where it is
+            leaf = (isinstance(n, ast.Attribute) and n.attr in ("name", "stem", "suffix")) or (
+                isinstance(n, ast.Call) and getattr(n.func, "attr", getattr(n.func, "id", "")) == "basename")
+            if not leaf and not (isinstance(n, ast.Call) and getattr(n.func, "attr", getattr(n.func, "id", "")) in CONTENT):
+                todo += ast.iter_child_nodes(n)  # what a file holds is not where it is, and the last part of a path names no folder
         return False
 
     def spelled(node) -> str:  # the path a node spells out, "\0" standing for each part that cannot be read
@@ -2068,6 +2071,10 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
             return "".join(spelled(v.value if isinstance(v, ast.FormattedValue) else v) for v in node.values)
         if isinstance(node, ast.BinOp) and isinstance(node.op, (ast.Add, ast.Div)):
             return spelled(node.left) + "/" * isinstance(node.op, ast.Div) + spelled(node.right)
+        if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Mod) and said(node.left) is not None:  # "line-%d.txt" % i
+            return re.sub(r"%(?:\(\w*\))?[-#0 +]*\d*(?:\.\d+)?[a-zA-Z]", "\0", said(node.left))
+        if label == "format" and isinstance(node.func, ast.Attribute) and said(node.func.value) is not None:  # "line-{}.txt".format(i)
+            return re.sub(r"\{[^{}]*\}", "\0", said(node.func.value))
         if isinstance(node, ast.Call) and not node.keywords:
             parts = [spelled(a) for a in node.args]
             if label in ("join", "joinpath", "Path", "PurePath", "PosixPath") and parts:
@@ -2113,8 +2120,10 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
             own = local[name][0]
             takers = [a.arg for a in own.posonlyargs + own.args]
             given_by = dict(zip(takers[len(takers) - len(own.defaults):], own.defaults))  # a default stands where no caller says otherwise
-            for at, taker in enumerate(takers):
-                sent = [c.args[at] if at < len(c.args) else next((k.value for k in c.keywords if k.arg == taker), given_by.get(taker)) for c in calls_of]
+            given_by.update({a.arg: d for a, d in zip(own.kwonlyargs, own.kw_defaults) if d is not None})
+            for at, taker in enumerate(takers + [a.arg for a in own.kwonlyargs]):
+                sent = [c.args[at] if at < min(len(c.args), len(takers)) else next((k.value for k in c.keywords if k.arg == taker), given_by.get(taker))
+                        for c in calls_of]
                 handed = {spelled(a) if a is not None else "\0" for a in sent if getattr(a, "id", None) != taker}  # its call of itself hands the same on
                 if taker in once and taker not in bound and len(handed) == 1 and min(handed)[:1] != "\0":
                     bound[taker], grew = min(handed), True
@@ -2188,14 +2197,26 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
         method = base is not None and not imported(base) and not (isinstance(base, ast.Name) and base.id in modules)  # p.write_text(), not os.remove()
         mode = ((n.args[1:2] if opener else n.args[:1]) or [kw.get("mode")])[0]  # Path(p).open("w") takes its mode first
         writes = mode is not None and (said(mode) is None or bool(re.fullmatch(r"[rbtU]*[wax+][\w+:|]*", said(mode))))
-        flags = {x.attr if isinstance(x, ast.Attribute) else x.id for a in n.args[1:2] + [kw[k] for k in ("flags",) if k in kw]
-                 for x in ast.walk(a) if isinstance(x, (ast.Attribute, ast.Name))} - {"os"}
-        reads_only = bool(flags) and flags <= {"O_RDONLY", "O_CLOEXEC", "O_NONBLOCK", "O_NOFOLLOW", "O_DIRECTORY", "O_NOCTTY", "O_BINARY"}
+        how = (n.args[1:2] or [kw.get("flags")])[0]
+        how = given_once.get(getattr(how, "id", ""), how)  # flags kept under a name given them once
+        flags = {x.attr if isinstance(x, ast.Attribute) else x.id for x in (ast.walk(how) if how is not None else ())
+                 if isinstance(x, (ast.Attribute, ast.Name))} - set(modules)
+        reads_only = (isinstance(how, ast.Constant) and how.value == 0) or (bool(flags) and flags <= {
+            "O_RDONLY", "O_CLOEXEC", "O_NONBLOCK", "O_NOFOLLOW", "O_DIRECTORY", "O_NOCTTY", "O_BINARY"})
+        if "subprocess" in owners or ("os" in owners and label in ("system", "popen")):
+            first = (n.args[:1] or [kw.get("args")])[0]
+            parts = [spelled(e) for e in first.elts] if isinstance(first, (ast.List, ast.Tuple)) else None
+            ran = shlex.join(parts) if parts else spelled(first) if first is not None and parts is None else "\0"
+            folder = os.path.join(where, os.path.expanduser(spelled(kw["cwd"]))) if "cwd" in kw else where
+            if "\0" not in ran + folder:  # a command it spells whole is judged as the shell guard judges a command, where it runs
+                hit = hit or bool(check_self_grant(ran, folder))
+                continue
         told = kw.get("inplace", n.args[1] if len(n.args) > 1 else None)  # fileinput edits its files only when told to
         edits = told is not None and not (isinstance(told, ast.Constant) and not told.value)
         kept = [k for k, plain in (("follow_symlinks", True), ("symlinks", False)) if k in kw and getattr(kw[k], "value", None) is not plain]
         targets = [t for m in owners for t in (  # what a call into the standard library changes: a copy, only where it lands
             [] if m == "shutil" and label in ("which", "disk_usage", "get_terminal_size")
+            else [] if (m, label) == ("shutil", "copyfileobj")  # two files already open: each open is judged where it is made
             else n.args[1:2] + [kw[k] for k in ("dst", "fdst") if k in kw] or every if m == "shutil" and label in COPIES
             else [] if (m, label) == ("os", "open") and reads_only
             else every if m in ("shutil", "subprocess") or (m, label) == ("sqlite3", "connect") or (m == "os" and OS_WRITES.fullmatch(label))
@@ -2204,7 +2225,7 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
         if opener and (writes or starred):  # open(path, "w") or open(file=path, mode="w")
             targets += n.args[:1] or [kw[k] for k in ("file", "name", "filename") if k in kw]
         elif method and label in ("extractall", "extract"):  # an archive unpacked: where it is told, else where the program stands
-            targets += every or [ast.Constant(value=".")]
+            targets += n.args[label == "extract":][:1] or [kw[k] for k in ("path",) if k in kw] or [ast.Constant(value=".")]
         elif method and label in LINKS:  # the link and what it points at: written through, it writes there
             targets += [base] + every
         elif method and (label in PATH_WRITES or (label == "open" and writes)):
@@ -2253,7 +2274,9 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None) -> str |
             why = why or "runs the synthesis hook, which only the harness may run"
         landed = _landing(words)  # a copy onto a note or a script that is the agent's own lands on it, not inside it
         firm = {w for w in landed if _own(os.path.realpath(os.path.join(where, os.path.expanduser(w))))}
-        landed = [w for w in landed if os.path.dirname(w) not in firm]
+        roomy = {w for w in landed if head in COPIERS and _own(os.path.realpath(os.path.join(where, os.path.expanduser(w))), True)
+                 and w not in firm and any(os.path.dirname(x.rstrip("/")) == w.rstrip("/") for x in landed if x != w)}
+        landed = [w for w in landed if os.path.dirname(w) not in firm and w not in roomy]  # into its memory folder: the note it makes there
         asked += [(os.path.expanduser(os.path.expandvars(w)), where) for w in landed]
         led = [os.path.realpath(os.path.join(where, os.path.expanduser(w))) for w in landed] if head in ("ln", "mkdir") else []
         links, made = links + led * (head == "ln"), made + led * (head == "mkdir")
