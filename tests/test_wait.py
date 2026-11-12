@@ -668,6 +668,49 @@ def test_a_seat_in_a_live_wait_is_listed_for_the_whole_bound_of_its_wait(two, tm
     assert board.resolve("S1").session == "S1" and wait.live("S4") == wait.live("S5") == []   # and mail still reaches the seat
 
 
+def test_resume_names_a_quiet_seat_that_holds_a_live_wait_and_marks_it_as_who_does(two, tmp_path, write_config, capsys):
+    """2026-11-12, a third review: `synthesis who` listed a seat nine hours into a twelve-hour wait on a project, and
+    `synthesis resume` of that project did not name it. The session that picked the project up was told of no one
+    else there, though the waiting seat would wake and write the same records."""
+    from synthesis import cli, wait
+    root, now = tmp_path / "ai-knowledge-test", time.time()
+    home = root / "projects" / "alpha"
+    home.mkdir(parents=True)
+    (home / "CONTEXT.md").write_text("# Alpha\n", encoding="utf-8")
+    write_config({"knowledge_roots": [str(root)]})
+    ended = subprocess.Popen([sys.executable, "-c", "pass"])
+    ended.wait()
+    for name, at in (("W1", "alpha"), ("W2", "alpha"), ("W3", "gamma"), ("W4", "alpha"), ("Q1", "alpha"), ("Q2", "alpha"), ("Q3", "alpha")):
+        board.touch(name, project=at, harness="codex")
+    board.claim("W3", [str(home / "resources")])                                      # a seat of another project that claimed a folder of this one
+    wait.record("W1", "a message", now + 3 * 3600, pid=os.getpid(), every=300)        # nine hours into twelve, its watcher running
+    wait.record("W2", "the CI run", now + 2 * 3600, by="the harness's timer")         # a wait the harness holds
+    wait.record("W3", "a file", now + 3600, pid=os.getpid())
+    wait.record("W4", "a message", now + 1800, pid=os.getpid())                       # a seat seen a moment ago that waits too
+    wait.record("Q2", "a message", now - 60, pid=os.getpid())                         # a wait whose bound passed a minute ago
+    wait.record("Q3", "the build", now + 3600, pid=ended.pid)                         # a wait whose watcher is gone
+    wait.record("S2", "a message", now + 3600, pid=os.getpid())                       # a wait on another project, with no claim here
+    for name in ("W1", "W2", "W3", "Q1", "Q2", "Q3", "S2"):                           # each of these was last seen nine hours ago
+        seat = board.load(name)
+        seat.seen = now - 9 * 3600
+        board.save(seat)
+
+    def until(hours):
+        return "waiting until " + time.strftime("%H:%M", time.localtime(now + hours * 3600))
+    assert cli.main(["--session", "R1", "resume", "alpha"]) == 0
+    named = {line.split()[3]: line for line in capsys.readouterr().out.splitlines() if line.startswith("- Live session ")}
+    assert set(named) == {"S1", "W1", "W2", "W3", "W4"}                               # not Q1, Q2 or Q3, nor S2 of another project
+    for name, hours in (("W1", 3), ("W2", 2), ("W3", 1), ("W4", 0.5)):
+        assert f") works here, {until(hours)}; one session owns CONTEXT.md" in named[name], named[name]
+        assert named[name].endswith(f"coordinate with synthesis msg {board.short_name(name)}.")
+    assert ") works here; one session owns CONTEXT.md" in named["S1"]                 # a seat that waits for nothing is named as before
+    assert cli.main(["who"]) == 0
+    rows = {row.split()[1]: row for row in capsys.readouterr().out.splitlines() if re.match(r"[a-z2-7]{6} ", row)}
+    assert set(rows) == set(named) | {"S2", "R1"}                                     # `who` lists the same seats, with S2 and the one that resumed
+    for name in ("W1", "W2", "W3", "W4"):                                             # and gives each waiting seat the same mark
+        assert re.search(r"waiting until \d\d:\d\d$", rows[name]).group(0) in named[name]
+
+
 # --- the sender is told what will deliver the message --------------------------------------------------------------
 
 def test_a_word_of_a_message_is_not_taken_for_the_command(two):
