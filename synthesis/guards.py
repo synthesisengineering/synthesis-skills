@@ -871,8 +871,9 @@ def _bare(words: list[str], moved: list | None = None) -> tuple[list[str], list[
             return [], scripts + [" ".join(words[1:])]
         if head == "command" and words[1:2] in (["-v"], ["-V"]):
             return [], scripts  # a lookup, not a run
-        if head == "trap":  # what it keeps to run when the shell ends or a signal comes
-            scripts += [w for w in words[1:2] if not w.startswith("-")]
+        if head == "trap":  # what it keeps to run when the shell ends or a signal comes: the word before its signals, past `--`
+            rest = list(itertools.dropwhile(lambda w: w in ("--", "-l", "-p"), words[1:]))
+            scripts += [w for w in rest[:1] if len(rest) > 1 and w != "-"]
         if head not in WRAPPERS:
             break
         takes, i = WRAPPERS[head], 1
@@ -1803,7 +1804,8 @@ def _own_text(text: str) -> str:
     for (words, _), fed in zip(found, feeds + [""] * len(found)):
         kind, _, given = _program(words) if SCRIPT.match(os.path.basename(words[0])) else ("", 0, "")
         body = fed if kind == "stdin" else given if kind == "inline" else ""
-        text = text.replace(body, " " * len(body)) if ASSIGNED.search(body) else text
+        spot = re.search("".join("\\\\?" + re.escape(c) for c in body), text) if ASSIGNED.search(body) and len(body) < 20000 else None
+        text = text[:spot.start()] + " " * (spot.end() - spot.start()) + text[spot.end():] if spot else text  # in double quotes it is spelled with backslashes
     return text
 
 
@@ -1950,7 +1952,8 @@ def _named(words: list[str]) -> list[str]:
     if "/" in words[0] or head in READERS or head in WRITERS or head in OWN_RULES or head in SHELLS or SCRIPT.match(head):
         return []  # a program run by its path is a script the guard cannot read, like one run by its shell
     inner = [path for w in words[1:] for path in re.findall(r"[~/][\w./~+@%-]*", w)] if head in OPAQUE else []  # each path its program names
-    told = [w for w in words[1:] if not (w.startswith("-") and MESSAGE.fullmatch(w.split("=", 1)[0]))]  # --body=TEXT is words for a reader
+    told = [w for at, w in enumerate(words) if at and not (w.startswith("-") and MESSAGE.fullmatch(w.split("=", 1)[0]))
+            and not MESSAGE.fullmatch(words[at - 1])]  # --body=TEXT and --body TEXT are words for a reader
     return [part for w in told for part in {w, w.split("=", 1)[-1], "".join(re.findall(r"^-[^~/]*([~/].*)", w)) or w}] + inner
 
 
@@ -2322,12 +2325,15 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
     rows = {t.id: v.elts for t, v in pairs if isinstance(t, ast.Name) and t.id in once and isinstance(v, (ast.List, ast.Tuple))}
     for holder in [n.func.value for n in calls if getattr(n.func, "attr", "") in MUTATORS] + [getattr(t, "value", None) for t, _ in pairs]:
         rows.pop(getattr(holder, "id", ""), None)  # a list that gains a row later is not the list as written
-    plainly = [n for n in calls if isinstance(n.func, ast.Name) and len(local.get(n.func.id, ())) == 1
+    def asked(c):  # the program's own function or method a call names: f(...), obj.method(...), never a module's
+        own = isinstance(c.func, ast.Attribute) and not (isinstance(c.func.value, ast.Name) and c.func.value.id in modules)
+        return c.func.id if isinstance(c.func, ast.Name) else c.func.attr if own else None
+    plainly = [n for n in calls if asked(n) and len(local.get(asked(n), ())) == 1
                and not any(isinstance(a, ast.Starred) for a in n.args) and None not in [k.arg for k in n.keywords]]
     called = {id(c.func) for c in calls}  # a function also handed on, kept under another name or called another way has other callers
     loose_names = {n.id for n in nodes if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Load) and id(n) not in called} | {
-        c.func.id for c in calls if isinstance(c.func, ast.Name) and c not in plainly}
-    callers = {name: [c for c in plainly if c.func.id == name] for name in {c.func.id for c in plainly} - loose_names}
+        asked(c) for c in calls if asked(c) and c not in plainly} | {n.attr for n in nodes if isinstance(n, ast.Attribute) and id(n) not in called}
+    callers = {name: [c for c in plainly if asked(c) == name] for name in {asked(c) for c in plainly} - loose_names}
     places = [where]  # each folder the program may stand in at some time, whatever the order: filled in below
 
     def settle() -> None:  # what each name is built from and spells, to a fixed point
@@ -2347,6 +2353,7 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
             for name, calls_of in callers.items():  # a helper called in one place spells what that caller hands it
                 own = local[name][0]
                 takers = [a.arg for a in own.posonlyargs + own.args]
+                takers = takers[takers[:1] in (["self"], ["cls"]) and all(isinstance(c.func, ast.Attribute) for c in calls_of):]  # a method's own first
                 given_by = dict(zip(takers[len(takers) - len(own.defaults):], own.defaults))  # a default stands where no caller says otherwise
                 given_by.update({a.arg: d for a, d in zip(own.kwonlyargs, own.kw_defaults) if d is not None})
                 for at, taker in enumerate(takers + [a.arg for a in own.kwonlyargs]):
@@ -2440,14 +2447,21 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
         made = [v for t, v in pairs if isinstance(t, ast.Name) and t.id == getattr(node, "id", None) and t.id not in seen] or [node]
         return [x for v in made for x in (
             [((v.args[:1] or [k.value for k in v.keywords if k.arg in ("path", "file")] or [v])[0], v)]
-            if isinstance(v, ast.Call) and getattr(v.func, "attr", getattr(v.func, "id", "")) == "open"
+            if isinstance(v, ast.Call) and getattr(v.func, "attr", direct.get(getattr(v.func, "id", ""), ("", getattr(v.func, "id", "")))[1]) == "open"
             else opened_on(v, seen + (node.id,)) if isinstance(v, ast.Name) and v is not node else [(v, None)])]  # kept under another name
 
-    def folders(given, descriptor: bool = False) -> list:  # each folder those arguments may name, "\0" for a part that cannot be read
-        return [(f"\1{id(call)}\1" if call is not None else "\1") * (descriptor and v[:1] not in ("/", "\0", "\1")) + v
-                if v[:1] != "\0" else stand_in if names and named(a) else v
-                for arg in given for a, call in (opened_on(arg) if descriptor else [(arg, None)])
-                for v in map(os.path.expanduser, ranges.get(getattr(a, "id", ""), [spelled(a)]))]
+    def folders(given, descriptor: bool = False, depth: int = 0) -> list:  # each folder those arguments may name, "\0" for a part that cannot be read
+        found = []
+        for a, call in [pair for arg in given for pair in (opened_on(arg) if descriptor else [(arg, None)])]:
+            beside = [k.value for k in getattr(call, "keywords", ()) if k.arg == "dir_fd"] if depth < 4 else []
+            for v in map(os.path.expanduser, ranges.get(getattr(a, "id", ""), [spelled(a)])):
+                if v[:1] == "\0":
+                    found.append(stand_in if names and named(a) else v)
+                elif beside and not os.path.isabs(v):  # opened beside another descriptor: under that one's folder
+                    found += [os.path.join(base, v) for base in folders(beside, True, depth + 1)]
+                else:
+                    found.append((f"\1{id(call)}\1" if call is not None else "\1") * (descriptor and v[:1] not in ("/", "\1")) + v)
+        return found
 
     def based(v: str, spots) -> list:  # the folders a path is read from: where the program stood at the call that opened it or made it whole
         made = re.search("\1(\\d+)\1", v)
@@ -2648,6 +2662,8 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
         targets = [t for m in owners for t in (  # what a call into the standard library changes: a copy, only where it lands
             [] if m == "shutil" and label in ("which", "disk_usage", "get_terminal_size")
             else [] if (m, label) == ("shutil", "copyfileobj")  # two files already open: each open is judged where it is made
+            else n.args[1:2] + [kw[k] for k in ("extract_dir",) if k in kw] or [ast.Constant(value=".")] if (m, label) == ("shutil", "unpack_archive")
+            else n.args[:1] + [kw[k] for k in ("base_name",) if k in kw] if (m, label) == ("shutil", "make_archive")  # the folder it packs is read
             else n.args[1:2] + [kw[k] for k in ("dst", "fdst") if k in kw] or every if m == "shutil" and label in COPIES
             else [] if (m, label) == ("os", "open") and reads_only
             else every if m == "shutil" or starts or (m, label) == ("sqlite3", "connect") or (m == "os" and OS_WRITES.fullmatch(label))
