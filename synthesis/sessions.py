@@ -521,7 +521,9 @@ def export(days: float = 0, only: str = "", wait: bool = True, rebuild: bool = F
         if busy:
             return [busy]
         moved = [f"previous archive moved to {_rebuild()}"] if rebuild else []
-        return moved + _export(0 if rebuild else days, only)
+        report = moved + _export(0 if rebuild else days, only)
+        paths.write_json(root() / ".state" / "export.json", {"exported": datetime.now().astimezone().isoformat(timespec="seconds")})
+        return report  # the stamp is the doctor's heartbeat for the scheduled export: a run that found nothing new still ran
 
 
 def _export(days: float, only: str) -> list:

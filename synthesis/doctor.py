@@ -369,6 +369,25 @@ def check_sessions_repos(repos: dict, state: Path, now: float = 0) -> list:
     return found
 
 
+def check_sessions_export(plist: Path, stamp: Path, now: float = 0, run=subprocess.run) -> Check:
+    """The hourly copy of session transcripts (2026-11-11: the archive had no trigger of its own): scheduled, loaded,
+    and an export finished within the last day, by this job or by any session."""
+    how = "python3 <synthesis-onboarding>/scripts/setup.py plugin --sessions-export"
+    if not plist.exists():
+        return Check("warn", "sessions export", "not scheduled: transcripts are copied only when a session runs resume, "
+                     f"handoff or a ritual ({how})")
+    if run(["launchctl", "print", f"gui/{os.getuid()}/{plist.stem}"], capture_output=True, text=True).returncode:
+        return Check("fail", "sessions export", f"{_short(plist)} is not loaded, so nothing copies transcripts on a schedule ({how})")
+    try:
+        age = ((now or time.time()) - datetime.fromisoformat(paths.read_json(stamp).get("exported", "")).timestamp()) / 3600
+    except ValueError:
+        age = None
+    if age is None or age > 24:
+        return Check("fail", "sessions export", "scheduled, and no export has finished " + ("yet" if age is None else f"in {age:.0f} hours")
+                     + f": read /tmp/{plist.stem}.log")
+    return Check("ok", "sessions export", f"every hour; the last one finished {age * 60:.0f} min ago")
+
+
 def check_board(home: Path) -> Check:
     """The board moved to board/ in 5.1.18; whatever is left under state/ is read by no session."""
     old = [n for n in paths.BOARD_FILES if os.path.lexists(home / "state" / n)]
@@ -1151,6 +1170,9 @@ def run_checks(home: Path | None = None, find=find_client, latest_ref: str = "",
     checks = [check_runtime(home), check_config(home), check_board(home)]
     from synthesis import sessions
     checks += check_sessions_repos(sessions.repos(), home / "sessions" / ".state")
+    if sys.platform == "darwin":
+        checks.append(check_sessions_export(Path.home() / "Library" / "LaunchAgents" / "com.synthesis.sessions-export.plist",
+                                            home / "sessions" / ".state" / "export.json"))
     runtime = runtime_hash(home) if checks[0].status == "ok" else ""
     if (home / "bin" / "synthesis-hook").is_file():  # when it is missing, the runtime line already says so
         checks += [check_hook_script(home), check_self_test(home), check_wait_check()]  # before the CLIs start, so they don't skew timing
