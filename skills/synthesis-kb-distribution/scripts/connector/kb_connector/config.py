@@ -2,6 +2,7 @@
 
 references/connector.md documents each variable. A required value that is missing or malformed
 stops the start (ConfigError lists them all); nothing falls back to serving without sign-in.
+KB_OPERATOR_TEST=1 with KB_OPERATOR_ADDRESSES is the operator-only test mode: nobody else signs in.
 """
 
 from __future__ import annotations
@@ -39,6 +40,7 @@ class Settings:
     allowed_emails: str
     allowed_hosted_domains: str
     allowed_groups: str
+    operator_addresses: str
     group_refresh_seconds: int
     allowed_redirect_uris: tuple
     oauth_store: str
@@ -76,6 +78,10 @@ def load(env) -> Settings:
     local = parsed.hostname in ("localhost", "127.0.0.1", "::1")
     if parsed.scheme not in ("https", "http") or not parsed.hostname or (parsed.scheme == "http" and not local):
         problems.append("KB_PUBLIC_URL must be the service's https:// address (http:// only for localhost)")
+    test, operators = get("KB_OPERATOR_TEST"), get("KB_OPERATOR_ADDRESSES")
+    if test not in ("", "0", "1") or (test == "1") != bool(listed(operators)):
+        problems.append("the operator-only test mode needs both KB_OPERATOR_TEST=1 and KB_OPERATOR_ADDRESSES, the "
+                        "operator's own email address or addresses: set both, or neither")
     for name in ("KB_GOOGLE_CLIENT_ID", "KB_GOOGLE_CLIENT_SECRET"):
         if not get(name):
             problems.append(f"{name} is required")
@@ -95,6 +101,7 @@ def load(env) -> Settings:
         google_client_id=get("KB_GOOGLE_CLIENT_ID"), google_client_secret=get("KB_GOOGLE_CLIENT_SECRET"),
         jwt_signing_key=get("KB_JWT_SIGNING_KEY"), allowed_emails=get("KB_ALLOWED_EMAILS"),
         allowed_hosted_domains=get("KB_ALLOWED_HOSTED_DOMAINS"), allowed_groups=get("KB_ALLOWED_GROUPS"),
+        operator_addresses=operators,
         group_refresh_seconds=_int(env, "KB_GROUP_REFRESH_SECONDS", 300, 60, 86400, problems),
         allowed_redirect_uris=tuple(u.strip() for u in get("KB_ALLOWED_REDIRECT_URIS").split(",") if u.strip()),
         oauth_store=store, firestore_project=get("KB_FIRESTORE_PROJECT"), firestore_database=get("KB_FIRESTORE_DATABASE"),
@@ -110,7 +117,8 @@ def load(env) -> Settings:
     if not fields & {"id", "source_path"} or fields - set(URL_FIELDS):
         problems.append("KB_DOCUMENT_URL_TEMPLATE may use only {" + "}, {".join(URL_FIELDS) + "} and needs {id} or "
                         "{source_path}")
-    for name, value in (("KB_ALLOWED_EMAILS", settings.allowed_emails), ("KB_ALLOWED_GROUPS", settings.allowed_groups)):
+    for name, value in (("KB_ALLOWED_EMAILS", settings.allowed_emails), ("KB_ALLOWED_GROUPS", settings.allowed_groups),
+                        ("KB_OPERATOR_ADDRESSES", settings.operator_addresses)):
         if value and any(e.count("@") != 1 for e in listed(value)):
             problems.append(f"{name} must be comma-separated email addresses")
     if problems:
