@@ -163,6 +163,7 @@ def test_the_build_reads_dependencies_in_both_list_forms():
         assert package.depends_on(text) == dependencies(text), skill_md.parent.name
     block = "---\nname: x\ndepends_on:\n  - synthesis-a\n  - \"synthesis-b\"\nmetadata:\n  format: v5\n---\n"
     assert package.depends_on(block) == ["synthesis-a", "synthesis-b"]
+    assert package.depends_on(block.replace("\n  - ", "\n- ")) == ["synthesis-a", "synthesis-b"]  # YAML allows no indent
     assert package.depends_on("---\nname: x\n---\ndepends_on: [\"not-frontmatter\"]\n") == []
 
 
