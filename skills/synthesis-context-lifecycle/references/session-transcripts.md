@@ -154,7 +154,11 @@ only what the listing prints for a prompt (its citation, its minute and its firs
 layout, and the list the day-end record prints when it refuses. Only those are set aside: what is written beside
 them in the same file is read, and a listing line with what became of the prompt written on it is a record.
 `--json` prints
-`{"workspace", "date", "prompts", "open": [...], "records": [...]}`; the day-end record runs it itself.
+`{"workspace", "date", "prompts", "open": [...], "records": [...]}`; the day-end record runs it itself. `records`
+names each folder as the listing read it, by its real path: `~` expanded, links followed, and `..` taken from
+where a link leads, never as written. The record reads the folders its config names the same way before it
+compares, so a folder is the same folder however it is written. An empty `--records ""` names no folder: nothing
+is read for it.
 
 For each prompt left: open it (`synthesis sessions show <session> --seq <n>`), and where its substance is
 already in a record, cite it there; where it is not, write the record first, then cite. A prompt that needs no

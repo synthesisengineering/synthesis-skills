@@ -219,7 +219,7 @@ def cmd_sessions(args) -> int:
     if args.action == "export" and args.lost:
         try:
             print(sessions.lost(args.lost))
-        except (ValueError, PermissionError) as exc:  # not one the stamp names, or still there; or the principal's code is needed
+        except (ValueError, PermissionError) as exc:  # not one the stamp names, or still there; or the principal's code is needed, or not theirs (Unverified)
             print(exc, file=sys.stderr)
             return 1 if isinstance(exc, ValueError) else 2
     elif args.action == "export":
@@ -259,21 +259,21 @@ def cmd_sessions(args) -> int:
                   + (f" (and {len(late) - 1} more)" if len(late) > 1 else "")
                   + ("" if busy else ". `synthesis doctor` says how each is cleared"), file=sys.stderr)
             return 2
+        roots = [r and os.path.realpath(os.path.expanduser(r)) for r in args.records]  # as the walk reads each: links followed, then `..`; an empty name is no folder
         found = sessions.prompts(args.workspace, day)
-        left = sessions.uncited(found, args.records) if args.records else found
+        left = sessions.uncited(found, roots) if roots else found
         known = sessions.catalog() if left else []
         names = {session: sessions.short(session, known) for session in {str(p["session"]) for p in left}}
         cites = [f"{p['harness']} {names[str(p['session'])]} #{p['seq']}" for p in left]
         if args.json:
-            print(json.dumps({"workspace": args.workspace, "date": day, "prompts": len(found), "open": cites if args.records else [],
-                              "records": [os.path.abspath(os.path.expanduser(r)) for r in args.records or []]}))
+            print(json.dumps({"workspace": args.workspace, "date": day, "prompts": len(found), "open": cites if roots else [], "records": roots}))
         else:
             for cite, p in zip(cites, left):
                 print(f"{cite}  {p['at'][11:16]}  {' '.join(p['text'].split())[:args.width or None]}")
-            print(f"{len(found)} prompts on {day} in {args.workspace}" if not args.records else
+            print(f"{len(found)} prompts on {day} in {args.workspace}" if not roots else
                   f"all {len(found)} prompts on {day} in {args.workspace} are cited by a record" if not left else
                   f"{len(left)} of {len(found)} prompts on {day} in {args.workspace} {'is' if len(left) == 1 else 'are'} cited by no record")
-        return 1 if args.records and left else 0
+        return 1 if roots and left else 0
     else:  # recent, search: each record under as much of its session's id as cites it and opens it
         rows = (sessions.recent(args.project, args.workspace, args.limit) if args.action == "recent" else
                 sessions.search(args.target, args.workspace, args.project, kinds)[:args.limit])

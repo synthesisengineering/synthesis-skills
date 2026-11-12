@@ -221,21 +221,20 @@ def prompts(workspace: str, day: str, direction: str, outcome: str) -> str:
                f"{(done.stderr or done.stdout).strip()[:400]}\nRun `{again}` to see it")
     try:
         found = json.loads(done.stdout)
-        total, left, held = found["prompts"], found["open"], found["records"]
-        if not isinstance(held, list):
-            raise TypeError(f"records is {held!r}, not a list of folders")
+        total, left = found["prompts"], found["open"]
         sound = (type(total) is int and isinstance(left, list) and all(isinstance(c, str) and c for c in left)
                  and len(set(left)) == len(left) <= total and done.returncode == (1 if left else 0))
-        answered = (found["workspace"], found["date"], [os.path.realpath(os.path.expanduser(r)) for r in held])
+        answered = (found["workspace"], found["date"], found["records"])
     except (ValueError, KeyError, TypeError) as exc:
         refuse(f"the listing of {day}'s prompts cannot be read ({exc!r}); run `{again} --json` to see it")
     if not sound:  # 2026-11-12: an exit of 1 with `prompts: 1, open: []` was taken as a clean day
         refuse(f"the listing of {day}'s prompts does not agree with itself: it exits 1 exactly while it lists a prompt open, "
                f"lists no more than were typed and each once, and this answer exited {done.returncode} (or a field has another "
                f"shape), so nothing is recorded; run `{again} --json` to see it")
-    if answered != (workspace, day, [os.path.realpath(os.path.abspath(os.path.expanduser(r))) for r in roots]):  # as the listing names a folder
-        refuse(f"the listing answered for {answered[0]} on {answered[1]} against {held}, and this record is for {workspace} on "
-               f"{day} against {roots}. Run `{again}`")
+    read = [os.path.realpath(os.path.expanduser(r)) for r in roots]  # as the listing's walk reads each and its answer names it: links followed, then `..`
+    if answered != (workspace, day, read):
+        refuse(f"the listing answered for {answered[0]} on {answered[1]} against {answered[2]}, and this record is for {workspace} on "
+               f"{day} against {read}. Run `{again}`")
     if left and outcome in CLEAN:
         refuse(f"{len(left)} of {total} prompts typed on {day} {'is' if len(left) == 1 else 'are'} cited by no record, so "
                f"outcome {outcome!r} would claim nothing was lost:\n" + "\n".join(f"  {c}" for c in left[:40])

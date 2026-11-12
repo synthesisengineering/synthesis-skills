@@ -1376,6 +1376,53 @@ def test_a_loss_is_cleared_on_the_principals_code_however_the_clearing_is_called
     assert sessions.lost("claude-code c1").startswith("cleared: claude-code c1") and _checked(tmp_path)[0] == "ok"   # by either name
 
 
+def test_a_loss_is_not_cleared_on_an_approval_the_sessions_transcript_does_not_back(principal, harness, tmp_path, capsys):
+    """An approval of the loss is on record and the session's own transcript does not show the principal typing it: an
+    agent runs as the same user and can write the grant itself. The clearing then says why and exits 2 with no
+    traceback, as opening a send window does, clears nothing and asks again; the principal's own prompt clears it."""
+    import sys
+    from synthesis import approvals
+    gone = _jsonl(harness["claude"], _claude_rows(harness["work"]))
+    gone.chmod(0o000)
+    try:
+        sessions.export(0)
+    finally:
+        gone.chmod(0o644)
+    gone.unlink()
+    clear, record = ["sessions", "export", "--lost", "c1"], principal.transcript
+
+    def written(code: str) -> None:                                             # the words, in a record the principal did not type
+        record.write_text(json.dumps({"type": "user", "isMeta": True, "sessionId": "S-principal", "timestamp": "2099-01-01T00:00:00Z",
+                                      "message": {"role": "user", "content": f"approve {code}"}}) + "\n", encoding="utf-8")
+    unbacked = {"no transcript of the session": (lambda code: None, "gave no transcript"),
+                "the words in a record the principal did not type": (written, "shows no prompt from the principal"),
+                "a transcript that cannot be read": (lambda code: record.chmod(0o000), "could not be read")}
+    assert cli.main(clear) == 2
+    asked = capsys.readouterr().err                                              # it asks for the principal's code
+    try:
+        for name, (leave, why) in unbacked.items():
+            code = re.search(r"\bcode ([a-z0-9]{6})\b", asked).group(1)
+            leave(code)
+            assert approvals.grant_from_prompt(f"approve {code}"), name          # a grant, with no prompt of theirs behind it
+            assert cli.main(clear) == 2, name
+            asked = capsys.readouterr().err
+            assert "An approval for this call was recorded, but" in asked and why in asked and "approve followed by the code" in asked, name
+            assert _checked(tmp_path)[0] == "fail" and not (sessions.root() / ".state" / "lost.jsonl").exists(), name
+    finally:
+        record.chmod(0o644)
+    assert approvals.grant_from_prompt("approve " + re.search(r"\bcode ([a-z0-9]{6})\b", asked).group(1))
+    done = subprocess.run([sys.executable, "-m", "synthesis", *clear], capture_output=True, text=True, stdin=subprocess.DEVNULL,
+                          cwd=str(Path(__file__).resolve().parents[1]))         # and run as the command itself
+    assert done.returncode == 2 and done.stdout == "" and "Traceback" not in done.stderr
+    assert done.stderr.startswith("An approval for this call was recorded, but") and len(done.stderr.splitlines()) == 1
+    assert approvals.grant_from_prompt("approve " + re.search(r"\bcode ([a-z0-9]{6})\b", done.stderr).group(1))
+    with pytest.raises(approvals.Unverified) as refused:                         # the function under the command refuses the same way
+        sessions.lost("c1")
+    assert _checked(tmp_path)[0] == "fail"
+    principal(str(refused.value))                                                # the code it asks for, typed by the principal
+    assert cli.main(clear) == 0 and "cleared: claude-code c1" in capsys.readouterr().out and _checked(tmp_path)[0] == "ok"
+
+
 def test_a_transcript_an_adapter_cannot_read_is_named_and_the_run_goes_on(harness, tmp_path, capsys):
     """A row of a shape an adapter does not expect stopped the whole run where it stood: the transcripts after it
     were not copied and no stamp was left, so the doctor answered ok until a day had passed."""
