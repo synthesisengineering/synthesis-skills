@@ -577,7 +577,8 @@ def _export(days: float, only: str) -> list:
         if name not in tried and not os.path.exists(entry["native"]):
             entry.setdefault("gone", now)
             report.append(f"{name}: not copied before its transcript was removed (its copy last failed {entry['at'][:16]}); "
-                          f"what it held is not in the archive, and `synthesis sessions export --lost {name.partition(' ')[2]}` clears it")
+                          f"what it held is not in the archive, and `synthesis sessions export --lost {name.partition(' ')[2]}` clears it "
+                          "once the principal accepts that")
     if waiting:
         last.update(failed=len(waiting), reason=(failed or [entry["reason"] for entry in waiting.values()])[0], uncopied=waiting)
     else:
