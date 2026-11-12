@@ -45,7 +45,11 @@ SYN_HOME="${SYNTHESIS_HOME:-}"
 
 # A value written as the text of a plist string, and inside the double quotes of a
 # systemd Environment= line: an ampersand or an angle bracket ends a plist, and
-# systemd reads a backslash, a quote and a percent sign as its own.
+# systemd reads a backslash, a quote and a percent sign as its own. Every value
+# the person chose goes through one of them (a client secret under a folder
+# named with an ampersand gave a plist that did not parse). A value with none of
+# those characters is written exactly as before. ExecStart= is a command line,
+# which has rules of its own, and is written as it was.
 as_xml()  { printf '%s' "$1" | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g'; }
 as_unit() { printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/%/%%/g'; }
 
@@ -71,22 +75,22 @@ install_macos() {
   <string>$label</string>
   <key>ProgramArguments</key>
   <array>
-    <string>$START_SCRIPT</string>
+    <string>$(as_xml "$START_SCRIPT")</string>
   </array>
   <key>EnvironmentVariables</key>
   <dict>
     <key>GOOGLE_CLIENT_SECRET_PATH</key>
-    <string>$GOOGLE_CLIENT_SECRET_PATH</string>
+    <string>$(as_xml "$GOOGLE_CLIENT_SECRET_PATH")</string>
     <key>WORKSPACE_MCP_PORT</key>
-    <string>$PORT</string>
+    <string>$(as_xml "$PORT")</string>
     <key>WORKSPACE_MCP_TOOL_TIER</key>
-    <string>$TIER</string>
+    <string>$(as_xml "$TIER")</string>
     <key>GOOGLE_MCP_CREDENTIALS_DIR</key>
-    <string>$CREDS_DIR</string>
+    <string>$(as_xml "$CREDS_DIR")</string>
     <key>WORKSPACE_MCP_FOREGROUND</key>
     <string>1</string>$synthesis_home
     <key>PATH</key>
-    <string>$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+    <string>$(as_xml "$HOME")/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
   </dict>
   <key>RunAtLoad</key>
   <true/>
@@ -98,9 +102,9 @@ install_macos() {
   <key>ThrottleInterval</key>
   <integer>30</integer>
   <key>StandardOutPath</key>
-  <string>$log_dir/launchd-stdout.log</string>
+  <string>$(as_xml "$log_dir")/launchd-stdout.log</string>
   <key>StandardErrorPath</key>
-  <string>$log_dir/launchd-stderr.log</string>
+  <string>$(as_xml "$log_dir")/launchd-stderr.log</string>
 </dict>
 </plist>
 PLIST
@@ -150,10 +154,10 @@ Wants=network-online.target
 [Service]
 Type=simple
 ExecStart=$START_SCRIPT
-Environment="GOOGLE_CLIENT_SECRET_PATH=$GOOGLE_CLIENT_SECRET_PATH"
-Environment="WORKSPACE_MCP_PORT=$PORT"
-Environment="WORKSPACE_MCP_TOOL_TIER=$TIER"
-Environment="GOOGLE_MCP_CREDENTIALS_DIR=$CREDS_DIR"
+Environment="GOOGLE_CLIENT_SECRET_PATH=$(as_unit "$GOOGLE_CLIENT_SECRET_PATH")"
+Environment="WORKSPACE_MCP_PORT=$(as_unit "$PORT")"
+Environment="WORKSPACE_MCP_TOOL_TIER=$(as_unit "$TIER")"
+Environment="GOOGLE_MCP_CREDENTIALS_DIR=$(as_unit "$CREDS_DIR")"
 Environment="WORKSPACE_MCP_FOREGROUND=1"$synthesis_home
 Environment="PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin"
 Restart=on-failure

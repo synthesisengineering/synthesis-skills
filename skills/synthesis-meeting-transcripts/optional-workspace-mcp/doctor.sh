@@ -195,9 +195,11 @@ fi
 # install-autostart.sh writes it when it is set at install. So the outbox the unit
 # gives the server must be the one this shell's sessions stage in, and it must be
 # a folder that is there to write. A unit with another home starts the server to
-# read another outbox, and no restart changes that: only the installer does.
-# Whether the server now running was started with it is not read here:
-# `synthesis doctor` reads the running process, on its `outbox` line.
+# read another outbox, and no restart changes that. Neither does installing over
+# it: a supervisor keeps the unit it has loaded until it is unloaded, so the unit
+# is removed and installed again. Whether the server now running was started with
+# it is not read here: `synthesis doctor` reads the running process, on its
+# `outbox` line.
 HERE_HOME="${SYNTHESIS_HOME:-$HOME/.synthesis/v5}"
 UNIT_HOME="$HERE_HOME"  # with no unit, a server started by hand from this shell
 if [ -n "$UNIT" ] && [ -f "$UNIT" ]; then
@@ -218,7 +220,7 @@ UNIT_HOME="${UNIT_HOME%/}"
 OUTBOX="$UNIT_HOME/outbox"
 if [ "$UNIT_HOME" != "$HERE_HOME" ]; then
   fail "the unit starts the server to read the outbox $OUTBOX, and this shell's synthesis home puts it at $HERE_HOME/outbox" \
-       "run ./install-autostart.sh again from this shell, which writes its SYNTHESIS_HOME into the unit, then restart the service"
+       "run ./uninstall-autostart.sh, then ./install-autostart.sh, from this shell: the unit is written with its SYNTHESIS_HOME and loaded afresh (a restart alone keeps the unit that is loaded)"
 elif [ -e "$OUTBOX" ] && [ ! -d "$OUTBOX" ]; then
   fail "the outbox $OUTBOX is not a folder" "move it away, then restart the service: start.sh makes the folder"
 elif [ ! -d "$OUTBOX" ]; then

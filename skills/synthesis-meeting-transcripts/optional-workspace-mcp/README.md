@@ -146,8 +146,10 @@ own attachment folder.
 
 `./doctor.sh` reports the outbox the unit gives the server: the folder is there to
 write, and it is the outbox of the shell the doctor runs in. When the unit carries
-another synthesis home than that shell's, no restart helps: run `./install-autostart.sh`
-again from that shell, which writes its home into the unit, then restart the service.
+another synthesis home than that shell's, no restart helps, and neither does installing
+over it, since a supervisor keeps the unit it has loaded until it is unloaded: run
+`./uninstall-autostart.sh` and then `./install-autostart.sh` from that shell, which
+writes its home into the unit and loads it afresh.
 
 ## Prerequisites
 

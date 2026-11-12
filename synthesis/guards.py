@@ -278,7 +278,7 @@ def _unread_files(tool: str, tool_input: dict, bound: dict | None = None) -> lis
         if url.scheme == "file" or key == "file_path":
             problems.append(unread(named, "the file", "the connector", f"as `{key}`"
                                    + (", after `file://`," if key == "fileUrl" else "") + " and make this call again"))
-    if isinstance(remote, str) and remote.lower().startswith("file:"):
+    if isinstance(remote, str) and (remote.lower().startswith("file:") or os.path.isabs(remote)):
         problems.append(f"`file_url` is fetched over http or https, and {remote} is a file on this disk: copy the file into "
                         f"{outbox} (make the folder if it is missing), give that copy's full path as `file_path` and make "
                         "this call again")

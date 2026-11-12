@@ -818,9 +818,9 @@ def check_outbox(outbox: Path, unit: Path, pid_file: Path, started=started_with)
     allowed = env.get("ALLOWED_FILE_DIRS", "")  # compared as the connector compares: links followed, letters as written
     roots = tuple(os.path.realpath(os.path.expanduser(a.strip())).rstrip(os.sep) + os.sep
                   for a in allowed.split(os.pathsep) if a.strip())
-    if not (os.path.realpath(outbox) + os.sep).startswith(roots):  # its start.sh derives the outbox from SYNTHESIS_HOME
-        again = (f"; if it still lacks it, its auto-start carries another synthesis home, so run install-autostart.sh again "
-                 f"from a shell where SYNTHESIS_HOME is {_short(outbox.parent)}, then restart it") if unit.is_file() else ""
+    if not (os.path.realpath(outbox) + os.sep).startswith(roots):  # a supervisor keeps the unit it loaded until it is unloaded
+        again = (f"; if it still lacks it, its auto-start carries another synthesis home, so run uninstall-autostart.sh and "
+                 f"then install-autostart.sh from a shell where SYNTHESIS_HOME is {_short(outbox.parent)}") if unit.is_file() else ""
         return Check("fail", "outbox", f"the running mail connector was started without {where} in ALLOWED_FILE_DIRS "
                      f"({allowed or 'not set'}), so it refuses a file staged there after the send is approved: restart it{again}")
     return Check("ok", "outbox", f"{where} is there to write, and the running mail connector was started to read it")
