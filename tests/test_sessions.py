@@ -486,18 +486,23 @@ def test_sync_takes_the_same_writer_lock_as_export(synced):
 
 def test_a_sync_whose_export_could_not_copy_a_transcript_leaves_that_in_the_stamp(synced):
     """Handoff and the day-end copy through `sync`, which exports first (2026-11-12: a copy that export could not make
-    was in no report and no stamp, so nothing said a conversation had stayed behind)."""
+    was in no report and no stamp, so nothing said a conversation had stayed behind). The failure is over when the
+    transcript is copied, by whichever run copies it, and not before."""
     native = _jsonl(synced["claude"], _claude_rows(synced["work"]))
+    stamp, written = sessions.root() / ".state" / "export.json", native.stat().st_mtime
     native.chmod(0o000)
     try:
         sessions.sync(push=False)
-        kept = json.loads((sessions.root() / ".state" / "export.json").read_text())
+        kept = json.loads(stamp.read_text())
         assert kept["failed"] == 1 and "claude-code c1: not exported" in kept["reason"] and "complete" not in kept
     finally:
         native.chmod(0o644)
-    sessions.sync(push=False)                                    # the two days a sync reads: the failure stands
-    assert json.loads((sessions.root() / ".state" / "export.json").read_text())["failed"] == 1
-    assert sessions.export(0) == [] and "failed" not in json.loads((sessions.root() / ".state" / "export.json").read_text())
+    os.utime(native, (written - 3 * 86400, written - 3 * 86400))
+    sessions.sync(push=False)                                    # the two days a sync reads do not reach it: the failure stands
+    assert json.loads(stamp.read_text())["failed"] == 1
+    os.utime(native, (written, written))
+    sessions.sync(push=False)                                    # within them, the sync's own export copies it,
+    assert "failed" not in json.loads(stamp.read_text()) and sessions.export(0) == []      # and nothing is left to copy
 
 
 def test_masking_covers_the_principals_tier_0_list_as_the_commit_check_loads_it(harness, monkeypatch):
@@ -590,6 +595,26 @@ def test_a_prompt_is_accounted_for_by_a_record_that_cites_it_alone_or_in_a_range
     assert sessions.uncited([first], [str(asked["kb"] / "absent")]) == [first]
 
 
+def test_a_range_is_joined_on_one_line_and_ends_in_a_record_number(asked):
+    """A citation at the end of a line was joined to the list item under it: `c1 #2`, then `- 2026-10-30 ...`, read as
+    the range #2 to #2026, which cleared every later prompt of that session with nothing written about them."""
+    first, second = found = sessions.prompts("acme", "2026-10-30")
+    roots, cite = [str(asked["kb"])], f"claude-code c1 #{first['seq']}"
+    assert first["seq"] < second["seq"] < 10
+    for record in (f"- 10:00 planned the release, {cite}\n- 2026-10-30 the announcement is still to draft\n",     # a dated item under it,
+                   f"Planned the release: {cite}\n\n- 40 items remain on the list\n",                                 # a counted one,
+                   f"- {cite} — 2026-10-30: decided to ship on Friday\n",                                            # a dash and a date,
+                   f"- {cite} - 10:30 the plan was agreed\n"):                                                        # or a time
+        asked["log"].write_text(record, encoding="utf-8")
+        assert sessions.uncited(found, roots) == [second], record
+    asked["log"].write_text(f"- claude-code c1 #{second['seq']} - 3 options weighed, the second chosen\n", encoding="utf-8")
+    assert sessions.uncited(found, roots) == [first]                # a number below the record's own ends no range: that record is cited
+    for record in (f"c1 #{first['seq']}-{second['seq']}", f"(c1 #{first['seq']}–{second['seq']}).", f"c1 #{first['seq']} to\n  #{second['seq']}",
+                   f"c1 #{first['seq']} through {second['seq']}, then lunch", f"c1 #{first['seq']} -\n  {second['seq']}"):
+        asked["log"].write_text(f"- the morning's work, {record}\n", encoding="utf-8")
+        assert sessions.uncited(found, roots) == [], record          # a range as the documents write it, wrapped or not
+
+
 def test_sessions_prompts_names_each_one_no_record_cites_and_exits_1_while_any_is_open(asked, capsys):
     command = ["sessions", "prompts", "--workspace", "acme", "--date", "2026-10-30", "--records", str(asked["kb"])]
     assert cli.main(command) == 1
@@ -648,6 +673,228 @@ def test_a_citation_names_one_session_and_a_listing_of_what_is_open_cites_nothin
     assert cli.main(command) == 1 and "2 of 2 prompts" in capsys.readouterr().out
 
 
+def test_the_instructions_cite_a_session_as_the_listing_prints_it(harness, tmp_path, capsys):
+    """2026-11-12, a second review: the binding rule still said to cite a session by eight characters. Followed for
+    two sessions that begin alike, neither citation counted and `show` found two sessions. The listing prints as
+    much of each id as names it alone, and the instructions say to write that."""
+    ids = ["01a11111-aaaa-4000-8000-000000000001", "01a11111-aaab-4000-8000-000000000002",      # alike for twelve characters,
+           "01a11111-bbbb-4000-8000-000000000003"]                                              # and for eight
+    for name in ids:
+        _jsonl(harness["claude"].with_name(f"{name}.jsonl"),
+               [_typed({"cwd": harness["work"], "sessionId": name}, f"Plan {name[9:13]}.", "2026-10-30T15:00:00.000Z")])
+    elsewhere = "01a11111-bbbc-4000-8000-000000000004"                  # a session of no workspace, so not listed, that begins like the third
+    _jsonl(harness["claude"].with_name(f"{elsewhere}.jsonl"),
+           [_typed({"cwd": str(tmp_path), "sessionId": elsewhere}, "Something else.", "2026-10-30T15:00:00.000Z")])
+    sub = harness["claude"].parent / ids[0] / "subagents" / "agent-a1.jsonl"   # a sub-agent's id begins with its parent's whole id
+    _jsonl(sub, [{"type": "user", "isSidechain": True, "cwd": harness["work"], "timestamp": "2026-10-30T15:00:00Z",
+                  "message": {"role": "user", "content": "Check the script."}}])
+    sessions.export(0)
+    kb = tmp_path / "kb"
+    kb.mkdir()
+    found = sessions.prompts("acme", "2026-10-30")
+    assert sorted(p["session"] for p in found) == ids
+    command = ["sessions", "prompts", "--workspace", "acme", "--date", "2026-10-30", "--records", str(kb)]
+    assert cli.main(command) == 1
+    cites = [" ".join(line.split()[:3]) for line in capsys.readouterr().out.splitlines()[:3]]
+    names = sorted(cite.split()[1] for cite in cites)
+    assert names == ["01a11111-aaaa", "01a11111-aaab", "01a11111-bbbb"]                       # no more of an id than it takes
+    assert all([s for s in ids if s.startswith(name)] == [s] for name, s in zip(names, ids))   # each names one listed session,
+    for cite, name in ((c, c.split()[1]) for c in cites):                                     # and `show` opens that one's prompt
+        assert cli.main(["sessions", "show", name, "--seq", cite.split("#")[1]]) == 0
+        assert f"user: Plan {name[9:13]}." in capsys.readouterr().out
+    (kb / "log.md").write_text("".join(f"- planned ({cite})\n" for cite in cites), encoding="utf-8")
+    assert cli.main(command) == 0 and "all 3 prompts" in capsys.readouterr().out               # cited as printed, each counts
+    (kb / "log.md").write_text("".join(f"- planned (claude-code {name[:8]} #{cite.split('#')[1]})\n" for cite, name in zip(cites, names)),
+                               encoding="utf-8")
+    assert cli.main(command) == 1 and "3 of 3 prompts" in capsys.readouterr().out               # by eight characters, none does,
+    assert cli.main(["sessions", "show", "01a11111", "--seq", "0"]) == 1 and "sessions match '01a11111'" in capsys.readouterr().err
+    root = Path(__file__).resolve().parents[1]
+    told = {p.relative_to(root).as_posix(): p.read_text(encoding="utf-8") for folder in ("skills", "docs") for p in (root / folder).rglob("*.md")}
+    assert [name for name, text in told.items() if "session8" in text] == []                   # so no instruction asks for eight
+    rule = next(line for line in told["skills/synthesis-context-lifecycle/SKILL.md"].splitlines() if line.startswith("15. "))
+    citing = told["skills/synthesis-context-lifecycle/references/session-transcripts.md"].split("## Reading and citing")[1].split("\n## ")[0]
+    for said in (rule, " ".join(citing.split())):
+        assert "`<harness> <session> #<seq>`" in said and "eight characters, or more where two" in said
+        assert "sessions show <session> --seq <n>" in said
+    assert "first eight characters name" not in " ".join(citing.split())
+
+
+def test_recent_search_and_resume_name_a_session_as_the_listing_does(harness, tmp_path, capsys):
+    """The record behind a decision or a quote is found with `recent`, `search` or `resume` before it is cited. Each
+    printed eight characters of a session's id whoever else began with them: one name for two sessions, and for a
+    sub-agent its parent's name, under which `show` opens the parent's record."""
+    one, two = "01a11111-aaaa-4000-8000-000000000001", "01a11111-bbbb-4000-8000-000000000002"
+    for name in (one, two):
+        _jsonl(harness["claude"].with_name(f"{name}.jsonl"), _claude_rows(harness["work"]))
+    base = {"cwd": harness["work"], "isSidechain": True, "timestamp": "2026-10-30T10:00:00Z"}
+    _jsonl(harness["claude"].parent / one / "subagents" / "agent-a1.jsonl", [
+        {**base, "type": "user", "message": {"role": "user", "content": "Check the script."}},
+        {**base, "type": "assistant", "message": {"model": "claude-opus-5-5", "content": [{"type": "text", "text": "The script is sound."}]}}])
+    kb = tmp_path / "kb"
+    (kb / "projects" / "alpha").mkdir(parents=True)
+    (kb / "projects" / "alpha" / "CONTEXT.md").write_text("**Phase:** build\n**Status:** active\n", encoding="utf-8")
+    resumed = project.resume(str(kb / "projects" / "alpha"), "S-new")                        # exports first
+    assert cli.main(["sessions", "recent", "--workspace", "acme", "--limit", "9"]) == 0
+    recent = capsys.readouterr().out
+    assert cli.main(["sessions", "search", "release|script", "--workspace", "acme", "--kinds", "user,brief,assistant"]) == 0
+    searched = capsys.readouterr().out
+    assert "Please plan the release." in resumed and "The script is sound." in recent and "Check the script." in searched
+    for shown in (resumed, recent, searched):
+        named = re.findall(r"\[[\w-]+ (\S+)\] #(\d+) \S+ [a-z]+(?: \([^)]*\))?: (.*)", shown)
+        assert len(named) >= 2 and len({name for name, _, _ in named}) >= 2
+        for name, seq, said in named:                                                        # the name printed opens the record printed
+            assert [m["session"] for m in sessions.find(name)] in ([one], [two], [f"{one}-agent-a1"]), name
+            assert sessions.records(sessions.find(name)[0]["folder"])[int(seq)]["text"] == said
+    assert {name for name, _, _ in re.findall(r"\[[\w-]+ (\S+)\] #(\d+) \S+ [a-z]+(?: \([^)]*\))?: (.*)", searched)} == {
+        "01a11111-a", "01a11111-b", f"{one}-agent-a1"}                                       # a sub-agent by its whole id
+
+
+def _listed(capsys, *words) -> str:
+    """What `synthesis sessions prompts` prints for acme on 2026-10-30 with these words."""
+    capsys.readouterr()
+    cli.main(["sessions", "prompts", "--workspace", "acme", "--date", "2026-10-30", *words])
+    return capsys.readouterr().out
+
+
+def test_the_listing_saved_among_the_records_cites_nothing_in_any_form(asked, capsys):
+    """2026-11-12, a second review: saved without `--records`, or with its JSON answer pretty-printed, the listing
+    cited every prompt it listed and the day closed clean. However it is saved, it is the tool's output and no
+    record of what was asked."""
+    found, kb = sessions.prompts("acme", "2026-10-30"), str(asked["kb"])
+    cites = [f"claude-code c1 #{p['seq']}" for p in found]
+    printed, answer = _listed(capsys), json.loads(_listed(capsys, "--records", kb, "--json"))
+    assert all(cite in printed for cite in cites) and answer["open"] == cites
+    lines = printed.splitlines()[:-1]                                                # without the line that counts
+    forms = {
+        "printed.txt": printed,                                                      # every prompt of the day, as printed
+        "open.txt": _listed(capsys, "--records", kb),                                # those no record cites, as printed
+        "narrow.md": _listed(capsys, "--width", "9"),                                # each prompt cut short,
+        "whole.md": _listed(capsys, "--width", "0"),                                 # and whole
+        "quoted.md": "Still open at five:\n\n" + "".join(f"> {line}\n" for line in lines),      # pasted into a record as a quote,
+        "listed.md": "".join(f"  - {line}\n" for line in lines) + "\r\n".join(lines) + "\r\n",  # as a list, and with another editor's line ends
+        "open.json": json.dumps(answer),                                             # the JSON answer on one line,
+        "pretty.json": json.dumps(answer, indent=2),                                 # pretty-printed,
+        "sorted.json": json.dumps(answer, sort_keys=True, separators=(",", ":")),    # as `jq -cS` writes it,
+        "log.jsonl": json.dumps({"ran": "synthesis sessions prompts", "answer": answer}) + "\n",   # inside a line of a log,
+        "fenced.md": "The day-end's answer:\n\n```json\n" + json.dumps(answer, indent=4) + "\n```\n",   # and in a record's fenced block
+    }
+    command = ["sessions", "prompts", "--workspace", "acme", "--date", "2026-10-30", "--records", kb]
+    wrong = []
+    for name, text in forms.items():
+        saved = asked["kb"] / "projects" / "alpha" / name
+        saved.write_text(text, encoding="utf-8")
+        if sessions.uncited(found, [kb]) != found or cli.main(command) != 1:
+            wrong.append(name)
+        saved.unlink()
+    capsys.readouterr()
+    assert wrong == []
+
+
+def test_at_width_0_the_listing_prints_each_prompt_whole(harness, capsys):
+    """`--width` says 0 is all of it, and for the listing it was none of it: a line with no words of the prompt."""
+    asked = "Draft the announcement. " + "It goes to every list we keep. " * 30 + "Do not send it before Friday."
+    _jsonl(harness["claude"], [_typed({"cwd": harness["work"], "sessionId": "c1"}, asked, "2026-10-30T15:00:00.000Z")])
+    command = ["sessions", "prompts", "--workspace", "acme", "--date", "2026-10-30"]
+    assert cli.main(command) == 0
+    assert capsys.readouterr().out.splitlines()[0].endswith(" ".join(asked.split())[:600])      # cut at 600, as before
+    assert cli.main(command + ["--width", "0"]) == 0
+    assert capsys.readouterr().out.splitlines()[0].endswith("Do not send it before Friday.")
+
+
+def _day_end(asked, tmp_path):
+    """A day-end record for acme on 2026-10-30 that checks its prompts against the records, run as the ritual runs
+    it, with this checkout's own `synthesis` on the PATH. Returns the function that records and the ritual log."""
+    import sys
+    root, state = Path(__file__).resolve().parents[1], tmp_path / "rituals"
+    command = tmp_path / "bin" / "synthesis"
+    command.parent.mkdir()
+    command.write_text(f"#!{sys.executable}\nimport sys\nsys.path.insert(0, {str(root)!r})\nfrom synthesis import cli\n"
+                       "sys.exit(cli.main(sys.argv[1:]))\n", encoding="utf-8")
+    command.chmod(0o755)
+    state.mkdir()
+    (state / "config.json").write_text(json.dumps({"workspaces": {"acme": {
+        "plans_dirs": [], "prompt_reconcile": {"records": [str(asked["kb"])]}}}}), encoding="utf-8")
+    env = {**os.environ, "RITUAL_STATE_DIR": str(state), "PATH": f"{command.parent}{os.pathsep}{os.environ['PATH']}"}
+
+    def record() -> subprocess.CompletedProcess:
+        return subprocess.run([sys.executable, str(root / "skills" / "synthesis-daily-rituals" / "scripts" / "ritual_state.py"),
+                               "record", "--direction", "day-end", "--workspace", "acme", "--date", "2026-10-30"],
+                              capture_output=True, text=True, env=env)
+    return record, state / "history.jsonl"
+
+
+def test_the_day_ends_own_refusal_saved_among_the_records_cites_nothing(asked, tmp_path):
+    """The day-end record lists what is open when it refuses a clean close. Pasted into the session log, that list is
+    the listing over again: it records nothing of what was asked, and the day still does not close clean."""
+    record, history = _day_end(asked, tmp_path)
+    first, second = sessions.prompts("acme", "2026-10-30")
+    refused = record()
+    assert refused.returncode and "2 of 2 prompts typed on 2026-10-30 are cited by no record" in refused.stderr
+    assert f"  claude-code c1 #{first['seq']}\n  claude-code c1 #{second['seq']}\n" in refused.stderr
+    asked["log"].write_text(f"## 2026-10-30 day-end\n\nThe record refused a clean close:\n\n{refused.stderr}\n", encoding="utf-8")
+    again = record()
+    assert again.returncode and "2 of 2 prompts typed on 2026-10-30" in again.stderr and not history.exists()
+    asked["log"].write_text("".join(f"> {line}\n" for line in refused.stderr.splitlines()), encoding="utf-8")   # and quoted
+    assert record().returncode and not history.exists()
+
+
+def test_a_record_in_the_same_file_as_the_listing_still_cites(asked, capsys):
+    """2026-11-12, a second review: a session log that held the printed listing and, after it, a decision with its
+    citation had every citation in it ignored, so a prompt the log accounted for stayed open. Only the listing's
+    own lines, or its JSON answer, are set aside."""
+    first, second = found = sessions.prompts("acme", "2026-10-30")
+    kb = str(asked["kb"])
+    listing, answer = _listed(capsys, "--records", kb), _listed(capsys, "--records", kb, "--json")
+    decision = f"- 10:00 decided to ship on Friday; the plan is in REFERENCE.md (claude-code c1 #{first['seq']})\n"
+    asked["log"].write_text(decision, encoding="utf-8")
+    assert sessions.uncited(found, [kb]) == [second]                 # the control: the record alone accounts for the first,
+    asked["log"].write_text(listing, encoding="utf-8")
+    assert "2 of 2 prompts" in listing and sessions.uncited(found, [kb]) == found     # and the listing alone for neither
+    mixed = {
+        "the listing, then the record": listing + "\n" + decision,
+        "the record, then the listing": decision + "\n" + listing,
+        "every prompt of the day as printed, then the record": _listed(capsys) + "\n" + decision,
+        "the JSON answer in a fenced block, then the record": "```json\n" + json.dumps(json.loads(answer), indent=2) + "\n```\n\n" + decision,
+        "the record, then the JSON answer": decision + "\n" + answer,
+    }
+    command = ["sessions", "prompts", "--workspace", "acme", "--date", "2026-10-30", "--records", kb]
+    wrong = []
+    for name, text in mixed.items():
+        asked["log"].write_text("## 2026-10-30\n\n" + text, encoding="utf-8")
+        if sessions.uncited(found, [kb]) != [second] or cli.main(command) != 1 or "1 of 2 prompts" not in capsys.readouterr().out:
+            wrong.append(name)
+    assert wrong == []
+    asked["log"].unlink()                                            # a log of objects: the answer on one line, a record on the next
+    (asked["kb"] / "projects" / "alpha" / "day.jsonl").write_text(answer.strip() + "\n" + json.dumps(
+        {"decided": "the announcement waits for Friday", "cites": [f"claude-code c1 #{second['seq']}"]}) + "\n", encoding="utf-8")
+    assert sessions.uncited(found, [kb]) == [first]
+
+
+def test_a_listing_line_an_agent_wrote_on_is_a_record_and_the_lines_left_as_printed_are_not(asked, capsys):
+    """An agent that works down the saved listing and writes what became of a prompt on its line has made a record
+    of that prompt. The lines it left as the listing printed them still say nothing."""
+    first, second = found = sessions.prompts("acme", "2026-10-30")
+    one, two = _listed(capsys).splitlines()[:2]
+    asked["log"].write_text(f"{one} -> planned; the plan is in REFERENCE.md\n{two}\n", encoding="utf-8")
+    assert sessions.uncited(found, [str(asked["kb"])]) == [second]
+
+
+def test_a_record_after_the_pasted_refusal_closes_what_it_cites_and_no_more(asked, tmp_path):
+    """The refusal pasted into the session log, then the entries an agent wrote under it: the day closes when they
+    cite every prompt, and not while one of them is only in the pasted list."""
+    record, history = _day_end(asked, tmp_path)
+    first, second = sessions.prompts("acme", "2026-10-30")
+    pasted = f"## 2026-10-30 day-end\n\nThe record refused a clean close:\n\n{record().stderr}\n"
+    asked["log"].write_text(pasted + f"- planned the release (claude-code c1 #{first['seq']})\n", encoding="utf-8")
+    left = record()
+    assert left.returncode and "1 of 2 prompts typed on 2026-10-30 is cited by no record" in left.stderr
+    assert f"  claude-code c1 #{second['seq']}\n" in left.stderr and f"c1 #{first['seq']}\n" not in left.stderr
+    with asked["log"].open("a", encoding="utf-8") as log:
+        log.write(f"- drafted the announcement, in drafts/announcement.md (claude-code c1 #{second['seq']})\n")
+    done = record()
+    assert done.returncode == 0 and "prompts: all 2 typed on 2026-10-30 are cited by a record" in done.stdout and history.exists()
+
+
 def test_the_listing_exports_first_and_stops_when_a_transcript_could_not_be_copied(asked, capsys, monkeypatch):
     """2026-11-12, a review: with an archive that could not be written the listing held no prompt, and the day
     closed clean. The listing brings the archive up to date itself, and says nothing was listed when it cannot."""
@@ -666,6 +913,144 @@ def test_the_listing_exports_first_and_stops_when_a_transcript_could_not_be_copi
     assert cli.main(command) == 2
     said = capsys.readouterr()
     assert said.out == "" and "not exported" in said.err and "2026-10-30" in said.err
+
+
+def test_an_archive_that_cannot_be_written_stops_the_listing_with_its_reason(asked, capsys):
+    """With the lock beside the archive free and the archive itself not writable, each copy failed and then the stamp
+    could not be left: the listing ended in a traceback in place of saying why nothing was listed."""
+    with asked["claude"].open("a", encoding="utf-8") as native:
+        native.write(json.dumps(_typed({"cwd": asked["work"], "sessionId": "c1"}, "A third thing.", "2026-10-30T16:00:00.000Z")) + "\n")
+    command = ["sessions", "prompts", "--workspace", "acme", "--date", "2026-10-30"]
+    folders = [sessions.root(), *(d for d in sessions.root().rglob("*") if d.is_dir())]
+    for folder in folders:
+        folder.chmod(0o555)
+    try:
+        assert cli.main(command) == 2
+        said = capsys.readouterr()
+        assert said.out == "" and "not exported" in said.err and "2026-10-30" in said.err
+        report = sessions.export(2)                                    # and an export says so before anything else
+        assert report[0].startswith("not exported: ") and "claude-code c1: not exported" in report[1]
+    finally:
+        for folder in folders:
+            folder.chmod(0o755)
+    assert cli.main(command) == 0 and "A third thing." in capsys.readouterr().out
+
+
+def test_a_day_is_not_listed_while_a_transcript_that_may_hold_its_prompts_is_not_copied(asked, capsys):
+    """2026-11-12, a second review: a transcript whose copy had failed lay outside the two days the listing exports.
+    Its failure stayed in the stamp, the listing of that older day held none of its prompts and exited 0, and the
+    day closed clean."""
+    from datetime import datetime
+    other = _jsonl(asked["claude"].with_name("c2.jsonl"),
+                   [_typed({"cwd": asked["work"], "sessionId": "c2"}, "Book the venue.", "2026-10-30T15:30:00.000Z")])
+    stamp = sessions.root() / ".state" / "export.json"
+    command = ["sessions", "prompts", "--workspace", "acme", "--date", "2026-10-30"]
+    that_day, day_before = datetime(2026, 10, 30, 16).timestamp(), datetime(2026, 10, 29, 12).timestamp()
+    other.chmod(0o000)
+    try:
+        sessions.export(0)                                             # the hourly run cannot read it,
+        assert json.loads(stamp.read_text())["failed"] == 1
+        os.utime(other, (that_day, that_day))                          # and it was last written on the day asked about, days ago
+        assert cli.main(command) == 2
+        said = capsys.readouterr()
+        assert said.out == "" and "claude-code c2: not exported" in said.err and "2026-10-30" in said.err
+        assert cli.main(command + ["--records", str(asked["kb"]), "--json"]) == 2 and capsys.readouterr().out == ""
+        assert cli.main(["sessions", "prompts", "--workspace", "elsewhere", "--date", "2026-10-30"]) == 2    # nothing says whose it is
+        os.utime(other, (day_before, day_before))                      # last written before that day began, it holds nothing typed on it:
+        capsys.readouterr()
+        assert cli.main(command) == 0                                   # the day is listed,
+        assert "2 prompts on 2026-10-30 in acme" in capsys.readouterr().out
+        assert cli.main(command[:-1] + ["2026-10-29"]) == 2            # and the day before it is not
+        assert "claude-code c2: not exported" in capsys.readouterr().err
+    finally:
+        other.chmod(0o644)
+    os.utime(other, (that_day, that_day))
+    sessions.export(0)                                                 # a later run of everything copies it,
+    assert "failed" not in json.loads(stamp.read_text())
+    assert cli.main(command) == 0 and "Book the venue." in capsys.readouterr().out          # and the day is listed with what it held
+
+
+def test_a_transcript_that_cannot_hold_the_days_prompts_does_not_stop_the_listing(harness, tmp_path, monkeypatch, capsys):
+    """What is not copied is weighed for the workspace and the day asked about. A transcript filed under another
+    workspace holds nothing of this one's. One that is gone may have held anything written until a run found it
+    gone, so it stops the listing of those days until the principal accepts the loss."""
+    import types
+    from datetime import date, timedelta
+    beta = tmp_path / "workspaces" / "beta" / "repo"
+    beta.mkdir(parents=True)
+    _jsonl(harness["claude"], [_typed({"cwd": harness["work"], "sessionId": "c1"}, "Plan the release.", "2026-10-30T15:00:00.000Z")])
+    theirs = _jsonl(harness["claude"].with_name("b1.jsonl"),
+                    [_typed({"cwd": str(beta), "sessionId": "b1"}, "Order the parts.", "2026-10-30T15:00:00.000Z")])
+    sessions.export(0)
+    _jsonl(theirs, [_typed({"cwd": str(beta), "sessionId": "b1"}, "And the spares.", "2026-10-30T15:30:00.000Z")])
+    theirs.chmod(0o000)                                                # what beta's session gained cannot be copied
+    here, there = (["sessions", "prompts", "--workspace", name, "--date", "2026-10-30"] for name in ("acme", "beta"))
+    try:
+        assert cli.main(here) == 0 and "Plan the release." in capsys.readouterr().out      # which is nothing of acme's,
+        assert cli.main(there) == 2                                                         # and may be something of beta's
+        said = capsys.readouterr()
+        assert said.out == "" and "claude-code b1: not exported" in said.err
+    finally:
+        theirs.chmod(0o644)
+    theirs.unlink()                                                    # the harness removes it before a run copies the rest
+    assert cli.main(there) == 2 and "claude-code b1: not exported" in capsys.readouterr().err
+    sessions.export(0)                                                 # a run of everything finds it gone,
+    assert cli.main(there) == 2 and "claude-code b1: not exported" in capsys.readouterr().err
+    assert cli.main(here) == 0
+    tomorrow = (date.today() + timedelta(days=1)).isoformat()         # and nothing typed after that can have been in it
+    assert cli.main(there[:-1] + [tomorrow]) == 0 and f"0 prompts on {tomorrow} in beta" in capsys.readouterr().out
+    monkeypatch.setattr("sys.stdin", types.SimpleNamespace(isatty=lambda: True))
+    assert cli.main(["sessions", "export", "--lost", "b1"]) == 0      # the principal accepts the loss,
+    capsys.readouterr()
+    assert cli.main(there) == 0                                        # and the day lists what the archive holds of it
+    listed = capsys.readouterr().out
+    assert "Order the parts." in listed and "And the spares." not in listed and "1 prompts on 2026-10-30 in beta" in listed
+
+
+def test_a_sub_agents_transcript_that_is_not_copied_does_not_stop_the_listing(harness, capsys):
+    """A sub-agent is briefed by an agent, so its transcript holds nothing the principal typed. While it is not copied
+    the stamp names it for the doctor, and the day is still listed. A thread nothing is known of may be anyone's."""
+    _jsonl(harness["claude"], [_typed({"cwd": harness["work"], "sessionId": "c1"}, "Plan the release.", "2026-10-30T15:00:00.000Z")])
+    sub = _jsonl(harness["claude"].parent / "c1" / "subagents" / "agent-a1.jsonl", [
+        {"type": "user", "isSidechain": True, "cwd": harness["work"], "timestamp": "2026-10-30T15:00:05Z",
+         "message": {"role": "user", "content": "Check the script."}}])
+    spawned = _codex_child(harness, "01a1spwn-0000-7000-8000-000000000002",
+                           {"thread_spawn": {"parent_thread_id": "01a1parent-0000"}}, "Survey the test suite.", "Done.")
+    sessions.export_file("codex", spawned)                             # the archive knows this thread as a spawned agent's
+    _jsonl(spawned, [{"type": "response_item", "timestamp": "2026-10-30T15:10:00Z", "payload": {
+        "type": "message", "role": "assistant", "content": [{"type": "output_text", "text": "And the rest."}]}}])
+    command = ["sessions", "prompts", "--workspace", "acme", "--date", "2026-10-30"]
+    for native in (sub, spawned):
+        native.chmod(0o000)
+    try:
+        assert cli.main(command) == 0 and "Plan the release." in capsys.readouterr().out
+        named = json.loads((sessions.root() / ".state" / "export.json").read_text())["uncopied"]
+        assert sorted(named) == ["claude-code c1-agent-a1", "codex 01a1spwn-0000-7000-8000-000000000002"]
+        unknown = _codex_child(harness, "01a1othr-0000-7000-8000-000000000003", {"thread_spawn": {}}, "Count the files.", "Nine.")
+        unknown.chmod(0o000)                                           # never copied, so nothing says whose prompts it holds
+        try:
+            assert cli.main(command) == 2 and "codex 01a1othr-0000-7000-8000-000000000003: not exported" in capsys.readouterr().err
+        finally:
+            unknown.chmod(0o644)
+    finally:
+        for native in (sub, spawned):
+            native.chmod(0o644)
+
+
+def test_the_listing_of_an_older_day_copies_what_was_written_since_that_day_began(harness, capsys):
+    """The listing brought the archive up to date for the last two days whichever day was asked about, so a transcript
+    last written on an older day and not yet copied was not read for that day. The day is given as a date."""
+    from datetime import datetime
+    native = _jsonl(harness["claude"], [_typed({"cwd": harness["work"], "sessionId": "c1"}, "Plan the release.", "2026-10-30T15:00:00.000Z")])
+    written = datetime(2026, 10, 30, 16).timestamp()
+    os.utime(native, (written, written))
+    command = ["sessions", "prompts", "--workspace", "acme", "--date"]
+    assert cli.main(command + ["2026-10-30"]) == 0 and "Plan the release." in capsys.readouterr().out
+    assert cli.main(command + ["2026-10-30T09:00", "--json"]) == 0                     # a time of that day is that day,
+    assert json.loads(capsys.readouterr().out) == {"workspace": "acme", "date": "2026-10-30", "prompts": 1, "open": [], "records": []}
+    assert cli.main(command + ["tomorrow"]) == 2                                       # and what is no date lists nothing
+    said = capsys.readouterr()
+    assert said.out == "" and "tomorrow" in said.err
 
 
 def test_an_export_that_finishes_says_when_and_a_busy_one_does_not(harness):
@@ -715,6 +1100,165 @@ def test_a_run_that_could_not_copy_a_transcript_stays_visible_until_a_run_copies
     finally:
         for native in natives:
             native.chmod(0o644)
+
+
+def _checked(tmp_path) -> tuple:
+    """The doctor's answer about the export where its schedule is loaded: the status, the words, the stamp it read."""
+    from synthesis import doctor
+    stamp, plist = sessions.root() / ".state" / "export.json", tmp_path / "com.synthesis.sessions-export.plist"
+    plist.write_text("<plist/>", encoding="utf-8")
+    found = doctor.check_sessions_export(plist, stamp, run=lambda argv, **kw: subprocess.CompletedProcess(argv, 0, "", ""))
+    return found.status, found.detail, json.loads(stamp.read_text())
+
+
+def test_a_transcript_removed_before_it_was_copied_stays_named_until_the_principal_clears_it(principal, harness, tmp_path, capsys):
+    """2026-11-12, a second review: a copy failed, the harness then removed the transcript, and the next run of
+    everything found nothing to copy, erased the failure and stamped complete. The doctor answered ok for a
+    conversation that was never copied."""
+    _, gone = [_jsonl(harness["claude"].with_name(f"{name}.jsonl"), _claude_rows(harness["work"])) for name in ("c1", "c2")]
+    gone.chmod(0o000)
+    try:
+        sessions.export(0)
+    finally:
+        gone.chmod(0o644)
+    status, _, first = _checked(tmp_path)
+    assert status == "fail" and first["failed"] == 1
+    gone.unlink()                                                                                     # the harness removes it
+    report = sessions.export(0)
+    status, detail, stamp = _checked(tmp_path)
+    assert status == "fail" and stamp["failed"] == 1 and "complete" not in stamp                      # never copied, and still said
+    named, when = stamp["uncopied"], first["uncopied"]["claude-code c2"]["at"]
+    assert list(named) == ["claude-code c2"] and named["claude-code c2"]["native"] == str(gone)       # which transcript,
+    assert named["claude-code c2"]["at"] == when and re.fullmatch(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d[+-]\d\d:\d\d", when)   # when its copy last failed,
+    assert named["claude-code c2"]["gone"] >= when                                                    # and when a run first found it gone
+    assert [line for line in report if line.startswith("claude-code c2: ") and when[:16] in line and "--lost c2" in line]
+    assert "claude-code c2 (its copy last failed " + when[:16] in detail and "export --lost" in detail and "principal" in detail
+    for again in (lambda: sessions.export(2), lambda: sessions.export(0, only="c1"), lambda: sessions.export(0)):
+        again()                                                                                       # whichever run comes next
+        assert _checked(tmp_path)[0] == "fail" and _checked(tmp_path)[2]["uncopied"]["claude-code c2"]["at"] == when
+    clear = ["sessions", "export", "--lost", "c2"]
+    assert cli.main(["sessions", "export", "--lost", "c9"]) == 1 and "claude-code c2" in capsys.readouterr().err   # it says what is recorded
+    assert cli.main(clear) == 2                                                                       # an agent cannot call it lost:
+    refused = capsys.readouterr().err
+    assert "type approve" in refused and _checked(tmp_path)[0] == "fail"
+    principal(refused)                                                                                # the principal can
+    assert cli.main(clear) == 0
+    assert "claude-code c2" in capsys.readouterr().out
+    status, detail, stamp = _checked(tmp_path)
+    assert status == "ok" and not {"failed", "reason", "uncopied"} & set(stamp)
+    lost = [json.loads(line) for line in (sessions.root() / ".state" / "lost.jsonl").read_text(encoding="utf-8").splitlines()]
+    assert [(row["transcript"], row["native"], row["at"]) for row in lost] == [("claude-code c2", str(gone), when)] and lost[0]["cleared"]
+    assert cli.main(clear) == 1 and "c2" in capsys.readouterr().err                                   # and nothing is left to clear
+    assert sessions.export(0) is not None and _checked(tmp_path)[2]["complete"]                       # the next run copies everything there is
+
+
+def test_only_a_transcript_that_is_gone_is_lost(principal, harness, tmp_path, monkeypatch, capsys):
+    """A copy that failed is a loss only once no run can make it. A transcript still there is not cleared; a run that
+    does not look where it is does not call it gone; one the harness moved is copied from where it is; and a
+    rebuild forgets neither what is not copied nor what was lost."""
+    thread = "01a18a2b-0000-7000-8000-000000000001"
+    codex = _jsonl(Path(os.environ["CODEX_HOME"]) / "sessions" / "2026" / "10" / "30" / f"rollout-2026-10-30T10-00-00-{thread}.jsonl", [
+        {"type": "session_meta", "timestamp": "2026-10-30T10:00:00Z", "payload": {"id": "x", "cwd": harness["work"]}},
+        {"type": "response_item", "timestamp": "2026-10-30T10:00:02Z", "payload": {
+            "type": "message", "role": "user", "content": [{"type": "input_text", "text": "Fix the build."}]}}])
+    one, two = [_jsonl(harness["claude"].with_name(f"{name}.jsonl"), _claude_rows(harness["work"])) for name in ("c1", "c2")]
+    for native in (codex, one, two):
+        native.chmod(0o000)
+    try:
+        sessions.export(0)
+        assert sorted(_checked(tmp_path)[2]["uncopied"]) == ["claude-code c1", "claude-code c2", f"codex {thread}"]
+        for name, native in (("c1", one), (thread, codex)):                    # still there, so not lost: a run may yet copy it
+            assert cli.main(["sessions", "export", "--lost", name]) == 1
+            assert "is not lost" in capsys.readouterr().err and len(_checked(tmp_path)[2]["uncopied"]) == 3
+        with monkeypatch.context() as away:                                    # a run that looks somewhere else finds none of them,
+            away.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "away"))
+            away.setenv("CODEX_HOME", str(tmp_path / "away"))
+            assert sessions.export(0) == []
+        named = _checked(tmp_path)[2]["uncopied"]
+        assert len(named) == 3 and not any("gone" in entry for entry in named.values())   # and calls none of them gone
+    finally:
+        for native in (codex, one, two):
+            native.chmod(0o644)
+    archived = codex.parents[4] / "archived_sessions" / codex.name            # Codex archives the session: the same transcript, elsewhere
+    archived.parent.mkdir(parents=True)
+    codex.rename(archived)
+    assert cli.main(["sessions", "export", "--lost", thread]) == 1 and str(archived) in capsys.readouterr().err
+    one.unlink()
+    two.unlink()                                                               # the other two are removed, and the principal clears one
+    assert cli.main(["sessions", "export", "--lost", "c2"]) == 2
+    principal(capsys.readouterr().err)
+    assert cli.main(["sessions", "export", "--lost", "c2"]) == 0
+    report = sessions.export(rebuild=True)                                     # a rebuild reads everything again
+    status, detail, stamp = _checked(tmp_path)
+    assert f"codex {thread}: 2 record(s)" in report                            # the moved one is copied,
+    assert list(stamp["uncopied"]) == ["claude-code c1"] and stamp["uncopied"]["claude-code c1"]["gone"]     # the removed one is still named,
+    assert status == "fail" and "claude-code c1 (its copy last failed" in detail
+    lost = (sessions.root() / ".state" / "lost.jsonl").read_text(encoding="utf-8").splitlines()
+    assert [json.loads(line)["transcript"] for line in lost] == ["claude-code c2"]                              # and the cleared one still on record
+
+
+def test_in_a_terminal_of_their_own_the_principal_clears_a_loss_without_a_code(harness, tmp_path, monkeypatch, capsys):
+    """Run by an agent, `--lost` waits for the principal's code. Typed by the principal in their own terminal, outside
+    any harness, it needs none: nobody else is at that keyboard."""
+    import types
+    gone = _jsonl(harness["claude"], _claude_rows(harness["work"]))
+    gone.chmod(0o000)
+    try:
+        sessions.export(0)
+    finally:
+        gone.chmod(0o644)
+    gone.unlink()
+    monkeypatch.setattr("sys.stdin", types.SimpleNamespace(isatty=lambda: True))
+    monkeypatch.setenv("SYNTHESIS_SESSION", "S1")
+    monkeypatch.setenv("CLAUDECODE", "1")                                      # a terminal inside a harness is an agent's
+    assert cli.main(["sessions", "export", "--lost", "c1"]) == 2 and "type approve" in capsys.readouterr().err
+    assert _checked(tmp_path)[0] == "fail"
+    monkeypatch.delenv("CLAUDECODE")
+    assert cli.main(["sessions", "export", "--lost", "c1"]) == 0 and "cleared: claude-code c1" in capsys.readouterr().out
+    assert _checked(tmp_path)[0] == "ok"
+
+
+def test_a_loss_is_cleared_on_the_principals_code_however_the_clearing_is_called(principal, harness, tmp_path):
+    """The command asked for the principal's code, and the function under it did not: a script that called it cleared
+    a loss with no code at all."""
+    gone = _jsonl(harness["claude"], _claude_rows(harness["work"]))
+    gone.chmod(0o000)
+    try:
+        sessions.export(0)
+    finally:
+        gone.chmod(0o644)
+    gone.unlink()
+    with pytest.raises(PermissionError) as refused:
+        sessions.lost("c1")
+    assert "type approve" in str(refused.value) and _checked(tmp_path)[0] == "fail"
+    principal(str(refused.value))
+    assert sessions.lost("claude-code c1").startswith("cleared: claude-code c1") and _checked(tmp_path)[0] == "ok"   # by either name
+
+
+def test_a_transcript_an_adapter_cannot_read_is_named_and_the_run_goes_on(harness, tmp_path, capsys):
+    """A row of a shape an adapter does not expect stopped the whole run where it stood: the transcripts after it
+    were not copied and no stamp was left, so the doctor answered ok until a day had passed."""
+    for name, said in (("a1", ["a block that is only a string"]), ("b1", "Plan the release."), ("c1", "Draft the notes.")):
+        _jsonl(harness["claude"].with_name(f"{name}.jsonl"), [_typed({"cwd": harness["work"], "sessionId": name}, said, "2026-10-30T15:00:00.000Z")])
+    report = sessions.export(0)
+    status, detail, stamp = _checked(tmp_path)
+    assert sorted(line for line in report if "record(s)" in line) == ["claude-code b1: 1 record(s)", "claude-code c1: 1 record(s)"]
+    assert status == "fail" and list(stamp["uncopied"]) == ["claude-code a1"]
+    assert stamp["reason"].startswith("claude-code a1: not exported (AttributeError: ") and stamp["reason"] in report
+    assert cli.main(["sessions", "prompts", "--workspace", "acme", "--date", "2026-10-30"]) == 2          # and that day is not listed
+    assert "claude-code a1: not exported" in capsys.readouterr().err
+
+
+def test_resume_shows_the_conversation_beside_a_transcript_an_adapter_cannot_read(harness, tmp_path):
+    """With a transcript not copied, resume also reads what each harness recorded since the last export, and the same
+    row stopped it there: the session picking the work up got a traceback in place of the project."""
+    _jsonl(harness["claude"], _claude_rows(harness["work"]))
+    _jsonl(harness["claude"].with_name("a1.jsonl"),
+           [_typed({"cwd": harness["work"], "sessionId": "a1"}, ["a block that is only a string"], "2026-10-30T15:00:00.000Z")])
+    kb = tmp_path / "kb"
+    (kb / "projects" / "alpha").mkdir(parents=True)
+    (kb / "projects" / "alpha" / "CONTEXT.md").write_text("**Phase:** build\n**Status:** active\n", encoding="utf-8")
+    assert "Please plan the release." in project.resume(str(kb / "projects" / "alpha"), "S-new")
 
 
 def test_a_run_started_by_a_command_line_is_briefed_not_prompted(harness):

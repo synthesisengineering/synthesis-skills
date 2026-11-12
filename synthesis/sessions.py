@@ -25,6 +25,7 @@ import json
 import os
 import re
 import subprocess
+import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -505,11 +506,15 @@ def natives(days: float = 0) -> list:
 
 def _rebuild() -> str:
     """Move the whole archive aside, never deleting it, so this export reads every transcript again with the current
-    adapters. Returns where the old archive went."""
+    adapters. The stamp and the losses come along: what was not copied is still not copied, and what was lost stays
+    on record. Returns where the old archive went."""
     target = paths.home() / "archive" / f"sessions-{time.strftime('%Y%m%dT%H%M%S')}"
     target.parent.mkdir(parents=True, exist_ok=True)
     if root().exists():
         os.replace(root(), target)
+        for kept in (f for f in (target / ".state" / "export.json", target / ".state" / "lost.jsonl") if f.is_file()):
+            (root() / ".state").mkdir(parents=True, exist_ok=True)
+            (root() / ".state" / kept.name).write_bytes(kept.read_bytes())
     return str(target)
 
 
@@ -544,30 +549,98 @@ def export(days: float = 0, only: str = "", wait: bool = True, rebuild: bool = F
 
 def _export(days: float, only: str) -> list:
     """Every run, a sync's too, leaves a stamp, the doctor's heartbeat for the scheduled export: a run that found
-    nothing new still ran, and a run that could not copy a transcript says how many and why until a run of every
-    transcript copies them all (2026-11-12: every copy was refused and the doctor answered ok)."""
+    nothing new still ran, and a transcript a run could not copy is named there, with why and when, until a run
+    copies it (2026-11-12: every copy was refused and the doctor answered ok). One that a run of everything no
+    longer finds can never be copied: the stamp says since when, and only the principal clears it (`lost`; the same
+    day: a harness removed a transcript whose copy had failed, and the next run stamped complete)."""
     from synthesis import board
-    report = []
+    stamp = root() / ".state" / "export.json"
+    last, now = paths.read_json(stamp), datetime.now().astimezone().isoformat(timespec="seconds")
+    report, failed, tried, waiting = [], [], set(), dict(last.get("uncopied") or {})
     for harness, native in natives(days):
         session = _identity(harness, native)
         if only and only not in (session, native.stem, str(native)):
             continue
+        tried.add(f"{harness} {session}")
         live = board.load(native.stem) if harness == "claude-code" else board.load(session)
         try:
             kept = export_file(harness, native, getattr(live, "project", "") or "")
-        except OSError as exc:
-            report.append(f"{harness} {session}: not exported ({exc})")
+        except Exception as exc:  # unreadable, or a row of a shape the adapter does not expect: named, and the run goes on
+            failed.append(f"{harness} {session}: not exported ({exc if isinstance(exc, OSError) else f'{type(exc).__name__}: {exc}'})")
+            waiting[f"{harness} {session}"] = {"native": str(native), "at": now, "reason": failed[-1]}
+            report.append(failed[-1])
             continue
+        waiting.pop(f"{harness} {session}", None)  # copied, whichever run this is
         if kept:
             report.append(f"{harness} {session}: {kept} record(s)")
-    stamp, failed = root() / ".state" / "export.json", [line for line in report if ": not exported (" in line]
-    now, last = datetime.now().astimezone().isoformat(timespec="seconds"), paths.read_json(stamp)
-    if failed:
-        last.update(failed=len(failed), reason=failed[0])
-    elif not (last.get("failed") and (days or only)):  # a run of part of the archive does not clear a failure
+    for name, entry in waiting.items() if not (days or only) else ():  # a run of everything looked wherever a harness keeps one
+        if name not in tried and not os.path.exists(entry["native"]):
+            entry.setdefault("gone", now)
+            report.append(f"{name}: not copied before its transcript was removed (its copy last failed {entry['at'][:16]}); "
+                          f"what it held is not in the archive, and `synthesis sessions export --lost {name.partition(' ')[2]}` clears it "
+                          "once the principal accepts that")
+    if waiting:
+        last.update(failed=len(waiting), reason=(failed or [entry["reason"] for entry in waiting.values()])[0], uncopied=waiting)
+    else:
         last = {"complete": now}
-    paths.write_json(stamp, {**last, "exported": now})
+    try:
+        paths.write_json(stamp, {**last, "exported": now})
+    except OSError as exc:  # an archive that cannot be written is read as it is, as a busy one is
+        return [f"not exported: {exc}"] + report
     return report
+
+
+def lost(session: str) -> str:
+    """Clear a transcript the stamp names as never copied, once it is gone, and keep what was lost in
+    `.state/lost.jsonl`. One that is still where a run looks is not lost. Only the principal can accept a loss:
+    called by an agent (inside a harness, or with no terminal), this clears on their code for that transcript and
+    otherwise asks for it, whoever calls; typed by the principal in a terminal of their own, it needs none."""
+    from synthesis import approvals
+    with _writer(True) as busy:
+        stamp = root() / ".state" / "export.json"
+        last = paths.read_json(stamp)
+        waiting = dict(last.get("uncopied") or {})
+        names = [name for name in waiting if session in (name, name.partition(" ")[2])]
+        if busy or len(names) != 1:
+            raise ValueError(busy or f"{session!r} names {len(names)} of the transcripts the export could not copy: "
+                             + (", ".join(sorted(waiting)) or "none is recorded"))
+        entry, (harness, _, sid) = waiting.pop(names[0]), names[0].partition(" ")
+        there = [str(p) for h, p in natives() if h == harness and _identity(h, p) == sid] + (
+            [entry["native"]] if os.path.exists(entry["native"]) else [])
+        if there:
+            raise ValueError(f"{names[0]} is not lost: its transcript is at {there[0]}, and `synthesis sessions export "
+                             f"--session {sid}` copies it or says why it cannot")
+        said = f"{names[0]}, whose copy last failed {entry['at'][:16]} ({entry['reason']})"
+        agent = paths.harness() != "unknown" or not sys.stdin.isatty()
+        if agent and not approvals.consume("sessions-lost", names[0], {"session_id": paths.session_id()}):
+            code = approvals.request("sessions-lost", names[0], f"accept the transcript of {names[0]} as lost")
+            raise PermissionError(f"{said} was never copied, and its transcript is gone. Only the principal can accept that "
+                                  f"what it held is lost. Show them this and ask them to type {approvals.how(code)}. Then run "
+                                  "the identical command again.")
+        with (stamp.parent / "lost.jsonl").open("a", encoding="utf-8") as kept:
+            kept.write(json.dumps({"transcript": names[0], **entry, "cleared": datetime.now().astimezone().isoformat(timespec="seconds")}) + "\n")
+        rest = {"failed": len(waiting), "reason": next(iter(waiting.values()))["reason"], "uncopied": waiting} if waiting else {}
+        paths.write_json(stamp, {**{k: v for k, v in last.items() if k in ("exported", "complete")}, **rest})
+        return f"cleared: {said}. What it held is not in the archive; {stamp.parent / 'lost.jsonl'} keeps the loss on record"
+
+
+def behind(workspace: str, day: str) -> list:
+    """The transcripts not copied that may hold what was typed in a workspace on a day, each as the export named it
+    (2026-11-12: one whose copy had failed lay outside the days the listing exports, so the listing of that day held
+    none of its prompts and the day closed clean). One filed under another workspace holds nothing of this one's;
+    one last written before the day began holds nothing typed on it; a sub-agent's or a reviewer's holds an agent's
+    briefs, never the principal's words; one that is gone may have held anything written until a run found it gone."""
+    start, found = datetime.fromisoformat(day).timestamp(), []
+    for name, entry in (paths.read_json(root() / ".state" / "export.json").get("uncopied") or {}).items():
+        kept = _Session(name.partition(" ")[0], Path(entry["native"]), name.partition(" ")[2])
+        try:
+            written = os.path.getmtime(entry["native"])
+        except OSError:
+            written = datetime.fromisoformat(entry["gone"]).timestamp() if entry.get("gone") else time.time()
+        briefed = "-agent-" in kept.session or kept.meta.get("role") in ("subagent", "reviewer")
+        if written >= start and not briefed and (not kept.folder or kept.folder.parts[-3] == workspace):
+            found.append(f"{entry['reason']} (last tried {entry['at'][:16]})")
+    return found
 
 
 # --- reading what was kept ------------------------------------------------------------------------------------
@@ -602,8 +675,15 @@ def records(folder: str, kinds: tuple = (), whole: bool = False) -> list:
     return rows
 
 
-LISTING = re.compile(r'(?m)^(?:all )?\d+ (?:of \d+ )?prompts on \d{4}-\d\d-\d\d in .+ (?:is|are) cited by (?:no|a) record$|^\{"workspace": .*"prompts": \d+, "open": \[')
-CITED = re.compile(r"(?<![\w.-])([A-Za-z0-9][\w.-]*)\s+#(\d+)(?:\s*(?:-|–|—|to|through)\s*#?(\d+))?")  # `<session> #<seq>`, or a range of them
+# `<session> #<seq>`, or a range of them. A dash joins on the line of the first number, and the range ends in a number
+# of its own (2026-11-12: `c1 #2`, then the list item `- 2026-10-30 ...` under it, read as #2 to #2026).
+CITED = re.compile(r"(?<![\w.-])([A-Za-z0-9][\w.-]*)\s+#(\d+)(?:(?:[^\S\n]*(?:-|–|—)|\s*(?:to|through))\s*#?(\d+)(?![-./:]?\d))?")
+# The listing's own output as it may be saved. LISTED: a line it prints for a prompt, alone or behind a quote mark
+# or a list marker. ANSWER: where its JSON answer may begin, however it is laid out and its keys ordered. REFUSED:
+# the day-end record's list of what is open, under the line that counts them.
+LISTED = re.compile(r"(?m)^[ \t>]*(?:(?:[-*+]|\d+[.)])[ \t]+)?[A-Za-z][\w-]*[ \t]+(\S+)[ \t]+#(\d{1,9})[^\S\n]+\d\d:\d\d(?:[^\S\n]+(.*))?$")
+ANSWER = re.compile(r'\{\s*"(?:workspace|date|prompts|open|records)"\s*:')
+REFUSED = re.compile(r"(?m)^.*\d+ of \d+ prompts typed on \d{4}-\d\d-\d\d (?:is|are) cited by no record.*\n(?:[ \t>]*[\w-]+ \S+ #\d+[^\S\n]*(?:\n|\Z))+")
 
 
 def prompts(workspace: str, day: str) -> list:
@@ -634,10 +714,12 @@ def uncited(found: list, roots: list) -> list:
     that no other session listed shares, then `#<seq>` or a range (`#12-40`, `#12 to #40`), in a text file under
     the roots that changed on or after the day of the oldest prompt (2026-11-11: what the principal asked reached
     a project record only if an agent remembered, and nothing checked). The listing's own output, saved among the
-    records, is no record: it cites nothing."""
+    records in whichever form, is no record: it cites nothing, and what is written beside it is still read."""
     ids = {str(p["session"]) for p in found}
     since = min((datetime.fromisoformat(p["at"]).replace(hour=0, minute=0).timestamp() for p in found), default=0)
-    spans = collections.defaultdict(list)
+    spans, typed = collections.defaultdict(list), collections.defaultdict(list)
+    for p in found:
+        typed[p["seq"]].append((str(p["session"]), " ".join(str(p.get("text", "")).split())))
     for root in roots:
         for top, dirs, files in os.walk(os.path.expanduser(root)):
             dirs[:] = [d for d in dirs if not d.startswith(".") and d != "node_modules"]
@@ -648,19 +730,43 @@ def uncited(found: list, roots: list) -> list:
                         (".md", ".txt", ".json", ".jsonl", ".yaml", ".yml")) and os.path.getmtime(path) >= since else ""
                 except OSError:
                     continue
-                for cited, first, last in CITED.findall(text) if not LISTING.search(text) else ():
+                for cited, first, last in CITED.findall(_record(text, typed)):
                     named = [s for s in ids if s == cited] or [s for s in ids if len(cited) >= 8 and s.startswith(cited)]
-                    if len(named) == 1:  # a few characters that two sessions share name neither
-                        spans[named[0]].append((int(first), int(last or first)))
+                    if len(named) == 1:  # a few characters that two sessions share name neither; a lower number ends no range
+                        spans[named[0]].append((int(first), max(int(first), int(last or first))))
     return [p for p in found if not any(first <= p["seq"] <= last for first, last in spans[str(p["session"])])]
 
 
-def short(session: str) -> str:
+def _record(text: str, typed: dict) -> str:
+    """A file's text without the listing's own output, however it was saved (2026-11-12: saved without `--records`,
+    or with its JSON answer pretty-printed, it cited every prompt it listed): the JSON answer, the day-end record's
+    list of what is open, and each line that says of a prompt only what the listing says, which is its citation,
+    its minute and its first words. Only those go (the same day: a log the listing was pasted into lost every
+    citation it held), and a mark stands where each was, so nothing either side of it joins into a citation.
+    `typed` holds, by seq, each prompt's session and words."""
+    for at in reversed([m.start() for m in ANSWER.finditer(text)]):
+        try:
+            answer, end = json.JSONDecoder().raw_decode(text, at)
+        except (ValueError, RecursionError):
+            continue
+        if isinstance(answer, dict) and {"workspace", "date", "prompts", "open"} <= set(answer):
+            text = text[:at] + "\0" + text[end:]
+
+    def line(m) -> str:
+        words = " ".join((m.group(3) or "").split())
+        return "\0" if any(s.startswith(m.group(1)) and said.startswith(words) for s, said in typed.get(int(m.group(2)), ())) else m.group(0)
+    return LISTED.sub(line, REFUSED.sub("\0\n", text))
+
+
+def short(session: str, known: list | None = None) -> str:
     """As much of a session's id as names it alone among the archive's main sessions: eight characters, or more
-    where two begin alike (2026-11-12: a citation of eight shared characters cleared both and opened neither)."""
-    others = [str(m.get("session")) for m in catalog() if m.get("role") not in ("subagent", "reviewer") and "-agent-" not in str(m.get("session"))]
-    size = min(8, len(session))
-    while size < len(session) and any(o != session and o.startswith(session[:size]) for o in others):
+    where two begin alike (2026-11-12: a citation of eight shared characters cleared both and opened neither). A
+    sub-agent's id begins with its parent's, so only the whole of it names it. `known` is the catalog, for a
+    caller that names several sessions."""
+    mains = [str(m.get("session")) for m in (catalog() if known is None else known)
+             if m.get("role") not in ("subagent", "reviewer") and "-agent-" not in str(m.get("session"))]
+    size = min(8, len(session)) if session in mains else len(session)
+    while size < len(session) and any(o != session and o.startswith(session[:size]) for o in mains):
         size += 1
     return session[:size]
 
@@ -710,7 +816,7 @@ def peek(days: float = 2) -> list:
                         continue
                     for rec in ADAPTERS[harness](row, s) if isinstance(row, dict) else ():
                         s.emit(rec)
-        except OSError:  # the harness moved or removed the file meanwhile
+        except Exception:  # the harness moved or removed the file meanwhile, or it holds a row the adapter cannot read
             continue
         found.append(({**s.meta, "harness": harness, "session": s.session, "folder": str(s.folder)},
                       [json.loads(line) for line in s.lines]))

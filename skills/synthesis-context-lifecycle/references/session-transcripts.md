@@ -65,10 +65,18 @@ each harness writes its own transcript to disk as the session runs. The copy is 
   copied whether or not any session remembers to. `synthesis doctor` fails when that schedule is not loaded or
   no export has finished in a day (2026-11-11: until then the archive had no trigger of its own, and a
   transcript that no session exported within two days was skipped).
-- An export that could not copy a transcript says so in its report and in the stamp it leaves, and so does the
-  export a sync runs first. On any Mac `synthesis doctor` then fails, naming how many and the first reason,
-  until `synthesis sessions export --all` copies them all: an export of the last two days or of one session
-  does not clear it.
+- An export that could not copy a transcript (it could not be read, or held a row its adapter does not expect)
+  goes on to the others, says so in its report and names it in the stamp it leaves, with why and when it last
+  tried, and so does the export a sync runs first. On any Mac `synthesis doctor` then fails,
+  with how many and the first reason, until a run copies each one: `synthesis sessions export --all` tries them
+  all, and an export of the last two days or of one session clears only what it copied.
+- A transcript the harness removed before any run copied it can no longer be copied. A run of everything says
+  so, the stamp keeps its name with when its copy last failed and when it was found gone, and the doctor keeps
+  failing. What it held is not in the archive, and only the principal can accept that:
+  `synthesis sessions export --lost <session>` clears it. Run by an agent, it asks for the principal's approval
+  code first; typed by the principal in a terminal of their own, it needs none. It refuses a transcript that is
+  still there or that the harness only moved, and it appends each loss it clears to
+  `<synthesis home>/sessions/.state/lost.jsonl`. `--rebuild` carries the stamp and that file into the new archive.
 
 ## Copying each workspace's conversation off the Mac
 
@@ -105,12 +113,14 @@ synthesis sessions show <session> --whole         # tool output and injected tex
 synthesis sessions search "<pattern>" --project <id>
 ```
 
-Cite the record behind a decision or quote as `<harness> <session8> #<seq>` (for example `codex 01a1b2c3 #4120`) in a
-session log or lesson, and open it with `synthesis sessions show <session8> --seq <n>`, which prints that record
-whole and three either side, each cut at `--width` characters. A session id's first eight characters name the
-main session, never the sub-agents it started,
-whose ids begin with the same characters; `meta.json` gives a sub-agent `role: subagent` and its `parent`. A quote or attribution read from the archive in the current session has a tool output behind it,
-as quote provenance requires. One entry that covers a stretch of a session cites it as a range:
+Cite the record behind a decision or quote as `<harness> <session> #<seq>` (for example `codex 01a1b2c3 #4120`) in a
+session log or lesson, and open it with `synthesis sessions show <session> --seq <n>`, which prints that record
+whole and three either side, each cut at `--width` characters. Write as much of the session's id as the commands
+print for it (`prompts`, `recent`, `search` and `resume`): eight characters, or more where two sessions begin
+alike. Characters that two sessions share name neither: such a citation does not count, and `show` asks for more
+of the id. What is printed for a main session never names the sub-agents it started, whose ids begin with its
+whole id and are printed whole; `meta.json` gives a sub-agent `role: subagent` and its `parent`. A quote or
+attribution read from the archive in the current session has a tool output behind it, as quote provenance requires. One entry that covers a stretch of a session cites it as a range:
 `claude-code d20ab7c4 #1500-1560`. `--json` prints one object per line for tools such as the Console. Keep the conversation out
 of CONTEXT.md and project folders: it would break their size budgets (R1.5) and flood every search of the project.
 
@@ -124,14 +134,26 @@ synthesis sessions prompts --workspace <W> [--date YYYY-MM-DD]                  
 synthesis sessions prompts --workspace <W> --records <folder of records> [--json]  # only those no record cites
 ```
 
-The listing brings the archive up to date first; when a transcript could not be copied it lists nothing and exits
-2, since an archive that is not current cannot say what was typed. Each line is
+The listing first copies every transcript written since that day began. While one that may hold that day's
+prompts in that workspace is not copied, it lists nothing and exits 2, since an archive that is not current cannot
+say what was typed: one this run could not copy, one an earlier run could not and none has since, or one that is
+gone and the principal has not cleared (`synthesis doctor` says how each is cleared). A transcript filed under
+another workspace, or last written before that day began, does not stop it, and neither does a sub-agent's or a
+reviewer's, which holds an agent's briefs and no word of the principal's. It also lists nothing while another
+export holds the archive or the archive cannot be written. `--date` takes a date, and anything else lists
+nothing. Each line is
 `<harness> <session> #<seq>  HH:MM  <the prompt's first words>`, with as much of the session's id as tells it from
 the archive's other sessions (eight characters, or more where two begin alike), then one line that counts:
 `2 of 31 prompts on <day> in <W> are cited by no record` (exit 1), or `all 31 prompts ... are cited by a record`
 (exit 0). `--records` reads the text files under that folder changed since the day began; repeat it for more. A
 citation names one session: its id in full, or eight or more of its first characters that no other session listed
-shares. The listing's own output saved among the records cites nothing. `--json` prints
+shares. A range (`#12-40`, `#12–40`, `#12 to #40`, `#12 through #40`) has its dash on the line of its first
+number and ends in a number of its own: a list item on the next line, or a date or a time after a dash, ends no
+range. The listing's own output saved among the records cites nothing, however it was saved: a line that holds
+only what the listing prints for a prompt (its citation, its minute and its first words), the JSON answer in any
+layout, and the list the day-end record prints when it refuses. Only those are set aside: what is written beside
+them in the same file is read, and a listing line with what became of the prompt written on it is a record.
+`--json` prints
 `{"workspace", "date", "prompts", "open": [...], "records": [...]}`; the day-end record runs it itself.
 
 For each prompt left: open it (`synthesis sessions show <session> --seq <n>`), and where its substance is
