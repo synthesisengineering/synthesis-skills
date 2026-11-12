@@ -463,12 +463,13 @@ ROOT = Path(__file__).resolve().parents[1]
 # file it hands back, a loop's rows as each name's values, a helper's default and its call of itself, a folder change
 # under another name, a copy that keeps links, fileinput told to edit, os.open only reading, a file given as
 # filename=), _commands 5 (a wrapper inside a wrapper; the folder stack turned by number), _self_grant 7 (a copy onto
-# a note or a script lands on it, not inside it; a link made and then moved is that link at its new place), VALUED 2 and _landing 2 (a mode, an owner, a size or a date is not
-# a file), _awk_writes 1 and _string_writes 1 (a file name in two strings cannot be read; a command given whole keeps
-# its folder and its unknown programs). slot_check.py 12: morning_after 8 and first_thing 5 less 1 in judge (a return
-# after the morning has begun leaves no night). travel_check.py 1 less (the night is said by the slot check).
-# ritual_state.py 10: _items 6 (the list's next entry begins another choice), _day 3 and travel 1 (each event's start
-# and end is a whole date and time within the result's days).
+# a note or a script lands on it, not inside it; a link made and then moved is that link at its new place), VALUED 2
+# and _landing 2 (a mode, an owner, a size or a date is not a file), _awk_writes 1 and _string_writes 1 (a file name
+# in two strings cannot be read; a command given whole keeps its folder and its unknown programs). slot_check.py 12:
+# morning_after 8 and first_thing 5 less 1 in judge (a return after the morning has begun leaves no night).
+# travel_check.py 1 less (the night is said by the slot check). ritual_state.py 10: _items 6 (the list's next entry
+# begins another choice), _day 3 and travel 1 (each event's start and end is a whole date and time within the
+# result's days).
 # After a fifth review round, which found the fourth's fixes holding and ten refusals of ordinary work, guards.py 26
 # more: _python_writes 24 (a command the program spells whole is judged as the shell guard judges a command, a file
 # it found standing in for one word of it, reading flags are read however they are spelled, a name built with % or
