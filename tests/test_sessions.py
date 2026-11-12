@@ -277,6 +277,28 @@ def test_a_person_who_continues_a_command_line_run_types_prompts_of_their_own(ha
     assert [p["text"] for p in sessions.prompts("acme", "2026-10-30")] == [text for kind, text in kinds if kind == "user"]
 
 
+def test_a_turn_that_says_how_it_began_is_read_by_that(harness):
+    """Codex writes how each turn began (`turn_attribution.turn_trigger` on `task_started`: `composer` for what a
+    person typed, `exec` for a command line; three days of real rollouts, 2026-11-12). A run begun from a command
+    line and continued in place writes no second session line, so the turn's own word decides where there is one."""
+    def began(trigger: str, at: str) -> dict:
+        return {"type": "event_msg", "timestamp": at, "payload": {"type": "task_started", "turn_id": at,
+                                                                  "turn_attribution": {"turn_id": at, "turn_trigger": trigger}}}
+
+    native = _jsonl(Path(os.environ["CODEX_HOME"]) / "sessions" / "2026" / "10" / "30" / "rollout-2026-10-30T09-00-00-x8.jsonl", [
+        {"type": "session_meta", "timestamp": "2026-10-30T09:00:00Z", "payload": {"id": "x8", "cwd": harness["work"], "source": "exec"}},
+        began("exec", "2026-10-30T09:00:01Z"), *_codex_turn("Review this branch.", "2026-10-30T09:00:02Z"),
+        began("composer", "2026-10-30T09:30:00Z"), *_codex_turn("Now look at the second file too.", "2026-10-30T09:30:02Z")])
+    sessions.export_file("codex", native)
+    _jsonl(native, [*_codex_turn("And the third.", "2026-10-30T09:31:00Z"),            # the same turn, in a later export
+                    began("guardian_review", "2026-10-30T09:40:00Z"), *_codex_turn("Judge this command.", "2026-10-30T09:40:02Z"),
+                    began("a_trigger_not_seen_before", "2026-10-30T09:50:00Z"), *_codex_turn("Something else.", "2026-10-30T09:50:02Z")])
+    sessions.export_file("codex", native)
+    kinds = [(r["kind"], r["text"]) for r in sessions.records(_meta(native)["folder"]) if r["kind"] in ("user", "brief")]
+    assert kinds == [("brief", "Review this branch."), ("user", "Now look at the second file too."), ("user", "And the third."),
+                     ("brief", "Judge this command."), ("user", "Something else.")]      # a trigger it does not know is listed, never lost
+
+
 def test_a_sub_agent_belongs_to_the_workspace_its_parent_started_in_and_workflow_journals_are_not_transcripts(harness, tmp_path):
     folder = re.sub(r"[^A-Za-z0-9]", "-", os.path.realpath(tmp_path / "workspaces" / "acme"))
     sub = Path(os.environ["CLAUDE_CONFIG_DIR"]) / "projects" / folder / "parent" / "subagents"
