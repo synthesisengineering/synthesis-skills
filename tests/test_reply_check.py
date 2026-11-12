@@ -1559,3 +1559,170 @@ def test_a_fourth_list_written_without_sight_of_the_code_of_replies_that_need_no
 def test_a_fourth_list_written_without_sight_of_the_code_of_unarmed_waits_is_sent_back(reply):
     reason = _sent_back(reply)
     assert reason and "nothing is armed" in reason
+
+
+# What 30 days of recorded turn-ending replies showed (2026-11-12, 4,842 of them): the check as it stood would have sent
+# back 815, and 586 of those were turns the harness itself was holding (a background agent, shell, workflow or monitor
+# that had not reported); of the 202 others read one by one, 96 were the session's own unarmed wait, 57 awaited the
+# principal's own next step in words the check did not read, 30 were status lists and labels, 12 sat inside a message
+# drafted for someone else. The cases below are those classes, rewritten with nothing of the replies in them.
+
+def _entry(**fields):
+    return json.dumps(fields)
+
+
+def _started(use, text, **extra):
+    return _entry(type="user", message={"role": "user", "content": [{"type": "tool_result", "tool_use_id": use, "content": text, **extra}]})
+
+
+def _reported(use, how="prompt"):
+    said = f"<task-notification>\n<task-id>t1</task-id>\n<tool-use-id>{use}</tool-use-id>\n<status>completed</status>\n</task-notification>"
+    return {"prompt": _entry(type="user", message={"role": "user", "content": said}, origin={"kind": "task-notification"}),
+            "queued": _entry(type="attachment", attachment={"type": "queued_command", "prompt": said, "commandMode": "task-notification"}),
+            "arrived": _entry(type="queue-operation", operation="enqueue", content=said)}[how]
+
+
+def _record(tmp_path, *lines):
+    path = tmp_path / "session.jsonl"
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return str(path)
+
+
+def _with_record(reply, record, session="S1"):
+    return reply_check.check({"last_assistant_message": reply, "session_id": session, "transcript_path": record}, {})
+
+
+A_WAIT = "The review is running. I'll apply its findings when it returns."
+BACKGROUND_WORK = {
+    "an-agent": "Async agent launched successfully. (This tool result is internal metadata.) agentId: a1",
+    "a-shell-command": "Command running in background with ID: b1. Output is being written to: /tmp/out",
+    "a-command-moved-there": "Command did not complete within its 120s timeout and was moved to the background (ID: b2). Output so far: none",
+    "a-workflow": "Workflow launched in background. Task ID: w1 Summary: review the four drafts",
+    "a-monitor": "Monitor started (task m1, expires in 30m unless the source ends first; you get one notification per event)",
+    "an-agent-resumed": '{"success":true,"message":"Resuming agent a1","resumedAgentId":"a1","pin":false}',
+}
+
+
+@pytest.mark.parametrize("started", _cases(BACKGROUND_WORK))
+def test_background_work_the_harness_still_holds_is_an_armed_wait(tmp_path, started):
+    assert _with_record(A_WAIT, _record(tmp_path, _started("toolu_1", started))) is None
+
+
+@pytest.mark.parametrize("how", ["prompt", "queued", "arrived"])
+def test_background_work_that_has_reported_holds_nothing(tmp_path, how):
+    record = _record(tmp_path, _started("toolu_1", BACKGROUND_WORK["an-agent"]), _reported("toolu_1", how))
+    assert "nothing is armed" in _with_record(A_WAIT, record)
+
+
+def test_one_piece_of_background_work_still_out_is_enough(tmp_path):
+    record = _record(tmp_path, _started("toolu_1", BACKGROUND_WORK["an-agent"]), _started("toolu_2", BACKGROUND_WORK["a-shell-command"]),
+                     _reported("toolu_1"))
+    assert _with_record(A_WAIT, record) is None
+    assert "nothing is armed" in _with_record(A_WAIT, _record(tmp_path, *Path(record).read_text().splitlines(), _reported("toolu_2", "queued")))
+
+
+def test_only_the_harnesss_own_word_starts_or_ends_background_work(tmp_path):
+    said = "<task-notification>\n<tool-use-id>toolu_1</tool-use-id>\n</task-notification>"
+    quoted = _started("toolu_9", "The log reads:\n" + said)                              # a tool that printed a notification
+    assert _with_record(A_WAIT, _record(tmp_path, _started("toolu_1", BACKGROUND_WORK["an-agent"]), quoted)) is None
+    for not_a_start in (_started("toolu_1", "The log says: Command running in background with ID: b1"),      # the words, further in
+                        _started("toolu_1", BACKGROUND_WORK["an-agent"], is_error=True),                       # a start that failed
+                        _entry(type="user", isSidechain=True, message={"role": "user", "content": [             # a sub-agent's own
+                            {"type": "tool_result", "tool_use_id": "toolu_1", "content": BACKGROUND_WORK["a-shell-command"]}]}),
+                        _entry(type="assistant", message={"role": "assistant", "content": [{"type": "text", "text": BACKGROUND_WORK["an-agent"]}]})):
+        assert "nothing is armed" in _with_record(A_WAIT, _record(tmp_path, not_a_start))
+
+
+def test_a_record_that_cannot_be_read_holds_nothing_and_stops_nothing(tmp_path):
+    assert "nothing is armed" in _with_record(A_WAIT, None)
+    assert "nothing is armed" in _with_record(A_WAIT, str(tmp_path / "gone.jsonl"))
+    other = _record(tmp_path, '{"type":"response_item","payload":{"type":"function_call_output","output":"Command running in background"}}',
+                    "not json at all", "[1, 2, 3]", '"a string"')
+    assert "nothing is armed" in _with_record(A_WAIT, other)
+
+
+def test_the_record_is_read_from_its_end_and_fast(tmp_path):
+    path = tmp_path / "long.jsonl"
+    filler = _entry(type="assistant", message={"role": "assistant", "content": [{"type": "text", "text": "x" * 900}]}) + "\n"
+    with path.open("w", encoding="utf-8") as record:
+        record.write(_started("toolu_old", BACKGROUND_WORK["an-agent"]) + "\n")           # started long ago, never reported
+        for _ in range(40_000):
+            record.write(filler)
+        record.write(_started("toolu_new", BACKGROUND_WORK["a-shell-command"]) + "\n" + _reported("toolu_new") + "\n")
+    began = time.perf_counter()
+    assert reply_check.held_by_harness(str(path)) is False                              # the old start is beyond what is read
+    assert time.perf_counter() - began < 0.5
+    assert reply_check.held_by_harness(str(path), tail=10**9) is True
+
+
+THE_PRINCIPALS_TURN = {
+    "an-approval-code": "The note is staged. To send it, type `approve 7c41d2` within 15 minutes. Once it's out, I'll read it back from the sent folder.",
+    "a-code-in-bold": "Held for **approve 51efe9**, or tell me what to change. Once that's done, I'll bring you the next decision.",
+    "a-staged-message": "Here is the reply.\n\nBEGIN\nThanks for the steps. I'll send the list as soon as the project exists.\nEND\n\nOnce it's sent, I'll log it in the ledger.",
+    "a-staged-message-in-rules": "----- BEGIN -----\nI'll confirm the date once the venue answers.\n----- END -----\nWhen it's sent, I'll close the row.",
+    "say-go": "The draft is above. Say go and it's out, and I'll schedule as soon as the vendor replies.",
+    "tell-me-when": "Sign in on that page, then approve the prompt. Tell me when it's done and I'll confirm with the doctor.",
+    "ping-me": "Start the transcription in the app. Ping me when it's done and I'll pull the file.",
+    "send-me-the-file": "Send me the export when it arrives and I'll re-run the match.",
+    "only-you-can": "The dashboard step is one only you can do. I'll send the four links once that's done.",
+    "one-step-from-you": "I'm holding the edit until the skill is in the session. One step from you unblocks it: run the installer.",
+    "press-enter": "In that tab, press Enter and confirm in the browser. I'll verify the registry once it goes through.",
+    "your-sign-in": "No new sign-in has come in. I'm still waiting on your sign-in retry from the plugin.",
+    "your-two-answers": "Still waiting on your two answers before I write the session log.",
+    "your-scoring": "Evaluation work: waiting on your scoring of the 24 checks.",
+    "your-login": "The recording tool: waiting on your login.",
+}
+STILL_THE_SESSIONS_OWN = {
+    "tell-you-is-not-tell-me": "The copy is running on the other machine. I'll tell you when it finishes.",
+    "the-reviewer-says-yes": "The reviewer will say yes or no by Friday, and I'll merge once she answers.",
+    "an-approval-in-the-past": "You approved the send at noon and it went out. I'll schedule as soon as the vendor replies.",
+    "begin-as-a-word": "I'll begin the import once the export lands. The end state is one folder.",
+    "a-code-that-is-not-one": "The commit is 7c41d2e. I'll tag it once the tests pass.",
+    "your-pipeline": "I'm waiting on your pipeline to finish the nightly build.",
+    "your-tests": "Still waiting on your test suite, which is on its last job.",
+}
+
+
+@pytest.mark.parametrize("reply", _cases(THE_PRINCIPALS_TURN))
+def test_a_reply_that_hands_the_turn_to_the_principal_needs_no_watcher(reply):
+    assert _sent_back(reply) is None
+
+
+@pytest.mark.parametrize("reply", _cases(STILL_THE_SESSIONS_OWN))
+def test_words_that_only_look_like_the_principals_turn_exempt_nothing(reply):
+    assert "nothing is armed" in _sent_back(reply)
+
+
+A_LIST_OF_OPEN_LOOPS = {
+    "a-bold-label": "Done today: the two drafts.\n\n**Waiting on others:** the venue on a time; the vendor on the quote.",
+    "a-label-and-a-list": "Waiting on:\n- CI on the release branch\n- the second reviewer's verdict",
+    "a-label-with-words": "Still waiting on peers, both asked and named:\n- the release gate\n- the routing guard",
+    "what-we-wait-for": "Everything imported is live. What we're waiting on others for: the address and its DNS record.",
+    "two-things": "We're now waiting on two answers: the fee and whether the host sees the messages.",
+    "a-heading": "## Awaiting the vendor's go\n\n1. Merge the first request.\n2. Refresh the installed copy.",
+    "a-table-cell": "| account | state |\n|---|---|\n| billing | awaiting re-auth |\n| travel | clean |",
+    "an-item-after-a-dash": "- **The venue** — sent; awaiting their pick of a date\n- **The caterer** — two threads out, no reply yet",
+    "a-fragment-in-a-sentence": "Where that leaves things: exclusions done in all three exhibits; waiting on the lawyer's scope language; then the signing link.",
+    "a-label-in-an-item": "- **Capacity note** — waiting on the director's answer, which is the point\n- **The role description** — ready",
+}
+A_SENTENCE_THAT_OPENS_WITH_THE_WAIT = {
+    "the-whole-reply": "Waiting on the channel lookup, which says which entries can be renamed.",
+    "after-a-sentence": "Nothing outstanding. Awaiting the board reply.",
+    "a-numbered-sentence": "1. The branch is rebased.\n2. Waiting on the integration suite before I tag the release.",
+    "still": "Still waiting on the offline-tests agent; no report yet, nothing new to act on.",
+}
+A_RULE_NOT_A_WAIT = {
+    "from-now-on": "You're right. From now on, when an approved send fails on its usual route, I'll finish it through the browser.",
+    "next-time": "Next time I'll check the sent folder once the send returns, before I report it.",
+    "every-time": "Every time a run finishes, I'll read its last line before I quote it.",
+}
+
+
+@pytest.mark.parametrize("reply", _cases(A_LIST_OF_OPEN_LOOPS, A_RULE_NOT_A_WAIT))
+def test_a_list_of_open_loops_a_label_or_a_rule_is_no_announcement(reply):
+    assert _sent_back(reply) is None
+
+
+@pytest.mark.parametrize("reply", _cases(A_SENTENCE_THAT_OPENS_WITH_THE_WAIT))
+def test_a_sentence_that_opens_with_the_wait_is_still_sent_back(reply):
+    assert "nothing is armed" in _sent_back(reply)
