@@ -686,6 +686,22 @@ def test_uninstall_removes_an_export_schedule_whose_every_command_is_this_instal
     assert not plist.exists() and calls(day_end)[-1].startswith("bootout gui/")
 
 
+@pytest.mark.parametrize("program, words, kept", [
+    ("/bin/echo", ["/bin/bash", "-lc", '"{own}" sessions export --all; "{own}" sessions sync'], True),
+    ("/Volumes/backup{own}", ["{own}", "sessions", "export", "--all"], True),
+    ("{own}", ["synthesis", "sessions", "export", "--all"], False),
+], ids=["another program handed this install's line", "a path that ends with this install's", "this install's command"])
+def test_a_schedule_that_names_its_program_apart_from_its_words_is_matched_by_that_program(day_end, program, words, kept):
+    """launchd runs a job's `Program` when the job names one, and hands it `ProgramArguments` only as its words: the
+    words then say nothing about what runs."""
+    import plistlib
+    own = str(setup.install._home() / "bin" / "synthesis")
+    plist = _scheduled(plistlib.dumps({"Label": setup.EXPORT_LABEL, "Program": program.replace("{own}", own),
+                                       "ProgramArguments": [word.replace("{own}", own) for word in words]}))
+    said = setup.unregister_sessions_export()
+    assert said[0].startswith("kept" if kept else "removed") and plist.exists() is kept and bool(calls(day_end)) is not kept
+
+
 def test_a_schedule_this_install_wrote_is_its_own_whatever_homes_it_carries_and_whoever_uninstalls(day_end, tmp_path, monkeypatch):
     for name, folder in zip(HOMES[1:], ("claude config", "it's $HOME; \"codex\"", "xdg")):
         monkeypatch.setenv(name, str(tmp_path / "custom" / folder))
