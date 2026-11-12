@@ -32,15 +32,22 @@ def declare(state: Path, **workspaces) -> None:
     (state / "config.json").write_text(json.dumps({"workspaces": workspaces}), encoding="utf-8")
 
 
-def listing(tmp_path: Path, monkeypatch, *left, total=3, workspace="desk", day=DAY, code=None, says="") -> Path:
+LEFT_OUT = "a field the answer leaves out"
+
+
+def listing(tmp_path: Path, monkeypatch, *left, total=3, workspace="desk", day=DAY, code=None, says="", prints=None, **other) -> Path:
     """A stand-in for the `synthesis` command on the PATH: it writes down the words it was run with and answers as
-    the listing would. With `says`, it answers on stderr only, as a listing that could not be made does."""
+    the listing would, naming the record folders it was given. `other` gives a field of the answer another value,
+    or LEFT_OUT to leave it out; `prints` is printed in place of the answer. With `says`, it answers on stderr only,
+    as a listing that could not be made does."""
     bin_, asked = tmp_path / "bin", tmp_path / "asked.json"
     bin_.mkdir(exist_ok=True)
-    answer = json.dumps({"workspace": workspace, "date": day, "prompts": total, "open": list(left)})
+    answer = {"workspace": workspace, "date": day, "prompts": total, "open": list(left), **other}
     (bin_ / "synthesis").write_text(
-        f"#!{sys.executable}\nimport json, sys\njson.dump(sys.argv[1:], open({str(asked)!r}, 'w'))\n"
-        + (f"sys.stderr.write({says!r})\n" if says else f"print({answer!r})\n")
+        f"#!{sys.executable}\nimport json, os, sys\njson.dump(sys.argv[1:], open({str(asked)!r}, 'w'))\n"
+        "held = [os.path.abspath(os.path.expanduser(sys.argv[at + 1])) for at, word in enumerate(sys.argv) if word == '--records']\n"
+        f"answer = {{name: value for name, value in {{'records': held, **{answer!r}}}.items() if value != {LEFT_OUT!r}}}\n"
+        + (f"sys.stderr.write({says!r})\n" if says else f"print({prints!r})\n" if prints is not None else "print(json.dumps(answer))\n")
         + f"sys.exit({(1 if left else 0) if code is None else code})\n", encoding="utf-8")
     (bin_ / "synthesis").chmod((bin_ / "synthesis").stat().st_mode | stat.S_IXUSR)
     monkeypatch.setenv("PATH", f"{bin_}{os.pathsep}/usr/bin{os.pathsep}/bin")
@@ -211,3 +218,84 @@ def test_a_first_day_that_is_no_day_is_refused(tmp_path, record, monkeypatch, si
         code, _, refusal = record(state, "--outcome", outcome)
         assert code != 0 and history(state) == "" and not asked.exists(), outcome
         assert f'"from" {json.dumps(since)}' in refusal and "YYYY-MM-DD" in refusal
+
+
+# --- an answer the listing could not have printed (2026-11-12, a second review) ----------------------------------
+# A listing that exited 1 and answered `prompts: 1, open: []` was taken as clean. A listing exits 1 exactly while it
+# lists a prompt open, lists no more than were typed, each once, and says which folders it was held against.
+
+AT_ODDS = {
+    "it exits 1 and lists none open": dict(total=1, code=1),
+    "it exits 1 and none was typed": dict(total=0, code=1),
+    "it exits 0 and lists one open": dict(open=["claude-code d20ab7c4 #41"], code=0),
+    "more open than typed": dict(open=["a b #1", "a b #2"], total=1, code=1),
+    "one open and none typed": dict(open=["a b #1"], total=0, code=1),
+    "fewer than none typed": dict(total=-1),
+    "a count that is no whole number": dict(total=3.0),
+    "a count that is true": dict(total=True),
+    "the same prompt open twice": dict(open=["a b #1", "a b #1"], code=1),
+    "an open prompt with no name": dict(open=[""], code=1),
+    "an open prompt that is no text": dict(open=[41], code=1),
+    "open prompts that are no list": dict(open="claude-code d20ab7c4 #41", code=1),
+}
+
+
+@pytest.mark.parametrize("outcome", ["clean", "partial"])
+@pytest.mark.parametrize("made", AT_ODDS.values(), ids=AT_ODDS.keys())
+def test_an_answer_whose_exit_status_count_and_list_disagree_records_nothing(tmp_path, record, monkeypatch, made, outcome):
+    state = tmp_path / "state"
+    declare(state, desk=ON)
+    listing(tmp_path, monkeypatch, **made)
+    code, _, refusal = record(state, "--outcome", outcome)
+    assert code != 0 and "does not agree with itself" in refusal and history(state) == ""
+
+
+@pytest.mark.parametrize("field", ["workspace", "date", "prompts", "open", "records"])
+def test_an_answer_that_leaves_a_field_out_records_nothing(tmp_path, record, monkeypatch, field):
+    state = tmp_path / "state"
+    declare(state, desk=ON)
+    listing(tmp_path, monkeypatch, **{field: LEFT_OUT})
+    for outcome in ("clean", "partial"):
+        code, _, refusal = record(state, "--outcome", outcome)
+        assert code != 0 and "cannot be read" in refusal and repr(field) in refusal and history(state) == "", outcome
+
+
+@pytest.mark.parametrize("printed", ["", "[]", "null", '{"workspace": "desk", "date": "2026-11-11", "prompts": 3, "open": [',
+                                     "all 3 prompts on 2026-11-11 in desk are cited by a record"])
+def test_an_answer_that_is_not_the_listings_one_object_records_nothing(tmp_path, record, monkeypatch, printed):
+    state = tmp_path / "state"
+    declare(state, desk=ON)
+    listing(tmp_path, monkeypatch, prints=printed)
+    for outcome in ("clean", "partial"):
+        code, _, refusal = record(state, "--outcome", outcome)
+        assert code != 0 and "cannot be read" in refusal and history(state) == "", outcome
+
+
+@pytest.mark.parametrize("held", [[], ["/kb/elsewhere"], ["/kb/desk", "/kb/more"], "/kb/desk", None, [41]], ids=repr)
+def test_an_answer_held_against_other_folders_than_the_records_records_nothing(tmp_path, record, monkeypatch, held):
+    """The answer says which folders it was held against, as it says its workspace and day. One held against none
+    lists nothing open and exits 0: taken as it stood, the day closed clean with no record read."""
+    state = tmp_path / "state"
+    declare(state, desk=ON)
+    listing(tmp_path, monkeypatch, records=held)
+    for outcome in ("clean", "partial"):
+        code, _, refusal = record(state, "--outcome", outcome)
+        assert code != 0 and history(state) == "", outcome
+        assert ("against" in refusal and "/kb/desk" in refusal) or "cannot be read" in refusal
+
+
+def test_the_folders_an_answer_names_are_the_same_folders_however_each_is_written(tmp_path, record, monkeypatch):
+    """The valid shape: the listing answers with each folder's full path, so a folder the config names from the home
+    folder, from the working folder or through a link is that folder, and so is the path a link leads to."""
+    real, link, state = tmp_path / "kb", tmp_path / "link", tmp_path / "state"
+    real.mkdir()
+    link.symlink_to(real)
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.chdir(tmp_path)
+    declare(state, desk={"plans_dirs": [], "prompt_reconcile": {"records": ["~/kb", "kb", str(link)]}})
+    listing(tmp_path, monkeypatch)
+    code, out, refusal = record(state)
+    assert code == 0 and "prompts: all 3 typed on 2026-11-11 are cited by a record" in out, refusal
+    listing(tmp_path, monkeypatch, "claude-code d20ab7c4 #41", records=[str(real)] * 3)
+    code, out, refusal = record(state, "--outcome", "partial")
+    assert code == 0 and "prompts: 1 of 3 typed on 2026-11-11 is cited by no record" in out, refusal
