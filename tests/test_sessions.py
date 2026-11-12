@@ -1211,6 +1211,18 @@ def test_a_transcript_an_adapter_cannot_read_is_named_and_the_run_goes_on(harnes
     assert "claude-code a1: not exported" in capsys.readouterr().err
 
 
+def test_resume_shows_the_conversation_beside_a_transcript_an_adapter_cannot_read(harness, tmp_path):
+    """With a transcript not copied, resume also reads what each harness recorded since the last export, and the same
+    row stopped it there: the session picking the work up got a traceback in place of the project."""
+    _jsonl(harness["claude"], _claude_rows(harness["work"]))
+    _jsonl(harness["claude"].with_name("a1.jsonl"),
+           [_typed({"cwd": harness["work"], "sessionId": "a1"}, ["a block that is only a string"], "2026-10-30T15:00:00.000Z")])
+    kb = tmp_path / "kb"
+    (kb / "projects" / "alpha").mkdir(parents=True)
+    (kb / "projects" / "alpha" / "CONTEXT.md").write_text("**Phase:** build\n**Status:** active\n", encoding="utf-8")
+    assert "Please plan the release." in project.resume(str(kb / "projects" / "alpha"), "S-new")
+
+
 def test_a_run_started_by_a_command_line_is_briefed_not_prompted(harness):
     """`codex exec` and `claude -p` take their prompt from a script or another agent (2026-11-11: eight review
     briefs an agent wrote were listed among the principal's own prompts of the day)."""
