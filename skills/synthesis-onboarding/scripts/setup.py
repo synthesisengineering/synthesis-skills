@@ -445,10 +445,25 @@ def _nudge_plist() -> Path:
 
 
 def _points_at(plist: Path, target: Path) -> bool:
+    """Whether a schedule is this install's: the program of every command its line runs is `target`, the whole path.
+    One whose command only ends like that path, or hands it to another program as a word, is another's, and so is a
+    file that cannot be read (2026-11-12, a second review: a schedule running `echo <target>` was unloaded and removed)."""
     import plistlib
     try:
-        return bool(re.search(re.escape(str(target)) + r'(?=["\'\s]|$)', " ".join(plistlib.loads(plist.read_bytes()).get("ProgramArguments") or [])))  # the whole path
-    except (OSError, ValueError):
+        args = plistlib.loads(plist.read_bytes()).get("ProgramArguments")
+        if not (isinstance(args, list) and len(args) == 3 and args[:2] == ["/bin/bash", "-lc"]):
+            return isinstance(args, list) and args[:1] == [str(target)]  # no shell line: the program is the first word
+        words = shlex.shlex(args[2].replace("\n", ";"), posix=True, punctuation_chars=True)
+        words.whitespace_split, words.commenters = True, ""  # split as a shell does: `#` and `-` stay in their word
+        commands = [[]]
+        for word in words:
+            if word and not word.strip(words.punctuation_chars):  # `;`, `&&` and `|` end a command
+                commands.append([])
+            else:
+                commands[-1].append(word)
+        programs = [(c[1:] if c[0] == "exec" else c)[:1] for c in commands if c and c[0] != "export"]  # `export` runs nothing
+        return bool(programs) and all(program == [str(target)] for program in programs)
+    except Exception:  # cut short, or of another shape: not this install's
         return False
 
 
@@ -495,7 +510,7 @@ def unregister_day_end(dry_run: bool = False) -> list:
             plist.unlink()
         lines.append(f"{'would remove' if dry_run else 'removed'} the nudge schedule {plist}")
     elif plist.exists():
-        lines.append(f"{'would keep' if dry_run else 'kept'} {plist}: it runs another install's nudge")
+        lines.append(f"{'would keep' if dry_run else 'kept'} {plist}: its command is not this install's nudge")
     if link.is_symlink() and os.path.realpath(link) == os.path.realpath(home / "bin" / "day-end"):
         if not dry_run:
             link.unlink()
@@ -541,14 +556,14 @@ def register_sessions_export(load: bool = True) -> list:
 
 
 def unregister_sessions_export(dry_run: bool = False) -> list:
-    """Remove only an export schedule that runs this install's command."""
+    """Remove only an export schedule whose every command is this install's."""
     plist = _export_plist()
     if plist.exists() and _points_at(plist, install._home() / "bin" / "synthesis"):
         if not dry_run:
             run([LAUNCHCTL, "bootout", f"gui/{os.getuid()}/{EXPORT_LABEL}"], 30)
             plist.unlink()
         return [f"{'would remove' if dry_run else 'removed'} the export schedule {plist}"]
-    return [f"{'would keep' if dry_run else 'kept'} {plist}: it runs another install's command"] if plist.exists() else []
+    return [f"{'would keep' if dry_run else 'kept'} {plist}: its command is not this install's"] if plist.exists() else []
 
 
 def workspace_archive(paths: list) -> Path:
