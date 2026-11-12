@@ -11,7 +11,10 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
-START = Path(__file__).resolve().parents[1] / "optional-workspace-mcp" / "start.sh"
+import pytest
+
+SKILL = Path(__file__).resolve().parents[1]
+START = SKILL / "optional-workspace-mcp" / "start.sh"
 
 
 def executable(path: Path, body: str) -> None:
@@ -89,3 +92,23 @@ def test_a_server_still_starts_when_the_outbox_cannot_be_made(tmp_path: Path) ->
     assert arguments.startswith("workspace-mcp --single-user")
     assert served["ALLOWED_FILE_DIRS"] == str(blocked / "outbox")
     assert str(blocked / "outbox") in result.stderr and "could not" in result.stderr
+
+
+@pytest.mark.parametrize("document", ["references/setup.md", "optional-workspace-mcp/README.md"])
+def test_the_setup_documents_say_what_the_start_script_exports_and_it_does(document: str, tmp_path: Path) -> None:
+    text = " ".join((SKILL / document).read_text(encoding="utf-8").split())  # the documents wrap their lines
+    for said in ("`ALLOWED_FILE_DIRS`", "added to whatever the variable already holds", "`~/.synthesis/v5/outbox`",
+                 "`$SYNTHESIS_HOME/outbox`", "`WORKSPACE_ATTACHMENT_DIR`", "`~/.workspace-mcp/attachments`",
+                 "keeps the folders it was started with", "`synthesis doctor`"):
+        assert said in text, said
+    # and the script does what they say
+    _, served, _ = start(tmp_path, ALLOWED_FILE_DIRS="/srv/reports")
+    assert served["ALLOWED_FILE_DIRS"] == f"/srv/reports:{tmp_path / 'home' / '.synthesis' / 'v5' / 'outbox'}"
+    _, served, _ = start(tmp_path, SYNTHESIS_HOME=str(tmp_path / "elsewhere"))
+    assert served["ALLOWED_FILE_DIRS"] == str(tmp_path / "elsewhere" / "outbox")
+
+
+def test_skill_md_says_where_to_read_it_and_keeps_its_size() -> None:
+    skill = (SKILL / "SKILL.md").read_bytes()
+    contents = " ".join(skill.decode("utf-8").split("## Contents", 1)[1].split("\n## ", 1)[0].split())
+    assert "what `start.sh` sets for the server" in contents and len(skill) <= 8000

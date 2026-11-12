@@ -360,3 +360,14 @@ def test_a_send_window_lets_no_unreadable_file_through_and_spends_no_send_on_it(
     assert "1 of 1 sends left" in sends.describe(sends.window())
     staged = shutil.copy(scratch / "plan.pdf", paths.outbox() / "plan.pdf")
     assert _attached(staged, config=config) is None and sends.window() == {}
+
+
+def test_the_composing_reference_lists_this_check_with_the_words_the_guard_blocks_with(scratch, monkeypatch):
+    composing = (Path(__file__).resolve().parents[1] / "skills" / "synthesis-message-guard" / "references" / "composing.md")
+    listed = " ".join(composing.read_text(encoding="utf-8").split())
+    monkeypatch.chdir(scratch)
+    said = {"is outside the folders the mail connector reads": scratch / "plan.pdf", "is not a full path": "plan.pdf",
+            "does not exist": paths.outbox() / "gone.pdf", "is not a file": paths.outbox()}
+    for words, file in said.items():
+        assert words in _attached(file) and words in listed, words
+    assert all(f"`{name}`" in listed for name in (*guards.FILE_KEYS, *sorted(guards.FILE_MAIL_TOOLS), "ALLOWED_FILE_DIRS"))
