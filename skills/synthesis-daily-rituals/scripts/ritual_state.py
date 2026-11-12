@@ -171,12 +171,15 @@ def travel(workspace: str, day: str, given) -> str:
     return f"\ntravel: {len(events)} in-person event{'s' * (len(events) != 1)} through {last}, each with its travel"
 
 
-# A line of an item: plain, bold or italic, quoted, a list entry or a task-list box, in any order and however deep
-# (`- > **Option A:**` is a quote inside a list entry).
-ITEM = r"(?im)^ *(?:> *|(?:[-*+]|\d+[.)]) +(?:\[[ xX]\] +)?)*[*_]*"
-OPTION = re.compile(ITEM + r"Option [A-Z0-9]+(?![A-Za-z0-9])(.*)$")  # the label ends at a colon, a space or the mark that closes its emphasis
-SAID = re.compile(ITEM + r"(Recommendation|Consequences|Commits)[*_]*\s*:[*_\s]*(.*)$")
-CLOSED = re.compile(ITEM + r"(?:Decided|Resolved|Released|Lapsed|Withdrawn)[*_]*\s*:")
+# A line of an item: plain, bold or italic, quoted, a list entry or a task-list box, a heading or a row of a table,
+# in any order and however deep (`- > **Option A:**` is a quote inside a list entry).
+ITEM = r"(?im)^ *(?:> *|\| *|#{1,6} +|(?:[-*+]|\d+[.)]) +(?:\[[ xX]\] +)?)*[*_]*"
+# An option's label ends at the mark that closes its emphasis, or at a colon, a dash, a bracket, a full stop or the
+# end of the line: `Option A was fine last time` is a sentence.
+OPTION = re.compile(ITEM + r"Option [A-Z0-9]+(?![A-Za-z0-9])((?:[*_]+|\s*(?:$|[:\-–—().|])).*)$")
+SAID = re.compile(ITEM + r"(?:(?:My|Our|The) +)?(Recommend(?:ation|ed)s?|Consequences?|Commits)[*_]*\s*(?::|[-–—](?=[*_\s]))[*_\s]*(.*)$")
+CLOSED = re.compile(ITEM + r"(?:Decided|Decision|Resolved|Released|Lapsed|Withdrawn)[*_]*\s*:[*_\s]*(.*)$")
+OPEN = re.compile(r"(?i)\W*(?:pending|open\b|awaiting|waiting|needed|not yet|to be )")  # a closing line that closes nothing
 # What Markdown does not show as the plan's own text: a fenced block (quoted or not, closed or not), which is an
 # example, and an HTML comment. Whichever opens first runs to its own end: a fence closes at a line of its own
 # mark alone, at least as long as the one that opened it, so four backticks hold a sample fenced with three.
@@ -188,7 +191,8 @@ COMMITS = re.compile(r"(?i)\b(?:accept|decline|rsvp|attend|go|join|host|schedule
 
 
 TITLED = re.compile(r"(?i)(?<![A-Za-z0-9])(Recommendation|Consequences|Commits)[*_]*\s*:[*_\s]*(.*)$")  # the same word and colon on a title line
-MARK = re.compile(r"^ *(?:> *|(?:[-*+]|\d+[.)]) +)*")  # what stands before a title that is a list entry; a task-list box stays, since a ticked one closes it
+MARK = re.compile(r"^ *(?:> *|#{1,6} +|(?:[-*+]|\d+[.)]) +)*")  # what stands before a title that is a list entry or a heading; a task-list box stays, since a ticked one closes it
+HEAD = re.compile(r"(?i) *(?:#{4,6} +(?!(?:the +)?(?:options?|choices?)\W*$)\S|(?:\*\*|__)[^*_\n].*(?:\*\*|__)\s*$)")  # a deeper heading or a line all in bold: a title
 ENTRY = re.compile(r" *(?:>\s*)*(?:[-*+] |\d+[.)] )")  # a list entry, up to where its own text starts
 LABEL = re.compile(r"(?i)Option ([A-Z0-9]+)(?![A-Za-z0-9])")
 
@@ -217,7 +221,7 @@ def _items(text: str):
     options whose label starts again (A after B), begin the next choice; a bullet under an option does not (the
     third and fourth reviews: decisions listed under a second-level heading were not read, a heading inside a fenced
     example was read as a choice, and a second entry lettered C and D was read as more options of the first)."""
-    for section in re.split(r"(?m)^#{1,3} ", _shown(text)):
+    for section in re.split(r"(?im)^#{1,3} (?![*_]*Option [A-Z0-9])", _shown(text)):
         lines, firsts, label, entry, fresh = section.splitlines(), [], None, -1, False
         for at, line in enumerate(lines):
             listed = re.match(r"( *)(?:>\s*)*(?:[-*+] |\d+[.)] )", line) if at and not (SAID.match(line) or CLOSED.match(line)) else None
@@ -245,7 +249,7 @@ def _items(text: str):
                         break
                     if lines[j].strip() and depth(j) < depth(above):
                         break  # a line left of it that is no entry: the sentence stands in no list
-            entry = above is not None and (len(firsts) > 1 or ENTRY.match(lines[above]))
+            entry = above is not None and (len(firsts) > 1 or ENTRY.match(lines[above]) or HEAD.match(lines[above]))
             return above if entry else 0 if k == 0 else firsts[k]
         starts = [titled(k) for k in range(len(firsts))]
         for k, start in enumerate(starts):
@@ -263,9 +267,12 @@ def choices(workspace: str, day: str) -> str:
         text = plan.read_text(encoding="utf-8", errors="replace") if plan.is_file() else ""
         for item in _items(text):
             title, options = MARK.sub("", item.splitlines()[0]).strip(), OPTION.findall(item)
-            if not options or CLOSED.search(item) or title.lstrip("*_ ").startswith(("~~", "[x]", "[X]", "✓", "✔")) or "✅" in title:
+            done = any(not NOTHING.fullmatch(m[1]) and not OPEN.match(m[1]) for m in CLOSED.finditer(item))  # it says what was decided
+            if not options or done or title.lstrip("*_ ").startswith(("~~", "[x]", "[X]", "✓", "✔")) or "✅" in title:
                 continue
-            said = {m[1].lower(): m[2] for m in [*SAID.finditer(item), *TITLED.finditer(title)] if not NOTHING.fullmatch(m[2])}
+            said = {"recommendation" if m[1].lower().startswith("recommend") else "consequences" if m[1].lower().startswith("consequence") else m[1].lower(): m[2]
+                    for m in [*SAID.finditer(item), *TITLED.finditer(title)] if not NOTHING.fullmatch(m[2])}
+            said.update({"recommendation": "on the option"} if any(re.search(r"(?i)(?<!not )\brecommended\b", option) for option in options) else {})
             needs = ["recommendation"] + ["consequences"] * ("commits" in said or any(map(COMMITS.search, options)))
             lacks = [word for word in needs if word not in said]
             open_items += 1
