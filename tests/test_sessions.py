@@ -1039,6 +1039,27 @@ def test_only_a_transcript_that_is_gone_is_lost(principal, harness, tmp_path, mo
     assert [json.loads(line)["transcript"] for line in lost] == ["claude-code c2"]                              # and the cleared one still on record
 
 
+def test_in_a_terminal_of_their_own_the_principal_clears_a_loss_without_a_code(harness, tmp_path, monkeypatch, capsys):
+    """Run by an agent, `--lost` waits for the principal's code. Typed by the principal in their own terminal, outside
+    any harness, it needs none: nobody else is at that keyboard."""
+    import types
+    gone = _jsonl(harness["claude"], _claude_rows(harness["work"]))
+    gone.chmod(0o000)
+    try:
+        sessions.export(0)
+    finally:
+        gone.chmod(0o644)
+    gone.unlink()
+    monkeypatch.setattr("sys.stdin", types.SimpleNamespace(isatty=lambda: True))
+    monkeypatch.setenv("SYNTHESIS_SESSION", "S1")
+    monkeypatch.setenv("CLAUDECODE", "1")                                      # a terminal inside a harness is an agent's
+    assert cli.main(["sessions", "export", "--lost", "c1"]) == 2 and "type approve" in capsys.readouterr().err
+    assert _checked(tmp_path)[0] == "fail"
+    monkeypatch.delenv("CLAUDECODE")
+    assert cli.main(["sessions", "export", "--lost", "c1"]) == 0 and "cleared: claude-code c1" in capsys.readouterr().out
+    assert _checked(tmp_path)[0] == "ok"
+
+
 def test_a_run_started_by_a_command_line_is_briefed_not_prompted(harness):
     """`codex exec` and `claude -p` take their prompt from a script or another agent (2026-11-11: eight review
     briefs an agent wrote were listed among the principal's own prompts of the day)."""
