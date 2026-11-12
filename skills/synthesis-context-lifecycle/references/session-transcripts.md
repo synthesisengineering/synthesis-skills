@@ -65,10 +65,17 @@ each harness writes its own transcript to disk as the session runs. The copy is 
   copied whether or not any session remembers to. `synthesis doctor` fails when that schedule is not loaded or
   no export has finished in a day (2026-11-11: until then the archive had no trigger of its own, and a
   transcript that no session exported within two days was skipped).
-- An export that could not copy a transcript says so in its report and in the stamp it leaves, and so does the
-  export a sync runs first. On any Mac `synthesis doctor` then fails, naming how many and the first reason,
-  until `synthesis sessions export --all` copies them all: an export of the last two days or of one session
-  does not clear it.
+- An export that could not copy a transcript says so in its report and names it in the stamp it leaves, with why
+  and when it last tried, and so does the export a sync runs first. On any Mac `synthesis doctor` then fails,
+  with how many and the first reason, until a run copies each one: `synthesis sessions export --all` tries them
+  all, and an export of the last two days or of one session clears only what it copied.
+- A transcript the harness removed before any run copied it can no longer be copied. A run of everything says
+  so, the stamp keeps its name with when its copy last failed and when it was found gone, and the doctor keeps
+  failing. What it held is not in the archive, and only the principal can accept that:
+  `synthesis sessions export --lost <session>` clears it. Run by an agent, it asks for the principal's approval
+  code first; typed by the principal in a terminal of their own, it needs none. It refuses a transcript that is
+  still there or that the harness only moved, and it appends each loss it clears to
+  `<synthesis home>/sessions/.state/lost.jsonl`. `--rebuild` carries the stamp and that file into the new archive.
 
 ## Copying each workspace's conversation off the Mac
 

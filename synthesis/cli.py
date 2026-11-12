@@ -215,7 +215,22 @@ def cmd_sessions(args) -> int:
     def out(rec: dict, line: str) -> None:
         print(json.dumps(rec, ensure_ascii=False, default=str) if args.json else line)
 
-    if args.action == "export":
+    if args.action == "export" and args.lost:
+        from synthesis import approvals
+        try:
+            what = sessions.lost(args.lost, clear=False)  # named in the stamp, and gone from wherever a run looks
+            if paths.harness() != "unknown" or not sys.stdin.isatty():  # run by an agent: only on the principal's code for this one
+                if not approvals.consume("sessions-lost", args.lost, {"session_id": _session(args)}):
+                    code = approvals.request("sessions-lost", args.lost, f"accept the transcript of {args.lost} as lost")
+                    print(f"{what} was never copied, and its transcript is gone. Only the principal can accept that what it "
+                          f"held is lost. Show them this and ask them to type {approvals.how(code)}. Then run the identical "
+                          "command again.", file=sys.stderr)
+                    return 2
+            print(sessions.lost(args.lost))
+        except (ValueError, approvals.Unverified) as exc:
+            print(exc, file=sys.stderr)
+            return 1 if isinstance(exc, ValueError) else 2
+    elif args.action == "export":
         report = sessions.export(0 if args.all else args.days, args.session or "", rebuild=args.rebuild)
         print("\n".join(report[:1] + report[1:][-50:] + [f"{len(report)} line(s)"]) if report else "nothing new to export")
     elif args.action == "sync":
@@ -378,6 +393,8 @@ def parser() -> argparse.ArgumentParser:
     s.add_argument("--days", type=float, default=2, help="export: transcripts changed in the last N days (default 2)")
     s.add_argument("--session", default="", help="export: only this session")
     s.add_argument("--rebuild", action="store_true", help="export: move the archive aside and export everything again")
+    s.add_argument("--lost", default="", metavar="SESSION", help="export: accept as lost a transcript that was never copied "
+                   "and is gone, as the doctor names it; an agent needs the principal's code")
     s.add_argument("--no-push", action="store_true", help="sync: commit in each sessions repo but do not push")
     s.add_argument("--seq", type=int, help="show: the cited record, whole, and three either side")
     s.add_argument("--date", default="", help="prompts: the day, YYYY-MM-DD (default today)")

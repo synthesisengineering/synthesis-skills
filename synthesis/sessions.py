@@ -505,11 +505,15 @@ def natives(days: float = 0) -> list:
 
 def _rebuild() -> str:
     """Move the whole archive aside, never deleting it, so this export reads every transcript again with the current
-    adapters. Returns where the old archive went."""
+    adapters. The stamp and the losses come along: what was not copied is still not copied, and what was lost stays
+    on record. Returns where the old archive went."""
     target = paths.home() / "archive" / f"sessions-{time.strftime('%Y%m%dT%H%M%S')}"
     target.parent.mkdir(parents=True, exist_ok=True)
     if root().exists():
         os.replace(root(), target)
+        for kept in (f for f in (target / ".state" / "export.json", target / ".state" / "lost.jsonl") if f.is_file()):
+            (root() / ".state").mkdir(parents=True, exist_ok=True)
+            (root() / ".state" / kept.name).write_bytes(kept.read_bytes())
     return str(target)
 
 
@@ -544,30 +548,69 @@ def export(days: float = 0, only: str = "", wait: bool = True, rebuild: bool = F
 
 def _export(days: float, only: str) -> list:
     """Every run, a sync's too, leaves a stamp, the doctor's heartbeat for the scheduled export: a run that found
-    nothing new still ran, and a run that could not copy a transcript says how many and why until a run of every
-    transcript copies them all (2026-11-12: every copy was refused and the doctor answered ok)."""
+    nothing new still ran, and a transcript a run could not copy is named there, with why and when, until a run
+    copies it (2026-11-12: every copy was refused and the doctor answered ok). One that a run of everything no
+    longer finds can never be copied: the stamp says since when, and only the principal clears it (`lost`; the same
+    day: a harness removed a transcript whose copy had failed, and the next run stamped complete)."""
     from synthesis import board
-    report = []
+    stamp = root() / ".state" / "export.json"
+    last, now = paths.read_json(stamp), datetime.now().astimezone().isoformat(timespec="seconds")
+    report, failed, tried, waiting = [], [], set(), dict(last.get("uncopied") or {})
     for harness, native in natives(days):
         session = _identity(harness, native)
         if only and only not in (session, native.stem, str(native)):
             continue
+        tried.add(f"{harness} {session}")
         live = board.load(native.stem) if harness == "claude-code" else board.load(session)
         try:
             kept = export_file(harness, native, getattr(live, "project", "") or "")
         except OSError as exc:
-            report.append(f"{harness} {session}: not exported ({exc})")
+            failed.append(f"{harness} {session}: not exported ({exc})")
+            waiting[f"{harness} {session}"] = {"native": str(native), "at": now, "reason": failed[-1]}
+            report.append(failed[-1])
             continue
+        waiting.pop(f"{harness} {session}", None)  # copied, whichever run this is
         if kept:
             report.append(f"{harness} {session}: {kept} record(s)")
-    stamp, failed = root() / ".state" / "export.json", [line for line in report if ": not exported (" in line]
-    now, last = datetime.now().astimezone().isoformat(timespec="seconds"), paths.read_json(stamp)
-    if failed:
-        last.update(failed=len(failed), reason=failed[0])
-    elif not (last.get("failed") and (days or only)):  # a run of part of the archive does not clear a failure
+    for name, entry in waiting.items() if not (days or only) else ():  # a run of everything looked wherever a harness keeps one
+        if name not in tried and not os.path.exists(entry["native"]):
+            entry.setdefault("gone", now)
+            report.append(f"{name}: not copied before its transcript was removed (its copy last failed {entry['at'][:16]}); "
+                          f"what it held is not in the archive, and `synthesis sessions export --lost {name.partition(' ')[2]}` clears it")
+    if waiting:
+        last.update(failed=len(waiting), reason=(failed or [entry["reason"] for entry in waiting.values()])[0], uncopied=waiting)
+    else:
         last = {"complete": now}
     paths.write_json(stamp, {**last, "exported": now})
     return report
+
+
+def lost(session: str, clear: bool = True) -> str:
+    """Clear a transcript the stamp names as never copied, once it is gone, and keep what was lost in
+    `.state/lost.jsonl`. Only the principal can accept a loss: the command asks for their code first (cli), and
+    with `clear` off this only says what would go. One that is still where a run looks is not lost."""
+    with _writer(True) as busy:
+        stamp = root() / ".state" / "export.json"
+        last = paths.read_json(stamp)
+        waiting = dict(last.get("uncopied") or {})
+        names = [name for name in waiting if session in (name, name.partition(" ")[2])]
+        if busy or len(names) != 1:
+            raise ValueError(busy or f"{session!r} names {len(names)} of the transcripts the export could not copy: "
+                             + (", ".join(sorted(waiting)) or "none is recorded"))
+        entry, (harness, _, sid) = waiting.pop(names[0]), names[0].partition(" ")
+        there = [str(p) for h, p in natives() if h == harness and _identity(h, p) == sid] + (
+            [entry["native"]] if os.path.exists(entry["native"]) else [])
+        if there:
+            raise ValueError(f"{names[0]} is not lost: its transcript is at {there[0]}, and `synthesis sessions export "
+                             f"--session {sid}` copies it or says why it cannot")
+        said = f"{names[0]}, whose copy last failed {entry['at'][:16]} ({entry['reason']})"
+        if not clear:
+            return said
+        with (stamp.parent / "lost.jsonl").open("a", encoding="utf-8") as kept:
+            kept.write(json.dumps({"transcript": names[0], **entry, "cleared": datetime.now().astimezone().isoformat(timespec="seconds")}) + "\n")
+        rest = {"failed": len(waiting), "reason": next(iter(waiting.values()))["reason"], "uncopied": waiting} if waiting else {}
+        paths.write_json(stamp, {**{k: v for k, v in last.items() if k in ("exported", "complete")}, **rest})
+        return f"cleared: {said}. What it held is not in the archive; {stamp.parent / 'lost.jsonl'} keeps the loss on record"
 
 
 # --- reading what was kept ------------------------------------------------------------------------------------

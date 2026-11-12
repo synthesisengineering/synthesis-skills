@@ -376,9 +376,14 @@ def check_sessions_export(plist: Path, stamp: Path, now: float = 0, run=subproce
     last = paths.read_json(stamp)
     if last.get("failed"):
         since = f"since {str(last['complete'])[:16]}" if last.get("complete") else "yet"
+        gone = [f"{name} (its copy last failed {str(entry.get('at'))[:16]})" for name, entry in (last.get("uncopied") or {}).items()
+                if entry.get("gone")]  # removed before any run copied it: no run can now
         return Check("fail", "sessions export", f"{last['failed']} transcript(s) could not be copied ("
-                     + str(last.get("reason", "")).replace(str(Path.home()), "~") + f"), and no run has copied everything {since}: "
-                     "run `synthesis sessions export --all` and read its lines")
+                     + str(last.get("reason", "")).replace(str(Path.home()), "~") + f"), and no run has copied everything {since}"
+                     + (": run `synthesis sessions export --all` and read its lines" if last["failed"] > len(gone) else "")
+                     + (f". Gone before a copy was made, so what {'it' if len(gone) == 1 else 'they'} held is not in the archive: "
+                        f"{', '.join(gone)}. Tell the principal, who alone clears one: `synthesis sessions export --lost <session>`"
+                        if gone else ""))
     if not plist.exists():
         return Check("warn", "sessions export", "not scheduled: transcripts are copied only when a session runs resume, "
                      f"handoff or a ritual ({how})")
