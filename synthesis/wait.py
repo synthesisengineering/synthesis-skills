@@ -157,8 +157,8 @@ def attempt(command: list[str], until: float) -> bool:
     except subprocess.TimeoutExpired:
         pass
     except OSError as exc:  # no program by that name, or a file that is none: nothing started, so the wait refuses the command
-        why = {FileNotFoundError: "not found", PermissionError: "not executable"}.get(type(exc), exc.strerror)
-        raise ValueError(f"`{' '.join(command)}` could not be started: {why}")
+        why = {FileNotFoundError: "was not found", PermissionError: "is not executable"}.get(type(exc), f"cannot be run ({exc.strerror})")
+        raise ValueError(f"`{' '.join(command)}` could not be started: its program {command[0]!r} {why}")
     finally:
         if proc and not done:
             _stop(proc)
