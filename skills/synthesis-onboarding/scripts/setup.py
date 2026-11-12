@@ -549,6 +549,9 @@ def register_sessions_export(load: bool = True) -> list:
     spec = {"Label": EXPORT_LABEL, "StartInterval": 3600, "RunAtLoad": True, "ProcessType": "Background",
             "StandardOutPath": log, "StandardErrorPath": log,  # a login shell, for the user's PATH and git credentials
             "ProgramArguments": ["/bin/bash", "-lc", f'{_homes()}"{command}" sessions export --all; "{command}" sessions sync']}
+    lines = []
+    if plist.exists() and not _points_at(plist, command):  # one label holds one schedule: another install's copy stops here
+        lines.append(f"archived another install's export schedule to {workspace_archive([plist])}")
     plist.parent.mkdir(parents=True, exist_ok=True)
     plist.write_bytes(plistlib.dumps(spec))
     if load:
@@ -557,7 +560,7 @@ def register_sessions_export(load: bool = True) -> list:
         loaded = run([LAUNCHCTL, "bootstrap", domain, str(plist)], 30)
         if loaded.returncode:
             raise SetupError(f"launchctl could not load {plist}: {_tail(loaded)}")
-    return [f"session transcripts copied every hour and at login ({plist}{'' if load else ', not loaded'}; it writes {log})"]
+    return lines + [f"session transcripts copied every hour and at login ({plist}{'' if load else ', not loaded'}; it writes {log})"]
 
 
 def unregister_sessions_export(dry_run: bool = False) -> list:

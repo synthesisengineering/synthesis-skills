@@ -166,7 +166,10 @@ and `XDG_DATA_HOME` that was set when the schedule was installed is set again in
 own, so the job reads the transcripts and writes the archive of the install whose command it runs. One that was
 not set is left to the login shell. After moving any of those folders, run the command again. The weekday nudge's
 job carries them the same way.
-An older schedule under that label is unloaded first; `--no-launchctl` writes the file without loading it.
+One label holds one schedule: another install's schedule under that label is archived first
+(`<synthesis home>/archive/<time>/`, and the setup says where), since its hourly copy stops when this one
+replaces it; this install's own older schedule is replaced in place. Whichever was loaded is unloaded first;
+`--no-launchctl` writes the file without loading it.
 `synthesis doctor` then checks that the schedule is loaded and that an export finished within a day. Uninstall
 unloads and removes only a schedule whose every command is this install's: the program each command of its line
 runs is this install's `synthesis`, the whole path. A schedule whose command only ends or begins like that path,
