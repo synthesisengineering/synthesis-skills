@@ -287,3 +287,85 @@ def test_a_return_after_the_morning_has_begun_leaves_no_night(tmp_path):
         code, report = check(tmp_path, "19:00", "21:00", [], "--in-person", "--travel-before", "30", "--travel-after", back,
                              config={**CONFIG, "travel_policy": {"sleep_hours": 8, "morning_starts": "07:00"}})
         assert levels(report)["sleep"] == "REVIEW" and "07:00" in detail(report, "sleep"), back
+
+
+# --- the meeting load counts meetings (2026-11-11) -------------------------------------------------------------
+# A Friday noon slot was refused at 7.08 hours of meetings against a limit of 5. Most of those hours were the
+# principal's own blocks (a morning routine, training, rituals, reserved holds); with meetings only the day held
+# 2.58. The same read feeds the free-time checks, where those blocks belong, so leaving them out of the read is no
+# fix: the load has to tell a meeting from a block.
+
+OWN = {**CONFIG, "protected_hours": [], "principal_addresses": ["me@example.com", "*@me.example.org"],
+       "calendar_guardian": {**CONFIG["calendar_guardian"], "personal_markers": ["#reserved"]}}
+BLOCKS = [meeting(THURSDAY, "06:30", "08:30", "Training"), meeting(THURSDAY, "09:00", "10:00", "Morning ritual"),
+          meeting(THURSDAY, "12:00", "13:00", "Lunch with the coach #reserved", ["coach@example.com"]),
+          meeting(THURSDAY, "16:30", "17:00", "Review my week", ["me@example.com", "self@me.example.org"]),
+          {"start": f"{THURSDAY}T17:00", "end": f"{THURSDAY}T18:00", "summary": "Evening ritual",
+           "attendees": [{"email": "owner@elsewhere.example", "self": True}]}]
+MEETINGS = [meeting(THURSDAY, "10:00", "11:00", "Planning", ["a@example.com"]),
+            meeting(THURSDAY, "15:00", "16:30", "Review", ["b@example.com", "me@example.com"])]
+
+
+def test_the_principals_own_blocks_are_not_meeting_hours(tmp_path):
+    code, got = check(tmp_path, "13:30", "14:00", BLOCKS + MEETINGS, "--attendee", "c@example.com", config=OWN)
+    said = detail(got, "meeting load")
+    assert levels(got)["meeting load"] == "OK" and "3.00 hours" in said, said                 # 1 h, 1 h 30 min and this half hour
+    assert "5 of the day's 7 events" in said and "own" in said, said                          # and it says what it left out
+    more = MEETINGS + [meeting(THURSDAY, "11:00", "13:30", "Offsite", ["d@example.com"])]
+    code, got = check(tmp_path, "13:30", "14:00", BLOCKS[:2] + more, "--attendee", "c@example.com", config=OWN)
+    assert code == 1 and levels(got)["meeting load"] == "REFUSE" and "5.50 hours" in detail(got, "meeting load")
+
+
+def test_a_read_that_names_no_one_else_counts_every_event_and_says_so(tmp_path):
+    bare = [meeting(THURSDAY, "11:00", "13:00"), meeting(THURSDAY, "13:00", "15:45", "Offsite")]
+    code, got = check(tmp_path, "15:45", "16:15", bare, "--attendee", "a@example.com")
+    said = detail(got, "meeting load")
+    assert code == 1 and levels(got)["meeting load"] == "REFUSE" and "5.25 hours" in said
+    assert "names no one else" in said, said
+
+
+def test_own_blocks_still_count_as_taken_time(tmp_path):
+    day = [meeting(THURSDAY, "09:00", "12:00", "Writing block"), meeting(THURSDAY, "12:30", "17:00", "Training camp"),
+           meeting("2026-11-13", "10:00", "10:30", "Planning", ["a@example.com"])]
+    code, got = check(tmp_path, "12:00", "12:30", day, "--attendee", "c@example.com", config=OWN)
+    assert levels(got)["meeting load"] == "OK" and "0.50 hours" in detail(got, "meeting load")
+    assert code == 1 and levels(got)["deep work"] == "REFUSE", got                           # the day has no free block left
+
+
+# --- protected windows beside prose (2026-11-11) -----------------------------------------------------------------
+# A principal's preferences described protected hours in prose that another reader depends on, so the check could
+# only say "check them yourself", and his night rule (in bed by an hour, nothing before another) bound nothing.
+# Windows can now stand inside that section beside the prose; what stays in prose is still named as unchecked.
+
+NIGHT = {**CONFIG, "protected_hours": {
+    "maker_mornings": "Protect 09:00-11:00 for deep work. Strongly minimize meetings in this window.",
+    "hard_floor": "No meetings before 10:00 unless the requester's timing binds.",
+    "windows": [{"start": "21:00", "end": "24:00", "label": "the night", "source": "sleep.ordinary_nights"},
+                {"start": "00:00", "end": "10:00", "label": "nothing before ten", "source": "protected_hours.hard_floor"}]}}
+
+
+def test_windows_inside_a_section_of_prose_are_checked_and_the_prose_is_still_named(tmp_path):
+    code, got = check(tmp_path, "21:30", "22:00", QUIET_DAY, "--attendee", "a@example.com", config=NIGHT)
+    assert code == 1 and levels(got)["protected hours"] == "REFUSE" and "the night" in detail(got, "protected hours")
+    code, got = check(tmp_path, "08:00", "08:30", QUIET_DAY, "--attendee", "a@example.com", config=NIGHT)
+    assert code == 1 and "nothing before ten" in detail(got, "protected hours") and "00:00-10:00" in detail(got, "protected hours")
+    code, got = check(tmp_path, "08:00", "08:30", QUIET_DAY, "--attendee", "chief@example.com", config=NIGHT)
+    assert levels(got)["protected hours"] == "OK"                                             # someone whose timing binds
+    code, got = check(tmp_path, "14:00", "14:30", QUIET_DAY, "--attendee", "a@example.com", config=NIGHT)
+    said = detail(got, "protected hours")
+    assert levels(got)["protected hours"] == "NOTE" and "maker_mornings" in said and "hard_floor" not in said, said   # the window stands for that line
+
+
+def test_a_slot_that_runs_past_midnight_meets_the_next_days_windows(tmp_path):
+    late = {**NIGHT, "protected_hours": {"windows": [{"start": "00:00", "end": "06:00", "label": "the small hours"}]}}
+    done = subprocess.run([sys.executable, str(SCRIPT), "--start", f"{THURSDAY}T23:30", "--end", "2026-11-13T00:30", "--events",
+                           str(tmp_path / "events.json"), "--config", str(tmp_path / "preferences.json"), "--today", "2026-11-10", "--json"],
+                          capture_output=True, text=True) if check(tmp_path, "14:00", "14:30", QUIET_DAY, config=late) else None
+    got = json.loads(done.stdout)
+    assert done.returncode == 1 and levels(got)["protected hours"] == "REFUSE" and "the small hours" in detail(got, "protected hours")
+
+
+def test_a_window_that_is_no_time_of_day_stops_the_check(tmp_path):
+    wrong = {**CONFIG, "protected_hours": {"windows": [{"start": "9pm", "end": "24:00"}]}}
+    code, got = check(tmp_path, "14:00", "14:30", QUIET_DAY, "--attendee", "a@example.com", config=wrong)
+    assert code == 2 and "9pm" in got and "HH:MM" in got
