@@ -604,6 +604,12 @@ def records(folder: str, kinds: tuple = (), whole: bool = False) -> list:
 
 LISTING = re.compile(r'(?m)^(?:all )?\d+ (?:of \d+ )?prompts on \d{4}-\d\d-\d\d in .+ (?:is|are) cited by (?:no|a) record$|^\{"workspace": .*"prompts": \d+, "open": \[')
 CITED = re.compile(r"(?<![\w.-])([A-Za-z0-9][\w.-]*)\s+#(\d+)(?:\s*(?:-|–|—|to|through)\s*#?(\d+))?")  # `<session> #<seq>`, or a range of them
+# The listing's own output as it may be saved. LISTED: a line it prints for a prompt, alone or behind a quote mark
+# or a list marker. ANSWER: where its JSON answer may begin, however it is laid out and its keys ordered. REFUSED:
+# the day-end record's list of what is open, under the line that counts them.
+LISTED = re.compile(r"(?m)^[ \t>]*(?:(?:[-*+]|\d+[.)])[ \t]+)?[A-Za-z][\w-]*[ \t]+(\S+)[ \t]+#(\d{1,9})[^\S\n]+\d\d:\d\d(?:[^\S\n]+(.*))?$")
+ANSWER = re.compile(r'\{\s*"(?:workspace|date|prompts|open|records)"\s*:')
+REFUSED = re.compile(r"(?m)^.*\d+ of \d+ prompts typed on \d{4}-\d\d-\d\d (?:is|are) cited by no record.*\n(?:[ \t>]*[\w-]+ \S+ #\d+[^\S\n]*(?:\n|\Z))+")
 
 
 def prompts(workspace: str, day: str) -> list:
@@ -634,10 +640,12 @@ def uncited(found: list, roots: list) -> list:
     that no other session listed shares, then `#<seq>` or a range (`#12-40`, `#12 to #40`), in a text file under
     the roots that changed on or after the day of the oldest prompt (2026-11-11: what the principal asked reached
     a project record only if an agent remembered, and nothing checked). The listing's own output, saved among the
-    records, is no record: it cites nothing."""
+    records in whichever form, is no record: it cites nothing."""
     ids = {str(p["session"]) for p in found}
     since = min((datetime.fromisoformat(p["at"]).replace(hour=0, minute=0).timestamp() for p in found), default=0)
-    spans = collections.defaultdict(list)
+    spans, typed = collections.defaultdict(list), collections.defaultdict(list)
+    for p in found:
+        typed[p["seq"]].append((str(p["session"]), " ".join(str(p.get("text", "")).split())))
     for root in roots:
         for top, dirs, files in os.walk(os.path.expanduser(root)):
             dirs[:] = [d for d in dirs if not d.startswith(".") and d != "node_modules"]
@@ -648,11 +656,30 @@ def uncited(found: list, roots: list) -> list:
                         (".md", ".txt", ".json", ".jsonl", ".yaml", ".yml")) and os.path.getmtime(path) >= since else ""
                 except OSError:
                     continue
-                for cited, first, last in CITED.findall(text) if not LISTING.search(text) else ():
+                for cited, first, last in CITED.findall(text) if not LISTING.search(text) and _record(text, typed) == text else ():
                     named = [s for s in ids if s == cited] or [s for s in ids if len(cited) >= 8 and s.startswith(cited)]
                     if len(named) == 1:  # a few characters that two sessions share name neither
                         spans[named[0]].append((int(first), int(last or first)))
     return [p for p in found if not any(first <= p["seq"] <= last for first, last in spans[str(p["session"])])]
+
+
+def _record(text: str, typed: dict) -> str:
+    """A file's text without the listing's own output, however it was saved (2026-11-12: saved without `--records`,
+    or with its JSON answer pretty-printed, it cited every prompt it listed): the JSON answer, the day-end record's
+    list of what is open, and each line that says of a prompt only what the listing says, which is its citation,
+    its minute and its first words. `typed` holds, by seq, each prompt's session and words."""
+    for at in reversed([m.start() for m in ANSWER.finditer(text)]):
+        try:
+            answer, end = json.JSONDecoder().raw_decode(text, at)
+        except (ValueError, RecursionError):
+            continue
+        if isinstance(answer, dict) and {"workspace", "date", "prompts", "open"} <= set(answer):
+            text = text[:at] + text[end:]
+
+    def line(m) -> str:
+        words = " ".join((m.group(3) or "").split())
+        return "" if any(s.startswith(m.group(1)) and said.startswith(words) for s, said in typed.get(int(m.group(2)), ())) else m.group(0)
+    return LISTED.sub(line, REFUSED.sub("", text))
 
 
 def short(session: str) -> str:

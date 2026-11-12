@@ -254,7 +254,7 @@ def cmd_sessions(args) -> int:
                               "records": [os.path.abspath(os.path.expanduser(r)) for r in args.records or []]}))
         else:
             for cite, p in zip(cites, left):
-                print(f"{cite}  {p['at'][11:16]}  {' '.join(p['text'].split())[:args.width]}")
+                print(f"{cite}  {p['at'][11:16]}  {' '.join(p['text'].split())[:args.width or None]}")
             print(f"{len(found)} prompts on {day} in {args.workspace}" if not args.records else
                   f"all {len(found)} prompts on {day} in {args.workspace} are cited by a record" if not left else
                   f"{len(left)} of {len(found)} prompts on {day} in {args.workspace} {'is' if len(left) == 1 else 'are'} cited by no record")
