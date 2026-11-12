@@ -419,7 +419,7 @@ def test_a_command_is_tried_every_interval_and_not_once_more_on_the_edge_of_the_
     ("a directory", "is not executable"),
     ("a whole command given as one word", "was not found"),
 ])
-def test_a_command_that_cannot_be_started_is_refused_at_once_in_one_line(two, tmp_path, named, why):
+def test_a_command_that_cannot_be_started_is_refused_at_once_in_one_line(two, tmp_path, monkeypatch, named, why):
     """2026-11-12, a third review: `wait run --for 1m -- no-such-command` ended in a Python traceback. No try of such a
     command starts, so the wait refuses it the way it refuses a bound it cannot read: one line, exit 2, at once. The
     line names the program as it was given, which the traceback did: a command quoted whole after `--` is one word,
@@ -429,6 +429,7 @@ def test_a_command_that_cannot_be_started_is_refused_at_once_in_one_line(two, tm
     script.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
     script.chmod(0o644)
     folder.mkdir()
+    monkeypatch.setenv("PATH", str(folder))                                           # one empty folder: what a name finds there is the same on every machine
     program = {"a name that is not on PATH": "synthesis-no-such-command", "a path that does not exist": str(tmp_path / "gone" / "check"),
                "a file that is not executable": str(script), "a directory": str(folder),
                "a whole command given as one word": "synthesis-no-such-command --branch main"}[named]
