@@ -9,6 +9,7 @@ Without FastMCP they skip, unless SYNTHESIS_REQUIRE_FASTMCP=1, which makes a mis
 
 import asyncio
 import base64
+import dataclasses
 import hashlib
 import json
 import logging
@@ -47,10 +48,13 @@ OPERATOR = {"KB_OPERATOR_TEST": "1", "KB_OPERATOR_ADDRESSES": "lead@example.com"
 
 
 def settings_for(published, **env):
-    return config.load({"KB_SOURCE_DIR": str(published), "KB_PUBLIC_URL": "http://127.0.0.1",
-                        "KB_GOOGLE_CLIENT_ID": CLIENT_ID, "KB_GOOGLE_CLIENT_SECRET": "test-secret",
-                        "KB_ALLOWED_EMAILS": "lead@example.com,analyst@example.com",
-                        "KB_DOCUMENT_URL_TEMPLATE": "https://git.example.com/kb/src/{commit}/{source_path}", **env})
+    """A deployment's settings, then moved to http://127.0.0.1: the one origin FastMCP's in-process server answers
+    on, and a local address, which these settings would load only as the operator's own test."""
+    settings = config.load({"KB_SOURCE_DIR": str(published), "KB_PUBLIC_URL": "https://kb.example.com",
+                            "KB_GOOGLE_CLIENT_ID": CLIENT_ID, "KB_GOOGLE_CLIENT_SECRET": "test-secret",
+                            "KB_ALLOWED_EMAILS": "lead@example.com,analyst@example.com",
+                            "KB_DOCUMENT_URL_TEMPLATE": "https://git.example.com/kb/src/{commit}/{source_path}", **env})
+    return dataclasses.replace(settings, public_url="http://127.0.0.1")
 
 
 def policy_for(settings, roster=None):
@@ -286,7 +290,7 @@ def test_a_group_member_signs_in_and_loses_access_when_the_groups_cannot_be_read
 
 
 def test_main_refuses_to_start_when_the_access_groups_cannot_be_read(published, monkeypatch, capsys):
-    env = {"KB_SOURCE_DIR": str(published), "KB_PUBLIC_URL": "http://127.0.0.1", "KB_GOOGLE_CLIENT_ID": CLIENT_ID,
+    env = {"KB_SOURCE_DIR": str(published), "KB_PUBLIC_URL": "https://kb.example.com", "KB_GOOGLE_CLIENT_ID": CLIENT_ID,
            "KB_GOOGLE_CLIENT_SECRET": "test-secret", "KB_ALLOWED_GROUPS": "leads@example.com", "KB_REFRESH_SECONDS": "0"}
 
     def refused(path):
@@ -522,7 +526,7 @@ def test_oauth_state_goes_to_firestore_encrypted_and_prefixed(published, monkeyp
 def test_main_refuses_bad_settings_and_serves_good_ones_statelessly(published, monkeypatch, capsys):
     assert server.main({}) == 2
     assert "KB_GOOGLE_CLIENT_ID is required" in capsys.readouterr().err
-    env = {"KB_SOURCE_DIR": str(published), "KB_PUBLIC_URL": "http://127.0.0.1", "KB_GOOGLE_CLIENT_ID": CLIENT_ID,
+    env = {"KB_SOURCE_DIR": str(published), "KB_PUBLIC_URL": "https://kb.example.com", "KB_GOOGLE_CLIENT_ID": CLIENT_ID,
            "KB_GOOGLE_CLIENT_SECRET": "test-secret", "KB_ALLOWED_EMAILS": "lead@example.com", "KB_REFRESH_SECONDS": "0"}
     assert server.main({**env, "KB_SOURCE_DIR": str(published / "absent")}) == 1
     assert "the first load failed" in capsys.readouterr().err
@@ -550,7 +554,28 @@ def test_main_says_test_only_at_the_start_of_the_operators_own_test(published, m
     (line,) = [record for record in caplog.records if record.getMessage().startswith("TEST ONLY")]
     assert line.levelno == logging.WARNING and line.name == "kb_connector"
     assert "operator-only test mode at https://kb.example.com." in line.getMessage()
-    assert "Do not give this address to anyone" in line.getMessage()
+    assert "Do not give this address to anyone" in line.getMessage() and "temporary" not in line.getMessage()
     assert "Only lead@example.com, second@example.com can sign in." in line.getMessage()
     assert server.main({**env, "KB_OPERATOR_TEST": "1"}) == 2 and len(served) == 2  # the mode with no operator named
     assert "needs both KB_OPERATOR_TEST=1 and KB_OPERATOR_ADDRESSES" in capsys.readouterr().err
+
+
+def test_main_refuses_a_temporary_address_and_the_operators_own_test_says_what_ends_it(published, monkeypatch, caplog,
+                                                                                      capsys):
+    env = {"KB_SOURCE_DIR": str(published), "KB_PUBLIC_URL": "https://quiet-river-demo.trycloudflare.com",
+           "KB_GOOGLE_CLIENT_ID": CLIENT_ID, "KB_GOOGLE_CLIENT_SECRET": "test-secret",
+           "KB_ALLOWED_EMAILS": "lead@example.com,analyst@example.com", "KB_REFRESH_SECONDS": "0"}
+    served = []
+    monkeypatch.setattr(server.FastMCP, "run", lambda self, **kwargs: served.append(self))
+    for url in ("https://quiet-river-demo.trycloudflare.com", "http://localhost:8080"):
+        assert server.main({**env, "KB_PUBLIC_URL": url}) == 2 and not served
+        refusal = capsys.readouterr().err
+        assert refusal.startswith("kb-connector: the connector cannot start:\n  - KB_PUBLIC_URL names a temporary or ")
+        assert "deploy the connector to the organization's own infrastructure at a permanent address" in refusal
+        assert "KB_OPERATOR_TEST=1 and KB_OPERATOR_ADDRESSES" in refusal
+    assert server.main({**env, **OPERATOR}) == 0 and served[-1].auth.policy.operators == {"lead@example.com"}
+    (line,) = [message for message in caplog.messages if message.startswith("TEST ONLY")]
+    assert "operator-only test mode at https://quiet-river-demo.trycloudflare.com." in line
+    assert "The address is temporary and must not be given to anyone" in line
+    assert "a restart of this process, this machine or its tunnel ends it." in line
+    assert "Only lead@example.com can sign in." in line
