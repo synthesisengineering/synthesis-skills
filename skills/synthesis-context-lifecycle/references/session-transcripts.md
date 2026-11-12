@@ -65,8 +65,9 @@ each harness writes its own transcript to disk as the session runs. The copy is 
   copied whether or not any session remembers to. `synthesis doctor` fails when that schedule is not loaded or
   no export has finished in a day (2026-11-11: until then the archive had no trigger of its own, and a
   transcript that no session exported within two days was skipped).
-- An export that could not copy a transcript says so in its report and names it in the stamp it leaves, with why
-  and when it last tried, and so does the export a sync runs first. On any Mac `synthesis doctor` then fails,
+- An export that could not copy a transcript (it could not be read, or held a row its adapter does not expect)
+  goes on to the others, says so in its report and names it in the stamp it leaves, with why and when it last
+  tried, and so does the export a sync runs first. On any Mac `synthesis doctor` then fails,
   with how many and the first reason, until a run copies each one: `synthesis sessions export --all` tries them
   all, and an export of the last two days or of one session clears only what it copied.
 - A transcript the harness removed before any run copied it can no longer be copied. A run of everything says

@@ -564,8 +564,8 @@ def _export(days: float, only: str) -> list:
         live = board.load(native.stem) if harness == "claude-code" else board.load(session)
         try:
             kept = export_file(harness, native, getattr(live, "project", "") or "")
-        except OSError as exc:
-            failed.append(f"{harness} {session}: not exported ({exc})")
+        except Exception as exc:  # unreadable, or a row of a shape the adapter does not expect: named, and the run goes on
+            failed.append(f"{harness} {session}: not exported ({exc if isinstance(exc, OSError) else f'{type(exc).__name__}: {exc}'})")
             waiting[f"{harness} {session}"] = {"native": str(native), "at": now, "reason": failed[-1]}
             report.append(failed[-1])
             continue
