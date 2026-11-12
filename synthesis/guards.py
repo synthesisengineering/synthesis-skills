@@ -227,11 +227,12 @@ def message_problems(tool: str, tool_input: dict, config: dict, chans: set | Non
     return problems + _unread_files(tool, tool_input)
 
 
-def _unread_files(tool: str, tool_input: dict) -> list[str]:
+def _unread_files(tool: str, tool_input: dict, bound: dict | None = None) -> list[str]:
     """Why a workspace-connector call would not attach or upload what it names, judged as the connector reads it. A
     file is judged as it reads one: the path whole (it resolves a relative one in its own folder and expands no
     `~`), links followed, letters as written, the file inside the outbox, the connector's attachment folder or a
-    folder of ALLOWED_FILE_DIRS as this process has it, and not one it reads from nowhere."""
+    folder of ALLOWED_FILE_DIRS as this process has it, and not one it reads from nowhere. Given `bound`, each file
+    it would read goes into it under its real path with the hash of its bytes, and one that cannot be read is a problem."""
     name = tool.rsplit("__", 1)[-1]
     key, given = FILE_DRIVE_TOOLS.get(name), tool_input.get("attachments") if name in FILE_MAIL_TOOLS else None
     if not key and not given:
@@ -241,7 +242,7 @@ def _unread_files(tool: str, tool_input: dict) -> list[str]:
             given = json.loads(given)
         except ValueError:
             return []
-    outbox, problems = paths.outbox(), []
+    outbox, problems, until = paths.outbox(), [], time.monotonic() + HASH_SECONDS
     roots = tuple(os.path.realpath(os.path.expanduser(r.strip())).rstrip(os.sep) + os.sep for r in (
         str(outbox), os.environ.get("WORKSPACE_ATTACHMENT_DIR") or "~/.workspace-mcp/attachments",
         *os.environ.get("ALLOWED_FILE_DIRS", "").split(os.pathsep)) if r.strip())
@@ -260,6 +261,11 @@ def _unread_files(tool: str, tool_input: dict) -> list[str]:
             return (f"{what} {file} is one {who} never reads, whatever folder holds it, since its name "
                     "or a folder above it marks secrets (a .env, key or credentials file): leave it out and tell the principal")
         why = why or ("" if real.startswith(roots) else f"is outside the folders {who} reads")
+        try:
+            if not why and bound is not None:
+                bound[real] = _sha256(real, until)
+        except OSError as exc:
+            return f"{what} {file} cannot be read ({exc.strerror or exc})"
         return why and (f"{what} {file} {why}: copy the file into {outbox} (make the folder if it is missing), give "
                         f"that copy's full path {give}")
 
@@ -307,6 +313,21 @@ def _standard_base64(text) -> bool:
         return False
 
 
+HASH_SECONDS = 2.0  # of the 5 a pre-tool-use hook is given: a harness passes over a hook that runs past its time
+
+
+def _sha256(file: str, until: float) -> str:
+    """The hash of a file's bytes, read before `until`: a file that takes longer is one the guard cannot bind."""
+    import hashlib
+    digest = hashlib.sha256()
+    with open(file, "rb") as handle:
+        for chunk in iter(lambda: handle.read(1 << 20), b""):
+            digest.update(chunk)
+            if time.monotonic() > until:
+                raise TimeoutError(f"not within the {HASH_SECONDS:g} s the guard may spend reading the files a call names")
+    return digest.hexdigest()
+
+
 def check_upload(tool: str, tool_input: dict) -> str | None:
     """A Drive upload that asks for no code still names a file the connector must read: one it would not read is
     refused here, as a send's is before its code."""
@@ -316,11 +337,13 @@ def check_upload(tool: str, tool_input: dict) -> str | None:
 
 def check_send(tool: str, tool_input: dict, config: dict, session: dict | None = None) -> str | None:
     """session: the hook payload, whose transcript shows who typed an approval (a shell's script passes none)."""
-    problems = message_problems(tool, tool_input, config)
+    files: dict = {}  # each file the connector will read, with the hash of its bytes: an approval of a path alone let
+    # a copy replaced in the outbox after the principal's code go out in its place (as the iMessage sender binds a photo)
+    problems = message_problems(tool, tool_input, config) or _unread_files(tool, tool_input, files)
     if problems:
         return "This message can't go out as written: " + "; ".join(problems[:6]) + "."
     from synthesis import sends
-    subject, chan = {"tool": tool, "input": tool_input}, sends.channel(tool, tool_input)
+    subject, chan = {"tool": tool, "input": tool_input, **({"files": files} if files else {})}, sends.channel(tool, tool_input)
     summary = f"{tool}: " + " ".join(t for _, t in _strings(tool_input))[:160]
     others = _invited_today(tool, tool_input, config)  # a meeting on today has an approval of its own; no window covers it
     if isinstance(others, str):
@@ -344,7 +367,9 @@ def check_send(tool: str, tool_input: dict, config: dict, session: dict | None =
                 "unless the principal asked for today. If they did, show them the exact event and ask them to type "
                 f"{approvals.how(code)} for this same-day meeting. Then make this identical call again." + reshape)
     return ("Sending needs the principal's approval of this exact message. Show them the exact text and "
-            f"recipient and ask them to type {approvals.how(code)}. Then make this identical call again." + reshape)
+            f"recipient and ask them to type {approvals.how(code)}. Then make this identical call again." + reshape
+            + (" The approval covers each file the call has the connector read as it is now, so name those files to the "
+               "principal too: one changed before the call needs a new code." if files else ""))
 
 
 # 2026-10-27: a series moved to a new hour brought back an occurrence canceled at the old hour, double-booked.
