@@ -31,7 +31,8 @@ with `"from": "YYYY-MM-DD"` for the first day it applies) a day-end record runs
 `synthesis sessions prompts` itself over that day and those folders: a clean outcome is refused while
 a prompt the principal typed that day is cited by no record, a partial one says how many are open, and
 nothing is recorded when the listing cannot be made (2026-11-11: what he asked reached a record only
-if an agent remembered).
+if an agent remembered). Only a missing key or `false` turns it off: any other value that is not that
+setting is refused, and so is a first day that is not a day.
 
 The log is `<synthesis home>/rituals/history.jsonl` (`RITUAL_STATE_DIR` or
 `--state-dir` points elsewhere, to exercise a copy). Derivations live in the
@@ -139,6 +140,14 @@ def _day(moment) -> str:
     return datetime.fromisoformat(str(moment).replace("Z", "+00:00")).date().isoformat()
 
 
+def _is_day(text) -> bool:
+    """Whether text is one day written YYYY-MM-DD: Python 3.11 and later also read 20261112 and 2026-W46-4 as dates."""
+    try:
+        return bool(re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", text)) and bool(date.fromisoformat(text))
+    except (TypeError, ValueError):
+        return False
+
+
 def travel(workspace: str, day: str, given) -> str:
     """The line `record` prints about travel, or a refusal: no result, one for other days, an event without its travel."""
     wanted = rituals.settings(rituals.config(), workspace).get("travel_check")
@@ -183,14 +192,20 @@ def prompts(workspace: str, day: str, direction: str, outcome: str) -> str:
     it answers for another workspace or day, or the close is clean while a prompt is cited by no record
     (2026-11-11: what he asked reached a record only if an agent remembered). The record lists the prompts itself:
     a result made earlier, or against other folders, says nothing about now (2026-11-12, a review)."""
-    wanted = rituals.settings(rituals.config(), workspace).get("prompt_reconcile")
-    if wanted in (None, False) or direction != "day-end":
+    wanted = rituals.settings(rituals.config(), workspace).get("prompt_reconcile", False)
+    if wanted is False or direction != "day-end":  # off by a missing key or `false` alone: null and 0 closed a day unchecked
         return ""
     roots = wanted.get("records") if isinstance(wanted, dict) else None
+    where = f'{rituals.state_dir() / "config.json"}, under workspaces.{workspace}'
     if not (isinstance(roots, list) and roots and all(isinstance(r, str) and r for r in roots)):
-        refuse(f'{workspace} turns prompt_reconcile on without saying where its records are. In {rituals.state_dir() / "config.json"}, '
-               f'under workspaces.{workspace}, write "prompt_reconcile": {{"records": ["<folder of project records>"]}}')
-    since = str(wanted.get("from") or "")
+        refuse(f"{workspace} sets prompt_reconcile to {json.dumps(wanted)[:80]}, which names no folder of records: the check can "
+               f'neither run nor count as off, so this ritual is not recorded. In {where}, write "prompt_reconcile": '
+               '{"records": ["<folder of project records>"]}; only false, or no key at all, turns the check off')
+    since = wanted.get("from", "")
+    if "from" in wanted and not _is_day(since):  # compared as text, `tomorrow` or a number put every day before it
+        refuse(f'{workspace} starts prompt_reconcile "from" {json.dumps(since)[:80]}, which is not a day written YYYY-MM-DD, so no '
+               f'day can be told to come before it and this ritual is not recorded. In {where}, write "from": "YYYY-MM-DD", '
+               "or leave it out")
     if day < since:  # a session exported before the workspace turned this on keeps the kinds its records were given
         return f"\nprompts: checked from {since}"
     tool, again = shutil.which("synthesis"), f"synthesis sessions prompts --workspace {workspace} --date {day} " + " ".join(

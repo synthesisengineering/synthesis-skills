@@ -108,7 +108,9 @@ A quote or timestamp written into a record must come from something a tool actua
 
 Applies where the workspace's ritual config has `"prompt_reconcile": {"records": ["<folder of project records>"]}`
 (with `"from": "YYYY-MM-DD"` for the first day it applies: turn it on from the day after the upgrade that brings it,
-since a session exported before then keeps the kinds its records were given).
+since a session exported before then keeps the kinds its records were given). Only leaving the key out, or `false`,
+turns it off: any other value that is not that setting (`null`, `0`, `{}`, a folder outside a `records` list), and a
+`from` that is not a day written `YYYY-MM-DD`, is refused when the day-end is recorded, with the value named.
 The principal should never have to say "make sure nothing is lost": every prompt they typed today is in the
 transcript archive, and a record accounts for one by citing it.
 
