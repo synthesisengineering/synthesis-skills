@@ -264,6 +264,9 @@ def test_a_comment_is_not_shown_and_underscores_mark_emphasis_too(tmp_path, reco
     template = "<!--\n### An example choice\n**Option A:** Accept\n**Option B:** Decline\n-->\n"
     code, out, refusal = record(workspace(tmp_path, template))                                # options inside a comment are no choice
     assert code == 0 and "choices: 0 open" in out, refusal
+    shown = "### How a comment is written\n\n```html\n<!-- a note\n```\n\n" + INVITATION                # a comment opened inside an example hides nothing after it
+    code, _, refusal = record(workspace(tmp_path, shown))
+    assert code != 0 and "book launch" in refusal
     underscored = INVITATION + "__Consequences:__ Three hours and $30.\n_Recommendation:_ B, decline: the trip outweighs it.\n"
     code, out, refusal = record(workspace(tmp_path, underscored))
     assert code == 0 and "choices: 1 open" in out, refusal

@@ -171,11 +171,13 @@ def travel(workspace: str, day: str, given) -> str:
     return f"\ntravel: {len(events)} in-person event{'s' * (len(events) != 1)} through {last}, each with its travel"
 
 
-ITEM = r"(?im)^ *(?:>\s*)*(?:[-*+] |\d+[.)] )?\**"  # a line of an item: plain, bold, quoted or a list entry, however deep in its list
+ITEM = r"(?im)^ *(?:>\s*)*(?:[-*+] |\d+[.)] )?[*_]*"  # a line of an item: plain, bold or italic, quoted or a list entry, however deep in its list
 OPTION = re.compile(ITEM + r"Option [A-Z0-9]+\b(.*)$")
-SAID = re.compile(ITEM + r"(Recommendation|Consequences|Commits)\**\s*:[*\s]*(.*)$")
-CLOSED = re.compile(ITEM + r"(?:Decided|Resolved|Released|Lapsed|Withdrawn)\**\s*:")
-FENCE = re.compile(r"(?ms)^\s*(?:>\s*)*(```|~~~).*?(?:^\s*(?:>\s*)*\1[^\n]*$|\Z)")  # a fenced block, quoted or not, closed or not, is an example
+SAID = re.compile(ITEM + r"(Recommendation|Consequences|Commits)[*_]*\s*:[*_\s]*(.*)$")
+CLOSED = re.compile(ITEM + r"(?:Decided|Resolved|Released|Lapsed|Withdrawn)[*_]*\s*:")
+# What Markdown does not show as the plan's own text: a fenced block (quoted or not, closed or not), which is an
+# example, and an HTML comment. Whichever opens first runs to its own end.
+FENCE = re.compile(r"(?ms)^\s*(?:>\s*)*(```|~~~).*?(?:^\s*(?:>\s*)*\1[^\n]*$|\Z)|<!--.*?(?:-->|\Z)")
 QUOTE = re.compile(r"^( *)(?:> ?)+")  # what marks a line as quoted: the line is read as the one it quotes, as far in as the quote stands
 NOTHING = re.compile(r"(?i)[*\s]*(?:tbd|tbc|none|n/?a|no recommendation|your call|up to you|either)?[\s.*]*")
 COMMITS = re.compile(r"(?i)\b(?:accept|decline|rsvp|attend|go|join|host|schedule|meet|say (?:yes|no))\b")
