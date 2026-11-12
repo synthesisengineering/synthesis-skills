@@ -2,6 +2,7 @@
 keeps media and long text once by hash, and reads a native file only past what it already exported."""
 
 import base64
+import contextlib
 import json
 import os
 import re
@@ -1454,6 +1455,201 @@ def test_resume_shows_the_conversation_beside_a_transcript_an_adapter_cannot_rea
     (kb / "projects" / "alpha").mkdir(parents=True)
     (kb / "projects" / "alpha" / "CONTEXT.md").write_text("**Phase:** build\n**Status:** active\n", encoding="utf-8")
     assert "Please plan the release." in project.resume(str(kb / "projects" / "alpha"), "S-new")
+
+
+# --- what the search for transcripts cannot read (2026-11-12, a second review) -----------------------------------
+# With a harness's transcript folder unreadable, the search passed over it: the run found nothing there to copy,
+# stamped complete, and the doctor answered ok while nothing of that harness was being copied. A folder the search
+# cannot list is named in the stamp like a transcript that is not copied, until a run of everything lists it.
+
+@contextlib.contextmanager
+def _closed(path: Path, mode: int = 0o000):
+    """A folder or a file the run may not read, as when the scheduled job is refused a harness's files."""
+    was = path.stat().st_mode
+    path.chmod(mode)
+    try:
+        yield path
+    finally:
+        path.chmod(was)
+
+
+CODEX_ONE, CODEX_TWO = "01a10000-0000-7000-8000-000000000001", "01a10000-0000-7000-8000-000000000002"
+EVERY = {"claude-code c1", "claude-code b1", "claude-code c1-agent-a1", f"codex {CODEX_ONE}", f"codex {CODEX_TWO}", "muse 01a1-muse"}
+
+
+def _everywhere(harness) -> dict:
+    """One transcript in each place a harness keeps them, each last written days ago."""
+    from datetime import datetime
+    base, codex = {"cwd": harness["work"], "sessionId": "c1"}, Path(os.environ["CODEX_HOME"])
+
+    def rollout(folder: Path, thread: str) -> Path:
+        return _jsonl(folder / f"rollout-2026-10-30T10-00-00-{thread}.jsonl", [
+            {"type": "session_meta", "timestamp": "2026-10-30T10:00:00Z", "payload": {"id": thread, "cwd": harness["work"]}},
+            {"type": "response_item", "timestamp": "2026-10-30T10:00:02Z", "payload": {
+                "type": "message", "role": "user", "content": [{"type": "input_text", "text": "Fix the build."}]}}])
+    found = {
+        "claude": _jsonl(harness["claude"], [_typed(base, "Plan the release.", "2026-10-30T15:00:00.000Z")]),
+        "other": _jsonl(harness["claude"].parents[1] / "-other" / "b1.jsonl",
+                        [_typed({**base, "sessionId": "b1"}, "Order the parts.", "2026-10-30T15:00:00.000Z")]),
+        "sub": _jsonl(harness["claude"].parent / "c1" / "subagents" / "agent-a1.jsonl", [
+            {"type": "user", "isSidechain": True, "cwd": harness["work"], "timestamp": "2026-10-30T15:00:05Z",
+             "message": {"role": "user", "content": "Check the script."}}]),
+        "codex": rollout(codex / "sessions" / "2026" / "10" / "30", CODEX_ONE),
+        "archived": rollout(codex / "archived_sessions", CODEX_TWO),
+        "muse": _jsonl(Path(os.environ["XDG_DATA_HOME"]) / "muse" / "sessions" / "2026" / "10" / "30" / "01a1-muse" / "session.jsonl", [
+            {"payload_type": "runtime.user_intent.accepted", "recorded_at": 1793350000500000, "payload": {
+                "surface": "main", "model_messages": [{"content": [{"kind": "text", "text": "Review the draft."}]}]}}]),
+    }
+    written = datetime(2026, 10, 30, 16).timestamp()
+    for native in found.values():
+        os.utime(native, (written, written))
+    return found
+
+
+def _copied(report: list) -> set:
+    return {line.split(":")[0] for line in report if "record(s)" in line}
+
+
+def test_a_transcript_folder_that_cannot_be_listed_is_named_until_a_run_of_everything_lists_it(harness, tmp_path, capsys):
+    from datetime import date
+    native = _everywhere(harness)["claude"]
+    folder = native.parents[1]                                         # where Claude Code keeps every transcript
+    name, listing = f"claude-code {folder}", ["sessions", "prompts", "--workspace", "acme", "--date"]
+    with _closed(folder):
+        report = sessions.export(0)
+        status, detail, stamp = _checked(tmp_path)
+        assert status == "fail" and stamp["failed"] == 1 and "complete" not in stamp              # not copied, and said
+        assert list(stamp["uncopied"]) == [name] and stamp["uncopied"][name]["native"] == str(folder)
+        assert stamp["reason"] == f"{name}: not exported (cannot be listed: Permission denied)" and stamp["reason"] in report
+        assert "1 transcript(s) could not be copied" in detail and "cannot be listed: Permission denied" in detail
+        assert _copied(report) == {f"codex {CODEX_ONE}", f"codex {CODEX_TWO}", "muse 01a1-muse"}  # the run goes on to the others
+        for day in ("2026-10-30", date.today().isoformat()):                                      # what it holds may be of any day
+            assert cli.main(listing + [day]) == 2
+            said = capsys.readouterr()
+            assert said.out == "" and "cannot be listed" in said.err and "synthesis doctor" in said.err
+        assert cli.main(["sessions", "export", "--lost", str(folder)]) == 1                       # a folder is no loss to accept
+        capsys.readouterr()
+    assert sessions.export(2) == [] and _checked(tmp_path)[0] == "fail"     # a run of two days does not copy what it held,
+    report = sessions.export(0)                                             # a run of everything lists it and does
+    status, _, stamp = _checked(tmp_path)
+    assert _copied(report) == {"claude-code c1", "claude-code b1", "claude-code c1-agent-a1"}
+    assert status == "ok" and not {"failed", "reason", "uncopied"} & set(stamp) and stamp["complete"] == stamp["exported"]
+    assert cli.main(listing + ["2026-10-30"]) == 0 and "Plan the release." in capsys.readouterr().out
+
+
+SHUT = {  # the folder closed, the harness whose transcripts it holds, the folder the stamp names, and what it hides
+    "one project's folder": (lambda at: at["claude"].parent, "claude-code", None, {"claude-code c1", "claude-code c1-agent-a1"}),
+    "a session's sub-agents": (lambda at: at["sub"].parent, "claude-code", None, {"claude-code c1-agent-a1"}),
+    "the folder above Claude Code's transcripts": (lambda at: at["claude"].parents[2], "claude-code", lambda at: at["claude"].parents[1],
+                                                   {"claude-code c1", "claude-code b1", "claude-code c1-agent-a1"}),
+    "a project's folder that is searched and not listed": (lambda at: at["claude"].parent, "claude-code", None,
+                                                           {"claude-code c1", "claude-code c1-agent-a1"}),
+    "the folder of every Codex rollout": (lambda at: at["codex"].parents[3], "codex", None, {f"codex {CODEX_ONE}"}),
+    "a day's folder of Codex rollouts": (lambda at: at["codex"].parent, "codex", None, {f"codex {CODEX_ONE}"}),
+    "the folder Codex archives into": (lambda at: at["archived"].parent, "codex", None, {f"codex {CODEX_TWO}"}),
+    "a day's folder of Muse sessions": (lambda at: at["muse"].parents[1], "muse", None, {"muse 01a1-muse"}),
+}
+
+
+@pytest.mark.parametrize("shut, kept, named, hidden", SHUT.values(), ids=SHUT.keys())
+def test_wherever_a_folder_cannot_be_listed_it_is_named_and_the_run_goes_on(harness, tmp_path, request, shut, kept, named, hidden):
+    at = _everywhere(harness)
+    name = f"{kept} {(named or shut)(at)}"
+    with _closed(shut(at), 0o111 if "searched and not listed" in request.node.name else 0o000):
+        report = sessions.export(0)
+        status, _, stamp = _checked(tmp_path)
+    assert _copied(report) == EVERY - hidden                             # every transcript the search could reach is copied,
+    assert list(stamp["uncopied"]) == [name] and stamp["uncopied"][name]["folder"] is True       # the folder is named as one,
+    assert f"{name}: not exported (cannot be listed: Permission denied)" in report and status == "fail" and "complete" not in stamp
+    report = sessions.export(0)
+    assert _copied(report) == hidden and _checked(tmp_path)[0] == "ok"    # and once it can be listed, what it held is copied
+
+
+def test_transcripts_the_search_can_name_and_not_look_at_are_each_named(harness, tmp_path):
+    """A folder that can be listed and not searched gives the names of its transcripts and nothing else. The search
+    stopped there with a traceback: no transcript of any harness was copied and no stamp was left. The same for a
+    Muse session's own folder, which the search looks into without listing."""
+    at = _everywhere(harness)
+    with _closed(at["claude"].parent, 0o444), _closed(at["muse"].parent):
+        report = sessions.export(0)
+        status, _, stamp = _checked(tmp_path)
+    assert _copied(report) == EVERY - {"claude-code c1", "claude-code c1-agent-a1", "muse 01a1-muse"} and status == "fail"
+    assert {"claude-code c1", "muse 01a1-muse", f"claude-code {at['sub'].parents[1]}"} == set(stamp["uncopied"])
+    for name, native in (("claude-code c1", at["claude"]), ("muse 01a1-muse", at["muse"])):          # each as a transcript not copied,
+        assert stamp["uncopied"][name]["reason"] == f"{name}: not exported ([Errno 13] Permission denied: '{native}')"
+        assert "folder" not in stamp["uncopied"][name] and "gone" not in stamp["uncopied"][name]
+    assert stamp["uncopied"][f"claude-code {at['sub'].parents[1]}"]["folder"] is True               # and the folder below as one not listed
+    assert _copied(sessions.export(0)) == {"claude-code c1", "claude-code c1-agent-a1", "muse 01a1-muse"} and _checked(tmp_path)[0] == "ok"
+
+
+def test_a_transcript_is_not_called_gone_while_the_folder_it_was_in_cannot_be_listed(principal, harness, tmp_path, capsys):
+    """A transcript whose copy failed is gone once a run of everything no longer finds it. A run that cannot list the
+    folder it was in has not looked: it is not gone, the doctor does not send for the principal, and it is not a
+    loss to accept. Nor does a folder that was named stay named once it is removed."""
+    at = _everywhere(harness)
+    with _closed(at["claude"]):
+        sessions.export(0)
+    assert list(_checked(tmp_path)[2]["uncopied"]) == ["claude-code c1"]
+    with _closed(at["claude"].parent):
+        report = sessions.export(0)
+        status, detail, stamp = _checked(tmp_path)
+        assert sorted(stamp["uncopied"]) == ["claude-code c1", f"claude-code {at['claude'].parent}"] and stamp["failed"] == 2
+        assert "gone" not in stamp["uncopied"]["claude-code c1"] and not [line for line in report if "removed" in line]
+        assert status == "fail" and "Gone before a copy was made" not in detail and "export --all" in detail
+        assert cli.main(["sessions", "export", "--lost", "c1"]) == 1                # not known to be gone: no code is asked for
+        refused = capsys.readouterr().err
+        assert "cannot be listed" in refused and str(at["claude"].parent) in refused and "approve" not in refused
+    assert _copied(sessions.export(0)) == {"claude-code c1"} and _checked(tmp_path)[0] == "ok"
+    with _closed(at["codex"].parent):
+        sessions.export(0)
+    assert list(_checked(tmp_path)[2]["uncopied"]) == [f"codex {at['codex'].parent}"]
+    at["codex"].unlink()
+    at["codex"].parent.rmdir()                                                     # the folder itself is removed:
+    assert sessions.export(0) == [] and _checked(tmp_path)[0] == "ok"               # nothing is left there to list
+
+
+def test_the_export_command_exits_1_once_it_has_stamped_what_it_could_not_copy(harness, tmp_path, capsys):
+    """2026-11-12: every copy was refused and the command still exited 0, so the script or the job that ran it could
+    not tell. It exits 1 when something it was asked for was not copied, after leaving the stamp, and says how many
+    are not copied and where to look; it exits 0 when everything it was asked for was copied."""
+    import sys
+    one, two = [_jsonl(harness["claude"].with_name(f"{name}.jsonl"), _claude_rows(harness["work"])) for name in ("c1", "c2")]
+    everything = ["sessions", "export", "--all"]
+    assert cli.main(everything) == 0
+    said = capsys.readouterr()
+    assert "claude-code c1: " in said.out and "claude-code c2: " in said.out and said.err == ""
+    assert cli.main(everything) == 0 and capsys.readouterr().out.strip() == "nothing new to export"      # nothing new is no failure
+    _jsonl(two, [_typed({"cwd": harness["work"], "sessionId": "c2"}, "One more thing.", "2026-10-30T16:00:00.000Z")])
+    with _closed(two):
+        assert cli.main(everything) == 1
+        said = capsys.readouterr()
+        assert "claude-code c2: not exported" in said.out and _checked(tmp_path)[2]["failed"] == 1      # stamped, then said
+        assert said.err.startswith("1 transcript(s) could not be copied") and "synthesis doctor" in said.err
+        assert cli.main(["sessions", "export", "--session", "c1"]) == 0 and capsys.readouterr().err == ""    # all that was asked for
+        assert cli.main(["sessions", "export", "--session", "c2"]) == 1 and cli.main(["sessions", "export"]) == 1
+        done = subprocess.run([sys.executable, "-m", "synthesis", *everything], capture_output=True, text=True,
+                              cwd=str(Path(__file__).resolve().parents[1]))            # and as the command a job runs
+        assert done.returncode == 1 and "claude-code c2: not exported" in done.stdout and "synthesis doctor" in done.stderr
+        capsys.readouterr()
+    two.unlink()                                                        # removed before a run copied what it had gained
+    assert cli.main(everything) == 1
+    said = capsys.readouterr()
+    assert "not copied before its transcript was removed" in said.out and "1 transcript(s) could not be copied" in said.err
+    assert cli.main(["sessions", "export"]) == 0                        # a run of two days was asked for nothing of it
+    with _closed(one.parent):
+        assert cli.main(everything) == 1                                # a folder that cannot be listed
+        assert capsys.readouterr().err.startswith("2 transcript(s) could not be copied")
+    folders = [sessions.root(), *(d for d in sessions.root().rglob("*") if d.is_dir())]
+    for folder in folders:
+        folder.chmod(0o555)                                             # and an archive that cannot be written: no stamp is left,
+    try:
+        _jsonl(one, [_typed({"cwd": harness["work"], "sessionId": "c1"}, "And another.", "2026-10-30T17:00:00.000Z")])
+        assert cli.main(everything) == 1
+        said = capsys.readouterr()
+        assert said.out.startswith("not exported: ") and said.err.startswith("not exported: ") and "doctor" not in said.err
+    finally:
+        for folder in folders:
+            folder.chmod(0o755)
 
 
 def test_a_run_started_by_a_command_line_is_briefed_not_prompted(harness):
