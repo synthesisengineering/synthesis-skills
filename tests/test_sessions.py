@@ -591,6 +591,40 @@ def test_sessions_prompts_names_each_one_no_record_cites_and_exits_1_while_any_i
     assert capsys.readouterr().out.strip().startswith("0 prompts on 20")
 
 
+def test_a_citation_names_one_session_and_a_listing_of_what_is_open_cites_nothing(harness, tmp_path, capsys):
+    """2026-11-12, a review: two sessions whose ids begin alike were both cleared by a citation of one of them in
+    full, and the listing's own output, saved in a folder of records, cited every prompt it listed as open."""
+    one, two = "01a11111-aaaa-4000-8000-000000000001", "01a11111-bbbb-4000-8000-000000000002"
+    for name, text in ((one, "Plan the release."), (two, "Draft the notes.")):
+        _jsonl(harness["claude"].with_name(f"{name}.jsonl"),
+               [_typed({"cwd": harness["work"], "sessionId": name}, text, "2026-10-30T15:00:00.000Z")])
+    sessions.export(0)
+    kb = tmp_path / "kb"
+    kb.mkdir()
+    first, second = sessions.prompts("acme", "2026-10-30")
+    (kb / "log.md").write_text(f"- planned (claude-code {one} #{first['seq']})\n", encoding="utf-8")
+    assert sessions.uncited([first, second], [str(kb)]) == [second]              # the id in full names one session
+    (kb / "log.md").write_text(f"- planned (claude-code 01a11111 #{first['seq']})\n", encoding="utf-8")
+    assert sessions.uncited([first, second], [str(kb)]) == [first, second]       # eight characters two sessions share name neither
+    command = ["sessions", "prompts", "--workspace", "acme", "--date", "2026-10-30", "--records", str(kb)]
+    assert cli.main(command) == 1
+    cites = [" ".join(line.split()[:3]) for line in capsys.readouterr().out.splitlines()[:2]]
+    assert cites == [f"claude-code 01a11111-a #{first['seq']}", f"claude-code 01a11111-b #{second['seq']}"]    # as much of each id as tells them apart
+    assert cli.main(["sessions", "show", "01a11111-b", "--seq", str(second["seq"])]) == 0 and "Draft the notes." in capsys.readouterr().out
+    (kb / "log.md").write_text("".join(f"- done ({c})\n" for c in cites), encoding="utf-8")
+    assert cli.main(command) == 0                                                # and that citation is read
+    (kb / "log.md").unlink()
+    capsys.readouterr()
+    assert cli.main(command + ["--json"]) == 1
+    (kb / "open.json").write_text(capsys.readouterr().out, encoding="utf-8")     # the listing itself, saved among the records
+    assert cli.main(command) == 1
+    listing = capsys.readouterr().out
+    assert "2 of 2 prompts" in listing
+    (kb / "open.json").unlink()
+    (kb / "open.md").write_text(listing, encoding="utf-8")                        # and as it is printed
+    assert cli.main(command) == 1 and "2 of 2 prompts" in capsys.readouterr().out
+
+
 def test_an_export_that_finishes_says_when_and_a_busy_one_does_not(harness):
     _jsonl(harness["claude"], _claude_rows(harness["work"]))
     stamp = sessions.root() / ".state" / "export.json"
