@@ -194,9 +194,24 @@ harness that gives no transcript cannot carry approved sends or deploys until it
      in` list, inside a quoted script), with the environment's value for one it does not
      set, the default a use carries (`${D:-…}`) and an end trimmed by `%` or `#`. The words
      after a shell's script (`sh -c 'script' name word`, `sh -s word` with the script on its
-     input) are put where the script uses them (`$1`, `"$@"`), as the shell takes them; a
+     input) are put where the script uses them (`$1`, `"$@"`), as the shell takes them and
+     quoted for where they land (quoting starts over inside `$( )` and backticks); a
      script that gives them its own values (`set --`, `shift`, a function) is left as
-     written. A path is compared the way a Mac's file system finds it, whatever its case.
+     written. `$PWD` and `$OLDPWD` are the folder each command is in and the one it was in
+     before, in its own words and targets; a script it hands a shell puts its own. A word
+     that starts with a substitution the guard can read is read with what that names put
+     in: the folder of a path that is spelled out (`$(dirname <path>)`,
+     `$(realpath <path>)`), a fresh temporary file or folder (`$(mktemp)`, `$(mktemp -d)`,
+     made where its template says), the folder the command is in (`$(pwd)`), the top of
+     the repository it is in (`$(git rev-parse --show-toplevel)`, asked of git as the
+     command will ask). That holds for a `cd`, for a target and for a variable given one
+     (`out=$(mktemp)`). After a `cd` it cannot read (any other substitution, a variable
+     the command does not set), a bare file name is a write it cannot place: in a command
+     that names a protected folder that write is refused, and so is a script run there
+     that writes. `NAME=value` inside a program handed to another interpreter (a keyword
+     argument, a statement of that program) is that program's text, not a variable the
+     command sets.
+     A path is compared the way a Mac's file system finds it, whatever its case.
      A target outside a protected folder may still change one, and is judged so: a folder
      changed throughout that holds it (`rm -r`, a move, a recursive copy or sync onto it,
      `chmod -R`, a `find` that deletes or runs a changing command), and a pattern that may
@@ -208,25 +223,41 @@ harness that gives no transcript cannot carry approved sends or deploys until it
      `chgrp`; `dd of=`; `sed` and `perl` editing in place; a compressor that replaces its
      file; what `sort -o`, `uniq` or an awk program writes (its redirects, and what a
      command it is given as a plain string writes); what `find` deletes or runs a changing
-     command on, and what each command it runs writes besides; the files `xargs` hands such
-     a command); an interpreter script that writes there; and a path inside one of those
-     folders handed to any program the guard does not know to only read it. A word handed to
-     such a program may be a script it runs (`watch`, `ssh`, `osascript`), so the word is
-     read as a command line too, and held for what it would plainly write: a redirect or a
-     file utility's target, in it or in a quoted word of it. A message that mentions a
-     folder is not held.
+     command on (in the folders it searches: its operands, and BSD's `-f <folder>`), and
+     what each command it runs writes besides, read in the folder of what it found when
+     `-execdir` or `-okdir` runs it (the top of the search, and each protected folder under
+     it); the files `xargs` hands such a command; a hex dump's second operand, which is its
+     output); an interpreter script that writes there; and a path inside one of those
+     folders handed to any program the guard does not know to only read it. An inline
+     program for an interpreter the guard does not read (`php -r`, `lua -e`, `Rscript -e`
+     and their like) is held for each path it names. What `printf` prints into a shell is
+     its format with its words put in. A word handed to such a program may be a script it runs (`watch`, `ssh`,
+     `osascript`), so in a command that names a protected folder each word with a space in
+     it is read as a command line too. A line of it counts as a command where it starts as
+     one the guard knows (a shell, an interpreter, a file utility), and is held for what it
+     writes, runs and starts; it is not held for a path it is merely handed. Words for a
+     reader are left alone: the value of a message option (`--body`, `-m`, `--title`,
+     `--prompt` and their like), the words given to `codex`, `claude`, `muse` and `gh`,
+     which run under their own guards, and a sentence that mentions a folder or shows a
+     query (`select … where n > 5`).
    - **How it reads a Python program.** A program given to Python inline (`-c`, in each form
      Python takes it: `-Bc PROGRAM`, `-cPROGRAM`) or on its stdin is read by its syntax, and
      alone: another command's heredoc is not its text. A write is a file opened to write, a
      `pathlib` call that changes a file, a call into `os`, `shutil` or `subprocess`, a
-     database opened, an archive unpacked, an in-place `fileinput`, however the call was
-     imported or renamed. A link a program makes is judged at both ends, and none is made at
+     database opened, an archive unpacked, an in-place `fileinput`, the standard library's
+     own writers (a log file `logging` is told to keep, `urlretrieve`, a temporary file
+     made in a folder `dir=` names), however the call was imported or renamed. A link a program makes is judged at both ends, and none is made at
      a path that is the agent's own. A target the program spells out (a string, a name given
      one once, strings joined, a path built with `os.path.join` or `Path`) is judged where
      it leads. Any other target is judged by what it is built from: a protected path in a
      string, or a name one reached through an assignment, a loop, a `with`, a default, a
      call to the program's own function, a list or an attribute; a helper called in one
-     place spells what that caller hands it. The words after the program are placed where it
+     place spells what that caller hands it. Some of what is built from a path names no
+     folder: its last part, one part counted from its end (`p.parts[-1]`,
+     `path.split("/")[-2]`), a path taken relative to a folder that holds it (`relative_to`,
+     `os.path.relpath` with its start), a path flattened into one name, a digest, a length.
+     A fresh temporary folder (`tempfile.mkdtemp()`, `TemporaryDirectory()`) is a folder
+     somewhere else. The words after the program are placed where it
      reads `sys.argv[n]`, and a variable of the environment where it reads it by name. Taken
      another way (a slice, an argument parser, the whole environment), one that names a
      protected path makes any write a refusal. What the program reads from a file is content
@@ -241,14 +272,28 @@ harness that gives no transcript cannot carry approved sends or deploys until it
      judges that command: in each folder the program may stand in or `cwd=` names, as the
      program `executable=` names, with the variables the program has put in `os.environ` or
      in the mapping it hands over as `env` (a dict, a copy of the environment, one kept
-     under a name and added to later), with the words after a shell list's script, and with
-     a script fed on its input or written down a pipe to it read as that command's script.
+     under a name, under a second name, or added to later), with the words after a shell
+     list's script, and with a script fed on its input or written down a pipe to it read as
+     that command's script: a pipe belongs to the process it was opened for, under whatever
+     name the program keeps that process, and what is written down it piece after piece is
+     one script (a pipe the reader cannot tie to a process is read as every process's).
+     What is written to `os.popen(command, "w")` is that command's input. In a list, a
+     word built round a path the program found (`'echo x >> ' + str(p)`) keeps that path,
+     and a script for a shell or an interpreter that cannot be read at all, built from a
+     protected path, is refused.
+     A relative path the program makes whole (`os.path.abspath`, `realpath`,
+     `Path.resolve`, `os.getcwd()`, `Path.cwd()`) is whole from where the program stood at
+     that call, wherever it stands when the path is used; `with_suffix`, `with_name` and
+     `with_stem` spell the file they name.
      Handed anything else that is built from a protected path, or built from values the
-     reader cannot read while it names one, it is held as a write. A tree removed, moved or
+     reader cannot read while it names one, it is held as a write; so is a command that
+     leaves a variable to its environment while the program keeps a protected path in a
+     mapping. A tree removed, moved or
      copied over whole (`rmtree`, `move`, `rename`, `copytree`) that holds a protected
-     folder changes it, and what a walk or a pattern over such a folder finds (`os.walk`,
-     `glob`, `rglob`) may lie in it: of what a walk hands back, the folder is a path and the
-     names in it are not.
+     folder changes it (the folder of the approved lines too, when it is removed or moved
+     away), and what a walk or a pattern over such a folder finds (`os.walk`, `glob`,
+     `rglob`, from a relative folder or glob's `root_dir` as well, and through a link) may
+     lie in it: of what a walk hands back, the folder is a path and the names in it are not.
      A program that runs code it builds (`exec`, `eval`, a module it names at run time)
      cannot be read: it is taken to write, and is refused while it names a protected path,
      is handed one or runs inside one. A program with a syntax error, and a script for
@@ -308,7 +353,11 @@ stay open, and no hook running as that same user can close them:
   path, which the guard cannot read, a program that writes where it stands inside a
   transcript folder without naming a file (an archive unpacked there), a file-writing tool
   of another server that the guard does not know as a file tool, or a program the agent
-  writes and runs gets through. So does a write the Python reader does not follow: a
+  writes and runs gets through. So does a module run with `-m` (it is a script file:
+  `python3 -m zipfile -e`), `git` told to put its own files in such a folder (a clone, an
+  archive, a configuration file given with `-f`), a script that is the output of a process
+  substitution (`bash <(…)`), and a command handed to a scheduler to run later (`crontab`,
+  `at`). So does a write the Python reader does not follow: a third-party
   library's own writer (a data frame saved, a figure saved), a call reached through
   `getattr`, a method kept under another name, a path the program reads out of a file or
   builds from a value the reader cannot read, a folder change or a mapping of variables
@@ -319,13 +368,19 @@ stay open, and no hook running as that same user can close them:
   is refused, also when it only reads it. A program the guard does not know may be handed
   a folder that holds a protected one (an archive unpacked over it), and a program may
   list such a folder one level at a time and remove what it finds by a name it builds.
+  A word handed to a program the guard does not know is read only where it starts as a
+  command the guard knows: a script for that program's own language, or a line that
+  starts with a program of the agent's, is not. A `cd` into a folder only a substitution
+  or an unset variable names is refused for a bare write only in a command that names a
+  protected folder; one that builds that folder's name at run time is the first case above.
 - The shell guard reads the text of a command. It follows the ordinary ways a command names
   a file, runs in a folder and hands a file on, and each of those has a test. A spelling
-  made to get past that reading may get through until it is added: seven review rounds by a
+  made to get past that reading may get through until it is added: eight review rounds by a
   second model each found more of them (a folder stack turned by number, a wrapper inside a
   wrapper, a file name split across two strings, a link made and then moved into place, two
-  folder changes one after the other, a script written down a pipe), and each was closed
-  with a test. There is always another. What the guard is
+  folder changes one after the other, a script written down a pipe, a path made whole
+  before the program moved, a command run in the folder of what `find` found), and each
+  was closed with a test. There is always another. What the guard is
   measured on is the other direction as well: 30 days of recorded commands, where it must
   not refuse ordinary work.
 - A prompt another process injects into the session through the harness's own CLI

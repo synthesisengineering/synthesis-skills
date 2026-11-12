@@ -109,7 +109,9 @@ and recorded as [in-person-travel.md](in-person-travel.md) says.
 Whose timing binds: the addresses and patterns (`*@board.example.com`) in `tiers.priority`. A
 tier entry that is a name, or protected hours written as prose, cannot be matched; the report
 says so with a NOTE and the agent checks those by hand. The agent's own holds (events titled as
-`calendar_guardian.holds.title`) and all-day markers count as free time.
+`calendar_guardian.holds.title`) and all-day markers count as free time. The title is the whole
+test: an event titled exactly that is read as a hold whoever made it and whoever is on it, so the
+title is one no meeting carries, and a hold that became a meeting is retitled.
 
 REFUSE (exit 1): choose another time; do not put the slot to the principal as an option. REVIEW
 (exit 0): fix what it names, or say in the proposal why this slot is still the right one. It

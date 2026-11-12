@@ -21,13 +21,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
     leaves before the end, one that ends after the latest hour, a night shorter than the policy keeps, a car on a
     personal trip). A block serves the events its `For:` lines name, or, naming none, the one event nearest it. An
     entry beside the event that is titled like a trip but is not in the labeled form is named as that, not
-    reported as no block. It plans no trip: an agent does that from a live source.
+    reported as no block, and an event at a place whose start cannot be read stops the check and is named. It
+    plans no trip: an agent does that from a live source.
   - `slot_check.py` takes `--travel-before` and `--travel-after`, counts the trip as taken time and says when
     the principal is home; `--in-person` with neither is refused.
   - Daily rituals: where a workspace turns it on (`travel_check` in the ritual config), day-start, mid-day and
     day-end run the check over that day and the six after and put each flagged event in the plan, and
-    `ritual_state.py record --travel` refuses without today's result, with one that does not agree with itself,
-    or while an event lacks its travel. A leaving or returning time in a plan or draft is taken from a travel
+    `ritual_state.py record --travel` refuses without today's result, with one that does not agree with itself
+    (an event that ends before it starts among them), or while an event lacks its travel. A leaving or returning time in a plan or draft is taken from a travel
     block.
   - The guard: with `in_person_travel` in the config, a calendar write that creates an event at a place, or gives
     one a place, is refused unless the call carries the travel line. It asks for no approval and holds no copy of
@@ -50,7 +51,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
     offers options (under a heading of its own, or as an entry of a list under a shared heading) has no
     `Recommendation:` line, or, when it is an accept-or-decline or carries a `Commits:` line, no `Consequences:`
     line. Options indented under their entry, at any depth of a list, are that entry's own; an example is not read
-    (a fenced block, or a block Markdown shows as code). **This applies to every workspace that declares plan
+    (a fenced block, quoted or not, or a block Markdown shows as code). **This applies to every workspace that declares plan
     folders,** from its next ritual record.
   - The decision packet generator refuses a row that is not blind and recommends nothing. Until now one
     recommended row covered for rows with none.
@@ -60,15 +61,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   where those blocks belong. A meeting is now an event someone else is on. An event with no other attendee, with
   only the principal's own addresses (`principal_addresses`, or the calendar's own mark), or with a title carrying
   a personal marker (`calendar_guardian.personal_markers`) is taken time for every other check and left out of
-  the load, and the line says how many it left out. A read that names no one else on any event counts each one,
-  and says so. Protected hours may also be a section that holds a list of `windows` beside lines of prose another
+  the load, and the line says how many it left out. A marker is a tag the principal puts on their own blocks
+  (`#reserved`), matched as a whole word: a plain word that a meeting's title might carry stops the check. A read
+  that names no one else on any event counts each one, and says so. Protected hours may also be a section that holds a list of `windows` beside lines of prose another
   reader depends on: a line of prose is named as unchecked unless a window gives it as its `source`, a slot is
   checked against the windows of each day it touches, and `24:00` ends a day.
 - **The write guard reads a path however a command names it, passes a protected path only to a program it knows
   to only read it, and reads an inline Python program by its syntax** (core). It began as two faults: a write
   through a variable the command had just assigned was judged as a write somewhere else, and the file tools were
-  refused in a project's memory folder. Seven rounds of review by a second model, and this project's own probes
-  and replays while answering them, showed the guard was narrower than what it guards against in four ways.
+  refused in a project's memory folder. Eight rounds of review by a second model, and this project's own probes
+  (more than 800 plain commands and programs) and replays while answering them, showed the guard was narrower than what it guards against in four ways.
   - **How a path is read.** Every write in a command is resolved and judged, whether or not the command spells a
     protected folder out: relative to the session's folder, to a `cd` (`cd -`, `pushd` and `popd` are followed) or
     to where `env -C` or `sudo -D` sends the command, through a variable, through a link the same command makes (a
@@ -76,7 +78,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
     (an assignment, `+=`, after `export`, `readonly`, `declare` or `env`, in a `for … in` list, inside a quoted
     script), with the environment's value for one it does not set, the default a use carries and an end trimmed by
     `%` or `#`. The words after a shell's script (`sh -c 'script' name word`, `sh -s word`) are put where the script
-    uses them. A path is compared the way a Mac's file system finds it, whatever its case. A target outside a
+    uses them, quoted for where they land, a substitution's own quoting included. `$PWD` and `$OLDPWD` are the
+    folder each command is in and the one before, not the guard's own. A word that starts with a substitution the
+    guard can read is read with what that names put in (`$(dirname <path>)`, `$(mktemp)`, `$(pwd)`, the top of the
+    repository), for a `cd`, a target and a variable given one; after a `cd` it cannot read, a bare file name
+    written in a command that names a protected folder is a write the guard cannot place, and is refused. A
+    keyword argument in a program (`env=dict(os.environ, OUT=target)`) is that program's text, not the command's
+    `OUT=…`. A path is compared the way a Mac's file system finds it, whatever its case. A target outside a
     protected folder that changes one is judged so: a folder changed throughout that holds it (`rm -rf` of the
     folder above the transcripts, that folder moved away, a tree copied over it, a `find -delete` across it), and
     a pattern that may name what lies in it. The destructive-command guard and the claim check read the same
@@ -90,8 +98,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
     utility changes is read from its own words: a copy's destination, both ends of a move, what `find` deletes or
     runs a changing command on, what an awk program writes or what a command it is given as a plain string writes,
     the files `xargs` hands on. Each command `find` runs is also read as a command of its own, for what it writes
-    besides the files found. A word handed to a program the guard does not know (`watch`, `ssh`, `osascript`) is
-    read as a command line and held for what it would plainly write; a message that mentions a folder is not.
+    besides the files found, in the folder of what it found when `-execdir` runs it (the top of the search and each
+    protected folder under it). What `printf` prints into a shell is its format with its words put in, and an inline
+    program for an interpreter the guard does not read (`php -r`, `lua -e`) is held for each path it names. A word
+    handed to a program the
+    guard does not know (`watch`, `ssh`, `osascript`) is read as a command line where it starts as a command (a
+    shell, an interpreter, a file utility) and held for what it would write, run or start; the value of a message
+    option (`--body`, `-m`, `--prompt`) and a sentence that mentions a folder are words for a reader.
   - **How a Python program is read.** A program given to Python inline or on its stdin is read by its syntax and
     alone, since a pattern over its text stopped at the first closing parenthesis and every heredoc of a line was
     read as one program. A write is a file opened to write, a `pathlib` call that changes a file, a call into
@@ -107,7 +120,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
     descriptor stands for the folder it was opened on. A command the program spells whole (`subprocess`,
     `os.system`, asyncio's and pty's ways to start one) is judged as the shell guard judges that command, with
     what the program gives it: the folder, the variables it keeps for it however the mapping is kept, the words
-    after a shell's script, a script fed on its input or written down a pipe. A tree removed, moved or copied over
+    after a shell's script, a script fed on its input or written down a pipe to that process, piece after piece.
+    A relative path the program makes whole (`abspath`, `resolve`, `getcwd`) is whole from where the program stood
+    at that call, wherever it stands when the path is used. A word of a list built round a path the program found
+    keeps that path; what is written to `os.popen(command, "w")` is that command's input; the standard library's
+    own writers count (a log file, a download, a temporary file made in a folder it is told). The last part of a
+    path, one part of it, a path taken relative to a folder that holds it (`relative_to`, `relpath` with its
+    start), a path flattened into a name and a digest name no folder, and a fresh temporary folder is a folder
+    somewhere else, so a tree of transcripts can be mirrored or summarized into another folder. A tree removed,
+    moved or copied over
     whole that holds a protected folder, and what a walk or a pattern over such a folder finds, are judged as a
     change to it. A program that runs code it builds (`exec`, `eval`, a module named at run time) is taken to
     write. A script on stdin for another interpreter is judged by its own heredoc.
@@ -123,26 +144,27 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
     tool result the harness saved beside a transcript is material any program may be given; changing it where
     it lies stays refused. The hook is run when it is the script an interpreter runs, not when another program
     is handed its file.
-  - **Measured before release.** 109,893 distinct shell commands from 30 days of one machine's transcripts were
+  - **Measured before release.** 112,964 distinct shell commands from 30 days of one machine's transcripts were
     run through the 5.6.0 guard and this one, again after each change, and every command whose verdict changed was
     read. The needless refusals each pass showed are now tests. At the end the new guard refused 9 commands the
     old one passed (three runs of a property-list tool from inside the sessions archive, a database tool opening a
     session store, a move of a saved tool result and a subagent's transcript to the Trash, and four programs that
-    ran the hook through `subprocess`, which the same command typed in the shell always was) and passed 80 the old
-    one refused: 51 inline programs that read a protected path and write somewhere else, 21 commands that write what
+    ran the hook through `subprocess`, which the same command typed in the shell always was) and passed 85 the old
+    one refused: 54 inline programs that read a protected path and write somewhere else, 21 commands that write what
     is the agent's own (memory notes and saved workflow scripts, 15 from the shell and 6 by program), 3 writes
-    from inside a protected folder to a path elsewhere named through a variable, 3 programs judged by their own
-    text where a file the same line wrote named the guard's code, and 2 programs handed the hook's file. Of the 58
-    it still refuses, 43 are commands whose own program names the guard's approval code (work on the guard
-    itself), 6 run the hook, and 9 are the ones above. The rule for a folder that holds a protected one, added
-    last, refused nothing in those 30 days. The destructive guard newly refused 2 recursive deletes of
+    from inside a protected folder to a path elsewhere named through a variable, 5 programs judged by their own
+    text where a file the same line wrote named the guard's code, and 2 programs handed the hook's file. Of the 62
+    it still refuses, 45 are commands whose own program names the guard's approval code (work on the guard
+    itself), 8 run the hook, and 9 are the ones above. The rules added last (a folder that holds a protected one,
+    a folder the guard cannot read, words read as command lines, `$PWD`, `find -execdir`, a keyword in a program)
+    refused nothing in those 30 days. The destructive guard newly refused 2 recursive deletes of
     a scratch clone named through a variable, which it always refused when the path was written out.
     `docs/runtime-integration.md` says what the reader does not follow.
 - **The plugin's own Drive publisher waits for a code** (core, agent guardrails). A script wrote 36 files into a
   shared Drive folder in a principal's name with no hold, while a read-only request by `curl` was held the same
   afternoon: the guard reads a command's text and cannot see what a script sends. The knowledge base's
-  `publish_drive.py` is now among the default deploy patterns, as the action sheet's publisher is; `--dry-run` and
-  `--help` pass.
+  `publish_drive.py` is now among the default deploy patterns, as the action sheet's publisher is, and is found
+  past the interpreter's own options (`python3 -W ignore`, `-X dev`); `--dry-run` and `--help` pass.
 - **One SKILL.md reorganized, nothing trimmed.** Chief of staff's four points under the prime directive moved
   word for word into `references/meetings-correspondence-travel.md` to make room for binding rules 13 and 14.
 - synthesis-kb-distribution: the connector's no-token-logged test captures FastMCP's own log lines under pytest

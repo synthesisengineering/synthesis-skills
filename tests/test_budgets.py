@@ -503,10 +503,46 @@ ROOT = Path(__file__).resolve().parents[1]
 # events someone else is on; protected windows stand beside prose; 24:00 ends a day).
 # travel_check.py 10: judge 8, BESIDE and TRIP (an entry beside an event that is titled like a trip is named as its
 # travel in another form, not reported as no block).
+# After an eighth review round, which found twelve more of the same kinds (a command another command runs, a value a
+# program keeps before it moves, a pipe, a variable, an example read as a choice, a time that cannot be judged), and
+# after the guard's own probes of a folder it cannot read, guards.py 103 more. _python_writes 39: a relative path made
+# whole (abspath, realpath, resolve, absolute, getcwd, cwd) judged from where the program stood at that call, in a
+# target and in a started command, 11; a pipe judged with the process it belongs to, by the name the process is kept
+# under, and what is written down it piece after piece read as one script, 10; the names' fixed point as a function,
+# run again once the folders the program may stand in are known, 9; with_suffix, with_name and with_stem spelled, 4; a
+# walk or a pattern from a relative folder, glob's root_dir and a folder reached through a link, 2; a protected path
+# kept in any mapping beside a variable the started command leaves to its environment, 2; a tree removed or moved away
+# apart from one copied over, 1. _commands 21, Quoted 6, MESSAGE 3, STARTERS 2 and PROMPTED 1 (a word handed to a
+# program the guard does not know is read as a command line only where it starts as a command, the value of a message
+# option is words for a reader, and a command read that way is judged for what it writes, runs and starts; find's
+# -execdir runs in the folder of what it found). _led 17 (a cd into the folder of a spelled path, a fresh temporary
+# folder or the folder it is in is followed; any other substitution is a folder the guard cannot read). _self_grant 7
+# (a relative write in a folder the guard cannot read, in a command that names a protected folder; the approved
+# lines' folder removed or moved away whole). _placed 5 (quoting starts over inside a substitution). _find 5 (-execdir,
+# -okdir and BSD's -f). _landing 2 and VALUED 1 (xxd's second operand is its output), GONE and OVER in place of WHOLE 1,
+# less 4 in _string_writes, 2 in _deploys (the publisher is found past the interpreter's options by _program) and 1 in
+# _named. slot_check.py 4: judge (a personal marker is a tag matched as a whole word; a plain word stops the check).
+# travel_check.py 2: judge (an event at a place with no start it can read stops the check and is named).
+# ritual_state.py 7: _when 3, _day 1, travel 1, QUOTE and _shown 2 (a quoted example is an example; an event that ends
+# before it starts is refused).
+# Before the ninth review round, after 254 plain commands and programs of this project's own were put to the eighth
+# round's answer, guards.py 84 more. _python_writes 41: what names no folder (a path taken relative to a folder that
+# holds it, one part of a path, a path flattened into a name, a digest, a length), and that relative path itself when
+# both ends are spelled, 26; a word of a list built round a path the program found keeps that path, and a script it
+# cannot read is refused, 5; a fresh temporary folder is a folder somewhere else, also when `with` names it, 4; what
+# is written to os.popen is the command's input, 3; the standard library's own writers (a log file, a download, a
+# temporary file made in a folder it is told), 3. _own_text 16 (a keyword argument or a statement of a program handed
+# to another interpreter is not a variable the command sets). _commands 8 ($PWD and $OLDPWD are the folder each
+# command is in and the one before, in its own words and targets and not in a script it hands a shell; what printf
+# prints into a shell is its format with its words put in). _self_grant 6 (a command find -execdir runs is judged at
+# the top of the search and in each protected folder under it). _led 5 (any word that starts with a substitution the
+# guard can read: a temporary file, the top of the repository). _put 2, PLACE and DEEP (the folder a command is in).
+# LIBRARY_WRITES 2. OPAQUE and _named 2 (a program for an interpreter the guard cannot read is held for each path it
+# names).
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # consolidate first).
-CORE_BUDGET = 9581
-PLUGIN_BUDGET = 29944
+CORE_BUDGET = 9768
+PLUGIN_BUDGET = 30144
 
 
 def _lines(files):

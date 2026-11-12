@@ -2110,7 +2110,7 @@ def test_a_folder_the_guard_cannot_read_holds_nothing_when_no_protected_folder_i
 
 
 # --- before the ninth review round (2026-11-11): this project's own second probe ------------------------------
-# The eighth round's answer was probed again, with 190 plain commands and programs, before a ninth round saw it. A
+# The eighth round's answer was probed again, with 254 plain commands and programs, before a ninth round saw it. A
 # keyword argument in a program (`env=dict(os.environ, OUT=target)`) had been read as the shell's own `OUT=...`, so
 # `$OUT` in the command the program started was filled in with the argument's name. `$PWD` was taken from the
 # guard's own environment. A command `find -execdir` runs without `{}` was read at the top of the search only. A
