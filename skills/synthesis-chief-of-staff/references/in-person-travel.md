@@ -63,7 +63,7 @@ RSVP, an invitation the agent accepts, a decision in a plan.
 One calendar event on each side, so the time is visibly taken. Its title starts with the policy's
 `block_title` (`Travel` unless set): the word alone, or followed by a colon, a dash or a direction
 (`Travel: to the theatre`, `Travel home`). An event whose title only begins with that word (`Travel
-planning workshop`) is an event, unless it carries a block's lines. Its description carries these lines:
+planning workshop`) is an event, with clock times or without, unless it carries a block's lines. Its description carries these lines:
 
 ```text
 For: Book launch at the Grand Theatre
@@ -112,7 +112,7 @@ by its label alone or with a room or a note after it (`Office, 4th floor`). An a
 | `local_minutes` | a walk or ride this short needs a line and no blocks |
 | `arrive_early_minutes` | how long before the start the outbound block must arrive |
 | `latest_return` | a return after this hour is the principal's to decide |
-| `sleep_hours` | the hours the principal keeps between getting home and the next morning's first commitment; a shorter night is theirs to decide. No key, no rule |
+| `sleep_hours` | the hours the principal keeps between getting home and the next morning's first commitment; a shorter night is theirs to decide, and a commitment already begun when they get home leaves no night at all. With no `morning_starts`, an outing that begins and ends on one morning is judged against the next night. No key, no rule |
 | `morning_starts` | the hour the principal's morning begins whether or not the calendar holds an entry then (a workout, a routine nobody schedules). The night ends at the earlier of this hour and the first entry, and an outing that began on an earlier day and ran past this hour left no night at all. Without it, a morning with no entry costs nothing the check can see |
 | `cost` | `personal` and `business`: the rule for each, in words |
 | `block_title` | the word a travel block's title starts with |

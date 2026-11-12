@@ -4,7 +4,7 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
-## [5.7.0] - 2026-11-11
+## [5.7.0] - 2026-11-12
 
 - **An in-person commitment is not on the calendar until its travel is** (chief of staff 2.3.0, daily rituals
   3.9.0, message guard 2.7.0, core). A principal who owns no car found an evening event 28 miles from home that
@@ -22,10 +22,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
     personal trip). A block serves the events its `For:` lines name, or, naming none, the one event nearest it. An
     entry beside the event that is titled like a trip but is not in the labeled form is named as that, not
     reported as no block; a block is known by the form of its title (the block's word alone, or followed by a
-    colon, a dash or a direction) or by its lines, so an event whose title only begins with that word is an event; and an event at a place whose start cannot be read stops the check and is named. It
+    colon, a dash or a direction) or by its lines, so an event whose title only begins with that word is an event, with clock times or without; and an event at a place whose start cannot be read stops the check and is named. It
     plans no trip: an agent does that from a live source.
   - `slot_check.py` takes `--travel-before` and `--travel-after`, counts the trip as taken time and says when
-    the principal is home; `--in-person` with neither is refused.
+    the principal is home; `--in-person` with neither is refused. An event is taken time on each day it covers (a
+    block that began the night before is part of this morning, and a trip back past midnight meets the next day's
+    first entry), and a slot on top of another event says so.
   - Daily rituals: where a workspace turns it on (`travel_check` in the ritual config), day-start, mid-day and
     day-end run the check over that day and the six after and put each flagged event in the plan, and
     `ritual_state.py record --travel` refuses without today's result, with one that does not agree with itself
@@ -45,7 +47,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
     `slot_check.py` gives a `return` line (home after `travel_policy.latest_return` is the principal's decision)
     and a `sleep` line (less than `travel_policy.sleep_hours` before the next morning's first commitment, or
     before the hour `travel_policy.morning_starts` gives the morning if that is earlier: a morning that begins at
-    a fixed hour with nothing on the calendar cost nothing the check could see).
+    a fixed hour with nothing on the calendar cost nothing the check could see). A commitment already begun when
+    the principal gets home leaves no night at all, and with no hour for the morning an outing that begins and ends
+    on one morning is judged against the next night.
   - Chief of staff binding rule 14 and `references/asks-and-decisions.md`: every invitation, request or choice
     carries what it costs, a recommendation, and a plain challenge when the costs outweigh the event.
   - `ritual_state.py record` reads the day's plan in each declared plan folder and refuses while an open item that
@@ -54,7 +58,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
     line. Options indented under their entry, at any depth of a list, are that entry's own; an example is not read
     (a fenced block, quoted or not, closed or not, or a block Markdown shows as code, also inside a quote under
     a list entry), nor is an HTML comment; emphasis may be written with asterisks or underscores, and a title
-    struck or ticked inside bold is closed. **This applies to every workspace that declares plan
+    struck or ticked inside bold is closed. A line may be a quote inside a list entry, a task-list box, a heading or
+    a row of a table; a choice is titled by its own heading at any depth, by the entry its options and any sentence
+    of explanation stand in, or by a line all in bold; a recommendation is also read as `Recommended:`, as
+    `My recommendation:`, with a dash, or marked on the option; a sentence that begins "Option A was fine" is no
+    option; and a closing line closes a choice when it says what was decided. **This applies to every workspace that declares plan
     folders,** from its next ritual record.
   - The decision packet generator refuses a row that is not blind and recommends nothing. Until now one
     recommended row covered for rows with none.
@@ -72,8 +80,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
 - **The write guard reads a path however a command names it, passes a protected path only to a program it knows
   to only read it, and reads an inline Python program by its syntax** (core). It began as two faults: a write
   through a variable the command had just assigned was judged as a write somewhere else, and the file tools were
-  refused in a project's memory folder. Nine rounds of review by a second model, and this project's own probes
-  (more than 800 plain commands and programs) and replays while answering them, showed the guard was narrower than what it guards against in four ways.
+  refused in a project's memory folder. Ten rounds of review by a second model, and this project's own probes
+  (more than 1,300 plain commands and programs) and replays while answering them, showed the guard was narrower
+  than what it guards against in four ways.
   - **How a path is read.** Every write in a command is resolved and judged, whether or not the command spells a
     protected folder out: relative to the session's folder, to a `cd` (`cd -`, `pushd` and `popd` are followed) or
     to where `env -C` or `sudo -D` sends the command, through a variable, through a link the same command makes (a
@@ -92,7 +101,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
     folder above the transcripts, that folder moved away, a tree copied over it, a `find -delete` across it), and
     a pattern that may name what lies in it. The destructive-command guard and the claim check read the same
     readings, so a recursive delete, a force push or a write into another session's claim through a variable or a
-    loop is seen.
+    loop is seen. `~` and `$HOME` are the home a command gives itself when it sets `HOME`.
   - **What counts as a change.** A list of the programs that write never ends (a move's source, `find -delete`,
     `xargs rm`, an archive unpacked into the folder, a download saved there, a file compressed in place), so the
     rule is turned round: a path inside a protected folder may be handed to a program the guard knows only reads
@@ -110,15 +119,26 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
     `date >> file`) and held for what it would
     write, run or start; the value of a message option (`--body`, `-m`, `--prompt`, attached or not) and a
     sentence that mentions a folder are words for a reader. What `trap` keeps to run when the shell ends is
-    read as a script, and an operand that is `-` is a command's input, so the operand after it is still its
+    read as a script, also after `--`, and an operand that is `-` is a command's input, so the operand after it is still its
     output (`uniq - <file>`).
   - **How a Python program is read.** A program given to Python inline or on its stdin is read by its syntax and
     alone, since a pattern over its text stopped at the first closing parenthesis and every heredoc of a line was
     read as one program. A write is a file opened to write, a `pathlib` call that changes a file, a call into
-    `os`, `shutil` or `subprocess`, a database opened, an archive unpacked, however the call was imported or
-    renamed. A link a program makes is judged at both ends. A target the program spells out is judged where it
-    leads; any other by what it is built from, a name followed through assignments, loops, `with`, defaults, the
-    program's own functions, lists and attributes. The words after the program are placed where it reads
+    `os`, `shutil` or `subprocess`, a database opened, an archive unpacked or made (judged where it lands), a call
+    named as a writer in any library (`to_csv`, `save`, `savefig`, `dump`, a file sent to the trash), a store
+    opened for writing, however the call was imported or renamed. A link a program makes is judged at both ends. A
+    target the program spells out is judged where it leads. A name is read through every value the program gives
+    it: where it is read, the value its own body last gave it, with what a branch, a loop or another function may
+    have given it since, and before any, what each caller handed the function. Each function is read by its own
+    names, and a call of the program's own function by what that call hands it. One of two values, what a loop or
+    a walk visits, a field of the program's own object (a class that keeps its folder, a data class, a parser's
+    default), an entry of its own table, the environment with its default and a template filled are read the same
+    way, and a target lands in a protected folder if any reading does. (Each review round had met one or two
+    needless refusals with one cause, a name read only when it was given one value, once, in one place: of the
+    first hundred everyday programs this project then ran from inside a transcript folder thirty were refused for
+    it, and of the second hundred nineteen.) A target the reader cannot read is judged by what it is built from, a
+    name followed through assignments, loops, `with`, defaults, the program's own functions, lists, attributes, a
+    class's fields, a parser's defaults and the environment the program sets. The words after the program are placed where it reads
     `sys.argv[n]`, and a variable of the environment where it reads it by name; taken another way, one that names
     a protected path makes any write a refusal. What the program reads from a file is content and names no path
     (the `.name` of a file it opened is that file's path). A copy out of a protected folder changes only the copy.
@@ -166,7 +186,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
     it still refuses, 45 are commands whose own program names the guard's approval code (work on the guard
     itself), 8 run the hook, and 9 are the ones above. The rules added last (a folder that holds a protected one,
     a folder the guard cannot read, words read as command lines, `$PWD`, `find -execdir`, a keyword in a program)
-    refused nothing in those 30 days. The destructive guard newly refused 2 recursive deletes of
+    refused nothing in those 30 days, and neither did the reading of a program through every value a name may
+    hold, once the replay had shown two faults in it that the probes had not: the reader stopped on 180 recorded
+    commands that loop over an attribute or an entry, and `export` taken as a writer's name refused 4 that exported
+    a transcript into another archive. On the 300 longest recorded Python commands (9 to 32 thousand characters)
+    the guard takes 9 ms at the median and 46 ms at the ninetieth percentile, where it took 5 and 10. The destructive guard newly refused 2 recursive deletes of
     a scratch clone named through a variable, which it always refused when the path was written out.
     `docs/runtime-integration.md` says what the reader does not follow.
 - **The plugin's own Drive publisher waits for a code** (core, agent guardrails). A script wrote 36 files into a

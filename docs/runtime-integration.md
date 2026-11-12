@@ -198,7 +198,8 @@ harness that gives no transcript cannot carry approved sends or deploys until it
      quoted for where they land (quoting starts over inside `$( )` and backticks); a
      script that gives them its own values (`set --`, `shift`, a function) is left as
      written. `$PWD` and `$OLDPWD` are the folder each command is in and the one it was in
-     before, in its own words and targets; a script it hands a shell puts its own. A word
+     before, in its own words and targets; a script it hands a shell puts its own. `~` and
+     `$HOME` are the home a command gives itself when it sets `HOME`. A word
      that starts with a substitution the guard can read is read with what that names put
      in: the folder of a path that is spelled out (`$(dirname <path>)`,
      `$(realpath <path>)`), a fresh temporary file or folder (`$(mktemp)`, `$(mktemp -d)`,
@@ -227,7 +228,7 @@ harness that gives no transcript cannot carry approved sends or deploys until it
      what each command it runs writes besides, read in the folder of what it found when
      `-execdir` or `-okdir` runs it (the top of the search, and each protected folder under
      it); the files `xargs` hands such a command; a hex dump's second operand, which is its
-     output, also when the first is `-`; what `trap` keeps to run when the shell ends); an interpreter script that writes there; and a path inside one of those
+     output, also when the first is `-`; what `trap` keeps to run when the shell ends, also after `--`); an interpreter script that writes there; and a path inside one of those
      folders handed to any program the guard does not know to only read it. An inline
      program for an interpreter the guard does not read (`php -r`, `lua -e`, `Rscript -e`
      and their like) is held for each path it names. What `printf` prints into a shell is
@@ -240,7 +241,7 @@ harness that gives no transcript cannot carry approved sends or deploys until it
      starts; it is not held for a path it is merely handed. A shell's own words and words a
      sentence starts with (`select`, `for`, `case`, `read`, `which`) start no command there. Words for a
      reader are left alone: the value of a message option (`--body`, `-m`, `--title`,
-     `--prompt` and their like), also attached as `--body=…`, the words given to `codex`, `claude`, `muse` and `gh`,
+     `--prompt` and their like), given apart or attached as `--body=…`, the words given to `codex`, `claude`, `muse` and `gh`,
      which run under their own guards, and a sentence that mentions a folder or shows a
      query (`select … where n > 5`).
    - **How it reads a Python program.** A program given to Python inline (`-c`, in each form
@@ -249,13 +250,33 @@ harness that gives no transcript cannot carry approved sends or deploys until it
      `pathlib` call that changes a file, a call into `os`, `shutil` or `subprocess`, a
      database opened, an archive unpacked, an in-place `fileinput`, the standard library's
      own writers (a log file `logging` is told to keep, `urlretrieve`, a temporary file
-     made in a folder `dir=` names), however the call was imported or renamed. A link a program makes is judged at both ends, and none is made at
+     made in a folder `dir=` names), a call named as a writer in any library (`to_csv`,
+     `save`, `savefig`, `imwrite`, `dump`, a module's own function that removes
+     or moves, a store opened for writing: `shelve.open`, `dbm.open(path, "c")`), judged
+     where its path lands, however the call was imported or renamed. An archive is judged
+     where it lands: the archive unpacked and the folder packed are read. A link a program makes is judged at both ends, and none is made at
      a path that is the agent's own. A target the program spells out (a string, a name given
      one once, strings joined, a path built with `os.path.join` or `Path`) is judged where
-     it leads. Any other target is judged by what it is built from: a protected path in a
-     string, or a name one reached through an assignment, a loop, a `with`, a default, a
-     call to the program's own function, a list or an attribute; a helper called in one
-     place spells what that caller hands it. Some of what is built from a path names no
+     it leads. A name is read through every value the program gives it. Where it is read,
+     that is the value its own body last gave it by a plain assignment, with whatever a
+     branch, a loop or another function may have given it since; before any, it is what
+     each caller handed the function. Each function is read by its own names, so two
+     functions that both call what they are handed `path` are read apart, and a call of
+     the program's own function is read by what that call hands it and what the function
+     then hands back. One of two values (`a if c else b`, `a or b`), what a loop visits (a
+     list the program spells out, its rows, `zip`, `enumerate`, a table's values), what a
+     walk or a pattern finds (a path under the folder walked), a field of the program's own
+     object (`self.out`, a class's constant, a data class's or a named tuple's field, a
+     property, a parser's default, `SimpleNamespace`), an entry of a table it spells out
+     (by its key, by a key held in a name, a place in a list), a variable of the
+     environment with its default, a template filled (`format`, `%`, a list joined) and
+     `Path.home()` are read the same way. A target lands in a protected folder if any
+     reading does. A value the reader cannot read makes the target one it cannot read, and
+     that target is judged by what it is built from: a protected path in a string, or a
+     name one reached through an assignment, a loop, a `with`, a default, a call to the
+     program's own function or to one kept under a name, a list, an attribute, a class's
+     fields, a parser's defaults or the environment the program sets itself. `~` is the
+     home the program or its command gives itself, else the session's. Some of what is built from a path names no
      folder: its last part, one part counted from its end (`p.parts[-1]`,
      `path.split("/")[-2]`), a path taken relative to a folder that holds it (`relative_to`,
      `os.path.relpath` with its start), a path flattened into one name, a digest, a length.
@@ -275,7 +296,8 @@ harness that gives no transcript cannot carry approved sends or deploys until it
      runs in that folder, after which the program is back where it was; a change inside
      `with contextlib.suppress(...)` may have failed and been passed over. A change inside a
      function may come at any time. A descriptor stands for the folder it was opened on,
-     as that folder stood when it was opened (`fchdir`, `dir_fd=`). A command the program spells whole (`subprocess.run([...])`,
+     as that folder stood when it was opened (`fchdir`, `dir_fd=`), also one opened beside
+     another; a number, and what `os.open` or `mkstemp` hands back, names no path. A command the program spells whole (`subprocess.run([...])`,
      `os.system("...")`, asyncio's and pty's ways to start one) is judged as the shell guard
      judges that command: in each folder the program may stand in or `cwd=` names, as the
      program `executable=` names, with the variables the program has put in `os.environ` or
@@ -365,10 +387,11 @@ stay open, and no hook running as that same user can close them:
   `python3 -m zipfile -e`), `git` told to put its own files in such a folder (a clone, an
   archive, a configuration file given with `-f`), a script that is the output of a process
   substitution (`bash <(…)`), and a command handed to a scheduler to run later (`crontab`,
-  `at`). So does a write the Python reader does not follow: a third-party
-  library's own writer (a data frame saved, a figure saved), a call reached through
-  `getattr`, a method kept under another name, a path the program reads out of a file or
-  builds from a value the reader cannot read, a folder change or a mapping of variables
+  `at`). So does a write the Python reader does not follow: a writer of another library
+  whose name says nothing of writing, a call reached through `getattr` or handed on with
+  `functools.partial`, a path carried by an exception, a path built piece by piece so that
+  no piece names the folder, a path the program reads out of a file or builds from a value
+  the reader cannot read, a folder change or a mapping of variables
   made by code the reader cannot follow, a command an awk program builds in a variable and
   only reads from, and a program that runs what its configuration or a pipe hands it (a
   makefile on `make`'s input, a git alias given with `-c`, an editor named in a variable).
@@ -383,7 +406,7 @@ stay open, and no hook running as that same user can close them:
   protected folder; one that builds that folder's name at run time is the first case above.
 - The shell guard reads the text of a command. It follows the ordinary ways a command names
   a file, runs in a folder and hands a file on, and each of those has a test. A spelling
-  made to get past that reading may get through until it is added: nine review rounds by a
+  made to get past that reading may get through until it is added: ten review rounds by a
   second model each found more of them (a folder stack turned by number, a wrapper inside a
   wrapper, a file name split across two strings, a link made and then moved into place, two
   folder changes one after the other, a script written down a pipe, a path made whole

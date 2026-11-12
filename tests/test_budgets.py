@@ -552,10 +552,42 @@ ROOT = Path(__file__).resolve().parents[1]
 # (what `trap` keeps to run when the shell ends). travel_check.py 11: is_block 10 and STEP (a travel block is known
 # by the form of its title or by its lines, so an event whose title only begins with the block's word is an event).
 # ritual_state.py 2: FENCE (a fence left open and an HTML comment are not the plan's own text).
+# After a tenth review round (twelve findings) and this project's own probes of its answer (452 commands and
+# programs and 36 plan shapes), guards.py 394 more. The probes showed one cause behind the needless refusals each
+# round had met a case or two of: a name was read only when it was given one value, once, in one place (30 of the
+# first hundred everyday programs run from inside a transcript folder were refused for it, 19 of the second).
+# _python_writes 382. A program is read through every value a name may hold: its body 123 (what the program gives
+# each name, each field of its own object and each entry of its own table: its assignments, a class's constants and
+# fields, a data class's and a named tuple's, a parser's defaults, setattr; which functions' callers are all seen
+# (not wrapped, not given another value, map) and what each hands back; the rule for a call named as a writer),
+# gather 24 (what each function is handed, what each loop visits, each name where it is read), elements 25 and
+# columns 18 (what a loop visits: a list, its rows, zip, enumerate, a table's values, what a walk or a pattern
+# finds), spellings 18, values_of 14 and outer 5 (a target read once for each value; one of two values), key_of 11,
+# entry_of 10 and table 14 (a field, an entry by its key or by a key held in a name, a place in a list, the
+# environment with its default), spelled 20 (those readings, a template filled, a list joined, Path.home()),
+# given_to 3. Each function by its own names: scope 16 and nodes_of 7. Each name where it is read, in the order the
+# program runs: gives 16 (what an assignment gives, a pair unpacked, mkstemp's) and order 7. A call of the
+# program's own function read by what that call hands it: answers 15, hands 10 (taken out of settle, kept between
+# settlings) and asked 5 (a method is told from a function of the same name; a class reaches its __init__).
+# folders 7 (a descriptor opened beside another), descriptor 4 (a number, and what os.open or mkstemp hands back,
+# is no path), home 3 (the home a command or a program gives itself), elsewhere 3 and inward 2 (what a walk found
+# from where the program stands only goes further into a folder named before it), named 3 (that, and the
+# environment the program sets), settle 1, less 2 in leads. BY_NAME 4 and PATH_KEYS 2 (a call named as a writer in
+# any library is judged where its path lands). check_self_grant 3 (a command that gives HOME its own value).
+# _bare 1 (`trap --`), _own_text 1 (a program handed in double quotes), _named 1 (a message value given apart from
+# its option).
+# slot_check.py 22: morning_day 9 (a morning's outing is judged against the next night), judge 9 (an event is taken
+# time on each day it covers; a slot on top of another event says so), morning_after 3 and first_thing 1 (a
+# commitment begun before the return leaves no night). travel_check.py 2: judge (a block-titled entry with no clock
+# times is an event; the outing's own way there and back is no commitment of the next morning).
+# ritual_state.py 23: _items 12 (the entry an explanation stands in; a deeper heading or a bold line is a title),
+# choices 3 (a closing line closes when it says what was decided; a recommendation marked on the option), ITEM 2,
+# OPTION 2, FENCE 2, OPEN 1 and HEAD 1 (a quote inside a list entry, a heading or a row of a table as an option, a
+# sentence that begins with the word, a fence longer than the one it holds).
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # consolidate first).
-CORE_BUDGET = 9824
-PLUGIN_BUDGET = 30213
+CORE_BUDGET = 10218
+PLUGIN_BUDGET = 30654
 
 
 def _lines(files):
