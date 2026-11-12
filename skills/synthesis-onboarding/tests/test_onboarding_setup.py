@@ -315,6 +315,11 @@ def test_the_install_reference_and_the_readme_name_both_folders_setup_lets_codex
     assert "Only the board is granted" not in reference  # the earlier text
     for said in ("stage a file", "Only those two are granted", "`~/.synthesis/v5/state`"):
         assert said in reference, said
+    # and the reference that tells sessions why the board has its own folder no longer calls it the only one granted
+    coordination = " ".join((setup.REPO / "skills" / "synthesis-project-management" / "references" / "coordination.md")
+                            .read_text(encoding="utf-8").split())
+    assert "the one synthesis folder granted there" not in coordination
+    assert "`~/.synthesis/v5/outbox/`" in coordination and "`~/.synthesis/v5/state/`" in coordination
 
 
 # ---- runtime, prompts, interruption and the restart line -------------------------
