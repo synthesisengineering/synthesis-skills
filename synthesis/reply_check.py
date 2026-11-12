@@ -22,6 +22,15 @@ DEFAULT_PHRASES = [
     "document-and-defer", "execute or defer", "defer this", "deferred to", "out of scope for now",
     "any message from you", "ping me when",  # an external wait handed back to the principal (2026-11-02)
 ]
+# A wait announced with nothing armed (2026-11-11: "should be asking you soon", and the turn ended; a board message
+# reaches a session only at its next prompt). The list grows from real misses, as the one above does.
+WAIT_PHRASES = [
+    "i'll pick it up once", "i will pick it up once", "when it lands", "once it lands", "should come shortly",
+    "should arrive shortly", "waiting for", "waiting on", "when it finishes", "once it finishes", "when it returns",
+    "once it returns",
+]
+ON_PRINCIPAL = re.compile(r"(?i)\byou(?:r|'ll|'ve)?\b[^.\n]{0,80}\b(?:answers?|repl(?:y|ies)|go|word|code|approv\w+|decision|decide|"
+                          r"say|type|typed?|confirm|read|review|choose|pick|want)\b|\?\s*$")
 CODE = re.compile(r"```.*?```|`[^`\n]*`", re.S)
 QUOTED = re.compile(r"\"[^\"\n]{1,400}\"|“[^”\n]{1,400}”")
 ATTRIBUTED = re.compile(
@@ -49,6 +58,20 @@ def unlinked_files(reply: str) -> list[str]:
 def shortcut_hits(reply: str, extra: list[str]) -> list[str]:
     plain = QUOTED.sub(" ", CODE.sub(" ", reply)).lower()
     return sorted({p for p in DEFAULT_PHRASES + [e.lower() for e in extra] if re.search(rf"\b{re.escape(p)}\b", plain)})
+
+
+def unarmed_wait(reply: str, payload: dict, config: dict) -> list[str]:
+    """The phrases with which a reply announces a wait that nothing will end: no live `synthesis wait` of this
+    session, no autopilot run it owns, and not the principal's own next message (the reply asks them, or names
+    their answer, their go or their code)."""
+    plain = QUOTED.sub(" ", CODE.sub(" ", reply))
+    hits = sorted({p for p in WAIT_PHRASES + [str(e).lower() for e in config.get("wait_phrases", [])]
+                   if re.search(rf"\b{re.escape(p)}\b", plain.lower())})
+    if not hits or ON_PRINCIPAL.search(plain.strip()):
+        return []
+    from synthesis import autopilot, paths, wait
+    session = paths.session_id(payload)
+    return [] if session and (wait.live(session) or autopilot.brief(payload)) else hits
 
 
 def _probe(quote: str) -> bytes:
@@ -109,6 +132,14 @@ def check(payload: dict, config: dict) -> str | None:
     if hits:
         problems.append("lazy-shortcut phrasing: " + ", ".join(f'"{h}"' for h in hits)
                         + ". Do the work or name the real blocker instead of deferring it.")
+    waits = unarmed_wait(reply, payload, config)
+    if waits:
+        problems.append("this reply announces a wait (" + ", ".join(f'"{w}"' for w in waits) + ") and nothing is armed to end "
+                        "it: a board message or a finished job reaches this seat only at its next prompt. Arm the lightest "
+                        "watcher that fits (`synthesis wait message`, `file` or `run`, as a background task where the "
+                        "harness wakes on one; `synthesis wait note` for a timer the harness holds) and say what is armed, "
+                        "for how long and what wakes the seat; or ask the principal, with a recommendation, where a "
+                        "watcher's cost is in doubt; or say plainly that nothing wakes this seat until they prompt it.")
     files = unlinked_files(reply) if config.get("reply_file_links") else []
     if files:
         problems.append("files named without a clickable link: " + ", ".join(files[:6])

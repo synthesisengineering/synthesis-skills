@@ -332,6 +332,16 @@ def inbox(session_id: str, project: str = "", *, mark_read: bool = False, recent
     return found
 
 
+def waiting(hours: float = 24) -> list[str]:
+    """Projects with mail from the last day that no session has read and no live session is bound to (2026-11-11:
+    a session bound to no project polled for half an hour beside mail addressed to its project)."""
+    root, since = paths.board() / "messages", time.time() - hours * 3600
+    bound = {s.project for s in sessions() if s.project and not s.stale}
+    return [box.name[len("project__"):] for box in sorted(root.glob("project__*")) if root.is_dir()
+            and box.name[len("project__"):] not in bound and any(
+                f.stat().st_mtime >= since and not any((paths.board() / "read").glob(f"*/{f.name}")) for f in box.glob("*.json"))]
+
+
 def _read_marker(session_id: str, name: str) -> Path:
     return paths.board() / "read" / _session_file(session_id).stem / name
 

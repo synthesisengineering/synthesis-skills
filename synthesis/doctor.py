@@ -149,6 +149,16 @@ def check_self_test(home: Path, runs: int = 3, run=subprocess.run, background=ba
     return Check("ok", "hook self-test", f"denied `rm -rf ~` in {ms:.0f} ms")
 
 
+def check_wait_check() -> Check:
+    """The turn-end check must send back a reply that announces a wait with nothing armed."""
+    from synthesis import reply_check
+    reason = reply_check.check({"last_assistant_message": "The build is running; I'll pick it up once it lands.",
+                                "session_id": "doctor-self-test"}, {})
+    if reason and "nothing is armed" in reason:
+        return Check("ok", "wait check", "a reply that announces a wait with nothing armed is sent back")
+    return Check("fail", "wait check", "a reply that announced a wait with nothing armed was not sent back: waits can end a turn unseen")
+
+
 def check_shell_name(home: Path, harness: str, tool: str, run=subprocess.run) -> Check:
     """Does the guard treat this harness's own shell tool name as a shell?"""
     if run_hook(home, {**SELF_TEST, "tool_name": tool}, run)[0]:
@@ -1143,7 +1153,7 @@ def run_checks(home: Path | None = None, find=find_client, latest_ref: str = "",
     checks += check_sessions_repos(sessions.repos(), home / "sessions" / ".state")
     runtime = runtime_hash(home) if checks[0].status == "ok" else ""
     if (home / "bin" / "synthesis-hook").is_file():  # when it is missing, the runtime line already says so
-        checks += [check_hook_script(home), check_self_test(home)]  # before the CLIs start, so they don't skew timing
+        checks += [check_hook_script(home), check_self_test(home), check_wait_check()]  # before the CLIs start, so they don't skew timing
     clis, started = {}, {}
     for h in ("claude", "muse", "codex"):  # each listing starts as soon as its CLI is found; finding Codex
         path = find(h)                     # means a version probe, which overlaps the others' listings
