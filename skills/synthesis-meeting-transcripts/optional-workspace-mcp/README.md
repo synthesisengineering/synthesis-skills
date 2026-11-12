@@ -154,6 +154,14 @@ over it, since a supervisor keeps the unit it has loaded until it is unloaded: r
 `./uninstall-autostart.sh` and then `./install-autostart.sh` from that shell, which
 writes its home into the unit and loads it afresh.
 
+`start.sh` runs one release of the server, `workspace-mcp@2.1.0`. The send guard refuses,
+before a send is approved, what the server would refuse after, and to do that it copies
+that release's rules for a local file (which keys of an attachment it reads, which folders,
+which names it never reads). Started with no version, the server moved to the newest
+release at every restart while the guard's copy stayed. To run another release, set
+`WORKSPACE_MCP_VERSION` where the server is started, after checking those rules in it. The
+server's own dependencies are resolved afresh at each start, as before.
+
 ## Prerequisites
 
 - `python3` (3.9 or later); no third-party packages.

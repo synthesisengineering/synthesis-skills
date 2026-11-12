@@ -7,6 +7,9 @@
 #   GOOGLE_CLIENT_SECRET_PATH — path to client_secret.json (required)
 #   GOOGLE_MCP_CREDENTIALS_DIR — where per-user tokens are stored (default ~/.google_workspace_mcp/credentials)
 #   WORKSPACE_MCP_TOOL_TIER  — core|extended|complete (default complete)
+#   WORKSPACE_MCP_VERSION    — the workspace-mcp release to run (default below). The
+#                              synthesis send guard copies this release's rules for a
+#                              local file, so name another only after checking them.
 #   ALLOWED_FILE_DIRS        — folders the server may read local files from, separated
 #                              by ":". Whatever is set is kept, and the synthesis outbox
 #                              is added (see below).
@@ -90,6 +93,10 @@ if [ -f "$PID_FILE" ]; then
 fi
 
 TOOL_TIER="${WORKSPACE_MCP_TOOL_TIER:-complete}"
+# One release, named here and in the send guard's note (synthesis/guards.py), which refuses
+# before a send is approved what this release would refuse after. Started with no version,
+# the server moved to the newest release at every restart while the guard's copy stayed.
+SERVER="workspace-mcp@${WORKSPACE_MCP_VERSION:-2.1.0}"
 
 # Resolve uvx explicitly. With a sparse PATH, `nohup uvx` backgrounds a child
 # that dies immediately when uvx is not found, and the failure surfaces as
@@ -109,13 +116,13 @@ if [ "${WORKSPACE_MCP_FOREGROUND:-0}" = "1" ]; then
   # process group, and kills the workspace-mcp child. Exec replaces this
   # shell with uvx so the supervisor tracks the actual server PID.
   echo $$ > "$PID_FILE"
-  exec "$UVX_BIN" workspace-mcp --single-user --transport streamable-http --tool-tier "$TOOL_TIER" \
+  exec "$UVX_BIN" "$SERVER" --single-user --transport streamable-http --tool-tier "$TOOL_TIER" \
     >>"$LOG_FILE" 2>&1
 fi
 
 # Interactive / manual launch: background via nohup so the user can close the
 # terminal without killing the server.
-nohup "$UVX_BIN" workspace-mcp --single-user --transport streamable-http --tool-tier "$TOOL_TIER" \
+nohup "$UVX_BIN" "$SERVER" --single-user --transport streamable-http --tool-tier "$TOOL_TIER" \
   >"$LOG_FILE" 2>&1 &
 
 echo $! > "$PID_FILE"

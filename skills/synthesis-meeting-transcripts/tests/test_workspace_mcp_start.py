@@ -63,7 +63,7 @@ def test_a_server_started_by_hand_gets_the_same(tmp_path: Path) -> None:
     outbox = tmp_path / "home" / ".synthesis" / "v5" / "outbox"
     _, served, arguments = start(tmp_path, foreground=False)
     assert outbox.is_dir() and served["ALLOWED_FILE_DIRS"] == str(outbox)
-    assert arguments.startswith("workspace-mcp --single-user")
+    assert arguments.startswith("workspace-mcp@2.1.0 --single-user")
 
 
 def test_the_outbox_follows_the_synthesis_home(tmp_path: Path) -> None:
@@ -91,7 +91,7 @@ def test_a_server_still_starts_when_the_outbox_cannot_be_made(tmp_path: Path) ->
     blocked.write_text("a file where the synthesis home would be\n", encoding="utf-8")
     result, served, arguments = start(tmp_path, SYNTHESIS_HOME=str(blocked))
     assert result.returncode == 0, result.stdout + result.stderr
-    assert arguments.startswith("workspace-mcp --single-user")
+    assert arguments.startswith("workspace-mcp@2.1.0 --single-user")
     assert served["ALLOWED_FILE_DIRS"] == str(blocked / "outbox")
     assert str(blocked / "outbox") in result.stderr and "could not" in result.stderr
 

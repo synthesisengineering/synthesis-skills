@@ -286,4 +286,4 @@ def test_e26_sparse_path_finds_uvx_and_a_recycled_pid_is_not_a_running_server(tm
 
     assert result.returncode == 0, result.stdout + result.stderr
     assert "already running" not in result.stdout
-    assert ran.read_text().startswith("workspace-mcp --single-user --transport streamable-http")
+    assert ran.read_text().startswith("workspace-mcp@2.1.0 --single-user --transport streamable-http")
