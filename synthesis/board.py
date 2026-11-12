@@ -60,6 +60,12 @@ class Session:
         """Quiet past the threshold. A session with no recorded time keeps blocking."""
         return bool(self.seen) and time.time() - self.seen > STALE_SECONDS
 
+    @property
+    def reachable(self) -> bool:
+        """Not stale, or holding a live wait: mail reaches a waiting seat for its whole bound (2026-11-12: refused at nine hours)."""
+        from synthesis import wait  # imported here: wait imports this module
+        return not self.stale or bool(wait.live(self.session))
+
 
 class ClaimConflict(Exception):
     pass
@@ -234,7 +240,7 @@ def release(session_id: str, claims: list[str] | None = None) -> Session | None:
 def _describe(found: list[Session]) -> str:
     now = time.time()
     return "".join(f"\n  {s.session} (short {s.short}, project {s.project or '-'}, {s.harness or 'harness ?'}, "
-                   f"last seen {int((now - s.seen) / 60)} min ago{', stale' if s.stale else ''})"
+                   f"last seen {int((now - s.seen) / 60)} min ago{'' if s.reachable else ', stale'})"
                    for s in found[:20]) + (f"\n  ... and {len(found) - 20} more" if len(found) > 20 else "")
 
 
@@ -247,7 +253,7 @@ def resolve(address: str, *, exclude: str = "") -> Session:
         matches = [s for s in pool if s.project and s.project == address[len("project:"):]]
     else:
         matches = [s for s in pool if address and address in (s.session, s.short)]
-    alive = [s for s in matches if not s.stale]
+    alive = [s for s in matches if s.reachable]
     if len(alive) == 1:
         return alive[0]
     if alive:
@@ -255,7 +261,7 @@ def resolve(address: str, *, exclude: str = "") -> Session:
                            f"Address one of them by session id:{_describe(alive)}")
     if matches:
         raise AddressError(f"{address!r} names only stale sessions; nothing was sent:{_describe(matches)}")
-    others = [s for s in pool if not s.stale]
+    others = [s for s in pool if s.reachable]
     raise AddressError(f"{address!r} names no live session; nothing was sent. Addresses are a session id, "
                        "its short name or project:<id> (display names and titles are not addresses). "
                        + (f"Live sessions:{_describe(others)}" if others else "No other session is live."))
@@ -298,7 +304,7 @@ def message(to: str, sender: str, text: str, *, durable: bool = False) -> Path:
             raise AddressError(f"no project named {name!r} is on the board or in the knowledge roots; nothing was sent")
         return _post(to, {"to": to, "from": sender, "text": text, "durable": True})
     name = to.strip()[len("project:"):] if to.strip().startswith("project:") else ""
-    if name and not any(s.project == name and not s.stale for s in sessions() if s.session != sender):
+    if name and not any(s.project == name and s.reachable for s in sessions() if s.session != sender):
         return message(to.strip(), sender, text, durable=True)  # nobody is on it now: its next session reads it (2026-10-20)
     target = resolve(to, exclude=sender)
     digest = hashlib.sha256(text.strip().encode("utf-8")).hexdigest()[:24]
