@@ -3075,3 +3075,29 @@ def test_a_class_whose_name_is_also_a_variable_is_still_that_class(above, tmp_pa
     program = "C = '/tmp/pad'\nclass C:\n    out = '/tmp/pad/a.txt'\nC.out = '{work}/s.jsonl'\nopen(C().out, 'w').write('x')"
     command = "python3 - <<'EOF'\n" + program.format(**above) + "\nEOF"
     assert REFUSED in (guards.check("Bash", {"command": command}, {}, cwd=str(tmp_path)) or "")
+
+
+# What the 30-day replay showed in the member model before a round saw it: on two recorded commands the reader
+# raised (a default beside a gift made through a name it cannot follow), and on two it did not come back (a
+# table rebuilt from itself, and names that each may be either of two before them, followed once for every way
+# of reaching them). A reading is now kept once it is whole, and one that runs away is cut short as unreadable.
+CHAIN = "x0 = {'out': '%s'}\nx1 = x0\n" + "".join(f"x{i} = x{i - 1} if len(sys.argv) > {i} else x{i - 2}\n" for i in range(2, 31)) + "open(x30['out'], 'w').write('x')"
+REPLAYED = [
+    ("def fill(d):\n    d['x'] = 1\ncfg = {'out': P + '/b.txt'}\nopen(cfg.get('out', P + '/a.txt'), 'w').write('x')", False),
+    ("def fill(d):\n    d['out'] = T\ncfg = {'out': P + '/b.txt'}\nopen(cfg.get('out', P + '/a.txt'), 'w').write('x')", True),
+    ("cfg = {'out': P + '/a.txt'}\nfor extra in ({'a': 1}, {'b': 2}):\n    cfg = {**cfg, **extra}\nopen(cfg['out'], 'w').write('x')", False),
+    ("cfg = {'out': P + '/a.txt'}\nfor extra in ({'a': 1}, {'out': T}):\n    cfg = {**cfg, **extra}\nopen(cfg['out'], 'w').write('x')", True),
+    (CHAIN % "/tmp/pad/a.txt", False),
+    (CHAIN % "{work}/s.jsonl", True),
+]
+
+
+@pytest.mark.parametrize("program, held", REPLAYED)
+@pytest.mark.parametrize("inside", [False, True])
+def test_a_reading_that_meets_itself_or_runs_long_still_ends(above, program, held, inside, tmp_path):
+    here = tmp_path / "elsewhere"
+    here.mkdir()
+    command = "python3 - <<'EOF'\n" + MEMBERS.format(**above) + program.replace("{work}", str(above["work"])) + "\nEOF"
+    began = time.monotonic()
+    reason = guards.check("Bash", {"command": command}, {}, cwd=str(above["work"] if inside else here))
+    assert (REFUSED in (reason or "")) == held and time.monotonic() - began < 5, program
