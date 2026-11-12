@@ -186,3 +186,67 @@ def test_a_config_that_cannot_be_read_or_a_workspace_not_in_it_is_never_a_pass(t
         assert code == 2 and lines == [] and err.startswith("NOT CHECKED: ") and "config.json: " in err, (config, err)
     code, lines, err = run(tmp_path, "--workspace", "lab", desk=[entry()])
     assert code == 2 and lines == [] and err.startswith("NOT CHECKED: ") and err.rstrip().endswith("config.json: workspace lab is not in it"), err
+
+
+# ---- the rituals run it ---------------------------------------------------------------------------------------
+
+SKILL = SCRIPT.parents[1]
+COMMAND = "python3 <rituals>/scripts/relied_on.py --workspace <W>"
+LEADS = "**A `DOWN` line is the first thing in the plan and in the reply to the principal, before anything else,**"
+INCIDENT = ("It is an incident, so the principal is told first, with who is affected and what the fix is, and the people "
+            "affected are told only on the principal's approval.")
+
+
+def reference(name: str) -> str:
+    return (SKILL / "references" / name).read_text(encoding="utf-8")
+
+
+def test_day_start_each_mid_day_sync_and_day_end_run_it_and_say_what_a_down_line_asks_for():
+    """A mechanism nobody is told to run is not a control. Each ritual's own checklist carries the command, and the
+    step that carries it says where a DOWN line goes and who is told."""
+    for name in ("day-start.md", "mid-day-and-modes.md", "day-end.md", "procedure.md"):
+        step = next((line for line in reference(name).splitlines() if COMMAND in line), "")
+        assert step, f"{name} does not run the check"
+        assert LEADS in step and INCIDENT in step, f"{name}: the step does not say what a DOWN line asks for"
+
+
+def test_it_is_the_first_check_each_ritual_runs():
+    """What is down is the first thing reported, so the check runs before the rest: after the date at day-start,
+    before any surface at a sync, before the mode question at day-end."""
+    step_1 = reference("day-start.md").split("\n## 1. ")[1].split("\n## ")[0]
+    assert COMMAND in [line for line in step_1.splitlines() if line.startswith("- [ ]")][1]
+    sync = reference("mid-day-and-modes.md").split("\n## Mid-Day Sync Protocol\n")[1].split("\n## ")[0]
+    assert COMMAND in sync and sync.index(COMMAND) < sync.index("1. **Slack**")
+    day_end = reference("day-end.md")
+    assert COMMAND in day_end and day_end.index(COMMAND) < day_end.index("ask the user the one-letter mode question")
+
+
+def test_a_ritual_in_observer_or_concurrent_seats_mode_keeps_the_check():
+    modes = reference("mid-day-and-modes.md")
+    for heading in ("### What Observer Mode Keeps (Non-Negotiable)", "### What Concurrent-Seats Mode Keeps (Non-Negotiable)"):
+        assert "relied_on.py --workspace <W>" in modes.split(heading)[1].split("\n#")[0], heading
+
+
+def test_the_plan_opens_with_what_is_down():
+    plan = reference("plan-format.md")
+    assert "## Down: needs your attention" in plan
+    assert plan.index("## Down: needs your attention") < plan.index("## Critical deadlines: needs your attention")
+    assert "`## Down: needs your attention`" in reference("day-start.md").split("\n## 6. ")[1].split("\n## ")[0]
+
+
+def test_the_scripts_page_shows_the_command_and_the_key_and_the_example_config_declares_one():
+    scripts = reference("scripts.md")
+    assert "| `python3 <rituals>/scripts/relied_on.py --workspace <W>\\|--all [--timeout SECONDS] [--json]` |" in scripts
+    assert '`"relied_on": [{"what": ' in scripts
+    example = json.loads((SKILL / "assets" / "ritual-config.example.json").read_text(encoding="utf-8"))
+    found = [declared for conf in example["workspaces"].values() for declared in conf.get("relied_on", [])]
+    assert found, "the example config declares nothing another person relies on"
+    for declared in found:  # the shape the script runs
+        assert declared["what"].strip() and declared["by"].strip()
+        assert declared["check"] and all(isinstance(word, str) for word in declared["check"])
+
+
+def test_the_skill_binds_it():
+    rules = (SKILL / "SKILL.md").read_text(encoding="utf-8").split("## Binding rules")[1].split("## Contents")[0]
+    rule = next((line for line in rules.splitlines() if "`relied_on.py`" in line), "")
+    assert rule and "`DOWN`" in rule and "approval" in rule
