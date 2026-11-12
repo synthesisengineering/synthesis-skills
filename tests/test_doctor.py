@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pytest
 
-from synthesis import doctor, install
+from synthesis import doctor, install, paths
 
 ROOT = Path(__file__).resolve().parents[1]
 REPO_HOOKS = json.loads((ROOT / "hooks" / "hooks.json").read_text())
@@ -584,6 +584,8 @@ def machine(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.setenv("SYNTHESIS_HOME", str(synthesis_home))
     monkeypatch.delenv("CODEX_HOME", raising=False)
+    for key in ("XDG_CONFIG_HOME", "XDG_STATE_HOME"):  # where Linux keeps a connector's unit and PID file: never this machine's
+        monkeypatch.delenv(key, raising=False)
     plugin = plugin_copy(tmp_path / "source")  # one snapshot, so every harness holds identical bytes
     install.install(plugin)
     claude_dir = plugin_copy(home / ".claude" / "plugins" / "cache" / "synthesis-engineering" / "synthesis-skills" / "5.0.0", plugin)
@@ -1030,3 +1032,200 @@ def test_each_sessions_repo_is_checked_for_clone_recent_sync_and_size(tmp_path):
     assert found["sessions repo a"].status == "ok"
     assert found["sessions repo b"].status == "warn" and "not cloned" in found["sessions repo b"].detail
     assert found["sessions repo c"].status == "warn" and "last synced 2026-10-20" in found["sessions repo c"].detail
+
+
+# ---- the outbox, and the mail connector that must read it ---------------------
+# The send guard passes a file staged in the outbox. That is right only while the connector that will read it was
+# started with the outbox among its ALLOWED_FILE_DIRS, which its start script sets: one started before that
+# refuses the file after the principal approved the send. The process read is a fake here, apart from one test
+# that reads a child this test starts.
+
+SCRIPTS = ROOT / "skills" / "synthesis-meeting-transcripts" / "optional-workspace-mcp"
+PORT = {"WORKSPACE_MCP_PORT": "8765"}  # the start script always sets it: the sign that its process was read
+
+
+@pytest.fixture
+def connector(tmp_path):
+    """(the outbox, the connector's unit, its PID file), none of them made yet."""
+    return tmp_path / "v5" / "outbox", tmp_path / "unit" / "workspace-mcp.plist", tmp_path / "logs" / "server.pid"
+
+
+def _unread(pid):
+    raise AssertionError(f"no process should be read here, and {pid} was")
+
+
+def _installed(outbox: Path, unit: Path, pid_file: Path, pid: str = "4242") -> None:
+    for path, text in ((unit, "<plist/>\n"), (pid_file, pid + "\n")):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8")
+    outbox.mkdir(parents=True, exist_ok=True)
+
+
+def test_the_outbox_must_be_a_folder_an_agent_can_write(connector):
+    outbox = connector[0]
+    unmade = doctor.check_outbox(*connector, _unread)
+    assert unmade.status == "info" and "not made yet" in unmade.detail  # no connector here: nothing is owed
+    outbox.parent.mkdir(parents=True)
+    outbox.write_text("a file where the folder belongs\n", encoding="utf-8")
+    blocked = doctor.check_outbox(*connector, _unread)
+    assert blocked.status == "fail" and "not a folder" in blocked.detail
+    outbox.unlink()
+    outbox.mkdir()
+    made = doctor.check_outbox(*connector, _unread)
+    assert made.status == "ok" and doctor._short(outbox) in made.detail
+    outbox.chmod(0o500)
+    try:
+        locked = doctor.check_outbox(*connector, _unread)
+    finally:
+        outbox.chmod(0o700)
+    if os.geteuid():  # root may write anywhere
+        assert locked.status == "fail" and "cannot be written" in locked.detail
+
+
+def test_a_connector_kept_running_must_have_been_started_with_the_outbox(connector, tmp_path):
+    outbox, unit, pid_file = connector
+    unit.parent.mkdir(parents=True)
+    unit.write_text("<plist/>\n", encoding="utf-8")
+    missing = doctor.check_outbox(*connector, _unread)  # installed, and the folder its start script makes is not there
+    assert missing.status == "fail" and "missing" in missing.detail and "restart" in missing.detail
+    _installed(*connector)
+    read = []
+
+    def started(**env):
+        return lambda pid: read.append(pid) or {**PORT, **env}
+
+    with_it = doctor.check_outbox(*connector, started(ALLOWED_FILE_DIRS=os.pathsep.join(["/srv/reports", f" {outbox} "])))
+    assert with_it.status == "ok" and "started to read it" in with_it.detail and read == ["4242"]
+    assert doctor.check_outbox(*connector, started(ALLOWED_FILE_DIRS=str(tmp_path))).status == "ok"  # a folder that holds it
+    (tmp_path / "linked").symlink_to(outbox.parent, target_is_directory=True)
+    assert doctor.check_outbox(*connector, started(ALLOWED_FILE_DIRS=str(tmp_path / "linked" / "outbox"))).status == "ok"
+    unset = doctor.check_outbox(*connector, started())
+    assert unset.status == "fail" and "ALLOWED_FILE_DIRS (not set)" in unset.detail and "restart" in unset.detail
+    other = os.pathsep.join(["/srv/reports", f"{outbox}-old", str(outbox).upper()])
+    elsewhere = doctor.check_outbox(*connector, started(ALLOWED_FILE_DIRS=other))
+    assert elsewhere.status == "fail" and other in elsewhere.detail
+
+
+def test_a_connector_that_cannot_be_read_is_a_warning_and_never_ok(connector):
+    outbox, unit, pid_file = connector
+    _installed(*connector)
+    pid_file.unlink()
+    for written in (None, "", "not a number\n"):  # not running, or started some other way: nothing to read
+        if written is not None:
+            pid_file.write_text(written, encoding="utf-8")
+        check = doctor.check_outbox(*connector, _unread)
+        assert check.status == "warn" and "cannot tell" in check.detail, written
+    pid_file.write_text("4242\n", encoding="utf-8")
+    for shown in ({}, {"PATH": "/usr/bin:/bin", "ALLOWED_FILE_DIRS": str(outbox)}):  # nothing shown; not the start script's process
+        check = doctor.check_outbox(*connector, lambda pid: shown)
+        assert check.status == "warn" and "cannot tell" in check.detail, shown
+
+
+def test_a_connector_started_by_hand_is_judged_when_it_can_be_read_and_expected_only_when_installed(connector):
+    outbox, unit, pid_file = connector
+    _installed(*connector)
+    unit.unlink()
+    without = doctor.check_outbox(*connector, lambda pid: dict(PORT))
+    assert without.status == "fail" and "ALLOWED_FILE_DIRS (not set)" in without.detail
+    assert doctor.check_outbox(*connector, lambda pid: {**PORT, "ALLOWED_FILE_DIRS": str(outbox)}).status == "ok"
+    stopped = doctor.check_outbox(*connector, lambda pid: {})  # nothing is expected to run where none is installed
+    assert stopped.status == "ok" and "no mail connector auto-start" in stopped.detail
+
+
+def test_the_environment_macos_prints_after_a_command_is_read_and_a_hidden_one_is_nothing(tmp_path):
+    shown = ("/opt/tools/uvx workspace-mcp --single-user --transport streamable-http --tool-tier complete "
+             "PATH=/usr/bin:/bin WORKSPACE_MCP_PORT=8765 ALLOWED_FILE_DIRS=/srv/with space/reports:/srv/synthesis/outbox "
+             "OAUTHLIB_INSECURE_TRANSPORT=1\n")
+    asked = []
+
+    def ps(output):
+        return lambda argv, **kwargs: asked.append(argv) or subprocess.CompletedProcess(argv, 0, output, "")
+
+    no_proc = tmp_path / "no-proc"  # as on macOS, which has no /proc
+    assert doctor.started_with("4242", ps(shown), no_proc) == {
+        "PATH": "/usr/bin:/bin", "WORKSPACE_MCP_PORT": "8765", "OAUTHLIB_INSECURE_TRANSPORT": "1",
+        "ALLOWED_FILE_DIRS": "/srv/with space/reports:/srv/synthesis/outbox"}
+    assert asked[0][0] == "ps" and "-p" in asked[0] and asked[0][-1] == "4242"
+    assert doctor.started_with("4242", ps("/bin/bash /opt/tools/start.sh\n"), no_proc) == {}  # one of the system's own programs
+    assert doctor.started_with("4242", ps(""), no_proc) == {}  # no such process
+
+    def refused(argv, **kwargs):
+        raise PermissionError("ps: Operation not permitted")
+
+    assert doctor.started_with("4242", refused, no_proc) == {}
+
+
+def test_the_environment_linux_keeps_under_proc_is_read_and_an_unreadable_one_is_nothing(tmp_path):
+    (tmp_path / "4242").mkdir()
+    (tmp_path / "4242" / "environ").write_bytes(b"PATH=/usr/bin:/bin\0WORKSPACE_MCP_PORT=8765\0"
+                                                 b"ALLOWED_FILE_DIRS=/srv/with space/reports:/srv/synthesis/outbox\0")
+    assert doctor.started_with("4242", _unread, tmp_path) == {
+        "PATH": "/usr/bin:/bin", "WORKSPACE_MCP_PORT": "8765",
+        "ALLOWED_FILE_DIRS": "/srv/with space/reports:/srv/synthesis/outbox"}
+    (tmp_path / "4243").mkdir()  # a process whose environment this user may not read
+    assert doctor.started_with("4243", _unread, tmp_path) == {}
+
+
+def test_what_a_running_process_was_started_with_is_read_from_the_os(connector):
+    """The one real read: a child of this test, started as the start script starts the server."""
+    outbox = connector[0]
+    _installed(*connector)
+    env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"), **PORT, "ALLOWED_FILE_DIRS": f"/srv/with space/reports:{outbox}"}
+    child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"], env=env)
+    try:
+        seen = doctor.started_with(str(child.pid))
+        connector[2].write_text(f"{child.pid}\n", encoding="utf-8")
+        check = doctor.check_outbox(*connector)
+    finally:
+        child.kill()
+        child.wait()
+    assert seen.get("WORKSPACE_MCP_PORT") == "8765" and seen.get("ALLOWED_FILE_DIRS") == env["ALLOWED_FILE_DIRS"]
+    assert check.status == "ok", check.detail
+    stopped = doctor.check_outbox(*connector)
+    assert stopped.status == "warn" and "cannot tell" in stopped.detail
+
+
+@pytest.mark.parametrize("platform,unit,pid_file", [
+    ("darwin", "Library/LaunchAgents/com.synthesis.workspace-mcp.plist", "Library/Logs/workspace-mcp/server.pid"),
+    ("linux", ".config/systemd/user/workspace-mcp.service", ".local/state/workspace-mcp/server.pid"),
+])
+def test_the_doctor_looks_where_the_connectors_scripts_write(platform, unit, pid_file, tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    for key in ("XDG_CONFIG_HOME", "XDG_STATE_HOME"):
+        monkeypatch.delenv(key, raising=False)
+    assert doctor.connector_files(platform) == (tmp_path / unit, tmp_path / pid_file)
+    if platform == "linux":
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
+        monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+        assert doctor.connector_files(platform) == (tmp_path / "config" / "systemd" / "user" / "workspace-mcp.service",
+                                                    tmp_path / "state" / "workspace-mcp" / "server.pid")
+    # the scripts' own words for those places, so the two cannot drift apart
+    installer, starter = ((SCRIPTS / name).read_text(encoding="utf-8") for name in ("install-autostart.sh", "start.sh"))
+    assert 'label="com.synthesis.workspace-mcp"' in installer and 'plist="$HOME/Library/LaunchAgents/$label.plist"' in installer
+    assert 'unit_dir="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"' in installer
+    assert 'unit="$unit_dir/workspace-mcp.service"' in installer
+    assert 'Darwin) STATE_DIR="$HOME/Library/Logs/workspace-mcp"' in starter and 'PID_FILE="$STATE_DIR/server.pid"' in starter
+    assert 'Linux)  STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/workspace-mcp"' in starter
+    assert "export WORKSPACE_MCP_PORT=" in starter and "export ALLOWED_FILE_DIRS" in starter  # what the doctor reads of it
+
+
+def test_the_doctor_reports_the_outbox_on_this_machine(machine):
+    """A machine with no connector owes nothing and stays healthy; one with a connector installed has it read."""
+    def outbox_line():
+        found = [c for c in doctor.run_checks(find=lambda name: None) if c.name == "outbox"]
+        assert len(found) == 1, found
+        return found[0]
+
+    before = outbox_line()
+    assert before.status == "info" and "~/.synthesis/v5/outbox" in before.detail
+    unit, pid_file = doctor.connector_files()
+    assert str(machine[0]) in str(unit) and str(machine[0]) in str(pid_file)  # the temporary home, never this machine's
+    env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"), **PORT, "ALLOWED_FILE_DIRS": str(paths.outbox())}
+    child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"], env=env)
+    try:
+        _installed(paths.outbox(), unit, pid_file, str(child.pid))
+        after = outbox_line()
+    finally:
+        child.kill()
+        child.wait()
+    assert after.status == "ok" and "started to read it" in after.detail
