@@ -185,7 +185,23 @@ STARTS_A_TUNNEL = [
     "devtunnel host -p 8080 --allow-anonymous",
     # the ssh destination is a host: the service's name in any case, a subdomain of it, given as a URL, before its options
     "ssh -R 80:localhost:8080 Serveo.NET", "ssh -p 443 -R0:localhost:8000 qr@a.pinggy.io", "ssh serveo.net -R 80:localhost:8080",
-    "ssh -R 80:localhost:3000 ssh://nokey@localhost.run:22"]
+    "ssh -R 80:localhost:3000 ssh://nokey@localhost.run:22",
+    # the program named through a variable the command sets
+    "tunnel_program=cloudflared; $tunnel_program tunnel --url http://localhost:7777", 'export T=ngrok && "$T" http 8080',
+    'IMAGE=cloudflare/cloudflared; docker run --rm "$IMAGE" tunnel --url http://host.docker.internal:7777',
+    # a container run of a tunnel image, with a tag, from another registry, or with the program after the image
+    "docker run --rm cloudflare/cloudflared tunnel --url http://host.docker.internal:7777",
+    "docker run -it --net=host -e TZ=UTC -p 4040:4040 ngrok/ngrok:latest http 8080",
+    "podman run --rm docker.io/cloudflare/cloudflared:2024.6.1 tunnel --no-autoupdate --url http://host.containers.internal:3000",
+    "docker run --rm --net=host pinggy/pinggy -p 443 -R0:localhost:8000 a.pinggy.io", "docker run --rm tools/ngrok ngrok http web:80",
+    # ngrok's subcommand after its own options and their values
+    "ngrok --log=stdout http 7777", "ngrok --config /tmp/ngrok.yml start web", "ngrok --log stdout --region eu tcp 22",
+    # a package runner with options and a versioned package
+    "npx --yes localtunnel@2.0.2 --port 7777", "pnpm dlx localtunnel@2.0.2 --port 7777", "npm exec --yes localtunnel@2 -- --port 3000",
+    "yarn dlx localtunnel@2.0.2 --port 7777", "bunx --bun localtunnel@latest -p 3000", "bun x localtunnel@2.0.2 --port 3000",
+    "npx --yes cloudflared@latest tunnel --url http://localhost:3000", "pnpm dlx ngrok@5 http 3000",
+    # -R joined to other flags, and with its value joined on
+    "ssh -NR 80:localhost:7777 nokey@localhost.run", "ssh -fNTR 80:localhost:3000 serveo.net", "ssh -NR80:localhost:3000 serveo.net"]
 NO_TUNNEL = [
     "cloudflared tunnel run production", "cloudflared tunnel list", "cloudflared --version", "ngrok config check", "ngrok version",
     "echo cloudflared tunnel --url http://localhost:1", "grep -rn 'ngrok http' docs/", "brew install cloudflared",
@@ -195,7 +211,22 @@ NO_TUNNEL = [
     "ssh -R 9000:localhost:9000 notserveo.net", "ssh -R 9000:localhost:9000 team-pinggy.io",
     "ssh -R 9000:localhost:9000 deploy@xlocalhost.run", "ssh -R 80:localhost:8080 -J jump@serveo.net build.example.com",
     "ssh -i ~/.ssh/serveo.net -R 9000:localhost:9000 build.example.com",
-    "ssh -R 9000:localhost:9000 build.example.com curl https://serveo.net"]
+    "ssh -R 9000:localhost:9000 build.example.com curl https://serveo.net",
+    # a variable that names the program and starts nothing, or names another program
+    'tunnel_program=cloudflared; echo "$tunnel_program"', "tunnel_program=cloudflared; $tunnel_program tunnel list",
+    "T=cloudflared; brew install $T", "T=ls; $T tunnel --url http://localhost:1",
+    # a container that runs a named tunnel, a lookup, another image, or only carries a service's name
+    "docker run --rm cloudflare/cloudflared tunnel --no-autoupdate run production", "docker run --rm cloudflare/cloudflared --version",
+    "docker pull cloudflare/cloudflared:latest", "docker run -d --name cloudflared nginx", "docker run --rm ngrok/ngrok config check",
+    "docker run -v ngrok:/data alpine ls /data", "docker logs ngrok", "docker run -p 3000:3000 example/app --port 3000",
+    # ngrok's other subcommands after its options
+    "ngrok --log=stdout config check", "ngrok help http", "ngrok --config /tmp/ngrok.yml version", "ngrok --version",
+    # another package with a version and a port, and a tunnel package that is installed or looked up
+    "npx --yes cowsay@1.6.0 --port 7777", "npm install localtunnel@2.0.2", "npm view localtunnel@2.0.2 version",
+    "yarn add --dev localtunnel", "npx --yes localtunnel@2.0.2 --help", "pnpm dlx serve@14 --port 3000",
+    # a cluster with no -R, the letter in another option's value, a forward the other way, -R in the remote command
+    "ssh -NR 9000:localhost:9000 build.example.com", "ssh -NT -L 8080:localhost:80 nokey@localhost.run",
+    "ssh -oRequestTTY=no -N nokey@localhost.run", "ssh nokey@localhost.run ls -R /tmp"]
 
 
 @pytest.mark.parametrize("command", STARTS_A_TUNNEL)
