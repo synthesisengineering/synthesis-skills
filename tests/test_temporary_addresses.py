@@ -93,6 +93,23 @@ def test_a_host_is_read_whole_so_a_public_name_that_starts_like_a_local_one_goes
     assert "Sending needs the principal's approval" in said(text)
 
 
+@pytest.mark.parametrize("text", [
+    "Open the firewall to 0.0.0.0/0 for port 443.", "Block 10.0.0.0/8 and 127.0.0.0/8 at the edge.", "the route 127.0.0.1/32 stays",
+    "Allow 192.168.0.0/16, 172.16.0.0/12 and 169.254.0.0/16.", "drop [fd00::]/8 and [::1]/128 too", "(127.0.0.0/8)",
+    "0.0.0.0/0, then 10.0.0.0/8.", "Route [::]/0 out"])
+def test_an_ip_address_with_a_prefix_length_and_no_scheme_names_a_range_and_goes_on(text):
+    assert "Sending needs the principal's approval" in said(text)
+
+
+@pytest.mark.parametrize("text, address", [
+    ("http://10.0.0.5/8", "10.0.0.5"), ("Open http://127.0.0.1/24 now", "127.0.0.1"), ("//127.0.0.1/8", "127.0.0.1"),
+    ("127.0.0.1/33", "127.0.0.1"), ("[::1]/129", "[::1]"), ("127.0.0.1/8080", "127.0.0.1"), ("127.0.0.1/admin", "127.0.0.1"),
+    ("10.0.0.5:8080/8", "10.0.0.5:8080"), ("127.0.0.1/8/status", "127.0.0.1"), ("http://[fd12::42]/64", "[fd12::42]")])
+def test_after_a_scheme_or_past_the_prefix_lengths_what_follows_the_host_is_a_path_and_the_address_counts(text, address):
+    reason = said(text)
+    assert held_for_the_address(reason) and f"({address})" in reason
+
+
 @pytest.mark.parametrize("text, address", [
     ("The test UI is localhost:9.", "localhost:9"), ("Use laptop.local:9.", "laptop.local:9"), ("10.0.0.5:7 answers", "10.0.0.5:7"),
     ("192.168.1.20:9", "192.168.1.20:9"), ("localhost:65535", "localhost:65535"), ("It is at http://localhost.", "localhost"),
