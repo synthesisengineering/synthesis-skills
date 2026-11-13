@@ -4,7 +4,34 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
-## [5.8.1] - 2026-11-12
+## [5.8.2] - 2026-11-13
+
+- **A package of the method skills for a plugin directory that takes no hooks** (`synthesis-skills-manager` 3.5.0).
+  OpenAI's public plugin directory lists no plugin that registers lifecycle hooks, and this plugin registers four.
+  `build_directory_package.py` builds a second package for that directory from the same commit: the 32 skills that
+  need nothing from the runtime (writing, review, fact-checking, planning, thinking), each file byte for byte, one
+  manifest that registers no hook, and one mark as its logo and its composer icon. A ZIP that is written is read
+  from the last commit itself, each file as git holds it. Its name and description say what it is not: no guard
+  checks a send, a deploy or a commit, and there is no board and no ritual. `--check` reads the built ZIP and
+  fails on a hook; a file that is no listed skill's; a listed name that is no skill here; a listed skill that
+  depends on one outside the list; a file that differs from its source; a version that is not the repository's; a
+  text that claims a guard, a hook or an approval code at work, sends its reader to the coordination board or
+  needs the runtime; a manifest without its two images; an image no field names; and an image that runs a script
+  or loads from outside itself. The claim rule reads a file a paragraph at a time, so a claim that wrapping
+  splits is caught, and it knows the runtime's commands with or without backticks; the ordinary senses of the
+  same words pass (a writer's hook, a guard clause, a board of directors), and the tests pin both. A skill that
+  gains such a claim leaves the list in the pull request that adds it; its text is not edited to pass.
+  `--changed-since TAG` names what changed in the package since a release, so a new submission is made when one
+  is due. Building submits nothing: the upload is the owner's step, and the reference lists what a submission
+  asks of them.
+- **Nothing the core does warns under Python 3.13 or 3.14.** Three calls passed a split's limit to `re` by
+  position, which Python 3.13 deprecates and a later Python will refuse; they name it now, and a lint test reads
+  the repository's own Python files for the same. The doctor closes the three pipes it opened to a harness CLI when it stops it,
+  where it had left them to the collector. `pytest.ini` turns a deprecation met in a line of the core, in a
+  test's own process, into a failing test on the Python that deprecates it: the three calls had warned at every
+  use, in a summary at the end of a run.
+
+## [5.8.1] - 2026-11-13
 
 - **A guard's check takes half the time** (core). A hook is a new Python process on every tool call, and a session
   whose environment tells Python to write no bytecode cached nothing it compiled: the guards were compiled from
