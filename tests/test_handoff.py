@@ -216,3 +216,70 @@ def test_handoff_carries_each_workspaces_conversations_and_is_not_ready_when_the
     (kb / "mine" / "CONTEXT.md").write_text("mine, again\n", encoding="utf-8")
     monkeypatch.setattr(sessions, "sync", lambda *a, **k: ["FAILED acme: push: rejected"])
     assert project.handoff("S1")[-1].startswith("NOT READY")
+
+
+# Records that travel between Macs, part 4 (plan item 13.5, 5.20.0). The audit of 2026-11-11 (gap 6): a durable
+# message to a project lived only in this Mac's board, so a session that resumed the project on another Mac never
+# saw what no session here had read.
+
+@pytest.fixture
+def records(tmp_path, write_config):
+    """A knowledge root with two projects, tracking a bare remote, named in the config."""
+    remote, root = tmp_path / "records.git", tmp_path / "ai-knowledge-test"
+    subprocess.run(["git", "init", "-q", "--bare", "-b", "main", str(remote)], check=True)
+    subprocess.run(["git", "clone", "-q", str(remote), str(root)], check=True, capture_output=True)
+    for name in ("alpha", "beta"):
+        (root / "projects" / name).mkdir(parents=True)
+        (root / "projects" / name / "CONTEXT.md").write_text(f"# {name}\n", encoding="utf-8")
+    _git(root, "add", "-A")
+    _git(root, "commit", "-qm", "start")
+    _git(root, "push", "-q", "origin", "main")
+    write_config({"knowledge_roots": [str(root)]})
+    return root
+
+
+def test_handoff_carries_the_durable_messages_no_session_here_has_read(records, tmp_path):
+    first = board.message("project:alpha", "S9", "please read the plan first", durable=True)
+    seen = board.message("project:alpha", "S9", "already read here", durable=True)
+    board.touch("S2", project="alpha")
+    board.mark_read_messages("S2", [{"id": seen.name}])
+    board.message("project:beta", "S9", "for beta", durable=True)
+    board.claim("S1", [f"{records}/projects/alpha/**", f"{records}/projects/beta/CONTEXT.md"], project="alpha")
+    report = project.handoff("S1")
+    assert report[-1].startswith("READY"), report
+    inbox = records / "projects" / "alpha" / "inbox"
+    carried = (inbox / f"{first.stem}.md").read_text(encoding="utf-8")
+    assert carried.startswith(f"---\nid: {first.stem}\nfrom: S9\nto: project:alpha\nat: ") and carried.endswith(
+        "---\n\nplease read the plan first\n")
+    assert sorted(p.name for p in inbox.iterdir()) == [f"{first.stem}.md"]  # what a session here was shown stays here
+    assert f"projects/alpha/inbox/{first.stem}.md" in _git(tmp_path / "records.git", "log", "-1", "--name-only", "--format=")
+    assert any("beta" in line and "not carried" in line for line in report), report  # its folder is not claimed
+    assert not (records / "projects" / "beta" / "inbox").exists()
+    assert board.carry("alpha", records / "projects" / "alpha") == []  # this Mac holds it already: nothing copied
+    assert len(list((board.paths.board() / "messages" / "project__alpha").glob("*.json"))) == 2
+    assert project.handoff("S1")[-1].startswith("READY")
+    assert (inbox / f"{first.stem}.md").read_text(encoding="utf-8") == carried  # written once
+
+
+def test_a_carried_message_reaches_each_session_on_the_arriving_mac_once(records, capsys):
+    from synthesis import cli, hook
+    inbox = records / "projects" / "alpha" / "inbox"
+    inbox.mkdir()
+    (inbox / "1700000000000000000-42.md").write_text(
+        "---\nid: 1700000000000000000-42\nfrom: S9\nto: project:alpha\nat: 2023-11-14T22:13:20+00:00\n---\n\n"
+        "please read the plan first\n", encoding="utf-8")
+    (inbox / "README.md").write_text("what this folder holds\n", encoding="utf-8")  # not named as a message: not read
+    (inbox / "1700000000000000001-42.md").write_text("---\nid: ../../elsewhere\nfrom: S9\n---\n\nforged\n", encoding="utf-8")
+    board.touch("S5", project="alpha")
+    hook.session_start({"session_id": "S5", "cwd": str(records)})
+    out = capsys.readouterr().out
+    assert "1 unread board message(s)" in out and "1700000000000000001-42.md" in out  # the one that cannot be read is named
+    assert cli.main(["--session", "S5", "inbox"]) == 0
+    out = capsys.readouterr().out
+    assert "please read the plan first" in out and "from S9" in out and "carried in the project's records" in out
+    assert "forged" not in out
+    assert cli.main(["--session", "S5", "inbox"]) == 0 and "please read" not in capsys.readouterr().out  # once
+    board.touch("S6", project="alpha")
+    assert [(m["text"], m["at"]) for m in board.inbox("S6", "alpha")] == [("please read the plan first", 1700000000.0)]
+    assert sorted(p.name for p in (board.paths.board() / "messages" / "project__alpha").glob("*.json")) == [
+        "1700000000000000000-42.json"]  # copied once, under its own id
