@@ -172,3 +172,22 @@ def test_a_register_that_ends_without_a_line_end_still_gets_its_row_on_a_line_of
     assert lapse(env, "--id", "thanks").returncode == 0
     lines = register.read_text(encoding="utf-8").splitlines()
     assert lines[8] == "- 2026-10-27: a note beneath the table." and lines[9] == "" and lines[10].startswith("| Lapsed | Item |")
+
+
+def test_a_plans_own_line_ends_and_mode_are_kept(seat):
+    """Written with the code: the plan is replaced whole to take its one new line, so what it had is kept."""
+    plan, register, env = seat
+    plan.write_bytes(PLAN.replace("\n", "\r\n").encode("utf-8"))
+    plan.chmod(0o640)
+    assert lapse(env, "--id", "thanks").returncode == 0
+    after = plan.read_bytes()
+    assert after.count(b"\r\n") == PLAN.count("\n") + 1 and b"\n" not in after.replace(b"\r\n", b"")
+    assert f"   **Lapsed:** {DAY} — no one was told the event had moved\r\n".encode("utf-8") in after
+    assert plan.stat().st_mode & 0o777 == 0o640
+
+
+def test_a_tag_that_ends_the_file_with_no_line_end_takes_its_mark_on_a_line_of_its_own(seat):
+    plan, register, env = seat
+    plan.write_text("# Plan\n\n## Priority Tasks\n- Send it\n  **Decay ID:** last\n  **Decays:** 2026-11-09 (promised)", encoding="utf-8")
+    assert lapse(env, "--id", "last").returncode == 0
+    assert plan.read_text(encoding="utf-8").endswith(f"  **Decays:** 2026-11-09 (promised)\n  **Lapsed:** {DAY} — no one was told the event had moved")
