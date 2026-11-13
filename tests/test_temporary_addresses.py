@@ -182,11 +182,20 @@ STARTS_A_TUNNEL = [
     "ngrok start web", "npx localtunnel --port 3000", "lt --port 3000 --subdomain shy-cat", "bunx localtunnel -p 3000",
     "ssh -R 80:localhost:8080 serveo.net", "ssh -o StrictHostKeyChecking=no -R 80:localhost:3000 nokey@localhost.run",
     "cd /tmp && cloudflared tunnel --url http://127.0.0.1:9000", "/opt/homebrew/bin/cloudflared tunnel --url http://localhost:1",
-    "devtunnel host -p 8080 --allow-anonymous"]
+    "devtunnel host -p 8080 --allow-anonymous",
+    # the ssh destination is a host: the service's name in any case, a subdomain of it, given as a URL, before its options
+    "ssh -R 80:localhost:8080 Serveo.NET", "ssh -p 443 -R0:localhost:8000 qr@a.pinggy.io", "ssh serveo.net -R 80:localhost:8080",
+    "ssh -R 80:localhost:3000 ssh://nokey@localhost.run:22"]
 NO_TUNNEL = [
     "cloudflared tunnel run production", "cloudflared tunnel list", "cloudflared --version", "ngrok config check", "ngrok version",
     "echo cloudflared tunnel --url http://localhost:1", "grep -rn 'ngrok http' docs/", "brew install cloudflared",
-    "ssh -R 9000:localhost:9000 build.example.com", "lt --help", "devtunnel list"]
+    "ssh -R 9000:localhost:9000 build.example.com", "lt --help", "devtunnel list",
+    # a reverse forward to someone else's host: one that ends with a service's letters, and one reached with a jump
+    # host, a key file or a remote command that carries a service's name
+    "ssh -R 9000:localhost:9000 notserveo.net", "ssh -R 9000:localhost:9000 team-pinggy.io",
+    "ssh -R 9000:localhost:9000 deploy@xlocalhost.run", "ssh -R 80:localhost:8080 -J jump@serveo.net build.example.com",
+    "ssh -i ~/.ssh/serveo.net -R 9000:localhost:9000 build.example.com",
+    "ssh -R 9000:localhost:9000 build.example.com curl https://serveo.net"]
 
 
 @pytest.mark.parametrize("command", STARTS_A_TUNNEL)
