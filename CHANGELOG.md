@@ -11,7 +11,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   their source on every call. On one Mac a shell command's check took about 72 ms against the 50 ms budget, and
   `synthesis doctor` said so (`hook self-test`). The installer now compiles the runtime once, for the interpreter
   that installs it, and the same check takes 33 ms. The plugin folders stay as each harness installed them, the
-  runtime's hash is of its source as before, and an install over a runtime without compiled code adds it.
+  runtime's hash is of its source as before, and an install over a runtime without compiled code adds it. An
+  interpreter that keeps compiled code under one folder of its own (Apple's Python) finds the runtime's there,
+  under the path a hook imports from; a test run under such an interpreter keeps its compiled code in a
+  temporary folder.
 - CI runs the suite in two jobs for each system and Python, the core's tests and the skills'. The whole suite had
   come to take up to 526 seconds on a macOS runner, and on main one job was cancelled at its ten-minute limit with
   no test failing. A lint test holds the workflow to both folders, each in a job.

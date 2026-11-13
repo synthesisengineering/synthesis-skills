@@ -682,12 +682,14 @@ ROOT = Path(__file__).resolve().parents[1]
 # old_spelling 8, temporary 2 and 7 lines of constants and notes; server.py 14: a refresh refused in the test mode;
 # together its owner's five rulings and the review's three findings); relied_on.py 10 (a checker or a check that
 # cannot run says so).
-# 5.8.1 (2026-11-12): core and plugin 13. install.py: _compile 10 and install 3 (the runtime is compiled once at
+# 5.8.1 (2026-11-12): core 13, plugin 40. install.py: _compile 10 and install 3 (the runtime is compiled once at
 # install, so a hook does not compile the guards from source on every call: 72 ms to 33 ms for a shell command's check).
+# conftest.py at the root 27, new: under an interpreter that keeps compiled code in one folder of the person's own
+# (Apple's Python), a test run keeps its compiled code in a temporary folder, in this process and in each it starts.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # consolidate first).
 CORE_BUDGET = 11856
-PLUGIN_BUDGET = 32613
+PLUGIN_BUDGET = 32640
 
 
 def _lines(files):
