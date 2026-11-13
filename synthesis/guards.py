@@ -611,6 +611,17 @@ CLOCK = re.compile(r"(?i)\b(?:1[0-2]|0?[1-9])(?::[0-5]\d)?\s?[ap]\.?m\.?(?![a-z]
 CALENDAR_READ = re.compile(r"(?:get|list|search|list[_-]all)[_-]events?$|query_freebusy$|suggest_time$")
 
 
+def to_a_person(tool: str, tool_input: dict, config: dict) -> bool:
+    """Whether a call puts words in front of a person as a message: what the guard takes for a send, on a channel of
+    messages (mail, Slack, chat, texts) or on one it has no name for, as a connector whose server is named by an id
+    is. A calendar write is none (an event states its own time, and the calendar rules judge it), and neither is a
+    harness's own tool (`SendMessage` to an agent, a file for the principal), a ticket, a document or a page."""
+    from synthesis import sends
+    own = "__" not in tool and tool[:1].isupper()
+    return (not own and not CALENDAR_WRITE.search(tool) and _sends(tool, tool_input, config)
+            and sends.channel(tool, tool_input) in ("email", "slack", "chat", "messages", "other"))
+
+
 def _calendar_read(transcript: str, reads: list) -> float | None:
     """When this session last read a calendar: the time on the result of the newest such call in a Claude Code
     transcript's last 8 MB, where that result is no error. None where there is none or the record cannot be read."""

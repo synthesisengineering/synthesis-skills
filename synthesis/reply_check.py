@@ -13,7 +13,9 @@ from __future__ import annotations
 
 import json
 import mmap
+import os
 import re
+from datetime import datetime, timezone
 
 DEFAULT_PHRASES = [
     "for now", "as a first pass", "can revisit later", "revisit later", "future fix needed",
@@ -409,80 +411,149 @@ CALENDAR_WRITE = re.compile(r"(?:create|update|manage|delete|move|respond_to)_ev
 CALENDAR_READ = re.compile(r"(?:get|list|search|list_all)_events?$|query_freebusy$")
 
 
-def _turn_calls(transcript_path: str | None, needles: tuple, tail: int = 2_000_000) -> tuple:
-    """(the tool calls of the turn in hand, each as (id, name, input); the ids of those whose result was an error),
-    from the tail of a Claude Code transcript. Other shapes, and a tail that holds none of `needles`, give none."""
+def _turn(transcript_path: str | None, needles: tuple, tail: int = 8_000_000) -> tuple:
+    """(the tool calls of the turn in hand, in order, each as (id, name, input); the turn's lines, which hold their
+    results), from the tail of a Claude Code transcript. A turn begins at a prompt or a notification: a user entry
+    with words that is no skill's text, no compaction's summary and no sub-agent's (2026-11-13: any user entry with
+    text began one, so loading a skill after a send made the turn forget the send). A sub-agent's entries are its
+    own. Other shapes, a call whose id is no string, and a tail that holds none of `needles` give nothing."""
     if not transcript_path:
-        return [], set()
+        return [], []
     with open(transcript_path, "rb") as handle:
         handle.seek(max(0, handle.seek(0, 2) - tail))
         chunk = handle.read()
     if not any(needle in chunk for needle in needles):
-        return [], set()
-    calls, failed = [], set()
-    for line in chunk.splitlines():
+        return [], []
+    from synthesis.approvals import NOT_TYPED
+    lines, calls, start = chunk.splitlines(), [], 0
+    for number, line in enumerate(lines):
+        if b'"tool_use"' not in line and b'"tool_result"' in line:
+            continue  # a tool's result alone: read later, and only for a call that matters
         try:
             entry = json.loads(line)
         except ValueError:
             continue
-        if not isinstance(entry, dict) or not isinstance(entry.get("message"), dict):
+        if not isinstance(entry, dict) or not isinstance(entry.get("message"), dict) or entry.get("isSidechain"):
             continue
         content = entry["message"].get("content")
         parts = [p for p in content if isinstance(p, dict)] if isinstance(content, list) else []
-        if entry.get("type") == "user" and (isinstance(content, str) or any(p.get("type") == "text" for p in parts)):
-            calls, failed = [], set()  # the principal's prompt starts a new turn
-        calls += [(p.get("id"), str(p.get("name", "")), p.get("input")) for p in parts if p.get("type") == "tool_use"]
-        failed |= {p.get("tool_use_id") for p in parts if p.get("type") == "tool_result" and p.get("is_error")}
-    return calls, failed
+        if entry.get("type") == "user" and not any(entry.get(flag) for flag in NOT_TYPED) and (
+                isinstance(content, str) or any(p.get("type") == "text" for p in parts)) and not any(p.get("type") == "tool_result" for p in parts):
+            calls, start = [], number
+        elif entry.get("type") == "assistant":
+            calls += [(p["id"], str(p.get("name", "")), p.get("input")) for p in parts if p.get("type") == "tool_use" and isinstance(p.get("id"), str)]
+    return calls, lines[start:]
+
+
+HELD = ("approve followed by the code ", "can't go out as written", "can't go as written")  # the guard's words for a call it did not let through
+
+
+def _result(ident: str, lines: list) -> tuple:
+    """(whether a call went, when its result was recorded): False for an error, and for a hold or a refusal of the
+    guard's, which is not always recorded as an error (of 706 held sends in thirty days, 55 were not); None while
+    it has no result. The time is None where the record gives none."""
+    mark = ident.encode()
+    for line in lines:
+        if mark not in line or b'"tool_result"' not in line:
+            continue
+        try:
+            entry = json.loads(line)
+            content = entry["message"]["content"]
+        except (ValueError, KeyError, TypeError):
+            continue
+        for part in content if isinstance(content, list) and not entry.get("isSidechain") else []:
+            if isinstance(part, dict) and part.get("type") == "tool_result" and part.get("tool_use_id") == ident:
+                body = part.get("content")
+                text = body if isinstance(body, str) else " ".join(str(x.get("text", "")) for x in body if isinstance(x, dict)) if isinstance(body, list) else ""
+                try:
+                    stamp = datetime.fromisoformat(str(entry.get("timestamp")).replace("Z", "+00:00"))
+                    at = (stamp if stamp.tzinfo else stamp.replace(tzinfo=timezone.utc)).timestamp()
+                except ValueError:
+                    at = None
+                return not (part.get("is_error") or any(words in text[:2000] for words in HELD)), at
+    return None, None
 
 
 def unread_calendar_writes(transcript_path: str | None, tail: int = 2_000_000) -> list[str]:
     """Calendar writes this turn that no calendar read followed (2026-10-27: moving a series revived a meeting
     canceled at its old hour, and nobody looked). Reads the tail of a Claude Code transcript; other shapes find none."""
-    calls, failed = _turn_calls(transcript_path, (b"_event",), tail)
+    calls, lines = _turn(transcript_path, (b"_event",), tail)
     pending = []
     for ident, name, _ in calls:
         pending = [] if CALENDAR_READ.search(name) else pending + (
-            [name.rsplit("__", 1)[-1]] if CALENDAR_WRITE.search(name) and ident not in failed else [])
+            [name.rsplit("__", 1)[-1]] if CALENDAR_WRITE.search(name) and _result(ident, lines)[0] is not False else [])
     return pending
 
 
-SENDS = ["send_gmail_message", "send_email", "slack_send_message", "send_message", "reply", "forward"]  # to a person, by the end of the tool's name
 TIMERS = ("CronCreate", "ScheduleWakeup", "Monitor", "create_scheduled_task")
-NONE = re.compile(r"(?:^|[;&|(]\s*)synthesis wait none\b")  # the command itself, not its words inside another
+
+
+def _stated(session_id: str, since: float) -> bool:
+    """Whether this session has said, at or after `since`, that no answer is awaited: a line `synthesis wait none`
+    wrote on the board. The command's own record is read, not a shell command's words: an `echo` of them states
+    nothing, and the command states it however it was run."""
+    from synthesis import paths
+    try:
+        with open(paths.board() / "waits" / "none.jsonl", "rb") as handle:
+            handle.seek(max(0, handle.seek(0, 2) - 65536))
+            rows = handle.read().decode("utf-8", "replace").splitlines()
+    except OSError:
+        return False
+    for row in rows:
+        try:
+            said = json.loads(row)
+            if said.get("session") == session_id and float(said.get("at")) >= since:
+                return True
+        except (ValueError, TypeError, AttributeError):
+            continue
+    return False
 
 
 def unwatched_sends(payload: dict, config: dict) -> list[str]:
-    """Config: {"reply_watch": {"sends": ["<the end of a tool's name, or a script's name>", ...]}}; off when the key
-    is absent or false, and `{}` takes the list above. The messages to a person that went out this turn with
-    nothing armed afterwards for their answer and no statement that none is awaited (2026-11-12: the one reply
-    that blocked a fix had no watch on it, and the next look was hours away). No hook knows that a message asks for
-    something today; the seat that sent it does, and this makes it say. An answer is a timer or a monitor started
-    after the last such send, `synthesis wait none "<why>"` after it, or a wait this session still holds on the
-    board. A send that was held or refused went nowhere. A setting of another shape raises ValueError."""
+    """Config: {"reply_watch": {}}; off when the key is absent or false. The messages to a person that went out this
+    turn with nothing armed afterwards for their answer and no statement that none is awaited (2026-11-12: the one
+    reply that blocked a fix had no watch on it, and the next look was hours away). No hook knows that a message
+    asks for something today; the seat that sent it does, and this makes it say. A message to a person is what
+    the send guard takes for one (`guards.to_a_person`), a draft and a scheduled message left out, and a text sent
+    from the shell. An answer is a timer or a monitor that started after the last such message, the line
+    `synthesis wait none "<why>"` wrote on the board after it went, or a wait this session still holds on the
+    board. A call the guard held or refused went nowhere. A setting of another shape raises ValueError."""
     settings = config.get("reply_watch", False)
     if settings is False:
         return []
-    names = settings.get("sends", SENDS) if isinstance(settings, dict) and not set(settings) - {"sends"} else None
-    if not (isinstance(names, list) and all(isinstance(name, str) and name for name in names)):
-        raise ValueError('reply_watch in the synthesis config must be an object, with "sends" a list of tool names when it has one. '
-                         "Until it is, no turn is checked for a watch after a message to a person: tell the principal")
-    needles = tuple(mark + name.encode() + b'"' for name in names if "." not in name for mark in (b"__", b'"'))  # as a call names its tool
-    calls, failed = _turn_calls(payload.get("transcript_path"), needles + tuple(name.encode() for name in names if "." in name))
-    sent = []
+    if settings != {}:
+        raise ValueError("reply_watch in the synthesis config takes `{}` and no key: what counts as a message to a person is the "
+                         "send guard's to say (`send_tools`, `not_send_tools`). Until it is `{}`, no turn is checked for a watch "
+                         "after a message to a person: tell the principal")
+    calls, lines = _turn(payload.get("transcript_path"), (b"send", b"reply", b"forward", b"message", b"osascript"))
+    if not calls:
+        return []
+    from synthesis import guards, paths, sends, wait
+    sent, last = [], 0.0
     for ident, name, given in calls:
-        short, command = name.rsplit("__", 1)[-1], str(given.get("command") or "") if isinstance(given, dict) else ""
-        if ident in failed:
+        short, what = name.rsplit("__", 1)[-1], ""
+        if short in TIMERS:
+            sent = sent if _result(ident, lines)[0] is not True else []
             continue
-        if short in TIMERS or NONE.search(command):
-            sent = []
-        else:
-            sent += [n for n in names if n == short or "." in n and n in command][:1]
+        if not isinstance(given, dict):
+            continue
+        try:
+            if guards.to_a_person(name, given, config) and "draft" not in short and "schedule" not in short:
+                what = short
+            elif "osascript" in str(given.get("command") or "") and any(
+                    sends.command_send(words, where, config) == "messages"
+                    for words, where in guards._parse(given["command"], str(payload.get("cwd") or os.getcwd()))[0]):
+                what = "a text from the shell"
+        except Exception:  # a call the guard cannot read is none this check can name
+            continue
+        if what:
+            went, at = _result(ident, lines)
+            if went:
+                sent, last = sent + [what], max(last, at if at is not None else float("inf"))
     if not sent:
         return []
-    from synthesis import paths, wait
     session = paths.session_id(payload)
-    return [] if session and wait.live(session) else sorted(set(sent))
+    return [] if session and (wait.live(session) or _stated(session, last)) else sorted(set(sent))
 
 
 def check(payload: dict, config: dict) -> str | None:

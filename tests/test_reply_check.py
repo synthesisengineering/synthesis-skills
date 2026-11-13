@@ -2386,7 +2386,8 @@ def test_the_send_guards_own_settings_say_what_is_a_send(tmp_path):
     given = {"note": "Could you send the figures?"}
     assert reply_check.check(_sent(tmp_path, tool="mcp__notes__leave_word", given=given), WATCH) is None
     assert "leave_word" in reply_check.check(_sent(tmp_path, tool="mcp__notes__leave_word", given=given), {**WATCH, "send_tools": ["mcp__notes__leave_word"]})
-    assert reply_check.check(_sent(tmp_path), {**WATCH, "not_send_tools": ["mcp__slack__*"]}) is None
+    assert "post_note" in reply_check.check(_sent(tmp_path, tool="mcp__notes__post_note", given=given), WATCH)   # its name says it posts
+    assert reply_check.check(_sent(tmp_path, tool="mcp__notes__post_note", given=given), {**WATCH, "not_send_tools": ["mcp__notes__*"]}) is None
 
 
 @pytest.mark.parametrize("wrong", [None, True, 1, "on", [], ["slack_send_message"], {"sends": ["slack_send_message"]}, {"tools": []}])
