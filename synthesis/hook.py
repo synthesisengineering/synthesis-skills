@@ -91,7 +91,8 @@ def session_start(payload):
     notes += [n for n in (run, line) if n]
     try:  # uncommitted work in this checkout stays recoverable from the start of the session (2026-10-20)
         from synthesis import checkout
-        checkout.snapshot(checkout.repo_of(str(payload.get("cwd") or os.getcwd())), "session start", session_id)
+        checkout.snapshot(checkout.repo_of(str(payload.get("cwd") or os.getcwd())), "session start", session_id,
+                          untracked=False)  # inside the hook's budget: tracked changes alone
     except Exception:
         pass  # a snapshot must never cost a session its start
     unread = board.inbox(session_id, session.project)

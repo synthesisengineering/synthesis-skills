@@ -77,9 +77,12 @@ def cmd_journal(args) -> int:
         sys.stdout.write(checkout.show(args.show, args.path))
         return 0
     for row in checkout.journal(args.path)[:args.limit]:
-        print(f"{time.strftime('%Y-%m-%d %H:%M', time.localtime(row['at']))}  {row['sha'][:10]}  {row['reason']:<14} "
-              f"{row.get('session', '')[:8]:<8}  {row['repo']}: {', '.join(row['files'][:4])}"
-              + (f" and {len(row['files']) - 4} more" if len(row["files"]) > 4 else ""))
+        left = row.get("left", [])
+        print(f"{time.strftime('%Y-%m-%d %H:%M', time.localtime(row['at']))}  {row['sha'][:10] or 'none kept':<10}  "
+              f"{row['reason']:<14} {row.get('session', '')[:8]:<8}  {row['repo']}: {', '.join(row['files'][:4])}"
+              + (f" and {len(row['files']) - 4} more" if len(row["files"]) > 4 else "")
+              + (f"; {row.get('left_count', len(left))} untracked not kept (past a limit): {', '.join(left[:4])}" if left else "")
+              + ("; untracked files not looked at" if row.get("tracked_only") else ""))
     return 0
 
 
