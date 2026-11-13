@@ -44,8 +44,8 @@ than half-reading it.
   other Markdown records (drafts, a ledger) whose items the sweep reads unless a plan carries them, and in which
   it reads a ledger's table row by row ([decay-sweep.md](decay-sweep.md), "What else the sweep reads"). A top-level
   `critical_words` list replaces the words that flag an untagged deadline as possibly critical
-  ([critical-deadlines.md](critical-deadlines.md)), and a top-level `ledger_closed_words` list replaces the words
-  that close a ledger's row. `"commitment_check": true` (or `{"from": "YYYY-MM-DD"}` for its first day) has
+  ([critical-deadlines.md](critical-deadlines.md)), and a top-level `ledger_closed_words` list adds a seat's own
+  words and phrases to the ones that close a ledger's row. `"commitment_check": true` (or `{"from": "YYYY-MM-DD"}` for its first day) has
   `record` refuse a clean outcome while a commitment of the newest plan carries no date and no park, or an open
   dated item no Decay ID; only a missing key or `false` leaves it off. `streak: expected-days` counts an unbroken run over
   days the workspace is expected to close; working on a day that is not expected credits the
