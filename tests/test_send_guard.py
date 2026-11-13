@@ -563,6 +563,71 @@ def test_the_references_say_which_url_the_connector_reads_from_this_disk_with_th
         assert words in listed and words in sending and "`/attachments/<id>`" in listed, words
 
 
+# --- an entry the connector would skip, or send changed ----------------------------------------------------------
+# Its first step for each entry leaves out one that carries `error`, and it takes `_resolved_bytes` before the entry's
+# own source: both are keys it writes into an entry itself (gmail_tools._prepare_gmail_message, 2.1.0). It takes line
+# breaks and NULs out of a filename, so the mail went under another name than the principal saw. A name or type that
+# is not text, or a `content_id` its own rule refuses, fails that entry, and the mail goes without it.
+
+SET_BY_THE_CONNECTOR = [{"error": "previous fetch failed"}, {"error": True, "error_type": "ValueError"},
+                        {"_resolved_bytes": "UEsDBA=="}, {"error": "x", "_resolved_bytes": "UEsDBA=="}]
+
+
+@pytest.mark.parametrize("extra", SET_BY_THE_CONNECTOR)
+def test_an_entry_carrying_a_key_the_connector_sets_itself_is_refused_with_no_code(extra, scratch):
+    staged = str(_staged(scratch))
+    for entry in ({"path": staged, **extra}, {"filename": "plan.pdf", "content": "UEsDBA==", **extra},
+                  {"url": "https://files.example.com/plan.pdf", **extra}):
+        for given, place in (([entry], 1), ([{"path": staged}, entry], 2)):
+            reason = _refused(given, f"attachment {place} ", "which the mail connector sets on an entry itself",
+                              "file this send again")
+            assert all(f"`{key}`" in reason for key in extra if key != "error_type"), reason
+
+
+@pytest.mark.parametrize("name", ["budget\nfinal.pdf", "budget\rfinal.pdf", "budget\x00final.pdf", "\r\n", "plan\t.pdf",
+                                  "plan\x1b.pdf", "plan\x7f.pdf", "plan\x85.pdf"])
+def test_a_filename_with_a_control_character_is_refused_since_the_connector_would_send_another_name(name, scratch):
+    staged = str(_staged(scratch))
+    for entry in ({"path": staged, "filename": name}, {"filename": name, "content": "UEsDBA=="},
+                  {"url": "https://files.example.com/plan.pdf", "filename": name}):
+        reason = _refused([entry], "attachment 1 ", f"`filename` {name!r}", "a control character", "file this send again")
+        assert not re.search(r"[\x00-\x1f\x7f-\x9f]", reason), reason  # the name is shown escaped, not as it is
+
+
+def test_a_name_or_type_that_is_not_text_is_refused(scratch):
+    staged = str(_staged(scratch))
+    for extra, field in (({"filename": 7}, "`filename` 7"), ({"filename": ["plan.pdf"]}, "`filename` ['plan.pdf']"),
+                         ({"mime_type": 7}, "`mime_type` 7"), ({"mime_type": "application/\npdf"}, "`mime_type` 'application/\\npdf'")):
+        _refused([{"path": staged, **extra}], "attachment 1 ", field, "not as text", "file this send again")
+
+
+@pytest.mark.parametrize("cid", ["logo img", "<>", " ", "-logo", "logo\n", "\tlogo", "logo#1", "lögo", "<lo go>"])
+def test_a_content_id_the_connector_refuses_is_refused_with_no_code(cid, scratch):
+    _refused([{"path": str(_staged(scratch)), "content_id": cid}], "attachment 1 ", f"`content_id` {cid!r}",
+             "the mail connector refuses", "file this send again")
+
+
+def test_a_name_type_and_content_id_the_connector_keeps_go_to_the_code(scratch):
+    staged = str(_staged(scratch))
+    for extra in ({"filename": "plan v2 (final) — 100%.pdf"}, {"mime_type": "application/pdf"}, {"content_id": "logo"},
+                  {"content_id": "<logo.v2+x@example.com>"}, {"content_id": " logo "}, {"content_id": 5},
+                  {"filename": "", "mime_type": None, "content_id": ""}):
+        assert "approval" in guards.check(SEND, {**MAIL, "attachments": [{"path": staged, **extra}]}, CONFIG), extra
+
+
+def test_the_references_list_an_entry_the_connector_would_skip_or_send_changed(scratch):
+    skills = Path(__file__).resolve().parents[1] / "skills"
+    listed = " ".join((skills / "synthesis-message-guard" / "references" / "composing.md").read_text(encoding="utf-8").split())
+    sending = " ".join((skills / "synthesis-agent-correspondence" / "references" / "gates-and-sending.md")
+                       .read_text(encoding="utf-8").split())
+    staged = str(_staged(scratch))
+    for extra, words in (({"error": "x"}, "which the mail connector sets on an entry itself"),
+                         ({"filename": "a\nb.pdf"}, "a control character"), ({"filename": 7}, "not as text"),
+                         ({"content_id": "a b"}, "gives the `content_id`")):
+        assert words in guards.check(SEND, {**MAIL, "attachments": [{"path": staged, **extra}]}, CONFIG), extra
+        assert words in listed and words in sending, words
+
+
 # --- a local file a Drive tool reads ---------------------------------------------------------------------------
 # The same connector reads a local file for five Drive tools, under the same folder rule (2.1.0: drive_tools.py
 # and drive_helpers._resolve_import_media). update_drive_file and import_to_google_doc, _sheets and _slides take
