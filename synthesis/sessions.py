@@ -754,13 +754,15 @@ def records(folder: str, kinds: tuple = (), whole: bool = False) -> list:
 # `#12 — 2027 planning starts in January` read as #12 to #2027). A record's number has at most nine digits.
 CITED = re.compile(r"(?<![\w.-])([A-Za-z0-9][\w.-]*)\s+#(\d{1,9})(?!\d)"
                    r"(?:(?:(?:-|–|—)#?|(?:[^\S\n]*(?:-|–|—)|\s*(?:to|through))\s*#)(\d{1,9})(?![-./:]?\d))?")
-STRING = re.compile(r'"(?:[^"\\\n]|\\.)*"')  # a string as JSON writes one, and YAML between double quotes
+# A string as JSON writes one, and YAML between double quotes. One left open runs to the end of its line, so a torn
+# line is read once (2026-11-13: tried again from each escaped quote after it, a quarter of a megabyte took minutes).
+STRING = re.compile(r'"(?:[^"\\\n]|\\.)*"?')
 RECORDS = (".md", ".markdown", ".txt", ".json", ".jsonl", ".yaml", ".yml")  # the files a folder of records is read from
 
 
 def prompts(workspace: str, day: str) -> list:
     """What the principal typed in a workspace on one day (the local date), oldest first, from this Mac's archive:
-    each with the citation that names it (harness, session, seq). A brief one agent wrote for another, injected
+    each with what names it (harness, session, seq). A brief one agent wrote for another, injected
     text and a tool's result are not prompts. Export first: this reads only what the archive holds."""
     found = []
     for meta in catalog(workspace, local_only=True):
@@ -785,10 +787,11 @@ def uncited(found: list, roots: list) -> list:
     """The prompts that no record cites. A citation is the session's id, or eight or more of its first characters
     that no other session listed shares, then `#<seq>` or a range (`#12-40`, `#12 to #40`), in a file under the
     roots that changed on or after the day of the oldest prompt (2026-11-11: what the principal asked reached a
-    project record only if an agent remembered, and nothing checked). It counts where it stands. The listing names
-    a prompt as `<session> --seq <n>`, so nothing a tool prints about an open prompt is a citation (2026-11-13:
-    through four reviews, rules that knew the listing's own output by its shape met shapes they did not know, and
-    a list of what was open closed the day).
+    project record only if an agent remembered, and nothing checked). It counts where it stands. The listing, its
+    answer and the day-end's refusal name a prompt as `<session> --seq <n>`, and the listing and `show` print no
+    `#<n>` a session's id could stand before, so a copy of what they print cites nothing (2026-11-13: through four
+    reviews, rules that knew the listing's own output by its shape met shapes they did not know, and a list of what
+    was open closed the day).
     A root that is no folder or lies in a sessions repo, and a folder or a record under one that may not be read,
     raises its OSError: read as empty, it left every prompt open with no word of why. Passed over: a folder gone
     since the walk listed it, a link that leads nowhere or round, a file that is no regular file, a folder reached
@@ -821,6 +824,13 @@ def uncited(found: list, roots: list) -> list:
                     if len(one) == 1:  # a few characters that two sessions share name neither; a lower number ends no range
                         spans[one[0]].append((int(first), max(int(first), int(last or first))))
     return [p for p in found if not any(first <= p["seq"] <= last for first, last in spans[str(p["session"])])]
+
+
+def worded(text: str, width: int = 0) -> str:
+    """A prompt's first words for a line of the listing, with every number set apart from its `#`, also from one an
+    escape writes: no reading of a saved listing then makes a citation of what the principal typed (2026-11-13:
+    today's prompt named yesterday's, and today's listing, saved, closed it)."""
+    return re.sub(r"(?i)(#|\\u0023)(?=\d)", r"\1 ", " ".join(text.split())[:width or None])
 
 
 def named(cited: str, ids) -> list:
@@ -948,8 +958,8 @@ def render(rec: dict, width: int = 0) -> str:
 def repos() -> dict:
     """Workspace -> its sessions repo checkout (config `sessions_repos`). A session with no workspace is never
     synced (R10.4)."""
-    found = paths.config().get("sessions_repos") or {}
-    return {ws: Path(os.path.expanduser(p)) for ws, p in found.items() if ws != "other" and isinstance(p, str)}
+    found = paths.config().get("sessions_repos")
+    return {ws: Path(os.path.expanduser(p)) for ws, p in (found.items() if isinstance(found, dict) else ()) if ws != "other" and isinstance(p, str)}
 
 
 def _git(repo: Path, *args: str) -> subprocess.CompletedProcess:

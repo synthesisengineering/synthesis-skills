@@ -173,13 +173,16 @@ what `synthesis sessions show` takes. Then one line counts, and says where it lo
 `all 31 prompts ... are cited by a record under <folders>` (exit 0).
 
 **That name is not a citation.** The listing, its JSON answer and the list the day-end record prints when it
-refuses all name a prompt with `--seq`, and a record cites one with `#`: `<harness> <session> #<n>`. So nothing a
-tool prints about an open prompt can account for it, however it is kept: pasted, quoted, made into a checklist or a
-table, or saved as data. Where a prompt's own words cite a session the listing lists, its line sets the number
-apart from its `#` (`c1 # 12`); `show` prints the prompt as typed.
+refuses all name a prompt with `--seq`, and a record cites one with `#`: `<harness> <session> #<n>`. So a copy of
+what they print accounts for nothing, however it is kept: pasted, quoted, made into a checklist or a table, or
+saved as data. Two things keep the listing's line from holding a citation by another road. In a prompt's own
+words, which the line prints, every number is set apart from its `#` (`PR # 291`, `c1 # 12`), whatever session
+or day it names. And every line `show`, `recent` and `search` print begins with `[<harness> <session>]`, so a
+`#<n>` never stands at the head of a line, where a session's id at the end of the line above would make a
+citation of it. `show` prints the prompt itself as typed.
 
 The citation is written by whoever writes the record, and it counts where it stands: in a sentence however it
-wraps, on a line of its own, in a heading, a table, a footnote or a field of a JSON or YAML record. (Until
+wraps, on a line of its own, in a heading, a cell of a table, a footnote or a field of a JSON or YAML record. (Until
 2026-11-13 the listing printed citations, and rules tried to know its saved output by its shape. Four reviews each
 found ordinary shapes those rules did not know, where a list of what was open closed the day.)
 
@@ -210,7 +213,8 @@ a folder removed while the records are read are passed over.
 
 `--json` prints
 `{"workspace", "date", "prompts", "open": [...], "records": [...]}`; the day-end record runs it itself. `open`
-holds the names as the listing prints them. `records` names each folder as the listing read it, by its real path:
+holds the names as the listing prints them. Without `--records` nothing was held against any record, and the
+answer has `listed` in place of `open`. `records` names each folder as the listing read it, by its real path:
 `~` expanded, links followed, and `..` taken from where a link leads, never as written. The record reads the
 folders its config names the same way before it compares, and refuses one the config writes from no fixed place
 (`kb/records`, `./records`): it would be read from wherever the day-end runs. An empty `--records ""` names no

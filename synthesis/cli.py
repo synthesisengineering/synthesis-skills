@@ -254,8 +254,9 @@ def cmd_sessions(args) -> int:
             return 1
         rows = (sessions.around(found[0]["folder"], args.seq) if args.seq is not None else
                 sessions.records(found[0]["folder"], kinds, whole=args.whole))
+        who = f"[{found[0].get('harness')} {sessions.short(str(found[0].get('session')))}] "  # no line begins with a bare `#<seq>`
         for rec in rows:
-            out(rec, sessions.render(rec, 0 if args.whole or rec.get("seq") == args.seq else args.width))
+            out(rec, who + sessions.render(rec, 0 if args.whole or rec.get("seq") == args.seq else args.width))
     elif args.action == "prompts":
         if not args.workspace:
             print("name the workspace whose prompts to list: --workspace <name>", file=sys.stderr)
@@ -280,8 +281,9 @@ def cmd_sessions(args) -> int:
         found = sessions.prompts(args.workspace, day)
         try:
             left = sessions.uncited(found, roots) if roots else found
-        except OSError as error:  # read as an empty folder, it left every prompt open and no word of why
-            print(f"{error.filename or chr(34) * 2} cannot be read as records ({error.strerror}), so no record was checked and nothing is "
+        except (OSError, RecursionError) as error:  # read as an empty folder, it left every prompt open and no word of why
+            where, why = getattr(error, "filename", None) or ", ".join(roots) or chr(34) * 2, getattr(error, "strerror", None) or error
+            print(f"{where} cannot be read as records ({why}), so no record was checked and nothing is "
                   "said of what is open: give --records folders that are there, with records that can be read", file=sys.stderr)
             return 2
         known = sessions.catalog() if left else []
@@ -289,18 +291,16 @@ def cmd_sessions(args) -> int:
         named = [f"{p['harness']} {names[str(p['session'])]} --seq {p['seq']}" for p in left]  # what `show` takes, and no citation
         where = f" under {', '.join(roots)}"
         if args.json:
-            print(json.dumps({"workspace": args.workspace, "date": day, "prompts": len(found), "open": named if roots else [], "records": roots}))
+            print(json.dumps({"workspace": args.workspace, "date": day, "prompts": len(found), "records": roots,
+                              "open" if roots else "listed": named}))  # with no records, nothing was held against any: it lists
         else:
-            ids = {str(p["session"]) for p in found}
-            for name, p in zip(named, left):  # a citation the principal typed is none here: its number stands apart from its `#`
-                said = sessions.CITED.sub(lambda m: m.group(0).replace("#", "# ") if sessions.named(m.group(1), ids) else m.group(0),
-                                          " ".join(p["text"].split())[:args.width or None])
-                print(f"{name}  {p['at'][11:16]}  {said}")
+            for name, p in zip(named, left):
+                print(f"{name}  {p['at'][11:16]}  {sessions.worded(p['text'], args.width)}")
             print(f"{len(found)} prompts on {day} in {args.workspace}" + (f", so nothing to cite{where}" if roots else "") if not (roots and found) else
                   f"all {len(found)} prompts on {day} in {args.workspace} are cited by a record{where}" if not left else
                   f"{len(left)} of {len(found)} prompts on {day} in {args.workspace} {'is' if len(left) == 1 else 'are'} cited by no record{where}")
         return 1 if roots and left else 0
-    else:  # recent, search: each record under as much of its session's id as cites it and opens it
+    else:  # recent, search: each record under as much of its session's id as names it and opens it
         rows = (sessions.recent(args.project, args.workspace, args.limit) if args.action == "recent" else
                 sessions.search(args.target, args.workspace, args.project, kinds)[:args.limit])
         known = sessions.catalog() if rows else []
@@ -363,6 +363,7 @@ def parser() -> argparse.ArgumentParser:
     s.set_defaults(fn=cmd_release)
     s = sub.add_parser("journal", help="snapshots of uncommitted changes; --show SHA PATH prints a file from one")
     s.add_argument("path", nargs="?", default="")
+    s.set_defaults(late="path")
     s.add_argument("--show", default="", metavar="SHA")
     s.add_argument("--limit", type=int, default=20)
     s.set_defaults(fn=cmd_journal)
@@ -403,6 +404,7 @@ def parser() -> argparse.ArgumentParser:
     s.set_defaults(fn=cmd_use)
     s = sub.add_parser("brief", help="print a project's directive and current state")
     s.add_argument("project", nargs="?", default="")
+    s.set_defaults(late="project")
     s.set_defaults(fn=cmd_brief)
     s = sub.add_parser("resume", help="pick up a project: directive, state, next actions and warnings, or the question to ask first")
     s.add_argument("project", help="project id, or the project folder's absolute path")
@@ -414,6 +416,7 @@ def parser() -> argparse.ArgumentParser:
     s = sub.add_parser("sessions", help="export, sync, list, show, search agent session transcripts from every harness")
     s.add_argument("action", choices=("export", "sync", "list", "show", "recent", "search", "prompts"))
     s.add_argument("target", nargs="?", default="", help="show: a session id or its start; search: a pattern")
+    s.set_defaults(late="target")
     s.add_argument("--all", action="store_true", help="export: every transcript, not only those changed in --days")
     s.add_argument("--scheduled", action="store_true", help=argparse.SUPPRESS)  # the schedule's own run, marked for the doctor
     s.add_argument("--days", type=float, default=2, help="export: transcripts changed in the last N days (default 2)")
@@ -437,6 +440,7 @@ def parser() -> argparse.ArgumentParser:
     sub.add_parser("approvals", help="list sends and deploys waiting for the principal's approval").set_defaults(fn=cmd_approvals)
     s = sub.add_parser("install", help="install the runtime from a plugin folder (default: this one)")
     s.add_argument("plugin", nargs="?", default="")
+    s.set_defaults(late="plugin")
     s.add_argument("--git-hooks", action="store_true", help="also run the commit check for every repository")
     s.set_defaults(fn=cmd_install)
     s = sub.add_parser("uninstall", help="remove what install wrote; keep config and the board")
@@ -468,7 +472,13 @@ def _main(argv: list[str] | None = None) -> int:
         args = parser().parse_args(argv[:split] + [name])
         args.rest = argv[split + 1:]
         return {"worktree": cmd_worktree, "doctor": cmd_doctor}[name](args)
-    args = parser().parse_args(argv)
+    made = parser()
+    args, rest = made.parse_known_args(argv)
+    late = getattr(args, "late", "")  # the one name a command may leave out: after an option, argparse has already taken it as left out
+    if len(rest) == 1 and late and getattr(args, late) == "" and not rest[0].startswith("-"):
+        setattr(args, late, rest.pop())
+    if rest:
+        made.error("unrecognized arguments: " + " ".join(rest))
     return args.fn(args)
 
 

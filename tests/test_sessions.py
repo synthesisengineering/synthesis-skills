@@ -498,8 +498,8 @@ def test_show_opens_a_cited_record_with_its_neighbors(harness, capsys):
     _jsonl(harness["claude"], _claude_rows(harness["work"]))
     sessions.export(0)
     assert cli.main(["sessions", "show", "c1", "--seq", "1"]) == 0
-    shown = [line.split()[0] for line in capsys.readouterr().out.splitlines()]
-    assert shown == ["#0", "#1", "#2", "#3", "#4"]
+    shown = [line.split()[:3] for line in capsys.readouterr().out.splitlines()]
+    assert shown == [["[claude-code", "c1]", f"#{n}"] for n in range(5)]                 # each line begins with its session
 
 
 def test_a_cited_record_is_shown_whole_and_its_neighbors_stay_short(harness, capsys):
@@ -1227,6 +1227,19 @@ def test_a_torn_line_of_json_is_read_in_time_that_follows_its_length(asked):
         saved.unlink()
 
 
+def test_an_option_before_the_session_is_read(asked, capsys):
+    """`synthesis sessions show --json <id>` was refused as an argument too many: with an option first, the session
+    had already been taken as left out (noted by a review, 2026-11-13)."""
+    assert cli.main(["sessions", "show", "--json", "c1"]) == 0
+    shown = [json.loads(line) for line in capsys.readouterr().out.splitlines()]
+    assert shown and [rec["seq"] for rec in shown] == list(range(len(shown)))
+    assert cli.main(["sessions", "show", "--seq", "0", "c1"]) == 0 and "#0 " in capsys.readouterr().out
+    for wrong in (["sessions", "show", "--json", "c1", "c2"], ["sessions", "show", "--no-such-option", "c1"]):
+        with pytest.raises(SystemExit):
+            cli.main(wrong)
+    capsys.readouterr()
+
+
 def test_without_records_the_json_answer_says_what_is_listed_and_nothing_of_what_is_open(asked, capsys):
     """`--json` without `--records` answered `"open": []` beside two prompts, which reads as nothing open (a review,
     2026-11-13). Nothing was held against any record, so the answer has no `open`: it lists."""
@@ -1241,9 +1254,12 @@ def test_a_config_or_a_tree_the_reading_cannot_take_is_said_in_a_line(asked, wri
     write_config({"workspace_roots": [str(tmp_path / "workspaces" / "*")], "sessions_repos": ["not", "a", "mapping"]})
     assert cli.main(command) == 1 and "2 of 2 prompts" in capsys.readouterr().out      # sessions repos that are no mapping name none
 
-    def deep(top, **more):
-        raise RecursionError("maximum recursion depth exceeded")
-        yield
+    walk = os.walk
+
+    def deep(top, **more):  # as Python 3.9's walk does in a tree a thousand folders deep
+        if top == str(asked["kb"]):
+            raise RecursionError("maximum recursion depth exceeded")
+        yield from walk(top, **more)
     monkeypatch.setattr(sessions.os, "walk", deep)
     assert cli.main(command) == 2
     said = capsys.readouterr()
@@ -1669,7 +1685,8 @@ def test_the_listing_of_an_older_day_copies_what_was_written_since_that_day_bega
     command = ["sessions", "prompts", "--workspace", "acme", "--date"]
     assert cli.main(command + ["2026-10-30"]) == 0 and "Plan the release." in capsys.readouterr().out
     assert cli.main(command + ["2026-10-30T09:00", "--json"]) == 0                     # a time of that day is that day,
-    assert json.loads(capsys.readouterr().out) == {"workspace": "acme", "date": "2026-10-30", "prompts": 1, "open": [], "records": []}
+    assert json.loads(capsys.readouterr().out) == {"workspace": "acme", "date": "2026-10-30", "prompts": 1, "records": [],
+                                                   "listed": ["claude-code c1 --seq 0"]}
     assert cli.main(command + ["tomorrow"]) == 2                                       # and what is no date lists nothing
     said = capsys.readouterr()
     assert said.out == "" and "tomorrow" in said.err

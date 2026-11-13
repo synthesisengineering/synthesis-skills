@@ -20,8 +20,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   `<harness> <session> #<n>`, alone or in a range (`#12-40`, `#12 to #40`), by the session's id in full or by
   eight or more of its first characters that no other session listed shares. The listing, its JSON answer and
   the list the day-end record prints when it refuses name a prompt with `--seq`, which is no citation: no copy of
-  them accounts for anything, however it is kept, and a citation in a prompt's own words is set apart from its
-  `#` where the listing prints it. A citation is written by whoever writes the record, and it
+  them accounts for anything, however it is kept. In the prompt's own words, which the listing prints, every
+  number is set apart from its `#`, and every line `sessions show` prints begins with its session, as `recent`
+  and `search` do, so no layout of a tool's output makes a citation. A citation is written by whoever writes the
+  record, and it
   counts where it stands. The end of a range carries its `#` unless the dash is tight, so `#12 — 2027 planning`
   cites #12 alone; a record's number has at most nine digits; a string that carries an escape is read as the text
   it holds, so a dash an encoder escaped still joins its range.

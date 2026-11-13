@@ -250,8 +250,8 @@ def prompts(workspace: str, day: str, direction: str, outcome: str) -> str:
                "record --outcome partial, which says the day left some open.")
     if not total:
         return f"\nprompts: none typed on {day}"
-    return (f"\nprompts: all {total} typed on {day} are cited by a record" if not left else
-            f"\nprompts: {len(left)} of {total} typed on {day} {'is' if len(left) == 1 else 'are'} cited by no record")
+    return (f"\nprompts: all {total} typed on {day} are cited by a record under {', '.join(read)}" if not left else
+            f"\nprompts: {len(left)} of {total} typed on {day} {'is' if len(left) == 1 else 'are'} cited by no record under {', '.join(read)}")
 
 
 # A line of an item: plain, bold or italic, quoted, a list entry or a task-list box, a heading or a row of a table,
