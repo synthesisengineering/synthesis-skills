@@ -212,7 +212,7 @@ def test_a_codex_shell_line_is_text_and_tags_its_project(harness):
 
 
 def test_a_line_the_reader_cannot_read_tags_nothing_and_is_counted(harness, monkeypatch):
-    def raises(command, cwd):
+    def raises(command, cwd, unread=None):
         raise RuntimeError("a line no reader was written for")
     monkeypatch.setattr(guards, "_shell_writes", raises)
     said, meta = exported(harness, [typed(harness, "Update the plan."), called(harness, "Bash", {"command": f"echo x > {harness['kb']}/projects/beta/notes.md"}),

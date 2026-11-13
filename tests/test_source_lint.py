@@ -473,17 +473,26 @@ def test_the_rule_finds_an_import_at_the_top_and_spares_one_that_is_guarded_or_i
 
 
 def twice_bound(source: str, defs_only: bool = False) -> list:
-    """The names a module binds more than once at its top: a function, a class or an assignment (`defs_only`: a
-    function or a class)."""
+    """The names a module binds more than once at its top: a function, a class or an assignment. With `defs_only`,
+    a function or a class, at the top and in each class's body, where the stubs of an overload and a property's
+    setter share a name by design."""
     import ast
     import collections
     names = collections.Counter()
-    for node in ast.parse(source).body:
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-            names[node.name] += 1
-        elif not defs_only and isinstance(node, (ast.Assign, ast.AnnAssign)):
-            for target in (node.targets if isinstance(node, ast.Assign) else [node.target]):
-                names.update(leaf.id for leaf in ast.walk(target) if isinstance(leaf, ast.Name))
+
+    def by_design(node) -> bool:
+        return any(ast.unparse(mark).split(".")[-1] in ("overload", "setter", "getter", "deleter") for mark in node.decorator_list)
+
+    def read(body, within=""):
+        for node in body:
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                names[within + node.name] += not (defs_only and by_design(node))
+                if defs_only and isinstance(node, ast.ClassDef):
+                    read(node.body, f"{within}{node.name}.")
+            elif not defs_only and isinstance(node, (ast.Assign, ast.AnnAssign)):
+                for target in (node.targets if isinstance(node, ast.Assign) else [node.target]):
+                    names.update(leaf.id for leaf in ast.walk(target) if isinstance(leaf, ast.Name))
+    read(ast.parse(source).body)
     return sorted(name for name, count in names.items() if count > 1)
 
 
