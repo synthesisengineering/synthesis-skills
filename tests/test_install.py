@@ -7,6 +7,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 from synthesis import install
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -373,3 +375,52 @@ def test_an_install_over_a_runtime_without_compiled_code_adds_it(tmp_path, isola
     stamp = (runtime / "SOURCE").read_text(encoding="utf-8")
     install.install(plugin)
     assert "guards" in _compiled(runtime) and (runtime / "SOURCE").read_text(encoding="utf-8") == stamp
+
+
+def test_a_session_start_compiles_a_runtime_that_reached_it_uncompiled(tmp_path, isolated_home, monkeypatch):
+    """An upgrade through a harness is made by the session start of the runtime already there. From a release before
+    5.8.1 that is an installer that compiles nothing, and 5.8.1's own session start then found the runtime "not newer"
+    and returned before it compiled anything: such a Mac kept the slow hook until someone ran an install by hand
+    (found by a review before 5.8.1 was released). The interpreter a hook runs on can change under a runtime the
+    same way."""
+    plugin = _plugin_copy(tmp_path)
+    with monkeypatch.context() as older:
+        older.setattr(install, "_compile", lambda package: None)  # the installer of a release before 5.8.1
+        install.install(plugin)
+    runtime = isolated_home / "current"
+    assert _compiled(runtime) == set()
+    assert "is not newer" in install.install(plugin, forward_only=True)
+    assert {"guards", "hook", "approvals", "paths"} <= _compiled(runtime)
+    import compileall
+    monkeypatch.setattr(compileall, "compile_dir", lambda *args, **kwargs: pytest.fail("a compiled runtime was compiled again"))
+    assert "is not newer" in install.install(plugin, forward_only=True)  # every later session start only looks
+
+
+def test_compiled_code_is_held_to_its_source_and_not_to_its_date(tmp_path, isolated_home):
+    """Python takes a compiled file for current when its source has the date and the size the file recorded. Under an
+    interpreter that keeps compiled code by path, every release is read through the one path `current`, so a file of
+    the next release with the same size and date ran the release before it. A compiled file carries its source's
+    hash instead, and is checked against it each time it is loaded."""
+    from importlib.util import cache_from_source
+    install.install(_plugin_copy(tmp_path))
+    source = isolated_home / "current" / "synthesis" / "__init__.py"
+    was, text = source.stat(), source.read_text(encoding="utf-8")
+    release = ".".join(str(part) for part in install.version(isolated_home / "current"))
+    other = "9" * len(release)
+    source.write_text(text.replace(f'"{release}"', f'"{other}"'), encoding="utf-8")
+    os.utime(source, ns=(was.st_atime_ns, was.st_mtime_ns))
+    assert (source.stat().st_size, int(source.stat().st_mtime)) == (was.st_size, int(was.st_mtime)) and other != release
+    said = subprocess.run([sys.executable, "-S", "-c", "import sys; sys.path.insert(0, sys.argv[1]); import synthesis; "
+                           "print(synthesis.__version__)", str(isolated_home / "current")], capture_output=True, text=True,
+                          env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"})
+    assert said.stdout.strip() == other, said.stderr
+    assert Path(cache_from_source(str(source.with_name("guards.py")))).read_bytes()[4] & 3 == 3  # hashed, and checked
+
+
+def test_an_interpreter_with_nowhere_to_keep_compiled_code_still_gets_a_whole_install(tmp_path, isolated_home, monkeypatch):
+    """Compiling saves time and is never a step an install can fail on. With no cache tag the standard library raises
+    NotImplementedError, which went past the one error the installer caught and left `current` switched and the hook
+    script unwritten."""
+    monkeypatch.setattr(sys.implementation, "cache_tag", None)
+    install.install(_plugin_copy(tmp_path))
+    assert (isolated_home / "bin" / "synthesis-hook").is_file() and install.current_hash()
