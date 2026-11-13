@@ -57,9 +57,9 @@ def build(workspace: str, as_of, out: Path | None, with_gaps: bool) -> tuple[str
     report = decay_sweep.collect(roots, as_of, workspace)
     unread: dict = {}  # a source, and each thing about it that the sweep did not take
     for gap in report["gaps"]:
-        unread.setdefault(gap["path"], []).append(gap["reason"])
-    if report["owed"]["unread"]:
-        unread["a ledger"] = [f"{report['owed']['unread']} row(s) of a ledger had too few cells to read (decay_sweep.py counts them under owed.unread)"]
+        unread.setdefault(gap["path"], []).append(gap["reason"] + (f" (line {gap['line']})" if gap.get("line") else ""))
+    for ledger, short in report["owed"]["unread_in"].items():  # each ledger by its file: a seat may keep several
+        unread.setdefault(ledger, []).append(f"{short} row(s) of a ledger had too few cells to read (decay_sweep.py counts them under owed.unread)")
     if unread and not with_gaps:
         raise SystemExit(f"plate: {len(unread)} source(s) were not taken in full by the sweep, so a list of everything is not built "
                          "over them:\n" + "\n".join(f"  {path}: {'; '.join(why)}" for path, why in unread.items())

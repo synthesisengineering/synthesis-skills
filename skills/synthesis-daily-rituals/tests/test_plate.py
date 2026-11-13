@@ -292,11 +292,12 @@ def test_a_choice_is_placed_at_the_line_it_opens_on_and_not_at_an_earlier_line_t
 def test_a_gap_names_its_ledger_and_its_line(tmp_path):
     """The second review: a row too short to read was said of `a ledger`, and a seat with several could not tell
     which to mend; a gap on a line of a plan was said without its line."""
-    seat(tmp_path)
+    env = seat(tmp_path)
     ledger = tmp_path / "drafts" / "_LEDGER.md"
     ledger.write_text(LEDGER + "| A short one | Sam |\n", encoding="utf-8")
     broken = tmp_path / "plans" / "2026-11-09.md"
     broken.write_text("# Plan\n\n### A broken one\n**Decays:** someday (x)\n**Decay ID:** broken\n", encoding="utf-8")
-    refused = plate(tmp_path)
+    refused = subprocess.run([sys.executable, str(SCRIPTS / "plate.py"), "--workspace", "desk", "--as-of", DAY],
+                             capture_output=True, text=True, env=env)                # `plate` would write the seat's ledger again
     assert refused.returncode == 2 and f"  {ledger}: 1 row(s) of a ledger" in refused.stderr, refused.stderr
     assert f"  {broken}: invalid Decays date (line 4)" in refused.stderr, refused.stderr
