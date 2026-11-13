@@ -8,7 +8,7 @@ boundary, and writes the one close-out with its coverage line
 
 Contents: Day-end modes · 1 Transcript sync · 2 Source-code sync · 3 Integration sweep · 4
 Communications: the send-or-release pass (4a Calendar Guardian, 4b deadlines and lapses) · 5
-Lessons learned · 5a Native-memory sweep · 5b Provenance scan · 6 Career amplification · 7
+Lessons learned · 5a Native-memory sweep · 5b Provenance scan · 5c What was asked reached a record · 6 Career amplification · 7
 Context capture · 8 Skills maintenance · 9 Machine sync · 10 Weekly loose-ends review · 11
 Remote readiness and final verification · Publishing at day-end.
 
@@ -106,6 +106,20 @@ A quote or timestamp written into a record must come from something a tool actua
 
 - [ ] Run `python3 <synthesis-agent-guardrails>/scripts/provenance_scan.py --since <today> <today's transcripts, daily plan, and the CONTEXT.md and session logs written today>`, with `--records <folder>` for each plan folder the workspace declares (`plans_dirs` in the ritual config) that is not named `daily-plans`, `ritual-workers` or `drafts`: a plan kept somewhere else is a record too, and the line the scan ends with says how many records it read. A record it names as unreadable was not checked: read it another way, or take what is not a record out of that folder. Each Slack timestamp written today must match a synced read; the scan names every one that does not. Fix or remove each named line before the close (correct it from the source, or mark it unverified); never "fix" it by inventing a source.
 
+## 5c. What Was Asked Reached A Record
+
+Applies where the workspace's ritual config has `"prompt_reconcile": {"records": ["<folder of project records>"]}`
+(with `"from": "YYYY-MM-DD"` for the first day it applies: turn it on from the day after the upgrade that brings it,
+since a session exported before then keeps the kinds its records were given). Only leaving the key out, or `false`,
+turns it off: any other value that is not that setting (`null`, `0`, `{}`, a folder outside a `records` list), and a
+`from` that is not a day written `YYYY-MM-DD`, is refused when the day-end is recorded, with the value named.
+The principal should never have to say "make sure nothing is lost": every prompt they typed today is in the
+transcript archive, and a record accounts for one by citing it.
+
+- [ ] Run `synthesis sessions prompts --workspace <W> --date <today> --records <each folder the config names>`. It first copies every transcript written since the day began, and stops, listing nothing, while one that may hold the day's prompts is not copied (`synthesis doctor` says how each is cleared). Then it lists each prompt of today's that no record cites, as `<harness> <session> --seq <n>  HH:MM  <first words>`, with as much of each session's id as tells it from the others (eight characters, or more), and says under which folders it looked. That name opens the prompt and is no citation.
+- [ ] For each line, open it with `synthesis sessions show <session> --seq <n>`, which prints the whole prompt. Where its substance is in a record, cite it there as `<harness> <session> #<n>` (or `#<first>-<last>` for a stretch one entry covers). Where it is not, write the record first: the request into the plan with its tag, the decision or correction into the project's session log. The listing, its JSON answer and the list the record prints when it refuses name a prompt with `--seq`, so no copy of them accounts for anything: a citation is yours to write, and it says the record accounts for that prompt. Never cite a prompt in a record that does not hold it; to note that prompts are open, give their number or their names as listed.
+- [ ] Record the day-end. The record runs the same listing itself: a clean close is refused while any prompt is left, `--outcome partial` records the day and says how many are open, and nothing is recorded when the listing cannot be made, or when its answer is not the listing's own: one that is for another workspace, day or set of folders (each folder by its real path, links followed, which is how the listing reads and names it and how the record reads the config's; a folder the config writes from no fixed place, such as `kb/records`, is refused), that leaves a field out, or whose exit status, count and list of open prompts disagree (an exit of 1 with none open, an exit of 0 with one open, more open than typed, one listed twice).
+
 ## 6. Career Amplification
 
 - [ ] Review today's work for content opportunities: blog posts, articles, videos, talks.
@@ -122,7 +136,7 @@ A quote or timestamp written into a record must come from something a tool actua
 - [ ] Update MEMORY.md if current state info is stale (version numbers, environment status, team assignments).
 - [ ] Update `last_session` date in `index.yaml` for each active project worked on today — use today's verified date. Where the index is generated from each project's own status, update the project's own status line instead.
 - [ ] **Local context gate:** run `python3 <synthesis-context-lifecycle>/scripts/context_doctor.py --project <path>` for every project worked today. Exit 1 names the file and the defect; fix structural defects before the close. Exit 2 (cannot tell) is never a pass.
-- [ ] **Record the ritual (v2.28.0):** `python3 <rituals>/scripts/ritual_state.py record --direction day-end --workspace <W> --date <logical workday> --mode <mode> --outcome <outcome> [--count k=v] --session <this session's id> [--pointer <session log>] [--travel <travel.json>]` (`--travel` where the workspace checks travel: the result's first day is the workday being closed). **`--date` is the workday being closed, never inferred from the clock** — closes are routinely written the next morning, and one person's workspace workdays open and close at different times. Records are structured data capped at 2048B so the append stays atomic under concurrent seats; the narrative belongs in the session log the `--pointer` names. Every mode records, observer included; day-start uses `--direction day-start`. Outcomes: clean, complete, completed, success, partial, failed, skipped, blocked, degraded; an unread or failed surface makes the run partial, never clean. The record is refused while a critical deadline is past due and open (each is named), and a clean outcome is refused over plans the sweep could not read whole.
+- [ ] **Record the ritual (v2.28.0):** `python3 <rituals>/scripts/ritual_state.py record --direction day-end --workspace <W> --date <logical workday> --mode <mode> --outcome <outcome> [--count k=v] --session <this session's id> [--pointer <session log>] [--travel <travel.json>]` (`--travel` where the workspace checks travel: the result's first day is the workday being closed). **`--date` is the workday being closed, never inferred from the clock** — closes are routinely written the next morning, and one person's workspace workdays open and close at different times. Records are structured data capped at 2048B so the append stays atomic under concurrent seats; the narrative belongs in the session log the `--pointer` names. Every mode records, observer included; day-start uses `--direction day-start`. Outcomes: clean, complete, completed, success, partial, failed, skipped, blocked, degraded; an unread or failed surface makes the run partial, never clean. The record is refused while a critical deadline is past due and open (each is named), and a clean outcome is refused over plans the sweep could not read whole. A `--date` after today is refused too, since nothing has been typed, planned or decided on a day that has not come: a workday is closed on that day or later, never ahead.
 
 ## 8. Skills Maintenance
 

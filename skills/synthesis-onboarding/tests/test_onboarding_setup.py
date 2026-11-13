@@ -582,6 +582,295 @@ def test_uninstall_removes_only_a_schedule_and_link_that_point_at_this_install(d
     assert plist.exists() and link.is_symlink() and len([l for l in lines if l.startswith("kept")]) == 2
 
 
+@pytest.mark.parametrize("login", [False, True], ids=["a login shell that defines none", "a login shell that defines another"])
+@pytest.mark.parametrize("chosen", [False, True], ids=["installed with no home of its own", "installed with a home of its own"])
+def test_the_weekday_nudge_runs_with_the_home_selected_at_install(day_end, tmp_path, monkeypatch, chosen, login):
+    """The nudge asks the ritual log under the synthesis home which workspaces still owe a close. Scheduled by an
+    install made with a home of its own, its job carried no home: it ran that install's script on the default
+    home's log, as the hourly copy of transcripts did."""
+    home = setup.install._home()
+    if not chosen:
+        monkeypatch.delenv("SYNTHESIS_HOME")                          # the default home, the same folder here
+    setup.register_day_end(load=False)
+    monkeypatch.delenv("SYNTHESIS_HOME", raising=False)               # launchd starts the job with none of the installer's shell
+    runs = _started_by_launchd(tmp_path, "export SYNTHESIS_HOME=/elsewhere/home\n" if login else "", nudge=True)
+    assert [(run["words"], run["SYNTHESIS_HOME"]) for run in runs] == [([], str(home) if chosen else "/elsewhere/home" if login else None)]
+    assert any("removed the nudge schedule" in said for said in setup.unregister_day_end())    # and it is still this install's
+
+
 def test_day_end_before_install_says_what_to_run_first():
     with pytest.raises(setup.SetupError, match="not installed"):
         setup.register_day_end()
+
+
+# ---- the hourly copy of session transcripts -------------------------------------
+# 2026-11-11: the archive had no trigger of its own. A transcript was copied only when some session ran resume,
+# handoff or a ritual, and one that no session exported in time was skipped.
+
+def test_the_hourly_export_is_scheduled_to_run_the_installed_command(day_end):
+    import plistlib
+    lines = setup.register_sessions_export()
+    command = setup.install._home() / "bin" / "synthesis"
+    spec = plistlib.loads(setup._export_plist().read_bytes())
+    assert spec["Label"] == "com.synthesis.sessions-export" and spec["StartInterval"] == 3600 and spec["RunAtLoad"] is True
+    assert f'"{command}" sessions export --all --scheduled; ' in spec["ProgramArguments"][-1]
+    assert f'"{command}" sessions sync' in spec["ProgramArguments"][-1]
+    assert calls(day_end)[-1].startswith("bootstrap gui/") and any("every hour" in line for line in lines)
+
+
+def test_the_export_schedule_without_launchctl_is_written_and_not_loaded(day_end):
+    setup.register_sessions_export(load=False)
+    assert setup._export_plist().exists() and calls(day_end) == []
+
+
+HOMES = ("SYNTHESIS_HOME", "CLAUDE_CONFIG_DIR", "CODEX_HOME", "XDG_DATA_HOME")  # the runtime's folder, and where each harness keeps transcripts
+CHOSEN = {"none": (), **{name: (name,) for name in HOMES}, "all four": HOMES}
+
+
+def _started_by_launchd(tmp_path, profile: str = "", nudge: bool = False) -> list:
+    """What the scheduled job's command is given when launchd starts the job: the job's own program arguments and
+    environment variables, the person's login shell (`profile` is what theirs defines) and nothing of the shell
+    the installer ran in. The installed command is replaced by one that writes down its words and its homes.
+    The job is the hourly copy's, or with `nudge` the weekday nudge's."""
+    import plistlib
+    spec, seen = plistlib.loads((setup._nudge_plist() if nudge else setup._export_plist()).read_bytes()), tmp_path / "seen.jsonl"
+    (setup.install._home() / "bin" / ("day-end-nudge.sh" if nudge else "synthesis")).write_text(
+        f"#!{sys.executable}\nimport json, os, sys\nopen({str(seen)!r}, 'a').write(json.dumps("
+        f"{{'words': sys.argv[1:], **{{name: os.environ.get(name) for name in {HOMES!r}}}}}) + '\\n')\n")
+    (Path.home() / ".bash_profile").write_text(profile)
+    done = subprocess.run(spec["ProgramArguments"], capture_output=True, text=True, timeout=60,
+                          env={"HOME": str(Path.home()), "PATH": "/usr/bin:/bin", **spec.get("EnvironmentVariables", {})})
+    assert done.returncode == 0, done.stderr
+    return [json.loads(line) for line in seen.read_text().splitlines()]
+
+
+@pytest.mark.parametrize("login", [False, True], ids=["a login shell that defines none", "a login shell that defines others"])
+@pytest.mark.parametrize("chosen", CHOSEN.values(), ids=CHOSEN.keys())
+def test_the_scheduled_copy_runs_with_each_home_selected_at_install(day_end, tmp_path, monkeypatch, chosen, login):
+    """2026-11-12, a second review: an install made with homes of its own (`SYNTHESIS_HOME` for the runtime, the
+    three folders the harnesses keep transcripts under) scheduled a job that carried none of them, so the job ran
+    that install's command against the default home. Each one set when the schedule is installed goes with the
+    job, also where the login shell defines another; one not set is left to the login shell, as before."""
+    picked = {"SYNTHESIS_HOME": str(setup.install._home()), "CLAUDE_CONFIG_DIR": str(tmp_path / "custom" / "claude config"),
+              "CODEX_HOME": str(tmp_path / "custom" / "it's $HOME; \"codex\""), "XDG_DATA_HOME": str(tmp_path / "custom" / "xdg")}
+    for name in HOMES:
+        if name in chosen:
+            monkeypatch.setenv(name, picked[name])
+        else:
+            monkeypatch.delenv(name, raising=False)
+    setup.register_sessions_export(load=False)
+    for name in HOMES:                                         # launchd starts the job with none of the installer's shell
+        monkeypatch.delenv(name, raising=False)
+    elsewhere = {name: f"/elsewhere/{name.lower()}" for name in HOMES}
+    runs = _started_by_launchd(tmp_path, "".join(f"export {name}={folder}\n" for name, folder in elsewhere.items()) if login else "")
+    assert [run["words"] for run in runs] == [["sessions", "export", "--all", "--scheduled"], ["sessions", "sync"]]
+    for name in HOMES:
+        wanted = picked[name] if name in chosen else elsewhere[name] if login else None
+        assert [run[name] for run in runs] == [wanted, wanted], name
+
+
+def test_a_home_set_to_nothing_at_install_is_left_to_the_login_shell(day_end, tmp_path, monkeypatch):
+    """A variable set to an empty string selects the default folder, as an unset one does: nothing goes with the job."""
+    for name in HOMES[1:]:
+        monkeypatch.setenv(name, "")
+    setup.register_sessions_export(load=False)
+    for name in HOMES:
+        monkeypatch.delenv(name, raising=False)
+    runs = _started_by_launchd(tmp_path)
+    assert len(runs) == 2 and all(run[name] is None for run in runs for name in HOMES[1:])
+    assert all(run["SYNTHESIS_HOME"] == str(setup.install._home()) for run in runs)
+
+
+@pytest.mark.parametrize("status", [1, 2, 0])
+def test_the_scheduled_job_runs_the_sync_whatever_the_exports_exit_status(day_end, tmp_path, status):
+    """The export exits 1 when it could not copy something. The job's line runs the sync after it all the same, so
+    what was copied still reaches the sessions repos, and the job ends with the sync's own status."""
+    import plistlib
+    setup.register_sessions_export(load=False)
+    spec, seen = plistlib.loads(setup._export_plist().read_bytes()), tmp_path / "seen.txt"
+    (setup.install._home() / "bin" / "synthesis").write_text(
+        f"#!{sys.executable}\nimport sys\nopen({str(seen)!r}, 'a').write(' '.join(sys.argv[1:]) + '\\n')\n"
+        f"sys.exit({status} if sys.argv[1:3] == ['sessions', 'export'] else 0)\n")
+    done = subprocess.run(spec["ProgramArguments"], capture_output=True, text=True, timeout=60,
+                          env={"HOME": str(Path.home()), "PATH": "/usr/bin:/bin"})
+    assert seen.read_text().splitlines() == ["sessions export --all --scheduled", "sessions sync"] and done.returncode == 0, done.stderr
+
+
+def test_uninstall_removes_only_an_export_schedule_that_runs_this_install(day_end):
+    setup.register_sessions_export(load=False)
+    assert any("removed the export schedule" in line for line in setup.unregister_sessions_export())
+    assert not setup._export_plist().exists() and calls(day_end)[-1].startswith("bootout gui/")
+    plist = setup._export_plist()
+    plist.write_text("<plist><dict><key>ProgramArguments</key><array><string>/other/synthesis sessions export</string></array></dict></plist>")
+    assert plist.exists() and any(line.startswith("kept") for line in setup.unregister_sessions_export())
+    near = f'"{setup.install._home() / "bin" / "synthesis"}-old" sessions export --all'            # a command whose path only begins like this install's
+    plist.write_text(f"<plist><dict><key>ProgramArguments</key><array><string>{near}</string></array></dict></plist>")
+    assert plist.exists() and any(line.startswith("kept") for line in setup.unregister_sessions_export())
+
+
+# 2026-11-12, a second review: a schedule was taken for this install's when this install's path stood anywhere in its
+# line, so one whose command only ended with that path, and `echo <that path>`, were unloaded and removed. A schedule
+# is this install's when the program of every command its line runs is this install's, the whole path.
+
+def _scheduled(line, plist: Path = None) -> Path:
+    """A schedule file whose login shell is given `line`; a list is its program arguments whole, bytes the file itself."""
+    import plistlib
+    plist = plist or setup._export_plist()
+    plist.parent.mkdir(parents=True, exist_ok=True)
+    plist.write_bytes(line if isinstance(line, bytes) else plistlib.dumps(
+        {"Label": plist.stem, "ProgramArguments": line if isinstance(line, list) else ["/bin/bash", "-lc", line]}))
+    return plist
+
+
+ANOTHERS = {  # {own} is this install's command: none of these runs it as the program of each of its commands
+    "a command whose path ends with this install's": '"/Volumes/backup{own}" sessions export --all; "/Volumes/backup{own}" sessions sync',
+    "this install's path handed to echo": 'echo "{own}" sessions export --all',
+    "this install's path as the last word of another program": "/bin/echo {own}",
+    "a sibling whose name begins like it": '"{own}-old" sessions export --all; "{own}-old" sessions sync',
+    "a sibling named with a hash sign": "{own}#old sessions export --all",
+    "this install's path as a variable for another command": 'SYNTHESIS={own} "/other/bin/synthesis" sessions export --all',
+    "this install's path as a home another command is given": 'export SYNTHESIS_HOME={own}; "/other/bin/synthesis" sessions export --all',
+    "this install's path inside the words handed to a shell": '/bin/sh -c "{own} sessions export --all"',
+    "this install's command after another program's": 'echo start; "{own}" sessions export --all',
+    "another program on the line after this install's command": '"{own}" sessions export --all\n/other/bin/synthesis sessions sync',
+    "a line with a quote left open": '"{own} sessions export --all',
+    "a line that runs nothing": "export SYNTHESIS_HOME=/custom",
+    "another program given this install's path, with no shell": ["/usr/bin/env", "{own}", "sessions", "export"],
+    "a line that is no text": ["/bin/bash", "-lc", 41],
+    "a file cut short": b"<plist><dict><key>ProgramArguments</key><array><string>/bin/bash</string><string>-lc</string><string>{own}",
+    "a file that holds no dictionary": b"<plist><array><string>{own}</string></array></plist>",
+}
+
+
+@pytest.mark.parametrize("line", ANOTHERS.values(), ids=ANOTHERS.keys())
+def test_uninstall_keeps_an_export_schedule_whose_own_command_is_not_this_installs(day_end, line):
+    own = str(setup.install._home() / "bin" / "synthesis")
+    named = [word.replace("{own}", own) if isinstance(word, str) else word for word in line] if isinstance(line, list) else \
+        line.replace(b"{own}", own.encode()) if isinstance(line, bytes) else line.replace("{own}", own)
+    plist = _scheduled(named)
+    assert any(said.startswith("would keep") for said in setup.unregister_sessions_export(dry_run=True))
+    assert any(said.startswith("kept") for said in setup.unregister_sessions_export())
+    assert plist.exists() and calls(day_end) == []                       # nothing was asked of launchctl
+
+
+OWN = {  # and these are this install's, however the line around its command is written
+    "the two commands alone": '"{own}" sessions export --all; "{own}" sessions sync',
+    "homes set first, one with a quote and a semicolon in it": "export SYNTHESIS_HOME=/custom; export CODEX_HOME='/it'\"'\"'s; \"x\"'; "
+                                                               '"{own}" sessions export --all; "{own}" sessions sync',
+    "the command replacing its shell": 'exec "{own}" sessions export --all',
+    "the command with no shell": ["{own}", "sessions", "export", "--all"],
+}
+
+
+@pytest.mark.parametrize("line", OWN.values(), ids=OWN.keys())
+def test_uninstall_removes_an_export_schedule_whose_every_command_is_this_installs(day_end, line):
+    own = str(setup.install._home() / "bin" / "synthesis")
+    plist = _scheduled([word.replace("{own}", own) for word in line] if isinstance(line, list) else line.replace("{own}", own))
+    assert any("removed the export schedule" in said for said in setup.unregister_sessions_export())
+    assert not plist.exists() and calls(day_end)[-1].startswith("bootout gui/")
+
+
+@pytest.mark.parametrize("program, words, kept", [
+    ("/bin/echo", ["/bin/bash", "-lc", '"{own}" sessions export --all; "{own}" sessions sync'], True),
+    ("/Volumes/backup{own}", ["{own}", "sessions", "export", "--all"], True),
+    ("{own}", ["synthesis", "sessions", "export", "--all"], False),
+], ids=["another program handed this install's line", "a path that ends with this install's", "this install's command"])
+def test_a_schedule_that_names_its_program_apart_from_its_words_is_matched_by_that_program(day_end, program, words, kept):
+    """launchd runs a job's `Program` when the job names one, and hands it `ProgramArguments` only as its words: the
+    words then say nothing about what runs."""
+    import plistlib
+    own = str(setup.install._home() / "bin" / "synthesis")
+    plist = _scheduled(plistlib.dumps({"Label": setup.EXPORT_LABEL, "Program": program.replace("{own}", own),
+                                       "ProgramArguments": [word.replace("{own}", own) for word in words]}))
+    said = setup.unregister_sessions_export()
+    assert said[0].startswith("kept" if kept else "removed") and plist.exists() is kept and bool(calls(day_end)) is not kept
+
+
+def test_a_schedule_this_install_wrote_is_its_own_whatever_homes_it_carries_and_whoever_uninstalls(day_end, tmp_path, monkeypatch):
+    for name, folder in zip(HOMES[1:], ("claude config", "it's $HOME; \"codex\"", "xdg")):
+        monkeypatch.setenv(name, str(tmp_path / "custom" / folder))
+    setup.register_sessions_export(load=False)
+    for name in HOMES[1:]:                                             # uninstall runs in a shell that sets none of them
+        monkeypatch.delenv(name)
+    assert any("removed the export schedule" in said for said in setup.unregister_sessions_export())
+    assert not setup._export_plist().exists()
+
+
+def test_a_nudge_schedule_whose_command_only_ends_like_this_installs_is_anothers(day_end):
+    """The weekday nudge is matched the same way: another install's schedule is archived before this one replaces it,
+    and uninstall keeps it."""
+    nudge = setup.install._home() / "bin" / "day-end-nudge.sh"
+    plist = _scheduled(f'exec "/Volumes/backup{nudge}"', setup._nudge_plist())
+    assert any(said.startswith("kept") for said in setup.unregister_day_end()) and plist.exists() and calls(day_end) == []
+    assert any("archived the previous nudge schedule" in said for said in setup.register_day_end(load=False))
+    assert list((setup.install._home() / "archive").glob("*/com.synthesis.day-end-nudge.plist"))
+    assert any("removed the nudge schedule" in said for said in setup.unregister_day_end()) and not plist.exists()
+
+
+def test_another_installs_export_schedule_is_set_aside_before_this_one_replaces_it(day_end):
+    """One label holds one schedule. Installing this one replaced another install's without a word, and with it
+    that install's hourly copy. It is archived first, as a nudge schedule is, and the setup says where."""
+    import plistlib
+    other = '"/another/v5/bin/synthesis" sessions export --all; "/another/v5/bin/synthesis" sessions sync'
+    _scheduled(other)
+    lines = setup.register_sessions_export(load=False)
+    kept = list((setup.install._home() / "archive").glob("*/com.synthesis.sessions-export.plist"))
+    assert len(kept) == 1 and plistlib.loads(kept[0].read_bytes())["ProgramArguments"][-1] == other
+    assert any("archived" in line and str(kept[0].parent) in line for line in lines)
+    assert setup.install.runs_only(setup._export_plist(), setup.install._home() / "bin" / "synthesis")
+    assert not any("archived" in line for line in setup.register_sessions_export(load=False))        # its own is replaced in place
+    assert len(list((setup.install._home() / "archive").glob("*/com.synthesis.sessions-export.plist"))) == 1
+
+
+# 2026-11-12: the doctor answered ok for a loaded schedule that ran another install's command, while this home's stamp
+# was fresh from its own sessions' exports. Whose schedule it is, is told in one place in the core, which the setup
+# asks before it replaces or removes one and the doctor asks before it calls the hourly copy healthy.
+
+def _doctor() -> tuple:
+    """What the doctor says of the hourly copy for this home, where launchd holds the schedule loaded and an export
+    has just finished: the status and the words."""
+    from datetime import datetime
+    stamp = setup.install._home() / "sessions" / ".state" / "export.json"
+    stamp.parent.mkdir(parents=True, exist_ok=True)
+    now = datetime.now().astimezone().isoformat(timespec="seconds")
+    stamp.write_text(json.dumps({"exported": now, "scheduled": now}))  # the schedule's own run, as its command marks it
+    found = setup.doctor.check_sessions_export(setup._export_plist(), stamp, run=lambda argv, **kw: subprocess.CompletedProcess(argv, 0, "", ""))
+    return found.status, found.detail
+
+
+@pytest.mark.parametrize("line", [*ANOTHERS.values(), *OWN.values()], ids=[*ANOTHERS, *OWN])
+def test_the_doctor_and_the_setup_tell_whose_schedule_it_is_the_same_way(day_end, line):
+    """Every schedule the uninstall keeps as not this install's, the doctor fails on; every one the uninstall removes
+    as this install's, the doctor takes for the hourly copy."""
+    own = str(setup.install._home() / "bin" / "synthesis")
+    named = [word.replace("{own}", own) if isinstance(word, str) else word for word in line] if isinstance(line, list) else \
+        line.replace(b"{own}", own.encode()) if isinstance(line, bytes) else line.replace("{own}", own)
+    _scheduled(named)
+    status, detail = _doctor()
+    kept = setup.unregister_sessions_export(dry_run=True)[0].startswith("would keep")
+    assert kept is (line in ANOTHERS.values()) and status == ("fail" if kept else "ok"), detail
+    assert not kept or ("not this install's ~/.synthesis/v5/bin/synthesis" in detail and "--sessions-export" in detail)
+    assert not hasattr(setup, "_points_at")                              # the setup keeps no test of its own
+
+
+def test_the_doctor_fails_once_another_installs_setup_has_replaced_this_schedule(day_end, tmp_path, monkeypatch):
+    """One label holds one schedule. A second install, made with a home of its own, schedules its hourly copy: this
+    install's schedule is set aside, and from then on nothing copies this home's transcripts on a schedule. This
+    home's doctor says so and names the command that runs, and this home's setup puts its own schedule back."""
+    setup.register_sessions_export(load=False)
+    assert _doctor()[0] == "ok"
+    with monkeypatch.context() as second:
+        second.setenv("SYNTHESIS_HOME", str(tmp_path / "second" / "v5"))
+        setup.install.install(tmp_path / "plugin")
+        assert any("archived another install's export schedule" in said for said in setup.register_sessions_export(load=False))
+        assert _doctor()[0] == "ok"                                      # the second home's hourly copy is its own
+    status, detail = _doctor()
+    assert status == "fail" and f"runs {tmp_path / 'second' / 'v5' / 'bin' / 'synthesis'}," in detail
+    assert "not this install's ~/.synthesis/v5/bin/synthesis" in detail and "--sessions-export" in detail
+    assert any("archived another install's export schedule" in said for said in setup.register_sessions_export(load=False))
+    assert _doctor()[0] == "ok"
+
+
+def test_the_export_schedule_before_install_says_what_to_run_first():
+    with pytest.raises(setup.SetupError, match="not installed"):
+        setup.register_sessions_export()

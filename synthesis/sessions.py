@@ -7,7 +7,8 @@ session, incrementally, into <home>/sessions/<workspace>/<YYYY-MM>/<harness>-<se
 the principal's prompts, replies, reasoning, tool calls and results, compactions, the models that answered. Secrets are
 masked with the commit check's credential patterns, images are kept once as files named by their hash, and text a
 harness repeats every turn is kept once. A native file is read only past the offset already exported. Only the
-principal's own words are `user` records: a prompt one agent writes to another is a `brief`, and an approval reviewer's
+principal's own words are `user` records: a prompt one agent writes to another, or a command line hands a run
+(`codex exec`, `claude -p`), is a `brief`, and an approval reviewer's
 copy of the conversation is counted, not kept (R10.1). `sync` copies each workspace's conversation and tool calls into
 that workspace's own sessions repo (R10.2, R10.3). Nothing here runs in a hook (R8.3): resume, handoff, checkpoints
 and the rituals call it.
@@ -18,12 +19,15 @@ from __future__ import annotations
 import base64
 import collections
 import contextlib
+import errno
 import fcntl
 import hashlib
 import json
 import os
 import re
+import stat
 import subprocess
+import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -107,7 +111,8 @@ def _prompt(s: "_Session", at, body: dict, sidechain: bool = False):
     if s.meta.get("role") == "reviewer":  # Codex's approval reviewer is handed the whole conversation to judge
         s.skipped["reviewer's copy of the conversation"] += 1
         return None
-    agent = sidechain or s.meta.get("role") == "subagent" or body.get("text", "").lstrip().startswith(AGENT_WRITTEN)
+    began = s.trigger in ("exec", "guardian_review") if s.trigger else s.meta.get("unattended")  # the turn's own word, else the session's
+    agent = sidechain or s.meta.get("role") == "subagent" or began or body.get("text", "").lstrip().startswith(AGENT_WRITTEN)
     return {"at": at, "kind": "brief" if agent else "user", **body}
 
 
@@ -157,7 +162,7 @@ class _Session:
         self.offset, self.seq, self.segment = s.get("offset", 0), s.get("seq", 0), s.get("segment", 1)
         self.folder = Path(s["folder"]) if s.get("folder") else None
         self.seen, self.meta = set(s.get("seen", [])), s.get("meta", {})
-        self.model, self.last_user, self.lines = s.get("model", ""), s.get("last_user", ""), []
+        self.model, self.turn, self.trigger, self.lines = s.get("model", ""), s.get("turn", []), s.get("trigger"), []
         self.skipped = collections.Counter(self.meta.get("skipped", {}))
 
     def once(self, rec: dict):
@@ -169,6 +174,19 @@ class _Session:
             return None
         self.seen.add(key)
         return rec
+
+    def mirrored(self, text: str, source: str) -> bool:
+        """Whether a prompt is the harness's other copy of a turn already kept: Codex writes a turn as a response item
+        and again as a UI event, side by side. The same words from the same source are a turn of their own, and so
+        are the same words once a turn began, a session line was written or the agent did anything: each clears
+        what is remembered here (2026-11-12: a second `Yes.` was removed as a copy of the first, and then one kept
+        only as a UI event as a copy of an earlier turn's response item, so nothing listed it among what was typed)."""
+        key = hashlib.sha256(text.encode("utf-8", "replace")).hexdigest()[:16]
+        if self.turn[:1] == [key] and self.turn[1] != source and self.turn[2]:
+            self.turn[2] -= 1
+            return True
+        self.turn = [key, source, self.turn[2] + 1 if self.turn[:2] == [key, source] else 1]
+        return False
 
     def content(self, value) -> dict:
         """A tool result's or message's text and media: text blocks joined, base64 media written once as files."""
@@ -218,9 +236,9 @@ class _Session:
     def emit(self, rec: dict | None) -> None:
         if rec is None:
             return
-        if rec.get("kind") in ("user", "brief"):
-            self.last_user = rec.get("text", "")
         text = str(rec.get("text") or "")
+        if rec.get("kind") in ("assistant", "reasoning", "tool_call", "tool_result", "compaction"):
+            self.turn = []  # the agent answered or acted: the same words after this are another prompt, never a copy
         if rec.get("kind") == "system" and (rec.get("source") in HOOK_SOURCES or text.lstrip().startswith("Local time:")):
             for found in ACTIVE_PROJECT.findall(text):  # the session-start hook names the project the session works on
                 if found not in self.meta.setdefault("projects", []):
@@ -239,9 +257,42 @@ class _Session:
         self.lines.append(line + "\n")
         self.seq += 1
 
+    def held(self) -> int:
+        """The number of the last record the archive holds for this session, -1 for none; the session goes on in the
+        segment that record is in. A copy cut after it appended and before its state was saved left records the
+        state does not count, and the next run appended each again under the same number (2026-11-12, a review: a
+        prompt was then listed twice). Cut inside a line, it left part of a record: that part is taken off, so the
+        next record does not join it. A whole line no reader can parse stays, and the count goes on from before it."""
+        for file in sorted(self.folder.glob("transcript-*.jsonl"), reverse=True):
+            with file.open("rb+") as f:
+                size, step = f.seek(0, os.SEEK_END), 1 << 16
+                while size:
+                    start = max(0, size - step)
+                    f.seek(start)
+                    tail = f.read()
+                    whole = tail[:tail.rfind(b"\n") + 1]
+                    if len(whole) < len(tail):
+                        size -= len(tail) - len(whole)
+                        f.truncate(size)
+                    lines = whole.split(b"\n")
+                    for line in reversed(lines if not start else lines[1:]):  # read from mid-file, the first is part of a line
+                        try:
+                            number = int(json.loads(line)["seq"])
+                        except (ValueError, KeyError, TypeError):
+                            continue
+                        self.segment = max(self.segment, int(file.stem.rsplit("-", 1)[1]))
+                        return number
+                    if not start:
+                        break
+                    step *= 8
+        return -1
+
     def flush(self, offset: int) -> int:
-        """Append the kept records, rotating segments, then record how far the native file was read."""
+        """Append the kept records the archive does not hold yet, rotating segments, then record how far the native
+        file was read."""
         written = 0
+        if self.lines:
+            del self.lines[:max(0, self.held() + 1 - (self.seq - len(self.lines)))]
         while self.lines:
             target = self.folder / f"transcript-{self.segment:04d}.jsonl"
             size, batch = target.stat().st_size if target.exists() else 0, []
@@ -263,7 +314,7 @@ class _Session:
             paths.write_json(self.folder / "meta.json", self.meta)
         paths.write_json(self.file, {"offset": self.offset, "seq": self.seq, "segment": self.segment,
                                      "folder": str(self.folder or ""), "seen": sorted(self.seen), "meta": self.meta,
-                                     "model": self.model, "last_user": self.last_user[:2000]})
+                                     "model": self.model, "turn": self.turn, "trigger": self.trigger})
         return written
 
 
@@ -301,7 +352,7 @@ def _claude(row: dict, s: _Session):
                     rec = {"at": at, "kind": who, **s.content([b])}
                     yield s.once(rec) if who == "system" else rec
                 else:  # a sub-agent's prompts (isSidechain) are written by the agent that started it
-                    yield _prompt(s, at, s.content([b]), bool(row.get("isSidechain")))
+                    yield _prompt(s, at, s.content([b]), bool(row.get("isSidechain")) or row.get("entrypoint") == "sdk-cli")  # `claude -p`
     elif t == "system":
         sub = row.get("subtype")
         if sub == "compact_boundary":
@@ -329,6 +380,11 @@ def _codex(row: dict, s: _Session):
         if isinstance(sub, dict):  # a child thread: Codex's approval reviewer ("guardian") or a spawned agent
             s.meta["role"] = "reviewer" if sub.get("other") == "guardian" else "subagent"
             s.meta["parent"] = p.get("parent_thread_id") or (sub.get("thread_spawn") or {}).get("parent_thread_id")
+        if p.get("source") == "exec":  # `codex exec`: its prompt comes from a command line, a script's or another agent's
+            s.meta["unattended"] = True
+        elif isinstance(p.get("source"), str):  # continued from another source (`cli`): what is typed from here is the person's
+            s.meta.pop("unattended", None)
+        s.trigger, s.turn = "", []  # a new run of the session: the turn before it is over, with its word for how it began and its copies
         yield {"at": at, "kind": "session", "data": {k: p[k] for k in ("id", "cwd", "originator", "cli_version", "source",
                                                                        "parent_thread_id", "model_provider", "git") if k in p}}
         if p.get("instructions"):
@@ -343,7 +399,7 @@ def _codex(row: dict, s: _Session):
         if p.get("role") == "assistant":
             yield {"at": at, "kind": "assistant", **body, "model": s.model}
         elif p.get("role") == "user" and not _injected(text):
-            yield None if text == s.last_user else _prompt(s, at, body)
+            yield None if s.mirrored(text, "item") else _prompt(s, at, body)
         else:
             yield s.once({"at": at, "kind": "system", "source": p.get("role"), **body})
     elif t == "response_item" and kind == "reasoning":
@@ -360,7 +416,11 @@ def _codex(row: dict, s: _Session):
                "input": p.get("arguments") or p.get("input") or p.get("action")}
     elif t == "event_msg" and kind == "user_message":
         text = str(p.get("message") or "")
-        yield None if not text or text == s.last_user or _injected(text) else _prompt(s, at, {"text": text})
+        yield None if not text or _injected(text) or s.mirrored(text, "event") else _prompt(s, at, {"text": text})
+    elif t == "event_msg" and kind == "task_started":  # a turn begins, and may say how: `composer` for what a person typed, `exec` for a command line
+        said = p.get("turn_attribution")  # a turn that says nothing is read by the session line, never by the turn before
+        s.trigger, s.turn = str(said.get("turn_trigger") or "") if isinstance(said, dict) else "", []  # and no prompt before it is its copy
+        s.skipped["event_msg:task_started"] += 1
     elif t == "compacted":
         s.skipped["compaction history items"] += len(p.get("replacement_history") or [])
         yield {"at": at, "kind": "compaction", "text": p.get("message")}
@@ -474,24 +534,45 @@ def export_file(harness: str, native: Path, project: str = "") -> int:
     return s.flush(end)
 
 
-def natives(days: float = 0) -> list:
-    """(harness, path) for every native transcript, or those changed in the last `days` days."""
-    since, found = time.time() - days * 86400 if days else 0, []
+def natives(days: float = 0, unread: list | None = None) -> list:
+    """(harness, path) for every native transcript, or those changed in the last `days` days. What the search cannot
+    read is not passed over (2026-11-12: with a harness's transcript folder closed to it, a run found nothing to
+    copy and stamped complete): a folder it cannot list goes into `unread` as (harness, folder, why), and a
+    transcript it can name and not look at is returned, so that its copy fails by name."""
+    since, found, absent = time.time() - days * 86400 if days else 0, [], (FileNotFoundError, NotADirectoryError)
     for harness, base in paths.transcript_roots().items():
-        pattern = {"claude-code": "*/**/*.jsonl", "codex": "**/rollout-*.jsonl", "muse": "*/*/*/*/session.jsonl"}[harness]
-        bases = [base, base.parent / "archived_sessions"] if harness == "codex" else [base]  # Codex moves archived ones
-        found += [(harness, p) for b in bases for p in b.glob(pattern) if p.is_file() and p.stat().st_mtime >= since
-                  and p.name != "journal.jsonl"]  # a Claude Code workflow's run journal, not a conversation
+        pattern = {"claude-code": "*/**/*.jsonl", "codex": "**/rollout-*.jsonl", "muse": "*/*/*/*"}[harness]
+        for b in [base, base.parent / "archived_sessions"] if harness == "codex" else [base]:  # Codex moves archived ones
+            def shut(exc, harness=harness):  # a folder that is not there holds no transcript
+                unread.extend([] if isinstance(exc, absent) else [(harness, str(exc.filename), exc.strerror or str(exc))])
+            for top, dirs, _ in os.walk(b, onerror=shut) if unread is not None else ():
+                if harness == "muse" and top.count(os.sep) - str(b).count(os.sep) >= 3:
+                    dirs.clear()  # a Muse session's own folder is looked into, never listed
+            try:
+                named = [p / "session.jsonl" if harness == "muse" else p for p in b.glob(pattern)]
+            except OSError:  # the folder above cannot be searched, and the walk has said so
+                named = []
+            for p in named:
+                try:  # journal.jsonl is a Claude Code workflow's run journal, not a conversation
+                    seen = p.stat()  # is_file answers False where it cannot look (Python 3.14): the error is what names it
+                    kept = p.name != "journal.jsonl" and stat.S_ISREG(seen.st_mode) and seen.st_mtime >= since
+                except OSError as exc:  # named and closed to a look: its copy says why; one removed meanwhile is no transcript
+                    kept = not isinstance(exc, absent)
+                found += [(harness, p)] if kept else []
     return found
 
 
 def _rebuild() -> str:
     """Move the whole archive aside, never deleting it, so this export reads every transcript again with the current
-    adapters. Returns where the old archive went."""
+    adapters. The stamp and the losses come along: what was not copied is still not copied, and what was lost stays
+    on record. Returns where the old archive went."""
     target = paths.home() / "archive" / f"sessions-{time.strftime('%Y%m%dT%H%M%S')}"
     target.parent.mkdir(parents=True, exist_ok=True)
     if root().exists():
         os.replace(root(), target)
+        for kept in (f for f in (target / ".state" / "export.json", target / ".state" / "lost.jsonl") if f.is_file()):
+            (root() / ".state").mkdir(parents=True, exist_ok=True)
+            (root() / ".state" / kept.name).write_bytes(kept.read_bytes())
     return str(target)
 
 
@@ -514,32 +595,125 @@ def _writer(wait: bool):
         yield None
 
 
-def export(days: float = 0, only: str = "", wait: bool = True, rebuild: bool = False) -> list:
+def export(days: float = 0, only: str = "", wait: bool = True, rebuild: bool = False, scheduled: bool = False) -> list:
     """Export every native transcript changed in the last `days` days (all when 0); `only` names one session.
-    Without `wait` a busy archive is read as it is."""
+    Without `wait` a busy archive is read as it is. `scheduled` marks the run as the schedule's own."""
     with _writer(wait) as busy:
         if busy:
             return [busy]
         moved = [f"previous archive moved to {_rebuild()}"] if rebuild else []
-        return moved + _export(0 if rebuild else days, only)
+        return moved + _export(0 if rebuild else days, only, scheduled)
 
 
-def _export(days: float, only: str) -> list:
+def _export(days: float, only: str, scheduled: bool = False) -> list:
+    """Every run, a sync's too, leaves a stamp, the doctor's heartbeat for the scheduled export: a run that found
+    nothing new still ran, and a transcript a run could not copy is named there, with why and when, until a run
+    copies it (2026-11-12: every copy was refused and the doctor answered ok), as is a folder the search could not
+    list, until a run of everything lists it. A transcript that a run of everything no longer finds can never be
+    copied: the stamp says since when, and only the principal clears it (`lost`; the same day: a harness removed a
+    transcript whose copy had failed, and the next run stamped complete). A run the schedule itself made
+    (`scheduled`) is marked as that, and the mark stays through other runs: the doctor knows the schedule by it."""
     from synthesis import board
-    report = []
-    for harness, native in natives(days):
+    stamp = root() / ".state" / "export.json"
+    last, now = paths.read_json(stamp), datetime.now().astimezone().isoformat(timespec="seconds")
+    ran = now if scheduled else last.get("scheduled")
+    report, failed, tried, waiting, unread = [], [], set(), dict(last.get("uncopied") or {}), []
+    for harness, native in natives(days, unread):
         session = _identity(harness, native)
         if only and only not in (session, native.stem, str(native)):
             continue
+        tried.add(f"{harness} {session}")
         live = board.load(native.stem) if harness == "claude-code" else board.load(session)
         try:
             kept = export_file(harness, native, getattr(live, "project", "") or "")
-        except OSError as exc:
-            report.append(f"{harness} {session}: not exported ({exc})")
+        except Exception as exc:  # unreadable, or a row of a shape the adapter does not expect: named, and the run goes on
+            failed.append(f"{harness} {session}: not exported ({exc if isinstance(exc, OSError) else f'{type(exc).__name__}: {exc}'})")
+            waiting[f"{harness} {session}"] = {"native": str(native), "at": now, "reason": failed[-1]}
+            report.append(failed[-1])
             continue
+        waiting.pop(f"{harness} {session}", None)  # copied, whichever run this is
         if kept:
             report.append(f"{harness} {session}: {kept} record(s)")
+    shut = {f"{harness} {folder}": why for harness, folder, why in unread}  # what the search could not list may hold any transcript
+    if not (days or only):  # a run of everything: a folder it listed, or that is no longer there, is not waiting
+        waiting = {name: entry for name, entry in waiting.items() if not entry.get("folder") or name in shut}
+    for name, why in shut.items():
+        failed.append(f"{name}: not exported (cannot be listed: {why})")
+        waiting[name] = {"native": name.partition(" ")[2], "at": now, "reason": failed[-1], "folder": True}
+        report.append(failed[-1])
+    blind = {name.partition(" ")[0] for name in shut}  # a harness with a folder not listed was not looked through: none of its own is gone
+    for name, entry in waiting.items() if not (days or only) else ():  # a run of everything looked wherever a harness keeps one
+        if name not in tried and name.partition(" ")[0] not in blind and not os.path.exists(entry["native"]):
+            entry.setdefault("gone", now)
+            report.append(f"{name}: not copied before its transcript was removed (its copy last failed {entry['at'][:16]}); "
+                          f"what it held is not in the archive, and `synthesis sessions export --lost {name.partition(' ')[2]}` clears it "
+                          "once the principal accepts that")
+    if waiting:
+        last.update(failed=len(waiting), reason=(failed or [entry["reason"] for entry in waiting.values()])[0], uncopied=waiting)
+    else:
+        last = {"complete": now}
+    try:
+        paths.write_json(stamp, {**last, "exported": now, **({"scheduled": ran} if ran else {})})
+    except OSError as exc:  # an archive that cannot be written is read as it is, as a busy one is
+        return [f"not exported: {exc}"] + report
     return report
+
+
+def lost(session: str) -> str:
+    """Clear a transcript the stamp names as never copied, once it is gone, and keep what was lost in
+    `.state/lost.jsonl`. One still where a run looks, or perhaps in a folder a run cannot list, is not lost. Only
+    the principal can accept a loss: called by an agent (inside a harness, or with no terminal), this clears on their
+    code for that transcript and otherwise asks for it, whoever calls; typed by them in their own terminal, it needs none."""
+    from synthesis import approvals
+    with _writer(True) as busy:
+        stamp = root() / ".state" / "export.json"
+        last = paths.read_json(stamp)
+        waiting = dict(last.get("uncopied") or {})
+        names = [name for name, entry in waiting.items() if not entry.get("folder") and session in (name, name.partition(" ")[2])]
+        if busy or len(names) != 1:
+            raise ValueError(busy or f"{session!r} names {len(names)} of the transcripts the export could not copy: "
+                             + (", ".join(sorted(waiting)) or "none is recorded"))
+        entry, (harness, _, sid), unread = waiting.pop(names[0]), names[0].partition(" "), []
+        there = [str(p) for h, p in natives(0, unread) if h == harness and _identity(h, p) == sid] + (
+            [entry["native"]] if os.path.exists(entry["native"]) else [])
+        if there:
+            raise ValueError(f"{names[0]} is not lost: its transcript is at {there[0]}, and `synthesis sessions export "
+                             f"--session {sid}` copies it or says why it cannot")
+        shut = [folder for h, folder, _ in unread if h == harness]  # where it may still be was not looked through
+        if shut:
+            raise ValueError(f"{names[0]} is not known to be lost: {shut[0]} cannot be listed, and its transcript may be there")
+        said = f"{names[0]}, whose copy last failed {entry['at'][:16]} ({entry['reason']})"
+        agent = paths.harness() != "unknown" or not sys.stdin.isatty()
+        if agent and not approvals.consume("sessions-lost", names[0], {"session_id": paths.session_id()}):
+            code = approvals.request("sessions-lost", names[0], f"accept the transcript of {names[0]} as lost")
+            raise PermissionError(f"{said} was never copied, and its transcript is gone. Only the principal can accept that "
+                                  f"what it held is lost. Show them this and ask them to type {approvals.how(code)}. Then run "
+                                  "the identical command again.")
+        with (stamp.parent / "lost.jsonl").open("a", encoding="utf-8") as kept:
+            kept.write(json.dumps({"transcript": names[0], **entry, "cleared": datetime.now().astimezone().isoformat(timespec="seconds")}) + "\n")
+        rest = {"failed": len(waiting), "reason": next(iter(waiting.values()))["reason"], "uncopied": waiting} if waiting else {}
+        paths.write_json(stamp, {**{k: v for k, v in last.items() if k in ("exported", "complete", "scheduled")}, **rest})
+        return f"cleared: {said}. What it held is not in the archive; {stamp.parent / 'lost.jsonl'} keeps the loss on record"
+
+
+def behind(workspace: str, day: str) -> list:
+    """The transcripts not copied that may hold what was typed in a workspace on a day, each as the export named it
+    (2026-11-12: one whose copy had failed lay outside the days the listing exports, so the listing of that day held
+    none of its prompts and the day closed clean). One filed under another workspace holds nothing of this one's;
+    one last written before the day began holds nothing typed on it; a sub-agent's or a reviewer's holds an agent's
+    briefs, never the principal's words; one that is gone may have held anything written until a run found it gone;
+    a folder that could not be listed may hold a transcript of any workspace, written on any day."""
+    start, found = datetime.fromisoformat(day).timestamp(), []
+    for name, entry in (paths.read_json(root() / ".state" / "export.json").get("uncopied") or {}).items():
+        kept = _Session(name.partition(" ")[0], Path(entry["native"]), name.partition(" ")[2])
+        try:
+            written = os.path.getmtime(entry["native"])
+        except OSError:
+            written = datetime.fromisoformat(entry["gone"]).timestamp() if entry.get("gone") else time.time()
+        briefed = "-agent-" in kept.session or kept.meta.get("role") in ("subagent", "reviewer")
+        if entry.get("folder") or written >= start and not briefed and (not kept.folder or kept.folder.parts[-3] == workspace):
+            found.append(f"{entry['reason']} (last tried {entry['at'][:16]})")
+    return found
 
 
 # --- reading what was kept ------------------------------------------------------------------------------------
@@ -564,14 +738,128 @@ def records(folder: str, kinds: tuple = (), whole: bool = False) -> list:
     """A session's records in order; `whole` puts each blob's full text back in place of its first characters."""
     rows = []
     for segment in sorted(Path(folder).glob("transcript-*.jsonl")):
-        for line in segment.read_text(encoding="utf-8").splitlines():
+        for line in segment.read_text(encoding="utf-8").split("\n"):  # a record may hold U+2028, which splitlines takes for a line's end
             try:
                 rec = json.loads(line)
             except ValueError:
                 continue
-            if not kinds or rec.get("kind") in kinds:
+            if isinstance(rec, dict) and (not kinds or rec.get("kind") in kinds):  # a line that is no record is passed over
                 rows.append(_whole(rec, Path(folder)) if whole else rec)
     return rows
+
+
+# `<session> #<seq>`, or a range of them, as a record cites what the principal typed. A dash joins on the line of
+# the first number, and the range ends in a number of its own (2026-11-12: `c1 #2`, then the list item
+# `- 2026-10-30 ...` under it, read as #2 to #2026), which carries its `#` unless the dash is tight (2026-11-13:
+# `#12 — 2027 planning starts in January` read as #12 to #2027). A record's number has at most nine digits.
+CITED = re.compile(r"(?<![\w.-])([A-Za-z0-9][\w.-]*)\s+#(\d{1,9})(?!\d)"
+                   r"(?:(?:(?:-|–|—)#?|(?:[^\S\n]*(?:-|–|—)|\s*(?:to|through))\s*#)(\d{1,9})(?![-./:]?\d))?")
+# A string as JSON writes one, and YAML between double quotes. One left open runs to the end of its line, so a torn
+# line is read once (2026-11-13: tried again from each escaped quote after it, a quarter of a megabyte took minutes).
+STRING = re.compile(r'"(?:[^"\\\n]|\\.)*"?')
+RECORDS = (".md", ".markdown", ".txt", ".json", ".jsonl", ".yaml", ".yml")  # the files a folder of records is read from
+
+
+def prompts(workspace: str, day: str) -> list:
+    """What the principal typed in a workspace on one day (the local date), oldest first, from this Mac's archive:
+    each with what names it (harness, session, seq). A brief one agent wrote for another, injected
+    text and a tool's result are not prompts. Export first: this reads only what the archive holds."""
+    found = []
+    for meta in catalog(workspace, local_only=True):
+        if str(meta.get("last", "9"))[:10] < _shift(day, -1) or str(meta.get("started", ""))[:10] > _shift(day, 1):
+            continue  # a session over before that day or begun after it (a day's slack: the archive keeps UTC)
+        for rec in records(meta["folder"], ("user",)):
+            try:
+                at = datetime.fromisoformat(str(rec.get("at")).replace("Z", "+00:00")).astimezone()
+            except ValueError:
+                continue
+            if at.date().isoformat() == day:
+                found.append((at, {"harness": meta.get("harness"), "session": meta.get("session"), "seq": int(rec.get("seq", -1)),
+                                   "at": at.isoformat(timespec="minutes"), "text": str(rec.get("text", ""))}))
+    return [p for _, p in sorted(found, key=lambda f: (f[0], str(f[1]["session"]), f[1]["seq"]))]  # in the order typed; each keeps its minute
+
+
+def _shift(day: str, days: int) -> str:
+    return datetime.fromordinal(datetime.fromisoformat(day).toordinal() + days).date().isoformat()
+
+
+def uncited(found: list, roots: list) -> list:
+    """The prompts that no record cites. A citation is the session's id, or eight or more of its first characters
+    that no other session listed shares, then `#<seq>` or a range (`#12-40`, `#12 to #40`), in a file under the
+    roots that changed on or after the day of the oldest prompt (2026-11-11: what the principal asked reached a
+    project record only if an agent remembered, and nothing checked). It counts where it stands. The listing, its
+    answer and the day-end's refusal name a prompt as `<session> --seq <n>`, and the listing and `show` print no
+    `#<n>` a session's id could stand before, so a copy of what they print cites nothing (2026-11-13: through four
+    reviews, rules that knew the listing's own output by its shape met shapes they did not know, and a list of what
+    was open closed the day).
+    A root that is no folder or lies in a sessions repo, and a folder or a record under one that may not be read,
+    raises its OSError: read as empty, it left every prompt open with no word of why. Passed over: a folder gone
+    since the walk listed it, a link that leads nowhere or round, a file that is no regular file, a folder reached
+    by a link, and a sessions repo, which holds the conversations and so every citation written or tried in one."""
+    ids = {str(p["session"]) for p in found}
+    since = min((datetime.fromisoformat(p["at"]).replace(hour=0, minute=0).timestamp() for p in found), default=float("inf"))
+    tops, spans = [os.path.expanduser(root) for root in roots], collections.defaultdict(list)
+    talk = [os.path.realpath(p) for p in (*repos().values(), paths.home() / "sessions")]
+
+    def stop(error: OSError):
+        if not isinstance(error, FileNotFoundError) or error.filename in tops:
+            raise error
+    for root in tops:
+        if any(os.path.realpath(root) == held or os.path.realpath(root).startswith(held + os.sep) for held in talk):
+            raise NotADirectoryError(errno.ENOTDIR, "it holds session transcripts", root)
+        for top, dirs, files in os.walk(root, onerror=stop):
+            dirs[:] = [d for d in dirs if not d.startswith(".") and d != "node_modules" and os.path.realpath(os.path.join(top, d)) not in talk]
+            for name in files if found else ():  # with nothing typed there is nothing to cite: the folders are looked at, no record is read
+                path = os.path.join(top, name)
+                try:
+                    seen = os.stat(path)
+                    text = Path(path).read_text(encoding="utf-8", errors="replace") if name.lower().endswith(RECORDS) and stat.S_ISREG(
+                        seen.st_mode) and seen.st_mtime >= since else ""
+                except OSError as error:
+                    if error.errno in (errno.ENOENT, errno.ELOOP):  # gone since the walk listed it, or a link that leads nowhere or round
+                        continue
+                    raise
+                for cited, first, last in CITED.findall(_text(text)):
+                    one = named(cited, ids)
+                    if len(one) == 1:  # a few characters that two sessions share name neither; a lower number ends no range
+                        spans[one[0]].append((int(first), max(int(first), int(last or first))))
+    return [p for p in found if not any(first <= p["seq"] <= last for first, last in spans[str(p["session"])])]
+
+
+def worded(text: str, width: int = 0) -> str:
+    """A prompt's first words for a line of the listing, with every number set apart from its `#`, also from one an
+    escape writes: no reading of a saved listing then makes a citation of what the principal typed (2026-11-13:
+    today's prompt named yesterday's, and today's listing, saved, closed it)."""
+    return re.sub(r"(?i)(#|\\u0023)(?=\d)", r"\1 ", " ".join(text.split())[:width or None])
+
+
+def named(cited: str, ids) -> list:
+    """The sessions among `ids` that a citation's id names: the one it is, else each it begins by eight characters or more."""
+    return [s for s in ids if s == cited] or [s for s in ids if len(cited) >= 8 and s.startswith(cited)]
+
+
+def _text(text: str) -> str:
+    """A record's text with each string that carries an escape read as the text it holds, still between its quotes:
+    an encoder writes a dash that is not ASCII as an escape, and `#3\\u20134` was read as #3 alone (2026-11-12)."""
+    def held(m) -> str:
+        try:
+            return '"' + json.loads(m.group(0)) + '"' if "\\" in m.group(0) else m.group(0)
+        except ValueError:
+            return m.group(0)
+    return STRING.sub(held, text)
+
+
+def short(session: str, known: list | None = None) -> str:
+    """As much of a session's id as names it alone among the archive's main sessions: eight characters, or more
+    where two begin alike (2026-11-12: a citation of eight shared characters cleared both and opened neither). A
+    sub-agent's id begins with its parent's, so only the whole of it names it. `known` is the catalog, for a
+    caller that names several sessions."""
+    mains = [str(m.get("session")) for m in (catalog() if known is None else known)
+             if m.get("role") not in ("subagent", "reviewer") and "-agent-" not in str(m.get("session"))]
+    size = min(8, len(session)) if session in mains else len(session)
+    while size < len(session) and any(o != session and o.startswith(session[:size]) for o in mains):
+        size += 1
+    return session[:size]
 
 
 def find(prefix: str) -> list:
@@ -585,8 +873,8 @@ def find(prefix: str) -> list:
 
 
 def around(folder: str, seq: int, span: int = 3) -> list:
-    """The record a citation names (`<harness> <session> #<seq>`, R10.5) with `span` records either side."""
-    return [r for r in records(folder) if abs(int(r.get("seq", -1)) - seq) <= span]
+    """The record a citation names (`<harness> <session> #<seq>`, R10.5), whole, with `span` records either side."""
+    return [_whole(r, Path(folder)) if r.get("seq") == seq else r for r in records(folder) if abs(int(r.get("seq", -1)) - seq) <= span]
 
 
 def _whole(rec: dict, folder: Path) -> dict:
@@ -619,7 +907,7 @@ def peek(days: float = 2) -> list:
                         continue
                     for rec in ADAPTERS[harness](row, s) if isinstance(row, dict) else ():
                         s.emit(rec)
-        except OSError:  # the harness moved or removed the file meanwhile
+        except Exception:  # the harness moved or removed the file meanwhile, or it holds a row the adapter cannot read
             continue
         found.append(({**s.meta, "harness": harness, "session": s.session, "folder": str(s.folder)},
                       [json.loads(line) for line in s.lines]))
@@ -670,8 +958,8 @@ def render(rec: dict, width: int = 0) -> str:
 def repos() -> dict:
     """Workspace -> its sessions repo checkout (config `sessions_repos`). A session with no workspace is never
     synced (R10.4)."""
-    found = paths.config().get("sessions_repos") or {}
-    return {ws: Path(os.path.expanduser(p)) for ws, p in found.items() if ws != "other" and isinstance(p, str)}
+    found = paths.config().get("sessions_repos")
+    return {ws: Path(os.path.expanduser(p)) for ws, p in (found.items() if isinstance(found, dict) else ()) if ws != "other" and isinstance(p, str)}
 
 
 def _git(repo: Path, *args: str) -> subprocess.CompletedProcess:

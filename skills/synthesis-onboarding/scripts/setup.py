@@ -19,6 +19,7 @@ import argparse
 import json
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -439,18 +440,17 @@ def first_config(interactive: bool) -> list:
 
 LAUNCHCTL = "launchctl"
 NUDGE_LABEL = "com.synthesis.day-end-nudge"
+HOMES = ("SYNTHESIS_HOME", "CLAUDE_CONFIG_DIR", "CODEX_HOME", "XDG_DATA_HOME")  # the runtime's folder, and where each harness keeps transcripts
+
+
+def _homes() -> str:
+    """The start of a scheduled job's line: each of HOMES this install was made with, set after the login shell's
+    own. A job that carried none ran this install's command on the default home (2026-11-12, a second review)."""
+    return "".join(f"export {name}={shlex.quote(os.environ[name])}; " for name in HOMES if os.environ.get(name))
 
 
 def _nudge_plist() -> Path:
     return Path.home() / "Library" / "LaunchAgents" / f"{NUDGE_LABEL}.plist"
-
-
-def _points_at(plist: Path, target: Path) -> bool:
-    import plistlib
-    try:
-        return str(target) in " ".join(plistlib.loads(plist.read_bytes()).get("ProgramArguments") or [])
-    except (OSError, ValueError):
-        return False
 
 
 def register_day_end(agent: str = "auto", load: bool = True) -> list:
@@ -472,8 +472,8 @@ def register_day_end(agent: str = "auto", load: bool = True) -> list:
         lines.append(f"linked {link} -> {launcher} (opens {agent})")
     template = REPO / "skills" / "synthesis-daily-rituals" / "scripts" / f"{NUDGE_LABEL}.plist"
     spec = plistlib.loads(template.read_bytes())
-    spec["ProgramArguments"] = ["/bin/bash", "-lc", f'exec "{nudge}"']  # a login shell, for the user's PATH
-    if plist.exists() and not _points_at(plist, nudge):
+    spec["ProgramArguments"] = ["/bin/bash", "-lc", f'{_homes()}exec "{nudge}"']  # a login shell, for the user's PATH
+    if plist.exists() and not install.runs_only(plist, nudge):
         lines.append(f"archived the previous nudge schedule to {workspace_archive([plist])}")
     plist.parent.mkdir(parents=True, exist_ok=True)
     plist.write_bytes(plistlib.dumps(spec))
@@ -490,13 +490,13 @@ def unregister_day_end(dry_run: bool = False) -> list:
     """Remove only a nudge schedule and a day-end link that point at this install's copies."""
     home, lines = install._home(), []
     plist, link = _nudge_plist(), Path.home() / ".local" / "bin" / "day-end"
-    if plist.exists() and _points_at(plist, home / "bin" / "day-end-nudge.sh"):
+    if plist.exists() and install.runs_only(plist, home / "bin" / "day-end-nudge.sh"):
         if not dry_run:
             run([LAUNCHCTL, "bootout", f"gui/{os.getuid()}/{NUDGE_LABEL}"], 30)
             plist.unlink()
         lines.append(f"{'would remove' if dry_run else 'removed'} the nudge schedule {plist}")
     elif plist.exists():
-        lines.append(f"{'would keep' if dry_run else 'kept'} {plist}: it runs another install's nudge")
+        lines.append(f"{'would keep' if dry_run else 'kept'} {plist}: its command is not this install's nudge")
     if link.is_symlink() and os.path.realpath(link) == os.path.realpath(home / "bin" / "day-end"):
         if not dry_run:
             link.unlink()
@@ -504,6 +504,53 @@ def unregister_day_end(dry_run: bool = False) -> list:
     elif os.path.lexists(link):
         lines.append(f"{'would keep' if dry_run else 'kept'} {link}: it is not a link to this install's launcher")
     return lines
+
+
+# ---- the hourly copy of session transcripts ---------------------------------------
+
+EXPORT_LABEL = "com.synthesis.sessions-export"
+
+
+def _export_plist() -> Path:
+    return Path.home() / "Library" / "LaunchAgents" / f"{EXPORT_LABEL}.plist"
+
+
+def register_sessions_export(load: bool = True) -> list:
+    """Schedule, every hour and at login, the copy of every harness's session transcripts into the archive and of
+    each workspace's conversation into its sessions repo (2026-11-11: until then a transcript was copied only when
+    some session ran resume, handoff or a ritual). The job runs with the homes this install was made with."""
+    import plistlib
+    command, plist = install._home() / "bin" / "synthesis", _export_plist()
+    if not command.is_file():
+        raise SetupError("the synthesis command is not installed; run setup.py plugin (or start a session) first")
+    log = f"/tmp/{EXPORT_LABEL}.log"
+    spec = {"Label": EXPORT_LABEL, "StartInterval": 3600, "RunAtLoad": True, "ProcessType": "Background",
+            "StandardOutPath": log, "StandardErrorPath": log,  # a login shell, for the user's PATH and git credentials
+            "ProgramArguments": ["/bin/bash", "-lc",  # `--scheduled`: the run marks itself, and the doctor knows the schedule by it
+                                 f'{_homes()}"{command}" sessions export --all --scheduled; "{command}" sessions sync']}
+    lines = []
+    if plist.exists() and not install.runs_only(plist, command):  # one label holds one schedule: another install's copy stops here
+        lines.append(f"archived another install's export schedule to {workspace_archive([plist])}")
+    plist.parent.mkdir(parents=True, exist_ok=True)
+    plist.write_bytes(plistlib.dumps(spec))
+    if load:
+        domain = f"gui/{os.getuid()}"
+        run([LAUNCHCTL, "bootout", f"{domain}/{EXPORT_LABEL}"], 30)  # an older schedule under the same label
+        loaded = run([LAUNCHCTL, "bootstrap", domain, str(plist)], 30)
+        if loaded.returncode:
+            raise SetupError(f"launchctl could not load {plist}: {_tail(loaded)}")
+    return lines + [f"session transcripts copied every hour and at login ({plist}{'' if load else ', not loaded'}; it writes {log})"]
+
+
+def unregister_sessions_export(dry_run: bool = False) -> list:
+    """Remove only an export schedule whose every command is this install's."""
+    plist = _export_plist()
+    if plist.exists() and install.runs_only(plist, install._home() / "bin" / "synthesis"):
+        if not dry_run:
+            run([LAUNCHCTL, "bootout", f"gui/{os.getuid()}/{EXPORT_LABEL}"], 30)
+            plist.unlink()
+        return [f"{'would remove' if dry_run else 'removed'} the export schedule {plist}"]
+    return [f"{'would keep' if dry_run else 'kept'} {plist}: its command is not this install's"] if plist.exists() else []
 
 
 def workspace_archive(paths: list) -> Path:
@@ -557,7 +604,9 @@ def main(argv=None) -> int:
                         help="replace existing workspace AGENTS.md/CLAUDE.md after archiving them")
     parser.add_argument("--day-end", nargs="?", const="auto", choices=("auto", "codex", "claude"),
                         help="link ~/.local/bin/day-end and schedule the weekday 16:55 nudge")
-    parser.add_argument("--no-launchctl", action="store_true", help="--day-end: write the schedule without loading it")
+    parser.add_argument("--sessions-export", action="store_true",
+                        help="copy every harness's session transcripts into the archive and the sessions repos every hour")
+    parser.add_argument("--no-launchctl", action="store_true", help="--day-end, --sessions-export: write the schedule without loading it")
     parser.add_argument("--no-input", action="store_true", help="never ask; fail naming the flag instead")
     parser.add_argument("--compact-brief", action="store_true",
                         help="add the compaction brief to each synthesis workspace's instructions without asking")
@@ -584,7 +633,8 @@ def main(argv=None) -> int:
             say(plugin_lines)
             if args.dry_run:
                 say([f"runtime: would install it from {REPO} into {install._home()}" + (", with the commit check in every "
-                     "repository" if args.git_hooks else "") + (f"; would link day-end ({args.day_end})" if args.day_end else "")])
+                     "repository" if args.git_hooks else "") + (f"; would link day-end ({args.day_end})" if args.day_end else "")
+                     + ("; would schedule the hourly copy of session transcripts" if args.sessions_export else "")])
             else:
                 git_hooks = args.git_hooks or (interactive and args.command == "all" and confirm(
                     "Run the synthesis commit check (secrets, disclosures, other sessions' claims) in every repository?",
@@ -592,6 +642,8 @@ def main(argv=None) -> int:
                 say(install_runtime(git_hooks) + first_config(interactive and args.command == "all"))
                 if args.day_end:
                     say(register_day_end(args.day_end, load=not args.no_launchctl))
+                if args.sessions_export:
+                    say(register_sessions_export(load=not args.no_launchctl))
         if args.command in ("workspace", "org") or (args.command == "all" and (args.kb or args.org_repo or args.new or (
                 interactive and confirm("Bring a workspace's repositories onto this Mac?", "--kb", default=False)))):
             import workspace
@@ -640,7 +692,7 @@ def _uninstall(clients: list, dry_run: bool) -> int:
         proc = subprocess.CompletedProcess(step, 0, "", "") if dry_run else run(step)
         lines.append(f"{client}: {'would remove' if dry_run else 'removed'} {PLUGIN}" if not proc.returncode
                      else f"{client}: removal failed: {_tail(proc)}")
-    lines += unregister_day_end(dry_run) + install.uninstall(dry_run=dry_run)
+    lines += unregister_day_end(dry_run) + unregister_sessions_export(dry_run) + install.uninstall(dry_run=dry_run)
     print("\n".join(lines))
     return 0
 
