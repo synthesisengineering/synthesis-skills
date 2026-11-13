@@ -141,19 +141,20 @@ def access_check(policy: AccessPolicy):
 def hashed_firestore_keys():
     """Every key stored in Firestore becomes its SHA-256 hash.
 
-    Firestore reads each "/" in a document ID as a path separator, and a client that identifies itself by a metadata
-    document (ChatGPT, Codex) has a URL for its ID, so an unhashed client record cannot be stored at all. The OAuth
-    proxy only gets, puts and deletes by key, so a hash loses nothing, and it keeps authorization codes and token IDs
-    out of Firestore's document names. py-key-value's own always-hash strategy is private to that package, so this
-    builds on its public Firestore strategy.
+    A client that identifies itself by a metadata document (ChatGPT, Codex) has a URL for its ID. Used unhashed as a
+    document ID, its slashes leave an odd number of path elements, so Firestore's client library raised when the OAuth
+    proxy looked that client up, before the proxy could fetch the document. The proxy only gets, puts and deletes by
+    key, so a hash loses nothing, and records written this way keep authorization codes and token IDs out of
+    document names. py-key-value's always-hash strategy is private to that package; the public Firestore strategy is
+    the base only for its type, and both methods are this class's own.
     """
     import hashlib
 
     from key_value.aio.stores.firestore import FirestoreV1KeySanitizationStrategy
 
     class HashedKeys(FirestoreV1KeySanitizationStrategy):
-        def sanitize(self, value: str) -> str:
-            return hashlib.sha256(value.encode("utf-8")).hexdigest()
+        def sanitize(self, value: str) -> str:  # surrogatepass: a key with an unpaired surrogate hashes too
+            return hashlib.sha256(value.encode("utf-8", "surrogatepass")).hexdigest()
 
         def validate(self, value: str) -> None:  # any key is safe once hashed
             return None
