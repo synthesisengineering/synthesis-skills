@@ -692,8 +692,23 @@ def catalog_cost(skills: list, context_window: int | None) -> tuple:
     return (len(text.encode("utf-8")) + 3) // 4 + 256, budget
 
 
+def _model_cache(codex_home: Path) -> dict | None:
+    """Codex's cache of its models, read by its first whole JSON value; {} where there is no file, None where the
+    file holds no value to read. Codex's clients share the file, and a shorter copy written over a longer one
+    leaves the longer one's tail after it (2026-11-13: read as no cache, the model's window was unknown and the
+    catalog failed on the budget for a model Codex does not know, until Codex rewrote the file)."""
+    try:
+        text = (codex_home / "models_cache.json").read_text(encoding="utf-8")
+        found = json.JSONDecoder().raw_decode(text.lstrip())[0]
+    except FileNotFoundError:
+        return {}
+    except (OSError, ValueError):
+        return None
+    return found if isinstance(found, dict) else None
+
+
 def _context_window(config: dict, codex_home: Path) -> int | None:
-    models = paths.read_json(codex_home / "models_cache.json").get("models") or []
+    models = (_model_cache(codex_home) or {}).get("models") or []
     return next((m["context_window"] for m in models if isinstance(m, dict) and m.get("slug") == config.get("model")
                  and isinstance(m.get("context_window"), int)), None)
 
@@ -708,6 +723,10 @@ def check_codex_catalog(result, error: str, plugin_root: Path | None, config: di
     missing = sorted(shipped - names)
     cost, budget = catalog_cost(skills, _context_window(config, codex_home))
     errors = [str(e) for r in rows for e in r.get("errors") or []]
+    if cost > budget and not (missing or errors) and _model_cache(codex_home) is None:
+        return Check("warn", "codex skill catalog", f"cannot tell its budget: Codex's model cache ({_short(codex_home / 'models_cache.json')}) "
+                     f"holds nothing that can be read, and {cost:,} tokens is over the {budget:,} Codex gives a model it does not know; "
+                     "Codex writes the cache again when it next lists its models")
     if missing or errors or cost > budget:
         return Check("fail", "codex skill catalog", f"{cost:,} of {budget:,} tokens; "
                      + (f"not discoverable: {', '.join(missing[:5])}; " if missing else "") + "; ".join(errors[:2]))
@@ -1399,7 +1418,8 @@ def harness_checks(found: list, procs: dict, home: Path, runtime: str, catalog=N
         inspect, error = _finish(procs["muse"])
         entry = muse_entry(inspect)
         if entry is None and isinstance(inspect, dict) and isinstance(inspect.get("error"), dict):
-            error = str(inspect["error"].get("message", "")) or error
+            absent = inspect["error"].get("code") == "unknown-plugin"  # Muse's own code for a plugin that is not there
+            error = "" if absent else str(inspect["error"].get("message", "")) or error
         checks.append(check_plugin("muse", entry, error))
         if entry:
             versions["muse"] = entry.get("version", "")
@@ -1490,26 +1510,42 @@ APPROVALS = tuple(paths.HOOK_APPROVALS)  # the person gives these in the harness
 
 
 def _note_waits(home: Path, checks: list, began: float) -> None:
-    """Write down, for each harness this run looked at, the hooks that were not running, for a session's start and
-    the evening job to show (`paths.waits`): the ones the check's own line names (Muse writes them with dashes),
-    all four where it names none or says none run, with the line itself. A harness this run could not look at, or
-    could not tell of, keeps its entry with that entry's own date; what another release saw of a harness this run
-    found no line for is dropped, since that harness is not here. A hook that ran after this run began is the
-    later sight of its own event: that one stays struck, and no other."""
+    """Write down what this run saw of each harness's hooks, for a session's start and the evening job to show
+    (`paths.waits`).
+    - Its approval line says ok or fail: the hooks that were not running, the ones the line names (Muse writes them
+      with dashes), all four where it names none or says none run, with the line itself. A hook that ran after this
+      run began is the later sight of its own event: that one stays struck, and no other.
+    - Its plugin line says the plugin is not installed there, in the doctor's own sentence (Codex's whole listing
+      does not hold it; Muse answers with its code for an unknown plugin): no approval waits, and its entry is
+      dropped. Any other fault of that line is a look that could not tell.
+    - The run could not tell (a listing that did not answer, a trust state that cannot be read from here): what this
+      release saw within the day stands. Otherwise the run writes that it could not tell, with the line that says
+      why, dates it again on each run that still cannot, and keeps what hooks have struck since, the only sight
+      there is.
+    - The run did not find the harness: it says so once in place of another release's entry, and that entry keeps
+      its date, so it says nothing after a day.
+    2026-11-13, a review: another release's entry stayed for ever under a sentence that said the doctor checks it."""
     from synthesis import __version__
-    hooks, now = [arg.replace("-", "_") for arg in EVENTS.values()], time.time()  # as Codex keys their trust
+    hooks = [arg.replace("-", "_") for arg in EVENTS.values()]  # as Codex keys their trust
     for name, harness in paths.HOOK_APPROVALS.items():
-        check = next((c for c in checks if c.name == name and c.status in ("ok", "fail")), None)
-        here = any(c.name.startswith(harness) for c in checks)
+        check = next((c for c in checks if c.name == name), None)
+        plugin = next((c for c in checks if c.name == f"{harness} plugin"), None)
 
-        def change(old, check=check, here=here):
-            if check is None:
-                return "drop" if old and old["version"] != __version__ and not here else None
-            named = [e for e in hooks if re.search(rf"\b{e}:\d|synthesis-{e.replace('_', '-')}\b", check.detail)]
-            waiting = [] if check.status == "ok" else named if named and "none of its hooks" not in check.detail else hooks
-            struck = old["struck"] if old and old["version"] == __version__ else {}
-            waiting = [e for e in waiting if not began < struck.get(e, 0) <= now]
-            return {"at": began, "waiting": waiting, "struck": {}, "said": check.detail[:300] if waiting else ""}
+        def change(old, check=check, plugin=plugin, harness=harness):
+            mine, line = old if old and old["version"] == __version__ else None, check or plugin
+            if check is not None and check.status in ("ok", "fail"):
+                named = [e for e in hooks if re.search(rf"\b{e}:\d|synthesis-{e.replace('_', '-')}\b", check.detail)]
+                waiting = [] if check.status == "ok" else named if named and "none of its hooks" not in check.detail else hooks
+                struck, now = mine["struck"] if mine else {}, time.time()  # the clock is read under the note's lock
+                waiting = [e for e in waiting if not began < struck.get(e, 0) <= now]
+                return {"at": began, "waiting": waiting, "struck": {}, "said": check.detail[:300] if waiting else "", "untold": False}
+            if plugin is not None and plugin.status == "fail" and plugin.detail == f"{PLUGIN} is not installed":
+                return "drop" if old else None
+            if mine and not mine["untold"] or line is None and (mine or not old):
+                return None
+            why = line.detail if line is not None else f"it did not find {harness.capitalize()} on PATH or in its install folders"
+            return {"at": began, "waiting": mine["waiting"] if mine else hooks, "struck": mine["struck"] if mine else {},
+                    "said": why[:300], "untold": True}
         try:
             paths.note_wait(name, change, home)
         except OSError:

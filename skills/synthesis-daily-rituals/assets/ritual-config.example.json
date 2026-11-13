@@ -13,6 +13,7 @@
       "artifacts_dirs": ["~/workspaces/work/knowledge/ritual-workers"],
       "records_dirs": ["~/workspaces/work/knowledge/drafts"],
       "travel_check": true,
+      "commitment_check": {"from": "2026-12-01"},
       "relied_on": [
         {"what": "the intake form on the shared address", "by": "the sales team",
          "check": ["curl", "-fsS", "--max-time", "10", "https://intake.example.com/health"]}

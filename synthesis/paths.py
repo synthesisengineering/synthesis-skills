@@ -78,11 +78,17 @@ def read_json(path: Path) -> dict:
 
 
 def write_json(path: Path, data: dict) -> None:
-    """Replace a small state file atomically, so a reader never sees half of it."""
+    """Replace a small state file atomically, so a reader never sees half of it; a write that fails leaves no
+    temporary file beside it. Each call writes a temporary file of its own: named for the process alone, two
+    threads of one process shared it, and a reader could find half a file (2026-11-13, a review)."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
-    tmp.write_text(json.dumps(data, indent=1, sort_keys=True), encoding="utf-8")
-    os.replace(tmp, path)
+    mine = object()  # at an address no other call has while this one runs
+    tmp = path.with_name(f".{path.name}.{os.getpid()}.{id(mine):x}.tmp")
+    try:
+        tmp.write_text(json.dumps(data, indent=1, sort_keys=True), encoding="utf-8")
+        os.replace(tmp, path)
+    finally:
+        tmp.unlink(missing_ok=True)  # gone already where the replace was made
 
 
 WAITS = "harness-approvals.json"  # what was last seen of each harness's hook approval
@@ -103,31 +109,38 @@ def _waits(note: dict) -> dict:
         if name in HOOK_APPROVALS and sound and isinstance(waiting, list):
             found[name] = {"at": float(at), "version": version, "waiting": [e for e in waiting if isinstance(e, str)],
                            "struck": {k: v for k, v in (struck.items() if isinstance(struck, dict) else ()) if type(v) in (int, float)},
-                           "said": str(entry.get("said") or "")}
+                           "said": str(entry.get("said") or ""), "untold": entry.get("untold") is True}
     return found
 
 
 def waits(home_: Path | None = None) -> dict:
-    """{the doctor's line: {"at", "version", "waiting", "struck", "said"}} for each harness whose hook approval the
-    doctor has seen: when it looked, under which release, the hook events that were not running then and have not
-    run since, when a hook that ran struck each of its own, and the doctor's line in its own words. An entry of
-    this release says nothing once it is a day old, and each has its own date, so a harness nothing looks at any
-    more drops out; one seen under another release is kept, since nothing has looked since the release changed.
-    Kept here, not in the doctor, so a hook reads it without loading the doctor."""
+    """{the doctor's line: {"at", "version", "waiting", "struck", "said", "untold"}} for each harness whose hook
+    approval the doctor has looked at: when it looked, under which release, the hook events that were not running
+    then and have not run since, when a hook that ran struck each of its own, and the doctor's line in its own
+    words. `untold` is true where that look could not tell: `waiting` is then every hook not seen to run since, and
+    `said` is why. An entry of this release says nothing once it is a day old, and each has its own date, so a
+    harness nothing looks at any more drops out; one seen under another release is kept, since nothing has looked
+    since the release changed. Kept here, not in the doctor, so a hook reads it without loading the doctor."""
     return _waits(read_json((home_ or home()) / "state" / WAITS))
 
 
-def note_wait(name: str, change, home_: Path | None = None) -> None:
+def note_wait(name: str, change, home_: Path | None = None, wait: bool = True) -> None:
     """Change one harness's entry from what the note holds at that moment, under the note's lock: `change` is given
     the entry as `waits` reads it (None where it says nothing) and answers the entry to write, None to leave the
     note as it is, or "drop" to take the entry out. What is written is this release's sight; the other harness's
-    entry stays as it was. A hook and the doctor both write here, and neither writes back what it read earlier."""
+    entry stays as it was. A hook and the doctor both write here, and neither writes back what it read earlier.
+    `change` must not call `note_wait`: the lock belongs to this open of its file, and a second open waits for it,
+    in the same process too. With `wait` false, a note that someone holds is left alone: `change` is not called and
+    nothing is written (a hook must not wait on the note; its next call makes its strike)."""
     import fcntl
     from synthesis import __version__
     file = (home_ or home()) / "state" / WAITS
     file.parent.mkdir(parents=True, exist_ok=True)
     with open(file.with_suffix(".lock"), "a") as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX)
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX if wait else fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            return
         note = read_json(file)
         new = change(_waits(note).get(name))
         if new is not None:

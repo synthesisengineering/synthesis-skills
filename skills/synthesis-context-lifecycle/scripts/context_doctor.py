@@ -502,16 +502,15 @@ def cited_entries(projects: list, today: date) -> tuple:
         repos = list(sessions.repos().values())
     except (OSError, ValueError):
         repos = []
-    held: dict = {}  # a session's id: the folders named for it
+    held = set()  # the ids of the sessions held here: a folder named for one is none without its `meta.json`
     for folder in [*sessions.root().glob("*/*/*-*"), *(f for repo in repos for f in repo.glob("*/*-*"))]:
         for harness in sessions.ADAPTERS:
-            if folder.name.startswith(harness + "-"):
-                held.setdefault(folder.name[len(harness) + 1:], []).append(folder)
+            if folder.name.startswith(harness + "-") and (folder / "meta.json").is_file():
+                held.add(folder.name[len(harness) + 1:])
     mains, cited, total = [s for s in held if "-agent-" not in s], 0, 0
 
     def names(token: str) -> bool:
-        one = [token] if token in held else sessions.named(token, mains)
-        return len(one) == 1 and any((folder / "meta.json").is_file() for folder in held[one[0]])
+        return token in held or len(sessions.named(token, mains)) == 1
     for project in projects:
         for log in sorted((project / "sessions").glob("*.md")) if (project / "sessions").is_dir() else []:
             try:

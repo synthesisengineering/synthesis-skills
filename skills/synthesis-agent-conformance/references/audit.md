@@ -95,35 +95,53 @@ there with no item here fails:
   writable roots while `sandbox_mode` is set) and nothing over the state folder, the
   instruction chain for the current folder under the limit minus 4 KiB, every hook
   trusted, and the skill catalog (asked of `codex app-server`) within budget with every
-  shipped skill discoverable;
+  shipped skill discoverable. The budget follows the configured model's context window,
+  from Codex's own cache of its models, read by its first whole value (its clients share
+  that file, and one copy written over another can leave a tail after it); a cache with
+  nothing to read is a warning that the budget cannot be told, never a failure;
 - `muse hook approval`, `<harness> shell guard`: for Muse, hooks approved, and its shell
   tool name treated as a shell by the guard. A hook that waits for the person's approval
   (Codex's hook trust, Muse's hook approval) does not run, and neither does one a harness
-  cannot register, so each run of the doctor writes down, for each of the two harnesses it
-  looked at, which of the four hooks were not running
-  (`<synthesis home>/state/harness-approvals.json`: the hooks its own line names, all four
-  where it names none, with the line itself; each harness's entry with its own date and
-  the release it was seen under). A harness the run could not look at, or could not tell
-  of, keeps its entry. An entry of this release says nothing once it is a day old. One
-  seen under another release is kept at any age, as not checked since synthesis changed:
-  a harness can ask for its approval again when the plugin changes, and a release can be
-  installed with no run of the doctor. It goes when a run of this release looks at that
-  harness, or finds no line of it at all. A hook that runs strikes its own event from its
-  harness's entry and no other: it shows that one hook approved. The harness is the one in
-  whose own folder of session records the hook's transcript is a file, never the
-  environment's, so the doctor's own self-test run from a harness's shell strikes nothing;
-  Muse hands its hooks no transcript, and only the doctor's next look clears Muse. A
-  change to an entry is made under the note's lock from what the note holds then, and a
+  cannot register, so each run of the doctor writes down what it saw of the four hooks in
+  each of the two harnesses (`<synthesis home>/state/harness-approvals.json`; each
+  harness's entry has its own date and the release it was written under). Where the
+  harness's approval line says ok or fail, the entry is the hooks that were not running:
+  the ones the line names, all four where it names none, with the line itself. Where its
+  plugin line says the plugin is not installed there, in the doctor's one sentence for it
+  (Codex's whole listing does not hold the plugin; Muse answers with its code for an
+  unknown plugin), no approval waits, and its entry is dropped. Where the run could not
+  tell (a listing that did not answer, a trust state that cannot be read from where the
+  doctor runs, a plugin line that fails for another reason), what this release saw within the day
+  stands; otherwise the run writes that it could not tell, with the line that says why,
+  dates it again on each run that still cannot, and keeps what hooks have struck since.
+  Where the run did not find the harness at all, it says so once in place of another
+  release's entry, and that entry keeps its date. An entry of this release says nothing
+  once it is a day old. One written under another release is kept at any age, as not
+  checked since synthesis changed (a harness can ask for its approval again when the
+  plugin changes, and a release can be installed with no run of the doctor), until a run
+  of this release writes what it saw in its place. A hook that runs strikes its own event
+  from its harness's entry and no other: it shows that one hook approved. It strikes once
+  its handler has answered, and only where the note is free; a note someone holds is left
+  for the hook's next call. The harness is the one in whose own folder of session records
+  the hook's transcript is a file, never the environment's, so the doctor's own self-test
+  run from a harness's shell strikes nothing; Muse hands its hooks no transcript, and
+  only the doctor's next look clears Muse. A strike is the hook process's own word:
+  whoever runs the hook by hand with a real record's path strikes too, until the doctor's
+  next look, which reads the harness's own trust. A change to an entry is made under the
+  note's lock from what the note holds then, with the clock read under that lock, and a
   hook that ran after a look began stays struck when that look is written. A session's
   start says which hooks in which harness were not running when the doctor looked and
-  have not been seen to run since, with the doctor's own line for what mends it; where
-  the guard's hook is among them it adds that nothing is known to guard a send or a
-  deploy made from there. The weekday evening job shows a fixed banner for one harness
-  whose guard has not been seen to run, or for more than one, or that nothing has looked
-  since synthesis was updated; and `synthesis doctor --waiting` prints that count and
-  those names, or `unchecked` and the names, or `unknown`, running no check and writing
-  nothing. The note speaks of approvals alone: a harness whose hooks are switched off in
-  its settings is reported by its own line of the doctor;
+  have not been seen to run since (in that harness's own session the start hook, which is
+  running, has struck itself by then and is not named), with the doctor's own line for what mends it, or that
+  the doctor could not tell and why; where the guard's hook is among them it adds that
+  nothing is known to guard a send or a deploy made from there; and it says that a
+  harness's hook approval is the person's to give there, and that an agent gives none.
+  The weekday evening job shows a fixed banner for one harness whose guard has not been
+  seen to run (found waiting, or not told of), or for more than one, or that nothing has
+  looked since synthesis was updated; and `synthesis doctor --waiting` prints that count
+  and those names, or `unchecked` and the names, or `unknown`, running no check and
+  writing nothing. The note speaks of approvals alone: a harness whose hooks are switched
+  off in its settings is reported by its own line of the doctor;
 - `versions`: harness versions equal (or a release visibly in progress, never repaired);
 - `instruction adapters`: every workspace folder and repository under `~/workspaces/*`
   (or the configured `workspace_roots`) has `AGENTS.md` with `CLAUDE.md` importing it, so

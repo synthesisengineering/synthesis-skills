@@ -4,6 +4,81 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [5.15.0] - 2026-11-13
+
+- **The deadline sweep lists the commitments a plan carries with no date** (`synthesis-daily-rituals` 3.13.0). The
+  sweep kept in view only what carries a `**Decays:**` tag, and a rule asked whoever wrote the plan to tag the rest;
+  an audit found that a commitment written with no tag never reached it, so it was carried for as long as someone
+  copied it and no longer. Counted on three seats' newest plans before anything refused: 12, 0 and 11 open entries
+  under the task, waiting and carried headings with no date and no park. The sweep now reads the newest plan's
+  entries under a heading the plan format places among tasks, things waited on or things carried (each top-level
+  list entry, and each row of a table directly under the heading) and lists every open one that has neither a
+  `**Decays:**` date nor a park that says why (`untagged`, with its file and line; `commitments` is how many it
+  read, `plans_read` which files). An entry is closed where a mark stands as its status: a tick box, a tick, DONE
+  or SENT at its start, its whole title struck, a tick at its end, a dated Sent, Released or Resolved line. A tick
+  or a word inside a sentence closes nothing, and neither does one word struck out of a title. A table's row is
+  closed by its title's mark or by its own status, the cell under a header that names one or the last cell where
+  none does; a tick in another column says something else. A heading of things finished holds none, and one that
+  says what is still to get done is no such heading. Listed entries make the status REVIEW.
+- **An open dated item with no Decay ID, and a date that passed with nothing written, are listed** (`no_id`, and
+  `unannounced` on a due item). Without its ID each copy of an item is another item to the sweep, and closing one
+  closes no other. A due item is unannounced where its date is behind the sweep's day and no copy carries a
+  `**Lapsed:**` mark for that date or a later one. A seat that runs its rituals re-dates what it carries each day
+  (every due item was dated today in two seats, 29 and 73 of them), so this is the mark of a day with no ritual:
+  the weekday job that runs with no ritual counts them over every declared workspace, an item two workspaces share
+  once, and posts one banner with the count.
+- **A correspondence ledger's open rows are a view of their own** (`owed`). In a records folder, a table whose
+  header has a `Status` and an `Owed since` cell is read row by row: how many are open, the oldest date, how many
+  have been owed over fourteen days, how many carry no date, then the rows. Counted in the one seat that keeps one:
+  141 open rows of 341, the oldest four months old, beside a due list of 73. A row is closed by a tick or by a
+  closing word at the head of its status, where nothing after takes that back (`Paid in part`, `Done, but
+  reopened`); a seat adds its own words and phrases (`ledger_closed_words` in the ritual config), and a status the
+  reader does not know is open. The view changes no status and refuses nothing.
+- **A workspace can have its day refuse to close clean over the first two** (`"commitment_check": true`, or
+  `{"from": "YYYY-MM-DD"}` for its first day, in the ritual config; off unless set, since on the day this was
+  counted it would have refused two of three seats' closes). `ritual_state.py record` then refuses a clean outcome
+  while a commitment has no date and no park or an open dated item has no ID, names each with its file and line
+  and says how to finish each kind; any other outcome records and says how many. The plan read is the newest on or
+  before the record's day, and what is closed is judged as of now, so a record made after midnight for the day
+  before takes a closing mark written since.
+- **A refusal over a source the sweep did not take in full names it.** The record's refusal gave a count and said a
+  plan could not be read whole, also where the plan was read and one line of it was refused (a mark dated ahead).
+  It now names each source once with the sweep's reason, the first five and how many more. A plan or a ledger
+  whose shape either new reader fails on is a gap for that file alone, and everything else is still read.
+- **The note of hook approvals says when the doctor could not tell** (`synthesis-agent-conformance` 2.1.1). A
+  third review of 5.14.0 found that what another release saw of a harness could stay for ever, under a sentence
+  that said the doctor checks it: where Codex's listing did not answer, where Muse's trust could not be read, or
+  where the plugin had been removed. Every run of this release now writes what it saw in such an entry's place.
+  Where the harness's own line says the plugin is not installed there (Muse is asked by its own code for an
+  unknown plugin, not by its words), no approval waits and the entry is dropped. Where the run could not tell, it
+  writes that, with the line that says why, dates it again on each run that still cannot tell, and keeps what
+  hooks have struck since; a session's start says that the doctor could not tell and why, and the evening's count
+  takes such a guard as not confirmed. What this release saw within the day stands while a later look cannot
+  tell, so a run from inside a sandbox spoils nothing. A harness the run did not find is said for a day in place
+  of another release's entry, where it used to be dropped unsaid.
+- **A hook strikes once its handler has answered, and does not wait for the note.** The strike was made before the
+  handler ran, so a guard that could not be loaded had already said that it runs; and a hook with something to
+  strike waited for whoever held the note's lock. It now asks for the lock once and leaves a held note for its
+  next call; a session's start strikes its own event before it reads the note, so a harness's own start does not
+  name the hook that is running. The doctor reads the clock under that lock, so a strike made while it waited is
+  kept. 5.14.0's entry said a harness approved in the middle of a session stops being named at its next guarded
+  call: what stops then is the word that nothing guards a send, and each other hook is named until it has run.
+  The session's note ends by saying that a harness's hook approval is the person's to give in that harness, and
+  that an agent gives none.
+- **The doctor reads Codex's model cache by its first whole value.** Codex's clients share that file, and in the
+  minute after 5.14.0's release it held one whole fresh copy followed by the tail of a longer one. Read as no
+  cache, the configured model's window was unknown, and `codex skill catalog` failed at 2,794 of 2,000 tokens
+  where it reads 2,794 of 10,000; Codex rewrote the file when it was next asked for its models. A cache with
+  nothing to read is now a warning that the budget cannot be told, and no failure.
+- **Smaller repairs.** A state file's temporary copy is each call's own and is removed when the write fails: two
+  threads of one process shared one, and a reader could find half a file. The context doctor says it cannot tell
+  which entries cite a record where the only folders named for sessions hold none (`synthesis-context-lifecycle`
+  2.5.1). No test reads a rituals folder named in the shell that runs the suite: sixteen core tests failed under
+  one, and a skill's test read the config it found there. The hook budget times a call that is over its allowance
+  for a second and a third block of rounds, every round counted, before it calls the call slow: on a shared
+  runner at half its usual speed the guard hook's fastest of fifteen read 92 ms beside 45 for its modules, with
+  nothing in the hook changed.
+
 ## [5.14.1] - 2026-11-13
 
 - **The connector's Firestore fix, tested on the path that failed, and the cleanup after an upgrade**

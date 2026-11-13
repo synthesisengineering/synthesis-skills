@@ -100,6 +100,7 @@ def session_start(payload):
     notes += [f"This session is bound to no project, so mail addressed to one does not reach it. Mail it has not read is "
               f"waiting for: {', '.join(kept[:8])}{f' and {len(kept) - 8} more' if len(kept) > 8 else ''}. If this session works on one of them, `synthesis resume "
               f"{kept[0]}` binds it and delivers the mail."] if kept else []
+    _ran(payload, "session_start")  # this hook is running: struck before the note is read, so a harness's own start does not name it
     notes += [n for n in (_window_note(), _unguarded_note()) if n]
     return _emit("SessionStart", context="\n\n".join(notes))
 
@@ -113,8 +114,12 @@ def _ran(payload: dict, event: str) -> None:
     the guard runs). What was seen under another release is the doctor's to look at again. The harness is the one
     in whose own folder of session records the payload's transcript is a file, read past any link: never the
     environment's, since the doctor's self-test runs this hook from whatever shell the doctor is in, and never a
-    path that only looks like a record. Muse hands its hooks no transcript, so only the doctor's next look clears
-    Muse; in Claude Code, which asks for no approval, nothing is read."""
+    path that only looks like a record (measured 2026-11-13 on 35 Codex sessions: each one's record was at least a
+    second old when its first hook ran). Muse hands its hooks no transcript, so only the doctor's next look clears
+    Muse; in Claude Code, which asks for no approval, nothing is read. The strike is this process's own word, made
+    once the handler has answered and only where the note is free: a note someone holds is left for the hook's
+    next call, and whoever runs this hook by hand with a real record's path strikes too, until the doctor's next
+    look, which reads the harness's own trust, writes what it sees."""
     try:
         from synthesis import __version__, paths
         where = payload.get("transcript_path")
@@ -123,7 +128,7 @@ def _ran(payload: dict, event: str) -> None:
             if where.startswith(os.path.realpath(paths.transcript_roots()[harness]) + os.sep) and event in paths.waits().get(name, {}).get("waiting", ()):
                 paths.note_wait(name, lambda old: {**old, "waiting": [e for e in old["waiting"] if e != event],
                                                    "struck": {**old["struck"], event: time.time()}}
-                                if old and old["version"] == __version__ and event in old["waiting"] else None)
+                                if old and old["version"] == __version__ and event in old["waiting"] else None, wait=False)
     except Exception:
         pass  # a note must never cost a hook its answer
 
@@ -138,13 +143,19 @@ def _unguarded_note() -> str:
         said, stale = [], []
         for name, entry in paths.waits().items():
             hooks, one = [e.replace("_", "-") for e in entry["waiting"]], len(entry["waiting"]) == 1
+            when, since = time.strftime("%a %H:%M", time.localtime(entry["at"])), f"{'has' if one else 'have'} not been seen to run since"
+            listed = f"its {' and '.join(filter(None, [', '.join(hooks[:-1]), hooks[-1]]))} hook{'' if one else 's'}" if hooks else ""
             if entry["version"] != __version__:
                 stale.append(HARNESSES[name])
+            elif hooks and entry["untold"]:
+                said.append(f"{HARNESSES[name]}: the doctor could not tell whether its hooks run when it looked ({when}: {entry['said']}), "
+                            f"and {listed} {since}.")
             elif hooks:
-                said.append(f"{HARNESSES[name]}: its {' and '.join(filter(None, [', '.join(hooks[:-1]), hooks[-1]]))} hook{'' if one else 's'} "
-                            f"{'was' if one else 'were'} not running when the doctor looked ({time.strftime('%a %H:%M', time.localtime(entry['at']))}) "
-                            f"and {'has' if one else 'have'} not been seen to run since (the doctor's line then: {entry['said']})."
-                            + " Nothing is known to guard a send or a deploy made from there." * ("pre-tool-use" in hooks))
+                said.append(f"{HARNESSES[name]}: {listed} {'was' if one else 'were'} not running when the doctor looked ({when}) and {since}"
+                            + f" (the doctor's line then: {entry['said']})" * bool(entry["said"]) + ".")
+            if hooks and entry["version"] == __version__ and "pre-tool-use" in hooks:
+                said[-1] += " Nothing is known to guard a send or a deploy made from there."
+        said += ["A harness's hook approval is the person's to give in that harness: tell them what waits, and give none yourself."] * bool(said)
         return " ".join(said + [f"Whether {' and '.join(stale)} run{'s' * (len(stale) == 1)} synthesis's hooks has not been checked since "
                                 f"synthesis changed to {__version__}: `synthesis doctor` checks it."] * bool(stale))
     except Exception:
@@ -290,9 +301,11 @@ def main(argv):
             pass  # never blocks a call; doctor names what is left
     handler = {"session-start": session_start, "user-prompt-submit": user_prompt_submit,
                "pre-tool-use": pre_tool_use, "stop": stop}.get(event)
-    if handler:
-        _ran(payload, event.replace("-", "_"))
-    return handler(payload) if handler else 0
+    if not handler:
+        return 0
+    code = handler(payload)
+    _ran(payload, event.replace("-", "_"))  # once it has answered: a handler that fails has not shown that it runs
+    return code
 
 
 if __name__ == "__main__":
