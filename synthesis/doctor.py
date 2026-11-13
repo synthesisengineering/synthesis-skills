@@ -795,17 +795,41 @@ def connector_files(platform: str = sys.platform) -> tuple:
             Path(env.get("XDG_STATE_HOME") or home / ".local" / "state") / "workspace-mcp" / "server.pid")
 
 
-def started_with(pid: str, run=subprocess.run, proc: Path = Path("/proc")) -> dict:
-    """The environment a running process was started with; {} when the system does not show it. Linux keeps it
-    under /proc. macOS's `ps -E` prints it after the command, never for the system's own programs or past a sandbox."""
+def started_with(pid: str, procargs=None, proc: Path = Path("/proc")) -> dict:
+    """The environment a running process was started with, each variable whole; {} when the system does not show it.
+    Linux keeps it under /proc, macOS in the record `ps -E` reads (kern.procargs2), never for the system's own
+    programs or past a sandbox. Each variable ends with a NUL in both: `ps -E` prints them after a space instead,
+    so a value holding a space and a name with "=" was read as two variables."""
     try:
         if (proc / pid).is_dir():
             text = (proc / pid / "environ").read_text(encoding="utf-8", errors="replace")
             return dict(e.split("=", 1) for e in text.split("\0") if "=" in e)
-        shown = run(["ps", "-Eww", "-o", "command=", "-p", pid], capture_output=True, text=True, timeout=5).stdout
-    except (OSError, subprocess.SubprocessError):
+        raw = (procargs or _procargs)(pid)
+    except (OSError, ValueError):
         return {}
-    return dict(e.split("=", 1) for e in re.split(r" (?=[A-Za-z_]\w*=)", shown.strip())[1:])
+    count, strings = int.from_bytes(raw[:4], sys.byteorder), raw[4:].split(b"\0")[1:]  # the program's path, then padding
+    while strings and not strings[0]:
+        strings.pop(0)
+    if len(strings) <= count:  # fewer strings than the arguments it counts: nothing here can be read as variables
+        return {}
+    env = strings[count:]
+    env = env[:env.index(b"")] if b"" in env else env  # an empty string ends them; the system's own strings follow
+    return dict(e.decode("utf-8", "replace").split("=", 1) for e in env if b"=" in e)
+
+
+def _procargs(pid: str) -> bytes:
+    """macOS's record of a process's arguments and environment, as `ps -E` reads it; b"" elsewhere."""
+    if sys.platform != "darwin":
+        return b""
+    import ctypes
+    libc, size = ctypes.CDLL(None, use_errno=True), ctypes.c_size_t(0)
+    mib = (ctypes.c_int * 3)(1, 49, int(pid))  # CTL_KERN, KERN_PROCARGS2
+    if libc.sysctl(mib, 3, None, ctypes.byref(size), None, 0) != 0:
+        raise OSError(ctypes.get_errno(), "the system does not show this process")
+    buffer = ctypes.create_string_buffer(size.value)
+    if libc.sysctl(mib, 3, buffer, ctypes.byref(size), None, 0) != 0:
+        raise OSError(ctypes.get_errno(), "the system does not show this process")
+    return buffer.raw[:size.value]
 
 
 def check_outbox(outbox: Path, unit: Path, pid_file: Path, started=started_with) -> Check:

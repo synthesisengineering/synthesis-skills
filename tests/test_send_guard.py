@@ -516,6 +516,118 @@ def test_the_composing_reference_lists_what_counts_as_attached_the_drive_tools_a
         assert words in listed, words
 
 
+# --- an attachment given as a URL ------------------------------------------------------------------------------
+# The mail connector reads a `url` whose path is its own download link, /attachments/<id>, from a file it saved on
+# its own disk: given with no host, or on a host it serves, which it takes from its own settings and the guard
+# cannot see (gmail_tools._try_read_local_attachment, 2.1.0). Those bytes are no file an approval binds: a file
+# replaced there after the principal's code went out under that code. Any other `url` it fetches over http or https
+# from a named host and in no other way (core.http_utils.ssrf_safe_stream), so a file:// URL attached nothing.
+
+DOWNLOAD_LINKS = ["/attachments/a1", "attachments/a1", "/attachments/a1/", "http://localhost:8765/attachments/a1",
+                  "http://127.0.0.1:8765/attachments/a1?download=1", "https://mail.example.com/attachments/a1",
+                  "file:///attachments/a1"]
+NOT_FETCHED = ["file:///tmp/outbox/report.pdf", "file://localhost/tmp/outbox/report.pdf", "/tmp/outbox/report.pdf",
+               "report.pdf", "ftp://files.example.com/report.pdf", "http:///report.pdf", "https://[oops/report.pdf"]
+
+
+@pytest.mark.parametrize("url", DOWNLOAD_LINKS)
+def test_the_connectors_own_download_link_is_refused_and_the_sender_told_to_give_the_staged_files_path(url, scratch):
+    for given, place in (([{"url": url, "filename": "plan.pdf"}], 1), ([AS_CONTENT[1], {"url": url}], 2)):
+        _refused(given, f"attachment {place} ", f"`url` {url}", "its own download link", "an approval cannot bind",
+                 f"copy the file into {paths.outbox()}", "full path as the attachment's `path`", "file this send again")
+
+
+@pytest.mark.parametrize("url", NOT_FETCHED)
+def test_a_url_the_connector_does_not_fetch_is_refused_and_a_file_on_this_disk_told_to_go_by_its_path(url, scratch):
+    _refused([{"url": url, "filename": "report.pdf"}], "attachment 1 (report.pdf) ", f"`url` {url}",
+             "only over http or https", f"copy the file into {paths.outbox()}", "full path as the attachment's `path`",
+             "file this send again")
+
+
+def test_a_url_the_connector_fetches_goes_to_the_code_and_binds_no_local_file(scratch):
+    for url in ("https://files.example.com/plan.pdf", "HTTP://files.example.com/attachments/a1/b2",
+                "https://files.example.com/user-attachments/a1", "https://files.example.com/Attachments/a1"):
+        asked = guards.check(SEND, {**MAIL, "attachments": [{"url": url, "filename": "plan.pdf"}]}, CONFIG)
+        assert "approval" in asked and "as it is now" not in asked, (url, asked)
+
+
+def test_the_references_say_which_url_the_connector_reads_from_this_disk_with_the_words_the_guard_refuses_with(scratch):
+    skills = Path(__file__).resolve().parents[1] / "skills"
+    listed = " ".join((skills / "synthesis-message-guard" / "references" / "composing.md").read_text(encoding="utf-8").split())
+    sending = " ".join((skills / "synthesis-agent-correspondence" / "references" / "gates-and-sending.md")
+                       .read_text(encoding="utf-8").split())
+    assert "An attachment given as a `url`, or as standard base64 `content` with a `filename`, is not a file read" not in listed
+    assert "or a `url` (the connector's own download link for a Drive file is one)" not in sending
+    for url, words in (("/attachments/a1", "its own download link"), ("file:///tmp/r.pdf", "only over http or https")):
+        assert words in guards.check(SEND, {**MAIL, "attachments": [{"url": url}]}, CONFIG), url
+        assert words in listed and words in sending and "`/attachments/<id>`" in listed, words
+
+
+# --- an entry the connector would skip, or send changed ----------------------------------------------------------
+# Its first step for each entry leaves out one that carries `error`, and it takes `_resolved_bytes` before the entry's
+# own source: both are keys it writes into an entry itself (gmail_tools._prepare_gmail_message, 2.1.0). It takes line
+# breaks and NULs out of a filename, so the mail went under another name than the principal saw. A name or type that
+# is not text, or a `content_id` its own rule refuses, fails that entry, and the mail goes without it.
+
+SET_BY_THE_CONNECTOR = [{"error": "previous fetch failed"}, {"error": True, "error_type": "ValueError"},
+                        {"_resolved_bytes": "UEsDBA=="}, {"error": "x", "_resolved_bytes": "UEsDBA=="}]
+
+
+@pytest.mark.parametrize("extra", SET_BY_THE_CONNECTOR)
+def test_an_entry_carrying_a_key_the_connector_sets_itself_is_refused_with_no_code(extra, scratch):
+    staged = str(_staged(scratch))
+    for entry in ({"path": staged, **extra}, {"filename": "plan.pdf", "content": "UEsDBA==", **extra},
+                  {"url": "https://files.example.com/plan.pdf", **extra}):
+        for given, place in (([entry], 1), ([{"path": staged}, entry], 2)):
+            reason = _refused(given, f"attachment {place} ", "which the mail connector sets on an entry itself",
+                              "file this send again")
+            assert all(f"`{key}`" in reason for key in extra if key != "error_type"), reason
+
+
+@pytest.mark.parametrize("name", ["budget\nfinal.pdf", "budget\rfinal.pdf", "budget\x00final.pdf", "\r\n", "plan\t.pdf",
+                                  "plan\x1b.pdf", "plan\x7f.pdf", "plan\x85.pdf"])
+def test_a_filename_with_a_control_character_is_refused_since_the_connector_would_send_another_name(name, scratch):
+    staged = str(_staged(scratch))
+    for entry in ({"path": staged, "filename": name}, {"filename": name, "content": "UEsDBA=="},
+                  {"url": "https://files.example.com/plan.pdf", "filename": name}):
+        reason = _refused([entry], "attachment 1 ", f"`filename` {name!r}", "a control character", "file this send again")
+        assert not re.search(r"[\x00-\x1f\x7f-\x9f]", reason), reason  # the name is shown escaped, not as it is
+
+
+def test_a_name_or_type_that_is_not_text_is_refused(scratch):
+    staged = str(_staged(scratch))
+    for extra, field in (({"filename": 7}, "`filename` 7"), ({"filename": ["plan.pdf"]}, "`filename` ['plan.pdf']"),
+                         ({"mime_type": 7}, "`mime_type` 7"), ({"mime_type": "application/\npdf"}, "`mime_type` 'application/\\npdf'")):
+        _refused([{"path": staged, **extra}], "attachment 1 ", field, "not as text", "file this send again")
+
+
+@pytest.mark.parametrize("cid", ["logo img", "<>", " ", "-logo", "logo\n", "\tlogo", "logo#1", "lögo", "<lo go>"])
+def test_a_content_id_the_connector_refuses_is_refused_with_no_code(cid, scratch):
+    _refused([{"path": str(_staged(scratch)), "content_id": cid}], "attachment 1 ", f"`content_id` {cid!r}",
+             "the mail connector refuses", "file this send again")
+
+
+def test_a_name_type_and_content_id_the_connector_keeps_go_to_the_code(scratch):
+    staged = str(_staged(scratch))
+    for extra in ({"filename": "plan v2 (final) — 100%.pdf"}, {"mime_type": "application/pdf"}, {"content_id": "logo"},
+                  {"content_id": "<logo.v2+x@example.com>"}, {"content_id": " logo "}, {"content_id": 5},
+                  {"filename": "", "mime_type": None, "content_id": ""}):
+        assert "approval" in guards.check(SEND, {**MAIL, "attachments": [{"path": staged, **extra}]}, CONFIG), extra
+
+
+def test_the_references_list_an_entry_the_connector_would_skip_or_send_changed(scratch):
+    skills = Path(__file__).resolve().parents[1] / "skills"
+    listed = " ".join((skills / "synthesis-message-guard" / "references" / "composing.md").read_text(encoding="utf-8").split())
+    sending = " ".join((skills / "synthesis-agent-correspondence" / "references" / "gates-and-sending.md")
+                       .read_text(encoding="utf-8").split())
+    staged = str(_staged(scratch))
+    for extra, words in (({"error": "x"}, "which the mail connector sets on an entry itself"),
+                         ({"filename": "a\nb.pdf"}, "a control character"), ({"filename": 7}, "not as text"),
+                         ({"content_id": "a b"}, "gives the `content_id`")):
+        assert words in guards.check(SEND, {**MAIL, "attachments": [{"path": staged, **extra}]}, CONFIG), extra
+        assert words in listed and words in sending, words
+
+
 # --- a local file a Drive tool reads ---------------------------------------------------------------------------
 # The same connector reads a local file for five Drive tools, under the same folder rule (2.1.0: drive_tools.py
 # and drive_helpers._resolve_import_media). update_drive_file and import_to_google_doc, _sheets and _slides take
@@ -636,6 +748,39 @@ def test_the_rule_is_these_five_tools_and_a_remote_address_or_another_tool_is_as
     assert _uploaded(outside.as_uri(), NEW_FILE, "file_path") is None  # the key this tool reads is `fileUrl`
 
 
+@pytest.mark.parametrize("tool,key", [(UPDATE, "file_path"), (DOC_IMPORT, "file_path"), (NEW_FILE, "fileUrl")])
+def test_a_source_that_cannot_be_parsed_is_refused_naming_its_field_and_nothing_raises(tool, key, scratch):
+    """The connector parses the source as a URL first and fails the call on one that does not parse; the guard
+    raised there, out of the hook, instead of refusing."""
+    for named in ("file://[oops", "file://[oops/plan.pdf", "https://[::1/plan.docx"):
+        reason = _uploaded(named, tool, key)
+        assert f"`{key}` {named} cannot be parsed as a path or a URL" in reason, (named, reason)
+        assert "make this call again" in reason and "approve" not in reason and approvals.pending() == [], reason
+
+
+def test_a_path_holding_a_nul_is_refused_and_nothing_raises(scratch):
+    """A NUL names no file; where a path with one is resolved, newer Pythons raise."""
+    nul = str(paths.outbox() / "plan\0.pdf")
+    for reason in (_attached(nul), _uploaded(nul), _uploaded(nul, DOC_IMPORT), _uploaded("file://" + quote(nul), NEW_FILE, "fileUrl")):
+        assert "holds a NUL character" in reason and "\0" not in reason and "approve" not in reason, reason
+    assert approvals.pending() == []
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root reads a file whatever its mode")
+@pytest.mark.parametrize("tool,key", NO_CODE)
+def test_a_drive_tool_that_asks_for_no_code_refuses_a_staged_file_that_cannot_be_read(tool, key, scratch):
+    """The mail path refused such a file and these passed it, since no hash was asked for and so nothing was read."""
+    staged = _staged(scratch)
+    named = staged.as_uri() if key == "fileUrl" else str(staged)
+    staged.chmod(0)
+    try:
+        reason = _uploaded(named, tool, key)
+        assert f"the file {staged} cannot be read" in reason and "approve" not in reason, reason
+    finally:
+        staged.chmod(0o600)
+    assert _uploaded(named, tool, key) is None and approvals.pending() == []
+
+
 # --- the approval binds the bytes of each file the connector reads ---------------------------------------------
 # An approval is keyed by a digest of the whole call, and a file the call names went into it as its path alone:
 # a copy replaced in the outbox between the principal's code and the call went out under the old approval. The
@@ -723,6 +868,63 @@ def test_a_file_too_large_to_hash_in_the_guards_time_refuses_the_call_and_is_nev
     assert f"the attachment {staged} cannot be read" in refused and "approve" not in refused, refused
     monkeypatch.setattr(guards, "HASH_SECONDS", allowed)
     assert _attached(staged) is None  # the approval was kept
+
+
+def test_a_read_that_blocks_is_refused_at_the_limit_and_not_when_the_read_returns(scratch, monkeypatch):
+    """A check between chunks runs only when a read returns, and a read on a stalled disk or mount blocks inside one
+    call: the guard came back after the read, past the time a harness gives a hook, which then passes over it."""
+    import threading
+    import time
+    staged, held, real_open = _staged(scratch), threading.Event(), open
+
+    class Stalled:
+        def __init__(self, handle):
+            self.handle = handle
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *raised):
+            self.handle.close()
+
+        def read(self, size=-1):
+            held.wait(3)  # as a read on a stalled mount blocks; let go once the guard has answered, or after 3 s
+            return self.handle.read(size)
+
+    def stalling(file, *args, **kwargs):
+        handle = real_open(file, *args, **kwargs)
+        return Stalled(handle) if str(file) == os.path.realpath(staged) else handle
+
+    monkeypatch.setattr(guards, "open", stalling, raising=False)
+    monkeypatch.setattr(guards, "HASH_SECONDS", 0.2)
+    try:
+        for ask, what in ((_attached, "the attachment"), (_uploaded, "the file"), (lambda f: _uploaded(f, DOC_IMPORT), "the file")):
+            started = time.monotonic()
+            reason = ask(staged)
+            took = time.monotonic() - started
+            assert f"{what} {staged} cannot be read (not within" in reason and "approve" not in reason, reason
+            assert took < 1.5, took  # at the limit, not after the 3 s the read is held for
+    finally:
+        held.set()
+    assert approvals.pending() == []
+
+
+def test_every_way_out_of_the_read_checks_the_limit_the_empty_file_included(scratch, monkeypatch):
+    """An empty file's read never entered the loop that checked the limit, so one that took longer passed."""
+    empty = paths.outbox() / "empty.txt"
+    empty.write_bytes(b"")
+    monkeypatch.setattr(guards, "HASH_SECONDS", 0)
+    for ask, what in ((_attached, "the attachment"), (_uploaded, "the file"), (lambda f: _uploaded(f, DOC_IMPORT), "the file")):
+        reason = ask(empty)
+        assert f"{what} {empty} cannot be read (not within" in reason and "approve" not in reason, reason
+    assert approvals.pending() == []
+
+
+def test_the_composing_reference_says_how_the_read_is_bounded():
+    composing = Path(__file__).resolve().parents[1] / "skills" / "synthesis-message-guard" / "references" / "composing.md"
+    listed = " ".join(composing.read_text(encoding="utf-8").split())
+    for words in ("stops waiting for it at the limit", "a read that never returns", "the empty file included"):
+        assert words in listed, words
 
 
 @pytest.mark.skipif(os.geteuid() == 0, reason="root reads a file whatever its mode")

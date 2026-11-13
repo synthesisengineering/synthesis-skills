@@ -97,9 +97,10 @@ The 1.x ledger's attestations, now the agent's own check before showing the prin
 | A line break inside a paragraph | Email plain parts; every chat message | `<field>: a line break falls inside a paragraph ...` |
 | Persona signature shown as a bare domain | Any message carrying a configured persona marker | `the signature shows <domain> as text ...` |
 | A person's official first name (whole word, case-sensitive), outside the address fields | Any message whose call carries one of that person's `preferred_names` identifiers (an address, a Slack user or DM id) | `this message involves someone who goes by <preferred>; write <preferred>, not <official>` |
-| An attachment the connector would not attach as given: its file under any key but `path`, or none of `path`, `content` and `url`; two of the three; `content` with no `filename` or not in standard base64; an empty `url`; or `attachments` in a shape it refuses (anything but a list of entries or the JSON text of one) | Workspace connector: `send_gmail_message`, `draft_gmail_message` | ``attachment <n> has none of `path`, `content` and `url` ...``, ``... gives `url` and `path`: the mail connector reads only the `url` ...``, ``... gives `content` with no `filename` ...``, ``... gives `content` that is not standard base64 ...``, ``... has an empty `url` ...``, `` `attachments` is neither a list of entries nor the JSON text of one ...``, `attachment <n> is not an object ...` |
+| An attachment the connector would not attach as given: its file under any key but `path`, or none of `path`, `content` and `url`; two of the three; `content` with no `filename` or not in standard base64; an empty `url`; a `url` that is the connector's own download link (`/attachments/<id>`, with no host or on any host, since the hosts it serves are in its own settings), or one it does not fetch (anything but http or https with a host, a `file://` URL among them); an entry carrying `error` or `_resolved_bytes`, keys the connector writes into an entry itself (with `error` it leaves the entry out); a `filename` or `mime_type` with a control character or not given as text (it takes line breaks and NULs out of a filename, so the mail would go under another name, and fails the entry otherwise); a `content_id` its own rule refuses; or `attachments` in a shape it refuses (anything but a list of entries or the JSON text of one) | Workspace connector: `send_gmail_message`, `draft_gmail_message` | ``attachment <n> has none of `path`, `content` and `url` ...``, ``... gives `url` and `path`: the mail connector reads only the `url` ...``, ``... gives `content` with no `filename` ...``, ``... gives `content` that is not standard base64 ...``, ``... has an empty `url` ...``, ``... gives the `url` <url>, which the mail connector reads as its own download link ... from a file it saved on this disk, bytes an approval cannot bind: copy the file into <outbox> ...``, ``... the mail connector fetches a `url` only over http or https from a named host, so it would attach nothing ...``, ``attachment <n> carries `error`, which the mail connector sets on an entry itself ...``, ``attachment <n> gives `filename` '<name>' with a control character, or not as text ...``, ``attachment <n> gives the `content_id` '<id>', which the mail connector refuses ...``, `` `attachments` is neither a list of entries nor the JSON text of one ...``, `attachment <n> is not an object ...` |
 | A file the connector would not read: the path is not whole, names no file, or lies outside the outbox and the connector's default attachment folder (`~/.workspace-mcp/attachments`; what the session's own process has in `ALLOWED_FILE_DIRS` adds nothing, since a connector started elsewhere carries its own); or its name or folder marks secrets; or one of the four `file_path` tools is given a file's content twice (two of `content`, `file_path`, `file_url`, `base64_content`: `the connector takes exactly one source`) | Workspace connector: an attachment's `path` in the two mail tools; `file_path` (a path or a `file://` URL) in `update_drive_file`, `import_to_google_doc`, `import_to_google_sheets` and `import_to_google_slides`; `fileUrl` as a `file://` URL in `create_drive_file` | `the attachment <path> is outside the folders the mail connector reads: copy the file into <outbox> ..., and file this send again` (or `is not a full path`, `does not exist`, `is not a file`, `is one the mail connector never reads ...`); for a Drive tool, `the file <path> is outside the folders the connector reads: ... and make this call again` |
-| A file the call names that cannot be read when the call is made, or that the guard cannot hash in 2 seconds | The same tools, in a call that waits for a code | `the attachment <path> cannot be read (<why>)` |
+| A source that names no file it can read: a `file_path` or `fileUrl` that cannot be parsed as a path or a URL, or a path holding a NUL | The same tools | ``... `<key>` <source> cannot be parsed as a path or a URL (<why>), so the connector would refuse the call ...``, `the attachment '<path>' holds a NUL character, which names no file ...` |
+| A file the call names that cannot be read when the call is made, or that the guard cannot hash in 2 seconds; for a Drive tool that asks for no code, a file whose first byte cannot be read in that time | The same tools | `the attachment <path> cannot be read (<why>)`, for a Drive tool `the file <path> cannot be read (<why>)` |
 
 A Drive tool that asks for no code (the three imports and `create_drive_file`) is
 refused the same way, after `This call can't go as written:`.
@@ -120,7 +121,11 @@ that file's bytes, read when the code is asked for and again when the call is ma
 file replaced in between needs a new approval, and the request ends `The approval covers
 each file the call has the connector read as it is now, so name those files to the
 principal too: one changed before the call needs a new code.` The read is bounded,
-because a harness passes over a hook that runs past its time.
+because a harness passes over a hook that runs past its time. It runs in a thread of its
+own and the guard stops waiting for it at the limit, so a read that blocks (a stalled
+disk or mount) is refused at the limit, not when the read returns, and every way out of
+the read checks the limit, the empty file included; a read that never returns is left
+behind, and the hook answers and its process exits without waiting for it.
 
 ## Email transports and their fields
 
@@ -137,9 +142,14 @@ message and not correspondence at all.
 The workspace connector reads an attachment given as a `path` from its own disk, and only
 from the folders it was started to read, so a file is staged in the outbox
 (`~/.synthesis/v5/outbox`) before the call is made. A path is judged as the connector
-reads it: whole (no `~`, nothing relative), links followed, letters as written. An
-attachment given as a `url`, or as standard base64 `content` with a `filename`, is not a
-file read. Only what the connector reads counts as attached: a file under any other key
+reads it: whole (no `~`, nothing relative), links followed, letters as written. Standard
+base64 `content` with a `filename` is not a file read, and neither is a `url` the
+connector fetches over http or https from a named host. A `url` that is its own download
+link (`/attachments/<id>`, what its Drive and Gmail download tools hand back) is a file
+read: it takes the bytes from a file it saved on this disk, which no approval binds, so
+the guard refuses it and asks for that file's path, staged in the outbox. It fetches a
+`url` only over http or https, so one of any other kind (a `file://` URL, a bare path)
+attaches nothing and is refused the same way. Only what the connector reads counts as attached: a file under any other key
 is not read at all. Its Drive tools read a local file under the same rule. The rule, its
 reason and each refusal are in `synthesis-agent-correspondence`,
 references/gates-and-sending.md.

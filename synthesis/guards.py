@@ -67,6 +67,8 @@ FILE_MAIL_TOOLS = frozenset({"send_gmail_message", "draft_gmail_message"})
 FILE_DRIVE_TOOLS = {"update_drive_file": "file_path", "import_to_google_doc": "file_path", "import_to_google_sheets": "file_path",
                     "import_to_google_slides": "file_path", "create_drive_file": "fileUrl"}
 ENTRY_KEYS = ("url", "path", "content", "filename", "mime_type", "content_id")  # the first three are where it reads from
+CONTROL = re.compile(r"[\x00-\x1f\x7f-\x9f]")  # it takes line breaks and NULs out of a filename and fails on others
+CONTENT_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._+\-@]*")  # gmail_tools.CONTENT_ID_SAFE_RE, the `content_id` it takes
 SECRET_NAMES = frozenset({".credentials", ".credentials.json", "credentials.json", "client_secret.json", "client_secrets.json",
                           "service_account.json", "service-account.json", ".npmrc", ".pypirc", ".netrc", ".git-credentials"})
 SECRET_FOLDERS = ("/proc", "/sys", "/dev", "/etc/shadow", "/etc/passwd", "/private/etc/shadow", "/private/etc/passwd",
@@ -272,12 +274,13 @@ def message_problems(tool: str, tool_input: dict, config: dict, chans: set | Non
     return problems + _unread_files(tool, tool_input)
 
 
-def _unread_files(tool: str, tool_input: dict, bound: dict | None = None) -> list[str]:
+def _unread_files(tool: str, tool_input: dict, bound: dict | None = None, whole: bool = True) -> list[str]:
     """Why a workspace-connector call would not attach or upload what it names, judged as the connector reads it. A
     file is judged as it reads one: the path whole (it resolves a relative one in its own folder and expands no
     `~`), links followed, letters as written, the file inside the outbox or the connector's default attachment
     folder, and not one it reads from nowhere. A Drive call gives the file's content once. Given `bound`, each file
-    it would read goes into it under its real path with the hash of its bytes, and one that cannot be read is a problem."""
+    it would read goes into it under its real path with the hash of its bytes (of its first byte alone when not
+    `whole`, which shows it can be read), and one that cannot be read is a problem."""
     name = tool.rsplit("__", 1)[-1]
     key, given = FILE_DRIVE_TOOLS.get(name), tool_input.get("attachments") if name in FILE_MAIL_TOOLS else None
     if not key and given is None:
@@ -292,9 +295,30 @@ def _unread_files(tool: str, tool_input: dict, bound: dict | None = None) -> lis
     rule = (": the mail connector takes an attachment only from its `url`, the file at its `path` or standard base64 "
             "`content` with a `filename`, so this one would not go as given. Give one of the three (a file by its full "
             f"path, staged in {outbox}) and file this send again")
+    stage = f"copy the file into {outbox} (make the folder if it is missing), give that copy's full path "
+
+    def fetched(url: str) -> str:
+        """Why the mail connector would not attach a `url` as given (2.1.0: _resolve_url_attachments). Its own download
+        link it reads from its disk, with no host or on one its settings name, which the guard cannot see; any other
+        `url` it fetches over http or https from a named host, and in no other way."""
+        from urllib.parse import urlparse
+        try:
+            parsed = urlparse(url)
+            parts, web = parsed.path.strip("/").split("/"), parsed.scheme in ("http", "https") and bool(parsed.hostname)
+        except ValueError:
+            parts, web = [], False
+        if len(parts) == 2 and parts[0] == "attachments":
+            return (f"gives the `url` {url}, which the mail connector reads as its own download link (`/attachments/<id>`, "
+                    "on any host it may serve) from a file it saved on this disk, bytes an approval cannot bind: "
+                    f"{stage}as the attachment's `path`, and file this send again")
+        return "" if web else (f"gives the `url` {url}, and the mail connector fetches a `url` only over http or https "
+                               f"from a named host, so it would attach nothing: for a file on this disk, {stage}as the "
+                               "attachment's `path`, and file this send again")
 
     def unread(file: str, what: str = "the attachment", who: str = "the mail connector",
                give: str = "as the attachment's `path`, and file this send again") -> str:
+        if "\0" in file:  # it names no file, and a newer Python raises where such a path is resolved
+            return f"{what} {file!r} holds a NUL character, which names no file: {stage}{give}"
         real = os.path.realpath(file)
         names = real.lower().split(os.sep)
         why = ("is not a full path" if not os.path.isabs(file) else "does not exist" if not os.path.exists(real)
@@ -306,11 +330,10 @@ def _unread_files(tool: str, tool_input: dict, bound: dict | None = None) -> lis
         why = why or ("" if real.startswith(roots) else f"is outside the folders {who} reads")
         try:
             if not why and bound is not None:
-                bound[real] = _sha256(real, until)
-        except OSError as exc:
+                bound[real] = _sha256(real, until, whole)
+        except (OSError, ValueError) as exc:
             return f"{what} {file} cannot be read ({exc.strerror or exc})"
-        return why and (f"{what} {file} {why}: copy the file into {outbox} (make the folder if it is missing), give "
-                        f"that copy's full path {give}")
+        return why and f"{what} {file} {why}: {stage}{give}"
 
     named, remote = tool_input.get(key) if key else None, tool_input.get("file_url") if key == "file_path" else None
     twice = [k for k in ("content", "file_path", "file_url", "base64_content") if tool_input.get(k) is not None] if key == "file_path" else []
@@ -319,12 +342,17 @@ def _unread_files(tool: str, tool_input: dict, bound: dict | None = None) -> lis
                         "for a file's content: give one and make this call again")
     if isinstance(named, str):
         from urllib.parse import unquote, urlparse
-        url = urlparse(named)  # a file:// URL is the path in it, percent-decoded, led by any host but localhost
-        if url.scheme == "file":
+        give = f"as `{key}`" + (", after `file://`," if key == "fileUrl" else "") + " and make this call again"
+        try:
+            url = urlparse(named)  # a file:// URL is the path in it, percent-decoded, led by any host but localhost
+        except ValueError as exc:  # the connector parses it the same way first, and fails the call
+            problems.append(f"`{key}` {named} cannot be parsed as a path or a URL ({exc}), so the connector would refuse "
+                            f"the call: give the staged file's full path {give}")
+            url = None
+        if url and url.scheme == "file":
             named = unquote(("//" + url.netloc if url.netloc.lower() not in ("", "localhost") else "") + url.path)
-        if url.scheme == "file" or key == "file_path":
-            problems.append(unread(named, "the file", "the connector", f"as `{key}`"
-                                   + (", after `file://`," if key == "fileUrl" else "") + " and make this call again"))
+        if url and (url.scheme == "file" or key == "file_path"):
+            problems.append(unread(named, "the file", "the connector", give))
     if isinstance(remote, str) and (remote.lower().startswith("file:") or os.path.isabs(remote)):
         problems.append(f"`file_url` is fetched over http or https, and {remote} is a file on this disk: copy the file into "
                         f"{outbox} (make the folder if it is missing), give that copy's full path as `file_path` and make "
@@ -337,17 +365,37 @@ def _unread_files(tool: str, tool_input: dict, bound: dict | None = None) -> lis
             problems.append(f"attachment {place} is not an object{rule}")
             continue
         sources = [k for k in ENTRY_KEYS[:3] if (k in entry if k == "url" else entry.get(k))]  # a `url` key leads, even empty
-        which = f"attachment {place}" + (f" ({entry['filename']})" if entry.get("filename") else "")
+        shown, cid = entry.get("filename"), entry.get("content_id")
+        which = f"attachment {place}" + (f" ({shown})" if isinstance(shown, str) and shown and not CONTROL.search(shown) else "")
         unknown, url = ", ".join(f"`{k}`" for k in entry if k not in ENTRY_KEYS), entry.get("url")
+        set_here = [f"`{k}`" for k in ("error", "_resolved_bytes") if k in entry]
+        if set_here:
+            problems.append(f"attachment {place} carries {' and '.join(set_here)}, which the mail connector sets on an entry "
+                            "itself: it leaves out an entry that carries `error`, and takes `_resolved_bytes` before the "
+                            "entry's own source. Remove it and file this send again")
+        texts = [f"`{k}` {entry[k]!r}" for k in ("filename", "mime_type")
+                 if entry.get(k) and not (isinstance(entry[k], str) and not CONTROL.search(entry[k]))]
+        if texts:
+            problems.append(f"attachment {place} gives {' and '.join(texts)} with a control character, or not as text: the "
+                            "mail connector takes line breaks and NULs out of a filename, so it goes under another name than "
+                            "the one shown, and leaves out an entry whose name or type is not text. Give each as plain text "
+                            "and file this send again")
+        if cid and (re.search(r"[\x00-\x1f\x7f]", str(cid)) or not CONTENT_ID.fullmatch(str(cid).strip().strip("<>").strip())):
+            problems.append(f"attachment {place} gives the `content_id` {cid!r}, which the mail connector refuses, leaving the "
+                            "entry out: it takes letters, digits, '.', '_', '+', '-' and '@', led by a letter or a digit, in "
+                            "angle brackets or not. Give one such and file this send again")
         if sources == ["path"]:
             problems.append(unread(str(entry["path"])))
+        elif sources == ["url"] and isinstance(url, str) and url.strip():
+            fault = fetched(url)
+            problems.append(fault and f"{which} {fault}")
         elif len(sources) > 1:
             problems.append(f"{which} gives {' and '.join(f'`{s}`' for s in sources)}: the mail connector reads only the "
                             f"`{sources[0]}` of such an entry, empty or not, and never the rest; give one of them and file "
                             "this send again")
         else:
             fault = ("has none of `path`, `content` and `url`" + (f" ({unknown}: not read)" if unknown else "") if not sources
-                     else ("" if isinstance(url, str) and url.strip() else "has an empty `url`") if sources == ["url"]
+                     else "has an empty `url`" if sources == ["url"]
                      else "gives `content` with no `filename`" if not entry.get("filename")
                      else "" if _standard_base64(entry["content"]) else "gives `content` that is not standard base64")
             problems.append(fault and f"{which} {fault}{rule}")
@@ -367,22 +415,44 @@ def _standard_base64(text) -> bool:
 HASH_SECONDS = 2.0  # of the 5 a pre-tool-use hook is given: a harness passes over a hook that runs past its time
 
 
-def _sha256(file: str, until: float) -> str:
-    """The hash of a file's bytes, read before `until`: a file that takes longer is one the guard cannot bind."""
+def _sha256(file: str, until: float, whole: bool = True) -> str:
+    """The hash of a file's bytes (of its first byte alone when not `whole`), read before `until`: a file that takes
+    longer is one the guard cannot bind. A read on a stalled disk or mount blocks inside one call, past any check made
+    between chunks, so the read runs in a daemon thread the guard stops waiting for at `until`, and the thread checks
+    the limit again on its way out, an empty file's included. A read that never returns is left behind: the hook's
+    process answers and exits without waiting for it."""
     import hashlib
-    digest = hashlib.sha256()
-    with open(file, "rb") as handle:
-        for chunk in iter(lambda: handle.read(1 << 20), b""):
-            digest.update(chunk)
-            if time.monotonic() >= until:
-                raise TimeoutError(f"not within the {HASH_SECONDS:g} s the guard may spend reading the files a call names")
-    return digest.hexdigest()
+    import threading
+    late = TimeoutError(f"not within the {HASH_SECONDS:g} s the guard may spend reading the files a call names")
+    done, out = threading.Event(), []
+
+    def read() -> None:
+        try:
+            digest = hashlib.sha256()
+            with open(file, "rb") as handle:
+                for chunk in iter(lambda: handle.read(1 << 20), b"") if whole else [handle.read(1)]:
+                    digest.update(chunk)
+                    if time.monotonic() >= until:
+                        break
+            out.append(late if time.monotonic() >= until else digest.hexdigest())
+        except Exception as exc:  # handed to the guard's thread, which says why the file cannot be read
+            out.append(exc)
+        finally:
+            done.set()
+
+    threading.Thread(target=read, name="synthesis-file-hash", daemon=True).start()
+    if not done.wait(max(0.0, until - time.monotonic())):
+        raise late
+    if isinstance(out[0], Exception):
+        raise out[0]
+    return out[0]
 
 
 def check_upload(tool: str, tool_input: dict) -> str | None:
     """A Drive upload that asks for no code still names a file the connector must read: one it would not read is
-    refused here, as a send's is before its code."""
-    unread = _unread_files(tool, tool_input)
+    refused here, as a send's is before its code, and so is one it cannot read: its first byte is read, since no
+    approval binds its bytes."""
+    unread = _unread_files(tool, tool_input, {}, whole=False)
     return "This call can't go as written: " + "; ".join(unread) + "." if unread else None
 
 

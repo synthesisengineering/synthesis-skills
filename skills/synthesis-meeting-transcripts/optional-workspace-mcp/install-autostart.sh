@@ -43,12 +43,30 @@ CREDS_DIR="${GOOGLE_MCP_CREDENTIALS_DIR:-$HOME/.google_workspace_mcp/credentials
 # that. Unset, the unit names none and start.sh keeps its default.
 SYN_HOME="${SYNTHESIS_HOME:-}"
 
+# No unit carries a control character as it is: a plist parser reads a carriage
+# return back as a line feed and takes most others for no XML at all, and a line
+# break in a systemd value ends its line. So every value a unit is written with is
+# checked here, before either install function runs, and one holding a control
+# character is refused by name, shown escaped. Nothing is written.
+for chosen in "HOME=$HOME" "GOOGLE_CLIENT_SECRET_PATH=$GOOGLE_CLIENT_SECRET_PATH" "WORKSPACE_MCP_PORT=$PORT" \
+  "WORKSPACE_MCP_TOOL_TIER=$TIER" "GOOGLE_MCP_CREDENTIALS_DIR=$CREDS_DIR" "SYNTHESIS_HOME=$SYN_HOME" \
+  "this checkout's start.sh=$START_SCRIPT"; do
+  case "${chosen#*=}" in
+    *[[:cntrl:]]*)
+      printf 'ERROR: %s holds a control character (a line break, a tab or another): %q\n' "${chosen%%=*}" "${chosen#*=}" >&2
+      echo "       Neither a launch agent nor a systemd unit can carry it as it is. Set the value without it (rename the folder), and run this again." >&2
+      exit 1
+      ;;
+  esac
+done
+
 # A value written as the text of a plist string, and inside the double quotes of a
 # systemd Environment= line: an ampersand or an angle bracket ends a plist, and
 # systemd reads a backslash, a quote and a percent sign as its own. Every value
 # the person chose goes through one of them (a client secret under a folder
-# named with an ampersand gave a plist that did not parse). A value with none of
-# those characters is written exactly as before. ExecStart= is a command line:
+# named with an ampersand gave a plist that did not parse), after the check above
+# has refused any that holds a control character. A value with none of those
+# characters is written exactly as before. ExecStart= is a command line:
 # a space splits it and a dollar sign is a variable there, so a path that holds
 # anything but plain letters is written in double quotes with a dollar sign
 # doubled too (a checkout under "my checkouts" gave a unit that started nothing).
