@@ -179,10 +179,21 @@ BACK = re.compile(r"(?i)(?: (?:for|on))?(?: (?:that|this|it|them|those|both|here
 LEAD = re.compile(r"(?i)(?:(?:and|so|but|now|then|until then|till then|meanwhile),? )?")           # before a wait that opens its clause
 MARKS = re.compile(r"^[ \t]*>.*|[*_#]+|^[ \t]*(?:[-+•]|\d+[.)])[ \t]+", re.M)  # a quoted line; emphasis, heading and list marks
 EDGE = re.compile(r"(?<=[.!?])\s+|(?<![:\s])\s*\n\s*")  # a sentence's or a line's end; after a colon the line runs on
-# A reply that hands the turn to the principal awaits their answer, whatever else it waits for: it shows a message staged
-# for their go (between a BEGIN line and an END line), asks for an approval code, or asks them to act in so many words.
+# A reply that hands the turn to the principal awaits their answer, whatever else it waits for: it offers an approval code
+# to type, or asks them to act in so many words. A code named as used, spent or replaced offers nothing: SPENT reads the
+# words straight after it ("code 1abcde was consumed earlier", "(3e7b10) has expired"), USED those straight before it ("you
+# typed approve 4a0c2d", "don't use the old codes ..."). The text between a BEGIN line and an END line is set aside as
+# quoted text is, a message staged for their go or a record; beside one, a wait for it to be sent (SENT) awaits their go.
 STAGED = re.compile(r"(?m)^[ \t>*_-]*BEGIN[ \t*_-]*$[\s\S]*?^[ \t>*_-]*END[ \t*_-]*$")
-CODED = re.compile(r"(?i)\bapprove\W{1,3}[0-9][0-9a-f]{5}\b|\bcodes?\b[^.\n]{0,60}?\b[0-9][0-9a-f]{5}\b|(?:\*\*|`)[0-9][0-9a-f]{5}(?:\*\*|`)?:")
+_CODE = r"([0-9][0-9a-f]{5})"
+CODED = re.compile(r"(?i)\bapprove\W{1,3}" + _CODE + r"\b|\bcodes?\b[^.\n]{0,60}?\b" + _CODE + r"\b|(?:\*\*|`)" + _CODE + r"(?:\*\*|`)?:")
+SPENT = re.compile(r"(?i)[)`*:\]]*,? (?:(?:which|that) )?(?:(?:has|had|have|was|were|is|are|got) )?(?:(?:already|since|now|just|then|also) )?(?:been )?"
+                   r"(?:expired|lapsed|consumed|used|spent|redeemed|typed|entered|taken|applied|replaced|superseded|voided|cancell?ed|withdrawn|revoked"
+                   r"|no longer|ran out|timed out|went (?:out|through)|void|invalid|stale|gone|dead)\b")
+USED = re.compile(r"(?i)(?:\b(?:earlier|old|older|previous|prior|former|expired|spent|used|dead|stale|first) (?:approval )?codes?"
+                  r"(?:[\s`*(),:–—-]|\band\b|\bor\b|\b[0-9][0-9a-f]{5}\b)*|\b(?:typed|entered|used|ran|gave|sent)\b[^.;:,\n]{0,20})$")
+SENT = re.compile(r"(?i)\b(?:once|when|after|as soon as|until) (?:it|that|this|they|both|each|the (?:message|note|email|reply|draft|post|send)s?)"
+                  r"(?:['’]s|['’]re| is| are| has been| have been| goes| go| gets?) (?:sent|out|approved|posted|delivered|through)\b")
 ASKED = re.compile(r"(?i)(?:^\W*|, |\b(?:and|then|so|or|otherwise) )(?:please |just )?(?:say (?:go|yes|the word|so|when)\b"
                    r"|(?:tell|ping|text|message|send|give|show|point) me\b|let me know\b|press (?:enter|return)\b|sign in\b)"
                    r"|\bonly you can\b|\bone (?:step|thing|click|answer|word) from you\b")
@@ -300,14 +311,21 @@ def _theirs(text: str, m: re.Match, before: str) -> bool:
     return any(bare or t.group(0).lower().startswith(FRONT) for t in THEIRS.finditer(text, 0, m.start()))
 
 
+def _offered(body: str) -> bool:
+    """Does the reply offer the principal an approval code to type? One named as used or spent offers nothing."""
+    return any(not SPENT.match(body, m.end(m.lastindex)) and not USED.search(body, max(0, m.start(m.lastindex) - 120), m.start(m.lastindex))
+               for m in CODED.finditer(body))
+
+
 def unarmed_wait(reply: str, payload: dict, config: dict) -> list[str]:
     """The words with which a reply announces the session's own wait that nothing will end: no live `synthesis wait`
     of this session, no autopilot run it owns, no background work the harness holds for it. A clause that awaits the
     principal's own next move is no such wait, and a reply that hands them the turn, or says in so many words that
     nothing wakes this seat until they prompt it, has none."""
-    if STAGED.search(reply) or CODED.search(reply):
+    body = STAGED.sub(" something ", reply)
+    if _offered(body):
         return []
-    plain = MARKS.sub("", QUOTED.sub(" something ", CODE.sub(" something ", TABLED.sub("", reply)))).strip()  # a name set aside is still a thing awaited
+    plain = MARKS.sub("", QUOTED.sub(" something ", CODE.sub(" something ", TABLED.sub("", body)))).strip()  # a name set aside is still a thing awaited
     forms = [WAITS] + [re.compile(rf"(?i)\b{re.escape(str(p))}\b") for p in config.get("wait_phrases") or [] if str(p).strip()]
     sentences = [] if plain.endswith("?") else EDGE.split(plain)
     clauses = [(text, at == 0) for sentence in sentences  # each clause, and whether it opens its sentence
@@ -315,7 +333,7 @@ def unarmed_wait(reply: str, payload: dict, config: dict) -> list[str]:
     if any(ASKED.search(text) for text, _ in clauses) or any(WOKEN.search(sentence) for sentence in sentences):
         return []
     hits = {m.group(0).lower().strip(" :—–-") for at, (text, opens) in enumerate(clauses) for form in forms for m in form.finditer(text)
-            if not _explains(text, m, opens) and not _theirs(text, m, clauses[at - 1][0] if at else "")}
+            if not _explains(text, m, opens) and not _theirs(text, m, clauses[at - 1][0] if at else "") and not (body != reply and SENT.search(text))}
     if not hits:
         return []
     from synthesis import autopilot, paths, wait

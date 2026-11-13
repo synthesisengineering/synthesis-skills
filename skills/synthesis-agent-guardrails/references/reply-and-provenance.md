@@ -89,10 +89,18 @@ Passes:
 - `your` and a thing named in a few words straight after the wait's own word (`waiting on
   your sign-in retry`, `waiting on your two answers before I write the log`);
 - a reply that hands them the turn, whatever else it waits for: it ends by asking them; it
-  shows a message staged for their go between a `BEGIN` line and an `END` line; it asks
-  for an approval code or names a held action's code; it asks them to act in so many words
-  (`Say go and it's out`, `Tell me when it's done and I'll confirm`, `only you can`, `one
-  step from you`);
+  offers an approval code to type (`approve 3b90b7`, `Code: 2f9a01`, a code as a label
+  before a colon); it asks them to act in so many words (`Say go and it's out`, `Tell me
+  when it's done and I'll confirm`, `only you can`, `one step from you`). A code named as
+  used, spent or replaced offers nothing, and the words straight after it or straight
+  before it are what is read: `code 1abcde was consumed earlier`, `(3e7b10) has expired`,
+  `you typed approve 4a0c2d at noon`, `don't use the old codes`. A spent code beside one
+  that is offered leaves the offer standing;
+- the text between a `BEGIN` line and an `END` line, which is set aside as quoted text is,
+  whether it is a message staged for their go or a record. The block excuses nothing
+  outside it: `I'm waiting for the bank to respond` after one is sent back. Beside a
+  block, a wait for it to be sent or to go out (`Once it's sent, I'll log it`, `when it
+  goes out`) awaits their go and passes;
 - a reply that says, in one sentence of its own, that nothing wakes this seat until the
   principal prompts it. That is the last resort the check's own message names, so a reply
   that has said it is not sent back to say it: `Nothing wakes this seat until you prompt
