@@ -315,3 +315,95 @@ def test_a_checkout_under_a_folder_systemd_or_a_plist_would_misread_is_still_the
     assert unquoted(inside.replace("$$", "$")) == str(start)
     assert plistlib.loads(written(tmp_path, "Darwin", installer=awkward / "install-autostart.sh").encode("utf-8"))["ProgramArguments"] == [str(start)]
     assert f"\nExecStart={START}\n" in written(tmp_path, "Linux")
+
+
+# ---- run over an installation that is already there -------------------------------------------------------------
+# Two defects older than this file's other tests, found on 2026-11-12 while a restart was being planned. Answered
+# "n", the installer removed the unit that was installed: it wrote the new one over it before asking. Answered "y"
+# over a loaded launch agent, it left launchd on the old definition (`launchctl bootstrap` fails for a label that
+# is loaded) and said it had loaded; systemd's `enable --now` leaves a running unit as it is too.
+
+LABEL = "com.synthesis.workspace-mcp"
+
+
+def answered(tmp_path: Path, platform: str, answer: str, before=None, running: bool = False,
+              bootstrap: str = 'touch "$STATE"') -> tuple:
+    """Run the installer as `platform` and answer it. `before` is the unit already installed, `running` whether the
+    stand-in service manager holds it. Returns the result, the service manager's calls in order, and the unit file."""
+    home, binaries, calls, state = tmp_path / "home", tmp_path / "bin", tmp_path / "calls", tmp_path / "running"
+    unit = unit_file(home, platform)
+    unit_file(home, "Darwin").parent.mkdir(parents=True, exist_ok=True)
+    if before is not None:
+        unit.parent.mkdir(parents=True, exist_ok=True)
+        unit.write_text(before, encoding="utf-8")
+    if running:
+        state.write_text("", encoding="utf-8")
+    executable(binaries / "uname", f'printf "%s\\n" "{platform}"\n')
+    executable(binaries / "launchctl", f'STATE="{state}"\nprintf "launchctl %s\\n" "$*" >> "{calls}"\ncase "$1" in\n'
+               f'  print) [ -f "$STATE" ] ;;\n  bootout) rm -f "$STATE" ;;\n  bootstrap) {bootstrap} ;;\nesac\n')
+    executable(binaries / "systemctl", f'STATE="{state}"\nprintf "systemctl %s\\n" "$*" >> "{calls}"\ncase "$*" in\n'
+               f'  *is-active*) [ -f "$STATE" ] ;;\nesac\n')
+    secret = tmp_path / "client-secret.json"
+    secret.write_text("{}\n", encoding="utf-8")
+    environment = {"HOME": str(home), "PATH": f"{binaries}:/usr/bin:/bin", "LANG": "C", "LC_ALL": "C",
+                   "XDG_CONFIG_HOME": str(home / ".config"), "GOOGLE_CLIENT_SECRET_PATH": str(secret)}
+    result = subprocess.run(["/bin/bash", str(INSTALL)], input=answer + "\n", env=environment, text=True,
+                            capture_output=True, check=False, timeout=60)
+    said = calls.read_text(encoding="utf-8").splitlines() if calls.exists() else []
+    return result, [re.sub(r"gui/\d+", "gui/UID", line) for line in said], unit
+
+
+@pytest.mark.parametrize("platform", PLATFORMS)
+def test_answered_no_over_an_installed_unit_leaves_it_as_it_was(tmp_path, platform):
+    before = "the unit installed last month\n"
+    result, calls, unit = answered(tmp_path, platform, "n", before=before, running=True)
+    assert result.returncode == 0 and result.stdout.endswith("\nCancelled.\n"), result.stdout + result.stderr
+    assert unit.read_text(encoding="utf-8") == before  # not replaced, and not removed
+    assert sorted(path.name for path in unit.parent.iterdir()) == [unit.name]  # and nothing left beside it
+    assert calls == []
+
+
+@pytest.mark.parametrize("platform", PLATFORMS)
+def test_answered_no_with_nothing_installed_leaves_nothing(tmp_path, platform):
+    result, calls, unit = answered(tmp_path, platform, "n")
+    assert result.returncode == 0 and not unit.exists() and calls == []
+    assert not unit.parent.exists() or list(unit.parent.iterdir()) == []
+
+
+def test_a_loaded_launch_agent_is_replaced_and_the_new_one_is_read_back(tmp_path):
+    result, calls, unit = answered(tmp_path, "Darwin", "y", before="the unit installed last month\n", running=True)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert carried("Darwin", unit.read_text(encoding="utf-8"))["WORKSPACE_MCP_PORT"] == "8765"  # the new unit is in place
+    out, loads = f"launchctl bootout gui/UID/{LABEL}", f"launchctl bootstrap gui/UID {unit}"
+    assert out in calls and loads in calls and calls.index(out) < calls.index(loads)  # the old one out before the new one in
+    assert calls[-1] == f"launchctl print gui/UID/{LABEL}"  # and what launchd holds is read back
+    assert "Replaced the launch agent that was loaded" in result.stdout and "legacy" not in result.stdout
+    assert sorted(path.name for path in unit.parent.iterdir()) == [unit.name]
+
+
+def test_a_first_install_loads_the_launch_agent_and_boots_nothing_out(tmp_path):
+    result, calls, unit = answered(tmp_path, "Darwin", "y")
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert not [call for call in calls if " bootout " in call]
+    assert f"launchctl bootstrap gui/UID {unit}" in calls and calls[-1] == f"launchctl print gui/UID/{LABEL}"
+    assert "Replaced" not in result.stdout
+
+
+def test_a_launch_agent_that_does_not_load_is_said_and_the_installer_fails(tmp_path):
+    result, calls, unit = answered(tmp_path, "Darwin", "y", bootstrap="exit 5")
+    assert result.returncode == 1
+    assert "is written and is not loaded" in result.stderr and str(unit) in result.stderr
+    assert "will now start on login" not in result.stdout
+
+
+@pytest.mark.parametrize("running", [True, False])
+def test_a_running_systemd_unit_is_restarted_so_the_new_unit_is_the_one_that_runs(tmp_path, running):
+    result, calls, unit = answered(tmp_path, "Linux", "y", before="the unit installed last month\n" if running else None,
+                                    running=running)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "ExecStart=" in unit.read_text(encoding="utf-8")
+    reload, enable, restart = ("systemctl --user daemon-reload", "systemctl --user enable --now workspace-mcp.service",
+                               "systemctl --user restart workspace-mcp.service")
+    assert reload in calls and enable in calls and calls.index(reload) < calls.index(enable)
+    assert (restart in calls) == running and ("Restarted" in result.stdout) == running
+    assert sorted(path.name for path in unit.parent.iterdir()) == [unit.name]
