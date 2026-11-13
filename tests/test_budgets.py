@@ -727,12 +727,27 @@ def test_the_hook_budget_fails_an_unnamed_import_a_name_nothing_imports_and_a_sl
     """The budget is a test's only word on a hook's cost, so each way it can refuse is shown to refuse."""
     hook = [str(compiled_runtime / "synthesis" / "hook.py"), "pre-tool-use"]
     payload = json.dumps({"tool_name": "Bash", "tool_input": {"command": "ls"}})
-    with pytest.raises(AssertionError, match=r"synthesis\.sends imports urllib\.parse as it loads: every call pays for it"):
+    with pytest.raises(AssertionError, match=r"synthesis\.sends imports urllib\.parse while the call runs: every call pays for it"):
         hook_budget(hook, tuple(name for name in HOOK_NEEDS if name != "urllib.parse"), input=payload, cwd=str(tmp_path))
-    with pytest.raises(AssertionError, match="asyncio is named as a need and nothing in this call imports it as it loads"):
+    with pytest.raises(AssertionError, match="asyncio is named as a need and nothing of the call's own imports it"):
         hook_budget(hook, HOOK_NEEDS + ("asyncio",), input=payload, cwd=str(tmp_path))
-    with pytest.raises(AssertionError, match="the caller imports json as it loads"):
-        hook_budget(["-c", "import time\ntry:\n    import json\nexcept ImportError:\n    pass"], ("time",))
-    slow = "import time\n\ndef later():\n    import asyncio\n\nsum(range(5_000_000))"  # work, where the need is a start
+    inside = "import time\n\ndef later():\n    import shlex\n\nlater()"  # inside a function, and the function runs
+    with pytest.raises(AssertionError, match="the caller imports shlex while the call runs"):
+        hook_budget(["-c", inside], ("time",))
+    slow = "import time\nif not time:\n    import asyncio\ntime.sleep(0.25)"  # an import that never runs is no need
     with pytest.raises(AssertionError, match=r"the call took \d+ ms; its standard-library modules alone load in \d+ ms here"):
-        hook_budget(["-c", slow], ("time",))
+        hook_budget(["-c", slow], ("time",), rounds=3)
+
+
+def test_the_hook_budget_fails_a_runtime_that_is_not_compiled(compiled_runtime, tmp_path, hook_budget, monkeypatch):
+    """What 5.8.1 fixed is what the budget has to catch. A process that may write bytecode compiles the runtime at its
+    first call and every later call is fast, which is how CI runs the suite; a session's hooks are told to write none,
+    so the budget's own runs are told the same (found by a review before 5.8.1 was released)."""
+    from importlib.util import cache_from_source
+    monkeypatch.delenv("PYTHONDONTWRITEBYTECODE", raising=False)  # as CI runs the suite
+    for source in (compiled_runtime / "synthesis").glob("*.py"):
+        Path(cache_from_source(str(source))).unlink()
+    payload = json.dumps({"tool_name": "Bash", "tool_input": {"command": "ls -la && git status"}})
+    with pytest.raises(AssertionError, match=r"the call took \d+ ms"):
+        hook_budget([str(compiled_runtime / "synthesis" / "hook.py"), "pre-tool-use"], HOOK_NEEDS, rounds=5,
+                    input=payload, cwd=str(tmp_path))
