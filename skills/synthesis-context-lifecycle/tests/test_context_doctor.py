@@ -376,29 +376,78 @@ def test_discovered_roots_without_projects_are_skipped_but_a_named_one_cannot_be
 # lines in a report nobody reads at that length, and it would ask whether an entry cites anything where the day's
 # prompt check asks whether each prompt is accounted for. So: one counted line for what was audited, and no finding.
 
+HERE = "0a1b2c3d-1111-4222-8333-444455556666"
+THERE = "01a18a2b-0000-7000-8000-000000000001"
+
+
+def _archive(tmp_path, *sessions):
+    """Sessions in this machine's archive, filed as the export files them."""
+    for harness, session in sessions:
+        folder = tmp_path / "synthesis-home" / "sessions" / "alpha" / "2026-11" / f"{harness}-{session}"
+        folder.mkdir(parents=True)
+        (folder / "meta.json").write_text(json.dumps({"harness": harness, "session": session}), encoding="utf-8")
+
+
 def _entries(kb):
     old = (TODAY - timedelta(days=30)).isoformat()
-    log = (f"### {RECENT}: work\n\nDecided after claude-code 0a1b2c3d #42, and again at #44.\n\n"
+    log = (f"### {RECENT}: work\n\nDecided after {HERE[:8]} #42, and again at #44.\n\n"
            f"### {RECENT}: more work\n\nNo citation here: pull request #295 is none, and neither is step #3.\n\n"
-           f"### {old}: long ago\n\nCites codex 01a18a2b-0000 #7, outside the window.\n")
+           f"### {RECENT}: by its whole id\n\nSettled at {THERE} #7.\n\n"
+           f"### {RECENT}: words that look like one\n\nNeither commit abc12345 #3, order 12345678 #2, build 20261113 #1\n"
+           f"nor deadbeef\n#2 names a session, and {HERE[:7]} #9 is a character short.\n\n"
+           f"### {old}: long ago\n\nCites {HERE[:8]} #7, outside the window.\n")
     add_project(kb, "alpha", context(), log=log)
     publish(kb)
 
 
-def test_the_report_counts_the_session_entries_that_cite_a_record(kb, capsys):
+def test_the_report_counts_the_session_entries_that_cite_a_record(kb, tmp_path, capsys):
+    """A citation is what the day's prompt check takes for one: a session's id, or eight or more of its first
+    characters, before `#<seq>`, where that names one session of the archive (review of 5.14.0, finding 9: any
+    eight characters of hexadecimal before a number were counted, a commit and an order number among them)."""
+    _entries(kb)
+    _archive(tmp_path, ("claude-code", HERE), ("codex", THERE))
+    code, out = run("--root", str(kb), capsys=capsys)
+    assert code == 0
+    assert "citations  ai-knowledge-test: 2 of 4 session entries dated in the last 14 days cite a session record" in out.splitlines()
+    code, found, data = findings(kb, capsys)
+    assert code == 0 and found == set() and data["citations"] == {"ai-knowledge-test": {"cited": 2, "entries": 4}}
+    code, out = run("--project", str(kb / "projects" / "alpha"), capsys=capsys)
+    assert "citations  alpha: 2 of 4 session entries dated in the last 14 days cite a session record" in out.splitlines()
+
+
+def test_eight_characters_that_two_sessions_share_cite_neither(kb, tmp_path, capsys):
+    _entries(kb)
+    _archive(tmp_path, ("claude-code", HERE), ("claude-code", HERE[:8] + "-9999-4222-8333-444455556666"), ("codex", THERE))
+    code, out = run("--root", str(kb), capsys=capsys)
+    assert "citations  ai-knowledge-test: 1 of 4 session entries dated in the last 14 days cite a session record" in out.splitlines()
+
+
+def test_a_machine_with_no_session_archive_says_it_cannot_tell_which_entries_cite(kb, capsys):
     _entries(kb)
     code, out = run("--root", str(kb), capsys=capsys)
     assert code == 0
-    assert "citations  ai-knowledge-test: 1 of 2 session entries dated in the last 14 days cite a session record" in out.splitlines()
-    code, found, data = findings(kb, capsys)
-    assert code == 0 and found == set() and data["citations"] == {"ai-knowledge-test": {"cited": 1, "entries": 2}}
-    code, out = run("--project", str(kb / "projects" / "alpha"), capsys=capsys)
-    assert "citations  alpha: 1 of 2 session entries dated in the last 14 days cite a session record" in out.splitlines()
+    assert ("citations  ai-knowledge-test: cannot tell how many of 4 session entries dated in the last 14 days cite a session "
+            "record: this machine has no session archive") in out.splitlines()
+    assert findings(kb, capsys)[2]["citations"] == {"ai-knowledge-test": {"cited": None, "entries": 4}}
+
+
+def test_two_roots_of_one_name_each_get_their_own_line(kb, tmp_path, capsys):
+    """Review of 5.14.0, finding 10: the lines were keyed by a root's folder name, so two roots of one name were
+    counted as one."""
+    _entries(kb)
+    _archive(tmp_path, ("claude-code", HERE), ("codex", THERE))
+    other = tmp_path / "elsewhere" / kb.name
+    other.parent.mkdir()
+    subprocess.run(["git", "clone", "-q", str(tmp_path / "remote.git"), str(other)], check=True, capture_output=True)
+    code, out = run("--root", str(kb), "--root", str(other), capsys=capsys)
+    lines = [line for line in out.splitlines() if line.startswith("citations  ")]
+    assert len(lines) == 2 and all("2 of 4 session entries" in line for line in lines)
+    assert {line.split(":")[0].split()[1] for line in lines} == {f"{kb.parent.name}/{kb.name}", f"elsewhere/{kb.name}"}
 
 
 def test_a_root_with_no_entry_in_the_window_prints_no_citation_line(kb, capsys):
     old = (TODAY - timedelta(days=40)).isoformat()
-    add_project(kb, "alpha", context(last=old), log=f"### {old}: work\n\nDone, claude-code 0a1b2c3d #42.\n")
+    add_project(kb, "alpha", context(last=old), log=f"### {old}: work\n\nDone, {HERE[:8]} #42.\n")
     write_index(kb, [{"id": "alpha", "status": "active", "last_session": old}])
     publish(kb)
     code, out = run("--root", str(kb), capsys=capsys)

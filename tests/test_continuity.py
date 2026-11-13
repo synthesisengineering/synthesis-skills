@@ -23,9 +23,9 @@ def _knowledge(tmp_path, write_config):
     return proj
 
 
-def _hook(event, payload):
+def _hook(event, payload, env=None):
     return subprocess.run([sys.executable, "-m", "synthesis.hook", event], input=json.dumps(payload),
-                          capture_output=True, text=True, cwd=ROOT, env=dict(os.environ))
+                          capture_output=True, text=True, cwd=ROOT, env={**os.environ, **(env or {})})
 
 
 def test_compaction_reinjects_the_directive_and_current_state(tmp_path, write_config):
@@ -58,13 +58,24 @@ def test_session_start_registers_the_session_and_reports_unread_messages(tmp_pat
     assert board.load("S2").cwd == str(tmp_path)
 
 
-def _waits(waiting, ago=3600.0):
+ALL = ["session_start", "user_prompt_submit", "pre_tool_use", "stop"]
+
+
+def _waits(ago=3600.0, version=None, **waiting):
+    """The note as a run of the doctor `ago` seconds back would have left it: `codex=[...]`, `muse=[...]` are the
+    hook events that waited in each."""
     import time
-    from synthesis import paths
+    from synthesis import __version__, paths
+    names = {"codex": "codex hook trust", "muse": "muse hook approval"}
     note = paths.state() / "harness-approvals.json"
     note.parent.mkdir(parents=True, exist_ok=True)
-    note.write_text(json.dumps({"at": time.time() - ago, "waiting": waiting}), encoding="utf-8")
+    note.write_text(json.dumps({"seen": {names[k]: {"at": time.time() - ago, "version": version or __version__, "waiting": v}
+                                         for k, v in waiting.items()}}), encoding="utf-8")
     return note
+
+
+def _waiting(note, name):
+    return json.loads(note.read_text(encoding="utf-8"))["seen"][name]["waiting"]
 
 
 def _started(session, **more):
@@ -73,34 +84,99 @@ def _started(session, **more):
     return json.loads(out.stdout)["hookSpecificOutput"]["additionalContext"]
 
 
-def test_session_start_says_which_other_harness_runs_without_its_hooks(tmp_path, write_config):
+def _in_codex(event, tmp_path, **more):
+    """One hook event as Codex runs it: a hook knows Codex by its rollout file."""
+    session = "0199aaaa-bbbb-7ccc-8ddd-eeeeffff0000"
+    rollout = tmp_path / f"rollout-2026-11-13T09-00-00-{session}.jsonl"
+    rollout.write_text("", encoding="utf-8")
+    out = _hook(event, {"session_id": session, "cwd": "/tmp", "transcript_path": str(rollout), **more})
+    assert out.returncode == 0, out.stderr
+    return out
+
+
+def test_session_start_says_which_harness_has_hooks_not_seen_to_run(tmp_path, write_config):
     """2026-11-13: six releases in a day, and after each one Codex ran none of the plugin's hooks until the person
     approved them again. The doctor's line said so to whoever read the doctor."""
     write_config({})
-    _waits(["codex hook trust", "muse hook approval"])
+    _waits(codex=ALL, muse=ALL)
     context = _started("S-claude")
-    assert "2 harnesses on this machine are not running synthesis's hooks" in context
-    assert "Codex" in context and "/hooks" in context and "Muse" in context and "muse plugins approve" in context
-    _waits(["codex hook trust"])
-    assert "1 harness on this machine is not running synthesis's hooks" in _started("S-claude-2")
-    for waiting, ago in (([], 60), (["codex hook trust"], 2 * 86400)):         # nothing waits; or the note is two days old
-        _waits(waiting, ago)
-        assert "not running synthesis's hooks" not in _started(f"S-{ago}")
-    _waits(["codex hook trust"]).write_text("{not json", encoding="utf-8")
-    assert "not running synthesis's hooks" not in _started("S-garbage")       # and the session still starts
+    assert ("Codex: its session-start, user-prompt-submit, pre-tool-use and stop hooks waited for the principal's approval "
+            "(in /hooks) when the doctor looked") in context and "have not been seen to run since" in context
+    assert "Muse: its" in context and "`muse plugins approve synthesis-skills`" in context
+    assert context.count("Nothing guards a send or a deploy made from there") == 2
+    _waits(codex=["stop"], muse=[])
+    context = _started("S-claude-2")                                             # a hook that is no guard: said, with no alarm
+    assert "Codex: its stop hook waited" in context and "has not been seen to run since" in context
+    assert "Nothing guards" not in context and "Muse: its" not in context
+    for ago, waiting in ((60, {"codex": [], "muse": []}), (2 * 86400, {"codex": ALL})):   # nothing waits; or two days old
+        _waits(ago, **waiting)
+        assert "waited for the principal's approval" not in _started(f"S-{ago}")
+    _waits(codex=ALL).write_text("{not json", encoding="utf-8")
+    assert "waited for the principal's approval" not in _started("S-garbage")    # and the session still starts
 
 
-def test_a_hook_that_runs_in_a_harness_shows_its_hooks_run_there(tmp_path, write_config):
-    """The doctor wrote that Codex waits, and then the person approved. A session of Codex whose start hook runs is
-    the evidence: its entry is struck, and no banner counts it that evening."""
+def test_session_start_says_when_no_look_was_taken_since_synthesis_changed(tmp_path, write_config):
+    """Review of 5.14.0, finding 2: a release installed with no run of the doctor (a harness that pulls it, a second
+    Mac) left a note from that morning saying none wait, while Codex asks again after every release."""
     write_config({})
-    note = _waits(["codex hook trust", "muse hook approval"])
-    rollout = tmp_path / "rollout-2026-11-13T09-00-00-0199aaaa-bbbb-7ccc-8ddd-eeeeffff0000.jsonl"
-    rollout.write_text("", encoding="utf-8")
-    context = _started("0199aaaa-bbbb-7ccc-8ddd-eeeeffff0000", transcript_path=str(rollout))
-    assert json.loads(note.read_text())["waiting"] == ["muse hook approval"]
-    after = context.split("not running synthesis's hooks")[1]
-    assert "1 harness on this machine is not running synthesis's hooks" in context and "Codex" not in after
+    _waits(version="5.0.0", codex=[], muse=ALL)
+    context = _started("S-claude")
+    assert "Whether Codex and Muse run synthesis's hooks has not been checked since synthesis changed" in context
+    assert "`synthesis doctor`" in context and "waited for the principal's approval" not in context
+    _waits(version="5.0.0", codex=[])
+    assert "Whether Codex runs synthesis's hooks has not been checked since" in _started("S-claude-2")
+
+
+def test_a_hook_that_runs_in_a_harness_strikes_its_own_event_and_no_other(tmp_path, write_config):
+    """Review of 5.14.0, finding 1: a start hook that ran was taken for proof that all of a harness's hooks run, so
+    with the guard's own hook untrusted the note said nothing waits. Each hook that runs shows itself approved."""
+    write_config({})
+    note = _waits(codex=ALL, muse=ALL)
+    _in_codex("session-start", tmp_path)
+    assert _waiting(note, "codex hook trust") == ["user_prompt_submit", "pre_tool_use", "stop"]
+    assert _waiting(note, "muse hook approval") == ALL
+    context = _started("S-claude")
+    assert "Codex: its user-prompt-submit, pre-tool-use and stop hooks waited" in context and context.count("Nothing guards") == 2
+    _in_codex("pre-tool-use", tmp_path, tool_name="Bash", tool_input={"command": "true"})
+    assert _waiting(note, "codex hook trust") == ["user_prompt_submit", "stop"]
+    assert _started("S-claude-2").count("Nothing guards") == 1                   # Muse's alone: Codex's guard has run
+    _in_codex("user-prompt-submit", tmp_path, prompt="hello")
+    _in_codex("stop", tmp_path)
+    assert _waiting(note, "codex hook trust") == [] and "Codex: its" not in _started("S-claude-3")
+    assert _waiting(note, "muse hook approval") == ALL
+
+
+def test_a_hook_that_runs_in_muse_strikes_muses_entry(tmp_path, write_config):
+    write_config({})
+    note = _waits(codex=ALL, muse=ALL)
+    out = _hook("pre-tool-use", {"session_id": "M1", "cwd": "/tmp", "tool_name": "bash", "tool_input": {"command": "true"}},
+                env={"MUSE_SESSION_ID": "M1"})
+    assert out.returncode == 0, out.stderr
+    assert _waiting(note, "muse hook approval") == ["session_start", "user_prompt_submit", "stop"]
+    assert _waiting(note, "codex hook trust") == ALL
+
+
+def test_a_hook_seen_under_another_release_is_left_for_the_doctor(tmp_path, write_config):
+    """What waited under another release says nothing of this one's hooks: a hook that runs strikes nothing there."""
+    write_config({})
+    note = _waits(version="5.0.0", codex=ALL)
+    _in_codex("pre-tool-use", tmp_path, tool_name="Bash", tool_input={"command": "true"})
+    assert _waiting(note, "codex hook trust") == ALL
+
+
+def test_a_note_that_cannot_be_written_costs_no_hook_its_answer(tmp_path, write_config, monkeypatch):
+    """Review of 5.14.0, finding 8: the strike and the note shared one `try`, so a state folder that could not be
+    written hid the other harness's line too."""
+    from synthesis import hook, paths
+    write_config({})
+    _waits(codex=ALL, muse=ALL)
+
+    def refused(*args, **kwargs):
+        raise PermissionError("read-only")
+    monkeypatch.setattr(paths, "write_json", refused)
+    hook._ran("codex", "session_start")                                          # raises nothing
+    said = hook._unguarded_note()
+    assert "Muse: its" in said and "Codex: its" in said
 
 
 def test_brief_is_bounded_and_check_flags_a_long_context(tmp_path, write_config):
