@@ -870,6 +870,63 @@ def test_a_file_too_large_to_hash_in_the_guards_time_refuses_the_call_and_is_nev
     assert _attached(staged) is None  # the approval was kept
 
 
+def test_a_read_that_blocks_is_refused_at_the_limit_and_not_when_the_read_returns(scratch, monkeypatch):
+    """A check between chunks runs only when a read returns, and a read on a stalled disk or mount blocks inside one
+    call: the guard came back after the read, past the time a harness gives a hook, which then passes over it."""
+    import threading
+    import time
+    staged, held, real_open = _staged(scratch), threading.Event(), open
+
+    class Stalled:
+        def __init__(self, handle):
+            self.handle = handle
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *raised):
+            self.handle.close()
+
+        def read(self, size=-1):
+            held.wait(3)  # as a read on a stalled mount blocks; let go once the guard has answered, or after 3 s
+            return self.handle.read(size)
+
+    def stalling(file, *args, **kwargs):
+        handle = real_open(file, *args, **kwargs)
+        return Stalled(handle) if str(file) == os.path.realpath(staged) else handle
+
+    monkeypatch.setattr(guards, "open", stalling, raising=False)
+    monkeypatch.setattr(guards, "HASH_SECONDS", 0.2)
+    try:
+        for ask, what in ((_attached, "the attachment"), (_uploaded, "the file"), (lambda f: _uploaded(f, DOC_IMPORT), "the file")):
+            started = time.monotonic()
+            reason = ask(staged)
+            took = time.monotonic() - started
+            assert f"{what} {staged} cannot be read (not within" in reason and "approve" not in reason, reason
+            assert took < 1.5, took  # at the limit, not after the 3 s the read is held for
+    finally:
+        held.set()
+    assert approvals.pending() == []
+
+
+def test_every_way_out_of_the_read_checks_the_limit_the_empty_file_included(scratch, monkeypatch):
+    """An empty file's read never entered the loop that checked the limit, so one that took longer passed."""
+    empty = paths.outbox() / "empty.txt"
+    empty.write_bytes(b"")
+    monkeypatch.setattr(guards, "HASH_SECONDS", 0)
+    for ask, what in ((_attached, "the attachment"), (_uploaded, "the file"), (lambda f: _uploaded(f, DOC_IMPORT), "the file")):
+        reason = ask(empty)
+        assert f"{what} {empty} cannot be read (not within" in reason and "approve" not in reason, reason
+    assert approvals.pending() == []
+
+
+def test_the_composing_reference_says_how_the_read_is_bounded():
+    composing = Path(__file__).resolve().parents[1] / "skills" / "synthesis-message-guard" / "references" / "composing.md"
+    listed = " ".join(composing.read_text(encoding="utf-8").split())
+    for words in ("stops waiting for it at the limit", "a read that never returns", "the empty file included"):
+        assert words in listed, words
+
+
 @pytest.mark.skipif(os.geteuid() == 0, reason="root reads a file whatever its mode")
 @pytest.mark.parametrize("ask,what", [(_attached, "the attachment"), (_uploaded, "the file")],
                          ids=["a mail attachment", "a Drive file"])
