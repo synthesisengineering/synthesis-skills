@@ -505,6 +505,18 @@ def test_the_doctor_compares_addresses_as_the_guard_does_and_the_turns_end_survi
     assert reply_check.misrouted_accounts(gone, CONFIG) == []
 
 
+def test_a_sub_agents_put_is_told_whose_read_the_guard_sees():
+    """A sub-agent's calls and results are kept apart from its session's: its own read of the page is in no record
+    the guard reads, and a hold that told it to read and try again could not be cleared by it."""
+    ran("navigate")
+    sub = {**ME, "agent_id": "a1", "agent_type": "general-purpose"}
+    reason = guards.check(guards.BROWSER + "computer", {"tabId": 1, **TYPE[1]}, CONFIG, cwd=str(ROOT), session=sub)
+    assert unread(reason) and "sub-agent" in reason and "session that started it" in reason
+    assert "sub-agent" not in call(*TYPE)
+    shows(MINE)                                                           # the session's own read counts for both
+    assert guards.check(guards.BROWSER + "computer", {"tabId": 1, **TYPE[1]}, CONFIG, cwd=str(ROOT), session=sub) is None
+
+
 def test_two_sessions_that_write_what_they_saw_at_once_lose_neither(tmp_path):
     """The file was read, changed and written with no lock, so one of two writers could drop the other's site."""
     import threading
