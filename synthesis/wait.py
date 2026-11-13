@@ -20,6 +20,7 @@ from __future__ import annotations
 import argparse
 import os
 import re
+import shutil
 import signal
 import subprocess
 import sys
@@ -156,9 +157,9 @@ def attempt(command: list[str], until: float) -> bool:
         done = proc.wait(timeout=until - time.time()) == 0 and time.time() <= until
     except subprocess.TimeoutExpired:
         pass
-    except OSError as exc:  # no program by that name, or a file that is none: nothing started, so the wait refuses the command
-        why = {FileNotFoundError: "was not found", PermissionError: "is not executable"}.get(type(exc), f"cannot be run ({exc.strerror})")
-        raise ValueError(f"`{' '.join(command)}` could not be started: its program {command[0]!r} {why}")
+    except OSError as exc:  # nothing started, so the wait refuses the command: in plain words only where no such program is there to run
+        plain = not shutil.which(command[0]) and {FileNotFoundError: "was not found", PermissionError: "is not executable"}.get(type(exc))
+        raise ValueError(f"`{' '.join(command)}` could not be started: its program {command[0]!r} {plain or f'cannot be run ({exc.strerror})'}")
     finally:
         if proc and not done:
             _stop(proc)
