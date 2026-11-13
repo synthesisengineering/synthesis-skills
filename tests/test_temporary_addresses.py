@@ -132,6 +132,11 @@ def test_what_stands_before_the_host_in_an_address_is_read_past_and_never_shown(
     assert held_for_the_address(reason) and f"({address})" in reason and "secret" not in reason
 
 
+def test_a_password_that_holds_an_at_sign_is_read_past_whole():
+    reason = said("The database is postgres://app:p@ss@10.1.2.3:5432/app")
+    assert held_for_the_address(reason) and "(10.1.2.3:5432)" in reason and "ss@" not in reason
+
+
 @pytest.mark.parametrize("text", [
     "http://[2001:db8::1]:8080/", "https://[2606:4700:4700::1111]/", "rows[::1] keeps every row", "rows[::2] and [::-1]",
     "ssh://build.example.com", "postgres://app:secret@db.example.com:5432/app", "http://172.32.0.1", "ftp://192.169.1.2/data",
