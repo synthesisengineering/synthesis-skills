@@ -1,8 +1,9 @@
-# Release notes: 1.1.1, 1.1.0, 1.0.1, 1.0.0, 0.14.0, 0.13.0, and v0.2.0 to v0.5.3
+# Release notes: 1.2.0, 1.1.1, 1.1.0, 1.0.1, 1.0.0, 0.14.0, 0.13.0, and v0.2.0 to v0.5.3
 
 The notes for 1.0.0 and later, newest first, then the release notes that opened the 0.14.0 SKILL.md, in their original order. The v0.4.0 and v0.5.0 notes carry live rules, so they are in [transcript-primary-and-commit-gate.md](transcript-primary-and-commit-gate.md); v0.6.0 to v0.11.0 are in [earlier-version-history.md](earlier-version-history.md).
 
 Contents:
+- 1.2.0: the mail connector reads the outbox, and runs one release
 - 1.1.1: the second image host
 - 1.1.0: the window never suggests passing a meeting still under way
 - 1.0.1: saved meetings found by their blockquote source line
@@ -13,6 +14,17 @@ Contents:
 - v0.5.1: Plaud spaced timestamp ranges
 - v0.3.0: mandatory verification and the do-not-extract-from-email rule
 - v0.2.0: workspace-rooted paths
+
+## 1.2.0 — the mail connector reads the outbox, and runs one release
+
+A mail send with a file attached was approved and then refused by the connector, which reads a local file only
+from its own attachment folder and the folders it was started with (2026-11-12). The optional connector's
+`start.sh` now makes the synthesis outbox and adds it to `ALLOWED_FILE_DIRS`, and runs one release of the server,
+`workspace-mcp@2.1.0`, the one whose rules for a local file the send guard copies (`WORKSPACE_MCP_VERSION` names
+another). `install-autostart.sh` carries `SYNTHESIS_HOME` into the unit when it is set, escapes every value it
+writes for a plist or a systemd unit, and quotes a start path systemd would misread. `doctor.sh` reports the
+outbox the unit gives the server and reads a quoted start path back. The fetch and verify scripts are unchanged
+but for their version.
 
 ## 1.1.1 — the second image host
 
