@@ -231,8 +231,42 @@ def test_a_batch_is_judged_by_its_steps_and_held_whole():
     assert batch(("navigate", {"url": f"https://{SITE}/new"}), TYPE, ("computer", {"action": "key", "text": "Return"})) is None
 
 
+def test_a_key_may_name_the_page_by_its_fragment_or_its_query():
+    for key, there in ((f"{SITE}/#settings", "/#settings/account"), (f"{SITE}/app?view=account", "/app?view=account&tab=1")):
+        using = config({key: MINE})
+        ran("navigate")
+        shows(MINE)
+        assert unread(call(*TYPE, using=using)), key
+        shows(MINE, path=there)
+        assert call(*TYPE, using=using) is None, key
+
+
+def test_a_batch_that_went_somewhere_after_it_began_or_ran_on_two_tabs_settles_nothing():
+    def did(*steps, body=f"[get_page_text] Title: Account\nSigned in as {MINE}", tabs=None):
+        ran("browser_batch", {"actions": [{"name": name, "input": {"tabId": 1, **given}} for name, given in steps]}, body, tabs=tabs)
+    read, wait = ("get_page_text", {}), ("computer", {"action": "wait", "duration": 1})
+    ran("navigate")
+    did(("navigate", {"url": "https://mail.example/"}), read, ("navigate", {"url": f"https://{SITE}/chat"}))   # read on the page before
+    assert unread(call(*TYPE))
+    did(read, ("get_page_text", {"tabId": 2}), tabs={1: f"https://{SITE}/chat", 2: "https://mail.example/"})   # which tab said it is not known
+    assert unread(call(*TYPE))
+    did(("navigate", {"url": f"https://{SITE}/settings"}), wait, read)     # went there first, then read: the page it ended on
+    assert call(*TYPE) is None
+
+
+def test_an_account_routing_of_another_shape_does_not_stop_the_reading():
+    ran("navigate")
+    for routing in ("x", {"workspaces": [7], "default_account": OTHER}, {"workspaces": {"/a": 7, "/b": {"account": ALIAS, "aliases": "x"}}}):
+        using = {**config({SITE: MINE}), "account_routing": routing}
+        assert unread(call(*TYPE, using=using))
+    shows(OTHER)
+    assert misrouted(call(*TYPE, using={**config({SITE: MINE}), "account_routing": {"workspaces": [7], "default_account": OTHER}}))
+
+
 @pytest.mark.parametrize("accounts", [[], "x", 7, {SITE: 7}, {SITE: "not an address"}, {SITE: ""}, {"": MINE}, {"/settings": MINE},
-                                      {SITE: MINE, f"{SITE}/settings": OTHER}, {SITE: [MINE]}, {7: MINE}])
+                                      {SITE: MINE, f"{SITE}/settings": OTHER}, {SITE: [MINE]}, {7: MINE}, {f"{SITE}:443": MINE},
+                                      {"assistant example": MINE}, {"assistant": MINE}, {SITE: MINE, f"www.{SITE}": MINE},
+                                      {f"www.{SITE}": MINE, SITE: MINE}])
 def test_a_map_of_another_shape_blocks_the_workspaces_browser_calls(accounts):
     ran("navigate")
     for tool, given in (TYPE, ("navigate", {"url": "https://example.com"}), ("get_page_text", {})):
