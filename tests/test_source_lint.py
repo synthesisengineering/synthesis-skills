@@ -302,7 +302,8 @@ def test_ci_runs_tests_and_skills_each_in_a_job_of_its_own():
     `python3 -m pytest -q tests/ skills/` runs."""
     workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
     assert "part: [tests, skills]" in workflow
-    assert "run: python -m pytest -q ${{ matrix.part }}/" in workflow and "pytest -q tests/ skills/" not in workflow
+    assert "run: python -m pytest -q ${{ matrix.part }}/" in workflow
+    assert "run: python -m pytest -q tests/ skills/" not in workflow  # no job runs the whole of it
     apple = re.findall(r"- os: macos-latest\n\s+python: apple\n\s+part: (\w+)", workflow)
     assert sorted(apple) == ["skills", "tests"]  # an entry added to a matrix by hand names both
     assert sorted(path.name for path in ROOT.iterdir() if path.is_dir() and any(path.rglob("test_*.py"))
