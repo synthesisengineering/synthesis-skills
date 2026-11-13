@@ -809,14 +809,18 @@ def test_what_this_release_saw_stands_while_a_later_look_cannot_tell(machine):
 
 def test_a_harness_with_no_plugin_in_it_has_no_approval_to_wait_for(machine):
     """The third review, finding 1: the plugin was removed from a harness, and the entry another release wrote of it
-    stayed. The harness's own line says the plugin is not there, in the doctor's words for Codex or in Muse's own."""
+    stayed. The harness's own line says the plugin is not there, in the doctor's one sentence for it; a line that
+    fails in other words is a look that could not tell (5.15.0's third review, finding 5)."""
     home = machine[0] / ".synthesis" / "v5"
     gone = [doctor.Check("fail", "codex plugin", "synthesis-skills is not installed"),
-            doctor.Check("fail", "muse plugin", "plugin `synthesis-skills` is not installed")]
+            doctor.Check("fail", "muse plugin", "synthesis-skills is not installed")]
     for version in ("5.0.0", None):
         _note(machine[0], version=version, ago=600.0, codex=EVENTS, muse=EVENTS)
         doctor._note_waits(home, gone, time.time())
         assert paths.waits(home) == {} and _seen(machine[0]) == {}, version
+    _note(machine[0], version="5.0.0", ago=600.0, codex=EVENTS)
+    doctor._note_waits(home, [doctor.Check("fail", "codex plugin", "could not run codex: it is not installed")], time.time())
+    assert paths.waits(home)["codex hook trust"]["untold"] is True
 
 
 def test_a_harness_the_run_did_not_find_is_told_of_for_a_day_and_no_longer(machine):

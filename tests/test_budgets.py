@@ -888,7 +888,7 @@ def test_a_call_that_met_a_busy_machine_is_timed_again_before_it_is_called_slow(
     runs.mkdir()
     busy = ("import os, time\n"
             f"n = len(os.listdir({str(runs)!r}))\n"
-            f"open(os.path.join({str(runs)!r}, str(n)), 'w').close()\n"
+            f"os.mkdir(os.path.join({str(runs)!r}, str(n)))\n"  # a folder for each run: opening a file loads a module more on 3.9
             "time.sleep(0.3 if n <= 3 else 0)")  # the first look at it and its first three rounds meet a busy machine
     hook_budget(["-c", busy], ("os", "time"), rounds=3)
     assert len(list(runs.iterdir())) == 7  # one look, three rounds over, three more that settle it

@@ -49,15 +49,19 @@ RUN_ORDER = {"day-start": 0, "midday": 1, "day-end": 2}
 LEAD_DAYS, ALERT_DAYS = 7, (3, 1, 0)  # a critical item leads from a week out; alerts three days and one day out and on its day
 WORDS = ("enrollment", "insurance", "tax(?:es)?", "patent", "visa", "passport", "immigration", "payroll", "FSA", "HSA")
 DONE = re.compile(r"(?:\[[xX]\]\s|~~.+~~|✅|(?:DONE|SENT)\b)")  # a title that closes its own dated item
-# A commitment's entry is closed where a mark stands as its status: a tick box, a strike, a tick or DONE or SENT in
-# capitals at its start (no question mark after the word); a tick at its end, alone or before DONE or SENT; or DONE
-# or SENT after a dash or a colon, alone or before a time. A tick or a word inside a sentence closes nothing (the
-# reviews: read at the title's start alone, `**Call** ✅ DONE 10:00` was listed as open; read anywhere, `Ship it
-# (staging ✅, prod pending)` was closed).
-CLOSED_ENTRY = re.compile(r"^[*_\s]*(?:\[[xX]\]\s|~~.+~~|[✅✓✔☑]|(?:DONE|SENT)\b(?!\s*\?))"
-                          r"|✅[*_\s]*(?:(?:DONE|SENT)\b.*)?$"
-                          r"|(?:—|–|-|:)\s*[*_]*(?:DONE|SENT)\b(?!\s*\?)[*_\s]*(?:\d{1,2}:\d{2}.*)?$")
-STATUS_CELL = re.compile(r"[*_\s]*(?:\[[xX]\]|~~.+~~|[✅✓✔☑]|(?:DONE|SENT)\b(?!\s*\?))")  # a table's cell that says its row is done
+# A commitment's entry is closed where a mark stands as its status. At its start: a tick box, a tick, DONE or SENT
+# in capitals with no question mark after the word, or its whole title struck (what follows the strike is nothing,
+# or opens with a mark and not a word: `~~Tuesday~~ Thursday: send it` is open). At its end: a tick, alone or
+# before DONE or SENT and a time; or done or sent after a dash or a colon, alone or before a time. A tick or a word
+# inside a sentence closes nothing (the reviews: read at the title's start alone, `**Call** ✅ DONE 10:00` was
+# listed as open; read anywhere, `Ship it (staging ✅, prod pending)` was closed, and so was `Deploy (✅ DONE for
+# staging; prod still pending)` while `✅ DONE` could be followed by anything).
+CLOSED_ENTRY = re.compile(r"^[*_\s]*(?:\[[xX]\]\s|~~.+?~~[*_\s]*(?:$|[^\w\s*_])|[✅✓✔☑]|(?:DONE|SENT)\b(?!\s*\?))"
+                          r"|[✅✓✔☑]\uFE0F?[*_\s]*(?:(?:DONE|SENT)\b[*_\s]*(?:\d{1,2}:\d{2}\S*)?[*_\s.)]*)?$"
+                          r"|(?:—|–|-|:)\s*[*_]*(?i:done|sent)\b(?!\s*\?)[*_\s]*(?:\d{1,2}:\d{2}.*)?$")
+# A table's cell that says its row is done (a strike is the whole cell's), and a header that names such a column.
+STATUS_CELL = re.compile(r"[*_\s]*(?:\[[xX]\]|~~.+~~[*_\s]*$|[✅✓✔☑]|(?:DONE|SENT)\b(?!\s*\?))")
+STATUS_HEAD = re.compile(r"(?i)\b(?:status|state|done|sent|closed|outcome|result|shipped|completed?|finished)\b|[✅✓✔☑]")
 RELEASED = re.compile(rf"\*\*Decays:\*\*\s*~~{DATE}~~\s*\(?\s*\w")  # a struck date with its reason: let go
 # The headings under which the plan format keeps commitments: the task section and its synonyms, what is waited on,
 # what is carried (`This Week` only as a heading's whole text: `Meetings this week` is another thing). A heading
@@ -68,8 +72,13 @@ RELEASED = re.compile(rf"\*\*Decays:\*\*\s*~~{DATE}~~\s*\(?\s*\w")  # a struck d
 COMMIT = re.compile(r"(?i)\btasks?\b|action items?|\bto[- ]?dos?\b|follow-?ups?|priorities|still to do|pending (?:this|from)"
                     r"|waiting|delegated|carried|carry[- ](?:forward|over)|^\W*this week\W*$")
 OTHER = re.compile(r"(?i)\W*(?:calendar|drafts?|unsent|standup|decisions?|open ask|sync|things to know|what happened|what changed|prs?\b|bugs)")
-FINISHED = re.compile(r"(?i)\b(?:completed|done|sent|closed|finished|shipped)\b")
-UNFINISHED = re.compile(r"(?i)\b(?:not|yet|still|awaiting|waiting|pending|to be)\b")
+FINISHED = re.compile(r"(?i)\b(?:completed|done|closed|finished|shipped|sent(?!\s+from\b))\b")  # `sent from my phone` says nothing
+# What is still to come: a word that says so anywhere, or `to` or `get` before the finishing word (`Tasks to get
+# done`; `Sent to the team` is a heading of things sent).
+UNFINISHED = re.compile(r"(?i)\b(?:not|yet|still|awaiting|waiting|pending|must|needs?|should)\b"
+                        r"|\b(?:to|gets?|getting)\b.*\b(?:completed|done|sent|closed|finished|shipped)\b")
+# A ledger's status that takes its closing word back, or says the thing is partly done, is open.
+UNDONE = re.compile(r"(?i)\b(?:not|yet|still|awaiting|waiting|pending|but|reopened|partly|partial(?:ly)?|in part)\b")
 PARKED = re.compile(r"(?i)\bparked\s*\(\s*[^)\s][^)]*\)|\*\*Parked:\*\*\s*\S")  # a park says why
 # A ledger's status that opens with one of these, as a word or a phrase, is closed; a seat's own are added to them.
 LEDGER_CLOSED = ("SENT", "SUPERSEDED", "DECAYED", "CLOSED", "RELEASED", "RESOLVED", "LAPSED", "DONE", "ANSWERED", "REPLIED")
@@ -287,10 +296,15 @@ def commitments(path: Path) -> list[dict]:
                 table = table + 1 if line.strip().startswith("|") else 0
                 cells = _cells(raw[at - 1]) if table else []
                 head = cells if table == 1 else head
-                named = [cell for cell in cells if cell and not re.fullmatch(r"[#\d.]+", cell)]  # its first cell that says what it is
-                if (table > 1 and named and cells != head and not all(re.fullmatch(r":?-*:?", cell) for cell in cells)
-                        and not re.match(r"\d{1,2}:\d{2}", cells[0])):  # nor a schedule's line, which opens with a clock time
-                    row(named[0], at, raw[at - 1], False, _closing_line(raw[at - 1]) or any(STATUS_CELL.match(cell) for cell in cells[1:]))
+                # its first cell that says what it is: not a number, and not a time
+                named = [cell for cell in cells if cell and not re.fullmatch(r"[#\d.]+|\d{1,2}:\d{2}\S*", cell)]
+                # Under a heading that only stands in the task section, a row that opens with a clock time is a
+                # schedule's line; under one whose own words place tasks, it is a task with its time.
+                timed = chain[level] is None and re.match(r"\d{1,2}:\d{2}", cells[0]) if cells else False
+                if table > 1 and named and cells != head and not timed and not all(re.fullmatch(r":?-*:?", cell) for cell in cells):
+                    # the row's status: the cell under a header that names one, or the last cell where none does
+                    states = [cells[i] for i, name in enumerate(head) if STATUS_HEAD.search(name) and 0 < i < len(cells)] or cells[-1:]
+                    row(named[0], at, raw[at - 1], False, _closing_line(raw[at - 1]) or any(STATUS_CELL.match(cell) for cell in states if cell is not named[0]))
         elif LIST.match(first) and held():
             fields = {match[1].lower() for _, line in block for match in [FIELD.search(line)] if match}
             row(re.sub(r"^\s*(?:[-*+]\s+|\d+[.)]\s+)", "", raw[number - 1]).strip(), number, "\n".join(line for _, line in block),
@@ -300,14 +314,16 @@ def commitments(path: Path) -> list[dict]:
 
 def _status(cell: str, closed: tuple) -> tuple[bool, str]:
     """(whether a ledger's status says the row is finished, its first word): with anything struck through set
-    aside and a link read as its words, it opens with a tick, ends with one, or opens with a closing word or
-    phrase that no question mark follows."""
+    aside and a link read as its words, it opens with a tick, or with a closing word or phrase that no question mark
+    follows, and no word after takes that back (`Paid in part`, `Done, but reopened`, `✔ waiting on them`). A tick
+    at its end closes nothing by itself: `In review ✅` is open, `Replied ✅` is closed by its word."""
     text = re.sub(r"[*`]", "", re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", re.sub(r"~~.*?~~", "", cell))).strip()
     lead = re.sub(r"^[^\w\[:]+", "", text)
     word = re.match(r"[A-Za-z][\w/'-]*", lead)
     said = next((phrase for phrase in closed if lead.upper().startswith(phrase) and not re.match(r"[\w-]", lead[len(phrase):])), None)
     done = said is not None and not re.match(r"\s*\?", lead[len(said):])
-    return bool(TICK.match(text) or re.search(r"✅\s*$", text) or done), (word[0].upper() if word else "")
+    rest = lead[len(said):] if said is not None else text  # a seat's own phrase may hold such a word itself (`Not needed`)
+    return bool((TICK.match(text) or done) and not UNDONE.search(rest)), (word[0].upper() if word else "")
 
 
 def ledger_rows(path: Path, as_of: date, closed: tuple) -> tuple[list[dict], int]:

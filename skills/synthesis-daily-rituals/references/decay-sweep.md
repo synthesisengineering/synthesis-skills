@@ -120,20 +120,31 @@ commitment written with no tag is carried for as long as someone copies it and n
   (`Meetings this week` is another thing). A heading that opens with the name of another kind of section says
   nothing by itself (`Calendar`, `Draft A: to someone who is waiting`, `Standup`, `Decisions`, `Sync`); one whose
   task word such a name only qualifies is read (`Tasks from the sync`, `Waiting on PR review`). A heading of things
-  finished holds none: it says completed, done, sent, closed, finished or shipped, and has no word that says the
-  thing is still to come (`Not done yet` and `Sent, awaiting reply` are not such headings). The nearest enclosing
+  finished holds none: it says completed, done, sent, closed, finished or shipped, and nothing in it says the
+  thing is still to come: a word such as not, yet, still, awaiting, pending, must or needs anywhere, or `to` or
+  `get` before the finishing word (`Not done yet`, `Sent, awaiting reply` and `Tasks to get done` are not such
+  headings; `Sent to the team` is one, and `sent from my phone` says nothing). The nearest enclosing
   heading that says either way decides: a bucket under the task section is read unless its own words say
   finished, and the plan's own title places nothing. A heading that is all inline code is no heading to the sweep.
 - *Which entries.* Each top-level list entry there, and each row of a table that stands directly under such a
   heading, before any list. A table's first row is its header, so a block of piped lines with no header loses its
-  first line. A row is named by its first cell that says what it is (not a number), and a row that is empty,
-  repeats the header or opens with a clock time (a schedule's line) is passed over.
-- *What is closed.* An entry is closed, and not read, where a mark stands as its status: a tick box, a strike, a
-  tick (✅ ✓ ✔ ☑) or DONE or SENT in capitals at its start, with no question mark after the word; ✅ at its end,
-  alone or before DONE or SENT; or DONE or SENT after a dash or a colon. A tick or a word inside a sentence closes
-  nothing (`Ship it (staging ✅, prod pending)`, `Confirm the deploy is DONE`). So does a Sent, Released or Resolved
-  line that gives its day, or a struck date with its reason, anywhere in its block; in a table, such a line or a
-  status mark in any cell of the row.
+  first line. A row is named by its first cell that says what it is (not a number, not a time), and a row that is
+  empty or repeats the header is passed over. A row that opens with a clock time is a task with its time under a
+  heading whose own words place tasks (`Tasks`, `Priority Tasks`), and a schedule's line, passed over, under a
+  heading that only stands in the task section (`Today's hours`): a day's schedule kept directly under a task
+  heading is read as tasks, so give it a heading of its own.
+- *What is closed.* An entry is closed, and not read, where a mark stands as its status. At its start: a tick
+  box, a tick (✅ ✓ ✔ ☑), DONE or SENT in capitals with no question mark after the word (whatever follows: what
+  reopened it is a new entry), or its whole title struck, where what follows the strike is nothing or opens with
+  a mark and not a word (`~~Renew the pass~~ (not needed)` is closed, `~~Tuesday~~ Thursday: send it` is open).
+  At its end: a tick, alone or before DONE or SENT and a time; or done or sent after a dash or a colon, alone or
+  before a time. A tick or a word inside a sentence closes nothing (`Ship it (staging ✅, prod pending)`, `Deploy
+  (✅ DONE for staging; prod pending)`, `Confirm the deploy is DONE`). A Sent, Released or Resolved line that gives
+  its day closes it too, and so does a struck date with its reason, anywhere in its block, a nested entry's
+  included: a note of progress is written without the bold field name. A table's row is closed by such a line in
+  any cell, by its title's own mark, or by a status mark in its status: the cell under a header that names one
+  (`Status`, `Done`, `Sent`, `Outcome`), or the last cell where no header does. A tick in another column says
+  something else (`| Launch the site | ✓ | no |`).
 - *What passes.* A `**Decays:**` date in the entry's block (a `**Critical:**` tag needs its date too), or a park
   that says why: `parked (reason)`, or a `**Parked:** reason` line, anywhere in the block, a nested entry's
   included. A table's row can carry a park and no date, since a tag stands under a heading or a list entry: a row
@@ -163,9 +174,11 @@ the day has not closed.
 **A ledger's open rows (`owed`).** In a `records_dirs` folder, a table whose header has a `Status` cell and an
 `Owed since` cell is a correspondence ledger, each of its lines opening with a pipe, and each row is one thing
 owed, at its file and line (its `Item` cell names it, or its first). A row is closed where its status, with
-anything struck through set aside and a link read as its words, opens with a tick (✅, ✔, ✓, ☑, `[x]`), ends with
-✅, or opens with one of the closing words with no question mark after it: SENT, SUPERSEDED, DECAYED, CLOSED,
-RELEASED, RESOLVED, LAPSED, DONE, ANSWERED, REPLIED. A top-level `ledger_closed_words` list in the ritual config
+anything struck through set aside and a link read as its words, opens with a tick (✅, ✔, ✓, ☑, `[x]`) or with one
+of the closing words with no question mark after it: SENT, SUPERSEDED, DECAYED, CLOSED, RELEASED, RESOLVED, LAPSED,
+DONE, ANSWERED, REPLIED; and nothing after that takes it back or says it is partly done (not, yet, still, awaiting,
+waiting, pending, but, reopened, partly, in part: `Paid in part`, `Done, but reopened`). A tick at the end closes
+nothing by itself (`In review ✅` is open, `Replied ✅` is closed by its word). A top-level `ledger_closed_words` list in the ritual config
 adds a seat's own words and phrases to those (`"N/A"`, `"Not needed"`); a value that is no such list adds nothing
 and is said in this view (`config`), where it blocks no record. Every other status is open, an empty one included:
 a status the reader does not know is not read as finished. The view gives the count, the oldest date, how many

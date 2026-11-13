@@ -1399,7 +1399,8 @@ def harness_checks(found: list, procs: dict, home: Path, runtime: str, catalog=N
         inspect, error = _finish(procs["muse"])
         entry = muse_entry(inspect)
         if entry is None and isinstance(inspect, dict) and isinstance(inspect.get("error"), dict):
-            error = str(inspect["error"].get("message", "")) or error
+            absent = inspect["error"].get("code") == "unknown-plugin"  # Muse's own code for a plugin that is not there
+            error = "" if absent else str(inspect["error"].get("message", "")) or error
         checks.append(check_plugin("muse", entry, error))
         if entry:
             versions["muse"] = entry.get("version", "")
@@ -1495,7 +1496,9 @@ def _note_waits(home: Path, checks: list, began: float) -> None:
     - Its approval line says ok or fail: the hooks that were not running, the ones the line names (Muse writes them
       with dashes), all four where it names none or says none run, with the line itself. A hook that ran after this
       run began is the later sight of its own event: that one stays struck, and no other.
-    - Its plugin line says the plugin is not installed there: no approval waits, and its entry is dropped.
+    - Its plugin line says the plugin is not installed there, in the doctor's own sentence (Codex's whole listing
+      does not hold it; Muse answers with its code for an unknown plugin): no approval waits, and its entry is
+      dropped. Any other fault of that line is a look that could not tell.
     - The run could not tell (a listing that did not answer, a trust state that cannot be read from here): what this
       release saw within the day stands. Otherwise the run writes that it could not tell, with the line that says
       why, dates it again on each run that still cannot, and keeps what hooks have struck since, the only sight
@@ -1517,7 +1520,7 @@ def _note_waits(home: Path, checks: list, began: float) -> None:
                 struck, now = mine["struck"] if mine else {}, time.time()  # the clock is read under the note's lock
                 waiting = [e for e in waiting if not began < struck.get(e, 0) <= now]
                 return {"at": began, "waiting": waiting, "struck": {}, "said": check.detail[:300] if waiting else "", "untold": False}
-            if plugin is not None and plugin.status == "fail" and plugin.detail.endswith("is not installed"):
+            if plugin is not None and plugin.status == "fail" and plugin.detail == f"{PLUGIN} is not installed":
                 return "drop" if old else None
             if mine and not mine["untold"] or line is None and (mine or not old):
                 return None
