@@ -505,6 +505,21 @@ def test_the_doctor_compares_addresses_as_the_guard_does_and_the_turns_end_survi
     assert reply_check.misrouted_accounts(gone, CONFIG) == []
 
 
+def test_a_list_of_tabs_in_the_extensions_older_form_and_a_new_tabs_empty_address_are_read():
+    """Replayed over recorded calls, the hold for a page the record does not show fell on 89 calls, every one in a
+    record from July: the extension then wrote a tab's address without quotes, and the reader took only the quoted
+    form. A reader that cannot read a list of tabs would hold every put for good."""
+    def listed(*tabs):
+        text = "Done\n\nTab Context:\n- Executed on tabId: 1\n- Available tabs:\n" + "\n".join(f"  \u2022 tabId {k}: {line}" for k, line in tabs)
+        ran("computer", {"action": "screenshot", "tabId": 1}, text, tabs={})
+    listed((1, f'"A page (draft)" (https://{SITE}/chat)'), (2, '"Inbox" (https://mail.example/inbox)'), (3, '"New Tab" ("")'))
+    assert unread(call(*TYPE, tab=1)) and call(*TYPE, tab=2) is None
+    assert call(*TYPE, tab=3) is None                                     # a new tab's page is known: it is no site's
+    assert "which page" in call(*TYPE, tab=4)
+    listed((1, f'"A page" ("https://mail.example/")'), (2, f'"A (page)" ("https://{SITE}/chat")'))
+    assert call(*TYPE, tab=1) is None and unread(call(*TYPE, tab=2))
+
+
 def test_a_sub_agents_put_is_told_whose_read_the_guard_sees():
     """A sub-agent's calls and results are kept apart from its session's: its own read of the page is in no record
     the guard reads, and a hold that told it to read and try again could not be cleared by it."""
