@@ -22,6 +22,7 @@ delegate, then `.git/hooks/<hook>`, each once and never itself; a repository tha
 from __future__ import annotations
 
 import codecs
+import fnmatch
 import json
 import os
 import re
@@ -29,6 +30,7 @@ import subprocess
 import sys
 import time
 import zlib
+from datetime import datetime, timedelta, timezone
 
 if __package__ in (None, ""):
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -654,7 +656,95 @@ def push_remotes() -> list[str]:
     return [p[1] for p in (line.split() for line in out.splitlines()) if len(p) >= 3 and p[2] == "(push)"]
 
 
-def problems(config: dict, session_id: str, repo_root: str, message: str | None = None) -> tuple[list[str], list[str], str]:
+try:
+    from zoneinfo import ZoneInfo
+except ImportError:  # an interpreter with none reads no region label
+    ZoneInfo = None
+# The time an entry gives for itself, in the three places a record states one: the line opens with the day and a
+# time (behind a list mark, a box, a heading, emphasis), a parenthesis opens with them, or the line opens with a
+# time alone (read only in a session log, under a heading that names the day). A time may be rounded ("18:3x",
+# "about 18:35"), a range (its later end counts) and may name its zone. Measured on thirty days of commits before
+# this was written (2026-11-12): 688 such stamps, 36 of them later than their commit and 111 rounding the present.
+_MARKS = r"^\s*(?:(?:[-*+]|\d+\.)\s+)?(?:\[[ xX]\]\s+)?(?:#{1,6}\s+)?[*_`\s]*"
+_CLOCK = r"(?:[01]?\d|2[0-3]):[0-5][\dx](?::\d\d(?:\.\d+)?)?"
+_SPAN = (r"(?P<about>(?:about|around|roughly|approximately|approx\.?|circa|~|≈)\s*)?(?P<first>" + _CLOCK + r")"
+         r"(?P<ish>\s*(?:ish|or so))?(?:\s*(?P<dash>to|-|–|—|until)\s*(?P<last>" + _CLOCK + r"))?"
+         r"(?P<zone>(?:\s?(?:Z\b|UTC\b|GMT\b|[ECMP][SD]?T\b|[+-]\d\d:?\d\d\b))?)")
+_DAY = r"(?P<year>\d{4}-)?(?P<month>\d\d)-(?P<day>\d\d)(?:(?P<iso>T)|[ ,]+(?:at\s+)?)"
+STAMPS = (re.compile(_MARKS + r"\(?" + _DAY + _SPAN), re.compile(r"\((?:[a-z]+ ){0,2}" + _DAY + _SPAN),
+          re.compile(_MARKS + _SPAN + r"(?=[\s,.:;)*_—-]|$)"))
+HOURS = {"Z": 0, "UTC": 0, "GMT": 0, "EST": -5, "EDT": -4, "CST": -6, "CDT": -5, "MST": -7, "MDT": -6, "PST": -8, "PDT": -7}
+REGIONS = {"ET": "America/New_York", "CT": "America/Chicago", "MT": "America/Denver", "PT": "America/Los_Angeles"}
+
+
+def _stamped(found, now: datetime):
+    """(minutes a stamp stands after `now`, whether it is rounded, its words), or None where it names another day
+    or a zone this machine cannot resolve. A hyphen and a time that would end a range before it began is an offset."""
+    part = found.groupdict()
+    if (int(part.get("month") or now.month), int(part.get("day") or now.day)) != (now.month, now.day) or (
+            part.get("year") and int(part["year"][:4]) != now.year):
+        return None
+    clock, zone = part["last"] or part["first"], part["zone"].strip().upper()
+    if part["last"] and part["dash"] == "-" and (part.get("iso") or part["last"] < part["first"].zfill(5)):
+        clock, zone = part["first"], "-" + part["last"]
+    hour, minute = clock.split(":")[:2]
+    at = datetime(now.year, now.month, now.day, int(hour), int(minute) if minute.isdigit() else int(minute[0]) * 10)
+    try:
+        if not zone:
+            at = at.replace(tzinfo=now.tzinfo)
+        elif zone in HOURS:
+            at = at.replace(tzinfo=timezone(timedelta(hours=HOURS[zone])))
+        elif zone in REGIONS:
+            at = at.replace(tzinfo=ZoneInfo(REGIONS[zone]))
+        else:
+            digits = zone[1:].replace(":", "")
+            at = at.replace(tzinfo=timezone((-1 if zone[0] == "-" else 1) * timedelta(hours=int(digits[:2]), minutes=int(digits[2:4]))))
+    except Exception:  # no zone data on this machine: what cannot be read is not refused
+        return None
+    rounded = bool(part["about"] or part["ish"] or "x" in clock)
+    return int((at - now.replace(second=0, microsecond=0)).total_seconds() // 60), rounded, found.group(0)[found.start("first") - found.start():].strip()
+
+
+def record_times(lines: list, settings, now: datetime, read) -> list:
+    """Config: {"record_times": {"skip": ["<folder pattern>", ...]}}; off when the key is absent or false. In a
+    Markdown file outside `transcripts/`, an entry's own stamp for today may not be later than now, and may not
+    round a moment within the last 15 minutes: the clock could be read (a request of 2026-11-12, after six such
+    times in one day). A moment longer ago may be rounded, and a time inside an entry's text is not judged: three
+    in ten of those are later than their commit, and rightly. `read(path)` gives a staged file's text."""
+    if settings is None or settings is False:
+        return []
+    skip = settings.get("skip", []) if isinstance(settings, dict) else None
+    if not (isinstance(skip, list) and all(isinstance(pattern, str) for pattern in skip)):
+        raise Refused('record_times in the synthesis config must be an object, with "skip" a list of folder patterns '
+                      "when it has one")
+    found, texts, here = [], {}, f"{now:%H:%M} here"
+    for raw, number, line in lines:
+        path = os.fsdecode(raw)
+        parts = path.split("/")
+        if not path.lower().endswith(".md") or "transcripts" in parts or any(fnmatch.fnmatch(path, pattern) for pattern in skip):
+            continue
+        text = line.decode("utf-8", "replace")
+        head = STAMPS[0].match(text)
+        stamps = ([head] if head else []) + [m for m in STAMPS[1].finditer(text) if not (head and m.start() < head.end())]
+        bare = None if head or "sessions" not in parts else STAMPS[2].match(text)
+        if bare:  # a list item's own time counts under the nearest heading that names a day, when that day is today
+            above = texts.setdefault(path, read(path).split("\n"))[:number - 1]
+            dated = next((h for h in reversed(above) if re.match(r"#{1,6}\s", h) and re.search(r"\d{4}-\d\d-\d\d", h)), "")
+            stamps += [bare] * (f"{now:%Y-%m-%d}" in dated)
+        for stamp in stamps:
+            ahead, rounded, words = _stamped(stamp, now) or (0, False, "")
+            if rounded and ahead >= -15:
+                found.append(f"{path}:{number}: `{words}` rounds a time the clock gives (it is {here}): write the minute "
+                             "`date` prints, in the command that writes the entry. A moment more than 15 minutes old may be rounded")
+            elif ahead > 0 and not rounded:
+                found.append(f"{path}:{number}: the entry's own time, {words}, is {ahead} min after this commit ({here}): a "
+                             "record's time is read from the clock (`date`) in the command that writes it. For a time in "
+                             "another zone, name the zone; an event's time goes after the words that name the event, not "
+                             "at the head of the line or of a parenthesis")
+    return found
+
+
+def problems(config: dict, session_id: str, repo_root: str, message: str | None = None, now: datetime | None = None) -> tuple[list[str], list[str], str]:
     """(problems, notes, repository class) for the commit being made, or for its message."""
     deadline, policy, store = time.monotonic() + SECONDS, load_policy(config), paths.line_allowances(config)
     if policy:  # the configured policy, ledger and approved lines, when they live in this repository, are catalogs
@@ -677,6 +767,8 @@ def problems(config: dict, session_id: str, repo_root: str, message: str | None 
                       "--dst-prefix=b/", "--no-renames", "--diff-filter=AM", "-U0"], deadline)
     lines, texts = images(added(diff), deadline)
     found = scan(lines, policy, patterns, deadline, approve, own=own, texts=texts)
+    found += record_times(lines, config.get("record_times"), now or datetime.now().astimezone(),
+                          lambda path: git_bytes(["cat-file", "blob", ":" + path], deadline).decode("utf-8", "replace"))
     names = git_bytes(["diff", "--cached", "--name-only", "-z", "--diff-filter=ACR"], deadline).split(b"\0")
     found += [f"{os.fsdecode(n)}: a credential file name; keep secrets out of git (a public certificate can be .crt)"
               for n in names if n and SECRET_FILE.search(os.fsdecode(n))]
