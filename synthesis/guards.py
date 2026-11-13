@@ -206,14 +206,15 @@ def temporary_addresses(texts: list, config: dict):
     host (a subdomain of a tunnel service, or a host the config names and its subdomains) and, unless `local` is false,
     a local name or a private address written with a scheme or a port, and a loopback address however written
     (`_only_here`). A user and password before a host are read past and never shown. A string when the setting
-    cannot be read. {"temporary_addresses": {"hosts": ["<more>"], "local": true}}; no key, no rule."""
-    rule = config.get("temporary_addresses")
-    if rule is None:
+    cannot be read. {"temporary_addresses": {"hosts": ["<more>"], "local": true}}; no key, no rule, and a key that is
+    there and null is a setting that cannot be read."""
+    if "temporary_addresses" not in config:
         return []
+    rule = config["temporary_addresses"]
     more, local = (rule.get("hosts", []), rule.get("local", True)) if isinstance(rule, dict) else (None, None)
     if not isinstance(more, list) or not all(isinstance(h, str) and h.strip() for h in more) or not isinstance(local, bool):
-        return ('temporary_addresses in the synthesis config needs "hosts" as a list of host names and "local" as true or '
-                "false (either may be absent); sends are blocked until it is fixed")
+        return ('temporary_addresses in the synthesis config needs an object, {} or one with "hosts" as a list of host names '
+                'and "local" as true or false (either may be absent); sends are blocked until it is fixed')
     exact = {h.strip().lower().lstrip(".") for h in more}
     ends, found = TUNNELS + tuple("." + h for h in exact), set()
     for low in (re.sub(r"://[^\s/?#@]*@", "://", str(text).lower()) for text in texts):
@@ -1653,9 +1654,10 @@ def _tunnels(words: list[str]) -> bool:
 
 
 def check_tunnel(command: str, config: dict, cwd: str, session: dict | None = None) -> str | None:
-    """Starting a quick tunnel waits for the principal's code, where the config has `temporary_addresses`: its address
-    is gone when the command stops, so it serves their own test and nothing another person is given."""
-    if config.get("temporary_addresses") is None or not any(_tunnels(words) for words, _ in _parse(command, cwd)[0] if words):
+    """Starting a quick tunnel waits for the principal's code, where the config has `temporary_addresses` (the key,
+    whatever it holds): its address is gone when the command stops, so it serves their own test and nothing another
+    person is given."""
+    if "temporary_addresses" not in config or not any(_tunnels(words) for words, _ in _parse(command, cwd)[0] if words):
         return None
     if approvals.consume("tunnel", command, session):
         return None
