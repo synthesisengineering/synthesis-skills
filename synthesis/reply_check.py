@@ -38,6 +38,7 @@ DEFAULT_PHRASES = [
 # one, 96 were the session's own wait. The rest awaited the principal's own next step (STAGED, CODED, ASKED, "your"),
 # were a list of open loops under a label, a heading, a table or a fragment (TABLED, LABEL, a sentence's first clause
 # only), sat in a message drafted for someone else (STAGED), or stated a rule (RULE).
+# Review round 3 held each of those to what it claims; the notes at _GETS, STAGED, OTHERS, WOKEN, TABLED, COUNTED and RULE say how.
 # "once" is a conjunction here, not a count: not "at once", "once more", "once on staging", "once a day".
 _ONCE = r"(?<!\bat )once(?! (?:more|again|a|an|per|every|each|or|and|only|on|in|at|for|with|to|by|upon|daily|weekly)\b)"
 # After the conjunction, "I" or "we" with a verb of the session's own is its next step and no event ("I will resume after I
@@ -216,9 +217,9 @@ WOKEN = re.compile(
     r"|your (?:next |own )?(?:prompt|message|nudge|ping|turn|word)\b|a (?:prompt|message|nudge|word) from you\b|the next (?:prompt|message)\b)")
 # A heading or a table row names things, so a wait with no subject there is a label ("## Awaiting the vendor's go", a cell
 # that reads "awaiting re-auth"): each is cut into fragments that open no sentence (CELL). A wait in the first person is
-# read there as anywhere ("## I'm waiting on CI").
+# read there as anywhere ("## I'm waiting on CI"). Such lines after a closing question are not what the reply ends on (LAST).
 TABLED = re.compile(r"(?m)^[ \t]*#{1,6}[ \t].*$|^[ \t]*\|.*\|[ \t]*$")
-CELL = re.compile(r"\||(?<=[.!?])\s")
+CELL, LAST = re.compile(r"\||(?<=[.!?])\s"), re.compile(r"(?m)(?:\s*^—;.*$)+\Z")
 LABEL = re.compile(r"[^.;!?:]{0,60}:(?:\s|$)")  # "Waiting on others: ..." is a label over a list of open loops
 # "We're waiting on two answers: ..." counts what is open and lists it after the colon, a label, as the one recorded reply
 # that turns on it was. "We are waiting for the required pipeline: ..." names the thing itself and is the wait it says.
@@ -336,12 +337,11 @@ def _theirs(text: str, m: re.Match, before: str) -> bool:
 
 
 def _asked(text: str) -> bool:
-    """Is a request put to the principal in this clause? One more verb of a third party's is none: the words before the
-    request, back to the last comma (or one comma further for "and" and "then", which may close a list of verbs)."""
+    """Is a request put to the principal in this clause? One more verb of a third party's is none: OTHERS reads the words
+    before the request, back to the last comma, or one comma further for "and" and "then", which may close a list of verbs."""
     for m in ASKED.finditer(text):
         led = m.group("led") or ""
-        head = text[:m.start("led")] if led else ""
-        head = head.rstrip(", ") if led.strip() in ("and", "then") else head
+        head = text[:m.start("led")].rstrip(", " if led.strip() in ("and", "then") else "") if led else ""
         if not OTHERS.search(head[head.rfind(",") + 1:]):
             return True
     return False
@@ -364,7 +364,7 @@ def unarmed_wait(reply: str, payload: dict, config: dict) -> list[str]:
     plain = TABLED.sub(lambda line: "—;" + CELL.sub(";", line.group(0)), body)  # fragments: the dash opens the line's sentence, so no cell does
     plain = MARKS.sub("", QUOTED.sub(" something ", CODE.sub(" something ", plain))).strip()  # a name set aside is still a thing awaited
     forms = [WAITS] + [re.compile(rf"(?i)\b{re.escape(str(p))}\b") for p in config.get("wait_phrases") or [] if str(p).strip()]
-    sentences = [] if plain.endswith("?") else EDGE.split(plain)
+    sentences = [] if LAST.sub("", plain).endswith("?") else EDGE.split(plain)
     clauses = [(text, at == 0) for sentence in sentences  # each clause, and whether it opens its sentence
                for at, text in enumerate(c for c in (" ".join(part.split()) for part in sentence.split(";")) if c)]
     if any(_asked(text) for text, _ in clauses) or any(WOKEN.search(sentence) for sentence in sentences):
