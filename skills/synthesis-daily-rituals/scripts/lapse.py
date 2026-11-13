@@ -12,8 +12,10 @@ that has none, and the words only the agent has: why it lapsed, whom that affect
 
 It appends the row first, to the file the ritual config names (`"lapse_register": "<file>"`): under the register's
 last table where that has the seven cells and ends the file, otherwise under a new header of seven. It only ever
-appends there. Then it writes the mark on the line after the item's `**Decays:**` tag. A mark that already stands
-for that date is left as it is, and a row already there is not written twice.
+appends there, and reads the row back from the file before it says the row is written. Then it writes the mark on
+the line after the item's `**Decays:**` tag. A mark that already stands for that date is left as it is, and a row
+already there is not written twice. One helper writes at a time (a lock in the rituals' state folder), so two
+that run together neither start two tables nor write over each other's mark.
 
 It refuses, with exit 2 and both files as they were: a critical item (it never lapses), an item that is closed or
 not found, a date that has not passed, a lapse dated ahead of today or before the item's date, words that say
@@ -92,6 +94,12 @@ def append_row(register: Path, heads: list, row: str) -> int:
     return len((text + added).splitlines())
 
 
+def read_back(rows: list, line: int, cells: list) -> bool:
+    """Whether the register, read again, holds the row on that line with its day and each cell as written."""
+    found = next((row for row in rows if row["line"] == line), None)
+    return bool(found) and [str(found.get(name, "")).strip() for name in lapse_review.CELLS] == cells
+
+
 def mark(plan: Path, line: int, text: str, seen) -> int:
     """Write the mark on the line after the item's Decays tag, with that line's own lead; the line it stands on.
     The plan is replaced whole, so it is not written if it changed since it was read."""
@@ -130,6 +138,14 @@ def main(argv=None) -> int:
     parser.add_argument("--lapsed", help="the day it is recorded as lapsed (default: --as-of)")
     args = parser.parse_args(argv)
     try:
+        import fcntl
+        rituals.state_dir().mkdir(parents=True, exist_ok=True)
+        lock = open(rituals.state_dir() / "lapse.lock", "a")
+        fcntl.flock(lock, fcntl.LOCK_EX)  # held until this process ends
+    except (OSError, ValueError) as exc:
+        print(f"lapse: the lock that keeps two lapses from being written at once cannot be taken ({exc})", file=sys.stderr)
+        return 2
+    try:
         as_of = decay_sweep.iso_day(args.as_of)
         lapsed = decay_sweep.iso_day(args.lapsed) if args.lapsed else as_of
         words = {name: _cell(getattr(args, name)) for name in ("why", "affected", "still")}
@@ -161,9 +177,14 @@ def main(argv=None) -> int:
     if there:
         said.append(f"row: already there ({register}:{there['line']})")
     else:
-        row = " | ".join([lapsed.isoformat(), " ".join(filter(None, [_cell(titled(item)), code])), where, words["why"],
-                          _cell(args.outcome) or "open", words["affected"], words["still"]])
-        said.append(f"row: {register}:{append_row(register, heads, f'| {row} |')}")
+        cells = [lapsed.isoformat(), " ".join(filter(None, [_cell(titled(item)), code])), where, words["why"],
+                 _cell(args.outcome) or "open", words["affected"], words["still"]]
+        wrote = append_row(register, heads, f"| {' | '.join(cells)} |")
+        if not read_back(lapse_review.read_register(register)[0], wrote, cells):
+            print(f"lapse: a row was appended at {register}:{wrote} and does not read back as written; look at it before "
+                  "anything else is written there. The mark was not written", file=sys.stderr)
+            return 1
+        said.append(f"row: {register}:{wrote}")
     if item["unannounced"]:
         try:
             wrote = mark(plan, item["line"], f"**Lapsed:** {lapsed} — {' '.join(args.why.split())}", (stat.st_size, stat.st_mtime_ns, stat.st_ino))
