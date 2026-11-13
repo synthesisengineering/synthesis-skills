@@ -153,6 +153,13 @@ def test_a_host_the_config_adds_counts_and_its_subdomains_too():
     assert "Sending needs" in said("https://example.dev", config=config)
 
 
+def test_a_public_name_that_points_at_a_private_address_is_refused_once_the_config_names_its_service():
+    text = "https://app.192.168.1.20.nip.io/x"
+    assert "Sending needs the principal's approval" in said(text)      # read whole, it is a public name
+    reason = said(text, config={**CONFIG, "temporary_addresses": {"hosts": ["nip.io"]}})
+    assert held_for_the_address(reason) and "(app.192.168.1.20.nip.io)" in reason
+
+
 def test_a_draft_a_shell_post_and_typed_words_are_read_the_same(isolated_home):
     assert held_for_the_address(guards.check(DRAFT, {"to": "a@example.com", "subject": "Setup", "body": f"Open {TUNNEL}"}, CONFIG, cwd="/tmp"))
     assert held_for_the_address(guards.check("Bash", {"command": f'gh pr comment 12 -R team/app --body "Try it at {TUNNEL}"'}, CONFIG, cwd="/tmp"))

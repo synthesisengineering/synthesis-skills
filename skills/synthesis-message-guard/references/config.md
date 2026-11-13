@@ -150,7 +150,9 @@ address was gone for good. With `temporary_addresses` in the config:
   that looks like an address (`10.2.3.4`), a tunnel service's own site, a look-alike host, and an
   address at a host no rule names. A public name that only begins like a local one is that public
   name (`https://localhost.example.org`, `https://10.2.3.4.example.org`,
-  `https://example.localhost.org`). A file's name with its line number is no address: a dotfile
+  `https://example.localhost.org`), and so is a name that a wildcard-DNS service points at a
+  private address (`https://app.192.168.1.20.nip.io`): put the service in `hosts` (`nip.io`) to
+  have its names refused. A file's name with its line number is no address: a dotfile
   (`.env.local:12`), a name that goes on past `.local` (`settings.local.json:3`), and a name ending
   in `.local` with no scheme before it that is a configuration file's (`config.local:7`: the word
   before `.local` is `config`, `conf`, `cfg`, `cnf`, `ini`, `env`, `rc`, `settings`, `properties`,
@@ -183,7 +185,8 @@ address was gone for good. With `temporary_addresses` in the config:
     `docker run pinggy/pinggy -p 443 -R0:localhost:8000 a.pinggy.io` (`pinggy` takes the words
     `ssh` does).
   - `ngrok`'s subcommand after its own options and their values: `ngrok --log=stdout http 7777`,
-    `ngrok --config ngrok.yml start web`. It is the first word that names one of its subcommands.
+    `ngrok --config ngrok.yml start web`. It is the first word that names one of its subcommands;
+    `http`, `tcp`, `tls`, `start` and `start-all` start a tunnel.
   - `-R` alone, in a cluster or with its value joined on, before the destination or after it:
     `ssh -NR 80:localhost:7777 nokey@localhost.run`, `ssh -NR80:localhost:3000 serveo.net`.
   - What starts nothing still passes: a variable that only names the program
