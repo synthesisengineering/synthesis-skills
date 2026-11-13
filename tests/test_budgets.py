@@ -810,10 +810,10 @@ ROOT = Path(__file__).resolve().parents[1]
 # defaults' own for a workspace the config does not list, a refused one a warning; with two blank lines), main 10
 # (--waiting: the count whose guard has not been seen to run, or that nothing looked since the release changed) and
 # run_checks 7 (when the run began, the rituals' config read for the prompt check's line, the note written last).
-# hook.py 49: _unguarded_note 25 (the hooks not running when the doctor looked and not seen since, with the doctor's
+# hook.py 49: _unguarded_note 23 (the hooks not running when the doctor looked and not seen since, with the doctor's
 # line, for each harness, and a harness seen under another release; with two blank lines), _ran 21 (a hook that
 # runs strikes its own event, where its transcript is a file in its harness's own folder of them and the entry is
-# this release's), main 2 and HARNESSES 1. paths.py 50: _waits 18 (the entries that say anything: sound in shape and
+# this release's), main 2 and HARNESSES 3 with its two blank lines. paths.py 50: _waits 18 (the entries that say anything: sound in shape and
 # in time, a day old at most unless another release wrote them), note_wait 18 (one entry changed under the note's
 # lock from what the file holds then, the other left), waits 10, WAITS and HOOK_APPROVALS 2, and two blank lines.
 # rituals.py 29: prompt_check 18 (the one reader of that setting for the day-end and the doctor: off, on with its
@@ -824,10 +824,34 @@ ROOT = Path(__file__).resolve().parents[1]
 # kept when the config cannot be read; main 6, its call with two roots of one name told apart; render 4, its line
 # and the one where no archive is here; CITE_DAYS 1) and the record script 2 fewer (prompts 3 more, the setting read
 # where the doctor reads it; its day test 5 fewer, moved to the core).
+# 5.15.0, core 62 more, in the note of hook approvals as its third review left it and in the doctor's reading of
+# Codex's model cache. doctor.py 36: _note_waits 16 (a look that could not tell written down as that, with the line
+# that says why, in place of what another release saw; a harness with no plugin dropped; a harness not found said
+# for a day; the clock read under the note's lock), _model_cache 15 with two blank lines (the cache read by its
+# first whole value, and known as unreadable where it holds none), check_codex_catalog 4 (a budget that cannot be
+# told is a warning) and harness_checks 1 (Muse's own code for a plugin that is not there). hook.py 13: _unguarded_note 6 (what the doctor
+# could not tell, no empty bracket, whose the approval is), _ran 4 (when it strikes, and that it does not wait),
+# main 2 (the strike after the handler) and session_start 1 (its own event struck before the note is read).
+# paths.py 13: write_json 6 (a temporary file of the call's own, removed when the write fails), note_wait 6 (a
+# writer that will not wait, and that a change must not call it) and waits 1. The plugin 319 more beside those. The
+# deadline sweep 253: collect 52 (the newest plan's commitments, the dated items with no ID, a date that passed
+# unannounced on any copy, a ledger's rows and its view, the plan's day apart from the day what is closed is judged
+# by, and a reader that fails on one file a gap for that file), commitments 47 (the entries and a table's rows under
+# a heading that places commitments, a row's status under the header that names one or in its last cell, a row with
+# a clock time), ledger_rows 38, main 25 (the text report's lines for each new list, and the evening job's count of
+# passed dates), _status 14, CLOSED_ENTRY 10 with its note, _cells 9, COMMIT 8 with its note, passed 8 (the banner
+# for dates that passed), parse_plan 7 (the day each Lapsed mark speaks of, and one dated ahead), _holds 7,
+# _closing_line 6, UNFINISHED 4, _tool 3 (a banner's tool found on the PATH and run), two each for STATUS_CELL,
+# UNDONE, LEDGER_CLOSED and declared (the records folders), one each for DONE, STATUS_HEAD, RELEASED, OTHER,
+# FINISHED, PARKED, TICK and OWED_DAYS, and alert 1 fewer. The record script 58: commitments 43 (the check a
+# workspace turns on, its refusal with each kind's remedy, its line), cmd_record 10 (one read of the plans for a
+# record of today, by the plan's day) and critical_deadlines 5 (the refusal names each source not taken in full).
+# The repository's conftest 9 (no test reads a rituals folder named in the shell). The context doctor 1 fewer
+# (cited_entries: a folder is a session's where it holds its meta.json).
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # consolidate first).
-CORE_BUDGET = 13577
-PLUGIN_BUDGET = 35136
+CORE_BUDGET = 13639
+PLUGIN_BUDGET = 35517
 
 
 def _lines(files):
