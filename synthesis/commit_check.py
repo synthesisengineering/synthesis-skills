@@ -816,7 +816,10 @@ def record_times(lines: list, settings, now: datetime, read) -> list:
 # a lead's `Source`, a task's `Checked` and a US `State` refused): `Source`, `Checked` and `Basis` keep a row from
 # the note and never refuse it.
 ROW = re.compile(r"^[ \t]*\|(.*)\|[ \t]*$")
-RULE = re.compile(r"^[ \t]*\|?[ \t]*:?-{2,}")
+RULE = re.compile(r"[ \t]*\|(?:[ \t]*:?-+:?[ \t]*\|)+[ \t]*")  # a delimiter row, fullmatched: any line that began with two dashes was one
+_QUOTE = re.compile(r"(?:[ \t]{0,3}>[ \t]?)*")  # a block quote's marks
+_ITEM = re.compile(r" {0,3}(?:[-*+]|\d{1,9}[.)])(?:[ \t]|$)")  # a list item's first line
+_CODE = re.compile(r" {4}| {0,3}\t")  # a line of an indented code block, where no list item stands above it
 _STATUS = re.compile(r"(?i)(?:[\w-]+ )?status")  # fullmatched against a header cell's words (`_name`)
 _EVIDENCE = re.compile(r"(?i)\b(?:evidence|proofs?|verified|how we know)\b")
 _SOFT = re.compile(r"(?i)\b(?:sources?|checked|basis)\b")
@@ -837,17 +840,22 @@ def _cells(row: str) -> list:
 
 
 def _tables(whole: list) -> list:
-    """(text, top) for each line of a file: top is the index of the first row of the block of table rows the line
-    stands in (its header, where a delimiter row follows), None where it stands in none: not a row, or in a code
-    fence. One pass for the file: walking up from each added row to its table's top took 86 s for 40,000 rows (a
-    review of 2026-11-13)."""
-    found, top, inside = [], None, False
+    """(text, top) for each line of a file: its text inside any block quote's marks, and the index of the first row of
+    the block of table rows it stands in (its header, where a delimiter row follows), None where it stands in none:
+    not a row, in a code fence, or indented four spaces or a tab with no list item above it since the last blank line
+    (an indented code block). One pass for the file: walking up from each added row to its table's top took 86 s for
+    40,000 rows (a review of 2026-11-13)."""
+    found, top, depth, inside, listed = [], None, 0, False, False
     for number, line in enumerate(whole):
-        edge = line.lstrip().startswith(("```", "~~~"))
-        row = not (inside or edge) and ROW.match(line)
+        marks = _QUOTE.match(line).group()
+        text, level = line[len(marks):], marks.count(">")
+        edge = text.lstrip().startswith(("```", "~~~"))
+        listed = bool(text.strip()) and (listed or not (inside or edge) and bool(_ITEM.match(text)))
+        row = not (inside or edge) and ROW.match(text) and (listed or not _CODE.match(text))
         inside ^= edge
-        top = (number if top is None else top) if row else None
-        found.append((line, top))
+        top = (top if top is not None and level == depth else number) if row else None
+        depth = level
+        found.append((text, top))
     return found
 
 
@@ -870,13 +878,13 @@ def status_evidence(lines: list, settings, read) -> tuple:
         path = os.fsdecode(raw)
         if b"|" not in line or not _record(path, skip):
             continue
-        if path not in files:
-            files[path] = _tables(read(path).split("\n"))
+        if path not in files:  # a file with CRLF endings is read as its LF twin: no row of one was read (2026-11-13)
+            files[path] = _tables(re.sub(r"\r$", "", read(path), flags=re.M).split("\n"))
         text, top = files[path][number - 1] if number <= len(files[path]) else ("", None)
-        if top is None or number - 1 <= top + 1 or not RULE.match(files[path][top + 1][0]):
-            continue  # not a row, a header or its rule, or no rule under the header
-        if (path, top) not in heads:  # a table's columns, read once
-            names = [_name(cell) for cell in _cells(files[path][top][0])]
+        if top is None or number - 1 <= top + 1:
+            continue  # not a row, or its table's header or the line under it
+        if (path, top) not in heads:  # a table's columns, read once; under a header with no delimiter row, none
+            names = [_name(cell) for cell in _cells(files[path][top][0])] if RULE.fullmatch(files[path][top + 1][0]) else []
             status = next((k for k, name in enumerate(names) if _STATUS.fullmatch(name)), None)
             heads[path, top] = (status, *([k for k, name in enumerate(names) if k != status and pattern.search(name)] for pattern in (_EVIDENCE, _SOFT)))
         status, hard, soft = heads[path, top]
