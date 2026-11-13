@@ -772,18 +772,24 @@ ROOT = Path(__file__).resolve().parents[1]
 # (the texts' own sender, run and not read), check 4, _result 2, unwatched_sends 2, FAILED 1, one import and two
 # blank lines. approvals.py 14: alone 11 (one decision at a time for a thing that can go on either of two codes),
 # one import and two blank lines. wait.py 5: past 1 MB the file of statements keeps its last 64 KB.
-# 5.12.1, core 22 more, all in doctor.py. 13: Codex is asked for the plugin's own marketplace, for which it fetches
-# no remote catalog (its whole listing fetched 73 MB in 52 s on 2026-11-13, and the doctor's limit stopped the fetch
-# on every run). harness_checks 8 (the whole listing is asked before the plugin is called not installed, and its
-# line says what lets the fetch finish), MARKETPLACE and CODEX_WHOLE 2, the note above Codex's listing 2, and
-# _finish 1 (the limit is read when it is used). 9: a Codex whose version probe does not answer is named, where the
-# doctor printed no Codex line at all: run_checks 4, PROBE_TIMEOUT and UNANSWERED 2 with two blank lines, and
-# _version_ok 1. The plugin 6 more beside those, in the installer's plugin_entry: it asks Codex the same way, and a
-# build that does not know the option is asked for the whole listing.
+# 5.12.1 (2026-11-13): plugin 25, all in the knowledge-base connector's server.py, so that a client whose ID is a URL
+# (ChatGPT, Codex) can be stored on Firestore: hashed_firestore_keys 23 (its def 1, an 8-line docstring that says why
+# every key is hashed, two imports with the blank line between them and the one after them 4, the strategy class
+# with sanitize and validate, the blank line between them and the one after the class 7, its return 1, and the two
+# blank lines after the function) and oauth_storage 2 (the key and collection strategies passed to FirestoreStore).
+# 5.12.2, core 30 more, all in doctor.py: json_in 12 (a listing read past the words a command prints before it, from a
+# brace or bracket that opens a line, each tried until one parses; the installer's own reader is 5 fewer for it),
+# harness_checks 8 (Codex is asked for the plugin's own marketplace, for which it fetches no remote catalog, and
+# the whole listing before the plugin is called not installed, with what lets its fetch finish), _version_ok 3 and
+# find_client 1 (a command that gave no answer in time is the Codex on the machine where no other install answers),
+# LISTINGS 2, MARKETPLACE, CODEX_WHOLE and PROBE_TIMEOUT 3, and codex_entry 1 (a listing with no version names no
+# folder). The plugin 12 more beside those, in the installer: plugin_entry 12 (the marketplace first, absent said
+# only from the whole listing, a listing past its limit stops the install), install_plugin 3 (no second copy beside
+# one from another marketplace), LIST_TIMEOUT 1, _uninstall 1 (the copy that is there), and _json 5 fewer.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # consolidate first).
-CORE_BUDGET = 13246
-PLUGIN_BUDGET = 34721
+CORE_BUDGET = 13254
+PLUGIN_BUDGET = 34760
 
 
 def _lines(files):

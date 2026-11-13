@@ -421,9 +421,11 @@ The line in `known-host` is `KB_GIT_KNOWN_HOSTS`.
 
 **5.7 Firestore.** Create a Firestore database in Native mode in `<project>` (the `(default)`
 database, or a named one given in `KB_FIRESTORE_DATABASE`). The OAuth store writes small encrypted
-records under collections starting with `KB_FIRESTORE_COLLECTION_PREFIX`. Expired records are
-ignored when read and stay until overwritten; their expiry is stored as text, so a Firestore TTL
-policy cannot remove them.
+records under collections starting with `KB_FIRESTORE_COLLECTION_PREFIX`. Each record's document ID
+is the SHA-256 hash of its key: ChatGPT and Codex identify themselves by a URL, and Firestore refuses
+a "/" in a document ID, and the hash also keeps authorization codes and token IDs out of document
+names. Expired records are ignored when read and stay until overwritten; their expiry is stored as
+text, so a Firestore TTL policy cannot remove them.
 
 **5.8 Service account.** Create a service account for the service and grant it the Secret Manager
 Secret Accessor role on the four secrets and the Cloud Datastore User role on the project (the
