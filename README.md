@@ -108,7 +108,11 @@ to get past the check. It then runs the repository's own hooks. Setup asks befor
 | `synthesis claim <paths>` | Claim absolute paths or patterns before writing; a claim covers everything beneath what it names, unless that is an existing file. A refused claim names the holder. `--take` takes over a claim that has been quiet for 8 hours and tells its holder. |
 | `synthesis release [paths]` | Release some or all of this session's claims. |
 | `synthesis msg <address> "<text>"` | Message a session by id, short name or `project:<id>`. An ambiguous address is refused, never guessed. `--durable` reaches every session that works on the project. |
-| `synthesis inbox` | Show and mark unread messages. |
+| `synthesis inbox` | Show and mark unread messages. `--peek` lists them and marks none. |
+| `synthesis wait message\|file\|run\|note\|clear\|list` | Wait, inside a bound, for a peer's message, a file or a command that must succeed, holding a record on the board while it waits; `note` records a wait the harness itself holds, `clear` withdraws this session's notes, `list` shows every session's. Exit 0 on the event, 3 at the bound, 2 for a bound or a command it cannot use. |
+| `synthesis journal [path]` | List the snapshots kept of uncommitted changes; `--show <sha> <path>` prints a file from one. |
+| `synthesis index set <project> <field> <value>` | Set one field of one project in the shared project index, committed alone. |
+| `synthesis sends open\|close\|status\|log` | Open, close or show a send window (a number of planned sends on named channels, for at most 12 hours, on the principal's approval), or list a day's sends. |
 | `synthesis worktree create\|retire\|land` | Create a worktree under a claim, remove a merged clean one, or fast-forward the main checkout to the remote's default branch. |
 | `synthesis handoff -m "<message>"` | Commit and push only the changes inside this session's claims, running every hook. Ends `READY`, or `NOT READY` with what blocks it. |
 | `synthesis approvals` | List sends and deploys waiting for your approval. |

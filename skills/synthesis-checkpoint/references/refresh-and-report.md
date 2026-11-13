@@ -32,7 +32,8 @@ project work.
    names each problem. A missing or stale runtime is a reported installation
    problem, not permission to copy files.
 2. **This session.** `synthesis who` shows this session's row (harness,
-   project, claims); `synthesis inbox` shows unread messages.
+   project, claims, and `waiting until HH:MM` while it holds a wait);
+   `synthesis inbox` shows unread messages.
 3. **The project.** `synthesis brief` (or `synthesis resume <id>` in a fresh
    session) prints the directive, current state and plan; read the files it
    points to. A reported conflict stops project inspection beyond reporting it.
