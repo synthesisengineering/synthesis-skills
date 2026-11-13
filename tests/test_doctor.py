@@ -616,8 +616,8 @@ def machine(tmp_path, monkeypatch):
     fake_cli(fakebin, "muse", muse_inspect(muse_dir))
     monkeypatch.setenv("PATH", os.pathsep.join([str(fakebin), os.path.dirname(sys.executable), "/usr/bin", "/bin"]))
     monkeypatch.setattr(doctor, "KNOWN_LOCATIONS", {h: () for h in doctor.HARNESSES})  # never this Mac's real CLIs
-    # The fake Codex is a Python script, slower to start than a real one: on a busy machine it once took over the
-    # probe's two seconds to say its version, and the test that counted the doctor's lines failed (2026-11-13).
+    # On a busy machine the fake Codex once took over the probe's two seconds to say its version, and the test that
+    # counted the doctor's lines failed (2026-11-13). The tests of the probe set their own limit.
     monkeypatch.setattr(doctor, "PROBE_TIMEOUT", 30)
     gitconfig = Path(os.environ["GIT_CONFIG_GLOBAL"])
     gitconfig.write_text(gitconfig.read_text() + f"[core]\n\thooksPath = {synthesis_home / 'git-hooks'}\n")

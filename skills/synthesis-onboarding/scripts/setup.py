@@ -41,6 +41,7 @@ except ImportError as exc:  # no runtime beside this copy; one that fails otherw
 
 PLUGIN, MARKETPLACE, SOURCE = "synthesis-skills", doctor.MARKETPLACE, "synthesisengineering/synthesis-skills"
 CODEX_DOC_BYTES = 98_304
+LIST_TIMEOUT = 60  # one plugin listing; Codex's whole listing, which may fetch its remote catalog, gets five times this
 HOOKS_BEGIN, HOOKS_END = "# synthesis-setup:begin hooks-feature", "# synthesis-setup:end hooks-feature"
 BOARD_BEGIN, BOARD_END = "# synthesis-setup:begin board-writable", "# synthesis-setup:end board-writable"
 PROFILE = "synthesis"  # the Codex permissions profile setup writes: the one in use, plus the board and the outbox
@@ -104,16 +105,11 @@ def run(argv: list, timeout: float = 300, cwd=None, env=None) -> subprocess.Comp
     try:
         return subprocess.run(argv, capture_output=True, text=True, timeout=timeout, cwd=cwd, env=env,
                               stdin=subprocess.DEVNULL)
-    except (OSError, subprocess.TimeoutExpired) as exc:
-        return subprocess.CompletedProcess(argv, 127, "", str(exc))
+    except (OSError, subprocess.TimeoutExpired) as exc:  # 124 for a limit reached, as `timeout` exits; 127 for one that did not start
+        return subprocess.CompletedProcess(argv, 124 if isinstance(exc, subprocess.TimeoutExpired) else 127, "", str(exc))
 
 
-def _json(text: str):
-    starts = [i for i in (text.find("{"), text.find("[")) if i >= 0]
-    try:
-        return json.JSONDecoder().raw_decode(text[min(starts):])[0] if starts else None
-    except ValueError:
-        return None
+_json = doctor.json_in  # the JSON a command printed, read past any words before it
 
 
 def _tail(proc) -> str:
@@ -135,17 +131,23 @@ def plugin_entry(client: str, binary: str):
     """The installed plugin's entry (enabled or not), None when absent. Unreadable listings raise."""
     if client == "muse":
         return muse_record(binary)
-    # Codex is asked for the plugin's own marketplace, the one this script installs from: its whole listing fetches the
-    # remote catalog again when its copy is old (52 s on 2026-11-13, against the limit here). A build that does not
-    # know the option prints no JSON and is asked for the whole listing.
-    for ask in ([doctor.LISTINGS["codex"], doctor.CODEX_WHOLE] if client == "codex" else [doctor.LISTINGS["claude"]]):
-        data = _json(run([binary, *ask], 60).stdout)
-        if data is not None:
-            break
-    if data is None:  # some builds print text; never crash on it, never take it for "absent"
-        raise SetupError(f"{client} printed no plugin list; refusing to guess whether synthesis is installed")
+    # Codex is asked for the plugin's own marketplace first: its whole listing fetches the remote catalog again when
+    # its copy is old (52 s on 2026-11-13), and an update, which is every release, need not wait on that. What the
+    # marketplace does not show, and a build that does not know the option, are asked of the whole listing, with
+    # time for the fetch: absent is said only from there, and a copy installed from another marketplace is found.
     codex_home = Path(os.environ.get("CODEX_HOME") or Path.home() / ".codex")
-    return doctor.claude_entry(data) if client == "claude" else doctor.codex_entry(data, codex_home)
+    asks = [(doctor.LISTINGS[client], LIST_TIMEOUT)] + ([(doctor.CODEX_WHOLE, 5 * LIST_TIMEOUT)] if client == "codex" else [])
+    for ask, limit in asks:
+        proc = run([binary, *ask], limit)
+        if proc.returncode == 124:  # a listing past its limit says nothing, and the next one is not started after it
+            raise SetupError(f"{client}: `{' '.join(ask)}` did not answer within {limit:g} s; refusing to guess whether synthesis is installed")
+        data = _json(proc.stdout)
+        entry = None if data is None else doctor.claude_entry(data) if client == "claude" else doctor.codex_entry(data, codex_home)
+        if entry:
+            return entry
+    if data is None:  # some builds print text; never crash on it, never take it for "absent"
+        raise SetupError(f"{client} printed no plugin list ({_tail(proc)}); refusing to guess whether synthesis is installed")
+    return None
 
 
 def configured_ref(client: str):
@@ -175,6 +177,9 @@ def install_plugin(client: str, binary: str, ref: str = "", source: Path = REPO,
         return install_muse(binary, source, dry_run=dry_run)
     entry, current = plugin_entry(client, binary), configured_ref(client)
     plugin = f"{PLUGIN}@{MARKETPLACE}"
+    if client == "codex" and entry and entry.get("id") not in ("", None, plugin):
+        raise SetupError(f"codex: {PLUGIN} is installed from another marketplace ({entry['id']}), and nothing was added beside it. "
+                         f"Remove that copy (`codex plugin remove {entry['id']}`) and run this again, or keep it and update it there")
     verb = "install" if client == "claude" else "add"
     if entry and (not ref or ref == current):
         # Codex installs from its marketplace snapshot: without the upgrade first, `add`
@@ -691,14 +696,15 @@ def _uninstall(clients: list, dry_run: bool) -> int:
     for client in clients:
         binary = doctor.find_client(client)
         try:
-            if not binary or not plugin_entry(client, binary):
-                lines.append(f"{client}: {PLUGIN} not installed")
-                continue
+            entry = plugin_entry(client, binary) if binary else None
         except SetupError as exc:
             lines.append(str(exc))
             continue
+        if not entry:
+            lines.append(f"{client}: {PLUGIN} not installed")
+            continue
         step = {"claude": [binary, "plugin", "uninstall", f"{PLUGIN}@{MARKETPLACE}", "--yes"],
-                "codex": [binary, "plugin", "remove", f"{PLUGIN}@{MARKETPLACE}", "--json"],
+                "codex": [binary, "plugin", "remove", entry.get("id") or f"{PLUGIN}@{MARKETPLACE}", "--json"],  # the copy that is there
                 "muse": [binary, "plugins", "remove", PLUGIN, "--json"]}[client]
         proc = subprocess.CompletedProcess(step, 0, "", "") if dry_run else run(step)
         lines.append(f"{client}: {'would remove' if dry_run else 'removed'} {PLUGIN}" if not proc.returncode

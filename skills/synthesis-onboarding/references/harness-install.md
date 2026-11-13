@@ -67,15 +67,29 @@ missing `git` or `python3`, or a `python3` older than 3.9, is named and nothing 
 
 Setup reads each harness's plugin list as JSON (Claude Code may print a list or a
 `plugins` map; Codex prints `installed`). A list it cannot parse stops that harness with
-a message; it is never taken to mean "not installed". Codex is asked for the plugin's own
-marketplace (`codex plugin list --json -m synthesis-engineering`), the one setup installs
-from: its whole listing fetches Codex's remote plugin catalog again when its copy is over
-three hours old (73 MB and 52 s on 2026-11-13), and asked for one marketplace it fetches
-none. A Codex that does not know the option prints no JSON and is asked for the whole
-listing. `synthesis doctor` asks the same way, and asks for the whole listing before it
-says the plugin is not installed; where that one does not answer within the doctor's
-limit, its line says to run `codex plugin list` once, since the limit stops the fetch
-each time.
+a message that carries the harness's own last line; it is never taken to mean "not
+installed". The JSON is read past any words a command prints before it.
+
+Codex is asked for the plugin's own marketplace first
+(`codex plugin list --json -m synthesis-engineering`), the one setup installs from: its
+whole listing fetches Codex's remote plugin catalog again when its copy is over three
+hours old (73 MB and 52 s on 2026-11-13), and asked for one marketplace it fetches none,
+so an update, which is every release, does not wait on the catalog. What that marketplace
+does not show, and a Codex that does not know the option, are asked of the whole listing,
+which gets five minutes where the first gets one: "not installed" is said only from
+there. A listing that does not answer within its limit stops that harness, and the next
+listing is not started after it. `synthesis doctor` asks in the same order with its own
+limit of 45 seconds for each listing; where the whole one does not answer, its line says
+to run `codex plugin list` once, since the limit stops the fetch each time.
+
+A copy of the plugin installed from another marketplace (a fork's, by its name in the
+listing) is not given a second copy beside it: setup stops, names the copy and the
+command that removes it. Uninstall removes the copy that is there, by that name.
+
+A Codex command that takes longer than two seconds to say its version is passed over
+when another install answers, and is still the Codex on the machine when none does:
+setup, a release and the doctor go on with it, and its own commands then say what is
+wrong if it answers nothing. A command that exits with an error is not Codex.
 
 - **Claude Code**, new: `claude plugin marketplace add synthesisengineering/synthesis-skills@<ref>`,
   then `claude plugin install synthesis-skills@synthesis-engineering`. Update:

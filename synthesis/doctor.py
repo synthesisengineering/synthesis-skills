@@ -546,12 +546,12 @@ def _expand(candidate: str) -> list:
 
 
 PROBE_TIMEOUT = 2.0
-UNANSWERED: list = []  # commands whose version probe did not answer in this run: named, never passed over as absent
 
 
 def _version_ok(path: str, timeout: float | None = None):
     """`<cli> --version` with stdin closed, time-bounded, its process group reaped: a stale
-    launcher can outlive the app it launches. None means the probe could not be cleaned up."""
+    launcher can outlive the app it launches. True when it answered, False when it failed, "slow" when
+    it gave no answer in time, None when the probe could not be cleaned up."""
     try:
         proc = subprocess.Popen([path, "--version"], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                                 stderr=subprocess.DEVNULL, start_new_session=True)
@@ -559,8 +559,7 @@ def _version_ok(path: str, timeout: float | None = None):
     except OSError:
         return False
     except subprocess.TimeoutExpired:
-        ok = False
-        UNANSWERED.append(path)
+        ok = "slow"
     try:
         os.killpg(proc.pid, 9)  # the group too: a launcher's children can outlive it
     except ProcessLookupError:
@@ -577,7 +576,7 @@ def find_client(name: str, which=shutil.which, locations=None) -> str | None:
         value = os.environ[CLIENT_ENV[name]]
         path = os.path.abspath(os.path.expanduser(value)) if value else ""
         return path if path and os.path.isfile(path) and os.access(path, os.X_OK) else None
-    seen = set()
+    seen, slow = set(), None
     for candidate in [which(name)] + [p for c in (KNOWN_LOCATIONS[name] if locations is None else locations)
                                       for p in _expand(c)]:
         path = os.path.abspath(os.path.expanduser(candidate)) if candidate else ""
@@ -587,9 +586,10 @@ def find_client(name: str, which=shutil.which, locations=None) -> str | None:
         ok = _version_ok(path) if name == "codex" else True
         if ok is None:
             return None  # a probe that would not die must not be hidden by a fallback
-        if ok:
+        if ok is True:
             return path
-    return None
+        slow = slow or (path if ok == "slow" else None)
+    return slow  # no answer in time is not absence: where no other install answers, that command is the one
 
 
 # ---- Codex skill catalog, through its read-only app-server -----------------------
@@ -1271,16 +1271,27 @@ def _finish(proc, timeout: float | None = None):
         proc.communicate()
         return None, f"cannot tell: `{' '.join(proc.args)}` did not answer within {timeout:.0f} s; run the doctor again"
     _reap(proc)  # helpers it started (git, MCP servers) end with it
-    starts = [i for i in (out.find("{"), out.find("[")) if i >= 0]
-    try:
-        return json.JSONDecoder().raw_decode(out[min(starts):])[0], ""
-    except (ValueError, IndexError):
+    found = json_in(out)
+    if found is None:
         return None, f"`{' '.join(proc.args)}` gave no JSON (exit {proc.returncode}): {(err or out).strip()[:120]}"
+    return found, ""
+
+
+def json_in(text: str):
+    """The JSON a command printed, read past the words before it: from a brace or bracket that opens a line, else
+    from the first one anywhere. None when it printed none."""
+    opens = [m.start(1) for m in re.finditer(r"(?m)^[ \t]*([{\[])", text)] + [i for i in (text.find("{"), text.find("[")) if i >= 0]
+    for start in opens:
+        try:
+            return json.JSONDecoder().raw_decode(text[start:])[0]
+        except ValueError:
+            continue
+    return None
 
 
 def claude_entry(listing) -> dict | None:
     for item in listing if isinstance(listing, list) else (listing or {}).get("plugins") or []:
-        if str(item.get("id", "")).split("@")[0] == PLUGIN:
+        if isinstance(item, dict) and str(item.get("id", "")).split("@")[0] == PLUGIN:
             path = item.get("installPath")
             return {"enabled": bool(item.get("enabled")), "version": item.get("version", ""),
                     "path": Path(path) if path else None}
@@ -1289,10 +1300,11 @@ def claude_entry(listing) -> dict | None:
 
 def codex_entry(listing, codex_home: Path) -> dict | None:
     for item in (listing if isinstance(listing, dict) else {}).get("installed") or []:
-        if item.get("name") == PLUGIN or str(item.get("pluginId", "")).split("@")[0] == PLUGIN:
-            folder = codex_home / "plugins" / "cache" / item.get("marketplaceName", "") / item.get("name", PLUGIN) / item.get("version", "")
-            return {"enabled": bool(item.get("enabled")), "version": item.get("version", ""),
-                    "path": folder if folder.is_dir() else None, "id": item.get("pluginId", "")}
+        if isinstance(item, dict) and (item.get("name") == PLUGIN or str(item.get("pluginId", "")).split("@")[0] == PLUGIN):
+            version = str(item.get("version") or "")  # a listing with no version names no folder
+            folder = codex_home / "plugins" / "cache" / str(item.get("marketplaceName") or "") / str(item.get("name") or PLUGIN) / version
+            return {"enabled": bool(item.get("enabled")), "version": version,
+                    "path": folder if version and folder.is_dir() else None, "id": item.get("pluginId", "")}
     return None
 
 
@@ -1353,7 +1365,7 @@ def harness_checks(found: list, procs: dict, home: Path, runtime: str, catalog=N
             versions["codex"] = entry.get("version", "")
             hooks = _hooks_file(entry["path"])
             checks += [check_package("codex", entry["path"], runtime), check_hooks_wired("codex", _commands(hooks)),
-                       check_codex_trust(hooks, config, entry.get("id") or PLUGIN, Path(entry["path"]), codex_home)]
+                       check_codex_trust(hooks, config, entry.get("id") or PLUGIN, entry["path"], codex_home)]
             if catalog is not None:
                 result, catalog_error = catalog()
                 checks.append(check_codex_catalog(result, catalog_error, entry["path"], config, codex_home))
@@ -1397,14 +1409,10 @@ def run_checks(home: Path | None = None, find=find_client, latest_ref: str = "",
     if (home / "bin" / "synthesis-hook").is_file():  # when it is missing, the runtime line already says so
         checks += [check_hook_script(home), check_self_test(home), check_wait_check()]  # before the CLIs start, so they don't skew timing
     clis, started = {}, {}
-    del UNANSWERED[:]
     for h in ("claude", "muse", "codex"):  # each listing starts as soon as its CLI is found; finding Codex
         path = find(h)                     # means a version probe, which overlaps the others' listings
         if path:
             clis[h], started[h] = path, _start([path] + LISTINGS[h])
-    if "codex" not in clis and UNANSWERED:  # a command that did not answer is not a harness that is absent
-        checks.append(check_plugin("codex", None, f"cannot tell: `{_short(UNANSWERED[0])} --version` did not answer within "
-                                   f"{PROBE_TIMEOUT:g} s, so Codex was not looked at; run the doctor again"))
     catalog = _background(app_server_query, clis["codex"], "skills/list",
                           {"cwds": [str(cwd)], "forceReload": False}) if "codex" in clis else None
     if not clis:
