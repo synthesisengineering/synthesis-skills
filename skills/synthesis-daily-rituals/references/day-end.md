@@ -14,7 +14,7 @@ Remote readiness and final verification · Publishing at day-end.
 
 ## Day-End Modes (v2.14.0) — ask first, every time
 
-**Before the question, in every mode, check what other people rely on:** `python3 <rituals>/scripts/relied_on.py --workspace <W>`. **A `DOWN` line is the first thing in the plan and in the reply to the principal, before anything else,** the mode question and the critical deadlines included. It is an incident, so the principal is told first, with who is affected and what the fix is, and the people affected are told only on the principal's approval. Exit 2 means nothing was checked, and that is said in the same place ([day-start.md](day-start.md), Step 1).
+**Before the question, in every mode, check what other people rely on:** `python3 <rituals>/scripts/relied_on.py --workspace <W>`. **A `DOWN` line is the first thing in the plan and in the reply to the principal, before anything else,** the mode question and the critical deadlines included. It is an incident, so the principal is told first, with who is affected and what the fix is, and the people affected are told only on the principal's approval. Exit 2 means nothing was checked, and that is said in the same place ([day-start.md](day-start.md), Step 1). So is a run that never started or that printed none of the lines [scripts.md](scripts.md) documents: it is reported first, as not checked, and never read as healthy.
 
 Before Step 1, ask the user the one-letter mode question — **f** (full) / **q** (Quick Close) / **o** (observer) — every time, even when a mode seems obvious. If a launcher or opening prompt already named the mode, confirm it in one line instead of re-asking. Record the chosen mode in Step 7.
 

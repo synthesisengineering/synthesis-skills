@@ -6,7 +6,8 @@ A check runs with no shell and is healthy when it exits 0 in time. Whatever is d
 A check is a standing command, so each is put to the guard first as the shell command it is: one the guard would
 hold or refuse for an agent (a deploy, a send, a tunnel, a write to a protected folder) counts as down and is not run.
 Exit 0: every check passed, or nothing is declared. 1: something is down, or an entry cannot be run
-as written. 2: the config cannot be read or the workspace is not in it, so nothing was checked.
+as written. 2: the ritual config or the guards' config cannot be read, the workspace is not in it, or the
+synthesis runtime cannot be imported, so nothing was checked, as one NOT CHECKED line says.
 A test two colleagues had come to rely on once stopped, and two scheduled check-ins ran without a look at it.
 """
 import argparse
@@ -22,12 +23,20 @@ from pathlib import Path
 
 sys.dont_write_bytecode = True  # an installed plugin must stay byte-identical; Muse verifies its bundle
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))  # the plugin root or the installed runtime: holds synthesis/
-from synthesis import guards, paths, rituals  # noqa: E402
+try:
+    from synthesis import guards, paths, rituals  # noqa: E402
+except Exception as exc:  # no runtime, or one that fails as it loads: the one line a ritual reads as nothing checked
+    print(f"NOT CHECKED: the synthesis runtime cannot be imported, so nothing was checked: {exc}", file=sys.stderr)
+    sys.exit(2)
 
 
 def answer(check: list, timeout: float) -> str:
     """Why the thing counts as down; empty when its check exits 0 in time."""
-    with tempfile.TemporaryFile() as said:  # a file, not a pipe: a pipe stays open while anything the check started holds it
+    try:
+        said = tempfile.TemporaryFile()  # a file, not a pipe: a pipe stays open while anything the check started holds it
+    except OSError as exc:  # a full disk: this check cannot be run, and the next one is still tried
+        return f"could not be run ({exc.strerror or exc})"
+    with said:
         try:
             proc = subprocess.Popen(check, stdin=subprocess.DEVNULL, stdout=said, stderr=said, start_new_session=True)
             code = proc.wait(timeout)
