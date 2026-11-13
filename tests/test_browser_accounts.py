@@ -207,10 +207,10 @@ def test_the_site_a_call_acts_on_is_its_tabs_in_the_newest_list_of_tabs():
     two = {1: f"https://{SITE}/chat", 2: "https://mail.example/inbox"}
     ran("navigate", tabs=two)
     assert unread(call(*TYPE, tab=1)) and call(*TYPE, tab=2) is None
-    assert call(*TYPE, tab=7) is None                                      # a tab no result has listed: its page is not known
+    assert "which page" in call(*TYPE, tab=7)                              # a tab no result has listed: its page is not known
     ran("computer", {"action": "left_click"}, "Clicked", tabs={1: "https://mail.example/inbox"})
     assert call(*TYPE) is None                                             # the tab has left the site
-    for address, held in ((f"https://www.{SITE}/x", True), (f"https://{SITE.upper()}/x", True), (f"https://not{SITE}/x", False),
+    for address, held in ((f"https://www.{SITE}/x", True), (f"https://{SITE.upper()}/x", True), (f"https://{SITE}./x", True), (f"https://not{SITE}/x", False),
                           (f"https://{SITE}.elsewhere.example/x", False), (f"https://elsewhere.example/{SITE}", False)):
         ran("navigate", tabs={1: address})
         assert bool(call(*TYPE)) is held, address
@@ -335,6 +335,179 @@ def test_the_doctor_reads_only_what_the_config_still_names_and_whatever_the_file
         assert check.status == "warn" and "not written down" in check.detail
     for nothing_named in ({}, config({}), config([]), {"browser_routing": 7}, {"browser_routing": {"workspaces": [7]}}):
         assert doctor.check_browser_accounts(nothing_named, last) is None  # a map of another shape is the guard's to say
+
+
+# --- from the review of 2026-11-13 -----------------------------------------------------------------------------------
+
+def test_a_batch_of_keys_reads_the_record_once_for_a_site(monkeypatch):
+    """Each step of a batch read the whole record again: thirty keys, thirty readings (3.7 s on a large record)."""
+    ran("navigate")
+    shows(MINE)
+    read, real = [], guards._account_shown
+    monkeypatch.setattr(guards, "_account_shown", lambda *given: read.append(1) or real(*given))
+    assert batch(*[TYPE] * 10, ("computer", {"action": "key", "text": "Return"})) is None
+    assert len(read) == 1
+    shows(OTHER)
+    assert misrouted(batch(*[TYPE] * 10)) and len(read) == 2
+
+
+def test_a_put_on_a_large_record_stays_inside_a_hooks_time(pace):
+    """A read that settles the account far back, then 6 MB of reads of the site that hold an address the config does
+    not know: one put took about 130 ms, against 50 for a hook on a normal call."""
+    ran("navigate")
+    shows(MINE)
+    assert call(*TYPE) is None                                             # the selection is confirmed before the record grows
+    tabs = "\n".join(f'  • tabId {k}: "Page {k}" ("https://{SITE}/c/{k}")' for k in range(1, 6))
+    body = "lorem ipsum dolor sit amet " * 70 + f"Contact help@{SITE} for support.\n\nTab Context:\n- Executed on tabId: 1\n- Available tabs:\n{tabs}"
+    with RECORD.open("a", encoding="utf-8") as out:
+        for n in range(2600):
+            out.write(json.dumps({"type": "assistant", "message": {"content": [{"type": "tool_use", "id": f"toolu_big{n}", "name": guards.BROWSER + "get_page_text", "input": {"tabId": 1}}]}}) + "\n")
+            out.write(json.dumps({"type": "user", "message": {"content": [{"type": "tool_result", "tool_use_id": f"toolu_big{n}", "content": [{"type": "text", "text": body}]}]}}) + "\n")
+    assert 5 << 20 < RECORD.stat().st_size < 8 << 20
+    took = []
+    for _ in range(3):
+        began = time.perf_counter()
+        assert batch(*[TYPE] * 10) is None
+        took.append(time.perf_counter() - began)
+    assert min(took) < 0.05 * pace, took
+
+
+def test_a_put_on_a_tab_whose_page_the_record_does_not_show_waits_for_a_list_of_tabs():
+    """A tab's address that had dropped out of the record's last 8 MB counted as "not on the site", so typing went
+    through on a site whose last read had shown another account."""
+    reason = call(*TYPE, tab=7)
+    assert reason and "which page" in reason and "tab 7" in reason and "misconfiguration" not in reason
+    for tool, given in READS:
+        assert call(tool, given, tab=7) is None                           # what puts nothing never waits
+    ran("computer", {"action": "screenshot", "tabId": 7}, "", front=7, tabs={7: "https://mail.example/"})
+    assert call(*TYPE, tab=7) is None
+    assert call(*TYPE, tab=7, using=config({})) is None and call(*TYPE, tab=9, using=config({})) is None   # and only where a site is named
+
+
+@pytest.mark.parametrize("url", ["back", "forward", "/new", "", "javascript:void(0)", "about:blank"])
+def test_a_batch_step_that_goes_nowhere_the_guard_can_name_leaves_the_tabs_page_unknown(url):
+    ran("navigate")
+    reason = batch(("navigate", {"url": url}), TYPE)
+    assert reason and "which page" in reason
+    assert batch(("navigate", {"url": url}), ("get_page_text", {})) is None
+
+
+@pytest.mark.parametrize("address", [f"https:{SITE}/x", f"https://{SITE}\\@mail.example/", f"HTTPS://{SITE}./x", "https://assistant%2Eexample/x",
+                                     f"https://user:secret@{SITE}:8443/x", f"//{SITE}/x"])
+def test_an_address_a_browser_reads_as_the_sites_is_the_sites(address):
+    ran("navigate", tabs={1: "https://mail.example/"})
+    assert unread(batch(("navigate", {"url": address}), TYPE)), address
+    ran("navigate", tabs={1: address})
+    assert unread(call(*TYPE)), address
+
+
+def test_a_batch_that_could_have_moved_after_its_read_settles_nothing():
+    """A batch's result names one tab, the one it ended on. A click or a Return after its read may have moved the
+    tab, so what it read may be another page's."""
+    def did(*steps, body=f"[get_page_text] Title: Inbox\nSigned in as {MINE}"):
+        ran("browser_batch", {"actions": [{"name": name, "input": {"tabId": 1, **given}} for name, given in steps]}, body)
+    read, click, wait = ("get_page_text", {}), ("computer", {"action": "left_click", "ref": "ref_1"}), ("computer", {"action": "wait", "duration": 1})
+    ran("navigate")
+    for after in (click, ("computer", {"action": "key", "text": "Return"}), ("javascript_tool", {"action": "javascript_exec", "text": "go()"}),
+                  ("form_input", {"ref": "ref_2", "value": "x"}), ("navigate", {"url": f"https://{SITE}/settings"})):
+        did(read, after)
+        assert unread(call(*TYPE)), after
+    did(click, wait, ("find", {"query": "signed in as"}), ("computer", {"action": "screenshot"}), ("computer", {"action": "scroll", "scroll_direction": "down"}),
+        body=f"[find] Found 1 element\n- ref_9: button \"{MINE}\"")           # a menu opened, then read: nothing moved after the read
+    assert call(*TYPE) is None
+
+
+def test_with_no_page_named_the_hold_says_what_a_read_showed_and_no_more():
+    """A conversation that mentions another of the principal's addresses was called a sign-in to that account."""
+    ran("navigate")
+    shows(OTHER)
+    reason = call(*TYPE)
+    assert misrouted(reason) and "only mentions" in reason and f"showed {OTHER}" in reason and "is signed in to" not in reason
+    assert "only mentions" in stop()
+    paged = config({f"{SITE}/settings": MINE})
+    shows(OTHER, path="/settings")
+    reason = call(*TYPE, using=paged)
+    assert misrouted(reason) and "only mentions" not in reason and f"is signed in to {SITE} as {OTHER}" in reason
+    assert "only mentions" not in stop(using=paged)
+
+
+@pytest.mark.parametrize("tool", ["autofill_credential", "enter_verification_code", "request_credentials", "list_granted_credentials", "release_credentials"])
+def test_signing_in_does_not_wait(tool):
+    """These are how a profile comes to show the right account, and what they put in is approved in the password
+    manager's own prompt: they are no part of what the rule keeps out of an account."""
+    ran("navigate")
+    assert call(tool, {}) is None
+    shows(OTHER)
+    assert call(tool, {}) is None
+
+
+@pytest.mark.parametrize("keys", ["Escape", "Tab", "shift+Tab", "PageDown", "Page_Up", "ArrowDown", "Up", "Left", "Home", "End", "cmd+r", "ctrl+r", "F5",
+                                  "cmd+c", "ctrl+c", "cmd+a", "cmd+f", "Escape Tab Tab", "cmd+Left"])
+def test_a_key_that_puts_nothing_does_not_wait(keys):
+    ran("navigate")
+    assert call("computer", {"action": "key", "text": keys}) is None, keys
+
+
+@pytest.mark.parametrize("keys", ["Return", "Enter", "KP_Enter", "a", "space", "cmd+v", "ctrl+v", "shift+Insert", "Backspace", "Delete", "cmd+Return",
+                                  "Escape Return", "cmd+x", "cmd+z", "", "ctrl+shift+v"])
+def test_a_key_that_can_put_or_send_or_change_waits(keys):
+    ran("navigate")
+    assert unread(call("computer", {"action": "key", "text": keys})), keys
+
+
+def test_a_page_key_ends_where_a_name_ends_and_may_be_written_without_a_slash():
+    using = config({f"{SITE}/settings": MINE})
+    ran("navigate")
+    for path, counts in (("/settings-archive/2025", False), ("/settingsx", False), ("/settings", True), ("/settings/", True),
+                         ("/settings/account", True), ("/settings?tab=1", True), ("/settings#profile", True)):
+        ran("navigate")
+        shows(OTHER, path="/settings")                                    # the page last showed another account
+        shows(MINE, path=path)
+        assert (call(*TYPE, using=using) is None) is counts, path
+    for key, there in ((f"{SITE}#settings", "/#settings/profile"), (f"{SITE}?view=account", "/?view=account&x=1"), (f" {SITE}/settings ", "/settings")):
+        shows(MINE, path=there)
+        assert call(*TYPE, using=config({key: MINE})) is None, key
+    assert "blocked until it is fixed" in call(*TYPE, using=config({f"{SITE}/set tings": MINE}))
+
+
+def test_a_result_far_below_its_call_is_still_the_newest_list_of_tabs():
+    """The call of a result was looked for in the 200 lines above it. Past that, the list of tabs was passed over,
+    an older one was used, and a tab that had since come to the site counted as elsewhere."""
+    ran("navigate", tabs={1: "https://mail.example/"})
+    lines = [json.dumps({"type": "assistant", "message": {"content": [{"type": "tool_use", "id": "toolu_far", "name": guards.BROWSER + "navigate", "input": {"tabId": 1}}]}})]
+    lines += [json.dumps({"type": "user", "message": {"content": [{"type": "tool_result", "tool_use_id": f"toolu_other{n}", "content": "ok"}]}}) for n in range(450)]
+    lines.append(json.dumps({"type": "user", "message": {"content": [{"type": "tool_result", "tool_use_id": "toolu_far", "content": [
+        {"type": "text", "text": f"Navigated\n\nTab Context:\n- Executed on tabId: 1\n- Available tabs:\n  • tabId 1: \"A page\" (\"https://{SITE}/chat\")"}]}]}}))
+    with RECORD.open("a", encoding="utf-8") as out:
+        out.write("\n".join(lines) + "\n")
+    assert unread(call(*TYPE))
+
+
+def test_an_address_the_call_named_in_an_encoded_form_shows_nothing():
+    ran("navigate")
+    ran("navigate", {"tabId": 1, "url": f"https://{SITE}/search?q=" + MINE.replace("@", "%40")}, "Navigated")
+    ran("find", {"tabId": 1, "query": MINE.replace("@", "%40").upper()}, f"Nothing matches {MINE}")
+    assert unread(call(*TYPE))
+
+
+def test_the_doctor_names_a_profile_with_no_label_by_its_workspace():
+    using = config({SITE: MINE})
+    del using["browser_routing"]["workspaces"][str(ROOT)]["label"]
+    check = doctor.check_browser_accounts(using, {f"{WORK} {SITE}": {"seen": OTHER, "at": time.time()}})
+    assert check.status == "warn" and "the a " not in check.detail and str(ROOT) in check.detail
+
+
+def test_two_sessions_that_write_what_they_saw_at_once_lose_neither(tmp_path):
+    """The file was read, changed and written with no lock, so one of two writers could drop the other's site."""
+    import threading
+    listed = paths.state() / "browser-accounts.json"
+    sites = [f"site{n}.example" for n in range(24)]
+    workers = [threading.Thread(target=guards._note_account, args=("DEV", site, (MINE, f"toolu_{n}"), f"S{n}")) for n, site in enumerate(sites)]
+    for worker in workers:
+        worker.start()
+    for worker in workers:
+        worker.join()
+    assert set(paths.read_json(listed)) == {f"DEV {site}" for site in sites}
 
 
 def stop(reply="I can't test from that profile.", using=None):
