@@ -706,6 +706,7 @@ def test_resume_names_a_quiet_seat_that_holds_a_live_wait_and_marks_it_as_who_do
         board.touch(name, project=at, harness="codex")
     board.claim("W3", [str(home / "resources")])                                      # a seat of another project that claimed a folder of this one
     wait.record("W1", "a message", now + 3 * 3600, pid=os.getpid(), every=300)        # nine hours into twelve, its watcher running
+    wait.record("W1", "the nightly export", now + 1800, by="the harness's timer")     # and a shorter wait beside it: the later bound is the mark
     wait.record("W2", "the CI run", now + 2 * 3600, by="the harness's timer")         # a wait the harness holds
     wait.record("W3", "a file", now + 3600, pid=os.getpid())
     wait.record("W4", "a message", now + 1800, pid=os.getpid())                       # a seat seen a moment ago that waits too
