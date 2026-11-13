@@ -157,6 +157,19 @@ def test_a_wake_checks_what_other_people_rely_on_before_the_next_item_and_the_sk
     assert f"| `others-rely-on` | {dict(cli.DEFAULT_STANDING)['others-rely-on']} |" in TEMPLATE_DOC.read_text(encoding="utf-8")
 
 
+def test_a_wake_takes_a_check_that_did_not_run_as_not_checked_and_never_as_healthy():
+    """Review round 3, finding 24: a wake was told what a `DOWN` line and exit 2 ask for, and nothing of a checker that
+    never started or printed none of the lines it documents. The standing item, the binding rule and the re-entry
+    protocol each say such a run leads the reply as not checked."""
+    reentry = (SKILL / "references" / "continuation.md").read_text(encoding="utf-8").split("\n## Re-entry protocol\n")[1].split("\n## ")[0]
+    rules = (SKILL / "SKILL.md").read_text(encoding="utf-8").split("## Binding rules")[1].split("## Contents")[0]
+    places = {"standing item": dict(cli.DEFAULT_STANDING)["others-rely-on"], "re-entry protocol": reentry,
+              "binding rule": next((line for line in rules.splitlines() if "relied_on.py" in line), "")}
+    for where, text in places.items():
+        for words in ("never started", "printed none of the lines", "not checked", "never read as healthy"):
+            assert words in " ".join(text.split()), (where, words)
+
+
 def test_engage_refuses_a_plan_without_checklist_criteria_or_horizon(tmp_path, capsys):
     path = write_plan(tmp_path, checklist=(), criteria=(), header={"Horizon": None})
     assert run("--session", "S1", "engage", "--plan", path) == 1
