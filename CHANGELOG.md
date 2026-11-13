@@ -28,7 +28,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   test's own process, into a failing test on the Python that deprecates it: the three calls had warned at every
   use, in a summary at the end of a run.
 
-## [5.8.1] - 2026-11-12
+## [5.8.1] - 2026-11-13
 
 - **A guard's check takes half the time** (core). A hook is a new Python process on every tool call, and a session
   whose environment tells Python to write no bytecode cached nothing it compiled: the guards were compiled from

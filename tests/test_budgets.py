@@ -679,7 +679,7 @@ ROOT = Path(__file__).resolve().parents[1]
 # old_spelling 8, temporary 2 and 7 lines of constants and notes; server.py 14: a refresh refused in the test mode;
 # together its owner's five rulings and the review's three findings); relied_on.py 10 (a checker or a check that
 # cannot run says so).
-# 5.8.1 (2026-11-12): core 34, plugin 61. install.py: _compile 18, _compiled 12 and install 4 (the runtime is compiled
+# 5.8.1 (2026-11-13): core 34, plugin 61. install.py: _compile 18, _compiled 12 and install 4 (the runtime is compiled
 # once at install, so a hook does not compile the guards from source on every call: 72 ms to 33 ms for a shell command's
 # check; and, from the release's review, a session start compiles a runtime that an older release's installer switched
 # to, a compiled file is held to its source's hash and not its date, and compiling cannot fail an install).
