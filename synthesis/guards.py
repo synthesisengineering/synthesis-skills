@@ -2735,7 +2735,20 @@ def _protected_roots(config: dict | None) -> list[str]:
     archive, harness transcripts, approved commit lines."""
     store = paths.line_allowances(config or {})
     return [str(r) for r in [paths.state(), paths.board(), paths.sessions(), *paths.transcript_roots().values(),
+                             paths.desktop_dir() / "local-agent-mode-sessions",  # the desktop app's agent-mode transcripts, one path
                              *([store] if store else [])]]
+
+
+def _claude_parts(real: str) -> list:
+    """A path's parts below the Claude Code `projects` folder it lies in, the CLI's or a desktop agent-mode session's
+    (`<app>/local-agent-mode-sessions/<account>/<org>/local_<session>/.claude/projects`), read from its words alone;
+    [] where it lies in neither. No folder is listed on the hook's path."""
+    root = os.path.realpath(paths.transcript_roots()["claude-code"])
+    if paths.inside(real, root):
+        return os.path.relpath(paths.spelled(real), paths.spelled(root)).split(os.sep)
+    base = os.path.realpath(paths.desktop_dir() / "local-agent-mode-sessions")
+    parts = os.path.relpath(paths.spelled(real), paths.spelled(base)).split(os.sep) if paths.inside(real, base) else []
+    return parts[5:] if len(parts) > 5 and parts[2].startswith("local_") and parts[3:5] == [".claude", "projects"] else []
 
 
 # The board grants nothing, but a session file edited by hand can drop another session's claims (5.1.18); the
@@ -2761,8 +2774,7 @@ def _own(real: str, folder: bool = False) -> bool:
     transcript or an approval. The file tools, the shell and an inline program may write, move and remove one (ten
     days of transcripts held ten such shell writes; thirty held six such programs, all refused). A path is judged
     where it really leads, so a link there opens nothing, and a command that makes a link there is refused."""
-    root = os.path.realpath(paths.transcript_roots()["claude-code"])
-    parts = os.path.relpath(paths.spelled(real), paths.spelled(root)).split(os.sep) if paths.inside(real, root) else []
+    parts = _claude_parts(real)  # the CLI's projects folder, or a desktop agent-mode session's (the review of 5.18.0)
     return (parts[1:2] == ["memory"] and (folder or (len(parts) >= 3 and parts[-1].endswith(".md")))) or (
         not folder and len(parts) == 5 and parts[2:4] == ["workflows", "scripts"] and parts[-1].endswith(".js"))
 
@@ -2771,8 +2783,7 @@ def _material(real: str) -> bool:
     """A tool result Claude Code saved beside a session's transcript (a fetched PDF, a screenshot, a long output):
     material the agent is sent there to work on, so any program may be given it. Changing it in place stays
     refused (30 days of transcripts: three of six new refusals were a converter reading one)."""
-    root = os.path.realpath(paths.transcript_roots()["claude-code"])
-    return paths.inside(real, root) and os.path.relpath(paths.spelled(real), paths.spelled(root)).split(os.sep)[2:3] == ["tool-results"]
+    return _claude_parts(real)[2:3] == ["tool-results"]
 
 
 def _file_targets(tool: str, tool_input: dict) -> list[str]:

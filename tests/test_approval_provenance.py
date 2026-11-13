@@ -3291,3 +3291,23 @@ def test_reading_an_inline_program_with_a_sloppy_escape_prints_no_warning(tmp_pa
         warnings.simplefilter("always")
         assert guards.check("Bash", {"command": command}, {}, cwd=str(tmp_path)) is None
     assert [str(w.message) for w in said] == []
+
+
+
+def _desktop_projects() -> Path:
+    return (Path(os.environ["SYNTHESIS_CLAUDE_DESKTOP_DIR"]) / "local-agent-mode-sessions" / "account-1" / "org-1"
+            / "local_x1" / ".claude" / "projects")
+
+
+def test_a_desktop_agent_mode_transcript_is_protected_as_the_clis(tmp_path):
+    """The review of 5.18.0, finding 2: the archive reads the desktop app's agent-mode transcripts, and the guard left
+    them open to an agent's write, which the next export would have kept as the record."""
+    transcript = _desktop_projects() / "-sessions-vm" / "s.jsonl"
+    assert "session transcripts" in guards.check("Write", {"file_path": str(transcript), "content": "x"}, {}, cwd=str(tmp_path))
+    assert REFUSED in guards.check("Bash", {"command": f"echo x >> '{transcript}'"}, {}, cwd=str(tmp_path))
+
+
+def test_a_desktop_sessions_memory_and_saved_results_are_as_the_clis(tmp_path):
+    project = _desktop_projects() / "-sessions-vm"
+    assert guards.check("Write", {"file_path": str(project / "memory" / "a-fact.md"), "content": "x"}, {}, cwd=str(tmp_path)) is None
+    assert guards.check("Bash", {"command": f"pdftotext -layout '{project}/abc/tool-results/page.pdf' /tmp/out.txt"}, {}, cwd=str(tmp_path)) is None

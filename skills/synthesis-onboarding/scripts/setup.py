@@ -456,7 +456,7 @@ def first_config(interactive: bool) -> list:
 
 LAUNCHCTL = "launchctl"
 NUDGE_LABEL = "com.synthesis.day-end-nudge"
-HOMES = ("SYNTHESIS_HOME", "CLAUDE_CONFIG_DIR", "CODEX_HOME", "XDG_DATA_HOME")  # the runtime's folder, and where each harness keeps transcripts
+HOMES = ("SYNTHESIS_HOME", "CLAUDE_CONFIG_DIR", "CODEX_HOME", "XDG_DATA_HOME", "SYNTHESIS_CLAUDE_DESKTOP_DIR")  # the runtime's folder, and where each harness keeps transcripts
 
 
 def _homes() -> str:

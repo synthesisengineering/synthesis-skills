@@ -4,6 +4,26 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [5.18.0] - 2026-11-13
+
+- **The Claude desktop app's local agent-mode sessions are archived** (`synthesis-context-lifecycle` 2.7.0, the
+  audit's gap 14). Each such session runs with a Claude Code folder of its own under the app's data folder
+  (`~/Library/Application Support/Claude/local-agent-mode-sessions/<account>/<org>/local_<session>/.claude`, or
+  `SYNTHESIS_CLAUDE_DESKTOP_DIR`), and the archive read only `CLAUDE_CONFIG_DIR`'s: on one Mac, five sessions and six
+  of their sub-agents were in no record. The export now reads them as Claude Code's. A desktop session is named with
+  its `local_<session>` folder before its own name, so a CLI session of the same file name stays another session;
+  one that ran in a virtual machine's folder is in no workspace, and is kept and never synced.
+- **What it reads, it says it could not.** The desktop folders are read level by level, and one on the way that
+  cannot be listed is named in the run's report and stamp, never taken for an empty one, so no transcript behind it
+  is called removed.
+- **The guard protects their transcripts** as it does the CLI's (one protected path, nothing listed on the hook's
+  path), and reads a desktop session's memory folder and saved tool results as the CLI's.
+- **The scheduled copy carries `SYNTHESIS_CLAUDE_DESKTOP_DIR`** where it is set (`synthesis-onboarding` 3.5.3), as it
+  carries each harness's folder; no test reads the desktop sessions of the Mac it runs on.
+- **How it was checked.** Tests first, and one review round (two defects and two smaller gaps), each fixed with a
+  test that failed before its fix, or kept with its reason stated: the approvals reader and the hook's strike do not
+  know a desktop session, which matters only if synthesis's hooks run inside one, and nothing shows they do.
+
 ## [5.17.0] - 2026-11-13
 
 - **A record's number names the same record for good** (`synthesis-context-lifecycle` 2.6.0). Project records cite a

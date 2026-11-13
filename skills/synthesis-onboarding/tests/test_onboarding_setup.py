@@ -692,8 +692,8 @@ def test_the_export_schedule_without_launchctl_is_written_and_not_loaded(day_end
     assert setup._export_plist().exists() and calls(day_end) == []
 
 
-HOMES = ("SYNTHESIS_HOME", "CLAUDE_CONFIG_DIR", "CODEX_HOME", "XDG_DATA_HOME")  # the runtime's folder, and where each harness keeps transcripts
-CHOSEN = {"none": (), **{name: (name,) for name in HOMES}, "all four": HOMES}
+HOMES = ("SYNTHESIS_HOME", "CLAUDE_CONFIG_DIR", "CODEX_HOME", "XDG_DATA_HOME", "SYNTHESIS_CLAUDE_DESKTOP_DIR")  # the runtime's folder, and where each harness keeps transcripts
+CHOSEN = {"none": (), **{name: (name,) for name in HOMES}, "all": HOMES}
 
 
 def _started_by_launchd(tmp_path, profile: str = "", nudge: bool = False) -> list:
@@ -721,7 +721,8 @@ def test_the_scheduled_copy_runs_with_each_home_selected_at_install(day_end, tmp
     that install's command against the default home. Each one set when the schedule is installed goes with the
     job, also where the login shell defines another; one not set is left to the login shell, as before."""
     picked = {"SYNTHESIS_HOME": str(setup.install._home()), "CLAUDE_CONFIG_DIR": str(tmp_path / "custom" / "claude config"),
-              "CODEX_HOME": str(tmp_path / "custom" / "it's $HOME; \"codex\""), "XDG_DATA_HOME": str(tmp_path / "custom" / "xdg")}
+              "CODEX_HOME": str(tmp_path / "custom" / "it's $HOME; \"codex\""), "XDG_DATA_HOME": str(tmp_path / "custom" / "xdg"),
+              "SYNTHESIS_CLAUDE_DESKTOP_DIR": str(tmp_path / "custom" / "the desktop app")}
     for name in HOMES:
         if name in chosen:
             monkeypatch.setenv(name, picked[name])

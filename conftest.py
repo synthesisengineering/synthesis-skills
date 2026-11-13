@@ -21,6 +21,13 @@ def no_rituals_folder_from_the_shell(monkeypatch):
     monkeypatch.delenv("RITUAL_STATE_DIR", raising=False)
 
 
+@pytest.fixture(autouse=True)
+def no_desktop_sessions_of_this_mac(tmp_path, monkeypatch):
+    """No test, a skill's included, reads the desktop app's agent-mode sessions of the Mac it runs on (the review of
+    5.18.0: only the core's tests named a folder of their own)."""
+    monkeypatch.setenv("SYNTHESIS_CLAUDE_DESKTOP_DIR", str(tmp_path / "harness" / "claude-desktop"))
+
+
 @pytest.fixture(scope="session", autouse=True)
 def compiled_code_stays_in_the_run(tmp_path_factory):
     if not sys.pycache_prefix:  # beside the source: a test's files are in its own temporary folder already
