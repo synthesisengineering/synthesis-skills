@@ -16,7 +16,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   appear as document names. The tests had replaced Firestore with a memory store that accepts any key; they now run
   the real Firestore store over a client that keeps Firestore's ID rules, store and read back a client whose ID is
   a URL, and fail without the fix with the error the deployment logged. Every release from 5.4.0, the skill's
-  first, to 5.11.0 has the defect on `firestore`; the operator's own test (`memory`) never saw it.
+  first, to 5.11.0 has the defect on `firestore`; the operator's own test (`memory`) never saw it. A store that
+  already holds records under unhashed keys keeps them and never reads them again: a client registered by dynamic
+  registration (Claude) is told its ID is unknown and registers again, and each person signs in once more.
 
 ## [5.11.0] - 2026-11-13
 
