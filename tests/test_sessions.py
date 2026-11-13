@@ -166,6 +166,55 @@ def test_segments_rotate_and_reading_follows_them(harness, monkeypatch):
     assert len(list(folder.glob("transcript-*.jsonl"))) > 1 and len(sessions.records(str(folder))) == count
 
 
+def _archived(native: Path) -> list:
+    """Every line of a session's archive, in order, parsed: a line that is no whole record fails here."""
+    folder = Path(_meta(native)["folder"])
+    return [json.loads(line) for file in sorted(folder.glob("transcript-*.jsonl"))
+            for line in file.read_text(encoding="utf-8").splitlines()]
+
+
+@pytest.mark.parametrize("segment_bytes", [10**9, 600])  # in one segment, and where the cut run had begun another
+def test_a_copy_cut_between_its_records_and_its_state_appends_nothing_twice(harness, monkeypatch, segment_bytes):
+    """A copy appends its records and then saves how far it read. Cut between the two (a crash, a full disk, a
+    machine put to sleep), the next run read the same lines again and appended the same records again, each number
+    twice: a prompt was then listed twice among what the principal typed (noted by a review, 2026-11-12)."""
+    monkeypatch.setattr(sessions, "SEGMENT_BYTES", segment_bytes)
+    rows = _claude_rows(harness["work"])
+    native = _jsonl(harness["claude"], rows[:4])
+    first, real = sessions.export_file("claude-code", native), sessions.paths.write_json
+    _jsonl(native, rows[4:])
+
+    def cut(path, data):
+        if Path(path).parent.name == ".state":
+            raise OSError("cut before the state was saved")
+        return real(path, data)
+    with monkeypatch.context() as broken:
+        broken.setattr(sessions.paths, "write_json", cut)
+        with pytest.raises(OSError):
+            sessions.export_file("claude-code", native)
+    cut_at = len(_archived(native))
+    assert cut_at > first  # the records were appended, and nothing says so
+    sessions.export_file("claude-code", native)
+    kept = _archived(native)
+    assert [r["seq"] for r in kept] == list(range(cut_at))  # each record once, none added, none removed
+    assert sessions.export_file("claude-code", native) == 0 and len(_archived(native)) == cut_at
+
+
+def test_a_line_torn_by_a_cut_write_is_finished_as_a_whole_record(harness):
+    """Cut in the middle of a line, the archive ends in part of a record. The next run's first record was written
+    onto the end of it, and the two made one line that no reader could parse."""
+    rows = _claude_rows(harness["work"])
+    native = _jsonl(harness["claude"], rows[:4])
+    first = sessions.export_file("claude-code", native)
+    segment = sorted(Path(_meta(native)["folder"]).glob("transcript-*.jsonl"))[-1]
+    with segment.open("a", encoding="utf-8") as out:
+        out.write('{"seq": %d, "kind": "user", "te' % first)
+    _jsonl(native, rows[4:])
+    assert sessions.export_file("claude-code", native) > 0
+    kept = _archived(native)
+    assert [r["seq"] for r in kept] == list(range(len(kept))) and len(kept) > first
+
+
 def test_resume_shows_the_projects_recent_conversation_from_any_harness(harness, tmp_path, capsys):
     _jsonl(harness["claude"], _claude_rows(harness["work"]))
     kb = tmp_path / "kb"
