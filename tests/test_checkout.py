@@ -2,6 +2,7 @@
 are journaled and restorable, a release never leaves them unowned, a claim names who left them, a claimed path is
 protected when written, and the project index has one safe way to change a field."""
 
+import os
 import subprocess
 
 import pytest
@@ -174,6 +175,30 @@ def test_an_untracked_file_past_a_limit_is_named_in_the_journal_and_not_kept(rep
     assert checkout.snapshot(str(repo), "release", "S1") == ""  # nothing kept, so no snapshot...
     row = checkout.journal()[0]
     assert row["sha"] == "" and row["files"] == [] and row["left"] == ["huge.bin"]  # ...but the journal names it
+
+
+@pytest.mark.skipif(os.name != "posix" or os.geteuid() == 0, reason="root reads a file whatever its mode")
+def test_an_untracked_file_git_cannot_read_is_named_and_the_rest_kept(repo):
+    locked, readable = repo / "locked.md", repo / "readable.md"
+    locked.write_text("x\n", encoding="utf-8")
+    readable.write_text("y\n", encoding="utf-8")
+    locked.chmod(0)
+    try:
+        sha = checkout.snapshot(str(repo), "claim", "S1")
+    finally:
+        locked.chmod(0o644)
+    assert "readable.md" in _tree(repo, sha) and "locked.md" not in _tree(repo, sha)
+    assert checkout.journal(str(locked))[0]["left"] == ["locked.md"]
+
+
+def test_a_snapshot_git_cannot_write_keeps_the_tracked_changes_and_names_the_rest(repo, monkeypatch):
+    monkeypatch.setattr(checkout, "_tree_commit", lambda *args: "")
+    (repo / "notes.md").write_text("first line\nedited\n", encoding="utf-8")
+    (repo / "new.md").write_text("untracked\n", encoding="utf-8")
+    sha = checkout.snapshot(str(repo), "claim", "S1")
+    assert sha and checkout.show(sha, str(repo / "notes.md")) == "first line\nedited\n"
+    row = checkout.journal()[0]
+    assert row["files"] == ["notes.md"] and row["left"] == ["new.md"] and "tracked_only" not in row
 
 
 def test_the_session_start_snapshot_stays_tracked_only_and_its_journal_line_says_so(repo, capsys):
