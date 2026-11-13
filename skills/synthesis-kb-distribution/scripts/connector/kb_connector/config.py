@@ -2,8 +2,9 @@
 
 references/connector.md documents each variable. A required value that is missing or malformed
 stops the start (ConfigError lists them all); nothing falls back to serving without sign-in.
-KB_OPERATOR_TEST=1 with KB_OPERATOR_ADDRESSES is the operator-only test mode: nobody else signs in,
-and a temporary address (temporary() below) or the memory sign-in store starts in that mode alone.
+KB_PUBLIC_URL is an origin and nothing more. KB_OPERATOR_TEST=1 with KB_OPERATOR_ADDRESSES is the
+operator-only test mode: nobody else signs in, and a temporary address (temporary() below) or the
+memory sign-in store starts in that mode alone.
 """
 
 from __future__ import annotations
@@ -12,7 +13,7 @@ import ipaddress
 import re
 import string
 from dataclasses import dataclass
-from urllib.parse import urlparse
+from urllib.parse import urlsplit
 
 from .access import listed
 
@@ -23,6 +24,7 @@ TEMPORARY_HOSTS = ("trycloudflare.com", "ngrok.io", "ngrok.app", "ngrok.dev", "n
                    "ngrok-free.dev", "ngrok-free.pizza", "loca.lt", "localtunnel.me", "serveo.net",
                    "serveousercontent.com", "localhost.run", "lhr.life", "lhr.rocks", "pinggy.io", "pinggy.link",
                    "pinggy-free.link", "devtunnels.ms", "app.github.dev", "localhost", "local")
+ORIGIN_PARTS = ("a user-info part (user:password@)", "a path", "a query", "a fragment")  # what KB_PUBLIC_URL may not have
 URL_FIELDS = ("id", "source_path", "commit")
 FERNET_KEY = re.compile(r"[A-Za-z0-9_-]{43}=")
 
@@ -77,6 +79,21 @@ def temporary(host) -> bool:
         return bool(re.fullmatch(r"\d+|0x[0-9a-f]*", host.rsplit(".", 1)[-1]))
 
 
+def _beyond_origin(raw, parsed, port, local) -> str:
+    """Why KB_PUBLIC_URL is more than an origin (the scheme, the host and a port), or "" when it is one or no address at
+    all. It names each part it found and shows the origin alone; it never shows a part, since a user-info part or a
+    query can carry a secret and the message is printed."""
+    more = [part for part, found in zip(ORIGIN_PARTS, ("@" in parsed.netloc, parsed.path not in ("", "/"),
+                                                       "?" in raw.split("#")[0], "#" in raw)) if found]
+    if not more or parsed.scheme not in ("https", "http") or not parsed.hostname or port == 0:
+        return ""
+    host = f"[{parsed.hostname}]" if ":" in parsed.hostname else parsed.hostname
+    origin = f"{'http' if parsed.scheme == 'http' and local else 'https'}://{host}" + (f":{port}" if port else "")
+    return ("KB_PUBLIC_URL must be an origin and nothing more: the scheme, the host and a port if it needs one, since "
+            f"the connector builds its own addresses (/mcp, /auth/callback) on it. It has {', '.join(more[:-1])}"
+            f"{' and ' if more[1:] else ''}{more[-1]}, which {'are' if more[1:] else 'is'} not allowed. Write it as {origin}")
+
+
 def _int(env, name, default, low, high, problems):
     raw = (env.get(name) or "").strip()
     if not raw:
@@ -93,11 +110,18 @@ def load(env) -> Settings:
     git_url, source_dir = get("KB_GIT_URL"), get("KB_SOURCE_DIR")
     if bool(git_url) == bool(source_dir):
         problems.append("set exactly one of KB_GIT_URL (the published repository) and KB_SOURCE_DIR (a local folder)")
-    public_url = get("KB_PUBLIC_URL").rstrip("/")
-    parsed = urlparse(public_url)
+    raw = get("KB_PUBLIC_URL")
+    public_url, parsed = raw.rstrip("/"), urlsplit(raw)
+    try:
+        port = parsed.port
+    except ValueError:
+        port = 0  # not a port, so not an address
     local = parsed.hostname in ("localhost", "127.0.0.1", "::1")
-    if parsed.scheme not in ("https", "http") or not parsed.hostname or (parsed.scheme == "http" and not local):
+    if (parsed.scheme not in ("https", "http") or not parsed.hostname or port == 0
+            or (parsed.scheme == "http" and not local)):
         problems.append("KB_PUBLIC_URL must be the service's https:// address (http:// only for localhost)")
+    if beyond := _beyond_origin(raw, parsed, port, local):
+        problems.append(beyond)
     test, operators = get("KB_OPERATOR_TEST"), get("KB_OPERATOR_ADDRESSES")
     if test not in ("", "0", "1") or (test == "1") != bool(listed(operators)):
         problems.append("the operator-only test mode needs both KB_OPERATOR_TEST=1 and KB_OPERATOR_ADDRESSES, the "
