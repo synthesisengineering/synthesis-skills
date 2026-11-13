@@ -746,10 +746,10 @@ def test_a_prompt_is_accounted_for_by_a_record_that_cites_it_alone_or_in_a_range
     assert sessions.uncited([first, second], roots) == []
     asked["log"].write_text(f"- c1 #{second['seq'] + 1}, c2 #{first['seq']}, c10 #{first['seq']}, c1 # {first['seq']}\n", encoding="utf-8")
     assert sessions.uncited([first, second], roots) == [first, second]      # another record, another session, no citation
-    asked["log"].write_text(f"- c1 #{first['seq']} to #{second['seq']}\n", encoding="utf-8")
+    asked["log"].write_text(f"- both, c1 #{first['seq']} to #{second['seq']}\n", encoding="utf-8")
     assert sessions.uncited([first, second], roots) == []
     for joined in ("—", " – ", " through #", "..."):
-        asked["log"].write_text(f"- `claude-code c1 #{first['seq']}{joined}{second['seq']}`\n", encoding="utf-8")
+        asked["log"].write_text(f"- planned and drafted: `claude-code c1 #{first['seq']}{joined}{second['seq']}`\n", encoding="utf-8")
         assert sessions.uncited([first, second], roots) == ([first, second][1:] if joined == "..." else []), joined
     assert sessions.uncited([first], [str(asked["kb"] / "absent")]) == [first]
 
@@ -1032,6 +1032,47 @@ def test_a_record_in_the_same_file_as_the_listing_still_cites(asked, capsys):
     (asked["kb"] / "projects" / "alpha" / "day.jsonl").write_text(answer.strip() + "\n" + json.dumps(
         {"decided": "the announcement waits for Friday", "cites": [f"claude-code c1 #{second['seq']}"]}) + "\n", encoding="utf-8")
     assert sessions.uncited(found, [kb]) == [first]
+
+
+def test_a_line_that_holds_only_citations_cites_nothing(asked):
+    """A citation accounts for a prompt where it stands in a line that says something of it. The day-end's refusal
+    lists what is open as bare citations, and retyped into a log as a list of its own it cited every prompt it
+    named: the next day-end closed clean with nothing recorded of what was asked (noted by a review, 2026-11-12).
+    A line that holds citations and nothing else is a list of numbers, wherever it stands and however it is marked."""
+    first, second = found = sessions.prompts("acme", "2026-10-30")
+    kb, one, two = str(asked["kb"]), f"claude-code c1 #{first['seq']}", f"claude-code c1 #{second['seq']}"
+    bare = {
+        "a list under a heading of its own": f"## Still open\n\n- {one}\n- {two}\n",
+        "numbered, in backticks": f"Open after the day-end:\n\n1. `{one}`\n2. `{two}`\n",
+        "boxes to tick": f"- [ ] {one}\n- [x] {two}\n",
+        "quoted": f"> {one}\n> {two}\n",
+        "one line, with commas": f"{one}, {two}.\n",
+        "one line, as a range": f"- c1 #{first['seq']} to #{second['seq']}\n",
+        "bold, in brackets": f"**({one})**\n[{two}]\n",
+        "a row of a table": f"| prompt |\n|---|\n| {one} |\n| {two} |\n",
+        "under an entry, on a line of its own": f"- 10:00 planned the release and drafted the announcement.\n  {one}\n  {two}\n",
+    }
+    for name, text in bare.items():
+        asked["log"].write_text(text, encoding="utf-8")
+        assert sessions.uncited(found, [kb]) == found, name
+    said = {
+        "a word on the line": f"- {one}: planned, in REFERENCE.md\n- {two} drafted\n",
+        "inside the entry's sentence": f"- 10:00 planned the release ({one}) and drafted the announcement ({two}).\n",
+        "a row that says what became of it": f"| prompt | what became of it |\n|---|---|\n| {one} | planned |\n| {two} | drafted |\n",
+        "a range the entry covers": f"- the day's work, c1 #{first['seq']} to #{second['seq']}\n",
+    }
+    for name, text in said.items():
+        asked["log"].write_text(text, encoding="utf-8")
+        assert sessions.uncited(found, [kb]) == [], name
+    asked["log"].unlink()
+    for name, text in {  # a record kept as data holds its citations in a field of their own
+        "entry.yaml": f"decided: the release is planned and the announcement drafted\ncites:\n  - {one}\n  - {two}\n",
+        "entry.json": json.dumps({"decided": "planned and drafted", "cites": [one, two]}, indent=2),
+    }.items():
+        saved = asked["kb"] / "projects" / "alpha" / name
+        saved.write_text(text, encoding="utf-8")
+        assert sessions.uncited(found, [kb]) == [], name
+        saved.unlink()
 
 
 def test_a_citation_kept_as_a_string_is_read_as_the_text_it_holds(asked):
