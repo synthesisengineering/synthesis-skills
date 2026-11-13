@@ -876,10 +876,25 @@ ROOT = Path(__file__).resolve().parents[1]
 # choices, which now says the line each choice opens on: _plan_lines 20 (each line it reads, by the plan's own line
 # past its fenced blocks), _located 54 with _items 44 fewer (the reader under a name that also gives the line,
 # _items its wrapper), and open_choices with the lines about it 8.
+# 5.17.0 (2026-11-13): core and plugin 219 more, in the session archive, so a record's number names the same record
+# for good. sessions.py 213: in _Session, seed 44 (a Mac with no archive of a session begins it from a synced copy:
+# the copy in this Mac's workspace and month, its numbers kept, its own numbered past the other Mac's next, and read
+# without writing for peek), read_again 17 (a session read again from its start, passing over what is held as today's
+# reader would write it, numbered past the archive's last line), held 5 (a number written as words counts for
+# nothing), flush 2 and __init__ 2 (the next number in meta.json, and the copy's gaps), emit 1; then _as_today 19 (a
+# held record as today's reader would write it), _pulled 17 (a sync's pull, before it writes and before it pushes, and
+# a failed rebase undone), in_time 16 (records in the order said), no_record 12 and given_here 11 (what show --seq says
+# of a number given on another Mac, and of one given here), _blobbed 11 (a long text kept as emit keeps it, shared with
+# _as_today), _when 11 (a time read whatever its fraction), _same 10 (what a record is, its source included),
+# export_file 10 (a reading again where the archive is ahead of its state or the transcript was rewritten smaller),
+# _moment 9 (recent's order), _write_synced 9 (a copy another Mac numbered or extended is not written over),
+# _sync_workspace 8 (a refusal for one session, the pull first), Diverged 4, around 4, export 2, peek 2 and mask 1 (a
+# named policy that cannot be read refuses), with _rebuild 14 fewer (nothing is moved aside). cli.py 6: the sessions
+# command 5 (show says a number this Mac gave as that, and one that names nothing, with why) and the parser 1.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # consolidate first).
-CORE_BUDGET = 13639
-PLUGIN_BUDGET = 36605
+CORE_BUDGET = 13858
+PLUGIN_BUDGET = 36824
 
 
 def _lines(files):

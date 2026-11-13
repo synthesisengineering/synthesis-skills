@@ -473,12 +473,17 @@ def test_a_sub_agent_belongs_to_the_workspace_its_parent_started_in_and_workflow
     assert not [m for m in sessions.catalog() if m["native"].endswith("journal.jsonl")]
 
 
-def test_a_rebuild_moves_the_archive_aside_and_exports_everything_again(harness):
-    native = _jsonl(harness["claude"], _claude_rows(harness["work"]))
-    first = sessions.export_file("claude-code", native)
-    report = sessions.export(rebuild=True)
-    moved = Path(report[0].split(" moved to ")[1])
-    assert (moved / "acme").is_dir() and report[1:] == [f"claude-code c1: {first} record(s)"]
+def test_a_rebuild_changes_no_record_and_keeps_a_session_whose_transcript_is_gone(harness):
+    """Until 5.17.0 a rebuild moved the whole archive aside and exported the transcripts that were still there: a
+    session whose transcript its harness had since removed left the archive, and every other was numbered anew."""
+    _jsonl(harness["claude"], _claude_rows(harness["work"]))
+    gone = _jsonl(harness["claude"].with_name("c2.jsonl"), _claude_rows(harness["work"]))
+    sessions.export(0)
+    before = {meta["session"]: Path(meta["folder"], "transcript-0001.jsonl").read_bytes() for meta in sessions.catalog()}
+    gone.unlink()
+    assert sessions.export(rebuild=True) == [] and sorted(before) == ["c1", "c2"]
+    assert {meta["session"]: Path(meta["folder"], "transcript-0001.jsonl").read_bytes() for meta in sessions.catalog()} == before
+    assert not (sessions.paths.home() / "archive").exists()                       # nothing is moved aside
 
 
 def test_one_export_at_a_time_and_a_resume_never_waits_for_it(harness):
@@ -1232,7 +1237,7 @@ def test_an_option_before_the_session_is_read(asked, capsys):
     had already been taken as left out (noted by a review, 2026-11-13)."""
     assert cli.main(["sessions", "show", "--json", "c1"]) == 0
     shown = [json.loads(line) for line in capsys.readouterr().out.splitlines()]
-    assert shown and [rec["seq"] for rec in shown] == list(range(len(shown)))
+    assert shown and sorted(rec["seq"] for rec in shown) == list(range(len(shown)))  # every record, in the order said
     assert cli.main(["sessions", "show", "--seq", "0", "c1"]) == 0 and "#0 " in capsys.readouterr().out
     for wrong in (["sessions", "show", "--json", "c1", "c2"], ["sessions", "show", "--no-such-option", "c1"]):
         with pytest.raises(SystemExit):
@@ -2207,3 +2212,438 @@ def test_a_run_started_by_a_command_line_is_briefed_not_prompted(harness):
              if r.get("kind") in ("user", "brief")}
     assert kinds == {"Review this branch.": "brief", "Summarize the diff.": "brief", "Now ship it.": "user"}
     assert [p["text"] for p in sessions.prompts("acme", "2026-10-30")] == ["Now ship it."]
+
+
+# --- a record's number is its name: reading a session again keeps every number it gave (2026-11-13) -------------------
+# A citation names a record by its number, and a rebuild numbered every session anew: under a reader that files more
+# than the one before it, each later record moved up, and a citation written earlier named another record with
+# nothing to say so. Counted on one machine's records before this was written: 349 citations, 373 distinct numbers in
+# 49 sessions, of which a rebuild under the reader of that day would have moved 157. Committed before the code.
+
+def _numbered(native: Path) -> dict:
+    """{number: (time, kind, words)} of a session's records as the archive holds them."""
+    return {rec["seq"]: (rec.get("at"), rec.get("kind"), rec.get("text")) for rec in sessions.records(_meta(native)["folder"])}
+
+
+@pytest.fixture
+def filed_by_an_older_reader(harness, monkeypatch):
+    """A session exported under a reader that files less than today's: it passes over one thing the principal
+    typed, as the reader before 5.13.0 passed over a prompt typed while a turn ran."""
+    base = {"cwd": harness["work"], "sessionId": "c1"}
+
+    def said(text, at):
+        return {**base, "timestamp": at, "type": "assistant", "message": {"model": "claude-opus-5-5", "content": [{"type": "text", "text": text}]}}
+    native = _jsonl(harness["claude"], _claude_rows(harness["work"]) + [
+        _typed(base, "Also draft the announcement.", "2026-10-30T15:00:00.000Z"), said("Drafting it.", "2026-10-30T15:00:05.000Z"),
+        _typed(base, "And send me the draft.", "2026-10-30T15:10:00.000Z"), said("Sent.", "2026-10-30T15:10:05.000Z")])
+    today = sessions.ADAPTERS["claude-code"]
+
+    def older(row, s):
+        return [rec for rec in today(row, s) if not (rec and rec.get("kind") == "user" and rec.get("text") == "Also draft the announcement.")]
+    with monkeypatch.context() as then:
+        then.setitem(sessions.ADAPTERS, "claude-code", older)
+        sessions.export(0)
+    return native
+
+
+def test_reading_a_session_again_keeps_every_number_and_files_what_is_new_after_them(filed_by_an_older_reader):
+    native = filed_by_an_older_reader
+    before = _numbered(native)
+    files = {path: path.read_bytes() for path in Path(_meta(native)["folder"]).glob("transcript-*.jsonl")}
+    assert "Also draft the announcement." not in [words for _, _, words in before.values()]
+    report = sessions.export(rebuild=True)
+    after = _numbered(native)
+    assert {number: after.get(number) for number in before} == before            # every number names the record it named
+    added = sorted(set(after) - set(before))
+    assert [after[number][2] for number in added] == ["Also draft the announcement."] and added[0] > max(before)
+    assert all(path.read_bytes().startswith(old) for path, old in files.items())  # no line the archive held is changed
+    assert "claude-code c1: 1 record(s)" in report
+    again = sessions.export(rebuild=True)                                        # and a second reading adds nothing
+    assert _numbered(native) == after and not any(line.startswith("claude-code c1:") for line in again)
+
+
+def test_what_stands_around_a_record_is_what_was_said_around_it(filed_by_an_older_reader):
+    """A record filed by a later reading has a number after every other, so its neighbours by number are the end of
+    the session; the lines shown around a cited record are its neighbours in time."""
+    native = filed_by_an_older_reader
+    sessions.export(rebuild=True)
+    folder = _meta(native)["folder"]
+    late = next(rec["seq"] for rec in sessions.records(folder) if rec.get("text") == "Also draft the announcement.")
+    near = [rec.get("text") for rec in sessions.around(folder, late, span=1)]
+    assert near[1:] == ["Also draft the announcement.", "Drafting it."] and "Sent." not in near
+
+
+def test_a_days_prompts_stay_in_the_order_they_were_typed(filed_by_an_older_reader):
+    sessions.export(rebuild=True)
+    assert [prompt["text"] for prompt in sessions.prompts("acme", "2026-10-30")] == [
+        "Please plan the release.", "Also draft the announcement.", "And send me the draft."]
+
+
+def test_the_command_keeps_the_numbers_too(filed_by_an_older_reader, capsys):
+    native = filed_by_an_older_reader
+    before = _numbered(native)
+    assert cli.main(["sessions", "export", "--rebuild"]) == 0
+    after = _numbered(native)
+    assert {number: after.get(number) for number in before} == before and len(after) == len(before) + 1
+
+
+def test_the_newest_turns_are_the_newest_by_time_after_a_reading_again(filed_by_an_older_reader):
+    """A record a later reading filed stands last in the session's files and is not the last thing said."""
+    sessions.export(rebuild=True)
+    assert [rec["text"] for rec in sessions.recent(workspace="acme", turns=2)] == ["And send me the draft.", "Sent."]
+
+
+def test_a_session_is_shown_in_the_order_it_was_said(filed_by_an_older_reader, capsys):
+    sessions.export(rebuild=True)
+    capsys.readouterr()
+    assert cli.main(["sessions", "show", "c1"]) == 0
+    shown = capsys.readouterr().out
+    assert 0 < shown.index("Also draft the announcement.") < shown.index("Drafting it.") < shown.index("And send me the draft.")
+
+
+def test_a_number_that_names_no_record_is_said(filed_by_an_older_reader, capsys):
+    """It printed nothing and exited 0, which reads as a record with no words."""
+    assert cli.main(["sessions", "show", "c1", "--seq", "9999"]) == 1
+    assert "no record #9999" in capsys.readouterr().err
+
+
+# A Mac whose archive holds nothing of a session (a new Mac, a restored one) numbered it anew from the harness's
+# transcript, so every citation written on the first Mac named another record there. Where the workspace's sessions
+# repo, cloned on that Mac, holds the session, its records keep the numbers they were given.
+
+@pytest.fixture
+def on_a_second_mac(synced, tmp_path, monkeypatch):
+    """A session exported and synced on one Mac under a reader that files less than today's; then that Mac's archive
+    is gone, as on another Mac that has the harness's transcript and the cloned sessions repo. Returns the
+    transcript and the numbers the first Mac gave."""
+    base = {"cwd": synced["work"], "sessionId": "c1"}
+
+    def said(text, at):
+        return {**base, "timestamp": at, "type": "assistant", "message": {"model": "claude-opus-5-5", "content": [{"type": "text", "text": text}]}}
+    native = _jsonl(synced["claude"], _claude_rows(synced["work"]) + [
+        _typed(base, "Also draft the announcement.", "2026-10-30T15:00:00.000Z"), said("Drafting it.", "2026-10-30T15:00:05.000Z"),
+        _typed(base, "And send me the draft.", "2026-10-30T15:10:00.000Z"), said("Sent.", "2026-10-30T15:10:05.000Z")])
+    today = sessions.ADAPTERS["claude-code"]
+
+    def older(row, s):
+        return [rec for rec in today(row, s) if not (rec and rec.get("kind") == "user" and rec.get("text") == "Also draft the announcement.")]
+    with monkeypatch.context() as then:
+        then.setitem(sessions.ADAPTERS, "claude-code", older)
+        assert not any(line.startswith("FAILED") for line in sessions.sync())
+    first = _numbered(native)
+    sessions.root().rename(tmp_path / "the-first-macs-archive")
+    return native, first
+
+
+def test_a_mac_with_no_archive_of_a_session_keeps_the_numbers_its_synced_copy_gave(on_a_second_mac, synced):
+    native, first = on_a_second_mac
+    copy = synced["repo"] / "2026-10" / "claude-code-c1" / "transcript-0001.jsonl"
+    theirs = copy.read_bytes()
+    sessions.export(0)
+    here = _numbered(native)
+    kept = {number: record for number, record in first.items() if record[1] in sessions.SYNC_KINDS}
+    assert kept and {number: here.get(number) for number in kept} == kept        # what the copy holds keeps its number
+    late = {record[2]: number for number, record in here.items() if number > max(first)}
+    assert "Also draft the announcement." in late                                # what today's reader files besides comes after
+    others = [number for number, record in here.items() if record[1] not in sessions.SYNC_KINDS]
+    assert others and min(others) > max(first)                                   # and so does what the copy never held
+    meta = _meta(native)
+    assert meta["numbers_from"]["workspace"] == "acme" and meta["records"] == len(here)
+    assert sessions.export(0) == [] or not any(line.startswith("claude-code c1:") for line in sessions.export(0))
+    assert _numbered(native) == here                                             # a second reading adds nothing
+    assert not any(line.startswith("FAILED") for line in sessions.sync())
+    assert copy.read_bytes().startswith(theirs)                                  # and the copy is only ever added to
+
+
+def test_a_number_the_synced_copy_does_not_hold_is_said_with_why(on_a_second_mac, capsys):
+    native, first = on_a_second_mac
+    sessions.export(0)
+    gone = next(number for number, record in first.items() if record[1] == "tool_result")
+    capsys.readouterr()
+    assert cli.main(["sessions", "show", "c1", "--seq", str(gone)]) == 1
+    said = capsys.readouterr().err
+    assert f"no record #{gone}" in said and "another Mac" in said
+
+
+def test_a_session_with_no_synced_copy_is_numbered_from_its_start(synced):
+    """Held as it was: where neither the archive nor a cloned repo holds the session, nothing cited it."""
+    native = _jsonl(synced["claude"], _claude_rows(synced["work"]))
+    sessions.export(0)
+    assert min(_numbered(native)) == 0 and "numbers_from" not in _meta(native)
+
+
+def test_times_written_two_ways_are_put_in_order_as_moments():
+    """One harness writes a time with its thousandths and another without; as words, `10:00:00.500Z` stands before
+    `10:00:00Z`, which is half a second earlier."""
+    rows = [{"seq": 0, "at": "2026-10-30T10:00:00.500Z"}, {"seq": 1, "at": "2026-10-30T10:00:00Z"}, {"seq": 2},
+            {"seq": 3, "at": "not a time"}, {"seq": 4, "at": "2026-10-30T09:59:59+00:00"}]
+    assert [rec["seq"] for rec in sessions.in_time(rows)] == [4, 1, 2, 3, 0]
+    finer = [{"seq": 0, "at": "2026-10-30T10:00:00.900000001Z"}, {"seq": 1, "at": "2026-10-30T10:00:00.5Z"}]
+    assert [rec["seq"] for rec in sessions.in_time(finer)] == [1, 0]           # a fraction of any length, on every Python
+
+
+# --- the first review of 5.17.0 ---------------------------------------------------------------------------------------
+
+def _ends_with_a_tool(work: str) -> list:
+    """A session whose last records the synced copy does not hold: a tool call's result, as most turns end."""
+    base = {"cwd": work, "sessionId": "c1"}
+    return _claude_rows(work) + [
+        _typed(base, "Run the check once more.", "2026-10-30T16:00:00.000Z"),
+        {**base, "timestamp": "2026-10-30T16:00:05.000Z", "type": "assistant", "message": {"model": "claude-opus-5-5", "content": [
+            {"type": "tool_use", "id": "t9", "name": "Bash", "input": {"command": "make check"}}]}},
+        {**base, "timestamp": "2026-10-30T16:00:09.000Z", "type": "user", "message": {"role": "user", "content": [
+            {"type": "tool_result", "tool_use_id": "t9", "content": "all checks pass"}]}}]
+
+
+def _commit(repo, message: str) -> None:
+    _git(repo, "add", "-A")
+    _git(repo, "-c", "user.name=test", "-c", "user.email=test@example.invalid", "commit", "-qm", message)
+
+
+@pytest.fixture
+def ended_on_another_mac(synced, tmp_path):
+    native = _jsonl(synced["claude"], _ends_with_a_tool(synced["work"]))
+    assert not any(line.startswith("FAILED") for line in sessions.sync())
+    first = _numbered(native)
+    sessions.root().rename(tmp_path / "the-first-macs-archive")
+    return native, first
+
+
+def test_a_second_mac_gives_no_number_the_first_mac_gave_to_another_record(ended_on_another_mac, capsys):
+    """Finding 1: numbering went on from the copy's last number, which the first Mac had already given to records the
+    copy does not hold (the session's last tool result), so a citation of one named another record here."""
+    native, first = ended_on_another_mac
+    sessions.export(0)
+    here = _numbered(native)
+    assert all(here.get(number) in (record, None) for number, record in first.items()), {
+        n: (first[n], here.get(n)) for n in first if here.get(n) not in (first[n], None)}
+    last = max(number for number, record in first.items() if record[1] == "tool_result")
+    capsys.readouterr()
+    assert cli.main(["sessions", "show", "c1", "--seq", str(last)]) == 1 and "another Mac" in capsys.readouterr().err
+    own = sorted(set(here) - set(first))
+    assert own and own[0] >= len(first)                                         # this Mac's own numbers start past the first Mac's
+    assert cli.main(["sessions", "show", "c1", "--seq", str(own[0])]) == 0
+    assert "given on this Mac" in capsys.readouterr().err
+
+
+def _cut_at_the_state(monkeypatch):
+    """A write cut short after the archive's lines and before the session's state: the state is behind the archive."""
+    real = sessions.paths.write_json
+
+    def cut(path, *given, **more):
+        if Path(path).parent.name == ".state" and Path(path).name.startswith("claude-code-"):
+            raise OSError("cut short")
+        return real(path, *given, **more)
+    monkeypatch.setattr(sessions.paths, "write_json", cut)
+    return lambda: monkeypatch.setattr(sessions.paths, "write_json", real)
+
+
+def _typed_once(native: Path) -> list:
+    rows = sessions.records(_meta(native)["folder"])
+    numbers = [rec["seq"] for rec in rows]
+    assert len(numbers) == len(set(numbers)), numbers                           # no number given twice
+    return [rec["text"] for rec in rows if rec.get("kind") == "user"]
+
+
+def test_a_rebuild_cut_short_loses_nothing_at_the_next_export(filed_by_an_older_reader, harness, monkeypatch):
+    """Finding 2: the archive held a line past the state's count, and the next export dropped its own new record by
+    count."""
+    native = filed_by_an_older_reader
+    restore = _cut_at_the_state(monkeypatch)
+    sessions.export(rebuild=True)
+    restore()
+    _jsonl(native, [_typed({"cwd": harness["work"], "sessionId": "c1"}, "Then tell the team.", "2026-10-30T16:00:00.000Z")])
+    sessions.export(0)
+    typed = _typed_once(native)
+    assert sorted(typed) == sorted(set(typed)) and {"Also draft the announcement.", "Then tell the team."} <= set(typed), typed
+
+
+def test_an_export_cut_short_then_a_rebuild_files_each_record_once(harness, monkeypatch):
+    base = {"cwd": harness["work"], "sessionId": "c1"}
+    native = _jsonl(harness["claude"], _claude_rows(harness["work"]))
+    sessions.export(0)
+    _jsonl(native, [_typed(base, "Also draft the announcement.", "2026-10-30T15:00:00.000Z")])
+    restore = _cut_at_the_state(monkeypatch)
+    sessions.export(0)
+    restore()
+    _jsonl(native, [_typed(base, "Then tell the team.", "2026-10-30T16:00:00.000Z")])
+    sessions.export(rebuild=True)
+    sessions.export(0)
+    typed = _typed_once(native)
+    assert sorted(typed) == sorted(set(typed)) and {"Also draft the announcement.", "Then tell the team."} <= set(typed), typed
+
+
+def test_a_copy_another_mac_numbered_otherwise_is_not_written_over(synced, write_config, tmp_path):
+    """Finding 3: a Mac that exported before its sessions repo was cloned numbered the session itself, and its first
+    sync replaced the copy, and the numbers every citation written elsewhere uses."""
+    roots = {"workspace_roots": [str(tmp_path / "workspaces" / "*")]}
+    write_config(roots)
+    _jsonl(synced["claude"], _claude_rows(synced["work"]))
+    sessions.export(0)                                                          # no sessions repo yet on this Mac
+    theirs = synced["repo"] / "2026-10" / "claude-code-c1"
+    theirs.mkdir(parents=True)
+    (theirs / "meta.json").write_text(json.dumps({"harness": "claude-code", "session": "c1", "records": 3}), encoding="utf-8")
+    (theirs / "transcript-0001.jsonl").write_text("".join(json.dumps({"seq": n, "kind": "user", "at": f"2026-10-30T09:00:0{n}Z",
+                                                                      "text": f"from the other Mac {n}"}) + "\n" for n in range(3)), encoding="utf-8")
+    _commit(synced["repo"], "Sessions: 2026-10 (1 changed)")
+    held = (theirs / "transcript-0001.jsonl").read_bytes()
+    write_config({**roots, "sessions_repos": {"acme": str(synced["repo"])}})
+    report = sessions.sync()
+    assert any(line.startswith("FAILED acme") and "claude-code-c1" in line for line in report), report
+    assert (theirs / "transcript-0001.jsonl").read_bytes() == held
+
+
+def test_a_copy_another_mac_extended_is_not_written_over_and_the_repo_stays_on_its_branch(synced, tmp_path):
+    """Finding 3: two Macs went on with one session; the first Mac's next sync wrote its own copy over the other's,
+    failed its rebase and left the repo mid-rebase on no branch, and every sync of the workspace after it failed. It
+    now pulls first, and the session whose copy another Mac extended is refused alone."""
+    native = _jsonl(synced["claude"], _claude_rows(synced["work"]))
+    _jsonl(synced["claude"].with_name("c2.jsonl"), [{**row, "sessionId": "c2"} for row in _claude_rows(synced["work"])])
+    assert not any(line.startswith("FAILED") for line in sessions.sync())
+    other = tmp_path / "another-mac"
+    subprocess.run(["git", "clone", "-q", str(synced["remote"]), str(other)], check=True, capture_output=True)
+    copy = Path("2026-10") / "claude-code-c1" / "transcript-0001.jsonl"
+    with (other / copy).open("a", encoding="utf-8") as out:
+        out.write(json.dumps({"seq": 99, "kind": "user", "text": "written on another Mac"}) + "\n")
+    _commit(other, "another Mac")
+    _git(other, "push", "-q")
+    _jsonl(native, [_typed({"cwd": synced["work"], "sessionId": "c1"}, "One more thing.", "2026-10-30T16:00:00.000Z")])
+    _jsonl(synced["claude"].with_name("c2.jsonl"), [_typed({"cwd": synced["work"], "sessionId": "c2"}, "And this.", "2026-10-30T16:00:00.000Z")])
+    report = sessions.sync()
+    assert any(line.startswith("FAILED acme: 2026-10/claude-code-c1:") and "not written over" in line for line in report), report
+    assert report[-1] == "acme: ai-sessions-acme up to date", report                # the workspace's other sessions sync
+    assert "written on another Mac" in (synced["repo"] / copy).read_text(encoding="utf-8")
+    assert "And this." in (synced["repo"] / "2026-10" / "claude-code-c2" / "transcript-0001.jsonl").read_text(encoding="utf-8")
+    assert _git(synced["repo"], "rev-parse", "--abbrev-ref", "HEAD") == "main" and not (synced["repo"] / ".git" / "rebase-merge").exists()
+
+
+def test_a_pull_that_conflicts_is_undone_and_writes_nothing(synced, tmp_path):
+    """A commit that could not be pushed, and another Mac's change to the same file: the rebase fails, and is undone."""
+    _jsonl(synced["claude"], _claude_rows(synced["work"]))
+    assert not any(line.startswith("FAILED") for line in sessions.sync())
+    copy = Path("2026-10") / "claude-code-c1" / "transcript-0001.jsonl"
+    with (synced["repo"] / copy).open("a", encoding="utf-8") as out:
+        out.write(json.dumps({"seq": 98, "kind": "user", "text": "committed here, never pushed"}) + "\n")
+    _commit(synced["repo"], "a commit whose push failed")
+    other = tmp_path / "another-mac"
+    subprocess.run(["git", "clone", "-q", str(synced["remote"]), str(other)], check=True, capture_output=True)
+    with (other / copy).open("a", encoding="utf-8") as out:
+        out.write(json.dumps({"seq": 99, "kind": "user", "text": "written on another Mac"}) + "\n")
+    _commit(other, "another Mac")
+    _git(other, "push", "-q")
+    report = sessions.sync()
+    assert report and report[0].startswith("FAILED acme: pull --rebase"), report
+    assert not (synced["repo"] / ".git" / "rebase-merge").exists() and not (synced["repo"] / ".git" / "rebase-apply").exists()
+    assert _git(synced["repo"], "rev-parse", "--abbrev-ref", "HEAD") == "main"
+
+
+def test_a_second_mac_takes_the_copy_its_own_workspace_holds(synced, write_config, tmp_path):
+    """Finding 5: the first repo by name won, a stale copy in another workspace's repo among them."""
+    native = _jsonl(synced["claude"], _claude_rows(synced["work"]))
+    assert not any(line.startswith("FAILED") for line in sessions.sync())
+    first = _numbered(native)
+    stale = tmp_path / "ai-sessions-aaa" / "2026-10" / "claude-code-c1"
+    stale.mkdir(parents=True)
+    (stale / "meta.json").write_text(json.dumps({"harness": "claude-code", "session": "c1", "records": 2}), encoding="utf-8")
+    (stale / "transcript-0001.jsonl").write_text("".join(json.dumps({"seq": n, "kind": "user", "text": f"stale {n}"}) + "\n" for n in range(2)),
+                                                 encoding="utf-8")
+    write_config({"workspace_roots": [str(tmp_path / "workspaces" / "*")],
+                  "sessions_repos": {"acme": str(synced["repo"]), "aaa": str(tmp_path / "ai-sessions-aaa")}})
+    sessions.root().rename(tmp_path / "the-first-macs-archive")
+    sessions.export(0)
+    assert _meta(native)["numbers_from"]["workspace"] == "acme"
+    here = _numbered(native)
+    assert all(here.get(number) in (record, None) for number, record in first.items())
+
+
+def test_what_this_mac_has_not_exported_is_read_with_the_copys_numbers(on_a_second_mac):
+    """Finding 6: before a Mac's first export, `recent --live` listed the session twice, one half numbered from 0."""
+    native, first = on_a_second_mac
+    said = [rec for rec in sessions.recent(workspace="acme", turns=100, live=True) if rec.get("kind") == "user"]
+    texts = [rec["text"] for rec in said]
+    assert len(texts) == len(set(texts)), texts
+    numbered = {record[2]: number for number, record in first.items() if record[1] == "user"}
+    assert all(rec["seq"] == numbered[rec["text"]] for rec in said if rec["text"] in numbered), said
+
+
+def test_reading_again_tells_two_notes_of_one_time_apart(harness, monkeypatch):
+    """Finding 7: a record's source and data were no part of what it is, so two notes of one time were one record."""
+    base = {"cwd": harness["work"], "sessionId": "c1", "timestamp": "2026-10-30T10:00:00.000Z"}
+    native = _jsonl(harness["claude"], [{**base, "type": "agent-setting", "agentSetting": "reviewer"},   # the note the older reader passed over, first
+                                        {**base, "type": "custom-title", "customTitle": "planning"},
+                                        _typed({"cwd": harness["work"], "sessionId": "c1"}, "Plan it.", "2026-10-30T10:00:01.000Z")])
+    today = sessions.ADAPTERS["claude-code"]
+
+    def older(row, s):
+        return [] if row.get("type") == "agent-setting" else today(row, s)
+    with monkeypatch.context() as then:
+        then.setitem(sessions.ADAPTERS, "claude-code", older)
+        sessions.export(0)
+    sessions.export(rebuild=True)
+    notes = [rec.get("source") for rec in sessions.records(_meta(native)["folder"]) if rec.get("kind") == "meta"]
+    assert sorted(notes) == ["agent-setting", "custom-title"], notes
+
+
+def test_recent_puts_two_sessions_and_two_blocks_in_the_order_said(harness):
+    """Finding 8: the merged list was sorted by the time as words, and two blocks of one reply came back reversed."""
+    base = {"cwd": harness["work"], "sessionId": "c1"}
+    _jsonl(harness["claude"], [_typed(base, "Later by half a second.", "2026-10-30T10:00:00.500Z"),
+                               {**base, "timestamp": "2026-10-30T10:00:01.000Z", "type": "assistant", "message": {
+                                   "model": "claude-opus-5-5", "content": [{"type": "text", "text": "Part one."}, {"type": "text", "text": "Part two."}]}}])
+    _jsonl(harness["claude"].with_name("c2.jsonl"), [_typed({**base, "sessionId": "c2"}, "Earlier.", "2026-10-30T10:00:00Z")])
+    sessions.export(0)
+    assert [rec["text"] for rec in sessions.recent(workspace="acme", turns=10)] == ["Earlier.", "Later by half a second.", "Part one.", "Part two."]
+
+
+def test_a_transcript_the_harness_rewrote_smaller_files_nothing_twice(harness):
+    """Finding 9: it was read again from its start with nothing held passed over, and every record was filed twice."""
+    base = {"cwd": harness["work"], "sessionId": "c1"}
+    rows = _claude_rows(harness["work"]) + [_typed(base, "And one more.", "2026-10-30T15:00:00.000Z")]
+    native = _jsonl(harness["claude"], rows)
+    sessions.export(0)
+    before = _numbered(native)
+    native.write_text("".join(json.dumps(row) + "\n" for row in rows[:-1]), encoding="utf-8")
+    sessions.export(0)
+    assert _numbered(native) == before and [p["text"] for p in sessions.prompts("acme", "2026-10-30")].count("Please plan the release.") == 1
+
+
+def test_a_copy_line_whose_number_is_no_whole_number_drops_nothing_this_mac_files(synced, tmp_path):
+    """Finding 10: a last line numbered "40" was read as 40, and every record this Mac appended after it was dropped."""
+    native = _jsonl(synced["claude"], _claude_rows(synced["work"]))
+    assert not any(line.startswith("FAILED") for line in sessions.sync())
+    with (synced["repo"] / "2026-10" / "claude-code-c1" / "transcript-0001.jsonl").open("a", encoding="utf-8") as out:
+        out.write(json.dumps({"seq": "40", "kind": "user", "text": "odd"}) + "\n")
+    sessions.root().rename(tmp_path / "the-first-macs-archive")
+    sessions.export(0)
+    held = sessions.records(_meta(native)["folder"])
+    assert any(rec.get("kind") == "tool_result" for rec in held) and _meta(native)["records"] == sum(isinstance(rec.get("seq"), int) for rec in held)
+
+
+def test_a_secret_pattern_added_before_a_rebuild_files_no_record_twice(harness, monkeypatch):
+    """Finding 4: what is held is matched as masked, and a pattern added since masked the same words otherwise."""
+    native = _jsonl(harness["claude"], [_typed({"cwd": harness["work"], "sessionId": "c1"}, "use zz-test-secret-7 for the demo",
+                                                "2026-10-30T10:00:00.000Z")])
+    monkeypatch.setattr(sessions, "_SECRETS", [])
+    sessions.export(0)
+    sessions._SECRETS.append(("credential pattern", re.compile(r"zz-test-secret-[0-9]+")))
+    sessions.export(rebuild=True)
+    assert len(sessions.prompts("acme", "2026-10-30")) == 1
+
+
+def test_a_commit_policy_named_and_unreadable_masks_nothing_and_writes_nothing(harness, write_config, tmp_path, monkeypatch):
+    """Finding 4: masking fell back to no list of the principal's own when the policy the config names could not be
+    read, and the record was kept with what that list would have hidden."""
+    write_config({"workspace_roots": [str(tmp_path / "workspaces" / "*")], "commit_policy": str(tmp_path / "no-such-policy.yaml")})
+    monkeypatch.setattr(sessions, "_SECRETS", [])
+    _jsonl(harness["claude"], _claude_rows(harness["work"]))
+    report = sessions.export(0)
+    assert any("not exported" in line and "commit policy" in line for line in report), report
+    assert not list(sessions.root().glob("acme/*/*/transcript-*.jsonl"))
+
+
+def test_a_prompt_whose_time_has_a_long_fraction_is_listed_on_its_day(harness):
+    """The review: `_when` in the day's list of prompts was held by no test. A fraction of nine digits is no time to
+    Python before 3.11, and the prompt was on no day."""
+    _jsonl(harness["claude"], [_typed({"cwd": harness["work"], "sessionId": "c1"}, "Nine digits.", "2026-10-30T15:00:00.123456789Z")])
+    sessions.export(0)
+    assert [p["text"] for p in sessions.prompts("acme", "2026-10-30")] == ["Nine digits."]

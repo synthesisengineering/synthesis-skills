@@ -253,10 +253,15 @@ def cmd_sessions(args) -> int:
             print(f"{len(found)} sessions match {args.target!r}; give more of the id", file=sys.stderr)
             return 1
         rows = (sessions.around(found[0]["folder"], args.seq) if args.seq is not None else
-                sessions.records(found[0]["folder"], kinds, whole=args.whole))
+                sessions.in_time(sessions.records(found[0]["folder"], kinds, whole=args.whole)))
+        if args.seq is not None and not rows:  # said, never shown as a record with no words
+            print(sessions.no_record(found[0], args.seq), file=sys.stderr)
+            return 1
         who = f"[{found[0].get('harness')} {sessions.short(str(found[0].get('session')))}] "  # no line begins with a bare `#<seq>`
         for rec in rows:
             out(rec, who + sessions.render(rec, 0 if args.whole or rec.get("seq") == args.seq else args.width))
+        if args.seq is not None and sessions.given_here(found[0], args.seq):  # a number this Mac gave, said as that
+            print(sessions.given_here(found[0], args.seq), file=sys.stderr)
     elif args.action == "prompts":
         if not args.workspace:
             print("name the workspace whose prompts to list: --workspace <name>", file=sys.stderr)
@@ -421,7 +426,8 @@ def parser() -> argparse.ArgumentParser:
     s.add_argument("--scheduled", action="store_true", help=argparse.SUPPRESS)  # the schedule's own run, marked for the doctor
     s.add_argument("--days", type=float, default=2, help="export: transcripts changed in the last N days (default 2)")
     s.add_argument("--session", default="", help="export: only this session")
-    s.add_argument("--rebuild", action="store_true", help="export: move the archive aside and export everything again")
+    s.add_argument("--rebuild", action="store_true", help="export: read every transcript again from its start and keep what the "
+                   "archive does not hold, after the numbers it has given; no record it holds is changed")
     s.add_argument("--lost", default="", metavar="SESSION", help="export: accept as lost a transcript that was never copied "
                    "and is gone, as the doctor names it; an agent needs the principal's code")
     s.add_argument("--no-push", action="store_true", help="sync: commit in each sessions repo but do not push")
