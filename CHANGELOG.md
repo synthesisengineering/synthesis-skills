@@ -4,6 +4,51 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [5.9.0] - 2026-11-13
+
+- **What the principal asked is accounted for** (`synthesis-context-lifecycle` 2.3.0). The archive holds every
+  prompt the principal typed, and until now a request, a decision or a correction reached a project record only
+  if an agent remembered. `synthesis sessions prompts --workspace <W> [--date YYYY-MM-DD]` lists what was typed
+  on a day, each as `<harness> <session> #<seq>  HH:MM  <first words>`. With `--records <folder>` it lists only
+  the prompts that no record under that folder cites, and exits 1 while one is left. A record accounts for a
+  prompt by citing it, alone or in a range (`#12-40`, `#12 to #40`). A brief one agent wrote for another,
+  injected text, a tool's result and the prompt a command line hands a run are not the principal's prompts; in a
+  Codex session a prompt and its mirrored copy are one prompt, and the same words typed again are another. The
+  listing first copies every transcript written since that day began, and lists nothing (exit 2) while one that
+  may hold that day's prompts is not copied, or while a folder of records or a record in it cannot be read.
+- **A day is not closed clean over a request that reached no record** (`synthesis-daily-rituals` 3.11.0). Where
+  a workspace's ritual config has `"prompt_reconcile": {"records": ["<folder>"]}`, the day-end record runs the
+  listing itself and refuses a clean close while a prompt is cited by no record; `--outcome partial` records the
+  day and says how many are open. Only a missing key or `false` turns the check off: any other value is refused
+  and named. Nothing is recorded when the listing cannot be made, or when its answer is for another workspace,
+  day or set of folders, or does not agree with itself. A ritual record takes its day only as `YYYY-MM-DD`, and
+  never a day ahead.
+- **What counts as a citation.** A citation names one session: its id in full, or eight or more of its first
+  characters that no other session listed shares, and the listing prints as much of an id as tells it apart.
+  The end of a range carries its `#` unless the dash is tight, so `#12 — 2027 planning` cites #12 alone. The
+  listing's own output saved among the records cites nothing: its lines (also as a checklist, with the citation
+  in backticks or bold, or as a table), its JSON answer in any layout (also kept as a string), and the list the
+  day-end record prints when it refuses. What is written beside them is read, and a listing line with what
+  became of the prompt written on it is a record. An entry that holds citations and no word besides cites
+  nothing either: a paragraph, a list entry with the lines that continue it, or a row of a table, so a citation
+  counts wherever its sentence wraps. A record kept as JSON or YAML holds citations that stand alone in a field
+  named `cites`. The reference says what no rule can check: a citation claims its record accounts for the
+  prompt, so a list of what is open is never copied into one.
+- **Session transcripts are copied every hour, whether or not a session remembers to** (`synthesis-onboarding`
+  3.5.0, `synthesis-agent-guardrails` 2.5.1). `setup.py plugin --sessions-export` installs a LaunchAgent that
+  runs `synthesis sessions export --all --scheduled` and then `synthesis sessions sync` every hour and at
+  login, with the folders the install was made with; `setup.py uninstall` removes it only when it runs this
+  install's command. Every export leaves a stamp, and `synthesis doctor` fails when the schedule is not loaded,
+  runs another install's command, or has finished no export in a day or none of its own; and, on any Mac, when
+  a transcript could not be copied, a folder of transcripts could not be listed, or a transcript was removed
+  before any run copied it. Only the principal can accept such a loss: `synthesis sessions export --lost
+  <session>`, which an agent can run only with the principal's approval code. `synthesis sessions export` exits
+  1 when something it was asked for was not copied, and the audit log names each export.
+- **The archive reads back what it wrote.** A record that holds U+2028, U+2029 or U+0085 is read back whole:
+  split at those characters it could not be listed, opened or synced. A line torn by a cut write is finished as
+  a whole record, and a copy cut before its state was saved repeats none. On Python 3.14 a transcript that
+  cannot be looked at is named as not copied, where it had been passed over.
+
 ## [5.8.2] - 2026-11-13
 
 - **A package of the method skills for a plugin directory that takes no hooks** (`synthesis-skills-manager` 3.5.0).
