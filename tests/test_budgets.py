@@ -772,10 +772,15 @@ ROOT = Path(__file__).resolve().parents[1]
 # (the texts' own sender, run and not read), check 4, _result 2, unwatched_sends 2, FAILED 1, one import and two
 # blank lines. approvals.py 14: alone 11 (one decision at a time for a thing that can go on either of two codes),
 # one import and two blank lines. wait.py 5: past 1 MB the file of statements keeps its last 64 KB.
+# 5.12.1 (2026-11-13): plugin 25, all in the knowledge-base connector's server.py, so that a client whose ID is a URL
+# (ChatGPT, Codex) can be stored on Firestore: hashed_firestore_keys 23 (its def 1, an 8-line docstring that says why
+# every key is hashed, two imports with the blank line between them and the one after them 4, the strategy class
+# with sanitize and validate, the blank line between them and the one after the class 7, its return 1, and the two
+# blank lines after the function) and oauth_storage 2 (the key and collection strategies passed to FirestoreStore).
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # consolidate first).
 CORE_BUDGET = 13224
-PLUGIN_BUDGET = 34693
+PLUGIN_BUDGET = 34718
 
 
 def _lines(files):

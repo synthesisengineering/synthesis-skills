@@ -4,6 +4,22 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [5.12.1] - 2026-11-13
+
+- **The knowledge-base connector signs in ChatGPT and Codex on Firestore** (`synthesis-kb-distribution` 1.2.2). Its
+  first deployment answered every sign-in from ChatGPT and Codex with a server error: both identify themselves by
+  a client metadata document, so their client ID is a URL, and the OAuth proxy stores each client under its ID.
+  Firestore reads a "/" in a document ID as a path separator and refused the record ("A document must have an even
+  number of path elements"); py-key-value's Firestore store passes keys through unless it is given a strategy. The
+  connector now hashes every key into a SHA-256 document ID (the OAuth proxy only gets, puts and deletes by key, so
+  nothing is lost) and passes Firestore's own collection strategy, and authorization codes and token IDs no longer
+  appear as document names. The tests had replaced Firestore with a memory store that accepts any key; they now run
+  the real Firestore store over a client that keeps Firestore's ID rules, store and read back a client whose ID is
+  a URL, and fail without the fix with the error the deployment logged. Every release from 5.4.0, the skill's
+  first, to 5.12.0 has the defect on `firestore`; the operator's own test (`memory`) never saw it. A store that
+  already holds records under unhashed keys keeps them and never reads them again: a client registered by dynamic
+  registration (Claude) is told its ID is unknown and registers again, and each person signs in once more.
+
 ## [5.12.0] - 2026-11-13
 
 - **A status in a record carries its evidence, or says it is unverified** (`synthesis-git-hooks` 3.4.0). Off unless
