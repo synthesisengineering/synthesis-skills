@@ -4,6 +4,18 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [5.8.1] - 2026-11-12
+
+- **A guard's check takes half the time** (core). A hook is a new Python process on every tool call, and a session
+  whose environment tells Python to write no bytecode cached nothing it compiled: the guards were compiled from
+  their source on every call. On one Mac a shell command's check took about 72 ms against the 50 ms budget, and
+  `synthesis doctor` said so (`hook self-test`). The installer now compiles the runtime once, for the interpreter
+  that installs it, and the same check takes 33 ms. The plugin folders stay as each harness installed them, the
+  runtime's hash is of its source as before, and an install over a runtime without compiled code adds it.
+- CI runs the suite in two jobs for each system and Python, the core's tests and the skills'. The whole suite had
+  come to take up to 526 seconds on a macOS runner, and on main one job was cancelled at its ten-minute limit with
+  no test failing. A lint test holds the workflow to both folders, each in a job.
+
 ## [5.8.0] - 2026-11-12
 
 - **Nothing another person is given stands on an address that can change** (core, message guard 2.8.0, implementation
