@@ -30,10 +30,10 @@ keeps its first 1,000 in the record and the whole text in a blob (`text_blob`, `
 
 What the principal typed is a `user` record in each shape a Claude Code transcript holds it: a prompt that begins a
 turn; a prompt typed while a turn runs, which the harness keeps as a queued command and in no row of its own; a
-slash command that reaches the agent, written as he typed it (`/review the last change`), where the same command
-typed twice is two prompts; and his words after a system reminder that the harness put before them in one block,
+slash command that reaches the agent, written as it was typed (`/review the last change`), where the same command
+typed twice is two prompts; and the words typed after a system reminder that the harness put before them in one block,
 the reminder kept apart as a `system` record. Until 2026-11-13 the last three were `system` records, or none, and
-so in no list of what he typed: measured on thirty days of transcripts, 578 of 3,327 things typed. A command to the
+so in no list of what was typed: measured on thirty days of transcripts, 578 of 3,327 things typed. A command to the
 harness itself (`/model`) and its output stay `system`, and so do a task's notification and another agent's message
 that arrive as queued commands.
 

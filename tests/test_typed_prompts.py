@@ -1,11 +1,11 @@
-"""What the principal typed is filed as his in every shape a Claude Code transcript holds it, and a session belongs
+"""What the principal typed is filed as the principal's in every shape a Claude Code transcript holds it, and a session belongs
 to the projects it wrote into.
 
-The list of what he typed is read from the archive's `user` records, and a day does not close while one of them is
+The list of what was typed is read from the archive's `user` records, and a day does not close while one of them is
 unaccounted for. A prompt the export files as something else is never listed. Measured on thirty days of
-transcripts (2026-11-13), each row given to the export's own reader: 2,749 plain prompts were filed as his; 513
+transcripts (2026-11-13), each row given to the export's own reader: 2,749 plain prompts were filed as the principal's; 513
 typed while a turn ran (a queued command), 46 slash commands that reach the agent and 19 that followed a system
-reminder in one block were not, 17 of every 100 things he typed, and 32 of the slash commands left no record at
+reminder in one block were not, 17 of every 100 things typed, and 32 of the slash commands left no record at
 all, each dropped as a copy of the one before. Of 147 sessions that wrote into a project's folder, 134 named no
 project: a session's project came only from the session-start hook's line.
 """
@@ -62,29 +62,29 @@ def exported(harness, rows, native=None):
     return said, meta
 
 
-def his(said):
+def prompts(said):
     return [text for kind, text in said if kind == "user"]
 
 
-def test_the_shapes_a_transcript_holds_his_words_in(harness):
+def test_the_shapes_a_transcript_holds_typed_words_in(harness):
     rows = [json.loads(line.replace("{WORK}", harness["work"]).replace("{KB}", harness["kb"])) for line in SHAPES.read_text(encoding="utf-8").splitlines()]
     said, meta = exported(harness, rows)
-    assert his(said) == ["Please plan the release.", "Also bump the version.", "And tag it.", "/day-start", "/review the last change",
+    assert prompts(said) == ["Please plan the release.", "Also bump the version.", "And tag it.", "/day-start", "/review the last change",
                          "/day-start", "Please also check the tests."]
     assert not [text for kind, text in said if kind == "brief"]
     assert meta["projects"] == ["alpha", "beta"]
     listed = [p["text"] for p in sessions.prompts("acme", "2026-11-13")]
-    assert listed == his(said)                                             # the day's list of what he typed holds each
+    assert listed == prompts(said)                                             # the day's list of what was typed holds each
 
 
-def test_a_prompt_typed_while_a_turn_runs_is_his(harness):
+def test_a_prompt_typed_while_a_turn_runs_is_the_principals(harness):
     said, _ = exported(harness, [typed(harness, "Start the build."), queued(harness, "Also bump the version."),
                                  queued(harness, [{"type": "text", "text": "And tag it."}, {"type": "text", "text": "Then stop."}, {"type": "text", "text": " "}]),
-                                 queued(harness, "<pasted_content id=\"a1\">a log he pasted</pasted_content>"),
+                                 queued(harness, "<pasted_content id=\"a1\">a pasted log</pasted_content>"),
                                  queued(harness, "<command-message>review</command-message>\n<command-name>/review</command-name>"),
                                  queued(harness, "<system-reminder>The date has changed.</system-reminder>\nAnd then stop.")])
-    assert his(said) == ["Start the build.", "Also bump the version.", "And tag it.", "Then stop.",   # a block is a record, as in a user row
-                         "<pasted_content id=\"a1\">a log he pasted</pasted_content>", "/review", "And then stop."]
+    assert prompts(said) == ["Start the build.", "Also bump the version.", "And tag it.", "Then stop.",   # a block is a record, as in a user row
+                         "<pasted_content id=\"a1\">a pasted log</pasted_content>", "/review", "And then stop."]
     assert ("system", "Also bump the version.") not in said
 
 
@@ -99,16 +99,16 @@ def test_a_prompt_typed_while_a_turn_runs_is_his(harness):
     ("A notification in plain words.", {"mode": "task-notification"}),
     ("", {}), (None, {}), ({"text": "an object"}, {}), ([], {}),
 ])
-def test_a_queued_command_that_is_not_his_prompt_stays_what_it_was(harness, prompt, more):
+def test_a_queued_command_that_is_no_typed_prompt_stays_what_it_was(harness, prompt, more):
     said, _ = exported(harness, [typed(harness, "Start the build."), queued(harness, prompt, **more)])
-    assert his(said) == ["Start the build."] and not [text for kind, text in said if kind == "brief"]
+    assert prompts(said) == ["Start the build."] and not [text for kind, text in said if kind == "brief"]
 
 
-def test_a_queued_prompt_that_names_no_origin_is_his_unless_an_agent_wrote_it(harness):
+def test_a_queued_prompt_that_names_no_origin_is_the_principals_unless_an_agent_wrote_it(harness):
     said, _ = exported(harness, [queued(harness, "Carry on from the plan.", origin=None),
                                  queued(harness, "<agent-message from=\"reviewer\">Round two is back.</agent-message>", origin=None),
                                  queued(harness, "<cross-session-message from=\"s-1\">The branch is yours.</cross-session-message>", origin=None)])
-    assert his(said) == ["Carry on from the plan."]
+    assert prompts(said) == ["Carry on from the plan."]
     assert [kind for kind, text in said if "Round two" in text or "branch is yours" in text] == ["brief", "brief"]
 
 
@@ -117,15 +117,15 @@ def test_a_sub_agents_queued_prompt_is_a_brief(harness):
     assert said == [("brief", "Check the second file too.")]
 
 
-def test_a_slash_command_that_reaches_the_agent_is_his_prompt_as_he_typed_it(harness):
+def test_a_slash_command_that_reaches_the_agent_is_a_prompt_as_it_was_typed(harness):
     def command(name, args=None, **more):
         text = f"<command-message>{name}</command-message>\n<command-name>/{name}</command-name>" + (f"\n<command-args>{args}</command-args>" if args is not None else "")
         return row(harness, "user", message={"role": "user", "content": text}, **more)
     text = row(harness, "user", isMeta=True, message={"role": "user", "content": [{"type": "text", "text": "Run the ritual."}]})
     said, _ = exported(harness, [command("day-start"), text, command("review", "the last change\nand its tests"), text, command("day-start"), text,
                                  command("plugin:skill-name", "  "), command("hidden", isMeta=True)])
-    assert his(said) == ["/day-start", "/review the last change\nand its tests", "/day-start", "/plugin:skill-name"]   # the same command twice is two prompts
-    assert ("system", "Run the ritual.") in said and not any("hidden" in text for text in his(said))
+    assert prompts(said) == ["/day-start", "/review the last change\nand its tests", "/day-start", "/plugin:skill-name"]   # the same command twice is two prompts
+    assert ("system", "Run the ritual.") in said and not any("hidden" in text for text in prompts(said))
 
 
 @pytest.mark.parametrize("text", [
@@ -138,10 +138,10 @@ def test_a_slash_command_that_reaches_the_agent_is_his_prompt_as_he_typed_it(har
 ])
 def test_a_command_to_the_harness_and_its_output_are_no_prompt(harness, text):
     said, _ = exported(harness, [row(harness, "user", message={"role": "user", "content": text})])
-    assert his(said) == [] and said and said[0][0] == "system"
+    assert prompts(said) == [] and said and said[0][0] == "system"
 
 
-def test_words_after_a_system_reminder_in_one_block_are_his(harness):
+def test_words_after_a_system_reminder_in_one_block_are_the_principals(harness):
     reminder = "<system-reminder>\nThe date has changed.\n</system-reminder>"
     said, _ = exported(harness, [
         typed(harness, reminder + "\n\nPlease also check the tests."),
@@ -152,17 +152,17 @@ def test_words_after_a_system_reminder_in_one_block_are_his(harness):
         typed(harness, "Keep this whole: <system-reminder>quoted</system-reminder> is what the tag looks like."),
         typed(harness, [{"type": "text", "text": reminder}, {"type": "text", "text": "A block of its own."}]),
     ])
-    assert his(said) == ["Please also check the tests.", "Then ship it.",
+    assert prompts(said) == ["Please also check the tests.", "Then ship it.",
                          "Keep this whole: <system-reminder>quoted</system-reminder> is what the tag looks like.", "A block of its own."]
     kept = [text for kind, text in said if kind == "system"]
     assert any("The date has changed." in text and "check the tests" not in text for text in kept)   # the reminder stays, apart
-    assert not any("Please do not file this." in text for text in his(said))
+    assert not any("Please do not file this." in text for text in prompts(said))
 
 
-def test_a_reminder_then_his_words_is_no_prompt_for_a_sub_agent_or_a_meta_row(harness):
+def test_a_reminder_then_words_is_no_prompt_for_a_sub_agent_or_a_meta_row(harness):
     text = "<system-reminder>note</system-reminder>\nCheck the second file too."
     said, _ = exported(harness, [{**typed(harness, text), "isSidechain": True}, {**typed(harness, text + " (meta)"), "isMeta": True}])
-    assert his(said) == [] and ("brief", "Check the second file too.") in said
+    assert prompts(said) == [] and ("brief", "Check the second file too.") in said
 
 
 def test_a_session_belongs_to_the_projects_its_tool_calls_wrote_into(harness):
@@ -215,7 +215,7 @@ def test_a_line_the_reader_cannot_read_tags_nothing_and_is_counted(harness, monk
     monkeypatch.setattr(guards, "_shell_writes", raises)
     said, meta = exported(harness, [typed(harness, "Update the plan."), called(harness, "Bash", {"command": f"echo x > {harness['kb']}/projects/beta/notes.md"}),
                                     called(harness, "Write", {"file_path": f"{harness['kb']}/projects/alpha/CONTEXT.md", "content": "x"})])
-    assert his(said) == ["Update the plan."] and meta["projects"] == ["alpha"]
+    assert prompts(said) == ["Update the plan."] and meta["projects"] == ["alpha"]
     assert meta["skipped"]["a tool call whose written files could not be read"] == 1
 
 
@@ -223,4 +223,4 @@ def test_a_line_the_reader_cannot_read_tags_nothing_and_is_counted(harness, monk
 def test_a_tool_call_of_another_shape_tags_nothing_and_stops_nothing(harness, given):
     for tool in ("Write", "Bash", "Unknown"):
         said, meta = exported(harness, [typed(harness, f"With {tool}."), called(harness, tool, given)])
-        assert f"With {tool}." in his(said) and not meta.get("projects")
+        assert f"With {tool}." in prompts(said) and not meta.get("projects")

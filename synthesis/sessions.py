@@ -52,9 +52,9 @@ INJECTED = ("<system-reminder>", "<command-", "<local-command-", "<task-notifica
             "<user_action>", "<scheduled-task", "<skill>", "<create-pr-command>", "[Request interrupted by user")
 AGENT_WRITTEN = ("<cross-session-message", "<agent-message")  # another session's or an agent's message arrives as a prompt
 # What the principal typed arrives in more shapes than a plain user row (measured 2026-11-13 on thirty days of Claude
-# Code transcripts, each row given to this reader: 2,749 plain prompts were his, and 578 other things he typed were
+# Code transcripts, each row given to this reader: 2,749 plain prompts were filed as the principal's, and 578 other things typed were
 # not). A slash command that reaches the agent opens with its message, then its name and arguments; a command to
-# the harness (`/model`) opens with its name and is no prompt. A system reminder can stand before his words in one block.
+# the harness (`/model`) opens with its name and is no prompt. A system reminder can stand before the typed words in one block.
 SLASH = re.compile(r"\s*<command-message>.*?</command-message>\s*<command-name>\s*(/[^\s<]+)\s*</command-name>(?:\s*<command-args>(.*?)</command-args>)?", re.S)
 REMINDED = re.compile(r"((?:\s*<system-reminder>.*?</system-reminder>)+)\s*(.*)", re.S)
 MIME = {"image/png": "png", "image/jpeg": "jpg", "image/gif": "gif", "image/webp": "webp", "application/pdf": "pdf"}
@@ -359,8 +359,8 @@ class _Session:
 
 
 def _typed(s: "_Session", at, block: dict, agent: bool):
-    """The records of one text block that neither a compaction nor the harness wrote: his prompt; or the command he
-    typed, for a slash command that reaches the agent; or a system reminder and then his words, as two records; or a
+    """The records of one text block that neither a compaction nor the harness wrote: the principal's prompt; or the command as
+    typed, for a slash command that reaches the agent; or a system reminder and then the typed words, as two records; or a
     system record, where the whole block is the harness's."""
     text = block.get("text") or ""
     command, reminded = SLASH.match(text), REMINDED.match(text)
