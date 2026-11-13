@@ -19,15 +19,62 @@ a test should carry someone's work, and nothing in the handoff asked.
 ## The five lines
 
 Each line needs evidence that was read this session, not remembered. Write the evidence
-beside the line in the handoff record.
+beside the line in the handoff record. Under each line is what counts and what fails it.
+What fails includes the fact that looks like the evidence and proves nothing: a preview
+deployment has a project, a region and a revision too.
 
-| Line | What must be true | Evidence that counts | What fails it |
-|---|---|---|---|
-| Where it runs | On infrastructure that outlives the principal's machine and session, under the organization's own accounts | The deployed service's own description: its project or account, region and revision, read from the platform | A laptop, a terminal tab, a session-bound process, a temporary folder, a personal cloud account |
-| Its address | Permanent: a name the organization controls, which stays the same across restarts and redeploys | The address resolved now, and the record that shows who owns the name | A quick tunnel's host, a local name, a private or loopback address, a port on someone's machine, a preview address that changes with each build |
-| Its state | Survives a restart: sign-ins, tokens, queues and data are kept outside the process | A restart done on purpose, after which a signed-in user is still signed in and the data is still there | Anything kept in memory or in a temporary folder; "they sign in again" as the plan |
-| Who watches it | A health check that runs without anyone remembering to run it, and an alert that reaches a person when it fails | The check's definition and one alert seen arriving (a failure made on purpose in a test) | A check someone runs by hand; an alert nobody receives; a dashboard nobody opens |
-| Who owns it | A named person who is told when it fails and can fix it, and a second way to reach it when they are away | The owner's name in the service's own record and in the handoff note | "The agent", "this session", nobody |
+**1. Where it runs.** On infrastructure that outlives the principal's machine and
+session, under the organization's own accounts.
+
+- Evidence: the deployed service's own description, read from the platform (its project
+  or account, region and revision); the record that shows the organization owns that
+  account or project; and how the deployment came to exist, which shows that no job
+  removes it (it is the service's standing deployment, not a preview or a per-branch or
+  per-build copy).
+- Fails: a laptop, a terminal tab, a session-bound process, a temporary folder, a
+  personal cloud account; a preview deployment, whoever's account it is in.
+
+**2. Its address.** Permanent: a name the organization controls, which stays the same
+across restarts and redeploys.
+
+- Evidence: the address resolved now; the record that shows who owns the name; and what
+  the name points to, which must be the service's standing address and not one
+  revision's or one build's. A redeploy done on purpose, after which the same address
+  answers, proves it.
+- Fails: a quick tunnel's host, a local name, a private or loopback address, a port on
+  someone's machine, a preview address that changes with each build; an owned name
+  pointed at any of those.
+
+**3. Its state.** Survives a restart: sign-ins, tokens, queues and data are kept outside
+the process and outside the instance it runs on.
+
+- Evidence: the store the service is configured to use, read from its settings (a
+  database, a bucket or another managed store that is not the instance's own disk); and
+  a replacement done on purpose (a new instance or revision, so that the old one's
+  memory, disk and temporary folder are gone), after which a signed-in user is still
+  signed in and the data is still there.
+- Fails: anything kept in memory or in a temporary folder; a restart of the process
+  alone as the proof, since a temporary folder survives that; "they sign in again" as
+  the plan.
+
+**4. Who watches it.** A health check that runs without anyone remembering to run it,
+and an alert that reaches a person when it fails.
+
+- Evidence: the check's schedule as the platform holds it, switched on, with a run at
+  its last scheduled time that nobody started; and one alert seen arriving from a run
+  the schedule started (a failure made on purpose and left for the schedule to find).
+- Fails: a check someone runs by hand; a check that is defined and switched off; an
+  alert produced by running the check by hand; an alert nobody receives; a dashboard
+  nobody opens.
+
+**5. Who owns it.** A named person who is told when it fails and can fix it, and a
+second way to reach it when they are away.
+
+- Evidence: the owner's name in the service's own record and in the handoff note; the
+  alert of line 4 arriving where that person reads; their access to repair the service,
+  read from the platform; and the second route, tried once.
+- Fails: "the agent", "this session", nobody; a name with no access to the service; a
+  second route nobody has tried.
 
 ## Each recipient
 
@@ -54,15 +101,22 @@ If the principal decides a demonstration on test ground cannot wait, that is the
 decision to make with the facts in front of them. The handoff note then opens with one
 plain sentence that says what the demonstration depends on and when it stops. The person's
 access is removed when the demonstration ends, unless the principal decides otherwise.
-The address of a test is never written into a message to anyone but the principal: the
-send guard refuses a message that carries one (the `temporary_addresses` setting), and
-starting a quick tunnel waits for the principal's code.
+The address of a test is never written into a message to anyone but the principal.
+Where the `temporary_addresses` setting is on, two backstops stand behind that rule: the
+send guard refuses a message that carries such an address until the principal approves
+that address itself, and starting a quick tunnel in a form the guard knows waits for the
+principal's code. They are backstops, not the rule. With the setting off nothing checks
+a message; an approval is for an address, not for a recipient, so an approved address
+can go into a later message to someone else; and a tunnel started in a way the guard
+does not know is not held.
 
 ## After the handoff
 
 - What another person relies on is declared where the check-ins look (the daily rituals'
   `relied_on` setting), so its health is checked at every check-in and at every wake of
-  an autopilot run, and a failure is the first thing reported.
+  an autopilot run, and a failure is the first thing reported. The declaration schedules
+  nothing by itself: it is read when a ritual or a run reads it, and it does not stand
+  in for the service's own watch (line 4).
 - An outage, a restart or a sign-out that touches someone else's setup is an incident.
   The principal is told first, in the same turn, with who is affected and what the fix
   is. The affected people are told on the principal's approval.

@@ -29,7 +29,7 @@ not cover. Find and repair concrete gaps, then make an acceptance decision.
 7. **Verification has an endpoint.** When the required evidence is complete, return the verdict and advance; reopen accepted work only for a specific unresolved criterion or counterexample.
 8. **For autopilot task contracts, use the [software](references/autopilot-software-quality.md) and [data/document](references/autopilot-data-quality.md) methods.** A disconnected or fixed-answer check is a substantive defect.
 9. **Releases need executable acceptance (PR CI on the exact head), extracted values and boundary authority,** as the three sections below set out. A verifier is evidence; it never grants approval.
-10. **Nothing is handed to another person on test ground.** Before anyone but the principal is given something to use, pass the [handoff gate](references/handoff-gate.md): where it runs, a permanent address, state that survives a restart, a watched health check, a named owner, each with evidence, and each recipient's own access proved. A miss blocks the handoff.
+10. **Nothing is handed to another person on test ground.** Before anyone but the principal is given something to use, pass the [handoff gate](references/handoff-gate.md): where it runs, a permanent address, state that survives a restart, a watched health check, a named owner, each with the evidence the gate names, read this session, and each recipient's own access proved. A miss blocks the handoff.
 
 ## Contents
 
