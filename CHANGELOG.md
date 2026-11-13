@@ -4,6 +4,28 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [5.10.0] - 2026-11-13
+
+- **The commit check can hold an entry's own time to the clock** (`synthesis-git-hooks` 3.3.0,
+  `synthesis-agent-guardrails` 2.6.0). Off unless the config has `record_times` (`{}` turns it on). In a Markdown
+  record an entry states its own time where a line opens with the day and a time, where a parenthesis opens with
+  them or with one word that says what was done then (`added`, `as of`), and, in a session log, where a list item
+  opens with a time under a heading that names today. A commit is refused when such a stamp stands 1 to 30
+  minutes after the commit, or rounds a moment from 15 minutes back to 30 ahead (`18:3x`, `about 18:35`): the
+  clock could be read. Counted over thirty days of real commits before it shipped, every stamp that was later
+  than its commit stood within that half hour; a time farther ahead is a deadline, a schedule or a zone read as
+  local, and passes. Not read: a time inside an entry's text, an unchecked box, a code fence, a folder of
+  transcripts, a merge. A zone the stamp names is honored, and one the check does not know lets the stamp pass.
+  No approval clears a refusal: the remedy is the time `date` prints, in the command that writes the entry.
+- **A test's teardown list** (`synthesis-agent-guardrails` 2.6.0, `synthesis-agent-conformance` 2.0.3).
+  `teardown.py add "<what>" --remove "<how>"` writes down each thing a test sets up before it is made, `list`
+  shows what is left, and `done <number>` takes one off once it is gone. `synthesis doctor` reads the list at
+  every run, in whichever session, and warns while a line remains, with the oldest's age and the three oldest.
+  It refuses nothing and runs nothing a line names.
+- **A script that needs the runtime says so in one line when it is not there.** Run from a copy with no
+  `synthesis/` beside it, 25 skill scripts ended in a traceback, even for `--help`. Each now prints one line that
+  names the script and exits 2, and a lint holds the shape.
+
 ## [5.9.0] - 2026-11-13
 
 - **What the principal asked is accounted for** (`synthesis-context-lifecycle` 2.3.0). The archive holds every
