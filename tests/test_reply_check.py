@@ -1341,7 +1341,6 @@ INDEPENDENT3_OWN_WAIT = {
             "been posted, I'll reconcile the statement and close the item on your list.",
     "GW35": 'I will just wait for the pharmacy to confirm the prescription is ready and then arrange the courier pickup.',
 }
-NOT_BUILT_IN = {"GW33": "\"standing by for\" is not a built-in form; config `wait_phrases` adds it"}
 MORE_OF_THE_SEVENTH_LISTS_CLASSES = {
     "cached-copy-when-the-network-is-down": "I'll use the cached copy when the network is down.",
     "flag-it-when-it-happens-again": "I'll flag it when it happens again.",
@@ -1354,17 +1353,12 @@ MORE_WAITS_OF_THE_SEVENTH_LISTS_CLASSES = {
 }
 
 
-def _marked(group, misses):
-    return [pytest.param(reply, id=name, marks=[pytest.mark.xfail(strict=True, reason=misses[name])] if name in misses else [])
-            for name, reply in group.items()]
-
-
 @pytest.mark.parametrize("reply", _cases(INDEPENDENT3_NO_WATCHER, MORE_OF_THE_SEVENTH_LISTS_CLASSES))
 def test_a_third_list_written_without_sight_of_the_code_of_replies_that_need_no_watcher_passes(reply):
     assert _sent_back(reply) is None
 
 
-@pytest.mark.parametrize("reply", _marked(INDEPENDENT3_OWN_WAIT, NOT_BUILT_IN) + _cases(MORE_WAITS_OF_THE_SEVENTH_LISTS_CLASSES))
+@pytest.mark.parametrize("reply", _cases(INDEPENDENT3_OWN_WAIT, MORE_WAITS_OF_THE_SEVENTH_LISTS_CLASSES))
 def test_a_third_list_written_without_sight_of_the_code_of_unarmed_waits_is_sent_back(reply):
     reason = _sent_back(reply)
     assert reason and "nothing is armed" in reason
@@ -1637,6 +1631,20 @@ def test_a_record_that_cannot_be_read_holds_nothing_and_stops_nothing(tmp_path):
     assert "nothing is armed" in _with_record(A_WAIT, other)
 
 
+def test_work_started_many_megabytes_before_the_turn_ended_still_holds(tmp_path):
+    """A busy session writes megabytes between a launch and the turn that waits on it. Over thirty days of recorded
+    turn ends a 4 MB tail missed ten launches that had not reported, each of which sent back a reply whose wait the
+    harness was holding; 32 MB reads them, at about 46 ms on the one turn end in eight that reads as a wait."""
+    path = tmp_path / "busy.jsonl"
+    filler = _entry(type="assistant", message={"role": "assistant", "content": [{"type": "text", "text": "x" * 900}]}) + "\n"
+    with path.open("w", encoding="utf-8") as record:
+        record.write(_started("toolu_far", BACKGROUND_WORK["an-agent"]) + "\n")
+        for _ in range(9_000):  # about 8.6 MB
+            record.write(filler)
+    assert path.stat().st_size > 8_000_000
+    assert reply_check.held_by_harness(str(path)) is True
+
+
 def test_the_record_is_read_from_its_end_and_fast(tmp_path):
     path = tmp_path / "long.jsonl"
     filler = _entry(type="assistant", message={"role": "assistant", "content": [{"type": "text", "text": "x" * 900}]}) + "\n"
@@ -1651,11 +1659,43 @@ def test_the_record_is_read_from_its_end_and_fast(tmp_path):
     assert reply_check.held_by_harness(str(path), tail=10**9) is True
 
 
+# "Standing by for" something is a wait, as "waiting for" it is, when the thing is neither the principal's nor open-ended.
+# In thirty days of recorded turn ends 22 replies used the phrase: read as a wait whatever followed, it newly sent back
+# six, four of them an idle line to the principal ("for your choice", "for whatever's next", "on the open question");
+# read only before a thing that is named, it newly sent back two, both the session's own wait.
+STANDING_BY_FOR_A_THING = {
+    "their-reply": "I've asked the landlord's office for the countersigned lease. Standing by for their reply.",
+    "the-registry": "The tag is pushed. Standing by for the registry to publish the package.",
+    "first-person": "The export is running on their side. I'm standing by for the vendor's file.",
+    "still": "The mirror is syncing. Still standing by for the second replica to catch up.",
+}
+STANDING_BY_FOR_THE_PRINCIPAL = {
+    "your-choice": "Both drafts are above. Standing by for your choice between the two.",
+    "whatever-is-next": "Nothing is pending here. Standing by for whatever's next.",
+    "anything-else": "All four are closed. Standing by for anything else you need.",
+    "the-next-task": "The queue is empty. Standing by for the next task.",
+    "more": "That is the whole list. Standing by for more if you have it.",
+    "a-judgment-on-it": "Standing by for a reply costs nothing here, so the batch goes on.",
+    "no-thing-named": "The run is finished and the report is filed. Standing by.",
+}
+
+
+@pytest.mark.parametrize("reply", _cases(STANDING_BY_FOR_A_THING))
+def test_standing_by_for_a_named_thing_with_nothing_armed_is_sent_back(reply):
+    reason = _sent_back(reply)
+    assert reason and "nothing is armed" in reason
+
+
+@pytest.mark.parametrize("reply", _cases(STANDING_BY_FOR_THE_PRINCIPAL))
+def test_standing_by_for_the_principal_or_for_nothing_named_passes(reply):
+    assert _sent_back(reply) is None
+
+
 THE_PRINCIPALS_TURN = {
     "an-approval-code": "The note is staged. To send it, type `approve 7c41d2` within 15 minutes. Once it's out, I'll read it back from the sent folder.",
     "a-code-in-bold": "Held for **approve 51efe9**, or tell me what to change. Once that's done, I'll bring you the next decision.",
-    "a-code-named-as-one": "Two sends are held. Code: **`00bfe4`** for the cancellation, and the note to the host. Once both go through, I'll read them back.",
-    "a-code-as-a-label": "Both earlier codes expired, so I filed the calls again:\n\n- **3c3c26:** the follow-ups email.\n\nOnce it runs, I'll read it back.",
+    "a-code-named-as-one": "Two sends are held. Code: **`5d0e9a`** for the first, and the second follows it. Once both go through, I'll read them back.",
+    "a-code-as-a-label": "Both earlier codes expired, so I filed the calls again:\n\n- **2f8b41:** the summary email.\n\nOnce it runs, I'll read it back.",
     "a-staged-message": "Here is the reply.\n\nBEGIN\nThanks for the steps. I'll send the list as soon as the project exists.\nEND\n\nOnce it's sent, I'll log it in the ledger.",
     "a-staged-message-in-rules": "----- BEGIN -----\nI'll confirm the date once the venue answers.\n----- END -----\nWhen it's sent, I'll close the row.",
     "say-go": "The draft is above. Say go and it's out, and I'll schedule as soon as the vendor replies.",
