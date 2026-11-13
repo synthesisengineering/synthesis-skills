@@ -532,7 +532,7 @@ def test_a_workspace_that_keeps_no_dated_plans_is_told_so_and_nothing_else(tmp_p
     config["workspaces"]["desk"]["plans_dirs"] = []
     (state / "config.json").write_text(json.dumps(config), encoding="utf-8")
     out = record(state)[1]
-    assert "commitments: no dated plan to read" in out and "could not be read" not in out
+    assert "commitments: no dated plan to read" in out and "not taken in full" not in out
 
 
 def test_the_refusal_over_a_source_that_could_not_be_read_names_it_and_says_why(tmp_path, record):
@@ -542,5 +542,65 @@ def test_the_refusal_over_a_source_that_could_not_be_read_names_it_and_says_why(
     plan = tmp_path / "plans" / f"{DAY}.md"
     plan.write_bytes(b"# Plan\n\n\xff\xfe not text\n")
     code, _, refusal = record(state)
-    assert code == 1 and "1 plan source(s) could not be read whole" in refusal, refusal
+    assert code == 1 and "1 plan source(s) were not taken in full" in refusal, refusal
     assert f"{plan}: unreadable source" in refusal, refusal
+
+
+# --- the third review -------------------------------------------------------------------------------------------------
+
+def test_a_struck_word_and_a_tick_inside_a_sentence_leave_an_entry_open_and_a_plain_closing_mark_closes_it(tmp_path):
+    """The third review, finding 3: a title with one word struck was closed, and so was `✅ DONE` followed by a
+    sentence; a tick with its variation mark, a tick at the end and `done` after a dash were read as open."""
+    write(tmp_path / "plans", f"{DAY}.md", "# Plan\n\n## Priority Tasks\n"
+          "1. ~~Tuesday~~ Thursday: send the deck\n2. ~~Call~~ Email the landlord\n3. Deploy (✅ DONE for staging; prod still pending)\n"
+          "4. ~~Renew the pass~~ (no longer needed)\n5. ~~Book the room~~\n6. Call the bank ✔️\n7. Pay the rent ✓\n"
+          "8. File the form ✅️\n9. Return the keys — done\n10. Post the letter - sent 14:05\n11. Decide: sent or not\n")
+    assert titles(sweep(tmp_path)[1]) == ["~~Tuesday~~ Thursday: send the deck", "~~Call~~ Email the landlord",
+                                          "Deploy (✅ DONE for staging; prod still pending)", "Decide: sent or not"]
+
+
+def test_a_heading_that_says_what_is_still_to_get_done_holds_commitments(tmp_path):
+    """The third review, finding 2: `Tasks to get done` was read as a heading of things finished."""
+    read = ("## Tasks to get done\n- a1\n\n## To do (sent from my phone)\n- a2\n\n## Priority Tasks\n\n### Must get done before Friday\n- a3\n\n"
+            "### Getting things done\n- a4\n\n### Things to get done today\n- a5\n\n")
+    unread = "## Sent to the team\n- b1\n\n## Tasks done today\n- b2\n\n## Priority Tasks\n\n### Closed out and sent\n- b3\n"
+    write(tmp_path / "plans", f"{DAY}.md", "# Plan\n\n" + read + unread)
+    assert titles(sweep(tmp_path)[1]) == [f"a{n}" for n in range(1, 6)]
+
+
+def test_a_tables_row_is_closed_by_its_own_status_and_a_task_table_may_carry_times(tmp_path):
+    """The third review, finding 3: a tick in any cell closed a row (a budget approved, a month struck out), and
+    every row of a task table with a time column was passed over as a schedule's line. A row's status is its title's
+    own mark, the cell under a header that names a status, or the last cell where no header names one. A row that
+    opens with a clock time is a task under a heading whose own words place tasks, and a schedule's line under one
+    that only stands in the task section."""
+    write(tmp_path / "plans", f"{DAY}.md", "# Plan\n\n## Tasks\n\n| When | Task | Who |\n|---|---|---|\n| 10:00 | Call the bank | me |\n"
+          "| 14:30 | ~~Send the deck~~ ✅ | me |\n\n## Waiting On Others\n\n| Task | Budget | Shipped |\n|---|---|---|\n| Launch the site | ✓ | no |\n"
+          "| Hire the editor | ~~May~~ June | no |\n| Print the cards | ✓ | ✅ |\n\n## Follow-ups\n\n| Item | Status | Notes |\n|---|---|---|\n"
+          "| Chase the quote | ✅ | asked twice |\n| Chase the refund | open | ✓ on the form |\n\n## Priority Tasks\n\n### Today's hours\n\n"
+          "| When | What |\n|---|---|\n| 09:00 | Standup |\n")
+    assert titles(sweep(tmp_path)[1]) == ["Call the bank", "Launch the site", "Hire the editor", "Chase the refund"]
+
+
+def test_a_ledgers_status_that_takes_its_closing_word_back_is_open(tmp_path):
+    """The third review, finding 4: a status was closed by the word or tick it opens or ends with, whatever came
+    after: `Paid in part`, `Done—but reopened`, `In review ✅`."""
+    rows = [("Paid in part", True), ("No action yet", True), ("Done—but reopened", True), ("Closed loop pending", True),
+            ("In review ✅", True), ("✔️ waiting on Avery", True), ("Paid", False), ("No action", False), ("Replied ✅", False),
+            ("✅", False), ("Done.", False)]
+    table = "| Item | Status | Owed since |\n|---|---|---|\n" + "".join(f"| row {n} | {status} | 2026-11-01 |\n" for n, (status, _) in enumerate(rows))
+    write(tmp_path / "drafts", "_LEDGER.md", table)
+    write(tmp_path / "plans", "2026-11-12.md", "# Plan\n\nNothing dated.\n")
+    write(tmp_path / "state", "config.json", json.dumps({"workspaces": {}, "ledger_closed_words": ["PAID", "NO ACTION"]}))
+    _, report = sweep(tmp_path, env={"RITUAL_STATE_DIR": str(tmp_path / "state")})
+    assert [row["item"] for row in report["owed"]["rows"]] == [f"row {n}" for n, (_, is_open) in enumerate(rows) if is_open]
+
+
+def test_a_mark_the_sweep_refuses_is_not_called_a_source_it_could_not_read(tmp_path, record):
+    """The third review, finding 6: over a Lapsed mark dated ahead, the refusal said a plan could not be read whole.
+    The plan was read; one line of it was not taken as written, and the refusal names that."""
+    state = workspace(tmp_path, "# Friday\n\n## Priority Tasks\n\n1. **Call the landlord**\n   **Decays:** 2026-11-20 (then)\n"
+                                "   **Decay ID:** landlord\n   **Lapsed:** 2026-12-01\n")
+    code, _, refusal = record(state)
+    assert code == 1 and "1 plan source(s) were not taken in full" in refusal and "could not be read" not in refusal, refusal
+    assert "a Lapsed mark is dated ahead of the sweep's day" in refusal

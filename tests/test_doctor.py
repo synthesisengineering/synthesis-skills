@@ -921,6 +921,58 @@ def test_a_state_file_that_cannot_be_replaced_leaves_nothing_half_written_beside
     assert [path.name for path in target.parent.iterdir()] == [target.name]
 
 
+def test_a_muse_with_no_plugin_is_known_by_muses_own_code_and_not_by_its_words(machine, capsys):
+    """The third review of 5.15.0, finding 5: the note took "is not installed" at the end of Muse's own sentence for
+    a plugin that is not there, so any other wording was a look that could not tell, said again every day."""
+    home, fakebin, _ = machine
+    _note(home, version="5.0.0", ago=600.0, muse=EVENTS)
+    fake_cli(fakebin, "muse", {"error": {"code": "unknown-plugin", "message": "No plugin by that name is in this Muse."}})
+    capsys.readouterr()
+    doctor.main([])
+    line = next(line for line in capsys.readouterr().out.splitlines() if line.split()[1:3] == ["muse", "plugin"])
+    assert line.split()[0] == "fail" and line.rstrip().endswith("synthesis-skills is not installed")
+    assert "muse hook approval" not in _seen(home)
+    _note(home, version="5.0.0", ago=600.0, muse=EVENTS)
+    fake_cli(fakebin, "muse", {"error": {"code": "state-locked", "message": "Muse's state is not installed where it was."}})
+    doctor.main([])
+    entry = _seen(home)["muse hook approval"]
+    assert entry["untold"] is True and entry["said"] == "Muse's state is not installed where it was."   # another fault: it could not tell
+
+
+def test_two_threads_of_one_process_each_write_a_state_file_whole(tmp_path):
+    """The third review of 5.15.0, finding 8: both took one temporary name, so one failed as the other replaced the
+    file, and a reader could find half of it."""
+    import threading
+    target, torn, failed, stop = tmp_path / "state" / "note.json", [], [], threading.Event()
+
+    def write(n):
+        while not stop.is_set():
+            try:
+                paths.write_json(target, {"writer": n, "fill": "x" * 4000})
+            except OSError as exc:
+                failed.append(type(exc).__name__)
+
+    def read():
+        while not stop.is_set():
+            try:
+                text = target.read_text(encoding="utf-8")
+            except OSError:
+                continue
+            try:
+                json.loads(text)
+            except ValueError:
+                torn.append(len(text))
+    threads = [threading.Thread(target=write, args=(n,)) for n in (1, 2)] + [threading.Thread(target=read)]
+    for thread in threads:
+        thread.start()
+    time.sleep(0.6)
+    stop.set()
+    for thread in threads:
+        thread.join(10)
+    assert failed == [] and torn == []
+    assert [path.name for path in target.parent.iterdir()] == [target.name]
+
+
 def test_a_guard_the_doctor_could_not_tell_of_is_counted_as_not_confirmed(machine, capsys):
     home = machine[0]
     _note(home, codex=EVENTS, muse=[])
