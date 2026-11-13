@@ -39,7 +39,9 @@ the reply back once with `Before this reply goes out, revise it: ...` when the r
   calendar read came after: read back the principal's calendar for today and every date the change touched
   before reporting. A write the guard refused does not count. On 2026-10-27 a series moved to a new hour
   brought back a meeting canceled at the old hour, and only the principal looked. It reads the tail of a Claude
-  Code transcript; other harnesses' records are not read for it.
+  Code transcript; other harnesses' records are not read for it;
+- follows a message to a person this turn with nothing armed for its answer and no statement that none is awaited,
+  when the config has `reply_watch` ([a message to a person](#a-message-to-a-person)).
 
 It never sends a reply back twice in a row and lets the reply through on any internal
 error: a turn-end check that fails closed loops forever. When a reply is sent back, revise
@@ -172,6 +174,30 @@ nothing to end it. Most of the rest awaited a step of the principal's said in wo
 check does not read (`once it's sent, I'll read it back`, after a send they have yet to
 approve). What it lets pass on purpose: a wait in a reply that also asks the principal
 for something, and a wait with no subject written after a label, a dash or a semicolon.
+
+### A message to a person
+
+Off unless the config has `reply_watch` (`{}` turns it on). On 2026-11-12 the one reply that blocked a fix had no
+watch on it, and the next look was hours away. A hook cannot know that a message asks for something today; the
+seat that sent it can, and this check makes it say.
+
+- **Which calls:** a tool whose name ends in `send_gmail_message`, `send_email`, `slack_send_message`,
+  `send_message`, `reply` or `forward`, the name taken after its last `__`. `{"reply_watch": {"sends": [...]}}`
+  replaces the list; an entry with a dot in it (`messages_send.py`) is looked for in a shell command. A call the
+  guard held or refused went nowhere and is not counted. A draft, a scheduled message, a calendar event, a ticket,
+  a document, a file for the principal and a note to another session are none of these.
+- **What answers it,** when it comes after the last such call of the turn: a timer or a monitor of the harness
+  (`CronCreate`, `ScheduleWakeup`, `Monitor`, a scheduled task), or the command `synthesis wait none "<why>"`,
+  run as a command of its own and not refused. A wait this session still holds on the board answers it whenever it
+  was armed, which is what a running `synthesis wait message` or a `wait note` is.
+- **Otherwise** the reply is sent back once, naming the tool and both answers.
+
+What it does not know: whether the watch watches the right thing, and whether a reason given to `wait none` is
+true. Each is the seat's statement, on the record. It reads the tail of a Claude Code transcript, as the calendar
+read-back does; other harnesses' records are not read for it. A `reply_watch` of another shape (`true`, a list, a
+key other than `sends`) turns nothing on in silence: the reply is sent back once saying so. Measured before it was
+built: in recorded turns of 89 days, 246 held such a message that went out, on 63 days, and nothing watched for
+anything after 233 of them.
 
 ## The file-link rule
 

@@ -100,6 +100,24 @@ setting since then, held by its test.
    `ps -eo pid,pgid,etime,command`: it leads its own process group, so its pid is the group's id, and
    `kill -TERM -- -<pid>` ends it with everything it started there.
 
+## After a message to a person
+
+A message to a person starts a wait whether or not the reply says so: the answer comes to a seat that nothing will
+wake. On 2026-11-12 the one reply that blocked a fix had no watch on it, and the next look was hours away. No hook
+can know that a message asks for something today. The seat that sent it does, so the rule is that it says:
+
+- **arm a watch for the answer,** sized to how soon it matters: `synthesis wait message`, `file` or `run` as a
+  background task, a timer or a monitor of the harness, or `synthesis wait note` for one the harness holds; or
+- **say that none is awaited:** `synthesis wait none "<why>"`. It arms nothing, prints
+  `noted: no answer is awaited (<why>)`, and appends one line to `<board>/waits/none.jsonl` with the session, the
+  time and the reason, so the statement is on the record. With no reason it is refused (exit 2).
+
+Where the config has `reply_watch`, the turn-end check holds a turn to this: a turn in which a message went to a
+person ends with one of the two, after the last such message, or the reply is sent back once. What it reads is in
+the guardrails' [reply check](../../synthesis-agent-guardrails/references/reply-and-provenance.md#a-message-to-a-person).
+A draft is not such a message (the principal sends it, and nobody knows when), and neither is a calendar event, a
+ticket, a document, a file for the principal or a note to another session.
+
 ## When a wake did not arrive
 
 1. `synthesis wait list`: is the wait still on the board? A wait whose process died or whose bound passed is gone,

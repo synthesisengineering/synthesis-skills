@@ -409,16 +409,16 @@ CALENDAR_WRITE = re.compile(r"(?:create|update|manage|delete|move|respond_to)_ev
 CALENDAR_READ = re.compile(r"(?:get|list|search|list_all)_events?$|query_freebusy$")
 
 
-def unread_calendar_writes(transcript_path: str | None, tail: int = 2_000_000) -> list[str]:
-    """Calendar writes this turn that no calendar read followed (2026-10-27: moving a series revived a meeting
-    canceled at its old hour, and nobody looked). Reads the tail of a Claude Code transcript; other shapes find none."""
+def _turn_calls(transcript_path: str | None, needles: tuple, tail: int = 2_000_000) -> tuple:
+    """(the tool calls of the turn in hand, each as (id, name, input); the ids of those whose result was an error),
+    from the tail of a Claude Code transcript. Other shapes, and a tail that holds none of `needles`, give none."""
     if not transcript_path:
-        return []
+        return [], set()
     with open(transcript_path, "rb") as handle:
         handle.seek(max(0, handle.seek(0, 2) - tail))
         chunk = handle.read()
-    if b"_event" not in chunk:
-        return []
+    if not any(needle in chunk for needle in needles):
+        return [], set()
     calls, failed = [], set()
     for line in chunk.splitlines():
         try:
@@ -431,13 +431,57 @@ def unread_calendar_writes(transcript_path: str | None, tail: int = 2_000_000) -
         parts = [p for p in content if isinstance(p, dict)] if isinstance(content, list) else []
         if entry.get("type") == "user" and (isinstance(content, str) or any(p.get("type") == "text" for p in parts)):
             calls, failed = [], set()  # the principal's prompt starts a new turn
-        calls += [(p.get("id"), str(p.get("name", ""))) for p in parts if p.get("type") == "tool_use"]
+        calls += [(p.get("id"), str(p.get("name", "")), p.get("input")) for p in parts if p.get("type") == "tool_use"]
         failed |= {p.get("tool_use_id") for p in parts if p.get("type") == "tool_result" and p.get("is_error")}
+    return calls, failed
+
+
+def unread_calendar_writes(transcript_path: str | None, tail: int = 2_000_000) -> list[str]:
+    """Calendar writes this turn that no calendar read followed (2026-10-27: moving a series revived a meeting
+    canceled at its old hour, and nobody looked). Reads the tail of a Claude Code transcript; other shapes find none."""
+    calls, failed = _turn_calls(transcript_path, (b"_event",), tail)
     pending = []
-    for ident, name in calls:
+    for ident, name, _ in calls:
         pending = [] if CALENDAR_READ.search(name) else pending + (
             [name.rsplit("__", 1)[-1]] if CALENDAR_WRITE.search(name) and ident not in failed else [])
     return pending
+
+
+SENDS = ["send_gmail_message", "send_email", "slack_send_message", "send_message", "reply", "forward"]  # to a person, by the end of the tool's name
+TIMERS = ("CronCreate", "ScheduleWakeup", "Monitor", "create_scheduled_task")
+NONE = re.compile(r"(?:^|[;&|(]\s*)synthesis wait none\b")  # the command itself, not its words inside another
+
+
+def unwatched_sends(payload: dict, config: dict) -> list[str]:
+    """Config: {"reply_watch": {"sends": ["<the end of a tool's name, or a script's name>", ...]}}; off when the key
+    is absent or false, and `{}` takes the list above. The messages to a person that went out this turn with
+    nothing armed afterwards for their answer and no statement that none is awaited (2026-11-12: the one reply
+    that blocked a fix had no watch on it, and the next look was hours away). No hook knows that a message asks for
+    something today; the seat that sent it does, and this makes it say. An answer is a timer or a monitor started
+    after the last such send, `synthesis wait none "<why>"` after it, or a wait this session still holds on the
+    board. A send that was held or refused went nowhere. A setting of another shape raises ValueError."""
+    settings = config.get("reply_watch", False)
+    if settings is False:
+        return []
+    names = settings.get("sends", SENDS) if isinstance(settings, dict) and not set(settings) - {"sends"} else None
+    if not (isinstance(names, list) and all(isinstance(name, str) and name for name in names)):
+        raise ValueError('reply_watch in the synthesis config must be an object, with "sends" a list of tool names when it has one. '
+                         "Until it is, no turn is checked for a watch after a message to a person: tell the principal")
+    calls, failed = _turn_calls(payload.get("transcript_path"), tuple(name.encode() for name in names))
+    sent = []
+    for ident, name, given in calls:
+        short, command = name.rsplit("__", 1)[-1], str(given.get("command") or "") if isinstance(given, dict) else ""
+        if ident in failed:
+            continue
+        if short in TIMERS or NONE.search(command):
+            sent = []
+        else:
+            sent += [n for n in names if n == short or "." in n and n in command][:1]
+    if not sent:
+        return []
+    from synthesis import paths, wait
+    session = paths.session_id(payload)
+    return [] if session and wait.live(session) else sorted(set(sent))
 
 
 def check(payload: dict, config: dict) -> str | None:
@@ -465,6 +509,15 @@ def check(payload: dict, config: dict) -> str | None:
     if writes:
         problems.append(f"the calendar changed this turn ({', '.join(sorted(set(writes)))}) and nothing read it back. "
                         "Read the principal's calendar for today and every date the change touched before reporting.")
+    try:
+        sends = unwatched_sends(payload, config)
+    except ValueError as exc:
+        sends, _ = [], problems.append(f"{exc}.")
+    if sends:
+        problems.append(f"a message went to a person this turn ({', '.join(sends)}) and nothing is armed for its answer. Arm a "
+                        "watch sized to how soon the answer matters (`synthesis wait message`, `file` or `run` as a background "
+                        "task; `synthesis wait note` for a timer the harness holds), or say that none is awaited: "
+                        '`synthesis wait none "<why>"`.')
     missing = unsourced_quotes(reply, payload.get("transcript_path"))
     if missing:
         problems.append("quotes not found in this session's record: " + "; ".join(f'"{q}"' for q in missing)
