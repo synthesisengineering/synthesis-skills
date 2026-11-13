@@ -71,6 +71,10 @@ Passes:
   resumes once the queue has items`); a rule (`when a build fails, I'll read the first
   error`); advice (`we'll want to rotate the key once the audit ends`); a wait refused, in
   the past, or as a count (`once a day`, `as soon as possible`);
+- carrying on, or a hold, that runs to the session's own next step: `I will resume after I
+  update the snapshots`, `I'll hold the merge until I've rerun the suite`. After the
+  conjunction, `I` or `we` with a verb of receiving, or with `can`, is still an event to
+  come (`once I have it`, `when I hear back`, `when I can reach it again`);
 - text in quotation marks (double, single or curly), in inline code, in a fence of
   backticks or of tildes, and on a quoted line. A name set aside this way still counts as
   the thing awaited: `still waiting on` and a job's name in code is a wait;
@@ -89,6 +93,13 @@ Passes:
   for an approval code or names a held action's code; it asks them to act in so many words
   (`Say go and it's out`, `Tell me when it's done and I'll confirm`, `only you can`, `one
   step from you`);
+- a reply that says, in one sentence of its own, that nothing wakes this seat until the
+  principal prompts it. That is the last resort the check's own message names, so a reply
+  that has said it is not sent back to say it: `Nothing wakes this seat until you prompt
+  it`, `This seat stays idle until your next message`, `I won't see it land until you prompt
+  me`, `Nothing happens here until you prompt me`. It has to be this seat, in the present,
+  and their prompt: `nothing wakes her session`, `nothing woke this seat` and `nothing wakes
+  this seat until the build finishes` excuse nothing;
 - a list of open loops, which names what is outstanding and announces nothing: a label
   before a colon (`Waiting on others: ...`, `What we're waiting on others for: ...`), a
   heading, a table row, and a wait after a label, a dash or a semicolon inside a sentence
