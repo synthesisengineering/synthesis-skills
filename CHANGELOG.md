@@ -4,6 +4,42 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [5.19.0] - 2026-11-13
+
+- **A snapshot keeps untracked files, and every snapshot is one commit through a temporary index**
+  (`synthesis-project-management` 3.4.0; the audit of 2026-11-11, §3.2). The journal kept tracked changes alone
+  (`git stash create`), so a record no commit had taken yet was in no snapshot when something removed it. At a claim,
+  a release and a commit, the snapshot now also holds the untracked files `.gitignore` does not exclude, each up to
+  2 MB and 20 MB or 1,000 files in all, the claim's own first. A file past a limit, one git cannot read and one
+  holding a credential (the commit check's built-in patterns, now in `synthesis/credentials.py`) are named in the
+  journal and not kept; every such file under the claim is named, and `synthesis journal <path>` finds it. The
+  session start keeps tracked changes alone, inside the hook's budget, and its line says so. The snapshot is written
+  from a copy of the index, so the index itself is never written (`git stash create` rewrote it), even while another
+  process holds its lock; what the index held is the snapshot's second parent, as with `git stash create`; it needs
+  no identity, is never signed, and keeps a checkout with no commit yet or one in the middle of a merge.
+  `synthesis journal --show` writes a file back byte for byte. A commit takes one snapshot, not one at each of its
+  hooks, and the journal's lines go with their snapshots after 14 days. What Finder writes is not a record.
+- **Release and claim count an untracked file under the claim**, and the work of a repository inside a claimed folder.
+  `synthesis release` refused only for tracked changes, so a new record under a claim was released unowned, and the
+  next claim over it said nothing; it now also refuses when git cannot read the checkout at all.
+- **A counted alert for claimed records left unsaved** (`synthesis-agent-conformance` 2.2.0,
+  `synthesis-agent-guardrails` 2.9.0, `synthesis-daily-rituals` 3.15.0; the audit's gap 4). `synthesis doctor` warns,
+  never fails, when a file under a claim on the board has stayed uncommitted, or in a commit on any local branch that
+  no remote holds, longer than the config's `unsaved_hours` (24 when absent; false turns it off), counted per
+  repository with the oldest age, and names a claimed checkout git cannot read. The weekday evening job shows a fixed
+  banner for one such repository, or more than one, naming none; `synthesis doctor --unsaved` prints that count.
+- **The hourly job fetches** (`synthesis-context-lifecycle` 2.7.1, `synthesis-onboarding` 3.5.4). The scheduled
+  export also runs `git fetch` in each knowledge root and each sessions repo, never merging, writing no `FETCH_HEAD`
+  (a person's `git pull` reads theirs), with no maintenance after it and nothing asked: no terminal prompt, no
+  credential window, ssh in batch mode unless the person set an ssh command. So `git status` says how far a checkout
+  is behind its remote without an agent fetching first. The doctor's `scheduled fetch` line says when each was last
+  fetched and git's reason when one could not be; config `scheduled_fetch: false` turns it off.
+- **How it was checked.** Tests first, and one review round by a fresh reviewer given the code and no conclusion: one
+  serious finding (the file budget, spent in path order across the repository, could leave a claim's own record
+  neither kept nor named), ten moderate and twelve minor, with eleven statements in the docs that did not match the
+  code. Each was fixed with a test that failed before its fix. On a checkout of 46,680 files the session-start
+  snapshot's git work measured 316 ms, of which `git status` alone takes 147 ms.
+
 ## [5.18.0] - 2026-11-13
 
 - **The Claude desktop app's local agent-mode sessions are archived** (`synthesis-context-lifecycle` 2.7.0, the
