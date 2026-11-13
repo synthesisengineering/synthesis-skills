@@ -686,10 +686,15 @@ _DAY = (r"(?:(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)[a-z]*\.?,?[ \t]+)?(?P<year>\d{4}-)?
 _DONE = (r"(?:(?i:as of|current to|added|answered|approved|asked|begun|built|checked|closed|completed|corrected|counted|created|"
          r"decided|deleted|deployed|done|extended|filed|finished|fixed|found|held|installed|kept|left|made|measured|merged|"
          r"modified|noted|opened|posted|probed|proven|published|pushed|read|received|recorded|refreshed|released|removed|"
-         r"renamed|replied|returned|reviewed|ruled|run|said|searched|sent|shown|started|stopped|synced|tested|told|updated|"
+         r"renamed|replied|returned|reviewed|revised|ruled|run|said|searched|sent|shown|started|stopped|synced|tested|told|updated|"
          r"verified|written):?[ \t]+)?")
 STAMPS = (re.compile(_MARKS + _DAY + _SPAN), re.compile(r"\(" + _DONE + _DAY + _SPAN),
-          re.compile(_MARKS + _SPAN + r"(?=[\s,.:;)*_\]—-]|$)"))
+          re.compile(_MARKS + _SPAN + r"(?=[\s,.:;)*_\]—-]|$)"),
+          # The line opens with one of those words and then the time, a weekday or a day between them or neither
+          # (2026-11-13: `**Revised Fri 07:1x ET:**` was committed at 07:11 and no stamp was read; in thirty days of
+          # commits 110 lines open so, and 28 of them round the time or stand a few minutes after their commit).
+          re.compile(_MARKS + _DONE[:-1] + r"(?:(?:on|at)[ \t]+)?[*_`]*(?:(?P<week>Mon|Tue|Wed|Thu|Fri|Sat|Sun)[a-z]*\.?,?[ \t]+)?"
+                     r"(?:(?P<year>\d{4}-)?(?P<month>\d\d)-(?P<day>\d\d)[ \t,]+)?(?:at[ \t]+)?" + _SPAN + r"(?=[\s,.:;)*_\]—-]|$)"))
 ENTRY = re.compile(r"[ \t]*(?:(?:[-*+]|\d+[.)])[ \t]|#{1,6}[ \t])")  # what opens an entry: a list item or a heading
 BOX = re.compile(r"[ \t]*(?:[-*+]|\d+[.)])[ \t]+\[ \]")  # an unchecked box: a plan, whose time is when it is to be done
 REGIONS = {"E": "America/New_York", "C": "America/Chicago", "M": "America/Denver", "P": "America/Los_Angeles"}  # ET, EST and EDT alike
@@ -715,6 +720,8 @@ def _stamped(found, now: datetime):
         else:
             there = timezone.utc if zone else now.tzinfo
         today = now.astimezone(there)
+        if part.get("week") and not part.get("day") and part["week"].lower() != ("mon", "tue", "wed", "thu", "fri", "sat", "sun")[today.weekday()]:
+            return None  # a weekday that is not today's names another day
 
         def placed(clock):
             hour, minute = clock.split(":")[:2]
@@ -786,7 +793,7 @@ def record_times(lines: list, settings, now: datetime, read) -> list:
             continue
         marked, plan = bool(ENTRY.match(text)), bool(BOX.match(text))  # with no mark, a line opens an entry only where it begins a paragraph
         opens = marked or bool(text[:1].strip()) and not "".join(whole[max(number - 2, 0):number - 1]).strip()
-        head = STAMPS[0].match(text) if opens and not plan else None
+        head = (STAMPS[0].match(text) or STAMPS[3].match(text)) if opens and not plan else None
         stamps = ([head] if head else []) + [m for m in STAMPS[1].finditer(text) if not (head and m.start() < head.end())]
         bare = STAMPS[2].match(text) if marked and not plan and not head and "sessions" in parts else None
         if bare and f"{now:%Y-%m-%d}" in "".join(dated[number - 1:number]):  # a list item's own time, under the nearest heading that names today
