@@ -58,6 +58,51 @@ def test_session_start_registers_the_session_and_reports_unread_messages(tmp_pat
     assert board.load("S2").cwd == str(tmp_path)
 
 
+def _waits(waiting, ago=3600.0):
+    import time
+    from synthesis import paths
+    note = paths.state() / "harness-approvals.json"
+    note.parent.mkdir(parents=True, exist_ok=True)
+    note.write_text(json.dumps({"at": time.time() - ago, "waiting": waiting}), encoding="utf-8")
+    return note
+
+
+def _started(session, **more):
+    out = _hook("session-start", {"session_id": session, "cwd": "/tmp", **more})
+    assert out.returncode == 0, out.stderr
+    return json.loads(out.stdout)["hookSpecificOutput"]["additionalContext"]
+
+
+def test_session_start_says_which_other_harness_runs_without_its_hooks(tmp_path, write_config):
+    """2026-11-13: six releases in a day, and after each one Codex ran none of the plugin's hooks until the person
+    approved them again. The doctor's line said so to whoever read the doctor."""
+    write_config({})
+    _waits(["codex hook trust", "muse hook approval"])
+    context = _started("S-claude")
+    assert "2 harnesses on this machine are not running synthesis's hooks" in context
+    assert "Codex" in context and "/hooks" in context and "Muse" in context and "muse plugins approve" in context
+    _waits(["codex hook trust"])
+    assert "1 harness on this machine is not running synthesis's hooks" in _started("S-claude-2")
+    for waiting, ago in (([], 60), (["codex hook trust"], 2 * 86400)):         # nothing waits; or the note is two days old
+        _waits(waiting, ago)
+        assert "not running synthesis's hooks" not in _started(f"S-{ago}")
+    _waits(["codex hook trust"]).write_text("{not json", encoding="utf-8")
+    assert "not running synthesis's hooks" not in _started("S-garbage")       # and the session still starts
+
+
+def test_a_hook_that_runs_in_a_harness_shows_its_hooks_run_there(tmp_path, write_config):
+    """The doctor wrote that Codex waits, and then the person approved. A session of Codex whose start hook runs is
+    the evidence: its entry is struck, and no banner counts it that evening."""
+    write_config({})
+    note = _waits(["codex hook trust", "muse hook approval"])
+    rollout = tmp_path / "rollout-2026-11-13T09-00-00-0199aaaa-bbbb-7ccc-8ddd-eeeeffff0000.jsonl"
+    rollout.write_text("", encoding="utf-8")
+    context = _started("0199aaaa-bbbb-7ccc-8ddd-eeeeffff0000", transcript_path=str(rollout))
+    assert json.loads(note.read_text())["waiting"] == ["muse hook approval"]
+    after = context.split("not running synthesis's hooks")[1]
+    assert "1 harness on this machine is not running synthesis's hooks" in context and "Codex" not in after
+
+
 def test_brief_is_bounded_and_check_flags_a_long_context(tmp_path, write_config):
     proj = _knowledge(tmp_path, write_config)
     (proj / "CONTEXT.md").write_text("line\n" * 400, encoding="utf-8")

@@ -659,6 +659,47 @@ def test_doctor_reports_a_healthy_machine_and_writes_no_harness_state(machine, c
     assert snapshot(home) == before
 
 
+# --- approvals that wait ----------------------------------------------------------------------------------------------
+# A harness whose hooks wait for the person's approval runs none of them: no send guard, no deploy guard, no reply
+# check. Codex asks again after every release, and on 2026-11-13 there were six. The doctor says so on one line of
+# forty, which reaches no one who does not read it. So a run of the doctor writes down which approvals wait, and
+# two readers show it: a session's start in a harness that does run its hooks, and the weekday evening job.
+
+def _waiting(home):
+    return home / ".synthesis" / "v5" / "state" / "harness-approvals.json"
+
+
+def test_a_run_of_the_doctor_writes_down_which_approvals_wait(machine, capsys):
+    home, _, _ = machine
+    assert doctor.main([]) == 0
+    first = json.loads(_waiting(home).read_text())
+    assert first["waiting"] == [] and abs(first["at"] - time.time()) < 120
+    config = home / ".codex" / "config.toml"
+    config.write_text(config.read_text().replace(f'[hooks.state."{PLUGIN_ID}:hooks/hooks.json:pre_tool_use:0:0"]', "[unrelated]"))
+    assert doctor.main([]) == 1
+    assert json.loads(_waiting(home).read_text())["waiting"] == ["codex hook trust"]
+
+
+def test_the_count_that_waits_is_read_back_without_a_check_and_without_a_write(machine, capsys):
+    home, fakebin, _ = machine
+    capsys.readouterr()
+    assert doctor.main(["--waiting"]) == 0
+    assert capsys.readouterr().out.splitlines()[0] == "unknown"                  # no run of the doctor has written it down
+    _waiting(home).parent.mkdir(parents=True, exist_ok=True)
+    _waiting(home).write_text(json.dumps({"at": time.time() - 3600, "waiting": ["codex hook trust", "muse hook approval"]}))
+    for name in ("claude", "codex", "muse"):                                     # it asks no harness anything
+        (fakebin / name).write_text("#!/bin/sh\nexit 9\n")
+    before = _waiting(home).read_bytes()
+    assert doctor.main(["--waiting"]) == 0
+    out = capsys.readouterr().out.splitlines()
+    assert out[0] == "2" and "codex hook trust" in out[1] and "muse hook approval" in out[1]
+    assert _waiting(home).read_bytes() == before
+    _waiting(home).write_text(json.dumps({"at": time.time() - 3 * 86400, "waiting": ["codex hook trust"]}))
+    assert doctor.main(["--waiting"]) == 0 and capsys.readouterr().out.splitlines()[0] == "unknown"   # three days old says nothing of today
+    _waiting(home).write_text("{not json")
+    assert doctor.main(["--waiting"]) == 0 and capsys.readouterr().out.splitlines()[0] == "unknown"
+
+
 def test_doctor_names_each_problem_and_exits_nonzero(machine, capsys):
     home, fakebin, muse_dir = machine
     config = home / ".codex" / "config.toml"
