@@ -403,7 +403,7 @@ def parser() -> argparse.ArgumentParser:
     s.add_argument("action", choices=("export", "sync", "list", "show", "recent", "search", "prompts"))
     s.add_argument("target", nargs="?", default="", help="show: a session id or its start; search: a pattern")
     s.add_argument("--all", action="store_true", help="export: every transcript, not only those changed in --days")
-    s.add_argument("--scheduled", action="store_true", help="export: the schedule's own run, which it marks for the doctor")
+    s.add_argument("--scheduled", action="store_true", help=argparse.SUPPRESS)  # the schedule's own run, marked for the doctor
     s.add_argument("--days", type=float, default=2, help="export: transcripts changed in the last N days (default 2)")
     s.add_argument("--session", default="", help="export: only this session")
     s.add_argument("--rebuild", action="store_true", help="export: move the archive aside and export everything again")

@@ -24,6 +24,7 @@ import hashlib
 import json
 import os
 import re
+import stat
 import subprocess
 import sys
 import time
@@ -272,7 +273,7 @@ class _Session:
                     if len(whole) < len(tail):
                         size -= len(tail) - len(whole)
                         f.truncate(size)
-                    lines = whole.splitlines()
+                    lines = whole.split(b"\n")
                     for line in reversed(lines if not start else lines[1:]):  # read from mid-file, the first is part of a line
                         try:
                             number = int(json.loads(line)["seq"])
@@ -552,7 +553,8 @@ def natives(days: float = 0, unread: list | None = None) -> list:
                 named = []
             for p in named:
                 try:  # journal.jsonl is a Claude Code workflow's run journal, not a conversation
-                    kept = p.name != "journal.jsonl" and p.is_file() and p.stat().st_mtime >= since
+                    seen = p.stat()  # is_file answers False where it cannot look (Python 3.14): the error is what names it
+                    kept = p.name != "journal.jsonl" and stat.S_ISREG(seen.st_mode) and seen.st_mtime >= since
                 except OSError as exc:  # named and closed to a look: its copy says why; one removed meanwhile is no transcript
                     kept = not isinstance(exc, absent)
                 found += [(harness, p)] if kept else []
@@ -689,7 +691,7 @@ def lost(session: str) -> str:
         with (stamp.parent / "lost.jsonl").open("a", encoding="utf-8") as kept:
             kept.write(json.dumps({"transcript": names[0], **entry, "cleared": datetime.now().astimezone().isoformat(timespec="seconds")}) + "\n")
         rest = {"failed": len(waiting), "reason": next(iter(waiting.values()))["reason"], "uncopied": waiting} if waiting else {}
-        paths.write_json(stamp, {**{k: v for k, v in last.items() if k in ("exported", "complete")}, **rest})
+        paths.write_json(stamp, {**{k: v for k, v in last.items() if k in ("exported", "complete", "scheduled")}, **rest})
         return f"cleared: {said}. What it held is not in the archive; {stamp.parent / 'lost.jsonl'} keeps the loss on record"
 
 
@@ -735,7 +737,7 @@ def records(folder: str, kinds: tuple = (), whole: bool = False) -> list:
     """A session's records in order; `whole` puts each blob's full text back in place of its first characters."""
     rows = []
     for segment in sorted(Path(folder).glob("transcript-*.jsonl")):
-        for line in segment.read_text(encoding="utf-8").splitlines():
+        for line in segment.read_text(encoding="utf-8").split("\n"):  # a record may hold U+2028, which splitlines takes for a line's end
             try:
                 rec = json.loads(line)
             except ValueError:
