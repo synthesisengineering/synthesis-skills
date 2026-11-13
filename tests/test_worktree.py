@@ -387,7 +387,8 @@ def test_land_reports_a_fast_forward_that_would_overwrite_an_untracked_file(repo
         handle.write("my own notes\n")
     landed, why = worktree.land(repo.main)
     assert not landed and "fast-forward" in why
-    assert open(f"{repo.main}/news.txt").read() == "my own notes\n"
+    with open(f"{repo.main}/news.txt") as kept:
+        assert kept.read() == "my own notes\n"
 
 
 def test_land_accepts_any_checkout_of_the_repository(repo):

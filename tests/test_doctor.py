@@ -814,8 +814,11 @@ def test_catalog_counts_only_implicit_skills_against_two_percent(tmp_path):
 
 
 def test_catalog_cuts_descriptions_at_1024_characters(tmp_path):
-    long = [_skill(tmp_path, "a", description="d" * 5000)]
-    assert doctor.catalog_cost(long, None)[0] < 256 + 1100 // 4 + 40
+    """Held against the same skill with a shorter description, not against a number: the catalog names the folder the
+    skill is in, so a fixed bound failed wherever the temporary folder's path was long (572 against 571)."""
+    def cost(length: int) -> int:  # a folder for each, named by a number of the same width
+        return doctor.catalog_cost([_skill(tmp_path / str(length), "a", description="d" * length)], None)[0]
+    assert cost(5000) == cost(1024) == cost(1020) + 1  # four characters are one token
 
 
 def test_catalog_check_names_undiscoverable_skills_and_overruns(tmp_path):
@@ -1048,6 +1051,29 @@ done
         for _ in range(50):
             os.kill(int(marker.read_text()), 0)
             time.sleep(0.02)
+
+
+def test_the_doctor_closes_the_pipes_of_a_cli_it_has_stopped(tmp_path, monkeypatch):
+    """The three pipes opened to a harness CLI were left for the collector to close: nothing a person saw, and a
+    warning for each under a Python that says so (3.13: `unclosed file` three times at every such query)."""
+    fake, started, real = tmp_path / "codex", [], subprocess.Popen
+    fake.write_text("""#!/bin/sh
+while read line; do
+  case "$line" in
+    *'"id": 0'*) echo '{"id": 0, "result": {}}' ;;
+    *'"id": 1'*) echo '{"id": 1, "result": {"data": []}}' ;;
+  esac
+done
+""")
+    fake.chmod(0o755)
+
+    def recorded(*args, **kwargs):
+        started.append(real(*args, **kwargs))
+        return started[-1]
+    monkeypatch.setattr(subprocess, "Popen", recorded)
+    assert doctor.app_server_query(str(fake), "skills/list", {}) == {"data": []}
+    cli, = started
+    assert cli.returncode is not None and [pipe.closed for pipe in (cli.stdin, cli.stdout, cli.stderr)] == [True] * 3
 
 
 def test_each_sessions_repo_is_checked_for_clone_recent_sync_and_size(tmp_path):
@@ -1441,6 +1467,7 @@ def test_what_a_running_process_was_started_with_is_read_from_the_os(connector):
     finally:
         child.kill()
         child.wait()
+        child.stdout.close()
     assert seen.get("WORKSPACE_MCP_PORT") == "8765" and seen.get("ALLOWED_FILE_DIRS") == env["ALLOWED_FILE_DIRS"]
     assert check.status == "ok", check.detail
     stopped = doctor.check_outbox(*connector)

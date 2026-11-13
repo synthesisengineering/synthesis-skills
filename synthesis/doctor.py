@@ -629,7 +629,10 @@ def _reap(proc) -> None:
         os.killpg(proc.pid, 9)
     except (ProcessLookupError, PermissionError):
         pass
-    proc.wait()
+    try:
+        proc.__exit__(None, None, None)  # waits for it, and closes the pipes opened to it
+    except OSError:
+        pass  # words still unsent to a child that is gone
 
 
 def _explicit_only(skill_md: Path) -> bool:

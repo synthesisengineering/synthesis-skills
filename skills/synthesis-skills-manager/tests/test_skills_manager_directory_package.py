@@ -1,0 +1,867 @@
+"""build_directory_package.py: the hook-free package of method skills, for a plugin directory that lists no
+plugin with lifecycle hooks.
+
+Three groups. The first reads one real build, made once into a temporary folder: what the ZIP holds, where each
+byte came from, and that no packaged line promises what the package cannot do. The second gives the checks
+checkouts and archives that must fail. The third is the command line: one line of output and an exit code.
+
+Which phrases count, decided from what the skills outside the list say (the guards, the board, the rituals). A file
+is read a paragraph at a time, so a phrase that hard wrapping splits across two lines is read whole:
+
+  a hook claim            PreToolUse, SessionStart, UserPromptSubmit; "Stop hook", "session-start hook", "prompt
+                          hook", "lifecycle hooks", "v5 hooks", "synthesis-hook"; "the git hooks" and
+                          "synthesis-git-hooks"; hooks.json; core.hooksPath; and a hook or the commit check doing
+                          what only enforcement does, with a word between or in the passive too ("the hook
+                          refuses", "the hook will refuse", "the commit check refuses", "blocked by the hook"):
+                          refuse, block, deny, enforce, re-inject
+  a guard claim           a guard by its name, spaced or hyphenated, so the name of a guard skill counts: a send,
+                          message, deploy, shell, browser, account-routing, repo, commit, publish, pre-tool,
+                          synthesis or v5 guard; "the guard", but not "the guard clause"; "agent guardrails";
+                          guards.py; and a guard doing one of the same ("each guard blocks", "blocked by a guard")
+  an approval-code claim  "approve <code>", "approval code", "six-character code", "type approve" and
+                          "waits for the code"
+  a runtime need          the `synthesis` command in backticks, or one of its subcommands at the start of a line
+                          ("synthesis doctor" in a fenced block, "$ synthesis who") or after "python3 -m";
+                          ~/.synthesis/ and ~/.synthesis/v5; SYNTHESIS_HOME; an import of the synthesis core; and
+                          the coordination board: "board claims", "board row", "the coordination board", "the
+                          board records your claim", "release the claim"
+
+The same words in their ordinary senses pass: a writer's hook that lets, asks or catches, a React hook that runs, a
+guard clause, a write guard on a migration, a project's own git hooks and commit check, a pull request someone
+approved, a board of directors, a board update and a press release that claims. SPARED pins them.
+"""
+
+from __future__ import annotations
+
+import io
+import json
+import os
+import re
+import subprocess
+import sys
+import zipfile
+from pathlib import Path
+
+import pytest
+
+ROOT = Path(__file__).resolve().parents[3]
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+
+import build_directory_package as package  # noqa: E402
+
+SPEC = json.loads((ROOT / package.LIST).read_text(encoding="utf-8"))
+LISTED = SPEC["skills"]
+LEFT_OUT = SPEC.get("left_out", {})  # skills the list names as left out, each with the reason
+PLUGIN_MANIFESTS = (".claude-plugin/plugin.json", ".codex-plugin/plugin.json", ".muse-plugin/plugin.json")
+EVERY_KIND = {"a hook claim", "a guard claim", "an approval-code claim", "a runtime need"}
+# The package's own images are kept beside its list and carried under assets/, where a directory looks for them.
+IMAGES = "skills/synthesis-skills-manager/assets/directory-package"
+ICON_FIELDS = ("logo", "composerIcon")  # the two a package in the Codex format must name; each has a Dark variant
+
+
+def source(name: str) -> Path:
+    """Where a packaged file comes from in the checkout."""
+    return ROOT / (f"{IMAGES}/{name[len('assets/'):]}" if name.startswith("assets/") else name)
+
+
+# A checkout a test makes is written with none of the machine's git settings: its hooks, signing and identity
+# stay out. The real checkout is read with the settings it was cloned under.
+OWN_GIT = {**os.environ, "GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_NOSYSTEM": "1", "GIT_AUTHOR_NAME": "t",
+           "GIT_AUTHOR_EMAIL": "t@example.com", "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@example.com"}
+
+
+def git(repo, *args):
+    return subprocess.run(["git", "-C", str(repo), *args], check=True, capture_output=True, text=True,
+                          env=None if repo == ROOT else OWN_GIT).stdout
+
+
+def is_test(name: str) -> bool:
+    return "tests" in name.split("/") or name.rsplit("/", 1)[-1].startswith("test_")
+
+
+def dependencies(skill_md: str) -> list:
+    """`depends_on` in either YAML list form, read as tests/test_source_lint.py reads it."""
+    match = re.match(r"---\n(.*?)\n---\n", skill_md, re.S)
+    found = re.search(r"^depends_on:\s*(\[.*?\])?\s*$((?:\n\s+- .*)*)", match.group(1) if match else "", re.M)
+    if found and found.group(1):
+        return [name.strip().strip("\"'") for name in found.group(1)[1:-1].split(",") if name.strip()]
+    return re.findall(r"^\s+- \"?([\w.-]+)\"?\s*$", found.group(2), re.M) if found else []
+
+
+def claimed(skill: str) -> list:
+    """(path, line number, kinds) for each claim a package of this skill would carry, read as the check reads."""
+    found = []
+    for path in sorted((ROOT / "skills" / skill).rglob("*")):
+        name = path.relative_to(ROOT).as_posix()
+        if path.is_file() and "__pycache__" not in path.parts and not is_test(name):
+            lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+            found += [(name, number, kinds) for number, kinds, _ in package.claimed(lines)]
+    return found
+
+
+# ---- one real build, read back -----------------------------------------------------
+
+@pytest.fixture(scope="module")
+def this_checkout():
+    """The package is cut from the files git tracks, so a test of the real package needs the checkout itself. A copy
+    of the source with no `.git` (a release's archive) holds no record of what is tracked, and says so here."""
+    top = subprocess.run(["git", "-C", str(ROOT), "rev-parse", "--show-toplevel"], capture_output=True, text=True)
+    if top.returncode or Path(top.stdout.strip()).resolve() != ROOT.resolve():
+        pytest.skip("not a git checkout of this repository: the package is cut from the files git tracks")
+    return ROOT
+
+
+@pytest.fixture(scope="module")
+def zip_path(tmp_path_factory, this_checkout):
+    out = tmp_path_factory.mktemp("directory-package") / "methods.zip"
+    out.write_bytes(package.build(ROOT, SPEC))
+    return out
+
+
+@pytest.fixture(scope="module")
+def built(zip_path):
+    """{name in the ZIP: its bytes}."""
+    with zipfile.ZipFile(zip_path) as archive:
+        assert archive.testzip() is None
+        return {name: archive.read(name) for name in archive.namelist()}
+
+
+def test_the_zip_holds_no_hooks_folder_and_registers_no_hook(built):
+    def keys(value):
+        for key, inner in value.items() if isinstance(value, dict) else ():
+            yield key
+            yield from keys(inner)
+        for inner in value if isinstance(value, list) else ():
+            yield from keys(inner)
+
+    assert [name for name in built if "hooks" in name.split("/") or name.endswith("hooks.json")] == []
+    assert "hooks" not in set(keys(json.loads(built[package.MANIFEST])))
+    assert [name for name in built if name.endswith("plugin.json")] == [package.MANIFEST]  # no second manifest
+
+
+def test_the_zip_holds_only_the_listed_skills_the_manifest_and_its_images(built):
+    outside = [name for name in built if name != package.MANIFEST and not name.startswith("assets/")
+               and not (name.startswith("skills/") and name.split("/")[1] in LISTED and name.count("/") >= 2)]
+    assert outside == []
+    assert {name.split("/")[1] for name in built if name.startswith("skills/")} == set(LISTED)
+
+
+def test_each_listed_skill_is_whole_but_for_its_tests(built):
+    """A test is the repository's check on a skill, not the skill: one of them imports the synthesis core."""
+    tracked = git(ROOT, "ls-files", "-z", "--", *[f"skills/{name}" for name in LISTED]).split("\0")
+    assert {name for name in built if name.startswith("skills/")} == {name for name in tracked
+                                                                     if name and not is_test(name)}
+    assert [name for name in built if is_test(name)] == []
+    assert all(f"skills/{name}/{part}" in built for name in LISTED for part in ("SKILL.md", "agents/openai.yaml"))
+
+
+def test_every_packaged_file_is_byte_identical_to_its_source(built):
+    assert [name for name, data in built.items()
+            if name != package.MANIFEST and source(name).read_bytes() != data] == []
+
+
+def test_the_package_carries_the_two_images_a_directory_asks_for(built):
+    """A package in the Codex format names a logo and a composer icon, as ./ paths to files it holds. The
+    directory's own limits are held here, on the images of this repository: PNG, JPEG, WebP or SVG, at most
+    5 MiB, square and at least 48 by 48, which an SVG states as numeric sides or as its viewBox."""
+    interface = json.loads(built[package.MANIFEST])["interface"]
+    images = {name for name in built if name.startswith("assets/")}
+    assert images and {interface[field][len("./"):] for field in ICON_FIELDS} == images
+    assert all(interface[field].startswith("./assets/") for field in ICON_FIELDS)
+    tracked = git(ROOT, "ls-files", "-z", "--", IMAGES).split("\0")
+    assert images == {"assets/" + name[len(IMAGES) + 1:] for name in tracked if name}
+    for name in sorted(images):
+        assert name.endswith(".svg") and len(built[name]) <= 5 * 2 ** 20, name
+        opening = re.search(r"<svg\b[^>]*>", built[name].decode("utf-8")).group(0)
+        view = re.search(r'\bviewBox="[\d.]+[ ,]+[\d.]+[ ,]+([\d.]+)[ ,]+([\d.]+)"', opening)
+        assert view and float(view.group(1)) == float(view.group(2)) >= 48, name
+        sides = re.findall(r'(?<![\w-])(?:width|height)="([\d.]+)(?:px)?"', opening)
+        assert len(set(sides)) <= 1 and all(float(side) >= 48 for side in sides), name
+
+
+def test_the_listing_text_fits_the_limits_the_directory_states(built):
+    """From the field reference of the directory's submission page, read on 2026-11-12: what a manifest in the
+    Codex format must hold, and how long each text shown in a listing may be."""
+    manifest = json.loads(built[package.MANIFEST])
+    interface = manifest["interface"]
+    assert re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*", manifest["name"]) and len(manifest["name"]) <= 64
+    assert manifest["version"] and 0 < len(manifest["description"]) <= 4000
+    assert 0 < len(manifest["author"]["name"]) <= 120
+    assert manifest["author"]["url"].startswith("https://") and manifest["homepage"].startswith("https://")
+    assert 0 < len(interface["displayName"]) <= 30 and 0 < len(interface["shortDescription"]) <= 30
+    assert 0 < len(interface["longDescription"]) <= 4000 and 0 < len(interface["developerName"]) <= 80
+    assert interface["category"]
+    assert len(interface["capabilities"]) <= 20 and all(0 < len(label) <= 120 for label in interface["capabilities"])
+    prompts = interface.get("defaultPrompt", [])
+    assert len(prompts) <= 3 and len(set(prompts)) == len(prompts) and all(len(prompt) <= 128 for prompt in prompts)
+    assert interface["websiteURL"].startswith("https://") and len(interface["websiteURL"]) <= 1024
+    # A brand color needs a contrast of at least 2 to 1 against white (WCAG relative luminance).
+    red, green, blue = (int(interface["brandColor"][at:at + 2], 16) / 255 for at in (1, 3, 5))
+    linear = [part / 12.92 if part <= 0.03928 else ((part + 0.055) / 1.055) ** 2.4 for part in (red, green, blue)]
+    assert re.fullmatch(r"#[0-9A-Fa-f]{6}", interface["brandColor"])
+    assert 1.05 / (0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2] + 0.05) >= 2
+
+
+def test_a_script_keeps_its_executable_bit_and_a_build_is_repeatable(zip_path):
+    with zipfile.ZipFile(zip_path) as archive:
+        modes = {entry.filename: entry.external_attr >> 16 for entry in archive.infolist()}
+        assert {entry.date_time for entry in archive.infolist()} == {(1980, 1, 1, 0, 0, 0)}  # no build's own clock
+    executable = {name.split("\t", 1)[1] for name in git(ROOT, "ls-files", "-s", "-z").split("\0")
+                  if name.startswith("100755")}
+    assert {name for name, mode in modes.items() if mode & 0o111} == executable & set(modes)
+    assert package.build(ROOT, SPEC) == zip_path.read_bytes()
+
+
+def test_every_dependency_of_a_listed_skill_is_listed():
+    def closure(name, seen):
+        for need in dependencies((ROOT / "skills" / name / "SKILL.md").read_text(encoding="utf-8")):
+            if need not in seen:
+                seen.add(need)
+                closure(need, seen)
+        return seen
+
+    outside = {name: sorted(closure(name, set()) - set(LISTED)) for name in LISTED}
+    assert {name: needs for name, needs in outside.items() if needs} == {}
+
+
+def test_the_build_reads_dependencies_in_both_list_forms():
+    for skill_md in sorted(ROOT.glob("skills/*/SKILL.md")):
+        text = skill_md.read_text(encoding="utf-8")
+        assert package.depends_on(text) == dependencies(text), skill_md.parent.name
+    block = "---\nname: x\ndepends_on:\n  - synthesis-a\n  - \"synthesis-b\"\nmetadata:\n  format: v5\n---\n"
+    assert package.depends_on(block) == ["synthesis-a", "synthesis-b"]
+    unindented = block.replace("\n  - ", "\n- ")  # YAML allows a block list at its key's own indent
+    assert package.depends_on(unindented) == ["synthesis-a", "synthesis-b"]
+    assert package.depends_on("---\nname: x\n---\ndepends_on: [\"not-frontmatter\"]\n") == []
+
+
+def test_the_manifest_carries_the_repository_version_and_the_words_of_the_list(built):
+    manifest = json.loads(built[package.MANIFEST])
+    versions = {json.loads((ROOT / name).read_text(encoding="utf-8"))["version"] for name in PLUGIN_MANIFESTS}
+    assert versions == {manifest["version"]}
+    assert {key: manifest[key] for key in SPEC["manifest"]} == SPEC["manifest"]
+    assert manifest["skills"] == "./skills/"
+    plugin = json.loads((ROOT / ".codex-plugin/plugin.json").read_text(encoding="utf-8"))
+    assert {key: manifest[key] for key in ("author", "homepage", "repository", "license")} == \
+        {key: plugin[key] for key in ("author", "homepage", "repository", "license")}
+    assert manifest["name"] != plugin["name"]  # its own name: it is not the plugin, and must not pass for it
+
+
+def test_the_description_says_what_the_package_lacks_and_where_the_whole_system_is(built):
+    manifest = json.loads(built[package.MANIFEST])
+    said = manifest["description"]
+    assert [word for word in ("guards", "board", "rituals") if word not in said] == []
+    assert manifest["repository"] in said
+    assert manifest["interface"]["longDescription"] == said
+
+
+def test_every_name_on_the_list_is_a_skill_here_and_none_is_both_listed_and_left_out():
+    assert len(LISTED) == len(set(LISTED))
+    assert [name for name in [*LISTED, *LEFT_OUT] if not (ROOT / "skills" / name / "SKILL.md").is_file()] == []
+    assert set(LEFT_OUT) & set(LISTED) == set()
+
+
+def test_no_packaged_line_claims_a_hook_a_guard_or_an_approval_code_or_needs_the_runtime(built):
+    found = [f"{name}:{number}: {', '.join(kinds)}: {line.strip()[:100]}"
+             for name, data in sorted(built.items())
+             for number, kinds, line in package.claimed(data.decode("utf-8").splitlines())]
+    assert found == []
+
+
+def test_the_real_package_passes_its_own_check(capsys, this_checkout):
+    assert package.main(["--check"]) == 0
+    assert capsys.readouterr().out.startswith(f"ok: {len(LISTED)} skills, ")
+
+
+# ---- the phrases, against skills that must fail ------------------------------------------
+
+@pytest.mark.parametrize("skill, at_least", [
+    ("synthesis-message-guard", EVERY_KIND),
+    ("synthesis-agent-guardrails", EVERY_KIND),
+    ("synthesis-git-hooks", {"a hook claim", "an approval-code claim", "a runtime need"}),
+    ("synthesis-repo-guard", {"a guard claim"}),
+    # A skill that mentions a guard or a command only in passing is caught too, whatever it mentions.
+    ("synthesis-implementation-integrity", set()),
+    ("synthesis-anti-shortcuts", set()),
+    ("synthesis-adversarial-review", set()),
+    ("synthesis-decision-packet", set()),
+    ("synthesis-agent-correspondence", set()),
+])
+def test_a_runtime_skill_fails_on_its_own_text(skill, at_least):
+    kinds = {kind for _, _, found in claimed(skill) for kind in found}
+    assert skill not in LISTED
+    assert kinds and at_least <= kinds, f"{skill} no longer fails as it did; if it needs nothing now, it may be listed"
+
+
+def test_a_skill_left_out_of_the_list_is_recorded_with_its_reason_and_still_fails():
+    """Left out, never edited to pass. When its text stops failing, this test says it may come back."""
+    for name, why in LEFT_OUT.items():
+        assert why.strip()
+        assert claimed(name), f"{name} no longer fails the check: it may return to the list"
+
+
+CLAIMED = [  # (kind, a line as a skill outside the list writes it)
+    ("a hook claim", "the hook refuses this send until the principal approves"),  # the promise the check keeps out
+    ("a hook claim", "closed. The v5 PreToolUse hook runs `guards.check_send` on every Slack, Gmail, email,"),
+    ("a hook claim", "CONTEXT.md, which the SessionStart hook re-injects."),
+    ("a hook claim", "These five are also in the v5 Stop hook's built-in list, so a reply using them bare is sent"),
+    ("a hook claim", "the code in their own prompt; the prompt hook records the grant."),
+    ("a hook claim", "commit check refuses credentials and unapproved disclosures. Record which"),
+    ("a hook claim", "`synthesis doctor` then shows `git hooks: core.hooksPath -> ~/.synthesis/v5/git-hooks`."),
+    ("a hook claim", "The hook enforces this at the commit boundary because the alternative"),
+    ("a hook claim", "if a pre-commit hook blocks a commit, STOP and ask the user."),
+    ("a hook claim", "- Install or diagnose repository policy hooks: `../synthesis-git-hooks/SKILL.md`"),
+    ("a guard claim", "in v5, a merge refuses without passing PR CI, the send and deploy guards refuse"),
+    ("a guard claim", "name a narrower target; never route around the guard."),
+    ("a guard claim", "approval of that exact command (the v5 deploy guard, R3.2), and a clean scan covers only"),
+    ("a guard claim", "- **Procedure** (below): configure, and what to do when each guard blocks."),
+    ("a guard claim", "- Enforce outbound-message safety: `../synthesis-message-guard/SKILL.md`"),
+    ("a guard claim", "- Sync machines or protect repository state: `../synthesis-mac-sync/SKILL.md`, "
+                      "`../synthesis-repo-guard/SKILL.md`"),
+    ("an approval-code claim", "only the principal typing `approve <code>` in their own prompt grants it"),
+    ("an approval-code claim", "without the principal's single-use approval code for that exact action, and the"),
+    ("an approval-code claim", "A blocked send files a request with a six-character code;"),
+    ("an approval-code claim", "type approve followed by the code <code>`. Show the principal the exact text"),
+    ("an approval-code claim", "wait for the code; work in the principal's `own_repos` does not."),
+    ("a runtime need", "1. Find the holder: `synthesis who`."),
+    ("a runtime need", "1. **Configure** in `~/.synthesis/v5/config.json` (references/config.md)"),
+    ("a runtime need", "For one-off testing of the engine itself, point `SYNTHESIS_HOME` at a scratch folder"),
+    ("a runtime need", "from synthesis import yamlish  # noqa: E402"),
+    # A word between the noun and its verb, and the passive.
+    ("a hook claim", "The hook will refuse the send"),
+    ("a hook claim", "the hook then refuses the commit"),
+    ("a hook claim", "A send is blocked by the hook"),
+    ("a hook claim", "a commit that is refused by the commit check"),
+    ("a guard claim", "a send is blocked by a guard until the principal approves it"),
+    # One line for each name that nothing else on its line catches, so no name can go without a test noticing.
+    ("a hook claim", "- SessionStart establishes verified time and project state;"),
+    ("a hook claim", "the plugin's `hooks/hooks.json` decides what runs"),
+    ("a hook claim", "it shows whether git still runs the commit check (`core.hooksPath`). A"),
+    ("a hook claim", "Core `install.register_git_hooks` and `install.uninstall` (the git hooks path)"),
+    ("a guard claim", "short_description: \"Apply the agent guardrails synthesis workflow\""),
+    ("a guard claim", "(`synthesis/guards.py`), and two checks sit at the end of a turn and of a day."),
+    ("an approval-code claim", "`approve <code>`; the block message says \"approve followed by the code\""),
+    # A command with no backtick on its line, as inside a fenced block, and the runtime's own folder.
+    ("a runtime need", "synthesis doctor"),
+    ("a runtime need", "synthesis claim \"$KB/...\" --project <id>"),
+    ("a runtime need", "$ synthesis who"),
+    ("a runtime need", "`python3 -m synthesis doctor`"),
+    ("a runtime need", "`~/.synthesis/`"),
+    ("a runtime need", "Never copy one Mac's `~/.synthesis`, board session files, harness caches or transcript caches"),
+    # The coordination board and its claims.
+    ("a runtime need", "The board records your claim; release it when you pause."),
+    ("a runtime need", "Check the coordination board for live foreign claims on the"),
+    ("a runtime need", "4. **Continuity:** board claims, each session's active project, the project records,"),
+    ("a runtime need", "the one edit, commit it with `git commit -o`, and release the claim:"),
+]
+
+SPARED = [  # the same words in their ordinary senses: lines of method skills, and one made up at the end
+    "#### 1. Opening Hook (Personal Experience)",
+    "- First tweet is the hook",
+    "- Start strong to hook readers",
+    "When the diff introduces a new component, utility, hook, or abstraction, search the codebase",
+    # A review checklist's item about the reviewed project's own hooks, and advice to add a check of one's own.
+    "- [ ] Standard: **Pre-Commit Secret Scanning** — Pre-commit hooks using tools like `gitleaks`, `truffleHog`, "
+    "or `detect-secrets` to block secret commits before they enter git history",
+    "Add a pre-commit check that flags patterns like `log.*secret`, `print.*token`, `console.log.*password` in "
+    "staged files.",
+    "- [ ] Standard: **Early Returns** — Guard clauses reduce nesting",
+    "Add a guard test whenever you:",
+    "requirement, its pre-push guard, its pre-PR checklist, and its deploy",
+    "## Storage guard",  # a check the skill's own script makes, and the script ships with it
+    "12. **Production deploys always require explicit human approval.**",
+    "6. **Exclude before scoring:** your own PRs, drafts, PRs you already approved, and PRs you reviewed with no "
+    "code commits since.",
+    "1. **Reads are free; writes are deliberate.** Never `approve`, `merge`, `decline`, or `create` without the "
+    "operator's explicit intent for that specific PR.",
+    "            data = json.loads(out.stdout or \"\", object_pairs_hook=_unique_object)",
+    "The state directory defaults to `~/.synthesis/local-models/`. A successful",
+    # The discipline's name at the start of a wrapped line, and a skill's name in backticks, are no command.
+    "synthesis engineering practices, and `synthesis-content-quality` is the skill that checks them",
+    "synthesis project the work belongs to (synthesis-project-management). If the work",
+    # A writer's hook and a React hook act too; a guard, git hooks and a commit check can be a project's own.
+    "A strong hook lets the reader know what is at stake.",
+    "The best hook asks a question the reader wants answered.",
+    "A good hook catches the reader in the first line.",
+    "The useEffect hook runs after every render.",
+    "Put the guard clause first so the happy path is not nested.",
+    "Use git hooks (husky, lefthook) to run the linter.",
+    "Make sure each commit check passes in CI.",
+    "Add a write guard to the migration so two workers cannot run it at once.",
+    # The ordinary boards, which the executive-communication skill on the list writes about, and a claim of fact.
+    "The board of directors meets each quarter.",
+    "quality across the board.",
+    "Sketch it on a whiteboard first.",
+    "Once everyone is on board, send the plan.",
+    "Read when writing a progress report, executive summary or board update.",
+    "The board questioned the claim that revenue would double.",
+    "the press release claims a 40 percent gain",
+]
+
+
+
+def test_the_commands_the_rule_knows_are_the_ones_the_runtime_has():
+    """A command with no backtick on its line is known by its first word after `synthesis`. A subcommand added to
+    the runtime and not to the rule would pass in a fenced block."""
+    cli = (ROOT / "synthesis" / "cli.py").read_text(encoding="utf-8")
+    assert sorted(package.COMMANDS.split("|")) == sorted(set(re.findall(r"""sub\.add_parser\(\s*["']([\w-]+)["']""", cli)))
+
+
+@pytest.mark.parametrize("kind, line", CLAIMED)
+def test_each_phrase_is_caught(kind, line):
+    assert kind in package.claims(line)
+
+
+@pytest.mark.parametrize("line", SPARED)
+def test_the_ordinary_senses_of_the_words_pass(line):
+    assert package.claims(line) == []
+
+
+def test_a_claim_split_by_hard_wrapping_is_read_whole_and_reported_where_it_begins():
+    """This repository hard-wraps its Markdown, so a file is read a paragraph at a time: its lines up to a blank one.
+    A claim is reported at the line where it begins, the paragraph's first line when it begins there."""
+    text = ["Draft the reply and show it to the principal. Nothing reaches Slack until the send",
+            "    guard has the principal's code.",
+            "",
+            "Only the principal types the approval",
+            "code in their own prompt.",
+            "",
+            "Three lines, and the claim",
+            "on the last: write the reply, then",
+            "never route around the guard.",
+            "",
+            "A blank line ends a paragraph, so this send",
+            "",
+            "guard is two paragraphs and no claim."]
+    assert package.claimed(text) == [(1, ["a guard claim"], text[0]), (4, ["an approval-code claim"], text[3]),
+                                     (9, ["a guard claim"], text[8])]
+    assert package.claimed([]) == [] and package.claimed(["", "Prose only.", ""]) == []
+
+
+# ---- checkouts and archives that must fail --------------------------------------------
+
+def skill(name, depends="[]", body="Prose only.\n"):
+    return {"SKILL.md": f"---\nname: {name}\ndepends_on: {depends}\n---\n\n{body}",
+            "agents/openai.yaml": "interface:\n  display_name: \"x\"\n"}
+
+
+def svg(size: str) -> str:
+    return f'<svg xmlns="http://www.w3.org/2000/svg" {size}><rect width="10" height="10"/></svg>\n'
+
+
+MARK = svg('viewBox="0 0 64 64"')
+ICONS = {"logo": "./assets/mark.svg", "composerIcon": "./assets/mark.svg"}
+METHODS = {"name": "methods", "description": "Methods.", "interface": ICONS}
+
+
+def checkout(tmp_path, skills, listed=None, manifest=None, version="5.8.0", images=None):
+    """A committed checkout holding these skills, a list that names `listed` (default: all), one manifest and the
+    package's images ({name: text}; default: one mark, which both icon fields of the default manifest name)."""
+    repo = tmp_path / "checkout"
+    files = {package.MANIFEST: json.dumps({"name": "synthesis-skills", "version": version}),
+             package.LIST: json.dumps({"skills": sorted(skills) if listed is None else listed,
+                                       "manifest": manifest or METHODS})}
+    files.update({f"{IMAGES}/{name}": text for name, text in ({"mark.svg": MARK} if images is None else images).items()})
+    for name, parts in skills.items():
+        files.update({f"skills/{name}/{part}": text for part, text in parts.items()})
+    for name, text in files.items():
+        (repo / name).parent.mkdir(parents=True, exist_ok=True)
+        (repo / name).write_text(text, encoding="utf-8")
+    git(repo, "init", "-q")
+    git(repo, "add", ".")
+    git(repo, "commit", "-qm", "init")
+    return repo
+
+
+def problems(repo):
+    spec = package.read_list(repo)
+    return package.verify(repo, spec, package.build(repo, spec))
+
+
+def test_a_sound_checkout_has_no_problem(tmp_path):
+    repo = checkout(tmp_path, {"alpha": skill("alpha", '["beta"]'), "beta": skill("beta")})
+    assert problems(repo) == []
+
+
+@pytest.mark.parametrize("skills, listed, manifest, expected", [
+    ({"alpha": {**skill("alpha"), "hooks/hooks.json": "{}\n"}}, None, None,
+     "skills/alpha/hooks/hooks.json: holds or registers a hook"),
+    ({"alpha": skill("alpha")}, None, {"name": "methods", "hooks": "./hooks/hooks.json"},
+     ".codex-plugin/plugin.json: holds or registers a hook"),
+    ({"alpha": skill("alpha")}, None, {"name": "methods", "extensions": {"com.openai": {"hooks": {"Stop": []}}}},
+     ".codex-plugin/plugin.json: holds or registers a hook"),
+    ({"alpha": skill("alpha", '["gamma"]'), "gamma": skill("gamma")}, ["alpha"], None,
+     "skills/alpha/SKILL.md: depends on gamma, which is not on the list"),
+    ({"alpha": skill("alpha", "\n  - gamma"), "gamma": skill("gamma")}, ["alpha"], None,
+     "skills/alpha/SKILL.md: depends on gamma, which is not on the list"),
+    ({"alpha": skill("alpha")}, ["alpha", "absent"], None,
+     "skills/absent/SKILL.md: missing, so absent is no skill of this checkout"),
+    ({"alpha": skill("alpha", body="The PreToolUse hook holds a send until the principal types `approve <code>`.\n")},
+     None, None, "skills/alpha/SKILL.md:6: a hook claim, an approval-code claim: The PreToolUse hook holds"),
+    ({"alpha": {**skill("alpha"), "references/setup.md": "Run `synthesis doctor` first.\n"}}, None, None,
+     "skills/alpha/references/setup.md:1: a runtime need: Run `synthesis doctor` first."),
+    ({"alpha": {**skill("alpha"), "scripts/run.py": "from synthesis import yamlish\n"}}, None, None,
+     "skills/alpha/scripts/run.py:1: a runtime need: from synthesis import yamlish"),
+    ({"alpha": skill("alpha", body="Nothing reaches Slack until the send\nguard has the principal's code.\n")},
+     None, None, "skills/alpha/SKILL.md:6: a guard claim: Nothing reaches Slack until the send"),
+    ({"alpha": {**skill("alpha"), "references/setup.md": "First:\n\n```bash\nsynthesis doctor\n```\n"}}, None, None,
+     "skills/alpha/references/setup.md:4: a runtime need: synthesis doctor"),
+    ({"alpha": skill("alpha")}, None, {"name": "methods", "description": "The guard refuses what it must."},
+     ".codex-plugin/plugin.json:4: a guard claim"),
+    ({"alpha": skill("alpha")}, None, {"name": "methods", "version": "9.9.9"},
+     ".codex-plugin/plugin.json: version 9.9.9, not the repository's 5.8.0"),
+])
+def test_a_checkout_that_must_fail_does(tmp_path, skills, listed, manifest, expected):
+    found = problems(checkout(tmp_path, skills, listed, manifest))
+    assert any(problem.startswith(expected) for problem in found), found
+
+
+@pytest.mark.parametrize("interface, images, expected", [
+    ({"composerIcon": "./assets/mark.svg"}, None, ".codex-plugin/plugin.json: interface.logo is missing"),
+    ({"logo": "./assets/mark.svg"}, None, ".codex-plugin/plugin.json: interface.composerIcon is missing"),
+    ({**ICONS, "logo": ""}, None, ".codex-plugin/plugin.json: interface.logo is missing"),
+    ({**ICONS, "composerIcon": ["./assets/mark.svg"]}, None,
+     ".codex-plugin/plugin.json: interface.composerIcon names ['./assets/mark.svg'], which is no ./assets/ path"),
+    ({**ICONS, "logo": "assets/mark.svg"}, None,
+     ".codex-plugin/plugin.json: interface.logo names assets/mark.svg, which is no ./assets/ path to an image"),
+    ({**ICONS, "logo": "./assets/absent.svg"}, None,
+     ".codex-plugin/plugin.json: interface.logo names ./assets/absent.svg, which is no ./assets/ path to an image"),
+    ({**ICONS, "logo": "./skills/alpha/SKILL.md"}, None,
+     ".codex-plugin/plugin.json: interface.logo names ./skills/alpha/SKILL.md, which is no ./assets/ path to an image"),
+    ({**ICONS, "logo": "./assets/../skills/alpha/SKILL.md"}, None,
+     ".codex-plugin/plugin.json: interface.logo names ./assets/../skills/alpha/SKILL.md, which is no ./assets/ path"),
+    ({**ICONS, "logoDark": "./assets/absent.svg"}, None,
+     ".codex-plugin/plugin.json: interface.logoDark names ./assets/absent.svg, which is no ./assets/ path to an image"),
+    ({**ICONS, "composerIconDark": 7}, None,
+     ".codex-plugin/plugin.json: interface.composerIconDark names 7, which is no ./assets/ path to an image"),
+    (ICONS, {"mark.svg": MARK, "spare.svg": MARK}, "assets/spare.svg: no image field of the manifest names it"),
+    (ICONS, {}, ".codex-plugin/plugin.json: interface.logo names ./assets/mark.svg, which is no ./assets/ path"),
+])
+def test_a_package_without_its_two_images_is_refused(tmp_path, interface, images, expected):
+    """Codex's package validation requires a logo and a composer icon, each a ./ path to a file of the package."""
+    repo = checkout(tmp_path, {"alpha": skill("alpha")}, manifest={**METHODS, "interface": interface}, images=images)
+    found = problems(repo)
+    assert any(problem.startswith(expected) for problem in found), found
+
+
+@pytest.mark.parametrize("inside, refused", [
+    ('<script>fetch("https://example.com/")</script>', True),
+    ('<image href="https://example.com/pixel.png" width="1" height="1"/>', True),
+    ('<use xlink:href="../../SKILL.md#x"/>', True),
+    ('<rect width="1" height="1" style="fill:url(https://example.com/g.svg#g)"/>', True),
+    ("<rect width='1' height='1' fill='url( \"other.svg#g\" )'/>", True),
+    ('<defs><linearGradient id="g"/></defs><rect width="1" height="1" fill="url(#g)"/><use href="#g"/>', False),
+    ('<image href="data:image/png;base64,iVBORw0KGgo=" width="1" height="1"/>', False),
+])
+def test_an_image_that_runs_a_script_or_loads_from_outside_itself_is_refused(tmp_path, inside, refused):
+    """A directory shows the package's images to everyone who opens its page. An SVG can run a script and can load
+    another file, from the reader's network or from beside itself; one that does either passed (a review of 5.8.2)."""
+    mark = f'<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 64 64">{inside}</svg>\n'
+    found = problems(checkout(tmp_path, {"alpha": skill("alpha")}, images={"mark.svg": mark}))
+    assert found == (["assets/mark.svg: an image that runs a script or loads from outside itself"] if refused else [])
+
+
+def test_a_manifest_with_no_interface_is_refused_for_both_images(tmp_path):
+    found = problems(checkout(tmp_path, {"alpha": skill("alpha")}, manifest={"name": "methods"}, images={}))
+    assert [problem for problem in found if "is missing" in problem] == [
+        f".codex-plugin/plugin.json: interface.{field} is missing: a package names its logo and its composer icon"
+        for field in ICON_FIELDS]
+
+
+def test_the_images_are_carried_under_assets_and_a_dark_variant_may_be_named(tmp_path):
+    interface = {**ICONS, "logoDark": "./assets/dark/mark.svg"}
+    repo = checkout(tmp_path, {"alpha": skill("alpha")}, manifest={**METHODS, "interface": interface},
+                    images={"mark.svg": MARK, "dark/mark.svg": svg('width="48" height="48"')})
+    assert problems(repo) == []
+    with zipfile.ZipFile(io.BytesIO(package.build(repo, package.read_list(repo)))) as archive:
+        assert archive.read("assets/mark.svg").decode("utf-8") == MARK
+        assert set(archive.namelist()) == {package.MANIFEST, "skills/alpha/SKILL.md", "skills/alpha/agents/openai.yaml",
+                                           "assets/mark.svg", "assets/dark/mark.svg"}
+        assert json.loads(archive.read(package.MANIFEST))["interface"] == interface
+
+
+def test_an_image_that_is_no_text_is_carried_and_a_claim_in_one_that_is_text_is_caught(tmp_path):
+    png = b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x40\x00\x00\x00\x40\x08\x06\x00\x00\x00\xff\xfe"
+    repo = checkout(tmp_path, {"alpha": skill("alpha")},
+                    manifest={**METHODS, "interface": {"logo": "./assets/mark.png", "composerIcon": "./assets/mark.png"}},
+                    images={})
+    (repo / IMAGES).mkdir(parents=True)
+    (repo / IMAGES / "mark.png").write_bytes(png)
+    git(repo, "add", ".")
+    git(repo, "commit", "-qm", "a raster mark")
+    assert problems(repo) == []
+    spoken = svg('viewBox="0 0 64 64"').replace("<rect", "<title>The send guard refuses it</title><rect")
+    said = problems(checkout(tmp_path / "second", {"alpha": skill("alpha")}, images={"mark.svg": spoken}))
+    assert len(said) == 1 and said[0].startswith("assets/mark.svg:1: a guard claim")
+
+
+def test_a_skill_that_gains_a_claim_drops_out_by_failing_and_passes_once_off_the_list(tmp_path):
+    promise = "The send guard holds every message until it is approved.\n"
+    repo = checkout(tmp_path, {"alpha": skill("alpha"), "beta": skill("beta", body=promise)})
+    assert [problem for problem in problems(repo) if "a guard claim" in problem]
+    listing = repo / package.LIST
+    listing.write_text(json.dumps({**json.loads(listing.read_text()), "skills": ["alpha"]}))
+    assert problems(repo) == []
+
+
+def test_tests_stay_out_of_the_package_and_everything_else_of_a_skill_goes_in(tmp_path):
+    parts = {**skill("alpha"), "scripts/run.py": "print('x')\n", "scripts/test_run.py": "from synthesis import x\n",
+             "tests/test_alpha.py": "import run\n", "tests/fixtures/sample.json": "{}\n",
+             "references/method.md": "A method.\n", "assets/table.yaml": "a: 1\n"}
+    repo = checkout(tmp_path, {"alpha": parts})
+    with zipfile.ZipFile(io.BytesIO(package.build(repo, package.read_list(repo)))) as archive:
+        names = set(archive.namelist())
+    assert names == {package.MANIFEST, "skills/alpha/SKILL.md", "skills/alpha/agents/openai.yaml",
+                     "skills/alpha/scripts/run.py", "skills/alpha/references/method.md",
+                     "skills/alpha/assets/table.yaml", "assets/mark.svg"}
+    assert problems(repo) == []
+
+
+def test_an_untracked_file_in_a_listed_skill_is_not_packaged(tmp_path):
+    repo = checkout(tmp_path, {"alpha": skill("alpha")})
+    (repo / "skills" / "alpha" / "notes-not-committed.md").write_text("A draft nobody reviewed.\n")
+    with zipfile.ZipFile(io.BytesIO(package.build(repo, package.read_list(repo)))) as archive:
+        assert "skills/alpha/notes-not-committed.md" not in archive.namelist()
+
+
+def test_a_symbolic_link_in_a_listed_skill_stops_the_build(tmp_path, capsys):
+    """Followed, a link could carry a file from outside its skill, or from the machine that builds."""
+    repo = checkout(tmp_path, {"alpha": skill("alpha")})
+    outside = tmp_path / "outside.md"
+    outside.write_text("Not the skill's.\n")
+    (repo / "skills" / "alpha" / "references").mkdir()
+    (repo / "skills" / "alpha" / "references" / "linked.md").symlink_to(outside)
+    git(repo, "add", ".")
+    git(repo, "commit", "-qm", "a link")
+    for argv in (("--check",), (tmp_path / "methods.zip",)):
+        code, lines = run(capsys, *argv, "--repo-root", repo)
+        assert code == 2 and "skills/alpha/references/linked.md is a symbolic link" in lines[0]
+    assert not (tmp_path / "methods.zip").exists()
+
+
+def test_a_symbolic_link_among_the_images_stops_the_build(tmp_path, capsys):
+    repo = checkout(tmp_path, {"alpha": skill("alpha")}, images={})
+    outside = tmp_path / "outside.svg"
+    outside.write_text(MARK)
+    (repo / IMAGES).mkdir(parents=True)
+    (repo / IMAGES / "mark.svg").symlink_to(outside)
+    git(repo, "add", ".")
+    git(repo, "commit", "-qm", "a linked mark")
+    code, lines = run(capsys, "--check", "--repo-root", repo)
+    assert code == 2 and f"{IMAGES}/mark.svg is a symbolic link" in lines[0]
+
+
+def rewritten(data: bytes, change: dict) -> bytes:
+    """The archive with members added or replaced ({name: bytes}) or removed ({name: None})."""
+    with zipfile.ZipFile(io.BytesIO(data)) as archive:
+        files = {name: archive.read(name) for name in archive.namelist()}
+    files.update(change)
+    out = io.BytesIO()
+    with zipfile.ZipFile(out, "w") as archive:
+        for name, content in files.items():
+            if content is not None:
+                archive.writestr(name, content)
+    return out.getvalue()
+
+
+@pytest.mark.parametrize("change, expected", [
+    ({"README.md": b"Extra.\n"}, "README.md: not a file of a listed skill"),
+    ({"hooks/hooks.json": b"{}\n"}, "hooks/hooks.json: holds or registers a hook"),
+    ({"skills/gamma/SKILL.md": b"---\nname: gamma\n---\n"}, "skills/gamma/SKILL.md: not a file of a listed skill"),
+    ({"skills/alpha/tests/test_alpha.py": b"x = 1\n"},
+     "skills/alpha/tests/test_alpha.py: not a file of a listed skill"),
+    ({"skills/alpha/SKILL.md": b"---\nname: alpha\ndepends_on: []\n---\n\nReworded.\n"},
+     "skills/alpha/SKILL.md: differs from its source"),
+    ({"skills/alpha/agents/openai.yaml": b"\xff\xfe not text"},
+     "skills/alpha/agents/openai.yaml: not UTF-8 text, so its lines cannot be read"),
+    ({".codex-plugin/plugin.json": None}, ".codex-plugin/plugin.json: version None, not the repository's 5.8.0"),
+    ({"assets/mark.svg": MARK.replace("64 64", "96 96").encode()}, "assets/mark.svg: differs from its source"),
+    ({"assets/extra.svg": MARK.encode()}, "assets/extra.svg: differs from its source"),
+    ({"assets/mark.svg": None}, ".codex-plugin/plugin.json: interface.logo names ./assets/mark.svg, which is no"),
+])
+def test_an_archive_that_is_not_the_checkout_is_refused(tmp_path, change, expected):
+    repo = checkout(tmp_path, {"alpha": skill("alpha")})
+    spec = package.read_list(repo)
+    found = package.verify(repo, spec, rewritten(package.build(repo, spec), change))
+    assert any(problem.startswith(expected) for problem in found), found
+
+
+# ---- the command line: one line and an exit code -----------------------------------------
+
+def run(capsys, *argv):
+    code = package.main([str(arg) for arg in argv])
+    return code, capsys.readouterr().out.strip().splitlines()
+
+
+def test_a_build_writes_the_zip_and_says_what_it_holds(tmp_path, capsys):
+    repo = checkout(tmp_path, {"alpha": skill("alpha", '["beta"]'), "beta": skill("beta")})
+    out = tmp_path / "methods.zip"
+    code, lines = run(capsys, out, "--repo-root", repo)
+    assert (code, lines) == (0, [f"built {out}: 2 skills, 6 files, {out.stat().st_size} bytes, version 5.8.0"])
+    with zipfile.ZipFile(out) as archive:
+        assert json.loads(archive.read(package.MANIFEST)) == {"name": "methods", "version": "5.8.0",
+                                                              "description": "Methods.", "interface": ICONS}
+    assert git(repo, "status", "--porcelain") == ""  # nothing is written into the checkout
+
+
+def test_check_verifies_and_writes_nothing(tmp_path, capsys, monkeypatch):
+    repo = checkout(tmp_path, {"alpha": skill("alpha")})
+    monkeypatch.chdir(tmp_path)  # a file written beside the caller would show below too
+    before = sorted(path for path in tmp_path.rglob("*") if ".git" not in path.parts)
+    code, lines = run(capsys, "--check", "--repo-root", repo)
+    assert code == 0 and len(lines) == 1
+    assert re.fullmatch(r"ok: 1 skill, 4 files, \d+ bytes, version 5\.8\.0; nothing written", lines[0])
+    assert sorted(path for path in tmp_path.rglob("*") if ".git" not in path.parts) == before
+
+
+def test_a_defect_refuses_the_build_names_it_and_writes_nothing(tmp_path, capsys):
+    repo = checkout(tmp_path, {"alpha": skill("alpha", body="The Stop hook sends the reply back.\n")})
+    out = tmp_path / "methods.zip"
+    for argv in ((out, "--repo-root", repo), ("--check", "--repo-root", repo)):
+        code, lines = run(capsys, *argv)
+        assert code == 1 and lines[0] == "refused: 1 problem; nothing written"
+        assert lines[1].startswith("skills/alpha/SKILL.md:6: a hook claim: The Stop hook sends")
+    assert not out.exists()
+
+
+def test_a_package_is_cut_from_committed_files(tmp_path, capsys):
+    repo = checkout(tmp_path, {"alpha": skill("alpha")})
+    (repo / "skills" / "alpha" / "SKILL.md").write_text(skill("alpha", body="Edited, not committed.\n")["SKILL.md"])
+    out = tmp_path / "methods.zip"
+    code, lines = run(capsys, out, "--repo-root", repo)
+    assert code == 1 and not out.exists()
+    assert lines[1] == "skills/alpha/SKILL.md: differs from the last commit; a package is cut from committed files"
+    assert run(capsys, "--check", "--repo-root", repo)[0] == 0  # the check reads the files as they are
+    git(repo, "commit", "-qam", "edit")
+    assert run(capsys, out, "--repo-root", repo)[0] == 0 and out.is_file()
+    out.unlink()
+    (repo / IMAGES / "mark.svg").write_text(svg('viewBox="0 0 96 96"'))  # an image is cut from a commit too
+    code, lines = run(capsys, out, "--repo-root", repo)
+    assert code == 1 and not out.exists()
+    assert lines[1] == f"{IMAGES}/mark.svg: differs from the last commit; a package is cut from committed files"
+
+
+def test_a_written_package_holds_the_commits_bytes_whatever_the_checkout_holds(tmp_path, capsys):
+    """A ZIP that is written is the one a directory receives, so it is read from the last commit itself. Read from
+    the checkout's files, it carried three things no commit held (a review of 5.8.2): a version edited and not
+    committed, a file git had been told to assume unchanged, and line ends a checkout had converted."""
+    repo = checkout(tmp_path, {"alpha": skill("alpha"), "beta": skill("beta")})
+    out, committed = tmp_path / "methods.zip", skill("alpha")["SKILL.md"].encode("utf-8")
+    manifest = repo / package.MANIFEST
+    manifest.write_text(json.dumps({"name": "synthesis-skills", "version": "9.9.9"}))  # a version not committed
+    code, lines = run(capsys, out, "--repo-root", repo)
+    assert code == 1 and not out.exists()
+    assert lines[1] == f"{package.MANIFEST}: differs from the last commit; a package is cut from committed files"
+    git(repo, "checkout", "--", package.MANIFEST)
+    git(repo, "update-index", "--assume-unchanged", "skills/alpha/SKILL.md")  # git no longer reports the next edit
+    with (repo / "skills" / "alpha" / "SKILL.md").open("a") as edited:
+        edited.write("A line nobody committed.\n")
+    assert git(repo, "status", "--porcelain") == ""
+    assert run(capsys, out, "--repo-root", repo)[0] == 0
+    with zipfile.ZipFile(out) as archive:
+        assert archive.read("skills/alpha/SKILL.md") == committed
+    out.unlink()
+    git(repo, "config", "core.autocrlf", "true")  # as Git for Windows sets it: a checkout's lines end in CR LF
+    (repo / "skills" / "beta" / "SKILL.md").unlink()
+    git(repo, "checkout", "--", "skills/beta/SKILL.md")
+    assert b"\r\n" in (repo / "skills" / "beta" / "SKILL.md").read_bytes() and git(repo, "status", "--porcelain") == ""
+    assert run(capsys, out, "--repo-root", repo)[0] == 0
+    with zipfile.ZipFile(out) as archive:
+        assert archive.read("skills/beta/SKILL.md") == skill("beta")["SKILL.md"].encode("utf-8")
+        assert json.loads(archive.read(package.MANIFEST))["version"] == "5.8.0"
+
+
+def test_changed_since_names_the_listed_skills_that_changed(tmp_path, capsys):
+    repo = checkout(tmp_path, {"alpha": {**skill("alpha"), "tests/test_alpha.py": "x = 1\n"}, "beta": skill("beta"),
+                               "gamma": skill("gamma")}, listed=["alpha", "beta"])
+    git(repo, "tag", "v5.8.0")
+    assert run(capsys, "--changed-since", "v5.8.0", "--repo-root", repo) == \
+        (0, ["unchanged since v5.8.0: no new submission is due"])
+    # A test of a listed skill and a skill off the list are not in the package, so they change nothing.
+    (repo / "skills" / "alpha" / "tests" / "test_alpha.py").write_text("x = 2\n")
+    (repo / "skills" / "gamma" / "SKILL.md").write_text(skill("gamma", body="Changed.\n")["SKILL.md"])
+    git(repo, "commit", "-qam", "outside the package")
+    assert run(capsys, "--changed-since", "v5.8.0", "--repo-root", repo)[0] == 0
+    (repo / "skills" / "beta" / "references").mkdir()
+    (repo / "skills" / "beta" / "references" / "new.md").write_text("New.\n")
+    git(repo, "add", ".")
+    git(repo, "commit", "-qm", "beta gains a reference")
+    (repo / "skills" / "alpha" / "SKILL.md").write_text(skill("alpha", body="Not committed yet.\n")["SKILL.md"])
+    assert run(capsys, "--changed-since", "v5.8.0", "--repo-root", repo) == \
+        (1, ["changed since v5.8.0: alpha, beta; a new submission is due"])
+
+
+def test_a_file_moved_between_listed_skills_changes_both(tmp_path, capsys):
+    repo = checkout(tmp_path, {"alpha": {**skill("alpha"), "references/shared.md": "A shared method.\n" * 20},
+                               "beta": skill("beta")})
+    git(repo, "tag", "v5.8.0")
+    (repo / "skills" / "beta" / "references").mkdir()
+    git(repo, "mv", "skills/alpha/references/shared.md", "skills/beta/references/shared.md")
+    git(repo, "commit", "-qm", "moved")
+    assert run(capsys, "--changed-since", "v5.8.0", "--repo-root", repo) == \
+        (1, ["changed since v5.8.0: alpha, beta; a new submission is due"])
+
+
+def test_changed_since_counts_a_change_to_the_list_itself(tmp_path, capsys):
+    repo = checkout(tmp_path, {"alpha": skill("alpha")})
+    git(repo, "tag", "v5.8.0")
+    listing = repo / package.LIST
+    listing.write_text(json.dumps({**json.loads(listing.read_text()),
+                                   "manifest": {"name": "methods", "description": "Reworded."}}))
+    assert run(capsys, "--changed-since", "v5.8.0", "--repo-root", repo) == \
+        (1, ["changed since v5.8.0: the list; a new submission is due"])
+
+
+def test_changed_since_passes_over_a_change_to_the_list_that_changes_nothing_in_the_package(tmp_path, capsys):
+    """The list also says why a skill was left out and what the package is about, and neither is in the ZIP: an edit
+    to those alone reported a submission due when none was (a review of 5.8.2)."""
+    repo = checkout(tmp_path, {"alpha": skill("alpha")})
+    git(repo, "tag", "v5.8.0")
+    listing = repo / package.LIST
+    was = json.loads(listing.read_text())
+    listing.write_text(json.dumps({**was, "about": "Reworded.", "left_out": {"gamma": "It needs the runtime."}}, indent=2))
+    assert run(capsys, "--changed-since", "v5.8.0", "--repo-root", repo) == \
+        (0, ["unchanged since v5.8.0: no new submission is due"])
+    listing.write_text(json.dumps({**was, "skills": ["alpha"], "manifest": {**was["manifest"], "description": "New."}}))
+    assert run(capsys, "--changed-since", "v5.8.0", "--repo-root", repo) == \
+        (1, ["changed since v5.8.0: the list; a new submission is due"])
+
+
+def test_changed_since_counts_a_change_to_an_image(tmp_path, capsys):
+    repo = checkout(tmp_path, {"alpha": skill("alpha")})
+    git(repo, "tag", "v5.8.0")
+    (repo / IMAGES / "mark.svg").write_text(svg('viewBox="0 0 96 96"'))
+    assert run(capsys, "--changed-since", "v5.8.0", "--repo-root", repo) == \
+        (1, ["changed since v5.8.0: its images; a new submission is due"])
+    (repo / "skills" / "alpha" / "SKILL.md").write_text(skill("alpha", body="Changed too.\n")["SKILL.md"])
+    listing = repo / package.LIST
+    listing.write_text(json.dumps({**json.loads(listing.read_text()), "manifest": {**METHODS, "description": "New."}}))
+    assert run(capsys, "--changed-since", "v5.8.0", "--repo-root", repo) == \
+        (1, ["changed since v5.8.0: the list, its images, alpha; a new submission is due"])
+
+
+def test_what_cannot_be_read_exits_2_and_says_why(tmp_path, capsys):
+    repo = checkout(tmp_path, {"alpha": skill("alpha")})
+    code, lines = run(capsys, "--changed-since", "v0.0.0", "--repo-root", repo)
+    assert code == 2 and lines[0].startswith("cannot continue: ")
+    code, lines = run(capsys, tmp_path / "no-such-folder" / "methods.zip", "--repo-root", repo)
+    assert code == 2 and lines[0].startswith("cannot continue: ")  # a ZIP that cannot be written
+    (repo / package.LIST).write_text("{")
+    for argv in (("--check",), ("--changed-since", "v0.0.0")):
+        code, lines = run(capsys, *argv, "--repo-root", repo)
+        assert code == 2 and lines[0].startswith("cannot continue: ") and package.LIST in lines[0]
+    code, lines = run(capsys, tmp_path / "methods.zip", "--repo-root", repo)  # written from the commit, where the list is whole
+    assert code == 1 and lines[1].startswith(f"{package.LIST}: differs from the last commit")
+    git(repo, "commit", "-qam", "a list that cannot be read")
+    code, lines = run(capsys, tmp_path / "methods.zip", "--repo-root", repo)
+    assert code == 2 and lines[0].startswith("cannot continue: ") and package.LIST in lines[0]
+    (repo / package.LIST).write_text(json.dumps({"skills": [], "manifest": {}}))
+    assert run(capsys, "--check", "--repo-root", repo)[0] == 2
+    assert not (tmp_path / "methods.zip").exists()
+
+
+@pytest.mark.parametrize("argv", [[], ["out.zip", "--check"], ["--check", "--changed-since", "v5.8.0"]])
+def test_exactly_one_thing_is_asked_for(argv, capsys):
+    with pytest.raises(SystemExit) as stopped:
+        package.main(argv)
+    assert stopped.value.code == 2
