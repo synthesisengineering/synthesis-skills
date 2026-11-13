@@ -467,7 +467,8 @@ def unwatched_sends(payload: dict, config: dict) -> list[str]:
     if not (isinstance(names, list) and all(isinstance(name, str) and name for name in names)):
         raise ValueError('reply_watch in the synthesis config must be an object, with "sends" a list of tool names when it has one. '
                          "Until it is, no turn is checked for a watch after a message to a person: tell the principal")
-    calls, failed = _turn_calls(payload.get("transcript_path"), tuple(name.encode() for name in names))
+    needles = tuple(mark + name.encode() + b'"' for name in names if "." not in name for mark in (b"__", b'"'))  # as a call names its tool
+    calls, failed = _turn_calls(payload.get("transcript_path"), needles + tuple(name.encode() for name in names if "." in name))
     sent = []
     for ident, name, given in calls:
         short, command = name.rsplit("__", 1)[-1], str(given.get("command") or "") if isinstance(given, dict) else ""
