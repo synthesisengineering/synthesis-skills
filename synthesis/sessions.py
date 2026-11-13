@@ -194,7 +194,8 @@ class _Session:
                 real = os.path.realpath(os.path.join(self.cwd or os.sep, os.path.expanduser(str(target))))
                 for root in self.roots:
                     name, _, rest = real[len(root) + 1:].partition(os.sep) if real.startswith(root + os.sep) else ("", "", "")
-                    if rest and os.path.isdir(os.path.join(root, name)) and name not in self.meta.setdefault("projects", []):
+                    if (rest and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", name) and os.path.isdir(os.path.join(root, name))
+                            and name not in self.meta.setdefault("projects", [])):  # a project's id, as the hook's line names one
                         self.meta["projects"].append(name)
         except Exception:  # noqa: BLE001  the export goes on: a line no reader was written for is no reason to lose a session
             self.skipped["a tool call whose written files could not be read"] += 1
@@ -374,16 +375,16 @@ def _typed(s: "_Session", at, block: dict, agent: bool):
         yield _prompt(s, at, s.content([block]), agent)
 
 
-def _queued(s: "_Session", a: dict):
-    """What a queued command holds when it is a prompt typed while a turn ran: its mode is `prompt`, it is not meta,
-    its origin is `human` or not given, and its words do not begin as the harness's do. None for a task's
-    notification, another agent's message and every other queued command."""
-    origin = a.get("origin")
+def _queued(a: dict) -> list:
+    """The blocks of a queued command that is a prompt typed while a turn ran: its mode is `prompt`, it is not meta,
+    and its origin is `human` or not given. Nothing for a task's notification, another agent's message, every other
+    queued command and a prompt with nothing in it."""
+    origin, prompt = a.get("origin"), a.get("prompt")
     if a.get("type") != "queued_command" or a.get("commandMode") != "prompt" or a.get("isMeta") or not (
             origin is None or isinstance(origin, dict) and origin.get("kind") == "human"):
-        return None
-    body = s.content(a.get("prompt"))
-    return body if (body["text"].strip() or body.get("media")) and not _injected(body["text"]) else None
+        return []
+    blocks = [{"type": "text", "text": prompt}] if isinstance(prompt, str) else prompt if isinstance(prompt, list) else []
+    return [b for b in blocks if isinstance(b, dict) and (str(b.get("text") or "").strip() or b.get("type") in ("image", "document"))]
 
 
 def _claude(row: dict, s: _Session):
@@ -427,9 +428,10 @@ def _claude(row: dict, s: _Session):
                           "text": row.get("content") or json.dumps(row.get("hookInfos") or row.get("error") or "")})
     elif t == "attachment":
         a = row.get("attachment") if isinstance(row.get("attachment"), dict) else {}
-        typed = _queued(s, a)
-        if typed is not None:  # a prompt typed while a turn ran is here and in no user row
-            yield _prompt(s, at, typed, bool(row.get("isSidechain")))
+        typed = _queued(a)
+        for block in typed:  # a prompt typed while a turn ran is here and in no user row
+            yield from _typed(s, at, block, bool(row.get("isSidechain")))
+        if typed:
             return
         body = a.get("content") or a.get("text") or a.get("prompt") or {k: v for k, v in a.items() if k != "type"}
         yield s.once({"at": at, "kind": "system", "source": a.get("type"),
