@@ -449,6 +449,40 @@ def test_a_command_that_cannot_be_started_is_refused_at_once_in_one_line(two, tm
     assert not list((paths.board() / "waits").rglob("*.json"))                        # and it left no record of a wait behind
 
 
+@pytest.mark.parametrize("named, why", [
+    ("a directory found by its name on PATH", "is not executable"),
+    ("a file found by its name on PATH without its execute bit", "is not executable"),
+    ("a path that does not exist, through a file", "was not found"),
+    ("a name that is not on PATH, whose PATH ends with a file", "was not found"),
+    ("a name that is nowhere, where a folder of PATH cannot be searched", f"cannot be run ({os.strerror(errno.EACCES)})"),
+])
+def test_each_launch_error_the_reference_lists_gives_the_reason_it_promises_by_name_or_by_path(two, tmp_path, monkeypatch, named, why):
+    """Review round 3, finding 25: a directory found by its name on PATH was refused with `cannot be run (Permission
+    denied)`, where the watchers reference promises `is not executable` for a directory. A name is looked for where
+    the system looks for it, on PATH, and a path that does not exist is `was not found` however the system says so."""
+    if named.endswith("cannot be searched") and os.geteuid() == 0:
+        pytest.skip("the superuser searches every folder")
+    found, shut, text = tmp_path / "bin", tmp_path / "shut", tmp_path / "notes.txt"
+    (found / "synthesis-check").mkdir(parents=True)                                   # a folder by the name
+    (found / "synthesis-plain").write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    (found / "synthesis-plain").chmod(0o644)                                          # a file by the name, with no execute bit
+    text.write_text("no program\n", encoding="utf-8")
+    shut.mkdir()
+    where, program = {"a directory found by its name on PATH": (found, "synthesis-check"),
+                      "a file found by its name on PATH without its execute bit": (found, "synthesis-plain"),
+                      "a path that does not exist, through a file": (found, str(text / "check")),
+                      "a name that is not on PATH, whose PATH ends with a file": (f"{found}{os.pathsep}{text}", "synthesis-no-such-command"),
+                      "a name that is nowhere, where a folder of PATH cannot be searched": (shut, "synthesis-no-such-command")}[named]
+    monkeypatch.setenv("PATH", str(where))
+    shut.chmod(0)
+    try:
+        done = cli("wait", "run", "--for", "1m", "--", program, "--branch", "main")
+    finally:
+        shut.chmod(0o755)
+    assert (done.returncode, done.stdout) == (2, "")
+    assert done.stderr == f"`{program} --branch main` could not be started: its program {program!r} {why}\n"
+
+
 def test_a_command_that_cannot_be_started_gets_no_second_try_and_one_that_starts_and_fails_does(two, clock, monkeypatch, capsys):
     """The refusal is said once, with no sleep and no second try, and so it is for a command that goes missing between
     two tries. Its plain words are said only of what is there: "was not found" when nothing by that name is and the
