@@ -62,7 +62,11 @@ Sent back when nothing is armed:
   and the same with the event stated first (`when the bank confirms, I'll record it`);
 - a subject left out: `Will merge once the checks pass`, `I pushed it and will merge once`;
 - a sentence that opens with `Waiting for`, `Waiting on`, `Waiting until`, `Waiting to
-  hear`, `Awaiting`, `Holding ... until` or `Resuming when`.
+  hear`, `Awaiting`, `Holding ... until` or `Resuming when`;
+- `Standing by for` a thing that is named and is not the principal's, with a subject or
+  without one: `Standing by for their reply`, `I'm standing by for the vendor's file`.
+  Before `your`, `whatever`, `anything`, `the next` or `more` it is an idle line to the
+  principal and passes, as `Standing by` alone does.
 
 Passes:
 
@@ -86,6 +90,10 @@ Passes:
 - a short wait that points back (`I'll wait`, `I'm waiting on that`, `until I have it`)
   when the clause before it names their move, asks them for something or ends in a
   question mark;
+- a wait whose next clause asks them to hand over the thing awaited: `I'm waiting for the
+  code that was emailed to you; paste it here and I'll finish`. The verbs that hand a
+  thing over count (paste, type, enter, forward, share, upload, attach, `reply with`,
+  `send me`); `check the logs meanwhile` hands over nothing;
 - `your` and a thing named in a few words straight after the wait's own word (`waiting on
   your sign-in retry`, `waiting on your two answers before I write the log`);
 - a reply that hands them the turn, whatever else it waits for: it ends by asking them; it
@@ -130,7 +138,7 @@ Passes:
 - an armed wait: a live `synthesis wait` of the session; an autopilot run it owns; in
   Claude Code, background work the session started that has not reported yet (an agent, a
   shell command, a workflow, a monitor), since the harness wakes the session when it
-  does. That is read from the last four megabytes of the transcript. Work is started by
+  does. That is read from the last 32 megabytes of the transcript. Work is started by
   the harness's own tool-result entry: a `user` entry, a result that opens with the launch
   line, a call id that is a string. It is ended by the harness's own notification naming
   that call: a `user` entry that is a task notification by its origin or opens with the
@@ -138,8 +146,12 @@ Passes:
   launch in any other kind of entry starts nothing; the tag in the assistant's words, in a
   tool's output or quoted inside other text ends nothing; a malformed record or a path that
   cannot be read holds nothing, and the reader does not raise. Work launched before those
-  four megabytes is not seen, and a wait beside it is sent back once: say then what is
-  out.
+  32 megabytes is not seen, and a wait beside it is sent back once: say then what is
+  out. The tail was four megabytes at first. A busy session writes more than that between
+  a launch and the turn that waits on it: in the recorded replies below, ten launches that
+  had not reported lay further back, each a reply sent back while the harness held its
+  wait. Reading 32 megabytes takes about 46 ms, on the one turn end in eight whose reply
+  reads as a wait.
 
 A thing that belongs to the principal is not their move. `your review bot`, `your code to
 compile`, `your registrar to release the domain`, `your lawyer's comments`, `the service to
@@ -149,12 +161,12 @@ is filed and I'm waiting on the pipeline`, `after you approved`).
 
 The check reads patterns, not meaning. Each fresh list written against it has found forms
 it did not know, most of them waits said with a verb or a conjunction outside these lists;
-`Standing by for` is one that is left to `wait_phrases`. A reply that passes is no proof
+config `wait_phrases` adds a phrase of your own. A reply that passes is no proof
 that nothing is awaited: the rule in synthesis-waiting binds whether or not the check fires.
 
 What it is measured against is recorded replies, not invented ones. Run over thirty days
 of turn-ending replies on one machine (4,443 delivered, November 2026), the forms above
-read 537 as a wait; in 450 the harness held background work, and 87 were sent back, about
+read 542 as a wait; in 463 the harness held background work, and 79 were sent back, under
 three a day. Of those, read one by one, three in four were the session's own wait with
 nothing to end it. Most of the rest awaited a step of the principal's said in words the
 check does not read (`once it's sent, I'll read it back`, after a send they have yet to
