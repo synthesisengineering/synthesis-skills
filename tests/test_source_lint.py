@@ -505,6 +505,11 @@ def test_no_python_file_defines_a_function_or_a_class_twice_at_its_top():
     whole rule stays the core's."""
     assert twice_bound("def test_a():\n    pass\n\n\ndef test_a():\n    pass\n", defs_only=True) == ["test_a"]
     assert twice_bound("SPEC = 1\nSPEC = 2\n\n\ndef f():\n    pass\n", defs_only=True) == []
+    # a review, 2026-11-13: two methods of one name in a test class were missed, and an overload was taken for a copy
+    assert twice_bound("class TestA:\n    def test_a(self):\n        pass\n\n    def test_a(self):\n        pass\n", defs_only=True) == ["TestA.test_a"]
+    assert twice_bound("from typing import overload\n\n\n@overload\ndef f(a: int) -> int: ...\n@overload\ndef f(a: str) -> str: ...\ndef f(a):\n    return a\n", defs_only=True) == []
+    assert twice_bound("class A:\n    @property\n    def x(self):\n        return 1\n\n    @x.setter\n    def x(self, value):\n        pass\n", defs_only=True) == []
+    assert twice_bound("import typing\n\n\n@typing.overload\ndef f(a: int) -> int: ...\ndef f(a):\n    return a\n\n\ndef f(a):\n    return a\n", defs_only=True) == ["f"]
     files = [p for p in sorted(ROOT.rglob("*.py")) if not any(part.startswith(".") for part in p.relative_to(ROOT).parts)]
     assert len(files) > 200
     assert {str(p.relative_to(ROOT)): found for p in files if (found := twice_bound(p.read_text(encoding="utf-8"), defs_only=True))} == {}
