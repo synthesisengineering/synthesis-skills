@@ -431,7 +431,7 @@ def test_a_command_that_cannot_be_started_is_refused_at_once_in_one_line(two, tm
     script, folder, orphan, text = tmp_path / "check.sh", tmp_path / "checks", tmp_path / "orphan.sh", tmp_path / "notes.txt"
     script.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
     script.chmod(0o644)
-    orphan.write_text(f"#!{tmp_path / 'gone' / 'interpreter'}\nexit 0\n", encoding="utf-8")
+    orphan.write_text("#!/synthesis-no-such-interpreter\nexit 0\n", encoding="utf-8")   # short: a system that cuts a long first line calls it no program
     text.write_text("no program\n", encoding="utf-8")
     for there in (orphan, text):
         there.chmod(0o755)
