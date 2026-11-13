@@ -39,7 +39,9 @@ the reply back once with `Before this reply goes out, revise it: ...` when the r
   calendar read came after: read back the principal's calendar for today and every date the change touched
   before reporting. A write the guard refused does not count. On 2026-10-27 a series moved to a new hour
   brought back a meeting canceled at the old hour, and only the principal looked. It reads the tail of a Claude
-  Code transcript; other harnesses' records are not read for it.
+  Code transcript; other harnesses' records are not read for it;
+- follows a message to a person this turn with nothing armed for its answer and no statement that none is awaited,
+  when the config has `reply_watch` ([a message to a person](#a-message-to-a-person)).
 
 It never sends a reply back twice in a row and lets the reply through on any internal
 error: a turn-end check that fails closed loops forever. When a reply is sent back, revise
@@ -172,6 +174,38 @@ nothing to end it. Most of the rest awaited a step of the principal's said in wo
 check does not read (`once it's sent, I'll read it back`, after a send they have yet to
 approve). What it lets pass on purpose: a wait in a reply that also asks the principal
 for something, and a wait with no subject written after a label, a dash or a semicolon.
+
+### A message to a person
+
+Off unless the config has `reply_watch` (`{}` turns it on; it takes no key). On 2026-11-12 the one reply that
+blocked a fix had no watch on it, and the next look was hours away. A hook cannot know that a message asks for
+something today; the seat that sent it can, and this check makes it say.
+
+- **Which calls:** what the send guard takes for a message to a person
+  ([its reference](../../synthesis-message-guard/references/config.md#a-time-in-the-words-2026-11-12) says what
+  that is): a send on mail, Slack, chat or texts, or by a connector the guard has no name for, and a text or a mail
+  sent from the shell. A draft and a scheduled message are left out here: a draft is the principal's to send, and
+  a scheduled one has not gone. A calendar event, a ticket, a document, a file for the principal and a note to
+  another session are none. The guard's own settings decide the rest: `send_tools` adds a tool, and
+  `not_send_tools` takes out one whose name only reads like a send.
+- **A call that did not go is not counted:** one the guard held or refused, or that failed. A hold is read by its
+  own words as well as by the error mark, since the record does not always mark it.
+- **What answers it:** a timer or a monitor of the harness that started after the last such call of the turn
+  (`CronCreate`, `ScheduleWakeup`, `Monitor`, a scheduled task); or the statement `synthesis wait none "<why>"`,
+  made after that message went; or a wait this session still holds on the board, whenever it was armed, which is
+  what a running `synthesis wait message` or a `wait note` is. The statement is read from the line the command
+  writes on the board, with its session and its time. The words in a shell command state nothing, and the command
+  states it however it was run.
+- **Where a turn begins:** at a prompt or at a notification that woke the session. A skill's text, a compaction's
+  summary and a sub-agent's entries begin none, and a sub-agent's own send is not this turn's.
+- **Otherwise** the reply is sent back once, naming the tool and both answers.
+
+What it does not know: whether the watch watches the right thing, and whether a reason given to `wait none` is
+true. Each is the seat's statement, on the record. It reads the last 8 MB of a Claude Code transcript, so a send
+that lies further back in one long turn is not seen, and other harnesses' records are not read for it. A
+`reply_watch` of another shape (`true`, a list, any key) turns nothing on in silence: the reply is sent back once
+saying so. Replayed before it shipped, with its own code at the end of each recorded turn: a message to a person
+went out in 257 turns of 89 days, and nothing was armed after 251 of them.
 
 ## The file-link rule
 

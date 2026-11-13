@@ -2208,3 +2208,202 @@ def test_a_number_given_as_the_path_names_no_file_descriptor(tmp_path):
             os.close(descriptor)
         except OSError:
             pass
+
+
+# --- a message to a person, and what is armed for its answer -------------------------------------------------------
+# 2026-11-12: the one reply that blocked a fix had no watch on it, and the next look was hours away. No hook can
+# know that a message asks for something today; the agent that sent it does. So a turn that sent a message to a
+# person ends with a watch for the answer, or with the statement that none is awaited. Replayed before it shipped
+# (2026-11-13): in recorded turns of 89 days a message to a person went out in 257, and nothing was armed after 251.
+# A review round then changed how each part is known (2026-11-13): a message to a person is what the send guard
+# takes for one, not a list of names here; the statement is the line `synthesis wait none` writes on the board, not
+# the command's text; and a turn begins at a prompt or a notification, never at a skill's text or a compaction.
+
+WATCH = {"reply_watch": {}}
+SLACK = "mcp__slack__slack_send_message"
+
+
+def _when(ago: float) -> str:
+    return time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(time.time() - ago)) + ".000Z"
+
+
+def _did(ident, name, ago=60.0, **given):
+    return {"type": "assistant", "timestamp": _when(ago), "message": {"role": "assistant", "content": [
+        {"type": "tool_use", "id": ident, "name": name, "input": given}]}}
+
+
+def _came(ident, ago=59.0, error=False, text="done"):
+    return {"type": "user", "timestamp": _when(ago), "message": {"role": "user", "content": [
+        {"type": "tool_result", "tool_use_id": ident, "is_error": error, "content": text}]}}
+
+
+def _sent(tmp_path, *after, tool=SLACK, error=False, text="done", session="S1", given=None):
+    record = tmp_path / f"{len(list(tmp_path.iterdir()))}.jsonl"
+    _turn(record, _prompt("Ask her for the figures."), _did("s1", tool, **(given or {"channel_id": "C1", "message": "Could you send the figures?"})),
+          _came("s1", error=error, text=text), *after)
+    return {"last_assistant_message": "Sent.", "transcript_path": str(record), "session_id": session}
+
+
+def _none(why="a notice: no answer is awaited", session="S1"):
+    from synthesis import wait
+    assert wait.main(["none", why], session) == 0
+
+
+def test_a_message_to_a_person_with_nothing_armed_for_its_answer_sends_the_reply_back(tmp_path):
+    payload = _sent(tmp_path)
+    assert reply_check.check(payload, {}) is None                               # off unless the config turns it on
+    assert reply_check.check(payload, {"reply_watch": False}) is None
+    reason = reply_check.check(payload, WATCH)
+    assert "slack_send_message" in reason and "synthesis wait message" in reason and 'synthesis wait none "<why' in reason
+
+
+@pytest.mark.parametrize("tool, given", [
+    ("mcp__ws__send_gmail_message", {"to": "a@example.com", "subject": "Figures", "body": "<p>Could you send them?</p>"}),
+    ("mcp__mail__send_email", {"to": "a@example.com", "subject": "Figures", "body": "Could you send them?"}),
+    (SLACK, {"channel_id": "C1", "message": "Could you send them?"}),
+    ("mcp__ws__send_message", {"space_id": "spaces/A", "message_text": "Could you send them?"}),
+    ("mcp__0a1b2c3d-0000-4000-8000-000000000000__reply", {"messageId": "m1", "body": "<p>Could you send them?</p>"}),
+    ("mcp__0a1b2c3d-0000-4000-8000-000000000000__forward", {"messageId": "m1", "to": "a@example.com"}),
+    ("mcp__teams__teams_send_message", {"chat": "c1", "text": "Could you send them?"}),
+    ("messages_send", {"to": "+15550100", "text": "Could you send them?"}),
+])
+def test_each_way_a_message_reaches_a_person_is_the_send_guards_to_know(tool, given, tmp_path):
+    """A review, 2026-11-13: a list of names here missed a connector whose server is named by an id and a tool
+    named `teams_send_message`, and took a note to another session for a message to a person."""
+    assert tool.rsplit("__", 1)[-1] in reply_check.check(_sent(tmp_path, tool=tool, given=given), WATCH)
+
+
+@pytest.mark.parametrize("tool, given", [
+    ("mcp__slack__slack_send_message_draft", {"channel_id": "C1", "message": "Could you send them?"}),
+    ("mcp__gmail__create_draft", {"to": "a@example.com", "body": "<p>x</p>"}),
+    ("mcp__ws__draft_gmail_message", {"to": "a@example.com", "body": "<p>x</p>"}),
+    ("mcp__slack__slack_schedule_message", {"channel_id": "C1", "message": "x", "post_at": 1}),
+    ("mcp__ws__manage_event", {"action": "create", "summary": "Sync", "attendees": ["a@example.com"]}),
+    ("mcp__fastmail__create_event", {"summary": "Sync", "attendees": ["a@example.com"]}),
+    ("SendMessage", {"to": "agent-7", "message": "Go on."}),
+    ("SendUserFile", {"files": ["report.md"], "caption": "Here."}),
+    ("mcp__ccd_session_mgmt__send_message", {"session_id": "S9", "message": "Go on."}),
+    ("mcp__jira__addCommentToJiraIssue", {"issueIdOrKey": "A-1", "commentBody": "Done."}),
+    ("mcp__ws__create_doc", {"title": "Notes", "content": "x"}),
+])
+def test_what_is_no_message_to_a_person_asks_for_no_watch(tool, given, tmp_path):
+    """A draft is his to send, and nobody knows when; a scheduled message has not gone; an event, a ticket, a
+    document, a file for the principal and a note to another session await no person's answer."""
+    payload = _sent(tmp_path, _did("r1", "mcp__ws__get_events"), _came("r1"), tool=tool, given=given)  # the read-back a calendar write owes
+    assert reply_check.check(payload, WATCH) is None
+
+
+def test_a_send_that_was_held_or_refused_went_nowhere(tmp_path):
+    assert reply_check.check(_sent(tmp_path, error=True), WATCH) is None
+    held = "Sending needs the principal's approval of this exact message. Show them the exact text and recipient and ask them to type approve followed by the code 4ab12c."
+    assert reply_check.check(_sent(tmp_path, text=held), WATCH) is None         # a hold is not always recorded as an error: 55 of 706 were not
+    assert reply_check.check(_sent(tmp_path, text="This message can't go out as written: a line break falls inside a paragraph."), WATCH) is None
+
+
+@pytest.mark.parametrize("tool, given", [("CronCreate", {"cron": "*/10 * * * *", "prompt": "look for her answer"}), ("ScheduleWakeup", {"delaySeconds": 600}),
+                                         ("Monitor", {"command": "synthesis wait message --for 2h"}),
+                                         ("mcp__scheduled-tasks__create_scheduled_task", {"prompt": "look for her answer"})])
+def test_a_timer_or_a_monitor_started_after_the_send_answers_it(tool, given, tmp_path):
+    assert reply_check.check(_sent(tmp_path, _did("a1", tool, ago=30, **given), _came("a1", ago=29)), WATCH) is None
+    assert reply_check.check(_sent(tmp_path, _did("a1", tool, ago=30, **given), _came("a1", ago=29, error=True)), WATCH) is not None
+
+
+def test_the_statement_that_none_is_awaited_is_the_line_the_command_writes_on_the_board(tmp_path):
+    """A review, 2026-11-13: the statement was looked for in the shell command's text, so an `echo` of the words, a
+    comment and a heredoc counted, and the command run by its path, after a variable, on a line of its own or
+    through `python3 -m synthesis` did not. What the command writes is the statement, however it was run."""
+    payload = _sent(tmp_path, _did("b1", "Bash", ago=20, command='echo "draft; synthesis wait none later" # && synthesis wait none "x"'), _came("b1", ago=19))
+    assert "slack_send_message" in reply_check.check(payload, WATCH)             # words in a command state nothing
+    _none(session="S2")
+    assert reply_check.check(payload, WATCH) is not None                         # another session's statement is not this one's
+    _none()
+    assert reply_check.check(payload, WATCH) is None
+    assert reply_check.check({**payload, "session_id": "S3"}, WATCH) is not None
+
+
+def test_a_statement_made_before_the_message_went_does_not_cover_it(tmp_path):
+    _none("nothing is awaited yet")
+    record = tmp_path / "t.jsonl"
+    _turn(record, _prompt("Ask her."), _did("s1", SLACK, ago=-5, channel_id="C1", message="Could you send the figures?"), _came("s1", ago=-6))
+    payload = {"last_assistant_message": "Sent.", "transcript_path": str(record), "session_id": "S1"}
+    assert "slack_send_message" in reply_check.check(payload, WATCH)             # the send is later than the statement
+
+
+def test_a_wait_this_session_still_holds_on_the_board_answers_it(tmp_path):
+    from synthesis import wait
+    payload = _sent(tmp_path)
+    assert reply_check.check(payload, WATCH) is not None
+    wait.record("S1", "a message from her", time.time() + 600, by="a timer the harness holds")
+    assert reply_check.check(payload, WATCH) is None
+    assert reply_check.check({**payload, "session_id": "S2"}, WATCH) is not None  # another session's wait is not this one's
+
+
+def test_a_timer_before_the_send_is_no_answer_and_one_statement_after_the_last_send_covers_the_turn(tmp_path):
+    record = tmp_path / "t.jsonl"
+    _turn(record, _prompt("Ask her."), _did("c0", "CronCreate", ago=90, cron="0 * * * *"), _came("c0", ago=89),
+          _did("s1", SLACK, ago=60, channel_id="C1", message="Could you send the figures?"), _came("s1", ago=59))
+    payload = {"last_assistant_message": "Sent.", "transcript_path": str(record), "session_id": "S1"}
+    assert "slack_send_message" in reply_check.check(payload, WATCH)
+    _turn(record, _did("s2", "mcp__ws__send_gmail_message", ago=40, to="a@example.com", body="<p>And the dates?</p>"), _came("s2", ago=39))
+    reason = reply_check.check(payload, WATCH)
+    assert "slack_send_message" in reason and "send_gmail_message" in reason
+    _none("both are notices")
+    assert reply_check.check(payload, WATCH) is None
+    _turn(record, _prompt("Thanks."))
+    assert reply_check.check(payload, WATCH) is None                             # a new turn starts clean
+
+
+def test_a_turn_begins_at_a_prompt_or_a_notification_and_at_nothing_else(tmp_path):
+    """A review, 2026-11-13: any user entry with text began a new turn, so loading a skill after a send (its text
+    arrives as a meta entry) made the check forget the send. Read from a real record: a skill's text and a
+    compaction's summary are user entries marked as such; a sub-agent's are marked as a side chain."""
+    meta = {"type": "user", "isMeta": True, "timestamp": _when(30), "message": {"role": "user", "content": [{"type": "text", "text": "Base directory for this skill"}]}}
+    summary = {"type": "user", "isCompactSummary": True, "timestamp": _when(30), "message": {"role": "user", "content": "This session is being continued"}}
+    brief = {"type": "user", "isSidechain": True, "timestamp": _when(30), "message": {"role": "user", "content": "You are the reviewer."}}
+    for entry in (meta, summary, brief):
+        assert "slack_send_message" in reply_check.check(_sent(tmp_path, entry), WATCH), entry
+    side = {**_did("x1", SLACK, ago=20, channel_id="C1", message="From the sub-agent"), "isSidechain": True}
+    record = tmp_path / "side.jsonl"
+    _turn(record, _prompt("Review it."), side, {**_came("x1", ago=19), "isSidechain": True})
+    assert reply_check.check({"last_assistant_message": "Done.", "transcript_path": str(record), "session_id": "S1"}, WATCH) is None  # a sub-agent's send is its own
+    woke = {"type": "user", "origin": {"kind": "task-notification"}, "timestamp": _when(10), "message": {"role": "user", "content": "<task-notification>done</task-notification>"}}
+    assert reply_check.check(_sent(tmp_path, woke), WATCH) is None               # the send belongs to the turn before the wake
+
+
+def test_a_text_sent_from_the_shell_is_a_message_to_a_person(tmp_path):
+    record = tmp_path / "shell.jsonl"
+    text = """osascript -e 'tell application "Messages" to send "Could you send the figures?" to buddy "+15550100"'"""
+    _turn(record, _prompt("Text him."), _did("s1", "Bash", command=text), _came("s1"))
+    payload = {"last_assistant_message": "Sent.", "transcript_path": str(record), "session_id": "S1"}
+    assert "a text" in reply_check.check(payload, WATCH) or "messages" in reply_check.check(payload, WATCH)
+    for quiet in ("cat messages_send.py", "osascript -e 'display notification \"done\"'", "echo osascript Messages send"):
+        other = tmp_path / f"{abs(hash(quiet))}.jsonl"
+        _turn(other, _prompt("Look."), _did("s1", "Bash", command=quiet), _came("s1"))
+        assert reply_check.check({"last_assistant_message": "Done.", "transcript_path": str(other), "session_id": "S1"}, WATCH) is None, quiet
+
+
+def test_the_send_guards_own_settings_say_what_is_a_send(tmp_path):
+    given = {"note": "Could you send the figures?"}
+    assert reply_check.check(_sent(tmp_path, tool="mcp__notes__leave_word", given=given), WATCH) is None
+    assert "leave_word" in reply_check.check(_sent(tmp_path, tool="mcp__notes__leave_word", given=given), {**WATCH, "send_tools": ["mcp__notes__leave_word"]})
+    assert "post_note" in reply_check.check(_sent(tmp_path, tool="mcp__notes__post_note", given=given), WATCH)   # its name says it posts
+    assert reply_check.check(_sent(tmp_path, tool="mcp__notes__post_note", given=given), {**WATCH, "not_send_tools": ["mcp__notes__*"]}) is None
+
+
+@pytest.mark.parametrize("wrong", [None, True, 1, "on", [], ["slack_send_message"], {"sends": ["slack_send_message"]}, {"tools": []}])
+def test_a_setting_of_another_shape_is_said_once_and_turns_nothing_on_silently(wrong, tmp_path):
+    reason = reply_check.check(_sent(tmp_path), {"reply_watch": wrong})
+    assert reason and "reply_watch" in reason and "{}" in reason
+
+
+def test_a_record_with_ids_of_no_kind_stops_nothing(tmp_path):
+    """A review, 2026-11-13: a call whose id was a list raised out of the whole reply check, and the Stop hook then
+    let the reply through with none of its checks made."""
+    record = tmp_path / "odd.jsonl"
+    _turn(record, _prompt("Go."), {"type": "assistant", "message": {"role": "assistant", "content": [{"type": "tool_use", "id": ["x"], "name": SLACK, "input": {"message": "m"}}]}},
+          {"type": "user", "message": {"role": "user", "content": [{"type": "tool_result", "tool_use_id": {"a": 1}, "content": "done"}]}},
+          {"type": "assistant", "message": {"role": "assistant", "content": [{"type": "tool_use", "id": "w1", "name": "mcp__ws__manage_event", "input": "not an object"}]}},
+          _came("w1"))
+    payload = {"last_assistant_message": "I'll handle the rest for now.", "transcript_path": str(record), "session_id": "S1"}
+    reason = reply_check.check(payload, WATCH)
+    assert reason and '"for now"' in reason and "manage_event" in reason          # the other checks are still made

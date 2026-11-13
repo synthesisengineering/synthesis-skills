@@ -217,6 +217,17 @@ def backed(kind: str, subject, session: dict | None = None) -> bool:
         return False
 
 
+def void(kind: str, subject) -> None:
+    """Spend a grant of exactly this subject, and drop a request for one that still waits, using neither: the same
+    thing went out on another code, so a second copy has to be shown again (2026-11-13: a message released by the
+    code for a time in its words left the ordinary grant live, and an identical call went a second time on it)."""
+    key = digest(kind, subject)
+    (_dir("approvals") / f"{key}.json").unlink(missing_ok=True)
+    for code in pending():
+        if paths.read_json(_dir("approval-requests") / f"{code}.json").get("digest") == key:
+            (_dir("approval-requests") / f"{code}.json").unlink(missing_ok=True)
+
+
 def consume(kind: str, subject, session: dict | None = None) -> bool:
     """True once for a live grant of exactly this subject that the principal's own prompt backs. The
     grant is spent either way; when the record does not back it, files the request again and raises."""

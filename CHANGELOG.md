@@ -4,6 +4,35 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [5.11.0] - 2026-11-13
+
+- **A message that names a clock time goes out on a fresh read of the calendar** (`synthesis-message-guard` 2.9.0).
+  Off unless the config has `fresh_calendar` (`{}` turns it on; leaving the key out, or `false`, turns it off, and
+  any other shape blocks messages and is named). A message to a person whose words name a clock time (`3:30`,
+  `15:30`, `3 pm`, `7.30 pm`, `15h30`) is held unless this session read a calendar, and the read succeeded, in the
+  ten minutes before the call. A message to a person is a send or a draft on mail, Slack, chat or texts, or by a
+  connector the guard has no name for, and a text or a mail sent from the shell; a calendar write, a harness's own
+  tool, a ticket and a document are none. The question is asked at the first call, before any approval code, and
+  again at the approved call, where the approval already typed stands: on 2026-11-12 an offer of a time went out
+  on a calendar read half an hour old, past a new invitation. A code of its own releases a message whose time is
+  no calendar's, or one from a session with no calendar to read; the ordinary approval and a send window do not
+  waive the read, and a message that goes on one code spends the other. A calendar's tool is known by its name
+  (`calendar`, `gcal`, `caldav` or `workspace` in it, or a free-busy query), and `reads` names others. In Codex
+  and Muse the guard does not see a calendar read, and the hold says so: there the code of its own is the release.
+  The guard cannot know that a message proposes a meeting. Replayed over recorded messages, about six in ten of
+  those that name a clock time were about when people meet, and a hold on one of the others costs one calendar
+  read and reaches no one.
+- **A turn that sent a message to a person ends with a watch for its answer, or says that none is awaited**
+  (`synthesis-waiting` 1.1.0, `synthesis-agent-guardrails` 2.7.0). Off unless the config has `reply_watch` (`{}`
+  turns it on, and it takes no key). `synthesis wait none "<why>"` is the statement: it arms nothing and leaves one
+  line on the board with its reason. In a Claude Code session, where a message to a person went out in the turn
+  and nothing answers it, the reply check sends the reply back once. What answers it: a timer or a monitor that
+  started after the last such message, the statement made after it went (read from the line the command wrote,
+  not from a shell command's words), or a wait the session still holds on the board. What a message to a person
+  is, the send guard says, a draft and a scheduled message left out; a call the guard held went nowhere, and a
+  turn begins at a prompt or a notification, not at a skill's text or a compaction. No hook judges whether a
+  message asked for something today: the seat that sent it says what it awaits.
+
 ## [5.10.0] - 2026-11-13
 
 - **The commit check can hold an entry's own time to the clock** (`synthesis-git-hooks` 3.3.0,

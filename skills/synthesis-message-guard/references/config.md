@@ -25,6 +25,7 @@ no `~/.synthesis`.
 | `forbidden_phrases[].channels` | Optional on a register rule: the channels (`jira`, `bitbucket`, `slack`, `docs`...) where it holds; elsewhere the rule is skipped. For a line that fits some channels only: on 2026-10-27 a line saying the principal had not reviewed the details, which fits scheduling, went out on Jira answers. |
 | `messaging_apps` | Extra bundle ids of chat apps where computer use counts as messaging (Return sends, shift with Return writes a line), beside the built-in list below. A value that is not a list of strings stops every computer-use action. |
 | `same_day_meetings` | `{"exempt": ["<address or pattern>"], "own": ["<address or pattern>"]}` (`own` optional: the principal's addresses beyond those `account_routing` names). With this key present, a calendar create, update or move that starts today and invites anyone but the principal waits for an approval of its own that names it same-day. A meeting with an exempt attendee keeps the ordinary approval. Absent means no rule; a value that is not this shape blocks calendar writes. See below. |
+| `fresh_calendar` | `{"minutes": 10, "reads": ["<the end of a tool's name>", ...]}` (both optional; `{}` turns the rule on with ten minutes). With this key present, a message to a person (a send or a draft on mail, Slack, chat or texts, or by a connector the guard has no name for; a text or a mail from the shell) whose words name a clock time is held unless this session read a calendar, and the read succeeded, in those minutes before the call. `reads` names tools that read a calendar beside the ones the guard knows, each by its whole name, a pattern over it, or its end. Any other shape blocks messages until it is fixed, `null` included; leaving the key out, or `false`, turns the rule off. See below. |
 | `in_person_travel` | `{"preferences": "<the chief-of-staff preferences file>"}`. With this key present, a calendar write that creates an event at a place, or gives one a place, is refused unless the call carries the event's travel line (`Travel: ...` in its description). What a place is comes from that file's `travel_policy` and the chief of staff's `travel_check.py`. No approval is asked. Without the key nothing changes; a policy that cannot be read refuses the write |
 | `temporary_addresses` | `{"hosts": ["<more host names>"], "local": true}` (both optional; `{}` turns the rule on). With this key present, a send, a draft, a shell post or typed words that hold an address that can change, or that only this machine or its network answers, are refused before any approval is asked, and starting a quick tunnel waits for a code of its own. Absent means no rule; a value that is not this shape, `null` included, blocks sends. See below. |
 | `preferred_names` | People who go by a name other than their official first name: `[{"official": "Robert", "preferred": "Bob", "identifiers": ["bob@example.test", "U0EXAMPLE"]}]`. Optional; absent means no name check. See below. |
@@ -116,6 +117,64 @@ that approval said the meeting was today. With `same_day_meetings` in the config
   on today), an RSVP, a start written in a form this cannot read (it reads ISO and day, month and year in words), and a
   meeting placed through a browser or computer use. The
   chief-of-staff skill's slot check covers the decision before any call is made.
+
+## A time in the words (2026-11-12)
+
+A calendar read at the draft is not a calendar read at the send. On 2026-11-12 a meeting request offered a time
+that a new invitation, arrived half an hour earlier, overlapped: the calendar had been read when the message was
+drafted, and the draft then waited for its approval. Every send waits for one, so every offer of a time has that
+window. The guard cannot know that a message proposes a meeting. It knows that the words name a clock time, and
+when this session last read a calendar. With `fresh_calendar` in the config:
+
+- **What it holds:** a message to a person whose words name a clock time, anywhere in the call's text, while this
+  session's record shows no calendar read that succeeded in the last ten minutes (`minutes` sets another number,
+  1 to 60).
+- **A message to a person** is a call the guard takes for a send, on a channel of messages (mail, Slack, chat,
+  texts) or on one it has no name for, as a mail connector whose server is named by an id is; and a text or a mail
+  sent from the shell (`osascript` to Messages or Mail). A draft is one, since it is written to be sent. Not one: a
+  calendar write, whatever its server is called (an event states its own time, and the calendar rules judge it,
+  the same-day rule among them); a harness's own tool (a note to an agent, a file for the principal); a ticket, a
+  document, a page. A Slack canvas is held as a message would be: the guard knows it by its channel.
+- **A clock time** is `3:30`, `15:30`, `3 pm`, `11am`, `3:30 p.m.`, `7.30 pm`, `3:30p`, `14:00h`, `15h30`. Not
+  one: a duration (`1:23:45`), a time inside a web address, a full stamp with its offset
+  (`2026-11-13T10:20:00-05:00`), and a time in words or with a dot and no `am` or `pm` (`noon`, `Thursday
+  afternoon`, `19.30`), which is not held. A number that only looks like a time (`John 3:16`, `line 12:30`) is
+  held like one.
+- **When it asks:** at the first call, before any approval code is asked, so the principal is not shown a text
+  the check may still change; and again at the approved call, since the approval may have taken longer than the
+  read stays fresh. That second question is the moment the incident missed. An approval already typed stands: the
+  hold spends nothing, and the same call goes once the calendar is read.
+- **What it says:** `This message names a time (<the times, as written>), and this session last read a calendar
+  N minutes ago` (or `has not read a calendar`) `: one is read in the 10 minutes before such a message goes. Read
+  the calendar for the day it names, check each time against what is there, and make this identical call again
+  ... If its time is no calendar's, or this session has no calendar to read, show the principal the exact text
+  and ask them to type approve followed by the code <code> to send it as it is.`
+- **The code of its own:** a status note that says when something happened names a time and offers none, and a
+  session may have no calendar to read. The principal releases such a message by the code the hold gives, whose
+  request says what it waives. It stands in place of the ordinary code, for that exact message, once, whatever
+  the read is by then. The ordinary approval does not waive the read, and neither does a send window: a message a
+  window covers is still held until the calendar is read. A message that goes on one code spends the other, a
+  request still waiting included, so a second copy is shown again.
+- **What counts as a read:** a call whose result came back and was no error, to a tool whose name ends in
+  `get_event`, `get_events`, `list_events`, `search_events` or `list_all_events` (with `_` or `-`) and says it is
+  a calendar's (`calendar`, `gcal`, `caldav` or `workspace` anywhere in the tool's whole name), or to one named
+  `query_freebusy` or `suggest_time`. An error tracker's `search_events` and a repository's `list_events` are
+  none. `reads` adds tools: each entry is a tool's whole name, a pattern over it (`mcp__0a1b*__list_events`) or
+  its end after the last `__`. A calendar connector whose server is named by an id needs an entry. A read that
+  failed, one with no result yet, a calendar write, and a result dated ahead of the clock are none. The time is
+  the one on the result.
+- **Whose record:** the guard reads the last 8 MB of a Claude Code transcript. In Codex and Muse it does not see
+  a calendar read, and the hold says so: there, reading the calendar cannot clear it, and the code of its own is
+  the release, after the agent says when it read. A session whose record cannot be read has read no calendar. A
+  sub-agent's read in the main record is not this session's.
+- **What it cannot see:** whether the read covered the day the message names, and whether the agent compared: the
+  read puts the calendar in front of the agent at the moment of sending, and the hold's words say what to check.
+  A draft the principal sends himself is fresh when it is made, not when it leaves.
+
+Replayed before it shipped, with the rule's own code over recorded messages: of 445 distinct messages sent to
+people on 75 days, 145 named a clock time, and 86 of those would have been held at their last call. Read by eye on
+a small sample, about six in ten of the messages that name a clock time are about when people meet; the other holds
+cost one calendar read each and reach no one (`tests/test_fresh_calendar.py`).
 
 ## An address that can change
 

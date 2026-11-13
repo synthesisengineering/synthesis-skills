@@ -6,7 +6,7 @@ depends_on:
   - synthesis-project-management
 metadata:
   author: "Rajiv Pant"
-  version: "1.0.0"
+  version: "1.1.0"
   format: v5
 ---
 
@@ -40,6 +40,7 @@ synthesis wait run [--every 30s] [--for 30m] -- <command>
 synthesis wait note "<what>" --by "<what will wake this seat>" [--for 30m]
 synthesis wait clear ["<what>"]
 synthesis wait list
+synthesis wait none "<why no answer is awaited>"
 synthesis inbox --peek
 synthesis msg <to> "<text>" [--wake]
 ```
@@ -49,6 +50,7 @@ synthesis msg <to> "<text>" [--wake]
 - `wait run` runs the command every `--every` until it exits 0, then prints `` `<command>` exited 0 after N tries ``. Use it for a CI check, a page that must answer, a status that must turn. Each try runs in a process group of its own: when it fails, or is still running at the bound, the whole group is stopped, the command and what it started there, and what a try that exits 0 started is left running. A command that cannot be started is refused at once, not tried again: on stderr `` `<command>` could not be started: its program '<first word>' was not found `` (or `is not executable`, or `cannot be run`), exit 2.
 - `wait note` records a wait that the harness itself holds (a timer, an event stream) and prints `noted: <what>, for <how long>, woken by <what>`. It starts no process, so the turn-end check and `wait list` still see the wait. In Claude Code the check itself sees background work that has not reported yet (an agent, a shell task, a workflow, a monitor); a timer still needs the note.
 - `wait clear` takes down this session's notes, all of them or those that say exactly `<what>`, once what they awaited is handled, so the board and the turn-end check show no wait that is over. It prints `cleared: <what>` for each, or `this session holds no note` and the words given. Another session's note and a running watcher's record are never touched.
+- `wait none` arms nothing: it records, with its reason, that a message this seat sent awaits no answer.
 - `wait list` prints one line for each live wait on the board: the session, what it awaits, since and until, and whether a watcher is running or what will wake it. `synthesis who` lists a seat for as long as it holds one, marked `waiting until HH:MM`.
 - Exit codes: 0 when the event happened; 3 at the bound, with `nothing arrived in <how long>: still waiting for <what>` on stderr; 2 for a bound it cannot read or one over twelve hours, a command that cannot be started, a note with no `--by`, and nothing named to wait for. What a look finds after the bound is not the event: `wait message` and `wait file` look every `--every`, and every 0.05 s in the last quarter second before the bound, and mail that came too late stays unread for `synthesis inbox` or the next wait.
 - `inbox --peek` lists unread mail and marks none of it.

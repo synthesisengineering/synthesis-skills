@@ -9,15 +9,18 @@ which marks what it prints, and waited half an hour on mail addressed to a proje
     synthesis wait note "<what>" --by "<what will wake this seat>" [--for 30m]
     synthesis wait clear ["<what>"]
     synthesis wait list
+    synthesis wait none "<why no answer is awaited>"
 
 A wait prints one line when its event happens and exits 0; at its bound it exits 3 and says nothing arrived, so
 silence cannot look like success; 2 for a bound it cannot read, one over twelve hours or a command that cannot
 be started. A message is named by its sender and never printed: the seat reads it with `synthesis inbox`, which
-is what marks it read.
+is what marks it read. `none` arms nothing: it is the statement, kept on the board with its reason, that a
+message this seat sent awaits no answer.
 """
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import re
 import shutil
@@ -197,7 +200,7 @@ def _watch(session_id: str, what: str, until: float, seconds: float, every: floa
 def main(argv: list[str], session_id: str) -> int:
     command = argv[argv.index("--") + 1:] if "--" in argv else []
     p = argparse.ArgumentParser(prog="synthesis wait", description=__doc__.split("\n\n")[0])
-    p.add_argument("kind", choices=["message", "file", "run", "note", "clear", "list"])
+    p.add_argument("kind", choices=["message", "file", "run", "note", "clear", "list", "none"])
     p.add_argument("target", nargs="?", default="")
     p.add_argument("--from", dest="sender", default="")
     p.add_argument("--for", dest="bound", default="30m")
@@ -208,6 +211,20 @@ def main(argv: list[str], session_id: str) -> int:
         for w in live():
             print(f"{board.short_name(w['session'])}  {w['what']}  since {time.strftime('%H:%M', time.localtime(w['since']))} "
                   f"until {time.strftime('%H:%M', time.localtime(w['until']))}  ({'woken by ' + w['by'] if w.get('by') else 'a watcher is running'})")
+        return 0
+    if args.kind == "none":  # the seat's own statement, which the turn-end check reads after a message to a person
+        why = "".join(ch if ch.isprintable() else "?" for ch in " ".join(args.target.split()))  # nothing a terminal would obey
+        if not why or len(why) > 300:
+            print('say why no answer is awaited, in a sentence of 300 characters at most: synthesis wait none "<why>"', file=sys.stderr)
+            return 2
+        try:
+            (paths.board() / "waits").mkdir(parents=True, exist_ok=True)
+            with open(paths.board() / "waits" / "none.jsonl", "a", encoding="utf-8") as log:
+                log.write(json.dumps({"session": session_id, "at": time.time(), "why": why}) + "\n")
+        except OSError as exc:
+            print(f"{paths.board() / 'waits' / 'none.jsonl'} cannot be written ({exc.strerror or exc}), so nothing is stated", file=sys.stderr)
+            return 1
+        print(f"noted: no answer is awaited ({why})")
         return 0
     if args.kind == "clear":  # a note has no process whose end takes it down: its own seat does, and a watcher's record is not a note
         gone = [w for w in live(session_id) if w["session"] == session_id and not w.get("pid") and args.target in ("", w["what"])]
