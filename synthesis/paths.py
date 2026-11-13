@@ -89,36 +89,50 @@ WAITS = "harness-approvals.json"  # what was last seen of each harness's hook ap
 HOOK_APPROVALS = {"codex hook trust": "codex", "muse hook approval": "muse"}  # the doctor's line: the harness it speaks of
 
 
-def waits(home_: Path | None = None) -> dict:
-    """{the doctor's line: {"at", "version", "waiting", "struck"}} for each harness whose hook approval the doctor saw
-    within a day: when it looked, under which release, the hook events that waited then and have not run since,
-    and when a hook that ran last struck one. An older sight says nothing of today, and each entry has its own
-    date, so a harness nothing looks at any more drops out. Kept here, not in the doctor, so a hook reads it
-    without loading the doctor."""
+def _waits(note: dict) -> dict:
     import time
-    seen, found = read_json((home_ or home()) / "state" / WAITS).get("seen"), {}
+    from synthesis import __version__
+    seen, found, now = note.get("seen"), {}, time.time()
     for name, entry in seen.items() if isinstance(seen, dict) else ():
-        at, waiting = (entry.get("at"), entry.get("waiting")) if isinstance(entry, dict) else (None, None)
-        try:
-            fresh = type(at) in (int, float) and 0 <= time.time() - at < 86400
+        entry = entry if isinstance(entry, dict) else {}
+        at, waiting, struck, version = entry.get("at"), entry.get("waiting"), entry.get("struck"), str(entry.get("version") or "")
+        try:  # a day old, it says nothing of today; seen under another release, it is news until this one looks
+            sound = type(at) in (int, float) and 0 <= now - at and (now - at < 86400 or version != __version__)
         except OverflowError:  # a number no clock gives
-            fresh = False
-        if name in HOOK_APPROVALS and fresh and isinstance(waiting, list):
-            struck = entry.get("struck")
-            found[name] = {"at": float(at), "version": str(entry.get("version") or ""), "waiting": [e for e in waiting if isinstance(e, str)],
-                           "struck": float(struck) if type(struck) in (int, float) and abs(struck) < 1e12 else 0.0}
+            sound = False
+        if name in HOOK_APPROVALS and sound and isinstance(waiting, list):
+            found[name] = {"at": float(at), "version": version, "waiting": [e for e in waiting if isinstance(e, str)],
+                           "struck": {k: v for k, v in (struck.items() if isinstance(struck, dict) else ()) if type(v) in (int, float)},
+                           "said": str(entry.get("said") or "")}
     return found
 
 
-def note_wait(name: str, waiting: list, at: float | None = None, struck: float = 0.0, home_: Path | None = None) -> None:
-    """Write down what was seen of one harness's hook approval, under this release: the doctor's look at `at`, or
-    a hook that ran and struck its own event at `struck`. The other harness's entry stays as it was."""
-    import time
+def waits(home_: Path | None = None) -> dict:
+    """{the doctor's line: {"at", "version", "waiting", "struck", "said"}} for each harness whose hook approval the
+    doctor has seen: when it looked, under which release, the hook events that were not running then and have not
+    run since, when a hook that ran struck each of its own, and the doctor's line in its own words. An entry of
+    this release says nothing once it is a day old, and each has its own date, so a harness nothing looks at any
+    more drops out; one seen under another release is kept, since nothing has looked since the release changed.
+    Kept here, not in the doctor, so a hook reads it without loading the doctor."""
+    return _waits(read_json((home_ or home()) / "state" / WAITS))
+
+
+def note_wait(name: str, change, home_: Path | None = None) -> None:
+    """Change one harness's entry from what the note holds at that moment, under the note's lock: `change` is given
+    the entry as `waits` reads it (None where it says nothing) and answers the entry to write, None to leave the
+    note as it is, or "drop" to take the entry out. What is written is this release's sight; the other harness's
+    entry stays as it was. A hook and the doctor both write here, and neither writes back what it read earlier."""
+    import fcntl
     from synthesis import __version__
     file = (home_ or home()) / "state" / WAITS
-    seen = read_json(file).get("seen")
-    write_json(file, {"seen": {**(seen if isinstance(seen, dict) else {}),
-                               name: {"at": time.time() if at is None else at, "version": __version__, "waiting": waiting, "struck": struck}}})
+    file.parent.mkdir(parents=True, exist_ok=True)
+    with open(file.with_suffix(".lock"), "a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        note = read_json(file)
+        new = change(_waits(note).get(name))
+        if new is not None:
+            seen = {k: v for k, v in (note["seen"].items() if isinstance(note.get("seen"), dict) else ()) if k != name}
+            write_json(file, {"seen": seen if new == "drop" else {**seen, name: {**new, "version": __version__}}})
 
 
 def spelled(path: str) -> str:
@@ -150,17 +164,13 @@ def transcript_roots() -> dict:
             "muse": Path(env.get("XDG_DATA_HOME") or user / ".local" / "share") / "muse" / "sessions"}
 
 
-def harness(payload: dict | None = None, by_env: bool = True) -> str:
+def harness(payload: dict | None = None) -> str:
     """The harness running this process: where its transcript lives, else its environment. Codex sets
-    CODEX_THREAD_ID in its shell but not in hook processes, so a hook knows Codex by its rollout file. Without
-    `by_env`, only the transcript a harness hands its own hook counts: a command run from a harness's shell carries
-    that harness's environment and is no hook of it."""
+    CODEX_THREAD_ID in its shell but not in hook processes, so a hook knows Codex by its rollout file."""
     where = str((payload or {}).get("transcript_path") or "")
     for name, root in transcript_roots().items():
         if inside(where, str(root)) or (name == "codex" and os.path.basename(where).startswith("rollout-")):
             return name
-    if not by_env:
-        return "unknown"
     if os.environ.get("CLAUDECODE") or os.environ.get("CLAUDE_CODE_SESSION_ID"):
         return "claude-code"
     if os.environ.get("CODEX_THREAD_ID"):

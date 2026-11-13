@@ -490,16 +490,28 @@ def active_project() -> str:
 def cited_entries(projects: list, today: date) -> tuple:
     """(entries that cite a session record, entries) among these project folders' session-log entries dated in the
     last CITE_DAYS days; the first is None where this machine holds no session archive to tell by. A citation is
-    what the day's prompt check takes for one (`sessions.CITED`, `sessions.named`): before `#<seq>`, a session's
-    id, or eight or more of its first characters that name one session, here one of the archive or of a sessions
-    repo this machine has cloned, read from the folders' own names (a sub-agent's id begins with its parent's, so
-    only its whole id names it). Any eight characters of hexadecimal before a number once counted, a commit and an
-    order number among them. Counted, never a finding: measured on 2026-11-13, 8 of 267 entries cited one, and the
-    day's prompt check is what asks."""
+    read by the rule the day's prompt check reads one by (`sessions.CITED`, `sessions.named`): before `#<seq>`, a
+    session's id, or eight or more of its first characters that name one session, here one of the archive or of a
+    sessions repo this machine has cloned: a folder named for the session that holds its `meta.json` (a sub-agent's
+    id begins with its parent's, so only its whole id names it). Any eight characters of hexadecimal before a
+    number once counted, a commit and an order number among them. A config that cannot be read names no sessions
+    repo, and the archive here is still counted by. Counted, never a finding: measured on 2026-11-13, 8 of 267
+    entries cited one, and the day's prompt check is what asks."""
     from synthesis import sessions
-    names = [f.name for f in sessions.root().glob("*/*/*-*")] + [f.name for repo in sessions.repos().values() for f in repo.glob("*/*-*")]
-    ids = {name[len(h) + 1:] for name in names for h in sessions.ADAPTERS if name.startswith(h + "-")}
-    mains, cited, total = [s for s in ids if "-agent-" not in s], 0, 0
+    try:
+        repos = list(sessions.repos().values())
+    except (OSError, ValueError):
+        repos = []
+    held: dict = {}  # a session's id: the folders named for it
+    for folder in [*sessions.root().glob("*/*/*-*"), *(f for repo in repos for f in repo.glob("*/*-*"))]:
+        for harness in sessions.ADAPTERS:
+            if folder.name.startswith(harness + "-"):
+                held.setdefault(folder.name[len(harness) + 1:], []).append(folder)
+    mains, cited, total = [s for s in held if "-agent-" not in s], 0, 0
+
+    def names(token: str) -> bool:
+        one = [token] if token in held else sessions.named(token, mains)
+        return len(one) == 1 and any((folder / "meta.json").is_file() for folder in held[one[0]])
     for project in projects:
         for log in sorted((project / "sessions").glob("*.md")) if (project / "sessions").is_dir() else []:
             try:
@@ -515,8 +527,8 @@ def cited_entries(projects: list, today: date) -> tuple:
                 if 0 <= age < CITE_DAYS:
                     body = text[head.start():heads[i + 1].start() if i + 1 < len(heads) else len(text)]
                     total += 1
-                    cited += any(found[0] in ids or len(sessions.named(found[0], mains)) == 1 for found in sessions.CITED.findall(body))
-    return (cited if ids else None), total
+                    cited += any(names(found[0]) for found in sessions.CITED.findall(body))
+    return (cited if held else None), total
 
 
 def _lines_for(findings: list, label: bool = False) -> list[str]:

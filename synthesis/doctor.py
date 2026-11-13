@@ -174,13 +174,16 @@ def check_prompt_check(cfg: dict | None, error: str = "") -> Check | None:
         return Check("warn", "prompt check", f"cannot tell: the rituals' config cannot be read ({error})")
     from synthesis import rituals
     on, off, refused = [], [], []
-    for space in cfg.get("workspaces") or {}:
+    unlisted = [""] if "prompt_reconcile" in (cfg.get("defaults") or {}) else []  # a workspace the config does not list reads the defaults
+    for space in [*(cfg.get("workspaces") or {}), *unlisted]:
+        label = space or "any workspace the config does not list"
         try:
             found = rituals.prompt_check(rituals.settings(cfg, space))
         except ValueError as exc:
-            refused.append(f"every day-end of {space} is refused: {exc.args[0]}")
+            refused.append(f"every day-end of {label} is refused: {exc.args[0]}")
         else:
-            (on if found else off).append(f"{space} (from {found[1]})" if found and found[1] else space)
+            if found or space:  # that the defaults leave it off is said of each workspace listed
+                (on if found else off).append(f"{label} (from {found[1]})" if found and found[1] else label)
     said = refused + [f"on for {', '.join(on)}" if on else "on for no workspace"] + (
         [f"off for {', '.join(off)}, where nothing asks whether what the principal typed reached a record"] if off else [])
     return Check("warn" if refused else "info", "prompt check", "; ".join(said)) if on or off or refused else None
@@ -1487,20 +1490,28 @@ APPROVALS = tuple(paths.HOOK_APPROVALS)  # the person gives these in the harness
 
 
 def _note_waits(home: Path, checks: list, began: float) -> None:
-    """Write down, for each harness this run looked at, the hooks that wait for the person's approval, for a
-    session's start and the evening job to show (`paths.waits`): the ones the check's own line names (Muse writes
-    them with dashes), and all four where it names none or says none run. A harness this run could not look at, or
-    could not tell of, keeps its entry with that entry's own date. A hook that ran after this run began is the
-    later sight of the two: what it struck stays struck."""
-    seen, hooks = paths.waits(home), [arg.replace("-", "_") for arg in EVENTS.values()]  # as Codex keys their trust
-    for check in checks:
-        if check.name not in APPROVALS or check.status not in ("ok", "fail"):
-            continue
-        named = [e for e in hooks if re.search(rf"\b{e}:\d|synthesis-{e.replace('_', '-')}\b", check.detail)]
-        waiting = [] if check.status == "ok" else named if named and "none of its hooks" not in check.detail else hooks
-        old = seen.get(check.name) or {}
+    """Write down, for each harness this run looked at, the hooks that were not running, for a session's start and
+    the evening job to show (`paths.waits`): the ones the check's own line names (Muse writes them with dashes),
+    all four where it names none or says none run, with the line itself. A harness this run could not look at, or
+    could not tell of, keeps its entry with that entry's own date; what another release saw of a harness this run
+    found no line for is dropped, since that harness is not here. A hook that ran after this run began is the
+    later sight of its own event: that one stays struck, and no other."""
+    from synthesis import __version__
+    hooks, now = [arg.replace("-", "_") for arg in EVENTS.values()], time.time()  # as Codex keys their trust
+    for name, harness in paths.HOOK_APPROVALS.items():
+        check = next((c for c in checks if c.name == name and c.status in ("ok", "fail")), None)
+        here = any(c.name.startswith(harness) for c in checks)
+
+        def change(old, check=check, here=here):
+            if check is None:
+                return "drop" if old and old["version"] != __version__ and not here else None
+            named = [e for e in hooks if re.search(rf"\b{e}:\d|synthesis-{e.replace('_', '-')}\b", check.detail)]
+            waiting = [] if check.status == "ok" else named if named and "none of its hooks" not in check.detail else hooks
+            struck = old["struck"] if old and old["version"] == __version__ else {}
+            waiting = [e for e in waiting if not began < struck.get(e, 0) <= now]
+            return {"at": began, "waiting": waiting, "struck": {}, "said": check.detail[:300] if waiting else ""}
         try:
-            paths.note_wait(check.name, [e for e in waiting if old.get("struck", 0) <= began or e in old["waiting"]], began, home_=home)
+            paths.note_wait(name, change, home)
         except OSError:
             pass  # a note that cannot be written must not cost the doctor its report
 

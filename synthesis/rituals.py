@@ -41,8 +41,8 @@ def config() -> dict:  # an unreadable file raises: refuse rather than guess
     data = json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {"workspaces": {}}
     if not isinstance(data, dict) or not isinstance(data.get("workspaces"), dict):
         raise ValueError("ritual config.json has no 'workspaces' mapping")
-    if not all(isinstance(v, (dict, type(None))) for v in (data.get("defaults"), *data["workspaces"].values())):
-        raise ValueError("ritual config.json: 'defaults' and each workspace must be an object")  # settings() would raise a TypeError
+    if not all(isinstance(v, dict) or not v for v in (data.get("defaults"), *data["workspaces"].values())):  # nothing set reads as nothing
+        raise ValueError("ritual config.json: 'defaults' and each workspace must be an object")  # settings() raised a TypeError on it
     if any(type(v) is not int or v < 1 for v in (settings(data, w).get("quiet_after_days", 1) for w in data["workspaces"])):
         raise ValueError("ritual config.json: quiet_after_days must be a whole number of days")
     return data

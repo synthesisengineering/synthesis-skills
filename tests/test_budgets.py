@@ -802,29 +802,32 @@ ROOT = Path(__file__).resolve().parents[1]
 # _reminded, _typed, _queued and _claude are each counted with the two blank lines before them. guards.py 4:
 # _shell_writes 3 (the readings it could not make, handed to a caller that counts them) and _file_targets 1 (Codex's
 # own hook gives a patch under `command`).
-# 5.14.0, core 173 more: what the doctor saw of each harness's hook approval is written down, a hook that runs
-# strikes itself from it, and the doctor says where the day's prompt check is on. doctor.py 59: check_prompt_check 23
-# (each workspace's setting read as its day-end reads it, a refused one a warning, with two blank lines), _note_waits
-# 19 (the hooks a check's own line names, written for a harness the run looked at; a hook struck after the run began
-# stays struck), main 10 (--waiting: the count whose guard has not been seen to run, or that nothing looked since
-# the release changed) and run_checks 7 (when the run began, the rituals' config read for the prompt check's line,
-# and the note written last). hook.py 45: _unguarded_note 25 (the hooks that waited and have not run since, for each
-# harness, and a harness seen under another release, with two blank lines), _ran 17 (a hook that runs strikes its
-# own event, on the transcript its harness handed it and under the release it was seen under), main 2 and
-# HOW_APPROVED 1. paths.py 40: waits 21 (each harness's entry with its own date, the release, the events and the
-# last strike; an entry a day old, of another shape or with a number no clock gives says nothing), note_wait 11 (one
-# entry written, the other left), harness 4 (the transcript alone, where the environment must not count), WAITS and
-# HOOK_APPROVALS 2, and two blank lines. rituals.py 29: prompt_check 18 (the one reader of that setting for the
-# day-end and the doctor: off, on with its folders and first day, or refused with which fault), is_day 7 (moved from
-# the record script, which now reads it here), config 2 (a workspace that is no object refused in words) and two
-# blank lines. The plugin 41 more beside those: the context doctor 43 (cited_entries 32 with two blank lines, a
-# citation counted where it names a session of the archive; main 6, its call with two roots of one name told apart;
-# render 4, its line and the one where no archive is here; CITE_DAYS 1) and the record script 2 fewer (prompts 3
-# more, the setting read where the doctor reads it; its day test 5 fewer, moved to the core).
+# 5.14.0, core 198 more: what the doctor saw of each harness's hooks is written down, a hook that runs strikes
+# itself from it, and the doctor says where the day's prompt check is on. doctor.py 70: _note_waits 27 (for each
+# harness the run looked at, the hooks its check's own line names and the line itself; a harness not looked at keeps
+# its entry, another release's entry goes where the run found no line of that harness, and a hook that ran after the
+# run began stays struck), check_prompt_check 26 (each workspace's setting read as its day-end reads it, the
+# defaults' own for a workspace the config does not list, a refused one a warning; with two blank lines), main 10
+# (--waiting: the count whose guard has not been seen to run, or that nothing looked since the release changed) and
+# run_checks 7 (when the run began, the rituals' config read for the prompt check's line, the note written last).
+# hook.py 49: _unguarded_note 25 (the hooks not running when the doctor looked and not seen since, with the doctor's
+# line, for each harness, and a harness seen under another release; with two blank lines), _ran 21 (a hook that
+# runs strikes its own event, where its transcript is a file in its harness's own folder of them and the entry is
+# this release's), main 2 and HARNESSES 1. paths.py 50: _waits 18 (the entries that say anything: sound in shape and
+# in time, a day old at most unless another release wrote them), note_wait 18 (one entry changed under the note's
+# lock from what the file holds then, the other left), waits 10, WAITS and HOOK_APPROVALS 2, and two blank lines.
+# rituals.py 29: prompt_check 18 (the one reader of that setting for the day-end and the doctor: off, on with its
+# folders and first day, or refused with which fault), is_day 7 (moved from the record script, which reads it here),
+# config 2 (a workspace that is a string, a number or a list of things refused in words) and two blank lines. The
+# plugin 53 more beside those: the context doctor 55 (cited_entries 44 with two blank lines, a citation counted where
+# it names a session whose folder holds its meta.json, in the archive here or a cloned sessions repo, and the count
+# kept when the config cannot be read; main 6, its call with two roots of one name told apart; render 4, its line
+# and the one where no archive is here; CITE_DAYS 1) and the record script 2 fewer (prompts 3 more, the setting read
+# where the doctor reads it; its day test 5 fewer, moved to the core).
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # consolidate first).
-CORE_BUDGET = 13552
-PLUGIN_BUDGET = 35099
+CORE_BUDGET = 13577
+PLUGIN_BUDGET = 35136
 
 
 def _lines(files):
