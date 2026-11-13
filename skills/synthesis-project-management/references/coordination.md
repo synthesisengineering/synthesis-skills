@@ -210,14 +210,23 @@ uncommitted edit in that file, covered by no claim, was lost. Four protections n
 - **Claims hold when a file is written.** The guard refuses a write (file tools, shell redirects, copiers,
   `sed -i`, `apply_patch`) into a path another live session has claimed, not first at commit.
 - **Release leaves nothing unowned.** `synthesis release` refuses while the released paths hold uncommitted
-  changes. Commit them, or `synthesis release --hand-to <session|project:id>`, which tells the receiver.
-- **Claim names what is already there.** A claim over files with uncommitted changes lists them, with the
-  session that last claimed them from the claims log.
-- **A journal keeps it recoverable.** At every claim, release, session start and commit, synthesis snapshots the
-  checkout's uncommitted tracked changes with `git stash create`. The files, index and stash list are untouched,
-  and the snapshot is kept under `refs/synthesis/journal/` for 14 days. `synthesis journal <path>` lists the
-  snapshots holding a file, and `synthesis journal --show <sha> <path>` prints it as kept. Untracked files are
-  not kept.
+  changes, a new file no commit holds among them (since 5.19.0). Commit them, or
+  `synthesis release --hand-to <session|project:id>`, which tells the receiver.
+- **Claim names what is already there.** A claim over files with uncommitted changes, untracked files among them,
+  lists them, with the session that last claimed them from the claims log.
+- **A journal keeps it recoverable.** At every claim, release and commit, synthesis snapshots the checkout's
+  uncommitted changes as a commit of the working tree, written through a temporary index: the tracked changes,
+  and the untracked files `.gitignore` does not exclude, each up to 2 MB and 20 MB or 1,000 files in all. A file
+  past a limit, or one git cannot read, is named in the journal and not kept. At session start, inside the
+  hook's time budget, the snapshot is `git stash create`, tracked changes alone, and its journal line says so.
+  The files, index and stash list are untouched, and the snapshot is kept under `refs/synthesis/journal/` for
+  14 days. `synthesis journal <path>` lists the snapshots holding a file, or naming it as not kept, and
+  `synthesis journal --show <sha> <path>` prints it as kept.
+- **Records do not stay on one Mac unnoticed.** `synthesis doctor` warns when a file under a claim has stayed
+  uncommitted, or in a commit no remote holds, past the config's `unsaved_hours` (24 by default), counted per
+  repository; the weekday evening job shows a banner that names nothing. The hourly job that copies transcripts
+  also fetches each knowledge root and sessions repo (never merging), and the doctor says when each was last
+  fetched.
 
 ## Priority, stale claims and takeover
 

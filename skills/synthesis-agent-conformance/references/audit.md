@@ -72,7 +72,9 @@ there with no item here fails:
 - `unsaved records`: no file under a claim on the board has stayed uncommitted, or in a
   commit no remote holds, longer than the config's `unsaved_hours` (24 when absent; false
   turns the line off), counted per repository with the oldest age; a warning, never a
-  failure (5.19.0);
+  failure (5.19.0). The weekday evening job shows a fixed banner for one such repository,
+  or for more than one, naming none; `synthesis doctor --unsaved` prints that count, or
+  `unknown`, running no other check and writing nothing;
 - `sessions repo <ws>`: each workspace's sessions repository is cloned where the config
   says, was synced within two days, and is under 3 GB;
 - `sessions export`: the last copy of session transcripts left none it could not copy;

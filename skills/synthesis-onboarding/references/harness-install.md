@@ -190,7 +190,8 @@ whole path (see the next section).
 `--sessions-export` writes the LaunchAgent `~/Library/LaunchAgents/com.synthesis.sessions-export.plist`, which
 runs the installed `synthesis sessions export --all --scheduled` and then `synthesis sessions sync` every hour and
 at login, through a login shell so git finds the person's credentials. It writes
-`/tmp/com.synthesis.sessions-export.log`. `--scheduled` marks the run as the schedule's own: `synthesis doctor`
+`/tmp/com.synthesis.sessions-export.log`. The scheduled export then fetches each knowledge root and sessions repo,
+never merging (config `scheduled_fetch: false` turns it off). `--scheduled` marks the run as the schedule's own: `synthesis doctor`
 knows the schedule by that mark, and fails a loaded schedule that has made no run of its own in a day, since
 launchd runs what it loaded and a file replaced since does not show there.
 The sync runs whatever the export's exit status: an export that could not copy something exits 1, and what it
