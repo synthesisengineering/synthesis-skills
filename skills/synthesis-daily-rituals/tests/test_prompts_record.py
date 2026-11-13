@@ -304,17 +304,17 @@ def test_an_answer_held_against_other_folders_than_the_records_records_nothing(t
 
 def test_the_folders_an_answer_names_are_the_same_folders_however_each_is_written(tmp_path, record, monkeypatch):
     """The valid shape: the listing answers with each folder's full path, so a folder the config names from the home
-    folder, from the working folder or through a link is that folder, and so is the path a link leads to."""
+    folder or through a link is that folder, and so is the path a link leads to."""
     real, link, state = tmp_path / "kb", tmp_path / "link", tmp_path / "state"
     real.mkdir()
     link.symlink_to(real)
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.chdir(tmp_path)
-    declare(state, desk={"plans_dirs": [], "prompt_reconcile": {"records": ["~/kb", "kb", str(link)]}})
+    declare(state, desk={"plans_dirs": [], "prompt_reconcile": {"records": ["~/kb", str(link)]}})
     listing(tmp_path, monkeypatch)
     code, out, refusal = record(state)
     assert code == 0 and "prompts: all 3 typed on 2026-11-11 are cited by a record" in out, refusal
-    listing(tmp_path, monkeypatch, "claude-code d20ab7c4 --seq 41", records=[str(real)] * 3)
+    listing(tmp_path, monkeypatch, "claude-code d20ab7c4 --seq 41", records=[str(real)] * 2)
     code, out, refusal = record(state, "--outcome", "partial")
     assert code == 0 and "prompts: 1 of 3 typed on 2026-11-11 is cited by no record" in out, refusal
 
@@ -331,7 +331,7 @@ def test_a_day_the_listing_finds_nothing_under_is_refused_before_it_is_asked(tmp
         assert code != 0 and "is not YYYY-MM-DD" in refusal and history(state) == "" and not asked.exists(), outcome
 
 
-@pytest.mark.parametrize("written", ["{tmp}/link/../kb", "~/link/../kb", "link/../kb", "{tmp}/real/sub/../kb/", "{tmp}/records"])
+@pytest.mark.parametrize("written", ["{tmp}/link/../kb", "~/link/../kb", "{tmp}/real/sub/../kb/", "{tmp}/records"])
 def test_a_folder_reached_through_a_link_and_its_parent_is_the_folder_the_listing_reads(tmp_path, record, monkeypatch, written):
     """The listing names each folder as its walk reads it: links followed, and `..` taken from where a link leads. The
     record read a folder its config reaches through a link and then `..` with the `..` taken out as written, which

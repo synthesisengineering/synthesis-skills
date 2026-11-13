@@ -203,6 +203,10 @@ def prompts(workspace: str, day: str, direction: str, outcome: str) -> str:
         refuse(f"{workspace} sets prompt_reconcile to {json.dumps(wanted)[:80]}, which names no folder of records: the check can "
                f'neither run nor count as off, so this ritual is not recorded. In {where}, write "prompt_reconcile": '
                '{"records": ["<folder of project records>"]}; only false, or no key at all, turns the check off')
+    loose = [r for r in roots if not os.path.isabs(os.path.expanduser(r))]
+    if loose:  # read from wherever the day-end runs: another folder of that name, or none
+        refuse(f"{workspace} names its folder of records {json.dumps(loose[0])} from no fixed place, so it would be read from wherever the "
+               f"day-end runs, and this ritual is not recorded. In {where}, write each folder from the root (`/`) or from the home folder (`~`)")
     since = wanted.get("from", "")
     if "from" in wanted and not _is_day(since):  # compared as text, `tomorrow` or a number put every day before it
         refuse(f'{workspace} starts prompt_reconcile "from" {json.dumps(since)[:80]}, which is not a day written YYYY-MM-DD, so no '
@@ -237,14 +241,12 @@ def prompts(workspace: str, day: str, direction: str, outcome: str) -> str:
         refuse(f"the listing answered for {answered[0]} on {answered[1]} against {answered[2]}, and this record is for {workspace} on "
                f"{day} against {read}. Run `{again}`")
     if left and outcome in CLEAN:
-        refuse(f"{len(left)} of {total} prompts typed on {day} {'is' if len(left) == 1 else 'are'} cited by no record, so "
-               f"outcome {outcome!r} would claim nothing was lost:\n" + "\n".join(f"  {c}" for c in left[:40])
+        refuse(f"{len(left)} of {total} prompts typed on {day} {'is' if len(left) == 1 else 'are'} cited by no record under "
+               f"{', '.join(read)}, so outcome {outcome!r} would claim nothing was lost:\n" + "\n".join(f"  {c}" for c in left[:40])
                + ("\n  ..." if len(left) > 40 else "")
-               + "\nRead each with `synthesis sessions show <session> --seq <n>`. Where its substance is in a record, "
-               "cite it in the sentence that says so (`<harness> <session> #<seq>`, or `#<first>-<last>` for a stretch one "
-               "entry covers; an entry of citations alone counts for nothing, and a JSON or YAML record holds them in a "
-               "field named `cites`); where it is not, write the record first. A citation says its record accounts for "
-               "the prompt, so do not copy this list into one. Or "
+               + "\nOpen each as it is named here: `synthesis sessions show <session> --seq <n>`. Where its substance is in a record, "
+               "cite it there as `<harness> <session> #<n>` (`#<first>-<last>` for a stretch one entry covers); where it is not, "
+               "write the record first. A citation says its record accounts for the prompt, and the names above are none. Or "
                "record --outcome partial, which says the day left some open.")
     if not total:
         return f"\nprompts: none typed on {day}"

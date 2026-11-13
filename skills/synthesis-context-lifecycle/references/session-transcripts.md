@@ -163,53 +163,55 @@ gone and the principal has not cleared (`synthesis doctor` says how each is clea
 another workspace, or last written before that day began, does not stop it, and neither does a sub-agent's or a
 reviewer's, which holds an agent's briefs and no word of the principal's. While another export holds the
 archive it waits for it, and it lists nothing when the archive cannot be written. `--date` takes a date, and
-anything else lists nothing. Each line is
-`<harness> <session> #<seq>  HH:MM  <the prompt's first words>`, with as much of the session's id as tells it from
-the archive's other sessions (eight characters, or more where two begin alike), then one line that counts:
-`2 of 31 prompts on <day> in <W> are cited by no record` (exit 1), or `all 31 prompts ... are cited by a record`
-(exit 0). `--records` reads the files under that folder that end in `.md`, `.txt`, `.json`, `.jsonl`, `.yaml` or
-`.yml` and changed since the day began; repeat it for more. It reads every folder under the one named but those
-whose name begins with a dot, `node_modules`, and those reached through a link: name such a folder itself. A
-folder that is not there or may not be listed, and a record that may not be read, is named, and nothing is
-listed (exit 2): read as empty, it would leave every prompt open with no word of why. A
-citation names one session: its id in full, or eight or more of its first characters that no other session listed
-shares. A range (`#12-40`, `#12–40`, `#12 to #40`, `#12 through #40`) has its dash on the line of its first
-number and ends in a number of its own, which carries its `#` unless the dash is tight: a list item on the next
-line, a date or a time after a dash, and a number after a dash set off by spaces or after a word
-(`#12 — 2027 planning`, `#5 to 30 people`) end no range.
+anything else lists nothing.
 
-The listing's own output saved among the records cites nothing, in each form it is known to be saved:
+Each line names a prompt by what opens it:
+`<harness> <session> --seq <n>  HH:MM  <the prompt's first words>`, with as much of the session's id as tells it
+from the archive's other sessions (eight characters, or more where two begin alike). What follows the harness is
+what `synthesis sessions show` takes. Then one line counts, and says where it looked:
+`2 of 31 prompts on <day> in <W> are cited by no record under <folders>` (exit 1), or
+`all 31 prompts ... are cited by a record under <folders>` (exit 0).
 
-- a line that holds only what the listing prints for a prompt (its citation, its minute and its first words),
-  alone or behind a quote mark, a list marker or a box to tick, its citation in backticks or bold, or its three
-  parts as the cells of a table;
-- the JSON answer in any layout, also where it is kept as a string;
-- the list the day-end record prints when it refuses.
+**That name is not a citation.** The listing, its JSON answer and the list the day-end record prints when it
+refuses all name a prompt with `--seq`, and a record cites one with `#`: `<harness> <session> #<n>`. So nothing a
+tool prints about an open prompt can account for it, however it is kept: pasted, quoted, made into a checklist or a
+table, or saved as data. The citation is written by whoever writes the record, and it counts where it stands: in a
+sentence however it wraps, on a line of its own, in a heading, a table, a footnote or a field of a JSON or YAML
+record. (Until 2026-11-13 the listing printed citations, and rules tried to know its saved output by its shape.
+Four reviews each found ordinary shapes those rules did not know, where a list of what was open closed the day.)
 
-Only those are set aside: what is written beside them in the same file is read, and a listing line with what
-became of the prompt written on it is a record.
+A citation claims that its record accounts for the prompt, and nothing can check that it does. Write one only
+where the record says what became of the prompt. To note that prompts are open, give their number or their names
+as the listing prints them.
 
-An entry that holds citations and no word besides cites nothing either, whatever marks, numbers, dates or
-ticked boxes stand with them: it is a list of what is open, such as the refusal retyped. An entry is a
-paragraph, a list entry with the lines that continue it, or a row of a table, so a citation counts wherever its
-sentence wraps. A list entry or a paragraph of its own under the sentence is an entry of its own. A heading
-that is a citation stands over the text it names, and counts. Write the citation in the sentence that says what
-became of the prompt.
+A citation names one session: its id in full, or eight or more of its first characters that no other session
+listed shares. Its number has at most nine digits. A range (`#12-40`, `#12–40`, `#12 to #40`, `#12 through #40`)
+has its dash on the line of its first number and ends in a number of its own, which carries its `#` unless the
+dash is tight: a list item on the next line, a date or a time after a dash, and a number after a dash set off by
+spaces or after a word (`#12 — 2027 planning`, `#5 to 30 people`) end no range. A string that carries an escape
+is read as the text it holds, so a dash an encoder escaped still joins its range.
 
-A citation in a record says that the record accounts for the prompt, and nothing can check that it does. To
-note that prompts are open, give their number and not their citations: `two of today's prompts are open`.
+`--records` reads the files under that folder that end in `.md`, `.markdown`, `.txt`, `.json`, `.jsonl`, `.yaml`
+or `.yml`, whatever the case of the ending, and changed since the day began; repeat it for more. On a day with no
+prompt it reads none. It reads every folder under the one named, except:
 
-A record kept as JSON or YAML holds citations that stand alone in a field named `cites`: a string, a list, or
-the entries under the key. Under any other key a string of citations alone is a list of what is open. A string
-is read as the text it holds, so a listing kept as a string cites nothing and an escaped dash still joins its
-range.
+- a folder whose name begins with a dot, and `node_modules`;
+- a folder reached through a link (name such a folder itself);
+- a sessions repo, and this Mac's archive: they hold the conversations, and so every citation an agent wrote,
+  tried to write or talked about.
+
+A folder that is not there or may not be listed, a record that may not be read, and a folder that is a sessions
+repo or lies in one are each named, and nothing is listed (exit 2): read as empty, a folder would leave every
+prompt open with no word of why. A file that is no regular file, a link that leads nowhere or back to itself, and
+a folder removed while the records are read are passed over.
 
 `--json` prints
-`{"workspace", "date", "prompts", "open": [...], "records": [...]}`; the day-end record runs it itself. `records`
-names each folder as the listing read it, by its real path: `~` expanded, links followed, and `..` taken from
-where a link leads, never as written. The record reads the folders its config names the same way before it
-compares, so a folder is the same folder however it is written. An empty `--records ""` names no folder: like
-one that is not there, it is said and nothing is listed.
+`{"workspace", "date", "prompts", "open": [...], "records": [...]}`; the day-end record runs it itself. `open`
+holds the names as the listing prints them. `records` names each folder as the listing read it, by its real path:
+`~` expanded, links followed, and `..` taken from where a link leads, never as written. The record reads the
+folders its config names the same way before it compares, and refuses one the config writes from no fixed place
+(`kb/records`, `./records`): it would be read from wherever the day-end runs. An empty `--records ""` names no
+folder: like one that is not there, it is said and nothing is listed.
 
 For each prompt left: open it (`synthesis sessions show <session> --seq <n>`), and where its substance is
 already in a record, cite it there; where it is not, write the record first, then cite. A prompt that needs no

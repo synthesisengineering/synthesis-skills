@@ -845,7 +845,7 @@ def test_sessions_prompts_names_each_one_no_record_cites_and_exits_1_while_any_i
     assert cli.main(["sessions", "prompts", "--date", "2026-10-30"]) == 2    # a workspace must be named
     assert cli.main(["sessions", "prompts", "--workspace", "acme"]) == 0     # with no date: today
     assert capsys.readouterr().out.strip().startswith("0 prompts on 20")
-    for other in ("20261030", "2026-W44-5", "2026-10-30T15:00", "30-10-2026"):  # a day is written one way, on every Python
+    for other in ("20261030", "2026-W44-5", "2026-1-5", "30-10-2026", "2026-10-30 and more"):  # a day is written one way, on every Python
         assert cli.main(["sessions", "prompts", "--workspace", "acme", "--date", other]) == 2, other
         assert "YYYY-MM-DD" in capsys.readouterr().err
 
@@ -1263,6 +1263,9 @@ def test_a_records_folder_that_cannot_be_read_is_named_and_nothing_is_listed(ask
     os.mkfifo(kb / "pipe.md")                                                       # nor a pipe, which a read would wait on for ever
     assert cli.main(command + ["--records", str(kb)]) == 0
     capsys.readouterr()
+    record, history = _day_end(asked, tmp_path, records=[str(absent)])              # and the day-end record says which
+    refused = record()
+    assert refused.returncode and str(absent) in refused.stderr and not history.exists()
 
 
 def test_a_folder_gone_while_the_records_are_read_is_passed_over(asked, monkeypatch):
@@ -1325,9 +1328,6 @@ def test_the_listing_names_a_prompt_by_what_opens_it(asked, capsys):
         assert cli.main(["sessions", "show", *name.split()[1:]]) == 0
         assert prompt["text"] in capsys.readouterr().out
         assert [c[:2] for c in sessions.CITED.findall(_cited(name))] == [("c1", str(prompt["seq"]))]
-    record, history = _day_end(asked, tmp_path, records=[str(absent)])              # and the day-end record says which
-    refused = record()
-    assert refused.returncode and str(absent) in refused.stderr and not history.exists()
 
 
 def test_a_folder_reached_through_a_link_is_read_when_it_is_named_and_not_from_above(asked, tmp_path):
@@ -1406,7 +1406,7 @@ def test_a_records_folder_named_by_nothing_is_no_folder(asked, monkeypatch, caps
     monkeypatch.chdir(asked["kb"])
     assert cli.main(["sessions", "prompts", "--workspace", "acme", "--date", "2026-10-30", "--records", "", "--json"]) == 2
     said = capsys.readouterr()
-    assert said.out == "" and '"" could not be read' in said.err and "no record was checked" in said.err
+    assert said.out == "" and '"" cannot be read as records' in said.err and "no record was checked" in said.err
     assert cli.main(["sessions", "prompts", "--workspace", "acme", "--date", "2026-10-30", "--records", ".", "--json"]) == 0
     assert json.loads(capsys.readouterr().out)["records"] == [str(asked["kb"])]      # the working folder, when it is the one named
 

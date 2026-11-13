@@ -9,31 +9,36 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
 - **What the principal asked is accounted for** (`synthesis-context-lifecycle` 2.3.0). The archive holds every
   prompt the principal typed, and until now a request, a decision or a correction reached a project record only
   if an agent remembered. `synthesis sessions prompts --workspace <W> [--date YYYY-MM-DD]` lists what was typed
-  on a day, each as `<harness> <session> #<seq>  HH:MM  <first words>`. With `--records <folder>` it lists only
-  the prompts that no record under that folder cites, and exits 1 while one is left. A record accounts for a
-  prompt by citing it, alone or in a range (`#12-40`, `#12 to #40`). A brief one agent wrote for another,
+  on a day, each as `<harness> <session> --seq <n>  HH:MM  <first words>`: what follows the harness is what
+  `synthesis sessions show` takes. With `--records <folder>` it lists only the prompts that no record under that
+  folder cites, says where it looked, and exits 1 while one is left. A brief one agent wrote for another,
   injected text, a tool's result and the prompt a command line hands a run are not the principal's prompts; in a
   Codex session a prompt and its mirrored copy are one prompt, and the same words typed again are another. The
   listing first copies every transcript written since that day began, and lists nothing (exit 2) while one that
-  may hold that day's prompts is not copied, or while a folder of records or a record in it cannot be read.
+  may hold that day's prompts is not copied.
+- **A record cites a prompt, and the listing never does.** A record accounts for a prompt by citing it as
+  `<harness> <session> #<n>`, alone or in a range (`#12-40`, `#12 to #40`), by the session's id in full or by
+  eight or more of its first characters that no other session listed shares. The listing, its JSON answer and
+  the list the day-end record prints when it refuses name a prompt with `--seq`, which is no citation: no copy of
+  them accounts for anything, however it is kept. A citation is written by whoever writes the record, and it
+  counts where it stands. The end of a range carries its `#` unless the dash is tight, so `#12 — 2027 planning`
+  cites #12 alone; a record's number has at most nine digits; a string that carries an escape is read as the text
+  it holds, so a dash an encoder escaped still joins its range.
+- **Which records are read.** `--records` reads the files under a folder that end in `.md`, `.markdown`, `.txt`,
+  `.json`, `.jsonl`, `.yaml` or `.yml` and changed since the day began, and none on a day with no prompt. A
+  folder that is not there or may not be listed, a record that may not be read, and a sessions repo named as a
+  folder of records are each named, and nothing is listed (exit 2): read as empty, a folder would leave every
+  prompt open with no word of why. A sessions repo under a folder of records is passed over, since it holds the
+  conversations themselves, and so are a folder reached through a link, a link that leads nowhere and a file that
+  is no regular file.
 - **A day is not closed clean over a request that reached no record** (`synthesis-daily-rituals` 3.11.0). Where
   a workspace's ritual config has `"prompt_reconcile": {"records": ["<folder>"]}`, the day-end record runs the
-  listing itself and refuses a clean close while a prompt is cited by no record; `--outcome partial` records the
-  day and says how many are open. Only a missing key or `false` turns the check off: any other value is refused
-  and named. Nothing is recorded when the listing cannot be made, or when its answer is for another workspace,
-  day or set of folders, or does not agree with itself. A ritual record takes its day only as `YYYY-MM-DD`, and
-  never a day ahead.
-- **What counts as a citation.** A citation names one session: its id in full, or eight or more of its first
-  characters that no other session listed shares, and the listing prints as much of an id as tells it apart.
-  The end of a range carries its `#` unless the dash is tight, so `#12 — 2027 planning` cites #12 alone. The
-  listing's own output saved among the records cites nothing: its lines (also as a checklist, with the citation
-  in backticks or bold, or as a table), its JSON answer in any layout (also kept as a string), and the list the
-  day-end record prints when it refuses. What is written beside them is read, and a listing line with what
-  became of the prompt written on it is a record. An entry that holds citations and no word besides cites
-  nothing either: a paragraph, a list entry with the lines that continue it, or a row of a table, so a citation
-  counts wherever its sentence wraps. A record kept as JSON or YAML holds citations that stand alone in a field
-  named `cites`. The reference says what no rule can check: a citation claims its record accounts for the
-  prompt, so a list of what is open is never copied into one.
+  listing itself and refuses a clean close while a prompt is cited by no record, naming each as the listing does
+  and the folders it looked under; `--outcome partial` records the day and says how many are open. Only a
+  missing key or `false` turns the check off: any other value is refused and named, and so is a folder written
+  from no fixed place. Nothing is recorded when the listing cannot be made, or when its answer is for another
+  workspace, day or set of folders, or does not agree with itself. A ritual record takes its day only as
+  `YYYY-MM-DD`, and never a day ahead.
 - **Session transcripts are copied every hour, whether or not a session remembers to** (`synthesis-onboarding`
   3.5.0, `synthesis-agent-guardrails` 2.5.1). `setup.py plugin --sessions-export` installs a LaunchAgent that
   runs `synthesis sessions export --all --scheduled` and then `synthesis sessions sync` every hour and at

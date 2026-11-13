@@ -260,9 +260,12 @@ def cmd_sessions(args) -> int:
         if not args.workspace:
             print("name the workspace whose prompts to list: --workspace <name>", file=sys.stderr)
             return 2
-        try:
-            day = datetime.fromisoformat(args.date).date().isoformat() if args.date else time.strftime("%Y-%m-%d")
+        day = (args.date or time.strftime("%Y-%m-%d"))[:10]
+        try:  # a day is written one way on every Python (3.11 and later also read 20261030 and 2026-W44-5 as dates); a time may follow it
+            sound = datetime.strptime(day, "%Y-%m-%d").date().isoformat() == day and bool(datetime.fromisoformat(args.date or day))
         except ValueError:
+            sound = False
+        if not sound:
             print(f"--date {args.date!r} is not a day: write it YYYY-MM-DD", file=sys.stderr)
             return 2
         reach = max(2.0, (time.time() - datetime.fromisoformat(day).timestamp()) / 86400 + 1)  # whatever was written since that day began
@@ -278,20 +281,21 @@ def cmd_sessions(args) -> int:
         try:
             left = sessions.uncited(found, roots) if roots else found
         except OSError as error:  # read as an empty folder, it left every prompt open and no word of why
-            print(f"the records under {error.filename or chr(34) * 2} could not be read ({error.strerror}), so no record was checked and "
-                  "nothing is said of what is open: give --records a folder that is there and can be read", file=sys.stderr)
+            print(f"{error.filename or chr(34) * 2} cannot be read as records ({error.strerror}), so no record was checked and nothing is "
+                  "said of what is open: give --records folders that are there, with records that can be read", file=sys.stderr)
             return 2
         known = sessions.catalog() if left else []
         names = {session: sessions.short(session, known) for session in {str(p["session"]) for p in left}}
-        cites = [f"{p['harness']} {names[str(p['session'])]} #{p['seq']}" for p in left]
+        named = [f"{p['harness']} {names[str(p['session'])]} --seq {p['seq']}" for p in left]  # what `show` takes, and no citation
+        where = f" under {', '.join(roots)}"
         if args.json:
-            print(json.dumps({"workspace": args.workspace, "date": day, "prompts": len(found), "open": cites if roots else [], "records": roots}))
+            print(json.dumps({"workspace": args.workspace, "date": day, "prompts": len(found), "open": named if roots else [], "records": roots}))
         else:
-            for cite, p in zip(cites, left):
-                print(f"{cite}  {p['at'][11:16]}  {' '.join(p['text'].split())[:args.width or None]}")
-            print(f"{len(found)} prompts on {day} in {args.workspace}" if not roots else
-                  f"all {len(found)} prompts on {day} in {args.workspace} are cited by a record" if not left else
-                  f"{len(left)} of {len(found)} prompts on {day} in {args.workspace} {'is' if len(left) == 1 else 'are'} cited by no record")
+            for name, p in zip(named, left):
+                print(f"{name}  {p['at'][11:16]}  {' '.join(p['text'].split())[:args.width or None]}")
+            print(f"{len(found)} prompts on {day} in {args.workspace}" + (f", so nothing to cite{where}" if roots else "") if not (roots and found) else
+                  f"all {len(found)} prompts on {day} in {args.workspace} are cited by a record{where}" if not left else
+                  f"{len(left)} of {len(found)} prompts on {day} in {args.workspace} {'is' if len(left) == 1 else 'are'} cited by no record{where}")
         return 1 if roots and left else 0
     else:  # recent, search: each record under as much of its session's id as cites it and opens it
         rows = (sessions.recent(args.project, args.workspace, args.limit) if args.action == "recent" else
