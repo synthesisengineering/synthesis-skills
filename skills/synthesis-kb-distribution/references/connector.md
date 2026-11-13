@@ -157,7 +157,7 @@ lists every problem at once.
 | `KB_SEARCH_LIMIT` | `10` | Results per search, 1 to 50. |
 | `PORT` | `8080` | Port to listen on; Cloud Run sets it. |
 | `KB_HOST` | `0.0.0.0` | Address to listen on. |
-| `KB_LOG_LEVEL` | `INFO` | Log level. The line that begins `TEST ONLY` is logged whatever the level. |
+| `KB_LOG_LEVEL` | `INFO` | Log level: `DEBUG`, `INFO`, `WARNING`, `ERROR` or `CRITICAL`. The line that begins `TEST ONLY` is logged whatever the level. |
 
 **Temporary addresses.** Outside the operator-only test mode the connector does not start when
 `KB_PUBLIC_URL` names an address that lasts only as long as one machine or its tunnel:

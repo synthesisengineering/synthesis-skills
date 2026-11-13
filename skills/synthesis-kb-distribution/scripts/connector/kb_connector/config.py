@@ -151,6 +151,8 @@ def load(env) -> Settings:
                         ("KB_OPERATOR_ADDRESSES", settings.operator_addresses)):
         if value and any(e.count("@") != 1 for e in listed(value)):
             problems.append(f"{name} must be comma-separated email addresses")
+    if settings.log_level not in ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"):
+        problems.append(f"KB_LOG_LEVEL must be DEBUG, INFO, WARNING, ERROR or CRITICAL, not {settings.log_level!r}")
     if problems:
         raise ConfigError("the connector cannot start:\n  - " + "\n  - ".join(problems))
     return settings
