@@ -224,3 +224,95 @@ def test_a_tool_call_of_another_shape_tags_nothing_and_stops_nothing(harness, gi
     for tool in ("Write", "Bash", "Unknown"):
         said, meta = exported(harness, [typed(harness, f"With {tool}."), called(harness, tool, given)])
         assert f"With {tool}." in prompts(said) and not meta.get("projects")
+
+
+# --- a review, 2026-11-13 ------------------------------------------------------------------------------------------
+# Measured after it on thirty days of transcripts, each row given to this reader and to the approval reader's own
+# test of what the principal typed (`approvals._prompt`): the two agree on 3,597 rows; where the approval reader
+# says typed and no `user` record is filed, the text is a wrapped block with no words outside it (a command to the
+# harness and its output 253, a scheduled task 22, another session's message 23, a CI event 18) or the harness's
+# own line that a request was interrupted (18). The cases below did not occur in those days; the reader is held to
+# them all the same.
+
+REMINDER = "<system-reminder>\nThe date has changed.\n</system-reminder>"
+
+
+def slash(name, args=None, after=""):
+    return (f"<command-message>{name}</command-message>\n<command-name>/{name}</command-name>"
+            + (f"\n<command-args>{args}</command-args>" if args is not None else "") + after)
+
+
+def test_a_reminder_and_then_a_slash_command_in_one_block_is_the_command(harness):
+    said, _ = exported(harness, [typed(harness, REMINDER + "\n" + slash("review", "the last change"))])
+    assert prompts(said) == ["/review the last change"]
+    assert any(kind == "system" and "The date has changed." in text for kind, text in said)
+
+
+def test_words_beside_a_slash_commands_arguments_are_kept(harness):
+    said, _ = exported(harness, [typed(harness, slash("review", "a", after="\nAnd also the docs.")),
+                                 typed(harness, slash("review", after=" the tests too"))])
+    assert prompts(said) == ["/review a\nAnd also the docs.", "/review the tests too"]
+
+
+def test_a_queued_prompt_is_filed_at_the_time_it_was_typed(harness):
+    sent = queued(harness, "Also bump the version.", timestamp="2026-11-13T04:59:30.000Z")   # the attachment's own time
+    sent["timestamp"] = "2026-11-13T05:00:30.000Z"                                           # the row's
+    native = harness["claude"]
+    native.parent.mkdir(parents=True, exist_ok=True)
+    native.write_text(json.dumps(sent) + "\n", encoding="utf-8")
+    sessions.export_file("claude-code", native)
+    meta = next(m for m in sessions.catalog() if m["native"] == str(native))
+    assert [r["at"] for r in sessions.records(meta["folder"]) if r["kind"] == "user"] == ["2026-11-13T04:59:30.000Z"]
+
+
+def test_a_prompt_queued_in_a_session_a_program_drives_is_a_brief_as_its_rows_are(harness):
+    said, _ = exported(harness, [{**typed(harness, "Summarize the file."), "entrypoint": "sdk-cli"},
+                                 {**queued(harness, "And the next one."), "entrypoint": "sdk-cli"}])
+    assert prompts(said) == [] and [text for kind, text in said if kind == "brief"] == ["Summarize the file.", "And the next one."]
+
+
+@pytest.mark.parametrize("more", [{"origin": {"kind": "task-notification"}}, {"origin": {"kind": "peer"}}, {"isSynthetic": True},
+                                  {"isVisibleInTranscriptOnly": True}, {"sourceToolUseID": "toolu_1"}, {"toolUseResult": {"ok": True}}])
+def test_a_row_the_principal_cannot_have_typed_files_no_prompt(harness, more):
+    """The approval reader's own test of a typed row: its flags and its origin. Before this, such a row with plain
+    words was a `user` record, and the split of a reminder from the words after it made one of its words too."""
+    rows = [{**typed(harness, text), **more} for text in ("Plain words.", REMINDER + "\nWords after a reminder.", slash("pdf"))]
+    said, _ = exported(harness, rows)
+    assert prompts(said) == [] and len(said) >= 2 and {kind for kind, _ in said} == {"system"}
+
+
+def test_words_beside_a_tool_result_are_not_a_prompt(harness):
+    both = row(harness, "user", origin={"kind": "human"}, message={"role": "user", "content": [
+        {"type": "tool_result", "tool_use_id": "t1", "content": "ok"}, {"type": "text", "text": REMINDER + "\nWords the harness put beside a result."}]})
+    said, _ = exported(harness, [both])
+    assert prompts(said) == []
+
+
+@pytest.mark.parametrize("prompt, more, top", [
+    ("Typed, in a row the harness marks meta.", {}, {"isMeta": True}),
+    ("<teammate-message from=\"a\">Go on.</teammate-message>", {"origin": None}, {}),
+    ("<channel name=\"x\">An update.</channel>", {"origin": None}, {}),
+    ("<bash-stdout>total 0</bash-stdout>", {}, {}),
+])
+def test_a_queued_command_that_is_not_typed_words_files_no_prompt(harness, prompt, more, top):
+    said, _ = exported(harness, [{**queued(harness, prompt, **more), **top}])
+    assert prompts(said) == []
+
+
+def test_what_the_harness_prints_in_bash_mode_is_no_prompt(harness):
+    said, _ = exported(harness, [typed(harness, "<bash-input>ls</bash-input>"), typed(harness, "<bash-stdout>total 0</bash-stdout><bash-stderr></bash-stderr>")])
+    assert prompts(said) == [] and {kind for kind, _ in said} == {"system"}
+
+
+def test_a_reminder_that_holds_its_own_closing_tag_ends_at_its_last_one(harness):
+    """A reminder that shows a file can hold the tag's own text. Its tail is the harness's, not a prompt."""
+    body = "<system-reminder>\nA file changed:\n  the text </system-reminder> stands in it\nand more of the file\n</system-reminder>"
+    said, _ = exported(harness, [typed(harness, body), typed(harness, body + "\nNow the typed words.")])
+    assert prompts(said) == ["Now the typed words."]
+    assert not any("more of the file" in text for text in prompts(said))
+
+
+def test_a_pasted_block_the_principal_sent_is_a_prompt_whatever_its_origin_says(harness):
+    paste = "<pasted_content id=\"a1\">a pasted log</pasted_content>"
+    said, _ = exported(harness, [typed(harness, paste), queued(harness, paste, origin=None)])
+    assert prompts(said) == [paste, paste]
