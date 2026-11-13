@@ -187,7 +187,8 @@ def _only_here(m, low: str) -> str:
     these or unique-local, however written. "" for any other, and for a file's name with its line number: a name ending
     in .local with no scheme before it that is a configuration file's (config.local:7), follows a path
     (src/app.local:42) or has a column after its line (notes.local:17:3). A dotfile (.env.local:12) and a name that
-    goes on (settings.local.json:3) are no match at all."""
+    goes on (settings.local.json:3) are no match at all. An IP address with no scheme, no `//` and no port before a
+    prefix length (/0 to /32, to /128 for a bracketed IPv6 one) names a range (10.0.0.0/8, [fd00::]/8): ""."""
     import ipaddress
     (scheme, host, port), at = m.groups(), m.start(2)
     shown, told = host + (":" + port if port else ""), bool(scheme) or bool(port) and len(port) < 6
@@ -196,6 +197,9 @@ def _only_here(m, low: str) -> str:
             FILED.search(host) or low[at - 1:at] in ("/", "\\") and low[max(at - 2, 0):at] != "//"
             or re.match(r":\d", low[m.end():m.end() + 2]))
         return shown if told and not filed else ""
+    ranged = re.match(r"/(\d{1,3})(?![\w/]|\.\w)", low[m.end():])  # past it, only what ends a word
+    if ranged and not (scheme or port or low[max(at - 2, 0):at] == "//") and int(ranged[1]) <= (128 if host[0] == "[" else 32):
+        return ""
     try:
         ip = ipaddress.ip_address(host.strip("[]").split("%")[0])  # past a zone: fe80::12%en0
     except ValueError:

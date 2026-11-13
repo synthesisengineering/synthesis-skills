@@ -164,7 +164,12 @@ address was gone for good. With `temporary_addresses` in the config:
   (`notes.local:17:3`). Any other name ending in `.local` with a port is an address
   (`app.local:7`), and so is every one after a scheme (`http://config.local:7`). An address
   outside those ranges passes after any scheme (`ssh://build.example.com`, `http://172.32.0.1`,
-  `http://[2001:db8::1]:8080`), and so does a bracket that follows a word (`rows[::1]`).
+  `http://[2001:db8::1]:8080`), and so does a bracket that follows a word (`rows[::1]`). An IP
+  address with a prefix length after it and no scheme, `//` or port before it names a range and
+  passes (`0.0.0.0/0`, `10.0.0.0/8`, `127.0.0.0/8`, `[fd00::]/8`): the length is `/0` to `/32`,
+  and to `/128` for a bracketed IPv6 address. After a scheme what follows the host is a path, and
+  the address counts (`http://10.0.0.5/8`), as it does past a length no range has
+  (`127.0.0.1/33`, `127.0.0.1/8080`).
 - **Starting a tunnel:** `cloudflared tunnel --url ...`, `ngrok http`, `tcp`, `tls` or `start`,
   `devtunnel host`, `localtunnel` or `lt` with a port (also through `npx`, `bunx`, `pnpm` or `yarn`), and a reverse
   `ssh -R` to `serveo.net`, `localhost.run` or `pinggy.io` wait for the principal's code. The hold
