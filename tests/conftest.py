@@ -108,6 +108,11 @@ def hook_budget(compiled_runtime):
     start before them, free to write, lets an interpreter that keeps compiled code in a folder of its own keep the
     standard library's there.
 
+    One block of rounds does not always hold a quiet run of the call: other work on the machine stretches the
+    longer run more (2026-11-13: on a runner whose whole job ran at half its usual speed, the guard hook's fastest
+    of fifteen read 92 ms beside 45 for its modules, with nothing in the hook changed). So a call that is over is
+    timed for a second block and a third, every round counted, and fails only if its fastest run of them all is over.
+
     The test names the modules, and they are exactly what the call's own code imports while it runs, at a module's
     top or inside a function: one more is paid on every call, so it is taken out of the call's path or named in the
     test, where a reviewer sees it. A module named that nothing of the call's own imports is refused too, since the
@@ -135,8 +140,12 @@ def hook_budget(compiled_runtime):
             return time.perf_counter() - began
         floor = ["-c", "import " + ", ".join(needs)]
         once(floor, env={key: value for key, value in os.environ.items() if key != "PYTHONDONTWRITEBYTECODE"})
-        took = [(once(floor, env=quiet["env"]), once(call, **quiet)) for _ in range(rounds)]
-        least, cost = (min(column) * 1000 for column in zip(*took))
+        took = []
+        for _ in range(3):  # a call over its allowance is timed for two more blocks of rounds before it is called slow
+            took += [(once(floor, env=quiet["env"]), once(call, **quiet)) for _ in range(rounds)]
+            least, cost = (min(column) * 1000 for column in zip(*took))
+            if cost < 2 * least:
+                break
         assert cost < 2 * least, f"the call took {cost:.0f} ms; its standard-library modules alone load in {least:.0f} ms here"
         return first.stdout
     return hold
