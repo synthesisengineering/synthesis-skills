@@ -262,3 +262,10 @@ def test_the_prompt_checks_setting_is_read_in_one_place_for_the_day_end_and_the_
     assert [fault(s) for s in (None, 0, {}, [], "yes", {"records": []}, {"records": [""]}, {"records": "kb"})] == ["folders"] * 8
     assert fault({"records": ["kb"]}) == "loose" and fault({"records": ["/abs/kb", "./kb"]}) == "loose"
     assert [fault({"records": ["/abs/kb"], "from": day}) for day in ("tomorrow", 20261114, "2026-W46-4", "20261114", None)] == ["from"] * 5
+
+
+def test_a_rituals_folder_named_in_the_shell_reaches_no_test():
+    """The third review of 5.14.0: sixteen of these tests failed where the shell that ran them named a rituals
+    folder, and a skill's test read the config in it. The run takes the name out before each test, core and skills
+    alike (the repository's `conftest.py`)."""
+    assert "RITUAL_STATE_DIR" not in os.environ

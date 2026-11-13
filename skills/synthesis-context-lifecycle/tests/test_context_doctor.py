@@ -431,6 +431,16 @@ def test_a_machine_with_no_session_archive_says_it_cannot_tell_which_entries_cit
     assert findings(kb, capsys)[2]["citations"] == {"ai-knowledge-test": {"cited": None, "entries": 4}}
 
 
+def test_folders_named_like_sessions_that_hold_none_are_no_archive_to_tell_by(kb, tmp_path, capsys):
+    """The third review of 5.14.0, finding 10: folders named for sessions with no `meta.json` in them were taken for
+    an archive, and the line said that none of the entries cites a record."""
+    _entries(kb)
+    (tmp_path / "synthesis-home" / "sessions" / "alpha" / "2026-11" / f"claude-code-{HERE}").mkdir(parents=True)
+    code, out = run("--root", str(kb), capsys=capsys)
+    assert code == 0 and "cannot tell how many of 4 session entries" in out
+    assert findings(kb, capsys)[2]["citations"] == {"ai-knowledge-test": {"cited": None, "entries": 4}}
+
+
 def test_a_config_that_cannot_be_read_costs_the_report_nothing(kb, tmp_path, capsys):
     """The second review, finding 1: the count asks where the sessions repos are, the config that says so was not
     JSON, and the whole report ended in a traceback. The archive on this machine is still there to count by."""

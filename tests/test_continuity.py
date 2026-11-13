@@ -209,6 +209,71 @@ def test_a_note_that_cannot_be_written_costs_no_hook_its_answer(tmp_path, write_
     assert "Muse: its" in said and "Codex: its" in said
 
 
+def test_session_start_says_what_the_doctor_could_not_tell_and_whose_the_approval_is(tmp_path, write_config):
+    """The third review of 5.14.0, findings 1, 9 and 10: where the doctor could not tell, the sentence said that the
+    doctor checks it; the doctor's line hands every session the command that approves Muse's hooks, with no word on
+    whose approval that is; and an entry with no line of the doctor's left an empty bracket."""
+    write_config({})
+    note = _waits(codex=ALL, muse=["stop"])
+    seen = json.loads(note.read_text(encoding="utf-8"))["seen"]
+    seen["codex hook trust"].update(untold=True, said="cannot tell: `codex plugin list` did not answer")
+    del seen["muse hook approval"]["said"]
+    note.write_text(json.dumps({"seen": seen}), encoding="utf-8")
+    context = _started("S-claude")
+    assert "Codex: the doctor could not tell whether its hooks run when it looked (" in context
+    assert (": cannot tell: `codex plugin list` did not answer), and its session-start, user-prompt-submit, pre-tool-use and "
+            "stop hooks have not been seen to run since.") in context
+    assert "Codex: its" not in context
+    assert "Muse: its stop hook was not running when the doctor looked" in context and "the doctor's line then" not in context
+    assert context.count("Nothing is known to guard a send or a deploy made from there") == 1
+    assert "is the person's to give in that harness" in context and "give none yourself" in context
+    _waits(codex=[], muse=[])
+    assert "the person's to give" not in _started("S-claude-2")                  # nothing waits, nothing is said
+
+
+def test_a_hook_whose_note_is_held_answers_at_once_and_strikes_at_its_next_call(tmp_path, write_config):
+    """The third review of 5.14.0, finding 4: a hook with something to strike waited for whoever held the note's lock."""
+    import threading
+    import time
+    from synthesis import hook, paths
+    write_config({})
+    note, inside, leave = _waits(codex=ALL), threading.Event(), threading.Event()
+
+    def hold(old):
+        inside.set()
+        leave.wait(10)
+    holder = threading.Thread(target=paths.note_wait, args=("codex hook trust", hold))
+    holder.start()
+    assert inside.wait(10)
+    began = time.monotonic()
+    hook._ran({"transcript_path": str(_rollout())}, "stop")
+    waited = time.monotonic() - began
+    leave.set()
+    holder.join(10)
+    assert waited < 1 and _waiting(note, "codex hook trust") == ALL
+    hook._ran({"transcript_path": str(_rollout())}, "stop")
+    assert _waiting(note, "codex hook trust") == ["session_start", "user_prompt_submit", "pre_tool_use"]
+
+
+def test_a_hook_whose_handler_fails_strikes_nothing(tmp_path, write_config, monkeypatch):
+    """The third review of 5.14.0, finding 7: the strike was made before the handler ran, so a guard that could not
+    be loaded had already said that it runs."""
+    import io
+    import pytest
+    from synthesis import hook
+    write_config({})
+    note = _waits(codex=ALL)
+    payload = {"session_id": "S", "cwd": "/tmp", "transcript_path": str(_rollout()), "tool_name": "Bash", "tool_input": {"command": "true"}}
+
+    def broken(payload):
+        raise ImportError("no guards")
+    monkeypatch.setattr(hook, "pre_tool_use", broken)
+    monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(payload)))
+    with pytest.raises(ImportError):
+        hook.main(["hook", "pre-tool-use"])
+    assert _waiting(note, "codex hook trust") == ALL
+
+
 def test_brief_is_bounded_and_check_flags_a_long_context(tmp_path, write_config):
     proj = _knowledge(tmp_path, write_config)
     (proj / "CONTEXT.md").write_text("line\n" * 400, encoding="utf-8")
