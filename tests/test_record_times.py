@@ -375,8 +375,10 @@ def test_the_refusal_of_a_rounding_says_where_an_events_time_goes():
     assert "`date`" in found and "after the words" in found
 
 
-def test_front_matter_is_not_read_and_a_heading_inside_a_code_fence_names_no_day():
-    assert said(RECORD, "- 2026-11-12 18:54", "---", before=("---", "updated:")) == []
+def test_a_heading_inside_a_code_fence_names_no_day_and_front_matter_is_read_as_the_rest_is():
+    """Front matter is read: in thirty days of real commits one record kept its notes there, stamps and all, and
+    none held a time to come (2026-11-13)."""
+    assert len(said(RECORD, "note: told the owner (11-12 18:54, by mail)", "---", before=("---", "kind: state"))) == 1
     assert said(LOG, "- 18:54 asked", before=("## 2026-11-11", "```", "## 2026-11-12", "```")) == []
     assert len(said(LOG, "- 18:54 asked", before=("## 2026-11-12", "```", "## 2026-11-11", "```"))) == 1
 

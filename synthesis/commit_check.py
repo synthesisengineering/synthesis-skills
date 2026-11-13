@@ -730,13 +730,12 @@ def _stamped(found, now: datetime):
 
 
 def _around(whole: list) -> tuple:
-    """For each line of a file: whether it stands in a code fence or in front matter, and the nearest heading above
-    it, outside those, that names a day."""
-    fenced, dated, inside, day, front = [], [], False, "", whole[:1] == ["---"] or whole[:1] == ["---\r"]
-    for index, line in enumerate(whole):
-        edge = not front and line.lstrip().startswith(("```", "~~~"))
-        fenced.append(inside or edge or front)
-        front = front and not (index and line.strip() == "---")
+    """For each line of a file: whether it stands in a code fence, and the nearest heading above it, outside a
+    fence, that names a day."""
+    fenced, dated, inside, day = [], [], False, ""
+    for line in whole:
+        edge = line.lstrip().startswith(("```", "~~~"))
+        fenced.append(inside or edge)
         inside ^= edge
         dated.append(day)
         if not fenced[-1] and re.match(r"#{1,6}\s", line) and re.search(r"\d{4}-\d\d-\d\d", line):
@@ -750,9 +749,9 @@ def record_times(lines: list, settings, now: datetime, read) -> list:
     and may not round a moment from 15 minutes back to AHEAD ahead: the clock could be read (a request of
     2026-11-12, after six such times in one day). A moment longer ago may be rounded. Not judged: a time inside an
     entry's text (three in ten of those are later than their commit, and rightly), a time farther ahead (a
-    deadline, a schedule), the time an unchecked box opens with, a code fence's, front matter's, and outside a
-    session log a span that had begun (a meeting's hours, in the notes written while it runs). `read(path)` gives a
-    staged file's text, once."""
+    deadline, a schedule), the time an unchecked box opens with, a code fence's, and outside a session log a span
+    that had begun (a meeting's hours, in the notes written while it runs). `read(path)` gives a staged file's
+    text, once."""
     if settings is False:
         return []
     skip = settings.get("skip", []) if isinstance(settings, dict) else None
