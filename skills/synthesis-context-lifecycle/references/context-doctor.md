@@ -121,6 +121,14 @@ It names a commit, not a date. A date over-covers by up to a day, and two dispos
 coverage  item-currency: examined 41, skipped 31 (dormant)
 ```
 
+**How many session entries cite a record** (5.14.0). An audit asked for a warning on each session entry that cites no session record. Counted first, on 2026-11-13: 8 of 267 entries in thirty days cited one. The warning would have been 259 lines in a report nobody reads at that length, and it would ask whether an entry cites anything, where the day's prompt check asks whether each thing the principal typed is accounted for. So the report carries one counted line for each knowledge root, or for the one project asked for, and no finding:
+
+```
+citations  ai-knowledge-example: 8 of 61 session entries dated in the last 14 days cite a session record
+```
+
+An entry is a heading the doctor reads as one, with its text up to the next; a citation is what the archive's reader takes for one (`<harness> <session> #<seq>`), with eight or more characters of a session's id, whether or not that session is in the archive. Fourteen days is the weekly review's window. A root with no entry in the window gets no line. `--json` carries the count under `citations`. `synthesis doctor` says where the prompt check itself is on, in its `prompt check` line.
+
 The pairing for the item-currency suppression is `terminal-project-open-items`: a project claiming to be finished while still listing obligations it owes. The general form, which covers both this and the case where a check simply reaches less than it appears to: **a guard's coverage is a claim that needs its own verification, separate from whether it passes.**
 
 **Publication time and workday are different evidence.** Freshness uses dated session records, regardless of whether Git publishes them in a single-project commit, a bulk commit or a delayed archive pass. Git author/committer dates never replace the recorded workday, and a bulk commit touching many projects is a session for none of them. Missing narrative evidence remains explicit; a clean tree or matching commit date cannot certify current session state.

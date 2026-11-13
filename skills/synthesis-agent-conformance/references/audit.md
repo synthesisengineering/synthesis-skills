@@ -87,7 +87,15 @@ there with no item here fails:
   trusted, and the skill catalog (asked of `codex app-server`) within budget with every
   shipped skill discoverable;
 - `muse hook approval`, `<harness> shell guard`: for Muse, hooks approved, and its shell
-  tool name treated as a shell by the guard;
+  tool name treated as a shell by the guard. A harness whose hooks wait for the person's
+  approval (Codex's hook trust, Muse's hook approval) runs none of them, so each run of the
+  doctor writes down which wait (`<synthesis home>/state/harness-approvals.json`; a
+  harness the run could not look at keeps what the last run wrote, and the note says
+  nothing once it is a day old). A session's start in a harness that does run its hooks
+  says how many wait and how each is approved; a start hook that runs in a harness
+  strikes that harness from the note, since it shows its hooks run; the weekday evening
+  job shows a fixed banner, for one or for more than one; and `synthesis doctor --waiting`
+  prints the note's count and names, running no check and writing nothing;
 - `versions`: harness versions equal (or a release visibly in progress, never repaired);
 - `instruction adapters`: every workspace folder and repository under `~/workspaces/*`
   (or the configured `workspace_roots`) has `AGENTS.md` with `CLAUDE.md` importing it, so
