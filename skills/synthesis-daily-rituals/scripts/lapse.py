@@ -34,7 +34,8 @@ sys.dont_write_bytecode = True  # an installed plugin must stay byte-identical; 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import decay_sweep  # noqa: E402  (it finds the synthesis runtime, or says that it cannot)
 import lapse_review  # noqa: E402
-from synthesis import rituals  # noqa: E402
+
+rituals = decay_sweep.rituals  # the runtime the sweep found
 
 HEADER = "| Lapsed | Item | Where it waited | Why it lapsed | Outcome | Who it affected | What can still be done |"
 TAG = re.compile(r"\*\*Decays:\*\*", re.I)

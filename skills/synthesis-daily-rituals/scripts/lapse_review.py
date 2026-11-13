@@ -29,7 +29,8 @@ from pathlib import Path
 sys.dont_write_bytecode = True  # an installed plugin must stay byte-identical; Muse verifies its bundle
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import decay_sweep  # noqa: E402  (it finds the synthesis runtime, or says that it cannot)
-from synthesis import rituals  # noqa: E402
+
+rituals = decay_sweep.rituals  # the runtime the sweep found
 
 WINDOWS = {"week": 14, "quarter": 92, "half": 183, "year": 366}  # days, the day of the review included
 CELLS = ("lapsed", "item", "where", "why", "outcome", "affected", "still")  # the register's columns, in its order

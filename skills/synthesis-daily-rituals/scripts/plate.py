@@ -25,7 +25,8 @@ sys.dont_write_bytecode = True  # an installed plugin must stay byte-identical; 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import decay_sweep  # noqa: E402  (it finds the synthesis runtime, or says that it cannot)
 import ritual_state  # noqa: E402
-from synthesis import rituals  # noqa: E402
+
+rituals = decay_sweep.rituals  # the runtime the sweep found
 
 
 def build(workspace: str, as_of, out: Path | None, with_gaps: bool) -> tuple[str, int]:

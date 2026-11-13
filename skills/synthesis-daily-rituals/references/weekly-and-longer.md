@@ -64,13 +64,13 @@ Each workspace keeps a lapse register in its own records (the workspace instruct
 - it passed its date with no decision from the principal (**lapsed**), or
 - it sat past its date until the principal let it go (**let go after its date**).
 
-Rows are facts, each with a pointer to where the item waited: `| Lapsed | Item | Where it waited | Why it lapsed | Outcome |`. A row added in error is corrected by a dated note beneath the table, never by deleting it.
+Rows are facts, each with a pointer to where the item waited: `| Lapsed | Item | Where it waited | Why it lapsed | Outcome |`. The rows the helper writes (`lapse.py`, Day-End Step 4b) carry two more cells, whom the lapse affected and what can still be done, in a table of their own beneath the first; the rows above it stay as they are. A row added in error is corrected by a dated note beneath the table, never by deleting it.
 
-The weekly review reads the register for its 14-day window and lists every row under **Slipped through**, with where each one waited and any pattern that repeats (the same kind of item, the same source, the same day of the week). Origin, 2026-10-01: an event-bound decision passed with no answer and was logged as "released", which hid the slip from the review it exists to inform.
+The weekly review reads the register for its 14-day window and lists every row under **Slipped through**, with where each one waited and any pattern that repeats (the same kind of item, the same source, the same day of the week). `python3 <rituals>/scripts/lapse_review.py --workspace <W> --as-of <verified-current-date>` prints that section from the register: how many rows the window holds, what repeats among them (the same item more than once, by the ID its row carries; a weekday or a place it waited at, three times or more; how many outcomes are still open), then the rows, newest first, as the register has them. Why a thing repeats and what to change is the review's to say. Origin, 2026-10-01: an event-bound decision passed with no answer and was logged as "released", which hid the slip from the review it exists to inform.
 
 ## Quarterly, six-month and annual reviews
 
-These read the lapse register for their whole window, so a longer review shows what slipped through the cracks and which patterns persist. The principal asked for this on 2026-10-05. No script runs them: whichever session runs one starts from the register.
+These read the lapse register for their whole window, so a longer review shows what slipped through the cracks and which patterns persist. The principal asked for this on 2026-10-05. No script runs them; `lapse_review.py --window quarter|half|year` (or `--since` and `--until`) reads the register for the window, and whichever session runs one starts from what it prints.
 
 - [ ] Read every register row in the window, plus the weekly reviews' **Slipped through** sections.
 - [ ] Group the rows by pattern: the kind of item (acknowledgment, event decision, reply, registration), the source where it waited (a plan section, a context ledger, a thread), the weekday, and what was happening (travel, illness, a launch week).

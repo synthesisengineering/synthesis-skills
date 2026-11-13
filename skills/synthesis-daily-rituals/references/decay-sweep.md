@@ -175,6 +175,8 @@ them. A ledger's rows are never in `due` and change no status: an owed-since dat
 day it decays on. Counted in the one seat that keeps a ledger: 141 open rows of 341, the oldest four months old,
 where the due list held 73.
 
+**Open and not yet due (`ahead`).** Each open dated item whose date is still to come, with its identity, title, date, file and line. It changes no status: it is there so that a list of everything open (`plate.py`) is built from the sweep alone.
+
 **A record the readers cannot read.** A plan's or a ledger's shape that either reader fails on is a gap for that
 file (BLOCKED), and everything else is still read: the critical view, the due list and the evening's alert.
 
