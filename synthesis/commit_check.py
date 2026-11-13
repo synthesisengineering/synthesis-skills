@@ -36,26 +36,9 @@ if __package__ in (None, ""):
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from synthesis import approvals, paths, yamlish  # noqa: E402
+from synthesis.credentials import (CREDENTIALS, EXAMPLE_KEYS, KEY_BODY, KEY_HEADER, KEY_INLINE,  # noqa: E402,F401
+                                   SECRET_FILE)
 
-CREDENTIALS = {
-    "AWS access key": r"\bAKIA[0-9A-Z]{16}\b",
-    "GitHub token": r"\b(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{36,}\b|\bgithub_pat_[A-Za-z0-9_]{60,}\b",
-    "GitLab token": r"\bglpat-[A-Za-z0-9_-]{20,}\b",
-    "Slack token": r"\bxox[abprs]-[A-Za-z0-9-]{10,}\b",
-    "Anthropic key": r"\bsk-ant-[A-Za-z0-9_-]{20,}\b",
-    "OpenAI key": r"\bsk-(?:proj-)?[A-Za-z0-9_-]{32,}\b",
-    "Google API key": r"\bAIza[0-9A-Za-z_-]{35}\b",
-    # A Docs image exported to markdown: the key opens the image to anyone with the URL (Rajiv, 2026-10-13).
-    # Gemini notes also link docs.google.com/docs-images-rt/ (2026-10-20: 14 such keys were committed).
-    "Docs image link key": r"(?:googleusercontent\.com|docs\.google\.com/docs-images-rt)/[^\s\"'<>)]*[?&]key=[A-Za-z0-9_-]{16,}",
-}
-KEY_HEADER = re.compile(rb"BEGIN (?:(?:RSA|EC|DSA|OPENSSH|PGP|ENCRYPTED|SSH2) ){0,2}PRIVATE KEY", re.I)
-KEY_INLINE = re.compile(rb"PRIVATE KEY(?: BLOCK)?-----(?:\\[nr]|\s)+[A-Za-z0-9+/]{40,}", re.I)
-KEY_BODY = re.compile(rb"[\s\"'>#*;-]*[A-Za-z0-9+/]{40,}={0,2}(?:\\[nr])*[\s\"',;]*")
-# Published example keys pass by exact value; no credential is approvable. AWS's: docs.aws.amazon.com/IAM/latest/UserGuide/id_credentials_access-keys.html
-EXAMPLE_KEYS = re.compile(rb"(?<![A-Za-z0-9/+])(?:AKIAIOSFODNN7EXAMPLE|wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY)(?![A-Za-z0-9/+])")
-SECRET_FILE = re.compile(r"(?:^|/)(?:\.env(?:\.(?!(?:example|sample|template|dist|defaults)$)[^/]+)?|id_(?:rsa|dsa|ecdsa|ed25519)"
-                         r"|[^/]+\.(?:pem|p12|pfx|jks|keystore)|\.netrc|\.pgpass|\.aws/credentials)$", re.I)
 # Files whose purpose is the pattern catalog itself; exposure patterns skip them, credentials never do.
 CATALOG_PATHS = [r"(^|/)\.githooks/pre-commit$", r"(^|/)\.githooks/extra-patterns\.ya?ml$", r"^\.synthesis/git-hook-config\.ya?ml$",
                  r"(^|/)git-hook-config\.example\.ya?ml$", r"(^|/)anti-shortcut-catalog\.ya?ml$",
@@ -1009,9 +992,11 @@ def main(argv=None):
         print(f"synthesis commit check: cannot locate the repository ({where.stderr.strip()}); commit blocked", file=sys.stderr)
         return 1
     repo_root, git_dir, common_dir, running = lines[0], lines[1], os.path.abspath(lines[2]), os.path.abspath(lines[3])
-    try:  # every commit first keeps the checkout's uncommitted changes recoverable (2026-10-20)
-        from synthesis import checkout
-        checkout.snapshot(repo_root, "commit", paths.session_id())
+    try:  # every commit first keeps the checkout's uncommitted changes recoverable (2026-10-20), once: not again at its message
+        from synthesis import board, checkout
+        if HOOK != "commit-msg":
+            me = board.load(paths.session_id()) if paths.session_id() else None
+            checkout.snapshot(repo_root, "commit", paths.session_id(), first=tuple(getattr(me, "claims", None) or ()))
     except Exception:
         pass
     if os.environ.get(CHAINED) == git_dir + HOOK:  # a repository hook called the check again: already done

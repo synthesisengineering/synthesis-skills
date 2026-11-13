@@ -2791,3 +2791,43 @@ def test_the_doctor_says_when_each_repo_was_last_fetched_and_which_could_not_be(
     stamp.write_text(json.dumps({"at": at(30), "repos": {"/r/one": {"tried": at(30), "fetched": at(30)}}}), encoding="utf-8")
     line = doctor.check_fetch(stamp, {}, now)
     assert line.status == "warn" and "the hourly job last fetched 30 h ago" in line.detail
+
+
+def test_the_hourly_fetch_leaves_fetch_head_alone_says_why_and_never_asks(tmp_path, write_config, monkeypatch):
+    """5.19.0's first review: M8 (the job rewrote FETCH_HEAD, which a pull reads), m3 (the reason kept was git's last
+    line), m4 (stderr that is not UTF-8 raised) and m5 (ssh could ask; credential helpers were left to)."""
+    knowledge, _ = _cloned(tmp_path, "ai-knowledge-test")
+    _g(knowledge, "fetch", "-q", "origin")  # the person's own fetch, which their next pull reads
+    head = (knowledge / ".git" / "FETCH_HEAD").read_bytes()
+    gone, odd = tmp_path / "workspaces" / "ai-knowledge-gone", tmp_path / "workspaces" / "ai-knowledge-odd"
+    for repo in (gone, odd):
+        _g(tmp_path, "init", "-q", str(repo))
+    _g(gone, "remote", "add", "origin", str(tmp_path / "no-such-remote.git"))
+    subprocess.run([b"git", b"-C", bytes(odd), b"remote", b"add", b"origin", b"/no/such/caf\xe9.git"], check=True)
+    write_config({"knowledge_roots": [str(knowledge), str(gone), str(odd)]})
+    monkeypatch.delenv("GIT_SSH_COMMAND", raising=False)
+    sessions.fetch()
+    assert (knowledge / ".git" / "FETCH_HEAD").read_bytes() == head
+    kept = json.loads((sessions.root() / ".state" / "fetch.json").read_text(encoding="utf-8"))["repos"]
+    assert "does not appear to be a git repository" in kept[str(gone)]["failed"] and kept[str(odd)]["failed"]
+    seen, run = [], subprocess.run
+    monkeypatch.setattr(subprocess, "run", lambda args, **kw: seen.append((args, kw.get("env") or {})) or run(args, **kw))
+    _g(odd, "config", "core.sshCommand", "ssh -i /a/key/of/their/own")
+    sessions.fetch()
+    fetches = {a[2]: e for a, e in seen if "fetch" in a}
+    assert all("--no-write-fetch-head" in a for a, _ in seen if "fetch" in a) and sorted(fetches) == sorted(map(str, (knowledge, gone, odd)))
+    assert all(e["GIT_TERMINAL_PROMPT"] == "0" and e["GCM_INTERACTIVE"] == "never" for e in fetches.values())
+    assert "BatchMode=yes" in fetches[str(knowledge)]["GIT_SSH_COMMAND"] and "GIT_SSH_COMMAND" not in fetches[str(odd)]
+
+
+def test_the_hourly_fetch_says_when_it_is_off_or_has_nothing_to_fetch(tmp_path, write_config, capsys):
+    """m6 and m7: the job's log said every repo was fetched when none was, and the doctor warned for ever."""
+    from synthesis import doctor
+    write_config({"scheduled_fetch": False})
+    assert cli.main(["sessions", "export", "--all", "--scheduled"]) == 0
+    assert "scheduled fetch: off" in capsys.readouterr().out
+    write_config({"knowledge_roots": [str(tmp_path / "not-a-repo")]})
+    assert cli.main(["sessions", "export", "--all", "--scheduled"]) == 0
+    assert "nothing to fetch" in capsys.readouterr().out
+    line = doctor.check_fetch(sessions.root() / ".state" / "fetch.json", {})
+    assert line.status == "ok" and "nothing to fetch" in line.detail

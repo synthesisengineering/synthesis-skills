@@ -2384,3 +2384,38 @@ def test_the_doctor_warns_of_unsaved_records_never_fails_and_reads_its_hours_fro
     assert doctor.main(["--unsaved"]) == 0 and capsys.readouterr().out == "0\n"
     paths.config_file().write_text("{not json", encoding="utf-8")
     assert doctor.main(["--unsaved"]) == 0 and capsys.readouterr().out == "unknown\n"
+
+
+def test_unsaved_reads_every_name_every_branch_a_folder_removed_whole_and_fails_closed(tmp_path):
+    """5.19.0's first review: M5 (a quoted name), m1 (another branch), m2 (a folder deleted whole), M9 (Finder's
+    files are not records) and M6 (git that cannot read the checkout is said, never read as nothing)."""
+    from synthesis import board
+    remote, repo = tmp_path / "r.git", tmp_path / "repo"
+    subprocess.run(["git", "init", "-q", "--bare", "-b", "main", str(remote)], check=True)
+    subprocess.run(["git", "clone", "-q", str(remote), str(repo)], check=True, capture_output=True)
+    (repo / "notes" / "sub").mkdir(parents=True)
+    (repo / "notes" / "sub" / "x.md").write_text("x\n", encoding="utf-8")
+    (repo / "notes" / "keep.md").write_text("keep\n", encoding="utf-8")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-q", "-m", "first")
+    _git(repo, "push", "-q", "-u", "origin", "main")
+    two_days = datetime.fromtimestamp(time.time() - 48 * 3600).astimezone().isoformat()
+    dated = {"GIT_AUTHOR_DATE": two_days, "GIT_COMMITTER_DATE": two_days}
+    (repo / "notes" / "café.md").write_text("accented\n", encoding="utf-8")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-q", "-m", "accented", env=dated)
+    _git(repo, "checkout", "-q", "-b", "feature")
+    (repo / "notes" / "f.md").write_text("on a branch\n", encoding="utf-8")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-q", "-m", "branch", env=dated)
+    _git(repo, "checkout", "-q", "main")
+    shutil.rmtree(repo / "notes" / "sub")  # a tracked file deleted with its folder
+    (repo / "notes" / ".DS_Store").write_bytes(b"\x00")
+    for path in (repo / "notes" / ".DS_Store", repo / "notes"):
+        _aged(path, 30)
+    board.claim("S1", [str(repo / "notes")], project="alpha")
+    claims = [c for s in board.sessions() for c in s.claims]
+    assert doctor.unsaved(claims, 24)[os.path.realpath(repo)][2:] == (1, 2)  # sub/x.md; café.md and f.md
+    (repo / ".git" / "index").write_bytes(b"not an index")
+    line = doctor.check_unsaved({}, claims)
+    assert line.status == "warn" and "could not read" in line.detail

@@ -46,7 +46,19 @@ def test_a_commit_keeps_the_untracked_files_beside_it_recoverable(repo):
     draft.write_text("not committed yet\n")
     assert _commit(repo, "second.md", "second\n").returncode == 0
     rows = [r for r in checkout.journal(str(draft)) if r["reason"] == "commit"]
-    assert rows and checkout.show(rows[0]["sha"], str(draft)) == "not committed yet\n"
+    assert rows and checkout.show(rows[0]["sha"], str(draft)) == b"not committed yet\n"
+
+
+def test_a_commit_takes_one_snapshot_whatever_hooks_run(repo):
+    """5.19.0's first review, M7: the snapshot ran at pre-commit and again at commit-msg, each with a full scan."""
+    from synthesis import checkout
+    hook = repo / ".git" / "hooks" / "commit-msg"
+    hook.write_text(f'#!/bin/sh\nSYNTHESIS_GIT_HOOK=commit-msg exec {sys.executable} -S {CHECK} "$@"\n')
+    hook.chmod(0o755)
+    assert _commit(repo, "first.md", "first\n").returncode == 0
+    (repo / "draft.md").write_text("draft\n")
+    assert _commit(repo, "second.md", "second\n").returncode == 0
+    assert [r["reason"] for r in checkout.journal()].count("commit") == 2  # one for each commit
 
 
 def test_credentials_are_refused(repo):
