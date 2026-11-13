@@ -23,7 +23,8 @@ STORES = ("memory", "firestore")
 TEMPORARY_HOSTS = ("trycloudflare.com", "ngrok.io", "ngrok.app", "ngrok.dev", "ngrok.pizza", "ngrok-free.app",
                    "ngrok-free.dev", "ngrok-free.pizza", "loca.lt", "localtunnel.me", "serveo.net",
                    "serveousercontent.com", "localhost.run", "lhr.life", "lhr.rocks", "pinggy.io", "pinggy.link",
-                   "pinggy-free.link", "devtunnels.ms", "app.github.dev", "localhost", "local")
+                   "pinggy-free.link", "devtunnels.ms", "app.github.dev", "ts.net", "tunnelmole.net", "bore.pub",
+                   "loophole.site", "localhost", "local")
 ORIGIN_PARTS = ("a user-info part (user:password@)", "a path", "a query", "a fragment")  # what KB_PUBLIC_URL may not have
 URL_FIELDS = ("id", "source_path", "commit")
 FERNET_KEY = re.compile(r"[A-Za-z0-9_-]{43}=")

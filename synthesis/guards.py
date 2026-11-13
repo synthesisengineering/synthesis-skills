@@ -165,7 +165,8 @@ def _is_email(tool: str, tool_input: dict) -> bool:
 # carried the tunnel's address. One relied on it, and a restart of the laptop's app took the address away for good.
 TUNNELS = (".trycloudflare.com", ".ngrok.io", ".ngrok.app", ".ngrok.dev", ".ngrok.pizza", ".ngrok-free.app", ".ngrok-free.dev",
            ".ngrok-free.pizza", ".loca.lt", ".localtunnel.me", ".serveo.net", ".serveousercontent.com", ".localhost.run",
-           ".lhr.life", ".lhr.rocks", ".pinggy.io", ".pinggy.link", ".pinggy-free.link", ".devtunnels.ms", ".app.github.dev")
+           ".lhr.life", ".lhr.rocks", ".pinggy.io", ".pinggy.link", ".pinggy-free.link", ".devtunnels.ms", ".app.github.dev",
+           ".ts.net", ".tunnelmole.net", ".bore.pub", ".loophole.site")
 # The knowledge-base connector refuses to start on the same services (its TEMPORARY_HOSTS); a test holds the two equal.
 HOSTNAME = re.compile(r"(?<![\w.@-])(?:[a-z0-9-]+\.)+[a-z][a-z0-9-]*(?![\w-])")
 _NAME = r"(?:localhost|[a-z0-9-]+(?:\.[a-z0-9-]+)*\.local(?:host)?|\[::1\])"
