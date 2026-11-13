@@ -891,6 +891,33 @@ def test_version_probe_is_bounded_closes_stdin_and_reaps(tmp_path):
     assert time.monotonic() - start < 5
 
 
+def test_a_codex_whose_version_probe_does_not_answer_is_named_and_not_passed_over(machine, monkeypatch, capsys):
+    """2026-11-13: on a busy machine a Codex command took longer than the probe's two seconds to say its version,
+    and the doctor printed no Codex line at all: nine checks gone, a summary that counted the rest, and nothing that
+    said so. A command that did not answer is not a harness that is absent."""
+    _, fakebin, _ = machine
+    script = fakebin / "codex"
+    script.write_text(script.read_text().replace("import json, sys\n", "import json, sys, time\nif sys.argv[1:] == ['--version']:\n    time.sleep(30)\n", 1))
+    monkeypatch.setattr(doctor, "PROBE_TIMEOUT", 0.5)
+    doctor.main([])
+    lines = codex_lines(capsys)
+    assert list(lines) == ["codex plugin"]
+    assert lines["codex plugin"].split()[0] == "warn" and "cannot tell" in lines["codex plugin"]
+    assert "--version` did not answer within 0.5 s" in lines["codex plugin"] and "was not looked at" in lines["codex plugin"]
+
+
+def test_a_stale_launcher_beside_a_codex_that_answers_is_still_passed_over_without_a_word(machine, monkeypatch, capsys):
+    """The probe exists for a launcher that outlived its app: where another install answers, that one is Codex."""
+    home, fakebin, _ = machine
+    stale = _exe(home / "stale" / "codex", "sleep 30")
+    monkeypatch.setattr(doctor, "PROBE_TIMEOUT", 0.5)
+    monkeypatch.setattr(doctor, "KNOWN_LOCATIONS", {**doctor.KNOWN_LOCATIONS, "codex": (str(fakebin / "codex"),)})
+    monkeypatch.setenv("PATH", os.pathsep.join([str(stale.parent), os.environ["PATH"]]))
+    assert doctor.main([]) == 0
+    lines = codex_lines(capsys)
+    assert lines["codex plugin"].split()[0] == "ok" and "cannot tell" not in "".join(lines.values())
+
+
 # ---- Codex skill catalog and instruction bytes ---------------------------------
 
 def _skill(root: Path, name: str, explicit=False, description="Use when x.") -> dict:
