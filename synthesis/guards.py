@@ -925,8 +925,9 @@ def _address(value: str) -> str:
 def _principal(config: dict) -> set:
     """The addresses `account_routing` names as the principal's: the default, each workspace's account and its aliases."""
     routing = config.get("account_routing") if isinstance(config.get("account_routing"), dict) else {}
-    return {_address(str(a)) for meta in [routing, *(routing.get("workspaces") or {}).values()] if isinstance(meta, dict)
-            for a in [meta.get("default_account"), meta.get("account"), *(meta.get("aliases") or [])] if a}
+    spaces = routing.get("workspaces") if isinstance(routing.get("workspaces"), dict) else {}
+    return {_address(str(a)) for meta in [routing, *spaces.values()] if isinstance(meta, dict)
+            for a in [meta.get("default_account"), meta.get("account"), *(meta.get("aliases") if isinstance(meta.get("aliases"), list) else [])] if a}
 
 
 def check_account(tool: str, tool_input: dict, config: dict, cwd: str) -> str | None:
@@ -1098,18 +1099,21 @@ def named_sites(meta: dict) -> list | None:
     accounts, named = meta.get("accounts", {}), []
     for key, account in accounts.items() if isinstance(accounts, dict) else [(None, None)]:
         site, _, page = (key.split("://", 1)[-1] if isinstance(key, str) else "").partition("/")
-        if not site or not isinstance(account, str) or not MAIL.fullmatch(account.strip()) or site.lower() in [n[0] for n in named]:
+        site = site.lower()
+        if (not re.fullmatch(r"[a-z0-9-]+(?:\.[a-z0-9-]+)+", site) or not isinstance(account, str) or not MAIL.fullmatch(account.strip())
+                or any(site == n[0] or site.endswith("." + n[0]) or n[0].endswith("." + site) for n in named)):  # one entry covers a site
             return None
-        named.append((site.lower(), "/" + page if page else "", _address(account)))
+        named.append((site, "/" + page if page else "", _address(account)))
     return named
 
 
 def _where(url: str) -> tuple:
-    """(host, path) of an address, with or without its scheme; ("", "/") for one that cannot be read."""
+    """(host, the path with any query and fragment) of an address, with or without its scheme; ("", "/") for one
+    that cannot be read."""
     from urllib.parse import urlsplit
     try:
         parts = urlsplit(url if "://" in url else "https://" + url)
-        return (parts.hostname or "").lower(), parts.path or "/"
+        return (parts.hostname or "").lower(), (parts.path or "/") + "?" * bool(parts.query) + parts.query + "#" * bool(parts.fragment) + parts.fragment
     except ValueError:
         return "", "/"
 
@@ -1142,6 +1146,9 @@ def _account_shown(lines: list, site: str, page: str, mine: str, others: set) ->
             ran, call = re.search(r"Executed on tabId: (\d+)", text[cut:]), cut >= 0 and _browser_call(lines, i, str(block.get("tool_use_id") or ""))
             if not (ran and call and _on_site(dict(TAB_LINE.findall(text[cut:])).get(ran.group(1), ""), site, page)):
                 continue
+            steps = [s for s in (call.get("input") or {}).get("actions") or [] if isinstance(s, dict) and isinstance(s.get("input"), dict)]
+            if len({str(s["input"].get("tabId")) for s in steps}) > 1 or any(str(s.get("name")).endswith("navigate") for s in steps[1:]):
+                continue  # a batch's result names one tab, where it ended: one that moved or ran on two is no read of that page
             named = {m.lower() for m in MAIL.findall(json.dumps(call.get("input")))}
             found = ({m.lower() for m in MAIL.findall(text[:cut])} & (others | {mine})) - named
             if found == {mine} or found and mine not in found:

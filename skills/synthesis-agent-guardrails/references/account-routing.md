@@ -132,8 +132,9 @@ does not own.
 What it does, when the workspace's entry under `browser_routing.workspaces` has `accounts`:
 
 - `accounts` maps a site to the workspace's address there: `{"assistant.example": "me@clientco.example"}`. A site
-  covers the hosts under it. A key may name the page of the site that shows the signed-in account
-  (`"assistant.example/settings"`); then only a read of an address that begins with the key counts.
+  covers the hosts under it, so one entry is all a site takes. A key may name the page of the site that shows
+  the signed-in account (`"assistant.example/settings"`, or with the page's query or fragment where that is how
+  the site names it); then only a read of an address that begins with the key counts.
 - **A call that puts something into a page of a named site waits:** `computer` with `type` or `key`,
   `form_input`, `file_upload`, `upload_image` and `javascript_tool`, alone or as a step of `browser_batch`, which
   waits whole. The page a step acts on is its tab's address in the newest list of tabs in the session's record,
@@ -144,8 +145,10 @@ What it does, when the workspace's entry under `browser_routing.workspaces` has 
   settles it when it is the result of a browser call that ran on a tab of the site, is no error, and holds,
   before its list of tabs and apart from any address the call itself named, either the workspace's address and
   none of the principal's others, or one of the others without it. A page that shows both, as an account
-  switcher does, settles nothing. The principal's addresses are those the config names: `account_routing`'s, the
-  same-day rule's `own`, and every workspace's `accounts`.
+  switcher does, settles nothing. Neither does a batch whose steps ran on two tabs or went somewhere after its
+  first step: its result names one tab, the one it ended on, and its reads may be of another page. The
+  principal's addresses are those the config names: `account_routing`'s, the same-day rule's `own`, and every
+  workspace's `accounts`.
 - **Another of the principal's addresses is called what it is.** The hold says that the profile is signed in to
   the site as that account, that this is a misconfiguration to tell the principal about now, with the profile
   and the site named, and that it is not a limit on the work and no reason to do the work somewhere else.
@@ -157,8 +160,8 @@ What it does, when the workspace's entry under `browser_routing.workspaces` has 
   or not a call was held ([reply-and-provenance.md](reply-and-provenance.md#a-site-signed-in-to-another-account)).
   In the incident no call was held: the agent read the page and stopped.
 
-A map of another shape (a value that is no address, a key with no site, two keys for one site) blocks the
-workspace's browser calls until it is fixed.
+A map of another shape (a value that is no address, a key that is no host name, two keys for one site or for a
+site and a host under it) blocks the workspace's browser calls until it is fixed.
 
 What it cannot see: a browser. It knows only what a read brought into the record. So a page that shows the
 workspace's address for another reason (a conversation that mentions it) counts as showing the account, unless
