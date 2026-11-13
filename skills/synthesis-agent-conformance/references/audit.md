@@ -68,6 +68,9 @@ there with no item here fails:
   5.1.18;
 - `sessions repo <ws>`: each workspace's sessions repository is cloned where the config
   says, was synced within two days, and is under 3 GB;
+- `sessions export`: the last copy of session transcripts left none it could not copy;
+  and where the hourly copy is scheduled, its job is loaded, runs this install's own
+  `synthesis` command, and an export has finished within a day;
 - `harnesses`: at least one of the three harnesses was found on this Mac;
 - `<harness> plugin`, `<harness> package`, `<harness> hooks`: per harness, the plugin
   installed and enabled, its code equal to the runtime (never a version label), all four
