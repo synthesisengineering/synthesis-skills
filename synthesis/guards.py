@@ -217,7 +217,7 @@ def temporary_addresses(texts: list, config: dict):
                 'and "local" as true or false (either may be absent); sends are blocked until it is fixed')
     exact = {h.strip().lower().lstrip(".") for h in more}
     ends, found = TUNNELS + tuple("." + h for h in exact), set()
-    for low in (re.sub(r"://[^\s/?#@]*@", "://", str(text).lower()) for text in texts):
+    for low in (re.sub(r"://[^\s/?#]*@", "://", str(text).lower()) for text in texts):  # to the last @: a password may hold one
         found |= {h for h in HOSTNAME.findall(low) if h in exact or h.endswith(ends)}
         found |= {_only_here(m, low) for m in LOCAL.finditer(low)} - {""} if local else set()
     return sorted(found)
