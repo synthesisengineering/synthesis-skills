@@ -133,6 +133,11 @@ nobody retypes standing instructions for each run:
 | `verify-before-done` | Verification before any completion claim: focused tests per change, full suites per phase. |
 | `lessons-filed` | Durable lessons filed as work proceeds, not at the end. |
 | `completion-report` | Completion report plus batched questions (a decision packet when complex) ready at close. |
+| `others-rely-on` | At every wake, check the health of everything a person other than the principal relies on (relied_on.py --all), and lead the reply with any failure. |
+
+`relied_on.py` is the daily-rituals skill's script; the install keeps it in the runtime beside the
+helper. [continuation.md](continuation.md#re-entry-protocol) has the command a wake runs and what a
+`DOWN` line asks for. At close the item takes what the wakes found as its evidence.
 
 Blog-material seeds are not a public default; a principal who wants them adds a
 `blog-seeds` item in their private config. Deploy authority is never a

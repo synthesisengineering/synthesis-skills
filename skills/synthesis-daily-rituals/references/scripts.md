@@ -20,6 +20,7 @@ than half-reading it.
 | `python3 <rituals>/scripts/decay_sweep.py --as-of YYYY-MM-DD --plans-dir <dir> [--plans-dir ...] [--artifacts-dir <dir>] [--records-dir <dir>] --json` | JSON: `status` CLEAR, REVIEW or BLOCKED, the due items with source locators, the `critical` view (`open`, `closed`, `unclassified`), every scanned and refused source | 2 BLOCKED; 0 otherwise (collection succeeded, nothing approved) |
 | `python3 <rituals>/scripts/decay_sweep.py --as-of YYYY-MM-DD --workspace <W> --alert [--json]` | the same over the folders `<W>` declares, opening with `CRITICAL: N open (P past due, L within 7 days); A due an alert today` and one line per critical item; `--alert` posts one count-only banner and spoken line when any is due and reports it under `critical.alert` | 2 BLOCKED (including a workspace that declares no folders); 0 otherwise |
 | `python3 <rituals>/scripts/decay_sweep.py --as-of YYYY-MM-DD --alert-declared` | `critical alert: N due across M declared set(s) of plan folders; {...}` after one alert for every workspace together (the 16:55 nudge runs this) | 0; 2 when the ritual config cannot be read |
+| `python3 <rituals>/scripts/relied_on.py --workspace <W>\|--all [--timeout SECONDS] [--json]` | whatever is down first, one line each, `DOWN <what> (relied on by <who>): <why>`, the why being `exit N: <the first line the check printed>`, `no answer in N s` or `could not be run (<reason>)`; then `ok <what>` for each healthy one, then `N relied on, M down`. With nothing declared, the one line `nothing another person relies on is declared for <W>`. `--all` checks every workspace in the ritual config and names the workspace on each line (`DOWN <W>: <what> ...`). `--json` prints one object: `relied_on` (a row per entry with `workspace`, `what`, `by`, `ok` and `why`, whatever is down first), `down` and `nothing_declared`. Each check gets the timeout (20 seconds unless `--timeout` says otherwise), one after another, so give the command that long for each entry | 1 when anything is down or an entry cannot be run as written (it counts as down); 2 when the config cannot be read or the workspace is not in it, with `NOT CHECKED: <config file>: <why>` on the error stream; 0 otherwise |
 | `python3 <rituals>/scripts/portfolio_review.py [--threshold 30] [--all] [--json] [--index P] [--source R]` | at most three stale "active" projects, oldest first, each with close / pause / pick up | 0 always |
 | `python3 <rituals>/scripts/stop_reprompts.py [--workspace W] [--since D] [--until D] [--json] [--archive P]` | the replies the Stop hook sent back in the window (default the last seven days), by check and harness, and any phrase or file named more than once | 0 always |
 | `python3 <rituals>/scripts/stray_lessons.py --since YYYY-MM-DD --repo <knowledge repository> [--repo ...] [--json]` | each lesson heading or **Lesson:** line added to a project record since the date whose section links to no lessons folder, then any repository it could not read | 0 always |
@@ -49,7 +50,16 @@ than half-reading it.
   number of days) marks a workspace worked occasionally, such as an advisory seat: it owes no
   weekly review, and once it has gone that many days without a ritual record, the session line
   counts it as quiet too long and the summary shows `QUIET <days> days`. Its declared mailboxes
-  keep their own `sweep` cadence. The synthesis home is
+  keep their own `sweep` cadence. `relied_on` lists what a person other than the principal relies
+  on, each with the command that says whether it is healthy:
+  `"relied_on": [{"what": "the intake form on the shared address", "by": "the sales team",
+  "check": ["curl", "-fsS", "--max-time", "10", "https://intake.example.com/health"]}]`. `check` is
+  a list of words, the program and then its arguments. No shell runs it, so nothing in it is
+  expanded: name a program on the PATH or give its full path. The thing is healthy when the check
+  exits 0 within the timeout. `relied_on.py` runs every entry at each ritual, and an entry is added
+  the day something is handed to another person to use. Declare it under the workspace it belongs
+  to: an entry under `defaults` is checked for every workspace that declares none of its own. The
+  synthesis home is
   `~/.synthesis/v5` unless `SYNTHESIS_HOME` says otherwise; `RITUAL_STATE_DIR` or `--state-dir`
   points the tool at a copy to exercise.
 - The watermark store, `<synthesis home>/sync-watermarks/<W>.json` ([sync-watermarks.md](sync-watermarks.md)).

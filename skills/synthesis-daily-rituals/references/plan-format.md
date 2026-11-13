@@ -28,6 +28,10 @@ The daily plan follows this canonical structure. On each update, consolidate int
 
 ---
 
+## Down: needs your attention      ← ABOVE EVERYTHING, while something another person relies on is down; cockpit: NEEDS YOU region
+### [What is down, and who relies on it]
+[The `DOWN` line from `relied_on.py`, word for word. Who is affected, and what the fix is.]
+
 ## Critical deadlines: needs your attention   ← FIRST, whenever one is inside seven days; cockpit: NEEDS YOU region
 ### [What closes, its date and exact time with zone]
 [The direct link and what the principal has to do.]
@@ -83,6 +87,7 @@ The synthesis-console v0.8+ parser classifies each H2 heading into one of these 
 | Cockpit region / kind | Canonical H2 name | Recognized synonyms |
 |----------------------|-------------------|---------------------|
 | **decisions** (NEEDS YOU) | `Decisions needed` | "Decisions to make", "Open ask", "Asks for Rajiv", "Open Items", "Needs your attention", "Open Quality Concerns" |
+| **decisions** (NEEDS YOU), above everything in the plan | `Down: needs your attention` | The words "needs your attention" place it |
 | **decisions** (NEEDS YOU), first in the plan | `Critical deadlines: needs your attention` | The words "needs your attention" place it; a heading that only starts with "Critical" is read as briefing and folds into the lower row |
 | **priority-tasks** (TODAY) | `Priority Tasks` | "Tasks", "Tasks for Rajiv", "Tasks Today", "Today's Tasks", "Today's Priorities", "Still To Do", "This Week", "Remaining Tasks", "Pending This Session", "Pending from Before Vacation" |
 | **drafts** (DRAFTS) | `Drafts — Ready to Send` | "Drafts", "Unsent — Ready to Send", "Unsent Drafts", "DM Reply Drafts", "Draft Messages", "Messages", "Next Steps", "Pending Emails", "Scheduled for Tomorrow / Later" |
@@ -98,6 +103,10 @@ The synthesis-console v0.8+ parser classifies each H2 heading into one of these 
 ### Internal Structure Conventions
 
 Within each section, the parser also recognizes structural patterns. Adhering to these makes the UI work correctly:
+
+**Down section** (`## Down: needs your attention`), while something another person relies on is down:
+- The first H2 of the plan, above the critical deadlines section, and the first thing in the reply to the principal. One H3 per `DOWN` line that `relied_on.py` printed, with the line word for word, who is affected and what the fix is.
+- It closes in place when the check prints `ok` for it again: write the time under its H3. The people affected are told only on the principal's approval of the exact text.
 
 **Travel section** (`## Travel: needs your attention`), in a workspace that checks travel:
 - One H3 per in-person event the travel check flagged, in date order, with what it lacks, word for word from `travel_check.py`. It leaves the plan when the event's address, travel line and both blocks are in place, or the principal has decided not to go.

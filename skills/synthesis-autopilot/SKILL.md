@@ -5,7 +5,7 @@ license: "Apache-2.0"
 depends_on: ["synthesis-thinking-framework", "synthesis-context-lifecycle", "synthesis-checkpoint", "synthesis-anti-shortcuts", "synthesis-grounding-discipline", "synthesis-implementation-integrity", "synthesis-project-management", "synthesis-adversarial-review", "synthesis-decision-packet", "synthesis-fact-checking", "synthesis-writing-craft", "synthesis-agent-conformance"]
 metadata:
   author: "Rajiv Pant"
-  version: "4.0.0"
+  version: "4.1.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
   format: v5
@@ -32,6 +32,7 @@ skills that already exist rather than restating them.
 10. **Close honestly.** Done means every item and criterion checked with executed evidence, standing items dispositioned, no open blocker, cited evidence inside the project, and every scheduled job deleted and read back. Otherwise close incomplete with the reason.
 11. **Delegate with discipline.** At most five deliverables per brief, no minimizing words, each brief's share of shared budgets stated, and every non-clean return audited against its brief and diff.
 12. **Alerts carry counts and a pointer only,** honor the mute flag, record posted or suppressed, and fire again for each new question. The written report always exists.
+13. **At every wake, check what other people rely on before the next item:** `python3 -S "$HOME/.synthesis/v5/current/skills/synthesis-daily-rituals/scripts/relied_on.py" --all`. Lead the reply with any `DOWN` line. It is an incident: the principal is told first, the people affected only on the principal's approval. A test two colleagues relied on once stopped, unseen through two scheduled check-ins.
 
 ## Contents
 
