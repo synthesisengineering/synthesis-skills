@@ -253,7 +253,10 @@ def cmd_sessions(args) -> int:
             print(f"{len(found)} sessions match {args.target!r}; give more of the id", file=sys.stderr)
             return 1
         rows = (sessions.around(found[0]["folder"], args.seq) if args.seq is not None else
-                sessions.records(found[0]["folder"], kinds, whole=args.whole))
+                sessions.in_time(sessions.records(found[0]["folder"], kinds, whole=args.whole)))
+        if args.seq is not None and not rows:  # said, never shown as a record with no words
+            print(sessions.no_record(found[0], args.seq), file=sys.stderr)
+            return 1
         who = f"[{found[0].get('harness')} {sessions.short(str(found[0].get('session')))}] "  # no line begins with a bare `#<seq>`
         for rec in rows:
             out(rec, who + sessions.render(rec, 0 if args.whole or rec.get("seq") == args.seq else args.width))

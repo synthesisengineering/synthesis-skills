@@ -1237,7 +1237,7 @@ def test_an_option_before_the_session_is_read(asked, capsys):
     had already been taken as left out (noted by a review, 2026-11-13)."""
     assert cli.main(["sessions", "show", "--json", "c1"]) == 0
     shown = [json.loads(line) for line in capsys.readouterr().out.splitlines()]
-    assert shown and [rec["seq"] for rec in shown] == list(range(len(shown)))
+    assert shown and sorted(rec["seq"] for rec in shown) == list(range(len(shown)))  # every record, in the order said
     assert cli.main(["sessions", "show", "--seq", "0", "c1"]) == 0 and "#0 " in capsys.readouterr().out
     for wrong in (["sessions", "show", "--json", "c1", "c2"], ["sessions", "show", "--no-such-option", "c1"]):
         with pytest.raises(SystemExit):
@@ -2370,3 +2370,13 @@ def test_a_session_with_no_synced_copy_is_numbered_from_its_start(synced):
     native = _jsonl(synced["claude"], _claude_rows(synced["work"]))
     sessions.export(0)
     assert min(_numbered(native)) == 0 and "numbers_from" not in _meta(native)
+
+
+def test_times_written_two_ways_are_put_in_order_as_moments():
+    """One harness writes a time with its thousandths and another without; as words, `10:00:00.500Z` stands before
+    `10:00:00Z`, which is half a second earlier."""
+    rows = [{"seq": 0, "at": "2026-10-30T10:00:00.500Z"}, {"seq": 1, "at": "2026-10-30T10:00:00Z"}, {"seq": 2},
+            {"seq": 3, "at": "not a time"}, {"seq": 4, "at": "2026-10-30T09:59:59+00:00"}]
+    assert [rec["seq"] for rec in sessions.in_time(rows)] == [4, 1, 2, 3, 0]
+    finer = [{"seq": 0, "at": "2026-10-30T10:00:00.900000001Z"}, {"seq": 1, "at": "2026-10-30T10:00:00.5Z"}]
+    assert [rec["seq"] for rec in sessions.in_time(finer)] == [1, 0]           # a fraction of any length, on every Python

@@ -174,6 +174,36 @@ class _Session:
         self.skipped = collections.Counter(self.meta.get("skipped", {}))
         self.cwd, self.roots = str(s.get("cwd") or ""), None  # where the session's calls run; the projects folders, found once
         self.again = None  # reading the session again: what the archive already holds, each record counted (`read_again`)
+        self.absent = s.get("absent", 0)  # numbers below `seq` that another Mac gave to records this archive does not hold (`seed`)
+
+    def seed(self) -> None:
+        """Begin from the copy another Mac synced. Where this Mac's archive holds nothing of the session and a
+        workspace's sessions repo, cloned here, holds it, the session is filed where that Mac filed it, the copy's
+        records under the numbers they were given there, and the transcript is then read from its start as
+        `read_again` reads it: what the copy holds is passed over, and what it does not hold (what a tool printed,
+        text a harness injected, whatever today's reader files besides) takes the numbers after the copy's last. A
+        citation of the conversation or of a tool call then names the same record on every Mac; one of a record
+        the copy never held names none here, and `no_record` says why (2026-11-13: a Mac with no archive numbered
+        each session anew from the harness's transcript, and every citation written elsewhere named another
+        record there)."""
+        if any(self.folder.glob("transcript-*.jsonl")):
+            return
+        for workspace, repo in sorted(repos().items()):
+            for copy in sorted(found.parent for found in repo.glob(f"*/{self.folder.name}/meta.json")):
+                numbers = {rec["seq"] for rec in records(str(copy)) if isinstance(rec.get("seq"), int)}
+                if not numbers:
+                    continue
+                self.folder = root() / workspace / copy.parent.name / copy.name
+                self.folder.mkdir(parents=True, exist_ok=True)
+                segments = sorted(copy.glob("transcript-*.jsonl"))
+                for segment in segments:
+                    (self.folder / segment.name).write_bytes(segment.read_bytes())
+                self.seq, self.segment, self.absent = max(numbers) + 1, len(segments), max(numbers) + 1 - len(numbers)
+                theirs = paths.read_json(copy / "meta.json").get("projects")
+                self.meta["projects"] = [name for name in theirs if isinstance(name, str)] if isinstance(theirs, list) else []
+                self.meta["numbers_from"] = {"workspace": workspace, "records": len(numbers), "last": max(numbers)}
+                self.read_again()
+                return
 
     def read_again(self) -> None:
         """Begin at the transcript's start as a first reading would, keeping the numbers already given: a record the
@@ -370,13 +400,14 @@ class _Session:
                 self.segment += 1
         self.offset = offset
         self.meta.update({"harness": self.harness, "session": self.session, "native": str(self.native),
-                          "records": self.seq, "skipped": dict(self.skipped), "updated": _iso(time.time()),
+                          "records": self.seq - self.absent, "skipped": dict(self.skipped), "updated": _iso(time.time()),
                           "segments": self.segment})
         if self.folder:
             paths.write_json(self.folder / "meta.json", self.meta)
         paths.write_json(self.file, {"offset": self.offset, "seq": self.seq, "segment": self.segment,
                                      "folder": str(self.folder or ""), "seen": sorted(self.seen), "meta": self.meta,
-                                     "model": self.model, "turn": self.turn, "trigger": self.trigger, "cwd": self.cwd})
+                                     "model": self.model, "turn": self.turn, "trigger": self.trigger, "cwd": self.cwd,
+                                     "absent": self.absent})
         return written
 
 
@@ -661,6 +692,7 @@ def export_file(harness: str, native: Path, project: str = "", again: bool = Fal
         s.folder, s.meta["cwd"] = _place(harness, native, s.session)
         if harness == "claude-code" and "subagents" in native.parts:  # its prompts are the parent agent's briefs
             s.meta.update(role="subagent", parent=native.parts[native.parts.index("subagents") - 1])
+        s.seed()  # the numbers another Mac gave it, where a cloned sessions repo holds the session
     if project and project not in s.meta.setdefault("projects", []):
         s.meta["projects"].append(project)
     adapter, end = ADAPTERS[harness], s.offset
@@ -905,8 +937,8 @@ def prompts(workspace: str, day: str) -> list:
             continue  # a session over before that day or begun after it (a day's slack: the archive keeps UTC)
         for rec in records(meta["folder"], ("user",)):
             try:
-                at = datetime.fromisoformat(str(rec.get("at")).replace("Z", "+00:00")).astimezone()
-            except ValueError:
+                at = _when(rec.get("at")).astimezone()
+            except (AttributeError, ValueError, OverflowError, OSError):  # no time it can read: on no day
                 continue
             if at.date().isoformat() == day:
                 found.append((at, {"harness": meta.get("harness"), "session": meta.get("session"), "seq": int(rec.get("seq", -1)),
@@ -1011,13 +1043,48 @@ def around(folder: str, seq: int, span: int = 3) -> list:
     """The record a citation names (`<harness> <session> #<seq>`, R10.5), whole, with `span` records either side of
     it in time: a record that a later reading filed has a number after every other, and what stands around it is
     what was said around it. A record with no time of its own stands with the one before it."""
-    rows, last = [], ""
-    for rec in records(folder):
-        last = str(rec.get("at") or last)
-        rows.append((last, int(rec.get("seq", -1)), rec))
-    rows.sort(key=lambda row: row[:2])
-    at = next((place for place, row in enumerate(rows) if row[1] == seq), None)
-    return [] if at is None else [_whole(rec, Path(folder)) if number == seq else rec for _, number, rec in rows[max(0, at - span):at + span + 1]]
+    rows = in_time(records(folder))
+    at = next((place for place, rec in enumerate(rows) if rec.get("seq") == seq), None)
+    return [] if at is None else [_whole(rec, Path(folder)) if rec.get("seq") == seq else rec for rec in rows[max(0, at - span):at + span + 1]]
+
+
+def in_time(rows: list) -> list:
+    """Records in the order they were said: by their times, then by their numbers. A record a later reading filed
+    stands last in the session's files, with a number after every other, and is not the last thing said; one with no
+    time of its own, or one that cannot be read as a time, stands with the record before it. A time is compared as
+    the moment it names: one harness writes `10:00:00.000Z` and another `10:00:00Z`, which as words are not in order."""
+    keyed, last = [], float("-inf")
+    for rec in rows:
+        when = _when(rec.get("at"))
+        try:
+            last = when.timestamp() if when else last
+        except (OverflowError, OSError, ValueError):
+            pass
+        keyed.append((last, rec.get("seq") if isinstance(rec.get("seq"), int) else -1, rec))
+    return [rec for _, _, rec in sorted(keyed, key=lambda row: row[:2])]
+
+
+def _when(value):
+    """The moment a record's time names, as a datetime, whatever its harness wrote: with or without a fraction of a
+    second of any length, `Z` or an offset; None where it names none. Python before 3.11 reads a fraction only of
+    three or six digits, so the fraction is written as six before it is read."""
+    text = re.sub(r"\.(\d+)", lambda m: "." + (m[1] + "000000")[:6], str(value or "").strip().replace("Z", "+00:00"), count=1)
+    try:
+        return datetime.fromisoformat(text) if text else None
+    except ValueError:
+        return None
+
+
+def no_record(meta: dict, seq: int) -> str:
+    """What to say of a number that names no record of a session, with why where the session's numbers were given on
+    another Mac: the copy a Mac syncs holds the conversation and the tool calls, and not what a tool printed."""
+    said = f"no record #{seq} in {meta.get('harness')} {meta.get('session')}"
+    given = meta.get("numbers_from") if isinstance(meta.get("numbers_from"), dict) else None
+    if meta.get("synced") or (given and seq <= given.get("last", -1)):
+        said += (f": this Mac holds the session as another Mac synced it into {meta.get('synced') or given.get('workspace')}'s sessions repo, "
+                 "which keeps the conversation and the tool calls and not what a tool printed or a harness injected. A number given "
+                 "there to such a record names none here; the Mac that gave it holds the record")
+    return said
 
 
 def _whole(rec: dict, folder: Path) -> dict:
@@ -1063,7 +1130,7 @@ def recent(project: str = "", workspace: str = "", turns: int = 12, live: bool =
     the harnesses recorded since the last export (peek)."""
     found = []
     for meta in catalog(workspace, project):
-        for rec in reversed(records(meta["folder"], ("user", "assistant"))):
+        for rec in reversed(in_time(records(meta["folder"], ("user", "assistant")))):  # the newest said, not the last filed
             found.append({**rec, "harness": meta.get("harness"), "session": meta.get("session")})
             if len(found) >= turns:
                 break

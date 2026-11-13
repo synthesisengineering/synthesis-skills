@@ -72,9 +72,20 @@ holds already (the same kind, time and words) is passed over, and one it does no
 number. No line the archive holds is changed or moved, so a record's number is its name for good and a citation
 written before the rebuild names the record it named; a session whose transcript the harness has since removed
 stays as it is. The order of a session is then its records' times, not their numbers: a record a later reading
-filed has a number after every other, and `synthesis sessions show` puts around a cited record what was said around
-it. (Until 5.17.0 a rebuild moved the archive aside and numbered every session anew; counted on one machine before
-the change, 157 of the 373 record numbers that project records cite would have named another record.)
+filed has a number after every other, so `synthesis sessions show` prints a session, and the records around a cited
+one, in the order they were said, and `recent` takes the newest said. (Until 5.17.0 a rebuild moved the archive aside
+and numbered every session anew; counted on one machine before the change, 157 of the 373 record numbers that
+project records cite would have named another record.)
+
+A Mac whose archive holds nothing of a session (a new Mac, or one restored with the harnesses' transcripts and
+without the archive) begins it from the copy another Mac synced, where a sessions repo cloned here holds it: the
+session is filed where that Mac filed it, its records keep the numbers they were given there, and the transcript is
+then read as a rebuild reads it, so what the copy does not hold is appended after the copy's last number. `meta.json`
+says so (`numbers_from`: the workspace, how many records the copy held, its last number). The copy holds the
+conversation and the tool calls, not what a tool printed or a harness injected, so a number given on the first Mac
+to such a record names none on the second, and `show --seq` says why rather than showing nothing. Two Macs that each
+read the same session again, and each filed a record the other did not, give it different numbers, and their copies
+of that session disagree; that is counted when a second Mac is in use.
 
 ## Secrets and privacy
 
