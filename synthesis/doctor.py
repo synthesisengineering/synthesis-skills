@@ -516,6 +516,35 @@ def check_unsaved(config: dict, claims: list, now: float = 0) -> Check:
                  + ". Commit and push them, or ask the seat that holds the claim (`synthesis who`)")
 
 
+def check_fetch(stamp: Path, config: dict, now: float = 0) -> Check:
+    """When the hourly job last fetched each knowledge root and sessions repo (plan item 13.5, part 3), and which it
+    could not, each with its last fetch."""
+    if config.get("scheduled_fetch", True) is False:
+        return Check("ok", "scheduled fetch", "off (scheduled_fetch is false)")
+    last, now = paths.read_json(stamp), now or time.time()
+    repos = last.get("repos") if isinstance(last.get("repos"), dict) else {}
+
+    def ago(iso) -> float | None:
+        try:
+            return (now - datetime.fromisoformat(str(iso)).timestamp()) / 3600
+        except ValueError:
+            return None
+    ran = ago(last.get("at"))
+    if not repos or ran is None:
+        return Check("warn", "scheduled fetch", "no run of the hourly job has fetched yet (it fetches each knowledge root and "
+                     "sessions repo, and never merges)")
+    failed = sorted((r, e) for r, e in repos.items() if e.get("failed"))
+    detail = f"{len(repos) - len(failed)} of {len(repos)} repositories fetched by the hourly job, " + (
+        f"{ran * 60:.0f} min ago" if ran < 1 else f"{ran:.0f} h ago")
+    if failed:
+        return Check("warn", "scheduled fetch", detail + "; not fetched: " + "; ".join(
+            f"{_short(Path(r))} ({e['failed']}; " + (f"last fetched {ago(e['fetched']):.0f} h ago)" if ago(e.get("fetched")) is not None
+                                                    else "never fetched)") for r, e in failed))
+    if ran > 24:
+        return Check("warn", "scheduled fetch", f"the hourly job last fetched {ran:.0f} h ago: read the sessions export line")
+    return Check("ok", "scheduled fetch", detail)
+
+
 def check_board(home: Path) -> Check:
     """The board moved to board/ in 5.1.18; whatever is left under state/ is read by no session."""
     old = [n for n in paths.BOARD_FILES if os.path.lexists(home / "state" / n)]
@@ -1514,6 +1543,11 @@ def run_checks(home: Path | None = None, find=find_client, latest_ref: str = "",
     if sys.platform == "darwin":
         checks.append(check_sessions_export(Path.home() / "Library" / "LaunchAgents" / "com.synthesis.sessions-export.plist",
                                             home / "sessions" / ".state" / "export.json", command=home / "bin" / "synthesis"))
+        try:
+            fetching = paths.config()
+        except (OSError, ValueError):
+            fetching = {}
+        checks.append(check_fetch(home / "sessions" / ".state" / "fetch.json", fetching))
     runtime = runtime_hash(home) if checks[0].status == "ok" else ""
     if (home / "bin" / "synthesis-hook").is_file():  # when it is missing, the runtime line already says so
         checks += [check_hook_script(home), check_self_test(home), check_wait_check()]  # before the CLIs start, so they don't skew timing

@@ -237,6 +237,8 @@ def cmd_sessions(args) -> int:
     elif args.action == "export":
         report = sessions.export(0 if args.all else args.days, args.session or "", rebuild=args.rebuild, scheduled=args.scheduled)
         print("\n".join(report[:1] + report[1:][-50:] + [f"{len(report)} line(s)"]) if report else "nothing new to export")
+        if args.scheduled:  # the hourly job also fetches; a fetch that fails is the doctor's to say, not the copy's
+            print("\n".join(sessions.fetch()) or "fetched every knowledge and sessions repo")
         if any("not exported" in line or "not copied" in line for line in report):  # 2026-11-12: every copy was refused, and it exited 0
             stamp = sessions.root() / ".state" / "export.json"  # left before this is said, unless the archive itself could not be written
             print(next((line for line in report if line.startswith("not exported")), f"{paths.read_json(stamp).get('failed')} transcript(s) "

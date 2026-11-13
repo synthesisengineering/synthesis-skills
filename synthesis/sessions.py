@@ -1275,6 +1275,40 @@ def _git(repo: Path, *args: str) -> subprocess.CompletedProcess:
     return subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True, timeout=900)
 
 
+def _fetch_one(repo: str) -> str:
+    """`git fetch` in one checkout, with no prompt and no maintenance after it: "" or why it failed."""
+    try:
+        done = subprocess.run(["git", "-C", repo, "-c", "gc.auto=0", "-c", "maintenance.auto=false", "fetch", "--quiet"],
+                              capture_output=True, text=True, timeout=120, stdin=subprocess.DEVNULL,
+                              env={**os.environ, "GIT_TERMINAL_PROMPT": "0"})
+        why = "" if done.returncode == 0 else ((done.stderr.strip().splitlines() or [f"exit {done.returncode}"])[-1])
+    except (OSError, subprocess.SubprocessError) as exc:
+        why = str(exc)
+    return re.sub(r"//[^/@\s]+@", "//", why)[:200]  # a remote's address can carry a credential
+
+
+def fetch() -> list:
+    """The hourly job also fetches (plan item 13.5, part 3; 5.19.0): each knowledge root and each sessions repo, so how
+    far a checkout is behind its remote is known without an agent fetching first. It fetches only, never merging
+    or pulling, and keeps when each was last fetched, and why one could not be, in `.state/fetch.json` for the
+    doctor. Config `scheduled_fetch: false` turns it off, for a remote that asks for a passphrase or an approval."""
+    from concurrent.futures import ThreadPoolExecutor
+    from synthesis import project
+    if paths.config().get("scheduled_fetch", True) is False:
+        return []
+    targets = sorted({str(r) for r in [*project.roots(), *repos().values()] if (Path(r) / ".git").exists()})
+    stamp, now = root() / ".state" / "fetch.json", datetime.now().astimezone().isoformat(timespec="seconds")
+    last = paths.read_json(stamp).get("repos") or {}
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        results = dict(zip(targets, pool.map(_fetch_one, targets)))
+    kept = {}
+    for repo, why in results.items():
+        entry = {k: v for k, v in (last.get(repo) or {}).items() if k == "fetched"}
+        kept[repo] = {**entry, "tried": now, **({"failed": why} if why else {"fetched": now})}
+    paths.write_json(stamp, {"at": now, "repos": kept})
+    return [f"{repo}: not fetched ({why})" for repo, why in results.items() if why]
+
+
 def sync(workspace: str = "", push: bool = True) -> list:
     """Export what is new, then copy each workspace's conversation and tool calls into its sessions repo, one
     commit per month touched, and push. A line starting FAILED means that workspace's copy is not on its upstream."""
