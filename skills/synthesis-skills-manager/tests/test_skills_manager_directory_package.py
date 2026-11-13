@@ -47,6 +47,14 @@ LISTED = SPEC["skills"]
 LEFT_OUT = SPEC.get("left_out", {})  # skills the list names as left out, each with the reason
 PLUGIN_MANIFESTS = (".claude-plugin/plugin.json", ".codex-plugin/plugin.json", ".muse-plugin/plugin.json")
 EVERY_KIND = {"a hook claim", "a guard claim", "an approval-code claim", "a runtime need"}
+# The package's own images are kept beside its list and carried under assets/, where a directory looks for them.
+IMAGES = "skills/synthesis-skills-manager/assets/directory-package"
+ICON_FIELDS = ("logo", "composerIcon")  # the two a package in the Codex format must name; each has a Dark variant
+
+
+def source(name: str) -> Path:
+    """Where a packaged file comes from in the checkout."""
+    return ROOT / (f"{IMAGES}/{name[len('assets/'):]}" if name.startswith("assets/") else name)
 
 
 # A checkout a test makes is written with none of the machine's git settings: its hooks, signing and identity
@@ -115,24 +123,67 @@ def test_the_zip_holds_no_hooks_folder_and_registers_no_hook(built):
     assert [name for name in built if name.endswith("plugin.json")] == [package.MANIFEST]  # no second manifest
 
 
-def test_the_zip_holds_only_the_listed_skills_and_the_manifest(built):
-    outside = [name for name in built if name != package.MANIFEST
+def test_the_zip_holds_only_the_listed_skills_the_manifest_and_its_images(built):
+    outside = [name for name in built if name != package.MANIFEST and not name.startswith("assets/")
                and not (name.startswith("skills/") and name.split("/")[1] in LISTED and name.count("/") >= 2)]
     assert outside == []
-    assert {name.split("/")[1] for name in built if name != package.MANIFEST} == set(LISTED)
+    assert {name.split("/")[1] for name in built if name.startswith("skills/")} == set(LISTED)
 
 
 def test_each_listed_skill_is_whole_but_for_its_tests(built):
     """A test is the repository's check on a skill, not the skill: one of them imports the synthesis core."""
     tracked = git(ROOT, "ls-files", "-z", "--", *[f"skills/{name}" for name in LISTED]).split("\0")
-    assert set(built) - {package.MANIFEST} == {name for name in tracked if name and not is_test(name)}
+    assert {name for name in built if name.startswith("skills/")} == {name for name in tracked
+                                                                     if name and not is_test(name)}
     assert [name for name in built if is_test(name)] == []
     assert all(f"skills/{name}/{part}" in built for name in LISTED for part in ("SKILL.md", "agents/openai.yaml"))
 
 
 def test_every_packaged_file_is_byte_identical_to_its_source(built):
     assert [name for name, data in built.items()
-            if name != package.MANIFEST and (ROOT / name).read_bytes() != data] == []
+            if name != package.MANIFEST and source(name).read_bytes() != data] == []
+
+
+def test_the_package_carries_the_two_images_a_directory_asks_for(built):
+    """A package in the Codex format names a logo and a composer icon, as ./ paths to files it holds. The
+    directory's own limits are held here, on the images of this repository: PNG, JPEG, WebP or SVG, at most
+    5 MiB, square and at least 48 by 48, which an SVG states as numeric sides or as its viewBox."""
+    interface = json.loads(built[package.MANIFEST])["interface"]
+    images = {name for name in built if name.startswith("assets/")}
+    assert images and {interface[field][len("./"):] for field in ICON_FIELDS} == images
+    assert all(interface[field].startswith("./assets/") for field in ICON_FIELDS)
+    tracked = git(ROOT, "ls-files", "-z", "--", IMAGES).split("\0")
+    assert images == {"assets/" + name[len(IMAGES) + 1:] for name in tracked if name}
+    for name in sorted(images):
+        assert name.endswith(".svg") and len(built[name]) <= 5 * 2 ** 20, name
+        opening = re.search(r"<svg\b[^>]*>", built[name].decode("utf-8")).group(0)
+        view = re.search(r'\bviewBox="[\d.]+[ ,]+[\d.]+[ ,]+([\d.]+)[ ,]+([\d.]+)"', opening)
+        assert view and float(view.group(1)) == float(view.group(2)) >= 48, name
+        sides = re.findall(r'(?<![\w-])(?:width|height)="([\d.]+)(?:px)?"', opening)
+        assert len(set(sides)) <= 1 and all(float(side) >= 48 for side in sides), name
+
+
+def test_the_listing_text_fits_the_limits_the_directory_states(built):
+    """From the field reference of the directory's submission page, read on 2026-11-12: what a manifest in the
+    Codex format must hold, and how long each text shown in a listing may be."""
+    manifest = json.loads(built[package.MANIFEST])
+    interface = manifest["interface"]
+    assert re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*", manifest["name"]) and len(manifest["name"]) <= 64
+    assert manifest["version"] and 0 < len(manifest["description"]) <= 4000
+    assert 0 < len(manifest["author"]["name"]) <= 120
+    assert manifest["author"]["url"].startswith("https://") and manifest["homepage"].startswith("https://")
+    assert 0 < len(interface["displayName"]) <= 30 and 0 < len(interface["shortDescription"]) <= 30
+    assert 0 < len(interface["longDescription"]) <= 4000 and 0 < len(interface["developerName"]) <= 80
+    assert interface["category"]
+    assert len(interface["capabilities"]) <= 20 and all(0 < len(label) <= 120 for label in interface["capabilities"])
+    prompts = interface.get("defaultPrompt", [])
+    assert len(prompts) <= 3 and len(set(prompts)) == len(prompts) and all(len(prompt) <= 128 for prompt in prompts)
+    assert interface["websiteURL"].startswith("https://") and len(interface["websiteURL"]) <= 1024
+    # A brand color needs a contrast of at least 2 to 1 against white (WCAG relative luminance).
+    red, green, blue = (int(interface["brandColor"][at:at + 2], 16) / 255 for at in (1, 3, 5))
+    linear = [part / 12.92 if part <= 0.03928 else ((part + 0.055) / 1.055) ** 2.4 for part in (red, green, blue)]
+    assert re.fullmatch(r"#[0-9A-Fa-f]{6}", interface["brandColor"])
+    assert 1.05 / (0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2] + 0.05) >= 2
 
 
 def test_a_script_keeps_its_executable_bit_and_a_build_is_repeatable(zip_path):
@@ -306,12 +357,23 @@ def skill(name, depends="[]", body="Prose only.\n"):
             "agents/openai.yaml": "interface:\n  display_name: \"x\"\n"}
 
 
-def checkout(tmp_path, skills, listed=None, manifest=None, version="5.8.0"):
-    """A committed checkout holding these skills, a list that names `listed` (default: all) and one manifest."""
+def svg(size: str) -> str:
+    return f'<svg xmlns="http://www.w3.org/2000/svg" {size}><rect width="10" height="10"/></svg>\n'
+
+
+MARK = svg('viewBox="0 0 64 64"')
+ICONS = {"logo": "./assets/mark.svg", "composerIcon": "./assets/mark.svg"}
+METHODS = {"name": "methods", "description": "Methods.", "interface": ICONS}
+
+
+def checkout(tmp_path, skills, listed=None, manifest=None, version="5.8.0", images=None):
+    """A committed checkout holding these skills, a list that names `listed` (default: all), one manifest and the
+    package's images ({name: text}; default: one mark, which both icon fields of the default manifest name)."""
     repo = tmp_path / "checkout"
     files = {package.MANIFEST: json.dumps({"name": "synthesis-skills", "version": version}),
              package.LIST: json.dumps({"skills": sorted(skills) if listed is None else listed,
-                                       "manifest": manifest or {"name": "methods", "description": "Methods."}})}
+                                       "manifest": manifest or METHODS})}
+    files.update({f"{IMAGES}/{name}": text for name, text in ({"mark.svg": MARK} if images is None else images).items()})
     for name, parts in skills.items():
         files.update({f"skills/{name}/{part}": text for part, text in parts.items()})
     for name, text in files.items():
@@ -362,6 +424,68 @@ def test_a_checkout_that_must_fail_does(tmp_path, skills, listed, manifest, expe
     assert any(problem.startswith(expected) for problem in found), found
 
 
+@pytest.mark.parametrize("interface, images, expected", [
+    ({"composerIcon": "./assets/mark.svg"}, None, ".codex-plugin/plugin.json: interface.logo is missing"),
+    ({"logo": "./assets/mark.svg"}, None, ".codex-plugin/plugin.json: interface.composerIcon is missing"),
+    ({**ICONS, "logo": ""}, None, ".codex-plugin/plugin.json: interface.logo is missing"),
+    ({**ICONS, "composerIcon": ["./assets/mark.svg"]}, None,
+     ".codex-plugin/plugin.json: interface.composerIcon names ['./assets/mark.svg'], which is no ./assets/ path"),
+    ({**ICONS, "logo": "assets/mark.svg"}, None,
+     ".codex-plugin/plugin.json: interface.logo names assets/mark.svg, which is no ./assets/ path to an image"),
+    ({**ICONS, "logo": "./assets/absent.svg"}, None,
+     ".codex-plugin/plugin.json: interface.logo names ./assets/absent.svg, which is no ./assets/ path to an image"),
+    ({**ICONS, "logo": "./skills/alpha/SKILL.md"}, None,
+     ".codex-plugin/plugin.json: interface.logo names ./skills/alpha/SKILL.md, which is no ./assets/ path to an image"),
+    ({**ICONS, "logo": "./assets/../skills/alpha/SKILL.md"}, None,
+     ".codex-plugin/plugin.json: interface.logo names ./assets/../skills/alpha/SKILL.md, which is no ./assets/ path"),
+    ({**ICONS, "logoDark": "./assets/absent.svg"}, None,
+     ".codex-plugin/plugin.json: interface.logoDark names ./assets/absent.svg, which is no ./assets/ path to an image"),
+    ({**ICONS, "composerIconDark": 7}, None,
+     ".codex-plugin/plugin.json: interface.composerIconDark names 7, which is no ./assets/ path to an image"),
+    (ICONS, {"mark.svg": MARK, "spare.svg": MARK}, "assets/spare.svg: no image field of the manifest names it"),
+    (ICONS, {}, ".codex-plugin/plugin.json: interface.logo names ./assets/mark.svg, which is no ./assets/ path"),
+])
+def test_a_package_without_its_two_images_is_refused(tmp_path, interface, images, expected):
+    """Codex's package validation requires a logo and a composer icon, each a ./ path to a file of the package."""
+    repo = checkout(tmp_path, {"alpha": skill("alpha")}, manifest={**METHODS, "interface": interface}, images=images)
+    found = problems(repo)
+    assert any(problem.startswith(expected) for problem in found), found
+
+
+def test_a_manifest_with_no_interface_is_refused_for_both_images(tmp_path):
+    found = problems(checkout(tmp_path, {"alpha": skill("alpha")}, manifest={"name": "methods"}, images={}))
+    assert [problem for problem in found if "is missing" in problem] == [
+        f".codex-plugin/plugin.json: interface.{field} is missing: a package names its logo and its composer icon"
+        for field in ICON_FIELDS]
+
+
+def test_the_images_are_carried_under_assets_and_a_dark_variant_may_be_named(tmp_path):
+    interface = {**ICONS, "logoDark": "./assets/dark/mark.svg"}
+    repo = checkout(tmp_path, {"alpha": skill("alpha")}, manifest={**METHODS, "interface": interface},
+                    images={"mark.svg": MARK, "dark/mark.svg": svg('width="48" height="48"')})
+    assert problems(repo) == []
+    with zipfile.ZipFile(io.BytesIO(package.build(repo, package.read_list(repo)))) as archive:
+        assert archive.read("assets/mark.svg").decode("utf-8") == MARK
+        assert set(archive.namelist()) == {package.MANIFEST, "skills/alpha/SKILL.md", "skills/alpha/agents/openai.yaml",
+                                           "assets/mark.svg", "assets/dark/mark.svg"}
+        assert json.loads(archive.read(package.MANIFEST))["interface"] == interface
+
+
+def test_an_image_that_is_no_text_is_carried_and_a_claim_in_one_that_is_text_is_caught(tmp_path):
+    png = b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x40\x00\x00\x00\x40\x08\x06\x00\x00\x00\xff\xfe"
+    repo = checkout(tmp_path, {"alpha": skill("alpha")},
+                    manifest={**METHODS, "interface": {"logo": "./assets/mark.png", "composerIcon": "./assets/mark.png"}},
+                    images={})
+    (repo / IMAGES).mkdir(parents=True)
+    (repo / IMAGES / "mark.png").write_bytes(png)
+    git(repo, "add", ".")
+    git(repo, "commit", "-qm", "a raster mark")
+    assert problems(repo) == []
+    spoken = svg('viewBox="0 0 64 64"').replace("<rect", "<title>The send guard refuses it</title><rect")
+    said = problems(checkout(tmp_path / "second", {"alpha": skill("alpha")}, images={"mark.svg": spoken}))
+    assert len(said) == 1 and said[0].startswith("assets/mark.svg:1: a guard claim")
+
+
 def test_a_skill_that_gains_a_claim_drops_out_by_failing_and_passes_once_off_the_list(tmp_path):
     promise = "The send guard holds every message until it is approved.\n"
     repo = checkout(tmp_path, {"alpha": skill("alpha"), "beta": skill("beta", body=promise)})
@@ -380,7 +504,7 @@ def test_tests_stay_out_of_the_package_and_everything_else_of_a_skill_goes_in(tm
         names = set(archive.namelist())
     assert names == {package.MANIFEST, "skills/alpha/SKILL.md", "skills/alpha/agents/openai.yaml",
                      "skills/alpha/scripts/run.py", "skills/alpha/references/method.md",
-                     "skills/alpha/assets/table.yaml"}
+                     "skills/alpha/assets/table.yaml", "assets/mark.svg"}
     assert problems(repo) == []
 
 
@@ -404,6 +528,18 @@ def test_a_symbolic_link_in_a_listed_skill_stops_the_build(tmp_path, capsys):
         code, lines = run(capsys, *argv, "--repo-root", repo)
         assert code == 2 and "skills/alpha/references/linked.md is a symbolic link" in lines[0]
     assert not (tmp_path / "methods.zip").exists()
+
+
+def test_a_symbolic_link_among_the_images_stops_the_build(tmp_path, capsys):
+    repo = checkout(tmp_path, {"alpha": skill("alpha")}, images={})
+    outside = tmp_path / "outside.svg"
+    outside.write_text(MARK)
+    (repo / IMAGES).mkdir(parents=True)
+    (repo / IMAGES / "mark.svg").symlink_to(outside)
+    git(repo, "add", ".")
+    git(repo, "commit", "-qm", "a linked mark")
+    code, lines = run(capsys, "--check", "--repo-root", repo)
+    assert code == 2 and f"{IMAGES}/mark.svg is a symbolic link" in lines[0]
 
 
 def rewritten(data: bytes, change: dict) -> bytes:
@@ -430,6 +566,9 @@ def rewritten(data: bytes, change: dict) -> bytes:
     ({"skills/alpha/agents/openai.yaml": b"\xff\xfe not text"},
      "skills/alpha/agents/openai.yaml: not UTF-8 text, so its lines cannot be read"),
     ({".codex-plugin/plugin.json": None}, ".codex-plugin/plugin.json: version None, not the repository's 5.8.0"),
+    ({"assets/mark.svg": MARK.replace("64 64", "96 96").encode()}, "assets/mark.svg: differs from its source"),
+    ({"assets/extra.svg": MARK.encode()}, "assets/extra.svg: differs from its source"),
+    ({"assets/mark.svg": None}, ".codex-plugin/plugin.json: interface.logo names ./assets/mark.svg, which is no"),
 ])
 def test_an_archive_that_is_not_the_checkout_is_refused(tmp_path, change, expected):
     repo = checkout(tmp_path, {"alpha": skill("alpha")})
@@ -449,10 +588,10 @@ def test_a_build_writes_the_zip_and_says_what_it_holds(tmp_path, capsys):
     repo = checkout(tmp_path, {"alpha": skill("alpha", '["beta"]'), "beta": skill("beta")})
     out = tmp_path / "methods.zip"
     code, lines = run(capsys, out, "--repo-root", repo)
-    assert (code, lines) == (0, [f"built {out}: 2 skills, 5 files, {out.stat().st_size} bytes, version 5.8.0"])
+    assert (code, lines) == (0, [f"built {out}: 2 skills, 6 files, {out.stat().st_size} bytes, version 5.8.0"])
     with zipfile.ZipFile(out) as archive:
         assert json.loads(archive.read(package.MANIFEST)) == {"name": "methods", "version": "5.8.0",
-                                                              "description": "Methods."}
+                                                              "description": "Methods.", "interface": ICONS}
     assert git(repo, "status", "--porcelain") == ""  # nothing is written into the checkout
 
 
@@ -462,7 +601,7 @@ def test_check_verifies_and_writes_nothing(tmp_path, capsys, monkeypatch):
     before = sorted(path for path in tmp_path.rglob("*") if ".git" not in path.parts)
     code, lines = run(capsys, "--check", "--repo-root", repo)
     assert code == 0 and len(lines) == 1
-    assert re.fullmatch(r"ok: 1 skill, 3 files, \d+ bytes, version 5\.8\.0; nothing written", lines[0])
+    assert re.fullmatch(r"ok: 1 skill, 4 files, \d+ bytes, version 5\.8\.0; nothing written", lines[0])
     assert sorted(path for path in tmp_path.rglob("*") if ".git" not in path.parts) == before
 
 
@@ -486,6 +625,11 @@ def test_a_package_is_cut_from_committed_files(tmp_path, capsys):
     assert run(capsys, "--check", "--repo-root", repo)[0] == 0  # the check reads the files as they are
     git(repo, "commit", "-qam", "edit")
     assert run(capsys, out, "--repo-root", repo)[0] == 0 and out.is_file()
+    out.unlink()
+    (repo / IMAGES / "mark.svg").write_text(svg('viewBox="0 0 96 96"'))  # an image is cut from a commit too
+    code, lines = run(capsys, out, "--repo-root", repo)
+    assert code == 1 and not out.exists()
+    assert lines[1] == f"{IMAGES}/mark.svg: differs from the last commit; a package is cut from committed files"
 
 
 def test_changed_since_names_the_listed_skills_that_changed(tmp_path, capsys):
@@ -527,6 +671,19 @@ def test_changed_since_counts_a_change_to_the_list_itself(tmp_path, capsys):
                                    "manifest": {"name": "methods", "description": "Reworded."}}))
     assert run(capsys, "--changed-since", "v5.8.0", "--repo-root", repo) == \
         (1, ["changed since v5.8.0: the list; a new submission is due"])
+
+
+def test_changed_since_counts_a_change_to_an_image(tmp_path, capsys):
+    repo = checkout(tmp_path, {"alpha": skill("alpha")})
+    git(repo, "tag", "v5.8.0")
+    (repo / IMAGES / "mark.svg").write_text(svg('viewBox="0 0 96 96"'))
+    assert run(capsys, "--changed-since", "v5.8.0", "--repo-root", repo) == \
+        (1, ["changed since v5.8.0: its images; a new submission is due"])
+    (repo / "skills" / "alpha" / "SKILL.md").write_text(skill("alpha", body="Changed too.\n")["SKILL.md"])
+    listing = repo / package.LIST
+    listing.write_text(json.dumps({**json.loads(listing.read_text()), "left_out": {"gamma": "It needs the runtime."}}))
+    assert run(capsys, "--changed-since", "v5.8.0", "--repo-root", repo) == \
+        (1, ["changed since v5.8.0: the list, its images, alpha; a new submission is due"])
 
 
 def test_what_cannot_be_read_exits_2_and_says_why(tmp_path, capsys):
