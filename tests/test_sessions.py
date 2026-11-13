@@ -215,6 +215,24 @@ def test_a_line_torn_by_a_cut_write_is_finished_as_a_whole_record(harness):
     assert [r["seq"] for r in kept] == list(range(len(kept))) and len(kept) > first
 
 
+def test_what_the_archive_holds_is_counted_past_a_line_no_reader_can_parse_and_from_any_length_of_file(harness, monkeypatch):
+    """The count of what is held reads the archive's end, back as far as it needs: past a whole line that is no
+    record, through a last record longer than one read, and from a state that was lost altogether."""
+    rows = _claude_rows(harness["work"])
+    native = _jsonl(harness["claude"], rows[:4])
+    first = sessions.export_file("claude-code", native)
+    segment = sorted(Path(_meta(native)["folder"]).glob("transcript-*.jsonl"))[-1]
+    with segment.open("a", encoding="utf-8") as out:
+        out.write("not a record\n" + json.dumps({"seq": first, "kind": "system", "text": "x" * 200_000}) + "\n" + "[1, 2]\n")
+    state = next((sessions.root() / ".state").glob("claude-code-*.json"))
+    state.unlink()  # nothing says what was read: everything is read again, and nothing is appended twice
+    _jsonl(native, rows[4:])
+    sessions.export_file("claude-code", native)
+    kept = sessions.records(_meta(native)["folder"])
+    assert [r["seq"] for r in kept] == list(range(len(kept))) and len(kept) > first + 1
+    assert segment.read_text(encoding="utf-8").count("not a record\n") == 1  # what was there stays
+
+
 def test_resume_shows_the_projects_recent_conversation_from_any_harness(harness, tmp_path, capsys):
     _jsonl(harness["claude"], _claude_rows(harness["work"]))
     kb = tmp_path / "kb"

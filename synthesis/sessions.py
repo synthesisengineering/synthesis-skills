@@ -255,9 +255,42 @@ class _Session:
         self.lines.append(line + "\n")
         self.seq += 1
 
+    def held(self) -> int:
+        """The number of the last record the archive holds for this session, -1 for none; the session goes on in the
+        segment that record is in. A copy cut after it appended and before its state was saved left records the
+        state does not count, and the next run appended each again under the same number (2026-11-12, a review: a
+        prompt was then listed twice). Cut inside a line, it left part of a record: that part is taken off, so the
+        next record does not join it. A whole line no reader can parse stays, and the count goes on from before it."""
+        for file in sorted(self.folder.glob("transcript-*.jsonl"), reverse=True):
+            with file.open("rb+") as f:
+                size, step = f.seek(0, os.SEEK_END), 1 << 16
+                while size:
+                    start = max(0, size - step)
+                    f.seek(start)
+                    tail = f.read()
+                    whole = tail[:tail.rfind(b"\n") + 1]
+                    if len(whole) < len(tail):
+                        size -= len(tail) - len(whole)
+                        f.truncate(size)
+                    lines = whole.splitlines()
+                    for line in reversed(lines if not start else lines[1:]):  # read from mid-file, the first is part of a line
+                        try:
+                            number = int(json.loads(line)["seq"])
+                        except (ValueError, KeyError, TypeError):
+                            continue
+                        self.segment = max(self.segment, int(file.stem.rsplit("-", 1)[1]))
+                        return number
+                    if not start:
+                        break
+                    step *= 8
+        return -1
+
     def flush(self, offset: int) -> int:
-        """Append the kept records, rotating segments, then record how far the native file was read."""
+        """Append the kept records the archive does not hold yet, rotating segments, then record how far the native
+        file was read."""
         written = 0
+        if self.lines:
+            del self.lines[:max(0, self.held() + 1 - (self.seq - len(self.lines)))]
         while self.lines:
             target = self.folder / f"transcript-{self.segment:04d}.jsonl"
             size, batch = target.stat().st_size if target.exists() else 0, []
@@ -705,7 +738,7 @@ def records(folder: str, kinds: tuple = (), whole: bool = False) -> list:
                 rec = json.loads(line)
             except ValueError:
                 continue
-            if not kinds or rec.get("kind") in kinds:
+            if isinstance(rec, dict) and (not kinds or rec.get("kind") in kinds):  # a line that is no record is passed over
                 rows.append(_whole(rec, Path(folder)) if whole else rec)
     return rows
 
