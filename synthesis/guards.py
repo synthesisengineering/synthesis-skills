@@ -177,7 +177,8 @@ _HOST = r"(localhost|[a-z0-9-]+(?:\.[a-z0-9-]+)*\.local(?:host)?|\d{1,3}(?:\.\d{
 # name that only begins like a local one (localhost.example.org, 10.2.3.4.example.org) is no match (2026-11-12). The
 # host of a file:// URL names this disk, as a connector takes a local file: file://localhost/<path> is no address.
 LOCAL = re.compile(rf"(?:(?<!file)(://)|(?<![\w.@-])){_HOST}(?![\w-]|\.[\w-])\.?(?::(\d+)(?!\w))?")
-NEAR = ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "fc00::/7")  # the private ranges, and IPv6's unique-local one
+NEAR = ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "100.64.0.0/10", "fc00::/7")  # the private ranges, the shared one
+# (a carrier's, and a tailnet's addresses: the knowledge-base connector refuses it too) and IPv6's unique-local one
 FILED = re.compile(r"(?:^|\.)(?:config|conf|cfg|cnf|ini|env|rc|settings|properties|json|ya?ml|toml|makefile|dockerfile)\.local$")
 
 
@@ -210,10 +211,33 @@ def _only_here(m, low: str) -> str:
     return shown if ip.is_loopback or ip.is_unspecified or near and (told or host[0] == "[") else ""
 
 
+def _here(host: str) -> bool:
+    """Whether only this machine or its network answers a host as a URL gives it (an IPv6 one in brackets, with a port
+    or none): `_only_here`, read as if a scheme stood before it."""
+    m = LOCAL.fullmatch("://" + host)
+    return bool(m and _only_here(m, m.string))
+
+
+def _carried(name: str) -> str:
+    """The address a wildcard-DNS name carries, as nip.io and sslip.io read it; "" for none. Four numbers joined by dots
+    or by dashes, or eight hex digits, after the start, a dot or a dash (www.10.0.0.5.nip.io, app-10-0-0-5.sslip.io,
+    0a000005.nip.io), or an IPv6 address with dashes for its colons as a label of its own (--1.sslip.io is [::1])."""
+    import ipaddress
+    four = re.fullmatch(r"(?:.*[.-])?(?:(\d{1,3}([.-])\d{1,3}\2\d{1,3}\2\d{1,3})|([0-9a-f]{8}))\.(?:nip|sslip)\.io", name)
+    six = re.fullmatch(r"(?:.*\.)?([0-9a-f]{0,4}(?:-[0-9a-f]{0,4}){2,7})\.(?:nip|sslip)\.io", name)
+    try:
+        if four:
+            return four[1].replace("-", ".") if four[1] else str(ipaddress.IPv4Address(int(four[3], 16)))
+        return f"[{ipaddress.IPv6Address(six[1].replace('-', ':'))}]" if six else ""
+    except ValueError:
+        return ""
+
+
 def temporary_addresses(texts: list, config: dict):
     """The addresses in these words that can change, or that only this machine or its network answers: a quick tunnel's
     host (a subdomain of a tunnel service, or a host the config names and its subdomains), a tunnel service's own host
     with a port (bore.pub:41234, as bore hands one out; its bare name and its documentation are none) and, unless `local` is false,
+    a wildcard-DNS name that carries such an address however written (`_carried`: 192.168.1.20.nip.io),
     a local name or a private address written with a scheme or a port, and a loopback address however written
     (`_only_here`). A user and password before a host are read past and never shown. A string when the setting
     cannot be read. {"temporary_addresses": {"hosts": ["<more>"], "local": true}}; no key, no rule, and a key that is
@@ -229,7 +253,9 @@ def temporary_addresses(texts: list, config: dict):
     ends, found = TUNNELS + tuple("." + h for h in exact), set()
     for low in (re.sub(r"://[^\s/?#]*@", "://", str(text).lower()) for text in texts):  # to the last @: a password may hold one
         for h, port in NAMED.findall(low):
-            found |= {h} if h in exact or h.endswith(ends) else {f"{h}:{port}"} if port and h in own else set()
+            shown = h + (":" + port if port else "")
+            found |= ({h} if h in exact or h.endswith(ends) else {shown} if port and h in own
+                      else {shown} if local and _here(_carried(h)) else set())
         found |= {_only_here(m, low) for m in LOCAL.finditer(low)} - {""} if local else set()
     return sorted(found)
 
@@ -1725,7 +1751,7 @@ CLOUDFLARED = ("login", "create", "route", "vnet", "run", "list", "ready", "info
                "diag", "proxy-dns", "help", "h")  # `cloudflared tunnel`'s subcommands: each one a named tunnel's
 
 
-def _reverse_host(rest: list[str]) -> str:
+def _reverse_host(rest: list[str], valued: str = SSH_VALUED) -> str:
     """The host an ssh command opens a reverse forward on, "" when it opens none: its destination (the first word that
     is no option and no option's value, without the user, a scheme or a port) when -R is among its options, before the
     destination or after it: alone, in a cluster (-NR) or with its value joined on. A jump host, a key file's name and
@@ -1737,7 +1763,7 @@ def _reverse_host(rest: list[str]) -> str:
         if not word.startswith("-"):
             host = re.match(r"(?:ssh://)?(?:[^@/]*@)?([^:/]*)", word.lower())[1].rstrip(".")
             continue
-        at = next((j for j, c in enumerate(word) if c in SSH_VALUED), 0)  # the first letter that takes a value
+        at = next((j for j, c in enumerate(word) if c in valued), 0)  # the first letter that takes a value
         reverse, i = reverse or word[at] == "R", i + (0 < at == len(word) - 1)  # nothing joined on: its value is the next word
     return host or "" if reverse else ""
 
@@ -1764,15 +1790,16 @@ def _tunnels(words: list[str]) -> bool:
         return bool(name == "cloudflared" and "tunnel" in rest and flag("--url", "--hello-world")
                     and not any(w in CLOUDFLARED for w in rest[rest.index("tunnel") + 1:])
                     or name == "ngrok" and next((w for w in rest if w in NGROK), "") in NGROK[:5]  # past its own options and their values
-                    or name == "devtunnel" and rest[:1] == ["host"]
+                    or name == "devtunnel" and plain[:1] == ["host"]  # past its own options
                     or name in ("lt", "localtunnel") and flag("--port", "-p")
                     or name == "bore" and rest[:1] == ["local"] and ("." + value("--to", "-t").lower()).endswith(".bore.pub")
                     or name in ("tmole", "tunnelmole") and plain[:1] and plain[0].isdigit()
                     or name == "loophole" and next((w for w in rest if w in LOOPHOLE), "") in LOOPHOLE[:3]
                     or name == "tailscale" and plain[:1] == ["funnel"] and plain[1:2] and "off" not in plain
                     and plain[1] not in ("status", "reset", "help")  # a funnel is public; `tailscale serve` is the tailnet's own
-                    or name in ("ssh", "pinggy")  # to the service's own name, or a subdomain of it
-                    and ("." + _reverse_host(rest)).endswith(tuple("." + s for s in TUNNEL_SSH)))
+                    or name in ("ssh", "pinggy", "autossh")  # to the service's own name, or a subdomain of it
+                    and ("." + _reverse_host(rest, SSH_VALUED + "M" * (name == "autossh"))).endswith(  # autossh's -M <port>
+                        tuple("." + s for s in TUNNEL_SSH)))
     spots = [i for i, w in enumerate(words) if i and not w.startswith("-")] if named(words[0]) in CARRIERS else [0]
     return any(starts(named(words[i]), words[i + 1:]) for i in spots)
 

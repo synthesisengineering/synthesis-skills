@@ -142,7 +142,15 @@ address was gone for good. With `temporary_addresses` in the config:
   before the host are read past and never shown (`ssh://10.1.2.3`, `ftp://192.168.1.2/data`,
   `postgres://app:secret@10.1.2.3:5432/app`);
   a quick tunnel's host is read past them too. A link-local address counts with the private ranges
-  (`http://169.254.169.254`, `169.254.10.1:8080`). A bracketed IPv6 address that is loopback,
+  (`http://169.254.169.254`, `169.254.10.1:8080`), and so does the shared range `100.64.0.0/10`,
+  which a carrier's network and a tailnet's addresses use and the knowledge-base connector refuses
+  (`http://100.64.0.1`, `100.100.100.100:3000`; `http://100.128.0.1` is outside it). A
+  wildcard-DNS name is the address it carries, as `nip.io` and `sslip.io` read one: four numbers
+  joined by dots or by dashes, or eight hex digits, after the start, a dot or a dash, or an IPv6
+  address with dashes for its colons as a label of its own. When that address is loopback,
+  private, shared or link-local the name is refused however written (`192.168.1.20.nip.io`,
+  `https://app.192.168.1.20.nip.io/x`, `http://10-0-0-5.sslip.io:8080`, `app-127-0-0-1.nip.io`,
+  `7f000001.nip.io`, `--1.sslip.io`). A bracketed IPv6 address that is loopback,
   any-interface, unique-local or link-local is refused however written (`http://[fd12::42]:8080`,
   `http://[fe80::12]:9090`, `[::1]`). It reads every
   path a message takes: a connector's send or draft, a shell command that posts, and words typed
@@ -157,8 +165,8 @@ address was gone for good. With `temporary_addresses` in the config:
   (`notbore.pub:41234`, `bore.pub.example.com:41234`), and an address at a host no rule names. A public name that only begins like a local one is that public
   name (`https://localhost.example.org`, `https://10.2.3.4.example.org`,
   `https://example.localhost.org`), and so is a name that a wildcard-DNS service points at a
-  private address (`https://app.192.168.1.20.nip.io`): put the service in `hosts` (`nip.io`) to
-  have its names refused. A file's name with its line number is no address: a dotfile
+  public address (`https://app.203.0.113.9.nip.io`, `https://8.8.8.8.sslip.io`): put the service
+  in `hosts` (`nip.io`) to have all its names refused. A file's name with its line number is no address: a dotfile
   (`.env.local:12`), a name that goes on past `.local` (`settings.local.json:3`), and a name ending
   in `.local` with no scheme before it that is a configuration file's (`config.local:7`: the word
   before `.local` is `config`, `conf`, `cfg`, `cnf`, `ini`, `env`, `rc`, `settings`, `properties`,
@@ -175,7 +183,11 @@ address was gone for good. With `temporary_addresses` in the config:
   (`127.0.0.1/33`, `127.0.0.1/8080`).
 - **Starting a tunnel:** `cloudflared tunnel --url ...`, `ngrok http`, `tcp`, `tls` or `start`,
   `devtunnel host`, `localtunnel` or `lt` with a port (also through `npx`, `bunx`, `pnpm` or `yarn`), and a reverse
-  `ssh -R` to `serveo.net`, `localhost.run` or `pinggy.io` wait for the principal's code. The hold
+  `ssh -R` to `serveo.net`, `localhost.run` or `pinggy.io` wait for the principal's code. `autossh`
+  is read as `ssh` is, and its own `-M <port>` takes a value
+  (`autossh -M 0 -R 80:localhost:8080 serveo.net`; `autossh -M 20000 -R 9000:localhost:9000
+  build.example.com` starts nothing). `devtunnel host` is read past `devtunnel`'s own options
+  (`devtunnel --verbose host -p 8080`; `devtunnel --verbose list` starts nothing). The hold
   says what a quick tunnel is for: their own test, with an address that is never given to anyone. A
   named tunnel (`cloudflared tunnel run <name>`) is a deployment and is not held here. `cloudflared
   tunnel` is a quick tunnel with `--url` and no subcommand, or with `--hello-world`
