@@ -1068,3 +1068,14 @@ def test_a_list_of_candidate_seats_marks_the_one_that_is_waiting(two):
     listed = board._describe([board.load("S1"), board.load("S2")])
     assert f"waiting until {time.strftime('%H:%M', time.localtime(until))}" in listed.splitlines()[-1]
     assert "waiting until" not in listed.splitlines()[-2] and "stale" not in listed
+
+
+def test_the_watchers_reference_says_a_try_has_no_standard_input():
+    """Review round 3, finding 27: the wait gives each try `/dev/null` for its standard input (the test above), and the
+    watchers reference still said a try has the wait's own and reads whatever the wait was started with."""
+    page = " ".join((ROOT / "skills" / "synthesis-waiting" / "references" / "watchers.md").read_text(encoding="utf-8").split())
+    for old in ("a try has the wait's own", "reads whatever the wait was started with", "Standard input is another matter"):
+        assert old not in page, old
+    limit = page.split("### The two limits of a try")[1].split("2. **")[0]
+    assert "**A try has no controlling terminal and no standard input.**" in limit and "`/dev/null`" in limit
+    assert "with no controlling terminal and no standard input" in page.split("## What `wait run` does with the command's processes")[1]
