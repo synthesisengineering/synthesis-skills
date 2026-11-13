@@ -138,16 +138,41 @@ def access_check(policy: AccessPolicy):
     return check
 
 
+def hashed_firestore_keys():
+    """Every key stored in Firestore becomes its SHA-256 hash.
+
+    Firestore reads each "/" in a document ID as a path separator, and a client that identifies itself by a metadata
+    document (ChatGPT, Codex) has a URL for its ID, so an unhashed client record cannot be stored at all. The OAuth
+    proxy only gets, puts and deletes by key, so a hash loses nothing, and it keeps authorization codes and token IDs
+    out of Firestore's document names. py-key-value's own always-hash strategy is private to that package, so this
+    builds on its public Firestore strategy.
+    """
+    import hashlib
+
+    from key_value.aio.stores.firestore import FirestoreV1KeySanitizationStrategy
+
+    class HashedKeys(FirestoreV1KeySanitizationStrategy):
+        def sanitize(self, value: str) -> str:
+            return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+        def validate(self, value: str) -> None:  # any key is safe once hashed
+            return None
+
+    return HashedKeys()
+
+
 def oauth_storage(settings: config.Settings):
     """Where the OAuth proxy keeps registrations, grants and Google tokens."""
     if settings.oauth_store == "memory":
         from key_value.aio.stores.memory import MemoryStore
         return MemoryStore()
     from cryptography.fernet import Fernet
-    from key_value.aio.stores.firestore import FirestoreStore
+    from key_value.aio.stores.firestore import FirestoreStore, FirestoreV1CollectionSanitizationStrategy
     from key_value.aio.wrappers.encryption import FernetEncryptionWrapper
     from key_value.aio.wrappers.prefix_collections import PrefixCollectionsWrapper
-    store = FirestoreStore(project=settings.firestore_project or None, database=settings.firestore_database or None)
+    store = FirestoreStore(project=settings.firestore_project or None, database=settings.firestore_database or None,
+                           key_sanitization_strategy=hashed_firestore_keys(),
+                           collection_sanitization_strategy=FirestoreV1CollectionSanitizationStrategy())
     return FernetEncryptionWrapper(PrefixCollectionsWrapper(store, prefix=settings.firestore_prefix),
                                    fernet=Fernet(settings.storage_key.encode()))
 

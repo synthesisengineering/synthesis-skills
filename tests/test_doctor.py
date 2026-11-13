@@ -616,6 +616,9 @@ def machine(tmp_path, monkeypatch):
     fake_cli(fakebin, "muse", muse_inspect(muse_dir))
     monkeypatch.setenv("PATH", os.pathsep.join([str(fakebin), os.path.dirname(sys.executable), "/usr/bin", "/bin"]))
     monkeypatch.setattr(doctor, "KNOWN_LOCATIONS", {h: () for h in doctor.HARNESSES})  # never this Mac's real CLIs
+    # On a busy machine the fake Codex once took over the probe's two seconds to say its version, and the test that
+    # counted the doctor's lines failed (2026-11-13). The tests of the probe set their own limit.
+    monkeypatch.setattr(doctor, "PROBE_TIMEOUT", 30)
     gitconfig = Path(os.environ["GIT_CONFIG_GLOBAL"])
     gitconfig.write_text(gitconfig.read_text() + f"[core]\n\thooksPath = {synthesis_home / 'git-hooks'}\n")
     return home, fakebin, muse_dir
@@ -657,6 +660,110 @@ def test_doctor_reports_a_healthy_machine_and_writes_no_harness_state(machine, c
     assert not any(line.split()[0] == "fail" for line in lines[1:])
     assert any(line.split()[:4] == ["ok", "codex", "skill", "catalog"] for line in lines[1:])
     assert snapshot(home) == before
+
+
+# --- Codex's listing, asked of one marketplace -----------------------------------------------------------------------
+# 2026-11-13: a day-start doctor said it could not tell whether Codex held the plugin, twice. `codex plugin list`
+# lists every marketplace, the remote catalog among them, and Codex fetches that catalog again when its copy is over
+# three hours old (73 MB that morning, 52 s). The doctor's limit of 45 s stopped the fetch before it could finish, so
+# the copy stayed old and the next run stopped it again. Asked for one marketplace (`-m`), Codex fetches no remote
+# catalog (its source returns before the fetch), and the plugin ships from one marketplace.
+
+ENTRY = {"pluginId": PLUGIN_ID, "name": "synthesis-skills", "version": "5.0.0", "marketplaceName": "synthesis-engineering", "enabled": True}
+LIMITED, WHOLE = "plugin list --json -m synthesis-engineering", "plugin list --json"
+
+
+def codex_listings(fakebin: Path, limited, whole) -> Path:
+    """The fake Codex tells its two listings apart: `limited` answers the one asked of the plugin's marketplace,
+    `whole` the one asked of every marketplace. A payload is printed; "hang" stands for the catalog's download, which
+    does not end in time; "usage" for a build that does not know the option. A shell answers them, since a limit in
+    a test must not depend on how fast Python starts on a busy machine (a review, 2026-11-13); everything else goes
+    to the Python fake. Returns the log of the listings asked."""
+    log = fakebin / "codex-listings.log"
+    (fakebin / "codex").rename(fakebin / "codex-other")
+
+    def answer(name: str, value) -> str:
+        if value == "hang":
+            return "sleep 60"
+        if value == "usage":
+            return 'echo "error: unexpected argument \'-m\' found" >&2; exit 2'
+        (fakebin / f"codex-{name}.json").write_text(json.dumps(value))
+        return f'cat "{fakebin}/codex-{name}.json"'
+    _exe(fakebin / "codex", f'''case "$*" in
+  --version) exit 0;;
+  "{LIMITED}") echo "$*" >> "{log}"; {answer("limited", limited)};;
+  "{WHOLE}") echo "$*" >> "{log}"; {answer("whole", whole)};;
+  *) exec "{fakebin}/codex-other" "$@";;
+esac''')
+    return log
+
+
+def codex_lines(capsys) -> dict:
+    return {" ".join(line.split()[1:3]): line for line in capsys.readouterr().out.splitlines()[1:] if line.split()[1] == "codex"}
+
+
+def test_codex_is_asked_for_the_plugins_own_marketplace_and_the_remote_catalog_is_never_waited_on(machine, monkeypatch, capsys):
+    _, fakebin, _ = machine
+    log = codex_listings(fakebin, limited={"installed": [ENTRY], "available": []}, whole="hang")
+    monkeypatch.setattr(doctor, "CLI_TIMEOUT", 5)
+    assert doctor.main([]) == 0
+    lines = codex_lines(capsys)
+    assert lines["codex plugin"].split()[0] == "ok" and "5.0.0 installed and enabled" in lines["codex plugin"]
+    assert log.read_text().splitlines() == [LIMITED]                             # the whole listing was never started
+
+
+def test_a_plugin_the_one_marketplace_does_not_show_is_looked_for_in_the_whole_listing(machine, capsys):
+    """Absent is not said from the narrower look: a plugin installed from a marketplace of another name is found."""
+    home, fakebin, _ = machine
+    cache = home / ".codex" / "plugins" / "cache"
+    (cache / "synthesis-engineering").rename(cache / "a-fork")
+    fork = {**ENTRY, "pluginId": "synthesis-skills@a-fork", "marketplaceName": "a-fork"}
+    log = codex_listings(fakebin, limited={"installed": [], "available": []}, whole={"installed": [fork], "available": []})
+    doctor.main([])
+    lines = codex_lines(capsys)
+    assert lines["codex plugin"].split()[0] == "ok" and "a-fork" in lines["codex plugin"]
+    assert lines["codex package"].split()[0] == "ok"
+    assert log.read_text().splitlines() == [LIMITED, WHOLE]
+
+
+def test_a_codex_that_does_not_know_the_option_is_asked_for_the_whole_listing(machine, capsys):
+    _, fakebin, _ = machine
+    log = codex_listings(fakebin, limited="usage", whole={"installed": [ENTRY], "available": []})
+    assert doctor.main([]) == 0
+    assert codex_lines(capsys)["codex plugin"].split()[0] == "ok"
+    assert log.read_text().splitlines() == [LIMITED, WHOLE]
+
+
+def test_a_plugin_in_neither_listing_is_not_installed(machine, capsys):
+    _, fakebin, _ = machine
+    empty = {"installed": [], "available": []}
+    log = codex_listings(fakebin, limited=empty, whole=empty)
+    assert doctor.main([]) == 1
+    line = codex_lines(capsys)["codex plugin"]
+    assert line.split()[0] == "fail" and "is not installed" in line
+    assert log.read_text().splitlines() == [LIMITED, WHOLE]
+
+
+def test_a_listing_that_does_not_answer_is_not_waited_on_a_second_time_and_the_line_says_what_ends_it(machine, monkeypatch, capsys):
+    """A listing stopped at the limit says nothing about the install. The whole listing is where Codex fetches its
+    catalog, and stopping it leaves the copy old, so the line names what lets it finish."""
+    _, fakebin, _ = machine
+    log = codex_listings(fakebin, limited="hang", whole={"installed": [ENTRY], "available": []})
+    monkeypatch.setattr(doctor, "CLI_TIMEOUT", 2)
+    doctor.main([])
+    line = codex_lines(capsys)["codex plugin"]
+    assert line.split()[0] == "warn" and "cannot tell" in line and "did not answer within 2 s" in line
+    assert log.read_text().splitlines() == [LIMITED]
+
+
+def test_a_whole_listing_that_does_not_answer_says_what_lets_it_finish(machine, monkeypatch, capsys):
+    _, fakebin, _ = machine
+    log = codex_listings(fakebin, limited={"installed": [], "available": []}, whole="hang")
+    monkeypatch.setattr(doctor, "CLI_TIMEOUT", 2)
+    doctor.main([])
+    line = codex_lines(capsys)["codex plugin"]
+    assert line.split()[0] == "warn" and "cannot tell" in line and "`codex plugin list`" in line and "once" in line
+    assert log.read_text().splitlines() == [LIMITED, WHOLE]
 
 
 def test_doctor_names_each_problem_and_exits_nonzero(machine, capsys):
@@ -787,11 +894,101 @@ def test_a_stale_codex_launcher_on_path_is_skipped(tmp_path, monkeypatch):
     assert doctor.find_client("codex", which=lambda n: str(stale), locations=[str(good)]) == str(good)
 
 
-def test_version_probe_is_bounded_closes_stdin_and_reaps(tmp_path):
+def test_version_probe_is_bounded_closes_stdin_and_reaps(tmp_path, monkeypatch):
     hung = _exe(tmp_path / "codex", "read line; sleep 30")
     start = time.monotonic()
-    assert doctor._version_ok(str(hung), timeout=0.3) is False
+    assert doctor._version_ok(str(hung), timeout=0.3) == "slow"                  # no answer, which is not an error
     assert time.monotonic() - start < 5
+    monkeypatch.setattr(doctor, "PROBE_TIMEOUT", 2.5)                            # the limit is read when the probe runs
+    start = time.monotonic()
+    assert doctor._version_ok(str(hung)) == "slow" and time.monotonic() - start >= 2.4
+    assert doctor._version_ok(str(_exe(tmp_path / "broken", "exit 3"))) is False
+    assert doctor._version_ok(str(_exe(tmp_path / "fine"))) is True
+
+
+def test_a_codex_that_is_slow_to_say_its_version_is_still_the_codex_on_this_machine(tmp_path, monkeypatch):
+    """2026-11-13: on a busy machine a Codex command took longer than the probe's two seconds to say its version,
+    and the doctor printed no Codex line at all: nine checks gone, a summary that counted the rest, and nothing that
+    said so. The installer and a release would have skipped Codex the same way, as not on this machine. A command
+    that did not answer in time is not a harness that is absent: where no other install answers, it is the one."""
+    monkeypatch.delenv("SYNTHESIS_CODEX_BIN", raising=False)
+    monkeypatch.setattr(doctor, "PROBE_TIMEOUT", 1.0)
+    slow, broken, good = (_exe(tmp_path / "slow" / "codex", "sleep 30"), _exe(tmp_path / "broken" / "codex", "exit 1"),
+                          _exe(tmp_path / "good" / "codex"))
+    assert doctor.find_client("codex", which=lambda n: str(slow), locations=[]) == str(slow)
+    assert doctor.find_client("codex", which=lambda n: str(slow), locations=[str(broken)]) == str(slow)
+    assert doctor.find_client("codex", which=lambda n: str(broken), locations=[str(slow)]) == str(slow)
+    assert doctor.find_client("codex", which=lambda n: str(slow), locations=[str(good)]) == str(good)  # another install answers
+    assert doctor.find_client("codex", which=lambda n: str(broken), locations=[]) is None
+
+
+def test_the_doctor_looks_at_a_codex_whose_version_probe_was_slow(machine, monkeypatch, capsys):
+    _, fakebin, _ = machine
+    script = fakebin / "codex"
+    script.write_text(script.read_text().replace("import json, sys\n", "import json, sys, time\nif sys.argv[1:] == ['--version']:\n    time.sleep(30)\n", 1))
+    monkeypatch.setattr(doctor, "PROBE_TIMEOUT", 0.5)
+    assert doctor.main([]) == 0
+    lines = codex_lines(capsys)
+    assert {"codex plugin", "codex package", "codex hooks", "codex hook", "codex skill", "codex board"} <= set(lines)
+    assert [line for line in lines.values() if line.split()[0] != "ok"] == []
+
+
+def test_a_codex_that_answers_nothing_is_named_on_a_machine_with_no_other_harness(machine, monkeypatch, capsys):
+    """A launcher that hangs on every command: the doctor cannot tell, says so on Codex's plugin line, and does not
+    also say that no harness was found."""
+    home, _, _ = machine
+    hung = _exe(home / "only" / "codex", "sleep 60")
+    monkeypatch.setenv("PATH", os.pathsep.join([str(hung.parent), "/usr/bin", "/bin"]))
+    monkeypatch.setattr(doctor, "PROBE_TIMEOUT", 0.5)
+    monkeypatch.setattr(doctor, "CLI_TIMEOUT", 2)
+    doctor.main([])
+    out = capsys.readouterr().out.splitlines()[1:]
+    plugin = [line for line in out if line.split()[1:3] == ["codex", "plugin"]]
+    assert len(plugin) == 1 and plugin[0].split()[0] == "warn" and "cannot tell" in plugin[0] and "did not answer within 2 s" in plugin[0]
+    assert not [line for line in out if line.split()[1] == "harnesses"]
+
+
+def test_a_stale_launcher_beside_a_codex_that_answers_is_passed_over_without_a_word(machine, monkeypatch, capsys):
+    """The probe exists for a launcher that outlived its app: where another install answers, that one is Codex."""
+    home, fakebin, _ = machine
+    stale = _exe(home / "stale" / "codex", "sleep 30")
+    quick = _exe(home / "quick" / "codex", f'[ "$1" = "--version" ] && exit 0\nexec "{fakebin}/codex" "$@"')  # a shell says its version at once
+    monkeypatch.setattr(doctor, "PROBE_TIMEOUT", 3)
+    monkeypatch.setattr(doctor, "KNOWN_LOCATIONS", {**doctor.KNOWN_LOCATIONS, "codex": (str(quick),)})
+    monkeypatch.setenv("PATH", os.pathsep.join([str(stale.parent), os.environ["PATH"]]))
+    assert doctor.main([]) == 0
+    lines = codex_lines(capsys)
+    assert lines["codex plugin"].split()[0] == "ok" and "cannot tell" not in "".join(lines.values())
+
+
+@pytest.mark.parametrize("entry", [{**{"pluginId": PLUGIN_ID, "name": "synthesis-skills", "marketplaceName": "synthesis-engineering", "enabled": True}, **more}
+                                   for more in ({"version": None}, {"version": "9.9.9"}, {})])
+def test_a_listed_plugin_whose_folder_cannot_be_found_fails_its_line_and_the_doctor_still_reports(machine, capsys, entry):
+    """A review, 2026-11-13: a listing with no version, or one that names a folder that is not there, ended the
+    doctor with a traceback and no report at all."""
+    _, fakebin, _ = machine
+    codex_listings(fakebin, limited={"installed": [entry], "available": []}, whole="hang")
+    assert doctor.main([]) == 1
+    lines = codex_lines(capsys)
+    assert lines["codex package"].split()[0] == "fail" and "no v5 runtime package" in lines["codex package"]
+
+
+@pytest.mark.parametrize("printed, expected", [
+    ('loaded [1] marketplace\n{"installed": []}', {"installed": []}),
+    ('skipped: []\n{"a": 1}', {"a": 1}),
+    ('note {x}\n[1, 2]', [1, 2]),
+    ('{x}\n{"a": 2}', {"a": 2}),
+    ('warning: slow\n  {"a": 3}\n', {"a": 3}),
+    ('{"a": 4}', {"a": 4}),
+])
+def test_a_listing_is_read_past_the_words_a_command_prints_before_it(tmp_path, printed, expected):
+    """A review, 2026-11-13: the listing was read from the first brace or bracket anywhere, so a line of words that
+    held one before the listing made an installed plugin read as not installed."""
+    out = tmp_path / "out.txt"
+    out.write_text(printed)
+    assert doctor._finish(doctor._start(["/bin/cat", str(out)])) == (expected, "")
+    out.write_text("note {x} and [y]\n")
+    assert doctor._finish(doctor._start(["/bin/cat", str(out)]))[0] is None
 
 
 # ---- Codex skill catalog and instruction bytes ---------------------------------

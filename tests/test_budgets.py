@@ -772,17 +772,40 @@ ROOT = Path(__file__).resolve().parents[1]
 # (the texts' own sender, run and not read), check 4, _result 2, unwatched_sends 2, FAILED 1, one import and two
 # blank lines. approvals.py 14: alone 11 (one decision at a time for a thing that can go on either of two codes),
 # one import and two blank lines. wait.py 5: past 1 MB the file of statements keeps its last 64 KB.
-# 5.13.0, core 73 more, all in sessions.py: what the principal typed is filed as a prompt in every shape a Claude Code
-# transcript holds it, and a session is tagged with the projects it wrote into. _Session 31 (wrote: the projects a
-# tool call's written files lie in, by the guard's own readers, with the row's working directory kept for a relative
-# target and a call that cannot be read counted), _typed 15 (one text block as its records: a prompt, a slash
-# command as it was typed, a reminder and then the typed words), _queued 12 (a prompt typed while a turn runs, which
-# the harness keeps as a queued command; a notification and another agent's message stay what they were), _claude 7
-# (the two routed through _typed, and the working directory), SLASH 5 with its note, _codex 2 and REMINDED 1.
+# 5.12.1 (2026-11-13): plugin 25, all in the knowledge-base connector's server.py, so that a client whose ID is a URL
+# (ChatGPT, Codex) can be stored on Firestore: hashed_firestore_keys 23 (its def 1, an 8-line docstring that says why
+# every key is hashed, two imports with the blank line between them and the one after them 4, the strategy class
+# with sanitize and validate, the blank line between them and the one after the class 7, its return 1, and the two
+# blank lines after the function) and oauth_storage 2 (the key and collection strategies passed to FirestoreStore).
+# 5.12.2, core 30 more, all in doctor.py: json_in 12 (a listing read past the words a command prints before it, from a
+# brace or bracket that opens a line, each tried until one parses; the installer's own reader is 5 fewer for it),
+# harness_checks 8 (Codex is asked for the plugin's own marketplace, for which it fetches no remote catalog, and
+# the whole listing before the plugin is called not installed, with what lets its fetch finish), _version_ok 3 and
+# find_client 1 (a command that gave no answer in time is the Codex on the machine where no other install answers),
+# LISTINGS 2, MARKETPLACE, CODEX_WHOLE and PROBE_TIMEOUT 3, and codex_entry 1 (a listing with no version names no
+# folder). The plugin 12 more beside those, in the installer: plugin_entry 12 (the marketplace first, absent said
+# only from the whole listing, a listing past its limit stops the install), install_plugin 3 (no second copy beside
+# one from another marketplace), LIST_TIMEOUT 1, _uninstall 1 (the copy that is there), and _json 5 fewer.
+# 5.13.0, core 125 more. sessions.py 121: what the principal typed is filed as a prompt in every shape a Claude Code
+# transcript holds it, and a session is tagged with the projects it wrote into. _Session 39 (wrote 36 with the blank
+# line after it: the projects a tool call's written files lie in, by the guard's own readers, with arguments kept as
+# JSON text read as the object they are, the working directory a call names or the row's kept for a relative
+# target, a project taken as a folder that holds its CONTEXT.md, and a reading that cannot be made counted; its
+# call 2, and the working directory kept 1), _typed 24 (one text block as its records: a prompt, a slash command as
+# it was typed with the words beside it, a reminder and then the typed words, and a system record for a row the
+# principal cannot have typed), _queued 18 (a prompt typed while a turn runs, which the harness keeps as a queued
+# command: its mode, its origin, and no tag of the harness's at its head where no origin is given), _reminded 13
+# (the reminders a block opens with; one that holds the tag's own closing text ends at its last one), _claude 9
+# (the two routed through _typed, a queued prompt filed at its own time, and the working directory), _machine 8
+# (the approval reader's own test of a row the principal cannot have typed), SLASH 5 with its note, _codex 2 (the
+# working directory), and one each for INJECTED (what the harness keeps of its bash mode), REMINDED and OWN_TAGS;
+# _reminded, _typed, _queued and _claude are each counted with the two blank lines before them. guards.py 4:
+# _shell_writes 3 (the readings it could not make, handed to a caller that counts them) and _file_targets 1 (Codex's
+# own hook gives a patch under `command`).
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # consolidate first).
-CORE_BUDGET = 13297
-PLUGIN_BUDGET = 34766
+CORE_BUDGET = 13379
+PLUGIN_BUDGET = 34885
 
 
 def _lines(files):

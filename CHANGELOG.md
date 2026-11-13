@@ -48,6 +48,51 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   defined twice never runs. An overload's stubs and a property's setter share a name by design. 5.12.0's lint read
   the core alone.
 
+## [5.12.2] - 2026-11-13
+
+- **`synthesis doctor` can tell again whether Codex holds the plugin** (`synthesis-onboarding` 3.5.1,
+  `synthesis-agent-conformance` 2.0.5). The doctor and the installer asked Codex for its whole plugin listing, which
+  takes in Codex's remote catalog. Codex fetches that catalog again when its copy is over three hours old (73 MB and
+  52 s on 2026-11-13), and the doctor's limit of 45 s stopped it before the fetch finished, twice running on the
+  morning this was reported: the Codex lines said `cannot tell`, and the day's first look at Codex's hooks did not
+  happen. Both now ask for the plugin's own marketplace first (`codex plugin list --json -m synthesis-engineering`),
+  for which Codex fetches no remote catalog, so the doctor's daily run and every release's update no longer wait on
+  it. "Not installed" is said only from the whole listing, which is asked when the marketplace's own shows no plugin
+  or a Codex does not know the option; the installer gives that one five minutes, and where it does not answer the
+  doctor in time, the doctor's line says to run `codex plugin list` once, since its limit stops the fetch each time.
+- **A Codex that is slow to say its version is still the Codex on the machine.** Before a Codex command is used it
+  is asked for its version, with a limit of two seconds, so that a launcher which outlived its app is passed over for
+  another install. Where no other install answered, Codex was taken for absent: the doctor printed none of its nine
+  lines and nothing said they were missing (seen once, on a busy machine, in a test), and the installer, a release
+  and the dispatch script would each have skipped Codex as not on the machine. A command that gives no answer in
+  time is now passed over only for an install that answers; with none, it is the one, and its own commands say what
+  is wrong if it answers nothing. A command that exits with an error is still no Codex.
+- **The installer does not add a second copy beside one from another marketplace.** A plugin installed from a
+  fork's marketplace is found by the whole listing; the installer stops, names that copy and the command that removes
+  it, and uninstall removes the copy that is there by its listed name. A listing that does not answer within its
+  limit stops the install with that said, the next listing is not started after it, and a listing that is no JSON is
+  reported with the harness's own last line.
+- **The doctor keeps reporting when a listed plugin's folder is missing.** A Codex listing with no version, or one
+  that names a folder that is not there, ended the doctor with a traceback and no report; it fails the package line
+  now. A listing is read past any words a command prints before it (from a brace or a bracket that opens a line),
+  where the first brace anywhere was taken and an installed plugin could read as not installed.
+
+## [5.12.1] - 2026-11-13
+
+- **The knowledge-base connector signs in ChatGPT and Codex on Firestore** (`synthesis-kb-distribution` 1.2.2). Its
+  first deployment answered every sign-in from ChatGPT and Codex with a server error: both identify themselves by
+  a client metadata document, so their client ID is a URL, and the OAuth proxy stores each client under its ID.
+  Firestore reads a "/" in a document ID as a path separator and refused the record ("A document must have an even
+  number of path elements"); py-key-value's Firestore store passes keys through unless it is given a strategy. The
+  connector now hashes every key into a SHA-256 document ID (the OAuth proxy only gets, puts and deletes by key, so
+  nothing is lost) and passes Firestore's own collection strategy, and authorization codes and token IDs no longer
+  appear as document names. The tests had replaced Firestore with a memory store that accepts any key; they now run
+  the real Firestore store over a client that keeps Firestore's ID rules, store and read back a client whose ID is
+  a URL, and fail without the fix with the error the deployment logged. Every release from 5.4.0, the skill's
+  first, to 5.12.0 has the defect on `firestore`; the operator's own test (`memory`) never saw it. A store that
+  already holds records under unhashed keys keeps them and never reads them again: a client registered by dynamic
+  registration (Claude) is told its ID is unknown and registers again, and each person signs in once more.
+
 ## [5.12.0] - 2026-11-13
 
 - **A status in a record carries its evidence, or says it is unverified** (`synthesis-git-hooks` 3.4.0). Off unless

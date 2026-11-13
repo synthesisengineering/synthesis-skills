@@ -105,6 +105,75 @@ def test_plugin_list_shapes_and_text_output(tmp_path):
         setup.plugin_entry("codex", codex_text)
 
 
+CODEX_ENTRY = {"pluginId": PLUGIN_ID, "name": "synthesis-skills", "version": "5.0.0", "marketplaceName": "synthesis-engineering", "enabled": True}
+LIMITED, WHOLE = "plugin list --json -m synthesis-engineering", "plugin list --json"
+EMPTY = {"installed": [], "available": []}
+
+
+def test_codex_is_asked_for_the_plugins_marketplace_first(tmp_path):
+    """Codex's whole listing fetches its remote catalog again when its copy is over three hours old (52 s on
+    2026-11-13, against the 60 this command had). Asked for one marketplace it fetches none, so an update, which is
+    every release, never waits on the catalog."""
+    binary, log = fake_cli(tmp_path, "codex", {LIMITED: (0, {"installed": [CODEX_ENTRY], "available": []}), "plugin list": (0, {"installed": []})})
+    assert setup.plugin_entry("codex", binary)["version"] == "5.0.0"
+    assert calls(log) == [LIMITED]
+
+
+def test_absent_is_said_only_from_the_whole_listing(tmp_path):
+    binary, log = fake_cli(tmp_path, "codex", {"plugin list": (0, EMPTY)})
+    assert setup.plugin_entry("codex", binary) is None
+    assert calls(log) == [LIMITED, WHOLE]
+
+
+def test_a_plugin_installed_from_another_marketplace_is_not_installed_a_second_time(tmp_path, monkeypatch, capsys):
+    """A review, 2026-11-13: asked for its own marketplace alone, the installer called a plugin installed from a
+    fork absent, and its plan was to add a second copy beside it. It refuses and names the copy; uninstall removes
+    the copy that is there, by the name the listing gives it."""
+    fork = {**CODEX_ENTRY, "pluginId": "synthesis-skills@a-fork", "marketplaceName": "a-fork"}
+    binary, log = fake_cli(tmp_path, "codex", {LIMITED: (0, EMPTY), "plugin list": (0, {"installed": [fork]}), "plugin": (0, "{}")})
+    assert setup.plugin_entry("codex", binary)["id"] == "synthesis-skills@a-fork"
+    monkeypatch.setattr(setup, "configured_ref", lambda client: None)
+    with pytest.raises(setup.SetupError, match="synthesis-skills@a-fork") as refused:
+        setup.install_plugin("codex", binary)
+    assert "codex plugin remove synthesis-skills@a-fork" in str(refused.value)
+    assert calls(log) == [LIMITED, WHOLE] * 2                                    # no marketplace added, no plugin added
+    monkeypatch.setattr(setup.doctor, "find_client", lambda name: binary if name == "codex" else None)
+    setup.install.install(setup.REPO)
+    assert setup.main(["uninstall", "--clients", "codex"]) == 0
+    assert "plugin remove synthesis-skills@a-fork --json" in calls(log) and "codex: removed" in capsys.readouterr().out
+
+
+def test_a_codex_that_does_not_know_the_option_is_asked_for_the_whole_listing(tmp_path):
+    binary, log = fake_cli(tmp_path, "codex", {"plugin list --json -m": (2, "error: unexpected argument '-m' found"),
+                                               "plugin list": (0, {"installed": [CODEX_ENTRY]})})
+    assert setup.plugin_entry("codex", binary)["version"] == "5.0.0"
+    assert calls(log) == [LIMITED, WHOLE]
+
+
+def test_a_listing_that_does_not_answer_stops_the_install_and_is_not_asked_again(tmp_path, monkeypatch):
+    """A listing past its limit says nothing: the whole listing, the one that fetches, is not started after it."""
+    binary, log = fake_cli(tmp_path, "codex", {"plugin list": (0, {"installed": [CODEX_ENTRY]})})
+    script = Path(binary)
+    script.write_text(script.read_text().replace("import json, sys\n", "import json, sys, time\n", 1).replace(
+        "for key, (code, out) in", "if '-m' in sys.argv:\n    time.sleep(30)\nfor key, (code, out) in", 1))
+    monkeypatch.setattr(setup, "LIST_TIMEOUT", 1)
+    with pytest.raises(setup.SetupError, match="did not answer within 1 s"):
+        setup.plugin_entry("codex", binary)
+    assert calls(log) == [LIMITED]
+
+
+def test_a_listing_that_fails_is_reported_with_what_the_harness_said(tmp_path):
+    binary, _ = fake_cli(tmp_path, "codex", {"plugin list": (1, "error: marketplace snapshot is missing")})
+    with pytest.raises(setup.SetupError, match="no plugin list.*marketplace snapshot is missing"):
+        setup.plugin_entry("codex", binary)
+
+
+def test_claude_is_asked_as_before(tmp_path):
+    binary, log = fake_cli(tmp_path, "claude", {"plugin list": (0, [{"id": PLUGIN_ID, "version": "5"}])})
+    assert setup.plugin_entry("claude", binary)["version"] == "5"
+    assert calls(log) == ["plugin list --json"]
+
+
 def test_a_disabled_plugin_is_reported_not_silently_enabled(tmp_path, monkeypatch):
     binary, log = fake_cli(tmp_path, "claude", {"plugin": (0, "")})
     monkeypatch.setattr(setup, "configured_ref", lambda client: "stable")
