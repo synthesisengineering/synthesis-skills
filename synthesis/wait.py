@@ -80,6 +80,8 @@ def live(session_id: str = "") -> list[dict]:
     found = []
     for file in sorted(root.rglob("*.json")) if root.is_dir() else []:
         held = paths.read_json(file)
+        if session_id and held.get("session", session_id) != session_id:
+            continue  # another session's, whose id shares this folder's name: not this one's to count or to remove
         if held.get("until", 0) > time.time() and (not held.get("pid") or _alive(int(held["pid"]))):
             found.append({**held, "record": file})
         else:
@@ -153,7 +155,8 @@ def attempt(command: list[str], until: float) -> bool:
     kept = {s: signal.signal(s, lambda number, frame: sys.exit(128 + number)) for s in quits if signal.getsignal(s) == signal.SIG_DFL}
     proc, done = None, False
     try:
-        proc = subprocess.Popen(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+        proc = subprocess.Popen(command, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                                start_new_session=True)  # a watcher is unattended: a try reads nothing from the terminal it was started in
         done = proc.wait(timeout=until - time.time()) == 0 and time.time() <= until
     except subprocess.TimeoutExpired:
         pass

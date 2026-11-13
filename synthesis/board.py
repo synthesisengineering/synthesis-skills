@@ -238,9 +238,14 @@ def release(session_id: str, claims: list[str] | None = None) -> Session | None:
 
 
 def _describe(found: list[Session]) -> str:
+    from synthesis import wait  # imported here: wait imports this module
     now = time.time()
+
+    def mark(s: Session) -> str:  # as `who` marks a seat: until when it waits, or that nothing reaches it
+        until = max((w["until"] for w in wait.live(s.session)), default=0)
+        return time.strftime(", waiting until %H:%M", time.localtime(until)) if until else "" if s.reachable else ", stale"
     return "".join(f"\n  {s.session} (short {s.short}, project {s.project or '-'}, {s.harness or 'harness ?'}, "
-                   f"last seen {int((now - s.seen) / 60)} min ago{'' if s.reachable else ', stale'})"
+                   f"last seen {int((now - s.seen) / 60)} min ago{mark(s)})"
                    for s in found[:20]) + (f"\n  ... and {len(found) - 20} more" if len(found) > 20 else "")
 
 
