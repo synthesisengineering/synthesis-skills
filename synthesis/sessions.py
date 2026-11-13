@@ -752,6 +752,7 @@ CITED = re.compile(r"(?<![\w.-])([A-Za-z0-9][\w.-]*)\s+#(\d+)(?:(?:[^\S\n]*(?:-|
 LISTED = re.compile(r"(?m)^[ \t>]*(?:(?:[-*+]|\d+[.)])[ \t]+)?[A-Za-z][\w-]*[ \t]+(\S+)[ \t]+#(\d{1,9})[^\S\n]+\d\d:\d\d(?:[^\S\n]+(.*))?$")
 ANSWER = re.compile(r'\{\s*"(?:workspace|date|prompts|open|records)"\s*:')
 REFUSED = re.compile(r"(?m)^.*\d+ of \d+ prompts typed on \d{4}-\d\d-\d\d (?:is|are) cited by no record.*\n(?:[ \t>]*[\w-]+ \S+ #\d+[^\S\n]*(?:\n|\Z))+")
+STRING = re.compile(r'"(?:[^"\\\n]|\\.)*"')  # a string as JSON writes one, and YAML between double quotes
 
 
 def prompts(workspace: str, day: str) -> list:
@@ -798,20 +799,22 @@ def uncited(found: list, roots: list) -> list:
                         (".md", ".txt", ".json", ".jsonl", ".yaml", ".yml")) and os.path.getmtime(path) >= since else ""
                 except OSError:
                     continue
-                for cited, first, last in CITED.findall(_record(text, typed)):
+                for cited, first, last in CITED.findall(_record(text, typed, name.endswith((".json", ".jsonl", ".yaml", ".yml")))):
                     named = [s for s in ids if s == cited] or [s for s in ids if len(cited) >= 8 and s.startswith(cited)]
                     if len(named) == 1:  # a few characters that two sessions share name neither; a lower number ends no range
                         spans[named[0]].append((int(first), max(int(first), int(last or first))))
     return [p for p in found if not any(first <= p["seq"] <= last for first, last in spans[str(p["session"])])]
 
 
-def _record(text: str, typed: dict) -> str:
+def _record(text: str, typed: dict, data: bool = False) -> str:
     """A file's text without the listing's own output, however it was saved (2026-11-12: saved without `--records`,
     or with its JSON answer pretty-printed, it cited every prompt it listed): the JSON answer, the day-end record's
     list of what is open, and each line that says of a prompt only what the listing says, which is its citation,
     its minute and its first words. Only those go (the same day: a log the listing was pasted into lost every
     citation it held), and a mark stands where each was, so nothing either side of it joins into a citation.
-    `typed` holds, by seq, each prompt's session and words."""
+    A string is first read as the text it holds, on lines of its own: one that carries an escape, and every one in
+    a file of `data` (JSON or YAML), so a listing kept as a string cites nothing and a dash an encoder escaped
+    still joins its range (the same review's notes). `typed` holds, by seq, each prompt's session and words."""
     for at in reversed([m.start() for m in ANSWER.finditer(text)]):
         try:
             answer, end = json.JSONDecoder().raw_decode(text, at)
@@ -819,6 +822,13 @@ def _record(text: str, typed: dict) -> str:
             continue
         if isinstance(answer, dict) and {"workspace", "date", "prompts", "open"} <= set(answer):
             text = text[:at] + "\0" + text[end:]
+
+    def held(m) -> str:
+        try:
+            return "\n" + json.loads(m.group(0)) + "\n" if data or "\\" in m.group(0) else m.group(0)
+        except ValueError:
+            return m.group(0)
+    text = STRING.sub(held, text)
 
     def line(m) -> str:
         words = " ".join((m.group(3) or "").split())
