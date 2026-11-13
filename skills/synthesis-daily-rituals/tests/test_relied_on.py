@@ -260,3 +260,33 @@ def test_the_skill_binds_it():
     rules = (SKILL / "SKILL.md").read_text(encoding="utf-8").split("## Binding rules")[1].split("## Contents")[0]
     rule = next((line for line in rules.splitlines() if "`relied_on.py`" in line), "")
     assert rule and "`DOWN`" in rule and "approval" in rule
+
+
+def test_a_check_the_guard_would_hold_for_an_agent_is_never_started(tmp_path: Path) -> None:
+    """A check is a standing command: written into the ritual config once, it runs at every ritual and every wake
+    with no guard looking at it, where the same words typed by an agent would have been held. Each check is put to
+    the guard as the shell command it is, and one the guard holds or refuses counts as down and is not run."""
+    ran, tools = tmp_path / "ran", tmp_path / "tools"
+    tools.mkdir()
+    for name in ("wrangler", "cloudflared"):
+        (tools / name).write_text(f'#!/bin/sh\necho "$0" >> "{ran}"\n', encoding="utf-8")
+        (tools / name).chmod(0o755)
+    home = tmp_path / "home"
+    home.mkdir()
+    (home / "config.json").write_text(json.dumps({"temporary_addresses": {}}), encoding="utf-8")
+    code, lines, _ = run(tmp_path, "--workspace", "w", w=[
+        entry("the site", check=[str(tools / "wrangler"), "pages", "deploy", "dist", "--project-name=site"]),
+        entry("the tunnel", check=[str(tools / "cloudflared"), "tunnel", "--url", "http://localhost:1"]),
+        entry("the form")])
+    out = "\n".join(lines)
+    assert code == 1 and not ran.exists(), out
+    assert out.count("could not be run (a guard holds it, as it would for an agent:") == 2, out
+    assert "DOWN the site" in out and "DOWN the tunnel" in out and "ok the form" in out and "3 relied on, 2 down" in out
+
+
+def test_a_guard_config_that_cannot_be_read_checks_nothing(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    (home / "config.json").write_text("{not json", encoding="utf-8")
+    code, lines, err = run(tmp_path, "--workspace", "w", w=[entry()])
+    assert code == 2 and "NOT CHECKED" in err and lines == []
