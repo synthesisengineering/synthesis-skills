@@ -748,20 +748,34 @@ def records(folder: str, kinds: tuple = (), whole: bool = False) -> list:
 
 
 # `<session> #<seq>`, or a range of them. A dash joins on the line of the first number, and the range ends in a number
-# of its own (2026-11-12: `c1 #2`, then the list item `- 2026-10-30 ...` under it, read as #2 to #2026).
-CITED = re.compile(r"(?<![\w.-])([A-Za-z0-9][\w.-]*)\s+#(\d+)(?:(?:[^\S\n]*(?:-|–|—)|\s*(?:to|through))\s*#?(\d+)(?![-./:]?\d))?")
-# The listing's own output as it may be saved. LISTED: a line it prints for a prompt, alone or behind a quote mark
-# or a list marker. ANSWER: where its JSON answer may begin, however it is laid out and its keys ordered. REFUSED:
-# the day-end record's list of what is open, under the line that counts them.
-LISTED = re.compile(r"(?m)^[ \t>]*(?:(?:[-*+]|\d+[.)])[ \t]+)?[A-Za-z][\w-]*[ \t]+(\S+)[ \t]+#(\d{1,9})[^\S\n]+\d\d:\d\d(?:[^\S\n]+(.*))?$")
+# of its own (2026-11-12: `c1 #2`, then the list item `- 2026-10-30 ...` under it, read as #2 to #2026), which carries
+# its `#` unless the dash is tight (2026-11-13: `#12 — 2027 planning starts in January` read as #12 to #2027).
+CITED = re.compile(r"(?<![\w.-])([A-Za-z0-9][\w.-]*)\s+#(\d+)(?:(?:(?:-|–|—)#?|(?:[^\S\n]*(?:-|–|—)|\s*(?:to|through))\s*#)(\d+)(?![-./:]?\d))?")
+# What may stand before a line's words: a quote mark, the bar of a table, a list entry, a box to tick.
+_LED = r"[ \t>|]*(?:(?:[-*+]|\d+[.)])[ \t]+)?(?:\[[ xX]\][ \t]+)?"
+# The listing's own output as it may be saved. LISTED: a line it prints for a prompt, alone or behind those marks,
+# its citation in backticks or bold, its three parts in the cells of a table (2026-11-13: kept as a checklist, the
+# listing cited every prompt it listed). ANSWER: where its JSON answer may begin, however it is laid out and its
+# keys ordered. REFUSED: the day-end record's list of what is open, under the line that counts them.
+LISTED = re.compile(r"(?m)^" + _LED + r"[`*_(\[]*[A-Za-z][\w-]*[ \t]+(\S+)[ \t]+#(\d{1,9})[`*_)\]]*(?:[^\S\n]|\|)+[`*_]*\d\d:\d\d[`*_]*"
+                    r"(?:(?:[^\S\n]|\|)+(.*))?$")
 ANSWER = re.compile(r'\{\s*"(?:workspace|date|prompts|open|records)"\s*:')
 REFUSED = re.compile(r"(?m)^.*\d+ of \d+ prompts typed on \d{4}-\d\d-\d\d (?:is|are) cited by no record.*\n(?:[ \t>]*[\w-]+ \S+ #\d+[^\S\n]*(?:\n|\Z))+")
-# A line that holds citations and nothing else, behind whatever marks a line: a quote, a list entry, a box to tick,
-# a cell of a table, backticks, emphasis or brackets.
-_ONE = r"(?:[A-Za-z][\w-]*[ \t]+)?[A-Za-z0-9][\w.-]*[ \t]+#\d+(?:[ \t]*(?:-|–|—|to|through)[ \t]*#?\d+)?"
-BARE = re.compile(r"(?m)^[ \t>|]*(?:(?:[-*+]|\d+[.)])[ \t]+)?(?:\[[ xX]\][ \t]+)?[`*_(\[]*" + _ONE
-                  + r"(?:[`*_)\]]*[ \t]*(?:[,;]|and\b)?[ \t]*[`*_(\[]*" + _ONE + r")*[`*_)\].,;| \t]*$")
+# An entry: what says something of a prompt, or says nothing. A row of a table, a heading and the line of a code
+# fence each stand alone; any other line stands with the lines that continue it, up to a blank line, one of those,
+# a list entry or a key with its value (`name: ...`), so a citation counts wherever its entry wraps.
+_NEXT = r"[ \t>]*(?:$|\||#{1,6}[ \t]|```|~~~|(?:[-*+]|\d+[.)])[ \t]|[\"']?[\w.-]+[\"']?[ \t]*:(?:[ \t]|$))"
+UNIT = re.compile(r"(?m)^(?:[ \t>]*(?:\||#{1,6}[ \t]|```|~~~).*|.*(?:\n(?!" + _NEXT + r").*)*)")
+# A citation as an entry may hold it, to tell what the entry holds besides: only a harness's name may stand before
+# a session's id, since any other word says something, and `PR #291` is no citation. KEY: the key such an entry is
+# the value of, in a record kept as data.
+_ONE = re.compile(r"(?<![\w.-])(?:(?:" + "|".join(ADAPTERS) + r")[ \t]+)?([A-Za-z0-9][\w.-]*)[ \t]+#\d+(?:[ \t]*(?:-|–|—|to|through)[ \t]*#?\d+)?")
+KEY = re.compile("^" + _LED + r"[\"']?[\w.-]+[\"']?[ \t]*:")
 STRING = re.compile(r'"(?:[^"\\\n]|\\.)*"')  # a string as JSON writes one, and YAML between double quotes
+# The field named `cites` of a record kept as JSON or YAML, with its value: a list in brackets, the entries under
+# it (no shallower than the key, and deeper than the dash of an entry the key begins), a string, or the line's rest.
+FIELD = re.compile(r"""(?m)(?:^(?P<led>[ \t]*)(?P<dash>-[ \t]+)?["']?cites["']?|["']cites["'])[ \t]*:[ \t]*"""
+                   r"""(?:\[(?:\s*"(?:[^"\\\n]|\\.)*"\s*,?)*\s*\]|\[[^\]\[{}"]*\]|(?:[ \t]*\n(?P=led)(?(dash)[ \t]+|[ \t]*)-[ \t]+.*)+|"(?:[^"\\\n]|\\.)*"|(?(led).*))""")
 
 
 def prompts(workspace: str, day: str) -> list:
@@ -792,21 +806,25 @@ def uncited(found: list, roots: list) -> list:
     that no other session listed shares, then `#<seq>` or a range (`#12-40`, `#12 to #40`), in a text file under
     the roots that changed on or after the day of the oldest prompt (2026-11-11: what the principal asked reached
     a project record only if an agent remembered, and nothing checked). The listing's own output, saved among the
-    records in whichever form, is no record: it cites nothing, and what is written beside it is still read."""
+    records in a form `_record` knows, is no record: it cites nothing, and what is written beside it is still read.
+    A root that is no folder, and a folder or a record under one that may not be read, raises its OSError: read as
+    empty, it left every prompt open with no word of why (2026-11-13). A folder reached by a link is not walked."""
     ids = {str(p["session"]) for p in found}
     since = min((datetime.fromisoformat(p["at"]).replace(hour=0, minute=0).timestamp() for p in found), default=0)
     spans, typed = collections.defaultdict(list), collections.defaultdict(list)
     for p in found:
         typed[p["seq"]].append((str(p["session"]), " ".join(str(p.get("text", "")).split())))
+    def stop(error: OSError):
+        raise error
     for root in roots:
-        for top, dirs, files in os.walk(os.path.expanduser(root)):
+        for top, dirs, files in os.walk(os.path.expanduser(root), onerror=stop):
             dirs[:] = [d for d in dirs if not d.startswith(".") and d != "node_modules"]
             for name in files:
                 path = os.path.join(top, name)
                 try:
                     text = Path(path).read_text(encoding="utf-8", errors="replace") if name.endswith(
                         (".md", ".txt", ".json", ".jsonl", ".yaml", ".yml")) and os.path.getmtime(path) >= since else ""
-                except OSError:
+                except FileNotFoundError:  # gone since the walk listed it, or a link that leads nowhere
                     continue
                 for cited, first, last in CITED.findall(_record(text, typed, name.endswith((".json", ".jsonl", ".yaml", ".yml")))):
                     named = [s for s in ids if s == cited] or [s for s in ids if len(cited) >= 8 and s.startswith(cited)]
@@ -816,37 +834,61 @@ def uncited(found: list, roots: list) -> list:
 
 
 def _record(text: str, typed: dict, data: bool = False) -> str:
-    """A file's text without the listing's own output, however it was saved (2026-11-12: saved without `--records`,
-    or with its JSON answer pretty-printed, it cited every prompt it listed): the JSON answer, the day-end record's
-    list of what is open, and each line that says of a prompt only what the listing says, which is its citation,
-    its minute and its first words. Only those go (the same day: a log the listing was pasted into lost every
-    citation it held), and a mark stands where each was, so nothing either side of it joins into a citation.
-    A line of prose that holds citations and nothing else goes too: it is a list of numbers, such as the day-end's
-    refusal retyped, and says nothing of what was asked (the same review's note).
-    A string is first read as the text it holds, on lines of its own: one that carries an escape, and every one in
-    a file of `data` (JSON or YAML), so a listing kept as a string cites nothing and a dash an encoder escaped
-    still joins its range (the same review's notes). `typed` holds, by seq, each prompt's session and words."""
-    for at in reversed([m.start() for m in ANSWER.finditer(text)]):
-        try:
-            answer, end = json.JSONDecoder().raw_decode(text, at)
-        except (ValueError, RecursionError):
-            continue
-        if isinstance(answer, dict) and {"workspace", "date", "prompts", "open"} <= set(answer):
-            text = text[:at] + "\0" + text[end:]
+    """A file's text without the listing's own output, as it is known to be saved (2026-11-12: saved without
+    `--records`, or with its JSON answer pretty-printed, it cited every prompt it listed): the JSON answer, the
+    day-end record's list of what is open, and each line that says of a prompt only what the listing says, which is
+    its citation, its minute and its first words. Only those go (the same day: a log the listing was pasted into
+    lost every citation it held), and a mark stands where each was, so nothing either side of it joins into a
+    citation. An entry that holds citations and no word besides goes too, whatever marks, numbers, dates or
+    ticked boxes stand with them: it is a list of numbers, such as the day-end's refusal retyped, and says nothing
+    of what was asked. In a record kept as `data` (JSON or YAML) that is so of a value under any key but `cites`,
+    the field such a record keeps its citations in (2026-11-13: the answer's `open` list saved alone cited all it
+    named).
+    A string is first read as the text it holds, entry by entry: one that carries an escape, and every one in a
+    file of `data`, so a listing kept as a string cites nothing, an answer kept as one is found where it was
+    hidden, and a dash an encoder escaped still joins its range. `typed` holds, by seq, each prompt's session and
+    words."""
+    def answers(text: str) -> str:
+        for at in reversed([m.start() for m in ANSWER.finditer(text)]):
+            try:
+                answer, end = json.JSONDecoder().raw_decode(text, at)
+            except (ValueError, RecursionError):
+                continue
+            if isinstance(answer, dict) and {"workspace", "date", "prompts", "open"} <= set(answer):
+                text = text[:at] + "\0" + text[end:]
+        return text
 
-    def held(m) -> str:
-        try:
-            return "\n" + json.loads(m.group(0)) + "\n" if data or "\\" in m.group(0) else m.group(0)
-        except ValueError:
+    ids = {session for told in typed.values() for session, _ in told}
+
+    def cite(m) -> str:  # a citation of a session listed, by its id or eight or more of its first characters
+        return " " if any(s == m.group(1) or len(m.group(1)) >= 8 and s.startswith(m.group(1)) for s in ids) else m.group(0)
+
+    def entry(m, keyed: bool = data) -> str:
+        if "#" not in m.group(0) or re.match(r"[ \t>]*#{1,6}[ \t]", m.group(0)):  # a heading stands over what it names
             return m.group(0)
-    if not data:  # a record kept as data holds its citations in a field of their own, which is no bare list
-        text = BARE.sub("\0", text)
-    text = STRING.sub(held, text)
+        flat = re.sub(r"\n[ \t>]*", " ", m.group(0))
+        flat = KEY.sub(" ", flat) if keyed else flat
+        rest = _ONE.sub(cite, flat)
+        return m.group(0) if rest == flat or re.search(r"[^\W\d_]{2}", re.sub(r"\band\b|\[[xX]\]", " ", rest)) else "\0"
+
+    def held(m, own: bool = False) -> str:
+        try:
+            said = json.loads(m.group(0)) if data or "\\" in m.group(0) else None
+        except ValueError:
+            said = None
+        return m.group(0) if said is None else "\n" + (said if own else UNIT.sub(lambda u: entry(u, False), said.replace("\r\n", "\n"))) + "\n"
+
+    text, parts, at = answers(text), [], 0
+    for m in FIELD.finditer(text):  # a `cites` field is read whole; the rest, entry by entry
+        parts += [(at, m.start(), False), (m.start(), m.end(), True)]
+        at = m.end()
+    text = "".join(STRING.sub(lambda s: held(s, True), text[a:b]) if own else STRING.sub(held, UNIT.sub(entry, text[a:b]))
+                   for a, b, own in parts + [(at, len(text), False)])
 
     def line(m) -> str:
-        words = " ".join((m.group(3) or "").split())
+        words = " ".join((m.group(3) or "").split()).rstrip("|`*_ ")
         return "\0" if any(s.startswith(m.group(1)) and said.startswith(words) for s, said in typed.get(int(m.group(2)), ())) else m.group(0)
-    return LISTED.sub(line, REFUSED.sub("\0\n", text))
+    return LISTED.sub(line, REFUSED.sub("\0\n", answers(text)))
 
 
 def short(session: str, known: list | None = None) -> str:

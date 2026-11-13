@@ -275,7 +275,12 @@ def cmd_sessions(args) -> int:
             return 2
         roots = [r and os.path.realpath(os.path.expanduser(r)) for r in args.records]  # each as the walk reads it; an empty name is no folder
         found = sessions.prompts(args.workspace, day)
-        left = sessions.uncited(found, roots) if roots else found
+        try:
+            left = sessions.uncited(found, roots) if roots else found
+        except OSError as error:  # read as an empty folder, it left every prompt open and no word of why
+            print(f"the records under {error.filename or chr(34) * 2} could not be read ({error.strerror}), so no record was checked and "
+                  "nothing is said of what is open: give --records a folder that is there and can be read", file=sys.stderr)
+            return 2
         known = sessions.catalog() if left else []
         names = {session: sessions.short(session, known) for session in {str(p["session"]) for p in left}}
         cites = [f"{p['harness']} {names[str(p['session'])]} #{p['seq']}" for p in left]

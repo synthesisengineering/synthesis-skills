@@ -241,8 +241,10 @@ def prompts(workspace: str, day: str, direction: str, outcome: str) -> str:
                f"outcome {outcome!r} would claim nothing was lost:\n" + "\n".join(f"  {c}" for c in left[:40])
                + ("\n  ..." if len(left) > 40 else "")
                + "\nRead each with `synthesis sessions show <session> --seq <n>`. Where its substance is in a record, "
-               "cite it on the line that says so (`<harness> <session> #<seq>`, or `#<first>-<last>` for a stretch one "
-               "entry covers; a line of citations alone counts for nothing); where it is not, write the record first. Or "
+               "cite it in the sentence that says so (`<harness> <session> #<seq>`, or `#<first>-<last>` for a stretch one "
+               "entry covers; an entry of citations alone counts for nothing, and a JSON or YAML record holds them in a "
+               "field named `cites`); where it is not, write the record first. A citation says its record accounts for "
+               "the prompt, so do not copy this list into one. Or "
                "record --outcome partial, which says the day left some open.")
     if not total:
         return f"\nprompts: none typed on {day}"

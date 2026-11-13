@@ -61,10 +61,12 @@ each harness writes its own transcript to disk as the session runs. The copy is 
   leave the Mac at the same moments as the records, so the two never disagree about where the work stood.
 - Anyone may run `synthesis sessions export` (add `--all` for everything on the Mac) before reading or citing.
 - On a Mac where the onboarding setup scheduled it (`setup.py plugin --sessions-export`), a LaunchAgent runs
-  `synthesis sessions export --all` and `synthesis sessions sync` every hour and at login, so a transcript is
-  copied whether or not any session remembers to. `synthesis doctor` fails when that schedule is not loaded,
+  `synthesis sessions export --all --scheduled` and `synthesis sessions sync` every hour and at login, so a
+  transcript is copied whether or not any session remembers to. `--scheduled` marks a run as the schedule's
+  own; it is the job's flag and no one else's. `synthesis doctor` fails when that schedule is not loaded,
   when it runs another command than this install's (one label holds one schedule, so another install's setup
-  replaces it; the doctor names what it runs), or when no export has finished in a day (2026-11-11: until
+  replaces it; the doctor names what it runs), when no export has finished in a day, or when none of the
+  schedule's own has: an export a session ran says nothing of whether the job still runs (2026-11-11: until
   then the archive had no trigger of its own, and a transcript that no session exported within two days was
   skipped).
 - An export that could not copy a transcript (it could not be read, or held a row its adapter does not expect)
@@ -159,31 +161,55 @@ prompts in that workspace is not copied, it lists nothing and exits 2, since an 
 say what was typed: one this run could not copy, one an earlier run could not and none has since, or one that is
 gone and the principal has not cleared (`synthesis doctor` says how each is cleared). A transcript filed under
 another workspace, or last written before that day began, does not stop it, and neither does a sub-agent's or a
-reviewer's, which holds an agent's briefs and no word of the principal's. It also lists nothing while another
-export holds the archive or the archive cannot be written. `--date` takes a date, and anything else lists
-nothing. Each line is
+reviewer's, which holds an agent's briefs and no word of the principal's. While another export holds the
+archive it waits for it, and it lists nothing when the archive cannot be written. `--date` takes a date, and
+anything else lists nothing. Each line is
 `<harness> <session> #<seq>  HH:MM  <the prompt's first words>`, with as much of the session's id as tells it from
 the archive's other sessions (eight characters, or more where two begin alike), then one line that counts:
 `2 of 31 prompts on <day> in <W> are cited by no record` (exit 1), or `all 31 prompts ... are cited by a record`
-(exit 0). `--records` reads the text files under that folder changed since the day began; repeat it for more. A
+(exit 0). `--records` reads the files under that folder that end in `.md`, `.txt`, `.json`, `.jsonl`, `.yaml` or
+`.yml` and changed since the day began; repeat it for more. It reads every folder under the one named but those
+whose name begins with a dot, `node_modules`, and those reached through a link: name such a folder itself. A
+folder that is not there or may not be listed, and a record that may not be read, is named, and nothing is
+listed (exit 2): read as empty, it would leave every prompt open with no word of why. A
 citation names one session: its id in full, or eight or more of its first characters that no other session listed
 shares. A range (`#12-40`, `#12–40`, `#12 to #40`, `#12 through #40`) has its dash on the line of its first
-number and ends in a number of its own: a list item on the next line, or a date or a time after a dash, ends no
-range. The listing's own output saved among the records cites nothing, however it was saved: a line that holds
-only what the listing prints for a prompt (its citation, its minute and its first words), the JSON answer in any
-layout, and the list the day-end record prints when it refuses. Only those are set aside: what is written beside
-them in the same file is read, and a listing line with what became of the prompt written on it is a record.
-A line of a text record that holds citations and nothing else cites nothing either, wherever it stands and
-however it is marked (a list of what is open, such as the refusal retyped): write the citation on the line
-that says what became of the prompt. A record kept as JSON or YAML may hold its citations in a field of their
-own, and a string in one is read as the text it holds, so a listing kept as a string cites nothing and an
-escaped dash still joins its range.
+number and ends in a number of its own, which carries its `#` unless the dash is tight: a list item on the next
+line, a date or a time after a dash, and a number after a dash set off by spaces or after a word
+(`#12 — 2027 planning`, `#5 to 30 people`) end no range.
+
+The listing's own output saved among the records cites nothing, in each form it is known to be saved:
+
+- a line that holds only what the listing prints for a prompt (its citation, its minute and its first words),
+  alone or behind a quote mark, a list marker or a box to tick, its citation in backticks or bold, or its three
+  parts as the cells of a table;
+- the JSON answer in any layout, also where it is kept as a string;
+- the list the day-end record prints when it refuses.
+
+Only those are set aside: what is written beside them in the same file is read, and a listing line with what
+became of the prompt written on it is a record.
+
+An entry that holds citations and no word besides cites nothing either, whatever marks, numbers, dates or
+ticked boxes stand with them: it is a list of what is open, such as the refusal retyped. An entry is a
+paragraph, a list entry with the lines that continue it, or a row of a table, so a citation counts wherever its
+sentence wraps. A list entry or a paragraph of its own under the sentence is an entry of its own. A heading
+that is a citation stands over the text it names, and counts. Write the citation in the sentence that says what
+became of the prompt.
+
+A citation in a record says that the record accounts for the prompt, and nothing can check that it does. To
+note that prompts are open, give their number and not their citations: `two of today's prompts are open`.
+
+A record kept as JSON or YAML holds citations that stand alone in a field named `cites`: a string, a list, or
+the entries under the key. Under any other key a string of citations alone is a list of what is open. A string
+is read as the text it holds, so a listing kept as a string cites nothing and an escaped dash still joins its
+range.
+
 `--json` prints
 `{"workspace", "date", "prompts", "open": [...], "records": [...]}`; the day-end record runs it itself. `records`
 names each folder as the listing read it, by its real path: `~` expanded, links followed, and `..` taken from
 where a link leads, never as written. The record reads the folders its config names the same way before it
-compares, so a folder is the same folder however it is written. An empty `--records ""` names no folder: nothing
-is read for it.
+compares, so a folder is the same folder however it is written. An empty `--records ""` names no folder: like
+one that is not there, it is said and nothing is listed.
 
 For each prompt left: open it (`synthesis sessions show <session> --seq <n>`), and where its substance is
 already in a record, cite it there; where it is not, write the record first, then cite. A prompt that needs no

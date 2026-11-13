@@ -1126,7 +1126,10 @@ def test_a_line_that_holds_only_citations_cites_nothing(asked):
         "a list right under the line that leads into it": f"Still open after the day-end:\n- {one}\n- {two}\n",
         "a paragraph of its own under an entry": f"- 10:00 planned the release and drafted the announcement.\n\n  {one}\n  {two}\n",
         "a list of them wrapped over two lines": f"- {one},\n  {two}\n",
+        "list entries of their own under the entry they belong to": f"- 10:00 planned the release and drafted the announcement.\n  - {one}\n  - {two}\n",
         "quoted as a list in JSON": f'[\n  "{one}",\n  "{two}"\n]\n',
+        "a date, a time or a tick beside it": f"- 2026-10-30 {one}\n- [x] 15:00 {two} \u2713 (2/2)\n",
+        "a list kept as a string with another editor's line ends": "Kept from the day-end:\n\n" + json.dumps(f"Still open:\r\n\r\n{one}\r\n{two}\r\n") + "\n",
     }
     for name, text in bare.items():
         asked["log"].write_text(text, encoding="utf-8")
@@ -1137,6 +1140,8 @@ def test_a_line_that_holds_only_citations_cites_nothing(asked):
         "a row that says what became of it": f"| prompt | what became of it |\n|---|---|\n| {one} | planned |\n| {two} | drafted |\n",
         "a range the entry covers": f"- the day's work, c1 #{first['seq']} to #{second['seq']}\n",
         "a heading over its entry": f"### {one}\nPlanned the release.\n\n### {two}\n\nDrafted the announcement.\n",
+        "a word before the session's id": f"- planned c1 #{first['seq']}\n- drafted c1 #{second['seq']}\n",
+        "what became of it, by its number": f"- PR #291: {one}\n- issue #12, {two}\n",
     }
     for name, text in said.items():
         asked["log"].write_text(text, encoding="utf-8")
@@ -1321,14 +1326,17 @@ def test_the_listing_names_each_records_folder_as_its_walk_reads_it(asked, tmp_p
 
 def test_a_records_folder_named_by_nothing_is_no_folder(asked, monkeypatch, capsys):
     """`--records ""`, the shape an unset shell variable leaves, was named in the answer as the working folder, which
-    the walk never opened. It names no folder: nothing is read for it, every prompt stays open, and the answer names
-    none, also when the command runs inside the records."""
+    the walk never opened. It names no folder, also when the command runs inside the records: nothing is read for
+    it, and like any folder that is not there it is said, with nothing listed (2026-11-13: until then every prompt
+    was listed as open, as if the records had been read and held no citation)."""
     first, second = sessions.prompts("acme", "2026-10-30")
     asked["log"].write_text(f"- the whole day (claude-code c1 #{first['seq']}-{second['seq']})\n", encoding="utf-8")
     monkeypatch.chdir(asked["kb"])
-    assert cli.main(["sessions", "prompts", "--workspace", "acme", "--date", "2026-10-30", "--records", "", "--json"]) == 1
-    answer = json.loads(capsys.readouterr().out)
-    assert answer["records"] == [""] and len(answer["open"]) == 2 and answer["prompts"] == 2
+    assert cli.main(["sessions", "prompts", "--workspace", "acme", "--date", "2026-10-30", "--records", "", "--json"]) == 2
+    said = capsys.readouterr()
+    assert said.out == "" and 'the records under ""' in said.err and "no record was checked" in said.err
+    assert cli.main(["sessions", "prompts", "--workspace", "acme", "--date", "2026-10-30", "--records", ".", "--json"]) == 0
+    assert json.loads(capsys.readouterr().out)["records"] == [str(asked["kb"])]      # the working folder, when it is the one named
 
 
 def test_the_listing_exports_first_and_stops_when_a_transcript_could_not_be_copied(asked, capsys, monkeypatch):
