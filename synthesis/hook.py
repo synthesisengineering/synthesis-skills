@@ -100,6 +100,7 @@ def session_start(payload):
     notes += [f"This session is bound to no project, so mail addressed to one does not reach it. Mail it has not read is "
               f"waiting for: {', '.join(kept[:8])}{f' and {len(kept) - 8} more' if len(kept) > 8 else ''}. If this session works on one of them, `synthesis resume "
               f"{kept[0]}` binds it and delivers the mail."] if kept else []
+    _ran(payload, "session_start")  # this hook is running: struck before the note is read, so a harness's own start does not name it
     notes += [n for n in (_window_note(), _unguarded_note()) if n]
     return _emit("SessionStart", context="\n\n".join(notes))
 

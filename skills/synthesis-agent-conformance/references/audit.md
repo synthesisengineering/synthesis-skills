@@ -95,7 +95,10 @@ there with no item here fails:
   writable roots while `sandbox_mode` is set) and nothing over the state folder, the
   instruction chain for the current folder under the limit minus 4 KiB, every hook
   trusted, and the skill catalog (asked of `codex app-server`) within budget with every
-  shipped skill discoverable;
+  shipped skill discoverable. The budget follows the configured model's context window,
+  from Codex's own cache of its models, read by its first whole value (its clients share
+  that file, and one copy written over another can leave a tail after it); a cache with
+  nothing to read is a warning that the budget cannot be told, never a failure;
 - `muse hook approval`, `<harness> shell guard`: for Muse, hooks approved, and its shell
   tool name treated as a shell by the guard. A hook that waits for the person's approval
   (Codex's hook trust, Muse's hook approval) does not run, and neither does one a harness
@@ -104,9 +107,11 @@ there with no item here fails:
   harness's entry has its own date and the release it was written under). Where the
   harness's approval line says ok or fail, the entry is the hooks that were not running:
   the ones the line names, all four where it names none, with the line itself. Where its
-  plugin line says the plugin is not installed there, no approval waits, and its entry is
-  dropped. Where the run could not tell (a listing that did not answer, a trust state
-  that cannot be read from where the doctor runs), what this release saw within the day
+  plugin line says the plugin is not installed there, in the doctor's one sentence for it
+  (Codex's whole listing does not hold the plugin; Muse answers with its code for an
+  unknown plugin), no approval waits, and its entry is dropped. Where the run could not
+  tell (a listing that did not answer, a trust state that cannot be read from where the
+  doctor runs, a plugin line that fails for another reason), what this release saw within the day
   stands; otherwise the run writes that it could not tell, with the line that says why,
   dates it again on each run that still cannot, and keeps what hooks have struck since.
   Where the run did not find the harness at all, it says so once in place of another
@@ -126,7 +131,8 @@ there with no item here fails:
   note's lock from what the note holds then, with the clock read under that lock, and a
   hook that ran after a look began stays struck when that look is written. A session's
   start says which hooks in which harness were not running when the doctor looked and
-  have not been seen to run since, with the doctor's own line for what mends it, or that
+  have not been seen to run since (in that harness's own session the start hook, which is
+  running, has struck itself by then and is not named), with the doctor's own line for what mends it, or that
   the doctor could not tell and why; where the guard's hook is among them it adds that
   nothing is known to guard a send or a deploy made from there; and it says that a
   harness's hook approval is the person's to give there, and that an agent gives none.

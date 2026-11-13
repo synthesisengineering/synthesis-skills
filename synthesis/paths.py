@@ -79,9 +79,11 @@ def read_json(path: Path) -> dict:
 
 def write_json(path: Path, data: dict) -> None:
     """Replace a small state file atomically, so a reader never sees half of it; a write that fails leaves no
-    temporary file beside it."""
+    temporary file beside it. Each call writes a temporary file of its own: named for the process alone, two
+    threads of one process shared it, and a reader could find half a file (2026-11-13, a review)."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    mine = object()  # at an address no other call has while this one runs
+    tmp = path.with_name(f".{path.name}.{os.getpid()}.{id(mine):x}.tmp")
     try:
         tmp.write_text(json.dumps(data, indent=1, sort_keys=True), encoding="utf-8")
         os.replace(tmp, path)

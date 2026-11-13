@@ -692,8 +692,23 @@ def catalog_cost(skills: list, context_window: int | None) -> tuple:
     return (len(text.encode("utf-8")) + 3) // 4 + 256, budget
 
 
+def _model_cache(codex_home: Path) -> dict | None:
+    """Codex's cache of its models, read by its first whole JSON value; {} where there is no file, None where the
+    file holds no value to read. Codex's clients share the file, and a shorter copy written over a longer one
+    leaves the longer one's tail after it (2026-11-13: read as no cache, the model's window was unknown and the
+    catalog failed on the budget for a model Codex does not know, until Codex rewrote the file)."""
+    try:
+        text = (codex_home / "models_cache.json").read_text(encoding="utf-8")
+        found = json.JSONDecoder().raw_decode(text.lstrip())[0]
+    except FileNotFoundError:
+        return {}
+    except (OSError, ValueError):
+        return None
+    return found if isinstance(found, dict) else None
+
+
 def _context_window(config: dict, codex_home: Path) -> int | None:
-    models = paths.read_json(codex_home / "models_cache.json").get("models") or []
+    models = (_model_cache(codex_home) or {}).get("models") or []
     return next((m["context_window"] for m in models if isinstance(m, dict) and m.get("slug") == config.get("model")
                  and isinstance(m.get("context_window"), int)), None)
 
@@ -708,6 +723,10 @@ def check_codex_catalog(result, error: str, plugin_root: Path | None, config: di
     missing = sorted(shipped - names)
     cost, budget = catalog_cost(skills, _context_window(config, codex_home))
     errors = [str(e) for r in rows for e in r.get("errors") or []]
+    if cost > budget and not (missing or errors) and _model_cache(codex_home) is None:
+        return Check("warn", "codex skill catalog", f"cannot tell its budget: Codex's model cache ({_short(codex_home / 'models_cache.json')}) "
+                     f"holds nothing that can be read, and {cost:,} tokens is over the {budget:,} Codex gives a model it does not know; "
+                     "Codex writes the cache again when it next lists its models")
     if missing or errors or cost > budget:
         return Check("fail", "codex skill catalog", f"{cost:,} of {budget:,} tokens; "
                      + (f"not discoverable: {', '.join(missing[:5])}; " if missing else "") + "; ".join(errors[:2]))
@@ -1399,7 +1418,8 @@ def harness_checks(found: list, procs: dict, home: Path, runtime: str, catalog=N
         inspect, error = _finish(procs["muse"])
         entry = muse_entry(inspect)
         if entry is None and isinstance(inspect, dict) and isinstance(inspect.get("error"), dict):
-            error = str(inspect["error"].get("message", "")) or error
+            absent = inspect["error"].get("code") == "unknown-plugin"  # Muse's own code for a plugin that is not there
+            error = "" if absent else str(inspect["error"].get("message", "")) or error
         checks.append(check_plugin("muse", entry, error))
         if entry:
             versions["muse"] = entry.get("version", "")
@@ -1495,7 +1515,9 @@ def _note_waits(home: Path, checks: list, began: float) -> None:
     - Its approval line says ok or fail: the hooks that were not running, the ones the line names (Muse writes them
       with dashes), all four where it names none or says none run, with the line itself. A hook that ran after this
       run began is the later sight of its own event: that one stays struck, and no other.
-    - Its plugin line says the plugin is not installed there: no approval waits, and its entry is dropped.
+    - Its plugin line says the plugin is not installed there, in the doctor's own sentence (Codex's whole listing
+      does not hold it; Muse answers with its code for an unknown plugin): no approval waits, and its entry is
+      dropped. Any other fault of that line is a look that could not tell.
     - The run could not tell (a listing that did not answer, a trust state that cannot be read from here): what this
       release saw within the day stands. Otherwise the run writes that it could not tell, with the line that says
       why, dates it again on each run that still cannot, and keeps what hooks have struck since, the only sight
@@ -1517,7 +1539,7 @@ def _note_waits(home: Path, checks: list, began: float) -> None:
                 struck, now = mine["struck"] if mine else {}, time.time()  # the clock is read under the note's lock
                 waiting = [e for e in waiting if not began < struck.get(e, 0) <= now]
                 return {"at": began, "waiting": waiting, "struck": {}, "said": check.detail[:300] if waiting else "", "untold": False}
-            if plugin is not None and plugin.status == "fail" and plugin.detail.endswith("is not installed"):
+            if plugin is not None and plugin.status == "fail" and plugin.detail == f"{PLUGIN} is not installed":
                 return "drop" if old else None
             if mine and not mine["untold"] or line is None and (mine or not old):
                 return None

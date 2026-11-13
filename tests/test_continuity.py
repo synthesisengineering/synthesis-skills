@@ -231,6 +231,16 @@ def test_session_start_says_what_the_doctor_could_not_tell_and_whose_the_approva
     assert "the person's to give" not in _started("S-claude-2")                  # nothing waits, nothing is said
 
 
+def test_a_codex_sessions_own_start_does_not_name_the_hook_that_is_running(tmp_path, write_config):
+    """The third review of 5.15.0, finding 1: with the strike made after the handler, a Codex session's start said
+    that its own session-start hook had not been seen to run, in the first session after the person approved."""
+    write_config({})
+    note = _waits(codex=ALL)
+    context = json.loads(_in_codex("session-start", tmp_path).stdout)["hookSpecificOutput"]["additionalContext"]
+    assert "Codex: its user-prompt-submit, pre-tool-use and stop hooks were not running" in context
+    assert _waiting(note, "codex hook trust") == ["user_prompt_submit", "pre_tool_use", "stop"]
+
+
 def test_a_hook_whose_note_is_held_answers_at_once_and_strikes_at_its_next_call(tmp_path, write_config):
     """The third review of 5.14.0, finding 4: a hook with something to strike waited for whoever held the note's lock."""
     import threading

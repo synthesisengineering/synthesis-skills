@@ -136,7 +136,7 @@ def critical_deadlines(workspace: str, outcome: str, sweep=None) -> str:
         unread = {}  # each source once, with the first reason given for it
         for entry in report["gaps"]:
             unread.setdefault(str(entry["path"]) or "(no folder declared)", entry["reason"])
-        refuse(f"{len(unread)} plan source(s) could not be read whole, so critical deadlines are not fully "
+        refuse(f"{len(unread)} plan source(s) were not taken in full by the sweep, so critical deadlines are not fully "
                f"covered and outcome {outcome!r} would claim they are:\n"
                + "\n".join(f"  {path}: {why}" for path, why in list(unread.items())[:5])
                + f"\n  and {len(unread) - 5} more" * (len(unread) > 5)
@@ -434,7 +434,7 @@ def commitments(workspace: str, day: str, outcome: str, sweep=None) -> str:
                    "copy closes no other. Give each a `**Decay ID:**` line where it sits, the same in every copy that is "
                    "still open, or record its outcome there (`**Resolved:** YYYY-MM-DD (what happened)`)." * bool(loose))
                + "\nOr record --outcome partial, which closes the day with these counted as open.")
-    unread = f"; {len({str(entry['path']) for entry in report['gaps']})} source(s) could not be read whole" * bool(report["gaps"])
+    unread = f"; {len({str(entry['path']) for entry in report['gaps']})} source(s) not taken in full" * bool(report["gaps"])
     if not report.get("plans_read"):
         return "\ncommitments: no dated plan to read" + unread
     return "\ncommitments: " + ("; ".join(said) if said else f"{report['commitments']} open in the newest plan, each with a date or a park") + unread

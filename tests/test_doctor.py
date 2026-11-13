@@ -809,14 +809,18 @@ def test_what_this_release_saw_stands_while_a_later_look_cannot_tell(machine):
 
 def test_a_harness_with_no_plugin_in_it_has_no_approval_to_wait_for(machine):
     """The third review, finding 1: the plugin was removed from a harness, and the entry another release wrote of it
-    stayed. The harness's own line says the plugin is not there, in the doctor's words for Codex or in Muse's own."""
+    stayed. The harness's own line says the plugin is not there, in the doctor's one sentence for it; a line that
+    fails in other words is a look that could not tell (5.15.0's third review, finding 5)."""
     home = machine[0] / ".synthesis" / "v5"
     gone = [doctor.Check("fail", "codex plugin", "synthesis-skills is not installed"),
-            doctor.Check("fail", "muse plugin", "plugin `synthesis-skills` is not installed")]
+            doctor.Check("fail", "muse plugin", "synthesis-skills is not installed")]
     for version in ("5.0.0", None):
         _note(machine[0], version=version, ago=600.0, codex=EVENTS, muse=EVENTS)
         doctor._note_waits(home, gone, time.time())
         assert paths.waits(home) == {} and _seen(machine[0]) == {}, version
+    _note(machine[0], version="5.0.0", ago=600.0, codex=EVENTS)
+    doctor._note_waits(home, [doctor.Check("fail", "codex plugin", "could not run codex: it is not installed")], time.time())
+    assert paths.waits(home)["codex hook trust"]["untold"] is True
 
 
 def test_a_harness_the_run_did_not_find_is_told_of_for_a_day_and_no_longer(machine):
@@ -918,6 +922,58 @@ def test_a_state_file_that_cannot_be_replaced_leaves_nothing_half_written_beside
     target.mkdir(parents=True)                                                   # a folder where the file should be
     with pytest.raises(OSError):
         paths.write_json(target, {"seen": {}})
+    assert [path.name for path in target.parent.iterdir()] == [target.name]
+
+
+def test_a_muse_with_no_plugin_is_known_by_muses_own_code_and_not_by_its_words(machine, capsys):
+    """The third review of 5.15.0, finding 5: the note took "is not installed" at the end of Muse's own sentence for
+    a plugin that is not there, so any other wording was a look that could not tell, said again every day."""
+    home, fakebin, _ = machine
+    _note(home, version="5.0.0", ago=600.0, muse=EVENTS)
+    fake_cli(fakebin, "muse", {"error": {"code": "unknown-plugin", "message": "No plugin by that name is in this Muse."}})
+    capsys.readouterr()
+    doctor.main([])
+    line = next(line for line in capsys.readouterr().out.splitlines() if line.split()[1:3] == ["muse", "plugin"])
+    assert line.split()[0] == "fail" and line.rstrip().endswith("synthesis-skills is not installed")
+    assert "muse hook approval" not in _seen(home)
+    _note(home, version="5.0.0", ago=600.0, muse=EVENTS)
+    fake_cli(fakebin, "muse", {"error": {"code": "state-locked", "message": "Muse's state is not installed where it was."}})
+    doctor.main([])
+    entry = _seen(home)["muse hook approval"]
+    assert entry["untold"] is True and entry["said"] == "Muse's state is not installed where it was."   # another fault: it could not tell
+
+
+def test_two_threads_of_one_process_each_write_a_state_file_whole(tmp_path):
+    """The third review of 5.15.0, finding 8: both took one temporary name, so one failed as the other replaced the
+    file, and a reader could find half of it."""
+    import threading
+    target, torn, failed, stop = tmp_path / "state" / "note.json", [], [], threading.Event()
+
+    def write(n):
+        while not stop.is_set():
+            try:
+                paths.write_json(target, {"writer": n, "fill": "x" * 4000})
+            except OSError as exc:
+                failed.append(type(exc).__name__)
+
+    def read():
+        while not stop.is_set():
+            try:
+                text = target.read_text(encoding="utf-8")
+            except OSError:
+                continue
+            try:
+                json.loads(text)
+            except ValueError:
+                torn.append(len(text))
+    threads = [threading.Thread(target=write, args=(n,)) for n in (1, 2)] + [threading.Thread(target=read)]
+    for thread in threads:
+        thread.start()
+    time.sleep(0.6)
+    stop.set()
+    for thread in threads:
+        thread.join(10)
+    assert failed == [] and torn == []
     assert [path.name for path in target.parent.iterdir()] == [target.name]
 
 
@@ -1417,6 +1473,28 @@ def test_catalog_budget_follows_the_configured_model(tmp_path):
     (tmp_path / "models_cache.json").write_text(json.dumps({"models": [{"slug": "m", "context_window": 272000}]}))
     assert doctor._context_window({"model": "m"}, tmp_path) == 272000
     assert doctor._context_window({"model": "other"}, tmp_path) is None
+
+
+def test_a_model_cache_with_an_older_copys_tail_after_it_is_read_by_its_first_whole_value(tmp_path):
+    """2026-11-13: in the minute after a release, Codex's cache of its models held one whole fresh value and, after
+    it, the tail of a longer copy: what two writers leave when a shorter body lands over a longer one. Read as no
+    cache, the model's window was unknown, and the catalog failed at 2,794 of 2,000 tokens where it reads 2,794 of
+    10,000."""
+    whole = json.dumps({"fetched_at": "2026-11-13T17:09:18Z", "models": [{"slug": "m", "context_window": 500000}]}, indent=2)
+    (tmp_path / "models_cache.json").write_text(whole + 'ly",\n      "multi_agent_version": "v1"\n    }\n  ]\n}')
+    assert doctor._context_window({"model": "m"}, tmp_path) == 500000
+
+
+def test_a_model_cache_that_cannot_be_read_is_said_and_fails_no_catalog(tmp_path):
+    """With no value to read in it, the doctor cannot tell the budget Codex gives the catalog: Codex rewrites the
+    file when it next lists its models, and knows the window then. That is a warning, and no failure on the budget
+    for a model Codex does not know. With no cache at all Codex knows no window either, and that budget is its own."""
+    big = {"data": [{"skills": [_skill(tmp_path / f"p{i}", f"s{i}", description="d" * 1024) for i in range(9)]}]}
+    (tmp_path / "models_cache.json").write_text('{"models": [{"slug": "m", "context_w')
+    check = doctor.check_codex_catalog(big, "", None, {"model": "m"}, tmp_path)
+    assert check.status == "warn" and "cannot tell" in check.detail and "model cache" in check.detail, check
+    (tmp_path / "models_cache.json").unlink()
+    assert doctor.check_codex_catalog(big, "", None, {"model": "m"}, tmp_path).status == "fail"
 
 
 def test_instruction_chain_is_measured_against_the_limit_with_a_reserve(tmp_path):
