@@ -1,0 +1,74 @@
+{
+  "about": "The hook-free package of method skills that scripts/build_directory_package.py builds. `skills` is what it holds, `left_out` is what failed its check and why, and `manifest` is its Codex manifest; the build adds the repository's version. The images the manifest names are kept in directory-package/ beside this file, and the package carries them under assets/. See references/directory-package.md.",
+  "skills": [
+    "synthesis-article-refresh",
+    "synthesis-article-writing",
+    "synthesis-bitbucket",
+    "synthesis-clean-text",
+    "synthesis-code-audit",
+    "synthesis-code-integration",
+    "synthesis-code-planning",
+    "synthesis-codebase-review",
+    "synthesis-concise-messaging",
+    "synthesis-content-distribution",
+    "synthesis-content-framing",
+    "synthesis-content-quality",
+    "synthesis-creative-writer",
+    "synthesis-executive-communication",
+    "synthesis-fact-checking",
+    "synthesis-grounding-discipline",
+    "synthesis-link-research",
+    "synthesis-llm-setup",
+    "synthesis-local-model-runtime",
+    "synthesis-model-tiers",
+    "synthesis-preflight",
+    "synthesis-preplan",
+    "synthesis-reader-briefing",
+    "synthesis-response-merger",
+    "synthesis-review-triage",
+    "synthesis-technical-advisor",
+    "synthesis-text-provenance",
+    "synthesis-thinking-framework",
+    "synthesis-tree-of-thought",
+    "synthesis-voice-profiler",
+    "synthesis-writing-craft",
+    "synthesis-writing-pitfalls"
+  ],
+  "left_out": {
+    "synthesis-skill-router": "Its routing table names synthesis-repo-guard, synthesis-git-hooks and synthesis-message-guard as the routes to protect a repository, install policy hooks and enforce message safety, and this package can do none of the three."
+  },
+  "manifest": {
+    "name": "synthesis-skills-methods",
+    "description": "The writing, review, planning and thinking methods of synthesis engineering: skills for drafting and checking prose, fact-checking, planning and reviewing code, and working through a decision. They work without the synthesis runtime. This package has no guards, no board and no rituals: nothing in it checks a send, a deploy or a commit, coordinates sessions or runs a daily routine. The full system, with all of that, installs from its marketplace on GitHub: https://github.com/synthesisengineering/synthesis-skills",
+    "author": {
+      "name": "Rajiv Pant",
+      "url": "https://rajiv.com"
+    },
+    "homepage": "https://synthesisengineering.org",
+    "repository": "https://github.com/synthesisengineering/synthesis-skills",
+    "license": "Apache-2.0 AND CC0-1.0",
+    "keywords": [
+      "agent-skills",
+      "writing",
+      "software-engineering",
+      "code-review",
+      "planning"
+    ],
+    "skills": "./skills/",
+    "interface": {
+      "displayName": "Synthesis Skills: methods",
+      "shortDescription": "Methods only, without guards",
+      "longDescription": "The writing, review, planning and thinking methods of synthesis engineering: skills for drafting and checking prose, fact-checking, planning and reviewing code, and working through a decision. They work without the synthesis runtime. This package has no guards, no board and no rituals: nothing in it checks a send, a deploy or a commit, coordinates sessions or runs a daily routine. The full system, with all of that, installs from its marketplace on GitHub: https://github.com/synthesisengineering/synthesis-skills",
+      "developerName": "Synthesis Engineering",
+      "category": "Developer Tools",
+      "capabilities": [
+        "Read",
+        "Write"
+      ],
+      "websiteURL": "https://synthesisengineering.org",
+      "brandColor": "#1E3A5F",
+      "composerIcon": "./assets/synthesis-work.svg",
+      "logo": "./assets/synthesis-work.svg"
+    }
+  }
+}
