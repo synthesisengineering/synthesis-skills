@@ -47,6 +47,11 @@ person who publishes this plugin and makes the policy attestations a submission 
 - **One manifest,** `.codex-plugin/plugin.json`: the list's `manifest` object with the
   repository's current version added. It carries the package's own name and its
   description, and has no `hooks` entry.
+- **Its images.** Every tracked file of
+  [assets/directory-package/](../assets/directory-package/), the folder beside the list,
+  carried under `assets/`. The manifest's `interface.logo` and `interface.composerIcon`
+  name them as `./assets/` paths; a package in the Codex format must name both. Today
+  both name one file, the Synthesis Work mark, the owner's choice.
 - **Nothing else.** No `hooks/` folder, no `synthesis/` core, no second manifest and no
   license text: the manifest names both licenses and links the repository, where
   `LICENSE-APACHE` and `LICENSE-CC0` are.
@@ -74,7 +79,7 @@ print one line.
 python3 skills/synthesis-skills-manager/scripts/build_directory_package.py OUT.zip
 ```
 
-writes the ZIP and prints `built OUT.zip: 32 skills, 234 files, 845393 bytes, version
+writes the ZIP and prints `built OUT.zip: 32 skills, 235 files, 845797 bytes, version
 5.8.0` (exit 0). It writes nothing unless every check passes. It also refuses while the
 list or a file it would carry differs from the last commit, because a package is cut
 from committed files: build it from a clean checkout of the release's tag. A build is
@@ -84,8 +89,8 @@ repeatable: entries in name order, one fixed date, the executable bit as git rec
 python3 skills/synthesis-skills-manager/scripts/build_directory_package.py --check
 ```
 
-runs the same checks on the same bytes and writes nothing: `ok: 32 skills, 234 files,
-845393 bytes, version 5.8.0; nothing written` (exit 0). On a defect either command
+runs the same checks on the same bytes and writes nothing: `ok: 32 skills, 235 files,
+845797 bytes, version 5.8.0; nothing written` (exit 0). On a defect either command
 prints `refused: 2 problems; nothing written`, then one line for each problem, and exits
 1. CI makes the same checks on every pull request, in
 [tests/test_skills_manager_directory_package.py](../tests/test_skills_manager_directory_package.py).
@@ -95,30 +100,35 @@ python3 skills/synthesis-skills-manager/scripts/build_directory_package.py --cha
 ```
 
 says whether a release needs a new submission: `unchanged since v5.7.0: no new
-submission is due` (exit 0), or `changed since v5.7.0: the list, synthesis-preplan; a
-new submission is due` (exit 1). It names each listed skill with a packaged file that
-differs from the tag, and `the list` when the list file differs: its skills, or the
-manifest's name and description. The version changes with every release and is not
-counted.
+submission is due` (exit 0), or `changed since v5.7.0: the list, its images,
+synthesis-preplan; a new submission is due` (exit 1). It names each listed skill with a
+packaged file that differs from the tag, `the list` when the list file differs (its
+skills, or the manifest's name and description), and `its images` when an image does.
+The version changes with every release and is not counted.
 
 When the script cannot tell, it prints `cannot continue: <why>` and exits 2: the list or
 a manifest cannot be read, the tag does not exist, the folder is not a git checkout, a
-listed skill holds a symbolic link (followed, one could carry a file from outside its
-skill), or the ZIP cannot be written.
+listed skill or the image folder holds a symbolic link (followed, one could carry a file
+from outside the package), or the ZIP cannot be written.
 
 ## What fails the check
 
 The checks read the ZIP that was built, not the folders it came from. It fails when:
 
 1. it holds a `hooks` folder or a `hooks.json`, or its manifest has a `hooks` entry;
-2. it holds a file that is neither the manifest nor a file of a listed skill, or a test;
+2. it holds a file that is not the manifest, an image or a file of a listed skill, or
+   it holds a test;
 3. a listed name is not a skill in this checkout;
 4. a listed skill names, in `depends_on`, a skill that is not listed (the rule holds for
    every listed skill, so the whole chain of dependencies stays inside the list);
 5. a packaged file differs from its source;
 6. the manifest's version is not the repository's;
 7. a line of a packaged file claims a hook, a guard or an approval code, or needs the
-   runtime.
+   runtime;
+8. the manifest does not name a logo and a composer icon, each as a `./assets/` path to
+   an image the package holds (a dark variant, `logoDark` or `composerIconDark`, is
+   held to the same rule when it is named), or the package holds an image that no such
+   field names.
 
 Rule 7 is a set of phrases, decided from what the skills outside the list say; the test
 file names every one. They are: the lifecycle hooks and the git hooks by name
@@ -147,7 +157,8 @@ name under `skills`, run `--check`, and read what it reports.
 ## What a submission asks of the owner
 
 From OpenAI's two pages, developers.openai.com/plugins/build/plugins and
-developers.openai.com/plugins/deploy/submission, as read on 2026-11-10:
+developers.openai.com/plugins/deploy/submission, as read on 2026-11-10 and, from the
+pages' own text, on 2026-11-12:
 
 - A ZIP uploaded at platform.openai.com/plugins by an organization owner, or a member
   with Apps Management Write, from a verified publisher. Automated checks run, then a
@@ -159,6 +170,28 @@ developers.openai.com/plugins/deploy/submission, as read on 2026-11-10:
   for a plugin, and not with API-key authentication. This package has none.
 - A ZIP with lifecycle hooks or with app references (`.app.json`) cannot be submitted.
   This package has neither.
+
+The submission page's field reference was read from the page's own text on 2026-11-12
+(the earlier readings went through a tool that summarizes a page). As it stood that day:
+
+- **Icons.** Codex's package validation requires `interface.logo` and
+  `interface.composerIcon`: PNG, JPEG, WebP or SVG, at most 5 MiB each, square and at
+  least 48 by 48 (an SVG states numeric sides or a square viewBox), named by `./` paths
+  from the package's root, every named file included, kept under `./assets/` where
+  possible. The package carries both, and a test holds this repository's images to
+  those limits. The build itself checks only that the two are named and held (rule 8).
+- **Lengths.** `displayName` and `shortDescription` at most 30 characters each (the
+  list's are 25 and 28); `description` and `longDescription` at most 4,000;
+  `developerName` at most 80; `author.name` at most 120; `name` at most 64, in lowercase
+  letters, digits and single hyphens; at most 20 capability labels of at most 120
+  characters; at most three starter prompts of at most 128. A brand color is `#RRGGBB`
+  with a contrast of at least 2 to 1 against white. The same test holds the list to
+  each of these, so an edit that breaks one fails in CI.
+- **Required in the Codex format.** `name`, `version`, `description`, `author.name` and
+  `interface`, with its `displayName`, `shortDescription`, `longDescription`,
+  `developerName`, `category` and `capabilities`. The list has each.
+- **Links.** A website, support, privacy-policy and terms link are required of a plugin
+  with an MCP server, and not of a skills-only one.
 
 The package's name (`Synthesis Skills: methods`), its short description and its
 paragraph are the owner's to choose. They are in the list file, and changing them
@@ -172,21 +205,6 @@ To find out before any upload:
   verification asks for;
 - how long a review takes;
 - whether the directory accepts skills that carry scripts. Four listed skills do:
-  bitbucket, clean-text, content-quality and local-model-runtime.
-
-The submission page was read again on 2026-11-11, with its last part, a reference of
-manifest fields. It was read through a tool that summarizes a page, so confirm each
-point on the page itself. As read:
-
-- **Scripts.** A skill scan must pass before a submission, and the page does not say
-  what the scan checks, so the question above stays open.
-- **Icons.** A package in the Codex format needs two, `interface.logo` and
-  `interface.composerIcon`: square, at least 48 by 48 pixels, PNG, JPEG, WebP or SVG, at
-  most 5 MiB each, named by `./` paths and included in the ZIP. This repository holds no
-  image and the package carries none. Until the owner supplies the two icons, and the
-  list and the build carry them, expect the directory's validation to refuse the ZIP.
-- **Lengths.** `displayName` and `shortDescription` at most 30 characters each (the
-  list's are 25 and 28); `description` and `longDescription` at most 4,000; `name` at
-  most 64, in lowercase letters, digits and single hyphens.
-- **Links.** A website, support, privacy-policy and terms link are required of a plugin
-  with an MCP server, and not of a skills-only one.
+  bitbucket, clean-text, content-quality and local-model-runtime. The submission page
+  says a required skill scan must finish successfully before a submission, and does not
+  say what the scan checks.

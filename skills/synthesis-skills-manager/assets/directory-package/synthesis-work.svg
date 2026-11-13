@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Synthesis Work">
+  <rect width="64" height="64" rx="12" fill="#241b2f"/>
+  <path d="M14 15h10v14h8V15h10v14h8v10H40v10H24V39H14z" fill="none" stroke="#f3e8d0" stroke-width="5" stroke-linecap="square" stroke-linejoin="miter"/>
+  <path d="M24 49V29m16 20V29" stroke="#d9664b" stroke-width="5"/>
+</svg>

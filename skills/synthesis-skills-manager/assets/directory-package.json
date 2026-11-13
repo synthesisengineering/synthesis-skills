@@ -1,5 +1,5 @@
 {
-  "about": "The hook-free package of method skills that scripts/build_directory_package.py builds. `skills` is what it holds, `left_out` is what failed its check and why, and `manifest` is its Codex manifest; the build adds the repository's version. See references/directory-package.md.",
+  "about": "The hook-free package of method skills that scripts/build_directory_package.py builds. `skills` is what it holds, `left_out` is what failed its check and why, and `manifest` is its Codex manifest; the build adds the repository's version. The images the manifest names are kept in directory-package/ beside this file, and the package carries them under assets/. See references/directory-package.md.",
   "skills": [
     "synthesis-article-refresh",
     "synthesis-article-writing",
@@ -66,7 +66,9 @@
         "Write"
       ],
       "websiteURL": "https://synthesisengineering.org",
-      "brandColor": "#1E3A5F"
+      "brandColor": "#1E3A5F",
+      "composerIcon": "./assets/synthesis-work.svg",
+      "logo": "./assets/synthesis-work.svg"
     }
   }
 }

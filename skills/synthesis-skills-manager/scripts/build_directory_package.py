@@ -5,20 +5,22 @@
     python3 skills/synthesis-skills-manager/scripts/build_directory_package.py --changed-since v5.7.0
 
 The package is the skills that assets/directory-package.json lists: every tracked file of each that is not a
-test, byte for byte, and one Codex manifest, which is that file's `manifest` with the repository's version. It
-holds no hooks folder and registers no hook. Nothing is submitted: the upload is the owner's.
+test, byte for byte; the images kept beside that list in assets/directory-package/, carried as assets/; and one
+Codex manifest, which is that file's `manifest` with the repository's version. It holds no hooks folder and
+registers no hook. Nothing is submitted: the upload is the owner's.
 
-A ZIP is written only when it passes, and the checks read the ZIP: it holds only files of listed skills and the
-manifest; each file equals its source; every dependency of a listed skill is listed; the version is the
-repository's; and no line claims a hook, a guard or an approval code, or needs the runtime (CLAIMS). A skill
-that gains such a line fails here until it leaves the list; its text is never edited to pass.
+A ZIP is written only when it passes, and the checks read the ZIP: it holds only files of listed skills, its
+images and the manifest; each file equals its source; every dependency of a listed skill is listed; the version
+is the repository's; the manifest names a logo and a composer icon among the images, and no image goes unnamed;
+and no line claims a hook, a guard or an approval code, or needs the runtime (CLAIMS). A skill that gains such a
+line fails here until it leaves the list; its text is never edited to pass.
 
 One line on stdout, and the exit code:
-  OUT.zip              built OUT.zip: 32 skills, 234 files, 845390 bytes, version 5.8.0                    0
-  --check              ok: 32 skills, 234 files, 845390 bytes, version 5.8.0; nothing written              0
+  OUT.zip              built OUT.zip: 32 skills, 235 files, 845797 bytes, version 5.8.0                    0
+  --check              ok: 32 skills, 235 files, 845797 bytes, version 5.8.0; nothing written              0
   either, on a defect  refused: 2 problems; nothing written      (then each problem on its own line)       1
   --changed-since TAG  unchanged since TAG: no new submission is due                                       0
-                       changed since TAG: the list, synthesis-preplan; a new submission is due             1
+                       changed since TAG: the list, its images, synthesis-preplan; a new submission is due 1
   any                  cannot continue: <why>    (the list, a manifest, a file, git or TAG cannot be read,
                        a listed skill holds a symbolic link, or OUT cannot be written)                     2
 A build also refuses, with 1, while the list or a file it would carry differs from the last commit: a package
@@ -37,6 +39,8 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[3]
 LIST = "skills/synthesis-skills-manager/assets/directory-package.json"
+IMAGES = "skills/synthesis-skills-manager/assets/directory-package"  # the package's own images: assets/ in the ZIP
+ICONS = ("logo", "composerIcon")  # a package in the Codex format names both; each may have a Dark variant
 MANIFEST = ".codex-plugin/plugin.json"  # the repository's, for its version; and the package's own, at the same path
 # What no packaged line may say, in the words of the skills that need the runtime: a hook, a guard or an approval
 # code at work, or the runtime's command, folder or core. The tests name each phrase, hold it against skills that
@@ -72,6 +76,11 @@ def is_test(path: str) -> bool:
     return "tests" in path.split("/") or path.rsplit("/", 1)[-1].startswith("test_")
 
 
+def source(path: str) -> str:
+    """Where a packaged file is kept in the checkout: an image beside the list, anything else under its own name."""
+    return IMAGES + path[len("assets"):] if path.startswith("assets/") else path
+
+
 def depends_on(skill_md: str) -> list:
     """The names in a skill's frontmatter `depends_on`, written as a flow list or as a block list."""
     front = re.match(r"---\n(.*?)\n---\n", skill_md, re.S)
@@ -104,12 +113,14 @@ def read_list(repo: Path) -> dict:
 def build(repo: Path, spec: dict) -> bytes:
     """The package as ZIP bytes. The same checkout gives the same bytes: names in order, one date, and the
     executable bit as git records it."""
-    listing = git(repo, "ls-files", "-s", "-z", "--", *[f"skills/{name}" for name in spec["skills"]]).split("\0")
+    listing = git(repo, "ls-files", "-s", "-z", "--", IMAGES,
+                  *[f"skills/{name}" for name in spec["skills"]]).split("\0")
     modes = {path: meta[:6] for meta, path in (entry.split("\t", 1) for entry in listing if entry)}
     links = [path for path, mode in modes.items() if mode == "120000"]
     if links:  # followed, one could carry a file from outside its skill, or from the machine that builds
         raise Unreadable(f"{links[0]} is a symbolic link, and a package follows none")
-    files = {path: (repo / path).read_bytes() for path in modes if not is_test(path)}
+    files = {("assets" + path[len(IMAGES):] if path.startswith(IMAGES + "/") else path): (repo / path).read_bytes()
+             for path in modes if not is_test(path)}
     fields = dict(spec["manifest"])
     made = {"name": fields.pop("name", ""), "version": read_json(repo / MANIFEST).get("version"), **fields}
     files[MANIFEST] = (json.dumps(made, indent=2, ensure_ascii=False) + "\n").encode("utf-8")
@@ -135,30 +146,42 @@ def verify(repo: Path, spec: dict, data: bytes) -> list:
         found += [f"skills/{name}/SKILL.md: depends on {need}, which is not on the list"
                   for need in depends_on((skill or b"").decode("utf-8", "replace")) if need not in listed]
     for path, content in sorted(files.items()):
-        parts, source = path.split("/"), repo / path
+        parts, kept, image = path.split("/"), repo / source(path), path.startswith("assets/")
         try:
             lines = content.decode("utf-8").splitlines()
         except UnicodeDecodeError:
             lines = []
-            found.append(f"{path}: not UTF-8 text, so its lines cannot be read")
+            if not image:  # a raster image has no lines to read
+                found.append(f"{path}: not UTF-8 text, so its lines cannot be read")
         if "hooks" in parts or parts[-1] == "hooks.json" or path == MANIFEST and b'"hooks"' in content:
             found.append(f"{path}: holds or registers a hook")
-        if path != MANIFEST and (len(parts) < 3 or parts[0] != "skills" or parts[1] not in listed or is_test(path)):
+        if path != MANIFEST and not image and (len(parts) < 3 or parts[0] != "skills" or parts[1] not in listed
+                                               or is_test(path)):
             found.append(f"{path}: not a file of a listed skill")
-        elif path != MANIFEST and (not source.is_file() or source.read_bytes() != content):
+        elif path != MANIFEST and (not kept.is_file() or kept.read_bytes() != content):
             found.append(f"{path}: differs from its source")
         found += [f"{path}:{number}: {', '.join(kinds)}: {line.strip()[:120]}"
                   for number, line in enumerate(lines, 1) for kinds in [claims(line)] if kinds]
-    version = read_json(repo / MANIFEST).get("version")
-    shipped = json.loads(files.get(MANIFEST, b"{}")).get("version")
-    if not version or shipped != version:
-        found.append(f"{MANIFEST}: version {shipped}, not the repository's {version}")
+    version, manifest = read_json(repo / MANIFEST).get("version"), json.loads(files.get(MANIFEST, b"{}"))
+    if not version or manifest.get("version") != version:
+        found.append(f"{MANIFEST}: version {manifest.get('version')}, not the repository's {version}")
+    interface = manifest.get("interface") if isinstance(manifest.get("interface"), dict) else {}
+    named = {field: interface.get(field) for icon in ICONS for field in (icon, icon + "Dark")}
+    for field, value in named.items():
+        if value in (None, ""):  # a Dark variant is optional
+            found += [f"{MANIFEST}: interface.{field} is missing: a package names its logo and its composer icon"
+                      ] * (field in ICONS)
+        elif not (isinstance(value, str) and value.startswith("./assets/") and value[2:] in files):
+            found.append(f"{MANIFEST}: interface.{field} names {value}, which is no ./assets/ path to an image the "
+                         f"package holds")
+    found += [f"{path}: no image field of the manifest names it" for path in sorted(files)
+              if path.startswith("assets/") and "./" + path not in named.values()]
     return found
 
 
 def differing(repo: Path, spec: dict, ref: str) -> list:
     """The list and the files a package would carry, where the checkout differs from `ref`."""
-    paths = git(repo, "diff", "--name-only", "--no-renames", "-z", ref, "--", LIST,
+    paths = git(repo, "diff", "--name-only", "--no-renames", "-z", ref, "--", LIST, IMAGES,
                 *[f"skills/{name}" for name in spec["skills"]]).split("\0")
     return [path for path in paths if path and not is_test(path)]
 
@@ -181,8 +204,9 @@ def main(argv=None) -> int:
         spec = read_list(repo)
         if tag:
             paths = differing(repo, spec, f"refs/tags/{tag}")
-            changed = sorted({path.split("/")[1] for path in paths if path != LIST})
-            changed = (["the list"] if LIST in paths else []) + changed
+            images = [path for path in paths if path.startswith(IMAGES + "/")]
+            changed = sorted({path.split("/")[1] for path in paths if path != LIST and path not in images})
+            changed = (["the list"] if LIST in paths else []) + (["its images"] if images else []) + changed
             print(f"changed since {tag}: {', '.join(changed)}; a new submission is due" if changed
                   else f"unchanged since {tag}: no new submission is due")
             return 1 if changed else 0
