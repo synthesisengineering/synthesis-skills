@@ -164,7 +164,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
 - A second model read the release branch and returned 42 findings, every one in the pieces this release adds.
   Each was fixed with a failing test first, with what the fixes' own probes found beside them, and the suite
   and the replays were run again before the release.
-- The thirty days of commands then recorded (112,695) were replayed through this release's write guard and
+- The thirty days of commands then recorded (114,398) were replayed through this release's write guard and
   5.7.0's: 60 refused before and after, none newly refused or newly passed, and none on which it raised.
 
 ## [5.7.0] - 2026-11-12
