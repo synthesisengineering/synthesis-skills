@@ -67,6 +67,22 @@ def test_each_quick_tunnel_host_is_read_however_it_is_written(text):
     assert held_for_the_address(said(text))
 
 
+@pytest.mark.parametrize("text, address", [
+    ("http://bore.pub:41234", "bore.pub:41234"), ("Connect to bore.pub:41234 now.", "bore.pub:41234"),
+    ("tcp://bore.pub:5000/x", "bore.pub:5000"), ("(BORE.PUB:41234)", "bore.pub:41234"), ("ngrok.io:443", "ngrok.io:443")])
+def test_a_tunnel_services_own_host_with_a_port_is_a_quick_tunnels_address_with_or_without_a_scheme(text, address):
+    """bore hands out the service's own host with a port: bore.pub:<port>, for as long as the command runs."""
+    reason = said(text)
+    assert held_for_the_address(reason) and f"({address})" in reason
+
+
+@pytest.mark.parametrize("text", [
+    "bore.pub is the free public server.", "https://ngrok.io/docs", "Read https://bore.pub first.", "notbore.pub:41234",
+    "bore.pub.example.com:41234", "https://tailscale.com/kb/1311/tailscale-funnel", "bore.pub:123456", "ts.net, tunnelmole.net"])
+def test_a_services_bare_name_its_documentation_and_a_look_alike_with_a_port_go_on(text):
+    assert "Sending needs the principal's approval" in said(text)
+
+
 @pytest.mark.parametrize("text", [
     "http://localhost:8787/mcp", "localhost:3000", "http://127.0.0.1:8000", "127.0.0.1", "0.0.0.0:8000", "http://[::1]:8080/",
     "http://my-laptop.local:8080", "my-laptop.local:3000", "http://192.168.1.20:8000", "http://10.0.0.5:3000/x",
@@ -91,6 +107,23 @@ def test_words_that_are_no_address_someone_could_be_sent_to_go_on_to_the_ordinar
     "localhost:123456"])
 def test_a_host_is_read_whole_so_a_public_name_that_starts_like_a_local_one_goes_on(text):
     assert "Sending needs the principal's approval" in said(text)
+
+
+@pytest.mark.parametrize("text", [
+    "Open the firewall to 0.0.0.0/0 for port 443.", "Block 10.0.0.0/8 and 127.0.0.0/8 at the edge.", "the route 127.0.0.1/32 stays",
+    "Allow 192.168.0.0/16, 172.16.0.0/12 and 169.254.0.0/16.", "drop [fd00::]/8 and [::1]/128 too", "(127.0.0.0/8)",
+    "0.0.0.0/0, then 10.0.0.0/8.", "Route [::]/0 out"])
+def test_an_ip_address_with_a_prefix_length_and_no_scheme_names_a_range_and_goes_on(text):
+    assert "Sending needs the principal's approval" in said(text)
+
+
+@pytest.mark.parametrize("text, address", [
+    ("http://10.0.0.5/8", "10.0.0.5"), ("Open http://127.0.0.1/24 now", "127.0.0.1"), ("//127.0.0.1/8", "127.0.0.1"),
+    ("127.0.0.1/33", "127.0.0.1"), ("[::1]/129", "[::1]"), ("127.0.0.1/8080", "127.0.0.1"), ("127.0.0.1/admin", "127.0.0.1"),
+    ("10.0.0.5:8080/8", "10.0.0.5:8080"), ("127.0.0.1/8/status", "127.0.0.1"), ("http://[fd12::42]/64", "[fd12::42]")])
+def test_after_a_scheme_or_past_the_prefix_lengths_what_follows_the_host_is_a_path_and_the_address_counts(text, address):
+    reason = said(text)
+    assert held_for_the_address(reason) and f"({address})" in reason
 
 
 @pytest.mark.parametrize("text, address", [
@@ -161,11 +194,43 @@ def test_a_host_the_config_adds_counts_and_its_subdomains_too():
     assert "Sending needs" in said("https://example.dev", config=config)
 
 
-def test_a_public_name_that_points_at_a_private_address_is_refused_once_the_config_names_its_service():
-    text = "https://app.192.168.1.20.nip.io/x"
+def test_a_wildcard_dns_name_for_a_public_address_is_refused_once_the_config_names_its_service():
+    text = "https://app.203.0.113.9.nip.io/x"
     assert "Sending needs the principal's approval" in said(text)      # read whole, it is a public name
     reason = said(text, config={**CONFIG, "temporary_addresses": {"hosts": ["nip.io"]}})
-    assert held_for_the_address(reason) and "(app.192.168.1.20.nip.io)" in reason
+    assert held_for_the_address(reason) and "(app.203.0.113.9.nip.io)" in reason
+
+
+@pytest.mark.parametrize("text, address", [
+    ("https://app.192.168.1.20.nip.io/x", "app.192.168.1.20.nip.io"), ("192.168.1.20.nip.io", "192.168.1.20.nip.io"),
+    ("http://10-0-0-5.sslip.io:8080/x", "10-0-0-5.sslip.io:8080"), ("Open app-127-0-0-1.nip.io now", "app-127-0-0-1.nip.io"),
+    ("www.192-168-0-1.sslip.io", "www.192-168-0-1.sslip.io"), ("7f000001.nip.io", "7f000001.nip.io"),
+    ("--1.sslip.io", "--1.sslip.io"), ("http://fe80--1.nip.io/", "fe80--1.nip.io"), ("100-64-0-7.sslip.io", "100-64-0-7.sslip.io")])
+def test_a_wildcard_dns_name_that_carries_a_private_or_loopback_address_is_that_address_however_written(text, address):
+    """nip.io and sslip.io answer a name with the address it spells, in dots, dashes, eight hex digits or (IPv6) dashes."""
+    reason = said(text)
+    assert held_for_the_address(reason) and f"({address})" in reason
+    assert "Sending needs" in said(text, config={**CONFIG, "temporary_addresses": {"local": False}})
+
+
+@pytest.mark.parametrize("text", [
+    "app.203.0.113.9.nip.io", "https://8.8.8.8.sslip.io", "nip.io is a wildcard DNS service", "10.0.0.5.nip.io.example.com",
+    "192.168.1.20.example.io", "999.1.1.1.nip.io", "app-10-0-0.nip.io", "2606-4700--1111.sslip.io", "cafebabe.nip.io",
+    "10.0.0.5.nip.io-docs"])
+def test_a_wildcard_dns_name_for_a_public_address_or_none_and_a_look_alike_go_on(text):
+    assert "Sending needs the principal's approval" in said(text)
+
+
+@pytest.mark.parametrize("text, address", [
+    ("http://100.64.0.1", "100.64.0.1"), ("100.100.100.100:3000", "100.100.100.100:3000"), ("http://100.127.255.254/x", "100.127.255.254")])
+def test_the_shared_range_counts_as_a_private_range_does(text, address):
+    reason = said(text)
+    assert held_for_the_address(reason) and f"({address})" in reason
+
+
+@pytest.mark.parametrize("text", ["http://100.128.0.1", "http://100.63.255.255", "100.64.0.1 is the first one", "100.64.0.0/10"])
+def test_outside_the_shared_range_or_with_no_scheme_or_port_it_goes_on(text):
+    assert "Sending needs the principal's approval" in said(text)
 
 
 def test_a_draft_a_shell_post_and_typed_words_are_read_the_same(isolated_home):
@@ -221,7 +286,20 @@ STARTS_A_TUNNEL = [
     "yarn dlx localtunnel@2.0.2 --port 7777", "bunx --bun localtunnel@latest -p 3000", "bun x localtunnel@2.0.2 --port 3000",
     "npx --yes cloudflared@latest tunnel --url http://localhost:3000", "pnpm dlx ngrok@5 http 3000",
     # -R joined to other flags, and with its value joined on
-    "ssh -NR 80:localhost:7777 nokey@localhost.run", "ssh -fNTR 80:localhost:3000 serveo.net", "ssh -NR80:localhost:3000 serveo.net"]
+    "ssh -NR 80:localhost:7777 nokey@localhost.run", "ssh -fNTR 80:localhost:3000 serveo.net", "ssh -NR80:localhost:3000 serveo.net",
+    # cloudflared's two quick forms: `tunnel` with --url and no subcommand, and `tunnel --hello-world`, past its options
+    "cloudflared tunnel --hello-world", "cloudflared tunnel --no-autoupdate --url http://localhost:8080",
+    "cloudflared tunnel --loglevel debug --url http://localhost:8080 --protocol http2",
+    "docker run --rm cloudflare/cloudflared tunnel --no-autoupdate --hello-world",
+    # the services added last, in their own forms
+    "bore local 8000 --to bore.pub", "bore local 8000 -t bore.pub", "bore local 8000 --to=bore.pub -p 41234",
+    "bore local --local-host 127.0.0.1 8000 --to bore.pub", "bore local 8000 --to BORE.PUB.", "tmole 8080", "tunnelmole 8080", "tmole 8080 as demo.tunnelmole.net",
+    "npx tunnelmole 8080", "loophole http 3000", "./loophole http 3000 --hostname demo", "loophole path ./site",
+    "loophole webdav ./site", "tailscale funnel 3000", "tailscale funnel --bg 3000", "tailscale funnel --https=8443 localhost:3000",
+    "tailscale funnel --bg --set-path=/docs 3000",
+    # autossh read as ssh is, its own -M taking a value; devtunnel with options before `host`
+    "autossh -M 0 -R 80:localhost:8080 serveo.net", "autossh -M 20000 -NR 80:localhost:3000 nokey@localhost.run",
+    "autossh -M0 -f -R 80:localhost:8080 serveo.net", "ssh -M -R 80:localhost:8080 serveo.net", "devtunnel --verbose host -p 8080"]
 NO_TUNNEL = [
     "cloudflared tunnel run production", "cloudflared tunnel list", "cloudflared --version", "ngrok config check", "ngrok version",
     "echo cloudflared tunnel --url http://localhost:1", "grep -rn 'ngrok http' docs/", "brew install cloudflared",
@@ -246,7 +324,22 @@ NO_TUNNEL = [
     "yarn add --dev localtunnel", "npx --yes localtunnel@2.0.2 --help", "pnpm dlx serve@14 --port 3000",
     # a cluster with no -R, the letter in another option's value, a forward the other way, -R in the remote command
     "ssh -NR 9000:localhost:9000 build.example.com", "ssh -NT -L 8080:localhost:80 nokey@localhost.run",
-    "ssh -oRequestTTY=no -N nokey@localhost.run", "ssh nokey@localhost.run ls -R /tmp"]
+    "ssh -oRequestTTY=no -N nokey@localhost.run", "ssh nokey@localhost.run ls -R /tmp",
+    # cloudflared's `tunnel` followed by a subcommand is a named tunnel's command, whatever options it carries
+    "cloudflared tunnel run --url http://localhost:8080 production", "cloudflared tunnel --url http://localhost:8080 run production",
+    "cloudflared tunnel run --hello-world demo", "cloudflared tunnel --config /etc/cloudflared/config.yml run",
+    "cloudflared tunnel create demo", "cloudflared tunnel route dns demo app.example.com", "cloudflared tunnel delete demo",
+    "cloudflared tunnel info demo", "cloudflared tunnel cleanup demo", "cloudflared tunnel login", "cloudflared tunnel token demo",
+    "cloudflared tunnel ingress validate", "cloudflared tunnel vnet list", "cloudflared tunnel ready", "cloudflared tunnel diag",
+    "cloudflared tunnel help", "cloudflared tunnel --help", "docker run --rm cloudflare/cloudflared tunnel run --url http://web:80 demo",
+    # their lookups, a server of one's own, turning a funnel off, and a tailnet's own serve
+    "bore --version", "bore server", "bore local 8000 --to tunnel.example.com", "bore local 8000 --to notbore.pub",
+    "bore local 8000 --to bore.pub.example.com", "tmole --version",
+    "tmole --help", "echo tmole 8080", "loophole account login", "loophole --help", "loophole version", "tailscale funnel status",
+    "tailscale funnel status --json", "tailscale funnel reset", "tailscale funnel", "tailscale funnel --https=443 localhost:3000 off",
+    "tailscale serve 3000", "tailscale serve --bg 3000", "tailscale status", "brew install bore-cli",
+    "autossh -M 20000 -R 9000:localhost:9000 build.example.com", "autossh -M 0 -L 8080:localhost:80 nokey@localhost.run",
+    "autossh -V", "devtunnel --verbose list", "devtunnel --help", "devtunnel show host-01"]
 
 
 @pytest.mark.parametrize("command", STARTS_A_TUNNEL)

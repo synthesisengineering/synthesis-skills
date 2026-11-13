@@ -171,12 +171,14 @@ TUNNELS = (".trycloudflare.com", ".ngrok.io", ".ngrok.app", ".ngrok.dev", ".ngro
            ".ts.net", ".tunnelmole.net", ".bore.pub", ".loophole.site")
 # The knowledge-base connector refuses to start on the same services (its TEMPORARY_HOSTS); a test holds the two equal.
 HOSTNAME = re.compile(r"(?<![\w.@-])(?:[a-z0-9-]+\.)+[a-z][a-z0-9-]*(?![\w-])")
+NAMED = re.compile(rf"({HOSTNAME.pattern})(?::(\d{{1,5}})(?!\w))?")  # a name and its port, if it has one
 _HOST = r"(localhost|[a-z0-9-]+(?:\.[a-z0-9-]+)*\.local(?:host)?|\d{1,3}(?:\.\d{1,3}){3}|\[[0-9a-f:.]+(?:%[\w.-]+)?\])"
 # A host is read whole: after any scheme or where a bare one starts, to where its name ends, then its port. A public
 # name that only begins like a local one (localhost.example.org, 10.2.3.4.example.org) is no match (2026-11-12). The
 # host of a file:// URL names this disk, as a connector takes a local file: file://localhost/<path> is no address.
 LOCAL = re.compile(rf"(?:(?<!file)(://)|(?<![\w.@-])){_HOST}(?![\w-]|\.[\w-])\.?(?::(\d+)(?!\w))?")
-NEAR = ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "fc00::/7")  # the private ranges, and IPv6's unique-local one
+NEAR = ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "100.64.0.0/10", "fc00::/7")  # the private ranges, the shared one
+# (a carrier's, and a tailnet's addresses: the knowledge-base connector refuses it too) and IPv6's unique-local one
 FILED = re.compile(r"(?:^|\.)(?:config|conf|cfg|cnf|ini|env|rc|settings|properties|json|ya?ml|toml|makefile|dockerfile)\.local$")
 
 
@@ -187,7 +189,8 @@ def _only_here(m, low: str) -> str:
     these or unique-local, however written. "" for any other, and for a file's name with its line number: a name ending
     in .local with no scheme before it that is a configuration file's (config.local:7), follows a path
     (src/app.local:42) or has a column after its line (notes.local:17:3). A dotfile (.env.local:12) and a name that
-    goes on (settings.local.json:3) are no match at all."""
+    goes on (settings.local.json:3) are no match at all. An IP address with no scheme, no `//` and no port before a
+    prefix length (/0 to /32, to /128 for a bracketed IPv6 one) names a range (10.0.0.0/8, [fd00::]/8): ""."""
     import ipaddress
     (scheme, host, port), at = m.groups(), m.start(2)
     shown, told = host + (":" + port if port else ""), bool(scheme) or bool(port) and len(port) < 6
@@ -196,6 +199,9 @@ def _only_here(m, low: str) -> str:
             FILED.search(host) or low[at - 1:at] in ("/", "\\") and low[max(at - 2, 0):at] != "//"
             or re.match(r":\d", low[m.end():m.end() + 2]))
         return shown if told and not filed else ""
+    ranged = re.match(r"/(\d{1,3})(?![\w/]|\.\w)", low[m.end():])  # past it, only what ends a word
+    if ranged and not (scheme or port or low[max(at - 2, 0):at] == "//") and int(ranged[1]) <= (128 if host[0] == "[" else 32):
+        return ""
     try:
         ip = ipaddress.ip_address(host.strip("[]").split("%")[0])  # past a zone: fe80::12%en0
     except ValueError:
@@ -205,11 +211,35 @@ def _only_here(m, low: str) -> str:
     return shown if ip.is_loopback or ip.is_unspecified or near and (told or host[0] == "[") else ""
 
 
+def _here(host: str) -> bool:
+    """Whether only this machine or its network answers a host as a URL gives it (an IPv6 one in brackets, with a port
+    or none): `_only_here`, read as if a scheme stood before it."""
+    m = LOCAL.fullmatch("://" + host)
+    return bool(m and _only_here(m, m.string))
+
+
+def _carried(name: str) -> str:
+    """The address a wildcard-DNS name carries, as nip.io and sslip.io read it; "" for none. Four numbers joined by dots
+    or by dashes, or eight hex digits, after the start, a dot or a dash (www.10.0.0.5.nip.io, app-10-0-0-5.sslip.io,
+    0a000005.nip.io), or an IPv6 address with dashes for its colons as a label of its own (--1.sslip.io is [::1])."""
+    import ipaddress
+    four = re.fullmatch(r"(?:.*[.-])?(?:(\d{1,3}([.-])\d{1,3}\2\d{1,3}\2\d{1,3})|([0-9a-f]{8}))\.(?:nip|sslip)\.io", name)
+    six = re.fullmatch(r"(?:.*\.)?([0-9a-f]{0,4}(?:-[0-9a-f]{0,4}){2,7})\.(?:nip|sslip)\.io", name)
+    try:
+        if four:
+            return four[1].replace("-", ".") if four[1] else str(ipaddress.IPv4Address(int(four[3], 16)))
+        return f"[{ipaddress.IPv6Address(six[1].replace('-', ':'))}]" if six else ""
+    except ValueError:
+        return ""
+
+
 def temporary_addresses(texts: list, config: dict):
     """The addresses in these words that can change, or that only this machine or its network answers: a quick tunnel's
-    host (a subdomain of a tunnel service, or a host the config names and its subdomains) and, unless `local` is false,
-    a local name or a private address written with a scheme or a port, and a loopback address however written
-    (`_only_here`). A user and password before a host are read past and never shown. A string when the setting
+    host (a subdomain of a tunnel service, or a host the config names and its subdomains), a tunnel service's own host
+    with a port (bore.pub:41234, as bore hands one out; its bare name and its documentation are none) and, unless
+    `local` is false, a local name or a private address written with a scheme or a port, a loopback address however
+    written (`_only_here`), and a wildcard-DNS name that carries a private or loopback address however written
+    (`_carried`: 192.168.1.20.nip.io). A user and password before a host are read past and never shown. A string when the setting
     cannot be read. {"temporary_addresses": {"hosts": ["<more>"], "local": true}}; no key, no rule, and a key that is
     there and null is a setting that cannot be read."""
     if "temporary_addresses" not in config:
@@ -219,10 +249,13 @@ def temporary_addresses(texts: list, config: dict):
     if not isinstance(more, list) or not all(isinstance(h, str) and h.strip() for h in more) or not isinstance(local, bool):
         return ('temporary_addresses in the synthesis config needs an object, {} or one with "hosts" as a list of host names '
                 'and "local" as true or false (either may be absent); sends are blocked until it is fixed')
-    exact = {h.strip().lower().lstrip(".") for h in more}
+    exact, own = {h.strip().lower().lstrip(".") for h in more}, {h.lstrip(".") for h in TUNNELS}
     ends, found = TUNNELS + tuple("." + h for h in exact), set()
     for low in (re.sub(r"://[^\s/?#]*@", "://", str(text).lower()) for text in texts):  # to the last @: a password may hold one
-        found |= {h for h in HOSTNAME.findall(low) if h in exact or h.endswith(ends)}
+        for h, port in NAMED.findall(low):
+            shown = h + (":" + port if port else "")
+            found |= ({h} if h in exact or h.endswith(ends) else {shown} if port and h in own
+                      else {shown} if local and _here(_carried(h)) else set())
         found |= {_only_here(m, low) for m in LOCAL.finditer(low)} - {""} if local else set()
     return sorted(found)
 
@@ -331,7 +364,8 @@ def _unread_files(tool: str, tool_input: dict, bound: dict | None = None, whole:
     def fetched(url: str) -> str:
         """Why the mail connector would not attach a `url` as given (2.1.0: _resolve_url_attachments). Its own download
         link it reads from its disk, with no host or on one its settings name, which the guard cannot see; any other
-        `url` it fetches over http or https from a named host, and in no other way."""
+        `url` it fetches over http or https from a named host, and in no other way, and from no host only this machine
+        or its network answers (core.http_utils: it records the entry as failed and sends the mail without it)."""
         from urllib.parse import urlparse
         try:
             parsed = urlparse(url)
@@ -341,6 +375,10 @@ def _unread_files(tool: str, tool_input: dict, bound: dict | None = None, whole:
         if len(parts) == 2 and parts[0] == "attachments":
             return (f"gives the `url` {url}, which the mail connector reads as its own download link (`/attachments/<id>`, "
                     "on any host it may serve) from a file it saved on this disk, bytes an approval cannot bind: "
+                    f"{stage}as the attachment's `path`, and file this send again")
+        if web and (_here(parsed.netloc.rsplit("@", 1)[-1].lower()) or _here(_carried(parsed.hostname))):
+            return (f"gives the `url` {url}, whose host only this machine or its network answers, and the mail connector "
+                    "fetches from no such host: it would send the mail without it. For a file on this disk, "
                     f"{stage}as the attachment's `path`, and file this send again")
         return "" if web else (f"gives the `url` {url}, and the mail connector fetches a `url` only over http or https "
                                f"from a named host, so it would attach nothing: for a file on this disk, {stage}as the "
@@ -415,8 +453,13 @@ def _unread_files(tool: str, tool_input: dict, bound: dict | None = None, whole:
             problems.append(f"attachment {place} gives the `content_id` {cid!r}, which the mail connector refuses, leaving the "
                             "entry out: it takes letters, digits, '.', '_', '+', '-' and '@', led by a letter or a digit, in "
                             "angle brackets or not. Give one such and file this send again")
-        if sources == ["path"]:
-            problems.append(unread(str(entry["path"])))
+        if sources == ["path"]:  # with no `filename` it sends a file under the name of the one its path leads to
+            fault, file = unread(str(entry["path"])), str(entry["path"])
+            real = "" if fault or entry.get("filename") else os.path.basename(os.path.realpath(file))
+            problems.append(fault or real != os.path.basename(file) and real and (
+                f"{which} is a link, {file}, to a file named {real}, and the mail connector sends a file it reaches "
+                "through a link under the name of the file a link leads to, not the name shown here: give the name to "
+                "show as its `filename`, or the file's own path as its `path`, and file this send again"))
         elif sources == ["url"] and isinstance(url, str) and url.strip():
             fault = fetched(url)
             problems.append(fault and f"{which} {fault}")
@@ -1712,10 +1755,13 @@ TUNNEL_SSH = ("serveo.net", "localhost.run", "pinggy.io")
 CARRIERS = ("pnpm", "yarn", "npm", "bun", "docker", "podman", "nerdctl")  # run the package, the program or the image their words name
 NGROK = ("http", "tcp", "tls", "start", "start-all", "config", "version", "update", "diagnose", "api", "service", "credits",
          "completion", "help", "authtoken")  # its subcommands: the first five start a tunnel
+LOOPHOLE = ("http", "path", "webdav", "account", "completion", "help", "version")  # its subcommands: the first three start one
 SSH_VALUED = "BbcDEeFIiJLlmOoPpQRSWw"  # ssh's options that take a value: joined on, or the next word
+CLOUDFLARED = ("login", "create", "route", "vnet", "run", "list", "ready", "info", "ingress", "delete", "cleanup", "token",
+               "diag", "proxy-dns", "help", "h")  # `cloudflared tunnel`'s subcommands: each one a named tunnel's
 
 
-def _reverse_host(rest: list[str]) -> str:
+def _reverse_host(rest: list[str], valued: str = SSH_VALUED) -> str:
     """The host an ssh command opens a reverse forward on, "" when it opens none: its destination (the first word that
     is no option and no option's value, without the user, a scheme or a port) when -R is among its options, before the
     destination or after it: alone, in a cluster (-NR) or with its value joined on. A jump host, a key file's name and
@@ -1727,7 +1773,7 @@ def _reverse_host(rest: list[str]) -> str:
         if not word.startswith("-"):
             host = re.match(r"(?:ssh://)?(?:[^@/]*@)?([^:/]*)", word.lower())[1].rstrip(".")
             continue
-        at = next((j for j, c in enumerate(word) if c in SSH_VALUED), 0)  # the first letter that takes a value
+        at = next((j for j, c in enumerate(word) if c in valued), 0)  # the first letter that takes a value
         reverse, i = reverse or word[at] == "R", i + (0 < at == len(word) - 1)  # nothing joined on: its value is the next word
     return host or "" if reverse else ""
 
@@ -1736,19 +1782,34 @@ def _tunnels(words: list[str]) -> bool:
     """Does this command start a quick tunnel: an address handed out for as long as the command runs? A program is read
     without a version or a tag (localtunnel@2.0.2, cloudflare/cloudflared:latest), and the words of a package runner or
     a container from each one on, as the command it runs (2026-11-12: `docker run cloudflare/cloudflared tunnel --url`,
-    `ngrok --log=stdout http` and `npx --yes localtunnel@2.0.2 --port` started unheld)."""
+    `ngrok --log=stdout http` and `npx --yes localtunnel@2.0.2 --port` started unheld). `cloudflared tunnel` is quick
+    with --url or --hello-world and no subcommand; with one (`tunnel run --url ... <name>`) it is a named tunnel's.
+    `bore local` to bore.pub, `tmole <port>`, `loophole http`, `path` or `webdav` and `tailscale funnel <target>` start one;
+    their lookups (`tailscale funnel status`) and a bore server of one's own do not."""
     def named(word: str) -> str:
         return re.split("[:@]", os.path.basename(word))[0]
 
     def starts(name: str, rest: list) -> bool:
         def flag(*names):
             return any(w in names or w.startswith(tuple(n + "=" for n in names)) for w in rest)
-        return bool(name == "cloudflared" and "tunnel" in rest and flag("--url")
+
+        def value(*names) -> str:  # what an option is given: joined on after "=", or the next word
+            return next((w.split("=", 1)[1] if "=" in w else after for w, after in zip(rest, rest[1:] + [""])
+                         if w in names or w.startswith(tuple(n + "=" for n in names))), "")
+        plain = [w for w in rest if not w.startswith("-")]
+        return bool(name == "cloudflared" and "tunnel" in rest and flag("--url", "--hello-world")
+                    and not any(w in CLOUDFLARED for w in rest[rest.index("tunnel") + 1:])
                     or name == "ngrok" and next((w for w in rest if w in NGROK), "") in NGROK[:5]  # past its own options and their values
-                    or name == "devtunnel" and rest[:1] == ["host"]
+                    or name == "devtunnel" and plain[:1] == ["host"]  # past its own options
                     or name in ("lt", "localtunnel") and flag("--port", "-p")
-                    or name in ("ssh", "pinggy")  # to the service's own name, or a subdomain of it
-                    and ("." + _reverse_host(rest)).endswith(tuple("." + s for s in TUNNEL_SSH)))
+                    or name == "bore" and rest[:1] == ["local"] and ("." + value("--to", "-t").lower().rstrip(".")).endswith(".bore.pub")
+                    or name in ("tmole", "tunnelmole") and plain[:1] and plain[0].isdigit()
+                    or name == "loophole" and next((w for w in rest if w in LOOPHOLE), "") in LOOPHOLE[:3]
+                    or name == "tailscale" and plain[:1] == ["funnel"] and plain[1:2] and "off" not in plain
+                    and plain[1] not in ("status", "reset", "help")  # a funnel is public; `tailscale serve` is the tailnet's own
+                    or name in ("ssh", "pinggy", "autossh")  # to the service's own name, or a subdomain of it
+                    and ("." + _reverse_host(rest, SSH_VALUED + "M" * (name == "autossh"))).endswith(  # autossh's -M <port>
+                        tuple("." + s for s in TUNNEL_SSH)))
     spots = [i for i, w in enumerate(words) if i and not w.startswith("-")] if named(words[0]) in CARRIERS else [0]
     return any(starts(named(words[i]), words[i + 1:]) for i in spots)
 

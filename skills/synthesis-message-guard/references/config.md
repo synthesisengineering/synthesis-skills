@@ -130,7 +130,9 @@ address was gone for good. With `temporary_addresses` in the config:
   `serveousercontent.com`, `localhost.run`, `lhr.life`, `lhr.rocks`, `pinggy.io`, `pinggy.link`,
   `pinggy-free.link`, `devtunnels.ms`, `app.github.dev`, `ts.net`, `tunnelmole.net`, `bore.pub` or
   `loophole.site`, the services the knowledge-base
-  connector refuses to start on, or a host the config's `hosts` names and its subdomains), and, unless `local` is
+  connector refuses to start on, or a host the config's `hosts` names and its subdomains), a tunnel
+  service's own host with a port, with or without a scheme, since bore hands out `bore.pub:<port>`
+  (`bore.pub:41234`, `http://bore.pub:41234`), and, unless `local` is
   false: `localhost`, a `.local` or `.localhost` name or a private-range address written with a
   scheme or a port (`http://localhost:8787`, `my-laptop.local:3000`, `http://192.168.1.20:8000`),
   and a loopback or any-interface address however written (`127.0.0.1`, `0.0.0.0`). A port is one
@@ -140,7 +142,15 @@ address was gone for good. With `temporary_addresses` in the config:
   before the host are read past and never shown (`ssh://10.1.2.3`, `ftp://192.168.1.2/data`,
   `postgres://app:secret@10.1.2.3:5432/app`);
   a quick tunnel's host is read past them too. A link-local address counts with the private ranges
-  (`http://169.254.169.254`, `169.254.10.1:8080`). A bracketed IPv6 address that is loopback,
+  (`http://169.254.169.254`, `169.254.10.1:8080`), and so does the shared range `100.64.0.0/10`,
+  which a carrier's network and a tailnet's addresses use and the knowledge-base connector refuses
+  (`http://100.64.0.1`, `100.100.100.100:3000`; `http://100.128.0.1` is outside it). A
+  wildcard-DNS name is the address it carries, as `nip.io` and `sslip.io` read one: four numbers
+  joined by dots or by dashes, or eight hex digits, after the start, a dot or a dash, or an IPv6
+  address with dashes for its colons as a label of its own. When that address is loopback,
+  private, shared or link-local the name is refused however written (`192.168.1.20.nip.io`,
+  `https://app.192.168.1.20.nip.io/x`, `http://10-0-0-5.sslip.io:8080`, `app-127-0-0-1.nip.io`,
+  `7f000001.nip.io`, `--1.sslip.io`). A bracketed IPv6 address that is loopback,
   any-interface, unique-local or link-local is refused however written (`http://[fd12::42]:8080`,
   `http://[fe80::12]:9090`, `[::1]`). It reads every
   path a message takes: a connector's send or draft, a shell command that posts, and words typed
@@ -150,12 +160,13 @@ address was gone for good. With `temporary_addresses` in the config:
   on to the ordinary approval of the message, for fifteen minutes. The approval of a message never
   releases an address, and an approval of one address covers no other.
 - **What passes:** the word `localhost` in a sentence, a file named `.env.local`, a version number
-  that looks like an address (`10.2.3.4`), a tunnel service's own site, a look-alike host, and an
-  address at a host no rule names. A public name that only begins like a local one is that public
+  that looks like an address (`10.2.3.4`), a tunnel service's own site (its bare name in prose,
+  `bore.pub`, and a documentation link, `https://ngrok.io/docs`), a look-alike host
+  (`notbore.pub:41234`, `bore.pub.example.com:41234`), and an address at a host no rule names. A public name that only begins like a local one is that public
   name (`https://localhost.example.org`, `https://10.2.3.4.example.org`,
   `https://example.localhost.org`), and so is a name that a wildcard-DNS service points at a
-  private address (`https://app.192.168.1.20.nip.io`): put the service in `hosts` (`nip.io`) to
-  have its names refused. A file's name with its line number is no address: a dotfile
+  public address (`https://app.203.0.113.9.nip.io`, `https://8.8.8.8.sslip.io`): put the service
+  in `hosts` (`nip.io`) to have all its names refused. A file's name with its line number is no address: a dotfile
   (`.env.local:12`), a name that goes on past `.local` (`settings.local.json:3`), and a name ending
   in `.local` with no scheme before it that is a configuration file's (`config.local:7`: the word
   before `.local` is `config`, `conf`, `cfg`, `cnf`, `ini`, `env`, `rc`, `settings`, `properties`,
@@ -164,17 +175,44 @@ address was gone for good. With `temporary_addresses` in the config:
   (`notes.local:17:3`). Any other name ending in `.local` with a port is an address
   (`app.local:7`), and so is every one after a scheme (`http://config.local:7`). An address
   outside those ranges passes after any scheme (`ssh://build.example.com`, `http://172.32.0.1`,
-  `http://[2001:db8::1]:8080`), and so does a bracket that follows a word (`rows[::1]`).
+  `http://[2001:db8::1]:8080`), and so does a bracket that follows a word (`rows[::1]`). An IP
+  address with a prefix length after it and no scheme, `//` or port before it names a range and
+  passes (`0.0.0.0/0`, `10.0.0.0/8`, `127.0.0.0/8`, `[fd00::]/8`): the length is `/0` to `/32`,
+  and to `/128` for a bracketed IPv6 address. After a scheme what follows the host is a path, and
+  the address counts (`http://10.0.0.5/8`), as it does past a length no range has
+  (`127.0.0.1/33`, `127.0.0.1/8080`).
 - **Starting a tunnel:** `cloudflared tunnel --url ...`, `ngrok http`, `tcp`, `tls` or `start`,
   `devtunnel host`, `localtunnel` or `lt` with a port (also through `npx`, `bunx`, `pnpm` or `yarn`), and a reverse
-  `ssh -R` to `serveo.net`, `localhost.run` or `pinggy.io` wait for the principal's code. The hold
+  `ssh -R` to `serveo.net`, `localhost.run` or `pinggy.io` wait for the principal's code. `autossh`
+  is read as `ssh` is, and its own `-M <port>` takes a value
+  (`autossh -M 0 -R 80:localhost:8080 serveo.net`; `autossh -M 20000 -R 9000:localhost:9000
+  build.example.com` starts nothing). `devtunnel host` is read past `devtunnel`'s own options
+  (`devtunnel --verbose host -p 8080`; `devtunnel --verbose list` starts nothing). The hold
   says what a quick tunnel is for: their own test, with an address that is never given to anyone. A
-  named tunnel (`cloudflared tunnel run <name>`) is a deployment and is not held here. The `ssh`
+  named tunnel (`cloudflared tunnel run <name>`) is a deployment and is not held here. `cloudflared
+  tunnel` is a quick tunnel with `--url` and no subcommand, or with `--hello-world`
+  (`cloudflared tunnel --no-autoupdate --url http://localhost:8080`, `cloudflared tunnel
+  --hello-world`); followed by any of its subcommands (`login`, `create`, `route`, `vnet`, `run`,
+  `list`, `ready`, `info`, `ingress`, `delete`, `cleanup`, `token`, `diag`, `proxy-dns`, `help`)
+  it is a named tunnel's command, whatever options it carries
+  (`cloudflared tunnel run --url http://localhost:8080 production`,
+  `cloudflared tunnel --config config.yml run`). The `ssh`
   destination is read as a host, in any case, with or without a user, an `ssh://` scheme or a
   port: a reverse forward is a tunnel when that host is the service's name or a subdomain of it
   (`serveo.net`, `qr@a.pinggy.io`). A host that only ends with a service's letters is someone
   else's (`notserveo.net`, `team-pinggy.io`), and a jump host, a key file's name or a word of the
   remote command that carries a service's name makes no tunnel.
+- **The services added last, in their own forms:** `bore local <port> --to bore.pub` (or `-t`,
+  or `--to=`; the server read as a host, in any case and with or without a closing dot,
+  `--to BORE.PUB.`), `tmole <port>` and `tunnelmole <port>` (`tmole 8080 as demo.tunnelmole.net`
+  too), `loophole http <port>`, `loophole path <folder>` and `loophole webdav <folder>`, and
+  `tailscale funnel <port or target>` (`tailscale funnel --bg 3000`,
+  `tailscale funnel --https=8443 localhost:3000`) wait for the code. Their lookups start
+  nothing: `bore --version`, `bore server`, `tmole --help`, `loophole account login`,
+  `loophole version`, `tailscale funnel status`, `tailscale funnel reset`, a funnel turned
+  `off`, and `tailscale serve ...`, which a tailnet's own members reach and the public does not.
+  Nor does `bore local` to a server of one's own (`--to tunnel.example.com`) or to a name that
+  only starts with the service's (`--to bore.pub.example.com`).
 - **The forms a start takes:** each of those is read however the command spells it.
   - The program named through a variable the command sets:
     `tunnel_program=cloudflared; $tunnel_program tunnel --url ...`.

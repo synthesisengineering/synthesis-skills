@@ -89,6 +89,8 @@ would not attach as given is blocked before any approval code is issued.
 | Carries an empty `url` | Fetches nothing, and reads no `path` beside it | ``attachment <n> has an empty `url` `` |
 | Carries a `url` that is the connector's own download link, `/attachments/<id>`, with no host or on any host (the hosts it serves are in its own settings, which the guard cannot see) | Reads the bytes from a file it saved on this disk, which no approval binds | ``attachment <n> gives the `url` <url>, which the mail connector reads as its own download link`` |
 | Carries a `url` it does not fetch: anything but http or https with a host, a `file://` URL or a bare path among them | Attaches nothing for it | ``attachment <n> gives the `url` <url>, and the mail connector fetches a `url` only over http or https`` |
+| Carries a `url` whose host only this machine or its network answers: a loopback, private, shared or link-local address (`http://192.168.1.20:8080/plan.pdf`, `http://[::1]:8000/plan.pdf`), `localhost`, a `.local` or `.localhost` name, or a wildcard-DNS name that carries such an address (`http://10.0.0.5.nip.io/plan.pdf`) | Fetches from no such host: records the entry as failed and sends the mail without it | ``attachment <n> gives the `url` <url>, whose host only this machine or its network answers`` |
+| Names a `path` that is a link to a file of another name, with no `filename` | Follows the link and sends the file under the name of the file it leads to, not the name shown in the call | ``attachment <n> is a link, <path>, to a file named <name>, and the mail connector sends a file it reaches through a link under the name of the file a link leads to`` |
 | Carries `error` or `_resolved_bytes`, keys the connector writes into an entry itself | Leaves out an entry that carries `error`; takes `_resolved_bytes` before the entry's own source | ``attachment <n> carries `error`, which the mail connector sets on an entry itself`` |
 | Gives a `filename` or `mime_type` with a control character (a line break, a tab, a NUL), or not as text | Takes line breaks and NULs out of a filename, so the mail goes under another name than the one shown; leaves out an entry whose name or type is not text | ``attachment <n> gives `filename` '<name>' with a control character, or not as text`` |
 | Gives a `content_id` other than letters, digits, `.`, `_`, `+`, `-` and `@`, led by a letter or a digit | Refuses it and leaves the entry out | ``attachment <n> gives the `content_id` '<id>', which the mail connector refuses`` |
@@ -122,9 +124,12 @@ reads its first byte), as it is for a send.
 
 - Give the path whole, under the key `path`, the one the connector reads. It resolves
   a relative path in its own folder, expands no `~`, follows links, and then compares
-  the letters as written.
+  the letters as written. With no `filename` it sends a file under the name of the one
+  its path leads to, so a link of another name (`plan.pdf` leading to
+  `q3-board-draft.pdf`) carries a `filename` or is given by the file's own path.
 - An attachment passed as content needs no staging: standard base64 `content` with a
-  `filename`, or a `url` the connector fetches over http or https from a named host. Its
+  `filename`, or a `url` the connector fetches over http or https from a named host on the
+  internet (from a host only this machine or its network answers it fetches nothing). Its
   own download link for a Drive file or a mail attachment (`/attachments/<id>`) is not
   one: it reads that from a file it saved on this disk, so the guard refuses the link and
   asks for the file's path, staged in the outbox.
