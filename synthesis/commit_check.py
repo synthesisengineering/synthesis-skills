@@ -812,15 +812,24 @@ def record_times(lines: list, settings, now: datetime, read) -> list:
 # it. Measured first (2026-11-13), on thirty days of commits: 1,520 rows added to tables with a Status column, 931 of
 # them to tables that also have a column for evidence. Replayed as built over the same commits: 11 rows refused in
 # 5 of 1,032 commits, and 12 rows noted in 10. The list of words below is used for a note only: a wrong note costs
-# a line of a commit's output.
+# a line of a commit's output. No approval clears a refusal, so few headers can refuse (a review of 2026-11-13 found
+# a lead's `Source`, a task's `Checked` and a US `State` refused): `Source`, `Checked` and `Basis` keep a row from
+# the note and never refuse it.
 ROW = re.compile(r"^[ \t]*\|(.*)\|[ \t]*$")
 RULE = re.compile(r"^[ \t]*\|?[ \t]*:?-{2,}")
-_STATUS = re.compile(r"(?i)(?:[\w-]+ )?status|state")
-_EVIDENCE = re.compile(r"(?i)\b(?:evidence|proof|source|checked|verified|basis|how we know)\b")
+_STATUS = re.compile(r"(?i)(?:[\w-]+ )?status")  # fullmatched against a header cell's words (`_name`)
+_EVIDENCE = re.compile(r"(?i)\b(?:evidence|proofs?|verified|how we know)\b")
+_SOFT = re.compile(r"(?i)\b(?:sources?|checked|basis)\b")
 _BLANK = re.compile(r"(?i)[\s*_`~—–-]|n/a|none|tbd|\?")  # what a cell holds when it says nothing
 _WORKS = re.compile(r"(?i)\b(?:works?|working|live|done|shipped|released|deployed|completed?|ready|available|enabled|passing|passed|"
                     r"fixed|resolved|installed|running)\b|✅|✓")
 _POINTS = re.compile(r"\[[^\]]+\]\([^)]+\)|`[^`]+`|https?://|(?i:\bunverified\b)")
+
+
+def _name(cell: str) -> str:
+    """A header cell's words: a link's brackets and target, emphasis marks, and a closing colon or parenthesis taken off."""
+    words = re.sub(r"[*_`~]", "", re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", cell))
+    return re.sub(r"(?:\s*\([^)]*\)|\s*:)+\s*$", "", words).strip()
 
 
 def status_evidence(lines: list, settings, read) -> tuple:
@@ -852,15 +861,17 @@ def status_evidence(lines: list, settings, read) -> tuple:
         if fenced[number - 1:number] == [True] or number - 1 <= top + 1 or top + 1 >= len(whole) or not RULE.match(whole[top + 1]):
             continue
         head, row = ([cell.strip() for cell in re.split(r"(?<!\\)\|", ROW.match(part).group(1))] for part in (whole[top], text))
-        status = next((k for k, name in enumerate(head) if _STATUS.fullmatch(re.sub(r"[*_`]", "", name))), None)
+        names = [_name(cell) for cell in head]
+        status = next((k for k, name in enumerate(names) if _STATUS.fullmatch(name)), None)
         if status is None:
             continue
-        said, proof = row[status] if status < len(row) else "", [k for k, name in enumerate(head) if _EVIDENCE.search(name)]
-        if proof:
-            if _BLANK.sub("", said) and not any(_BLANK.sub("", row[k]) for k in proof if k < len(row)) and not re.search(r"(?i)\bunverified\b", text):
+        hard, soft = ([k for k, name in enumerate(names) if k != status and pattern.search(name)] for pattern in (_EVIDENCE, _SOFT))
+        filled = {k for k, cell in enumerate(row) if _BLANK.sub("", cell)}
+        if hard:
+            if status in filled and not filled & {*hard, *soft} and not re.search(r"(?i)\bunverified\b", text):
                 found.append(f"{path}:{number}: this row gives a status and no evidence, in a table that has a column for it. Say "
                              "where it was checked (a link, a command, a record), or write `unverified`")
-        elif _WORKS.search(said) and not _POINTS.search(text):
+        elif not filled & set(soft) and _WORKS.search(row[status] if status < len(row) else "") and not _POINTS.search(text):
             noted[path] = noted.get(path, 0) + 1
     return found, [f"{path}: {count} row{'s' if count != 1 else ''} added to a table with a Status column say a thing works or is done and "
                    "point at nothing. Give the table a column for evidence (`Evidence`), or write `unverified`" for path, count in noted.items()]
