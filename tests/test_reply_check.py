@@ -1835,3 +1835,82 @@ def test_a_reply_that_says_nothing_wakes_this_seat_until_the_principal_prompts_i
 def test_a_reply_that_only_sounds_like_the_fallback_is_still_sent_back(reply):
     reason = _sent_back(reply)
     assert reason and "nothing is armed" in reason
+
+
+# Finding 2 of the review: a code hands the principal the turn when it is offered for typing. One named as used, spent
+# or replaced offers nothing, and any code form at all excused the whole reply. In the recorded replies 475 carry a code
+# form; in four of them every code is a spent one, and two of those four announce a wait: one the harness held, and one
+# true wait that passed. A spent code beside one that is offered leaves the offer standing.
+R3_SPENT_CODE_REVIEW = {"R3-02": "The tests are complete. Approval code 1abcde was consumed earlier. I'm waiting on the registry."}
+A_CODE_THAT_IS_SPENT = {
+    "it-expired": "Code 2f9a01 expired before the send ran. I'm waiting on the registry to publish the package.",
+    "it-has-expired-in-brackets": "The code for the calendar change (3e7b10) has expired. I'll file it again once the organizer's reply comes in.",
+    "you-typed-it": "You typed approve 4a0c2d at noon and the note went out. I'll file the reply when the vendor answers.",
+    "the-earlier-code": "The earlier code `5d1e3f` no longer applies. Waiting on the mirror to sync.",
+    "do-not-use-the-old-codes": "Don't use the old codes `6b2f40` and `7e3a51`: both drafts changed. I'll merge once the checks pass.",
+    "already-used": "The send went through: code 8c4b62 was already used for it. I'm waiting for the recipient's answer.",
+    "replaced": "Code 9d5c73 was replaced when the text changed, and nothing is held now. I'm waiting on legal's redline.",
+    "void-in-brackets": "The code from this morning (0e6d84) no longer applies, since the wording changed. I'm waiting for the two reviewers "
+                        "before I stage it again.",
+    "a-spent-label": "- **1f7e95:** expired, and nothing replaces it.\n\nI'm waiting on the venue's answer.",
+}
+A_CODE_OFFERED_BESIDE_A_SPENT_ONE = {
+    "a-new-code-in-the-next-sentence": "Code 2a8fa6 expired, so I filed the send again. Type `approve 3b90b7` to release it. Once it's out, "
+                                       "I'll read it back.",
+    "a-new-code-in-the-same-sentence": "The old code died with the edit, so the send is up afresh as `approve 4ca1c8`. Once it's out, I'll read "
+                                       "it back.",
+    "a-new-label-under-the-old-one": "The earlier code `5db2d9` no longer applies.\n\n- **6ec3ea:** the same note, filed again.\n\nOnce it runs, "
+                                     "I'll read it back.",
+    "unless-it-has-lapsed": "For the reply to the editor: `approve 7fd4fb`, unless the code has lapsed by now. Once it's out, I'll log it.",
+    "codes-from-this-morning-still-held": "Both approval codes from this morning are still held: 8ae50c and 2f9a01. Once both go through, I'll "
+                                          "read them back.",
+    "wording-seen-earlier": "The digest can go under code `3e7b10`, worded as you saw it earlier. Once it's sent, I'll track the replies.",
+    "type-it-again": "The first try timed out, so it is up for your go a second time: type `approve 4a0c2d` and it leaves. Once it's out, I'll "
+                     "read it back.",
+}
+
+
+@pytest.mark.parametrize("reply", _cases(R3_SPENT_CODE_REVIEW, A_CODE_THAT_IS_SPENT))
+def test_a_code_named_as_used_or_spent_hands_the_principal_nothing(reply):
+    reason = _sent_back(reply)
+    assert reason and "nothing is armed" in reason
+
+
+@pytest.mark.parametrize("reply", _cases(A_CODE_OFFERED_BESIDE_A_SPENT_ONE))
+def test_a_code_offered_for_typing_still_hands_them_the_turn_beside_a_spent_one(reply):
+    assert _sent_back(reply) is None
+
+
+# Finding 4 of the review: a block between a BEGIN line and an END line excused the whole reply, whatever the block was
+# and whatever the reply waited for. Its text is set aside, as quoted text is, and the rest is judged. Of 118 recorded
+# replies with such a block, in none does the block alone excuse a wait outside it. Beside a block, a wait for it to be
+# sent is a wait for the principal's go (the two staged messages in THE_PRINCIPALS_TURN above stay where they are).
+R3_BLOCK_REVIEW = {"R3-04": "The delivery record is below.\nBEGIN\nYour invoice arrived.\nEND\nI'm waiting for the bank to respond."}
+A_WAIT_BESIDE_A_BLOCK = {
+    "after-the-block": "Here is the note I filed.\n\nBEGIN\nThe room is booked for Tuesday.\nEND\n\nI'll confirm the catering once the venue replies.",
+    "before-the-block": "Still waiting on the registrar. For the record, the notice they sent:\nBEGIN\nYour transfer is pending.\nEND",
+    "on-someone-else-after-a-staged-message": "The reply is staged.\n\n----- BEGIN -----\nThanks, Tuesday works.\n----- END -----\n\nSeparately, I'm "
+                                              "waiting on the caterer's quote.",
+    "sent-is-said-only-in-the-block": "BEGIN\nOnce it's sent, we will call you.\nEND\nI'll resume when the vendor's portal is back.",
+    "a-code-only-in-the-block": "The text message as delivered:\nBEGIN\nYour sign-in code 482913 is valid for ten minutes.\nEND\nI'm waiting for the "
+                                "portal to unlock the account.",
+    "a-label-then-the-block": "The reply to the vendor:\nBEGIN\nFriday works.\nEND\nWaiting on the bank.",
+}
+A_WAIT_FOR_THE_BLOCK_TO_BE_SENT = {
+    "once-it-goes-out": "The draft for the landlord:\n\nBEGIN\nThe signed lease is attached.\nEND\n\nOnce it goes out, I'll file the copy.",
+    "after-it-has-been-sent": "BEGIN\nTuesday at ten works for us.\nEND\nAfter it has been sent, I'll update the calendar.",
+    "once-the-note-is-sent": "Here it is.\n\n**BEGIN**\nThank you for the introduction.\n**END**\n\nI'll log it once the note is sent.",
+    "a-wait-only-in-the-block": "Here is the holding reply.\n\nBEGIN\nWe're waiting on the printer and will confirm as soon as the proof "
+                                "arrives.\nEND\n\nIt is ready whenever you are.",
+}
+
+
+@pytest.mark.parametrize("reply", _cases(R3_BLOCK_REVIEW, A_WAIT_BESIDE_A_BLOCK))
+def test_a_block_between_begin_and_end_excuses_no_wait_outside_it(reply):
+    reason = _sent_back(reply)
+    assert reason and "nothing is armed" in reason
+
+
+@pytest.mark.parametrize("reply", _cases(A_WAIT_FOR_THE_BLOCK_TO_BE_SENT))
+def test_beside_a_block_a_wait_for_it_to_be_sent_awaits_the_principals_go(reply):
+    assert _sent_back(reply) is None
