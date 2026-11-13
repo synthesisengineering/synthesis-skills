@@ -352,9 +352,11 @@ def test_the_re_rule_finds_a_positional_limit_and_spares_a_named_one(tmp_path):
         "re.split(r',', text)\n"
         "text.split(',', 1)\n"                   # a string's own split takes its limit by position
         "re.findall(r'a', text, re.I)\n")        # and flags are findall's third argument, by position, as before
-    (tmp_path / ".venv").mkdir()
-    (tmp_path / ".venv" / "y.py").write_text("import re\nre.split(r',', text, 1)\n")  # not the repository's own
-    assert positional_re_limits(tmp_path) == ["skills/a/x.py:2", "skills/a/x.py:4", "skills/a/x.py:6"]
+    for other in (".venv/y.py", "venv/lib/python3.12/site-packages/pkg/z.py", "build/lib/w.py"):  # not the repository's own
+        (tmp_path / other).parent.mkdir(parents=True)
+        (tmp_path / other).write_text("import re\nre.split(r',', text, 1)\n")
+    (tmp_path / "conftest.py").write_text("import re\nre.sub(r'a', 'b', text, 2)\n")  # a file at the root is
+    assert positional_re_limits(tmp_path) == ["conftest.py:2", "skills/a/x.py:2", "skills/a/x.py:4", "skills/a/x.py:6"]
 
 
 # ---- A deprecated call in the core fails its test on the Python that deprecates it --------

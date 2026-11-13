@@ -462,6 +462,23 @@ def test_a_package_without_its_two_images_is_refused(tmp_path, interface, images
     assert any(problem.startswith(expected) for problem in found), found
 
 
+@pytest.mark.parametrize("inside, refused", [
+    ('<script>fetch("https://example.com/")</script>', True),
+    ('<image href="https://example.com/pixel.png" width="1" height="1"/>', True),
+    ('<use xlink:href="../../SKILL.md#x"/>', True),
+    ('<rect width="1" height="1" style="fill:url(https://example.com/g.svg#g)"/>', True),
+    ("<rect width='1' height='1' fill='url( \"other.svg#g\" )'/>", True),
+    ('<defs><linearGradient id="g"/></defs><rect width="1" height="1" fill="url(#g)"/><use href="#g"/>', False),
+    ('<image href="data:image/png;base64,iVBORw0KGgo=" width="1" height="1"/>', False),
+])
+def test_an_image_that_runs_a_script_or_loads_from_outside_itself_is_refused(tmp_path, inside, refused):
+    """A directory shows the package's images to everyone who opens its page. An SVG can run a script and can load
+    another file, from the reader's network or from beside itself; one that does either passed (a review of 5.8.2)."""
+    mark = f'<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 64 64">{inside}</svg>\n'
+    found = problems(checkout(tmp_path, {"alpha": skill("alpha")}, images={"mark.svg": mark}))
+    assert found == (["assets/mark.svg: an image that runs a script or loads from outside itself"] if refused else [])
+
+
 def test_a_manifest_with_no_interface_is_refused_for_both_images(tmp_path):
     found = problems(checkout(tmp_path, {"alpha": skill("alpha")}, manifest={"name": "methods"}, images={}))
     assert [problem for problem in found if "is missing" in problem] == [
@@ -642,6 +659,36 @@ def test_a_package_is_cut_from_committed_files(tmp_path, capsys):
     assert lines[1] == f"{IMAGES}/mark.svg: differs from the last commit; a package is cut from committed files"
 
 
+def test_a_written_package_holds_the_commits_bytes_whatever_the_checkout_holds(tmp_path, capsys):
+    """A ZIP that is written is the one a directory receives, so it is read from the last commit itself. Read from
+    the checkout's files, it carried three things no commit held (a review of 5.8.2): a version edited and not
+    committed, a file git had been told to assume unchanged, and line ends a checkout had converted."""
+    repo = checkout(tmp_path, {"alpha": skill("alpha"), "beta": skill("beta")})
+    out, committed = tmp_path / "methods.zip", skill("alpha")["SKILL.md"].encode("utf-8")
+    manifest = repo / package.MANIFEST
+    manifest.write_text(json.dumps({"name": "synthesis-skills", "version": "9.9.9"}))  # a version not committed
+    code, lines = run(capsys, out, "--repo-root", repo)
+    assert code == 1 and not out.exists()
+    assert lines[1] == f"{package.MANIFEST}: differs from the last commit; a package is cut from committed files"
+    git(repo, "checkout", "--", package.MANIFEST)
+    git(repo, "update-index", "--assume-unchanged", "skills/alpha/SKILL.md")  # git no longer reports the next edit
+    with (repo / "skills" / "alpha" / "SKILL.md").open("a") as edited:
+        edited.write("A line nobody committed.\n")
+    assert git(repo, "status", "--porcelain") == ""
+    assert run(capsys, out, "--repo-root", repo)[0] == 0
+    with zipfile.ZipFile(out) as archive:
+        assert archive.read("skills/alpha/SKILL.md") == committed
+    out.unlink()
+    git(repo, "config", "core.autocrlf", "true")  # as Git for Windows sets it: a checkout's lines end in CR LF
+    (repo / "skills" / "beta" / "SKILL.md").unlink()
+    git(repo, "checkout", "--", "skills/beta/SKILL.md")
+    assert b"\r\n" in (repo / "skills" / "beta" / "SKILL.md").read_bytes() and git(repo, "status", "--porcelain") == ""
+    assert run(capsys, out, "--repo-root", repo)[0] == 0
+    with zipfile.ZipFile(out) as archive:
+        assert archive.read("skills/beta/SKILL.md") == skill("beta")["SKILL.md"].encode("utf-8")
+        assert json.loads(archive.read(package.MANIFEST))["version"] == "5.8.0"
+
+
 def test_changed_since_names_the_listed_skills_that_changed(tmp_path, capsys):
     repo = checkout(tmp_path, {"alpha": {**skill("alpha"), "tests/test_alpha.py": "x = 1\n"}, "beta": skill("beta"),
                                "gamma": skill("gamma")}, listed=["alpha", "beta"])
@@ -683,6 +730,21 @@ def test_changed_since_counts_a_change_to_the_list_itself(tmp_path, capsys):
         (1, ["changed since v5.8.0: the list; a new submission is due"])
 
 
+def test_changed_since_passes_over_a_change_to_the_list_that_changes_nothing_in_the_package(tmp_path, capsys):
+    """The list also says why a skill was left out and what the package is about, and neither is in the ZIP: an edit
+    to those alone reported a submission due when none was (a review of 5.8.2)."""
+    repo = checkout(tmp_path, {"alpha": skill("alpha")})
+    git(repo, "tag", "v5.8.0")
+    listing = repo / package.LIST
+    was = json.loads(listing.read_text())
+    listing.write_text(json.dumps({**was, "about": "Reworded.", "left_out": {"gamma": "It needs the runtime."}}, indent=2))
+    assert run(capsys, "--changed-since", "v5.8.0", "--repo-root", repo) == \
+        (0, ["unchanged since v5.8.0: no new submission is due"])
+    listing.write_text(json.dumps({**was, "skills": ["alpha"], "manifest": {**was["manifest"], "description": "New."}}))
+    assert run(capsys, "--changed-since", "v5.8.0", "--repo-root", repo) == \
+        (1, ["changed since v5.8.0: the list; a new submission is due"])
+
+
 def test_changed_since_counts_a_change_to_an_image(tmp_path, capsys):
     repo = checkout(tmp_path, {"alpha": skill("alpha")})
     git(repo, "tag", "v5.8.0")
@@ -691,7 +753,7 @@ def test_changed_since_counts_a_change_to_an_image(tmp_path, capsys):
         (1, ["changed since v5.8.0: its images; a new submission is due"])
     (repo / "skills" / "alpha" / "SKILL.md").write_text(skill("alpha", body="Changed too.\n")["SKILL.md"])
     listing = repo / package.LIST
-    listing.write_text(json.dumps({**json.loads(listing.read_text()), "left_out": {"gamma": "It needs the runtime."}}))
+    listing.write_text(json.dumps({**json.loads(listing.read_text()), "manifest": {**METHODS, "description": "New."}}))
     assert run(capsys, "--changed-since", "v5.8.0", "--repo-root", repo) == \
         (1, ["changed since v5.8.0: the list, its images, alpha; a new submission is due"])
 
