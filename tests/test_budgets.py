@@ -824,10 +824,14 @@ ROOT = Path(__file__).resolve().parents[1]
 # kept when the config cannot be read; main 6, its call with two roots of one name told apart; render 4, its line
 # and the one where no archive is here; CITE_DAYS 1) and the record script 2 fewer (prompts 3 more, the setting read
 # where the doctor reads it; its day test 5 fewer, moved to the core).
+# 5.14.1 (2026-11-13): plugin 5, in the knowledge-base connector. config.py 4: the collection prefix read once into
+# its own name and refused when it begins with H_ or S_ (the name 1, the check 1, its message 2; the line that read
+# it inside Settings stays one line). server.py 1: hashed_firestore_keys's docstring, which now says the library
+# raised on the lookup, is one line longer.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # consolidate first).
 CORE_BUDGET = 13577
-PLUGIN_BUDGET = 35136
+PLUGIN_BUDGET = 35141
 
 
 def _lines(files):

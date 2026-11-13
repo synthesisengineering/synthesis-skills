@@ -188,6 +188,10 @@ def load(env) -> Settings:
     storage_key = get("KB_STORAGE_ENCRYPTION_KEY")
     if store == "firestore" and not FERNET_KEY.fullmatch(storage_key):
         problems.append("KB_OAUTH_STORE=firestore needs KB_STORAGE_ENCRYPTION_KEY, a Fernet key (44 characters)")
+    prefix = get("KB_FIRESTORE_COLLECTION_PREFIX", "kb-connector")
+    if store == "firestore" and prefix.startswith(("H_", "S_")):
+        problems.append(f"KB_FIRESTORE_COLLECTION_PREFIX may not begin with H_ or S_ ({prefix!r}): Firestore's collection "
+                        "strategy keeps those for the names it rewrites, and refuses every collection that has them")
     settings = Settings(
         git_url=git_url, git_branch=get("KB_GIT_BRANCH"), ssh_key_file=get("KB_GIT_SSH_KEY_FILE"),
         known_hosts=(env.get("KB_GIT_KNOWN_HOSTS") or "").strip(), source_dir=source_dir,
@@ -200,7 +204,7 @@ def load(env) -> Settings:
         group_refresh_seconds=_int(env, "KB_GROUP_REFRESH_SECONDS", 300, 60, 86400, problems),
         allowed_redirect_uris=tuple(u.strip() for u in get("KB_ALLOWED_REDIRECT_URIS").split(",") if u.strip()),
         oauth_store=store, firestore_project=get("KB_FIRESTORE_PROJECT"), firestore_database=get("KB_FIRESTORE_DATABASE"),
-        firestore_prefix=get("KB_FIRESTORE_COLLECTION_PREFIX", "kb-connector"), storage_key=storage_key,
+        firestore_prefix=prefix, storage_key=storage_key,
         token_cache_seconds=_int(env, "KB_TOKEN_CACHE_SECONDS", 300, 0, 3600, problems),
         server_name=get("KB_SERVER_NAME", "Knowledge base"), document_url=get("KB_DOCUMENT_URL_TEMPLATE", "kb:{id}"),
         search_limit=_int(env, "KB_SEARCH_LIMIT", 10, 1, 50, problems), host=get("KB_HOST", "0.0.0.0"),
