@@ -146,6 +146,12 @@ def test_an_address_outside_those_ranges_goes_on_however_it_is_written(text):
     assert "Sending needs the principal's approval" in said(text)
 
 
+@pytest.mark.parametrize("text", ["file://localhost/tmp/plan.pdf", "FILE://localhost/tmp/plan%20v2.pdf", "file:///tmp/plan.pdf"])
+def test_a_file_url_names_a_file_on_this_disk_and_is_no_address(text):
+    """A connector takes a local file as file://localhost/<path>: its host says this disk, and nobody is sent there."""
+    assert "Sending needs the principal's approval" in said(f"The plan is at {text} now")
+
+
 def test_a_host_the_config_adds_counts_and_its_subdomains_too():
     config = {**CONFIG, "temporary_addresses": {"hosts": ["preview.example.dev"]}}
     assert held_for_the_address(said("https://pr-12.preview.example.dev", config=config))
