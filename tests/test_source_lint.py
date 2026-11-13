@@ -295,21 +295,46 @@ def test_the_bytecode_rule_finds_a_late_guard_and_spares_an_early_one(tmp_path):
 
 # ---- CI runs the local command's two folders, each in a job of its own ---------------
 
+def unrun_core_tests(root: Path, halves: list) -> list:
+    """Test files under tests/ that the halves' patterns do not run exactly once. pytest collects `test_*.py` and
+    `*_test.py` and enters folders; a job's shell pattern takes one kind of name in one folder."""
+    from fnmatch import fnmatch
+    found = []
+    for path in sorted((root / "tests").rglob("*.py")):
+        if not (fnmatch(path.name, "test_*.py") or fnmatch(path.name, "*_test.py")):
+            continue
+        name = path.relative_to(root).as_posix()
+        runs = [half for half in halves if path.parent == root / "tests" and fnmatch(name, half)]
+        if len(runs) != 1:
+            found.append(f"{name}: run by {len(runs)} of the jobs")
+    return found
+
+
 def test_ci_runs_the_local_command_in_three_jobs_that_together_miss_nothing():
     """The suite is run in three jobs for each system and Python: the core's tests in two halves by file name, and
     the skills'. On 2026-11-12 the whole suite took 526 seconds on a macOS runner and one job was cancelled at the
     ten-minute limit with no test failing; run as two jobs, the core's tests took 6 minutes on one macOS runner and
     over 10 on a slower one beside it. Together the three run what `python3 -m pytest -q tests/ skills/` runs."""
-    from fnmatch import fnmatch
     workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
     parts = re.findall(r'"([^"]+)"', re.search(r"^\s+part: \[(.+)\]$", workflow, re.M).group(1))
     assert "skills/" in parts and len(parts) == 3
     assert "run: python -m pytest -q ${{ matrix.part }}\n" in workflow
     assert "run: python -m pytest -q tests/ skills/" not in workflow  # no job runs the whole of it
     halves = [part for part in parts if part != "skills/"]
-    files = sorted(path.relative_to(ROOT).as_posix() for path in (ROOT / "tests").glob("test_*.py"))
-    assert files and [[half for half in halves if fnmatch(name, half)] for name in files if
-                      len([half for half in halves if fnmatch(name, half)]) != 1] == []  # each file in exactly one job
-    assert not list((ROOT / "tests").glob("*/test_*.py"))  # and none in a folder the two patterns do not reach
+    assert list((ROOT / "tests").glob("test_*.py")) and unrun_core_tests(ROOT, halves) == []
     apple = re.findall(r'- os: macos-latest\n\s+python: apple\n\s+part: "([^"]+)"', workflow)
     assert sorted(apple) == sorted(parts)  # an entry added to a matrix by hand names every part
+
+
+def test_the_split_rule_finds_a_file_no_job_runs_and_one_that_two_run(tmp_path):
+    """pytest collects `*_test.py` as well as `test_*.py`, and enters folders; a job's shell pattern does neither.
+    A file of either kind ran when the suite was run whole and in no job of CI (a review of 5.8.1)."""
+    for rel in ("tests/test_alpha.py", "tests/test_zeta.py", "tests/alpha_test.py", "tests/sub/test_beta.py",
+                "tests/sub/gamma_test.py", "tests/helper.py", "tests/conftest.py"):
+        (tmp_path / rel).parent.mkdir(parents=True, exist_ok=True)
+        (tmp_path / rel).write_text("")
+    halves = ["tests/test_[a-g]*.py", "tests/test_[h-z]*.py"]
+    unrun = ["tests/alpha_test.py: run by 0 of the jobs", "tests/sub/gamma_test.py: run by 0 of the jobs",
+             "tests/sub/test_beta.py: run by 0 of the jobs"]
+    assert unrun_core_tests(tmp_path, halves) == unrun
+    assert unrun_core_tests(tmp_path, halves + ["tests/test_a*.py"]) == unrun + ["tests/test_alpha.py: run by 2 of the jobs"]
