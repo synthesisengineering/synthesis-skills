@@ -198,24 +198,32 @@ Off unless the config has `record_times` (`{}` turns it on; see the guardrails'
 [config reference](../../synthesis-agent-guardrails/references/config.md)). In a Markdown
 file (`.md`, `.markdown`) outside a folder of transcripts and outside what the setting's
 `skip` list names, the check reads the time an added entry gives for itself. An entry
-states one in three places:
+states one in four places:
 
 | Place | Example |
 |---|---|
 | The line opens with the day and a time, behind a list mark, a ticked box, a heading, emphasis or a bracket. A line with no mark counts where it begins a paragraph | `- **2026-11-12 19:30, the release is out.**`, `### 2026-11-12 14:40 CDT`, `- [2026-11-12 6:54 pm]` |
 | A parenthesis opens with the day and a time, or with one of the words below, each saying what was done then | `(11-12 18:54: approved in the dialog)`, `(added 11-12 18:46, ...)`, `(Updated: 11-12 18:46)` |
 | In a file under a `sessions/` folder, a list item or a heading opens with a time, and the nearest dated heading above it, outside a code fence, names today | `- 18:54 ET: pushed the branch` |
+| The line opens, behind the same marks, with one of the words below and then the time, with a weekday or a day between them or neither. A weekday with no day is read only where it is today's | `**Revised Fri 07:15 ET:**`, `Written 18:52:`, `### Built 2026-11-12 18:47`, `- Released about 18:40` |
 
-**The words,** in either case, with or without a colon: `as of`, `current to`, `added`,
+**The words,** in any case, with or without a colon: `as of`, `current to`, `added`,
 `answered`, `approved`, `asked`, `begun`, `built`, `checked`, `closed`, `completed`,
 `corrected`, `counted`, `created`, `decided`, `deleted`, `deployed`, `done`, `extended`,
 `filed`, `finished`, `fixed`, `found`, `held`, `installed`, `kept`, `left`, `made`,
 `measured`, `merged`, `modified`, `noted`, `opened`, `posted`, `probed`, `proven`,
 `published`, `pushed`, `read`, `received`, `recorded`, `refreshed`, `released`, `removed`,
-`renamed`, `replied`, `returned`, `reviewed`, `ruled`, `run`, `said`, `searched`, `sent`,
-`shown`, `started`, `stopped`, `synced`, `tested`, `told`, `updated`, `verified`,
-`written`. A parenthesis that opens with any other word names an event, and its time is
-the event's: `(scheduled 11-12 18:55)`, `(call 11-12 19:00)`, `(due 2026-11-12 18:55)`.
+`renamed`, `replied`, `returned`, `reviewed`, `revised`, `ruled`, `run`, `said`, `searched`,
+`sent`, `shown`, `started`, `stopped`, `synced`, `tested`, `told`, `updated`, `verified`,
+`written`. A parenthesis or a line that opens with any other word names an event, and its
+time is the event's: `(scheduled 11-12 18:55)`, `(call 11-12 19:00)`, `(due 2026-11-12
+18:55)`, `Standup 18:45`, `Thu 18:45 review`.
+
+The fourth place was added on 2026-11-13, the morning the check first ran for a principal:
+a seat committed `**Revised Fri 07:1x ET:** ...` at 07:11 and no stamp was read, since the
+line opens with a word and a weekday. Counted over thirty days of commits, 110 added lines
+open with one of these words and then a time, and 28 of them round the time or stand a
+few minutes after their commit.
 
 The commit is refused when such a stamp is:
 
@@ -277,13 +285,89 @@ prevents those.
 
 It was measured before it was built, on thirty days of commits to twenty-seven knowledge
 repositories: a time inside an entry's text is later than its commit three times in ten,
-and rightly, so only an entry's own stamp is judged. Replayed over the same 1,032 commits
-as it stands, it reads 1,135 stamps and refuses 189 lines in 136 commits (42 later, 147
-rounding the present). Its first form also refused five wrapped lines that began with a
+and rightly, so only an entry's own stamp is judged. Replayed over thirty days of commits
+(1,111) as it stands, it refuses 213 lines in 149 commits (46 later, 167 rounding the
+present). Its first form also refused five wrapped lines that began with a
 time by chance; its second, before a review, refused deadlines and schedules hours ahead;
 its third took any word in -ed at a parenthesis's head for a stamp and any capital word
 ending in T for a zone, neither of which those commits bear out
 (`tests/test_record_times.py`).
+
+## A status and its evidence
+
+Off unless the config has `status_evidence` (`{}` turns it on; see the guardrails'
+[config reference](../../synthesis-agent-guardrails/references/config.md)). On 2026-11-12
+obligation statuses said colleagues could use a tool "now" when none of them could: the
+status had been written from an assumption, and nothing asked what it rested on. That a
+line claims a thing works is meaning, which the check does not read. That a table has a
+column headed Status and a column for evidence is the table's own statement, and the
+table is held to it.
+
+In a Markdown file the check reads (the same files as for an entry's time: not a folder of
+transcripts, not what the setting's `skip` names), for each table row a commit adds:
+
+1. **Refused:** the row's table has a Status column and a column for evidence, and the row
+   says something in its status cell and nothing in any column for evidence or any
+   column of the second list below. The word `unverified` anywhere in the row is an
+   answer. The refusal names the row: say where it was checked (a link, a command, a
+   record), or write `unverified`. No approval clears it, so a wrong refusal stops a
+   commit with no way through, and few headers can refuse.
+2. **Noted, never refused:** the table has a Status column and no column for evidence; the
+   row's status says a thing works or is done (`works`, `live`, `done`, `ready`,
+   `available`, `shipped`, `released`, `deployed`, `complete`, `enabled`, `passing`,
+   `fixed`, `resolved`, `installed`, `running`, a check mark) and does not negate it; no
+   cell of the second list is filled; and the row holds no link, no code span and not
+   the word `unverified`. A word is negated by `not`, `never`, `no longer`, `cannot` or a
+   word ending in `n't`, with at most two words and only spaces between (`not done`,
+   `won't be ready`, `isn't live`, `never shipped`, `no longer working`). The commit
+   goes through and prints one line for the file: how many such rows, and that the table
+   can take a column for evidence. This part reads a list of words, so it only informs.
+
+**The header.** A header cell is read with its emphasis marks, a link's brackets and target
+(`[Status](x.md)` reads as `Status`), and a closing colon or parenthesis (`Status:`,
+`Status (today)`) taken off. The Status column is the first one headed `Status`, in any
+case, alone or after one word (`Current status`, `Deploy status`); a column headed
+`State`, or `Status` after two words, is none. Two lists name the other columns, by a word
+the header says:
+
+- **a column for evidence**, which can refuse: `evidence`, `proof` or `proofs`,
+  `verified`, `how we know`;
+- **the second list**, which never refuses: `source` or `sources`, `checked`, `basis`. A
+  table whose only such columns are from it is never refused; a row that fills one
+  points somewhere and gets no note.
+
+The Status column is never also a column for evidence: in `| Item | Verified status |
+Evidence |` the Evidence cell is the one that answers. A review of 2026-11-13 found a lead's
+`Source`, a task's `Checked` and a US `State` column refused; none of them can refuse now.
+
+**A cell that says nothing** is empty or holds only spaces, dashes, emphasis marks, `n/a`,
+`none`, `tbd`, question marks, a line break (`<br>`, `<br/>`), `&nbsp;`, an ellipsis
+(`...`, `…`) or a zero-width character. A status cell that says nothing owes no evidence.
+
+**Which rows are read.** A row is a line with a pipe at each end, read inside any block
+quote's marks (`> | a | b |`). Its table is the run of such lines it stands in, at the
+same depth of quote, read from the file as staged, once a file, with CRLF line endings
+read as LF; the run's first line is the header when the next is a delimiter row: a pipe at
+each end and, in each cell, dashes alone, a colon allowed at either end (`|---|`, `|-|`,
+`|:-:|`). Not read:
+
+- a table written without its outer pipes (`Item | Status`), or a row missing either one;
+- a table in a code fence, or in an indented code block: four spaces or a tab, with no
+  list item above it since the last blank line (a table indented under a list item, with
+  no blank line between, is read);
+- a header with no delimiter row under it, and a header and its delimiter row themselves;
+- a row cut off from its header, by a blank line or any line that is no row;
+- a status written in prose;
+- a commit that brings lines written before, as for an entry's time: a merge, a squash
+  merge, a cherry-pick, a revert, a rebase that stopped.
+
+The check cannot know that the evidence is evidence: a cell that says `checked` is filled.
+What it changes is that the reader of the record sees what was written there, where
+before nothing was asked.
+
+Replayed as it stands over thirty days of real commits (1,110): 12 rows refused in 6
+commits, and 11 rows noted in 7. Where a table has a column for evidence it is nearly
+always filled: 919 of 931 added rows (`tests/test_status_evidence.py`).
 
 ## Claims
 

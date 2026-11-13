@@ -219,7 +219,12 @@ def main(argv: list[str], session_id: str) -> int:
             return 2
         try:
             (paths.board() / "waits").mkdir(parents=True, exist_ok=True)
-            with open(paths.board() / "waits" / "none.jsonl", "a", encoding="utf-8") as log:
+            listed = paths.board() / "waits" / "none.jsonl"
+            if listed.is_file() and listed.stat().st_size > 1 << 20:  # the check reads the last 64 KB: older statements are not kept
+                kept = listed.read_bytes()[-65000:]
+                listed.with_suffix(".tmp").write_bytes(kept[kept.find(b"\n") + 1:])
+                os.replace(listed.with_suffix(".tmp"), listed)
+            with open(listed, "a", encoding="utf-8") as log:
                 log.write(json.dumps({"session": session_id, "at": time.time(), "why": why}) + "\n")
         except OSError as exc:
             print(f"{paths.board() / 'waits' / 'none.jsonl'} cannot be written ({exc.strerror or exc}), so nothing is stated", file=sys.stderr)

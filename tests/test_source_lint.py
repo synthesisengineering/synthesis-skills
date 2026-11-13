@@ -470,3 +470,28 @@ def test_the_rule_finds_an_import_at_the_top_and_spares_one_that_is_guarded_or_i
     (scripts / "late.py").write_text("def run():\n    from synthesis import paths\n    return paths\n", encoding="utf-8")
     (scripts / "test_probe.py").write_text("from synthesis import paths\n", encoding="utf-8")
     assert bare_runtime_imports(tmp_path) == ["skills/probe/scripts/bare.py:2", "skills/probe/scripts/silent.py:3", "skills/probe/scripts/whole.py:1"]
+
+
+def twice_bound(source: str) -> list:
+    """The names a module binds more than once at its top: a function, a class or an assignment."""
+    import ast
+    import collections
+    names = collections.Counter()
+    for node in ast.parse(source).body:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            names[node.name] += 1
+        elif isinstance(node, (ast.Assign, ast.AnnAssign)):
+            for target in (node.targets if isinstance(node, ast.Assign) else [node.target]):
+                names.update(leaf.id for leaf in ast.walk(target) if isinstance(leaf, ast.Name))
+    return sorted(name for name, count in names.items() if count > 1)
+
+
+def test_no_core_module_binds_a_name_twice_at_its_top():
+    """2026-11-13: a helper was given the name of an older one further down the same file, twice in one day (a
+    function, then a pattern). The later one won without a word, and each was found only because tests of something
+    else failed: 48 of them the first time, 286 the second."""
+    assert twice_bound("A = 1\n\n\ndef f():\n    A = 2\n\n\nA = 3\n") == ["A"]
+    assert twice_bound("def f():\n    pass\n\n\nclass f:\n    pass\n") == ["f"]
+    assert twice_bound("A, B = 1, 2\nC: int = 3\ntry:\n    import x\nexcept ImportError:\n    x = None\n") == []
+    for path in sorted((ROOT / "synthesis").glob("*.py")):
+        assert twice_bound(path.read_text(encoding="utf-8")) == [], path.name
