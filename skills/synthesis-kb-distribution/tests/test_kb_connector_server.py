@@ -19,6 +19,7 @@ import re
 import secrets
 import subprocess
 import time
+from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 import pytest
@@ -709,6 +710,33 @@ def test_main_refuses_a_temporary_address_and_the_operators_own_test_says_what_e
     assert "The address is temporary and must not be given to anyone" in line
     assert "a restart of this process, this machine or its tunnel ends it." in line
     assert "Only lead@example.com can sign in." in line
+    assert line.endswith(" can sign in. " + TEARDOWN)
+
+
+TEARDOWN = "List each thing this test needs before setting it up, and remove every one as soon as the test ends."
+REFERENCE = Path(__file__).resolve().parents[1] / "references" / "connector.md"
+
+
+def test_the_start_line_of_a_test_on_a_deployment_asks_for_the_same_list(published, monkeypatch, caplog, firestore):
+    env = {"KB_SOURCE_DIR": str(published), "KB_PUBLIC_URL": "https://kb.example.com", "KB_GOOGLE_CLIENT_ID": CLIENT_ID,
+           "KB_GOOGLE_CLIENT_SECRET": "test-secret", "KB_ALLOWED_EMAILS": "lead@example.com", "KB_REFRESH_SECONDS": "0",
+           **firestore, **OPERATOR}
+    monkeypatch.setattr(server.FastMCP, "run", lambda self, **kwargs: None)
+    assert server.main(env) == 0
+    (line,) = [message for message in caplog.messages if message.startswith("TEST ONLY")]
+    assert line.endswith("Do not give this address to anyone while the mode is on. Only lead@example.com can sign in. " + TEARDOWN)
+
+
+def test_the_reference_shows_the_start_line_word_for_word_and_names_the_list(published, monkeypatch, caplog):
+    env = {"KB_SOURCE_DIR": str(published), "KB_PUBLIC_URL": "http://localhost:8080", "KB_GOOGLE_CLIENT_ID": CLIENT_ID,
+           "KB_GOOGLE_CLIENT_SECRET": "test-secret", "KB_ALLOWED_EMAILS": "lead@example.com", "KB_REFRESH_SECONDS": "0",
+           **OPERATOR}
+    monkeypatch.setattr(server.FastMCP, "run", lambda self, **kwargs: None)
+    assert server.main(env) == 0
+    (line,) = [message for message in caplog.messages if message.startswith("TEST ONLY")]
+    reference = REFERENCE.read_text(encoding="utf-8")
+    assert f"<time> WARNING kb_connector: {line}\n".replace("lead@example.com", "<you@example.com>") in reference
+    assert "teardown.py add" in reference and "../../synthesis-agent-guardrails/references/teardown.md" in reference
 
 
 def test_main_starts_localhost_written_with_a_trailing_dot_as_the_operators_own_test(published, monkeypatch, caplog):

@@ -403,9 +403,8 @@ def test_a_deprecation_met_in_the_core_fails_the_test_and_one_met_elsewhere_does
 
 # A script that imports the runtime at its top says so in one line when the runtime is not there (2026-11-13: run from
 # a copy with no `synthesis/` beside it, as a package of skills without the runtime would hold them, two rituals'
-# scripts ended in a traceback, even for `--help`). The two files of the knowledge-base skill belong to its own seat,
-# which takes the same shape in a change of its own.
-THEIRS = ("skills/synthesis-kb-distribution/",)
+# scripts ended in a traceback, even for `--help`). The connector's `corpus.py` is one of them: it is imported, not run,
+# and the start that imports it ends the same way, in one line and exit 2.
 
 
 def bare_runtime_imports(root: Path = ROOT) -> list:
@@ -413,7 +412,7 @@ def bare_runtime_imports(root: Path = ROOT) -> list:
     found = []
     for path in sorted(root.glob("skills/**/*.py")):
         name = path.relative_to(root).as_posix()
-        if "/tests/" in name or path.name.startswith("test_") or name.startswith(THEIRS):
+        if "/tests/" in name or path.name.startswith("test_"):
             continue
         for node in ast.parse(path.read_text(encoding="utf-8")).body:  # top-level statements only: a function's own import fails where it is called
             names = [node.module or ""] if isinstance(node, ast.ImportFrom) else [a.name for a in node.names] if isinstance(node, ast.Import) else []
@@ -422,17 +421,22 @@ def bare_runtime_imports(root: Path = ROOT) -> list:
     return found
 
 
-def test_a_script_that_needs_the_runtime_says_so_in_a_line_when_it_is_not_there(tmp_path):
+def test_no_script_imports_the_runtime_bare_at_its_top():
     assert bare_runtime_imports() == []
-    script = ROOT / "skills" / "synthesis-daily-rituals" / "scripts" / "decay_sweep.py"
-    alone = tmp_path / "skills" / "synthesis-daily-rituals" / "scripts"
-    alone.mkdir(parents=True)
-    (alone / script.name).write_text(script.read_text(encoding="utf-8"), encoding="utf-8")
+
+
+@pytest.mark.parametrize("script", ["skills/synthesis-daily-rituals/scripts/decay_sweep.py",
+                                    "skills/synthesis-kb-distribution/scripts/build_plugin.py",
+                                    "skills/synthesis-kb-distribution/scripts/connector/kb_connector/corpus.py"])
+def test_a_script_that_needs_the_runtime_says_so_in_a_line_when_it_is_not_there(script, tmp_path):
+    alone = tmp_path / script  # a copy with no `synthesis/` anywhere above it
+    alone.parent.mkdir(parents=True)
+    alone.write_text((ROOT / script).read_text(encoding="utf-8"), encoding="utf-8")
     import sys
-    ran = subprocess.run([sys.executable, "-I", str(alone / script.name), "--help"], capture_output=True, text=True, cwd=tmp_path,
+    ran = subprocess.run([sys.executable, "-I", str(alone), "--help"], capture_output=True, text=True, cwd=tmp_path,
                          env={"PATH": "/usr/bin:/bin", "SYNTHESIS_HOME": str(tmp_path / "none"), "HOME": str(tmp_path)})
     assert ran.returncode == 2 and "Traceback" not in ran.stderr and len(ran.stderr.strip().splitlines()) == 1
-    assert "synthesis runtime cannot be imported" in ran.stderr and "decay_sweep.py" in ran.stderr
+    assert "synthesis runtime cannot be imported" in ran.stderr and alone.name in ran.stderr
 
 
 def test_the_rule_finds_an_import_at_the_top_and_spares_one_that_is_guarded_or_inside_a_function(tmp_path):
