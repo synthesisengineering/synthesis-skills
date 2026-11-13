@@ -112,9 +112,15 @@ Passes:
   and their prompt: `nothing wakes her session`, `nothing woke this seat` and `nothing wakes
   this seat until the build finishes` excuse nothing;
 - a list of open loops, which names what is outstanding and announces nothing: a label
-  before a colon (`Waiting on others: ...`, `What we're waiting on others for: ...`), a
-  heading, a table row, and a wait after a label, a dash or a semicolon inside a sentence
-  (`- The venue — sent; awaiting their pick`);
+  with no subject before a colon (`Waiting on others: ...`); such a label in a heading or
+  a table cell (`## Awaiting the vendor's go`, a cell that reads `awaiting re-auth`); a
+  wait with no subject after a label, a dash or a semicolon inside a sentence (`- The venue
+  — sent; awaiting their pick`); and `we` with a count or a pointer before the colon, where
+  what is awaited is listed after it (`We're waiting on two answers: ...`, `What we're
+  waiting on others for: ...`). A wait in the first person is read wherever it stands, in a
+  heading, in a table row and before a colon: `## I'm waiting on CI`, `| State | I'm
+  waiting on CI |`, `Will merge once it is green` in a cell and `We are waiting for the
+  required pipeline: no further work is possible` are sent back;
 - a rule for next time (`from now on`, `going forward`, `next time`, `whenever`, `every
   time`), where the phrase governs the wait's own clause: it opens the sentence or a clause
   of it, and no new clause of the session's stands between it and the wait (`From now on,
@@ -146,7 +152,7 @@ three a day. Of those, read one by one, three in four were the session's own wai
 nothing to end it. The rest awaited a step of the principal's said in words the check
 does not read (`once it's sent, I'll read it back`, after a send they have yet to
 approve). What it lets pass on purpose: a wait in a reply that also asks the principal
-for something, and a wait written after a label, a dash or a semicolon.
+for something, and a wait with no subject written after a label, a dash or a semicolon.
 
 ## The file-link rule
 

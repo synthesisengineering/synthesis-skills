@@ -214,8 +214,16 @@ WOKEN = re.compile(
     r"|\bnothing(?: else| more| further)?(?: here)? (?:happens|moves|resumes|continues|proceeds|runs)\b)"
     r".{0,120}?\b(?:until|till|unless|before|without|at|on|with|when|once|after) (?:you (?:next )?(?:prompt|message|nudge|ping|wake|write|return|come back|are back)\b"
     r"|your (?:next |own )?(?:prompt|message|nudge|ping|turn|word)\b|a (?:prompt|message|nudge|word) from you\b|the next (?:prompt|message)\b)")
-TABLED = re.compile(r"(?m)^[ \t]*#{1,6}[ \t].*$|^[ \t]*\|.*\|[ \t]*$")  # a heading or a table row names things; it announces nothing
+# A heading or a table row names things, so a wait with no subject there is a label ("## Awaiting the vendor's go", a cell
+# that reads "awaiting re-auth"): each is cut into fragments that open no sentence (CELL). A wait in the first person is
+# read there as anywhere ("## I'm waiting on CI").
+TABLED = re.compile(r"(?m)^[ \t]*#{1,6}[ \t].*$|^[ \t]*\|.*\|[ \t]*$")
+CELL = re.compile(r"\||(?<=[.!?])\s")
 LABEL = re.compile(r"[^.;!?:]{0,60}:(?:\s|$)")  # "Waiting on others: ..." is a label over a list of open loops
+# "We're waiting on two answers: ..." counts what is open and lists it after the colon, a label, as the one recorded reply
+# that turns on it was. "We are waiting for the required pipeline: ..." names the thing itself and is the wait it says.
+COUNTED = re.compile(r"(?i)(?: (?:for|on))?(?: (?:\d+|one|two|three|four|five|six|seven|eight|nine|ten|a few|a couple of|several|some|many|both|these|those"
+                     r"|the following|other\w*)\b[^.;!?:]{0,40})?(?: (?:for|on))?:(?:\s|$)")
 # A rule for next time explains a wait when it governs the wait's own clause: it opens the sentence or a clause of it (after
 # a comma, a colon, a dash, "and", "but", "so" or "then"), and no new clause of the session's stands between it and the
 # wait. "The proposed change going forward is documented, and I am waiting" has the phrase in another clause's subject.
@@ -259,7 +267,7 @@ def _explains(text: str, m: re.Match, opens: bool = True) -> bool:
     opened = m.groupdict()
     if (opened.get("on") or opened.get("till")) and not opens or RULE.search(text, 0, m.end()):
         return True
-    if (opened.get("on") or opened.get("till") or m.group(0)[:2].lower() == "we") and LABEL.match(text, m.end()):
+    if (opened.get("on") or opened.get("till")) and LABEL.match(text, m.end()) or m.group(0)[:2].lower() == "we" and COUNTED.match(text, m.end()):
         return True
     return bool(opened.get("on") and SUBJECT.match(text, m.end()) or opened.get("till") and UNTIL.match(text, m.end()))
 
@@ -347,7 +355,8 @@ def unarmed_wait(reply: str, payload: dict, config: dict) -> list[str]:
     body = STAGED.sub(" something ", reply)
     if _offered(body):
         return []
-    plain = MARKS.sub("", QUOTED.sub(" something ", CODE.sub(" something ", TABLED.sub("", body)))).strip()  # a name set aside is still a thing awaited
+    plain = TABLED.sub(lambda line: "—;" + CELL.sub(";", line.group(0)), body)  # fragments: the dash opens the line's sentence, so no cell does
+    plain = MARKS.sub("", QUOTED.sub(" something ", CODE.sub(" something ", plain))).strip()  # a name set aside is still a thing awaited
     forms = [WAITS] + [re.compile(rf"(?i)\b{re.escape(str(p))}\b") for p in config.get("wait_phrases") or [] if str(p).strip()]
     sentences = [] if plain.endswith("?") else EDGE.split(plain)
     clauses = [(text, at == 0) for sentence in sentences  # each clause, and whether it opens its sentence
