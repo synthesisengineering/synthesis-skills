@@ -296,30 +296,66 @@ column headed Status and a column for evidence is the table's own statement, and
 table is held to it.
 
 In a Markdown file the check reads (the same files as for an entry's time: not a folder of
-transcripts, not what the setting's `skip` names, not a code fence), for each table row a
-commit adds:
+transcripts, not what the setting's `skip` names), for each table row a commit adds:
 
-1. **Refused:** the row's table has a column headed `Status` (alone or after one word, as
-   `Current status`; or `State`) and a column for evidence, and the row says something in
-   its status cell and nothing in any evidence cell. A column for evidence is one whose
-   header says `evidence`, `proof`, `source`, `checked`, `verified`, `basis` or `how we
-   know`. A cell says nothing when it is empty or holds only a dash, `n/a`, `none`, `tbd`
-   or a question mark. The word `unverified` anywhere in the row is an answer. The refusal
-   names the row: say where it was checked (a link, a command, a record), or write
-   `unverified`. No approval clears it.
-2. **Noted, never refused:** the table has a Status column and no column for evidence, the
+1. **Refused:** the row's table has a Status column and a column for evidence, and the row
+   says something in its status cell and nothing in any column for evidence or any
+   column of the second list below. The word `unverified` anywhere in the row is an
+   answer. The refusal names the row: say where it was checked (a link, a command, a
+   record), or write `unverified`. No approval clears it, so a wrong refusal stops a
+   commit with no way through, and few headers can refuse.
+2. **Noted, never refused:** the table has a Status column and no column for evidence; the
    row's status says a thing works or is done (`works`, `live`, `done`, `ready`,
    `available`, `shipped`, `released`, `deployed`, `complete`, `enabled`, `passing`,
-   `fixed`, `resolved`, `installed`, `running`, a check mark), and the row holds no link,
-   no code span and not the word `unverified`. The commit goes through and prints one line
-   for the file: how many such rows, and that the table can take a column for evidence.
-   This part reads a list of words, so it only informs.
+   `fixed`, `resolved`, `installed`, `running`, a check mark) and does not negate it; no
+   cell of the second list is filled; and the row holds no link, no code span and not
+   the word `unverified`. A word is negated by `not`, `never`, `no longer`, `cannot` or a
+   word ending in `n't`, with at most two words and only spaces between (`not done`,
+   `won't be ready`, `isn't live`, `never shipped`, `no longer working`). The commit
+   goes through and prints one line for the file: how many such rows, and that the table
+   can take a column for evidence. This part reads a list of words, so it only informs.
 
-A row's table is read from the file as staged: the rows above it up to a header row with a
-rule under it. A header, its rule, a row with no header above it, and a status written in
-prose are not read. The check cannot know that the evidence is evidence: a cell that says
-`checked` is filled. What it changes is that the reader of the record sees what was
-written there, where before nothing was asked.
+**The header.** A header cell is read with its emphasis marks, a link's brackets and target
+(`[Status](x.md)` reads as `Status`), and a closing colon or parenthesis (`Status:`,
+`Status (today)`) taken off. The Status column is the first one headed `Status`, in any
+case, alone or after one word (`Current status`, `Deploy status`); a column headed
+`State`, or `Status` after two words, is none. Two lists name the other columns, by a word
+the header says:
+
+- **a column for evidence**, which can refuse: `evidence`, `proof` or `proofs`,
+  `verified`, `how we know`;
+- **the second list**, which never refuses: `source` or `sources`, `checked`, `basis`. A
+  table whose only such columns are from it is never refused; a row that fills one
+  points somewhere and gets no note.
+
+The Status column is never also a column for evidence: in `| Item | Verified status |
+Evidence |` the Evidence cell is the one that answers. A review of 2026-11-13 found a lead's
+`Source`, a task's `Checked` and a US `State` column refused; none of them can refuse now.
+
+**A cell that says nothing** is empty or holds only spaces, dashes, emphasis marks, `n/a`,
+`none`, `tbd`, question marks, a line break (`<br>`, `<br/>`), `&nbsp;`, an ellipsis
+(`...`, `…`) or a zero-width character. A status cell that says nothing owes no evidence.
+
+**Which rows are read.** A row is a line with a pipe at each end, read inside any block
+quote's marks (`> | a | b |`). Its table is the run of such lines it stands in, at the
+same depth of quote, read from the file as staged, once a file, with CRLF line endings
+read as LF; the run's first line is the header when the next is a delimiter row: a pipe at
+each end and, in each cell, dashes alone, a colon allowed at either end (`|---|`, `|-|`,
+`|:-:|`). Not read:
+
+- a table written without its outer pipes (`Item | Status`), or a row missing either one;
+- a table in a code fence, or in an indented code block: four spaces or a tab, with no
+  list item above it since the last blank line (a table indented under a list item, with
+  no blank line between, is read);
+- a header with no delimiter row under it, and a header and its delimiter row themselves;
+- a row cut off from its header, by a blank line or any line that is no row;
+- a status written in prose;
+- a commit that brings lines written before, as for an entry's time: a merge, a squash
+  merge, a cherry-pick, a revert, a rebase that stopped.
+
+The check cannot know that the evidence is evidence: a cell that says `checked` is filled.
+What it changes is that the reader of the record sees what was written there, where
+before nothing was asked.
 
 Replayed before it shipped over thirty days of real commits (1,032): 11 rows refused in 5
 commits, and 12 rows noted in 10. Where a table has a column for evidence it is nearly

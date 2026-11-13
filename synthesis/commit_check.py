@@ -812,55 +812,97 @@ def record_times(lines: list, settings, now: datetime, read) -> list:
 # it. Measured first (2026-11-13), on thirty days of commits: 1,520 rows added to tables with a Status column, 931 of
 # them to tables that also have a column for evidence. Replayed as built over the same commits: 11 rows refused in
 # 5 of 1,032 commits, and 12 rows noted in 10. The list of words below is used for a note only: a wrong note costs
-# a line of a commit's output.
+# a line of a commit's output. No approval clears a refusal, so few headers can refuse (a review of 2026-11-13 found
+# a lead's `Source`, a task's `Checked` and a US `State` refused): `Source`, `Checked` and `Basis` keep a row from
+# the note and never refuse it.
 ROW = re.compile(r"^[ \t]*\|(.*)\|[ \t]*$")
-RULE = re.compile(r"^[ \t]*\|?[ \t]*:?-{2,}")
-_STATUS = re.compile(r"(?i)(?:[\w-]+ )?status|state")
-_EVIDENCE = re.compile(r"(?i)\b(?:evidence|proof|source|checked|verified|basis|how we know)\b")
-_BLANK = re.compile(r"(?i)[\s*_`~—–-]|n/a|none|tbd|\?")  # what a cell holds when it says nothing
+RULE = re.compile(r"[ \t]*\|(?:[ \t]*:?-+:?[ \t]*\|)+[ \t]*")  # a delimiter row, fullmatched: any line that began with two dashes was one
+_QUOTE = re.compile(r"(?:[ \t]{0,3}>[ \t]?)*")  # a block quote's marks
+_ITEM = re.compile(r" {0,3}(?:[-*+]|\d{1,9}[.)])(?:[ \t]|$)")  # a list item's first line
+_CODE = re.compile(r" {4}| {0,3}\t")  # a line of an indented code block, where no list item stands above it
+_STATUS = re.compile(r"(?i)(?:[\w-]+ )?status")  # fullmatched against a header cell's words (`_name`)
+_EVIDENCE = re.compile(r"(?i)\b(?:evidence|proofs?|verified|how we know)\b")
+_SOFT = re.compile(r"(?i)\b(?:sources?|checked|basis)\b")
+# What a cell holds when it says nothing; a line break, `&nbsp;`, an ellipsis and a zero-width character were evidence
+# until a review of 2026-11-13.
+_BLANK = re.compile(r"(?i)<br\s*/?>|&nbsp;|\.{3}|…|[\s*_`~—–\u200b-\u200d\u2060\ufeff-]|n/a|none|tbd|\?")
 _WORKS = re.compile(r"(?i)\b(?:works?|working|live|done|shipped|released|deployed|completed?|ready|available|enabled|passing|passed|"
                     r"fixed|resolved|installed|running)\b|✅|✓")
+_NOT = re.compile(r"(?i)(?:\b(?:not|never|no longer|cannot)|n['’]t)(?:\s+[\w'’]+){0,2}\s+$")  # ends the words before a claim it negates
 _POINTS = re.compile(r"\[[^\]]+\]\([^)]+\)|`[^`]+`|https?://|(?i:\bunverified\b)")
+
+
+def _name(cell: str) -> str:
+    """A header cell's words: a link's brackets and target, emphasis marks, and a closing colon or parenthesis taken off."""
+    words = re.sub(r"[*_`~]", "", re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", cell))
+    return re.sub(r"(?:\s*\([^)]*\)|\s*:)+\s*$", "", words).strip()
+
+
+def _cells(row: str) -> list:
+    return [cell.strip() for cell in re.split(r"(?<!\\)\|", ROW.match(row).group(1))]
+
+
+def _tables(whole: list) -> list:
+    """(text, top) for each line of a file: its text inside any block quote's marks, and the index of the first row of
+    the block of table rows it stands in (its header, where a delimiter row follows), None where it stands in none:
+    not a row, in a code fence, or indented four spaces or a tab with no list item above it since the last blank line
+    (an indented code block). One pass for the file: walking up from each added row to its table's top took 86 s for
+    40,000 rows (a review of 2026-11-13)."""
+    found, top, depth, inside, listed = [], None, 0, False, False
+    for number, line in enumerate(whole):
+        marks = _QUOTE.match(line).group()
+        text, level = line[len(marks):], marks.count(">")
+        edge = text.lstrip().startswith(("```", "~~~"))
+        listed = bool(text.strip()) and (listed or not (inside or edge) and bool(_ITEM.match(text)))
+        row = not (inside or edge) and ROW.match(text) and (listed or not _CODE.match(text))
+        inside ^= edge
+        top = (top if top is not None and level == depth else number) if row else None
+        depth = level
+        found.append((text, top))
+    return found
 
 
 def status_evidence(lines: list, settings, read) -> tuple:
     """Config: {"status_evidence": {"skip": ["<folder or pattern>", ...]}}; off when the key is absent or false.
     (refusals, notes) for the table rows a commit adds to Markdown records. A row is refused where its table has a
-    column headed Status and a column for evidence, the row says something in the first and nothing in the second,
-    and does not say `unverified`: the table is held to its own header, and no word of the status is read. Where
-    the table has a Status column and no column for evidence, rows whose status says a thing works or is done and
-    that hold no link, no code span and not the word `unverified` are counted in a note for their file. A row's
-    table is read from the staged file, once: the rows above it up to a header row with a rule under it."""
+    Status column (`_STATUS`) and a column for evidence (`_EVIDENCE`), the row says something in the first and nothing
+    in any of the second or of a `Source`, `Checked` or `Basis` column (`_SOFT`), and does not say `unverified`: the
+    table is held to its own header, and no word of the status is read. Where the table has a Status column and no
+    column for evidence, rows whose status says a thing works or is done, not negated, with no `_SOFT` cell filled and
+    no link, no code span and not the word `unverified`, are counted in a note for their file. Each file is read
+    once, as staged, and its tables found in one pass (`_tables`)."""
     if settings is False:
         return [], []
     skip = settings.get("skip", []) if isinstance(settings, dict) and not set(settings) - {"skip"} else None
     if not (isinstance(skip, list) and all(isinstance(pattern, str) for pattern in skip)):
         raise Refused('status_evidence in the synthesis config must be an object that takes "skip" alone, a list of folders or '
                       "patterns. To turn the check off, leave status_evidence out or set it to false")
-    found, noted, texts = [], {}, {}
+    found, noted, files, heads = [], {}, {}, {}
     for raw, number, line in lines:
-        path, text = os.fsdecode(raw), line.decode("utf-8", "replace")
-        if not ROW.match(text) or not _record(path, skip):
+        path = os.fsdecode(raw)
+        if b"|" not in line or not _record(path, skip):
             continue
-        if path not in texts:
-            whole = read(path).split("\n")
-            texts[path] = (whole, _around(whole)[0])
-        whole, fenced = texts[path]
-        top = number - 1
-        while top > 0 and top <= len(whole) and ROW.match(whole[top - 1]):
-            top -= 1  # the first row of the block this row stands in: its header, where a rule follows it
-        if fenced[number - 1:number] == [True] or number - 1 <= top + 1 or top + 1 >= len(whole) or not RULE.match(whole[top + 1]):
-            continue
-        head, row = ([cell.strip() for cell in re.split(r"(?<!\\)\|", ROW.match(part).group(1))] for part in (whole[top], text))
-        status = next((k for k, name in enumerate(head) if _STATUS.fullmatch(re.sub(r"[*_`]", "", name))), None)
+        if path not in files:  # a file with CRLF endings is read as its LF twin: no row of one was read (2026-11-13)
+            files[path] = _tables(re.sub(r"\r$", "", read(path), flags=re.M).split("\n"))
+        text, top = files[path][number - 1] if number <= len(files[path]) else ("", None)
+        if top is None or number - 1 <= top + 1:
+            continue  # not a row, or its table's header or the line under it
+        if (path, top) not in heads:  # a table's columns, read once; under a header with no delimiter row, none
+            names = [_name(cell) for cell in _cells(files[path][top][0])] if RULE.fullmatch(files[path][top + 1][0]) else []
+            status = next((k for k, name in enumerate(names) if _STATUS.fullmatch(name)), None)
+            heads[path, top] = (status, [k for k, name in enumerate(names) if k != status and _EVIDENCE.search(name)],
+                                [k for k, name in enumerate(names) if k != status and _SOFT.search(name)])
+        status, hard, soft = heads[path, top]
         if status is None:
             continue
-        said, proof = row[status] if status < len(row) else "", [k for k, name in enumerate(head) if _EVIDENCE.search(name)]
-        if proof:
-            if _BLANK.sub("", said) and not any(_BLANK.sub("", row[k]) for k in proof if k < len(row)) and not re.search(r"(?i)\bunverified\b", text):
+        row = _cells(text)
+        filled = {k for k, cell in enumerate(row) if _BLANK.sub("", cell)}
+        if hard:
+            if status in filled and not filled & {*hard, *soft} and not re.search(r"(?i)\bunverified\b", text):
                 found.append(f"{path}:{number}: this row gives a status and no evidence, in a table that has a column for it. Say "
                              "where it was checked (a link, a command, a record), or write `unverified`")
-        elif _WORKS.search(said) and not _POINTS.search(text):
+        elif (not filled & set(soft) and not _POINTS.search(text)  # `not done`, `won't be ready`: no claim (2026-11-13)
+              and any(not _NOT.search(said[:claim.start()]) for said in row[status:status + 1] for claim in _WORKS.finditer(said))):
             noted[path] = noted.get(path, 0) + 1
     return found, [f"{path}: {count} row{'s' if count != 1 else ''} added to a table with a Status column say a thing works or is done and "
                    "point at nothing. Give the table a column for evidence (`Evidence`), or write `unverified`" for path, count in noted.items()]
