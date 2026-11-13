@@ -4,7 +4,7 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
-## [5.8.2] - 2026-11-12
+## [5.8.2] - 2026-11-13
 
 - **A package of the method skills for a plugin directory that takes no hooks** (`synthesis-skills-manager` 3.5.0).
   OpenAI's public plugin directory lists no plugin that registers lifecycle hooks, and this plugin registers four.
@@ -35,19 +35,26 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   their source on every call. On one Mac a shell command's check took about 72 ms against the 50 ms budget, and
   `synthesis doctor` said so (`hook self-test`). The installer now compiles the runtime once, for the interpreter
   that installs it, and the same check takes 33 ms. The plugin folders stay as each harness installed them, the
-  runtime's hash is of its source as before, and an install over a runtime without compiled code adds it. An
-  interpreter that keeps compiled code under one folder of its own (Apple's Python) finds the runtime's there,
+  runtime's hash is of its source as before, and an install over a runtime without compiled code adds it. So
+  does a session start: an upgrade through a harness is made by the installer of the release already there,
+  which before this release compiled nothing, and the interpreter a hook runs on can change under a runtime; the
+  check costs a session start about 1 ms. Each compiled file carries its source's hash and is checked against it
+  when it is loaded, not against its date and size, and nothing that goes wrong while compiling stops an install.
+  An interpreter that keeps compiled code under one folder of its own (Apple's Python) finds the runtime's there,
   under the path a hook imports from; a test run under such an interpreter keeps its compiled code in a
   temporary folder.
 - CI runs the suite in three jobs for each system and Python: the core's tests in two halves by file name, and
   the skills'. The whole suite had come to take up to 526 seconds on a macOS runner, and on main one job was
   cancelled at its ten-minute limit with no test failing; as two jobs, the core's tests still ran over the limit
-  on one slow runner. A lint test holds that the three jobs together miss no test file.
+  on one slow runner. A lint test holds that the three jobs together miss no test file, by either name pytest
+  collects (`test_*.py` and `*_test.py`) and in any folder.
 - The tests' time bounds follow the machine that runs them. The guard hook was held to a fixed 150 ms: one slow
   runner failed it with nothing changed, and the 72 ms above had passed it. Its test now runs the installed,
-  compiled runtime and allows twice what a fresh interpreter takes, on that machine at that moment, to load the
-  standard-library modules the hook needs; it names those modules and fails when the hook loads another. The
-  turn-end check's test does the same, and eight bounds on work inside the test process stretch by how much
+  compiled runtime as a session runs it, told to write no bytecode, and allows twice what a fresh interpreter
+  takes, on that machine at that moment, to load the standard-library modules the hook needs. It names those
+  modules and fails when the hook's own code imports another while the call runs, at a module's top or inside a
+  function; and it fails a runtime that is not compiled (2.7 times, where the compiled one takes 1.3 to 1.5).
+  The turn-end check's test does the same, and eight bounds on work inside the test process stretch by how much
   slower the machine runs a fixed piece of work.
 
 ## [5.8.0] - 2026-11-12

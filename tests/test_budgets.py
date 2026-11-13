@@ -679,22 +679,25 @@ ROOT = Path(__file__).resolve().parents[1]
 # old_spelling 8, temporary 2 and 7 lines of constants and notes; server.py 14: a refresh refused in the test mode;
 # together its owner's five rulings and the review's three findings); relied_on.py 10 (a checker or a check that
 # cannot run says so).
-# 5.8.1 (2026-11-12): core 13, plugin 40. install.py: _compile 10 and install 3 (the runtime is compiled once at
-# install, so a hook does not compile the guards from source on every call: 72 ms to 33 ms for a shell command's check).
+# 5.8.1 (2026-11-12): core 34, plugin 61. install.py: _compile 18, _compiled 12 and install 4 (the runtime is compiled
+# once at install, so a hook does not compile the guards from source on every call: 72 ms to 33 ms for a shell command's
+# check; and, from the release's review, a session start compiles a runtime that an older release's installer switched
+# to, a compiled file is held to its source's hash and not its date, and compiling cannot fail an install).
 # conftest.py at the root 27, new: under an interpreter that keeps compiled code in one folder of the person's own
 # (Apple's Python), a test run keeps its compiled code in a temporary folder, in this process and in each it starts.
-# 5.8.2 (2026-11-12): core 3, plugin 237. doctor.py: _reap 3 (the doctor closes the three pipes it opened to a harness
+# 5.8.2 (2026-11-13): core 3, plugin 265. doctor.py: _reap 3 (the doctor closes the three pipes it opened to a harness
 # CLI when it stops it; they were left to the collector, which Python 3.13 reports at every such query).
-# build_directory_package.py 234, new (the package of method skills for a plugin directory that lists no plugin with
-# hooks; it left 5.8.0 for a passage since moved): verify 45 (the eight things that fail a built ZIP), its header,
-# imports and constants' notes 42, main 40 (build, --check, --changed-since), build 24, CLAIMS 15 and ACTS 5 (the
-# phrases of a line that claims a guard, a hook or an approval code, or needs the runtime), read_list 8, depends_on 7,
-# git 7, read_json 7, differing 7, source 5, Unreadable 4, claims 4, is_test 4, count 4, and 6 lines of constants
-# (REPO, LIST, IMAGES, ICONS, MANIFEST).
+# build_directory_package.py 262, new (the package of method skills for a plugin directory that lists no plugin with
+# hooks; it left 5.8.0 for a passage since moved): verify 48 (the nine things that fail a built ZIP), main 45 (build,
+# --check, --changed-since), its header, imports and constants' notes 44, carried 23 (what a package carries, read
+# from the last commit itself for a ZIP that is written), build 17, CLAIMS 15 and ACTS 5 (the phrases of a line that
+# claims a guard, a hook or an approval code, or needs the runtime), read_list 8, depends_on 7, git 7, read_json 7,
+# committed 7, differing 7, Unreadable 4, claims 4, is_test 4, count 4, and 6 lines of constants (REPO, LIST, IMAGES,
+# ICONS, MANIFEST).
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # consolidate first).
-CORE_BUDGET = 11859
-PLUGIN_BUDGET = 32877
+CORE_BUDGET = 11880
+PLUGIN_BUDGET = 32926
 
 
 def _lines(files):
@@ -733,12 +736,31 @@ def test_the_hook_budget_fails_an_unnamed_import_a_name_nothing_imports_and_a_sl
     """The budget is a test's only word on a hook's cost, so each way it can refuse is shown to refuse."""
     hook = [str(compiled_runtime / "synthesis" / "hook.py"), "pre-tool-use"]
     payload = json.dumps({"tool_name": "Bash", "tool_input": {"command": "ls"}})
-    with pytest.raises(AssertionError, match=r"synthesis\.sends imports urllib\.parse as it loads: every call pays for it"):
+    with pytest.raises(AssertionError, match=r"synthesis\.sends imports urllib\.parse while the call runs: every call pays for it"):
         hook_budget(hook, tuple(name for name in HOOK_NEEDS if name != "urllib.parse"), input=payload, cwd=str(tmp_path))
-    with pytest.raises(AssertionError, match="asyncio is named as a need and nothing in this call imports it as it loads"):
+    with pytest.raises(AssertionError, match="asyncio is named as a need and nothing of the call's own imports it"):
         hook_budget(hook, HOOK_NEEDS + ("asyncio",), input=payload, cwd=str(tmp_path))
-    with pytest.raises(AssertionError, match="the caller imports json as it loads"):
-        hook_budget(["-c", "import time\ntry:\n    import json\nexcept ImportError:\n    pass"], ("time",))
-    slow = "import time\n\ndef later():\n    import asyncio\n\nsum(range(5_000_000))"  # work, where the need is a start
+    inside = "import time\n\ndef later():\n    import shlex\n\nlater()"  # inside a function, and the function runs
+    with pytest.raises(AssertionError, match="the caller imports shlex while the call runs"):
+        hook_budget(["-c", inside], ("time",))
+    slow = "import time\nif not time:\n    import asyncio\ntime.sleep(0.25)"  # an import that never runs is no need
     with pytest.raises(AssertionError, match=r"the call took \d+ ms; its standard-library modules alone load in \d+ ms here"):
-        hook_budget(["-c", slow], ("time",))
+        hook_budget(["-c", slow], ("time",), rounds=3)
+
+
+def test_the_hook_budget_fails_a_runtime_that_is_not_compiled(compiled_runtime, tmp_path, hook_budget, monkeypatch):
+    """What 5.8.1 fixed is what the budget has to catch, on any machine: it looks at the runtime, since by time alone
+    an uncompiled one passed where starting a process costs more than compiling does. A process that may write
+    bytecode compiles the runtime at its first call, which is how CI runs the suite; a session's hooks are told to
+    write none, so the budget's own runs are told the same and leave the runtime as they found it (both found by a
+    review before 5.8.1 was released)."""
+    from importlib.util import cache_from_source
+    monkeypatch.delenv("PYTHONDONTWRITEBYTECODE", raising=False)  # as CI runs the suite
+    compiled = [Path(cache_from_source(str(source))) for source in (compiled_runtime / "synthesis").glob("*.py")]
+    for file in compiled:
+        file.unlink()
+    payload = json.dumps({"tool_name": "Bash", "tool_input": {"command": "ls -la && git status"}})
+    with pytest.raises(AssertionError, match="the runtime is not compiled for this interpreter, so every call compiles it"):
+        hook_budget([str(compiled_runtime / "synthesis" / "hook.py"), "pre-tool-use"], HOOK_NEEDS,
+                    input=payload, cwd=str(tmp_path))
+    assert not [file for file in compiled if file.exists()]  # and the budget's own run of the call wrote none

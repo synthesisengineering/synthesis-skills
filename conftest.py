@@ -4,7 +4,7 @@ An interpreter may keep its compiled code under one folder of the person's own i
 Apple's Python does, under ~/Library/Caches. The installer compiles a runtime where the interpreter that installs
 looks for compiled code, and a test's runtime lives in a temporary folder, so under such an interpreter every test
 that installs would leave compiled files for a path that no longer exists in the person's cache. This run keeps its
-compiled code under a temporary folder of its own instead, in this process and in every process a test starts.
+compiled code under a temporary folder of its own instead: this process, and each one started with its environment.
 """
 import os
 import sys
