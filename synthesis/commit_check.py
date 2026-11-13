@@ -810,9 +810,9 @@ def record_times(lines: list, settings, now: datetime, read) -> list:
 # status was written from an assumption. That a line claims a thing works is meaning, which this does not read. That
 # a table has a column headed Status and a column for evidence is the table's own statement, and a table is held to
 # it. Measured first (2026-11-13), on thirty days of commits: 1,520 rows added to tables with a Status column, 931 of
-# them to tables that also have a column for evidence, 12 of those with a status and no evidence (in 6 commits); and
-# 262 rows that said a thing works or is done and pointed at nothing, most in tables with no such column. The list
-# of words below is used for a note only: a wrong note costs a line of a commit's output.
+# them to tables that also have a column for evidence. Replayed as built over the same commits: 11 rows refused in
+# 5 of 1,032 commits, and 12 rows noted in 10. The list of words below is used for a note only: a wrong note costs
+# a line of a commit's output.
 ROW = re.compile(r"^[ \t]*\|(.*)\|[ \t]*$")
 RULE = re.compile(r"^[ \t]*\|?[ \t]*:?-{2,}")
 _STATUS = re.compile(r"(?i)(?:[\w-]+ )?status|state")

@@ -8,9 +8,8 @@ a Status column and no column for evidence gets a note when a row says a thing w
 note is all a list of words may do.
 
 Measured before it was built (2026-11-13), on thirty days of commits to twenty-seven knowledge repositories: 1,520
-rows were added to tables with a Status column, 931 of them to tables that also have a column for evidence, and 12
-of those left the evidence empty beside a status, in 6 commits. Another 262 rows said a thing works or is done and
-pointed at nothing, in 43 commits; most stand in tables that have no column for evidence.
+rows were added to tables with a Status column, 931 of them to tables that also have a column for evidence.
+Replayed as built over the same 1,032 commits: 11 rows refused in 5 commits, and 12 rows noted in 10.
 """
 
 import os
