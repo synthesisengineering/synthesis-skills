@@ -115,7 +115,10 @@ for none and are refused before the call is made: ``the file <path> is outside t
 folders the connector reads: copy the file into <outbox> (make the folder if it is
 missing), give that copy's full path as `file_path` and make this call again``. Their
 `file_url` is fetched over http or https and never read from this disk, so a `file://`
-URL or a path there is refused with `file_path` named.
+URL or a path there is refused with `file_path` named. A source that cannot be parsed as a
+path or a URL, or a path holding a NUL, is refused with its field named; and a staged file
+the connector could not read is refused for the tools that ask for no code too (the guard
+reads its first byte), as it is for a send.
 
 - Give the path whole, under the key `path`, the one the connector reads. It resolves
   a relative path in its own folder, expands no `~`, follows links, and then compares

@@ -274,12 +274,13 @@ def message_problems(tool: str, tool_input: dict, config: dict, chans: set | Non
     return problems + _unread_files(tool, tool_input)
 
 
-def _unread_files(tool: str, tool_input: dict, bound: dict | None = None) -> list[str]:
+def _unread_files(tool: str, tool_input: dict, bound: dict | None = None, whole: bool = True) -> list[str]:
     """Why a workspace-connector call would not attach or upload what it names, judged as the connector reads it. A
     file is judged as it reads one: the path whole (it resolves a relative one in its own folder and expands no
     `~`), links followed, letters as written, the file inside the outbox or the connector's default attachment
     folder, and not one it reads from nowhere. A Drive call gives the file's content once. Given `bound`, each file
-    it would read goes into it under its real path with the hash of its bytes, and one that cannot be read is a problem."""
+    it would read goes into it under its real path with the hash of its bytes (of its first byte alone when not
+    `whole`, which shows it can be read), and one that cannot be read is a problem."""
     name = tool.rsplit("__", 1)[-1]
     key, given = FILE_DRIVE_TOOLS.get(name), tool_input.get("attachments") if name in FILE_MAIL_TOOLS else None
     if not key and given is None:
@@ -316,6 +317,8 @@ def _unread_files(tool: str, tool_input: dict, bound: dict | None = None) -> lis
 
     def unread(file: str, what: str = "the attachment", who: str = "the mail connector",
                give: str = "as the attachment's `path`, and file this send again") -> str:
+        if "\0" in file:  # it names no file, and a newer Python raises where such a path is resolved
+            return f"{what} {file!r} holds a NUL character, which names no file: {stage}{give}"
         real = os.path.realpath(file)
         names = real.lower().split(os.sep)
         why = ("is not a full path" if not os.path.isabs(file) else "does not exist" if not os.path.exists(real)
@@ -327,8 +330,8 @@ def _unread_files(tool: str, tool_input: dict, bound: dict | None = None) -> lis
         why = why or ("" if real.startswith(roots) else f"is outside the folders {who} reads")
         try:
             if not why and bound is not None:
-                bound[real] = _sha256(real, until)
-        except OSError as exc:
+                bound[real] = _sha256(real, until, whole)
+        except (OSError, ValueError) as exc:
             return f"{what} {file} cannot be read ({exc.strerror or exc})"
         return why and f"{what} {file} {why}: {stage}{give}"
 
@@ -339,12 +342,17 @@ def _unread_files(tool: str, tool_input: dict, bound: dict | None = None) -> lis
                         "for a file's content: give one and make this call again")
     if isinstance(named, str):
         from urllib.parse import unquote, urlparse
-        url = urlparse(named)  # a file:// URL is the path in it, percent-decoded, led by any host but localhost
-        if url.scheme == "file":
+        give = f"as `{key}`" + (", after `file://`," if key == "fileUrl" else "") + " and make this call again"
+        try:
+            url = urlparse(named)  # a file:// URL is the path in it, percent-decoded, led by any host but localhost
+        except ValueError as exc:  # the connector parses it the same way first, and fails the call
+            problems.append(f"`{key}` {named} cannot be parsed as a path or a URL ({exc}), so the connector would refuse "
+                            f"the call: give the staged file's full path {give}")
+            url = None
+        if url and url.scheme == "file":
             named = unquote(("//" + url.netloc if url.netloc.lower() not in ("", "localhost") else "") + url.path)
-        if url.scheme == "file" or key == "file_path":
-            problems.append(unread(named, "the file", "the connector", f"as `{key}`"
-                                   + (", after `file://`," if key == "fileUrl" else "") + " and make this call again"))
+        if url and (url.scheme == "file" or key == "file_path"):
+            problems.append(unread(named, "the file", "the connector", give))
     if isinstance(remote, str) and (remote.lower().startswith("file:") or os.path.isabs(remote)):
         problems.append(f"`file_url` is fetched over http or https, and {remote} is a file on this disk: copy the file into "
                         f"{outbox} (make the folder if it is missing), give that copy's full path as `file_path` and make "
@@ -407,12 +415,13 @@ def _standard_base64(text) -> bool:
 HASH_SECONDS = 2.0  # of the 5 a pre-tool-use hook is given: a harness passes over a hook that runs past its time
 
 
-def _sha256(file: str, until: float) -> str:
-    """The hash of a file's bytes, read before `until`: a file that takes longer is one the guard cannot bind."""
+def _sha256(file: str, until: float, whole: bool = True) -> str:
+    """The hash of a file's bytes (of its first byte alone when not `whole`), read before `until`: a file that takes
+    longer is one the guard cannot bind."""
     import hashlib
     digest = hashlib.sha256()
     with open(file, "rb") as handle:
-        for chunk in iter(lambda: handle.read(1 << 20), b""):
+        for chunk in iter(lambda: handle.read(1 << 20), b"") if whole else [handle.read(1)]:
             digest.update(chunk)
             if time.monotonic() >= until:
                 raise TimeoutError(f"not within the {HASH_SECONDS:g} s the guard may spend reading the files a call names")
@@ -421,8 +430,9 @@ def _sha256(file: str, until: float) -> str:
 
 def check_upload(tool: str, tool_input: dict) -> str | None:
     """A Drive upload that asks for no code still names a file the connector must read: one it would not read is
-    refused here, as a send's is before its code."""
-    unread = _unread_files(tool, tool_input)
+    refused here, as a send's is before its code, and so is one it cannot read: its first byte is read, since no
+    approval binds its bytes."""
+    unread = _unread_files(tool, tool_input, {}, whole=False)
     return "This call can't go as written: " + "; ".join(unread) + "." if unread else None
 
 
