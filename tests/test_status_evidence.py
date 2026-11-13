@@ -49,12 +49,17 @@ def test_a_row_with_its_evidence_or_the_word_unverified_passes(row):
     assert said(RECORD, row) == ([], [])
 
 
-@pytest.mark.parametrize("status", ["", " ", "-", "—", "n/a", "N/A", "tbd", "?", "**"])
+# A review of 2026-11-13: a cell that holds only a line break, a non-breaking space, an ellipsis or a zero-width
+# character says nothing, and counted as evidence.
+SILENT = ["<br>", "<br/>", "<BR />", "&nbsp;", "...", "…", "​", "⁠", "﻿", "<br> &nbsp; …"]
+
+
+@pytest.mark.parametrize("status", ["", " ", "-", "—", "n/a", "N/A", "tbd", "?", "**", *SILENT])
 def test_a_row_that_gives_no_status_owes_no_evidence(status):
     assert said(RECORD, f"| The connector | {status} | |") == ([], [])
 
 
-@pytest.mark.parametrize("evidence", ["", "  ", "-", "—", "n/a", "N/A", "none", "TBD", "?", "**", "_-_"])
+@pytest.mark.parametrize("evidence", ["", "  ", "-", "—", "n/a", "N/A", "none", "TBD", "?", "**", "_-_", *SILENT])
 def test_a_dash_or_a_placeholder_is_no_evidence(evidence):
     assert len(said(RECORD, f"| The connector | live | {evidence} |")[0]) == 1
 
@@ -124,6 +129,20 @@ def test_a_table_with_no_column_for_evidence_gets_a_note_and_never_a_refusal(sta
 ])
 def test_no_note_for_a_row_that_points_somewhere_or_claims_nothing(row):
     assert said(RECORD, row, before=BARE) == ([], [])
+
+
+@pytest.mark.parametrize("status", [
+    "not done", "not working", "won't be ready", "won’t be ready", "isn't live", "never shipped", "no longer working",
+    "Not yet done", "doesn't work", "cannot be deployed",
+])
+def test_no_note_for_a_status_that_negates_the_word(status):
+    assert said(RECORD, f"| The connector | {status} |", before=BARE) == ([], [])
+
+
+@pytest.mark.parametrize("status", ["done, not blocked", "not blocked, done", "was not working, now working", "live; never down"])
+def test_a_negation_of_another_word_still_leaves_the_claim(status):
+    found, notes = said(RECORD, f"| The connector | {status} |", before=BARE)
+    assert found == [] and len(notes) == 1
 
 
 def test_the_note_counts_the_rows_of_one_file_and_each_file_has_its_own():
