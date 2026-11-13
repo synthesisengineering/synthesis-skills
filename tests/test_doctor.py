@@ -815,8 +815,11 @@ def test_catalog_counts_only_implicit_skills_against_two_percent(tmp_path):
 
 
 def test_catalog_cuts_descriptions_at_1024_characters(tmp_path):
-    long = [_skill(tmp_path, "a", description="d" * 5000)]
-    assert doctor.catalog_cost(long, None)[0] < 256 + 1100 // 4 + 40
+    """Held against the same skill with a shorter description, not against a number: the catalog names the folder the
+    skill is in, so a fixed bound failed wherever the temporary folder's path was long (572 against 571)."""
+    def cost(length: int) -> int:  # a folder for each, named by a number of the same width
+        return doctor.catalog_cost([_skill(tmp_path / str(length), "a", description="d" * length)], None)[0]
+    assert cost(5000) == cost(1024) == cost(1020) + 1  # four characters are one token
 
 
 def test_catalog_check_names_undiscoverable_skills_and_overruns(tmp_path):
@@ -1051,6 +1054,29 @@ done
             time.sleep(0.02)
 
 
+def test_the_doctor_closes_the_pipes_of_a_cli_it_has_stopped(tmp_path, monkeypatch):
+    """The three pipes opened to a harness CLI were left for the collector to close: nothing a person saw, and a
+    warning for each under a Python that says so (3.13: `unclosed file` three times at every such query)."""
+    fake, started, real = tmp_path / "codex", [], subprocess.Popen
+    fake.write_text("""#!/bin/sh
+while read line; do
+  case "$line" in
+    *'"id": 0'*) echo '{"id": 0, "result": {}}' ;;
+    *'"id": 1'*) echo '{"id": 1, "result": {"data": []}}' ;;
+  esac
+done
+""")
+    fake.chmod(0o755)
+
+    def recorded(*args, **kwargs):
+        started.append(real(*args, **kwargs))
+        return started[-1]
+    monkeypatch.setattr(subprocess, "Popen", recorded)
+    assert doctor.app_server_query(str(fake), "skills/list", {}) == {"data": []}
+    cli, = started
+    assert cli.returncode is not None and [pipe.closed for pipe in (cli.stdin, cli.stdout, cli.stderr)] == [True] * 3
+
+
 def test_each_sessions_repo_is_checked_for_clone_recent_sync_and_size(tmp_path):
     state = tmp_path / "state"
     state.mkdir()
@@ -1063,6 +1089,197 @@ def test_each_sessions_repo_is_checked_for_clone_recent_sync_and_size(tmp_path):
     assert found["sessions repo a"].status == "ok"
     assert found["sessions repo b"].status == "warn" and "not cloned" in found["sessions repo b"].detail
     assert found["sessions repo c"].status == "warn" and "last synced 2026-10-20" in found["sessions repo c"].detail
+
+
+def _schedule(plist: Path, line=None) -> Path:
+    """The export's schedule file: as the setup writes it for this home's own command, or with `line` handed to its
+    login shell; a list is its program arguments whole, a dictionary the job itself, bytes the file."""
+    import plistlib
+    own = install._home() / "bin" / "synthesis"
+    line = f'"{own}" sessions export --all --scheduled; "{own}" sessions sync' if line is None else line
+    job = line if isinstance(line, dict) else {"ProgramArguments": line if isinstance(line, list) else ["/bin/bash", "-lc", line]}
+    plist.write_bytes(line if isinstance(line, bytes) else plistlib.dumps({"Label": plist.stem, **job}))
+    return plist
+
+
+def test_the_hourly_export_is_checked_for_its_schedule_and_its_last_run(tmp_path):
+    plist, stamp = tmp_path / "com.synthesis.sessions-export.plist", tmp_path / "export.json"
+    loaded = lambda argv, **kw: subprocess.CompletedProcess(argv, 0, "", "")           # noqa: E731
+    absent = lambda argv, **kw: subprocess.CompletedProcess(argv, 113, "", "Could not find service")  # noqa: E731
+    from datetime import datetime
+    now = datetime.fromisoformat("2026-11-12T09:00:00-05:00").timestamp()
+    found = doctor.check_sessions_export(plist, stamp, now, loaded)
+    assert found.status == "warn" and "not scheduled" in found.detail and "--sessions-export" in found.detail
+    _schedule(plist)
+    found = doctor.check_sessions_export(plist, stamp, now, absent)
+    assert found.status == "fail" and "not loaded" in found.detail
+    found = doctor.check_sessions_export(plist, stamp, now, loaded)
+    assert found.status == "fail" and "no export has finished" in found.detail
+    stamp.write_text(json.dumps({"exported": "2026-11-11T08:00:00-05:00"}), encoding="utf-8")
+    found = doctor.check_sessions_export(plist, stamp, now, loaded)
+    assert found.status == "fail" and "25 hours" in found.detail
+    stamp.write_text(json.dumps({"exported": "2026-11-12T08:20:00-05:00", "scheduled": "2026-11-12T08:20:00-05:00"}), encoding="utf-8")
+    found = doctor.check_sessions_export(plist, stamp, now, loaded)
+    assert found.status == "ok" and "every hour" in found.detail and "40 min ago" in found.detail
+
+
+def test_the_hourly_export_is_known_by_a_run_of_the_schedule_itself(tmp_path):
+    """The doctor read the schedule's file and asked launchd only whether the label was loaded. What launchd holds
+    is what it loaded, which may be an older file's commands: a file replaced and never loaded again passed, while a
+    session's own exports kept the stamp fresh (noted by a review, 2026-11-12). The schedule's command marks its
+    runs, and a loaded schedule with no run of its own in a day fails."""
+    from datetime import datetime
+    plist, stamp = _schedule(tmp_path / "com.synthesis.sessions-export.plist"), tmp_path / "export.json"
+    loaded = lambda argv, **kw: subprocess.CompletedProcess(argv, 0, "", "")           # noqa: E731
+    now = datetime.fromisoformat("2026-11-12T09:00:00-05:00").timestamp()
+    stamp.write_text(json.dumps({"exported": "2026-11-12T08:20:00-05:00"}), encoding="utf-8")  # a session's own export
+    found = doctor.check_sessions_export(plist, stamp, now, loaded)
+    assert found.status == "fail" and "the schedule itself has finished no export yet" in found.detail
+    assert "--sessions-export" in found.detail and "launchd" in found.detail
+    stamp.write_text(json.dumps({"exported": "2026-11-12T08:20:00-05:00", "scheduled": "2026-11-11T02:00:00-05:00"}), encoding="utf-8")
+    found = doctor.check_sessions_export(plist, stamp, now, loaded)
+    assert found.status == "fail" and "the schedule itself has finished no export in 31 hours" in found.detail
+    stamp.write_text(json.dumps({"exported": "2026-11-12T08:20:00-05:00", "scheduled": "2026-11-12T07:10:00-05:00"}), encoding="utf-8")
+    found = doctor.check_sessions_export(plist, stamp, now, loaded)
+    assert found.status == "ok" and "40 min ago" in found.detail
+
+
+def test_the_hourly_export_fails_while_a_transcript_it_tried_is_not_copied(tmp_path):
+    """2026-11-12: every copy was refused, the stamp's time was fresh, and this check answered ok."""
+    plist, stamp = tmp_path / "com.synthesis.sessions-export.plist", tmp_path / "export.json"
+    plist.write_text("<plist/>", encoding="utf-8")
+    loaded = lambda argv, **kw: subprocess.CompletedProcess(argv, 0, "", "")           # noqa: E731
+    from datetime import datetime
+    now = datetime.fromisoformat("2026-11-12T09:00:00-05:00").timestamp()
+    refused = f"codex 01a1: not exported ([Errno 13] Permission denied: '{Path.home()}/x.jsonl')"
+    stamp.write_text(json.dumps({"exported": "2026-11-12T08:20:00-05:00", "failed": 3, "reason": refused}), encoding="utf-8")
+    found = doctor.check_sessions_export(plist, stamp, now, loaded)
+    assert found.status == "fail" and "3 transcript(s) could not be copied" in found.detail
+    assert "Permission denied: '~/x.jsonl'" in found.detail and "no run has copied everything yet" in found.detail
+    stamp.write_text(json.dumps({"exported": "2026-11-12T08:20:00-05:00", "failed": 1, "reason": refused,
+                                 "complete": "2026-11-11T08:00:00-05:00"}), encoding="utf-8")
+    found = doctor.check_sessions_export(plist, stamp, now, loaded)
+    assert found.status == "fail" and "no run has copied everything since 2026-11-11T08:00" in found.detail
+    assert "synthesis sessions export --all" in found.detail
+    plist.unlink()                       # with no schedule a session's own export still failed: a failure, not a warning
+    found = doctor.check_sessions_export(plist, stamp, now, loaded)
+    assert found.status == "fail" and "1 transcript(s) could not be copied" in found.detail
+
+
+def test_the_hourly_export_names_a_transcript_that_is_gone_and_who_clears_it(tmp_path):
+    """2026-11-12: a transcript the harness removed after its copy failed was forgotten by the next run, and this check
+    answered ok. The stamp keeps its name; a run cannot copy it any more, so only the principal clears it."""
+    plist, stamp = tmp_path / "com.synthesis.sessions-export.plist", tmp_path / "export.json"
+    plist.write_text("<plist/>", encoding="utf-8")
+    loaded = lambda argv, **kw: subprocess.CompletedProcess(argv, 0, "", "")           # noqa: E731
+    from datetime import datetime
+    now = datetime.fromisoformat("2026-11-12T09:00:00-05:00").timestamp()
+    refused = f"codex 01a1: not exported ([Errno 13] Permission denied: '{Path.home()}/x.jsonl')"
+    there = {"native": f"{Path.home()}/y.jsonl", "at": "2026-11-12T08:20:00-05:00", "reason": refused.replace("01a1", "01a2")}
+    gone = {"native": f"{Path.home()}/x.jsonl", "at": "2026-11-10T07:15:00-05:00", "reason": refused, "gone": "2026-11-12T08:20:00-05:00"}
+    stamp.write_text(json.dumps({"exported": "2026-11-12T08:20:00-05:00", "failed": 2, "reason": refused,
+                                 "uncopied": {"codex 01a1": gone, "codex 01a2": there}}), encoding="utf-8")
+    found = doctor.check_sessions_export(plist, stamp, now, loaded)
+    assert found.status == "fail" and "2 transcript(s) could not be copied" in found.detail
+    assert "codex 01a1 (its copy last failed 2026-11-10T07:15)" in found.detail and "codex 01a2 (its" not in found.detail
+    assert "`synthesis sessions export --lost <session>`" in found.detail and "principal" in found.detail
+    assert "run `synthesis sessions export --all`" in found.detail          # the other may yet be copied
+    stamp.write_text(json.dumps({"exported": "2026-11-12T08:20:00-05:00", "failed": 1, "reason": refused,
+                                 "uncopied": {"codex 01a1": gone}}), encoding="utf-8")
+    found = doctor.check_sessions_export(plist, stamp, now, loaded)
+    assert found.status == "fail" and "codex 01a1 (its copy last failed 2026-11-10T07:15)" in found.detail
+    assert "export --all" not in found.detail and "export --lost" in found.detail      # no run can copy it now
+
+
+# 2026-11-12, a second review: one label holds one schedule, so another install's setup replaces this install's under
+# it. That schedule was loaded, and this home's stamp was fresh from its own sessions' exports: the check answered ok
+# while nothing copied this home's transcripts on a schedule. Whose schedule it is, is told in one place in the core,
+# which the setup that writes, replaces and removes a schedule asks too.
+
+NOT_OURS = {  # {own} is this home's command; beside each, what the check names as what the schedule runs
+    "another install's command": ('"/another/v5/bin/synthesis" sessions export --all; "/another/v5/bin/synthesis" sessions sync',
+                                  "runs /another/v5/bin/synthesis,"),
+    "this install's command, then another's": ('"{own}" sessions export --all; "/another/v5/bin/synthesis" sessions sync',
+                                               "runs /another/v5/bin/synthesis,"),
+    "two other programs": ('/opt/a/synthesis sessions export --all; /opt/b/synthesis sessions sync', "runs /opt/a/synthesis, /opt/b/synthesis,"),
+    "another program handed this install's path": ('echo "{own}" sessions export --all', "runs echo,"),
+    "a sibling whose name begins like it": ('"{own}-old" sessions export --all; "{own}-old" sessions sync', "runs {own}-old,"),
+    "another program, with no shell": (["/usr/bin/env", "{own}", "sessions", "export", "--all"], "runs /usr/bin/env,"),
+    "a job that names another program": ({"Program": "/bin/echo", "ProgramArguments": ["/bin/bash", "-lc", '"{own}" sessions sync']},
+                                         "runs /bin/echo,"),
+    "a line that runs nothing": ("export SYNTHESIS_HOME=/custom", "runs no command that can be read,"),
+    "a file that is no schedule": (b"<plist/>", "runs no command that can be read,"),
+}
+OURS = {
+    "the two commands, as the setup writes them": '"{own}" sessions export --all; "{own}" sessions sync',
+    "homes set first": "export SYNTHESIS_HOME=/custom; export CODEX_HOME='/it'\"'\"'s; \"x\"'; \"{own}\" sessions export --all; \"{own}\" sessions sync",
+    "the command with no shell": ["{own}", "sessions", "export", "--all"],
+}
+
+
+def _named(line, own: str):
+    """`line` with this home's command written in, whatever shape it has."""
+    if isinstance(line, dict):
+        return {key: _named(value, own) for key, value in line.items()}
+    if isinstance(line, list):
+        return [_named(word, own) for word in line]
+    return line.replace(b"{own}", own.encode()) if isinstance(line, bytes) else line.replace("{own}", own)
+
+
+@pytest.fixture
+def exporting(tmp_path):
+    """A schedule file, a stamp an export left forty minutes ago, and the check as it answers while launchd holds
+    the schedule loaded."""
+    from datetime import datetime
+    plist, stamp = tmp_path / "com.synthesis.sessions-export.plist", tmp_path / "export.json"
+    stamp.write_text(json.dumps({"exported": "2026-11-12T08:20:00-05:00", "complete": "2026-11-12T08:20:00-05:00",
+                                 "scheduled": "2026-11-12T08:20:00-05:00"}), encoding="utf-8")
+    now = datetime.fromisoformat("2026-11-12T09:00:00-05:00").timestamp()
+
+    def check(line=None, code: int = 0, **given):
+        return doctor.check_sessions_export(_schedule(plist, line), stamp, now,
+                                            lambda argv, **kw: subprocess.CompletedProcess(argv, code, "", ""), **given)
+    check.stamp = stamp
+    return check
+
+
+@pytest.mark.parametrize("line, runs", NOT_OURS.values(), ids=NOT_OURS.keys())
+def test_the_hourly_export_fails_while_the_loaded_schedule_is_not_this_installs(exporting, line, runs):
+    own = str(install._home() / "bin" / "synthesis")
+    assert exporting().status == "ok"                                          # the control: this install's own schedule
+    found = exporting(_named(line, own))
+    assert found.status == "fail" and found.name == "sessions export"
+    assert runs.replace("{own}", own) in found.detail                          # the command the schedule runs,
+    assert f"not this install's {own}" in found.detail                          # the one it would run if it were this install's,
+    assert "--sessions-export" in found.detail                                 # and what makes it so
+
+
+@pytest.mark.parametrize("line", OURS.values(), ids=OURS.keys())
+def test_the_hourly_export_is_this_installs_however_the_line_around_its_command_is_written(exporting, line):
+    found = exporting(_named(line, str(install._home() / "bin" / "synthesis")))
+    assert found.status == "ok" and "40 min ago" in found.detail
+
+
+def test_a_schedule_that_is_not_this_installs_is_weighed_after_a_failed_copy_and_a_schedule_not_loaded(exporting):
+    other = '"/another/v5/bin/synthesis" sessions export --all; "/another/v5/bin/synthesis" sessions sync'
+    found = exporting(other, code=113)                                         # not loaded: nothing runs, whoever's it is
+    assert found.status == "fail" and "not loaded" in found.detail and "/another/v5" not in found.detail
+    exporting.stamp.unlink()                                                   # no export has finished here: the schedule is why
+    found = exporting(other)
+    assert found.status == "fail" and "runs /another/v5/bin/synthesis," in found.detail and "no export has finished" not in found.detail
+    exporting.stamp.write_text(json.dumps({"exported": "2026-11-12T08:20:00-05:00", "failed": 1, "reason": "codex 01a1: not exported (x)"}))
+    found = exporting(other)                                                   # a transcript not copied is said first, as before
+    assert found.status == "fail" and "1 transcript(s) could not be copied" in found.detail
+
+
+def test_the_hourly_export_is_weighed_against_the_command_of_the_home_asked_about(exporting, tmp_path):
+    """The check answers for one home: its stamp, and its own command. Asked about another home, that home's
+    schedule is its own and this one's is not."""
+    other = tmp_path / "other" / "v5" / "bin" / "synthesis"
+    line = f'"{other}" sessions export --all; "{other}" sessions sync'
+    assert exporting(line).status == "fail" and exporting(line, command=other).status == "ok"
+    found = exporting(command=other)
+    assert found.status == "fail" and f"runs {install._home() / 'bin' / 'synthesis'}," in found.detail and f"not this install's {other}" in found.detail
 
 
 # ---- the outbox, and the mail connector that must read it ---------------------
@@ -1251,6 +1468,7 @@ def test_what_a_running_process_was_started_with_is_read_from_the_os(connector):
     finally:
         child.kill()
         child.wait()
+        child.stdout.close()
     assert seen.get("WORKSPACE_MCP_PORT") == "8765" and seen.get("ALLOWED_FILE_DIRS") == env["ALLOWED_FILE_DIRS"]
     assert check.status == "ok", check.detail
     stopped = doctor.check_outbox(*connector)

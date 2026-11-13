@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 import time
+from datetime import datetime
 from pathlib import Path
 
 from synthesis import __version__, board, paths, project
@@ -223,9 +225,20 @@ def cmd_sessions(args) -> int:
     def out(rec: dict, line: str) -> None:
         print(json.dumps(rec, ensure_ascii=False, default=str) if args.json else line)
 
-    if args.action == "export":
-        report = sessions.export(0 if args.all else args.days, args.session or "", rebuild=args.rebuild)
+    if args.action == "export" and args.lost:
+        try:
+            print(sessions.lost(args.lost))
+        except (ValueError, PermissionError) as exc:  # not one the stamp names, or still there; or the principal's code is needed, or is not theirs
+            print(exc, file=sys.stderr)
+            return 1 if isinstance(exc, ValueError) else 2
+    elif args.action == "export":
+        report = sessions.export(0 if args.all else args.days, args.session or "", rebuild=args.rebuild, scheduled=args.scheduled)
         print("\n".join(report[:1] + report[1:][-50:] + [f"{len(report)} line(s)"]) if report else "nothing new to export")
+        if any("not exported" in line or "not copied" in line for line in report):  # 2026-11-12: every copy was refused, and it exited 0
+            stamp = sessions.root() / ".state" / "export.json"  # left before this is said, unless the archive itself could not be written
+            print(next((line for line in report if line.startswith("not exported")), f"{paths.read_json(stamp).get('failed')} transcript(s) "
+                  f"could not be copied: `synthesis doctor` says how each is cleared, and {stamp} names each with why"), file=sys.stderr)
+            return 1
     elif args.action == "sync":
         report = sessions.sync(args.workspace, push=not args.no_push)
         print("\n".join(report) or "no sessions repo configured (config sessions_repos)")
@@ -241,14 +254,59 @@ def cmd_sessions(args) -> int:
             return 1
         rows = (sessions.around(found[0]["folder"], args.seq) if args.seq is not None else
                 sessions.records(found[0]["folder"], kinds, whole=args.whole))
+        who = f"[{found[0].get('harness')} {sessions.short(str(found[0].get('session')))}] "  # no line begins with a bare `#<seq>`
         for rec in rows:
-            out(rec, sessions.render(rec, 0 if args.whole else args.width))
-    elif args.action == "recent":
-        for rec in sessions.recent(args.project, args.workspace, args.limit):
-            out(rec, f"[{rec.get('harness')} {str(rec.get('session'))[:8]}] {sessions.render(rec, args.width)}")
-    else:
-        for rec in sessions.search(args.target, args.workspace, args.project, kinds)[:args.limit]:
-            out(rec, f"[{rec.get('harness')} {str(rec.get('session'))[:8]}] {sessions.render(rec, args.width)}")
+            out(rec, who + sessions.render(rec, 0 if args.whole or rec.get("seq") == args.seq else args.width))
+    elif args.action == "prompts":
+        if not args.workspace:
+            print("name the workspace whose prompts to list: --workspace <name>", file=sys.stderr)
+            return 2
+        day = (args.date or time.strftime("%Y-%m-%d"))[:10]
+        try:  # a day is written one way on every Python (3.11 and later also read 20261030 and 2026-W44-5 as dates); a time may follow it
+            sound = datetime.strptime(day, "%Y-%m-%d").date().isoformat() == day and bool(datetime.fromisoformat(args.date or day))
+        except ValueError:
+            sound = False
+        if not sound:
+            print(f"--date {args.date!r} is not a day: write it YYYY-MM-DD", file=sys.stderr)
+            return 2
+        reach = max(2.0, (time.time() - datetime.fromisoformat(day).timestamp()) / 86400 + 1)  # whatever was written since that day began
+        busy = [line for line in sessions.export(reach) if line.startswith("not exported")]
+        late = busy or sessions.behind(args.workspace, day)  # the archive holds what was typed that day, or nothing is said
+        if late:
+            print(f"the archive is not current, so what was typed on {day} cannot all be listed: {late[0]}"
+                  + (f" (and {len(late) - 1} more)" if len(late) > 1 else "")
+                  + ("" if busy else ". `synthesis doctor` says how each is cleared"), file=sys.stderr)
+            return 2
+        roots = [r and os.path.realpath(os.path.expanduser(r)) for r in args.records]  # each as the walk reads it; an empty name is no folder
+        found = sessions.prompts(args.workspace, day)
+        try:
+            left = sessions.uncited(found, roots) if roots else found
+        except (OSError, RecursionError) as error:  # read as an empty folder, it left every prompt open and no word of why
+            where, why = getattr(error, "filename", None) or ", ".join(roots) or chr(34) * 2, getattr(error, "strerror", None) or error
+            print(f"{where} cannot be read as records ({why}), so no record was checked and nothing is "
+                  "said of what is open: give --records folders that are there, with records that can be read", file=sys.stderr)
+            return 2
+        known = sessions.catalog() if left else []
+        names = {session: sessions.short(session, known) for session in {str(p["session"]) for p in left}}
+        named = [f"{p['harness']} {names[str(p['session'])]} --seq {p['seq']}" for p in left]  # what `show` takes, and no citation
+        where = f" under {', '.join(roots)}"
+        if args.json:
+            print(json.dumps({"workspace": args.workspace, "date": day, "prompts": len(found), "records": roots,
+                              "open" if roots else "listed": named}))  # with no records, nothing was held against any: it lists
+        else:
+            for name, p in zip(named, left):
+                print(f"{name}  {p['at'][11:16]}  {sessions.worded(p['text'], args.width)}")
+            print(f"{len(found)} prompts on {day} in {args.workspace}" + (f", so nothing to cite{where}" if roots else "") if not (roots and found) else
+                  f"all {len(found)} prompts on {day} in {args.workspace} are cited by a record{where}" if not left else
+                  f"{len(left)} of {len(found)} prompts on {day} in {args.workspace} {'is' if len(left) == 1 else 'are'} cited by no record{where}")
+        return 1 if roots and left else 0
+    else:  # recent, search: each record under as much of its session's id as names it and opens it
+        rows = (sessions.recent(args.project, args.workspace, args.limit) if args.action == "recent" else
+                sessions.search(args.target, args.workspace, args.project, kinds)[:args.limit])
+        known = sessions.catalog() if rows else []
+        names = {session: sessions.short(session, known) for session in {str(r.get("session")) for r in rows}}
+        for rec in rows:
+            out(rec, f"[{rec.get('harness')} {names[str(rec.get('session'))]}] {sessions.render(rec, args.width)}")
     return 0
 
 
@@ -305,6 +363,7 @@ def parser() -> argparse.ArgumentParser:
     s.set_defaults(fn=cmd_release)
     s = sub.add_parser("journal", help="snapshots of uncommitted changes; --show SHA PATH prints a file from one")
     s.add_argument("path", nargs="?", default="")
+    s.set_defaults(late="path")
     s.add_argument("--show", default="", metavar="SHA")
     s.add_argument("--limit", type=int, default=20)
     s.set_defaults(fn=cmd_journal)
@@ -345,6 +404,7 @@ def parser() -> argparse.ArgumentParser:
     s.set_defaults(fn=cmd_use)
     s = sub.add_parser("brief", help="print a project's directive and current state")
     s.add_argument("project", nargs="?", default="")
+    s.set_defaults(late="project")
     s.set_defaults(fn=cmd_brief)
     s = sub.add_parser("resume", help="pick up a project: directive, state, next actions and warnings, or the question to ask first")
     s.add_argument("project", help="project id, or the project folder's absolute path")
@@ -354,14 +414,21 @@ def parser() -> argparse.ArgumentParser:
     s.add_argument("-m", "--message", default="Update project records")
     s.set_defaults(fn=cmd_handoff)
     s = sub.add_parser("sessions", help="export, sync, list, show, search agent session transcripts from every harness")
-    s.add_argument("action", choices=("export", "sync", "list", "show", "recent", "search"))
+    s.add_argument("action", choices=("export", "sync", "list", "show", "recent", "search", "prompts"))
     s.add_argument("target", nargs="?", default="", help="show: a session id or its start; search: a pattern")
+    s.set_defaults(late="target")
     s.add_argument("--all", action="store_true", help="export: every transcript, not only those changed in --days")
+    s.add_argument("--scheduled", action="store_true", help=argparse.SUPPRESS)  # the schedule's own run, marked for the doctor
     s.add_argument("--days", type=float, default=2, help="export: transcripts changed in the last N days (default 2)")
     s.add_argument("--session", default="", help="export: only this session")
     s.add_argument("--rebuild", action="store_true", help="export: move the archive aside and export everything again")
+    s.add_argument("--lost", default="", metavar="SESSION", help="export: accept as lost a transcript that was never copied "
+                   "and is gone, as the doctor names it; an agent needs the principal's code")
     s.add_argument("--no-push", action="store_true", help="sync: commit in each sessions repo but do not push")
-    s.add_argument("--seq", type=int, help="show: the cited record and three either side")
+    s.add_argument("--seq", type=int, help="show: the cited record, whole, and three either side")
+    s.add_argument("--date", default="", help="prompts: the day, YYYY-MM-DD (default today)")
+    s.add_argument("--records", action="append", default=[], metavar="FOLDER",
+                   help="prompts: list only those no text file under this folder cites; repeat for more; exit 1 while any is left")
     s.add_argument("--json", action="store_true", help="list, show, recent, search: one JSON object per line")
     s.add_argument("--project", default="")
     s.add_argument("--workspace", default="")
@@ -373,6 +440,7 @@ def parser() -> argparse.ArgumentParser:
     sub.add_parser("approvals", help="list sends and deploys waiting for the principal's approval").set_defaults(fn=cmd_approvals)
     s = sub.add_parser("install", help="install the runtime from a plugin folder (default: this one)")
     s.add_argument("plugin", nargs="?", default="")
+    s.set_defaults(late="plugin")
     s.add_argument("--git-hooks", action="store_true", help="also run the commit check for every repository")
     s.set_defaults(fn=cmd_install)
     s = sub.add_parser("uninstall", help="remove what install wrote; keep config and the board")
@@ -404,7 +472,13 @@ def _main(argv: list[str] | None = None) -> int:
         args = parser().parse_args(argv[:split] + [name])
         args.rest = argv[split + 1:]
         return {"worktree": cmd_worktree, "doctor": cmd_doctor}[name](args)
-    args = parser().parse_args(argv)
+    made = parser()
+    args, rest = made.parse_known_args(argv)
+    late = getattr(args, "late", "")  # the one name a command may leave out: after an option, argparse has already taken it as left out
+    if len(rest) == 1 and late and getattr(args, late) == "" and not rest[0].startswith("-"):
+        setattr(args, late, rest.pop())
+    if rest:
+        made.error("unrecognized arguments: " + " ".join(rest))
     return args.fn(args)
 
 

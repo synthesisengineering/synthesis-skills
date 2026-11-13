@@ -13,6 +13,7 @@ import re
 import subprocess
 from pathlib import Path
 
+import pytest
 
 from synthesis import doctor
 
@@ -338,6 +339,66 @@ def test_the_split_rule_finds_a_file_no_job_runs_and_one_that_two_run(tmp_path):
              "tests/sub/test_beta.py: run by 0 of the jobs"]
     assert unrun_core_tests(tmp_path, halves) == unrun
     assert unrun_core_tests(tmp_path, halves + ["tests/test_a*.py"]) == unrun + ["tests/test_alpha.py: run by 2 of the jobs"]
+
+
+# ---- No call passes a limit or flags to re by position -----------------------------
+
+def positional_re_limits(root: Path) -> list:
+    """Calls such as `re.split(pattern, text, 1)`. Python 3.13 deprecates passing `maxsplit`, `count` or `flags` to
+    `re.split`, `re.sub` and `re.subn` by position, and a later Python will refuse it. On 2026-11-12 the core held
+    three such calls: silent under 3.12, where the suite is run by hand, and a warning at every use under 3.13.
+    This reads the source, so it holds under every Python. It reads the repository's own code: the files at its
+    root and under the four folders that hold code, not a virtual environment or a build folder beside them."""
+    import ast
+    most = {"split": 2, "sub": 3, "subn": 3}
+    found = []
+    own = [*root.glob("*.py"), *(path for folder in ("synthesis", "hooks", "skills", "tests")
+                                 for path in (root / folder).rglob("*.py"))]
+    for path in sorted(own):
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            if (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and isinstance(node.func.value, ast.Name)
+                    and node.func.value.id == "re" and len(node.args) > most.get(node.func.attr, len(node.args))):
+                found.append(f"{path.relative_to(root).as_posix()}:{node.lineno}")
+    return found
+
+
+def test_no_call_passes_a_limit_or_flags_to_re_by_position():
+    assert positional_re_limits(ROOT) == []
+
+
+def test_the_re_rule_finds_a_positional_limit_and_spares_a_named_one(tmp_path):
+    (tmp_path / "skills" / "a").mkdir(parents=True)
+    (tmp_path / "skills" / "a" / "x.py").write_text(
+        "import re\n"
+        "re.split(r',', text, 1)\n"              # maxsplit by position
+        "re.split(r',', text, maxsplit=1)\n"
+        "re.sub(r'a', 'b', text, 1)\n"           # count by position
+        "re.sub(r'a', 'b', text, count=1)\n"
+        "re.subn(r'a', 'b', text, 0, re.I)\n"    # count and flags by position
+        "re.split(r',', text)\n"
+        "text.split(',', 1)\n"                   # a string's own split takes its limit by position
+        "re.findall(r'a', text, re.I)\n")        # and flags are findall's third argument, by position, as before
+    for other in (".venv/y.py", "venv/lib/python3.12/site-packages/pkg/z.py", "build/lib/w.py"):  # not the repository's own
+        (tmp_path / other).parent.mkdir(parents=True)
+        (tmp_path / other).write_text("import re\nre.split(r',', text, 1)\n")
+    (tmp_path / "conftest.py").write_text("import re\nre.sub(r'a', 'b', text, 2)\n")  # a file at the root is
+    assert positional_re_limits(tmp_path) == ["conftest.py:2", "skills/a/x.py:2", "skills/a/x.py:4", "skills/a/x.py:6"]
+
+
+# ---- A deprecated call in the core fails its test on the Python that deprecates it --------
+
+def test_a_deprecation_met_in_the_core_fails_the_test_and_one_met_elsewhere_does_not(request):
+    """`pytest.ini` turns a DeprecationWarning raised for a line of the core into an error. The three positional
+    limits above warned under Python 3.13 at every use, in a summary at the end of a run that nobody read."""
+    import sys
+    import warnings
+    if request.config.getoption("pythonwarnings") or sys.warnoptions:
+        pytest.skip("this run was told how to treat warnings (-W or PYTHONWARNINGS), which outranks or reshapes pytest.ini")
+    with pytest.raises(DeprecationWarning):
+        warnings.warn_explicit("refused by a later Python", DeprecationWarning, "synthesis/guards.py", 1, module="synthesis.guards")
+    with warnings.catch_warnings(record=True) as seen:
+        warnings.warn_explicit("another project's to fix", DeprecationWarning, "elsewhere.py", 1, module="elsewhere")
+    assert [str(w.message) for w in seen] == ["another project's to fix"]
 
 
 # A script that imports the runtime at its top says so in one line when the runtime is not there (2026-11-13: run from

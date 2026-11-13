@@ -320,8 +320,9 @@ def _recent_conversation(pid: str, session_id: str) -> list[str]:
         return ["", f"Recent conversation: not read ({exc})."]
     if not turns:
         return []
+    known = sessions.catalog()
     return ["", "Recent conversation in this project (any harness; `synthesis sessions show <session>` has all of it):"] + [
-        f"  [{r.get('harness')} {str(r.get('session'))[:8]}] {sessions.render(r, 400)}" for r in turns]
+        f"  [{r.get('harness')} {sessions.short(str(r.get('session')), known)}] {sessions.render(r, 400)}" for r in turns]
 
 
 def _handoff_repo(repo: Path, specs: list[str], message: str, claims: list[str]) -> tuple[bool, list[str]]:
@@ -399,7 +400,7 @@ def handoff(session_id: str, message: str = "Update project records") -> list[st
     report, ok = [], True
     for claim in session.claims:
         pattern = claim[:-3] if claim.endswith("/**") else claim  # git is asked about the folder above any glob
-        base = os.path.realpath(os.path.dirname(re.split(r"[*?[]", pattern, 1)[0]) if board.GLOB & set(pattern) else pattern)
+        base = os.path.realpath(os.path.dirname(re.split(r"[*?[]", pattern, maxsplit=1)[0]) if board.GLOB & set(pattern) else pattern)
         probe = base if os.path.isdir(base) else os.path.dirname(base)
         top = _out(Path(probe), "rev-parse", "--show-toplevel") if os.path.isdir(probe) else ""
         if top:

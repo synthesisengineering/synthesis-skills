@@ -380,6 +380,49 @@ def check_sessions_repos(repos: dict, state: Path, now: float = 0) -> list:
     return found
 
 
+def check_sessions_export(plist: Path, stamp: Path, now: float = 0, run=subprocess.run, command: Path = None) -> Check:
+    """The hourly copy of session transcripts (2026-11-11: the archive had no trigger of its own): no export left a
+    transcript it could not copy; then scheduled, loaded, running this home's own `command` (2026-11-12: another
+    install's schedule under the one label read as this home's), and an export finished within the last day, by this job or any session."""
+    how, command = "python3 <synthesis-onboarding>/scripts/setup.py plugin --sessions-export", command or paths.home() / "bin" / "synthesis"
+    last = paths.read_json(stamp)
+    if last.get("failed"):
+        since = f"since {str(last['complete'])[:16]}" if last.get("complete") else "yet"
+        gone = [f"{name} (its copy last failed {str(entry.get('at'))[:16]})" for name, entry in (last.get("uncopied") or {}).items()
+                if entry.get("gone")]  # removed before any run copied it: no run can now
+        return Check("fail", "sessions export", f"{last['failed']} transcript(s) could not be copied ("
+                     + str(last.get("reason", "")).replace(str(Path.home()), "~") + f"), and no run has copied everything {since}"
+                     + (": run `synthesis sessions export --all` and read its lines" if last["failed"] > len(gone) else "")
+                     + (f". Gone before a copy was made, so what {'it' if len(gone) == 1 else 'they'} held is not in the archive: "
+                        f"{', '.join(gone)}. Tell the principal, who alone clears one: `synthesis sessions export --lost <session>`"
+                        if gone else ""))
+    if not plist.exists():
+        return Check("warn", "sessions export", "not scheduled: transcripts are copied only when a session runs resume, "
+                     f"handoff or a ritual ({how})")
+    if run(["launchctl", "print", f"gui/{os.getuid()}/{plist.stem}"], capture_output=True, text=True).returncode:
+        return Check("fail", "sessions export", f"{_short(plist)} is not loaded, so nothing copies transcripts on a schedule ({how})")
+    if not install.runs_only(plist, command):  # this home's fresh stamp says nothing of whose schedule the label holds
+        others = ", ".join(dict.fromkeys(_short(p) for p in install.scheduled(plist) if p and p != str(command)))
+        return Check("fail", "sessions export", f"{_short(plist)} is loaded and runs {others or 'no command that can be read'}, not this install's "
+                     f"{_short(command)}, so no schedule of this install's own copies this home's transcripts ({how}, which sets that one aside)")
+    try:
+        age = ((now or time.time()) - datetime.fromisoformat(last.get("exported", "")).timestamp()) / 3600
+    except ValueError:
+        age = None
+    if age is None or age > 24:
+        return Check("fail", "sessions export", "scheduled, and no export has finished " + ("yet" if age is None else f"in {age:.0f} hours")
+                     + f": read /tmp/{plist.stem}.log")
+    try:  # launchd runs what it loaded, which a file replaced since does not show: the schedule's own run does
+        own = ((now or time.time()) - datetime.fromisoformat(last.get("scheduled", "")).timestamp()) / 3600
+    except ValueError:
+        own = None
+    if own is None or own > 24:
+        return Check("fail", "sessions export", "loaded, and the schedule itself has finished no export "
+                     + ("yet" if own is None else f"in {own:.0f} hours") + ": launchd may hold an older schedule under this label, "
+                     f"or the job cannot run ({how}, which loads this one again; it writes /tmp/{plist.stem}.log)")
+    return Check("ok", "sessions export", f"every hour; the last one finished {age * 60:.0f} min ago")
+
+
 def check_board(home: Path) -> Check:
     """The board moved to board/ in 5.1.18; whatever is left under state/ is read by no session."""
     old = [n for n in paths.BOARD_FILES if os.path.lexists(home / "state" / n)]
@@ -586,7 +629,10 @@ def _reap(proc) -> None:
         os.killpg(proc.pid, 9)
     except (ProcessLookupError, PermissionError):
         pass
-    proc.wait()
+    try:
+        proc.__exit__(None, None, None)  # waits for it, and closes the pipes opened to it
+    except OSError:
+        pass  # words still unsent to a child that is gone
 
 
 def _explicit_only(skill_md: Path) -> bool:
@@ -1278,6 +1324,9 @@ def run_checks(home: Path | None = None, find=find_client, latest_ref: str = "",
     checks = [check_runtime(home), check_config(home), check_board(home)]
     from synthesis import sessions
     checks += check_sessions_repos(sessions.repos(), home / "sessions" / ".state")
+    if sys.platform == "darwin":
+        checks.append(check_sessions_export(Path.home() / "Library" / "LaunchAgents" / "com.synthesis.sessions-export.plist",
+                                            home / "sessions" / ".state" / "export.json", command=home / "bin" / "synthesis"))
     runtime = runtime_hash(home) if checks[0].status == "ok" else ""
     if (home / "bin" / "synthesis-hook").is_file():  # when it is missing, the runtime line already says so
         checks += [check_hook_script(home), check_self_test(home), check_wait_check()]  # before the CLIs start, so they don't skew timing

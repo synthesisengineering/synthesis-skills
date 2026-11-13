@@ -679,16 +679,47 @@ ROOT = Path(__file__).resolve().parents[1]
 # old_spelling 8, temporary 2 and 7 lines of constants and notes; server.py 14: a refresh refused in the test mode;
 # together its owner's five rulings and the review's three findings); relied_on.py 10 (a checker or a check that
 # cannot run says so).
-# 5.8.1 (2026-11-12): core 34, plugin 61. install.py: _compile 18, _compiled 12 and install 4 (the runtime is compiled
+# 5.8.1 (2026-11-13): core 34, plugin 61. install.py: _compile 18, _compiled 12 and install 4 (the runtime is compiled
 # once at install, so a hook does not compile the guards from source on every call: 72 ms to 33 ms for a shell command's
 # check; and, from the release's review, a session start compiles a runtime that an older release's installer switched
 # to, a compiled file is held to its source's hash and not its date, and compiling cannot fail an install).
 # conftest.py at the root 27, new: under an interpreter that keeps compiled code in one folder of the person's own
 # (Apple's Python), a test run keeps its compiled code in a temporary folder, in this process and in each it starts.
+# 5.8.2 (2026-11-13): core 3, plugin 294. doctor.py: _reap 3 (the doctor closes the three pipes it opened to a harness
+# CLI when it stops it; they were left to the collector, which Python 3.13 reports at every such query).
+# build_directory_package.py 291, new (the package of method skills for a plugin directory that lists no plugin with
+# hooks; it left 5.8.0 for a passage since moved): verify 48 (the nine things that fail a built ZIP), its header,
+# imports and constants' notes 47, main 45 (build, --check, --changed-since), carried 23 (what a package carries,
+# read from the last commit itself for a ZIP that is written), CLAIMS 20, ACTS 6, COMMANDS 2 and BY 1 (the phrases of
+# a text that claims a guard, a hook or an approval code at work, sends its reader to the board or needs the
+# runtime), build 17, claimed 16 (a file read a paragraph at a time, so a claim that wrapping splits is caught),
+# read_list 8, depends_on 7, git 7, read_json 7, committed 7, differing 7, claims 5, Unreadable 4, is_test 4,
+# count 4, and 6 lines of constants (REPO, LIST, IMAGES, ICONS, MANIFEST).
+# 5.9.0 (2026-11-13): core 444, plugin 583. What the principal typed reaches a record, and the archive is copied on
+# a schedule. sessions.py 288: _Session 46 (held and flush: a line torn by a cut write is finished as a whole record,
+# and a copy cut before its state was saved repeats none), uncited 43 (the prompts no record cites: which files are
+# read, what is passed over, and what stops the listing with its name) and _text 11 (a string that carries an escape
+# is read as the text it holds), worded 7 (a prompt's first words for the listing's line, every number set apart
+# from its `#`) and named 5 (the sessions a citation's id names), _export 36 and lost 35 (the stamp every export
+# leaves: what it could not copy, what is gone, the schedule's own mark; a loss only the principal clears), behind 20
+# (the listing stops while a transcript that may hold the day's prompts is not copied), prompts 19, natives 17 (a
+# folder or a transcript the search cannot look at is named), short 13, _codex 9 (a turn is read by how it says it
+# began, and a mirrored copy is one prompt), CITED 6, STRING 3 and RECORDS 1, _rebuild 4, _shift 4, catalog 2,
+# find 2, _prompt 1 and 4 lines of imports. cli.py 74: cmd_sessions 56 (the prompts action, which names a prompt by
+# what opens it and says where it looked; --lost; the export's exit status; `show` begins each line with its
+# session), parser 10 and _main 6 (a name a command may leave out is read after an option too: `show --json <id>`
+# was refused), imports 2. doctor.py 46: check_sessions_export 41, run_checks 3, check_board 2. install.py 35:
+# scheduled 24 and runs_only 9 (what the loaded schedule runs, read from its own command line), _git_global 2.
+# project.py 1 (_recent_conversation).
+# Outside the core 139: ritual_state.py 87 (prompts 66 and _is_day 8, each with the two blank lines after it: the
+# day-end record runs the listing itself and refuses a clean close over an open prompt, a folder written from no
+# fixed place is refused, and a day is one written YYYY-MM-DD; cmd_record 4; 9 lines of the module's note and
+# imports) and setup.py 52 (register_sessions_export 27, unregister_sessions_export 11, main 5, _homes 4,
+# _export_plist 4, EXPORT_LABEL 3, workspace_archive 2, HOMES 1 and a note 1, less 6 in _points_at).
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # consolidate first).
-CORE_BUDGET = 11877
-PLUGIN_BUDGET = 32661
+CORE_BUDGET = 12324
+PLUGIN_BUDGET = 33538
 
 
 def _lines(files):

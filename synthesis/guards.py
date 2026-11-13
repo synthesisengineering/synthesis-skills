@@ -2811,7 +2811,7 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
             filled, worded = iter(node.args), {k.arg: k.value for k in node.keywords}
 
             def fill(m):
-                name = re.split(r"[!:.\[]", m[1], 1)[0]
+                name = re.split(r"[!:.\[]", m[1], maxsplit=1)[0]
                 a = next(filled, None) if not name else node.args[int(name)] if name.isdigit() and int(name) < len(node.args) else worded.get(name)
                 return spelled(a) if a is not None and not isinstance(a, ast.Starred) else "\0"
             return re.sub(r"\{([^{}]*)\}", fill, shape.replace("{{", "\3").replace("}}", "\4")).replace("\3", "{").replace("\4", "}")
@@ -3353,7 +3353,7 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
             return [v for c in resolve(node.func.value) or [None] for v, _ in part(c, ("k", None))] if primed else None
         if isinstance(node, ast.Call) and label in ("glob", "iglob") and not method and node.args:  # what a pattern finds lies under the folder before its first wildcard
             top = os.path.join(*[spelled(k.value) for k in node.keywords if k.arg == "root_dir"], spelled(node.args[0]))
-            cut = re.split(r"[*?\[]", top, 1)
+            cut = re.split(r"[*?\[]", top, maxsplit=1)
             lead = os.path.dirname(cut[0])
             return [top] if len(cut) == 1 else None if ".." in cut[1].split("/") else [lead + "/\0" if lead else "\0"]  # a pattern that climbs finds what lies elsewhere
         if isinstance(node, ast.Call) and method and label in ("glob", "rglob") and (

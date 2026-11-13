@@ -5,8 +5,8 @@ There is no mutable state file. On 2026-09-02 one seat's close overwrote
 another's single `last_day_end` slot; a lock would not have helped, because the
 second writer still replaces the slot. So records are appended and every view
 is derived. Each record carries two clocks: `date`, the logical workday opened
-or closed (required, never inferred: a close written at 01:30 belongs to the
-day before), and `ts`, when it was written. On 2026-09-14 an unscoped weekly
+or closed (required, never inferred, never a day ahead: a close written at 01:30
+belongs to the day before), and `ts`, when it was written. On 2026-09-14 an unscoped weekly
 review query let one workspace's Friday review silence every other workspace,
 so every view answers for one workspace, and an empty `--workspace ""` (an
 unset shell variable) is refused rather than read as "all workspaces".
@@ -26,6 +26,13 @@ that holds an in-person event without its travel, and the ritual is not recorded
 It also reads the day's plan in each declared plan folder: an open item that offers options with no
 recommendation, or with no word on what it costs where it would commit the principal's time, and the
 ritual is not recorded (the invitation to that evening had been put as a bare accept or decline).
+For a workspace that turns prompt reconciliation on (`"prompt_reconcile": {"records": ["<folder>"]}`,
+with `"from": "YYYY-MM-DD"` for the first day it applies) a day-end record runs
+`synthesis sessions prompts` itself over that day and those folders: a clean outcome is refused while
+a prompt the principal typed that day is cited by no record, a partial one says how many are open, and
+nothing is recorded when the listing cannot be made (2026-11-11: what he asked reached a record only
+if an agent remembered). Only a missing key or `false` turns it off: any other value that is not that
+setting is refused, and so is a first day that is not a day.
 
 The log is `<synthesis home>/rituals/history.jsonl` (`RITUAL_STATE_DIR` or
 `--state-dir` points elsewhere, to exercise a copy). Derivations live in the
@@ -39,6 +46,8 @@ import fcntl
 import json
 import os
 import re
+import shutil
+import subprocess
 import sys
 from datetime import date, datetime, time, timedelta
 from pathlib import Path
@@ -140,6 +149,14 @@ def _day(moment) -> str:
     return _when(moment).date().isoformat()
 
 
+def _is_day(text) -> bool:
+    """Whether text is one day written YYYY-MM-DD: Python 3.11 and later also read 20261112 and 2026-W46-4 as dates."""
+    try:
+        return bool(re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", text)) and bool(date.fromisoformat(text))
+    except (TypeError, ValueError):
+        return False
+
+
 def travel(workspace: str, day: str, given) -> str:
     """The line `record` prints about travel, or a refusal: no result, one for other days, an event without its travel."""
     wanted = rituals.settings(rituals.config(), workspace).get("travel_check")
@@ -174,6 +191,72 @@ def travel(workspace: str, day: str, given) -> str:
                + "\nWork each trip out from a live source and add its blocks, or put the event to the principal. Never "
                "write a time that no block gives.")
     return f"\ntravel: {len(events)} in-person event{'s' * (len(events) != 1)} through {last}, each with its travel"
+
+
+def prompts(workspace: str, day: str, direction: str, outcome: str) -> str:
+    """The line a day-end prints about what the principal typed that day, or a refusal: the listing cannot be made,
+    it answers for another workspace, day or set of folders or at odds with itself, or the close is clean while a
+    prompt is cited by no record (2026-11-11: what he asked reached a record only if an agent remembered). The
+    record lists the prompts itself: a result made earlier, or against other folders, says nothing about now
+    (2026-11-12, a review)."""
+    wanted = rituals.settings(rituals.config(), workspace).get("prompt_reconcile", False)
+    if wanted is False or direction != "day-end":  # off by a missing key or `false` alone: null and 0 closed a day unchecked
+        return ""
+    roots = wanted.get("records") if isinstance(wanted, dict) else None
+    where = f'{rituals.state_dir() / "config.json"}, under workspaces.{workspace}'
+    if not (isinstance(roots, list) and roots and all(isinstance(r, str) and r for r in roots)):
+        refuse(f"{workspace} sets prompt_reconcile to {json.dumps(wanted)[:80]}, which names no folder of records: the check can "
+               f'neither run nor count as off, so this ritual is not recorded. In {where}, write "prompt_reconcile": '
+               '{"records": ["<folder of project records>"]}; only false, or no key at all, turns the check off')
+    loose = [r for r in roots if not os.path.isabs(os.path.expanduser(r))]
+    if loose:  # read from wherever the day-end runs: another folder of that name, or none
+        refuse(f"{workspace} names its folder of records {json.dumps(loose[0])} from no fixed place, so it would be read from wherever the "
+               f"day-end runs, and this ritual is not recorded. In {where}, write each folder from the root (`/`) or from the home folder (`~`)")
+    since = wanted.get("from", "")
+    if "from" in wanted and not _is_day(since):  # compared as text, `tomorrow` or a number put every day before it
+        refuse(f'{workspace} starts prompt_reconcile "from" {json.dumps(since)[:80]}, which is not a day written YYYY-MM-DD, so no '
+               f'day can be told to come before it and this ritual is not recorded. In {where}, write "from": "YYYY-MM-DD", '
+               "or leave it out")
+    if day < since:  # a session exported before the workspace turned this on keeps the kinds its records were given
+        return f"\nprompts: checked from {since}"
+    tool, again = shutil.which("synthesis"), f"synthesis sessions prompts --workspace {workspace} --date {day} " + " ".join(
+        f"--records {r}" for r in roots)
+    if not tool:
+        refuse(f"{workspace} checks that what the principal asked reached a record, and the `synthesis` command is not on "
+               f"the PATH to list it. Nothing is recorded until `{again}` can run")
+    done = subprocess.run([tool, "sessions", "prompts", "--workspace", workspace, "--date", day,
+                           *[word for r in roots for word in ("--records", r)], "--json"], capture_output=True, text=True)
+    if done.returncode not in (0, 1):
+        refuse(f"what the principal typed on {day} could not be listed, so nothing is recorded: "
+               f"{(done.stderr or done.stdout).strip()[:400]}\nRun `{again}` to see it")
+    try:
+        found = json.loads(done.stdout)
+        total, left = found["prompts"], found["open"]
+        sound = (type(total) is int and isinstance(left, list) and all(isinstance(c, str) and c for c in left)
+                 and len(set(left)) == len(left) <= total and done.returncode == (1 if left else 0))
+        answered = (found["workspace"], found["date"], found["records"])
+    except (ValueError, KeyError, TypeError) as exc:
+        refuse(f"the listing of {day}'s prompts cannot be read ({exc!r}); run `{again} --json` to see it")
+    if not sound:  # 2026-11-12: an exit of 1 with `prompts: 1, open: []` was taken as a clean day
+        refuse(f"the listing of {day}'s prompts does not agree with itself: it exits 1 exactly while it lists a prompt open, "
+               f"lists no more than were typed and each once, and this answer exited {done.returncode} (or a field has another "
+               f"shape), so nothing is recorded; run `{again} --json` to see it")
+    read = [os.path.realpath(os.path.expanduser(r)) for r in roots]  # each as the listing's walk reads it and its answer names it: links followed
+    if answered != (workspace, day, read):
+        refuse(f"the listing answered for {answered[0]} on {answered[1]} against {answered[2]}, and this record is for {workspace} on "
+               f"{day} against {read}. Run `{again}`")
+    if left and outcome in CLEAN:
+        refuse(f"{len(left)} of {total} prompts typed on {day} {'is' if len(left) == 1 else 'are'} cited by no record under "
+               f"{', '.join(read)}, so outcome {outcome!r} would claim nothing was lost:\n" + "\n".join(f"  {c}" for c in left[:40])
+               + ("\n  ..." if len(left) > 40 else "")
+               + "\nOpen each as it is named here: `synthesis sessions show <session> --seq <n>`. Where its substance is in a record, "
+               "cite it there as `<harness> <session> #<n>` (`#<first>-<last>` for a stretch one entry covers); where it is not, "
+               "write the record first. A citation says its record accounts for the prompt, and the names above are none. Or "
+               "record --outcome partial, which says the day left some open.")
+    if not total:
+        return f"\nprompts: none typed on {day}"
+    return (f"\nprompts: all {total} typed on {day} are cited by a record under {', '.join(read)}" if not left else
+            f"\nprompts: {len(left)} of {total} typed on {day} {'is' if len(left) == 1 else 'are'} cited by no record under {', '.join(read)}")
 
 
 # A line of an item: plain, bold or italic, quoted, a list entry or a task-list box, a heading or a row of a table,
@@ -305,14 +388,18 @@ def choices(workspace: str, day: str) -> str:
 
 def cmd_record(args) -> int:
     check_workspace(args.workspace, "record --direction <direction> --workspace <workspace> --date YYYY-MM-DD")
-    try:
-        date.fromisoformat(args.date)
-    except ValueError:
+    if not _is_day(args.date):  # 20261111 or 2026-W46-3, a date to Python 3.11, names no day a listing or a view finds
         refuse(f"--date {args.date!r} is not YYYY-MM-DD; the logical workday is required and never inferred")
+    now, review = today(), args.direction == "weekly-review"
+    early = rituals.friday(now + timedelta(days=6)).isoformat()  # the Friday a weekly review done before it satisfies
+    if args.date > now.isoformat() and not (review and args.date == early):  # 2026-11-12: tomorrow closed clean, `prompts: none typed`
+        refuse(f"--date {args.date} has not come: today is {now}. A ritual is recorded for the workday it opened or closed, and "
+               "nothing has been typed, planned or decided on a day ahead, so every check would pass over nothing. Record it on "
+               "that day" + (f". A weekly review done early takes the Friday it satisfies, {early}, and no other day ahead" * review))
     if args.mode == "migration":
         refuse("mode 'migration' marks old bookkeeping and cannot be written")
     critical = (critical_deadlines(args.workspace, args.outcome) + travel(args.workspace, args.date, args.travel)
-                + choices(args.workspace, args.date))
+                + choices(args.workspace, args.date) + prompts(args.workspace, args.date, args.direction, args.outcome))
     record = {"ts": datetime.now().astimezone().isoformat(timespec="seconds"), "date": args.date,
               "direction": args.direction, "workspace": args.workspace, "mode": args.mode,
               "outcome": args.outcome}

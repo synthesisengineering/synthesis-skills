@@ -4,7 +4,87 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
-## [5.8.1] - 2026-11-12
+## [5.9.0] - 2026-11-13
+
+- **What the principal asked is accounted for** (`synthesis-context-lifecycle` 2.3.0). The archive holds every
+  prompt the principal typed, and until now a request, a decision or a correction reached a project record only
+  if an agent remembered. `synthesis sessions prompts --workspace <W> [--date YYYY-MM-DD]` lists what was typed
+  on a day, each as `<harness> <session> --seq <n>  HH:MM  <first words>`: what follows the harness is what
+  `synthesis sessions show` takes. With `--records <folder>` it lists only the prompts that no record under that
+  folder cites, says where it looked, and exits 1 while one is left. A brief one agent wrote for another,
+  injected text, a tool's result and the prompt a command line hands a run are not the principal's prompts; in a
+  Codex session a prompt and its mirrored copy are one prompt, and the same words typed again are another. The
+  listing first copies every transcript written since that day began, and lists nothing (exit 2) while one that
+  may hold that day's prompts is not copied.
+- **A record cites a prompt, and the listing never does.** A record accounts for a prompt by citing it as
+  `<harness> <session> #<n>`, alone or in a range (`#12-40`, `#12 to #40`), by the session's id in full or by
+  eight or more of its first characters that no other session listed shares. The listing, its JSON answer and
+  the list the day-end record prints when it refuses name a prompt with `--seq`, which is no citation: no copy of
+  them accounts for anything, however it is kept. In the prompt's own words, which the listing prints, every
+  number is set apart from its `#`, and every line `sessions show` prints begins with its session, as `recent`
+  and `search` do, so no layout of a tool's output makes a citation. A citation is written by whoever writes the
+  record, and it
+  counts where it stands. The end of a range carries its `#` unless the dash is tight, so `#12 — 2027 planning`
+  cites #12 alone; a record's number has at most nine digits; a string that carries an escape is read as the text
+  it holds, so a dash an encoder escaped still joins its range.
+- **Which records are read.** `--records` reads the files under a folder that end in `.md`, `.markdown`, `.txt`,
+  `.json`, `.jsonl`, `.yaml` or `.yml` and changed since the day began, and none on a day with no prompt. A
+  folder that is not there or may not be listed, a record that may not be read, and a sessions repo named as a
+  folder of records are each named, and nothing is listed (exit 2): read as empty, a folder would leave every
+  prompt open with no word of why. A sessions repo under a folder of records is passed over, since it holds the
+  conversations themselves, and so are a folder reached through a link, a link that leads nowhere and a file that
+  is no regular file.
+- **A day is not closed clean over a request that reached no record** (`synthesis-daily-rituals` 3.11.0). Where
+  a workspace's ritual config has `"prompt_reconcile": {"records": ["<folder>"]}`, the day-end record runs the
+  listing itself and refuses a clean close while a prompt is cited by no record, naming each as the listing does
+  and the folders it looked under; `--outcome partial` records the day and says how many are open. Only a
+  missing key or `false` turns the check off: any other value is refused and named, and so is a folder written
+  from no fixed place. Nothing is recorded when the listing cannot be made, or when its answer is for another
+  workspace, day or set of folders, or does not agree with itself. A ritual record takes its day only as
+  `YYYY-MM-DD`, and never a day ahead.
+- **Session transcripts are copied every hour, whether or not a session remembers to** (`synthesis-onboarding`
+  3.5.0, `synthesis-agent-guardrails` 2.5.1). `setup.py plugin --sessions-export` installs a LaunchAgent that
+  runs `synthesis sessions export --all --scheduled` and then `synthesis sessions sync` every hour and at
+  login, with the folders the install was made with; `setup.py uninstall` removes it only when it runs this
+  install's command. Every export leaves a stamp, and `synthesis doctor` fails when the schedule is not loaded,
+  runs another install's command, or has finished no export in a day or none of its own; and, on any Mac, when
+  a transcript could not be copied, a folder of transcripts could not be listed, or a transcript was removed
+  before any run copied it. Only the principal can accept such a loss: `synthesis sessions export --lost
+  <session>`, which an agent can run only with the principal's approval code. `synthesis sessions export` exits
+  1 when something it was asked for was not copied, and the audit log names each export.
+- **The archive reads back what it wrote.** A record that holds U+2028, U+2029 or U+0085 is read back whole:
+  split at those characters it could not be listed, opened or synced. A line torn by a cut write is finished as
+  a whole record, and a copy cut before its state was saved repeats none. On Python 3.14 a transcript that
+  cannot be looked at is named as not copied, where it had been passed over.
+
+## [5.8.2] - 2026-11-13
+
+- **A package of the method skills for a plugin directory that takes no hooks** (`synthesis-skills-manager` 3.5.0).
+  OpenAI's public plugin directory lists no plugin that registers lifecycle hooks, and this plugin registers four.
+  `build_directory_package.py` builds a second package for that directory from the same commit: the 32 skills that
+  need nothing from the runtime (writing, review, fact-checking, planning, thinking), each file byte for byte, one
+  manifest that registers no hook, and one mark as its logo and its composer icon. A ZIP that is written is read
+  from the last commit itself, each file as git holds it. Its name and description say what it is not: no guard
+  checks a send, a deploy or a commit, and there is no board and no ritual. `--check` reads the built ZIP and
+  fails on a hook; a file that is no listed skill's; a listed name that is no skill here; a listed skill that
+  depends on one outside the list; a file that differs from its source; a version that is not the repository's; a
+  text that claims a guard, a hook or an approval code at work, sends its reader to the coordination board or
+  needs the runtime; a manifest without its two images; an image no field names; and an image that runs a script
+  or loads from outside itself. The claim rule reads a file a paragraph at a time, so a claim that wrapping
+  splits is caught, and it knows the runtime's commands with or without backticks; the ordinary senses of the
+  same words pass (a writer's hook, a guard clause, a board of directors), and the tests pin both. A skill that
+  gains such a claim leaves the list in the pull request that adds it; its text is not edited to pass.
+  `--changed-since TAG` names what changed in the package since a release, so a new submission is made when one
+  is due. Building submits nothing: the upload is the owner's step, and the reference lists what a submission
+  asks of them.
+- **Nothing the core does warns under Python 3.13 or 3.14.** Three calls passed a split's limit to `re` by
+  position, which Python 3.13 deprecates and a later Python will refuse; they name it now, and a lint test reads
+  the repository's own Python files for the same. The doctor closes the three pipes it opened to a harness CLI when it stops it,
+  where it had left them to the collector. `pytest.ini` turns a deprecation met in a line of the core, in a
+  test's own process, into a failing test on the Python that deprecates it: the three calls had warned at every
+  use, in a summary at the end of a run.
+
+## [5.8.1] - 2026-11-13
 
 - **A guard's check takes half the time** (core). A hook is a new Python process on every tool call, and a session
   whose environment tells Python to write no bytecode cached nothing it compiled: the guards were compiled from
