@@ -8,6 +8,7 @@ pin what closes that: one command that waits and is its own record, a read that 
 what will deliver the message, and a turn-end check that sends back a reply which announces a wait with nothing
 armed. Committed before the code.
 """
+import errno
 import json
 import os
 import re
@@ -409,6 +410,99 @@ def test_a_command_is_tried_every_interval_and_not_once_more_on_the_edge_of_the_
     assert tried == [0, 30.02] and "nothing arrived in 45 s" in capsys.readouterr().err
 
 
+# --- a command that cannot be started is refused, not tried again ---------------------------------------------------
+
+@pytest.mark.parametrize("named, why", [
+    ("a name that is not on PATH", "was not found"),
+    ("a path that does not exist", "was not found"),
+    ("a file that is not executable", "is not executable"),
+    ("a directory", "is not executable"),
+    ("a whole command given as one word", "was not found"),
+    ("a script whose interpreter is missing", f"cannot be run ({os.strerror(errno.ENOENT)})"),
+    ("a file that is no program", f"cannot be run ({os.strerror(errno.ENOEXEC)})"),
+])
+def test_a_command_that_cannot_be_started_is_refused_at_once_in_one_line(two, tmp_path, monkeypatch, named, why):
+    """2026-11-12, an open point of an earlier pass: `wait run --for 1m -- no-such-command` ended in a Python traceback.
+    No try of such a command starts, so the wait refuses it as it refuses a bound it cannot read: one line, exit 2, at
+    once. The line names the program as it was given, which the traceback did: a command quoted whole after `--` is one
+    word, and reads as a program that was not found only when that word is shown. And the plain words are said only
+    where they are true: a script that is there, whose interpreter is not, fails with the error of a missing program."""
+    from synthesis import paths
+    script, folder, orphan, text = tmp_path / "check.sh", tmp_path / "checks", tmp_path / "orphan.sh", tmp_path / "notes.txt"
+    script.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    script.chmod(0o644)
+    orphan.write_text("#!/synthesis-no-such-interpreter\nexit 0\n", encoding="utf-8")   # short: a system that cuts a long first line sees no program
+    text.write_text("no program\n", encoding="utf-8")
+    for there in (orphan, text):
+        there.chmod(0o755)
+    folder.mkdir()
+    monkeypatch.setenv("PATH", str(folder))                                           # one empty folder: a name finds the same on every machine
+    program = {"a name that is not on PATH": "synthesis-no-such-command", "a path that does not exist": str(tmp_path / "gone" / "check"),
+               "a file that is not executable": str(script), "a directory": str(folder),
+               "a whole command given as one word": "synthesis-no-such-command --branch main",
+               "a script whose interpreter is missing": str(orphan), "a file that is no program": str(text)}[named]
+    words = [program] if " " in program else [program, "--branch", "main"]
+    began = time.time()
+    done = cli("wait", "run", "--for", "1m", "--", *words)
+    assert done.returncode == 2 and time.time() - began < 20                          # at once: its bound is a minute on
+    assert done.stderr == f"`{' '.join(words)}` could not be started: its program {program!r} {why}\n" and done.stdout == ""
+    assert not list((paths.board() / "waits").rglob("*.json"))                        # and it left no record of a wait behind
+
+
+def test_a_command_that_cannot_be_started_gets_no_second_try_and_one_that_starts_and_fails_does(two, clock, monkeypatch, capsys):
+    """The refusal is said once, with no sleep and no second try, and so it is for a command that goes missing between
+    two tries. Its plain words are said only of what is there: "was not found" when nothing by that name is and the
+    system found none, "is not executable" when a file by that name is and cannot be run. Of a program that can be
+    run, and of a name nothing was seen of, only the system's own words are said. A command that starts and exits
+    with anything but 0, the 126 and 127 of a shell included, has failed a try: it is tried again until the bound."""
+    import shutil
+    from synthesis import paths, wait
+    starts, tried, there, asked = [], [], set(), signal.getsignal(signal.SIGTERM)
+    monkeypatch.setattr(shutil, "which",                                              # what is there by the name: a file, and whether it runs
+                        lambda name, mode=os.F_OK | os.X_OK: f"/usr/bin/{name}" if ("runs" if mode & os.X_OK else "file") in there else None)
+
+    class Check:                                                                      # each start ends as the test set it: an exit code, or no start
+        def __init__(self, command, **kwargs):
+            tried.append(command)
+            self.code = starts.pop(0)
+            if isinstance(self.code, OSError):
+                raise self.code
+
+        def wait(self, timeout=None):
+            return self.code
+    monkeypatch.setattr(subprocess, "Popen", Check)
+    monkeypatch.setattr(wait, "_stop", lambda proc: None)
+
+    def run(*outcomes):
+        starts[:], tried[:], began = outcomes, [], clock.now
+        code = wait.main(["run", "--for", "45s", "--every", "30s", "--", "ci-check", "--branch", "main"], "S1")
+        said = capsys.readouterr()
+        assert not list((paths.board() / "waits").rglob("*.json")) and signal.getsignal(signal.SIGTERM) is asked
+        return code, said.out, said.err, len(tried), round(clock.now - began, 2)      # what it returned and printed, its tries, the seconds it took
+    refused = "`ci-check --branch main` could not be started: its program 'ci-check' {}\n"
+    for seen, code, why in (
+            ((), errno.ENOENT, "was not found"),
+            ((), errno.EACCES, "cannot be run (Permission denied)"),                  # a folder of PATH could not be searched: nothing was seen
+            (("file",), errno.EACCES, "is not executable"),                           # a file by that name, with no execute bit
+            (("file", "runs"), errno.ENOENT, "cannot be run (No such file or directory)"),   # a script whose interpreter is missing
+            (("file", "runs"), errno.EPERM, "cannot be run (Operation not permitted)"),      # a program a sandbox forbids
+            (("file", "runs"), errno.ENOEXEC, "cannot be run (Exec format error)")):         # a file that is no program
+        there.clear()
+        there.update(seen)
+        assert run(OSError(code, os.strerror(code), "ci-check")) == (2, "", refused.format(why), 1, 0), (seen, code)
+    there.clear()
+    gone = FileNotFoundError(errno.ENOENT, "No such file or directory", "ci-check")
+    assert run(1, gone) == (2, "", refused.format("was not found"), 2, 30.02)         # it started and failed, then it was gone
+    assert run(127, 126) == (3, "", "nothing arrived in 45 s: still waiting for `ci-check --branch main` to succeed\n", 2, 45.02)
+
+
+def test_a_shell_that_cannot_find_its_command_has_started_and_failed_so_it_is_tried_again(two, tmp_path):
+    tries = tmp_path / "tries"
+    done = cli("wait", "run", "--every", "0.2s", "--for", "2s", "--", "sh", "-c", 'echo try >> "$1"; synthesis-no-such-command', "sh", str(tries))
+    assert done.returncode == 3 and "nothing arrived in 2 s" in done.stderr and "could not be started" not in done.stderr
+    assert len(tries.read_text(encoding="utf-8").splitlines()) >= 2
+
+
 def test_a_note_records_a_wait_the_harness_holds_and_the_list_shows_every_sessions(two):
     from synthesis import wait
     made = cli("wait", "note", "the CI run on the release branch", "--by", "a background task that exits when CI ends", "--for", "2h")
@@ -420,6 +514,105 @@ def test_a_note_records_a_wait_the_harness_holds_and_the_list_shows_every_sessio
     assert "the CI run on the release branch" in listed and "a reply from the vendor" in listed
     assert board.short_name("S1") in listed and board.short_name("S2") in listed
     assert cli("wait", "note", "something", "--for", "2h").returncode == 2             # a note says what will wake the seat
+
+
+# --- a note is taken down once what it awaited is handled ----------------------------------------------------------
+
+def note(what, session="S1", bound="12h"):
+    made = cli("wait", "note", what, "--by", "the harness's timer", "--for", bound, session=session)
+    assert made.returncode == 0, made.stderr
+
+
+def outcome(done):
+    return done.returncode, done.stdout, done.stderr
+
+
+def test_a_note_is_withdrawn_by_the_seat_that_made_it_one_by_its_words_or_all_at_once(two):
+    """2026-11-12, an open point of an earlier pass: a note stood until its bound, so when what it awaited was handled
+    before then, the board and the turn-end check went on showing a wait that was over."""
+    from synthesis import paths, wait
+    for what in ("the CI run on the release branch", "a reply from the vendor", "the nightly export"):
+        note(what)
+    assert outcome(cli("wait", "clear", "a reply from the vendor")) == (0, "cleared: a reply from the vendor\n", "")
+    assert [w["what"] for w in wait.live("S1")] == ["the CI run on the release branch", "the nightly export"]
+    assert outcome(cli("wait", "clear")) == (0, "cleared: the CI run on the release branch\ncleared: the nightly export\n", "")
+    assert wait.live("S1") == [] and not list((paths.board() / "waits").rglob("*.json"))
+
+
+def test_clearing_when_no_such_note_is_held_says_so_and_withdraws_nothing(two):
+    from synthesis import wait
+    assert outcome(cli("wait", "clear")) == (0, "this session holds no note\n", "")
+    assert outcome(cli("wait", "clear", "the CI run")) == (0, "this session holds no note 'the CI run'\n", "")
+    note("the CI run")
+    assert outcome(cli("wait", "clear", "the CI rnu")) == (0, "this session holds no note 'the CI rnu'\n", "")   # its words, mistyped
+    assert outcome(cli("wait", "clear", "the CI")) == (0, "this session holds no note 'the CI'\n", "")           # and a part of them
+    assert [w["what"] for w in wait.live("S1")] == ["the CI run"]
+    wait.record("S1", "the old build", time.time() - 1, by="the harness's timer")     # a note whose bound has passed is over already
+    assert outcome(cli("wait", "clear", "the old build")) == (0, "this session holds no note 'the old build'\n", "")
+    assert outcome(cli("wait", "clear")) == (0, "cleared: the CI run\n", "")
+
+
+def test_clearing_never_touches_another_sessions_note(two, capsys):
+    from synthesis import wait
+    note("the CI run", session="S2")
+    assert outcome(cli("wait", "clear")) == (0, "this session holds no note\n", "")      # S1 holds none: S2's is not its to clear,
+    assert outcome(cli("wait", "clear", "the CI run")) == (0, "this session holds no note 'the CI run'\n", "")   # by its words either,
+    note("the CI run")
+    assert outcome(cli("wait", "clear", "the CI run")) == (0, "cleared: the CI run\n", "")   # and of two that say the same, its own goes
+    assert wait.live("S1") == [] and [(w["session"], w["what"]) for w in wait.live("S2")] == [("S2", "the CI run")]
+    other = cli("--session", "S2", "wait", "clear")                                  # a shell acts only as the session it belongs to
+    assert other.returncode != 0 and "cannot act as S2" in other.stderr and len(wait.live("S2")) == 1
+    for session in ("a b", "a_b"):                                                    # two ids the board keeps under one folder name
+        wait.record(session, "the deploy", time.time() + 600, by="the harness's timer")
+    assert wait.main(["clear"], "a b") == 0 and capsys.readouterr().out == "cleared: the deploy\n"
+    assert [w["session"] for w in wait.live("a_b")] == ["a_b"]
+
+
+def test_clearing_leaves_a_running_watchers_record_and_its_watcher_alone(two, tmp_path):
+    """A record with a process is taken down by the end of that process and by nothing else: a seat that could clear it
+    would show nothing armed while its watcher still ran."""
+    from synthesis import wait
+    target = tmp_path / "result.json"
+    proc = start("wait", "file", str(target), "--for", "60s", "--every", "0.2s")
+    try:
+        deadline = time.time() + 10
+        while not wait.live("S1") and time.time() < deadline:
+            time.sleep(0.05)
+        watched = wait.live("S1")[0]["what"]
+        note("the CI run")
+        assert outcome(cli("wait", "clear", watched)) == (0, f"this session holds no note {watched!r}\n", "")   # a watcher's words name no note
+        assert outcome(cli("wait", "clear")) == (0, "cleared: the CI run\n", "")
+        assert outcome(cli("wait", "clear")) == (0, "this session holds no note\n", "")
+        assert [(w["what"], w["pid"]) for w in wait.live("S1")] == [(watched, proc.pid)] and proc.poll() is None
+        target.write_text("{}", encoding="utf-8")                                     # and the watcher still does its work
+        out, _ = proc.communicate(timeout=15)
+        assert proc.returncode == 0 and "result.json appeared" in out and wait.live("S1") == []
+    finally:
+        if proc.poll() is None:
+            proc.kill()
+            proc.communicate()
+
+
+def test_a_cleared_note_is_gone_from_the_list_from_who_and_from_the_turn_end_check(two):
+    reply = {"last_assistant_message": ANNOUNCED[0], "session_id": "S1"}
+    for session in ("S1", "S2"):
+        note("the CI run", session=session, bound="2h")
+    quiet("S1")                                                                       # S1 was last seen hours ago, S2 a moment ago
+
+    def who(*options):                                                                # each seat's row by its session
+        return {row.split()[1]: row for row in cli("who", *options).stdout.splitlines() if re.match(r"[a-z2-7]{6} ", row)}
+
+    def listed():                                                                     # the short names of the seats `wait list` shows
+        return [row.split()[0] for row in cli("wait", "list").stdout.splitlines()]
+    rows = who()
+    assert set(rows) == {"S1", "S2"} and re.search(r"min ago  STALE  waiting until \d\d:\d\d$", rows["S1"])
+    assert re.search(r"min ago  waiting until \d\d:\d\d$", rows["S2"])
+    assert listed() == [board.short_name("S1"), board.short_name("S2")] and reply_check.check(reply, {}) is None
+    assert outcome(cli("wait", "clear")) == (0, "cleared: the CI run\n", "")
+    assert set(who()) == {"S2"} and who("--all")["S1"].endswith("min ago  STALE")     # quiet and waiting for nothing: stale, as before its note
+    assert listed() == [board.short_name("S2")] and "nothing is armed" in reply_check.check(reply, {})
+    assert outcome(cli("wait", "clear", session="S2")) == (0, "cleared: the CI run\n", "")
+    assert who()["S2"].endswith("min ago") and listed() == []
 
 
 def test_a_wait_cannot_run_past_twelve_hours_or_without_a_bound_it_can_read(two):
@@ -499,6 +692,50 @@ def test_a_seat_in_a_live_wait_is_listed_for_the_whole_bound_of_its_wait(two, tm
         board.claim("S2", [area])
     assert board.claim("S2", [area], take_stale=True).claims == [board.as_claim(area)]   # a peer that asks may take them,
     assert board.resolve("S1").session == "S1" and wait.live("S4") == wait.live("S5") == []   # and mail still reaches the seat
+
+
+def test_resume_names_a_quiet_seat_that_holds_a_live_wait_and_marks_it_as_who_does(two, tmp_path, write_config, capsys):
+    """2026-11-12, an open point of an earlier pass: `synthesis who` lists a seat that is quiet but holds a live wait,
+    and `synthesis resume` of its project named only the seats seen in the last eight hours. A session that picked
+    the project up was not told of a seat that would wake and write the same records."""
+    from synthesis import cli, wait
+    root, now = tmp_path / "ai-knowledge-test", time.time()
+    home = root / "projects" / "alpha"
+    home.mkdir(parents=True)
+    (home / "CONTEXT.md").write_text("# Alpha\n", encoding="utf-8")
+    write_config({"knowledge_roots": [str(root)]})
+    ended = subprocess.Popen([sys.executable, "-c", "pass"])
+    ended.wait()
+    for name, at in (("W1", "alpha"), ("W2", "alpha"), ("W3", "gamma"), ("W4", "alpha"), ("Q1", "alpha"), ("Q2", "alpha"), ("Q3", "alpha")):
+        board.touch(name, project=at, harness="codex")
+    board.claim("W3", [str(home / "resources")])                                      # a seat of another project that claimed a folder of this one
+    wait.record("W1", "a message", now + 3 * 3600, pid=os.getpid(), every=300)        # nine hours into twelve, its watcher running
+    wait.record("W1", "the nightly export", now + 1800, by="the harness's timer")     # and a shorter wait beside it: the later bound is the mark
+    wait.record("W2", "the CI run", now + 2 * 3600, by="the harness's timer")         # a wait the harness holds
+    wait.record("W3", "a file", now + 3600, pid=os.getpid())
+    wait.record("W4", "a message", now + 1800, pid=os.getpid())                       # a seat seen a moment ago that waits too
+    wait.record("Q2", "a message", now - 60, pid=os.getpid())                         # a wait whose bound passed a minute ago
+    wait.record("Q3", "the build", now + 3600, pid=ended.pid)                         # a wait whose watcher is gone
+    wait.record("S2", "a message", now + 3600, pid=os.getpid())                       # a wait on another project, with no claim here
+    for name in ("W1", "W2", "W3", "Q1", "Q2", "Q3", "S2"):                           # each of these was last seen nine hours ago
+        seat = board.load(name)
+        seat.seen = now - 9 * 3600
+        board.save(seat)
+
+    def until(hours):
+        return "waiting until " + time.strftime("%H:%M", time.localtime(now + hours * 3600))
+    assert cli.main(["--session", "R1", "resume", "alpha"]) == 0
+    named = {line.split()[3]: line for line in capsys.readouterr().out.splitlines() if line.startswith("- Live session ")}
+    assert set(named) == {"S1", "W1", "W2", "W3", "W4"}                               # not Q1, Q2 or Q3, nor S2 of another project
+    for name, hours in (("W1", 3), ("W2", 2), ("W3", 1), ("W4", 0.5)):
+        assert f") works here, {until(hours)}; one session owns CONTEXT.md" in named[name], named[name]
+        assert named[name].endswith(f"coordinate with synthesis msg {board.short_name(name)}.")
+    assert ") works here; one session owns CONTEXT.md" in named["S1"]                 # a seat that waits for nothing is named as before
+    assert cli.main(["who"]) == 0
+    rows = {row.split()[1]: row for row in capsys.readouterr().out.splitlines() if re.match(r"[a-z2-7]{6} ", row)}
+    assert set(rows) == set(named) | {"S2", "R1"}                                     # `who` lists the same seats, with S2 and the one that resumed
+    for name in ("W1", "W2", "W3", "W4"):                                             # and gives each waiting seat the same mark
+        assert re.search(r"waiting until \d\d:\d\d$", rows[name]).group(0) in named[name]
 
 
 # --- the sender is told what will deliver the message --------------------------------------------------------------

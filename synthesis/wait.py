@@ -7,17 +7,20 @@ which marks what it prints, and waited half an hour on mail addressed to a proje
     synthesis wait file <path> [--for 30m] [--every 2s]
     synthesis wait run [--every 30s] [--for 30m] -- <command>
     synthesis wait note "<what>" --by "<what will wake this seat>" [--for 30m]
+    synthesis wait clear ["<what>"]
     synthesis wait list
 
 A wait prints one line when its event happens and exits 0; at its bound it exits 3 and says nothing arrived, so
-silence cannot look like success; 2 for a bound it cannot read or one over twelve hours. A message is named by
-its sender and never printed: the seat reads it with `synthesis inbox`, which is what marks it read.
+silence cannot look like success; 2 for a bound it cannot read, one over twelve hours or a command that cannot
+be started. A message is named by its sender and never printed: the seat reads it with `synthesis inbox`, which
+is what marks it read.
 """
 from __future__ import annotations
 
 import argparse
 import os
 import re
+import shutil
 import signal
 import subprocess
 import sys
@@ -71,14 +74,14 @@ def _alive(pid: int) -> bool:
 
 
 def live(session_id: str = "") -> list[dict]:
-    """The waits still held, of one session or of all: inside their bound and, where a process watches, that
-    process alive. A record alone proves nothing, and one that is over is removed."""
+    """The waits still held, of one session or of all: inside their bound and, where a process watches, that process
+    alive. A record alone proves nothing, and one that is over is removed. Each carries its file, as `record`."""
     root = _folder(session_id) if session_id else paths.board() / "waits"
     found = []
     for file in sorted(root.rglob("*.json")) if root.is_dir() else []:
         held = paths.read_json(file)
         if held.get("until", 0) > time.time() and (not held.get("pid") or _alive(int(held["pid"]))):
-            found.append(held)
+            found.append({**held, "record": file})
         else:
             file.unlink(missing_ok=True)
     return found
@@ -154,6 +157,10 @@ def attempt(command: list[str], until: float) -> bool:
         done = proc.wait(timeout=until - time.time()) == 0 and time.time() <= until
     except subprocess.TimeoutExpired:
         pass
+    except OSError as exc:  # nothing started, so the wait refuses the command, in plain words only where they are true of what is there
+        found = shutil.which(command[0], os.F_OK) or os.path.dirname(command[0]) and os.path.isdir(command[0])  # a file by the name, or a folder
+        plain = not shutil.which(command[0]) and ("is not executable" if found else isinstance(exc, FileNotFoundError) and "was not found")
+        raise ValueError(f"`{' '.join(command)}` could not be started: its program {command[0]!r} {plain or f'cannot be run ({exc.strerror})'}")
     finally:
         if proc and not done:
             _stop(proc)
@@ -185,7 +192,7 @@ def _watch(session_id: str, what: str, until: float, seconds: float, every: floa
 def main(argv: list[str], session_id: str) -> int:
     command = argv[argv.index("--") + 1:] if "--" in argv else []
     p = argparse.ArgumentParser(prog="synthesis wait", description=__doc__.split("\n\n")[0])
-    p.add_argument("kind", choices=["message", "file", "run", "note", "list"])
+    p.add_argument("kind", choices=["message", "file", "run", "note", "clear", "list"])
     p.add_argument("target", nargs="?", default="")
     p.add_argument("--from", dest="sender", default="")
     p.add_argument("--for", dest="bound", default="30m")
@@ -197,12 +204,25 @@ def main(argv: list[str], session_id: str) -> int:
             print(f"{board.short_name(w['session'])}  {w['what']}  since {time.strftime('%H:%M', time.localtime(w['since']))} "
                   f"until {time.strftime('%H:%M', time.localtime(w['until']))}  ({'woken by ' + w['by'] if w.get('by') else 'a watcher is running'})")
         return 0
-    try:
+    if args.kind == "clear":  # a note has no process whose end takes it down: its own seat does, and a watcher's record is not a note
+        gone = [w for w in live(session_id) if w["session"] == session_id and not w.get("pid") and args.target in ("", w["what"])]
+        for w in gone:
+            w["record"].unlink(missing_ok=True)
+        print("\n".join(f"cleared: {w['what']}" for w in gone) or "this session holds no note" + f" {args.target!r}" * bool(args.target))
+        return 0
+    try:  # `span` refuses a bound it cannot keep and `attempt` a command it cannot start: each says why, and the wait exits 2
         seconds, every = span(args.bound), span(args.every or ("30s" if args.kind == "run" else "2s"))
+        until = time.time() + seconds
+        if args.kind == "run" and command:
+            tries, shown = [], f"`{' '.join(command)}`"
+
+            def ready():  # a try has only the time left: none starts when none is left, and none counts after the bound
+                tries.append(until > time.time() and attempt(command, until))
+                return f"{shown} exited 0 after {len(tries)} tr{'y' if len(tries) == 1 else 'ies'}" if tries[-1] else ""
+            return _watch(session_id, f"{shown} to succeed", until, seconds, every, ready, edge=0)  # a try takes time: none starts on the bound's edge
     except ValueError as exc:
         print(exc, file=sys.stderr)
         return 2
-    until = time.time() + seconds
     if args.kind == "note":
         if not args.target or not args.by:
             print("a note says what is awaited and, with --by, what will wake this seat", file=sys.stderr)
@@ -226,12 +246,5 @@ def main(argv: list[str], session_id: str) -> int:
         before = path.stat().st_mtime_ns if path.exists() else None
         return _watch(session_id, f"the file {path}", until, seconds, every,
                       lambda: f"{path} {'appeared' if before is None else 'changed'}" if path.exists() and path.stat().st_mtime_ns != before else "")
-    if args.kind == "run" and command:
-        tries, shown = [], f"`{' '.join(command)}`"
-
-        def ready():  # a try has only the time left: none starts when none is left, and none counts after the bound
-            tries.append(until > time.time() and attempt(command, until))
-            return f"{shown} exited 0 after {len(tries)} tr{'y' if len(tries) == 1 else 'ies'}" if tries[-1] else ""
-        return _watch(session_id, f"{shown} to succeed", until, seconds, every, ready, edge=0)  # a try takes time: none starts on the bound's edge
     print("give the file to wait for, or the command after `--`", file=sys.stderr)
     return 2

@@ -10,6 +10,7 @@ from __future__ import annotations
 import os
 import re
 import subprocess
+import time
 from pathlib import Path
 
 from synthesis import board, paths
@@ -283,12 +284,14 @@ def resume(name: str, session_id: str = "", *, switch: bool = False) -> str:
             warnings += _upstream(project_dir, repo, rel, dirty) + _copies(repo, rel, bool(dirty))
         except (RuntimeError, OSError, subprocess.TimeoutExpired) as exc:
             warnings.append(f"could not compare these records with other copies: {exc}")
+    from synthesis import wait  # a seat in a live wait is named for the wait's whole bound, quiet or not, and marked as `who` marks it
     for other in board.sessions():
-        if other.session != session_id and not other.stale and (
+        if other.session != session_id and other.reachable and (
                 other.project == pid or any(board.overlaps(c, str(project_dir) + "/**") for c in other.claims)):
+            until = max((w["until"] for w in wait.live(other.session)), default=0)
             warnings.append(f"Live session {other.session} ({other.harness or '?'}, project {other.project or '-'}: "
-                            f"{other.goal or 'no goal'}) works here; one session owns CONTEXT.md, so read only "
-                            f"where it holds claims and coordinate with synthesis msg {other.short}.")
+                            f"{other.goal or 'no goal'}) works here{time.strftime(', waiting until %H:%M', time.localtime(until)) * bool(until)}; "
+                            f"one session owns CONTEXT.md, so read only where it holds claims and coordinate with synthesis msg {other.short}.")
     if warnings:
         lines += ["", "Before working:"] + [f"- {w}" if not w.startswith("  ") else w for w in warnings]
     lines += _recent_conversation(pid, session_id)

@@ -61,10 +61,44 @@ would ask for a password there fails instead of asking.
   stopped.
 - A wait that is told to end (SIGTERM, a closed terminal, Ctrl-C) stops the try it is running first. One that is
   killed outright (SIGKILL) cannot: its try runs on until the command ends.
+- A command that cannot be started is no failed try. The wait prints
+  `` `<command>` could not be started: its program '<first word>' <why> `` on stderr and exits 2 at once, on the
+  first try or on a later one whose program has gone: `was not found` for a name that is not on PATH or a path
+  that does not exist, `is not executable` for a file without its execute bit or a directory, and `cannot be run`
+  with the system's own words for anything else (`Exec format error` for a file that is no program). The two
+  plain reasons are given only where they are true of what is there. A script whose interpreter is missing is
+  refused with `cannot be run (No such file or directory)`, since the script itself was found. A name that is
+  nowhere, where a folder of PATH cannot be searched, is refused with `cannot be run (Permission denied)`, the
+  system's answer, since no file by that name was seen. The program is the first word after `--`, shown as it
+  was given: a command quoted whole as one string is one word, and is refused as a program of that name that
+  was not found. A command that starts and exits with any code but 0 has failed a try and is tried again: a
+  shell that could not find its own command (127) started and failed.
+
+### The two limits of a try
+
+Both were probed on macOS on 2026-11-12: the first with a wait started under a terminal of its own, the second by
+killing a wait, and then a wait's whole process group, with `kill -9`.
+
+1. **A try has no controlling terminal.** It runs in a session of its own, so a command that needs the terminal
+   fails: as a try, opening `/dev/tty` gave `Device not configured`, where the same command run directly opened
+   it. A command that asks there for a password or a passphrase gets that error instead of an answer. A try that
+   fails for it counts as failed like any other, and the wait goes on to its bound with nothing shown, because
+   what a try prints is discarded and only its exit code is read. Standard input is another matter: a try has the
+   wait's own, which in that probe was the terminal, so a command that reads its answer there reads whatever the
+   wait was started with. Give the command what it needs without a prompt before arming the wait, and run it
+   once by hand to see that it asks nothing.
+2. **A wait that is killed outright leaves its try running.** SIGKILL gives the wait no chance to stop the try,
+   and the try is in a process group of its own, so a signal sent to the wait's group does not reach it either:
+   both times the try ran on, with no bound any more. Check two things afterwards. `synthesis wait list` no
+   longer shows the wait, since a record whose process is gone is removed the next time the waits are read:
+   nothing is armed, so arm the wait again if the event is still awaited. And find the try with
+   `ps -eo pid,pgid,etime,command`: it leads its own process group, so its pid is the group's id, and
+   `kill -TERM -- -<pid>` ends it with everything it started there.
 
 ## When a wake did not arrive
 
-1. `synthesis wait list`: is the wait still on the board? A wait whose process died or whose bound passed is gone.
+1. `synthesis wait list`: is the wait still on the board? A wait whose process died or whose bound passed is gone,
+   and so is a note its seat took down with `synthesis wait clear`.
 2. `synthesis inbox --peek`: did the mail arrive unseen? A session bound to no project receives nothing addressed
    to a project; `synthesis who` shows the binding, and `synthesis resume <project>` restores it. A seat that holds
    a live wait is listed there for the wait's whole bound, marked `waiting until HH:MM`. Once it has been quiet
