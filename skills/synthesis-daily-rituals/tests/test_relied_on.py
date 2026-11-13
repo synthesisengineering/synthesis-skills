@@ -144,7 +144,18 @@ def test_nothing_declared_is_one_line_and_no_failure(tmp_path):
         assert (code, lines) == (0, ["nothing another person relies on is declared for desk"]), declared
 
 
-def test_an_entry_under_defaults_is_checked_for_every_workspace_that_declares_none_of_its_own(tmp_path):
+def test_a_relied_on_that_is_there_and_is_not_a_list_is_a_malformed_entry_never_nothing_declared(tmp_path):
+    """Review round 3, finding 21: `false`, `0`, `""` and `{}` were read as nothing declared, and the check passed.
+    A declaration that is there is read as one entry, so a malformed one is down as any malformed entry is."""
+    for declared in ({}, False, 0, ""):
+        code, lines, _ = run(tmp_path, "--workspace", "desk", desk=declared)
+        assert (code, lines) == (1, [f"DOWN entry 1 (relied on by nobody named): {NEEDS}", "1 relied on, 1 down"]), declared
+    code, lines, _ = run(tmp_path, "--all", "--json", desk=False, lab=[])
+    found = json.loads("\n".join(lines))
+    assert code == 1 and found["down"] == 1 and found["nothing_declared"] == ["lab"], found
+
+
+
     """The settings are read the way every ritual script reads them: the defaults, then the workspace's own."""
     config = json.dumps({"defaults": {"relied_on": [entry()]},
                          "workspaces": {"desk": {}, "lab": {"relied_on": [entry("the build cache")]}, "attic": {"relied_on": []}}})
@@ -290,3 +301,15 @@ def test_a_guard_config_that_cannot_be_read_checks_nothing(tmp_path: Path) -> No
     (home / "config.json").write_text("{not json", encoding="utf-8")
     code, lines, err = run(tmp_path, "--workspace", "w", w=[entry()])
     assert code == 2 and "NOT CHECKED" in err and lines == []
+
+
+def test_a_guard_config_that_is_not_an_object_checks_nothing_and_raises_nothing(tmp_path: Path) -> None:
+    """Review round 3, finding 22: a guard config of `[]` or `null` loads as JSON and is no settings at all; the
+    script raised AttributeError while putting the first check to the guard."""
+    home = tmp_path / "home"
+    home.mkdir()
+    for found in ("[]", "null", '"deploy"', "3"):
+        (home / "config.json").write_text(found, encoding="utf-8")
+        code, lines, err = run(tmp_path, "--workspace", "w", w=[entry()])
+        assert (code, lines) == (2, []) and "Traceback" not in err, (found, err)
+        assert err == f"NOT CHECKED: the guards' config cannot be read, so no check can be judged: {home / 'config.json'} is not a JSON object\n", err
