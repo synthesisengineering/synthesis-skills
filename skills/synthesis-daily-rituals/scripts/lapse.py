@@ -3,7 +3,7 @@
 
     lapse.py --workspace W --as-of YYYY-MM-DD (--id DECAY-ID | --at FILE:LINE)
              --why WHY --affected WHOM --still WHAT [--outcome TEXT] [--lapsed YYYY-MM-DD] [--row-missing | --row LINE]
-    lapse.py --workspace W --as-of YYYY-MM-DD (--id DECAY-ID | --at FILE:LINE) --came WHAT-CAME-OF-IT
+    lapse.py --workspace W --as-of YYYY-MM-DD (--id DECAY-ID | --at FILE:LINE) --came WHAT-CAME-OF-IT [--row LINE]
 
 A dated item that passes its date with no decision from the principal lapsed. The day-end asked for two things by
 hand, a `**Lapsed:**` mark where the item sits and an appended row in the register; an audit of 2026-11-11 found no
@@ -30,23 +30,30 @@ state folder), so two that run together neither start two tables nor write over 
 A row is never rewritten. What came of a lapse later (it was sent late, the principal let it go) is said with
 `--came`: a row for the same lapse, on its day, with that outcome and the rest as the lapse's row has it. It needs
 no open item, since by then the item may be closed. The register's review reads a lapse by its last row: rows of
-one ID and one day, or, for an item with no ID, rows with one Item cell, one Where cell and one day.
+one ID and one day, or, for an item with no ID, rows with one Item cell, one Where cell and one day. Where the rows
+`--came` finds are those of more than one item (a mark moves what stands under it, so another item can lapse at a
+line one lapsed at), it does not guess: `--row` and a line of the right lapse's rows says which.
 
 Exit 2, with both files as they were: a critical item (it never lapses), an item that is closed or not found (for
 an item named by its place, the refusal says where that file's items now stand, since each mark written above an
 item moves it down a line), a date that has not passed, a lapse dated ahead of today or before the item's date,
 words that say nothing, a gap of the sweep where a copy of the item could stand (a row is permanent, so none is
-written from a reading that is not whole; a gap the sweep ties to another item by its Decay ID, and a declared
-folder that holds no file, do not stand in the way and are counted in what it prints), a plan that changed so that
-the item is no longer as the sweep read it, a tag that stands in a table's row (a mark on a line of its own would
-break the table), a mark the sweep would not read as the item's, a plan, its folder or a register this process
-may not write, a register that is not named or holds no register table, an item whose row and mark both stand, an
-item already marked whose row cannot be found (a row written by hand may name it in words: `--row-missing` says
-there is none), and an item with no ID that the register holds a row for, by its title and file, at another line
-(`--row LINE` says that row is this lapse's, `--row-missing` that it is another item's). Exit 1: the row is written
-and what follows it is not, and the message says which: the mark could not be put in place (it names the row; run
-this again with `--row` and that line, and it writes the mark alone), or the row does not read back as written
-(look at it first).
+written from a reading that is not whole; a gap the sweep ties to another item, and a declared folder that holds no
+file the sweep could read, do not stand in the way and are counted in what it prints), a plan that changed so that
+the item is no longer as the sweep read it, a plan that holds a character some readers take for the end of a line
+and an editor does not (its lines are not counted alike), a tag that stands in a table's row (a mark on a line of
+its own would break the table), a mark the sweep would not read as the item's, a plan, its folder or a register
+this process may not write, a register that is not named or holds no register table, an item whose row and mark
+both stand, an item already marked whose row cannot be found (a row written by hand may name it in words:
+`--row-missing` says there is none), and an item with no ID that the register holds a row of its title for at
+another place: another line of its plan, or another plan that carries a copy of it. Which that row is, is asked
+and not guessed, for an item still to be marked and for one already marked: `--row LINE` says it is this lapse's,
+`--row-missing` that it is another item's; and a row whose line in this plan still holds a marked item of that
+title is that item's, so `--row` naming it is refused. With `--came`: no row to say it of, rows of more than one
+item and no `--row`, and a `--row` that is none of them. Exit 1: the row is written and what follows it is not, and
+the message says which: the mark could not be put in place (it names the row; run this again with `--row` and that
+line, and it writes the mark alone), or the row does not read back as written (look at it first). An interrupt, or
+a stop the system asks for, while it runs leaves nothing beside the plan.
 """
 from __future__ import annotations
 
@@ -54,6 +61,7 @@ import argparse
 import os
 import re
 import shutil
+import signal
 import sys
 from pathlib import Path
 
@@ -70,6 +78,9 @@ LEAD = re.compile(r"^(\s*)((?:[-*+]|\d+[.)])\s+)?")  # a line's indent, and its 
 OPENS = r"^\s*(?:#{1,6}\s+|[-*+]\s+|\d+[.)]\s+)"  # what stands before an item's title on its first line
 RULE = re.compile(r"^\s*\|?\s*:?-+:?\s*(?:\|\s*:?-+:?\s*)+\|?\s*$")  # the rule under a table's header, with its outer pipes or without
 TARGET = re.compile(r"\]\(<([^>]+)>\)|\]\(([^)\s]+)\)")  # a link's target, as `link` writes it
+LINKED = re.compile(r"\[[^\]]*?:(\d+)\]\(")  # the line a Where cell's link names, as `where_cell` writes it
+# what Python's reader of lines takes for the end of a line and an editor does not: the sweep counts lines with it
+ODD = re.compile("[\x0b\x0c\x1c\x1d\x1e\x85\u2028\u2029]|\r(?!\n)")
 SHOWN = 8  # how many gaps, or places, a refusal lists before it counts the rest
 
 
@@ -80,6 +91,14 @@ class Refused(Exception):
 def _cell(text: str) -> str:
     """Words as one cell of a row: on one line, and no pipe of theirs ends the cell."""
     return " ".join(str(text).split()).replace("|", "\\|")
+
+
+def title_of(line: str) -> str:
+    """An item's title from the line it opens on, inline code and all: its list mark or heading's hashes taken off,
+    and a tag on that line, which is no part of its title."""
+    opening = re.sub(OPENS, "", line).strip()
+    tagged = decay_sweep.FIELD.search(opening)
+    return (opening[:tagged.start()] if tagged else opening).strip()
 
 
 def _title(text: str) -> str:
@@ -216,15 +235,49 @@ def locate(item: dict, wanted_id: str | None, as_of) -> dict:
             item["unannounced"] and entry["lapsed_on"] >= item["due_date"]):
         raise Refused(f"{plan} changed while this ran: the item at line {entry['line']} is no longer as the sweep read it (closed, given "
                       "another date, or marked since). Nothing was written; run this again")
+    odd = ODD.search(text)
+    if odd:  # the third review: such a character in the tag's line put the mark in its middle and glued the rest on
+        raise Refused(f"{plan} holds a character that some readers take for the end of a line and an editor does not "
+                      f"({odd[0]!r}, at line {text.count(chr(10), 0, odd.start()) + 1} as an editor counts), so its lines are not counted "
+                      "alike. Replace it with a space or a line's end, and run this again; nothing was written")
     lines = text.splitlines(keepends=True)
     if in_table(lines, entry["line"]):  # a mark is a line of its own, and there it would cut the table in two
         raise Refused(f"the item's Decays tag stands in a table's row ({plan}:{entry['line']}), where a mark on a line of its own would "
                       "break the table. Write the item as an entry with its tag beneath it, or mark it by hand in that row; nothing was written")
     block = next(block for block in decay_sweep.item_blocks(text, []) if any(number == entry["line"] for number, _ in block))
     first = next((number for number, line in block if line.strip()), block[0][0])
-    opening = re.sub(OPENS, "", lines[first - 1]).strip()  # as written, inline code and all
-    tagged = decay_sweep.FIELD.search(opening)  # a tag on the item's own line is no part of its title
-    return {"plan": plan, "seen": seen, "lines": lines, "tag": entry["line"], "title": (opening[:tagged.start()] if tagged else opening).strip()}
+    return {"plan": plan, "seen": seen, "lines": lines, "text": text, "tag": entry["line"], "title": title_of(lines[first - 1])}
+
+
+def occupant(file: str, line: int):
+    """The title of the item whose Decays tag stands at that line of the file now, or None: no such item, or no file
+    to read (by the time what came of a lapse is said, its item may be closed or gone)."""
+    try:
+        with open(file, encoding="utf-8", newline="") as handle:
+            text = handle.read()
+    except (OSError, UnicodeError):
+        return None
+    lines = text.splitlines(keepends=True)
+    for block in decay_sweep.item_blocks(text, []):
+        if any(number == line and number <= len(lines) and TAG.search(lines[number - 1]) for number, _ in block):
+            return title_of(lines[next((number for number, raw in block if raw.strip()), block[0][0]) - 1])
+    return None
+
+
+def held_by(register: Path, row: dict, found: dict):
+    """The line of this plan a row names, where that line still holds a marked item of the row's title other than this
+    one: the row is that item's. None where the row names another file, this item's own line, or no such item."""
+    named = LINKED.search(str(row.get("where", "")))
+    if file_of(register, row) != os.path.realpath(found["plan"]) or not named or int(named[1]) == found["tag"]:
+        return None
+    line = int(named[1])
+    for block in decay_sweep.item_blocks(found["text"], []):
+        if any(number == line for number, _ in block):
+            first = next((number for number, text in block if text.strip()), block[0][0])
+            marked = any((decay_sweep.FIELD.search(text) or [None, ""])[1].lower() == "lapsed" for _, text in block)
+            same = lapse_review.plain(_title(title_of(found["lines"][first - 1]))) == lapse_review.plain(row.get("item"))
+            return line if marked and same else None
+    return None
 
 
 def append_row(register: Path, heads: list, row: str) -> int:
@@ -280,6 +333,9 @@ def prepare(found: dict, text: str, reads) -> tuple:
     except OSError as exc:
         _gone(tmp)
         raise Refused(f"{plan.parent} may not be written by this process ({exc}), so the mark cannot be written and nothing was written") from None
+    except BaseException:  # an interrupt while it is read back: nothing is left beside the plan (the third review)
+        _gone(tmp)
+        raise
     if not attached:
         _gone(tmp)
         raise Refused(f"a mark written under the tag at {plan}:{at} would not be read as that item's: the sweep would take it for an entry "
@@ -307,19 +363,39 @@ def _gone(tmp) -> None:
 
 def came(args, register: Path, rows: list) -> list:
     """The cells of the row that says what came of a lapse already in the register: the lapse's own newest row, with
-    its outcome replaced."""
-    if any(value is not None for value in (args.why, args.affected, args.still, args.outcome, args.lapsed, args.row)) or args.row_missing:
-        raise Refused("--came takes the item alone: the lapse's own row has its day, its why, whom it affected and what could be done")
+    its outcome replaced. Where the rows found are those of more than one lapse, `--row` says which, by a line of its
+    rows; with none, the newest lapse of one item is taken, and two items are never guessed between (the third
+    review: a mark moves what stands under it, so a second item lapsed at the place a first one had, and what came of
+    the first was written as the second's)."""
+    if any(value is not None for value in (args.why, args.affected, args.still, args.outcome, args.lapsed)) or args.row_missing:
+        raise Refused("--came takes the item alone, and --row for which of its lapses: the lapse's own row has its day, its why, whom "
+                      "it affected and what could be done")
     said = _cell(args.came)
     if not said:
         raise Refused("--came says nothing: say what came of the lapse")
     if args.id:
         named, mine = f"that names `{args.id}`", [row for row in rows if lapse_review.row_id(row) == args.id]
     else:
-        where = where_cell(register, *_at(args.at))
-        named, mine = f"for {args.at}", [row for row in rows if row.get("where", "").strip() == where]
+        where = lapse_review.plain(where_cell(register, *_at(args.at)))
+        named, mine = f"for {args.at}", [row for row in rows if lapse_review.plain(row.get("where")) == where]
     if not mine:
         raise Refused(f"{register} holds no row {named}: what came of a lapse is said of one the register already holds")
+    if args.row is not None:
+        chosen = next((row for row in mine if row["line"] == args.row), None)
+        if chosen is None:
+            raise Refused(f"--row {args.row}: {register}:{args.row} is no row {named}. Nothing was written")
+        mine = [row for row in mine if lapse_review.lapse_key(row) == lapse_review.lapse_key(chosen)]
+    else:
+        last = {lapse_review.lapse_key(row): row for row in sorted(mine, key=lambda row: row["line"])}
+        choices = "\n".join(f"  --row {row['line']}: {row['lapsed']} {str(row.get('item', '')).strip()}" for row in last.values())
+        if len({lapse_review.plain(row.get("item")) for row in mine}) > 1:
+            raise Refused(f"the rows {named} are those of more than one item (a mark moves what stands under it, so another item can lapse "
+                          f"at a line one lapsed at). Say which lapse this is of, with --row and a line of its rows:\n{choices}\nNothing was written")
+        holds = None if args.id else occupant(*_at(args.at))
+        if holds is not None and lapse_review.plain(_title(holds)) != lapse_review.plain(mine[0].get("item")):
+            raise Refused(f"{args.at} now holds another item ({_title(holds)}) than the one whose lapse is recorded for that place, which has "
+                          f"moved or gone since. If what came is of that lapse, say so with --row:\n{choices}\nIf it is of the item there now, "
+                          "the register holds no lapse of it to say it of. Nothing was written")
     last = max(mine, key=lambda row: (row["lapsed"], row["line"]))
     if str(last.get("outcome", "")).strip() == said:
         raise Refused(f"the row at {register}:{last['line']} already says that")
@@ -327,14 +403,18 @@ def came(args, register: Path, rows: list) -> list:
             *(str(last.get(name, "")).strip() or "—" for name in ("affected", "still"))]
 
 
-def standing(args, register: Path, rows: list, item: dict, wanted: str | None, named: str, where: str, plan: Path):
+def standing(args, register: Path, rows: list, item: dict, wanted: str | None, named: str, where: str, found: dict):
     """The row this lapse already has in the register, if it has one. By its Decay ID where the item has one. With
-    no ID a row is this lapse's by its title, its file and its line; a row of that title and file at another line
-    may be this lapse's (the item moved since a run that wrote the row and not the mark) or another item's, and
-    which is not guessed: `--row` or `--row-missing` says (2026-11-13, a review: the next run wrote a second row)."""
+    no ID a row is this lapse's by its title, its file and its line. A row of its title at another place (another
+    line of this plan: a run wrote the row and not the mark, and the item moved since; or another plan, for a copy
+    of the item there) may be this lapse's or another item's, and which is not guessed, for an item still to be
+    marked or one already marked: `--row` says it is this lapse's, `--row-missing` that it is another item's. A row
+    whose line in this plan still holds a marked item of that title is that item's, and `--row` naming it is refused
+    (2026-11-13, two reviews: a second row for one lapse; a mark left with no row on a refusal that said both stood;
+    two lapses under one row; a copy in an older plan given a second row)."""
     mine = [row for row in rows if row["lapsed"] >= item["due_date"] and (
         lapse_review.row_id(row) == wanted if wanted else
-        not lapse_review.row_id(row) and str(row.get("item", "")).strip() == named and file_of(register, row) == os.path.realpath(plan))]
+        not lapse_review.row_id(row) and lapse_review.plain(row.get("item")) == lapse_review.plain(named) and file_of(register, row))]
     if args.row is not None:
         there = next((row for row in mine if row["line"] == args.row), None)
         if there is None:
@@ -343,21 +423,43 @@ def standing(args, register: Path, rows: list, item: dict, wanted: str | None, n
         if not item["unannounced"]:
             raise Refused(f"--row {args.row} names the row of a lapse whose mark is still to be written, and this item is already marked. "
                           "Nothing was written")
+        holder = None if wanted else held_by(register, there, found)
+        if holder:
+            raise Refused(f"--row {args.row}: line {holder} of {found['plan']}, which that row names, still holds an item of this title, marked "
+                          "lapsed: the row is that item's. If this item's lapse has no row, run this again with --row-missing. Nothing was written")
         return there
     if wanted:
         return mine[0] if mine else None
-    there = next((row for row in mine if str(row.get("where", "")).strip() == where), None)
-    if there is None and mine and not args.row_missing:
+    here = [row for row in mine if lapse_review.plain(row.get("where")) == lapse_review.plain(where)]
+    if here:
+        return here[-1]
+    if mine and not args.row_missing:
+        places = ", ".join(f"{register}:{row['line']}" for row in mine[:SHOWN])
         if item["unannounced"]:
-            raise Refused(f"{register} holds a row for an item of this title in this file, written at another line ("
-                          + ", ".join(f"{register}:{row['line']}" for row in mine[:SHOWN]) + "). If that row is this lapse's (a run wrote the "
-                          f"row and not the mark, and the item has moved since), run this again with --row {mine[-1]['line']}; if it is "
-                          "another item's, with --row-missing. Nothing was written")
-        there = mine[-1]  # marked, and a row of its title and file stands: both are there
-    return there
+            raise Refused(f"{register} holds a row for an item of this title, of its date or later, at another place ({places}). If that row is this "
+                          "lapse's (a run wrote the row and not the mark, and the item has moved since; or the row is a copy's of this item in "
+                          f"another plan), run this again with --row {mine[-1]['line']}; if it is another item's, with --row-missing. Nothing was written")
+        raise Refused(f"the item is already marked Lapsed, and {register} holds a row for an item of this title at another place ({places}). If "
+                      "that row is this lapse's, nothing is to be written; if it is another item's, run this again with --row-missing to write this "
+                      "lapse's row. Nothing was written")
+    return None
 
 
 def main(argv=None) -> int:
+    """A stop the system asks for (SIGTERM) is an interrupt while this runs, so what it wrote beside the plan is taken
+    away on the way out (the third review: such a stop ended the process with no cleanup); the handler there before
+    is put back when it ends."""
+    try:
+        before = signal.signal(signal.SIGTERM, signal.default_int_handler)
+    except ValueError:  # not the main thread: the caller's own handling stands
+        return _run(argv)
+    try:
+        return _run(argv)
+    finally:
+        signal.signal(signal.SIGTERM, before)
+
+
+def _run(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--workspace", required=True)
     parser.add_argument("--as-of", required=True, help="verified current calendar date, YYYY-MM-DD")
@@ -372,8 +474,9 @@ def main(argv=None) -> int:
     rowed = parser.add_mutually_exclusive_group()
     rowed.add_argument("--row-missing", action="store_true", help="the register holds no row for this lapse (the item is already marked, "
                        "or a row of its title is another item's): append one")
-    rowed.add_argument("--row", type=int, metavar="LINE", help="the register's line that already holds this lapse's row, from a run that "
-                       "wrote the row and not the mark: write the mark alone")
+    rowed.add_argument("--row", type=int, metavar="LINE", help="the register's line that already holds this lapse's row (from a run that "
+                       "wrote the row and not the mark, or for a copy of the item in another plan): write the mark alone. With --came: "
+                       "a line of the rows of the lapse it is said of")
     parser.add_argument("--came", help="what came of a lapse the register already holds: appends a row for the same lapse")
     args = parser.parse_args(argv)
     try:
@@ -428,7 +531,7 @@ def main(argv=None) -> int:
                               "written and nothing was written")
             where = where_cell(register, plan, found["tag"])
             named = " ".join(filter(None, [_title(found["title"]), f"`{wanted}`" if wanted else ""]))
-            there = standing(args, register, rows, item, wanted, named, where, plan)
+            there = standing(args, register, rows, item, wanted, named, where, found)
             if there and not item["unannounced"]:
                 raise Refused(f"this lapse already has a row ({register}:{there['line']}) and its mark at the item: nothing is written. "
                               "What came of it since is said with --came")

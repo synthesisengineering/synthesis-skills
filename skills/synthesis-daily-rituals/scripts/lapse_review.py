@@ -12,8 +12,8 @@ more; how many outcomes are still open), then each lapse's row, newest first, as
 repeats and what to change is the review's to say.
 
 A row is never rewritten, so what came of a lapse later is a later row for the same item on the same day: rows
-that carry one ID and one day are one lapse, and so are rows with no ID whose Item cell, Where cell and day are the
-same; its last row is the one read. The ID a row carries is the last code span of its Item cell. The helper writes
+that carry one ID and one day are one lapse, and so are rows with no ID whose Item cell, Where cell and day read the
+same (emphasis, code marks, spacing and case set aside); its last row is the one read. The ID a row carries is the last code span of its Item cell. The helper writes
 a title's own code between plain quotes, so a row of its writing holds no other code; in a row written by hand the
 ID is whatever code stands last there.
 
@@ -121,15 +121,26 @@ def row_id(row: dict) -> str:
     return spans[-1] if spans else ""
 
 
+def plain(cell) -> str:
+    """A cell's words as a reader compares them: with no emphasis or code marks, its spaces made one, case set aside
+    (the third review: a row written by hand beside the helper's, `**Pay**  the invoice`, was another lapse)."""
+    return " ".join(re.sub(r"[*_`]+", "", str(cell or "")).split()).casefold()
+
+
+def lapse_key(row: dict) -> tuple:
+    """What makes rows one lapse: one ID and one day; or, with no ID, one Item cell, one Where cell and one day."""
+    named = row_id(row)
+    return (named, row["lapsed"]) if named else ("", plain(row.get("item")), plain(row.get("where")), row["lapsed"])
+
+
 def lapses(rows: list[dict]) -> list[dict]:
     """One row for each lapse: rows that carry one ID and one day are the lapse and what came of it since, and the
     last of them written is read. Rows with no ID are one lapse where their Item cell, their Where cell and their
-    day are the same, which is how what came of such a lapse is written (2026-11-13, a review: each was a lapse of
-    its own, so one lapse and two rows of what came of it read as three)."""
+    day read the same (`plain`), which is how what came of such a lapse is written (2026-11-13, a review: each was a
+    lapse of its own, so one lapse and two rows of what came of it read as three)."""
     last = {}
     for row in sorted(rows, key=lambda row: row["line"]):
-        named = row_id(row)
-        last[(named, row["lapsed"]) if named else ("", str(row.get("item", "")).strip(), str(row.get("where", "")).strip(), row["lapsed"])] = row
+        last[lapse_key(row)] = row
     return list(last.values())
 
 

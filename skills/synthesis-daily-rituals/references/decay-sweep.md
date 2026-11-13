@@ -43,13 +43,17 @@ Declare any separately stored plan archive explicitly, under its owning seat.
 The helper reports every selected file, skipped future file, excluded unrelated
 file, malformed date, unreadable directory/file and refused symlink. A linked
 folder is never entered. A linked file is a gap only where the sweep would read
-a file of that name and the link leads to a file it does not read under that
-file's own name; otherwise it is listed as excluded, since it hides nothing
-(a `latest.md` kept beside the plans, or a dated name that leads to a plan that
-is read). A gap on a line of one item says whose it is (`identity`: its Decay
-ID, or its file and line where it has none; nothing where its ID line cannot be
-read, since it may then be any item's), and the gap for a declared folder with
-no dated file says how many files the folder holds (`files`). Missing or
+a file of that name and the link leads to a file it does not read, under that
+file's own name and as the same kind of record; otherwise it is listed as
+excluded, since it hides nothing (a `latest.md` kept beside the plans, or a
+dated name that leads to a plan that is read). A link named as a plan that
+leads to a draft is a gap: read as a plan, the draft would outrank the plans. A
+gap on a line of one item says whose it is (`identity`: its Decay ID, or its
+file and line where it has none; nothing where its ID line cannot be read,
+since it may then be any item's), and the gap for a declared folder with no
+dated file says how many files it holds that the sweep could read (`files`:
+Markdown files and linked folders; a placeholder such as `.gitkeep` or
+`.DS_Store` is none). Missing or
 empty declared roots, incomplete enumeration, invalid tags, ambiguous identity
 or conflicting same-day states produce `BLOCKED` and exit 2. Existing candidates
 remain in the result alongside gaps. A scan with due candidates, an untagged
@@ -76,9 +80,13 @@ declared plan/artifact roots passed in one invocation for the same seat.
 
 An item block starts at a Markdown heading or list item and ends at the next
 heading or peer list item. Put metadata directly under that heading/list item,
-not in a separate subheading. A field written as a list entry under its item
-(`- **Decays:** ...`, and under any other list mark: `*`, `+`, `1.`) is that
-item's field and no entry of its own. The collector does not use a matching title to
+not in a separate subheading. A field written as a list entry, under any
+list mark (`-`, `*`, `+`, `1.`), is the field of the item it stands under: one
+directly under a heading with no entry open, or one deeper than the open entry.
+At the open entry's level it is an entry of its own, which closes nothing of
+its neighbour's and is no commitment, so a sibling `- **Resolved:** ...` about
+something else leaves the item above it open. Two of one field directly under
+a heading are a gap (separate the items). The collector does not use a matching title to
 merge obligations. Existing tags without IDs retain a source-path-and-line
 identity and remain review candidates until a grounded outcome is recorded at
 their original item. Do not bulk-generate IDs or infer resolutions from prose; a workspace that checks

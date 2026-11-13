@@ -802,8 +802,9 @@ def test_a_plan_whose_lines_some_readers_count_otherwise_is_refused(seat, odd):
     """Finding 8: a character that Python's reader of lines takes for a line's end, inside the tag's line, put the mark
     in the middle of it and glued the rest of the line on."""
     plan, register, env = seat
-    plan.write_text(PLAN.replace("   **Decays:** 2026-11-11 (two days after the event)\n",
-                                 f"   **Decays:** 2026-11-11 (two days after the event){odd}see the thread\n"), encoding="utf-8", newline="")
+    with open(plan, "w", encoding="utf-8", newline="") as file:              # as written: no line end is changed (Python 3.9 has no newline= on write_text)
+        file.write(PLAN.replace("   **Decays:** 2026-11-11 (two days after the event)\n",
+                                f"   **Decays:** 2026-11-11 (two days after the event){odd}see the thread\n"))
     before = (plan.read_bytes(), register.read_bytes())
     done = lapse(env, "--id", "thanks")
     assert done.returncode == 2 and "line" in done.stderr and (plan.read_bytes(), register.read_bytes()) == before, done.stderr

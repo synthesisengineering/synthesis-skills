@@ -8,13 +8,15 @@ one in nine plans). This builds a single list from the deadline sweep over the f
 that nothing depends on memory or on which plan an item was last copied into: the critical deadlines that are
 open and what reads like one and is not classified, the dated items due or past (one whose date passed with
 nothing written is marked; an item with no Decay ID that several plans copy is listed once, with how many copies,
-at its newest copy whose date passed with nothing written, else at its newest: with no ID, copies are paired by
-their order in each plan, and two of one title and date in one plan are two entries),
-the dated items ahead, the newest plan's commitments with no date and no park, a ledger's open rows, and the
+at its newest copy, and marked only where no copy carries a Lapsed mark for its date, as the sweep reads an item
+with an ID: with no ID, copies are paired by their order in each plan, and two of one title and date in one plan
+are two entries), the dated items ahead (copies listed once the same way), the newest plan's commitments with no
+date and no park, a ledger's open rows, and the
 choices the newest plan puts with no decision. Each entry says where it sits.
 
 It reads, and writes only the file it is told to: never a file in a folder the workspace declares (its plans, its
-artifacts, its records, however the config writes the folder), and never over a file that is not a list of its
+artifacts, its records, however the config writes the folder and by whatever name the file system takes for it,
+through a link or in another case), and never over a file that is not a list of its
 own. A list that claims to be everything is not built over records the sweep did not take in full, a ledger's row
 too short to read among them: it exits 2 and names each by its file, a gap by its line, unless `--with-gaps` asks
 for the list with those named at its head. Without `--out` the list is printed.
@@ -38,6 +40,49 @@ TITLE = "# Everything open for "  # the list's first words: a file that opens ot
 SPACED = re.compile(r"[\s()]")  # a path that Markdown takes as a link's target only between angle brackets
 
 
+def within(path: Path, folder: Path) -> bool:
+    """Whether a path is the folder or lies in it, by name as the sweep reads the folder, or by what the file system
+    takes for the same folder: through a link, or named in another case on a volume that compares names without case
+    (the third review: `--out PLANS/...` was written among the plans, and the next sweep read it as a plan)."""
+    real, root = os.path.realpath(path), os.path.realpath(folder)
+    if real == root or real.startswith(root.rstrip(os.sep) + os.sep):
+        return True
+    try:
+        held = os.stat(folder)
+    except OSError:  # a folder that is not there holds nothing; the sweep says it is missing
+        return False
+    for ancestor in (path, *path.parents):
+        try:
+            if os.path.samestat(os.stat(ancestor), held):
+                return True
+        except OSError:
+            continue
+    return False
+
+
+def merge(rows: list) -> list:
+    """The copies of each item: an item with no ID is another item in each plan that copies it, so its copies are
+    merged across plans, the first of a title and date in one plan with the first in another, the second with the
+    second; two of them in one plan are two items. Rows come by date, path and line; each group keeps that order."""
+    groups, merged, nth = [], {}, {}
+    for row in rows:
+        key = None
+        if str(row.get("identity", "")).startswith("source:"):
+            spot = (row["path"], row["title"], row["due_date"])
+            nth[spot] = nth.get(spot, 0) + 1
+            key = (row["title"], row["due_date"], nth[spot])
+        if key in merged:
+            merged[key].append(row)
+        else:
+            groups.append([row])
+            merged.update({key: groups[-1]} if key else {})
+    return groups
+
+
+def newest(rows: list) -> dict:
+    return max(rows, key=lambda row: (row.get("plan_date") or "", row["path"], row["line"]))
+
+
 def build(workspace: str, as_of, out: Path | None, with_gaps: bool) -> tuple[str, int]:
     """(the list as Markdown, how many entries it holds); exits 2 where it cannot be everything."""
     try:
@@ -49,9 +94,7 @@ def build(workspace: str, as_of, out: Path | None, with_gaps: bool) -> tuple[str
     if not roots:
         raise SystemExit(f"plate: {workspace} declares that it keeps no dated plans, so there is nothing to build the list from")
     if out is not None:  # a folder is compared as the sweep reads it, `~` expanded; the folder itself is in it
-        real, folders = os.path.realpath(out), [root.expanduser().absolute() for root, _ in roots]
-        inside = next((folder for folder in folders if real == os.path.realpath(folder)
-                       or real.startswith(os.path.realpath(folder).rstrip(os.sep) + os.sep)), None)
+        inside = next((folder for folder in (root.expanduser().absolute() for root, _ in roots) if within(out, folder)), None)
         if inside is not None:
             raise SystemExit(f"plate: {out} is in {inside}, a folder this workspace declares: the list is read from there and "
                              "never written there. Name a file somewhere else")
@@ -82,25 +125,13 @@ def build(workspace: str, as_of, out: Path | None, with_gaps: bool) -> tuple[str
     for path in report.get("plans_read", []):
         text = Path(path).read_text(encoding="utf-8", errors="replace")
         choices += [(title, path, line) for line, title, _, _ in ritual_state.open_choices(text, located=True)]  # the line it opens on
-    owed, copies, merged, nth = report["owed"]["rows"], [], {}, {}
-    for row in report["due"]:  # by date, path and line
-        # an item with no ID is another item in each plan that copies it, so its copies are merged across plans and
-        # listed once, with how many: the first of a title and date in one plan with the first in another, the second
-        # with the second. Two of them in one plan are two items.
-        key = None
-        if str(row.get("identity", "")).startswith("source:"):
-            spot = (row["path"], row["title"], row["due_date"])
-            nth[spot] = nth.get(spot, 0) + 1
-            key = (row["title"], row["due_date"], nth[spot])
-        if key in merged:
-            merged[key].append(row)
-        else:
-            copies.append([row])
-            merged.update({key: copies[-1]} if key else {})
-    due = []  # (the copy an entry is placed at, whether its date passed with nothing written, how many copies)
-    for rows in copies:  # passed with nothing written where any copy is, and placed at the newest such copy, else the newest
-        late = [row for row in rows if row["unannounced"]]
-        due.append((max(late or rows, key=lambda row: (row.get("plan_date") or "", row["path"], row["line"])), bool(late), len(rows)))
+    owed = report["owed"]["rows"]
+    # (the copy an entry is placed at, whether its date passed with nothing written, how many copies). Copies of one
+    # item are read as the sweep reads an item with an ID: told where any copy carries a mark for its date, and placed
+    # at the newest copy (the third review: said passed where any copy was, an item marked on its newest copy read as
+    # one nobody was told of, at an older copy).
+    due = [(newest(rows), all(row["unannounced"] for row in rows), len(rows)) for rows in merge(report["due"])]
+    ahead = [(newest(rows), len(rows)) for rows in merge(report["ahead"])]
     sections = [
         ("Not read", [f"{path}: {'; '.join(why)}" for path, why in unread.items()]),
         ("Critical deadlines", [f"{row['due_date']} {row['title']} [{row['class']}]{named(row)} {at(row['path'], row['line'])}"
@@ -109,7 +140,8 @@ def build(workspace: str, as_of, out: Path | None, with_gaps: bool) -> tuple[str
                                                for row in report["critical"]["unclassified"]]),
         ("Due or past", [f"{row['due_date']} {row['title']}{named(row)}" + ", passed with nothing written" * late
                          + f", {many} copies with no Decay ID" * (many > 1) + f" {at(row['path'], row['line'])}" for row, late, many in due]),
-        ("Dated ahead", [f"{row['due_date']} {row['title']}{named(row)} {at(row['path'], row['line'])}" for row in report["ahead"]]),
+        ("Dated ahead", [f"{row['due_date']} {row['title']}{named(row)}" + f", {many} copies with no Decay ID" * (many > 1)
+                         + f" {at(row['path'], row['line'])}" for row, many in ahead]),
         ("Commitments with no date and no park", [f"{row['title']} {at(row['path'], row['line'])}" for row in report["untagged"]]),
         ("Owed in a ledger", [f"{row['item']} [{row['status'] or 'no status'}] since {row['owed_since'] or 'no date'} "
                               f"{at(row['path'], row['line'])}" for row in owed]),
