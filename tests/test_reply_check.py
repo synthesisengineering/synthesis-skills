@@ -2025,3 +2025,103 @@ def test_a_first_person_wait_is_read_in_a_heading_in_a_table_row_and_before_a_co
 @pytest.mark.parametrize("reply", _cases(A_LABEL_WITH_NO_SUBJECT_IN_A_HEADING_OR_A_CELL))
 def test_a_label_with_no_subject_that_names_a_state_is_still_set_aside(reply):
     assert _sent_back(reply) is None
+
+
+# Findings 8, 9 and 10 of the review, on the reader of what the harness holds. Work is started by the harness's own
+# tool-result entry, which is a `user` entry. It is ended by the harness's own notification, in one of the three forms
+# it writes, with the tag opening the text. And no record, however malformed, makes the reader raise. In 112 recorded
+# transcripts (2026-11-12) every launch the harness wrote is a `user` entry (1,921). 473 more are copies of one inside a
+# record of a request, and 17 of those came after their call had reported: each started finished work a second time.
+# Every notification the harness wrote opens with its tag (about 7,450). 418 more lines carry one inside other text
+# (416 records of a request, one queued prompt, one message marked as meta); none of them named a call still out.
+NOTED = "<task-notification>\n<task-id>t1</task-id>\n<tool-use-id>toolu_1</tool-use-id>\n<status>completed</status>\n</task-notification>"
+LAUNCHED = [{"type": "tool_result", "tool_use_id": "toolu_1", "content": BACKGROUND_WORK["an-agent"]}]
+NOT_THE_HARNESSS_LAUNCH = {
+    "R3-08-an-assistant-entry": _entry(type="assistant", message={"role": "assistant", "content": LAUNCHED}),
+    "a-record-of-a-request": _entry(type="api-request-blob", message={"role": "user", "content": LAUNCHED}),
+    "an-attachment": _entry(type="attachment", message={"role": "user", "content": LAUNCHED}),
+    "an-entry-of-no-type": _entry(message={"role": "user", "content": LAUNCHED}),
+    "a-type-that-is-no-string": _entry(type=["user"], message={"role": "user", "content": LAUNCHED}),
+}
+NOT_THE_HARNESSS_NOTIFICATION = {
+    "R3-09-quoted-by-the-person": _entry(type="user", message={"role": "user", "content": "Here is an example: " + NOTED}),
+    "R3-09-in-the-assistants-words": _entry(type="assistant", message={"role": "assistant", "content": "The tool printed " + NOTED}),
+    "an-assistant-entry-that-opens-with-it": _entry(type="assistant", message={"role": "assistant", "content": NOTED}),
+    "an-assistants-text-part": _entry(type="assistant", message={"role": "assistant", "content": [{"type": "text", "text": NOTED}]}),
+    "quoted-in-a-queued-prompt": _entry(type="attachment", attachment={"type": "queued_command", "prompt": "Look at this: " + NOTED,
+                                                                         "commandMode": "prompt"}),
+    "quoted-in-a-queue-operation": _entry(type="queue-operation", operation="enqueue", content="Look at this: " + NOTED),
+    "quoted-in-a-hooks-message": _entry(type="user", isMeta=True, message={"role": "user", "content": "Stop hook feedback: " + NOTED}),
+    "in-a-record-of-a-request": _entry(type="api-request-blob", message={"role": "user", "content": NOTED}),
+    "an-attachment-of-another-kind": _entry(type="attachment", attachment={"type": "file", "prompt": NOTED}),
+    "an-entry-of-no-type": _entry(content=NOTED),
+}
+THE_HARNESSS_NOTIFICATION = {
+    "a-user-entry-that-opens-with-the-tag": _entry(type="user", message={"role": "user", "content": "\n" + NOTED}),
+    "a-task-notification-by-its-origin": _entry(type="user", origin={"kind": "task-notification"},
+                                                message={"role": "user", "content": "Background task update\n" + NOTED}),
+    "a-queue-operation-that-removes-it": _entry(type="queue-operation", operation="remove", content=NOTED),
+}
+
+
+@pytest.mark.parametrize("entry", _cases(NOT_THE_HARNESSS_LAUNCH))
+def test_only_a_user_entrys_tool_result_starts_background_work(tmp_path, entry):
+    assert "nothing is armed" in _with_record(A_WAIT, _record(tmp_path, entry))
+    reported_then_copied = _record(tmp_path, _started("toolu_1", BACKGROUND_WORK["an-agent"]), _reported("toolu_1"), entry)
+    assert "nothing is armed" in _with_record(A_WAIT, reported_then_copied)             # a copy after the report starts nothing again
+
+
+@pytest.mark.parametrize("entry", _cases(NOT_THE_HARNESSS_NOTIFICATION))
+def test_a_notification_quoted_in_other_text_or_outside_the_harnesss_forms_ends_nothing(tmp_path, entry):
+    assert _with_record(A_WAIT, _record(tmp_path, _started("toolu_1", BACKGROUND_WORK["an-agent"]), entry)) is None
+
+
+@pytest.mark.parametrize("entry", _cases(THE_HARNESSS_NOTIFICATION))
+def test_each_form_of_the_harnesss_own_notification_ends_the_work_it_names(tmp_path, entry):
+    assert "nothing is armed" in _with_record(A_WAIT, _record(tmp_path, _started("toolu_1", BACKGROUND_WORK["an-agent"]), entry))
+
+
+MALFORMED_RECORDS = {
+    "R3-10-an-id-that-is-a-list": _started(["bad"], BACKGROUND_WORK["an-agent"]),
+    "an-id-that-is-an-object": _started({"id": 1}, BACKGROUND_WORK["an-agent"]),
+    "an-id-that-is-null": _started(None, BACKGROUND_WORK["an-agent"]),
+    "an-id-that-is-a-number": _started(7, BACKGROUND_WORK["an-agent"]),
+    "parts-of-every-wrong-kind": _entry(type="user", message={"role": "user", "content": [
+        None, 7, "Async agent launched", ["tool_result"], {"type": "tool_result"}, {"type": "tool_result", "tool_use_id": "t", "content": 7},
+        {"type": "tool_result", "tool_use_id": "t", "content": [None, 7, {"text": None}, {"text": ["Async agent launched"]}]}]}),
+    "a-message-that-is-a-list": _entry(type="user", message=["tool_result", "Async agent launched"]),
+    "content-that-is-an-object": _entry(type="user", message={"content": {"tool_result": "Async agent launched"}}),
+    "an-origin-that-is-a-string": _entry(type="user", origin="task-notification", message={"role": "user", "content": ["<task-notification>"]}),
+    "an-attachment-that-is-a-string": _entry(type="attachment", attachment="queued_command <task-notification>"),
+    "a-prompt-that-is-a-list": _entry(type="attachment", attachment={"type": "queued_command", "prompt": ["<task-notification>"]}),
+    "queue-content-that-is-an-object": _entry(type="queue-operation", content={"said": "<task-notification>"}),
+    "a-line-cut-short": _started("toolu_1", BACKGROUND_WORK["an-agent"])[:-9],
+    "nested-past-what-the-parser-takes": "[" * 100_000 + '"<task-notification>"',
+    "a-bare-string": json.dumps(NOTED),
+}
+
+
+@pytest.mark.parametrize("line", _cases(MALFORMED_RECORDS))
+def test_a_malformed_record_holds_nothing_and_raises_nothing(tmp_path, line):
+    assert reply_check.held_by_harness(_record(tmp_path, line)) is False
+    assert "nothing is armed" in _with_record(A_WAIT, _record(tmp_path, line))
+    beside = _record(tmp_path, line, _started("toolu_2", BACKGROUND_WORK["a-shell-command"]), line)
+    assert reply_check.held_by_harness(beside) is True                                  # and it hides nothing a sound record holds
+
+
+@pytest.mark.parametrize("path", ["\u0000", "a\u0000b", "", None, 7.5, 2**40, ["x"], {"path": "x"}, b"bytes", "x" * 5000])
+def test_a_path_that_cannot_be_used_holds_nothing_and_raises_nothing(path):
+    assert reply_check.held_by_harness(path) is False
+
+
+def test_a_number_given_as_the_path_names_no_file_descriptor(tmp_path):
+    record = _record(tmp_path, _started("toolu_1", BACKGROUND_WORK["an-agent"]))
+    descriptor = os.open(record, os.O_RDONLY)
+    try:
+        assert reply_check.held_by_harness(descriptor) is False                         # a number is no path: its descriptor is not read
+        os.fstat(descriptor)                                                            # and not closed
+    finally:
+        try:
+            os.close(descriptor)
+        except OSError:
+            pass
