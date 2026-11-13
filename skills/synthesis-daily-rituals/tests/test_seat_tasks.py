@@ -5,7 +5,8 @@ tag and no park stood under the task and waiting headings (12, 0 and 9 in the ne
 boxes; every open dated item already carried a Decay ID; in a seat that runs its rituals no date ever showed as
 passed, because each day's ritual re-dates what it carries, so a passed date exists only where no ritual ran; and
 one seat kept a correspondence ledger, a table with a status and an owed-since column, 341 rows that nothing read.
-Committed before the code.
+Its first tests were committed before the code; those under "the first review" follow that review, and each
+failed before its fix.
 """
 from __future__ import annotations
 

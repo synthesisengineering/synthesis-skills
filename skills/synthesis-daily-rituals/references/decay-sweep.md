@@ -44,8 +44,9 @@ The helper reports every selected file, skipped future file, excluded unrelated
 file, malformed date, unreadable directory/file and refused symlink. Missing or
 empty declared roots, incomplete enumeration, invalid tags, ambiguous identity
 or conflicting same-day states produce `BLOCKED` and exit 2. Existing candidates
-remain in the result alongside gaps. A scan with due candidates is `REVIEW`;
-only a complete scan without due candidates is `CLEAR`. Successful scans exit 0;
+remain in the result alongside gaps. A scan with due candidates, an untagged
+commitment or a dated item with no Decay ID is `REVIEW`; only a complete scan
+with none of those is `CLEAR` (a ledger's open rows are a view of their own). Successful scans exit 0;
 that means collection succeeded, not that communications are approved or the
 day may close. Fenced/inline code examples and blockquotes are not operative
 plan items. Unterminated fences or frontmatter are coverage gaps.
@@ -106,47 +107,70 @@ Four things a rule once asked an agent to remember. They were counted on three s
 before any of them refused anything; the counts are in each paragraph.
 
 **Commitments with no date and no park (`untagged`).** The sweep keeps in view only what carries a date, so a
-commitment written with no tag is carried for as long as someone copies it and no longer. In the seat's newest
-plan (every plan of the newest day on or before the sweep's; where the seat keeps no dated plan, the last run of
-the newest day among its rituals' artifacts), each open top-level list entry that stands under a heading of the
-second level or deeper which the plan format places among tasks, things waited on or things carried is a
-commitment: `Priority Tasks`, `Tasks`, `Today's Priorities`, `Still To Do`, `This Week`, `Pending This Session`,
-`Waiting On Others`, `Watch / waiting`, `Delegated`, `Carried Items`, `Carry Forward`. The nearest enclosing
-heading that says either way decides: a bucket under the task section is read whatever its own words, a heading
-of things finished (`Completed`, `Done`, `Sent`, `Closed`) holds none wherever it stands, and the plan's own
-title places nothing. An entry passes with a `**Decays:**` date or a `**Critical:**` tag in
-its block, or a park that says why: `parked (reason)` on its line, or a `**Parked:** reason` line under it. It is
-closed, and not read, where its title carries a tick, a strike, DONE or SENT, or its block a Sent, Released or
-Resolved line. Listed entries make the status REVIEW. Counted: 12, 0 and 9 such entries in three seats' newest
-plans, all under the task and waiting headings, none of them a task box. Not read: an entry under any other
-heading (16, 21 and 11 open entries with neither stood under headings of notes, where code cannot tell a
-commitment from a remark), a commitment written as a sentence, and a plan older than the newest.
+commitment written with no tag is carried for as long as someone copies it and no longer.
 
-**An open dated item with no Decay ID (`no_id`).** Without the ID no later copy can be matched to it, and the
-sweep takes each copy for another item. Counted: none open in any of the three seats.
+- *Which plan.* The seat's newest plan, today's or not: every plan of the newest day on or before the sweep's.
+  Where the seat keeps no dated plan, the last run of that day in each folder that holds a rituals' artifact of
+  that day (a worker that has not run since an earlier day is not read). The files read are listed under
+  `plans_read`.
+- *Which headings.* A heading of the second level or deeper places commitments under it where its words are the
+  plan format's for tasks, things waited on or things carried: `Priority Tasks`, `Tasks`, `Task list`, `Action
+  Items`, `To-do`, `Follow-ups`, `Today's Priorities`, `Still To Do`, `This Week`, `Pending This Session`, `Waiting
+  On Others`, `Watch / waiting`, `Delegated`, `Carried Items`, `Carry Forward`. A heading whose words also name
+  another kind of section says nothing by itself (`This week's calendar`, `Draft A: reply to someone who is
+  waiting`). A heading of things finished holds none: it opens with `Completed`, `Done`, `Sent`, `Closed` or
+  `Finished`, or says completed or finished, and has no word that says the thing is still to come (`Not done yet`
+  and `Sent, awaiting reply` are not such headings). The nearest enclosing heading that says either way decides, so
+  a bucket under the task section is read whatever its own words, and the plan's own title places nothing.
+- *Which entries.* Each top-level list entry there, and each row of a table that stands directly under such a
+  heading, before any list. An entry is closed, and not read, in any of the ways a plan marks one done: a tick box,
+  a strike, a tick (✅ anywhere in its line; ✓, ✔ or ☑ at its start), DONE or SENT in capitals at its start, before
+  a time or at its end; or a Sent, Released or Resolved line, or a struck date with its reason, in its block.
+- *What passes.* A `**Decays:**` date in the entry's block (a `**Critical:**` tag needs its date too), or a park
+  that says why: `parked (reason)`, or a `**Parked:** reason` line, anywhere in the block, a nested entry's
+  included. A table's row can carry a park and no date, since a tag stands under a heading or a list entry: a row
+  is listed until it is parked or written as an entry.
+- *Not read.* An entry under any other heading (16, 21 and 11 open entries with neither stood under headings of
+  notes, where code cannot tell a commitment from a remark); a commitment written as a sentence; a table inside an
+  entry or after a list; a plan older than the newest.
+
+Listed entries make the status REVIEW. Counted: 12, 0 and 11 such entries in three seats' newest plans, under
+the task and waiting headings, none of them a task box.
+
+**An open dated item with no Decay ID (`no_id`).** Without the ID no later copy can be matched to it, so the
+sweep takes each copy for another item: three plans that copy it are three items, and closing one closes no
+other. Counted: none open in any of the three seats.
 
 **A date that passed with nothing written (`unannounced`, on a due item).** True where the item's newest date
-is before the sweep's day and no copy of it carries a `**Lapsed:**` mark. A seat that runs its rituals re-dates
-what it carries each day, so in such a seat every due item is dated today (29 of 29 and 73 of 73 when counted) and
-none is unannounced: this is the mark of a day with no ritual. The job that runs with no ritual
-(`--alert-declared`, at 16:55) counts them over every declared workspace and posts one banner with the count. An
-item due today is not counted, since the day has not closed.
+is before the sweep's day and no copy carries a `**Lapsed:**` mark for that date or a later one (a mark gives its
+date; one that gives none speaks of its plan's day). A mark for an earlier date says nothing of a later one that
+passed too. A seat that runs its rituals re-dates what it carries each day, so in such a seat every due item is
+dated today (29 of 29 and 73 of 73 when counted) and none is unannounced: this is the mark of a day with no
+ritual. The job that runs with no ritual (`--alert-declared`, at 16:55) counts them over every declared workspace,
+an item two workspaces share once, and posts one banner with the count. An item due today is not counted, since
+the day has not closed.
 
 **A ledger's open rows (`owed`).** In a `records_dirs` folder, a table whose header has a `Status` cell and an
-`Owed since` cell is a correspondence ledger, and each row is one thing owed, at its file and line (its `Item`
-cell names it, or its first). A row is closed where its status opens with a tick (✅) or with one of the closing
-words: SENT, SUPERSEDED, DECAYED, CLOSED, RELEASED, RESOLVED, LAPSED, DONE, ANSWERED (a top-level
-`ledger_closed_words` list in the ritual config replaces them). Every other status is open, an empty one included:
-a status the reader does not know is not read as finished. The view gives the count, the oldest date, how many
-have been owed more than fourteen days, how many carry no date and how many rows had too few cells to read, then
-the rows, those with no date first and then the oldest. The text report prints the count line and the ten oldest.
-A ledger's rows are never in `due`: an owed-since date is when the debt began, not a day it decays on. Counted
-in the one seat that keeps a ledger: 141 open rows of 341, the oldest four months old, where the due list held 73.
+`Owed since` cell is a correspondence ledger, each of its lines opening with a pipe, and each row is one thing
+owed, at its file and line (its `Item` cell names it, or its first). A row is closed where its status, with
+anything struck through set aside, opens with a tick (✅, ✔, ✓, ☑, `[x]`) or with one of the closing words and no
+question mark after it: SENT, SUPERSEDED, DECAYED, CLOSED, RELEASED, RESOLVED, LAPSED, DONE, ANSWERED (a top-level
+`ledger_closed_words` list in the ritual config replaces them; a value that is no list of words is a gap). Every
+other status is open, an empty one included: a status the reader does not know is not read as finished. The view
+gives the count, the oldest date, how many have been owed more than fourteen days, how many carry no date and how
+many rows had too few cells to read, then the rows: those with no date first, then the oldest. The text report
+prints the count line and the first ten of them. A ledger's rows are never in `due` and change no status: an
+owed-since date is when the debt began, not a day it decays on. Counted in the one seat that keeps a ledger: 141
+open rows of 341, the oldest four months old, where the due list held 73.
+
+**A record the readers cannot read.** A plan's or a ledger's shape that either reader fails on is a gap for that
+file (BLOCKED), and everything else is still read: the critical view, the due list and the evening's alert.
 
 **The record.** A workspace turns the commitment check on in the ritual config: `"commitment_check": true`, or
 `{"from": "YYYY-MM-DD"}` for its first day. `ritual_state.py record` then refuses a clean outcome while `untagged`
-or `no_id` holds anything, names each, and says how to finish it; any other outcome records and says how many.
-Only a missing key or `false` leaves it off, and any other value is refused. The ledger refuses nothing.
+or `no_id` holds anything, names each with its file and line, and says how to finish each kind; any other outcome
+records and says how many. Where no dated plan was read it says so. Only a missing key or `false` leaves it off,
+and any other value is refused. The ledger refuses nothing.
 
 ## Regression contract
 

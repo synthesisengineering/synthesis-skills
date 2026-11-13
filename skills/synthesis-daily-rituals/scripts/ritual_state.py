@@ -111,7 +111,7 @@ def append(record: dict) -> None:
         os.close(fd)
 
 
-def critical_deadlines(workspace: str, outcome: str) -> str:
+def critical_deadlines(workspace: str, outcome: str, sweep=None) -> str:
     """The line `record` prints about critical deadlines, or a refusal: one past due, plans unread, none declared."""
     try:
         roots = decay_sweep.declared(rituals.config(), workspace)
@@ -124,7 +124,7 @@ def critical_deadlines(workspace: str, outcome: str) -> str:
                'or "plans_dirs": [] for a workspace that keeps no dated plans')
     if not roots:
         return f"critical deadlines: {workspace} declares that it keeps no dated plans, so none are tracked"
-    report = decay_sweep.collect(roots, today(), workspace)
+    report = sweep(today()) if sweep else decay_sweep.collect(roots, today(), workspace)
     late = [row for row in report["critical"]["open"] if row["past_due"]]
     if late:
         refuse(f"{len(late)} critical deadline(s) past due and open, so this ritual is not recorded:\n"
@@ -386,8 +386,8 @@ def choices(workspace: str, day: str) -> str:
     return f"\nchoices: {open_items} open in today's plan, each with a recommendation" if roots else ""
 
 
-def commitments(workspace: str, day: str, outcome: str) -> str:
-    """The line `record` prints about the day's commitments, or a refusal, for a workspace that turns the check on
+def commitments(workspace: str, day: str, outcome: str, sweep=None) -> str:
+    """The line `record` prints about the seat's commitments, or a refusal, for a workspace that turns the check on
     (`"commitment_check": true`, or `{"from": "YYYY-MM-DD"}` for its first day): a clean outcome is refused while
     an open entry under a task, waiting or carried heading of the newest plan carries no date and no park, or an
     open dated item carries no Decay ID; any other outcome records and says how many. The sweep reads both
@@ -403,19 +403,27 @@ def commitments(workspace: str, day: str, outcome: str) -> str:
     since = wanted.get("from", "") if isinstance(wanted, dict) else ""
     if day < since:
         return f"\ncommitments: checked from {since}"
-    report = decay_sweep.collect(decay_sweep.declared(rituals.config(), workspace) or [], date.fromisoformat(day), workspace)
+    as_of = date.fromisoformat(day)
+    report = sweep(as_of) if sweep else decay_sweep.collect(decay_sweep.declared(rituals.config(), workspace) or [], as_of, workspace)
     bare, loose = report["untagged"], report["no_id"]
     said = ([f"{len(bare)} in the newest plan carry no date and no park"] if bare else []) + (
         [f"{len(loose)} open dated item(s) carry no Decay ID"] if loose else [])
     if said and outcome in CLEAN:
-        lines = [f"  {Path(row['path']).name}:{row['line']}: {row['title']}" for row in bare + loose]
         what = " and ".join(([f"{len(bare)} commitment(s) in the newest plan carry no date and no park"] if bare else []) + said[len(said) - bool(loose):])
-        refuse(f"{what}, so this ritual is not recorded as {outcome}:\n" + "\n".join(lines) + "\nA commitment the sweep cannot see "
-               "is carried only for as long as someone copies it. Under each commitment write `**Decays:** YYYY-MM-DD (why "
-               "then)`, the day to look at it again, with a `**Decay ID:**` of its own that every later copy keeps; or, where the "
-               "principal has said it waits for no date, `parked (the reason)` on its own line. Or record --outcome partial, "
-               "which closes the day with these counted as open.")
-    return "\ncommitments: " + ("; ".join(said) if said else f"{report['commitments']} open in the newest plan, each with a date or a park")
+        refuse(f"{what}, so this ritual is not recorded as {outcome}:\n"
+               + "\n".join(f"  {row['path']}:{row['line']}: {row['title']}" for row in bare + loose) + (
+                   "\nA commitment the sweep cannot see is carried only for as long as someone copies it. Under each "
+                   "commitment write `**Decays:** YYYY-MM-DD (why then)`, the day to look at it again, with a `**Decay ID:**` "
+                   "of its own that every later copy keeps; or, where the principal has said it waits for no date, `parked "
+                   "(the reason)` on its own line." * bool(bare)) + (
+                   "\nA dated item with no ID is another item to the sweep in each plan that copies it, and closing one "
+                   "copy closes no other. Give each a `**Decay ID:**` line where it sits, the same in every copy that is "
+                   "still open, or record its outcome there (`**Resolved:** YYYY-MM-DD (what happened)`)." * bool(loose))
+               + "\nOr record --outcome partial, which closes the day with these counted as open.")
+    unread = f"; {len(report['gaps'])} source(s) could not be read whole" * bool(report["gaps"])
+    if not report.get("plans_read"):
+        return "\ncommitments: no dated plan to read" + unread
+    return "\ncommitments: " + ("; ".join(said) if said else f"{report['commitments']} open in the newest plan, each with a date or a park") + unread
 
 
 def cmd_record(args) -> int:
@@ -430,8 +438,14 @@ def cmd_record(args) -> int:
                "that day" + (f". A weekly review done early takes the Friday it satisfies, {early}, and no other day ahead" * review))
     if args.mode == "migration":
         refuse("mode 'migration' marks old bookkeeping and cannot be written")
-    critical = (critical_deadlines(args.workspace, args.outcome) + travel(args.workspace, args.date, args.travel)
-                + choices(args.workspace, args.date) + commitments(args.workspace, args.date, args.outcome)
+    made: dict = {}
+
+    def sweep(as_of: date) -> dict:  # one read of the workspace's plans for each day asked about
+        if as_of not in made:
+            made[as_of] = decay_sweep.collect(decay_sweep.declared(rituals.config(), args.workspace) or [], as_of, args.workspace)
+        return made[as_of]
+    critical = (critical_deadlines(args.workspace, args.outcome, sweep) + travel(args.workspace, args.date, args.travel)
+                + choices(args.workspace, args.date) + commitments(args.workspace, args.date, args.outcome, sweep)
                 + prompts(args.workspace, args.date, args.direction, args.outcome))
     record = {"ts": datetime.now().astimezone().isoformat(timespec="seconds"), "date": args.date,
               "direction": args.direction, "workspace": args.workspace, "mode": args.mode,

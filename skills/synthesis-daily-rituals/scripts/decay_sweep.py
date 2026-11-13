@@ -48,13 +48,24 @@ ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
 RUN_ORDER = {"day-start": 0, "midday": 1, "day-end": 2}
 LEAD_DAYS, ALERT_DAYS = 7, (3, 1, 0)  # a critical item leads from a week out; alerts three days and one day out and on its day
 WORDS = ("enrollment", "insurance", "tax(?:es)?", "patent", "visa", "passport", "immigration", "payroll", "FSA", "HSA")
-DONE = re.compile(r"(?:\[[xX]\]\s|~~.+~~|✅|(?:DONE|SENT)\b)")  # a title that closes its own item
+DONE = re.compile(r"(?:\[[xX]\]\s|~~.+~~|✅|(?:DONE|SENT)\b)")  # a title that closes its own dated item
+# A commitment's entry is closed in any of the ways a plan marks one done: one of those marks after any emphasis, a
+# tick anywhere in its line, or DONE or SENT in capitals before a time or at the line's end (the first review: read
+# at the title's start alone, `**Call** ✅ DONE 10:00` was listed as open).
+CLOSED_ENTRY = re.compile(r"^[*_\s]*(?:\[[xX]\]\s|~~.+~~|[✓✔☑]|(?:DONE|SENT)\b)|✅|\b(?:DONE|SENT)\b[*_\s]*(?:\d{1,2}:\d{2}.*)?$")
+RELEASED = re.compile(rf"\*\*Decays:\*\*\s*~~{DATE}~~\s*\(?\s*\w")  # a struck date with its reason: let go
 # The headings under which the plan format keeps commitments: the task section and its synonyms, what is waited on,
-# what is carried. A heading of things finished holds none.
-COMMIT = re.compile(r"(?i)\btasks\b|priorities|still to do|this week|pending (?:this|from)|waiting|delegated|carried|carry[- ]forward")
-FINISHED = re.compile(r"(?i)\b(?:completed|done|sent|closed)\b")
+# what is carried. A heading whose words also name another kind of section (a calendar, a draft) says nothing by
+# itself. One of things finished holds none: it opens with the word, or says completed or finished, and has no word
+# that says the thing is still to come (`Not done yet`, `Sent, awaiting reply`).
+COMMIT = re.compile(r"(?i)\btasks?\b|action items?|\bto-?dos?\b|follow-?ups?|priorities|still to do|this week|pending (?:this|from)"
+                    r"|waiting|delegated|carried|carry[- ]forward")
+OTHER = re.compile(r"(?i)calendar|draft|unsent|standup|decision|open ask|sync|things to know|what happened|what changed|\bprs?\b|bugs")
+FINISHED = re.compile(r"(?i)^\W*(?:completed|done|sent|closed|finished)\b|\b(?:completed|finished)\b")
+UNFINISHED = re.compile(r"(?i)\b(?:not|yet|still|awaiting|waiting|pending|to be)\b")
 PARKED = re.compile(r"(?i)\bparked\s*\(\s*[^)\s][^)]*\)|\*\*Parked:\*\*\s*\S")  # a park says why
 LEDGER_CLOSED = ("SENT", "SUPERSEDED", "DECAYED", "CLOSED", "RELEASED", "RESOLVED", "LAPSED", "DONE", "ANSWERED")
+TICK = re.compile(r"(?:✅|✔|✓|☑|\[[xX]\]|:white_check_mark:)")  # a ledger status that opens with one is closed
 OWED_DAYS = 14  # the weekly review's window
 
 
@@ -200,51 +211,79 @@ def parse_plan(path: Path, day: date, rank: int, as_of: date, report: dict) -> l
             "critical": "" if re.match(r"no\b", klass, re.I) else klass, "not_critical": bool(re.match(r"no\b", klass, re.I)),
             "evidence": evidence, "calendar": next((value for _, value in fields["calendar"] if value), ""),
             "lapsed": bool(fields["lapsed"]),
+            # the day each Lapsed mark speaks of: the date it gives, or its plan's own day
+            "lapsed_on": max(((re.search(DATE, value) or [day.isoformat()])[0] for _, value in fields["lapsed"]), default=""),
         })
     for error in errors:
         gap(report, path, error)
     return entries
 
 
+def _holds(heading: str):
+    """True where a heading's own words place commitments under it, False where they place finished things, None
+    where they say neither: its words name another kind of section as well (a calendar for this week, a draft to
+    someone who is waiting), or none of these."""
+    if FINISHED.search(heading) and not UNFINISHED.search(heading):
+        return False
+    return True if COMMIT.search(heading) and not OTHER.search(heading) else None
+
+
+def _cells(line: str) -> list[str]:
+    """One table row's cells: the pipe at each end is the row's own, an escaped pipe is text, and an empty last cell
+    is a cell."""
+    body = line.strip()
+    body = body[1:] if body.startswith("|") else body
+    body = body[:-1] if body.endswith("|") and not body.endswith("\\|") else body
+    return [cell.strip() for cell in re.split(r"(?<!\\)\|", body)]
+
+
 def commitments(path: Path) -> list[dict]:
-    """The open commitments of one plan: each top-level list entry that stands under a heading of the second level
-    or deeper which the plan format places among tasks, things waited on or things carried. The nearest enclosing
-    heading that says either way decides: a bucket under the task section is read whatever its own words, a
-    heading of things finished holds none wherever it stands, and the plan's own title places nothing. `bare` is
-    true where the entry's block carries no Decays date, no Critical tag and no park that says why (2026-11-13,
-    counted on three seats' newest plans: 12, 0 and 9 such entries, none of them a task box)."""
-    try:
-        text = path.read_text(encoding="utf-8")
-    except (OSError, UnicodeError):
-        return []  # the sweep's own read of the file reports it as a gap
-    rows, chain, section = [], {}, ""
+    """The open commitments of one plan: each top-level list entry, and each row of a table that stands directly
+    under its heading, beneath a heading of the second level or deeper which the plan format places among tasks,
+    things waited on or things carried. The nearest enclosing heading that says either way decides: a bucket under
+    the task section is read whatever its own words, a heading of things finished holds none wherever it stands,
+    and the plan's own title places nothing. An entry is closed, and not read, in any of the ways a plan marks one
+    done, or by a Sent, Released or Resolved line or a struck date with its reason in its block. `bare` is true
+    where an open entry's block carries no Decays date and no park that says why; a table's row can carry a park
+    and no date (2026-11-13, counted on three seats' newest plans: 12, 0 and 9 such entries, none a task box)."""
+    text = path.read_text(encoding="utf-8")
+    raw, rows, chain, section = text.splitlines(), [], {}, ""
+
+    def held() -> bool:
+        return bool(next((chain[level] for level in sorted(chain, reverse=True) if chain[level] is not None), False))
+
+    def row(title: str, number: int, body: str, dated: bool) -> None:
+        if not (CLOSED_ENTRY.search(title) or RELEASED.search(body)):
+            rows.append({"title": title, "path": str(path), "line": number, "section": section,
+                         "bare": not (dated or PARKED.search(body))})
     for block in item_blocks(text, []):
         number, first = next(((n, line) for n, line in block if line.strip()), block[0])
         heading = HEADING.match(first)
         if heading:
             level = len(first.lstrip()) - len(first.lstrip().lstrip("#"))
             chain = {k: v for k, v in chain.items() if k < level}
-            chain[level] = None if level < 2 else False if FINISHED.search(heading[1]) else True if COMMIT.search(heading[1]) else None
-            section = heading[1].strip()
-        elif LIST.match(first) and next((chain[k] for k in sorted(chain, reverse=True) if chain[k] is not None), False):
+            chain[level], section, table = (None if level < 2 else _holds(heading[1])), heading[1].strip(), 0
+            for at, line in block[1:] if held() else ():  # a table directly under the heading: each row after its rule is an entry
+                table = table + 1 if line.strip().startswith("|") else 0
+                if table > 2 or table == 2 and not all(re.fullmatch(r":?-*:?", cell) for cell in _cells(line)):
+                    row(_cells(raw[at - 1])[0], at, raw[at - 1], False)
+        elif LIST.match(first) and held():
             fields = {match[1].lower() for _, line in block for match in [FIELD.search(line)] if match}
-            title = re.sub(r"^\s*(?:[-*+]\s+|\d+[.)]\s+)", "", first).strip()
-            if not (DONE.match(title) or fields & {"sent", "released", "resolved"}):
-                rows.append({"title": title, "path": str(path), "line": number, "section": section,
-                             "bare": not (fields & {"decays", "critical"} or PARKED.search("\n".join(line for _, line in block)))})
+            body = "\n".join(line for _, line in block)
+            if not fields & {"sent", "released", "resolved"}:
+                row(re.sub(r"^\s*(?:[-*+]\s+|\d+[.)]\s+)", "", raw[number - 1]).strip(), number, body, "decays" in fields)
     return rows
 
 
 def ledger_rows(path: Path, as_of: date, closed: tuple) -> tuple[list[dict], int]:
     """(the open rows, the rows that could not be read) of each table in a record whose header has a `Status` cell
-    and an `Owed since` cell: a correspondence ledger. A row is closed where its status opens with a tick or with
-    a closing word; every other status, an empty one included, is open, since a status the reader does not know
-    is not read as finished. A row with too few cells for those two columns is counted as not read."""
-    try:
-        text = path.read_text(encoding="utf-8")
-    except (OSError, UnicodeError):
-        return [], 0
-    raw, rows, unread, head, last = text.splitlines(), [], 0, None, 0
+    and an `Owed since` cell: a correspondence ledger, each of its lines opening with a pipe. A row is closed where
+    its status, with anything struck through set aside, opens with a tick or with a closing word that no question
+    mark follows; every other status, an empty one included, is open, since a status the reader does not know is
+    not read as finished. A row with too few cells for those columns or for its item's is counted as not read, and
+    the header written again is passed over."""
+    text = path.read_text(encoding="utf-8")
+    raw, rows, unread, head, names, last = text.splitlines(), [], 0, None, [], 0
     for number, _ in operative_lines(text, []):  # outside fences, quotes and frontmatter; the line itself keeps its code spans
         line = raw[number - 1].strip()
         if number != last + 1 or not line.startswith("|"):
@@ -252,26 +291,28 @@ def ledger_rows(path: Path, as_of: date, closed: tuple) -> tuple[list[dict], int
         last = number
         if not line.startswith("|"):
             continue
-        cells = [cell.strip() for cell in re.split(r"(?<!\\)\|", line.strip("|"))]
-        names = [re.sub(r"[*_`]", "", cell).strip().lower() for cell in cells]
+        cells = _cells(line)
+        named = [re.sub(r"[*_`]", "", cell).strip().lower() for cell in cells]
         if head is None:  # a table's first row is its header
-            head = (names.index("status"), names.index("owed since"), names.index("item") if "item" in names else 0) if {
-                "status", "owed since"} <= set(names) else False
-        elif head and not all(re.fullmatch(r":?-*:?", cell) for cell in cells):  # not the rule under the header
-            if len(cells) <= max(head[:2]):
+            names = named
+            head = (named.index("status"), named.index("owed since"), named.index("item") if "item" in named else 0) if {
+                "status", "owed since"} <= set(named) else False
+        elif head and named != names and not all(re.fullmatch(r":?-*:?", cell) for cell in cells):  # not the rule under the header
+            if len(cells) <= max(head):
                 unread += 1
                 continue
-            status, word = cells[head[0]], re.search(r"[A-Za-z_]+", re.sub(r"[*`~]", "", cells[head[0]]))
-            word = word[0].upper() if word else ""
-            if re.sub(r"[*`~\s]", "", status).startswith("✅") or word in closed:
+            status = re.sub(r"[*`]", "", re.sub(r"~~.*?~~", "", cells[head[0]])).strip()
+            word = re.match(r"[^\w\[:]*([A-Za-z][A-Za-z_-]*)(\?)?", status)
+            if TICK.match(status) or word and not word[2] and word[1].upper() in closed:
                 continue
             since = re.search(DATE, cells[head[1]])
             try:
                 since = iso_day(since[0]) if since else None
             except ValueError:
                 since = None
-            rows.append({"item": re.sub(r"[*`~]", "", cells[head[2]]).strip(), "status": word, "path": str(path), "line": number,
-                         "owed_since": since.isoformat() if since else None, "days": (as_of - since).days if since else None})
+            rows.append({"item": re.sub(r"[*`~]", "", cells[head[2]]).strip(), "status": word[1].upper() if word else "",
+                         "path": str(path), "line": number, "owed_since": since.isoformat() if since else None,
+                         "days": (as_of - since).days if since else None})
     return rows, unread
 
 
@@ -365,7 +406,11 @@ def collect(roots: list[tuple[Path, str]], as_of: date, workspace: str | None = 
     try:
         cfg = rituals.config()
         conf, words = rituals.settings(cfg, workspace or ""), cfg.get("critical_words") or WORDS
-        closed_words = tuple(str(word).upper() for word in cfg.get("ledger_closed_words") or LEDGER_CLOSED)
+        given = cfg.get("ledger_closed_words")
+        if given is not None and not (isinstance(given, list) and all(isinstance(word, str) and word for word in given)):
+            gap(report, rituals.state_dir() / "config.json", "ledger_closed_words must be a list of words; the built-in closing words are used")
+        elif given:
+            closed_words = tuple(word.upper() for word in given)
         unclassified = re.compile(r"\b(?:" + "|".join(words) + r")\b", re.I)
     except (ValueError, OSError, TypeError, re.error) as exc:
         gap(report, rituals.state_dir() / "config.json", f"ritual config unreadable: {exc}")
@@ -422,8 +467,12 @@ def collect(roots: list[tuple[Path, str]], as_of: date, workspace: str | None = 
                 if kind == "records":
                     found = parse_plan(path, day, 0, as_of, report)
                     entries.extend(dict(entry, record=True) for entry in found)
-                    rows, missed = ledger_rows(path, as_of, closed_words)
-                    owed, unread = owed + rows, unread + missed
+                    try:
+                        rows, missed = ledger_rows(path, as_of, closed_words)
+                    except Exception as exc:  # noqa: BLE001  one record's table must never cost the sweep its other reads
+                        gap(report, path, f"its tables could not be read: {type(exc).__name__}: {exc}")
+                    else:
+                        owed, unread = owed + rows, unread + missed
                     continue
                 if kind != "artifacts":
                     rank = 2
@@ -436,12 +485,19 @@ def collect(roots: list[tuple[Path, str]], as_of: date, workspace: str | None = 
         if selected == 0 and kind != "records":  # a folder of drafts may hold none today
             gap(report, root, "no dated source files; coverage is not established")
     # The seat's commitments stand in its newest plan, today's or not: every plan of that day, or, where the seat
-    # keeps no dated plan, the last run of that day among its rituals' artifacts in each folder of them.
+    # keeps no dated plan, the last run of that day in each folder that holds a rituals' artifact of that day (a
+    # worker that has not run since an earlier day is not read: its newest is not the seat's).
     files = newest["plans"] or newest["artifacts"]
     last = max((found[0] for found in files), default=None)
     current = [found for found in files if found[0] == last]
-    for path in sorted({found[3] for found in current} if newest["plans"] else {max(f for f in current if f[2] == found[2])[3] for found in current}):
-        found = commitments(path)
+    report["plans_read"] = [str(path) for path in sorted({found[3] for found in current} if newest["plans"] else {
+        max(f for f in current if f[3].parent == found[3].parent)[3] for found in current})]
+    for path in map(Path, report["plans_read"]):
+        try:
+            found = commitments(path)
+        except Exception as exc:  # noqa: BLE001  nor may one plan's shape
+            gap(report, path, f"its commitments could not be read: {type(exc).__name__}: {exc}")
+            continue
         report["commitments"] += len(found)
         report["untagged"] += [{k: v for k, v in row.items() if k != "bare"} for row in found if row["bare"]]
     owed.sort(key=lambda row: (row["owed_since"] is not None, row["owed_since"] or "", row["path"], row["line"]))
@@ -487,14 +543,15 @@ def collect(roots: list[tuple[Path, str]], as_of: date, workspace: str | None = 
             result["sources"] = [{"path": e["path"], "line": e["line"]} for e in history]
             # its date passed and no copy says it lapsed: nobody was told (a seat that runs its rituals re-dates
             # what it carries each day, so this is the mark of a day with no ritual)
-            result["unannounced"] = chosen["due_date"] < as_of.isoformat() and not any(e["lapsed"] for e in history)
+            result["unannounced"] = chosen["due_date"] < as_of.isoformat() and not any(
+                e["lapsed_on"] >= chosen["due_date"] for e in history)  # a mark for an earlier date says nothing of this one
             report["due"].append(result)
     report["due"].sort(key=lambda e: (e["due_date"], e["path"], e["line"]))
     report["no_id"].sort(key=lambda e: (e["due_date"], e["path"], e["line"]))
     report["critical"]["open"].sort(key=lambda e: (e["due_date"], e["path"], e["line"]))
     report["total_obligations"] = len(grouped)
     review = (report["due"] or report["critical"]["unclassified"] or any(r["lead"] or r["problems"] for r in report["critical"]["open"])
-              or report["untagged"] or report["no_id"] or owed)
+              or report["untagged"] or report["no_id"])  # a ledger's open rows are a view of their own and change no status
     report["status"] = "BLOCKED" if report["gaps"] else "REVIEW" if review else "CLEAR"
     return report
 
@@ -539,11 +596,12 @@ def main(argv=None) -> int:
         report = {"status": "BLOCKED", "due": [], "gaps": [{"path": "--as-of or the ritual config", "reason": str(exc)}],
                   "critical": {"open": [], "closed": [], "unclassified": []}}
     else:
-        if args.alert_declared:  # folders two workspaces share are read once
+        if args.alert_declared:  # a set of folders two workspaces declare alike is read once
             reports = [collect(list(found), as_of, name) for found, name in sets.items()]
             count = sum(row["alert"] for found in reports for row in found["critical"]["open"])
             print(f"critical alert: {count} due across {len(sets)} declared set(s) of plan folders; {alert(count)}")
-            late = sum(row["unannounced"] for found in reports for row in found["due"])  # a day with no ritual tells no one
+            # a day with no ritual tells no one; an item two declared sets share is one item
+            late = len({(row["path"], row["line"]) for found in reports for row in found["due"] if row["unannounced"]})
             print(f"passed dates: {late} with nothing written across {len(sets)} declared set(s) of plan folders; {passed(late)}")
             return 0
         report = collect(roots, as_of, args.workspace)
@@ -583,7 +641,7 @@ def main(argv=None) -> int:
                   f"{owed['over_14_days']} owed over {OWED_DAYS} days, {owed['undated']} with no date, "
                   f"{owed['unread']} row{'' if owed['unread'] == 1 else 's'} not read)")
             print("\n".join(f"  {row['owed_since'] or 'no date   '} {row['item']} [{row['status'] or 'no status'}] ({row['path']}:{row['line']})"
-                            for row in owed["rows"][:10]))
+                            for row in owed["rows"][:10]))  # those with no date first, then the oldest
         for row in report["gaps"]:
             print(f"NOT COVERED: {row['path']}: {row['reason']}")
     return 2 if report["status"] == "BLOCKED" else 0
