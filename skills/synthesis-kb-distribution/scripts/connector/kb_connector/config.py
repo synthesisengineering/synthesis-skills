@@ -29,6 +29,7 @@ TEMPORARY_HOSTS = ("trycloudflare.com", "ngrok.io", "ngrok.app", "ngrok.dev", "n
 ORIGIN_PARTS = ("a user-info part (user:password@)", "a path", "a query", "a fragment")  # what KB_PUBLIC_URL may not have
 NAT64 = ipaddress.ip_network("64:ff9b::/96")  # the well-known prefix: its last 32 bits are the IPv4 address reached
 NAT64_LOCAL = ipaddress.ip_network("64:ff9b:1::/48")  # translation inside one network: Python's verdict on it changed
+WILDCARD_DNS = ("nip.io", "sslip.io")  # any name under them is answered with the address written in it: nobody's own name
 URL_FIELDS = ("id", "source_path", "commit")
 FERNET_KEY = re.compile(r"[A-Za-z0-9_-]{43}=")
 
@@ -88,7 +89,7 @@ def temporary(host) -> bool:
     """True for an address that lasts only as long as one machine or its tunnel: a host in TEMPORARY_HOSTS or under
     one, or an IP address the internet cannot reach. Read as a host: a look-alike or a name in a path does not count."""
     host = (host or "").lower().rstrip(".")
-    if any(host == name or host.endswith("." + name) for name in TEMPORARY_HOSTS):
+    if any(host == name or host.endswith("." + name) for name in TEMPORARY_HOSTS + WILDCARD_DNS):
         return True
     address = _ip(host)
     if address is None:

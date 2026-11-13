@@ -380,6 +380,15 @@ def _unread_files(tool: str, tool_input: dict, bound: dict | None = None, whole:
             return (f"gives the `url` {url}, whose host only this machine or its network answers, and the mail connector "
                     "fetches from no such host: it would send the mail without it. For a file on this disk, "
                     f"{stage}as the attachment's `path`, and file this send again")
+        try:  # it fetches from no address that is not global: a documentation or a reserved one too
+            import ipaddress
+            off = web and not ipaddress.ip_address(parsed.hostname.split("%")[0]).is_global
+        except ValueError:
+            off = False  # a name: where it leads is known only when it is looked up
+        if off:
+            return (f"gives the `url` {url}, whose host is not an address on the internet, and the mail connector fetches "
+                    "from no such host: it would send the mail without it. Give a `url` on a public host, or for a file "
+                    f"on this disk, {stage}as the attachment's `path`, and file this send again")
         return "" if web else (f"gives the `url` {url}, and the mail connector fetches a `url` only over http or https "
                                f"from a named host, so it would attach nothing: for a file on this disk, {stage}as the "
                                "attachment's `path`, and file this send again")

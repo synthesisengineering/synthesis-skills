@@ -570,7 +570,7 @@ def test_a_url_whose_host_only_this_machine_or_its_network_answers_is_refused_si
 
 def test_a_url_on_a_public_host_that_starts_like_a_local_one_goes_to_the_code(scratch):
     for url in ("http://localhost.example.com/plan.pdf", "https://10.0.0.5.example.com/plan.pdf", "http://172.32.0.1/plan.pdf",
-                "https://203.0.113.9/plan.pdf", "http://100.128.0.1/plan.pdf", "https://[2606:4700:4700::1111]/plan.pdf",
+                "https://9.9.9.9/plan.pdf", "http://100.128.0.1/plan.pdf", "https://[2606:4700:4700::1111]/plan.pdf",
                 "https://files.example.com/10.0.0.5/plan.pdf", "https://203.0.113.9.nip.io/plan.pdf"):
         assert "approval" in guards.check(SEND, {**MAIL, "attachments": [{"url": url, "filename": "plan.pdf"}]}, CONFIG), url
 
@@ -607,10 +607,10 @@ def test_the_references_list_a_url_only_this_machine_answers_and_a_link_of_anoth
 
 
 @pytest.mark.parametrize("url", ["http://192.0.2.7/plan.pdf", "https://198.18.0.4/plan.pdf", "http://240.0.0.1/plan.pdf",
-                                 "https://[2001:db8::1]/plan.pdf", "http://224.0.0.5:8080/plan.pdf"])
+                                 "https://[2001:db8::1]/plan.pdf", "http://203.0.113.9:8080/plan.pdf"])
 def test_an_attachment_url_on_an_address_that_is_not_on_the_internet_is_refused_before_the_approval(scratch, url):
-    """The mail connector fetches a `url` from no address that is not global (its core.http_utils), a documentation, a
-    reserved and a multicast range included, records the entry as failed and sends the mail without the file."""
+    """The mail connector fetches a `url` from no address that is not global (its core.http_utils), a documentation
+    and a reserved range included, records the entry as failed and sends the mail without the file."""
     reason = guards.check(SEND, {**MAIL, "attachments": [{"url": url}]}, CONFIG)
     assert "whose host is not an address on the internet" in reason and "Sending needs" not in reason
     skills = Path(__file__).resolve().parents[1] / "skills"

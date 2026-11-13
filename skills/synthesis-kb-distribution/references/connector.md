@@ -228,6 +228,8 @@ and is judged by the next rule.
   `loca.lt`, `localtunnel.me`, `serveo.net`, `serveousercontent.com`, `localhost.run`, `lhr.life`,
   `lhr.rocks`, `pinggy.io`, `pinggy.link`, `pinggy-free.link`, `devtunnels.ms`,
   `app.github.dev`, `ts.net`, `tunnelmole.net`, `bore.pub` and `loophole.site`;
+- any name under a wildcard-DNS service, `nip.io` or `sslip.io`, whatever address it carries: such a
+  name is answered with the address written in it and belongs to no organization;
 - `localhost`, and any name that ends in `.localhost` or `.local`;
 - an IP address the internet cannot reach: loopback (`127.0.0.1`, `[::1]`), `0.0.0.0`, the private
   ranges (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `fc00::/7`), link-local addresses, the
