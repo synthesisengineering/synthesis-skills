@@ -134,7 +134,12 @@ address was gone for good. With `temporary_addresses` in the config:
   scheme or a port (`http://localhost:8787`, `my-laptop.local:3000`, `http://192.168.1.20:8000`),
   and a loopback or any-interface address however written (`127.0.0.1`, `0.0.0.0`). A port is one
   to five digits (`localhost:9`, `laptop.local:9`), and a host is read whole, to where its name
-  ends. It reads every
+  ends. The scheme may be any, and a user and password before the host are read past and never
+  shown (`ssh://10.1.2.3`, `ftp://192.168.1.2/data`, `postgres://app:secret@10.1.2.3:5432/app`);
+  a quick tunnel's host is read past them too. A link-local address counts with the private ranges
+  (`http://169.254.169.254`, `169.254.10.1:8080`). A bracketed IPv6 address that is loopback,
+  any-interface, unique-local or link-local is refused however written (`http://[fd12::42]:8080`,
+  `http://[fe80::12]:9090`, `[::1]`). It reads every
   path a message takes: a connector's send or draft, a shell command that posts, and words typed
   into a messaging app or a browser page.
 - **What releases it:** the principal's approval of the address itself. The refusal carries a code
@@ -152,7 +157,9 @@ address was gone for good. With `temporary_addresses` in the config:
   `json`, `yaml`, `yml`, `toml`, `makefile` or `dockerfile`), that follows a path
   (`src/app.local:42`, `/etc/rc.local:14`) or that has a column after its line
   (`notes.local:17:3`). Any other name ending in `.local` with a port is an address
-  (`app.local:7`), and so is every one after a scheme (`http://config.local:7`).
+  (`app.local:7`), and so is every one after a scheme (`http://config.local:7`). An address
+  outside those ranges passes after any scheme (`ssh://build.example.com`, `http://172.32.0.1`,
+  `http://[2001:db8::1]:8080`), and so does a bracket that follows a word (`rows[::1]`).
 - **Starting a tunnel:** `cloudflared tunnel --url ...`, `ngrok http`, `tcp`, `tls` or `start`,
   `devtunnel host`, `localtunnel` or `lt` with a port (also through `npx`, `bunx`, `pnpm` or `yarn`), and a reverse
   `ssh -R` to `serveo.net`, `localhost.run` or `pinggy.io` wait for the principal's code. The hold

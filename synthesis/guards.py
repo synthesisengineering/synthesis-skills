@@ -168,18 +168,19 @@ TUNNELS = (".trycloudflare.com", ".ngrok.io", ".ngrok.app", ".ngrok.dev", ".ngro
            ".lhr.life", ".lhr.rocks", ".pinggy.io", ".pinggy.link", ".pinggy-free.link", ".devtunnels.ms", ".app.github.dev")
 # The knowledge-base connector refuses to start on the same services (its TEMPORARY_HOSTS); a test holds the two equal.
 HOSTNAME = re.compile(r"(?<![\w.@-])(?:[a-z0-9-]+\.)+[a-z][a-z0-9-]*(?![\w-])")
-_HOST = r"(localhost|[a-z0-9-]+(?:\.[a-z0-9-]+)*\.local(?:host)?|\d{1,3}(?:\.\d{1,3}){3}|\[::1\])"
-# A host is read whole: after a scheme or where a bare one starts, to where its name ends, then its port. A public
+_HOST = r"(localhost|[a-z0-9-]+(?:\.[a-z0-9-]+)*\.local(?:host)?|\d{1,3}(?:\.\d{1,3}){3}|\[[0-9a-f:.]+(?:%[\w.-]+)?\])"
+# A host is read whole: after any scheme or where a bare one starts, to where its name ends, then its port. A public
 # name that only begins like a local one (localhost.example.org, 10.2.3.4.example.org) is no match (2026-11-12).
-LOCAL = re.compile(rf"(?:(https?://)|(?<![\w.@-])){_HOST}(?![\w-]|\.[\w-])\.?(?::(\d+)(?!\w))?")
-NEAR = ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16")  # the private ranges
+LOCAL = re.compile(rf"(?:(://)|(?<![\w.@-])){_HOST}(?![\w-]|\.[\w-])\.?(?::(\d+)(?!\w))?")
+NEAR = ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "fc00::/7")  # the private ranges, and IPv6's unique-local one
 FILED = re.compile(r"(?:^|\.)(?:config|conf|cfg|cnf|ini|env|rc|settings|properties|json|ya?ml|toml|makefile|dockerfile)\.local$")
 
 
 def _only_here(m, low: str) -> str:
     """The address one match of LOCAL spells, host and port, when only this machine or its network answers it: a local
-    name or a private address written as an address (after a scheme, or with a port of one to five digits), a loopback
-    or any-interface address however written. "" for any other, and for a file's name with its line number: a name
+    name or a private or link-local address written as an address (after any scheme, or with a port of one to five
+    digits), a loopback or any-interface address however written, and a bracketed IPv6 one that is any of these or
+    unique-local, however written. "" for any other, and for a file's name with its line number: a name
     ending in .local with no scheme before it that is a configuration file's (config.local:7), follows a path
     (src/app.local:42) or has a column after its line (notes.local:17:3). A dotfile (.env.local:12) and a name that
     goes on (settings.local.json:3) are no match at all."""
@@ -192,18 +193,20 @@ def _only_here(m, low: str) -> str:
             or re.match(r":\d", low[m.end():m.end() + 2]))
         return shown if told and not filed else ""
     try:
-        ip = ipaddress.ip_address(host.strip("[]"))
+        ip = ipaddress.ip_address(host.strip("[]").split("%")[0])  # past a zone: fe80::12%en0
     except ValueError:
         return ""
-    plain = ip.version == 4 and (ip.is_loopback or ip.is_unspecified)
-    return shown if plain or told and (ip.is_loopback or any(ip in ipaddress.ip_network(net) for net in NEAR)) else ""
+    ip = getattr(ip, "ipv4_mapped", None) or ip  # ::ffff:10.0.0.1 is 10.0.0.1
+    near = ip.is_link_local or any(ip in ipaddress.ip_network(net) for net in NEAR)
+    return shown if ip.is_loopback or ip.is_unspecified or near and (told or host[0] == "[") else ""
 
 
 def temporary_addresses(texts: list, config: dict):
     """The addresses in these words that can change, or that only this machine or its network answers: a quick tunnel's
     host (a subdomain of a tunnel service, or a host the config names and its subdomains) and, unless `local` is false,
-    a local name or a private address written with a scheme or a port, and a loopback address however written. A
-    string when the setting cannot be read. {"temporary_addresses": {"hosts": ["<more>"], "local": true}}; no key, no rule."""
+    a local name or a private address written with a scheme or a port, and a loopback address however written
+    (`_only_here`). A user and password before a host are read past and never shown. A string when the setting
+    cannot be read. {"temporary_addresses": {"hosts": ["<more>"], "local": true}}; no key, no rule."""
     rule = config.get("temporary_addresses")
     if rule is None:
         return []
@@ -213,7 +216,7 @@ def temporary_addresses(texts: list, config: dict):
                 "false (either may be absent); sends are blocked until it is fixed")
     exact = {h.strip().lower().lstrip(".") for h in more}
     ends, found = TUNNELS + tuple("." + h for h in exact), set()
-    for low in (str(text).lower() for text in texts):
+    for low in (re.sub(r"://[^\s/?#@]*@", "://", str(text).lower()) for text in texts):
         found |= {h for h in HOSTNAME.findall(low) if h in exact or h.endswith(ends)}
         found |= {_only_here(m, low) for m in LOCAL.finditer(low)} - {""} if local else set()
     return sorted(found)
