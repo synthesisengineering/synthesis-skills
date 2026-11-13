@@ -95,7 +95,10 @@ there with no item here fails:
   writable roots while `sandbox_mode` is set) and nothing over the state folder, the
   instruction chain for the current folder under the limit minus 4 KiB, every hook
   trusted, and the skill catalog (asked of `codex app-server`) within budget with every
-  shipped skill discoverable;
+  shipped skill discoverable. The budget follows the configured model's context window,
+  from Codex's own cache of its models, read by its first whole value (its clients share
+  that file, and one copy written over another can leave a tail after it); a cache with
+  nothing to read is a warning that the budget cannot be told, never a failure;
 - `muse hook approval`, `<harness> shell guard`: for Muse, hooks approved, and its shell
   tool name treated as a shell by the guard. A hook that waits for the person's approval
   (Codex's hook trust, Muse's hook approval) does not run, and neither does one a harness

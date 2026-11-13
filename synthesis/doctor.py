@@ -692,8 +692,23 @@ def catalog_cost(skills: list, context_window: int | None) -> tuple:
     return (len(text.encode("utf-8")) + 3) // 4 + 256, budget
 
 
+def _model_cache(codex_home: Path) -> dict | None:
+    """Codex's cache of its models, read by its first whole JSON value; {} where there is no file, None where the
+    file holds no value to read. Codex's clients share the file, and a shorter copy written over a longer one
+    leaves the longer one's tail after it (2026-11-13: read as no cache, the model's window was unknown and the
+    catalog failed on the budget for a model Codex does not know, until Codex rewrote the file)."""
+    try:
+        text = (codex_home / "models_cache.json").read_text(encoding="utf-8")
+        found = json.JSONDecoder().raw_decode(text.lstrip())[0]
+    except FileNotFoundError:
+        return {}
+    except (OSError, ValueError):
+        return None
+    return found if isinstance(found, dict) else None
+
+
 def _context_window(config: dict, codex_home: Path) -> int | None:
-    models = paths.read_json(codex_home / "models_cache.json").get("models") or []
+    models = (_model_cache(codex_home) or {}).get("models") or []
     return next((m["context_window"] for m in models if isinstance(m, dict) and m.get("slug") == config.get("model")
                  and isinstance(m.get("context_window"), int)), None)
 
@@ -708,6 +723,10 @@ def check_codex_catalog(result, error: str, plugin_root: Path | None, config: di
     missing = sorted(shipped - names)
     cost, budget = catalog_cost(skills, _context_window(config, codex_home))
     errors = [str(e) for r in rows for e in r.get("errors") or []]
+    if cost > budget and not (missing or errors) and _model_cache(codex_home) is None:
+        return Check("warn", "codex skill catalog", f"cannot tell its budget: Codex's model cache ({_short(codex_home / 'models_cache.json')}) "
+                     f"holds nothing that can be read, and {cost:,} tokens is over the {budget:,} Codex gives a model it does not know; "
+                     "Codex writes the cache again when it next lists its models")
     if missing or errors or cost > budget:
         return Check("fail", "codex skill catalog", f"{cost:,} of {budget:,} tokens; "
                      + (f"not discoverable: {', '.join(missing[:5])}; " if missing else "") + "; ".join(errors[:2]))
