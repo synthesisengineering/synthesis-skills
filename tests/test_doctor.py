@@ -700,6 +700,33 @@ def test_the_count_that_waits_is_read_back_without_a_check_and_without_a_write(m
     assert doctor.main(["--waiting"]) == 0 and capsys.readouterr().out.splitlines()[0] == "unknown"
 
 
+def test_the_doctor_says_where_the_days_prompt_check_is_on(machine, capsys):
+    """The day's prompt check is what asks whether each thing the principal typed reached a record, and it is a
+    setting of each workspace. Measured on 2026-11-13: it was on for one workspace of three, and in thirty days 8 of
+    267 session entries cited a record. The line says where it is on and where nothing asks."""
+    cfg = {"workspaces": {"alpha": {"prompt_reconcile": {"records": ["~/kb/projects"], "from": "2026-11-14"}}, "beta": {},
+                          "gamma": {"prompt_reconcile": False}, "delta": {"prompt_reconcile": {"records": ["~/kb"]}}}}
+    check = doctor.check_prompt_check(cfg)
+    assert (check.status, check.name) == ("info", "prompt check")
+    assert check.detail.startswith("on for alpha (from 2026-11-14), delta; not set for beta, gamma")
+    assert doctor.check_prompt_check({"workspaces": {}}) is None
+    assert doctor.check_prompt_check({"workspaces": {"alpha": {"prompt_reconcile": {"records": ["x"]}}}}).detail == "on for alpha"
+    assert doctor.check_prompt_check({"workspaces": {"alpha": {}}}).detail.startswith("on for no workspace; not set for alpha")
+    unread = doctor.check_prompt_check(None, "not JSON")
+    assert unread.status == "warn" and "cannot tell" in unread.detail and "not JSON" in unread.detail
+    home, _, _ = machine
+    rituals = home / ".synthesis" / "v5" / "rituals"
+    rituals.mkdir(parents=True, exist_ok=True)
+    (rituals / "config.json").write_text(json.dumps(cfg))
+    doctor.main([])
+    lines = [line for line in capsys.readouterr().out.splitlines() if line.split()[1:3] == ["prompt", "check"]]
+    assert len(lines) == 1 and lines[0].split()[0] == "info" and "on for alpha (from 2026-11-14), delta" in lines[0]
+    (rituals / "config.json").write_text("{not json")
+    doctor.main([])
+    lines = [line for line in capsys.readouterr().out.splitlines() if line.split()[1:3] == ["prompt", "check"]]
+    assert len(lines) == 1 and lines[0].split()[0] == "warn"
+
+
 def test_doctor_names_each_problem_and_exits_nonzero(machine, capsys):
     home, fakebin, muse_dir = machine
     config = home / ".codex" / "config.toml"
