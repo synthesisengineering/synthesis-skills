@@ -41,7 +41,12 @@ from pathlib import Path
 
 sys.dont_write_bytecode = True  # an installed plugin must stay byte-identical; Muse verifies its bundle
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))  # the plugin root or the installed runtime: holds synthesis/
-from synthesis import yamlish  # noqa: E402
+try:
+    from synthesis import yamlish  # noqa: E402
+except ImportError as exc:  # no runtime beside this copy; one that fails otherwise as it loads keeps its traceback
+    print(f"{__file__} needs the synthesis runtime, which cannot be imported ({exc}), so nothing ran. Run it from the "
+          "installed synthesis-skills plugin or a checkout of it", file=sys.stderr)
+    sys.exit(2)
 
 DEFAULT_CONFIG = "~/.synthesis/inbox-cleanup/scopes.yaml"
 

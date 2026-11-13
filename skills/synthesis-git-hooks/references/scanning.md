@@ -14,6 +14,7 @@ Each rule names the test that pins it (`tests/test_commit_policy.py`,
 - [Disclosures, and moved text](#disclosures-and-moved-text)
 - [Approved lines](#approved-lines)
 - [Commit messages](#commit-messages)
+- [An entry's own time](#an-entrys-own-time)
 - [Claims](#claims)
 - [Repository hooks](#repository-hooks)
 - [Failing closed](#failing-closed)
@@ -190,6 +191,99 @@ block in every class. Git's `#` comment lines are not scanned. A message line is
 approved the same way as a file line, bound to the repository and the line
 (`test_messages_are_scanned_in_strict_and_public_surface_repos_without_ledger_allowances`,
 `test_a_credential_in_a_message_blocks_in_every_class`, `test_a_commit_message_hit_is_approved_the_same_way`).
+
+## An entry's own time
+
+Off unless the config has `record_times` (`{}` turns it on; see the guardrails'
+[config reference](../../synthesis-agent-guardrails/references/config.md)). In a Markdown
+file (`.md`, `.markdown`) outside a folder of transcripts and outside what the setting's
+`skip` list names, the check reads the time an added entry gives for itself. An entry
+states one in three places:
+
+| Place | Example |
+|---|---|
+| The line opens with the day and a time, behind a list mark, a ticked box, a heading, emphasis or a bracket. A line with no mark counts where it begins a paragraph | `- **2026-11-12 19:30, the release is out.**`, `### 2026-11-12 14:40 CDT`, `- [2026-11-12 6:54 pm]` |
+| A parenthesis opens with the day and a time, or with one of the words below, each saying what was done then | `(11-12 18:54: approved in the dialog)`, `(added 11-12 18:46, ...)`, `(Updated: 11-12 18:46)` |
+| In a file under a `sessions/` folder, a list item or a heading opens with a time, and the nearest dated heading above it, outside a code fence, names today | `- 18:54 ET: pushed the branch` |
+
+**The words,** in either case, with or without a colon: `as of`, `current to`, `added`,
+`answered`, `approved`, `asked`, `begun`, `built`, `checked`, `closed`, `completed`,
+`corrected`, `counted`, `created`, `decided`, `deleted`, `deployed`, `done`, `extended`,
+`filed`, `finished`, `fixed`, `found`, `held`, `installed`, `kept`, `left`, `made`,
+`measured`, `merged`, `modified`, `noted`, `opened`, `posted`, `probed`, `proven`,
+`published`, `pushed`, `read`, `received`, `recorded`, `refreshed`, `released`, `removed`,
+`renamed`, `replied`, `returned`, `reviewed`, `ruled`, `run`, `said`, `searched`, `sent`,
+`shown`, `started`, `stopped`, `synced`, `tested`, `told`, `updated`, `verified`,
+`written`. A parenthesis that opens with any other word names an event, and its time is
+the event's: `(scheduled 11-12 18:55)`, `(call 11-12 19:00)`, `(due 2026-11-12 18:55)`.
+
+The commit is refused when such a stamp is:
+
+1. **1 to 30 minutes after now.** A range is read by its later end, and a 12-hour clock
+   by its mark (`pm`, `PM`, `p.m.`). A zone the stamp names is honored: `UTC`, `GMT`, `Z`,
+   an offset (`UTC+1`, `-05:00`), and the four regions of the United States by any of
+   their labels (`ET`, `EST`, `EDT`, and the same for `C`, `M` and `P`). A winter or
+   summer label names its region's clock on that day, since people keep one label all
+   year: `10:25 EST` in July is 10:25 on the eastern clock. Labels are read in capitals. A
+   time with no label is taken to be this machine's. The stamp is placed by its own day in
+   its own zone, so `2026-11-13T00:05Z` written at 18:40 eastern on the twelfth is 25
+   minutes ahead.
+2. **a rounding of the present:** `18:3x`, `about 18:35`, `c. 18:35`, `~18:40`, `18:40ish`
+   or `18:35 (approx.)`, for a moment from 15 minutes back to 30 ahead. The clock could be
+   read.
+
+**The half hour is the rule.** Counted over thirty days of real commits while the check
+had no bound, every stamp that was later than its commit stood at most 30 minutes ahead
+(41 stamps: 18 by 1 to 5 minutes, 18 by 6 to 15, 5 by 16 to 30): a mistaken stamp is a
+near miss. A time farther ahead is something else (a deadline, a schedule, a time read in
+the wrong zone), and it passes.
+
+It also passes:
+
+- an exact time at or before now, and a rounded time for a moment more than 15 minutes
+  old, which may be all the writer knows;
+- every time that is not an entry's own stamp: a time inside the text, and a parenthesis
+  that opens with a word that is not on the list;
+- outside a session log, an exact span that had begun: `### 2026-11-12 18:30–19:00 Weekly
+  sync` in the notes written while the meeting runs. In a session log a span is the
+  entry's own hours, and its later end is when the entry was written;
+- the time an unchecked box opens with (`- [ ] 18:54 call the owner`): a plan, whose time
+  is when it is to be done. A stamp in a parenthesis inside one is still read;
+- a code fence, where a pasted log keeps its own clock;
+- a line with no mark that continues a paragraph: the wrapped rest of the sentence above;
+- transcripts (any folder whose name ends in `transcripts`), whose lines carry other
+  people's times;
+- a zone the check names and does not place (`IST`, `BST`, `CET`, `EET`, `WET`, `JST`,
+  `KST`, `HKT`, `SGT`, `AEST`, `ACST`, `AWST`, `NZST`, `AKST`, `HST`, `MSK`, and their
+  summer forms), and a region's label on a machine with no zone data;
+- a commit that brings lines written before: a merge, a squash merge, a cherry-pick, a
+  revert, a rebase that stopped. Their lines were judged when they were first committed,
+  by the clock of the machine that wrote them.
+
+No approval clears a refusal: the line states a time that has not come, or rounds one the
+clock gives. Read the clock in the command that writes the entry (`date "+%H:%M"`), and
+name the zone when the time is in another one. A time that is not when the entry is
+written (an event's, a meeting that has not begun, a moment a few minutes back that nobody
+timed) goes after the words that say what it is, not at the head of the line or of a
+parenthesis: `- the build broke at about 18:30`. The refusal of a rounding says both.
+
+**What it does not see.** A time that is wrong and earlier than the commit (17:40 written
+for 17:36, committed at 17:45). A present rounded to a neat quarter hour with no mark of
+rounding. A time behind a label (`**Last updated:** 2026-11-12 18:54`). A time in a
+parenthesis with no day (`(as of 18:54)`). A day written with a month's name or with
+slashes. A zone outside the two lists above, which is not taken for a zone: the time is
+read as this machine's. Only reading the clock in the command that writes the time
+prevents those.
+
+It was measured before it was built, on thirty days of commits to twenty-seven knowledge
+repositories: a time inside an entry's text is later than its commit three times in ten,
+and rightly, so only an entry's own stamp is judged. Replayed over the same 1,032 commits
+as it stands, it reads 1,135 stamps and refuses 189 lines in 136 commits (42 later, 147
+rounding the present). Its first form also refused five wrapped lines that began with a
+time by chance; its second, before a review, refused deadlines and schedules hours ahead;
+its third took any word in -ed at a parenthesis's head for a stamp and any capital word
+ending in T for a zone, neither of which those commits bear out
+(`tests/test_record_times.py`).
 
 ## Claims
 

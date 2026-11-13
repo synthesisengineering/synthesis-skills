@@ -23,7 +23,12 @@ sys.dont_write_bytecode = True  # an installed plugin must stay byte-identical; 
 _ROOT = next((p for p in Path(__file__).resolve().parents if (p / "synthesis" / "yamlish.py").is_file()), None)
 if _ROOT is not None and str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
-from synthesis import yamlish  # noqa: E402
+try:
+    from synthesis import yamlish  # noqa: E402
+except ImportError as exc:  # no runtime beside this copy or in this image; one that fails otherwise as it loads keeps its traceback
+    print(f"{__file__} needs the synthesis runtime, which cannot be imported ({exc}), so nothing ran. Run it from the "
+          "installed synthesis-skills plugin or a checkout of it, or in the image this connector's Dockerfile builds", file=sys.stderr)
+    sys.exit(2)
 
 LOG = logging.getLogger("kb_connector")
 GUIDE = "SKILL.md"

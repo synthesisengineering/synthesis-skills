@@ -878,6 +878,54 @@ def _procargs(pid: str) -> bytes:
     return buffer.raw[:size.value]
 
 
+def check_teardown(listed: Path, now: float = 0) -> Check:
+    """What a test set up and has not taken down (2026-11-12: an entry in a client's config that pointed at a dead
+    address, and a key marked for removal, stayed a day after their test stopped, with no list to run). The
+    guardrails' teardown.py appends a line as each thing is made and one as it is taken off; this reads them,
+    whatever else the file holds, and runs nothing a line names."""
+    lines = []
+    if os.path.lexists(listed):
+        try:
+            with open(listed, encoding="utf-8-sig", errors="replace") as source:  # a byte that is no text is read as a mark
+                lines = source.read().split("\n")
+        except OSError as exc:
+            return Check("warn", "teardown", f"{_short(listed)} cannot be read ({exc.strerror}), so what a test left in place is not known")
+    items, closed, other = {}, set(), 0
+    for line in lines:
+        try:
+            row = json.loads(line)
+        except ValueError:
+            row = None
+        if isinstance(row, dict) and type(row.get("done")) is int:
+            closed.add(row["done"])
+        elif isinstance(row, dict) and type(row.get("id")) is int and isinstance(row.get("what"), str):
+            items[row["id"]] = row
+        else:
+            other += bool(line.strip())
+    left = []
+    for number in set(items) - closed:
+        try:
+            left.append((datetime.fromisoformat(str(items[number].get("at"))).timestamp(), number))
+        except ValueError:
+            left.append((float("inf"), number))  # an item with no time it can be placed by: shown after those with one
+    left.sort()
+
+    def plain(text) -> str:  # what a terminal would obey is shown as a mark, and one long line does not fill the screen
+        return "".join(ch if ch.isprintable() else "?" for ch in str(text))[:120]
+    beside = f"{other} line{'s' if other != 1 else ''} that {'are' if other != 1 else 'is'} no item of the list" if other else ""
+    if not left:
+        return Check("warn", "teardown", f"{_short(listed)} holds {beside}: read it and edit it by hand") if other else Check(
+            "ok", "teardown", "nothing a test set up is left in place")
+    hours = ((now or time.time()) - left[0][0]) / 3600
+    age = "" if hours == float("-inf") else ", the oldest for " + ("under an hour" if hours < 1 else f"{hours:.0f} hour{'s' if round(hours) != 1 else ''}"
+                                                                    if hours < 48 else f"{hours / 24:.0f} days")
+    return Check("warn", "teardown", f"{len(left)} thing{'s' if len(left) != 1 else ''} a test set up {'are' if len(left) != 1 else 'is'} "
+                 f"still in place{age}: " + "; ".join(f"{number}: {plain(items[number]['what'])} ({plain(items[number].get('remove', 'how it is removed was not said'))})"
+                                                      for _, number in left[:3])
+                 + (f"; and {len(left) - 3} more" if len(left) > 3 else "") + (f"; and {beside} (edit the file by hand)" if other else "")
+                 + ". Take each down, then `python3 <synthesis-agent-guardrails>/scripts/teardown.py done <number>`")
+
+
 def check_outbox(outbox: Path, unit: Path, pid_file: Path, started=started_with) -> Check:
     """Agents stage outgoing attachments in the outbox and the send guard passes a file there, so it must be there to
     write, and a mail connector its auto-start keeps running must have been started with it among ALLOWED_FILE_DIRS
@@ -1325,7 +1373,7 @@ def run_checks(home: Path | None = None, find=find_client, latest_ref: str = "",
     checks += [check_versions(versions, sessions), check_instruction_adapters(repos),
                check_temporary_work(repos, [s.cwd for s in sessions if not s.stale]),
                check_home_paths([home / "config.json"]), check_packets(project.roots()),
-               check_outbox(paths.outbox(), *connector_files())]
+               check_outbox(paths.outbox(), *connector_files()), check_teardown(home / "teardown.jsonl")]
     if config.get("pr_gated") is not None:
         checks.append(check_pr_gate(config["pr_gated"], repos))
     if "temporary_addresses" in config:  # null is a setting that cannot be read, and fails its line

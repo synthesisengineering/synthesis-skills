@@ -37,7 +37,12 @@ import time
 
 sys.dont_write_bytecode = True  # an installed plugin must stay byte-identical; Muse verifies its bundle
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[3]))  # the plugin root, which holds synthesis/
-from synthesis import doctor as synthesis_doctor  # noqa: E402
+try:
+    from synthesis import doctor as synthesis_doctor  # noqa: E402
+except ImportError as exc:  # no runtime beside this copy; one that fails otherwise as it loads keeps its traceback
+    print(f"{__file__} needs the synthesis runtime, which cannot be imported ({exc}), so nothing ran. Run it from the "
+          "installed synthesis-skills plugin or a checkout of it", file=sys.stderr)
+    sys.exit(2)
 
 STALL_SECONDS = 420          # no new output for this long, with the file non-growing = hung
 POLL_SECONDS = 10

@@ -328,7 +328,7 @@ It logs these two warnings, then `serving <n> documents from commit <sha>` and u
 lines:
 
 ```text
-<time> WARNING kb_connector: TEST ONLY: operator-only test mode at http://localhost:8080. The address is temporary and must not be given to anyone: a restart of this process, this machine or its tunnel ends it. Only <you@example.com> can sign in.
+<time> WARNING kb_connector: TEST ONLY: operator-only test mode at http://localhost:8080. The address is temporary and must not be given to anyone: a restart of this process, this machine or its tunnel ends it. Only <you@example.com> can sign in. List each thing this test needs before setting it up, and remove every one as soon as the test ends.
 <time> WARNING kb_connector: KB_OAUTH_STORE=memory: sign-ins live in this process only, so every restart signs everyone out
 ```
 
@@ -340,6 +340,19 @@ ChatGPT's and Claude's hosted apps cannot reach `localhost`. To try the connecto
 tunnel in front of the local run, set `KB_PUBLIC_URL` to the tunnel's `https://` address and add
 that address's `/auth/callback` to the OAuth client. It is the same test under the same mode: the
 operator's alone, on an address that ends with the tunnel.
+
+A test leaves nothing behind. Before each thing the test needs is set up, write it on a teardown
+list with how it is removed: the address the connector serves on, the tunnel, the redirect URI
+added to the OAuth client, a deploy key, and each client's config entry that points at the test
+address. When the test ends, take each one down in the same sitting and take it off the list. The
+`TEST ONLY` line ends with that instruction. With the synthesis-skills plugin installed, the list
+is the guardrails skill's
+([a test's teardown list](../../synthesis-agent-guardrails/references/teardown.md)), and
+`synthesis doctor` warns while an item remains:
+
+```bash
+python3 <synthesis-agent-guardrails>/scripts/teardown.py add "<what was set up>" --remove "<how it is removed>" --test "<the test>"
+```
 
 The mode also runs on a deployed connector, to try a deployment before anyone on the list is told
 about it. It admits only the operator there too, and the `TEST ONLY` line then says not to give

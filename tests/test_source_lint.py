@@ -399,3 +399,74 @@ def test_a_deprecation_met_in_the_core_fails_the_test_and_one_met_elsewhere_does
     with warnings.catch_warnings(record=True) as seen:
         warnings.warn_explicit("another project's to fix", DeprecationWarning, "elsewhere.py", 1, module="elsewhere")
     assert [str(w.message) for w in seen] == ["another project's to fix"]
+
+
+# A script that imports the runtime at its top says so in one line when the runtime is not there (2026-11-13: run from
+# a copy with no `synthesis/` beside it, as a package of skills without the runtime would hold them, two rituals'
+# scripts ended in a traceback, even for `--help`). The connector's `corpus.py` is one of them: it is imported, not run,
+# and the start that imports it ends the same way, in one line and exit 2.
+
+
+def bare_runtime_imports(root: Path = ROOT) -> list:
+    import ast
+    found = []
+    for path in sorted(root.glob("skills/**/*.py")):
+        name = path.relative_to(root).as_posix()
+        if "/tests/" in name or path.name.startswith("test_"):
+            continue
+        text = path.read_text(encoding="utf-8")
+        for node in ast.parse(text).body:  # top-level statements only: a function's own import fails where it is called
+            for inner in node.body if isinstance(node, ast.Try) else [node]:
+                names = [inner.module or ""] if isinstance(inner, ast.ImportFrom) else [a.name for a in inner.names] if isinstance(inner, ast.Import) else []
+                said = "".join(ast.get_source_segment(text, handler) or "" for handler in getattr(node, "handlers", []))
+                if any(n == "synthesis" or n.startswith("synthesis.") for n in names) and not ("the synthesis runtime" in said and "sys.exit(2)" in said):
+                    found.append(f"{name}:{inner.lineno}")  # bare, or behind a guard that does not say so and exit 2
+    return found
+
+
+def test_no_script_imports_the_runtime_bare_at_its_top():
+    assert bare_runtime_imports() == []
+
+
+@pytest.mark.parametrize("script", ["skills/synthesis-daily-rituals/scripts/decay_sweep.py",
+                                    "skills/synthesis-kb-distribution/scripts/build_plugin.py",
+                                    "skills/synthesis-kb-distribution/scripts/connector/kb_connector/corpus.py"])
+def test_a_script_that_needs_the_runtime_says_so_in_a_line_when_it_is_not_there(script, tmp_path):
+    alone = tmp_path / script  # a copy with no `synthesis/` anywhere above it
+    alone.parent.mkdir(parents=True)
+    alone.write_text((ROOT / script).read_text(encoding="utf-8"), encoding="utf-8")
+    import sys
+    ran = subprocess.run([sys.executable, "-I", str(alone), "--help"], capture_output=True, text=True, cwd=tmp_path,
+                         env={"PATH": "/usr/bin:/bin", "SYNTHESIS_HOME": str(tmp_path / "none"), "HOME": str(tmp_path)})
+    assert ran.returncode == 2 and "Traceback" not in ran.stderr and len(ran.stderr.strip().splitlines()) == 1
+    assert "needs the synthesis runtime, which cannot be imported" in ran.stderr and alone.name in ran.stderr
+    assert "the installed synthesis-skills plugin or a checkout of it" in ran.stderr  # release.py and setup.py run from a checkout
+
+
+def test_a_runtime_that_is_there_and_fails_as_it_loads_keeps_its_traceback(tmp_path):
+    """A review, 2026-11-13: the guard caught every error, so a runtime broken in itself was reported as one that is
+    not there, with advice that could not help and no traceback to find the fault by."""
+    script = "skills/synthesis-daily-rituals/scripts/decay_sweep.py"
+    alone = tmp_path / script
+    alone.parent.mkdir(parents=True)
+    alone.write_text((ROOT / script).read_text(encoding="utf-8"), encoding="utf-8")
+    (tmp_path / "synthesis").mkdir()
+    (tmp_path / "synthesis" / "__init__.py").write_text("raise RuntimeError('broken in itself')\n", encoding="utf-8")
+    (tmp_path / "synthesis" / "rituals.py").write_text("", encoding="utf-8")  # the module the script looks for to find its runtime
+    import sys
+    ran = subprocess.run([sys.executable, "-I", str(alone), "--help"], capture_output=True, text=True, cwd=tmp_path,
+                         env={"PATH": "/usr/bin:/bin", "SYNTHESIS_HOME": str(tmp_path / "none"), "HOME": str(tmp_path)})
+    assert ran.returncode == 1 and "Traceback" in ran.stderr and "RuntimeError: broken in itself" in ran.stderr
+
+
+def test_the_rule_finds_an_import_at_the_top_and_spares_one_that_is_guarded_or_inside_a_function(tmp_path):
+    scripts = tmp_path / "skills" / "probe" / "scripts"
+    scripts.mkdir(parents=True)
+    (scripts / "bare.py").write_text("import sys\nfrom synthesis import paths\n", encoding="utf-8")
+    (scripts / "whole.py").write_text("import synthesis.paths\n", encoding="utf-8")
+    (scripts / "guarded.py").write_text("import sys\ntry:\n    from synthesis import paths\nexcept ImportError as exc:\n"
+                                        "    print(f'{__file__} needs the synthesis runtime ({exc})', file=sys.stderr)\n    sys.exit(2)\n", encoding="utf-8")
+    (scripts / "silent.py").write_text("import sys\ntry:\n    from synthesis import paths\nexcept ImportError:\n    sys.exit(2)\n", encoding="utf-8")
+    (scripts / "late.py").write_text("def run():\n    from synthesis import paths\n    return paths\n", encoding="utf-8")
+    (scripts / "test_probe.py").write_text("from synthesis import paths\n", encoding="utf-8")
+    assert bare_runtime_imports(tmp_path) == ["skills/probe/scripts/bare.py:2", "skills/probe/scripts/silent.py:3", "skills/probe/scripts/whole.py:1"]

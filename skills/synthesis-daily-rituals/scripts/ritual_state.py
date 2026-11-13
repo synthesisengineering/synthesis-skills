@@ -58,7 +58,12 @@ for _root in (_PLUGIN, Path(os.environ.get("SYNTHESIS_HOME") or Path.home() / ".
     if (_root / "synthesis" / "rituals.py").is_file():
         sys.path.insert(0, str(_root))
         break
-from synthesis import rituals  # noqa: E402
+try:
+    from synthesis import rituals  # noqa: E402
+except ImportError as exc:  # no runtime beside this copy; one that fails otherwise as it loads keeps its traceback
+    print(f"{__file__} needs the synthesis runtime, which cannot be imported ({exc}), so nothing ran. Run it from the "
+          "installed synthesis-skills plugin or a checkout of it", file=sys.stderr)
+    sys.exit(2)
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import decay_sweep  # noqa: E402

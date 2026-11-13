@@ -11,6 +11,7 @@ import shutil
 import subprocess
 import sys
 import time
+from datetime import datetime
 from pathlib import Path
 
 import pytest
@@ -1585,3 +1586,69 @@ def test_the_audit_reference_says_what_the_newer_checks_look_at():
     assert "`ALLOWED_FILE_DIRS`" in lines["outbox"] and "auto-start" in lines["outbox"]
     assert "`--latest`" in lines["latest release"] and "`pr_gated`" in lines["pr gate"]
     assert "`cleanupPeriodDays`" in lines["claude transcripts"] and "`config.json`" in lines["config"]
+
+
+def test_the_doctor_warns_while_something_a_test_set_up_is_still_in_place(tmp_path):
+    """2026-11-12: a stopped test's leftovers stayed a day, with no list and nothing to say so. The list is written
+    as each thing is made (the guardrails' teardown.py); the doctor reads it, and runs nothing it names."""
+    listed, now = tmp_path / "teardown.jsonl", 1794600000.0
+    assert doctor.check_teardown(listed, now).status == "ok"
+    listed.write_text("", encoding="utf-8")
+    assert doctor.check_teardown(listed, now) == doctor.Check("ok", "teardown", "nothing a test set up is left in place")
+
+    def item(number, what, hours):
+        at = datetime.fromtimestamp(now - hours * 3600).astimezone().isoformat(timespec="seconds")
+        return json.dumps({"id": number, "what": what, "remove": f"remove {what}", "test": "connector test", "at": at})
+    listed.write_text(item(1, "an entry", 30) + "\n" + item(2, "a key", 2) + "\n", encoding="utf-8")
+    found = doctor.check_teardown(listed, now)
+    assert found.status == "warn" and found.name == "teardown"
+    assert "2 things" in found.detail and "30 hours" in found.detail
+    assert "1: an entry (remove an entry)" in found.detail and "2: a key (remove a key)" in found.detail and "teardown.py done" in found.detail
+    listed.write_text("".join(item(n, f"thing {n}", n) + "\n" for n in range(1, 6)) + "a line by hand\n", encoding="utf-8")
+    found = doctor.check_teardown(listed, now)
+    assert "5 things" in found.detail and "5: thing 5" in found.detail and "3: thing 3" in found.detail     # the oldest three,
+    assert "2: thing 2" not in found.detail and "and 2 more" in found.detail                                 # how many more,
+    assert "1 line that is no item" in found.detail and "a line by hand" not in found.detail                 # and what else the file holds
+    listed.write_text(item(1, "an entry", 0.5) + "\n", encoding="utf-8")
+    assert "1 thing " in doctor.check_teardown(listed, now).detail and "under an hour" in doctor.check_teardown(listed, now).detail
+    listed.unlink()
+    listed.mkdir()
+    assert doctor.check_teardown(listed, now).status == "warn"                                               # a list that cannot be read is said
+
+
+def test_the_doctor_reads_a_teardown_list_whatever_it_holds(tmp_path):
+    """A review, 2026-11-13: one byte that is not UTF-8 in the list ended `synthesis doctor` in a traceback, and
+    every other check with it. Also from that round: a line of data that is no item was counted as a thing a test
+    set up, a list of undated lines was said to be under an hour old, one hour was written "1 hours", and what a
+    line held was printed as it stood, escape sequences and all."""
+    listed, now = tmp_path / "teardown.jsonl", 1794600000.0
+
+    def item(number, what, hours, **more):
+        at = datetime.fromtimestamp(now - hours * 3600).astimezone().isoformat(timespec="seconds")
+        return json.dumps({"id": number, "what": what, "remove": f"remove {what}", "test": "t", "at": at, **more})
+    listed.write_bytes(b"\xff\xfe saved in another encoding\n" + item(1, "an entry", 1.2).encode() + b"\n")
+    found = doctor.check_teardown(listed, now)
+    assert found.status == "warn" and "1 thing " in found.detail and "for 1 hour:" in found.detail and "1: an entry" in found.detail
+    assert "1 line that is no item" in found.detail
+    listed.write_bytes(b"\xef\xbb\xbf" + item(1, "an entry", 3).encode() + b"\n   \n")
+    assert "1 thing " in doctor.check_teardown(listed, now).detail and "no item" not in doctor.check_teardown(listed, now).detail
+    listed.write_text('[1]\nnull\n5\n{"id": true, "what": "x", "remove": "y"}\nremember the record\n', encoding="utf-8")
+    found = doctor.check_teardown(listed, now)
+    assert found.status == "warn" and "thing" not in found.detail and "5 lines" in found.detail and "no item" in found.detail
+    assert "hour" not in found.detail and "edit" in found.detail
+    listed.write_text('{"id": 4, "what": "an entry", "remove": "delete it"}\n', encoding="utf-8")       # an item with no time
+    found = doctor.check_teardown(listed, now)
+    assert "1 thing a test set up is still in place: 4: an entry (delete it)" in found.detail and "hour" not in found.detail
+    listed.write_text(item(1, "an entry", 30) + "\n" + item(2, "a key", 2) + "\n" + json.dumps({"done": 1, "at": "x"}) + "\n", encoding="utf-8")
+    found = doctor.check_teardown(listed, now)
+    assert "1 thing " in found.detail and "2: a key" in found.detail and "an entry" not in found.detail and "for 2 hours" in found.detail
+    listed.write_text(item(1, "an entry", 30) + "\n" + json.dumps({"done": 1, "at": "x"}) + "\n", encoding="utf-8")
+    assert doctor.check_teardown(listed, now) == doctor.Check("ok", "teardown", "nothing a test set up is left in place")
+    listed.write_text(item(1, "an \x1b]52;c;eA==\x07entry", 3, remove="delete\x1b[2J it") + "\n", encoding="utf-8")
+    found = doctor.check_teardown(listed, now)
+    assert "\x1b" not in found.detail and "\x07" not in found.detail and "1: an ?]52;c;eA==?entry" in found.detail
+    listed.write_text(item(1, "w" * 900, 3) + "\n", encoding="utf-8")
+    assert len(doctor.check_teardown(listed, now).detail) < 600                                              # one long line does not fill the screen
+    listed.unlink()
+    listed.symlink_to(tmp_path / "gone")
+    assert doctor.check_teardown(listed, now).status == "warn" and "cannot be read" in doctor.check_teardown(listed, now).detail

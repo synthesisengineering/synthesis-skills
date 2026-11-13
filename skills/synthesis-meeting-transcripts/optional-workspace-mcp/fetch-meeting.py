@@ -44,7 +44,12 @@ sys.path.insert(0, str(HERE.parent))
 sys.path.insert(0, str(HERE.parents[2]))  # the plugin root, which holds synthesis/
 import mcp_client  # noqa: E402
 import verify_transcripts  # noqa: E402
-from synthesis.yamlish import load_mapping  # noqa: E402
+try:
+    from synthesis.yamlish import load_mapping  # noqa: E402
+except ImportError as exc:  # no runtime beside this copy; one that fails otherwise as it loads keeps its traceback
+    print(f"{__file__} needs the synthesis runtime, which cannot be imported ({exc}), so nothing ran. Run it from the "
+          "installed synthesis-skills plugin or a checkout of it", file=sys.stderr)
+    sys.exit(2)
 
 DOC_TYPE = "application/vnd.google-apps.document"
 PAGE_SIZE = 100

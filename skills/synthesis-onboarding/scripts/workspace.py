@@ -28,7 +28,12 @@ from urllib.parse import urlsplit
 
 sys.dont_write_bytecode = True  # an installed plugin must stay byte-identical; Muse verifies its bundle
 import setup
-from synthesis import yamlish  # the plugin's YAML reader; setup put the plugin root on sys.path
+try:
+    from synthesis import yamlish  # the plugin's YAML reader; setup put the plugin root on sys.path
+except ImportError as exc:  # no runtime beside this copy; one that fails otherwise as it loads keeps its traceback
+    print(f"{__file__} needs the synthesis runtime, which cannot be imported ({exc}), so nothing ran. Run it from the "
+          "installed synthesis-skills plugin or a checkout of it", file=sys.stderr)
+    sys.exit(2)
 
 ARCHIVE_NOTE = "<!-- synthesis-instructions:generated -->"
 BRIEF_BEGIN, BRIEF_END = "<!-- synthesis-setup:begin compact-instructions -->", "<!-- synthesis-setup:end compact-instructions -->"

@@ -4,6 +4,43 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [5.10.0] - 2026-11-13
+
+- **The commit check can hold an entry's own time to the clock** (`synthesis-git-hooks` 3.3.0,
+  `synthesis-agent-guardrails` 2.6.0). Off unless the config has `record_times` (`{}` turns it on; leaving the key
+  out, or `false`, turns it off, and any other value, `null` among them, blocks the commit and is named). In a
+  Markdown record an entry states its own time where a line opens with the day and a time, where a parenthesis
+  opens with them or with one of a closed list of words that say what was done then (`added`, `as of`,
+  `updated`), and, in a session log, where a list item opens with a time under a heading that names today. A
+  commit is refused when such a stamp stands 1 to 30 minutes after the commit, or rounds a moment from 15 minutes
+  back to 30 ahead (`18:3x`, `about 18:35`): the clock could be read. Counted over thirty days of real commits
+  before it shipped, every stamp that was later than its commit stood within that half hour; a time farther ahead
+  is a deadline, a schedule or a zone read as local, and passes. Not read: a time inside an entry's text, a
+  parenthesis that opens with any other word (`(scheduled 11-12 18:55)`), the time an unchecked box opens with, a
+  code fence, a folder of transcripts; outside a session log, a span that had begun (a meeting's hours, in the
+  notes written while it runs); and a commit that brings lines written before (a merge, a squash merge, a
+  cherry-pick, a revert, a rebase that stopped). A zone the stamp names is honored: `UTC`, an offset, and the
+  four regions of the United States, where a winter or summer label names the region's clock on that day. A zone
+  the check names and does not place (`IST`, `CET`) lets the stamp pass. No approval clears a refusal: the remedy
+  is the time `date` prints, in the command that writes the entry, or, for a time that is not when the entry is
+  written, the words that say what it is before it.
+- **A test's teardown list** (`synthesis-agent-guardrails` 2.6.0, `synthesis-agent-conformance` 2.0.3).
+  `teardown.py add "<what>" --remove "<how>"` writes down each thing a test sets up before it is made, `list`
+  shows what is still in place, and `done <number>` takes one off once it is gone. The list is a log that is only
+  appended to: a number is never given twice, a line written into it by hand stays as it was written, and a byte
+  that is no text stops nothing. `synthesis doctor` reads it at every run, in whichever session, and warns while
+  a thing on it is not taken off, with the oldest's age where it has one and the three oldest. It refuses nothing,
+  runs nothing a line names, and prints nothing a terminal would obey. The knowledge-base connector's test mode
+  asks for it (`synthesis-kb-distribution` 1.2.1): its `TEST ONLY` start line ends with the instruction, and its
+  reference names what such a test sets up (the address, a tunnel, a redirect URI, a deploy key, each client's
+  entry).
+- **A file that needs the runtime says so in one line when it is not there.** Run from a copy with no
+  `synthesis/` beside it, 27 skill scripts ended in a traceback, even for `--help`. Each now prints one line that
+  names the file whose import failed and exits 2, and a lint holds that every such import is guarded and that the
+  guard says so. Some of the 27 are imported, not run (the connector's `corpus.py`, the inbox scripts' `_lib.py`):
+  there the line names that file, and whatever imported it ends with it. A runtime that is there and fails as it
+  loads keeps its traceback.
+
 ## [5.9.0] - 2026-11-13
 
 - **What the principal asked is accounted for** (`synthesis-context-lifecycle` 2.3.0). The archive holds every
