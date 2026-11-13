@@ -42,6 +42,7 @@ plugin's `synthesis/rituals.py`, which the SessionStart line and the nudge share
 from __future__ import annotations
 
 import argparse
+import bisect
 import fcntl
 import json
 import os
@@ -309,13 +310,37 @@ def _shown(text: str) -> str:
     return "\n".join(lines)
 
 
-def _items(text: str):
-    """Each choice a plan puts, as its own lines, the title first. A choice is a run of options with the lines
-    around it: under a heading of its own, or one entry of a list under a shared heading. The list's next entry, or
-    options whose label starts again (A after B), begin the next choice; a bullet under an option does not (the
-    third and fourth reviews: decisions listed under a second-level heading were not read, a heading inside a fenced
-    example was read as a choice, and a second entry lettered C and D was read as more options of the first)."""
-    for section in re.split(r"(?im)^#{1,3} (?![*_]*Option [A-Z0-9])", _shown(text)):
+def _plan_lines(text: str) -> list:
+    """For each line `_shown` reads, the line of the plan it stands on: a fenced block is taken out whole, so a line
+    after one stands further down the plan than its place in what is read (the second review: a choice was placed
+    by searching the plan for its first line, which found an earlier line that read the same)."""
+    starts = [0]  # where each of the plan's lines starts
+    for line in text.splitlines(keepends=True):
+        starts.append(starts[-1] + len(line))
+    kept, plan_at, at = [], [], 0  # where each piece a fence leaves starts, in what is left and in the plan
+    for found in [*FENCE.finditer(text), None]:
+        kept.append(kept[-1] + plan_at[-1][1] if kept else 0)
+        plan_at.append((at, (found.start() if found else len(text)) - at))
+        at = found.end() if found else at
+    numbers, offset = [], 0
+    for line in FENCE.sub("", text).splitlines(keepends=True):
+        piece = bisect.bisect_right(kept, offset) - 1  # the last piece that starts here or before: the one this line is in
+        numbers.append(bisect.bisect_right(starts, plan_at[piece][0] + offset - kept[piece]))
+        offset += len(line)
+    return numbers
+
+
+def _located(text: str):
+    """Each choice a plan puts, as (the line of the plan it opens on, its own lines, the title first). A choice is a
+    run of options with the lines around it: under a heading of its own, or one entry of a list under a shared
+    heading. The list's next entry, or options whose label starts again (A after B), begin the next choice; a bullet
+    under an option does not (the third and fourth reviews: decisions listed under a second-level heading were not
+    read, a heading inside a fenced example was read as a choice, and a second entry lettered C and D was read as
+    more options of the first)."""
+    shown, numbers = _shown(text), _plan_lines(text)
+    heads = list(re.finditer(r"(?im)^#{1,3} (?![*_]*Option [A-Z0-9])", shown))
+    for begin, end in zip([0, *(head.end() for head in heads)], [*(head.start() for head in heads), len(shown)]):
+        section, above_it = shown[begin:end], shown.count("\n", 0, begin)  # the section, and how many lines stand above it
         lines, firsts, label, entry, fresh = section.splitlines(), [], None, -1, False
         for at, line in enumerate(lines):
             listed = re.match(r"( *)(?:>\s*)*(?:[-*+] |\d+[.)] )", line) if at and not (SAID.match(line) or CLOSED.match(line)) else None
@@ -356,17 +381,24 @@ def _items(text: str):
             return above if entry else 0 if k == 0 else firsts[k]
         starts = [titled(k) for k in range(len(firsts))]
         for k, start in enumerate(starts):
-            yield "\n".join(lines[start:starts[k + 1] if k + 1 < len(starts) else len(lines)])
+            yield numbers[above_it + start], "\n".join(lines[start:starts[k + 1] if k + 1 < len(starts) else len(lines)])
 
 
-def open_choices(text: str):
+def _items(text: str):
+    """Each choice a plan puts, as its own lines, the title first (see `_located`)."""
+    for _, item in _located(text):
+        yield item
+
+
+def open_choices(text: str, located: bool = False):
     """(its title, its own lines, its options) for each choice a plan puts that offers options and records no
-    decision: the record reads them for a recommendation, and the plate lists them."""
-    for item in _items(text):
+    decision: the record reads them for a recommendation, and the plate lists them. With `located`, the line of the
+    plan the choice opens on comes first: (its line, its title, its own lines, its options)."""
+    for line, item in _located(text):
         title, options = MARK.sub("", item.splitlines()[0]).strip(), OPTION.findall(item)
         done = any(not NOTHING.fullmatch(m[1]) and not OPEN.match(m[1]) for m in CLOSED.finditer(item))  # it says what was decided
         if options and not done and not title.lstrip("*_ ").startswith(("~~", "[x]", "[X]", "✓", "✔")) and "✅" not in title:
-            yield title, item, options
+            yield (line, title, item, options) if located else (title, item, options)
 
 
 def choices(workspace: str, day: str) -> str:

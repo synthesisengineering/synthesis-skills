@@ -67,17 +67,21 @@ def register_path(workspace: str) -> Path:
 
 def read_register(path: Path, unread: list | None = None) -> tuple[list[dict], list[tuple[int, int]]]:
     """(every dated row of the register, each of its headers as (its line, its cells)). A table is the register's
-    where its header opens with `Lapsed`. A row is a line that opens with a pipe and a day (written plainly, in
-    emphasis, in code or as a link's text), in such a table or in a run of lines of five cells or more with no
-    header of its own after one: a register is appended to, and rows written beneath the notes under its table are
-    still its rows (2026-11-13: read by its first table alone, a real register gave 14 of its 64). A table with a
-    header of its own that is not the register's is passed over. A line of the register's own table whose first
-    cell gives no day is no row and is not passed over in silence: its line goes into `unread`."""
+    where its header's first cell opens with the word `Lapsed` (`Lapsed`, `Lapsed on`, `Lapsed (day)`, in emphasis
+    or not). A row is a line that opens with a pipe and a day (written plainly, in emphasis, in code or as a link's
+    text), in such a table, or in a run of table lines with no header of its own beneath one whose first line opens
+    with a day: a register is appended to, and rows written beneath the notes under its table are still its rows
+    (2026-11-13: read by its first table alone, a real register gave 14 of its 64). In such a run each line of five
+    cells or more is a row, whatever the run's first line holds; a line of fewer is too short to be one, and is not
+    passed over in silence: its line goes into `unread` (the second review: a run whose first line had four cells was
+    passed over whole, its later rows of seven cells included). A run whose first line does not open with a day is
+    another table, and is passed over. A line of the register's own table whose first cell gives no day is no row
+    and is not passed over in silence either: its line goes into `unread`; a row of four cells there is a row."""
     try:
         lines = path.read_text(encoding="utf-8").splitlines()
     except (OSError, UnicodeError) as exc:
         raise Unread(f"{path} cannot be read ({exc})") from None
-    rows, heads, run = [], [], None  # run: whether the lines of this run of table lines are the register's
+    rows, heads, run = [], [], None  # run: "table" under the register's header, "beneath" it with no header, "" another table's
     for number, line in enumerate(lines, 1):
         if not line.lstrip().startswith("|"):
             run = None
@@ -85,13 +89,17 @@ def read_register(path: Path, unread: list | None = None) -> tuple[list[dict], l
         cells = decay_sweep._cells(line)
         first = re.sub(r"[*_`]", "", re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", cells[0])).strip()  # a day in bold, in code or as a link's text
         day, opens = re.match(decay_sweep.DATE, first), run is None
-        if opens:  # the run's first line: the register's header, a row that continues it, or another table's header
-            head = first.lower() == "lapsed"
-            run = head or bool(day and heads and len(cells) >= 5)
+        if opens:  # the run's first line: the register's header, a row beneath the register, or another table's line
+            head = bool(re.match(r"(?i)lapsed\b", first))
+            run = "table" if head else "beneath" if day and heads else ""
             heads += [(number, len(cells))] if head else []
             if head:
                 continue
         if not run or all(re.fullmatch(r":?-*:?", cell) for cell in cells):  # another table's line, or the rule under a header
+            continue
+        if run == "beneath" and len(cells) < 5:  # under no header, too short to be a row: said by its line, never passed over
+            if unread is not None:
+                unread.append(number)
             continue
         try:
             rows.append({**dict(zip(CELLS, [decay_sweep.iso_day(day[0]).isoformat(), *cells[1:]])), "line": number})
@@ -123,11 +131,12 @@ def lapses(rows: list[dict]) -> list[dict]:
 
 def place(where: str) -> str:
     """The folder a row's locator names: of a link's target (between angle brackets where it holds a space), a code
-    span or a bare path, whichever stands first; a folder named for a month or a day is passed over for the one it
-    stands in, which says what kind of record it was."""
+    span or a bare path, whichever stands first; a folder named for a year, a month or a day (`2026-11-13`, `2026-11`,
+    or in digits alone, `2026`, `11`, `13`) is passed over for the one it stands in, which says what kind of record it
+    was (the second review: `plans/2026/11/2026-11-13.md` gave `11`)."""
     found = re.search(r"\]\(<([^>]+)>\)|\]\(([^)\s]+)\)|`([^`]+)`|((?:[\w.~-]+/)+[\w.-]+)", where)
     path = re.sub(r":\d+$", "", next((part for part in found.groups() if part), "")) if found else ""
-    folders = [part for part in Path(path).parts[:-1] if part not in ("..", ".", "/") and not re.fullmatch(r"\d{4}(?:-\d{2}){0,2}", part)]
+    folders = [part for part in Path(path).parts[:-1] if part not in ("..", ".", "/") and not re.fullmatch(r"\d{4}(?:-\d{2}){0,2}|\d{1,2}", part)]
     return folders[-1] if folders else ""
 
 
@@ -178,7 +187,8 @@ def main(argv=None) -> int:
     print(f"Slipped through: {len(inside)} lapse{'s' * (len(inside) != 1)} from {since} to {until} "
           f"({len(rows)} row{'s' * (len(rows) != 1)} in the register)")
     if unread:
-        print(f"{len(unread)} row(s) of the register could not be read, their first cell giving no day: lines {', '.join(map(str, unread))}")
+        print(f"{len(unread)} row(s) of the register could not be read, each giving no day in its first cell or, beneath the "
+              f"register's table under no header of its own, holding fewer than five cells: lines {', '.join(map(str, unread))}")
     if not inside:
         return 0
     said = ([f"  the same item more than once: {', '.join(f'`{k}` ({n})' for k, n in found['item'].items())}"] if found["item"] else []) + (

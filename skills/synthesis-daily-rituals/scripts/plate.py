@@ -45,8 +45,10 @@ def build(workspace: str, as_of, out: Path | None, with_gaps: bool) -> tuple[str
         raise SystemExit(f"plate: {workspace} declares no plan folders in the ritual config, so there is nothing to build the list from")
     if not roots:
         raise SystemExit(f"plate: {workspace} declares that it keeps no dated plans, so there is nothing to build the list from")
-    if out is not None:
-        inside = next((root for root, _ in roots if os.path.realpath(out).startswith(os.path.realpath(root) + os.sep)), None)
+    if out is not None:  # a folder is compared as the sweep reads it, `~` expanded; the folder itself is in it
+        real, folders = os.path.realpath(out), [root.expanduser().absolute() for root, _ in roots]
+        inside = next((folder for folder in folders if real == os.path.realpath(folder)
+                       or real.startswith(os.path.realpath(folder).rstrip(os.sep) + os.sep)), None)
         if inside is not None:
             raise SystemExit(f"plate: {out} is in {inside}, a folder this workspace declares: the list is read from there and "
                              "never written there. Name a file somewhere else")
@@ -76,25 +78,34 @@ def build(workspace: str, as_of, out: Path | None, with_gaps: bool) -> tuple[str
     choices = []
     for path in report.get("plans_read", []):
         text = Path(path).read_text(encoding="utf-8", errors="replace")
-        for title, item, _ in ritual_state.open_choices(text):
-            found = text.find(item.splitlines()[0])  # the line the choice stands on
-            choices.append((title, path, text.count("\n", 0, found) + 1 if found >= 0 else None))
-    owed, due, copies = report["owed"]["rows"], [], {}
-    for row in report["due"]:  # an item with no ID is another item in each plan that copies it: listed once, with how many
-        key = (row["title"], row["due_date"]) if str(row.get("identity", "")).startswith("source:") else None
-        if key in copies:
-            copies[key]["copies"] += 1
+        choices += [(title, path, line) for line, title, _, _ in ritual_state.open_choices(text, located=True)]  # the line it opens on
+    owed, copies, merged, nth = report["owed"]["rows"], [], {}, {}
+    for row in report["due"]:  # by date, path and line
+        # an item with no ID is another item in each plan that copies it, so its copies are merged across plans and
+        # listed once, with how many: the first of a title and date in one plan with the first in another, the second
+        # with the second. Two of them in one plan are two items.
+        key = None
+        if str(row.get("identity", "")).startswith("source:"):
+            spot = (row["path"], row["title"], row["due_date"])
+            nth[spot] = nth.get(spot, 0) + 1
+            key = (row["title"], row["due_date"], nth[spot])
+        if key in merged:
+            merged[key].append(row)
         else:
-            due.append(dict(row, copies=1))
-            copies.update({key: due[-1]} if key else {})
+            copies.append([row])
+            merged.update({key: copies[-1]} if key else {})
+    due = []  # (the copy an entry is placed at, whether its date passed with nothing written, how many copies)
+    for rows in copies:  # passed with nothing written where any copy is, and placed at the newest such copy, else the newest
+        late = [row for row in rows if row["unannounced"]]
+        due.append((max(late or rows, key=lambda row: (row.get("plan_date") or "", row["path"], row["line"])), bool(late), len(rows)))
     sections = [
         ("Not read", [f"{path}: {'; '.join(why)}" for path, why in unread.items()]),
         ("Critical deadlines", [f"{row['due_date']} {row['title']} [{row['class']}]{named(row)} {at(row['path'], row['line'])}"
                                 + "".join(f"\n  - {problem}" for problem in row["problems"]) for row in report["critical"]["open"]]),
         ("Possibly critical, not classified", [f"{row['due_date']} {row['title']}{named(row)} {at(row['path'], row['line'])}"
                                                for row in report["critical"]["unclassified"]]),
-        ("Due or past", [f"{row['due_date']} {row['title']}{named(row)}" + ", passed with nothing written" * row["unannounced"]
-                         + f", {row['copies']} copies with no Decay ID" * (row["copies"] > 1) + f" {at(row['path'], row['line'])}" for row in due]),
+        ("Due or past", [f"{row['due_date']} {row['title']}{named(row)}" + ", passed with nothing written" * late
+                         + f", {many} copies with no Decay ID" * (many > 1) + f" {at(row['path'], row['line'])}" for row, late, many in due]),
         ("Dated ahead", [f"{row['due_date']} {row['title']}{named(row)} {at(row['path'], row['line'])}" for row in report["ahead"]]),
         ("Commitments with no date and no park", [f"{row['title']} {at(row['path'], row['line'])}" for row in report["untagged"]]),
         ("Owed in a ledger", [f"{row['item']} [{row['status'] or 'no status'}] since {row['owed_since'] or 'no date'} "
