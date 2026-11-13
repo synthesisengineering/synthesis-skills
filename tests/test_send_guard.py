@@ -516,6 +516,53 @@ def test_the_composing_reference_lists_what_counts_as_attached_the_drive_tools_a
         assert words in listed, words
 
 
+# --- an attachment given as a URL ------------------------------------------------------------------------------
+# The mail connector reads a `url` whose path is its own download link, /attachments/<id>, from a file it saved on
+# its own disk: given with no host, or on a host it serves, which it takes from its own settings and the guard
+# cannot see (gmail_tools._try_read_local_attachment, 2.1.0). Those bytes are no file an approval binds: a file
+# replaced there after the principal's code went out under that code. Any other `url` it fetches over http or https
+# from a named host and in no other way (core.http_utils.ssrf_safe_stream), so a file:// URL attached nothing.
+
+DOWNLOAD_LINKS = ["/attachments/a1", "attachments/a1", "/attachments/a1/", "http://localhost:8765/attachments/a1",
+                  "http://127.0.0.1:8765/attachments/a1?download=1", "https://mail.example.com/attachments/a1",
+                  "file:///attachments/a1"]
+NOT_FETCHED = ["file:///tmp/outbox/report.pdf", "file://localhost/tmp/outbox/report.pdf", "/tmp/outbox/report.pdf",
+               "report.pdf", "ftp://files.example.com/report.pdf", "http:///report.pdf", "https://[oops/report.pdf"]
+
+
+@pytest.mark.parametrize("url", DOWNLOAD_LINKS)
+def test_the_connectors_own_download_link_is_refused_and_the_sender_told_to_give_the_staged_files_path(url, scratch):
+    for given, place in (([{"url": url, "filename": "plan.pdf"}], 1), ([AS_CONTENT[1], {"url": url}], 2)):
+        _refused(given, f"attachment {place} ", f"`url` {url}", "its own download link", "an approval cannot bind",
+                 f"copy the file into {paths.outbox()}", "full path as the attachment's `path`", "file this send again")
+
+
+@pytest.mark.parametrize("url", NOT_FETCHED)
+def test_a_url_the_connector_does_not_fetch_is_refused_and_a_file_on_this_disk_told_to_go_by_its_path(url, scratch):
+    _refused([{"url": url, "filename": "report.pdf"}], "attachment 1 (report.pdf) ", f"`url` {url}",
+             "only over http or https", f"copy the file into {paths.outbox()}", "full path as the attachment's `path`",
+             "file this send again")
+
+
+def test_a_url_the_connector_fetches_goes_to_the_code_and_binds_no_local_file(scratch):
+    for url in ("https://files.example.com/plan.pdf", "HTTP://files.example.com/attachments/a1/b2",
+                "https://files.example.com/user-attachments/a1", "https://files.example.com/Attachments/a1"):
+        asked = guards.check(SEND, {**MAIL, "attachments": [{"url": url, "filename": "plan.pdf"}]}, CONFIG)
+        assert "approval" in asked and "as it is now" not in asked, (url, asked)
+
+
+def test_the_references_say_which_url_the_connector_reads_from_this_disk_with_the_words_the_guard_refuses_with(scratch):
+    skills = Path(__file__).resolve().parents[1] / "skills"
+    listed = " ".join((skills / "synthesis-message-guard" / "references" / "composing.md").read_text(encoding="utf-8").split())
+    sending = " ".join((skills / "synthesis-agent-correspondence" / "references" / "gates-and-sending.md")
+                       .read_text(encoding="utf-8").split())
+    assert "An attachment given as a `url`, or as standard base64 `content` with a `filename`, is not a file read" not in listed
+    assert "or a `url` (the connector's own download link for a Drive file is one)" not in sending
+    for url, words in (("/attachments/a1", "its own download link"), ("file:///tmp/r.pdf", "only over http or https")):
+        assert words in guards.check(SEND, {**MAIL, "attachments": [{"url": url}]}, CONFIG), url
+        assert words in listed and words in sending and "`/attachments/<id>`" in listed, words
+
+
 # --- a local file a Drive tool reads ---------------------------------------------------------------------------
 # The same connector reads a local file for five Drive tools, under the same folder rule (2.1.0: drive_tools.py
 # and drive_helpers._resolve_import_media). update_drive_file and import_to_google_doc, _sheets and _slides take
