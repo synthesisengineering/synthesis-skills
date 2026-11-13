@@ -1097,3 +1097,22 @@ def test_saying_that_no_answer_is_awaited_arms_nothing_and_leaves_a_line_on_the_
         refused = cli(*words)
         assert refused.returncode == 2 and "why" in refused.stderr and refused.stdout == ""
     assert len((paths.board() / "waits" / "none.jsonl").read_text(encoding="utf-8").splitlines()) == 1
+
+
+def test_the_statement_takes_a_sentence_prints_nothing_a_terminal_obeys_and_says_when_it_cannot_be_kept(two):
+    """A review, 2026-11-13: an escape sequence in the reason was echoed raw; a reason of 200 KB was taken; and a
+    board that cannot be written ended the command in a traceback."""
+    from synthesis import paths
+    said = cli("wait", "none", "a notice \x1b[31min red\x07 ‮gnissim")
+    assert said.returncode == 0 and "\x1b" not in said.stdout and "\x07" not in said.stdout and "‮" not in said.stdout
+    assert "a notice ?[31min red? ?gnissim" in said.stdout
+    row = json.loads((paths.board() / "waits" / "none.jsonl").read_text(encoding="utf-8").splitlines()[-1])
+    assert row["why"] == "a notice ?[31min red? ?gnissim"
+    long = cli("wait", "none", "w" * 301)
+    assert long.returncode == 2 and "300" in long.stderr and long.stdout == ""
+    assert cli("wait", "none", "w" * 300).returncode == 0
+    file = paths.board() / "waits" / "none.jsonl"
+    file.unlink()
+    file.mkdir()                                                                        # the record cannot be written
+    stuck = cli("wait", "none", "a notice")
+    assert stuck.returncode == 1 and "Traceback" not in stuck.stderr and "none.jsonl" in stuck.stderr and stuck.stdout == ""
