@@ -164,6 +164,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
 - A second model read the release branch and returned 42 findings, every one in the pieces this release adds.
   Each was fixed with a failing test first, with what the fixes' own probes found beside them, and the suite
   and the replays were run again before the release.
+- CI runs the suite in two jobs for each system and Python, the core's tests and the skills'. The whole suite
+  had come to take 526 seconds on a macOS runner, and one job was cancelled at its ten-minute limit with no test
+  failing.
 - The thirty days of commands then recorded (114,398) were replayed through this release's write guard and
   5.7.0's: 60 refused before and after, none newly refused or newly passed, and none on which it raised.
 
