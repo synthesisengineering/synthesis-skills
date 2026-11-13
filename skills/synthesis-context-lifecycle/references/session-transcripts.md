@@ -28,6 +28,20 @@ reply, with its model), `reasoning`
 `meta` (titles, links, modes, cost totals). A tool input or output, or injected text, longer than 2,000 characters
 keeps its first 1,000 in the record and the whole text in a blob (`text_blob`, `text_chars`); `--whole` reads it back.
 
+What the principal typed is a `user` record in each shape a Claude Code transcript holds it: a prompt that begins a
+turn; a prompt typed while a turn runs, which the harness keeps as a queued command and in no row of its own; a
+slash command that reaches the agent, written as he typed it (`/review the last change`), where the same command
+typed twice is two prompts; and his words after a system reminder that the harness put before them in one block,
+the reminder kept apart as a `system` record. Until 2026-11-13 the last three were `system` records, or none, and
+so in no list of what he typed: measured on thirty days of transcripts, 578 of 3,327 things typed. A command to the
+harness itself (`/model`) and its output stay `system`, and so do a task's notification and another agent's message
+that arrive as queued commands.
+
+`projects` in `meta.json` are the projects the session-start hook named and each project whose folder a tool call
+of the session wrote into (`<a knowledge root>/projects/<id>/`): a file tool's target, or what a shell line writes,
+read as the guard reads them. Reading a project's files adds none. A call whose written files could not be read is
+counted in `meta.json` among what was skipped.
+
 What is left out: copies the harness keeps of the same content (Claude Code's request blobs and `toolUseResult`,
 Codex's UI events and the history replayed into each compaction), the copy of the whole conversation Codex hands its
 approval reviewer (the reviewer's verdicts are kept; `meta.json` names its `role` and `parent`), Claude Code workflow
