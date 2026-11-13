@@ -832,6 +832,25 @@ def _name(cell: str) -> str:
     return re.sub(r"(?:\s*\([^)]*\)|\s*:)+\s*$", "", words).strip()
 
 
+def _cells(row: str) -> list:
+    return [cell.strip() for cell in re.split(r"(?<!\\)\|", ROW.match(row).group(1))]
+
+
+def _tables(whole: list) -> list:
+    """(text, top) for each line of a file: top is the index of the first row of the block of table rows the line
+    stands in (its header, where a delimiter row follows), None where it stands in none: not a row, or in a code
+    fence. One pass for the file: walking up from each added row to its table's top took 86 s for 40,000 rows (a
+    review of 2026-11-13)."""
+    found, top, inside = [], None, False
+    for number, line in enumerate(whole):
+        edge = line.lstrip().startswith(("```", "~~~"))
+        row = not (inside or edge) and ROW.match(line)
+        inside ^= edge
+        top = (number if top is None else top) if row else None
+        found.append((line, top))
+    return found
+
+
 def status_evidence(lines: list, settings, read) -> tuple:
     """Config: {"status_evidence": {"skip": ["<folder or pattern>", ...]}}; off when the key is absent or false.
     (refusals, notes) for the table rows a commit adds to Markdown records. A row is refused where its table has a
@@ -846,26 +865,24 @@ def status_evidence(lines: list, settings, read) -> tuple:
     if not (isinstance(skip, list) and all(isinstance(pattern, str) for pattern in skip)):
         raise Refused('status_evidence in the synthesis config must be an object that takes "skip" alone, a list of folders or '
                       "patterns. To turn the check off, leave status_evidence out or set it to false")
-    found, noted, texts = [], {}, {}
+    found, noted, files, heads = [], {}, {}, {}
     for raw, number, line in lines:
-        path, text = os.fsdecode(raw), line.decode("utf-8", "replace")
-        if not ROW.match(text) or not _record(path, skip):
+        path = os.fsdecode(raw)
+        if b"|" not in line or not _record(path, skip):
             continue
-        if path not in texts:
-            whole = read(path).split("\n")
-            texts[path] = (whole, _around(whole)[0])
-        whole, fenced = texts[path]
-        top = number - 1
-        while top > 0 and top <= len(whole) and ROW.match(whole[top - 1]):
-            top -= 1  # the first row of the block this row stands in: its header, where a rule follows it
-        if fenced[number - 1:number] == [True] or number - 1 <= top + 1 or top + 1 >= len(whole) or not RULE.match(whole[top + 1]):
-            continue
-        head, row = ([cell.strip() for cell in re.split(r"(?<!\\)\|", ROW.match(part).group(1))] for part in (whole[top], text))
-        names = [_name(cell) for cell in head]
-        status = next((k for k, name in enumerate(names) if _STATUS.fullmatch(name)), None)
+        if path not in files:
+            files[path] = _tables(read(path).split("\n"))
+        text, top = files[path][number - 1] if number <= len(files[path]) else ("", None)
+        if top is None or number - 1 <= top + 1 or not RULE.match(files[path][top + 1][0]):
+            continue  # not a row, a header or its rule, or no rule under the header
+        if (path, top) not in heads:  # a table's columns, read once
+            names = [_name(cell) for cell in _cells(files[path][top][0])]
+            status = next((k for k, name in enumerate(names) if _STATUS.fullmatch(name)), None)
+            heads[path, top] = (status, *([k for k, name in enumerate(names) if k != status and pattern.search(name)] for pattern in (_EVIDENCE, _SOFT)))
+        status, hard, soft = heads[path, top]
         if status is None:
             continue
-        hard, soft = ([k for k, name in enumerate(names) if k != status and pattern.search(name)] for pattern in (_EVIDENCE, _SOFT))
+        row = _cells(text)
         filled = {k for k, cell in enumerate(row) if _BLANK.sub("", cell)}
         if hard:
             if status in filled and not filled & {*hard, *soft} and not re.search(r"(?i)\bunverified\b", text):
