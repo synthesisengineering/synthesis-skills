@@ -4,7 +4,8 @@ references/connector.md documents each variable. A required value that is missin
 stops the start (ConfigError lists them all); nothing falls back to serving without sign-in.
 KB_PUBLIC_URL is an origin and nothing more. KB_OPERATOR_TEST=1 with KB_OPERATOR_ADDRESSES is the
 operator-only test mode: nobody else signs in, and a temporary address (temporary() below) or the
-memory sign-in store starts in that mode alone.
+memory sign-in store starts in that mode alone. A host in an old numeric spelling (old_spelling()) starts in
+no mode.
 """
 
 from __future__ import annotations
@@ -89,9 +90,15 @@ def temporary(host) -> bool:
     if any(host == name or host.endswith("." + name) for name in TEMPORARY_HOSTS):
         return True
     address = _ip(host)
-    if address is None:  # a name, unless its last label is a number: an IP address in an old spelling, such as 127.1
-        return bool(re.fullmatch(r"\d+|0x[0-9a-f]*", host.rsplit(".", 1)[-1]))
-    return not address.is_global
+    return old_spelling(host) if address is None else not address.is_global  # an old spelling: load() refuses it first
+
+
+def old_spelling(host) -> bool:
+    """True for a host written as a number in an old spelling, such as 127.1 or 0x08080808: no IP address in the
+    standard form, and its last label a number. Programs read such a spelling differently, so it is refused whatever
+    address it denotes."""
+    host = (host or "").lower().rstrip(".")
+    return _ip(host) is None and bool(re.fullmatch(r"\d+|0x[0-9a-f]*", host.rsplit(".", 1)[-1]))
 
 
 def _beyond_origin(raw, parsed, port, local) -> str:
@@ -146,7 +153,12 @@ def load(env) -> Settings:
                         "they are one person's own accounts, since the operator-only test mode is that person's test "
                         "and nobody else's. Other people come in through KB_ALLOWED_EMAILS or KB_ALLOWED_GROUPS, on a "
                         "deployed connector with the mode off")
-    if temporary(parsed.hostname) and test != "1":
+    if old_spelling(parsed.hostname):
+        problems.append(f"KB_PUBLIC_URL writes its host as a number in an old spelling ({parsed.hostname}): programs read "
+                        "such a spelling differently, as one IP address, as another or as a name to look up, so the "
+                        "connector refuses it whatever address it denotes. Write the host as a name: the service's "
+                        "domain, or localhost for the operator's own test")
+    elif temporary(parsed.hostname) and test != "1":
         problems.append(f"KB_PUBLIC_URL names a temporary or local address ({parsed.hostname}): it lasts only while "
                         "this machine and its tunnel stay up, so nobody else may depend on it. To serve other people, "
                         "deploy the connector to the organization's own infrastructure at a permanent address; for "
