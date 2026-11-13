@@ -138,6 +138,29 @@ def test_a_list_item_that_opens_with_a_time_is_an_entrys_stamp_only_in_a_session
         assert said(path, "- 19:30 dinner with the board", before=today) == []
 
 
+def test_a_wrapped_line_that_happens_to_begin_with_a_time_is_no_entry():
+    """Replayed over thirty days of real commits before it shipped, the first form of this check refused five lines
+    of session logs that were the wrapped rest of a sentence and began with a time by chance (a call at 20:00, a
+    message at 15:17:44), 55 to 1,015 minutes "after" their commits. An entry opens with a mark: a list item or a
+    heading. A line set in from the margin with no mark continues the line above it."""
+    today = ["## 2026-11-12 — the day-end", "", "- The sweep found four items, the last of them due at"]
+    for rest in ("  20:00 ET), 15 re-dated to Monday with reasons; 9 new items.",
+                 "  18:56:31); the second by chat after the first was refused;",
+                 "  19:00 and 20:30, Monday at 17:00, all eastern.",
+                 "    ~18:40 the second run began, by the log's own count",
+                 "  2026-11-12 19:30 with the owner, and the notes go to the project.",
+                 "  about 18:35 the reply came"):
+        assert said(LOG, rest, before=today) == [], rest
+    assert said(RECORD, "  2026-11-12 19:30 with the owner, and the notes go to the project.", before=today) == []
+    for unmarked in ("19:30 dinner with the board", "~18:40 the second run began"):       # at the margin, and no list item
+        assert said(LOG, unmarked, before=today[:2]) == [], unmarked
+    # A list item set in under another is still a list item, and a heading that opens with a time is an entry.
+    assert "14 min after" in said(LOG, "  - 18:54: pushed the branch", before=today)[0]
+    assert "14 min after" in said(LOG, "#### 18:54 EST — the push", before=today)[0]
+    assert "rounds" in said(LOG, "  * **18:3x**, told the seat", before=today)[0]
+    assert "14 min after" in said(RECORD, "2026-11-12 18:54 the release went out.")[0]     # a dated line at the margin opens an entry
+
+
 def test_only_markdown_records_are_read_and_transcripts_and_skipped_folders_are_not():
     late = "- **2026-11-12 18:54, done.**"
     assert said("projects/alpha/notes.MD", late) != []
