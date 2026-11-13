@@ -154,15 +154,17 @@ def test_what_came_of_a_lapse_is_read_from_its_last_row(tmp_path):
 
 def test_a_day_written_with_emphasis_is_read_and_a_row_whose_day_cannot_be_read_is_said(tmp_path):
     """Finding 7: rows whose day stood in bold, in a link or in code were dropped without a word, and so was a day
-    that does not exist; a table of two columns beneath a note was counted as lapses."""
+    that does not exist; a table of two columns beneath a note was counted as lapses. The second review: lines that
+    open with a day beneath the register, under no header of their own, are not passed over in silence either; with
+    too few cells to be a row, each is said by its line."""
     register = HEAD + ("| **2026-11-03** | Bold day | daily-plans/a.md | a | open |\n| [2026-11-04](../daily-plans/2026-11-04.md) | Linked day | b.md | b | open |\n"
                        "| `2026-11-05` | Code day | c.md | c | open |\n| 2026-11-31 | No such day | d.md | d | open |\n| soon | No day | e.md | e | open |\n\n"
                        "- 2026-11-10: totals, kept by hand.\n\n| 2026-11-09 | 4 lapses |\n| 2026-11-10 | 2 lapses |\n")
     done = review(tmp_path, register=register)
     assert done.returncode == 0, done.stderr
-    assert "Slipped through: 3 lapses" in done.stdout and "2 row(s) of the register could not be read" in done.stdout and "lines 8, 9" in done.stdout
+    assert "Slipped through: 3 lapses" in done.stdout and "4 row(s) of the register could not be read" in done.stdout and "lines 8, 9, 13, 14" in done.stdout
     data = json.loads(review(tmp_path, "--json", register=register).stdout)
-    assert [row["item"] for row in data["rows"]] == ["Code day", "Linked day", "Bold day"] and data["unread"] == [8, 9] and data["total"] == 3
+    assert [row["item"] for row in data["rows"]] == ["Code day", "Linked day", "Bold day"] and data["unread"] == [8, 9, 13, 14] and data["total"] == 3
 
 
 def test_the_place_is_the_folder_that_says_what_kind_of_record_it_was_not_a_month(tmp_path):
@@ -190,3 +192,45 @@ def test_the_weekday_is_said_to_be_the_day_a_lapse_was_recorded(tmp_path):
         "| 2026-10-26 | Item 26 | daily-plans/y.md | a | sent |\n")
     text = review(tmp_path, "--window", "quarter", register=register).stdout
     assert "the weekday it was recorded on: Monday (3)" in text
+
+
+# --- the second review ------------------------------------------------------------------------------------------------
+
+def test_a_folder_named_for_a_year_a_month_or_a_day_in_digits_alone_is_not_the_place(tmp_path):
+    """Plans kept as `plans/2026/11/2026-11-13.md` gave the place `11`, and a day's own folder its day."""
+    register = HEAD + "".join(f"| 2026-11-0{n} | Item {n} | [plan](../plans/2026/11/2026-11-0{n}.md) | a | open |\n" for n in (3, 4, 5)) + "".join(
+        f"| 2026-11-1{n} | Item 1{n} | `records/2026/11/1{n}/notes.md:2` | a | open |\n" for n in (1, 2, 3))
+    data = json.loads(review(tmp_path, "--json", register=register).stdout)
+    assert data["patterns"]["place"] == {"plans": 3, "records": 3}
+
+
+def test_rows_beneath_the_register_are_read_whatever_the_first_line_of_their_run_and_short_ones_are_said(tmp_path):
+    """A run of lines beneath the register with no header of its own was passed over whole, its later rows of seven
+    cells included, when its first line had four cells. Each line of five cells or more is a row; a line too short
+    to be one is said by its line. A row of four cells in the register's own table stays a row."""
+    register = HEAD + ("| 2026-11-02 | First | daily-plans/a.md | a | open |\n"
+                       "| 2026-11-03 | In the table, four cells | daily-plans/e.md | e |\n\n"
+                       "- a note under the table.\n\n"
+                       "| 2026-11-09 | Beneath, four cells | daily-plans/b.md | b |\n"
+                       "| 2026-11-10 | Third | daily-plans/c.md | c | open | the supplier | call them |\n"
+                       "| 2026-11-11 | Fourth | daily-plans/d.md | d | open |\n"
+                       "| later | no day, two cells |\n\n"
+                       "| Day | Count |\n|---|---|\n| 2026-11-12 | 3 |\n")
+    data = json.loads(review(tmp_path, "--json", register=register).stdout)
+    assert [row["item"] for row in data["rows"]] == ["Fourth", "Third", "In the table, four cells", "First"], data
+    assert data["unread"] == [10, 13] and data["total"] == 4
+    text = review(tmp_path, register=register).stdout
+    assert "2 row(s) of the register could not be read" in text and "fewer than five cells" in text and "lines 10, 13" in text, text
+
+
+def test_a_table_whose_header_opens_with_the_word_lapsed_is_the_registers(tmp_path):
+    """Only a first header cell of exactly `Lapsed` made a table the register's: `Lapsed on` and `**Lapsed (day)**`
+    gave a register with no table."""
+    register = ("# Lapse register\n\n| **Lapsed on** | Item | Where it waited | Why it lapsed | Outcome |\n|---|---|---|---|---|\n"
+                "| 2026-11-09 | First | daily-plans/a.md | a | open |\n\n"
+                "| Lapsed (day) | Item | Where it waited | Why it lapsed | Outcome | Who it affected | What can still be done |\n"
+                "|---|---|---|---|---|---|---|\n| 2026-11-10 | Second | daily-plans/b.md | b | open | nobody | nothing |\n\n"
+                "| Relapsed | Count |\n|---|---|\n| 2026-11-11 | 3 |\n")
+    done = review(tmp_path, "--json", register=register)
+    assert done.returncode == 0, done.stderr
+    assert [row["item"] for row in json.loads(done.stdout)["rows"]] == ["Second", "First"]

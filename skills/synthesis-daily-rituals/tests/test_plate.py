@@ -213,3 +213,77 @@ def test_a_choice_is_listed_with_the_line_it_stands_on_and_a_path_with_spaces_is
                           capture_output=True, text=True, env={**os.environ, "RITUAL_STATE_DIR": str(tmp_path / "state"), "SYNTHESIS_HOME": str(tmp_path / "home")})
     assert done.returncode == 0, done.stderr
     assert f"](<../my plans/{DAY}.md>)" in (spaced / "plate.md").read_text(encoding="utf-8")
+
+
+# --- the second review ------------------------------------------------------------------------------------------------
+
+def swept(tmp_path: Path, env: dict, *extra):
+    return subprocess.run([sys.executable, str(SCRIPTS / "plate.py"), "--workspace", "desk", "--as-of", DAY, *extra],
+                          capture_output=True, text=True, env=env)
+
+
+def test_out_is_refused_in_a_declared_folder_written_from_the_home_folder_and_as_that_folder_itself(tmp_path):
+    """A folder the config writes with `~` was compared unexpanded, so the list was written into a folder it is read
+    from; and the folder itself, named as `--out`, was not taken to be inside it."""
+    env = seat(tmp_path)
+    home = tmp_path / "house"
+    (home / "records").mkdir(parents=True)
+    (tmp_path / "state" / "config.json").write_text(json.dumps({"workspaces": {"desk": {
+        "plans_dirs": [str(tmp_path / "plans")], "records_dirs": ["~/records"]}}}), encoding="utf-8")
+    for named in ("~/records/plate.md", "~/records"):
+        done = swept(tmp_path, {**env, "HOME": str(home)}, "--out", named)
+        assert done.returncode == 2 and "a folder this workspace declares" in done.stderr, (named, done.returncode, done.stderr)
+    assert list((home / "records").iterdir()) == []
+
+
+def test_two_items_of_one_title_and_date_in_one_plan_are_two_entries_each_merged_across_plans(tmp_path):
+    """Copies of an item with no Decay ID were merged by title and date alone, so two different calls in one plan were
+    one entry said as copies. The first of a title and date in one plan pairs with the first in another plan, the
+    second with the second, and each entry names its own place."""
+    env = seat(tmp_path)
+    twice = ("# Plan\n\n## Priority Tasks\n1. **Call the bank**\n   **Decays:** 2026-11-10 (about the card)\n"
+             "2. **Call the bank**\n   **Decays:** 2026-11-10 (about the loan)\n")
+    for day in ("2026-11-11", "2026-11-12"):
+        (tmp_path / "plans" / f"{day}.md").write_text(twice, encoding="utf-8")
+    done = swept(tmp_path, env)
+    assert done.returncode == 0, done.stderr
+    due = done.stdout.split("## Due or past")[1].split("\n## ")[0]
+    assert due.count("**Call the bank**") == 2 and due.count("2 copies with no Decay ID") == 2, due
+    newest = tmp_path / "plans" / "2026-11-12.md"
+    assert f"({newest}:5)" in due and f"({newest}:7)" in due, due                  # each at its own Decays line
+
+
+def test_a_merged_entry_is_passed_where_any_copy_is_and_names_its_newest_unannounced_copy(tmp_path):
+    """The merged entry took the oldest copy's flag and place: a copy whose date passed with nothing written was listed
+    without those words, at a copy already marked Lapsed."""
+    env = seat(tmp_path)
+    plans = tmp_path / "plans"
+    bare = "# Plan\n\n## Priority Tasks\n1. **Pay the invoice**\n   **Decays:** 2026-11-05 (net 30)\n"
+    marked = bare + "   **Lapsed:** 2026-11-06 (passed with no decision)\n"
+
+    def line_for(*plan_texts):
+        for day, body in zip(("2026-11-06", "2026-11-07", "2026-11-08"), plan_texts):
+            (plans / f"{day}.md").write_text(body, encoding="utf-8")
+        done = swept(tmp_path, env)
+        assert done.returncode == 0, done.stderr
+        return next(line for line in done.stdout.splitlines() if "**Pay the invoice**" in line)
+
+    assert line_for("# Plan\n", marked, bare) == (
+        f"- 2026-11-05 **Pay the invoice**, passed with nothing written, 2 copies with no Decay ID ({plans / '2026-11-08.md'}:5)")
+    assert line_for(bare, bare, marked) == (
+        f"- 2026-11-05 **Pay the invoice**, passed with nothing written, 3 copies with no Decay ID ({plans / '2026-11-07.md'}:5)")
+    assert line_for(marked, marked, marked) == f"- 2026-11-05 **Pay the invoice**, 3 copies with no Decay ID ({plans / '2026-11-08.md'}:5)"
+
+
+def test_a_choice_is_placed_at_the_line_it_opens_on_and_not_at_an_earlier_line_that_reads_the_same(tmp_path):
+    """The line came from the first place the plan's text held the choice's first line: a summary near the top that
+    repeats it. A fenced example above the choice must not move the line either."""
+    env = seat(tmp_path)
+    plan = tmp_path / "plans" / f"{DAY}.md"
+    text = PLAN.replace("# Friday\n\n", "# Friday\n\n## Summary\n- 1. Dinner on Thursday? (one choice is open)\n\n"
+                        "```text\n### 1. An example heading\n**Option A:** kept as written\n```\n\n", 1)
+    plan.write_text(text, encoding="utf-8")
+    line = text.splitlines().index("### 1. Dinner on Thursday?") + 1
+    done = swept(tmp_path, env)
+    assert done.returncode == 0, done.stderr
+    assert f"Dinner on Thursday? ({plan}:{line})" in done.stdout, done.stdout.split("## Choices with no decision")[-1]
