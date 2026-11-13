@@ -1266,7 +1266,9 @@ def _account_hold(name: str, tool_input: dict, named: list, config: dict, device
                 return (f"The {label} browser profile has not shown which account it is signed in to on {site} in this session, "
                         f"and this call puts something into a page there. Read a page of the site that shows the signed-in "
                         f"account ({where}) with get_page_text, read_page or find, in a call of its own, and run this call "
-                        f"again once a read holds {mine}.")
+                        f"again once a read holds {mine}." + (" This call comes from a sub-agent, whose own reads the guard does "
+                                                               "not see: the session that started it reads the page."
+                                                               if (session or {}).get("agent_id") else ""))
     return None
 
 
