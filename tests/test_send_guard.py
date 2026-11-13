@@ -606,6 +606,24 @@ def test_the_references_list_a_url_only_this_machine_answers_and_a_link_of_anoth
         assert words in guards.check(SEND, {**MAIL, "attachments": [entry]}, CONFIG) and words in listed and words in sending, words
 
 
+@pytest.mark.parametrize("url", ["http://192.0.2.7/plan.pdf", "https://198.18.0.4/plan.pdf", "http://240.0.0.1/plan.pdf",
+                                 "https://[2001:db8::1]/plan.pdf", "http://224.0.0.5:8080/plan.pdf"])
+def test_an_attachment_url_on_an_address_that_is_not_on_the_internet_is_refused_before_the_approval(scratch, url):
+    """The mail connector fetches a `url` from no address that is not global (its core.http_utils), a documentation, a
+    reserved and a multicast range included, records the entry as failed and sends the mail without the file."""
+    reason = guards.check(SEND, {**MAIL, "attachments": [{"url": url}]}, CONFIG)
+    assert "whose host is not an address on the internet" in reason and "Sending needs" not in reason
+    skills = Path(__file__).resolve().parents[1] / "skills"
+    for reference in ("synthesis-message-guard/references/composing.md", "synthesis-agent-correspondence/references/gates-and-sending.md"):
+        assert "whose host is not an address on the internet" in " ".join((skills / reference).read_text(encoding="utf-8").split())
+
+
+@pytest.mark.parametrize("url", ["https://8.8.8.8/plan.pdf", "https://[2606:4700:4700::1111]/plan.pdf",
+                                 "https://files.example.com/plan.pdf"])
+def test_an_attachment_url_on_a_public_host_goes_on_to_the_approval(scratch, url):
+    assert "approval" in guards.check(SEND, {**MAIL, "attachments": [{"url": url}]}, CONFIG)
+
+
 def test_the_references_say_which_url_the_connector_reads_from_this_disk_with_the_words_the_guard_refuses_with(scratch):
     skills = Path(__file__).resolve().parents[1] / "skills"
     listed = " ".join((skills / "synthesis-message-guard" / "references" / "composing.md").read_text(encoding="utf-8").split())

@@ -303,6 +303,21 @@ def test_an_address_that_cannot_be_parsed_or_ends_its_host_with_a_bare_colon_is_
     assert "KB_PUBLIC_URL must be the service's https:// address" in text and "Write it as" not in text
 
 
+@pytest.mark.parametrize("url", ["https://10.0.0.5.nip.io", "https://app-10-0-0-5.sslip.io:8443", "https://203.0.113.7.nip.io",
+                                 "https://kb.nip.io"])
+def test_a_name_under_a_wildcard_dns_service_is_temporary_whatever_address_it_carries(url):
+    """nip.io and sslip.io answer any name with the address written in it. Such a name belongs to no organization and
+    points at whichever machine its letters say, so nobody else may depend on it; the send guard refuses the ones
+    that carry a local address, and the connector started on all of them."""
+    assert "KB_PUBLIC_URL names a temporary or local address" in problems({**BASE, "KB_PUBLIC_URL": url})
+    assert load({**BASE, **OPERATOR, "KB_PUBLIC_URL": url}).public_url == url
+
+
+@pytest.mark.parametrize("url", ["https://nip.io.example.com", "https://notnip.io", "https://sslip.io.example.org"])
+def test_a_name_that_only_looks_like_a_wildcard_dns_service_starts(url):
+    assert load({**BASE, "KB_PUBLIC_URL": url}).public_url == url
+
+
 @pytest.mark.parametrize("url", ["https://[64:ff9b:1::1]", "https://[64:ff9b:1:abcd::808:808]"])
 def test_the_prefix_for_translation_inside_one_network_is_temporary_on_every_python(url):
     """64:ff9b:1::/48 is for translating addresses inside one network. One Python calls it global and a later one
