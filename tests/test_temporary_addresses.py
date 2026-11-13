@@ -58,7 +58,9 @@ def test_the_approval_names_the_address_and_covers_no_other(principal):
     "https://abc.trycloudflare.com", "abc.trycloudflare.com", "HTTPS://ABC.TRYCLOUDFLARE.COM/x", "see abc.ngrok.io:443/path",
     "https://a1b2.ngrok-free.app", "https://a1b2.ngrok.app", "https://a1b2.ngrok.dev", "http://shy-cat.loca.lt",
     "https://abc.localtunnel.me", "https://x.serveo.net", "https://abc.lhr.life", "https://abc.localhost.run",
-    "https://rnd.a.pinggy.link", "<a href=\"https://abc.trycloudflare.com\">the tool</a>", "(abc.trycloudflare.com)."])
+    "https://rnd.a.pinggy.link", "<a href=\"https://abc.trycloudflare.com\">the tool</a>", "(abc.trycloudflare.com).",
+    "https://abc.ngrok.pizza", "https://x.serveousercontent.com", "https://abc.lhr.rocks", "https://rnd.a.free.pinggy-free.link",
+    "https://k2j3-8080.use.devtunnels.ms", "https://fluffy-space-8080.app.github.dev/login"])
 def test_each_quick_tunnel_host_is_read_however_it_is_written(text):
     assert held_for_the_address(said(text))
 
@@ -110,11 +112,12 @@ STARTS_A_TUNNEL = [
     "nohup cloudflared tunnel --url http://localhost:8787 > /tmp/t.log 2>&1 &", "env X=1 ngrok http 8080", "ngrok tcp 22",
     "ngrok start web", "npx localtunnel --port 3000", "lt --port 3000 --subdomain shy-cat", "bunx localtunnel -p 3000",
     "ssh -R 80:localhost:8080 serveo.net", "ssh -o StrictHostKeyChecking=no -R 80:localhost:3000 nokey@localhost.run",
-    "cd /tmp && cloudflared tunnel --url http://127.0.0.1:9000", "/opt/homebrew/bin/cloudflared tunnel --url http://localhost:1"]
+    "cd /tmp && cloudflared tunnel --url http://127.0.0.1:9000", "/opt/homebrew/bin/cloudflared tunnel --url http://localhost:1",
+    "devtunnel host -p 8080 --allow-anonymous"]
 NO_TUNNEL = [
     "cloudflared tunnel run production", "cloudflared tunnel list", "cloudflared --version", "ngrok config check", "ngrok version",
     "echo cloudflared tunnel --url http://localhost:1", "grep -rn 'ngrok http' docs/", "brew install cloudflared",
-    "ssh -R 9000:localhost:9000 build.example.com", "lt --help"]
+    "ssh -R 9000:localhost:9000 build.example.com", "lt --help", "devtunnel list"]
 
 
 @pytest.mark.parametrize("command", STARTS_A_TUNNEL)
@@ -140,3 +143,14 @@ def test_the_doctor_proves_the_rule_is_wired():
     ok = doctor.check_temporary_addresses(CONFIG)
     assert ok.status == "ok" and "refused" in ok.detail
     assert doctor.check_temporary_addresses({**CONFIG, "temporary_addresses": {"hosts": "x"}}).status == "fail"
+
+
+def test_the_guard_and_the_knowledge_base_connector_name_the_same_tunnel_services():
+    """Two lists: one in the core, one in a connector that is deployed alone and cannot import it. A service known
+    to one and not the other would be refused when the connector starts and passed in a message, or the reverse."""
+    import ast
+    from pathlib import Path
+    source = Path(guards.__file__).resolve().parents[1] / "skills/synthesis-kb-distribution/scripts/connector/kb_connector/config.py"
+    hosts = next(ast.literal_eval(node.value) for node in ast.walk(ast.parse(source.read_text(encoding="utf-8")))
+                 if isinstance(node, ast.Assign) and getattr(node.targets[0], "id", "") == "TEMPORARY_HOSTS")
+    assert {name.lstrip(".") for name in guards.TUNNELS} == set(hosts) - {"localhost", "local"}
