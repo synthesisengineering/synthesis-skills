@@ -2208,3 +2208,102 @@ def test_a_number_given_as_the_path_names_no_file_descriptor(tmp_path):
             os.close(descriptor)
         except OSError:
             pass
+
+
+# --- a message to a person, and what is armed for its answer -------------------------------------------------------
+# 2026-11-12: the one reply that blocked a fix had no watch on it, and the next look was hours away. No hook can
+# know that a message asks for something today; the agent that sent it does. So a turn that sent a message to a
+# person ends with a watch for the answer, or with the statement that none is awaited. Measured before it was built
+# (2026-11-13): in the transcripts of 89 days, 246 turns held a mail, Slack or chat send that ran, on 63 days, and
+# in 233 of them nothing watched for anything afterwards.
+
+WATCH = {"reply_watch": {}}
+SLACK = "mcp__slack__slack_send_message"
+
+
+def _sent(tmp_path, *after, tool=SLACK, error=False, session="S1"):
+    record = tmp_path / f"{len(list(tmp_path.iterdir()))}.jsonl"
+    _turn(record, _prompt("Ask her for the figures."), _call("s1", tool, text="Could you send the figures?"), _result("s1", error), *after)
+    return {"last_assistant_message": "Sent.", "transcript_path": str(record), "session_id": session}
+
+
+def test_a_message_to_a_person_with_nothing_armed_for_its_answer_sends_the_reply_back(tmp_path):
+    payload = _sent(tmp_path)
+    assert reply_check.check(payload, {}) is None                               # off unless the config turns it on
+    assert reply_check.check(payload, {"reply_watch": False}) is None
+    reason = reply_check.check(payload, WATCH)
+    assert "slack_send_message" in reason and "synthesis wait message" in reason and 'synthesis wait none "<why' in reason
+
+
+@pytest.mark.parametrize("tool", ["mcp__ws__send_gmail_message", "mcp__mail__send_email", SLACK, "mcp__ws__send_message", "mcp__gmail__reply",
+                                  "mcp__gmail__forward"])
+def test_each_way_a_message_reaches_a_person_is_known(tool, tmp_path):
+    assert tool.rsplit("__", 1)[-1] in reply_check.check(_sent(tmp_path, tool=tool), WATCH)
+
+
+@pytest.mark.parametrize("tool", ["mcp__slack__slack_send_message_draft", "mcp__gmail__create_draft", "mcp__ws__draft_gmail_message",
+                                  "mcp__slack__slack_schedule_message", "mcp__ws__manage_event", "SendMessage", "SendUserFile",
+                                  "mcp__jira__addCommentToJiraIssue", "mcp__ws__create_doc"])
+def test_what_is_no_message_to_a_person_asks_for_no_watch(tool, tmp_path):
+    """A draft is his to send, and nobody knows when; an event, a ticket, a document, a file for the principal and a
+    note to another session await no person's answer."""
+    payload = _sent(tmp_path, _call("r1", "mcp__ws__get_events"), _result("r1"), tool=tool)  # the read-back a calendar write owes
+    assert reply_check.check(payload, WATCH) is None
+
+
+def test_a_send_that_was_held_or_refused_went_nowhere(tmp_path):
+    assert reply_check.check(_sent(tmp_path, error=True), WATCH) is None
+
+
+@pytest.mark.parametrize("after", [
+    [("Bash", {"command": 'synthesis wait none "a notice: no answer is awaited"'})],
+    [("CronCreate", {"cron": "*/10 * * * *", "prompt": "look for her answer"})],
+    [("ScheduleWakeup", {"delaySeconds": 600})],
+    [("Monitor", {"command": "synthesis wait message --for 2h"})],
+    [("mcp__scheduled-tasks__create_scheduled_task", {"prompt": "look for her answer"})],
+], ids=["none-awaited", "cron", "wakeup", "monitor", "scheduled-task"])
+def test_a_watch_or_the_statement_that_none_is_awaited_answers_it(after, tmp_path):
+    entries = [e for n, (tool, given) in enumerate(after) for e in (_call(f"a{n}", tool, **given), _result(f"a{n}"))]
+    assert reply_check.check(_sent(tmp_path, *entries), WATCH) is None
+
+
+def test_a_wait_this_session_still_holds_on_the_board_answers_it(tmp_path):
+    from synthesis import wait
+    payload = _sent(tmp_path)
+    assert reply_check.check(payload, WATCH) is not None
+    wait.record("S1", "a message from her", time.time() + 600, by="a timer the harness holds")
+    assert reply_check.check(payload, WATCH) is None
+    assert reply_check.check({**payload, "session_id": "S2"}, WATCH) is not None  # another session's wait is not this one's
+
+
+def test_what_came_before_the_send_or_failed_after_it_is_no_answer(tmp_path):
+    record = tmp_path / "t.jsonl"
+    _turn(record, _prompt("Ask her."), _call("b0", "Bash", command='synthesis wait none "nothing yet"'), _result("b0"),
+          _call("c0", "CronCreate", cron="0 * * * *"), _result("c0"),
+          _call("s1", SLACK, text="Could you send the figures?"), _result("s1"),
+          _call("b1", "Bash", command="synthesis wait none"), _result("b1", error=True),                # it says why, or it is refused
+          _call("b2", "Bash", command="echo synthesis wait none later"), _result("b2"))
+    payload = {"last_assistant_message": "Sent.", "transcript_path": str(record), "session_id": "S1"}
+    assert "slack_send_message" in reply_check.check(payload, WATCH)
+    _turn(record, _call("s2", "mcp__ws__send_gmail_message", body="And the dates?"), _result("s2"))
+    reason = reply_check.check(payload, WATCH)
+    assert "slack_send_message" in reason and "send_gmail_message" in reason
+    _turn(record, _call("b3", "Bash", command='cd /tmp && synthesis wait none "both are notices"'), _result("b3"))
+    assert reply_check.check(payload, WATCH) is None                                                     # one statement after the last send covers both
+    _turn(record, _prompt("Thanks."))
+    assert reply_check.check(payload, WATCH) is None                                                     # a new turn starts clean
+
+
+def test_the_config_names_which_tools_send_to_a_person(tmp_path):
+    named = {"reply_watch": {"sends": ["post_note", "messages_send.py"]}}
+    assert reply_check.check(_sent(tmp_path), named) is None                                             # the default list is replaced
+    assert "post_note" in reply_check.check(_sent(tmp_path, tool="mcp__notes__post_note"), named)
+    record = tmp_path / "shell.jsonl"
+    _turn(record, _prompt("Text him."), _call("s1", "Bash", command="python3 /plugin/skills/x/scripts/messages_send.py --to him --text hi"), _result("s1"))
+    assert "messages_send.py" in reply_check.check({"last_assistant_message": "Sent.", "transcript_path": str(record), "session_id": "S1"}, named)
+
+
+@pytest.mark.parametrize("wrong", [True, 1, "on", [], ["slack_send_message"], {"sends": "slack_send_message"}, {"sends": [7]}, {"tools": []}])
+def test_a_setting_of_another_shape_is_said_once_and_turns_nothing_on_silently(wrong, tmp_path):
+    reason = reply_check.check(_sent(tmp_path), {"reply_watch": wrong})
+    assert reason and "reply_watch" in reason and "sends" in reason
