@@ -119,7 +119,7 @@ line the command wrote, not the words of a shell command, so a statement made be
 cover it. What it reads is in
 the guardrails' [reply check](../../synthesis-agent-guardrails/references/reply-and-provenance.md#a-message-to-a-person).
 A draft is not such a message (the principal sends it, and nobody knows when), and neither is a calendar event, a
-ticket, a document, a file for the principal or a note to another session.
+ticket, a comment, a reaction, a share, a document, a file for the principal or a note to another session.
 
 ## When a wake did not arrive
 

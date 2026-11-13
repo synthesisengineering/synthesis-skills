@@ -1116,3 +1116,20 @@ def test_the_statement_takes_a_sentence_prints_nothing_a_terminal_obeys_and_says
     file.mkdir()                                                                        # the record cannot be written
     stuck = cli("wait", "none", "a notice")
     assert stuck.returncode == 1 and "Traceback" not in stuck.stderr and "none.jsonl" in stuck.stderr and stuck.stdout == ""
+
+
+def test_the_file_of_statements_does_not_grow_without_end(two):
+    """A review, 2026-11-13: one line was added for every statement and none was ever taken out. The turn-end check
+    reads the file's last 64 KB, so past 1 MB the command keeps that much, cut at a line's start."""
+    from synthesis import paths
+    file = paths.board() / "waits" / "none.jsonl"
+    file.parent.mkdir(parents=True, exist_ok=True)
+    old = json.dumps({"session": "S-old", "at": 1.0, "why": "an old notice " + "x" * 80}) + "\n"
+    file.write_text(old * (1 + (1 << 20) // len(old)), encoding="utf-8")
+    assert file.stat().st_size > 1 << 20
+    assert cli("wait", "none", "a notice: no answer is awaited").returncode == 0
+    rows = file.read_text(encoding="utf-8").splitlines()
+    assert file.stat().st_size <= 66_000 and all(json.loads(row) for row in rows)       # whole lines, the newest last
+    assert json.loads(rows[-1])["why"] == "a notice: no answer is awaited"
+    small = file.stat().st_size
+    assert cli("wait", "none", "another").returncode == 0 and file.stat().st_size > small  # under the bound nothing is cut

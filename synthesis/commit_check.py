@@ -660,10 +660,11 @@ try:
     from zoneinfo import ZoneInfo
 except ImportError:  # an interpreter with none reads no region label
     ZoneInfo = None
-# The time an entry gives for itself, in the three places a record states one: the line opens with the day and a
+# The time an entry gives for itself, in the four places a record states one: the line opens with the day and a
 # time (behind a list mark, a ticked box, a heading, emphasis, a bracket), a parenthesis opens with them or with one
-# of the words below, each saying what was done then (`added`, `as of`), or the line opens with a time alone (read
-# only in a session log, in a list item or a heading, under a heading that names the day). A time may be rounded
+# of the words below, each saying what was done then (`added`, `as of`), the line opens with a time alone (read
+# only in a session log, in a list item or a heading, under a heading that names the day), or the line opens with
+# one of those words and then the time. A time may be rounded
 # ("18:3x", "about 18:35"), a range, on a 12-hour clock, and may name its zone. Measured on thirty days of commits
 # before this was written (2026-11-12): 688 such stamps, 36 of them later than their commit and 111 rounding the
 # present. Replayed over the same commits, the first form refused five wrapped lines that began with a time by
@@ -686,10 +687,15 @@ _DAY = (r"(?:(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)[a-z]*\.?,?[ \t]+)?(?P<year>\d{4}-)?
 _DONE = (r"(?:(?i:as of|current to|added|answered|approved|asked|begun|built|checked|closed|completed|corrected|counted|created|"
          r"decided|deleted|deployed|done|extended|filed|finished|fixed|found|held|installed|kept|left|made|measured|merged|"
          r"modified|noted|opened|posted|probed|proven|published|pushed|read|received|recorded|refreshed|released|removed|"
-         r"renamed|replied|returned|reviewed|ruled|run|said|searched|sent|shown|started|stopped|synced|tested|told|updated|"
+         r"renamed|replied|returned|reviewed|revised|ruled|run|said|searched|sent|shown|started|stopped|synced|tested|told|updated|"
          r"verified|written):?[ \t]+)?")
 STAMPS = (re.compile(_MARKS + _DAY + _SPAN), re.compile(r"\(" + _DONE + _DAY + _SPAN),
-          re.compile(_MARKS + _SPAN + r"(?=[\s,.:;)*_\]—-]|$)"))
+          re.compile(_MARKS + _SPAN + r"(?=[\s,.:;)*_\]—-]|$)"),
+          # The line opens with one of those words and then the time, a weekday or a day between them or neither
+          # (2026-11-13: `**Revised Fri 07:1x ET:**` was committed at 07:11 and no stamp was read; in thirty days of
+          # commits 110 lines open so, and 28 of them round the time or stand a few minutes after their commit).
+          re.compile(_MARKS + _DONE[:-1] + r"(?:(?:on|at)[ \t]+)?[*_`]*(?:(?P<week>Mon|Tue|Wed|Thu|Fri|Sat|Sun)[a-z]*\.?,?[ \t]+)?"
+                     r"(?:(?P<year>\d{4}-)?(?P<month>\d\d)-(?P<day>\d\d)[ \t,]+)?(?:at[ \t]+)?" + _SPAN + r"(?=[\s,.:;)*_\]—-]|$)"))
 ENTRY = re.compile(r"[ \t]*(?:(?:[-*+]|\d+[.)])[ \t]|#{1,6}[ \t])")  # what opens an entry: a list item or a heading
 BOX = re.compile(r"[ \t]*(?:[-*+]|\d+[.)])[ \t]+\[ \]")  # an unchecked box: a plan, whose time is when it is to be done
 REGIONS = {"E": "America/New_York", "C": "America/Chicago", "M": "America/Denver", "P": "America/Los_Angeles"}  # ET, EST and EDT alike
@@ -715,6 +721,8 @@ def _stamped(found, now: datetime):
         else:
             there = timezone.utc if zone else now.tzinfo
         today = now.astimezone(there)
+        if part.get("week") and not part.get("day") and part["week"].lower() != ("mon", "tue", "wed", "thu", "fri", "sat", "sun")[today.weekday()]:
+            return None  # a weekday that is not today's names another day
 
         def placed(clock):
             hour, minute = clock.split(":")[:2]
@@ -743,6 +751,14 @@ def _around(whole: list) -> tuple:
     return fenced, dated
 
 
+def _record(path: str, skip: list) -> bool:
+    """A Markdown record these checks read: not in a folder of transcripts, and not what the setting's `skip` names
+    (a folder from the repository's root, or a pattern)."""
+    named = [pattern[2:] if pattern.startswith("./") else pattern for pattern in skip]
+    return (path.lower().endswith((".md", ".markdown")) and not any(part.lower().endswith("transcripts") for part in path.split("/")[:-1])
+            and not any(path.startswith(pattern.rstrip("/") + "/") or fnmatch.fnmatch(path, pattern) for pattern in named))
+
+
 def record_times(lines: list, settings, now: datetime, read) -> list:
     """Config: {"record_times": {"skip": ["<folder or pattern>", ...]}}; off when the key is absent or false. In a
     Markdown file outside a folder of transcripts, an entry's own stamp may not stand 1 to AHEAD minutes after now,
@@ -761,13 +777,11 @@ def record_times(lines: list, settings, now: datetime, read) -> list:
     if set(settings) - {"skip"}:  # `{"enabled": false}` is an object, and turned the check on
         raise Refused(f'record_times in the synthesis config has a key this check does not know, "{sorted(set(settings) - {"skip"})[0]}": '
                       'it takes "skip" alone. To turn the check off, leave record_times out or set it to false')
-    skip = [pattern[2:] if pattern.startswith("./") else pattern for pattern in skip]
     found, texts, here = [], {}, f"{now:%H:%M} here"
     for raw, number, line in lines:
         path = os.fsdecode(raw)
         parts = path.split("/")
-        if not path.lower().endswith((".md", ".markdown")) or any(part.lower().endswith("transcripts") for part in parts[:-1]) or any(
-                path.startswith(pattern.rstrip("/") + "/") or fnmatch.fnmatch(path, pattern) for pattern in skip):
+        if not _record(path, skip):
             continue
         text = line.decode("utf-8", "replace")
         if not re.search(r"\d:[0-5][\dx]", text):  # no clock time on the line: nothing to judge, and no file to open
@@ -780,7 +794,7 @@ def record_times(lines: list, settings, now: datetime, read) -> list:
             continue
         marked, plan = bool(ENTRY.match(text)), bool(BOX.match(text))  # with no mark, a line opens an entry only where it begins a paragraph
         opens = marked or bool(text[:1].strip()) and not "".join(whole[max(number - 2, 0):number - 1]).strip()
-        head = STAMPS[0].match(text) if opens and not plan else None
+        head = (STAMPS[0].match(text) or STAMPS[3].match(text)) if opens and not plan else None
         stamps = ([head] if head else []) + [m for m in STAMPS[1].finditer(text) if not (head and m.start() < head.end())]
         bare = STAMPS[2].match(text) if marked and not plan and not head and "sessions" in parts else None
         if bare and f"{now:%Y-%m-%d}" in "".join(dated[number - 1:number]):  # a list item's own time, under the nearest heading that names today
@@ -798,6 +812,108 @@ def record_times(lines: list, settings, now: datetime, read) -> list:
                              "another zone, name the zone; an event's time goes after the words that name the event, not "
                              "at the head of the line or of a parenthesis")
     return found
+
+
+# A status and its evidence. 2026-11-12: obligation statuses said colleagues could use a tool "now" when none could; the
+# status was written from an assumption. That a line claims a thing works is meaning, which this does not read. That
+# a table has a column headed Status and a column for evidence is the table's own statement, and a table is held to
+# it. Measured first (2026-11-13), on thirty days of commits: 1,520 rows added to tables with a Status column, 931 of
+# them to tables that also have a column for evidence. Replayed as it stands after a review: 12 rows refused in 6
+# of 1,110 commits, and 11 rows noted in 7. The list of words below is used for a note only: a wrong note costs
+# a line of a commit's output. No approval clears a refusal, so few headers can refuse (a review of 2026-11-13 found
+# a lead's `Source`, a task's `Checked` and a US `State` refused): `Source`, `Checked` and `Basis` keep a row from
+# the note and never refuse it.
+ROW = re.compile(r"^[ \t]*\|(.*)\|[ \t]*$")
+RULE = re.compile(r"[ \t]*\|(?:[ \t]*:?-+:?[ \t]*\|)+[ \t]*")  # a delimiter row, fullmatched: any line that began with two dashes was one
+_QUOTE = re.compile(r"(?:[ \t]{0,3}>[ \t]?)*")  # a block quote's marks
+_ITEM = re.compile(r" {0,3}(?:[-*+]|\d{1,9}[.)])(?:[ \t]|$)")  # a list item's first line
+_CODE = re.compile(r" {4}| {0,3}\t")  # a line of an indented code block, where no list item stands above it
+_STATUS = re.compile(r"(?i)(?:[\w-]+ )?status")  # fullmatched against a header cell's words (`_name`)
+_EVIDENCE = re.compile(r"(?i)\b(?:evidence|proofs?|verified|how we know)\b")
+_SOFT = re.compile(r"(?i)\b(?:sources?|checked|basis)\b")
+# What a cell holds when it says nothing; a line break, `&nbsp;`, an ellipsis and a zero-width character were evidence
+# until a review of 2026-11-13.
+_BLANK = re.compile(r"(?i)<br\s*/?>|&nbsp;|\.{3}|…|[\s*_`~—–\u200b-\u200d\u2060\ufeff-]|n/a|none|tbd|\?")
+_WORKS = re.compile(r"(?i)\b(?:works?|working|live|done|shipped|released|deployed|completed?|ready|available|enabled|passing|passed|"
+                    r"fixed|resolved|installed|running)\b|✅|✓")
+_NOT = re.compile(r"(?i)(?:\b(?:not|never|no longer|cannot)|n['’]t)(?:\s+[\w'’]+){0,2}\s+$")  # ends the words before a claim it negates
+_POINTS = re.compile(r"\[[^\]]+\]\([^)]+\)|`[^`]+`|https?://|(?i:\bunverified\b)")
+
+
+def _name(cell: str) -> str:
+    """A header cell's words: a link's brackets and target, emphasis marks, and a closing colon or parenthesis taken off."""
+    words = re.sub(r"[*_`~]", "", re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", cell))
+    return re.sub(r"(?:\s*\([^)]*\)|\s*:)+\s*$", "", words).strip()
+
+
+def _cells(row: str) -> list:
+    return [cell.strip() for cell in re.split(r"(?<!\\)\|", ROW.match(row).group(1))]
+
+
+def _tables(whole: list) -> list:
+    """(text, top) for each line of a file: its text inside any block quote's marks, and the index of the first row of
+    the block of table rows it stands in (its header, where a delimiter row follows), None where it stands in none:
+    not a row, in a code fence, or indented four spaces or a tab with no list item above it since the last blank line
+    (an indented code block). One pass for the file: walking up from each added row to its table's top took 86 s for
+    40,000 rows (a review of 2026-11-13)."""
+    found, top, depth, inside, listed = [], None, 0, False, False
+    for number, line in enumerate(whole):
+        marks = _QUOTE.match(line).group()
+        text, level = line[len(marks):], marks.count(">")
+        edge = text.lstrip().startswith(("```", "~~~"))
+        listed = bool(text.strip()) and (listed or not (inside or edge) and bool(_ITEM.match(text)))
+        row = not (inside or edge) and ROW.match(text) and (listed or not _CODE.match(text))
+        inside ^= edge
+        top = (top if top is not None and level == depth else number) if row else None
+        depth = level
+        found.append((text, top))
+    return found
+
+
+def status_evidence(lines: list, settings, read) -> tuple:
+    """Config: {"status_evidence": {"skip": ["<folder or pattern>", ...]}}; off when the key is absent or false.
+    (refusals, notes) for the table rows a commit adds to Markdown records. A row is refused where its table has a
+    Status column (`_STATUS`) and a column for evidence (`_EVIDENCE`), the row says something in the first and nothing
+    in any of the second or of a `Source`, `Checked` or `Basis` column (`_SOFT`), and does not say `unverified`: the
+    table is held to its own header, and no word of the status is read. Where the table has a Status column and no
+    column for evidence, rows whose status says a thing works or is done, not negated, with no `_SOFT` cell filled and
+    no link, no code span and not the word `unverified`, are counted in a note for their file. Each file is read
+    once, as staged, and its tables found in one pass (`_tables`)."""
+    if settings is False:
+        return [], []
+    skip = settings.get("skip", []) if isinstance(settings, dict) and not set(settings) - {"skip"} else None
+    if not (isinstance(skip, list) and all(isinstance(pattern, str) for pattern in skip)):
+        raise Refused('status_evidence in the synthesis config must be an object that takes "skip" alone, a list of folders or '
+                      "patterns. To turn the check off, leave status_evidence out or set it to false")
+    found, noted, files, heads = [], {}, {}, {}
+    for raw, number, line in lines:
+        path = os.fsdecode(raw)
+        if b"|" not in line or not _record(path, skip):
+            continue
+        if path not in files:  # a file with CRLF endings is read as its LF twin: no row of one was read (2026-11-13)
+            files[path] = _tables(re.sub(r"\r$", "", read(path), flags=re.M).split("\n"))
+        text, top = files[path][number - 1] if number <= len(files[path]) else ("", None)
+        if top is None or number - 1 <= top + 1:
+            continue  # not a row, or its table's header or the line under it
+        if (path, top) not in heads:  # a table's columns, read once; under a header with no delimiter row, none
+            names = [_name(cell) for cell in _cells(files[path][top][0])] if RULE.fullmatch(files[path][top + 1][0]) else []
+            status = next((k for k, name in enumerate(names) if _STATUS.fullmatch(name)), None)
+            heads[path, top] = (status, [k for k, name in enumerate(names) if k != status and _EVIDENCE.search(name)],
+                                [k for k, name in enumerate(names) if k != status and _SOFT.search(name)])
+        status, hard, soft = heads[path, top]
+        if status is None:
+            continue
+        row = _cells(text)
+        filled = {k for k, cell in enumerate(row) if _BLANK.sub("", cell)}
+        if hard:
+            if status in filled and not filled & {*hard, *soft} and not re.search(r"(?i)\bunverified\b", text):
+                found.append(f"{path}:{number}: this row gives a status and no evidence, in a table that has a column for it. Say "
+                             "where it was checked (a link, a command, a record), or write `unverified`")
+        elif (not filled & set(soft) and not _POINTS.search(text)  # `not done`, `won't be ready`: no claim (2026-11-13)
+              and any(not _NOT.search(said[:claim.start()]) for said in row[status:status + 1] for claim in _WORKS.finditer(said))):
+            noted[path] = noted.get(path, 0) + 1
+    return found, [f"{path}: {count} row{'s' if count != 1 else ''} added to a table with a Status column say a thing works or is done and "
+                   "point at nothing. Give the table a column for evidence (`Evidence`), or write `unverified`" for path, count in noted.items()]
 
 
 def problems(config: dict, session_id: str, repo_root: str, message: str | None = None, now: datetime | None = None) -> tuple[list[str], list[str], str]:
@@ -823,17 +939,20 @@ def problems(config: dict, session_id: str, repo_root: str, message: str | None 
                       "--dst-prefix=b/", "--no-renames", "--diff-filter=AM", "-U0"], deadline)
     lines, texts = images(added(diff), deadline)
     found = scan(lines, policy, patterns, deadline, approve, own=own, texts=texts)
+    noted = []
     brought = HOOK == "pre-merge-commit" or any(os.path.exists(name) for name in git_bytes(  # what a merge, a squash merge, a
         ["rev-parse", *(word for name in ("MERGE_HEAD", "MERGE_MSG", "SQUASH_MSG", "rebase-merge", "rebase-apply")
                         for word in ("--git-path", name))], deadline).split(b"\n") if name)
     if not brought:  # cherry-pick, a revert and a stopped rebase leave: their lines were judged when they were first committed
-        found += record_times(lines, config.get("record_times", False), now or datetime.now().astimezone(),
-                              lambda path: git_bytes(["cat-file", "blob", ":" + path], deadline).decode("utf-8", "replace"))
+        staged = lambda path: git_bytes(["cat-file", "blob", ":" + path], deadline).decode("utf-8", "replace")  # noqa: E731
+        found += record_times(lines, config.get("record_times", False), now or datetime.now().astimezone(), staged)
+        unproven, noted = status_evidence(lines, config.get("status_evidence", False), staged)
+        found += unproven
     names = git_bytes(["diff", "--cached", "--name-only", "-z", "--diff-filter=ACR"], deadline).split(b"\0")
     found += [f"{os.fsdecode(n)}: a credential file name; keep secrets out of git (a public certificate can be .crt)"
               for n in names if n and SECRET_FILE.search(os.fsdecode(n))]
     held, note = claims(repo_root, session_id, changed_paths(deadline))
-    return found + held, [note] if note else [], cls
+    return found + held, noted + ([note] if note else []), cls
 
 
 def _git(*args):

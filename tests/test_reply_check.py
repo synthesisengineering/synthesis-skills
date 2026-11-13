@@ -2214,7 +2214,7 @@ def test_a_number_given_as_the_path_names_no_file_descriptor(tmp_path):
 # 2026-11-12: the one reply that blocked a fix had no watch on it, and the next look was hours away. No hook can
 # know that a message asks for something today; the agent that sent it does. So a turn that sent a message to a
 # person ends with a watch for the answer, or with the statement that none is awaited. Replayed before it shipped
-# (2026-11-13): in recorded turns of 89 days a message to a person went out in 257, and nothing was armed after 251.
+# (2026-11-13): a message to a person went out in 275 recorded turns, and nothing was armed after 261 of them.
 # A review round then changed how each part is known (2026-11-13): a message to a person is what the send guard
 # takes for one, not a list of names here; the statement is the line `synthesis wait none` writes on the board, not
 # the command's text; and a turn begins at a prompt or a notification, never at a skill's text or a compaction.
@@ -2296,7 +2296,7 @@ def test_what_is_no_message_to_a_person_asks_for_no_watch(tool, given, tmp_path)
 def test_a_send_that_was_held_or_refused_went_nowhere(tmp_path):
     assert reply_check.check(_sent(tmp_path, error=True), WATCH) is None
     held = "Sending needs the principal's approval of this exact message. Show them the exact text and recipient and ask them to type approve followed by the code 4ab12c."
-    assert reply_check.check(_sent(tmp_path, text=held), WATCH) is None         # a hold is not always recorded as an error: 55 of 706 were not
+    assert reply_check.check(_sent(tmp_path, text=held), WATCH) is None         # the words of a hold, in a record that did not mark it
     assert reply_check.check(_sent(tmp_path, text="This message can't go out as written: a line break falls inside a paragraph."), WATCH) is None
 
 
@@ -2375,7 +2375,7 @@ def test_a_text_sent_from_the_shell_is_a_message_to_a_person(tmp_path):
     text = """osascript -e 'tell application "Messages" to send "Could you send the figures?" to buddy "+15550100"'"""
     _turn(record, _prompt("Text him."), _did("s1", "Bash", command=text), _came("s1"))
     payload = {"last_assistant_message": "Sent.", "transcript_path": str(record), "session_id": "S1"}
-    assert "a text" in reply_check.check(payload, WATCH) or "messages" in reply_check.check(payload, WATCH)
+    assert "a message from the shell" in reply_check.check(payload, WATCH)
     for quiet in ("cat messages_send.py", "osascript -e 'display notification \"done\"'", "echo osascript Messages send"):
         other = tmp_path / f"{abs(hash(quiet))}.jsonl"
         _turn(other, _prompt("Look."), _did("s1", "Bash", command=quiet), _came("s1"))
@@ -2384,10 +2384,10 @@ def test_a_text_sent_from_the_shell_is_a_message_to_a_person(tmp_path):
 
 def test_the_send_guards_own_settings_say_what_is_a_send(tmp_path):
     given = {"note": "Could you send the figures?"}
-    assert reply_check.check(_sent(tmp_path, tool="mcp__notes__leave_word", given=given), WATCH) is None
-    assert "leave_word" in reply_check.check(_sent(tmp_path, tool="mcp__notes__leave_word", given=given), {**WATCH, "send_tools": ["mcp__notes__leave_word"]})
-    assert "post_note" in reply_check.check(_sent(tmp_path, tool="mcp__notes__post_note", given=given), WATCH)   # its name says it posts
-    assert reply_check.check(_sent(tmp_path, tool="mcp__notes__post_note", given=given), {**WATCH, "not_send_tools": ["mcp__notes__*"]}) is None
+    assert "send_note" in reply_check.check(_sent(tmp_path, tool="mcp__notes__send_note", given=given), WATCH)   # its name says it sends
+    assert reply_check.check(_sent(tmp_path, tool="mcp__notes__send_note", given=given), {**WATCH, "not_send_tools": ["mcp__notes__*"]}) is None
+    for tool in ("mcp__notes__leave_word", "mcp__notes__post_note"):         # a send the guard asks a code for, and no message by its name
+        assert reply_check.check(_sent(tmp_path, tool=tool, given=given), {**WATCH, "send_tools": ["mcp__notes__*"]}) is None, tool
 
 
 @pytest.mark.parametrize("wrong", [None, True, 1, "on", [], ["slack_send_message"], {"sends": ["slack_send_message"]}, {"tools": []}])
@@ -2407,3 +2407,65 @@ def test_a_record_with_ids_of_no_kind_stops_nothing(tmp_path):
     payload = {"last_assistant_message": "I'll handle the rest for now.", "transcript_path": str(record), "session_id": "S1"}
     reason = reply_check.check(payload, WATCH)
     assert reason and '"for now"' in reason and "manage_event" in reason          # the other checks are still made
+
+
+# --- from the second review of 5.11.0 (2026-11-13) ---------------------------------------------------------------------
+
+def _shell(tmp_path, command, error=False, text="done", prompt="Text him."):
+    record = tmp_path / f"{len(list(tmp_path.iterdir()))}.jsonl"
+    _turn(record, _prompt(prompt), _did("s1", "Bash", command=command), _came("s1", error=error, text=text))
+    return {"last_assistant_message": "Sent.", "transcript_path": str(record), "session_id": "S1", "cwd": str(tmp_path)}
+
+
+def test_a_text_sent_by_the_local_sender_is_a_message_to_a_person(tmp_path):
+    """The skill for texts makes its own script the only way to send one, and the check counted only `osascript`:
+    a text that went by the script asked for no watch."""
+    sender = "python3 skills/synthesis-local-messaging/scripts/messages_send.py --to +15550100 --text-file /tmp/t.txt"
+    for command in (sender, f"cd /tmp && {sender} | tee out.json", sender.replace("python3 ", "python3 -u "), sender.replace("python3 ", "./")):
+        assert "from the shell" in reply_check.check(_shell(tmp_path, command, text='{"status": "dispatched"}'), WATCH), command
+    held = '{"status": "needs-approval", "reason": "Show them the exact text and ask them to type approve followed by the code 4ab12c."}'
+    assert reply_check.check(_shell(tmp_path, sender, error=True, text=held), WATCH) is None       # it exits 2: the shell's call is an error
+    for quiet in ("cat skills/synthesis-local-messaging/scripts/messages_send.py", "grep -n send messages_send.py",
+                  "python3 -m pytest skills/synthesis-local-messaging/tests/test_messages_send.py", "python3 other.py messages_send.py"):
+        assert reply_check.check(_shell(tmp_path, quiet), WATCH) is None, quiet
+
+
+def test_a_shell_command_the_config_names_for_a_channel_of_messages_is_one(tmp_path):
+    """The two rules disagreed about the shell: a command the config names for texts was held for its time and
+    asked for no watch, and a mail command was neither."""
+    using = {**WATCH, "send_commands": [["messages", r"imsg\s+send\b"], ["email", r"mutt\b"], ["slack", r"slackcat\b"], ["github", r"ghx\b"]]}
+    for command in ("imsg send +15550100 'Could you send the figures?'", "mutt -s Figures a@example.com < body.txt", "slackcat -c team 'Figures?'"):
+        assert "from the shell" in reply_check.check(_shell(tmp_path, command), using), command
+    assert reply_check.check(_shell(tmp_path, "ghx comment 7 -b 'Done.'"), using) is None        # a ticket is no message to a person
+    assert reply_check.check(_shell(tmp_path, "imsg send +15550100 'Figures?'"), WATCH) is None  # and nothing the config does not name
+
+
+def test_a_send_whose_own_answer_says_it_failed_went_nowhere(tmp_path):
+    """A hook's refusal is always recorded as an error (633 of 633 in thirty days of records; the words of a hold
+    that 118 other results held were a shell's or a file's own output). A connector can still answer a failure in
+    its body with no error mark."""
+    assert reply_check.check(_sent(tmp_path, text='{"ok": false, "error": "channel_not_found"}'), WATCH) is None
+    assert reply_check.check(_sent(tmp_path, text=' {\n  "ok" : false }'), WATCH) is None
+    assert "slack_send_message" in reply_check.check(_sent(tmp_path, text='{"ok": true, "ts": "1700000000.0001"}'), WATCH)
+    assert "slack_send_message" in reply_check.check(_sent(tmp_path, text='The reply said {"ok": false} once before.'), WATCH)
+
+
+def test_a_prompt_that_is_only_a_picture_begins_a_turn(tmp_path):
+    """A prompt with no text part began no turn, so the turn before it carried its send into this one."""
+    for part in ({"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": "AAAA"}},
+                 {"type": "document", "source": {"type": "base64", "media_type": "application/pdf", "data": "AAAA"}}):
+        picture = {"type": "user", "origin": {"kind": "human"}, "timestamp": _when(10), "message": {"role": "user", "content": [part]}}
+        assert reply_check.check(_sent(tmp_path, picture), WATCH) is None, part["type"]
+    result = {"type": "user", "timestamp": _when(10), "message": {"role": "user", "content": [
+        {"type": "tool_result", "tool_use_id": "other", "content": [{"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": "AAAA"}}]}]}}
+    assert "slack_send_message" in reply_check.check(_sent(tmp_path, result), WATCH)             # a tool's picture begins none
+
+
+def test_a_statement_dated_ahead_of_the_clock_covers_no_later_message(tmp_path):
+    from synthesis import paths
+    listed = paths.board() / "waits" / "none.jsonl"
+    listed.parent.mkdir(parents=True, exist_ok=True)
+    listed.write_text(json.dumps({"session": "S1", "at": time.time() + 86400, "why": "a line dated tomorrow"}) + "\n", encoding="utf-8")
+    assert "slack_send_message" in reply_check.check(_sent(tmp_path), WATCH)
+    _none()
+    assert reply_check.check(_sent(tmp_path), WATCH) is None

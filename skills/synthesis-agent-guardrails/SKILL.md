@@ -5,7 +5,7 @@ license: "Apache-2.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "2.7.0"
+  version: "2.8.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
   format: v5
@@ -33,13 +33,14 @@ at the moment of acting. These guards sit before the tool call, in the v5 PreToo
 10. **A browser call acts in the Chrome profile of the workspace its session started in.** The extension is shared: a call passes only when this session made the latest selection, to its workspace's browser, and that selection reported success (2026-10-21).
 11. **A repository listed under `pr_gated` takes changes only through a pull request.** A push that would move its default branch is refused with the route (branch, pull request, checks, merge, install); only the principal's code for that one push admits it, and `synthesis doctor` names any commit that reached the branch another way (2026-11-09).
 12. **What a test sets up goes on its teardown list before it is made,** and ending the test means running the list the same turn; `synthesis doctor` warns while a thing on it is not taken off (2026-11-12).
+13. **Where a workspace's browser names a site's account, a call that types, uploads or runs something on that site waits until a read of it shows that account** (signing in, and keys that only move, are not held). Another of the principal's accounts there is a misconfiguration to tell them about, never a limit on the work (2026-11-12).
 
 ## Contents
 
 - **Procedure** (below): configure, and what to do when each guard blocks.
 - [references/config.md](references/config.md): every config key these guards read, with examples, and how the 1.x config files map onto them. Read when setting up or changing a guard.
 - [references/deploys.md](references/deploys.md): what counts as a deploy, approvals, the date and rapid-redeploy rules, the pull-request gate, how the shell is read, and the tests that pin each. Read when a deploy or shell command is blocked, or before changing the shell reader.
-- [references/account-routing.md](references/account-routing.md): the routing rule, its incident, and why its boundary is narrow; the browser-profile rule and its limits. Read when a calendar, mail or browser call is blocked.
+- [references/account-routing.md](references/account-routing.md): the routing rule, its incident, and why its boundary is narrow; the browser-profile rule, the account a site shows, and their limits. Read when a calendar, mail or browser call is blocked.
 - [references/reply-and-provenance.md](references/reply-and-provenance.md): the turn-end reply check and the provenance scan, with commands and output. Read when a reply is sent back, or at day-end.
 - [references/teardown.md](references/teardown.md): the teardown list's three commands, what the doctor says of it, and what it does not do. Read before setting anything up for a test, and when a test ends.
 - [references/coverage-map.md](references/coverage-map.md): where every part of 1.0.3 and its scripts went (ruling D8), and what moves to the anti-shortcuts skill.
@@ -56,3 +57,4 @@ at the moment of acting. These guards sit before the tool call, in the v5 PreToo
 7. **Day-end:** `python3 <synthesis-agent-guardrails>/scripts/provenance_scan.py --since <today> [--records <a plan folder the workspace declares>]... <records or folders written today>`; resolve every line it prints against its source before the records are handed off.
 8. **A browser call is blocked:** call `list_connected_browsers`, then `select_browser` with the deviceId the message names, and wait for its result before the next browser call. Never select another workspace's browser to get past it.
 9. **A test needs something set up:** `python3 <synthesis-agent-guardrails>/scripts/teardown.py add "<what>" --remove "<how>"` first; when the test ends, take each item down and `teardown.py done <number>` (references/teardown.md).
+10. **A browser call waits for a site's account:** read a page of the site that shows the signed-in account, in a call of its own, then run the call again. If it shows another of the principal's accounts, tell them, naming the profile and the site.

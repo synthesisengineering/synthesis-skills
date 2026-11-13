@@ -1,7 +1,8 @@
 """The time an entry gives for itself is not later than the commit that records it, and is no rounding of the present.
 
-A record's entry states its own time in three places: the line opens with the day and a time, a parenthesis opens
-with them, or (in a session log) a list item opens with a time under a heading that names the day. Measured on thirty
+A record's entry states its own time in four places: the line opens with the day and a time, a parenthesis opens
+with them, (in a session log) a list item opens with a time under a heading that names the day, or the line opens
+with a word for what was done and then the time. Measured on thirty
 days of commits to twenty-seven knowledge repositories (2026-11-12): of 688 such stamps, 36 named a minute that had
 not come when they were committed and 111 rounded the present ("18:3x", "about 18:35") when the clock could be read.
 A time inside an entry's text says nothing of the kind: three in ten of those are later than the commit, and rightly
@@ -522,3 +523,51 @@ def test_a_merge_is_not_judged(tmp_path, monkeypatch):
     (repo / "d.md").write_text("- **2026-11-12 18:54, written ahead.**\n", encoding="utf-8")
     git("add", "-A")
     assert len(cc.problems({"record_times": {}}, "S1", str(repo), now=NOW)[0]) == 1      # and the next commit is judged as any other
+
+
+# --- a line that opens with what was done, and then its time (2026-11-13) --------------------------------------------
+# The morning the check went on, a seat committed `**Revised Fri 07:1x ET:** ...` at 07:11 and nothing was said: the
+# line opens with a word, then a weekday with no date, then the time, and the check read a stamp only where a line or
+# a parenthesis opens with the day and the time. Counted over thirty days of commits: 110 added lines open with one
+# of the check's own words for what was done and then a time, and 28 of them round it or stand a few minutes ahead.
+
+@pytest.mark.parametrize("line", [
+    "**Revised Thu 18:4x ET:** the guard's hold was read and the draft changed.",
+    "**Revised Thu 18:45 ET:** the guard's hold was read and the draft changed.",
+    "Written 18:52: the plan for the week.",
+    "- Released about 18:40.",
+    "### Built 2026-11-12 18:47",
+    "**Revised on Thursday, 11-12 at 18:4x:** the second paragraph.",
+    "Updated: 18:50, after the call.",
+    "* _Checked at 18:4x_ against the console.",
+    "Sent Thursday 18:55 to the three of them.",
+])
+def test_a_line_that_opens_with_what_was_done_and_then_its_time_is_an_entrys_stamp(line):
+    for path in (RECORD, "drafts/2026-11-12-a-reply.md", LOG):
+        found = said(path, line)
+        assert len(found) == 1 and found[0].startswith(f"{path}:1: "), (path, line, found)
+
+
+@pytest.mark.parametrize("line", [
+    "**Revised Thu 18:38 ET:** the guard's hold was read.",                # the clock's minute, or before it
+    "Written 18:40: the plan for the week.",
+    "**Revised Wed 18:45 ET:** yesterday's change.",                       # a weekday that is not today's is another day
+    "**Revised Fri 18:4x ET:** to be done tomorrow.",
+    "Released 19:30 on the stable branch.",                                # more than half an hour ahead: a plan
+    "Standup 18:45 with the team.",                                        # a word that says nothing was done
+    "Meeting Thu 18:45, room 2.",
+    "Thu 18:45 standup.",                                                  # a weekday first: a schedule's line
+    "Revision 18:45 is the one to read.",
+    "- [ ] Sent 18:45 to the three of them.",                              # an unchecked box is a plan
+    "Revised the draft at 18:45 and sent it.",                             # the time stands inside the sentence
+    "Released v5.12.0 at 18:45.",
+])
+def test_what_is_no_such_stamp_or_is_no_later_than_the_clock_passes(line):
+    for path in (RECORD, "drafts/2026-11-12-a-reply.md"):
+        assert said(path, line) == [], (path, line)
+
+
+def test_a_wrapped_line_that_begins_with_such_a_word_opens_no_entry():
+    wrapped = ("The draft went through three rounds and was then", "revised 18:45 by the second reader.")
+    assert said(RECORD, wrapped[1], before=(wrapped[0],)) == []
+    assert len(said(RECORD, "Revised 18:45 by the second reader.", before=("The draft went through three rounds.", ""))) == 1

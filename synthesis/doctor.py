@@ -926,6 +926,32 @@ def check_teardown(listed: Path, now: float = 0) -> Check:
                  + ". Take each down, then `python3 <synthesis-agent-guardrails>/scripts/teardown.py done <number>`")
 
 
+def check_browser_accounts(config: dict, seen: dict) -> Check | None:
+    """Warns while a site that a workspace's browser profile names last showed another account than the workspace's
+    (2026-11-12: a work profile signed in to a personal account on a site was called a limit on the work, and no
+    later session knew of it). The guard writes what each session's reads showed; this holds the newest against the
+    config as it now is. None where no site is named."""
+    from synthesis import guards
+    routing = config.get("browser_routing")
+    spaces = routing.get("workspaces") if isinstance(routing, dict) and isinstance(routing.get("workspaces"), dict) else {}
+    named = [(root, meta, site, mine) for root, meta in spaces.items() if isinstance(meta, dict) for site, _, mine in guards.named_sites(meta) or []]
+    wrong = []
+    for root, meta, site, mine in named:
+        last = seen.get(f"{str(meta.get('device') or '').strip()} {site}")
+        if isinstance(last, dict) and isinstance(last.get("seen"), str) and last["seen"].strip().lower() != mine:
+            try:
+                when = time.strftime("%Y-%m-%d %H:%M", time.localtime(float(last.get("at"))))
+            except (TypeError, ValueError, OverflowError, OSError):
+                when = "a day that was not written down"
+            label = meta.get("label") or root  # the name the guard's hold gives a profile with no label
+            wrong.append(f"{site} in the {label} browser profile showed {last['seen']} on {when}, where the workspace's account is {mine}")
+    if wrong:
+        return Check("warn", "browser accounts", "; ".join(wrong) + ". That is a misconfiguration to fix in the profile (sign in there "
+                     "with the workspace's account); this line clears when a session next reads the site and it shows that account")
+    return Check("ok", "browser accounts", f"{len(named)} named site{'s' if len(named) != 1 else ''}, and none last showed another "
+                 "account than its workspace's") if named else None
+
+
 def check_outbox(outbox: Path, unit: Path, pid_file: Path, started=started_with) -> Check:
     """Agents stage outgoing attachments in the outbox and the send guard passes a file there, so it must be there to
     write, and a mail connector its auto-start keeps running must have been started with it among ALLOWED_FILE_DIRS
@@ -1378,6 +1404,7 @@ def run_checks(home: Path | None = None, find=find_client, latest_ref: str = "",
         checks.append(check_pr_gate(config["pr_gated"], repos))
     if "temporary_addresses" in config:  # null is a setting that cannot be read, and fails its line
         checks.append(check_temporary_addresses(config))
+    checks += [c for c in [check_browser_accounts(config, paths.read_json(paths.state() / "browser-accounts.json"))] if c]
     if latest_ref:
         checks.append(check_latest(versions, latest_ref))
     try:

@@ -4,12 +4,13 @@
 calendar had been read when the message was drafted, and the draft then waited for its approval. Every send waits
 for one, so every offer of a time has that window. The guard cannot know that a message proposes a meeting; it can
 know that its words name a clock time and when this session last read a calendar. Replayed over recorded messages
-(2026-11-13): of 445 distinct messages sent to people on 75 days, 145 named a clock time, and the session had read a
-calendar in the ten minutes before for 59 of them; of the 37 with words of offering beside the time, for 20.
+(2026-11-13): of 451 distinct messages sent to people on 76 days, 143 named a clock time, and the session had read a
+calendar in the ten minutes before for 54 of them; of the 37 with words of offering beside the time, for 20.
 """
 
 import json
 import os
+import re
 import time
 from datetime import datetime, timedelta, timezone
 
@@ -350,3 +351,129 @@ def test_a_text_sent_from_the_shell_that_names_a_time_is_held():
     assert reason and "posts to messages" in reason and "names a time" not in reason
     quiet = """osascript -e 'tell application "Messages" to send "On my way" to buddy "+15550100"'"""
     assert "names a time" not in guards.check("Bash", {"command": quiet}, CONFIG, cwd="/tmp", session=SESSION)
+
+
+# --- from the second review of 5.11.0 (2026-11-13) ---------------------------------------------------------------------
+
+@pytest.mark.parametrize("body", ["Does 2-3pm work?", "Free 10-11am.", "I can do 9-10 am.", "Tuesday, 2 - 3 pm?",
+                                  "Either 10-11am or, otherwise, 2-3pm.", "From 1:30-2pm."])
+def test_a_range_of_hours_written_with_a_hyphen_names_a_time(body):
+    """The usual way to offer a slot went out with no calendar read: the hyphen before the hour was shut out with the
+    minus of an offset (`-05:00`), which only the form with a colon needs."""
+    assert stale(ask(given=mail(body)))
+
+
+@pytest.mark.parametrize("body", ["See https://example.com/watch#10:30 for the clip.", "The offset there is -05:00.",
+                                  "Sizes 2-3 and 10-11 are in stock.", "Run 4-5 of the suite failed."])
+def test_a_fragment_of_an_address_an_offset_and_a_range_of_numbers_name_none(body):
+    assert ordinary(ask(given=mail(body, subject="A note")))
+
+
+@pytest.mark.parametrize("reads", [["mcp__acme-cal__*"], ["mcp__acme-*"], ["*agenda*"], ["mcp__acme-cal__agend?"], ["mcp__acme-cal__[a]genda"], ["*"]])
+def test_a_pattern_over_a_whole_server_names_its_reads(reads):
+    """The record's lines were first sifted by the last word of each entry, and a pattern that ends in `*` has none:
+    the tool counted as a calendar's, and its read was never found in the record."""
+    read_calendar(tool="mcp__acme-cal__agenda")
+    assert stale(ask())
+    assert ordinary(ask(config={**CONFIG, "fresh_calendar": {"reads": reads}}))
+
+
+def test_a_calendar_write_is_no_read_whatever_pattern_names_its_server():
+    read_calendar(tool="mcp__acme-cal__create_event")
+    read_calendar(tool="mcp__acme-cal__manage_event")
+    assert stale(ask(config={**CONFIG, "fresh_calendar": {"reads": ["mcp__acme-cal__*"]}}))
+
+
+def test_a_server_that_only_has_workspace_in_its_name_is_no_calendars():
+    read_calendar(tool="mcp__my-workspace-sentry__search_events")
+    read_calendar(tool="mcp__workspace_notes__list_events")
+    assert stale(ask())
+    for tool in ("mcp__workspace-mcp__get_events", "mcp__google_workspace__list_events", "mcp__google-workspace__get_events", "mcp__workspace__search_events"):
+        read_calendar(tool=tool)
+        assert ordinary(ask()), tool
+        age_reads(30)
+
+
+def test_a_sender_that_passes_no_session_is_judged_by_the_record_its_session_id_finds():
+    """The local-messaging sender asks the guard from a script, with no hook's payload. The hold said the session
+    had read no calendar whatever it had read, and told the agent to read again, which could never clear it."""
+    text = {"to": "+15550100", "text": "See you at 3:30 pm on Tuesday?", "service": "iMessage"}
+    assert stale(guards.check_send("messages_send", text, CONFIG))
+    read_calendar(minutes_ago=1)
+    assert ordinary(guards.check_send("messages_send", text, CONFIG))
+
+
+@pytest.mark.parametrize("tool, given", [
+    ("mcp__workspace-mcp__create_reaction", {"message_id": "m1", "emoji_reaction": "at 3:30 pm"}),
+    ("mcp__workspace-mcp__manage_out_of_office", {"message": "Back at 3:30 pm on Monday.", "action": "create"}),
+    ("mcp__zap__execute_zapier_write_action", {"instructions": "Post that we meet at 3:30 pm"}),
+    ("mcp__box__create_file_comment", {"file_id": "f1", "message": "Reviewed at 3:30 pm."}),
+    ("mcp__slack__slack_create_canvas", {"title": "Notes", "content": "Standup is at 3:30 pm."}),
+    (ID_NAMED + "share_file", {"fileId": "f1", "emailAddress": "a@example.com", "message": "For the 3:30 pm call."}),
+    ("mcp__github__add_issue_comment", {"owner": "o", "repo": "r", "issue_number": 1, "body": "Deployed at 3:30 pm."}),
+])
+def test_what_is_no_message_to_a_person_is_none_of_this_rules(tool, given):
+    """A reaction, an out-of-office note, a canvas, a comment on a file and a share were each taken for a message:
+    any call on a channel the guard had no name for counted. A message is a call whose name says it sends, replies,
+    forwards or drafts one."""
+    assert not guards.to_a_person(tool, given, {**CONFIG, "send_tools": ["mcp__*"]})
+    assert "names a time" not in (ask(tool, given, config={**CONFIG, "send_tools": ["mcp__*"]}) or "")
+
+
+@pytest.mark.parametrize("tool, given", [
+    ("mcp__eventbrite__send_message", {"to": "a@example.com", "text": "Doors open at 3:30 pm."}),
+    ("mcp__sign__sendReminder", {"envelopeId": "e1"}),
+    ("mcp__slack__slack_schedule_message", {"channel_id": "C1", "text": "Standup is at 3:30 pm.", "post_at": 1}),
+    ("mcp__acme__reply_to_thread", {"thread": "t1", "text": "At 3:30 pm then."}),
+    ("mcp__acme__forward", {"messageId": "m1", "to": "a@example.com", "body": "<p>See below.</p>", "body_format": "html"}),
+])
+def test_a_call_whose_name_says_it_sends_a_message_is_one_whatever_its_server(tool, given):
+    assert guards.to_a_person(tool, given, {**CONFIG, "send_tools": ["mcp__*"]})
+
+
+def test_a_mail_sent_from_the_shell_is_held_as_a_text_is():
+    """The documents said a text or a mail from the shell; only the channel named `messages` was held."""
+    using = {**CONFIG, "send_commands": [["email", r"mutt\b"], ["messages", r"imsg\s+send\b"], ["slack", r"slackcat\b"]]}
+    for command in ("mutt --subject 'Would 3:30 pm work?' a@example.com", "imsg send +15550100 --text 'See you at 3:30 pm'", "slackcat -c team --message 'Standup at 3:30 pm'"):
+        held = guards.check("Bash", {"command": command}, using, cwd="/tmp", session=SESSION)
+        assert stale(held), command
+    assert "names a time" not in guards.check("Bash", {"command": "gh pr comment 7 -b 'Deployed at 3:30 pm'"}, using, cwd="/tmp", session=SESSION)
+
+
+def test_a_sub_agents_send_is_told_that_its_own_reads_are_not_seen():
+    """A sub-agent's calls and results are kept apart from the session's, so its own calendar read never counted
+    for its own send, and the hold told it to read and try again."""
+    held = guards.check(MAIL, mail(), CONFIG, cwd="/tmp", session={**SESSION, "agent_id": "a1", "agent_type": "general-purpose"})
+    assert held and "names a time" in held and "sub-agent" in held and "make this identical call again" not in held
+    assert re.search(r"\bcode [a-z0-9]{6}\b", held)
+
+
+def test_two_identical_calls_at_once_cannot_each_go_on_one_of_the_two_codes(monkeypatch):
+    """With both codes typed, a second identical call judged between the first call's use of one code and its
+    spending of the other went on that other code: two copies."""
+    import threading
+    from synthesis import approvals
+    read_calendar(minutes_ago=1)
+    _approve(ask())                                                      # the ordinary code, typed and not yet used
+    age_reads(30)
+    _approve(ask())                                                      # the code of its own, typed as well
+    read_calendar(minutes_ago=0.1)                                       # the second call would see a fresh read
+    second, real, began = [], approvals.void, threading.Event()
+
+    def other():
+        began.set()
+        second.append(ask())
+
+    def slow(kind, subject):
+        if not second and not began.is_set():
+            worker = threading.Thread(target=other)
+            worker.start()
+            began.wait(2)
+            worker.join(0.3)                                             # it waits for the first call to finish
+            assert not second
+            slow.worker = worker
+        return real(kind, subject)
+    monkeypatch.setattr(approvals, "void", slow)
+    assert ask() is None
+    slow.worker.join(5)
+    assert len(second) == 1 and second[0] is not None                    # one message, one release
