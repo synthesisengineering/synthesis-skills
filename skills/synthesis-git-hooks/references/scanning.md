@@ -14,6 +14,7 @@ Each rule names the test that pins it (`tests/test_commit_policy.py`,
 - [Disclosures, and moved text](#disclosures-and-moved-text)
 - [Approved lines](#approved-lines)
 - [Commit messages](#commit-messages)
+- [An entry's own time](#an-entrys-own-time)
 - [Claims](#claims)
 - [Repository hooks](#repository-hooks)
 - [Failing closed](#failing-closed)
@@ -190,6 +191,50 @@ block in every class. Git's `#` comment lines are not scanned. A message line is
 approved the same way as a file line, bound to the repository and the line
 (`test_messages_are_scanned_in_strict_and_public_surface_repos_without_ledger_allowances`,
 `test_a_credential_in_a_message_blocks_in_every_class`, `test_a_commit_message_hit_is_approved_the_same_way`).
+
+## An entry's own time
+
+Off unless the config has `record_times` (`{}` turns it on; see the guardrails'
+[config reference](../../synthesis-agent-guardrails/references/config.md)). In a Markdown
+file outside a `transcripts/` folder, and outside the folders the setting's `skip` list
+names, the check reads the time an added entry gives for itself. An entry states one in
+three places:
+
+| Place | Example |
+|---|---|
+| The line opens with the day and a time, behind a list mark, a box, a heading or emphasis | `- **2026-11-12 19:30, the release is out.**`, `### 2026-11-12 14:40 CDT` |
+| A parenthesis opens with them | `(11-12 18:54: approved in the dialog)`, `(added 11-12 18:46, ...)` |
+| In a file under a `sessions/` folder, a list item or a heading opens with a time, and the nearest dated heading above it names today | `- 18:54 ET: pushed the branch` |
+
+For a stamp that names today, the commit is refused when the stamp is:
+
+1. **later than now.** A range is read by its later end. A zone the stamp names is honored
+   (`ET`, `CDT`, `UTC`, `Z`, `-05:00`); a time with no label is taken to be this machine's.
+2. **a rounding of the present:** `18:3x`, `about 18:35`, `~18:40` or `18:40ish`, for a
+   moment within the last 15 minutes or one that has not come. The clock could be read.
+
+It passes an exact time at or before now; a rounded time for a moment more than 15 minutes
+old, which may be all the writer knows; every time that is not an entry's own stamp (a
+meeting, a deadline, a scheduled wake, a time quoted inside the text); another day's
+entries; a line set in from the margin with no mark, which is the wrapped rest of the line
+above; transcripts, whose lines carry other people's times; and a zone label the machine
+cannot resolve.
+
+No approval clears a refusal: the line states a time that has not come, or rounds one the
+clock gives. Read the clock in the command that writes the entry (`date "+%H:%M"`), and
+name the zone when the time is in another one. An event's time that stood where an
+entry's stamp stands is written after the words that name the event, not at the head of
+the line or of a parenthesis.
+
+The check does not see a time that is wrong and earlier than the commit (17:40 written for
+17:36, committed at 17:45): only reading the clock in the command that writes the time
+prevents that. It was measured before it was built, on thirty days of commits to
+twenty-seven knowledge repositories: a time inside an entry's text is later than its commit
+three times in ten, and rightly, so only an entry's own stamp is judged. Of 688 such
+stamps, 36 named a minute that had not come and 111 rounded the present. Replayed over the
+same commits, the check refuses 153 lines in 123 of 1,032 commits; its first form also
+refused five wrapped lines that began with a time by chance, which is why a line needs a
+mark or the margin to open an entry (`tests/test_record_times.py`).
 
 ## Claims
 
