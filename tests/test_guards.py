@@ -199,6 +199,20 @@ def test_a_config_that_is_not_an_object_is_unreadable_as_one_that_is_not_json_is
     assert _hook("pre-tool-use", {"tool_name": "Read", "tool_input": {}}, env).stdout.strip() == ""
 
 
+@pytest.mark.parametrize("found", ["{broken", "[]"])
+@pytest.mark.parametrize("command", [["resume", "no-such-project"], ["sessions", "list"]])
+def test_a_command_that_reads_an_unreadable_config_says_so_in_one_line(isolated_home, capsys, found, command):
+    """The readers of `knowledge_roots`, `workspace_roots` and `sessions_repos` handle nothing themselves, so a config
+    that was not JSON ended `synthesis resume` and `synthesis sessions list` in a traceback."""
+    from synthesis import cli
+    isolated_home.mkdir(parents=True, exist_ok=True)
+    (isolated_home / "config.json").write_text(found, encoding="utf-8")
+    assert cli.main(command) == 2
+    said = capsys.readouterr()
+    assert said.out == "" and said.err.strip().count("\n") == 0
+    assert "the config cannot be read" in said.err and str(isolated_home / "config.json") in said.err
+
+
 def test_unreadable_config_blocks_routed_calendar_and_mail_calls(isolated_home):
     import os
     isolated_home.mkdir(parents=True, exist_ok=True)
