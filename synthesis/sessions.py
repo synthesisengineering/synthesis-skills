@@ -696,12 +696,17 @@ ADAPTERS = {"claude-code": _claude, "codex": _codex, "muse": _muse}
 
 
 def _identity(harness: str, native: Path) -> str:
+    """A session's name: Codex's thread, Muse's session folder, Claude Code's file (a sub-agent's under its parent
+    session's). A session of the desktop app's agent mode is named with its own `local_<session>` folder before
+    that, so it is never taken for a CLI session that has the same file name (the review of 5.18.0)."""
     if harness == "codex":
         return native.stem[-36:]
     if harness == "muse":
         return native.parent.name
     parts = native.parts  # a subagent's record sits under its parent session's subagents/ folder
-    return f"{parts[parts.index('subagents') - 1]}-{native.stem}" if "subagents" in parts else native.stem
+    own = f"{parts[parts.index('subagents') - 1]}-{native.stem}" if "subagents" in parts else native.stem
+    local = next((part for part in parts if part.startswith("local_")), "") if "local-agent-mode-sessions" in parts else ""
+    return f"{local}-{own}" if local else own
 
 
 def _place(harness: str, native: Path, session: str) -> tuple:
@@ -753,7 +758,7 @@ def export_file(harness: str, native: Path, project: str = "", again: bool = Fal
     if not s.folder:
         s.folder, s.meta["cwd"] = _place(harness, native, s.session)
         if harness == "claude-code" and "subagents" in native.parts:  # its prompts are the parent agent's briefs
-            s.meta.update(role="subagent", parent=native.parts[native.parts.index("subagents") - 1])
+            s.meta.update(role="subagent", parent=s.session[:-len(native.stem) - 1])  # the parent's own name
         s.seed()  # the numbers another Mac gave it, where a cloned sessions repo holds the session
     if s.again is None and s.held() + 1 > s.seq:  # the archive is ahead of the state: a write cut short after its lines, or a state lost
         s.read_again()
@@ -781,11 +786,18 @@ def natives(days: float = 0, unread: list | None = None) -> list:
     """(harness, path) for every native transcript, or those changed in the last `days` days. What the search cannot
     read is not passed over (2026-11-12: with a harness's transcript folder closed to it, a run found nothing to
     copy and stamped complete): a folder it cannot list goes into `unread` as (harness, folder, why), and a
-    transcript it can name and not look at is returned, so that its copy fails by name."""
+    transcript it can name and not look at is returned, so that its copy fails by name. The desktop app's agent-mode
+    sessions are read as Claude Code's, from their own folders, and a folder on the way to them that cannot be
+    listed is in `unread` too."""
     since, found, absent = time.time() - days * 86400 if days else 0, [], (FileNotFoundError, NotADirectoryError)
     for harness, base in paths.transcript_roots().items():
         pattern = {"claude-code": "*/**/*.jsonl", "codex": "**/rollout-*.jsonl", "muse": "*/*/*/*"}[harness]
-        extra = {"codex": [base.parent / "archived_sessions"], "claude-code": paths.desktop_agent_roots()}.get(harness, [])
+        extra = {"codex": [base.parent / "archived_sessions"]}.get(harness, [])
+        if harness == "claude-code":  # the desktop app's agent-mode sessions, and any folder on the way that cannot be listed
+            closed = [] if unread is not None else None
+            extra = paths.desktop_agent_roots(closed)
+            if unread is not None:
+                unread.extend((harness, folder, why) for folder, why in closed)
         for b in [base, *extra]:  # Codex moves archived ones; the desktop app's agent-mode sessions keep their own folders
             def shut(exc, harness=harness):  # a folder that is not there holds no transcript
                 unread.extend([] if isinstance(exc, absent) else [(harness, str(exc.filename), exc.strerror or str(exc))])

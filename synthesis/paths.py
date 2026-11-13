@@ -177,16 +177,35 @@ def transcript_roots() -> dict:
             "muse": Path(env.get("XDG_DATA_HOME") or user / ".local" / "share") / "muse" / "sessions"}
 
 
-def desktop_agent_roots() -> list:
-    """The projects folders of the Claude desktop app's local agent-mode sessions: each such session runs with a
-    Claude Code configuration folder of its own under the app's data folder (`local-agent-mode-sessions/<account>/
-    <org>/local_<session>/.claude/projects`), which `transcript_roots` never names (the audit of 2026-11-11, gap 14).
-    `SYNTHESIS_CLAUDE_DESKTOP_DIR` names the app's data folder where it is not the macOS one."""
-    app = Path(os.environ.get("SYNTHESIS_CLAUDE_DESKTOP_DIR") or Path.home() / "Library" / "Application Support" / "Claude")
-    try:
-        return sorted(app.glob("local-agent-mode-sessions/*/*/local_*/.claude/projects"))
-    except OSError:  # a folder above that cannot be searched holds none this can name
-        return []
+def desktop_dir() -> Path:
+    """The Claude desktop app's data folder: `SYNTHESIS_CLAUDE_DESKTOP_DIR` where it is named (and the scheduled copy
+    carries it, as it does each harness's folder), else the macOS one."""
+    return Path(os.environ.get("SYNTHESIS_CLAUDE_DESKTOP_DIR") or Path.home() / "Library" / "Application Support" / "Claude")
+
+
+def desktop_agent_roots(unread: list | None = None) -> list:
+    """The `projects` folders of the Claude desktop app's local agent-mode sessions: each such session runs with a
+    Claude Code configuration folder of its own (`<app>/local-agent-mode-sessions/<account>/<org>/local_<session>/
+    .claude`), which `transcript_roots` never names (the audit of 2026-11-11, gap 14). They are read level by level;
+    a folder on the way that cannot be listed goes into `unread` as (folder, why) and is never taken for an empty one
+    (the review of 5.18.0: a glob passed such a folder over in silence, and the run stamped itself complete)."""
+    found = []
+
+    def listing(folder: Path) -> list:
+        try:
+            return sorted(p for p in folder.iterdir() if p.is_dir() and not p.is_symlink())
+        except (FileNotFoundError, NotADirectoryError):  # a folder that is not there holds no session
+            return []
+        except OSError as exc:
+            if unread is not None:
+                unread.append((str(folder), exc.strerror or str(exc)))
+            return []
+    for account in listing(desktop_dir() / "local-agent-mode-sessions"):
+        for org in listing(account):
+            for session in (s for s in listing(org) if s.name.startswith("local_")):
+                for config in (c for c in listing(session) if c.name == ".claude"):
+                    found += [p for p in listing(config) if p.name == "projects"]
+    return found
 
 
 def harness(payload: dict | None = None) -> str:
