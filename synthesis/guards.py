@@ -4440,7 +4440,7 @@ WEB_MESSAGING = (  # (host, or .suffix for every host under it; path prefix; cha
     ("discord.com", "", "discord", "shift"), ("web.telegram.org", "", "telegram", "shift"),
     ("www.messenger.com", "", "messenger", "shift"), ("x.com", "/messages", "x", "shift"),
 )
-TAB_LINE = re.compile(r'tabId (\d+): .*\("([^"\s]+)"\)\s*$', re.M)
+TAB_LINE = re.compile(r'tabId (\d+): .*\("?([^"\s]*?)"?\)\s*$', re.M)  # the address in quotes, or without them as the extension wrote it until August 2026
 
 
 def _web_app(url: str):
@@ -4472,7 +4472,7 @@ def _tabs(transcript: str) -> tuple:
             if "Tab Context" in text and _browser_call(lines, i, str(block.get("tool_use_id") or "")):
                 context = text[text.rindex("Tab Context"):]
                 front = re.search(r"Executed on tabId: (\d+)", context)
-                return dict(TAB_LINE.findall(context)), front.group(1) if front else ""
+                return {tab: address or "about:blank" for tab, address in TAB_LINE.findall(context)}, front.group(1) if front else ""  # a new tab's address is empty
     return {}, ""
 
 
