@@ -91,11 +91,14 @@ Passes:
 - a reply that hands them the turn, whatever else it waits for: it ends by asking them; it
   offers an approval code to type (`approve 3b90b7`, `Code: 2f9a01`, a code as a label
   before a colon); it asks them to act in so many words (`Say go and it's out`, `Tell me
-  when it's done and I'll confirm`, `only you can`, `one step from you`). A code named as
-  used, spent or replaced offers nothing, and the words straight after it or straight
-  before it are what is read: `code 1abcde was consumed earlier`, `(3e7b10) has expired`,
-  `you typed approve 4a0c2d at noon`, `don't use the old codes`. A spent code beside one
-  that is offered leaves the offer standing;
+  when it's done and I'll confirm`, `only you can`, `one step from you`). A request is one
+  put to them: after `and`, `then` or a comma, one more verb of somebody else's asks them
+  nothing (`The worker will restart and send me its result`, `She'll review it and let me
+  know`, `I asked the vendor to check and tell me`). A code named as used, spent or
+  replaced offers nothing, and the words straight after it or straight before it are what
+  is read: `code 1abcde was consumed earlier`, `(3e7b10) has expired`, `you typed approve
+  4a0c2d at noon`, `don't use the old codes`. A spent code beside one that is offered
+  leaves the offer standing;
 - the text between a `BEGIN` line and an `END` line, which is set aside as quoted text is,
   whether it is a message staged for their go or a record. The block excuses nothing
   outside it: `I'm waiting for the bank to respond` after one is sent back. Beside a
@@ -112,7 +115,12 @@ Passes:
   before a colon (`Waiting on others: ...`, `What we're waiting on others for: ...`), a
   heading, a table row, and a wait after a label, a dash or a semicolon inside a sentence
   (`- The venue — sent; awaiting their pick`);
-- a rule for next time (`from now on`, `next time`, `whenever`, `every time`);
+- a rule for next time (`from now on`, `going forward`, `next time`, `whenever`, `every
+  time`), where the phrase governs the wait's own clause: it opens the sentence or a clause
+  of it, and no new clause of the session's stands between it and the wait (`From now on,
+  when a send fails, I'll finish it through the browser`). The phrase somewhere else
+  explains nothing: `The proposed change going forward is documented, and I am waiting on
+  the external review` is a wait;
 - an armed wait: a live `synthesis wait` of the session; an autopilot run it owns; in
   Claude Code, background work the session started that has not reported yet (an agent, a
   shell command, a workflow, a monitor), since the harness wakes the session when it

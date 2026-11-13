@@ -161,7 +161,6 @@ THEIRS = re.compile(
     r"|\b(?:hear|know|learn|see|find out) (?:back )?(?:which|what|whether|how|when|where|who|if)\b[^,;:]*?(?<!\bto )(?<!\bwith )"
     r"(?<!\babout )\byou\b"  # a question the principal answers: "to hear which date works for you"
     r"|\b(?:your (?:move|turn)\b|(?:up|over) to you\b|in your court\b|(?:is|are) yours\b)"  # the turn handed over in so many words
-    r"|(?:^\W*|\b(?:and|then) )(?:please )?(?:(?:send|tell|give|show) me\b|let me know\b)"  # or asked for: a request put to them
     r"|^\W*(?:please )?(?:(?:paste|type|reply|forward|share|confirm)\b(?![\w-])|(?:read|review|check|choose|pick|decide|approve|sign"
     r"|answer|select) (?:the|this|that|these|those|it|them|which|whether|one|both|my|our|your)\b)"
     r"|(?:\b(?:for|on|until|till|once|when|after|as soon as|await(?:ing)?|needs?|is|are|was) |['’]s |(?:[:—–]| -) |^\W*"
@@ -194,9 +193,16 @@ USED = re.compile(r"(?i)(?:\b(?:earlier|old|older|previous|prior|former|expired|
                   r"(?:[\s`*(),:–—-]|\band\b|\bor\b|\b[0-9][0-9a-f]{5}\b)*|\b(?:typed|entered|used|ran|gave|sent)\b[^.;:,\n]{0,20})$")
 SENT = re.compile(r"(?i)\b(?:once|when|after|as soon as|until) (?:it|that|this|they|both|each|the (?:message|note|email|reply|draft|post|send)s?)"
                   r"(?:['’]s|['’]re| is| are| has been| have been| goes| go| gets?) (?:sent|out|approved|posted|delivered|through)\b")
-ASKED = re.compile(r"(?i)(?:^\W*|, |\b(?:and|then|so|or|otherwise) )(?:please |just )?(?:say (?:go|yes|the word|so|when)\b"
+ASKED = re.compile(r"(?i)(?:^\W*|(?P<led>, |\b(?:and|then|so|or|otherwise) ))(?:please |just )?(?:say (?:go|yes|the word|so|when)\b"
                    r"|(?:tell|ping|text|message|send|give|show|point) me\b|let me know\b|press (?:enter|return)\b|sign in\b)"
                    r"|\bonly you can\b|\bone (?:step|thing|click|answer|word) from you\b")
+# After "and", "then" or a comma those words may be one more verb of somebody else's, and no request: "the worker will restart
+# and send me its result", "she'll review it and let me know", "I asked the vendor to check and tell me". OTHERS reads that
+# subject in the words before: a few plain words and "will", "should" or "can"; "'ll"; or one asked, or waited for, "to".
+_PLAIN = r"(?:(?!(?:you|i|we|if|when|whether|that|what|which|who|how|why|where|because|once|after|before|unless|while|since|as|until|and|but|or|so)\b)[\w'’-]+ )"
+OTHERS = re.compile(r"(?i)(?:^\W*" + _PLAIN + r"{1,6}?(?:will|would|should|shall|may|might|must|can|could)\b|^\W*" + _PLAIN + r"{0,5}?(?!(?:you|i|we)\b)[\w-]+['’](?:ll|d)\b"
+                    r"|\b(?:asked|told|want\w*|need\w*|expect\w*) (?!you\b)(?:[\w'’-]+ ){1,4}?to\b"
+                    r"|\b(?:i|we)\b[^,;:]{0,30}?\bwait(?:ing)? (?:for|on) (?!you\b)(?:[\w'’-]+ ){1,4}?to\b)[^,;:]*$")
 # The last resort the check's own message names, said in one sentence of the reply's own: nothing wakes this seat, or it
 # sleeps or stays idle, or it will not wake, see or move, until the principal prompts it. Not another's seat ("her
 # session"), not the past ("nothing woke"), not an event ("until the build finishes").
@@ -210,7 +216,11 @@ WOKEN = re.compile(
     r"|your (?:next |own )?(?:prompt|message|nudge|ping|turn|word)\b|a (?:prompt|message|nudge|word) from you\b|the next (?:prompt|message)\b)")
 TABLED = re.compile(r"(?m)^[ \t]*#{1,6}[ \t].*$|^[ \t]*\|.*\|[ \t]*$")  # a heading or a table row names things; it announces nothing
 LABEL = re.compile(r"[^.;!?:]{0,60}:(?:\s|$)")  # "Waiting on others: ..." is a label over a list of open loops
-RULE = re.compile(r"(?i)\b(?:from now on|going forward|in future|next time|whenever|every time|each time|as a rule)\b")
+# A rule for next time explains a wait when it governs the wait's own clause: it opens the sentence or a clause of it (after
+# a comma, a colon, a dash, "and", "but", "so" or "then"), and no new clause of the session's stands between it and the
+# wait. "The proposed change going forward is documented, and I am waiting" has the phrase in another clause's subject.
+RULE = re.compile(r"(?i)(?:^\W*|[,:—–] |\b(?:and|but|so|then) )(?:from now on|going forward|in future|next time|whenever|every time|each time|as a rule)\b"
+                  r"(?:(?!,? (?:and|but|so|or|yet) (?:i|we)\b|, (?:and|but|so|or|yet) ).)*$")
 # Code and quoted text are not the reply's own words: a fence of three or more backticks, or of tildes at a line's start,
 # up to the same fence; inline code; double quotes; single quotes, which open after a space or a bracket and close
 # before one, so the apostrophe in "the caterer's estimate" ends nothing (review round 2).
@@ -303,12 +313,24 @@ def _theirs(text: str, m: re.Match, before: str) -> bool:
     in front when nothing is named after the wait ("your answer is the only thing I'm awaiting"). What stands in front
     otherwise is context ("your review is filed and I'm waiting on CI"). A wait that opens its clause and names nothing,
     or only "that" or "it", awaits what the clause before it names: their move ("your approval is all that is left; I'm
-    waiting on that"), a request to them, or a question."""
+    waiting on that") or a question. A request put to them has handed them the turn already (_asked)."""
     if THEIRS.search(text, m.start()) or YOURS.match(text, m.end()) or (before and LEAD.fullmatch(text, 0, m.start()) and BACK.match(text, m.end())
                                           and (before.endswith("?") or THEIRS.search(before))):
         return True
     bare = m.group(0).lower().endswith(("wait", "waiting")) and OPEN.match(text, m.end())
     return any(bare or t.group(0).lower().startswith(FRONT) for t in THEIRS.finditer(text, 0, m.start()))
+
+
+def _asked(text: str) -> bool:
+    """Is a request put to the principal in this clause? One more verb of a third party's is none: the words before the
+    request, back to the last comma (or one comma further for "and" and "then", which may close a list of verbs)."""
+    for m in ASKED.finditer(text):
+        led = m.group("led") or ""
+        head = text[:m.start("led")] if led else ""
+        head = head.rstrip(", ") if led.strip() in ("and", "then") else head
+        if not OTHERS.search(head[head.rfind(",") + 1:]):
+            return True
+    return False
 
 
 def _offered(body: str) -> bool:
@@ -330,7 +352,7 @@ def unarmed_wait(reply: str, payload: dict, config: dict) -> list[str]:
     sentences = [] if plain.endswith("?") else EDGE.split(plain)
     clauses = [(text, at == 0) for sentence in sentences  # each clause, and whether it opens its sentence
                for at, text in enumerate(c for c in (" ".join(part.split()) for part in sentence.split(";")) if c)]
-    if any(ASKED.search(text) for text, _ in clauses) or any(WOKEN.search(sentence) for sentence in sentences):
+    if any(_asked(text) for text, _ in clauses) or any(WOKEN.search(sentence) for sentence in sentences):
         return []
     hits = {m.group(0).lower().strip(" :—–-") for at, (text, opens) in enumerate(clauses) for form in forms for m in form.finditer(text)
             if not _explains(text, m, opens) and not _theirs(text, m, clauses[at - 1][0] if at else "") and not (body != reply and SENT.search(text))}
