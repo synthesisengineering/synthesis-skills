@@ -313,3 +313,45 @@ def test_ci_runs_the_local_command_in_three_jobs_that_together_miss_nothing():
     assert not list((ROOT / "tests").glob("*/test_*.py"))  # and none in a folder the two patterns do not reach
     apple = re.findall(r'- os: macos-latest\n\s+python: apple\n\s+part: "([^"]+)"', workflow)
     assert sorted(apple) == sorted(parts)  # an entry added to a matrix by hand names every part
+
+
+# ---- No call passes a limit or flags to re by position -----------------------------
+
+def positional_re_limits(root: Path) -> list:
+    """Calls such as `re.split(pattern, text, 1)`. Python 3.13 deprecates passing `maxsplit`, `count` or `flags` to
+    `re.split`, `re.sub` and `re.subn` by position, and a later Python will refuse it. On 2026-11-12 the core held
+    three such calls: silent under 3.12, where the suite is run by hand, and a warning at every use under 3.13.
+    This reads the source, so it holds under every Python."""
+    import ast
+    most = {"split": 2, "sub": 3, "subn": 3}
+    found = []
+    for path in sorted(root.rglob("*.py")):
+        if any(part.startswith(".") for part in path.relative_to(root).parts):
+            continue
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            if (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and isinstance(node.func.value, ast.Name)
+                    and node.func.value.id == "re" and len(node.args) > most.get(node.func.attr, len(node.args))):
+                found.append(f"{path.relative_to(root).as_posix()}:{node.lineno}")
+    return found
+
+
+def test_no_call_passes_a_limit_or_flags_to_re_by_position():
+    assert positional_re_limits(ROOT) == []
+
+
+def test_the_re_rule_finds_a_positional_limit_and_spares_a_named_one(tmp_path):
+    (tmp_path / "skills" / "a").mkdir(parents=True)
+    (tmp_path / "skills" / "a" / "x.py").write_text(
+        "import re\n"
+        "re.split(r',', text, 1)\n"              # maxsplit by position
+        "re.split(r',', text, maxsplit=1)\n"
+        "re.sub(r'a', 'b', text, 1)\n"           # count by position
+        "re.sub(r'a', 'b', text, count=1)\n"
+        "re.subn(r'a', 'b', text, 0, re.I)\n"    # count and flags by position
+        "re.split(r',', text)\n"
+        "text.split(',', 1)\n"                   # a string's own split takes its limit by position
+        "re.findall(r'a', text, re.I)\n")        # and flags are findall's third argument, by position, as before
+    (tmp_path / ".venv").mkdir()
+    (tmp_path / ".venv" / "y.py").write_text("import re\nre.split(r',', text, 1)\n")  # not the repository's own
+    assert positional_re_limits(tmp_path) == ["skills/a/x.py:2", "skills/a/x.py:4", "skills/a/x.py:6"]
+
