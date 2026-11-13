@@ -2354,8 +2354,11 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
     be led by a plain folder elsewhere."""
     import ast
     import copy
+    import warnings
     try:
-        tree = ast.parse(source) if source.strip() else None
+        with warnings.catch_warnings():  # what Python thinks of the program's escapes is not the hook's to print
+            warnings.simplefilter("ignore")
+            tree = ast.parse(source) if source.strip() else None
     except (SyntaxError, ValueError, RecursionError):
         tree = None
     if tree is None:
