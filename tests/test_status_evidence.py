@@ -59,24 +59,50 @@ def test_a_dash_or_a_placeholder_is_no_evidence(evidence):
 
 
 @pytest.mark.parametrize("head", [
-    "| Thing | **Status** | Proof |", "| Thing | Current status | How we know |", "| Thing | State | Source |",
-    "| Thing | Status | Checked |", "| Thing | status | Verified (how) |", "| Thing | Status | Basis | Owner |",
-    "| Evidence | Thing | Status |",
+    "| Thing | **Status** | Proof |", "| Thing | Current status | How we know |", "| Thing | status | Verified (how) |",
+    "| Evidence | Thing | Status |", "| Thing | [Status](x.md) | Proofs |", "| Thing | Status (today) | Evidence |",
+    "| Thing | Status: | _Evidence_ |", "| Thing | Deploy status | Evidence | Source |", "| Thing | Verified status | Evidence |",
 ])
 def test_a_tables_own_header_says_which_columns_are_the_status_and_the_evidence(head):
     cells = [c.strip() for c in head.strip("|").split("|")]
-    row = "| " + " | ".join("" if any(w in c.lower() for w in ("proof", "know", "source", "checked", "verified", "basis", "evidence"))
-                            else "live" if "stat" in c.lower() else "x" for c in cells) + " |"
+    row = "| " + " | ".join("live" if "status" in c.lower() else "" if any(w in c.lower() for w in ("proof", "know", "source", "verified", "evidence"))
+                            else "x" for c in cells) + " |"
     before = (head, "|" + "---|" * len(cells))
     assert len(said(RECORD, row, before=before)[0]) == 1
     filled = row.replace("|  |", "| seen in the console |", 1)
     assert said(RECORD, filled, before=before) == ([], [])
 
 
-def test_one_filled_column_of_two_for_evidence_is_enough_and_a_short_row_has_none():
-    before = ("| Item | Status | Source | Checked |", "|---|---|---|---|")
-    assert said(RECORD, "| A | done | | 11-13 by hand |", before=before) == ([], [])
-    assert len(said(RECORD, "| A | done | | |", before=before)[0]) == 1
+@pytest.mark.parametrize("head", [
+    "| Name | State | Source |", "| Item | State | Evidence |", "| Item | Current deploy status | Evidence |", "| Item | Status / notes | Evidence |",
+])
+def test_a_column_headed_state_or_status_after_more_than_one_word_is_no_status_column(head):
+    assert said(RECORD, "| A | live | |", before=(head, "|---|---|---|")) == ([], [])
+
+
+@pytest.mark.parametrize("head", [
+    "| Lead | Status | Source |", "| Task | Status | Checked |", "| Item | Status | Basis |", "| Item | Status | Sources | Checked |",
+])
+def test_a_source_checked_or_basis_column_never_refuses_and_a_filled_one_keeps_its_row_from_the_note(head):
+    before = (head, "|" + "---|" * (head.count("|") - 1))
+    assert said(RECORD, "| A | contacted | |", before=before) == ([], [])                 # a status that claims nothing: nothing
+    found, notes = said(RECORD, "| A | done | |", before=before)
+    assert found == [] and len(notes) == 1                                                 # a claim that points at nothing: a note
+    assert said(RECORD, "| A | done | the deploy log |", before=before) == ([], [])        # a filled cell points somewhere
+    assert said(RECORD, "| A | done, see [the log](x.md) | |", before=before) == ([], [])  # and so does a link
+
+
+def test_the_status_column_is_never_its_own_evidence():
+    assert len(said(RECORD, "| A | live | |", before=("| Item | Verified status | Evidence |", "|---|---|---|"))[0]) == 1
+    found, notes = said(RECORD, "| A | live | |", before=("| Item | Verified status | Notes |", "|---|---|---|"))
+    assert found == [] and len(notes) == 1
+
+
+def test_one_filled_column_of_several_for_evidence_is_enough_and_a_short_row_has_none():
+    before = ("| Item | Status | Evidence | Proof | Source |", "|---|---|---|---|---|")
+    assert said(RECORD, "| A | done | | 11-13 by hand | |", before=before) == ([], [])
+    assert said(RECORD, "| A | done | | | the deploy log |", before=before) == ([], [])
+    assert len(said(RECORD, "| A | done | | | |", before=before)[0]) == 1
     assert len(said(RECORD, "| A | done |", before=before)[0]) == 1                     # the row stops before its evidence
     assert said(RECORD, "| A | done \\| released | see the log |", before=("| Item | Status | Evidence |", "|---|---|---|")) == ([], [])
 
