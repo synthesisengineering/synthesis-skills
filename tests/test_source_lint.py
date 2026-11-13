@@ -295,16 +295,21 @@ def test_the_bytecode_rule_finds_a_late_guard_and_spares_an_early_one(tmp_path):
 
 # ---- CI runs the local command's two folders, each in a job of its own ---------------
 
-def test_ci_runs_tests_and_skills_each_in_a_job_of_its_own():
-    """The suite is run in two jobs for each system and Python, the core's tests and the skills', so that no job
-    runs near its ten-minute limit. On 2026-11-12 the whole suite took 526 seconds on a macOS runner, and on main
-    one job was cancelled at ten minutes with no test failing. Together the two jobs run what
-    `python3 -m pytest -q tests/ skills/` runs."""
+def test_ci_runs_the_local_command_in_three_jobs_that_together_miss_nothing():
+    """The suite is run in three jobs for each system and Python: the core's tests in two halves by file name, and
+    the skills'. On 2026-11-12 the whole suite took 526 seconds on a macOS runner and one job was cancelled at the
+    ten-minute limit with no test failing; run as two jobs, the core's tests took 6 minutes on one macOS runner and
+    over 10 on a slower one beside it. Together the three run what `python3 -m pytest -q tests/ skills/` runs."""
+    from fnmatch import fnmatch
     workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
-    assert "part: [tests, skills]" in workflow
-    assert "run: python -m pytest -q ${{ matrix.part }}/" in workflow
-    assert "run: python -m pytest -q tests/ skills/" not in workflow  # no job runs the whole of it
-    apple = re.findall(r"- os: macos-latest\n\s+python: apple\n\s+part: (\w+)", workflow)
-    assert sorted(apple) == ["skills", "tests"]  # an entry added to a matrix by hand names both
-    assert sorted(path.name for path in ROOT.iterdir() if path.is_dir() and any(path.rglob("test_*.py"))
-                  and path.name in ("tests", "skills")) == ["skills", "tests"]
+    parts = re.findall(r'"([^"]+)"', re.search(r"^\s+part: \[(.+)\]$", workflow, re.M).group(1))
+    assert "skills/" in parts and len(parts) == 3
+    assert "run: python -m pytest -q ${{ matrix.part }}\n" in workflow
+    assert "pytest -q tests/ skills/\n" not in workflow.replace("`", "\n")  # no job runs the whole of it
+    halves = [part for part in parts if part != "skills/"]
+    files = sorted(path.relative_to(ROOT).as_posix() for path in (ROOT / "tests").glob("test_*.py"))
+    assert files and [[half for half in halves if fnmatch(name, half)] for name in files if
+                      len([half for half in halves if fnmatch(name, half)]) != 1] == []  # each file in exactly one job
+    assert not list((ROOT / "tests").glob("*/test_*.py"))  # and none in a folder the two patterns do not reach
+    apple = re.findall(r'- os: macos-latest\n\s+python: apple\n\s+part: "([^"]+)"', workflow)
+    assert sorted(apple) == sorted(parts)  # an entry added to a matrix by hand names every part
