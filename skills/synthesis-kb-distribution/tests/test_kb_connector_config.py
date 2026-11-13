@@ -279,11 +279,19 @@ def test_the_origin_shown_is_one_the_connector_takes():
     assert "KB_PUBLIC_URL must be the service's https:// address (http:// only for localhost)" in plain
 
 
-@pytest.mark.parametrize("url", ["https://kb.example.com:abc", "https://kb.example.com:99999", "https://kb.example.com:0",
-                                 "https://kb.example.com:abc/mcp"])
-def test_a_port_that_is_no_port_stops_the_start(url):
+@pytest.mark.parametrize("url", [
+    "https://kb.example.com\\mcp", "https://kb.example.com\\", "https://kb.example.com;v=1", "https://kb example.com",
+    "https://kb.example.com%2fmcp", "https://kb.example.com\\mcp/x?y=1",   # a browser reads a backslash as a slash
+    "https://kb.example.com:abc", "https://kb.example.com:99999", "https://kb.example.com:0", "https://kb.example.com:abc/mcp",
+])
+def test_a_host_or_a_port_no_address_could_have_stops_the_start_as_a_malformed_address(url):
     text = problems({**BASE, "KB_PUBLIC_URL": url})
     assert "KB_PUBLIC_URL must be the service's https:// address" in text and "Write it as" not in text
+
+
+@pytest.mark.parametrize("url", ["https://bücher.example", "https://kb-1.example.com", "https://kb_1.example.com"])
+def test_a_host_with_letters_digits_hyphens_or_underscores_starts(url):
+    assert load({**BASE, "KB_PUBLIC_URL": url}).public_url == url
 
 
 REFERENCE = Path(__file__).resolve().parents[1] / "references" / "connector.md"
