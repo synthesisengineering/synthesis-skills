@@ -238,7 +238,11 @@ STARTS_A_TUNNEL = [
     "yarn dlx localtunnel@2.0.2 --port 7777", "bunx --bun localtunnel@latest -p 3000", "bun x localtunnel@2.0.2 --port 3000",
     "npx --yes cloudflared@latest tunnel --url http://localhost:3000", "pnpm dlx ngrok@5 http 3000",
     # -R joined to other flags, and with its value joined on
-    "ssh -NR 80:localhost:7777 nokey@localhost.run", "ssh -fNTR 80:localhost:3000 serveo.net", "ssh -NR80:localhost:3000 serveo.net"]
+    "ssh -NR 80:localhost:7777 nokey@localhost.run", "ssh -fNTR 80:localhost:3000 serveo.net", "ssh -NR80:localhost:3000 serveo.net",
+    # cloudflared's two quick forms: `tunnel` with --url and no subcommand, and `tunnel --hello-world`, past its options
+    "cloudflared tunnel --hello-world", "cloudflared tunnel --no-autoupdate --url http://localhost:8080",
+    "cloudflared tunnel --loglevel debug --url http://localhost:8080 --protocol http2",
+    "docker run --rm cloudflare/cloudflared tunnel --no-autoupdate --hello-world"]
 NO_TUNNEL = [
     "cloudflared tunnel run production", "cloudflared tunnel list", "cloudflared --version", "ngrok config check", "ngrok version",
     "echo cloudflared tunnel --url http://localhost:1", "grep -rn 'ngrok http' docs/", "brew install cloudflared",
@@ -263,7 +267,14 @@ NO_TUNNEL = [
     "yarn add --dev localtunnel", "npx --yes localtunnel@2.0.2 --help", "pnpm dlx serve@14 --port 3000",
     # a cluster with no -R, the letter in another option's value, a forward the other way, -R in the remote command
     "ssh -NR 9000:localhost:9000 build.example.com", "ssh -NT -L 8080:localhost:80 nokey@localhost.run",
-    "ssh -oRequestTTY=no -N nokey@localhost.run", "ssh nokey@localhost.run ls -R /tmp"]
+    "ssh -oRequestTTY=no -N nokey@localhost.run", "ssh nokey@localhost.run ls -R /tmp",
+    # cloudflared's `tunnel` followed by a subcommand is a named tunnel's command, whatever options it carries
+    "cloudflared tunnel run --url http://localhost:8080 production", "cloudflared tunnel --url http://localhost:8080 run production",
+    "cloudflared tunnel run --hello-world demo", "cloudflared tunnel --config /etc/cloudflared/config.yml run",
+    "cloudflared tunnel create demo", "cloudflared tunnel route dns demo app.example.com", "cloudflared tunnel delete demo",
+    "cloudflared tunnel info demo", "cloudflared tunnel cleanup demo", "cloudflared tunnel login", "cloudflared tunnel token demo",
+    "cloudflared tunnel ingress validate", "cloudflared tunnel vnet list", "cloudflared tunnel ready", "cloudflared tunnel diag",
+    "cloudflared tunnel help", "cloudflared tunnel --help", "docker run --rm cloudflare/cloudflared tunnel run --url http://web:80 demo"]
 
 
 @pytest.mark.parametrize("command", STARTS_A_TUNNEL)
