@@ -449,6 +449,40 @@ def test_a_command_that_cannot_be_started_is_refused_at_once_in_one_line(two, tm
     assert not list((paths.board() / "waits").rglob("*.json"))                        # and it left no record of a wait behind
 
 
+@pytest.mark.parametrize("named, why", [
+    ("a directory found by its name on PATH", "is not executable"),
+    ("a file found by its name on PATH without its execute bit", "is not executable"),
+    ("a path that does not exist, through a file", "was not found"),
+    ("a name that is not on PATH, whose PATH ends with a file", "was not found"),
+    ("a name that is nowhere, where a folder of PATH cannot be searched", f"cannot be run ({os.strerror(errno.EACCES)})"),
+])
+def test_each_launch_error_the_reference_lists_gives_the_reason_it_promises_by_name_or_by_path(two, tmp_path, monkeypatch, named, why):
+    """Review round 3, finding 25: a directory found by its name on PATH was refused with `cannot be run (Permission
+    denied)`, where the watchers reference promises `is not executable` for a directory. A name is looked for where
+    the system looks for it, on PATH, and a path that does not exist is `was not found` however the system says so."""
+    if named.endswith("cannot be searched") and os.geteuid() == 0:
+        pytest.skip("the superuser searches every folder")
+    found, shut, text = tmp_path / "bin", tmp_path / "shut", tmp_path / "notes.txt"
+    (found / "synthesis-check").mkdir(parents=True)                                   # a folder by the name
+    (found / "synthesis-plain").write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    (found / "synthesis-plain").chmod(0o644)                                          # a file by the name, with no execute bit
+    text.write_text("no program\n", encoding="utf-8")
+    shut.mkdir()
+    where, program = {"a directory found by its name on PATH": (found, "synthesis-check"),
+                      "a file found by its name on PATH without its execute bit": (found, "synthesis-plain"),
+                      "a path that does not exist, through a file": (found, str(text / "check")),
+                      "a name that is not on PATH, whose PATH ends with a file": (f"{found}{os.pathsep}{text}", "synthesis-no-such-command"),
+                      "a name that is nowhere, where a folder of PATH cannot be searched": (shut, "synthesis-no-such-command")}[named]
+    monkeypatch.setenv("PATH", str(where))
+    shut.chmod(0)
+    try:
+        done = cli("wait", "run", "--for", "1m", "--", program, "--branch", "main")
+    finally:
+        shut.chmod(0o755)
+    assert (done.returncode, done.stdout) == (2, "")
+    assert done.stderr == f"`{program} --branch main` could not be started: its program {program!r} {why}\n"
+
+
 def test_a_command_that_cannot_be_started_gets_no_second_try_and_one_that_starts_and_fails_does(two, clock, monkeypatch, capsys):
     """The refusal is said once, with no sleep and no second try, and so it is for a command that goes missing between
     two tries. Its plain words are said only of what is there: "was not found" when nothing by that name is and the
@@ -738,6 +772,28 @@ def test_resume_names_a_quiet_seat_that_holds_a_live_wait_and_marks_it_as_who_do
         assert re.search(r"waiting until \d\d:\d\d$", rows[name]).group(0) in named[name]
 
 
+def test_resume_of_the_project_the_session_already_holds_still_names_the_seats_that_work_there(two, tmp_path, write_config):
+    """Review round 3, finding 26: a resume of the project the session was already bound to answered "Already working"
+    and returned before it looked at the board, so a seat holding a live wait there went unnamed. It names the seats
+    a fresh resume names, the waiting one marked as `who` marks it."""
+    from synthesis import project, wait
+    root, until = tmp_path / "ai-knowledge-test", time.time() + 3600
+    (root / "projects" / "alpha").mkdir(parents=True)
+    (root / "projects" / "alpha" / "CONTEXT.md").write_text("# Alpha\n", encoding="utf-8")
+    write_config({"knowledge_roots": [str(root)]})
+    board.touch("Q1", project="alpha", harness="codex")
+    wait.record("Q1", "a message", until, pid=os.getpid())
+    quiet("Q1")
+
+    def named(out):
+        return [line for line in out.splitlines() if line.startswith("- Live session ")]
+    fresh, again = project.resume("alpha", "R1"), project.resume("alpha", "R1")     # the first binds R1 to alpha
+    assert again.startswith("Already working alpha in this session; continuing without reloading.\n"), again
+    assert named(again) == named(fresh) and len(named(fresh)) == 2, (fresh, again)    # S1, seen a moment ago, and Q1
+    waiting = next(line for line in named(again) if line.startswith("- Live session Q1 "))
+    assert f"works here, waiting until {time.strftime('%H:%M', time.localtime(until))};" in waiting
+
+
 # --- the sender is told what will deliver the message --------------------------------------------------------------
 
 def test_a_word_of_a_message_is_not_taken_for_the_command(two):
@@ -1012,3 +1068,14 @@ def test_a_list_of_candidate_seats_marks_the_one_that_is_waiting(two):
     listed = board._describe([board.load("S1"), board.load("S2")])
     assert f"waiting until {time.strftime('%H:%M', time.localtime(until))}" in listed.splitlines()[-1]
     assert "waiting until" not in listed.splitlines()[-2] and "stale" not in listed
+
+
+def test_the_watchers_reference_says_a_try_has_no_standard_input():
+    """Review round 3, finding 27: the wait gives each try `/dev/null` for its standard input (the test above), and the
+    watchers reference still said a try has the wait's own and reads whatever the wait was started with."""
+    page = " ".join((ROOT / "skills" / "synthesis-waiting" / "references" / "watchers.md").read_text(encoding="utf-8").split())
+    for old in ("a try has the wait's own", "reads whatever the wait was started with", "Standard input is another matter"):
+        assert old not in page, old
+    limit = page.split("### The two limits of a try")[1].split("2. **")[0]
+    assert "**A try has no controlling terminal and no standard input.**" in limit and "`/dev/null`" in limit
+    assert "with no controlling terminal and no standard input" in page.split("## What `wait run` does with the command's processes")[1]

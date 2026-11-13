@@ -49,8 +49,8 @@ its worth unclear, ask the principal once, with the recommendation first and the
 
 ## What `wait run` does with the command's processes
 
-Each try of `synthesis wait run` runs in a process group of its own, with no controlling terminal: a command that
-would ask for a password there fails instead of asking.
+Each try of `synthesis wait run` runs in a process group of its own, with no controlling terminal and no standard
+input: a command that would ask for a password there fails instead of asking.
 
 - A try that exits 0 in time ends the wait. What it started is left running.
 - When a try fails, or is still running at the bound, its whole group is stopped, the command and every process
@@ -64,7 +64,8 @@ would ask for a password there fails instead of asking.
 - A command that cannot be started is no failed try. The wait prints
   `` `<command>` could not be started: its program '<first word>' <why> `` on stderr and exits 2 at once, on the
   first try or on a later one whose program has gone: `was not found` for a name that is not on PATH or a path
-  that does not exist, `is not executable` for a file without its execute bit or a directory, and `cannot be run`
+  that does not exist, `is not executable` for a file without its execute bit or a directory, given by its path
+  or found by its name in a folder of PATH, and `cannot be run`
   with the system's own words for anything else (`Exec format error` for a file that is no program). The two
   plain reasons are given only where they are true of what is there. A script whose interpreter is missing is
   refused with `cannot be run (No such file or directory)`, since the script itself was found. A name that is
@@ -77,15 +78,16 @@ would ask for a password there fails instead of asking.
 ### The two limits of a try
 
 Both were probed on macOS on 2026-11-12: the first with a wait started under a terminal of its own, the second by
-killing a wait, and then a wait's whole process group, with `kill -9`.
+killing a wait, and then a wait's whole process group, with `kill -9`. The empty standard input is the wait's own
+setting since then, held by its test.
 
-1. **A try has no controlling terminal.** It runs in a session of its own, so a command that needs the terminal
-   fails: as a try, opening `/dev/tty` gave `Device not configured`, where the same command run directly opened
-   it. A command that asks there for a password or a passphrase gets that error instead of an answer. A try that
-   fails for it counts as failed like any other, and the wait goes on to its bound with nothing shown, because
-   what a try prints is discarded and only its exit code is read. Standard input is another matter: a try has the
-   wait's own, which in that probe was the terminal, so a command that reads its answer there reads whatever the
-   wait was started with. Give the command what it needs without a prompt before arming the wait, and run it
+1. **A try has no controlling terminal and no standard input.** It runs in a session of its own, so a command
+   that needs the terminal fails: as a try, opening `/dev/tty` gave `Device not configured`, where the same
+   command run directly opened it. A command that asks there for a password or a passphrase gets that error
+   instead of an answer. Its standard input is `/dev/null`, whatever the wait was started with, so a command that
+   reads its answer there reads the end of its input at once. A try that fails for either counts as failed like
+   any other, and the wait goes on to its bound with nothing shown, because what a try prints is discarded and
+   only its exit code is read. Give the command what it needs without a prompt before arming the wait, and run it
    once by hand to see that it asks nothing.
 2. **A wait that is killed outright leaves its try running.** SIGKILL gives the wait no chance to stop the try,
    and the try is in a process group of its own, so a signal sent to the wait's group does not reach it either:

@@ -57,7 +57,8 @@ synthesis-skills. The workspace's knowledge repo is `ai-knowledge-{workspace}`
 
 **2. Classify** (rule 1). `synthesis resume <id>` applies the same test to the
 project on this session's board file: it answers "Already working <id>" for a
-continuing session, and for a session on another project it names both, asks,
+continuing session, naming any live seat that works there as a fresh resume
+does, and for a session on another project it names both, asks,
 and switches nothing. After the principal says yes:
 `synthesis resume <id> --switch`. For an unknown id it offers to start the
 project: interview briefly (name, goal, workspace, repo family) and scaffold it

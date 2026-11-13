@@ -213,9 +213,12 @@ beside `$AP`. It runs the health check each workspace declares in the ritual
 config (`relied_on`) and prints whatever is down first, as
 `DOWN <workspace>: <what> (relied on by <who>): <why>`. A `DOWN` line leads the
 wake's reply, before the run's own progress, and so does an exit of 2, which
-means nothing could be checked. It is an incident: the principal is told first,
-with who is affected and what the fix is, and the people affected are told only
-on the principal's approval, like any send. Write the result in the wake's
+means nothing could be checked. So does a run that never started (no `python3`,
+no script at that path) or printed none of the lines the daily-rituals skill's
+scripts page documents: it is not checked, and never read as healthy. It is an
+incident: the principal is told first, with who is affected and what the fix
+is, and the people affected are told only on the principal's approval, like any
+send. Write the result in the wake's
 cycle-ledger line; the run's `others-rely-on` standing item takes those lines as
 its evidence at close. A test two colleagues had come to rely on once stopped
 when the app that ran it restarted, and two scheduled check-ins ran without

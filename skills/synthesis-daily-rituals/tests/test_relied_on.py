@@ -8,6 +8,7 @@ is down prints first, and an entry that cannot be run as written counts as down.
 """
 from __future__ import annotations
 
+import errno
 import json
 import os
 import subprocess
@@ -30,8 +31,9 @@ def entry(what: str = "the intake form", by: str = "the sales team", check=HEALT
     return {"what": what, "by": by, "check": check}
 
 
-def run(tmp_path: Path, *args: str, config=None, **workspaces):
-    """Run the script over a ritual config, in a temporary synthesis home, that declares each workspace's `relied_on`."""
+def run(tmp_path: Path, *args: str, config=None, before: str = "", launch=(sys.executable, str(SCRIPT)), **workspaces):
+    """Run the script over a ritual config, in a temporary synthesis home, that declares each workspace's `relied_on`;
+    `before` is Python run first in the same interpreter, and `launch` the words that start the script."""
     home = tmp_path / "home"
     (home / "rituals").mkdir(parents=True, exist_ok=True)
     if config is None:
@@ -39,7 +41,9 @@ def run(tmp_path: Path, *args: str, config=None, **workspaces):
     (home / "rituals" / "config.json").write_text(config, encoding="utf-8")
     env = {**os.environ, "SYNTHESIS_HOME": str(home)}
     env.pop("RITUAL_STATE_DIR", None)
-    proc = subprocess.run([sys.executable, str(SCRIPT), *args], capture_output=True, text=True, env=env)
+    if before:
+        launch = (sys.executable, "-c", before + "\nimport runpy, sys\nsys.argv[:] = sys.argv[1:]\nrunpy.run_path(sys.argv[0], run_name='__main__')", str(SCRIPT))
+    proc = subprocess.run([*launch, *args], capture_output=True, text=True, env=env)
     return proc.returncode, proc.stdout.splitlines(), proc.stderr
 
 
@@ -144,7 +148,18 @@ def test_nothing_declared_is_one_line_and_no_failure(tmp_path):
         assert (code, lines) == (0, ["nothing another person relies on is declared for desk"]), declared
 
 
-def test_an_entry_under_defaults_is_checked_for_every_workspace_that_declares_none_of_its_own(tmp_path):
+def test_a_relied_on_that_is_there_and_is_not_a_list_is_a_malformed_entry_never_nothing_declared(tmp_path):
+    """Review round 3, finding 21: `false`, `0`, `""` and `{}` were read as nothing declared, and the check passed.
+    A declaration that is there is read as one entry, so a malformed one is down as any malformed entry is."""
+    for declared in ({}, False, 0, ""):
+        code, lines, _ = run(tmp_path, "--workspace", "desk", desk=declared)
+        assert (code, lines) == (1, [f"DOWN entry 1 (relied on by nobody named): {NEEDS}", "1 relied on, 1 down"]), declared
+    code, lines, _ = run(tmp_path, "--all", "--json", desk=False, lab=[])
+    found = json.loads("\n".join(lines))
+    assert code == 1 and found["down"] == 1 and found["nothing_declared"] == ["lab"], found
+
+
+
     """The settings are read the way every ritual script reads them: the defaults, then the workspace's own."""
     config = json.dumps({"defaults": {"relied_on": [entry()]},
                          "workspaces": {"desk": {}, "lab": {"relied_on": [entry("the build cache")]}, "attic": {"relied_on": []}}})
@@ -219,6 +234,26 @@ def test_day_start_each_mid_day_sync_and_day_end_run_it_and_say_what_a_down_line
         assert LEADS in step and INCIDENT in step, f"{name}: the step does not say what a DOWN line asks for"
 
 
+NOT_RUN = ("never started", "printed none of the lines", "never read as healthy")
+
+
+def test_every_place_that_says_how_to_take_the_result_says_a_check_that_did_not_run_is_never_healthy():
+    """Review round 3, finding 24: each ritual said what a `DOWN` line and exit 2 ask for, and nothing of a checker
+    that never started or printed none of the lines it documents, so such a run was free to be read as all clear.
+    Each place that says how to take the result says that it is reported first, as not checked."""
+    places = {name: next(line for line in reference(name).splitlines() if COMMAND in line)
+              for name in ("day-start.md", "mid-day-and-modes.md", "day-end.md", "procedure.md")}
+    places["scripts.md"] = next(line for line in reference("scripts.md").splitlines() if "scripts/relied_on.py" in line)
+    places["plan-format.md"] = reference("plan-format.md").split("**Down section**")[1].split("\n\n")[0]
+    places["observer mode"] = next(line for line in reference("mid-day-and-modes.md").split("### What Observer Mode Keeps")[1].splitlines()
+                                   if "relied_on.py" in line)
+    for where, text in places.items():
+        text = " ".join(text.split())
+        for words in NOT_RUN:
+            assert words in text, (where, words)
+    assert "reported first, as not checked" in " ".join(places["day-start.md"].split())
+
+
 def test_it_is_the_first_check_each_ritual_runs():
     """What is down is the first thing reported, so the check runs before the rest: after the date at day-start,
     before any surface at a sync, before the mode question at day-end."""
@@ -290,3 +325,51 @@ def test_a_guard_config_that_cannot_be_read_checks_nothing(tmp_path: Path) -> No
     (home / "config.json").write_text("{not json", encoding="utf-8")
     code, lines, err = run(tmp_path, "--workspace", "w", w=[entry()])
     assert code == 2 and "NOT CHECKED" in err and lines == []
+
+
+def test_a_guard_config_that_is_not_an_object_checks_nothing_and_raises_nothing(tmp_path: Path) -> None:
+    """Review round 3, finding 22: a guard config of `[]` or `null` loads as JSON and is no settings at all; the
+    script raised AttributeError while putting the first check to the guard."""
+    home = tmp_path / "home"
+    home.mkdir()
+    for found in ("[]", "null", '"deploy"', "3"):
+        (home / "config.json").write_text(found, encoding="utf-8")
+        code, lines, err = run(tmp_path, "--workspace", "w", w=[entry()])
+        assert (code, lines) == (2, []) and "Traceback" not in err, (found, err)
+        assert err == f"NOT CHECKED: the guards' config cannot be read, so no check can be judged: {home / 'config.json'} is not a JSON object\n", err
+
+
+FULL = """
+import errno, tempfile
+made, calls = tempfile.TemporaryFile, []
+def full(*args, **kwargs):  # the disk is full when the first check's output file is made, and has room after
+    calls.append(1)
+    if len(calls) == 1:
+        raise OSError(errno.ENOSPC, "No space left on device")
+    return made(*args, **kwargs)
+tempfile.TemporaryFile = full
+"""
+
+
+def test_a_check_whose_output_file_cannot_be_made_could_not_be_run_and_the_rest_still_run(tmp_path: Path) -> None:
+    """Review round 3, finding 23: the file a check's output goes to was made before anything that catches an error,
+    so a full disk ended the script with a traceback and no check after it ran."""
+    code, lines, err = run(tmp_path, "--workspace", "desk", before=FULL, desk=[entry(), entry("the status page")])
+    assert "Traceback" not in err, err
+    assert (code, lines) == (1, [f"DOWN the intake form (relied on by the sales team): could not be run ({os.strerror(errno.ENOSPC)})",
+                                 "ok the status page", "2 relied on, 1 down"])
+
+
+def test_a_checker_that_cannot_import_its_runtime_prints_one_not_checked_line_and_exits_2(tmp_path: Path) -> None:
+    """Review round 3, finding 24: with no `synthesis` to import, the checker ended in a traceback, which no ritual
+    step told the reader how to take. It says, in one line, that nothing was checked and why."""
+    copy = tmp_path / "plugin" / "skills" / "synthesis-daily-rituals" / "scripts" / "relied_on.py"
+    copy.parent.mkdir(parents=True)
+    copy.write_text(SCRIPT.read_text(encoding="utf-8"), encoding="utf-8")
+    absent = run(tmp_path, "--all", launch=(sys.executable, "-I", "-S", str(copy)), desk=[entry()])  # no runtime beside it, none installed
+    assert absent == (2, [], "NOT CHECKED: the synthesis runtime cannot be imported, so nothing was checked: No module named 'synthesis'\n")
+    (tmp_path / "plugin" / "synthesis").mkdir()
+    (tmp_path / "plugin" / "synthesis" / "__init__.py").write_text("", encoding="utf-8")   # a runtime with its modules missing
+    code, lines, err = run(tmp_path, "--all", launch=(sys.executable, "-I", "-S", str(copy)), desk=[entry()])
+    assert (code, lines) == (2, []) and err.count("\n") == 1 and "Traceback" not in err, err
+    assert err.startswith("NOT CHECKED: the synthesis runtime cannot be imported, so nothing was checked: cannot import name 'guards'"), err

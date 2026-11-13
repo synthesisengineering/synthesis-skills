@@ -114,9 +114,9 @@ does not know is not held.
 
 - What another person relies on is declared where the check-ins look (the daily rituals'
   `relied_on` setting), so its health is checked at every check-in and at every wake of
-  an autopilot run, and a failure is the first thing reported. The declaration schedules
-  nothing by itself: it is read when a ritual or a run reads it, and it does not stand
-  in for the service's own watch (line 4).
+  an autopilot run, and a failure, or a check that did not run, is the first thing
+  reported. The declaration schedules nothing by itself: it is read when a ritual or a
+  run reads it, and it does not stand in for the service's own watch (line 4).
 - An outage, a restart or a sign-out that touches someone else's setup is an incident.
   The principal is told first, in the same turn, with who is affected and what the fix
   is. The affected people are told on the principal's approval.

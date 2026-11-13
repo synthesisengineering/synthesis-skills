@@ -264,8 +264,9 @@ def resume(name: str, session_id: str = "", *, switch: bool = False) -> str:
     if me and me.project and me.project != pid and not switch:
         return (f"This session is working project {me.project}; you asked to resume {pid}. Switch this session "
                 f"to {pid}, or stay on {me.project}? Nothing was switched (after a yes: synthesis resume {pid} --switch).")
-    if me and me.project == pid and not switch:
-        return f"Already working {pid} in this session; continuing without reloading."
+    if me and me.project == pid and not switch:  # nothing is reloaded, and the seats that work here are named as at a fresh resume
+        peers = [f"- {w}" for w in _peers(pid, project_dir, session_id)]
+        return "\n".join([f"Already working {pid} in this session; continuing without reloading."] + ["", "Before working:"] * bool(peers) + peers)
     text = (project_dir / "CONTEXT.md").read_text(encoding="utf-8") if (project_dir / "CONTEXT.md").is_file() else ""
     newest = newest_session(project_dir)
     lines = [brief(project_dir), "",
@@ -284,20 +285,28 @@ def resume(name: str, session_id: str = "", *, switch: bool = False) -> str:
             warnings += _upstream(project_dir, repo, rel, dirty) + _copies(repo, rel, bool(dirty))
         except (RuntimeError, OSError, subprocess.TimeoutExpired) as exc:
             warnings.append(f"could not compare these records with other copies: {exc}")
-    from synthesis import wait  # a seat in a live wait is named for the wait's whole bound, quiet or not, and marked as `who` marks it
-    for other in board.sessions():
-        if other.session != session_id and other.reachable and (
-                other.project == pid or any(board.overlaps(c, str(project_dir) + "/**") for c in other.claims)):
-            until = max((w["until"] for w in wait.live(other.session)), default=0)
-            warnings.append(f"Live session {other.session} ({other.harness or '?'}, project {other.project or '-'}: "
-                            f"{other.goal or 'no goal'}) works here{time.strftime(', waiting until %H:%M', time.localtime(until)) * bool(until)}; "
-                            f"one session owns CONTEXT.md, so read only where it holds claims and coordinate with synthesis msg {other.short}.")
+    warnings += _peers(pid, project_dir, session_id)
     if warnings:
         lines += ["", "Before working:"] + [f"- {w}" if not w.startswith("  ") else w for w in warnings]
     lines += _recent_conversation(pid, session_id)
     if session_id:
         board.touch(session_id, project=pid, harness=paths.harness(), briefed=pid)  # the brief is in this text
     return "\n".join(lines)
+
+
+def _peers(pid: str, project_dir: Path, session_id: str) -> list[str]:
+    """Each other live seat that works this project; a seat in a live wait is named for the wait's whole bound, quiet
+    or not, and marked as `who` marks it."""
+    from synthesis import wait
+    found = []
+    for other in board.sessions():
+        if other.session != session_id and other.reachable and (
+                other.project == pid or any(board.overlaps(c, str(project_dir) + "/**") for c in other.claims)):
+            until = max((w["until"] for w in wait.live(other.session)), default=0)
+            found.append(f"Live session {other.session} ({other.harness or '?'}, project {other.project or '-'}: "
+                         f"{other.goal or 'no goal'}) works here{time.strftime(', waiting until %H:%M', time.localtime(until)) * bool(until)}; "
+                         f"one session owns CONTEXT.md, so read only where it holds claims and coordinate with synthesis msg {other.short}.")
+    return found
 
 
 def _recent_conversation(pid: str, session_id: str) -> list[str]:

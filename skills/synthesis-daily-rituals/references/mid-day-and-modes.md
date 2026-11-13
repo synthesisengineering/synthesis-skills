@@ -9,7 +9,7 @@ Ritual · Autonomous Work and Audio Alerts.
 
 ## Mid-Day Sync Protocol
 
-**First, at every sync, check what other people rely on:** `python3 <rituals>/scripts/relied_on.py --workspace <W>`, before any surface is read. **A `DOWN` line is the first thing in the plan and in the reply to the principal, before anything else,** the critical deadlines included. It is an incident, so the principal is told first, with who is affected and what the fix is, and the people affected are told only on the principal's approval. Exit 2 means nothing was checked, and that is said in the same place ([day-start.md](day-start.md), Step 1).
+**First, at every sync, check what other people rely on:** `python3 <rituals>/scripts/relied_on.py --workspace <W>`, before any surface is read. **A `DOWN` line is the first thing in the plan and in the reply to the principal, before anything else,** the critical deadlines included. It is an incident, so the principal is told first, with who is affected and what the fix is, and the people affected are told only on the principal's approval. Exit 2 means nothing was checked, and that is said in the same place ([day-start.md](day-start.md), Step 1). So is a run that never started or that printed none of the lines [scripts.md](scripts.md) documents: it is reported first, as not checked, and never read as healthy.
 
 The day-start checklist does a full sync. The user will ask for syncs repeatedly throughout the day ("sync from Slack", "what's new", "check channels"). **A sync request covers EVERY surface the workspace routinely syncs — not Slack alone, and not only chat surfaces (v2.19.0):**
 
@@ -65,7 +65,7 @@ From the normal Day-End:
 ### What Observer Mode Keeps (Non-Negotiable)
 
 - Date verification
-- The check of what other people rely on (`relied_on.py --workspace <W>`), run first: a `DOWN` line opens the plan and the reply in this mode too
+- The check of what other people rely on (`relied_on.py --workspace <W>`), run first: a `DOWN` line opens the plan and the reply in this mode too, and so does a run that exited 2, never started or printed none of the lines [scripts.md](scripts.md) documents, as not checked and never read as healthy
 - Full Slack sync (no channels or DMs skipped, no threads skipped)
 - Transcript capture
 - Daily plan creation (in observer format)

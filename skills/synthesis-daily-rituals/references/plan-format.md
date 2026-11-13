@@ -28,7 +28,7 @@ The daily plan follows this canonical structure. On each update, consolidate int
 
 ---
 
-## Down: needs your attention      ← ABOVE EVERYTHING, while something another person relies on is down; cockpit: NEEDS YOU region
+## Down: needs your attention      ← ABOVE EVERYTHING, while something another person relies on is down or its check did not run; cockpit: NEEDS YOU region
 ### [What is down, and who relies on it]
 [The `DOWN` line from `relied_on.py`, word for word. Who is affected, and what the fix is.]
 
@@ -104,9 +104,10 @@ The synthesis-console v0.8+ parser classifies each H2 heading into one of these 
 
 Within each section, the parser also recognizes structural patterns. Adhering to these makes the UI work correctly:
 
-**Down section** (`## Down: needs your attention`), while something another person relies on is down:
+**Down section** (`## Down: needs your attention`), while something another person relies on is down or its check did not run:
 - The first H2 of the plan, above the critical deadlines section, and the first thing in the reply to the principal. One H3 per `DOWN` line that `relied_on.py` printed, with the line word for word, who is affected and what the fix is.
 - It closes in place when the check prints `ok` for it again: write the time under its H3. The people affected are told only on the principal's approval of the exact text.
+- A run of the check that exited 2, never started or printed none of the lines [scripts.md](scripts.md) documents gets one H3 here, `Not checked`, with what it printed or that it printed nothing: it is reported first, as not checked, and never read as healthy. It closes when the check runs and prints its lines again.
 
 **Travel section** (`## Travel: needs your attention`), in a workspace that checks travel:
 - One H3 per in-person event the travel check flagged, in date order, with what it lacks, word for word from `travel_check.py`. It leaves the plan when the event's address, travel line and both blocks are in place, or the principal has decided not to go.
