@@ -140,15 +140,29 @@ The checks read the ZIP that was built, not the folders it came from. It fails w
    directory shows the image to everyone who opens the package's page.
 
 Rule 7 is a set of phrases, decided from what the skills outside the list say; the test
-file names every one. They are: the lifecycle hooks and the git hooks by name
-(`PreToolUse`, `Stop hook`, `git hooks`, `the commit check`); a guard by name, spaced or
-hyphenated, so the name of a guard skill counts (`send guard`,
-`synthesis-message-guard`), and `the guard`; `hook` or `guard` before a verb of
-enforcement (`the hook refuses`, `each guard blocks`); `approve <code>`, `approval code`
-and `waits for the code`; and the runtime itself: the `synthesis` command in backticks,
-`~/.synthesis/v5`, an import of the core. The same words in their ordinary senses pass,
-and the tests pin those too: a writer's opening hook, a guard clause, a pull request
-someone approved, a review checklist's line about a project's own pre-commit hooks.
+file names every one. A file is read a paragraph at a time (its lines up to a blank
+one), so a claim that hard wrapping splits is read whole: `until the send` at the end of
+one line and `guard has the principal's code` on the next is caught, reported at the
+line where it begins. The phrases are: the lifecycle hooks by name (`PreToolUse`,
+`Stop hook`), `the git hooks`, `synthesis-git-hooks`, `hooks.json` and
+`core.hooksPath`; a guard by name, spaced or hyphenated, so the name of a guard skill
+counts (`send guard`, `synthesis-message-guard`), and `the guard`; a hook, a guard or
+the commit check doing what only enforcement does (refuse, block, deny, enforce),
+with a word between or in the passive too (`the hook refuses`, `the hook will refuse
+the send`, `the commit check refuses`, `a send is blocked by the hook`, `each guard
+blocks`); `approve <code>`, `approval code` and `waits for the code`; the coordination
+board and its claims (`board claims`, `the coordination board`, `the board records
+your claim`, `release the claim`); and the runtime itself: the `synthesis` command in
+backticks, or one of its subcommands without them at the start of a line, as in a
+fenced block (`synthesis doctor`, `$ synthesis who`), or after `python3 -m`;
+`~/.synthesis/` and `~/.synthesis/v5`; an import of the core. The same words in their
+ordinary senses pass, and the tests pin those too: a writer's hook that lets the reader
+in, asks a question or catches them; a React hook that runs after a render; a guard
+clause; a write guard on a migration; a project's own git hooks and a commit check that
+passes in CI; a pull request someone approved; a board of directors, a board update,
+across the board; a press release that claims a result; and a wrapped line of prose
+that begins with "synthesis engineering". For the same reason a hook that holds the
+reader, a bare `the commit check` and `git hooks` without `the` are not counted.
 
 ## A skill that fails leaves the list
 
