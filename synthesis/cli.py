@@ -147,8 +147,12 @@ def cmd_worktree(args) -> int:
 def cmd_inbox(args) -> int:
     session_id = _session(args)
     me = board.load(session_id)
+    folder = project.find(me.project) if me and me.project else None
+    for line in board.carry(me.project, folder) if folder else []:  # messages another Mac's handoff carried here
+        print(f"not read as a message: {line}", file=sys.stderr)
     for m in board.inbox(session_id, me.project if me else "", mark_read=not args.peek, recent_hours=args.recent):
-        print(f"--- {time.strftime('%Y-%m-%d %H:%M', time.localtime(m['at']))} from {m['from']} to {m['to']}\n{m['text']}")
+        print(f"--- {time.strftime('%Y-%m-%d %H:%M', time.localtime(m['at']))} from {m['from']} to {m['to']}"
+              + (" (carried in the project's records)" if m.get("carried") else "") + f"\n{m['text']}")
     return 0
 
 

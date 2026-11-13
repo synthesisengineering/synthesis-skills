@@ -354,6 +354,60 @@ def waiting(session_id: str) -> list[str]:
     return sorted((name for name in names if newest[name] is not None), key=lambda name: -newest[name])
 
 
+MESSAGE_ID = "[0-9]+-[0-9]+"  # a message's file name before .json: its time in nanoseconds and its writer's process
+
+
+def undelivered(project: str) -> list[dict]:
+    """The durable messages to project:<project> that no session on this Mac has been shown, each with its `id`
+    (plan item 13.5, part 4: a handoff carries these in the project's records)."""
+    import re
+    shown = {p.name for p in (paths.board() / "read").glob("*/*")}
+    found = []
+    for file in sorted(_box(f"project:{project}").glob("*.json")):
+        try:
+            data = json.loads(file.read_text(encoding="utf-8")) if file.name not in shown else {}
+        except (OSError, ValueError):
+            continue
+        if isinstance(data, dict) and data.get("durable") and re.fullmatch(MESSAGE_ID, file.stem):
+            found.append({**data, "id": file.stem})
+    return found
+
+
+def carried_text(message: dict) -> str:
+    """A message as a project's records carry it: `inbox/<id>.md`, a header and the words."""
+    from datetime import datetime
+    at = datetime.fromtimestamp(float(message.get("at", 0))).astimezone().isoformat(timespec="seconds")
+    head = {"id": message["id"], "from": message.get("from", ""), "to": message.get("to", ""), "at": at}
+    return ("---\n" + "".join(f"{k}: {' '.join(str(v).split())}\n" for k, v in head.items()) + "---\n\n"
+            + str(message.get("text", "")).rstrip("\n") + "\n")
+
+
+def carry(project: str, folder) -> list[str]:
+    """Copy into this Mac's board each message the project's records carry (`<folder>/inbox/<id>.md`, which a handoff
+    on another Mac wrote) whose id the board does not hold, as a durable message to the project under that id, so
+    each session that works on the project here sees it once. Returns the files named as messages that could not be
+    read as one, with why; a file not named as a message is not read."""
+    import re
+    from datetime import datetime
+    box, unread = _box(f"project:{project}"), []
+    for file in sorted(Path(folder, "inbox").glob("*.md")):
+        if not re.fullmatch(MESSAGE_ID, file.stem) or (box / f"{file.stem}.json").exists():
+            continue
+        try:
+            head, _, body = file.read_text(encoding="utf-8").partition("\n---\n")
+            fields = dict(line.split(": ", 1) for line in head.splitlines()[1:] if ": " in line) if head.startswith("---\n") else {}
+            if fields.get("id") != file.stem or fields.get("to") != f"project:{project}" or not fields.get("from"):
+                raise ValueError("its header does not give its own id, a sender and this project")
+            at = datetime.fromisoformat(fields.get("at", "")).timestamp()
+        except (OSError, ValueError) as exc:
+            unread.append(f"{file} ({exc})")
+            continue
+        paths.write_json(box / f"{file.stem}.json", {"to": fields["to"], "from": fields["from"], "durable": True, "at": at,
+                                                     "text": body[1:].rstrip("\n") if body.startswith("\n") else body.rstrip("\n"),
+                                                     "carried": str(file)})
+    return unread
+
+
 def _read_marker(session_id: str, name: str) -> Path:
     return paths.board() / "read" / _session_file(session_id).stem / name
 

@@ -389,6 +389,32 @@ def _handoff_repo(repo: Path, specs: list[str], message: str, claims: list[str])
     return True, lines
 
 
+def _carry_out(session) -> list[str]:
+    """Plan item 13.5, part 4: the durable messages to the session's projects that no session here has read are
+    written into each project's `inbox/`, where the handoff commits them, when the session's claims cover it."""
+    names = {session.project} if session.project else set()
+    for claim in session.claims:
+        parts = Path(claim).parts
+        names |= {parts[i + 1] for i, part in enumerate(parts[:-1]) if part == "projects"}
+    lines = []
+    for name in sorted(n for n in names if not board.GLOB & set(n)):
+        folder = find(name)
+        waiting = board.undelivered(name) if folder else []
+        if not waiting:
+            continue
+        inbox = folder / "inbox"
+        if not any(board.overlaps(claim, str(inbox / "message.md")) for claim in session.claims):
+            lines.append(f"project {name}: {len(waiting)} durable message(s) no session here has read are not carried, since "
+                         f"this session does not claim {inbox}/; claim it and run handoff again to carry them")
+            continue
+        new = [m for m in waiting if not (inbox / f"{m['id']}.md").exists()]
+        for m in new:
+            inbox.mkdir(exist_ok=True)
+            (inbox / f"{m['id']}.md").write_text(board.carried_text(m), encoding="utf-8")
+        lines += [f"project {name}: carried {len(new)} durable message(s) no session here has read into {inbox}/"] if new else []
+    return lines
+
+
 def handoff(session_id: str, message: str = "Update project records") -> list[str]:
     """Commit and push the changes inside this session's claims (R1.4). Claims are the attribution:
     a file outside them is never committed, whoever changed it. The last line says READY or NOT READY."""
@@ -397,7 +423,7 @@ def handoff(session_id: str, message: str = "Update project records") -> list[st
         return ["NOT READY: this session holds no claims, so no change is attributable to it. "
                 "Claim the records you changed (synthesis claim <paths>), then run handoff again."]
     by_repo: dict[Path, list[str]] = {}
-    report, ok = [], True
+    report, ok = _carry_out(session), True
     for claim in session.claims:
         pattern = claim[:-3] if claim.endswith("/**") else claim  # git is asked about the folder above any glob
         base = os.path.realpath(os.path.dirname(re.split(r"[*?[]", pattern, maxsplit=1)[0]) if board.GLOB & set(pattern) else pattern)
