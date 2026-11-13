@@ -936,6 +936,10 @@ def test_the_listing_saved_among_the_records_cites_nothing_in_any_form(asked, ca
         "sorted.json": json.dumps(answer, sort_keys=True, separators=(",", ":")),    # as `jq -cS` writes it,
         "log.jsonl": json.dumps({"ran": "synthesis sessions prompts", "answer": answer}) + "\n",   # inside a line of a log,
         "fenced.md": "The day-end's answer:\n\n```json\n" + json.dumps(answer, indent=4) + "\n```\n",   # and in a record's fenced block
+        "string.json": json.dumps({"ran": "synthesis sessions prompts", "printed": printed}),       # what it printed, kept as one string,
+        "string.jsonl": json.dumps({"tool": "Bash", "output": _listed(capsys, "--records", kb)}) + "\n",  # in a line of a log,
+        "pretty-string.json": json.dumps({"day": "2026-10-30", "listing": printed}, indent=2, ensure_ascii=False),  # pretty-printed,
+        "string.yaml": "ran: synthesis sessions prompts\nprinted: " + json.dumps(printed) + "\n",     # and as YAML writes a quoted string
     }
     command = ["sessions", "prompts", "--workspace", "acme", "--date", "2026-10-30", "--records", kb]
     wrong = []
@@ -1028,6 +1032,25 @@ def test_a_record_in_the_same_file_as_the_listing_still_cites(asked, capsys):
     (asked["kb"] / "projects" / "alpha" / "day.jsonl").write_text(answer.strip() + "\n" + json.dumps(
         {"decided": "the announcement waits for Friday", "cites": [f"claude-code c1 #{second['seq']}"]}) + "\n", encoding="utf-8")
     assert sessions.uncited(found, [kb]) == [first]
+
+
+def test_a_citation_kept_as_a_string_is_read_as_the_text_it_holds(asked):
+    """A record kept as JSON holds its text as strings, and an encoder writes a dash that is not ASCII as an escape:
+    `#3\\u20134` was read as #3 alone, so a range one entry covered left its other prompts open (noted by a review,
+    2026-11-12). A string is read as the text it holds, in a `.json` file, a line of a log or a quoted YAML value."""
+    first, second = found = sessions.prompts("acme", "2026-10-30")
+    kb, cite = str(asked["kb"]), f"claude-code c1 #{first['seq']}\u2013{second['seq']}"
+    for name, text in {
+        "entry.json": json.dumps({"decided": "the release and its announcement, planned together", "cites": cite}),
+        "entry.jsonl": json.dumps({"at": "10:00", "note": f"planned both ({cite})"}) + "\n",
+        "entry.yaml": "decided: planned both\ncites: " + json.dumps(cite) + "\n",
+        "wrapped.json": json.dumps({"note": f"planned the release and the announcement\n(claude-code c1 #{first['seq']} to\n#{second['seq']})"}),
+    }.items():
+        saved = asked["kb"] / "projects" / "alpha" / name
+        saved.write_text(text, encoding="utf-8")
+        assert "\\u2013" in text or "wrapped" in name, name  # the encoder did escape the dash
+        assert sessions.uncited(found, [kb]) == [], name
+        saved.unlink()
 
 
 def test_a_listing_line_an_agent_wrote_on_is_a_record_and_the_lines_left_as_printed_are_not(asked, capsys):
