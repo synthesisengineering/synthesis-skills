@@ -25,13 +25,46 @@ def state_dir() -> Path:
     return Path(os.environ.get("RITUAL_STATE_DIR") or paths.home() / "rituals")
 
 
+def host() -> str:
+    """This Mac's name for its file of ritual history: `SYNTHESIS_HOST`, or the host name without `.local`."""
+    import re
+    import socket
+    name = os.environ.get("SYNTHESIS_HOST") or socket.gethostname()
+    return re.sub(r"[^A-Za-z0-9._-]", "-", name[:-len(".local")] if name.endswith(".local") else name) or "unnamed"
+
+
+def history_dir(cfg: dict, workspace: str) -> Path | None:
+    """Where a workspace keeps each host's ritual history (plan item 13.5, part 5): its `history_dir`, or else
+    `.agents/ritual-history` at the top of the repository holding its first plans folder; None when neither names one."""
+    conf = settings(cfg, workspace)
+    if conf.get("history_dir"):
+        return Path(os.path.expanduser(str(conf["history_dir"])))
+    plans = [p for p in conf.get("plans_dirs") or [] if isinstance(p, str)]
+    where = Path(os.path.expanduser(plans[0])) if plans else None
+    while where is not None and where != where.parent:
+        if (where / ".git").exists():
+            return where / ".agents" / "ritual-history"
+        where = where.parent
+    return None
+
+
 def read() -> tuple[list[dict], int]:  # (records, malformed lines): a bad line costs only itself
-    path, rows = state_dir() / "history.jsonl", []
-    for line in filter(str.strip, path.read_text(encoding="utf-8").splitlines() if path.is_file() else []):
-        try:
-            rows.append(json.loads(line))
-        except ValueError:
-            rows.append(None)
+    """This Mac's log and every host's file in each workspace's history folder, each record once (5.20.0)."""
+    try:
+        cfg = config()
+        folders = {d for d in (history_dir(cfg, w) for w in cfg["workspaces"]) if d and d.is_dir()}
+    except (OSError, ValueError):
+        folders = set()  # an unreadable config is said where it is read; the log is still this Mac's to read
+    rows, seen = [], set()
+    for path in [state_dir() / "history.jsonl"] + sorted(f for d in folders for f in d.glob("*.jsonl")):
+        for line in filter(str.strip, path.read_text(encoding="utf-8").splitlines() if path.is_file() else []):
+            if line.strip() in seen:
+                continue
+            seen.add(line.strip())
+            try:
+                rows.append(json.loads(line))
+            except ValueError:
+                rows.append(None)
     good = [r for r in rows if isinstance(r, dict) and r.get("date") and r.get("direction")]
     return good, len(rows) - len(good)
 
