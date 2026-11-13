@@ -43,6 +43,8 @@ def review(tmp_path: Path, *extra, register: str | None = REGISTER, declare: boo
     file.parent.mkdir(exist_ok=True)
     if register is not None:
         file.write_text(register, encoding="utf-8")
+    elif file.exists():
+        file.unlink()
     (state / "config.json").write_text(json.dumps({"workspaces": {"desk": {"lapse_register": str(file)} if declare else {}}}), encoding="utf-8")
     return subprocess.run([sys.executable, str(SCRIPT), "--workspace", "desk", "--as-of", DAY, *extra], capture_output=True, text=True,
                           env={**os.environ, "RITUAL_STATE_DIR": str(state), "SYNTHESIS_HOME": str(tmp_path / "home")})
@@ -107,3 +109,16 @@ def test_a_register_it_cannot_read_is_said_and_never_read_as_empty(tmp_path):
     assert tableless.returncode == 2 and "holds no register table" in tableless.stderr
     backwards = review(tmp_path, "--since", "2026-11-10", "--until", "2026-11-01")
     assert backwards.returncode == 2 and "before" in backwards.stderr
+
+
+def test_rows_appended_beneath_a_note_are_still_the_registers_rows(tmp_path):
+    """Run on a real register on 2026-11-13, the first form read 14 of its 64 rows: rows had been appended beneath
+    the notes under the table, where Markdown no longer shows them as its rows. A register is append-only, so a row
+    is wherever a line opens with a pipe and a day, after the register's header."""
+    register = ("# Lapse register\n\n| Lapsed | Item | Where it waited | Why it lapsed | Outcome |\n|---|---|---|---|---|\n"
+                "| 2026-11-02 | First | daily-plans/2026-11-01.md | a | open |\n\n- 2026-11-03: a note about the first row.\n\n"
+                "| 2026-11-09 | Second | daily-plans/2026-11-08.md | b | open |\n| 2026-11-10 | Third | daily-plans/2026-11-09.md | c | open |\n\n"
+                "Another paragraph.\n| 2026-11-11 | Fourth | daily-plans/2026-11-10.md | d | open |\n\n"
+                "| Day | Count |\n|---|---|\n| 2026-11-12 | 3 |\n")
+    data = json.loads(review(tmp_path, "--json", register=register).stdout)
+    assert [row["item"] for row in data["rows"]] == ["Fourth", "Third", "Second", "First"] and data["total"] == 4
