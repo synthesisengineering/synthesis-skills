@@ -99,8 +99,9 @@ def hook_budget(compiled_runtime):
     standard-library modules the call needs, timed beside the call, round by round, so both meet the same machine at
     the same moment; the fastest round is each one's own cost. The call may take twice that: its own code may cost as
     much again as the library it stands on. Measured on ten interpreters and machines (Python 3.9 to 3.15, macOS and
-    Linux, one of them emulated), the guard hook took 1.1 to 1.5 times, and 2.7 times or more with its runtime not
-    compiled.
+    Linux, one of them emulated), the guard hook took 1.1 to 1.5 times. With its runtime not compiled it took 2.7
+    times on this Mac and under 2 where starting a process costs more than compiling does, so a call that loads the
+    runtime is first held to a runtime that is compiled: the installer's own check, asked directly.
 
     Every run here is told to write no bytecode, as a session's hooks are: a process that may write it compiles the
     runtime at its first call, and the budget would then time compiled code whatever the installer had left. One
@@ -122,6 +123,11 @@ def hook_budget(compiled_runtime):
                              + ": every call pays for it, so take it out of the call's path or name it in the test's needs")
         idle = sorted(set(needs) - set(asked))
         assert not idle, f"{', '.join(idle)} is named as a need and nothing of the call's own imports it: take it out"
+        if "synthesis" in asked:
+            from synthesis import install
+            assert install._compiled(compiled_runtime / "synthesis"), (
+                "the runtime is not compiled for this interpreter, so every call compiles it from its source: the "
+                "installer's compile step, or what became of what it wrote, is at fault")
 
         def once(args: list, **how) -> float:
             began = time.perf_counter()

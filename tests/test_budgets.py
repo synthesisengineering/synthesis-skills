@@ -740,14 +740,18 @@ def test_the_hook_budget_fails_an_unnamed_import_a_name_nothing_imports_and_a_sl
 
 
 def test_the_hook_budget_fails_a_runtime_that_is_not_compiled(compiled_runtime, tmp_path, hook_budget, monkeypatch):
-    """What 5.8.1 fixed is what the budget has to catch. A process that may write bytecode compiles the runtime at its
-    first call and every later call is fast, which is how CI runs the suite; a session's hooks are told to write none,
-    so the budget's own runs are told the same (found by a review before 5.8.1 was released)."""
+    """What 5.8.1 fixed is what the budget has to catch, on any machine: it looks at the runtime, since by time alone
+    an uncompiled one passed where starting a process costs more than compiling does. A process that may write
+    bytecode compiles the runtime at its first call, which is how CI runs the suite; a session's hooks are told to
+    write none, so the budget's own runs are told the same and leave the runtime as they found it (both found by a
+    review before 5.8.1 was released)."""
     from importlib.util import cache_from_source
     monkeypatch.delenv("PYTHONDONTWRITEBYTECODE", raising=False)  # as CI runs the suite
-    for source in (compiled_runtime / "synthesis").glob("*.py"):
-        Path(cache_from_source(str(source))).unlink()
+    compiled = [Path(cache_from_source(str(source))) for source in (compiled_runtime / "synthesis").glob("*.py")]
+    for file in compiled:
+        file.unlink()
     payload = json.dumps({"tool_name": "Bash", "tool_input": {"command": "ls -la && git status"}})
-    with pytest.raises(AssertionError, match=r"the call took \d+ ms"):
-        hook_budget([str(compiled_runtime / "synthesis" / "hook.py"), "pre-tool-use"], HOOK_NEEDS, rounds=5,
+    with pytest.raises(AssertionError, match="the runtime is not compiled for this interpreter, so every call compiles it"):
+        hook_budget([str(compiled_runtime / "synthesis" / "hook.py"), "pre-tool-use"], HOOK_NEEDS,
                     input=payload, cwd=str(tmp_path))
+    assert not [file for file in compiled if file.exists()]  # and the budget's own run of the call wrote none
