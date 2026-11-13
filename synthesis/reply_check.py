@@ -120,15 +120,20 @@ _LATER = (_WORD + r"{1,10}?(?:" + _TAIL + r"{0,8}? " + _OFTEN + r"(?:(?:is|was)(
 SUBJECT = re.compile("(?i)(?:" + _WORD + r"{1,12}? " + _PRED + "|" + _WORD + r"{0,8}? (?:before|after|while|until|till|when|once)"
                      + _LATER + ")")
 UNTIL = re.compile("(?i)" + _LATER)
+# "Standing by for" a thing is a wait when the thing is named and is not the principal's: of 22 recorded replies with the phrase,
+# reading every one as a wait newly sent back six, four of them an idle line ("for your choice", "for whatever's next", "on
+# the open question"); reading it before a named thing only (_NAMED) newly sent back two, both the session's own wait.
+_NAMED = r"(?! (?:you|your|yours|whatever|whichever|anything|any|what|the next|more|further|new)\b)"
 WAITS = re.compile(  # a clause that opens with the wait is tested as a subject afterwards: group "on" by SUBJECT, "till" by UNTIL
-    "(?i)" + _AM + r"(?:a?waiting\b(?! (?:for|on)(?: you\b| from\b|\W*$))|(?:holding|standing by|paus(?:ing|ed))" + _HELD + ")"
+    "(?i)" + _AM + r"(?:a?waiting\b(?! (?:for|on)(?: you\b| from\b|\W*$))|standing by for\b" + _NAMED + r"(?! from\b|\W*$)"
+    r"|(?:holding|standing by|paus(?:ing|ed))" + _HELD + ")"
     "|" + _MUST + _HELP + r"(?:wait(?:ing)?\b|(?:hold(?:ing)?|stand(?:ing)? by|paus(?:e|ing))" + _HELD + r")(?! (?:for|on) you\b)"
     "|" + _WILL + _HELP + _GO + ".{0,160}?" + _WHEN + "|" + _WHEN + ".{0,160}?" + _WILL + _HELP + _GO
     + r"|\b(?:until|till)\b" + _EVENT + ".{0,160}?(?:" + _MUST + _HELP + r"(?:hold|pause)\b|" + _AM + r"(?:holding|pausing)\b)"
     + "|" + _I + _SAYS + r"\b(?:" + _THEN + "|" + _DONE + "|" + _COMES + r")|\b" + _THEN + r"[^,;:]{0,100},? (?:and )?(?:then )?" + _I
     + r"|\b(?:" + _DONE + r"|should (?:come|arrive) shortly),?(?: and)?(?: then)? " + _WILL + "|" + _FIRST + _I
     + r"|^\W*" + _COMES + r"[^,;:]{0,80}?,? (?:and )?(?:then )?" + _I + "|" + _ME + r"(?:['’]ve| have) (?:paused|held)" + _HELD
-    + r"|^\W*" + _SOON + r"(?:(?P<on>waiting (?:for|on|to (?:hear|see|get|learn|find out))\b(?! you\b)|awaiting\b)"
+    + r"|^\W*" + _SOON + r"(?:(?P<on>(?:waiting (?:for|on|to (?:hear|see|get|learn|find out))|standing by for" + _NAMED + r")\b(?! you\b)|awaiting\b)"
     r"|(?P<till>waiting until\b|(?:holding|standing by|pausing)\b.{0,160}?\b(?:until|till)\b" + _EVENT + "|" + _GOING
     + r"[^;:]{0,100}?\b(?:when|after|as soon as|" + _ONCE + r")\b" + _EVENT + "))")
 # The principal's own next move is what is awaited: "you" as the one who acts and not in the past ("once you approve";
@@ -221,6 +226,9 @@ WOKEN = re.compile(
 TABLED = re.compile(r"(?m)^[ \t]*#{1,6}[ \t].*$|^[ \t]*\|.*\|[ \t]*$")
 CELL, LAST = re.compile(r"\||(?<=[.!?])\s"), re.compile(r"(?m)(?:\s*^—;.*$)+\Z")
 LABEL = re.compile(r"[^.;!?:]{0,60}:(?:\s|$)")  # "Waiting on others: ..." is a label over a list of open loops
+# The clause after a wait may ask the principal for the very thing awaited: "I'm waiting for the code that was emailed to
+# you; paste it here and I'll finish". Only verbs that hand the thing over count; "check the logs meanwhile" hands over nothing.
+HANDED = re.compile(r"(?i)^\W*(?:please |just )?(?:(?:paste|type|enter|forward|share|upload|attach|drop)\b(?![\w-])|reply with\b|send (?:it|them|that|me)\b)")
 # "We're waiting on two answers: ..." counts what is open and lists it after the colon, a label, as the one recorded reply
 # that turns on it was. "We are waiting for the required pipeline: ..." names the thing itself and is the wait it says.
 COUNTED = re.compile(r"(?i)(?: (?:for|on))?(?: (?:\d+|one|two|three|four|five|six|seven|eight|nine|ten|a few|a couple of|several|some|many|both|these|those"
@@ -278,7 +286,7 @@ _STARTS = tuple(start.encode() for start in STARTED) + (b"moved to the backgroun
 REPORTED = re.compile(r"<tool-use-id>\s*([\w-]+)\s*</tool-use-id>")
 
 
-def held_by_harness(transcript_path: str | None, tail: int = 4_000_000) -> bool:
+def held_by_harness(transcript_path: str | None, tail: int = 32_000_000) -> bool:
     """Has this session started background work that has not reported: an agent, a shell command, a workflow, a monitor,
     an agent resumed? The harness wakes the session when it does, so a wait beside it is armed. Reads the tail of a
     Claude Code transcript. Work is started by the harness's own tool-result entry: a `user` entry, a result that opens
@@ -286,7 +294,10 @@ def held_by_harness(transcript_path: str | None, tail: int = 4_000_000) -> bool:
     a `user` entry that is a task notification by its origin or opens with the tag, a queued command or a queue
     operation that opens with it. A copy of a launch in any other entry starts nothing, and the tag in an assistant's
     words, in a tool's output or quoted inside other text ends nothing. Other shapes, a malformed record, a path that
-    cannot be read and work started before the tail hold nothing, and nothing here raises."""
+    cannot be read and work started before the tail hold nothing, and nothing here raises. The tail is 32 MB: a busy
+    session writes megabytes between a launch and the turn that waits on it, and over thirty days of recorded turn ends
+    4 MB missed ten launches that had not reported, each a reply sent back while the harness held its wait. Reading
+    32 MB takes about 46 ms, on the one turn end in eight whose reply reads as a wait."""
     try:
         with open(transcript_path if isinstance(transcript_path, str) else "", "rb") as handle:  # a number would name a descriptor
             handle.seek(max(0, handle.seek(0, 2) - tail))
@@ -370,7 +381,8 @@ def unarmed_wait(reply: str, payload: dict, config: dict) -> list[str]:
     if any(_asked(text) for text, _ in clauses) or any(WOKEN.search(sentence) for sentence in sentences):
         return []
     hits = {m.group(0).lower().strip(" :—–-") for at, (text, opens) in enumerate(clauses) for form in forms for m in form.finditer(text)
-            if not _explains(text, m, opens) and not _theirs(text, m, clauses[at - 1][0] if at else "") and not (body != reply and SENT.search(text))}
+            if not _explains(text, m, opens) and not _theirs(text, m, clauses[at - 1][0] if at else "") and not (body != reply and SENT.search(text))
+            and not HANDED.match(clauses[at + 1][0] if at + 1 < len(clauses) else "")}
     if not hits:
         return []
     from synthesis import autopilot, paths, wait
