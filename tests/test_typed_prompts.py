@@ -26,8 +26,10 @@ AT = "2026-11-13T15:00:00.000Z"
 def harness(tmp_path, write_config):
     work, kb = tmp_path / "workspaces" / "acme" / "repo", tmp_path / "workspaces" / "acme" / "ai-knowledge-acme"
     work.mkdir(parents=True)
-    for name in ("alpha", "beta", "_templates", ".cache/a"):
+    for name in ("alpha", "beta", "_templates", ".cache/a", "archive/old"):
         (kb / "projects" / name).mkdir(parents=True)
+    for name in ("alpha", "beta", "_templates"):  # a project is a folder that holds its CONTEXT.md
+        (kb / "projects" / name / "CONTEXT.md").write_text("# A project\n", encoding="utf-8")
     (kb / "projects" / "index.yaml").write_text("projects: []\n", encoding="utf-8")
     write_config({"workspace_roots": [str(tmp_path / "workspaces" / "*")], "knowledge_roots": [str(kb)]})
     return {"work": str(work), "kb": str(kb), "claude": Path(os.environ["CLAUDE_CONFIG_DIR"]) / "projects" / "-acme" / "c1.jsonl"}
@@ -316,3 +318,57 @@ def test_a_pasted_block_the_principal_sent_is_a_prompt_whatever_its_origin_says(
     paste = "<pasted_content id=\"a1\">a pasted log</pasted_content>"
     said, _ = exported(harness, [typed(harness, paste), queued(harness, paste, origin=None)])
     assert prompts(said) == [paste, paste]
+
+
+def _rollout(name="01a18a2b-0000-7000-8000-00000000000a"):
+    return Path(os.environ["CODEX_HOME"]) / "sessions" / "2026" / "11" / "13" / f"rollout-2026-11-13T10-00-00-{name}.jsonl"
+
+
+def _call(name, kind="function_call", **more):
+    return {"type": "response_item", "timestamp": AT, "payload": {"type": kind, "name": name, "call_id": f"c-{name}-{len(more)}", **more}}
+
+
+def test_a_folder_under_projects_that_holds_no_context_file_is_no_project(harness):
+    """A review, 2026-11-13: a write into `projects/archive/old/` tagged the session with a project named archive.
+    A project is a folder that holds its CONTEXT.md, as `project.locate` reads one."""
+    kb = harness["kb"]
+    _, meta = exported(harness, [called(harness, "Write", {"file_path": f"{kb}/projects/archive/old/notes.md", "content": "x"}),
+                                 called(harness, "Bash", {"command": f"echo x > {kb}/projects/archive/index.md"})])
+    assert not meta.get("projects")
+
+
+def test_codex_arguments_kept_as_json_text_are_read_with_their_working_directory(harness):
+    """Codex's own shell tools keep a call's arguments as JSON text, the command beside the folder it runs in, and
+    its patch tool keeps the patch as text. Read as shell text, a relative write missed its project and a patch
+    tagged nothing."""
+    kb = harness["kb"]
+    patch = f"*** Begin Patch\n*** Update File: {kb}/projects/beta/notes.md\n@@\n-a\n+b\n*** End Patch\n"
+    _, meta = exported(harness, [
+        {"type": "session_meta", "timestamp": AT, "payload": {"id": "xa", "cwd": harness["work"], "cli_version": "0.166.0"}},
+        _call("shell_command", arguments=json.dumps({"command": "cat CONTEXT.md", "workdir": f"{kb}/projects/beta"})),        # a read
+        _call("exec_command", arguments=json.dumps({"cmd": "echo done >> notes.md", "workdir": f"{kb}/projects/alpha"})),
+    ], native=_rollout())
+    assert meta["projects"] == ["alpha"]
+    _, meta = exported(harness, [_call("shell_command", arguments=json.dumps({"command": ["bash", "-lc", "echo done >> notes.md"], "workdir": f"{kb}/projects/beta"}))],
+                       native=_rollout())
+    assert meta["projects"] == ["alpha", "beta"]
+    _, meta = exported(harness, [{"type": "session_meta", "timestamp": AT, "payload": {"id": "xb", "cwd": harness["work"], "cli_version": "0.166.0"}},
+                                 _call("apply_patch", kind="custom_tool_call", input=patch)], native=_rollout("01a18a2b-0000-7000-8000-00000000000b"))
+    assert meta["projects"] == ["beta"]
+
+
+@pytest.mark.parametrize("line", ["echo 'unbalanced > notes.md", "echo $(date > notes.md", "cat <<EOF > notes.md"])
+def test_a_shell_line_the_guards_reader_cannot_read_is_counted(harness, line):
+    """A review, 2026-11-13: the reader of what a line writes passes over a reading it cannot make and says nothing,
+    so such a line was never counted, and the test of the count replaced the reader with one that raises."""
+    there = {**called(harness, "Bash", {"command": line}), "cwd": f"{harness['kb']}/projects/beta"}
+    _, meta = exported(harness, [there])
+    assert not meta.get("projects") and meta["skipped"]["a tool call whose written files could not be read"] == 1
+
+
+def test_the_guard_reads_a_patch_from_the_key_codex_gives_its_hook():
+    """Codex's source gives a pre-tool-use hook the patch under `command` (`apply_patch.rs`, `pre_tool_use_payload`);
+    the guard read `input` and `patch` and found no file in such a call."""
+    patch = "*** Begin Patch\n*** Update File: /tmp/a/notes.md\n@@\n-a\n+b\n*** Add File: /tmp/a/new.md\n+x\n*** End Patch\n"
+    for key in ("command", "input", "patch"):
+        assert guards._file_targets("apply_patch", {key: patch}) == ["/tmp/a/notes.md", "/tmp/a/new.md"]
