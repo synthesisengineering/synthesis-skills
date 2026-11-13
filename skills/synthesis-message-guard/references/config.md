@@ -170,6 +170,29 @@ address was gone for good. With `temporary_addresses` in the config:
   (`serveo.net`, `qr@a.pinggy.io`). A host that only ends with a service's letters is someone
   else's (`notserveo.net`, `team-pinggy.io`), and a jump host, a key file's name or a word of the
   remote command that carries a service's name makes no tunnel.
+- **The forms a start takes:** each of those is read however the command spells it.
+  - The program named through a variable the command sets:
+    `tunnel_program=cloudflared; $tunnel_program tunnel --url ...`.
+  - A package or an image without its version or tag: `npx --yes localtunnel@2.0.2 --port 7777`,
+    `cloudflare/cloudflared:latest`.
+  - The words of `pnpm`, `yarn`, `npm`, `bun`, `docker`, `podman` and `nerdctl`, read from each
+    one on as the command it runs: `pnpm dlx localtunnel@2.0.2 --port 7777`,
+    `npm exec --yes localtunnel@2 -- --port 3000`,
+    `docker run --rm cloudflare/cloudflared tunnel --url ...`,
+    `docker run ngrok/ngrok:latest http 8080` and
+    `docker run pinggy/pinggy -p 443 -R0:localhost:8000 a.pinggy.io` (`pinggy` takes the words
+    `ssh` does).
+  - `ngrok`'s subcommand after its own options and their values: `ngrok --log=stdout http 7777`,
+    `ngrok --config ngrok.yml start web`. It is the first word that names one of its subcommands.
+  - `-R` alone, in a cluster or with its value joined on, before the destination or after it:
+    `ssh -NR 80:localhost:7777 nokey@localhost.run`, `ssh -NR80:localhost:3000 serveo.net`.
+  - What starts nothing still passes: a variable that only names the program
+    (`echo "$tunnel_program"`), a named tunnel in a container
+    (`docker run cloudflare/cloudflared tunnel run <name>`), `docker pull` of an image,
+    `ngrok help http`, `ngrok --log=stdout config check`, a package that is installed or looked
+    up (`npm install localtunnel@2.0.2`), another package with a port
+    (`npx --yes cowsay@1.6.0 --port 7777`), a forward the other way (`ssh -NT -L ...`), and `-R`
+    among the words of a remote command (`ssh nokey@localhost.run ls -R /tmp`).
 - **The doctor** proves the rule reads a quick tunnel's address under the installed config
   (`temporary addresses`), and fails when the setting cannot be read.
 - **A setting that cannot be read:** anything but an object of that shape, a key that is present

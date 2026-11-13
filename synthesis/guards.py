@@ -1637,40 +1637,56 @@ def check_deploy(command: str, config: dict, cwd: str | None = None, session: di
 
 
 TUNNEL_SSH = ("serveo.net", "localhost.run", "pinggy.io")
-RUNNERS = ("npx", "bunx", "pnpx", "pnpm", "yarn")
+CARRIERS = ("pnpm", "yarn", "npm", "bun", "docker", "podman", "nerdctl")  # run the package, the program or the image their words name
+NGROK = ("http", "tcp", "tls", "start", "start-all", "config", "version", "update", "diagnose", "api", "service", "credits",
+         "completion", "help", "authtoken")  # its subcommands: the first five start a tunnel
 SSH_VALUED = "BbcDEeFIiJLlmOoPpQRSWw"  # ssh's options that take a value: joined on, or the next word
 
 
-def _ssh_host(rest: list[str]) -> str:
-    """The host an ssh command connects to: its first word that is no option and no option's value, without the user,
-    a scheme or a port. A jump host, a key file's name and the words of the remote command are none of it (2026-11-12:
-    a forward to a host that ends with a service's letters, and one that only named a service, were held)."""
-    i = 0
-    while i < len(rest) and rest[i].startswith("-"):
-        at = next((j for j, c in enumerate(rest[i]) if c in SSH_VALUED), 0)  # the first letter that takes a value
-        i += 1 + (0 < at == len(rest[i]) - 1)  # nothing joined on: its value is the next word
-    return re.match(r"(?:ssh://)?(?:[^@/]*@)?([^:/]*)", "".join(rest[i:i + 1]).lower())[1].rstrip(".")
+def _reverse_host(rest: list[str]) -> str:
+    """The host an ssh command opens a reverse forward on, "" when it opens none: its destination (the first word that
+    is no option and no option's value, without the user, a scheme or a port) when -R is among its options, before the
+    destination or after it: alone, in a cluster (-NR) or with its value joined on. A jump host, a key file's name and
+    the words of the remote command are none of it (2026-11-12: a forward to a host that ends with a service's
+    letters, and one that only named a service, were held; -NR was not)."""
+    reverse, host, i = False, None, 0
+    while i < len(rest) and (host is None or rest[i].startswith("-")):  # the next plain word after the destination starts the remote command
+        word, i = rest[i], i + 1
+        if not word.startswith("-"):
+            host = re.match(r"(?:ssh://)?(?:[^@/]*@)?([^:/]*)", word.lower())[1].rstrip(".")
+            continue
+        at = next((j for j, c in enumerate(word) if c in SSH_VALUED), 0)  # the first letter that takes a value
+        reverse, i = reverse or word[at] == "R", i + (0 < at == len(word) - 1)  # nothing joined on: its value is the next word
+    return host or "" if reverse else ""
 
 
 def _tunnels(words: list[str]) -> bool:
-    """Does this command start a quick tunnel: an address handed out for as long as the command runs?"""
-    name, rest = os.path.basename(words[0]), words[1:]
+    """Does this command start a quick tunnel: an address handed out for as long as the command runs? A program is read
+    without a version or a tag (localtunnel@2.0.2, cloudflare/cloudflared:latest), and the words of a package runner or
+    a container from each one on, as the command it runs (2026-11-12: `docker run cloudflare/cloudflared tunnel --url`,
+    `ngrok --log=stdout http` and `npx --yes localtunnel@2.0.2 --port` started unheld)."""
+    def named(word: str) -> str:
+        return re.split("[:@]", os.path.basename(word))[0]
 
-    def flag(*names):
-        return any(w in names or w.startswith(tuple(n + "=" for n in names)) for w in rest)
-    return bool(name == "cloudflared" and "tunnel" in rest and flag("--url")
-                or name == "ngrok" and rest[:1] in (["http"], ["tcp"], ["tls"], ["start"], ["start-all"])
-                or name == "devtunnel" and rest[:1] == ["host"]
-                or (name in ("lt", "localtunnel") or name in RUNNERS and "localtunnel" in rest) and flag("--port", "-p")
-                or name == "ssh" and any(w.startswith("-R") for w in rest)  # to the service's own name, or a subdomain of it
-                and ("." + _ssh_host(rest)).endswith(tuple("." + s for s in TUNNEL_SSH)))
+    def starts(name: str, rest: list) -> bool:
+        def flag(*names):
+            return any(w in names or w.startswith(tuple(n + "=" for n in names)) for w in rest)
+        return bool(name == "cloudflared" and "tunnel" in rest and flag("--url")
+                    or name == "ngrok" and next((w for w in rest if w in NGROK), "") in NGROK[:5]  # past its own options and their values
+                    or name == "devtunnel" and rest[:1] == ["host"]
+                    or name in ("lt", "localtunnel") and flag("--port", "-p")
+                    or name in ("ssh", "pinggy")  # to the service's own name, or a subdomain of it
+                    and ("." + _reverse_host(rest)).endswith(tuple("." + s for s in TUNNEL_SSH)))
+    spots = [i for i, w in enumerate(words) if i and not w.startswith("-")] if named(words[0]) in CARRIERS else [0]
+    return any(starts(named(words[i]), words[i + 1:]) for i in spots)
 
 
 def check_tunnel(command: str, config: dict, cwd: str, session: dict | None = None) -> str | None:
     """Starting a quick tunnel waits for the principal's code, where the config has `temporary_addresses` (the key,
     whatever it holds): its address is gone when the command stops, so it serves their own test and nothing another
     person is given."""
-    if "temporary_addresses" not in config or not any(_tunnels(words) for words, _ in _parse(command, cwd)[0] if words):
+    if "temporary_addresses" not in config or not any(  # in each reading of it: `T=cloudflared; $T tunnel --url ...`
+            _tunnels(words) for text in _resolved(command) for words, _ in _parse(text, cwd)[0] if words):
         return None
     if approvals.consume("tunnel", command, session):
         return None
