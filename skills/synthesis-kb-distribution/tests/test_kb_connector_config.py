@@ -1,6 +1,8 @@
 """Settings from the environment: defaults, every problem reported at once, nothing served without sign-in, and
 no temporary address and no memory sign-in store outside the operator's own test."""
 
+from pathlib import Path
+
 import pytest
 
 from kb_connector import config
@@ -282,3 +284,26 @@ def test_the_origin_shown_is_one_the_connector_takes():
 def test_a_port_that_is_no_port_stops_the_start(url):
     text = problems({**BASE, "KB_PUBLIC_URL": url})
     assert "KB_PUBLIC_URL must be the service's https:// address" in text and "Write it as" not in text
+
+
+REFERENCE = Path(__file__).resolve().parents[1] / "references" / "connector.md"
+
+
+@pytest.mark.parametrize("change, placeholders", [
+    ({"KB_PUBLIC_URL": "https://demo.trycloudflare.com"}, {"demo.trycloudflare.com": "<host>"}),
+    ({"KB_PUBLIC_URL": "https://kb.example.com/mcp"}, {}),
+    ({"KB_PUBLIC_URL": "https://0x08080808"}, {}),
+    ({"KB_OAUTH_STORE": "memory"}, {}),
+    ({**OPERATOR, "KB_OPERATOR_ADDRESSES": THREE + ", fourth@example.com"}, {}),
+], ids=["temporary", "origin", "old-spelling", "memory-store", "fourth-operator"])
+def test_the_reference_shows_each_refusal_of_the_rulings_word_for_word(change, placeholders):
+    reference = REFERENCE.read_text(encoding="utf-8")
+    for line in problems({**BASE, **change}).splitlines()[1:]:
+        for value, placeholder in placeholders.items():
+            line = line.replace(value, placeholder)
+        assert line.startswith("  - ") and f"\n{line}\n" in reference
+
+
+def test_the_reference_names_every_tunnel_service_the_connector_refuses():
+    reference = REFERENCE.read_text(encoding="utf-8")
+    assert [name for name in config.TEMPORARY_HOSTS if f"`{name}`" not in reference and name != "local"] == []
