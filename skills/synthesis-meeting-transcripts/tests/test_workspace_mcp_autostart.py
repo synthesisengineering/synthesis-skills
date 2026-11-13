@@ -246,9 +246,9 @@ def test_a_unit_with_another_synthesis_home_than_this_shells_is_a_defect_only_th
         report = doctor(tmp_path, platform, unit, quiet=False, **shell)
         assert report.returncode == 1 and "DEFECTS: 1 defect(s), 0 unverifiable." in report.stdout, report.stdout
         assert str(unit_home / "outbox") in report.stdout and str(shell_home / "outbox") in report.stdout
-        # Installing over a loaded unit leaves the supervisor with the one it loaded: it is removed first.
-        assert "./uninstall-autostart.sh, then ./install-autostart.sh" in report.stdout and "restart alone" in report.stdout
-        assert (SCRIPTS / "uninstall-autostart.sh").is_file()
+        # The installer replaces a unit that is loaded (it boots the old one out first); a restart would not.
+        assert "run ./install-autostart.sh from this shell" in report.stdout and "restart alone" in report.stdout
+        assert "replaces the one that is loaded" in report.stdout
         same = doctor(tmp_path, platform, unit, **({"SYNTHESIS_HOME": str(unit_home)} if unit_home != default else {}))
         assert same.returncode == 0 and "HEALTHY" in same.stdout, same.stdout + same.stderr
 
@@ -290,9 +290,11 @@ def test_the_setup_documents_say_what_the_unit_carries_and_what_the_doctor_repor
     text = " ".join((SCRIPTS.parent / document).read_text(encoding="utf-8").split())  # the documents wrap their lines
     for said in ("`SYNTHESIS_HOME` is among them when it is set at install", "`ALLOWED_FILE_DIRS` is not",
                  "`./doctor.sh` reports the outbox the unit gives the server",
-                 "run `./uninstall-autostart.sh` and then `./install-autostart.sh`", "keeps the unit it has loaded"):
+                 "run `./install-autostart.sh` from that shell", "keeps the unit it has loaded",
+                 "replaces the one that is loaded", "it leaves the installed unit as it was"):
         assert said in text, said
-    for earlier in ("`./doctor.sh` does not look at it", "`ALLOWED_FILE_DIRS` and `SYNTHESIS_HOME` are not among them"):
+    for earlier in ("`./doctor.sh` does not look at it", "`ALLOWED_FILE_DIRS` and `SYNTHESIS_HOME` are not among them",
+                    "neither does installing over it"):
         assert earlier not in text, earlier
 
 

@@ -149,10 +149,11 @@ this script starts. `synthesis doctor` fails its `outbox` line for a server star
 
 `./doctor.sh` reports the outbox the unit gives the server: the folder is there to
 write, and it is the outbox of the shell the doctor runs in. When the unit carries
-another synthesis home than that shell's, no restart helps, and neither does installing
-over it, since a supervisor keeps the unit it has loaded until it is unloaded: run
-`./uninstall-autostart.sh` and then `./install-autostart.sh` from that shell, which
-writes its home into the unit and loads it afresh.
+another synthesis home than that shell's, no restart helps, since a supervisor keeps the
+unit it has loaded: run `./install-autostart.sh` from that shell. It writes that shell's
+home into the unit and replaces the one that is loaded: a loaded launch agent is booted
+out before the new one is loaded, and a running systemd unit is restarted. Answered "n",
+it leaves the installed unit as it was.
 
 `start.sh` runs one release of the server, `workspace-mcp@2.1.0`. The send guard refuses,
 before a send is approved, what the server would refuse after, and to do that it copies
