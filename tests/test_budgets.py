@@ -657,10 +657,35 @@ ROOT = Path(__file__).resolve().parents[1]
 # TEMPORARY_HOSTS 6 and 6 beside them; server.py 10; access.py 4: the operator-only test mode); provenance_scan.py
 # 33 (scan 9, main 9, its note 8, records 7: the folders a workspace keeps its plan in); setup.py 2 and
 # autopilot_cli.py 1.
+# 5.8.0, review round 3 (2026-11-12): core 342, plugin 431. A second model's 42 findings in the pieces above, and what
+# the fixes' own probes found beside them, each with a failing test first.
+# guards.py 201: _unread_files 65 (a url the connector reads from its own disk, does not fetch, or fetches nothing
+# from for its host; an entry it would skip or rename; a source that cannot be parsed; a link of another name),
+# _sha256 21 (the read runs in a thread the guard stops waiting for at its limit), CONTROL, CONTENT_ID and
+# check_upload 3; _only_here 29, _carried 15, _here 7, temporary_addresses 7 and LOCAL, FILED, NAMED, _HOST, NEAR and
+# TUNNELS 8 less _NAME and _NET 2 (a host is read whole: IPv6 literals, any scheme, a file's name with its line, a
+# range, a wildcard-DNS name, a service's own host with a port); _tunnels 23, _reverse_host 17, check_tunnel 2 and
+# NGROK, CLOUDFLARED, CARRIERS, LOOPHOLE and SSH_VALUED 7 less RUNNERS 1 (the launch forms that started unheld, and
+# a named tunnel that was held).
+# reply_check.py 89: held_by_harness 9 (only the harness's own entries start and end work; nothing raises); _asked 9
+# with OTHERS 3 and _PLAIN 4 (a request is one put to the principal); _offered 6 with SPENT 3, USED 2 and _CODE 1 (a
+# spent code offers nothing); _GETS 8 and _EVENT 1 (the session's own next step is no event); WOKEN 7 and _SEAT 4
+# (the stated wake limitation passes); unarmed_wait 7, RULE 4, COUNTED 4, TABLED 3, STAGED 3 and SENT 2 (a
+# first-person wait is read in a heading, a table and before a colon; a block is set aside); _NAMED 4 and WAITS 1
+# (standing by for a named thing); HANDED 3 (the next clause hands the thing over); _ONCE 1, the module's note 1,
+# less THEIRS 1.
+# doctor.py 24: _procargs 15 and started_with 9 (the connector's environment read from the process record, whole).
+# project.py 9 (_peers 13 and _recent_conversation 2, less resume 6: resume names a waiting seat when already
+# bound); paths.py 9 (config 7, Unreadable 2) and cli.py 8 (main 5, _main 3): a config that is no object is
+# unreadable, and a command that reads one says so in one line; wait.py 2 (attempt: a folder found on PATH).
+# Outside the core 89: the knowledge-base connector 79 (config.py 65: load 22, _beyond_origin 15, _ip 11,
+# old_spelling 8, temporary 2 and 7 lines of constants and notes; server.py 14: a refresh refused in the test mode;
+# together its owner's five rulings and the review's three findings); relied_on.py 10 (a checker or a check that
+# cannot run says so).
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # consolidate first).
-CORE_BUDGET = 11501
-PLUGIN_BUDGET = 32169
+CORE_BUDGET = 11843
+PLUGIN_BUDGET = 32600
 
 
 def _lines(files):
