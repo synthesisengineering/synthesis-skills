@@ -777,10 +777,19 @@ ROOT = Path(__file__).resolve().parents[1]
 # every key is hashed, two imports with the blank line between them and the one after them 4, the strategy class
 # with sanitize and validate, the blank line between them and the one after the class 7, its return 1, and the two
 # blank lines after the function) and oauth_storage 2 (the key and collection strategies passed to FirestoreStore).
+# 5.12.2, core 30 more, all in doctor.py: json_in 12 (a listing read past the words a command prints before it, from a
+# brace or bracket that opens a line, each tried until one parses; the installer's own reader is 5 fewer for it),
+# harness_checks 8 (Codex is asked for the plugin's own marketplace, for which it fetches no remote catalog, and
+# the whole listing before the plugin is called not installed, with what lets its fetch finish), _version_ok 3 and
+# find_client 1 (a command that gave no answer in time is the Codex on the machine where no other install answers),
+# LISTINGS 2, MARKETPLACE, CODEX_WHOLE and PROBE_TIMEOUT 3, and codex_entry 1 (a listing with no version names no
+# folder). The plugin 12 more beside those, in the installer: plugin_entry 12 (the marketplace first, absent said
+# only from the whole listing, a listing past its limit stops the install), install_plugin 3 (no second copy beside
+# one from another marketplace), LIST_TIMEOUT 1, _uninstall 1 (the copy that is there), and _json 5 fewer.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # consolidate first).
-CORE_BUDGET = 13224
-PLUGIN_BUDGET = 34718
+CORE_BUDGET = 13254
+PLUGIN_BUDGET = 34760
 
 
 def _lines(files):

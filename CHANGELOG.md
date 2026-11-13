@@ -4,6 +4,35 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [5.12.2] - 2026-11-13
+
+- **`synthesis doctor` can tell again whether Codex holds the plugin** (`synthesis-onboarding` 3.5.1,
+  `synthesis-agent-conformance` 2.0.5). The doctor and the installer asked Codex for its whole plugin listing, which
+  takes in Codex's remote catalog. Codex fetches that catalog again when its copy is over three hours old (73 MB and
+  52 s on 2026-11-13), and the doctor's limit of 45 s stopped it before the fetch finished, twice running on the
+  morning this was reported: the Codex lines said `cannot tell`, and the day's first look at Codex's hooks did not
+  happen. Both now ask for the plugin's own marketplace first (`codex plugin list --json -m synthesis-engineering`),
+  for which Codex fetches no remote catalog, so the doctor's daily run and every release's update no longer wait on
+  it. "Not installed" is said only from the whole listing, which is asked when the marketplace's own shows no plugin
+  or a Codex does not know the option; the installer gives that one five minutes, and where it does not answer the
+  doctor in time, the doctor's line says to run `codex plugin list` once, since its limit stops the fetch each time.
+- **A Codex that is slow to say its version is still the Codex on the machine.** Before a Codex command is used it
+  is asked for its version, with a limit of two seconds, so that a launcher which outlived its app is passed over for
+  another install. Where no other install answered, Codex was taken for absent: the doctor printed none of its nine
+  lines and nothing said they were missing (seen once, on a busy machine, in a test), and the installer, a release
+  and the dispatch script would each have skipped Codex as not on the machine. A command that gives no answer in
+  time is now passed over only for an install that answers; with none, it is the one, and its own commands say what
+  is wrong if it answers nothing. A command that exits with an error is still no Codex.
+- **The installer does not add a second copy beside one from another marketplace.** A plugin installed from a
+  fork's marketplace is found by the whole listing; the installer stops, names that copy and the command that removes
+  it, and uninstall removes the copy that is there by its listed name. A listing that does not answer within its
+  limit stops the install with that said, the next listing is not started after it, and a listing that is no JSON is
+  reported with the harness's own last line.
+- **The doctor keeps reporting when a listed plugin's folder is missing.** A Codex listing with no version, or one
+  that names a folder that is not there, ended the doctor with a traceback and no report; it fails the package line
+  now. A listing is read past any words a command prints before it (from a brace or a bracket that opens a line),
+  where the first brace anywhere was taken and an installed plugin could read as not installed.
+
 ## [5.12.1] - 2026-11-13
 
 - **The knowledge-base connector signs in ChatGPT and Codex on Firestore** (`synthesis-kb-distribution` 1.2.2). Its
