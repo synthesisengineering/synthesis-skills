@@ -138,7 +138,7 @@ synthesis sessions search "<pattern>" --project <id>
 Cite the record behind a decision or quote as `<harness> <session> #<seq>` (for example `codex 01a1b2c3 #4120`) in a
 session log or lesson, and open it with `synthesis sessions show <session> --seq <n>`, which prints that record
 whole and three either side, each cut at `--width` characters. Write as much of the session's id as the commands
-print for it (`prompts`, `recent`, `search` and `resume`): eight characters, or more where two sessions begin
+print for it (`prompts`, `show`, `recent`, `search` and `resume`): eight characters, or more where two sessions begin
 alike. Characters that two sessions share name neither: such a citation does not count, and `show` asks for more
 of the id. What is printed for a main session never names the sub-agents it started, whose ids begin with its
 whole id and are printed whole; `meta.json` gives a sub-agent `role: subagent` and its `parent`. A quote or
