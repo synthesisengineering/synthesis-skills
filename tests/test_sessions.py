@@ -763,7 +763,8 @@ def test_two_prompts_in_one_minute_are_listed_in_the_order_they_were_typed(harne
     assert found[0]["at"] == found[1]["at"] and re.fullmatch(r"\d{4}-\d\d-\d\dT\d\d:\d\d[+-]\d\d:\d\d", found[0]["at"])
     assert cli.main(["sessions", "prompts", "--workspace", "acme", "--date", "2026-10-30"]) == 0
     out = capsys.readouterr().out.splitlines()
-    assert [line.split()[1] for line in out[:2]] == ["z9", "a1"] and re.fullmatch(r"\d\d:\d\d", out[0].split()[3])  # the minute, as before
+    assert [line.split()[1:3] for line in out[:2]] == [["z9", "--seq"], ["a1", "--seq"]]
+    assert re.fullmatch(r"\d\d:\d\d", out[0].split()[4])                             # the minute, as before
 
 
 def test_a_prompt_is_accounted_for_by_a_record_that_cites_it_alone_or_in_a_range(asked):
@@ -827,15 +828,15 @@ def test_sessions_prompts_names_each_one_no_record_cites_and_exits_1_while_any_i
     assert cli.main(command) == 1
     out = capsys.readouterr().out.splitlines()
     first, second = sessions.prompts("acme", "2026-10-30")
-    assert out[0].startswith(f"claude-code c1 #{first['seq']} ") and "Please plan the release." in out[0]
-    assert out[-1] == "2 of 2 prompts on 2026-10-30 in acme are cited by no record"
+    assert out[0].startswith(f"claude-code c1 --seq {first['seq']}  ") and "Please plan the release." in out[0]
+    assert out[-1] == f"2 of 2 prompts on 2026-10-30 in acme are cited by no record under {asked['kb']}"   # and where it looked
     asked["log"].write_text(f"- planned the release: c1 #{first['seq']}\n", encoding="utf-8")
     assert cli.main(command) == 1
     out = capsys.readouterr().out.splitlines()
     assert len(out) == 2 and "Also draft the announcement." in out[0] and out[-1].startswith("1 of 2 prompts")
     asked["log"].write_text(f"- planned and drafted: c1 #{first['seq']}-{second['seq']}\n", encoding="utf-8")
     assert cli.main(command) == 0
-    assert capsys.readouterr().out.strip() == "all 2 prompts on 2026-10-30 in acme are cited by a record"
+    assert capsys.readouterr().out.strip() == f"all 2 prompts on 2026-10-30 in acme are cited by a record under {asked['kb']}"
     assert cli.main(command[:-2]) == 0                                       # with no records given it only lists
     assert len(capsys.readouterr().out.splitlines()) == 3
     assert cli.main(command + ["--json"]) == 0
@@ -844,6 +845,9 @@ def test_sessions_prompts_names_each_one_no_record_cites_and_exits_1_while_any_i
     assert cli.main(["sessions", "prompts", "--date", "2026-10-30"]) == 2    # a workspace must be named
     assert cli.main(["sessions", "prompts", "--workspace", "acme"]) == 0     # with no date: today
     assert capsys.readouterr().out.strip().startswith("0 prompts on 20")
+    for other in ("20261030", "2026-W44-5", "2026-10-30T15:00", "30-10-2026"):  # a day is written one way, on every Python
+        assert cli.main(["sessions", "prompts", "--workspace", "acme", "--date", other]) == 2, other
+        assert "YYYY-MM-DD" in capsys.readouterr().err
 
 
 def test_a_citation_names_one_session_and_a_listing_of_what_is_open_cites_nothing(harness, tmp_path, capsys):
@@ -863,11 +867,13 @@ def test_a_citation_names_one_session_and_a_listing_of_what_is_open_cites_nothin
     assert sessions.uncited([first, second], [str(kb)]) == [first, second]       # eight characters two sessions share name neither
     command = ["sessions", "prompts", "--workspace", "acme", "--date", "2026-10-30", "--records", str(kb)]
     assert cli.main(command) == 1
-    cites = [" ".join(line.split()[:3]) for line in capsys.readouterr().out.splitlines()[:2]]
-    assert cites == [f"claude-code 01a11111-a #{first['seq']}", f"claude-code 01a11111-b #{second['seq']}"]    # as much of each id as tells them apart
+    names = [" ".join(line.split()[:4]) for line in capsys.readouterr().out.splitlines()[:2]]
+    assert names == [f"claude-code 01a11111-a --seq {first['seq']}", f"claude-code 01a11111-b --seq {second['seq']}"]   # as much of each id as tells them apart
     assert cli.main(["sessions", "show", "01a11111-b", "--seq", str(second["seq"])]) == 0 and "Draft the notes." in capsys.readouterr().out
-    (kb / "log.md").write_text("".join(f"- done ({c})\n" for c in cites), encoding="utf-8")
-    assert cli.main(command) == 0                                                # and that citation is read
+    (kb / "log.md").write_text("".join(f"- done ({n})\n" for n in names), encoding="utf-8")
+    assert cli.main(command) == 1 and "2 of 2 prompts" in capsys.readouterr().out   # the listing's name for a prompt cites nothing,
+    (kb / "log.md").write_text("".join(f"- done ({_cited(n)})\n" for n in names), encoding="utf-8")
+    assert cli.main(command) == 0                                                # and the citation written from it is read
     (kb / "log.md").unlink()
     capsys.readouterr()
     assert cli.main(command + ["--json"]) == 1
@@ -902,13 +908,14 @@ def test_the_instructions_cite_a_session_as_the_listing_prints_it(harness, tmp_p
     assert sorted(p["session"] for p in found) == ids
     command = ["sessions", "prompts", "--workspace", "acme", "--date", "2026-10-30", "--records", str(kb)]
     assert cli.main(command) == 1
-    cites = [" ".join(line.split()[:3]) for line in capsys.readouterr().out.splitlines()[:3]]
+    listed = [" ".join(line.split()[:4]) for line in capsys.readouterr().out.splitlines()[:3]]
+    cites = [_cited(name) for name in listed]
     names = sorted(cite.split()[1] for cite in cites)
     assert names == ["01a11111-aaaa", "01a11111-aaab", "01a11111-bbbb"]                       # no more of an id than it takes
     assert all([s for s in ids if s.startswith(name)] == [s] for name, s in zip(names, ids))   # each names one listed session,
-    for cite, name in ((c, c.split()[1]) for c in cites):                                     # and `show` opens that one's prompt
-        assert cli.main(["sessions", "show", name, "--seq", cite.split("#")[1]]) == 0
-        assert f"user: Plan {name[9:13]}." in capsys.readouterr().out
+    for name in listed:                                                # and what the listing prints after the harness is what `show` takes
+        assert cli.main(["sessions", "show", *name.split()[1:]]) == 0
+        assert f"user: Plan {name.split()[1][9:13]}." in capsys.readouterr().out
     (kb / "log.md").write_text("".join(f"- planned ({cite})\n" for cite in cites), encoding="utf-8")
     assert cli.main(command) == 0 and "all 3 prompts" in capsys.readouterr().out               # cited as printed, each counts
     (kb / "log.md").write_text("".join(f"- planned (claude-code {name[:8]} #{cite.split('#')[1]})\n" for cite, name in zip(cites, names)),
@@ -956,6 +963,11 @@ def test_recent_search_and_resume_name_a_session_as_the_listing_does(harness, tm
         "01a11111-a", "01a11111-b", f"{one}-agent-a1"}                                       # a sub-agent by its whole id
 
 
+def _cited(name: str) -> str:
+    """The citation of the prompt the listing names `<harness> <session> --seq <n>`: `<harness> <session> #<n>`."""
+    return name.replace(" --seq ", " #")
+
+
 def _listed(capsys, *words) -> str:
     """What `synthesis sessions prompts` prints for acme on 2026-10-30 with these words."""
     capsys.readouterr()
@@ -965,10 +977,11 @@ def _listed(capsys, *words) -> str:
 
 def test_the_listing_saved_among_the_records_cites_nothing_in_any_form(asked, capsys):
     """2026-11-12, a second review: saved without `--records`, or with its JSON answer pretty-printed, the listing
-    cited every prompt it listed and the day closed clean. However it is saved, it is the tool's output and no
-    record of what was asked."""
+    cited every prompt it listed and the day closed clean. Two more reviews each found further layouts that did,
+    past every rule that tried to know the listing by its shape. The listing, its answer and the refusal now name
+    a prompt as `<harness> <session> --seq <n>`, which is no citation: however they are kept, they cite nothing."""
     found, kb = sessions.prompts("acme", "2026-10-30"), str(asked["kb"])
-    cites = [f"claude-code c1 #{p['seq']}" for p in found]
+    cites = [f"claude-code c1 --seq {p['seq']}" for p in found]                      # the listing's name for each: no citation
     printed, answer = _listed(capsys), json.loads(_listed(capsys, "--records", kb, "--json"))
     assert all(cite in printed for cite in cites) and answer["open"] == cites
     lines = printed.splitlines()[:-1]                                                # without the line that counts
@@ -1018,6 +1031,23 @@ def test_the_listing_saved_among_the_records_cites_nothing_in_any_form(asked, ca
         "open-string.jsonl": json.dumps({"tool": "Bash", "output": "".join(f"{cite}\n" for cite in cites)}) + "\n",
         "open-beside-words.json": json.dumps({"ran": "the day-end record", "refused": True, "open": answer["open"]}),
         "open-beside-words.yaml": "ran: the day-end record\nopen:\n" + "".join(f"  - {cite}\n" for cite in cites) + "refused: true\n",
+    })
+    forms.update({  # 2026-11-13, a fourth review: three of these recorded a clean close end to end
+        "reworded-head.md": "Day-end refused a clean close, 2 open:\n" + "".join(f"  {cite}\n" for cite in cites),
+        "bold-head.md": "**Open:**\n" + "".join(f"{cite}\n" for cite in cites),
+        "headings.md": "## To work through\n\n" + "".join(f"### {line}\n" for line in lines),
+        "bare-headings.md": "".join(f"### {cite}\n" for cite in cites),
+        "no-minute.md": "".join(f"- `{cite}` {words}\n" for cite, at, words in parts),
+        "minute-first.md": "| at | prompt | first words |\n|---|---|---|\n" + "".join(f"| {at} | {cite} | {words} |\n" for cite, at, words in parts),
+        "quoted-words.md": "".join(f'- {cite}: "{words}"\n' for cite, at, words in parts),
+        "dashes.md": "".join(f"{cite} \u2014 ({at}) \u2014 {words}\n" for cite, at, words in parts),
+        "cut-short.md": "".join(f"- {cite} {words[:9]}\u2026\n" for cite, at, words in parts),
+        "then-a-line.md": "Still open:\n" + "".join(f"- {cite}\n" for cite in cites) + "Back to these tomorrow.\n",
+        "spaced-key.yaml": "still open: [" + ", ".join(cites) + "]\nopen prompts: " + cites[0] + "\n",
+        "commented.yaml": "open:\n" + "".join(f"  # - {cite}\n" for cite in cites),
+        "repr.md": repr(answer) + "\n",
+        "twice-wrapped.jsonl": json.dumps({"out": json.dumps({"inner": json.dumps(answer["open"])})}) + "\n",
+        "sentence.md": f"- Day-end refused a clean close: {cites[0]} and {cites[1]} are cited by no record.\n",
     })
     command = ["sessions", "prompts", "--workspace", "acme", "--date", "2026-10-30", "--records", kb]
     wrong = []
@@ -1072,12 +1102,18 @@ def test_the_day_ends_own_refusal_saved_among_the_records_cites_nothing(asked, t
     first, second = sessions.prompts("acme", "2026-10-30")
     refused = record()
     assert refused.returncode and "2 of 2 prompts typed on 2026-10-30 are cited by no record" in refused.stderr
-    assert f"  claude-code c1 #{first['seq']}\n  claude-code c1 #{second['seq']}\n" in refused.stderr
+    listed = f"  claude-code c1 --seq {first['seq']}\n  claude-code c1 --seq {second['seq']}\n"
+    assert listed in refused.stderr and f"under {asked['kb']}" in refused.stderr          # what is open, and where it looked
+    assert "`<harness> <session> #<n>`" in refused.stderr and "sessions show <session> --seq <n>" in refused.stderr
     asked["log"].write_text(f"## 2026-10-30 day-end\n\nThe record refused a clean close:\n\n{refused.stderr}\n", encoding="utf-8")
     again = record()
     assert again.returncode and "2 of 2 prompts typed on 2026-10-30" in again.stderr and not history.exists()
-    asked["log"].write_text("".join(f"> {line}\n" for line in refused.stderr.splitlines()), encoding="utf-8")   # and quoted
-    assert record().returncode and not history.exists()
+    for kept in ("".join(f"> {line}\n" for line in refused.stderr.splitlines()),                 # quoted,
+                 "Day-end refused a clean close, 2 open:\n" + listed,                           # under words of the agent's own,
+                 "**Open:**\n" + listed.replace("  ", ""),
+                 "".join(f"- [ ] `{line.strip()}`\n" for line in listed.splitlines())):          # and as a checklist
+        asked["log"].write_text(kept, encoding="utf-8")
+        assert record().returncode and not history.exists(), kept
 
 
 def test_a_record_in_the_same_file_as_the_listing_still_cites(asked, capsys):
@@ -1112,102 +1148,46 @@ def test_a_record_in_the_same_file_as_the_listing_still_cites(asked, capsys):
     assert sessions.uncited(found, [kb]) == [first]
 
 
-def test_a_line_that_holds_only_citations_cites_nothing(asked):
-    """A citation accounts for a prompt where it stands in a line that says something of it. The day-end's refusal
-    lists what is open as bare citations, and retyped into a log as a list of its own it cited every prompt it
-    named: the next day-end closed clean with nothing recorded of what was asked (noted by a review, 2026-11-12).
-    A line that holds citations and nothing else is a list of numbers, wherever it stands and however it is marked."""
+def test_a_citation_counts_wherever_it_is_written(asked):
+    """No tool prints a citation for a prompt that is open: the listing, its answer and the refusal name one as
+    `<session> --seq <n>`. A citation in a record was therefore written by whoever wrote the record, and it counts
+    where it stands: in a sentence however it wraps, on a line of its own, in a table, a heading or a field of
+    data. Rules that tried to tell a record from a list by its layout stood for two review rounds, and each round
+    found ordinary layouts on the wrong side of them: a list that closed the day, a record that was refused."""
     first, second = found = sessions.prompts("acme", "2026-10-30")
     kb, one, two = str(asked["kb"]), f"claude-code c1 #{first['seq']}", f"claude-code c1 #{second['seq']}"
-    bare = {
-        "a list under a heading of its own": f"## Still open\n\n- {one}\n- {two}\n",
-        "numbered, in backticks": f"Open after the day-end:\n\n1. `{one}`\n2. `{two}`\n",
-        "boxes to tick": f"- [ ] {one}\n- [x] {two}\n",
-        "quoted": f"> {one}\n> {two}\n",
-        "one line, with commas": f"{one}, {two}.\n",
-        "one line, as a range": f"- c1 #{first['seq']} to #{second['seq']}\n",
-        "bold, in brackets": f"**({one})**\n[{two}]\n",
-        "a row of a table": f"| prompt |\n|---|\n| {one} |\n| {two} |\n",
-        "a row of two": f"| {one} | {two} |\n",
-        "a list right under the line that leads into it": f"Still open after the day-end:\n- {one}\n- {two}\n",
-        "a paragraph of its own under an entry": f"- 10:00 planned the release and drafted the announcement.\n\n  {one}\n  {two}\n",
-        "a list of them wrapped over two lines": f"- {one},\n  {two}\n",
-        "list entries of their own under the entry they belong to": f"- 10:00 planned the release and drafted the announcement.\n  - {one}\n  - {two}\n",
-        "quoted as a list in JSON": f'[\n  "{one}",\n  "{two}"\n]\n',
-        "a date, a time or a tick beside it": f"- 2026-10-30 {one}\n- [x] 15:00 {two} \u2713 (2/2)\n",
-        "a list kept as a string with another editor's line ends": "Kept from the day-end:\n\n" + json.dumps(f"Still open:\r\n\r\n{one}\r\n{two}\r\n") + "\n",
-    }
-    for name, text in bare.items():
-        asked["log"].write_text(text, encoding="utf-8")
-        assert sessions.uncited(found, [kb]) == found, name
-    said = {
-        "a word on the line": f"- {one}: planned, in REFERENCE.md\n- {two} drafted\n",
-        "inside the entry's sentence": f"- 10:00 planned the release ({one}) and drafted the announcement ({two}).\n",
-        "a row that says what became of it": f"| prompt | what became of it |\n|---|---|\n| {one} | planned |\n| {two} | drafted |\n",
-        "a range the entry covers": f"- the day's work, c1 #{first['seq']} to #{second['seq']}\n",
-        "a heading over its entry": f"### {one}\nPlanned the release.\n\n### {two}\n\nDrafted the announcement.\n",
-        "a word before the session's id": f"- planned c1 #{first['seq']}\n- drafted c1 #{second['seq']}\n",
-        "what became of it, by its number": f"- PR #291: {one}\n- issue #12, {two}\n",
-    }
-    for name, text in said.items():
-        asked["log"].write_text(text, encoding="utf-8")
-        assert sessions.uncited(found, [kb]) == [], name
-    asked["log"].unlink()
-    for name, text in {  # a record kept as data holds its citations in a field named `cites`
-        "entry.yaml": f"decided: the release is planned and the announcement drafted\ncites:\n  - {one}\n  - {two}\n",
+    written = {
+        "log.md": f"- 10:00 planned the release ({one}) and drafted the announcement ({two}).\n",
+        "wrapped.md": f"- 10:00 the release is planned; the decision is in REFERENCE.md under Scope\n  ({one}).\n"
+                      f"- the announcement is drafted; see drafts (claude-code\n  c1 #{second['seq']}).\n",
+        "split.md": f"- planned and drafted; both are in REFERENCE.md (claude-code c1\n  #{first['seq']} to\n  #{second['seq']})\n",
+        "under.md": f"- 10:00 planned the release and drafted the announcement.\n  {one}\n  {two}\n",
+        "entries.md": f"- 10:00 planned the release and drafted the announcement.\n  - {one}\n  - {two}\n",
+        "headings.md": f"### {one}\nPlanned the release.\n\n### {two}\n\nDrafted the announcement.\n",
+        "table.md": f"| prompt | what became of it |\n|---|---|\n| {one} | planned |\n| {two} | drafted |\n",
+        "footnote.md": f"Planned the release[^1] and drafted the announcement[^2].\n\n[^1]: {one}\n[^2]: {two}\n",
+        "LOG.MD": f"- planned and drafted ({one}, {two})\n",
+        "notes.markdown": f"- planned and drafted ({one}, {two})\n",
+        "notes.txt": f"planned and drafted: {one} and {two}\n",
+        "entry.yaml": f"decided: the release is planned and the announcement drafted\ncites:\n  - {one}\n  # the second, asked later\n\n  - {two}\n",
+        "block.yaml": f"decided: planned and drafted\ncites: |\n  {one}\n  {two}\n",
+        "other-key.yml": f"decided: planned and drafted\nprompts answered: [{one}, {two}]\n",
         "entry.json": json.dumps({"decided": "planned and drafted", "cites": [one, two]}, indent=2),
-        "line.jsonl": json.dumps({"decided": "planned and drafted", "cites": [one, two]}) + "\n",
-        "one.json": json.dumps({"decided": "planned"}) + "\n" + json.dumps({"cites": one, "then": {"cites": two}}),
-        "flow.yaml": f"decided: planned and drafted\ncites: [{one}, {two}]\n",
-        "quoted.yml": f'"decided": "planned and drafted"\n"cites":\n  - "{one}"\n  - \'{two}\'\n',
-        "each.yaml": f"- decided: the release is planned\n  cites: {one}\n- decided: the announcement is drafted\n  cites:\n    - {two}\n",
-        "level.yaml": f"entries:\n  cites:\n  - {one}\n  - {two}\n  day: 2026-10-30\n",
-    }.items():
+        "shaped.json": json.dumps({"workspace": "acme", "date": "2026-10-30", "prompts": 2, "open": 0, "decided": "both", "cites": [one, two]}),
+        "line.jsonl": json.dumps({"decided": "planned"}) + "\n" + json.dumps({"cites": one, "then": {"cites": [two, 3]}}) + "\n",
+    }
+    for name, text in written.items():
         saved = asked["kb"] / "projects" / "alpha" / name
         saved.write_text(text, encoding="utf-8")
         assert sessions.uncited(found, [kb]) == [], name
-        saved.unlink()
-    for name, text, left in (  # and under any other name a string of citations alone is a list of numbers
-        ("other.json", json.dumps({"decided": "planned and drafted", "open": [one], "cites": [two]}), [first]),
-        ("other.yaml", f"decided: planned and drafted\ncites:\n  - {one}\nopen:\n  - {two}\n", [second]),
-        ("maps.yaml", f"- cites:\n    - {one}\n- open: {two}\n", [second]),
-        ("not-cited.yaml", f"decided: planned and drafted\nnot cited:\n  - {one}\nuncited: {two}\n", found),
-        ("recites.json", json.dumps({"decided": "planned and drafted", "recites": [one], "cites_none": two}), found),
-    ):
-        saved = asked["kb"] / "projects" / "alpha" / name
-        saved.write_text(text, encoding="utf-8")
-        assert sessions.uncited(found, [kb]) == left, name
-        saved.unlink()
-
-
-def test_a_citation_counts_wherever_its_entry_wraps(asked):
-    """A record hard-wrapped at a column put its citation on a line of its own, and that line, read alone, held
-    citations and nothing else: a correct record was refused (a review, 2026-11-13). What says something is the
-    entry: a paragraph, or a list entry with the lines that continue it, however its lines break."""
-    first, second = found = sessions.prompts("acme", "2026-10-30")
-    kb, one = str(asked["kb"]), f"claude-code c1 #{first['seq']}"
-    wrapped = {
-        "the citation alone on the entry's next line": f"- 10:00 the release is planned; the decision is in REFERENCE.md under Scope\n  ({one}).\n",
-        "under the entry, on a line of its own": f"- 10:00 planned the release.\n  {one}\n",
-        "between the harness and the session": f"- 10:00 the release is planned; recorded in REFERENCE.md (claude-code\n  c1 #{first['seq']}).\n",
-        "between the session and the number": f"- 10:00 the release is planned; recorded in REFERENCE.md (claude-code c1\n  #{first['seq']}).\n",
-        "a paragraph that is no list": f"The release is planned, after the review;\nthe plan is in REFERENCE.md\n({one})\n",
-        "a quoted paragraph": f"> the release is planned, as asked\n> ({one})\n",
-        "a numbered entry with a box": f"1. [x] the release is planned\n   {one}\n2. [ ] the announcement\n",
-        "the citation first": f"- {one}\n  planned; the plan is in REFERENCE.md\n",
-        "an entry of a YAML record": f"note: the release is planned, and the plan is in REFERENCE.md\n  ({one})\n",
-    }
-    for name, text in wrapped.items():
-        saved = asked["kb"] / "projects" / "alpha" / ("entry.yaml" if "YAML" in name else "log.md")
-        saved.write_text(text, encoding="utf-8")
-        assert sessions.uncited(found, [kb]) == [second], name
         saved.unlink()
 
 
 def test_a_citation_kept_as_a_string_is_read_as_the_text_it_holds(asked):
     """A record kept as JSON holds its text as strings, and an encoder writes a dash that is not ASCII as an escape:
     `#3\\u20134` was read as #3 alone, so a range one entry covered left its other prompts open (noted by a review,
-    2026-11-12). A string is read as the text it holds, in a `.json` file, a line of a log or a quoted YAML value."""
+    2026-11-12). A string that carries an escape is read as the text it holds, in a `.json` file, a line of a log,
+    a quoted YAML value or a line of JSON pasted into a text record."""
     first, second = found = sessions.prompts("acme", "2026-10-30")
     kb, cite = str(asked["kb"]), f"claude-code c1 #{first['seq']}\u2013{second['seq']}"
     for name, text in {
@@ -1215,31 +1195,43 @@ def test_a_citation_kept_as_a_string_is_read_as_the_text_it_holds(asked):
         "entry.jsonl": json.dumps({"at": "10:00", "note": f"planned both ({cite})"}) + "\n",
         "entry.yaml": "decided: planned both\ncites: " + json.dumps(cite) + "\n",
         "wrapped.json": json.dumps({"note": f"planned the release and the announcement\n(claude-code c1 #{first['seq']} to\n#{second['seq']})"}),
+        "pasted.md": "Kept from the log:\n\n```\n" + json.dumps({"note": f"planned both ({cite})"}) + "\n```\n",
     }.items():
         saved = asked["kb"] / "projects" / "alpha" / name
         saved.write_text(text, encoding="utf-8")
         assert "\\u2013" in text or "wrapped" in name, name  # the encoder did escape the dash
         assert sessions.uncited(found, [kb]) == [], name
         saved.unlink()
+    saved = asked["kb"] / "projects" / "alpha" / "two.json"            # two strings stay two: no range runs from one into the next
+    saved.write_text(json.dumps({"a": f"planned (claude-code c1 #{first['seq']} \u2013", "b": f"#{second['seq']} items"}), encoding="utf-8")
+    assert sessions.uncited(found, [kb]) == [second]
 
 
-def test_a_listing_line_an_agent_wrote_on_is_a_record_and_the_lines_left_as_printed_are_not(asked, capsys):
-    """An agent that works down the saved listing and writes what became of a prompt on its line has made a record
-    of that prompt. The lines it left as the listing printed them still say nothing."""
+def test_a_listing_line_cites_nothing_until_a_citation_is_written_on_it(asked, capsys):
+    """An agent that works down the saved listing and writes what became of a prompt on its line has still cited
+    nothing: the line names the prompt as `show` takes it. The citation is its own to write."""
     first, second = found = sessions.prompts("acme", "2026-10-30")
     one, two = _listed(capsys).splitlines()[:2]
-    cite, at, words = one.split("  ", 2)
-    for worked in (f"{one} -> planned; the plan is in REFERENCE.md\n{two}\n",
-                   f"- [x] {one} -> planned; the plan is in REFERENCE.md\n- [ ] {two}\n",          # the checklist, one box worked
-                   f"- [x] `{cite}` planned; the plan is in REFERENCE.md\n- [ ] {two}\n",
-                   f"| prompt | at | first words | what became of it |\n|---|---|---|---|\n| {cite} | {at} | {words} | planned |\n"
-                   f"| {' | '.join(two.split('  ', 2))} | |\n"):
-        asked["log"].write_text(worked, encoding="utf-8")
-        assert sessions.uncited(found, [str(asked["kb"])]) == [second], worked
+    asked["log"].write_text(f"{one} -> planned; the plan is in REFERENCE.md\n{two}\n", encoding="utf-8")
+    assert sessions.uncited(found, [str(asked["kb"])]) == found
+    asked["log"].write_text(f"{one} -> planned; the plan is in REFERENCE.md ({_cited(one.split('  ')[0])})\n{two}\n", encoding="utf-8")
+    assert sessions.uncited(found, [str(asked["kb"])]) == [second]
+
+
+def test_a_citations_number_is_a_records_number(asked):
+    """A record's number has at most nine digits. A longer run after a session's id is no citation: read as a
+    number, one of more than 4,300 digits raised out of the listing on Python 3.11 and later (a review,
+    2026-11-13), and one of ten cited a prompt by its first nine."""
+    first, second = found = sessions.prompts("acme", "2026-10-30")
+    for long in ("9" * 5000, f"{first['seq']}" + "0" * 9, f"{first['seq']}-" + "9" * 5000, f"{first['seq']} to #" + "9" * 12):
+        asked["log"].write_text(f"- planned the release (claude-code c1 #{long})\n", encoding="utf-8")
+        assert sessions.uncited(found, [str(asked["kb"])]) in (found, [second]), long[:20]
+    asked["log"].write_text(f"- planned the release (claude-code c1 #{first['seq']}" + "0" * 9 + ")\n", encoding="utf-8")
+    assert sessions.uncited(found, [str(asked["kb"])]) == found
 
 
 @closed_to_us
-def test_a_records_folder_that_cannot_be_read_is_named_and_nothing_is_listed(asked, tmp_path, capsys):
+def test_a_records_folder_that_cannot_be_read_is_named_and_nothing_is_listed(asked, tmp_path, capsys, monkeypatch):
     """A folder of records that is not there was walked as an empty one: every prompt stayed open, the day-end
     refused each day, and a citation written in the real folder was never read, with no word of why (a review,
     2026-11-13). A folder that cannot be read, or one inside it, is named, and the listing says nothing of what
@@ -1247,6 +1239,8 @@ def test_a_records_folder_that_cannot_be_read_is_named_and_nothing_is_listed(ask
     found, kb = sessions.prompts("acme", "2026-10-30"), asked["kb"]
     asked["log"].write_text("".join(f"- done (claude-code c1 #{p['seq']})\n" for p in found), encoding="utf-8")
     command = ["sessions", "prompts", "--workspace", "acme", "--date", "2026-10-30"]
+    read, pipe = Path.read_text, kb / "pipe.md"
+    monkeypatch.setattr(Path, "read_text", lambda self, *a, **k: read(self, *a, **k) if self != pipe else pytest.fail("a pipe was read"))
     assert cli.main(command + ["--records", str(kb)]) == 0                          # the control: read, it accounts for both
     capsys.readouterr()
     absent, a_file = kb / "recrods", asked["log"]
@@ -1263,9 +1257,74 @@ def test_a_records_folder_that_cannot_be_read_is_named_and_nothing_is_listed(ask
     with _closed(asked["log"]):                                                     # and a record that may not be read
         assert cli.main(command + ["--records", str(kb)]) == 2
         assert str(asked["log"]) in capsys.readouterr().err
-    (kb / "gone.md").symlink_to(kb / "nowhere.md")                                  # a link that leads nowhere is no record
+    (kb / "gone.md").symlink_to(kb / "nowhere.md")                                  # a link that leads nowhere is no record,
+    (kb / "round.md").symlink_to(kb / "about.md")                                   # nor is one that leads back to itself,
+    (kb / "about.md").symlink_to(kb / "round.md")
+    os.mkfifo(kb / "pipe.md")                                                       # nor a pipe, which a read would wait on for ever
     assert cli.main(command + ["--records", str(kb)]) == 0
     capsys.readouterr()
+
+
+def test_a_folder_gone_while_the_records_are_read_is_passed_over(asked, monkeypatch):
+    """A folder removed between the moment the walk listed it and the moment it opened it is not there to hold a
+    record. Only a folder that was named, or one that is there and may not be read, stops the listing."""
+    found = sessions.prompts("acme", "2026-10-30")
+    asked["log"].write_text("".join(f"- done (claude-code c1 #{p['seq']})\n" for p in found), encoding="utf-8")
+    walk = os.walk
+
+    def walked(top, onerror=None, **more):
+        onerror(FileNotFoundError(2, "No such file or directory", os.path.join(top, "projects", "removed")))
+        yield from walk(top, onerror=onerror, **more)
+    monkeypatch.setattr(sessions.os, "walk", walked)
+    assert sessions.uncited(found, [str(asked["kb"])]) == []
+
+
+def test_a_day_with_no_prompts_reads_no_record_and_still_names_a_folder_that_is_not_there(asked, capsys):
+    """With nothing typed there is nothing a record could cite, and the listing read every record of every age to
+    find that out, stopping at one it could not read (a review, 2026-11-13). It reads none. A folder that is not
+    there is still said, since it would be as wrong tomorrow."""
+    old = asked["kb"] / "projects" / "alpha" / "long-ago.md"
+    old.write_text("- something else\n", encoding="utf-8")
+    command = ["sessions", "prompts", "--workspace", "acme", "--date", "2026-10-29"]
+    with _closed(old):
+        assert sessions.uncited([], [str(asked["kb"])]) == []
+        assert cli.main(command + ["--records", str(asked["kb"])]) == 0
+        assert capsys.readouterr().out.strip() == f"0 prompts on 2026-10-29 in acme, so nothing to cite under {asked['kb']}"
+    assert cli.main(command + ["--records", str(asked["kb"] / "recrods")]) == 2
+    assert str(asked["kb"] / "recrods") in capsys.readouterr().err
+
+
+def test_session_transcripts_are_no_records(asked, tmp_path, write_config, capsys):
+    """A sessions repo holds the conversations themselves: every citation an agent wrote, tried to write or talked
+    about is in one. Under a folder of records it is passed over, and named as the folder of records it is refused."""
+    first, second = found = sessions.prompts("acme", "2026-10-30")
+    repo = asked["kb"] / "ai-sessions-acme"
+    (repo / "2026-10" / "c1").mkdir(parents=True)
+    (repo / "2026-10" / "c1" / "transcript-000.jsonl").write_text(
+        json.dumps({"kind": "assistant", "text": f"I will cite it as claude-code c1 #{first['seq']} to #{second['seq']}."}) + "\n", encoding="utf-8")
+    write_config({"workspace_roots": [str(tmp_path / "workspaces" / "*")], "sessions_repos": {"acme": str(repo)}})
+    assert sessions.uncited(found, [str(asked["kb"])]) == found
+    command = ["sessions", "prompts", "--workspace", "acme", "--date", "2026-10-30"]
+    for named in (repo, repo / "2026-10"):
+        assert cli.main(command + ["--records", str(named)]) == 2
+        said = capsys.readouterr()
+        assert str(named) in said.err and "session transcripts" in said.err and said.out == ""
+
+
+def test_the_listing_names_a_prompt_by_what_opens_it(asked, capsys):
+    """Each line of the listing names its prompt as `<harness> <session> --seq <n>`: what follows the harness is
+    what `synthesis sessions show` takes. It is no citation, so no copy of the listing, of its JSON answer or of
+    the refusal's list can account for a prompt."""
+    found = sessions.prompts("acme", "2026-10-30")
+    printed, answer = _listed(capsys), json.loads(_listed(capsys, "--records", str(asked["kb"]), "--json"))
+    names = [line.split("  ")[0] for line in printed.splitlines()[:-1]]
+    assert names == answer["open"] == [f"claude-code c1 --seq {p['seq']}" for p in found]
+    ids = {str(p["session"]) for p in found}
+    assert [c for c in sessions.CITED.findall(printed + json.dumps(answer)) if c[0] in ids] == []
+    for name, prompt in zip(names, found):
+        assert cli.main(["sessions", "show", *name.split()[1:]]) == 0
+        assert prompt["text"] in capsys.readouterr().out
+        assert [c[:2] for c in sessions.CITED.findall(_cited(name))] == [("c1", str(prompt["seq"]))]
     record, history = _day_end(asked, tmp_path, records=[str(absent)])              # and the day-end record says which
     refused = record()
     assert refused.returncode and str(absent) in refused.stderr and not history.exists()
@@ -1293,7 +1352,7 @@ def test_a_record_after_the_pasted_refusal_closes_what_it_cites_and_no_more(aske
     asked["log"].write_text(pasted + f"- planned the release (claude-code c1 #{first['seq']})\n", encoding="utf-8")
     left = record()
     assert left.returncode and "1 of 2 prompts typed on 2026-10-30 is cited by no record" in left.stderr
-    assert f"  claude-code c1 #{second['seq']}\n" in left.stderr and f"c1 #{first['seq']}\n" not in left.stderr
+    assert f"  claude-code c1 --seq {second['seq']}\n" in left.stderr and f"c1 --seq {first['seq']}\n" not in left.stderr
     with asked["log"].open("a", encoding="utf-8") as log:
         log.write(f"- drafted the announcement, in drafts/announcement.md (claude-code c1 #{second['seq']})\n")
     done = record()
@@ -1324,7 +1383,7 @@ def test_the_listing_names_each_records_folder_as_its_walk_reads_it(asked, tmp_p
     for name, folders in given.items():
         code = cli.main(command + [word for folder in folders for word in ("--records", folder)])
         answer = json.loads(capsys.readouterr().out)                   # the records it read hold one of the two prompts
-        if (code, answer["records"], answer["open"]) != (1, [read] * len(folders), [f"claude-code c1 #{second['seq']}"]):
+        if (code, answer["records"], answer["open"]) != (1, [read] * len(folders), [f"claude-code c1 --seq {second['seq']}"]):
             wrong[name] = answer["records"]
     assert wrong == {}
     record, history = _day_end(asked, tmp_path, [through])            # the record asks about the folder its config names,
@@ -1347,7 +1406,7 @@ def test_a_records_folder_named_by_nothing_is_no_folder(asked, monkeypatch, caps
     monkeypatch.chdir(asked["kb"])
     assert cli.main(["sessions", "prompts", "--workspace", "acme", "--date", "2026-10-30", "--records", "", "--json"]) == 2
     said = capsys.readouterr()
-    assert said.out == "" and 'the records under ""' in said.err and "no record was checked" in said.err
+    assert said.out == "" and '"" could not be read' in said.err and "no record was checked" in said.err
     assert cli.main(["sessions", "prompts", "--workspace", "acme", "--date", "2026-10-30", "--records", ".", "--json"]) == 0
     assert json.loads(capsys.readouterr().out)["records"] == [str(asked["kb"])]      # the working folder, when it is the one named
 

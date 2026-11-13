@@ -100,15 +100,32 @@ def test_with_the_check_on_a_day_end_lists_the_days_prompts_itself_and_a_day_sta
 def test_a_prompt_no_record_cites_keeps_the_day_from_closing_clean(tmp_path, record, monkeypatch):
     state = tmp_path / "state"
     declare(state, desk=ON)
-    listing(tmp_path, monkeypatch, "claude-code d20ab7c4 #41", "codex 01a1cdbb #7")
+    listing(tmp_path, monkeypatch, "claude-code d20ab7c4 --seq 41", "codex 01a1cdbb --seq 7")
     code, _, refusal = record(state)
     assert code != 0 and history(state) == ""
-    assert "2 of 3" in refusal and "claude-code d20ab7c4 #41" in refusal and "codex 01a1cdbb #7" in refusal
+    assert "2 of 3" in refusal and "claude-code d20ab7c4 --seq 41" in refusal and "codex 01a1cdbb --seq 7" in refusal
     assert "synthesis sessions show" in refusal and "--outcome partial" in refusal
-    listing(tmp_path, monkeypatch, "claude-code d20ab7c4 #41")
+    assert "`<harness> <session> #<n>`" in refusal                   # how a record cites, which the names listed are not
+    assert "under /kb/desk" in refusal                               # and where the listing looked for one
+    listing(tmp_path, monkeypatch, "claude-code d20ab7c4 --seq 41")
     code, out, refusal = record(state, "--outcome", "partial")
     assert code == 0, refusal                                        # said to be partial, it is recorded, and says what is open
     assert "prompts: 1 of 3 typed on 2026-11-11 is cited by no record" in out and '"outcome":"partial"' in history(state)
+
+
+@pytest.mark.parametrize("folder", ["kb/desk", "./kb", "../kb", "records"])
+def test_a_folder_of_records_written_from_no_fixed_place_is_refused(tmp_path, record, monkeypatch, folder):
+    """A folder written from the working folder was read wherever the day-end happened to run: another folder of
+    that name was read without a word, or none was found and every prompt stayed open (a review, 2026-11-13). The
+    config names each folder from the root or from `~`."""
+    state = tmp_path / "state"
+    declare(state, desk={"plans_dirs": [], "prompt_reconcile": {"records": ["/kb/plans", folder]}})
+    asked = listing(tmp_path, monkeypatch)
+    code, _, refusal = record(state)
+    assert code != 0 and history(state) == "" and not asked.exists()
+    assert json.dumps(folder) in refusal and "`/`" in refusal and "`~`" in refusal
+    declare(state, desk={"plans_dirs": [], "prompt_reconcile": {"records": ["/kb/plans", "~/" + folder.lstrip("./")]}})
+    assert record(state)[0] == 0 and asked.exists()
 
 
 def test_when_no_prompt_was_typed_the_day_closes_and_says_so(tmp_path, record, monkeypatch):
@@ -122,7 +139,7 @@ def test_when_no_prompt_was_typed_the_day_closes_and_says_so(tmp_path, record, m
 @pytest.mark.parametrize("made, says", [
     ({"workspace": "other"}, "other"),                                   # another workspace's answer
     ({"day": "2026-11-10"}, "2026-11-10"),                               # yesterday's
-    ({"total": 1, "left": ["a b #1", "a b #2"]}, "does not agree with itself"),   # more open than typed
+    ({"total": 1, "left": ["a b --seq 1", "a b --seq 2"]}, "does not agree with itself"),   # more open than typed
 ])
 def test_an_answer_for_another_day_or_workspace_or_one_at_odds_with_itself_is_refused(tmp_path, record, monkeypatch, made, says):
     state = tmp_path / "state"
@@ -163,10 +180,10 @@ def test_the_check_starts_on_the_day_the_workspace_names(tmp_path, record, monke
     check on from a day after it: an earlier day is recorded as before, and says so."""
     state = tmp_path / "state"
     declare(state, desk={"plans_dirs": [], "prompt_reconcile": {"records": ["/kb/desk"], "from": "2026-11-12"}})
-    asked = listing(tmp_path, monkeypatch, "claude-code d20ab7c4 #41")
+    asked = listing(tmp_path, monkeypatch, "claude-code d20ab7c4 --seq 41")
     code, out, refusal = record(state)
     assert code == 0 and not asked.exists() and "prompts: checked from 2026-11-12" in out, refusal
-    listing(tmp_path, monkeypatch, "claude-code d20ab7c4 #41", day="2026-11-12")
+    listing(tmp_path, monkeypatch, "claude-code d20ab7c4 --seq 41", day="2026-11-12")
     code, _, refusal = record(state, day="2026-11-12")
     assert code != 0 and "1 of 3" in refusal
 
@@ -180,7 +197,7 @@ def test_the_check_starts_on_the_day_the_workspace_names(tmp_path, record, monke
 def test_a_value_that_is_neither_false_nor_a_setting_is_refused_and_named(tmp_path, record, monkeypatch, setting):
     state = tmp_path / "state"
     declare(state, desk={"plans_dirs": [], "prompt_reconcile": setting})
-    asked = listing(tmp_path, monkeypatch, "claude-code d20ab7c4 #41")
+    asked = listing(tmp_path, monkeypatch, "claude-code d20ab7c4 --seq 41")
     for outcome in ("clean", "partial"):
         code, _, refusal = record(state, "--outcome", outcome)
         assert code != 0 and history(state) == "" and not asked.exists(), outcome             # nothing is listed, nothing recorded
@@ -214,7 +231,7 @@ def test_a_first_day_that_is_no_day_is_refused(tmp_path, record, monkeypatch, si
     tomorrow`. An empty or null first day was read as none."""
     state = tmp_path / "state"
     declare(state, desk={"plans_dirs": [], "prompt_reconcile": {"records": ["/kb/desk"], "from": since}})
-    asked = listing(tmp_path, monkeypatch, "claude-code d20ab7c4 #41")
+    asked = listing(tmp_path, monkeypatch, "claude-code d20ab7c4 --seq 41")
     for outcome in ("clean", "partial"):
         code, _, refusal = record(state, "--outcome", outcome)
         assert code != 0 and history(state) == "" and not asked.exists(), outcome
@@ -228,16 +245,16 @@ def test_a_first_day_that_is_no_day_is_refused(tmp_path, record, monkeypatch, si
 AT_ODDS = {
     "it exits 1 and lists none open": dict(total=1, code=1),
     "it exits 1 and none was typed": dict(total=0, code=1),
-    "it exits 0 and lists one open": dict(open=["claude-code d20ab7c4 #41"], code=0),
-    "more open than typed": dict(open=["a b #1", "a b #2"], total=1, code=1),
-    "one open and none typed": dict(open=["a b #1"], total=0, code=1),
+    "it exits 0 and lists one open": dict(open=["claude-code d20ab7c4 --seq 41"], code=0),
+    "more open than typed": dict(open=["a b --seq 1", "a b --seq 2"], total=1, code=1),
+    "one open and none typed": dict(open=["a b --seq 1"], total=0, code=1),
     "fewer than none typed": dict(total=-1),
     "a count that is no whole number": dict(total=3.0),
     "a count that is true": dict(total=True),
-    "the same prompt open twice": dict(open=["a b #1", "a b #1"], code=1),
+    "the same prompt open twice": dict(open=["a b --seq 1", "a b --seq 1"], code=1),
     "an open prompt with no name": dict(open=[""], code=1),
     "an open prompt that is no text": dict(open=[41], code=1),
-    "open prompts that are no list": dict(open="claude-code d20ab7c4 #41", code=1),
+    "open prompts that are no list": dict(open="claude-code d20ab7c4 --seq 41", code=1),
 }
 
 
@@ -297,7 +314,7 @@ def test_the_folders_an_answer_names_are_the_same_folders_however_each_is_writte
     listing(tmp_path, monkeypatch)
     code, out, refusal = record(state)
     assert code == 0 and "prompts: all 3 typed on 2026-11-11 are cited by a record" in out, refusal
-    listing(tmp_path, monkeypatch, "claude-code d20ab7c4 #41", records=[str(real)] * 3)
+    listing(tmp_path, monkeypatch, "claude-code d20ab7c4 --seq 41", records=[str(real)] * 3)
     code, out, refusal = record(state, "--outcome", "partial")
     assert code == 0 and "prompts: 1 of 3 typed on 2026-11-11 is cited by no record" in out, refusal
 
