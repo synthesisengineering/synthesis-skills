@@ -47,12 +47,12 @@ def test_messages_reach_sessions_and_projects_once(tmp_path):
     assert board.inbox("A", "alpha") == []
 
 
-def test_who_reads_only_small_per_session_files(tmp_path, isolated_home):
+def test_who_reads_only_small_per_session_files(tmp_path, isolated_home, pace):
     for i in range(50):
         board.claim(f"S{i}", [f"{tmp_path}/area{i}/**"])
     start = time.perf_counter()
     assert len(board.sessions()) == 50
-    assert time.perf_counter() - start < 0.2
+    assert time.perf_counter() - start < 0.2 * pace
     assert all(f.stat().st_size < 2000 for f in (isolated_home / "board" / "sessions").glob("*.json"))
 
 

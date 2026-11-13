@@ -5,7 +5,7 @@ license: "Apache-2.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "4.1.0"
+  version: "4.2.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
   format: v5
@@ -35,7 +35,7 @@ How an agent drafts and sends correspondence for a principal honestly: which lan
 ## Contents
 
 - [references/lanes-and-voice.md](references/lanes-and-voice.md): the core principle, the three lanes, the voice axis and bot-voice composition rules, and review depth with its content limits and routing rules. Read it before choosing a lane or writing in a persona's voice.
-- [references/gates-and-sending.md](references/gates-and-sending.md): channel disclosure, the three gates in full, email construction and verification, related skills. Read it before composing a reply and again at send time.
+- [references/gates-and-sending.md](references/gates-and-sending.md): channel disclosure, the three gates in full, email construction and verification, staging attachments in the outbox, related skills. Read it before composing a reply and again at send time.
 - [references/personas-and-adoption.md](references/personas-and-adoption.md): the persona registry schema, archetype binding with example signatures, adoption steps, and migration from v1 and v2. Read it when configuring personas or writing a signature.
 - [references/persona-registry.example.yaml](references/persona-registry.example.yaml): a commented registry template. Read it when creating a registry.
 - [references/preferred-names.md](references/preferred-names.md): where a preferred name comes from, what stays as the platform requires, keeping the principal's map, the editor pass and the send guard's name check. Read it before greeting or naming anyone in a draft.

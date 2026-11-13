@@ -28,6 +28,10 @@ The daily plan follows this canonical structure. On each update, consolidate int
 
 ---
 
+## Down: needs your attention      ← ABOVE EVERYTHING, while something another person relies on is down or its check did not run; cockpit: NEEDS YOU region
+### [What is down, and who relies on it]
+[The `DOWN` line from `relied_on.py`, word for word. Who is affected, and what the fix is.]
+
 ## Critical deadlines: needs your attention   ← FIRST, whenever one is inside seven days; cockpit: NEEDS YOU region
 ### [What closes, its date and exact time with zone]
 [The direct link and what the principal has to do.]
@@ -83,6 +87,7 @@ The synthesis-console v0.8+ parser classifies each H2 heading into one of these 
 | Cockpit region / kind | Canonical H2 name | Recognized synonyms |
 |----------------------|-------------------|---------------------|
 | **decisions** (NEEDS YOU) | `Decisions needed` | "Decisions to make", "Open ask", "Asks for Rajiv", "Open Items", "Needs your attention", "Open Quality Concerns" |
+| **decisions** (NEEDS YOU), above everything in the plan | `Down: needs your attention` | The words "needs your attention" place it |
 | **decisions** (NEEDS YOU), first in the plan | `Critical deadlines: needs your attention` | The words "needs your attention" place it; a heading that only starts with "Critical" is read as briefing and folds into the lower row |
 | **priority-tasks** (TODAY) | `Priority Tasks` | "Tasks", "Tasks for Rajiv", "Tasks Today", "Today's Tasks", "Today's Priorities", "Still To Do", "This Week", "Remaining Tasks", "Pending This Session", "Pending from Before Vacation" |
 | **drafts** (DRAFTS) | `Drafts — Ready to Send` | "Drafts", "Unsent — Ready to Send", "Unsent Drafts", "DM Reply Drafts", "Draft Messages", "Messages", "Next Steps", "Pending Emails", "Scheduled for Tomorrow / Later" |
@@ -99,6 +104,11 @@ The synthesis-console v0.8+ parser classifies each H2 heading into one of these 
 
 Within each section, the parser also recognizes structural patterns. Adhering to these makes the UI work correctly:
 
+**Down section** (`## Down: needs your attention`), while something another person relies on is down or its check did not run:
+- The first H2 of the plan, above the critical deadlines section, and the first thing in the reply to the principal. One H3 per `DOWN` line that `relied_on.py` printed, with the line word for word, who is affected and what the fix is.
+- It closes in place when the check prints `ok` for it again: write the time under its H3. The people affected are told only on the principal's approval of the exact text.
+- A run of the check that exited 2, never started or printed none of the lines [scripts.md](scripts.md) documents gets one H3 here, `Not checked`, with what it printed or that it printed nothing: it is reported first, as not checked, and never read as healthy. It closes when the check runs and prints its lines again.
+
 **Travel section** (`## Travel: needs your attention`), in a workspace that checks travel:
 - One H3 per in-person event the travel check flagged, in date order, with what it lacks, word for word from `travel_check.py`. It leaves the plan when the event's address, travel line and both blocks are in place, or the principal has decided not to go.
 - **A leaving or returning time anywhere in a plan or a draft is taken from a travel block and says which block.** "You leave about 6" and "back around 11" are estimates; on 2026-11-11 both went out with no source, and the real train reached home at 11:48.
@@ -111,10 +121,10 @@ Within each section, the parser also recognizes structural patterns. Adhering to
 **Decisions section** (`## Decisions needed`):
 - One H3 per decision (`### 1. Force-push origin/develop?`)
 - Options as bold paragraphs: `**Option A:** description`, `**Option B:** description`
-- A plan that lists several choices as entries under one heading (`1. Dinner on Thursday`, then its options) is read the same way: each entry with its options is one choice; the list's next entry, or options whose letter starts again, begin the next, and a bullet under an option does not. The record check reads both shapes, and a recommendation written on the choice's title line (`### Dinner — Recommendation: B`) as well. Options indented under their entry, however deep the list, are that entry's own. An example is not read: a fenced block, or a block Markdown shows as code (indented four or more past the text of the entry it stands in, after an empty line).
-- Required: `**Recommendation:** **A**, with the reason`. A choice put with no view defaults to yes. "TBD", "your call" and "either" are no recommendation.
+- A plan that lists several choices as entries under one heading (`1. Dinner on Thursday`, then its options) is read the same way: each entry with its options is one choice; the list's next entry, or options whose letter starts again, begin the next, and a bullet under an option does not. The record check reads both shapes, and a recommendation written on the choice's title line (`### Dinner — Recommendation: B`) as well. Options indented under their entry, however deep the list, are that entry's own. A sentence of explanation may stand between an entry and its options. A choice under a deeper heading (`#### 2. Dinner`) or under a line all in bold is read by that title, also when a sentence stands between the title and its options; each such title begins its own choice, whatever its options are lettered (C and D after A and B); a heading that only says `Options` is no title. An example is not read: a fenced block, also one whose fence opens on the line of a list mark (`- ```md`), or a block Markdown shows as code (indented four or more past the text of the entry it stands in, after an empty line).
+- Required: `**Recommendation:** **A**, with the reason`. A choice put with no view defaults to yes. "TBD", "your call", "either" and a line that only puts the answer off ("pending", "undecided", "not yet", "to be decided", "awaiting ...") are no recommendation, and the same words close no decision. A pin, a pointing hand or a tick before the label does not hide it. Also read as one: `**Recommended:**`, `**My recommendation:**`, the label followed by a dash, and an option marked `(recommended)`.
 - Required when the choice would commit the principal's time (an accept or decline, or an item with a `**Commits:**` line saying what it takes): `**Consequences:**`, what each answer costs them: the time with its trip door to door, the money and who pays, when they are home, the night it leaves, and what it collides with that day and the next morning. The trip is worked out before the ask (synthesis-chief-of-staff, `references/asks-and-decisions.md`).
-- `ritual_state.py record` refuses the day's record while an open item that offers options lacks either line. It reads each line plain or bold, quoted, or as a list item (`- `, `+ `, `1. `), at any depth of a list; an example (a fenced block, or a block Markdown shows as code) is not read. An item with `**Decided:**`, `**Resolved:**`, `**Released:**`, `**Lapsed:**` or `**Withdrawn:**` under it, or a struck, ticked (`[x]`) or check-marked title, is closed and not checked.
+- `ritual_state.py record` refuses the day's record while an open item that offers options lacks either line. It reads each line plain, bold or italic (asterisks or underscores), quoted, or as a list item (`- `, `+ `, `1. `, a task-list box), a heading or a row of a table, at any depth of a list and with a quote inside a list entry; an example (a fenced block, closed or not, or a block Markdown shows as code, also inside a quote) and an HTML comment are not read, and a fence closes at a line of its own mark alone, at least as long as the one that opened it. An option's label ends at the mark that closes its emphasis, or at a colon, a dash, a bracket or a full stop: a sentence that begins `Option A was fine` is no option. An item with `**Decided:**`, `**Decision:**`, `**Resolved:**`, `**Released:**`, `**Lapsed:**` or `**Withdrawn:**` under it that says what was decided (not left empty, `TBD` or `pending`), or a struck, ticked (`[x]`) or check-marked title (also inside bold), is closed and not checked.
 - After click: skill / human appends `**Decided:** Option X — <ISO>` directly under the H3
 - **Synthetic asks**: an H2 like `## Open ask for Rajiv` with prose body and NO H3s also surfaces in NEEDS YOU as a single card with the prose verbatim. Use this for one-off requests that don't fit the A/B/C structure.
 

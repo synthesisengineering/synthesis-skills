@@ -94,11 +94,11 @@ slot Thu 2026-11-12 15:30-16:00: REVIEW
 | protected hours | it overlaps a protected window and no attendee's timing binds | | `protected_hours`: `[{"start": "09:00", "end": "11:00", "days": [0, 1, 2, 3, 4], "label": "..."}]` (`days` optional, Monday is 0; `24:00` ends a day), or a section that holds that list as `windows` beside lines of prose. Prose is named as unchecked unless a window gives the line as its `source` |
 | working hours | | it falls outside them | `working_hours.start`, `.end` |
 | deep work | it leaves fewer free blocks of the set length than the day must keep, the trip there and back counted as taken | | `calendar_guardian.thresholds.maker_block_minutes` (default 120), `.min_maker_blocks_per_day` (1) |
-| travel | the trip there or back runs through another event (only with `--travel-before` or `--travel-after`) | | |
+| travel | the trip there or back runs through another event, on that day or the next (only with `--travel-before` or `--travel-after`) | | |
 | return | | home after `travel_policy.latest_return`: the principal's decision (only with `--travel-after`; the line always gives the time home) | |
-| sleep | | less than `travel_policy.sleep_hours` between getting home and the next morning's first commitment, or the hour `travel_policy.morning_starts` gives the morning if that is earlier | the read ends before the next morning and the policy's hour leaves the night long enough |
-| meeting load | the day's meetings with this one exceed the limit. A meeting is an event someone else is on: the principal's own blocks (no other attendee, or a title carrying a personal marker) are taken time for every other check and are not counted, and the line says how many were left out. A read that names no one else on any event counts each one, and says so | | `.max_meeting_hours_per_day` (5), `.personal_markers` (titles, for example `["#reserved"]`), `principal_addresses` (the principal's own, patterns allowed) |
-| placement | | it sits in the middle of a free block long enough for deep work, away from any meeting | |
+| sleep | | less than `travel_policy.sleep_hours` between getting home and the next morning's first commitment, or the hour `travel_policy.morning_starts` gives the morning if that is earlier; a commitment already begun when the principal gets home leaves no night at all. With no hour for the morning, an outing that begins and ends on one morning is judged against the next night | the read ends before the next morning and the policy's hour leaves the night long enough |
+| meeting load | the day's meetings with this one exceed the limit, an event that runs over midnight counting for the hours it takes of that day. A meeting is an event someone else is on: the principal's own blocks (no other attendee, or a title carrying a personal marker) are taken time for every other check and are not counted, and the line says how many were left out. A read that names no one else on any event counts each one, and says so | | `.max_meeting_hours_per_day` (5), `.personal_markers` (titles, for example `["#reserved"]`), `principal_addresses` (the principal's own, patterns allowed) |
+| placement | | it sits in the middle of a free block long enough for deep work, away from any meeting; or it overlaps another event, which the line names with its hours | |
 | existing touchpoint | | a meeting with one of the same people is already on the calendar within the look-ahead | `.touchpoint_days` (7) |
 | deadline | the requester's timing binds and the slot is after their date | | |
 
@@ -109,7 +109,16 @@ and recorded as [in-person-travel.md](in-person-travel.md) says.
 Whose timing binds: the addresses and patterns (`*@board.example.com`) in `tiers.priority`. A
 tier entry that is a name, or protected hours written as prose, cannot be matched; the report
 says so with a NOTE and the agent checks those by hand. The agent's own holds (events titled as
-`calendar_guardian.holds.title`) and all-day markers count as free time.
+`calendar_guardian.holds.title`) count as free time, kept for an hour or for the whole day, and so
+does an all-day entry that is a note on the day (a birthday, a holiday). An all-day entry that carries one of the principal's
+`personal_markers`, or that says it is busy (`transparency: opaque`), takes its whole day: a slot on
+it is a REVIEW that names it, the day has no free block, and a trip there or back that runs into
+that day is refused as overlapping it. An all-day entry at a place holds the
+next morning without giving an hour, so the sleep check says the night cannot be judged from the
+read (REVIEW) and never that it is long enough. Of several events at a slot's own hours, one is the
+slot checked again and the others are other events. The title is the whole
+test: an event titled exactly that is read as a hold whoever made it and whoever is on it, so the
+title is one no meeting carries, and a hold that became a meeting is retitled.
 
 REFUSE (exit 1): choose another time; do not put the slot to the principal as an option. REVIEW
 (exit 0): fix what it names, or say in the proposal why this slot is still the right one. It

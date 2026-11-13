@@ -60,6 +60,12 @@ class Session:
         """Quiet past the threshold. A session with no recorded time keeps blocking."""
         return bool(self.seen) and time.time() - self.seen > STALE_SECONDS
 
+    @property
+    def reachable(self) -> bool:
+        """Not stale, or holding a live wait: mail reaches a waiting seat for its whole bound (2026-11-12: refused at nine hours)."""
+        from synthesis import wait  # imported here: wait imports this module
+        return not self.stale or bool(wait.live(self.session))
+
 
 class ClaimConflict(Exception):
     pass
@@ -232,9 +238,14 @@ def release(session_id: str, claims: list[str] | None = None) -> Session | None:
 
 
 def _describe(found: list[Session]) -> str:
+    from synthesis import wait  # imported here: wait imports this module
     now = time.time()
+
+    def mark(s: Session) -> str:  # as `who` marks a seat: until when it waits, or that nothing reaches it
+        until = max((w["until"] for w in wait.live(s.session)), default=0)
+        return time.strftime(", waiting until %H:%M", time.localtime(until)) if until else "" if s.reachable else ", stale"
     return "".join(f"\n  {s.session} (short {s.short}, project {s.project or '-'}, {s.harness or 'harness ?'}, "
-                   f"last seen {int((now - s.seen) / 60)} min ago{', stale' if s.stale else ''})"
+                   f"last seen {int((now - s.seen) / 60)} min ago{mark(s)})"
                    for s in found[:20]) + (f"\n  ... and {len(found) - 20} more" if len(found) > 20 else "")
 
 
@@ -247,7 +258,7 @@ def resolve(address: str, *, exclude: str = "") -> Session:
         matches = [s for s in pool if s.project and s.project == address[len("project:"):]]
     else:
         matches = [s for s in pool if address and address in (s.session, s.short)]
-    alive = [s for s in matches if not s.stale]
+    alive = [s for s in matches if s.reachable]
     if len(alive) == 1:
         return alive[0]
     if alive:
@@ -255,7 +266,7 @@ def resolve(address: str, *, exclude: str = "") -> Session:
                            f"Address one of them by session id:{_describe(alive)}")
     if matches:
         raise AddressError(f"{address!r} names only stale sessions; nothing was sent:{_describe(matches)}")
-    others = [s for s in pool if not s.stale]
+    others = [s for s in pool if s.reachable]
     raise AddressError(f"{address!r} names no live session; nothing was sent. Addresses are a session id, "
                        "its short name or project:<id> (display names and titles are not addresses). "
                        + (f"Live sessions:{_describe(others)}" if others else "No other session is live."))
@@ -298,7 +309,7 @@ def message(to: str, sender: str, text: str, *, durable: bool = False) -> Path:
             raise AddressError(f"no project named {name!r} is on the board or in the knowledge roots; nothing was sent")
         return _post(to, {"to": to, "from": sender, "text": text, "durable": True})
     name = to.strip()[len("project:"):] if to.strip().startswith("project:") else ""
-    if name and not any(s.project == name and not s.stale for s in sessions() if s.session != sender):
+    if name and not any(s.project == name and s.reachable for s in sessions() if s.session != sender):
         return message(to.strip(), sender, text, durable=True)  # nobody is on it now: its next session reads it (2026-10-20)
     target = resolve(to, exclude=sender)
     digest = hashlib.sha256(text.strip().encode("utf-8")).hexdigest()[:24]
@@ -311,6 +322,12 @@ def message(to: str, sender: str, text: str, *, durable: bool = False) -> Path:
     return _post(target.session, {"to": to, "session": target.session, "from": sender, "text": text})
 
 
+def _held(session_id: str, box: str, read_too: bool = False):
+    """The messages a box holds for a session: those it has not been shown, or with read_too every one. The inbox and
+    the hint for a session bound to no project both read this, so they cannot disagree about what is delivered."""
+    return (f for f in sorted(_box(box).glob("*.json")) if read_too or not _read_marker(session_id, f.name).exists())
+
+
 def inbox(session_id: str, project: str = "", *, mark_read: bool = False, recent_hours: float = 0) -> list[dict]:
     """The session's unread messages, oldest first; with recent_hours, every message from that many hours
     back, read or not, so one that was cut or missed can be read again. Each carries its file name as `id`.
@@ -319,10 +336,7 @@ def inbox(session_id: str, project: str = "", *, mark_read: bool = False, recent
     since = time.time() - recent_hours * 3600 if recent_hours else None
     found = []
     for box in boxes:
-        directory = _box(box)
-        for file in sorted(directory.glob("*.json")) if directory.is_dir() else []:
-            if since is None and _read_marker(session_id, file.name).exists():
-                continue
+        for file in _held(session_id, box, since is not None):
             message = {**json.loads(file.read_text(encoding="utf-8")), "id": file.name}
             if since is None or message.get("at", 0) >= since:
                 found.append(message)
@@ -332,14 +346,12 @@ def inbox(session_id: str, project: str = "", *, mark_read: bool = False, recent
     return found
 
 
-def waiting(hours: float = 24) -> list[str]:
-    """Projects with mail from the last day that no session has read and no live session is bound to (2026-11-11:
+def waiting(session_id: str) -> list[str]:
+    """Projects whose mail this session's inbox would hold if it bound to one now, the newest mail first (2026-11-11:
     a session bound to no project polled for half an hour beside mail addressed to its project)."""
-    root, since = paths.board() / "messages", time.time() - hours * 3600
-    bound = {s.project for s in sessions() if s.project and not s.stale}
-    return [box.name[len("project__"):] for box in sorted(root.glob("project__*")) if root.is_dir()
-            and box.name[len("project__"):] not in bound and any(
-                f.stat().st_mtime >= since and not any((paths.board() / "read").glob(f"*/{f.name}")) for f in box.glob("*.json"))]
+    names = sorted(box.name[len("project__"):] for box in (paths.board() / "messages").glob("project__*"))
+    newest = {name: max((f.stat().st_mtime for f in _held(session_id, f"project:{name}")), default=None) for name in names}
+    return sorted((name for name in names if newest[name] is not None), key=lambda name: -newest[name])
 
 
 def _read_marker(session_id: str, name: str) -> Path:

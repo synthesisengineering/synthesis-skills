@@ -17,14 +17,20 @@ def state() -> Path:
 
 
 def board() -> Path:
-    """Sessions, claims, messages and the snapshot journal: the one v5 folder a sandboxed agent may write (Codex's
-    writable root), so nothing in it grants anything. Approvals and send windows stay in state()."""
+    """Sessions, claims, messages and the snapshot journal: with the outbox, the v5 folders a sandboxed agent may
+    write (Codex's writable roots), so nothing in it grants anything. Approvals and send windows stay in state()."""
     return home() / "board"
 
 
 def sessions() -> Path:
     """Agent session transcripts from every harness, in one form (sessions.py); only the exporter writes here."""
     return home() / "sessions"
+
+
+def outbox() -> Path:
+    """Where an agent stages a file before attaching it to a message: the one folder the workspace-mcp connector is
+    started to read (its start.sh names it in ALLOWED_FILE_DIRS), so the send guard passes a file here."""
+    return home() / "outbox"
 
 
 BOARD_FILES = ("sessions", "messages", "sent", "read", "claims.jsonl", "claims.lock", "journal.jsonl")
@@ -39,12 +45,21 @@ def config_file() -> Path:
     return home() / "config.json"
 
 
+class Unreadable(ValueError):
+    """The config file is there and holds no settings: it is not JSON, or it is JSON that is no object."""
+
+
 def config() -> dict:
-    """Merged config: public defaults, then the user's file. Missing file is fine."""
+    """Merged config: public defaults, then the user's file. Missing file is fine; JSON that is no object is unreadable."""
     try:
-        return json.loads(config_file().read_text(encoding="utf-8"))
+        found = json.loads(config_file().read_text(encoding="utf-8"))
     except FileNotFoundError:
         return {}
+    except ValueError as exc:
+        raise Unreadable(str(exc)) from None
+    if not isinstance(found, dict):
+        raise Unreadable(f"{config_file()} is not a JSON object")
+    return found
 
 
 def line_allowances(config: dict) -> Path | None:

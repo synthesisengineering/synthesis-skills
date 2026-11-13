@@ -19,6 +19,15 @@ says how it was learned and when. Where a capability was not shown, the table sa
 A turn that arrives by any of these routes is recorded as what it is. None counts as the principal's typed prompt,
 so none can grant an approval: the approval check reads only prompts the person typed.
 
+In Claude Code the turn-end check reads the first two rows from the session's own transcript: a background agent,
+shell task, workflow or monitor the session started, with no task notification for it yet, is a wait the harness
+holds, and a reply that announces a wait beside it passes without a `synthesis wait`. Only the harness's own entries
+count: its tool-result entry starts the work, and its notification naming that call ends it. A copy of either in
+other text does neither. The check reads the transcript's last 32 megabytes, so work started before that is not
+seen and a wait beside it is sent back once. In thirty days of recorded
+turn ends, five of every six replies that announced a wait were of this kind (the agent-guardrails reference has the
+count). A timer and a turn from another session are not read: record those with `synthesis wait note`.
+
 ## Which watcher
 
 | Awaited | Claude Code | Codex | Muse |
@@ -41,11 +50,65 @@ so none can grant an approval: the approval check reads only prompts the person 
 Where a shell watcher fits, use it without asking. Where only a model-driven watcher fits and the wait is long or
 its worth unclear, ask the principal once, with the recommendation first and the cost in turns.
 
+## What `wait run` does with the command's processes
+
+Each try of `synthesis wait run` runs in a process group of its own, with no controlling terminal and no standard
+input: a command that would ask for a password there fails instead of asking.
+
+- A try that exits 0 in time ends the wait. What it started is left running.
+- When a try fails, or is still running at the bound, its whole group is stopped, the command and every process
+  it started there: each is asked to end (SIGTERM), and what is still there two seconds later is killed. So a
+  wait may return up to two seconds after its bound, and a helper that later tries need is started before the
+  wait, not inside the check.
+- A process that moved itself to another process group or session, as a daemon does, has left the try and is not
+  stopped.
+- A wait that is told to end (SIGTERM, a closed terminal, Ctrl-C) stops the try it is running first. One that is
+  killed outright (SIGKILL) cannot: its try runs on until the command ends.
+- A command that cannot be started is no failed try. The wait prints
+  `` `<command>` could not be started: its program '<first word>' <why> `` on stderr and exits 2 at once, on the
+  first try or on a later one whose program has gone: `was not found` for a name that is not on PATH or a path
+  that does not exist, `is not executable` for a file without its execute bit or a directory, given by its path
+  or found by its name in a folder of PATH, and `cannot be run`
+  with the system's own words for anything else (`Exec format error` for a file that is no program). The two
+  plain reasons are given only where they are true of what is there. A script whose interpreter is missing is
+  refused with `cannot be run (No such file or directory)`, since the script itself was found. A name that is
+  nowhere, where a folder of PATH cannot be searched, is refused with `cannot be run (Permission denied)`, the
+  system's answer, since no file by that name was seen. The program is the first word after `--`, shown as it
+  was given: a command quoted whole as one string is one word, and is refused as a program of that name that
+  was not found. A command that starts and exits with any code but 0 has failed a try and is tried again: a
+  shell that could not find its own command (127) started and failed.
+
+### The two limits of a try
+
+Both were probed on macOS on 2026-11-12: the first with a wait started under a terminal of its own, the second by
+killing a wait, and then a wait's whole process group, with `kill -9`. The empty standard input is the wait's own
+setting since then, held by its test.
+
+1. **A try has no controlling terminal and no standard input.** It runs in a session of its own, so a command
+   that needs the terminal fails: as a try, opening `/dev/tty` gave `Device not configured`, where the same
+   command run directly opened it. A command that asks there for a password or a passphrase gets that error
+   instead of an answer. Its standard input is `/dev/null`, whatever the wait was started with, so a command that
+   reads its answer there reads the end of its input at once. A try that fails for either counts as failed like
+   any other, and the wait goes on to its bound with nothing shown, because what a try prints is discarded and
+   only its exit code is read. Give the command what it needs without a prompt before arming the wait, and run it
+   once by hand to see that it asks nothing.
+2. **A wait that is killed outright leaves its try running.** SIGKILL gives the wait no chance to stop the try,
+   and the try is in a process group of its own, so a signal sent to the wait's group does not reach it either:
+   both times the try ran on, with no bound any more. Check two things afterwards. `synthesis wait list` no
+   longer shows the wait, since a record whose process is gone is removed the next time the waits are read:
+   nothing is armed, so arm the wait again if the event is still awaited. And find the try with
+   `ps -eo pid,pgid,etime,command`: it leads its own process group, so its pid is the group's id, and
+   `kill -TERM -- -<pid>` ends it with everything it started there.
+
 ## When a wake did not arrive
 
-1. `synthesis wait list`: is the wait still on the board? A wait whose process died or whose bound passed is gone.
+1. `synthesis wait list`: is the wait still on the board? A wait whose process died or whose bound passed is gone,
+   and so is a note its seat took down with `synthesis wait clear`.
 2. `synthesis inbox --peek`: did the mail arrive unseen? A session bound to no project receives nothing addressed
-   to a project; `synthesis who` shows the binding, and `synthesis resume <project>` restores it.
+   to a project; `synthesis who` shows the binding, and `synthesis resume <project>` restores it. A seat that holds
+   a live wait is listed there for the wait's whole bound, marked `waiting until HH:MM`. Once it has been quiet
+   for eight hours its row also says `STALE`: its claims go stale as any seat's do, while mail still reaches it.
 3. Was the message sent to this session? The sender's `synthesis msg` ended with what would deliver it.
 4. Did the watcher end at its bound (exit 3)? Then nothing arrived in time, and the next step is a decision, not a
-   longer silence.
+   longer silence. What came after the bound is still there to find: mail stays unread until `synthesis inbox`
+   reads it, and a file that turned up late is in place, so a new `wait file` waits for its next change.

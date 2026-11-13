@@ -28,7 +28,7 @@ import html
 import json
 import re
 import sys
-from datetime import date, datetime, time, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -54,6 +54,17 @@ ASK = "the principal's decision, written on a `Decision:` line of that block"
 
 def stop(message: str):
     raise SystemExit(f"travel_check: {message}")
+
+
+STEP = re.compile(r"(?i)\s*(?:$|[:\-–—]|(?:to|from|home|back|there)\b)")  # what follows the block's word in a block's title
+
+
+def is_block(summary: str, said: dict, title: str) -> bool:
+    """Whether an entry is a travel block: titled with the block's word alone, or with it and then a colon, a dash or
+    a direction (`Travel: to the theatre`, `Travel home`), or titled with it and carrying one of a block's lines. An
+    event whose title only begins with the word (`Travel planning workshop`) is an event (the ninth review)."""
+    found = re.match(rf"(?i){re.escape(title)}\b(.*)", summary.strip())
+    return bool(found) and bool(STEP.match(found[1]) or {"for", *(line.lower() for line in LINES)} & set(said))
 
 
 def lines(description: str) -> dict:
@@ -144,27 +155,31 @@ def judge(args, config: dict, read: dict) -> dict:
         stop(f"the calendar read does not cover {first} through {last} (it covers {covered[0]} through {covered[1]}); "
              "read the calendar for those days first")
     title = str(policy.get("block_title") or "Travel").lower()
-    blocks, commitments, others, loose = [], [], [], []
+    blocks, commitments, others, loose, untimed = [], [], [], [], []
     entries = read.get("events")
     if not isinstance(entries, list) or not all(isinstance(e, dict) for e in entries):
         stop('the calendar read\'s "events" is not a list of entries, so it cannot be judged: save the read again')
     for entry in entries:
+        summary, said = str(entry.get("summary") or "an event"), lines(entry.get("description"))
         try:
             a, b = slot.moment(entry.get("start"), zone), slot.moment(entry.get("end"), zone)
         except SystemExit as exc:
-            stop(str(exc.code).split(": ", 1)[-1])
-        summary, said = str(entry.get("summary") or "an event"), lines(entry.get("description"))
-        others += [(a, summary)] if a else []  # every timed entry, a trip included: what a night runs into the next morning
-        if re.match(rf"{re.escape(title)}\b", summary.lower()):
+            stop(f'the start or end of "{summary}": ' + str(exc.code).split(": ", 1)[-1])
+        others += [(a, summary, id(entry))] if a else []  # every timed entry, a trip included: what a night runs into the next morning
+        if is_block(summary, said, title):  # with clock times or without: a block all day is a block, a workshop all day is an event
             names = [" ".join(name.lower().split()).strip("\"'“”‘’ .:;,!") for name in said.get("for", "").splitlines()]
-            blocks += [{"start": a, "end": b, "said": said, "names": names}] if a and b else []
+            blocks += [{"start": a, "end": b, "said": said, "names": names, "entry": id(entry)}] if a and b else []
             continue
         loose += [(a, b, summary)] if a and b and (TRIP.search(summary) or title in summary.lower()) else []
         span, spot = days(entry, a, b), tidy(entry.get("location"))
+        if not span and place(spot, policy) == "away":
+            stop(f'"{summary}" is at a place and has no start this can read, so it cannot be judged: read the calendar again')  # never passed over
         found = {"summary": summary, "title": " ".join(summary.lower().split()), "start": a, "end": b or a,
                  "days": span, "said": said, "location": spot}
         if span and place(spot, policy) == "away" and found not in commitments:  # one event read from two calendars is one event
             commitments.append(found)
+        if span and not a and place(spot, policy) and found not in untimed:  # all day at a place, the principal's own included: it holds a morning and gives no hour
+            untimed.append(found)
     timed = [c for c in commitments if c["start"]]
 
     def apart(block, c):  # how far a block stands from a commitment
@@ -237,9 +252,16 @@ def judge(args, config: dict, read: dict) -> dict:
             late = latest and (after["end"].date() > c["start"].date() or after["end"].time() > latest)
             if late and not decided:
                 lacks.append(f"home at {slot.hm(after['end'])}, after {latest:%H:%M}: {ASK}")
-            short = slot.morning_after(after["end"], others, policy.get("sleep_hours"), slot.hour(policy, "morning_starts"), c["start"])
+            apart_from = {b["entry"] for b in (before, after) if b}  # the outing's own way there and back is no commitment of the next morning
+            short = slot.morning_after(after["end"], [(a, s) for a, s, entry in others if entry not in apart_from],
+                                       policy.get("sleep_hours"), slot.hour(policy, "morning_starts"), c["start"])
+            morning = slot.morning_day(after["end"], slot.hour(policy, "morning_starts"), c["start"])
+            blank = next((u["summary"] for u in untimed if u is not c and u["days"][0] <= morning <= u["days"][1]), None)
             if short and not decided:
                 lacks.append(f"home at {slot.hm(after['end'])} and {slot.first_thing(short, policy['sleep_hours'])}: {ASK}")
+            elif blank and policy.get("sleep_hours") and not decided:  # a commitment that holds that day and gives no hour
+                lacks.append(f'home at {slot.hm(after["end"])} and "{blank}" the next morning is all day, with no hour this can read, '
+                             f"so the night cannot be judged: give it its times, or {ASK}")
             found.update(home=slot.hm(after["end"]))
         events.append({**found, "lacks": lacks})
     flagged = sum(bool(e["lacks"]) for e in events)

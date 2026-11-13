@@ -61,7 +61,9 @@ RSVP, an invitation the agent accepts, a decision in a plan.
 ## The travel block
 
 One calendar event on each side, so the time is visibly taken. Its title starts with the policy's
-`block_title` (`Travel` unless set), and its description carries these lines:
+`block_title` (`Travel` unless set): the word alone, or followed by a colon, a dash or a direction
+(`Travel: to the theatre`, `Travel home`). An event whose title only begins with that word (`Travel
+planning workshop`) is an event, with clock times or without, unless it carries a block's lines. Its description carries these lines:
 
 ```text
 For: Book launch at the Grand Theatre
@@ -110,7 +112,7 @@ by its label alone or with a room or a note after it (`Office, 4th floor`). An a
 | `local_minutes` | a walk or ride this short needs a line and no blocks |
 | `arrive_early_minutes` | how long before the start the outbound block must arrive |
 | `latest_return` | a return after this hour is the principal's to decide |
-| `sleep_hours` | the hours the principal keeps between getting home and the next morning's first commitment; a shorter night is theirs to decide. No key, no rule |
+| `sleep_hours` | the hours the principal keeps between getting home and the next morning's first commitment; a shorter night is theirs to decide, and a commitment already begun when they get home leaves no night at all. With no `morning_starts`, an outing that begins and ends on one morning is judged against the next night. No key, no rule |
 | `morning_starts` | the hour the principal's morning begins whether or not the calendar holds an entry then (a workout, a routine nobody schedules). The night ends at the earlier of this hour and the first entry, and an outing that began on an earlier day and ran past this hour left no night at all. Without it, a morning with no entry costs nothing the check can see |
 | `cost` | `personal` and `business`: the rule for each, in words |
 | `block_title` | the word a travel block's title starts with |
@@ -148,7 +150,11 @@ What it takes each word to mean:
   whatever else it says: an online word in a venue's name, a map link beside it.
 - **The days it judges** are every day a commitment covers. One under way when the days begin is judged for
   its way back, and its way there is left to a read that holds its start. An all-day event counts on each day
-  it covers and needs its travel line; give it clock times to have its blocks checked.
+  it covers and needs its travel line; give it clock times to have its blocks checked. When the morning
+  after a return holds an all-day commitment at a place (the principal's own office included: it is no
+  trip, and it still begins at some hour), the night cannot be judged from the read: the
+  event that returns the evening before lacks that, until the all-day one is given its times or the
+  return's block carries the principal's `Decision:`.
 - **Whose a block is** follows its `For:` lines, as above (quotes around a title do not matter). When a block
   beside an event belongs to another, the report says whose it is. One event read from two calendars is one
   event.

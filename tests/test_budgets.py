@@ -1,12 +1,9 @@
 """R8: budgets that make machinery regrowth a failing build, and hook latency."""
 
 import json
-import os
-import statistics
-import subprocess
-import sys
-import time
 from pathlib import Path
+
+import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 # Ceilings at the measured size once every verdict was applied and duplication removed (2026-10-06):
@@ -503,10 +500,195 @@ ROOT = Path(__file__).resolve().parents[1]
 # events someone else is on; protected windows stand beside prose; 24:00 ends a day).
 # travel_check.py 10: judge 8, BESIDE and TRIP (an entry beside an event that is titled like a trip is named as its
 # travel in another form, not reported as no block).
+# After an eighth review round, which found twelve more of the same kinds (a command another command runs, a value a
+# program keeps before it moves, a pipe, a variable, an example read as a choice, a time that cannot be judged), and
+# after the guard's own probes of a folder it cannot read, guards.py 103 more. _python_writes 39: a relative path made
+# whole (abspath, realpath, resolve, absolute, getcwd, cwd) judged from where the program stood at that call, in a
+# target and in a started command, 11; a pipe judged with the process it belongs to, by the name the process is kept
+# under, and what is written down it piece after piece read as one script, 10; the names' fixed point as a function,
+# run again once the folders the program may stand in are known, 9; with_suffix, with_name and with_stem spelled, 4; a
+# walk or a pattern from a relative folder, glob's root_dir and a folder reached through a link, 2; a protected path
+# kept in any mapping beside a variable the started command leaves to its environment, 2; a tree removed or moved away
+# apart from one copied over, 1. _commands 21, Quoted 6, MESSAGE 3, STARTERS 2 and PROMPTED 1 (a word handed to a
+# program the guard does not know is read as a command line only where it starts as a command, the value of a message
+# option is words for a reader, and a command read that way is judged for what it writes, runs and starts; find's
+# -execdir runs in the folder of what it found). _led 17 (a cd into the folder of a spelled path, a fresh temporary
+# folder or the folder it is in is followed; any other substitution is a folder the guard cannot read). _self_grant 7
+# (a relative write in a folder the guard cannot read, in a command that names a protected folder; the approved
+# lines' folder removed or moved away whole). _placed 5 (quoting starts over inside a substitution). _find 5 (-execdir,
+# -okdir and BSD's -f). _landing 2 and VALUED 1 (xxd's second operand is its output), GONE and OVER in place of WHOLE 1,
+# less 4 in _string_writes, 2 in _deploys (the publisher is found past the interpreter's options by _program) and 1 in
+# _named. slot_check.py 4: judge (a personal marker is a tag matched as a whole word; a plain word stops the check).
+# travel_check.py 2: judge (an event at a place with no start it can read stops the check and is named).
+# ritual_state.py 7: _when 3, _day 1, travel 1, QUOTE and _shown 2 (a quoted example is an example; an event that ends
+# before it starts is refused).
+# Before the ninth review round, after 254 plain commands and programs of this project's own were put to the eighth
+# round's answer, guards.py 84 more. _python_writes 41: what names no folder (a path taken relative to a folder that
+# holds it, one part of a path, a path flattened into a name, a digest, a length), and that relative path itself when
+# both ends are spelled, 26; a word of a list built round a path the program found keeps that path, and a script it
+# cannot read is refused, 5; a fresh temporary folder is a folder somewhere else, also when `with` names it, 4; what
+# is written to os.popen is the command's input, 3; the standard library's own writers (a log file, a download, a
+# temporary file made in a folder it is told), 3. _own_text 16 (a keyword argument or a statement of a program handed
+# to another interpreter is not a variable the command sets). _commands 8 ($PWD and $OLDPWD are the folder each
+# command is in and the one before, in its own words and targets and not in a script it hands a shell; what printf
+# prints into a shell is its format with its words put in). _self_grant 6 (a command find -execdir runs is judged at
+# the top of the search and in each protected folder under it). _led 5 (any word that starts with a substitution the
+# guard can read: a temporary file, the top of the repository). _put 2, PLACE and DEEP (the folder a command is in).
+# LIBRARY_WRITES 2. OPAQUE and _named 2 (a program for an interpreter the guard cannot read is held for each path it
+# names).
+# After a ninth review round (eleven findings at the edges of the eighth round's answer) and the probes that followed,
+# guards.py 56 more. _python_writes 47: the folder a call is made in is followed through a `with`, a `try`, a branch,
+# a loop and the program's main block, each in the order its statements run (a branch may not be taken, a loop may
+# run no times or leave at any point, a handler and a finally may start from any point of the try, the body of
+# `with contextlib.chdir` runs in that folder, and a change passed over by `suppress` may not have happened), 34; a
+# descriptor stands for its folder as it stood when it was opened, 5; a process kept under a second name is the same
+# process, 5; the parent of a path and `dirname`, 3. _commands 2, WORDS 2 and _named 1 (a handed command line starts
+# as a command with any program the guard has a rule for, a reader included since it may redirect, and not with a
+# shell's own word or a word a sentence starts with; a message attached to its option, `--body=...`, is words for a
+# reader). _landing 2 (an operand that is `-` is the input, so the operand after it is still the output). _bare 2
+# (what `trap` keeps to run when the shell ends). travel_check.py 11: is_block 10 and STEP (a travel block is known
+# by the form of its title or by its lines, so an event whose title only begins with the block's word is an event).
+# ritual_state.py 2: FENCE (a fence left open and an HTML comment are not the plan's own text).
+# After a tenth review round (twelve findings) and this project's own probes of its answer (452 commands and
+# programs and 36 plan shapes), guards.py 394 more. The probes showed one cause behind the needless refusals each
+# round had met a case or two of: a name was read only when it was given one value, once, in one place (30 of the
+# first hundred everyday programs run from inside a transcript folder were refused for it, 19 of the second).
+# _python_writes 382. A program is read through every value a name may hold: its body 123 (what the program gives
+# each name, each field of its own object and each entry of its own table: its assignments, a class's constants and
+# fields, a data class's and a named tuple's, a parser's defaults, setattr; which functions' callers are all seen
+# (not wrapped, not given another value, map) and what each hands back; the rule for a call named as a writer),
+# gather 24 (what each function is handed, what each loop visits, each name where it is read), elements 25 and
+# columns 18 (what a loop visits: a list, its rows, zip, enumerate, a table's values, what a walk or a pattern
+# finds), spellings 18, values_of 14 and outer 5 (a target read once for each value; one of two values), key_of 11,
+# entry_of 10 and table 14 (a field, an entry by its key or by a key held in a name, a place in a list, the
+# environment with its default), spelled 20 (those readings, a template filled, a list joined, Path.home()),
+# given_to 3. Each function by its own names: scope 16 and nodes_of 7. Each name where it is read, in the order the
+# program runs: gives 16 (what an assignment gives, a pair unpacked, mkstemp's) and order 7. A call of the
+# program's own function read by what that call hands it: answers 15, hands 10 (taken out of settle, kept between
+# settlings) and asked 5 (a method is told from a function of the same name; a class reaches its __init__).
+# folders 7 (a descriptor opened beside another), descriptor 4 (a number, and what os.open or mkstemp hands back,
+# is no path), home 3 (the home a command or a program gives itself), elsewhere 3 and inward 2 (what a walk found
+# from where the program stands only goes further into a folder named before it), named 3 (that, and the
+# environment the program sets), settle 1, less 2 in leads. BY_NAME 4 and PATH_KEYS 2 (a call named as a writer in
+# any library is judged where its path lands). check_self_grant 3 (a command that gives HOME its own value).
+# _bare 1 (`trap --`), _own_text 1 (a program handed in double quotes), _named 1 (a message value given apart from
+# its option).
+# slot_check.py 22: morning_day 9 (a morning's outing is judged against the next night), judge 9 (an event is taken
+# time on each day it covers; a slot on top of another event says so), morning_after 3 and first_thing 1 (a
+# commitment begun before the return leaves no night). travel_check.py 2: judge (a block-titled entry with no clock
+# times is an event; the outing's own way there and back is no commitment of the next morning).
+# ritual_state.py 23: _items 12 (the entry an explanation stands in; a deeper heading or a bold line is a title),
+# choices 3 (a closing line closes when it says what was decided; a recommendation marked on the option), ITEM 2,
+# OPTION 2, FENCE 2, OPEN 1 and HEAD 1 (a quote inside a list entry, a heading or a row of a table as an option, a
+# sentence that begins with the word, a fence longer than the one it holds).
+# The eleventh review round, and the probes and the replay after it, add 389 to the plugin, 345 of them in
+# guards.py (the bar the principal set on 2026-11-11: a round with no ordinary way through and no ordinary work
+# refused). The round's eight findings in the Python reader were one gap, a field or a key read as one set of
+# values whatever carried it, so a member is now read by the thing that holds it. In _python_writes: its own body
+# 100 (a table or a row spelled out once and only read, handed as `f(**table)` or `f(*row)`, written out; each
+# class's lineage, the __init__ that builds it, its kin and the function each node is written in; an argument
+# parser's defaults; a class that keeps its keywords as its fields; the census of what each thing is given after
+# it is made; where a writer by its name takes its path), part 42 (what one member of one thing holds: a table's
+# entry, a list's place, an object's field, the environment's variable, and what it was given since, the last
+# plain gift along one path standing for those before it; a thing that holds itself read once), resolve 10 and
+# follow 30 (each thing an expression may be, as the place that makes it; a finished reading kept, one that runs
+# away cut short, after the replay met two recorded commands that did not come back), built 27 (what an object's
+# field holds as it is made: what the __init__ that runs gives it from what that call hands it, a base's through
+# super().__init__, a field handed by place or by name, the class's constants and properties), under 19 (a value
+# read with what one call hands the function and the object it is called on; a name the function gives another
+# value is either, which a function that rebinds what it is handed had slipped past since the tenth round),
+# sel_of 17 and path_of 6 (a member read or store, and the path it is reached by), named 15 (a member is built
+# from what it holds, the program's own function from what it hands back, a comprehension from what it makes
+# each one of; one member followed once), order 14 and flat 2 (the last plain gift before each read; a main block
+# in line), members 11 (with its default; kept between settlings), asked 10 (`cls(...)`, `super().__init__(...)`,
+# a method by the class of what it is called on, and a call on a file or a string is no call of the program's own
+# method), stringy 9 (what reads as a path and not as an object or an open file), selves 7, read_as 7, is_member
+# 6, spelled 5, key_at 5, handed_field 4, settle 4, gifts 3, keep 3, one 2, lineage 2, gives 2 (a pair unpacked
+# from anything is its first and its second), elements 2, builds 2, outer 2, held 1; less table 14, answers 8,
+# entry_of 8, key_of 4 and gather 2, which the member model replaces. BY_NAME 4, STRINGS 3, FOREIGN 2,
+# OBJECT_FIRST 1, PATH_FIRST 1 and OPENED 1 (a writer in another library takes its path first, second or either;
+# a library's own way to open a file).
+# slot_check.py 27: judge 16 and whole_days 11 (an all-day block the principal marked, or one that says it is busy,
+# takes its day; a night before an all-day commitment is not called enough; of several events at a slot's own
+# hours one is the slot). travel_check.py 5: judge (the same night, said in the event's own lacks).
+# ritual_state.py 12: _items 9 (a heading or a bold title after a choice's options begins another; a sentence
+# between a title and its options), OPEN 2 (a recommendation or a decision that only puts the answer off), LED 1
+# (a line led by a pictograph).
+# The twelfth review round adds 56, 52 of them in guards.py (the principal's ruling of 2026-11-12: fix its twelve
+# findings with tests first, show nothing got worse, and release). In _python_writes: census 37, less 13 from the
+# body and 3 from keep, which it takes in (what each thing is given is gathered until it settles: rows added to a
+# list and then copied into a table were missed in one pass), inlined 12 (what a function hands back, written with
+# what this call hands it, so a factory called twice makes two objects), rowed 9 (a table filled from rows keeps
+# each row's key with its value), part 4 (a table made from pairs or from another table; the round's one write
+# let through), follow 3 (a union of two tables), spelled 2 (a template kept in a name), built 1 (a default made
+# by a function written in place). slot_check.py 1 and travel_check.py 2 (an all-day hold; a trip into a day
+# blocked whole; an all-day commitment at the principal's own place), decay_sweep.py 1 (a fence on a list mark's
+# line).
+# 5.8.0 adds 886 to the core and 1,070 to the plugin.
+# wait.py 253, new (waiting for an expected event is a task): main 59, its usage 29, attempt 23 (a try in a session
+# of its own, stopped with all it started; a program that cannot be started refuses), _watch 18, live 14, wake 11,
+# _signal 10, _stop 10, _alive 8, span 7, record 7, sent_by 6, watching 6, said 3, unread 3, _folder 2, four
+# constants, and the lines between them.
+# reply_check.py 259 (the turn-end check reads a wait): the forms a wait takes 66 (WAITS and the patterns it is
+# built from); the principal's own move 68 (THEIRS, YOURS, _theirs and their parts; a staged message, an approval
+# code and a request hand them the turn); what announces nothing 43 (a wait as its sentence's subject, a label, a
+# heading, a rule); held_by_harness 43 with its constants (background work the harness holds, read from the
+# transcript's tail: of 815 recorded replies read as a wait, 586 were of this kind); unarmed_wait 22, check 8,
+# quoted text 5, _probe 2, the module's note 2.
+# guards.py 214: _unread_files 82 with _standard_base64 10, _sha256 12, HASH_SECONDS 3, check_upload 7 and the
+# constants that say which tools read a local file and which names mark secrets 19 (a send's attachments are read
+# as the connector reads them, before the approval, and the approval binds their bytes); temporary_addresses 20
+# with TUNNELS 5, HOSTNAME, LOCAL and their parts 6, and message_problems 12 (an address that can change is refused
+# before any approval); check_tunnel 13, _tunnels 13 and their two constants (a quick tunnel's start waits for a
+# code); check_send 4, _python_writes 3 (a parsed program's own warnings are not the hook's to print),
+# _protected 2, check 1.
+# doctor.py 90: check_outbox 41, started_with 13 and connector_files 10 (the outbox is there, and the running
+# connector was started to read it); check_temporary_addresses 10; check_wait_check 8; run_checks 3,
+# check_shell_name 2, RELEASE_MANIFEST 2, check_codex_board 1.
+# cli.py 22 (cmd_msg 10: what will deliver a message; cmd_who 6: a waiting seat; parser 3, main 3), board.py 22
+# (waiting 6, Session 5, _describe 5, _held 4, _read_marker 2, ClaimConflict 1, less inbox 1), approvals.py 13
+# (backed 11: a grant of a thing, held and not spent; 2 beside it), paths.py 6 (outbox 4, BOARD_FILES 2), hook.py 4
+# (the mail hint at a session's start), project.py 3 (resume names a waiting seat).
+# Outside the core 184: relied_on.py 94, new (main 48, its note 29, answer 17: the health of what other people rely
+# on, each check put to the guard first); the knowledge-base connector 54 (config.py 40: load 18, temporary 10,
+# TEMPORARY_HOSTS 6 and 6 beside them; server.py 10; access.py 4: the operator-only test mode); provenance_scan.py
+# 33 (scan 9, main 9, its note 8, records 7: the folders a workspace keeps its plan in); setup.py 2 and
+# autopilot_cli.py 1.
+# 5.8.0, review round 3 (2026-11-12): core 342, plugin 431. A second model's 42 findings in the pieces above, and what
+# the fixes' own probes found beside them, each with a failing test first.
+# guards.py 201: _unread_files 65 (a url the connector reads from its own disk, does not fetch, or fetches nothing
+# from for its host; an entry it would skip or rename; a source that cannot be parsed; a link of another name),
+# _sha256 21 (the read runs in a thread the guard stops waiting for at its limit), CONTROL, CONTENT_ID and
+# check_upload 3; _only_here 29, _carried 15, _here 7, temporary_addresses 7 and LOCAL, FILED, NAMED, _HOST, NEAR and
+# TUNNELS 8 less _NAME and _NET 2 (a host is read whole: IPv6 literals, any scheme, a file's name with its line, a
+# range, a wildcard-DNS name, a service's own host with a port); _tunnels 23, _reverse_host 17, check_tunnel 2 and
+# NGROK, CLOUDFLARED, CARRIERS, LOOPHOLE and SSH_VALUED 7 less RUNNERS 1 (the launch forms that started unheld, and
+# a named tunnel that was held).
+# reply_check.py 89: held_by_harness 9 (only the harness's own entries start and end work; nothing raises); _asked 9
+# with OTHERS 3 and _PLAIN 4 (a request is one put to the principal); _offered 6 with SPENT 3, USED 2 and _CODE 1 (a
+# spent code offers nothing); _GETS 8 and _EVENT 1 (the session's own next step is no event); WOKEN 7 and _SEAT 4
+# (the stated wake limitation passes); unarmed_wait 7, RULE 4, COUNTED 4, TABLED 3, STAGED 3 and SENT 2 (a
+# first-person wait is read in a heading, a table and before a colon; a block is set aside); _NAMED 4 and WAITS 1
+# (standing by for a named thing); HANDED 3 (the next clause hands the thing over); _ONCE 1, the module's note 1,
+# less THEIRS 1.
+# doctor.py 24: _procargs 15 and started_with 9 (the connector's environment read from the process record, whole).
+# project.py 9 (_peers 13 and _recent_conversation 2, less resume 6: resume names a waiting seat when already
+# bound); paths.py 9 (config 7, Unreadable 2) and cli.py 8 (main 5, _main 3): a config that is no object is
+# unreadable, and a command that reads one says so in one line; wait.py 2 (attempt: a folder found on PATH).
+# Outside the core 89: the knowledge-base connector 79 (config.py 65: load 22, _beyond_origin 15, _ip 11,
+# old_spelling 8, temporary 2 and 7 lines of constants and notes; server.py 14: a refresh refused in the test mode;
+# together its owner's five rulings and the review's three findings); relied_on.py 10 (a checker or a check that
+# cannot run says so).
+# 5.8.1 (2026-11-12): core 34, plugin 61. install.py: _compile 18, _compiled 12 and install 4 (the runtime is compiled
+# once at install, so a hook does not compile the guards from source on every call: 72 ms to 33 ms for a shell command's
+# check; and, from the release's review, a session start compiles a runtime that an older release's installer switched
+# to, a compiled file is held to its source's hash and not its date, and compiling cannot fail an install).
+# conftest.py at the root 27, new: under an interpreter that keeps compiled code in one folder of the person's own
+# (Apple's Python), a test run keeps its compiled code in a temporary folder, in this process and in each it starts.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # consolidate first).
-CORE_BUDGET = 9581
-PLUGIN_BUDGET = 29944
+CORE_BUDGET = 11877
+PLUGIN_BUDGET = 32661
 
 
 def _lines(files):
@@ -522,14 +704,54 @@ def test_whole_plugin_stays_within_its_budget():
     assert _lines(code) <= PLUGIN_BUDGET
 
 
-def test_bash_guard_hook_is_fast(tmp_path):
+# What the modules a pre-tool-use call for a shell command loads import as they load, by the module that asks.
+HOOK_NEEDS = ("json", "os", "re", "sys", "time",                                  # hook.py
+              "__future__", "datetime", "fnmatch", "itertools", "math", "shlex",  # guards.py
+              "hashlib", "pathlib", "unicodedata",                                # approvals.py and paths.py
+              "base64", "contextlib", "dataclasses",                              # board.py
+              "urllib.parse")                                                     # sends.py
+
+
+def test_bash_guard_hook_is_fast(compiled_runtime, tmp_path, hook_budget):
+    """What a session pays on every shell command: a new process that runs the installed runtime, compiled as the
+    installer leaves it. On the principal's Mac the modules named above load in 27 ms, so twice that is 54 ms,
+    beside the 50 ms the doctor's self-test holds there. The hook took 1.3 times when this was written (35 ms), and
+    2.7 times with its own code compiled on every call (73 ms: the fault 5.8.1 fixed, which a fixed 150 ms had let
+    pass)."""
     payload = json.dumps({"tool_name": "Bash", "tool_input": {"command": "ls -la && git status"}})
-    env = {**os.environ, "SYNTHESIS_HOME": str(tmp_path)}
-    times = []
-    for _ in range(15):
-        start = time.perf_counter()
-        subprocess.run([sys.executable, "-S", str(ROOT / "synthesis" / "hook.py"), "pre-tool-use"],
-                       input=payload, capture_output=True, text=True, env=env, check=True)
-        times.append(time.perf_counter() - start)
-    # 50 ms is the target on the principal's Mac; shared CI runners get headroom.
-    assert statistics.median(times) < 0.15
+    hook_budget([str(compiled_runtime / "synthesis" / "hook.py"), "pre-tool-use"], HOOK_NEEDS,
+                input=payload, cwd=str(tmp_path))
+
+
+def test_the_hook_budget_fails_an_unnamed_import_a_name_nothing_imports_and_a_slow_call(compiled_runtime, tmp_path, hook_budget):
+    """The budget is a test's only word on a hook's cost, so each way it can refuse is shown to refuse."""
+    hook = [str(compiled_runtime / "synthesis" / "hook.py"), "pre-tool-use"]
+    payload = json.dumps({"tool_name": "Bash", "tool_input": {"command": "ls"}})
+    with pytest.raises(AssertionError, match=r"synthesis\.sends imports urllib\.parse while the call runs: every call pays for it"):
+        hook_budget(hook, tuple(name for name in HOOK_NEEDS if name != "urllib.parse"), input=payload, cwd=str(tmp_path))
+    with pytest.raises(AssertionError, match="asyncio is named as a need and nothing of the call's own imports it"):
+        hook_budget(hook, HOOK_NEEDS + ("asyncio",), input=payload, cwd=str(tmp_path))
+    inside = "import time\n\ndef later():\n    import shlex\n\nlater()"  # inside a function, and the function runs
+    with pytest.raises(AssertionError, match="the caller imports shlex while the call runs"):
+        hook_budget(["-c", inside], ("time",))
+    slow = "import time\nif not time:\n    import asyncio\ntime.sleep(0.25)"  # an import that never runs is no need
+    with pytest.raises(AssertionError, match=r"the call took \d+ ms; its standard-library modules alone load in \d+ ms here"):
+        hook_budget(["-c", slow], ("time",), rounds=3)
+
+
+def test_the_hook_budget_fails_a_runtime_that_is_not_compiled(compiled_runtime, tmp_path, hook_budget, monkeypatch):
+    """What 5.8.1 fixed is what the budget has to catch, on any machine: it looks at the runtime, since by time alone
+    an uncompiled one passed where starting a process costs more than compiling does. A process that may write
+    bytecode compiles the runtime at its first call, which is how CI runs the suite; a session's hooks are told to
+    write none, so the budget's own runs are told the same and leave the runtime as they found it (both found by a
+    review before 5.8.1 was released)."""
+    from importlib.util import cache_from_source
+    monkeypatch.delenv("PYTHONDONTWRITEBYTECODE", raising=False)  # as CI runs the suite
+    compiled = [Path(cache_from_source(str(source))) for source in (compiled_runtime / "synthesis").glob("*.py")]
+    for file in compiled:
+        file.unlink()
+    payload = json.dumps({"tool_name": "Bash", "tool_input": {"command": "ls -la && git status"}})
+    with pytest.raises(AssertionError, match="the runtime is not compiled for this interpreter, so every call compiles it"):
+        hook_budget([str(compiled_runtime / "synthesis" / "hook.py"), "pre-tool-use"], HOOK_NEEDS,
+                    input=payload, cwd=str(tmp_path))
+    assert not [file for file in compiled if file.exists()]  # and the budget's own run of the call wrote none

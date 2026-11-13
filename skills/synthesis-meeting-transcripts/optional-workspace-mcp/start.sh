@@ -7,6 +7,14 @@
 #   GOOGLE_CLIENT_SECRET_PATH — path to client_secret.json (required)
 #   GOOGLE_MCP_CREDENTIALS_DIR — where per-user tokens are stored (default ~/.google_workspace_mcp/credentials)
 #   WORKSPACE_MCP_TOOL_TIER  — core|extended|complete (default complete)
+#   WORKSPACE_MCP_VERSION    — the workspace-mcp release to run (default below). The
+#                              synthesis send guard copies this release's rules for a
+#                              local file, so name another only after checking them.
+#   ALLOWED_FILE_DIRS        — folders the server may read local files from, separated
+#                              by ":". Whatever is set is kept, and the synthesis outbox
+#                              is added (see below).
+#   SYNTHESIS_HOME           — where synthesis keeps its folders (default ~/.synthesis/v5);
+#                              the outbox is $SYNTHESIS_HOME/outbox
 #   WORKSPACE_MCP_FOREGROUND — set to 1 when invoked by a process supervisor
 #                              (launchd, systemd). Causes the script to `exec`
 #                              uvx so the supervisor manages the actual server
@@ -53,6 +61,23 @@ export OAUTHLIB_INSECURE_TRANSPORT=1  # permits http://localhost redirect
 
 mkdir -p "$GOOGLE_MCP_CREDENTIALS_DIR"
 
+# Local files the server may read. workspace-mcp reads a file given as a path
+# (a mail attachment, a Drive upload) only from its own attachment folder
+# (WORKSPACE_ATTACHMENT_DIR, default ~/.workspace-mcp/attachments) and from the
+# folders in ALLOWED_FILE_DIRS. A path anywhere else is refused when the tool
+# runs, which for a send is after it was approved. Agents stage outgoing
+# attachments in one folder, the synthesis outbox, so it is made here and added
+# to whatever ALLOWED_FILE_DIRS already holds. A server that is already running
+# keeps the folders it was started with: restart it to pick this up.
+OUTBOX="${SYNTHESIS_HOME:-$HOME/.synthesis/v5}/outbox"
+# The server does much besides mail, so a folder that cannot be made is said, not fatal.
+mkdir -p "$OUTBOX" || echo "WARNING: could not make the outbox $OUTBOX; a file staged there cannot be attached until it exists." >&2
+case ":${ALLOWED_FILE_DIRS:-}:" in
+  *":$OUTBOX:"*) ;;
+  *) ALLOWED_FILE_DIRS="${ALLOWED_FILE_DIRS:+$ALLOWED_FILE_DIRS:}$OUTBOX" ;;
+esac
+export ALLOWED_FILE_DIRS
+
 if [ -f "$PID_FILE" ]; then
   OLD_PID="$(cat "$PID_FILE")"
   if kill -0 "$OLD_PID" 2>/dev/null && ps -p "$OLD_PID" -o command= 2>/dev/null | grep -q "workspace-mcp"; then
@@ -68,6 +93,10 @@ if [ -f "$PID_FILE" ]; then
 fi
 
 TOOL_TIER="${WORKSPACE_MCP_TOOL_TIER:-complete}"
+# One release, named here and in the send guard's note (synthesis/guards.py), which refuses
+# before a send is approved what this release would refuse after. Started with no version,
+# the server moved to the newest release at every restart while the guard's copy stayed.
+SERVER="workspace-mcp@${WORKSPACE_MCP_VERSION:-2.1.0}"
 
 # Resolve uvx explicitly. With a sparse PATH, `nohup uvx` backgrounds a child
 # that dies immediately when uvx is not found, and the failure surfaces as
@@ -87,13 +116,13 @@ if [ "${WORKSPACE_MCP_FOREGROUND:-0}" = "1" ]; then
   # process group, and kills the workspace-mcp child. Exec replaces this
   # shell with uvx so the supervisor tracks the actual server PID.
   echo $$ > "$PID_FILE"
-  exec "$UVX_BIN" workspace-mcp --single-user --transport streamable-http --tool-tier "$TOOL_TIER" \
+  exec "$UVX_BIN" "$SERVER" --single-user --transport streamable-http --tool-tier "$TOOL_TIER" \
     >>"$LOG_FILE" 2>&1
 fi
 
 # Interactive / manual launch: background via nohup so the user can close the
 # terminal without killing the server.
-nohup "$UVX_BIN" workspace-mcp --single-user --transport streamable-http --tool-tier "$TOOL_TIER" \
+nohup "$UVX_BIN" "$SERVER" --single-user --transport streamable-http --tool-tier "$TOOL_TIER" \
   >"$LOG_FILE" 2>&1 &
 
 echo $! > "$PID_FILE"

@@ -135,9 +135,13 @@ def critical_deadlines(workspace: str, outcome: str) -> str:
     return f"critical deadlines: {len(rows)} open, {sum(r['lead'] for r in rows)} within {decay_sweep.LEAD_DAYS} days"
 
 
+def _when(moment) -> datetime:
+    """A whole date and time, as the travel check writes one; anything else is no result of that check."""
+    return datetime.fromisoformat(str(moment).replace("Z", "+00:00"))
+
+
 def _day(moment) -> str:
-    """The day of a whole date and time, as the travel check writes one; anything else is no result of that check."""
-    return datetime.fromisoformat(str(moment).replace("Z", "+00:00")).date().isoformat()
+    return _when(moment).date().isoformat()
 
 
 def _is_day(text) -> bool:
@@ -166,7 +170,8 @@ def travel(workspace: str, day: str, given) -> str:
         bare = [e for e in events if e["lacks"]]
         sound = (isinstance(events, list) and all(isinstance(e["lacks"], list) for e in events) and
                  (found["in_person"], found["flagged"], found["verdict"]) == (len(events), len(bare), "REFUSE" if bare else "OK")
-                 and all(first <= _day(e["end"]) and _day(e["start"]) <= through for e in events))  # each event within its days
+                 and all(first <= _day(e["end"]) and _day(e["start"]) <= through and _when(e["start"]) <= _when(e["end"])
+                         for e in events))  # each event within its days, and ending after it starts
     except (OSError, ValueError, KeyError, TypeError) as exc:
         refuse(f"the travel result {given} cannot be read ({exc!r}); run {again} again")
     if not sound:  # a result edited by hand, or cut short
@@ -183,10 +188,6 @@ def travel(workspace: str, day: str, given) -> str:
     return f"\ntravel: {len(events)} in-person event{'s' * (len(events) != 1)} through {last}, each with its travel"
 
 
-ITEM = r"(?im)^ *(?:>\s*)*(?:[-*+] |\d+[.)] )?\**"  # a line of an item: plain, bold, quoted or a list entry, however deep in its list
-OPTION = re.compile(ITEM + r"Option [A-Z0-9]+\b(.*)$")
-SAID = re.compile(ITEM + r"(Recommendation|Consequences|Commits)\**\s*:[*\s]*(.*)$")
-CLOSED = re.compile(ITEM + r"(?:Decided|Resolved|Released|Lapsed|Withdrawn)\**\s*:")
 def prompts(workspace: str, day: str, direction: str, outcome: str) -> str:
     """The line a day-end prints about what the principal typed that day, or a refusal: the listing cannot be made,
     it answers for another workspace, day or set of folders or at odds with itself, or the close is clean while a
@@ -248,15 +249,33 @@ def prompts(workspace: str, day: str, direction: str, outcome: str) -> str:
             f"\nprompts: {len(left)} of {total} typed on {day} {'is' if len(left) == 1 else 'are'} cited by no record")
 
 
-FENCE = re.compile(r"(?ms)^\s*(```|~~~).*?^\s*\1[^\n]*$")  # a fenced block is an example, not the item's own lines
-NOTHING = re.compile(r"(?i)[*\s]*(?:tbd|tbc|none|n/?a|no recommendation|your call|up to you|either)?[\s.*]*")
+# A line of an item: plain, bold or italic, quoted, a list entry or a task-list box, a heading or a row of a table,
+# in any order and however deep (`- > **Option A:**` is a quote inside a list entry).
+ITEM = r"(?im)^ *(?:> *|\| *|#{1,6} +|(?:[-*+]|\d+[.)]) +(?:\[[ xX]\] +)?)*[*_]*"
+LED = r"(?:[^\w\s*_>|#+.\[\]()\"'`~:-]{1,3}\s*[*_]*)?"  # a pin, a pointing hand or a tick before the word
+# An option's label ends at the mark that closes its emphasis, or at a colon, a dash, a bracket, a full stop or the
+# end of the line: `Option A was fine last time` is a sentence.
+OPTION = re.compile(ITEM + r"Option [A-Z0-9]+(?![A-Za-z0-9])((?:[*_]+|\s*(?:$|[:\-–—().|])).*)$")
+SAID = re.compile(ITEM + LED + r"(?:(?:My|Our|The) +)?(Recommend(?:ation|ed)s?|Consequences?|Commits)[*_]*\s*(?::|[-–—](?=[*_\s]))[*_\s]*(.*)$")
+CLOSED = re.compile(ITEM + LED + r"(?:Decided|Decision|Resolved|Released|Lapsed|Withdrawn)[*_]*\s*:[*_\s]*(.*)$")
+# A line that says nothing yet, as a decision or as a recommendation: a word that puts it off, however the line goes
+# on, or one of three that are also the first word of a sentence that says something, when little follows.
+OPEN = re.compile(r"(?i)\W*(?:pending|undecided|unknown|unsure|awaiting|not yet|to be |\?|(?:open|waiting|needed)\b(?:\W+\w+){0,3}\W*$)")
+# What Markdown does not show as the plan's own text: a fenced block (quoted or not, closed or not), which is an
+# example, and an HTML comment. Whichever opens first runs to its own end: a fence closes at a line of its own
+# mark alone, at least as long as the one that opened it, so four backticks hold a sample fenced with three.
+FENCE = re.compile(r"(?ms)^\s*(?:>\s*|(?:[-*+]|\d+[.)])\s+)*(?P<fence>(?P<mark>[`~])(?P=mark){2,}).*?(?:^\s*(?:>\s*)*(?P=fence)(?P=mark)*[ \t]*$|\Z)"
+                   r"|<!--.*?(?:-->|\Z)")
+QUOTE = re.compile(r"^( *)(?:> ?)+")  # what marks a line as quoted: the line is read as the one it quotes, as far in as the quote stands
+NOTHING = re.compile(r"(?i)[*_\s]*(?:tbd|tbc|none|n/?a|no recommendation|your call|up to you|either)?[\s.*_]*")
 COMMITS = re.compile(r"(?i)\b(?:accept|decline|rsvp|attend|go|join|host|schedule|meet|say (?:yes|no))\b")
 
 
-TITLED = re.compile(r"(?i)\b(Recommendation|Consequences|Commits)\**\s*:[*\s]*(.*)$")  # the same word and colon on a title line
-MARK = re.compile(r"^ *(?:>\s*)*(?:[-*+] |\d+[.)] )?")  # what stands before a title that is a list entry
+TITLED = re.compile(r"(?i)(?<![A-Za-z0-9])(Recommendation|Consequences|Commits)[*_]*\s*:[*_\s]*(.*)$")  # the same word and colon on a title line
+MARK = re.compile(r"^ *(?:> *|#{1,6} +|(?:[-*+]|\d+[.)]) +)*")  # what stands before a title that is a list entry or a heading; a task-list box stays, since a ticked one closes it
+HEAD = re.compile(r"(?i) *(?:#{4,6} +(?!(?:the +)?(?:options?|choices?)\W*$)\S|(?:\*\*|__)[^*_\n].*(?:\*\*|__)\s*$)")  # a deeper heading or a line all in bold: a title
 ENTRY = re.compile(r" *(?:>\s*)*(?:[-*+] |\d+[.)] )")  # a list entry, up to where its own text starts
-LABEL = re.compile(r"(?i)Option ([A-Z0-9]+)\b")
+LABEL = re.compile(r"(?i)Option ([A-Z0-9]+)(?![A-Za-z0-9])")
 
 
 def _shown(text: str) -> str:
@@ -265,14 +284,15 @@ def _shown(text: str) -> str:
     by four under a numbered entry are that entry's own lines, and were read as an example)."""
     lines, columns, blank, example = [], [], True, False
     for line in FENCE.sub("", text).expandtabs(4).splitlines():
-        indent, entry = len(line) - len(line.lstrip(" ")), ENTRY.match(line)
-        if line.strip():
-            while columns and indent < columns[-1] and (blank or entry or line.lstrip().startswith("#")):
+        body = QUOTE.sub(r"\1", line)
+        indent, entry = len(body) - len(body.lstrip(" ")), ENTRY.match(body)
+        if body.strip():
+            while columns and indent < columns[-1] and (blank or entry or body.lstrip().startswith("#")):
                 columns.pop()  # the line stands left of that entry's text: the entry is over
             example = indent - (columns[-1] if columns else 0) >= 4 and (blank or example)
             columns += [len(entry[0])] if entry and not example else []
         lines.append("" if example else line)
-        blank = not line.strip()
+        blank = not body.strip()
     return "\n".join(lines)
 
 
@@ -282,7 +302,7 @@ def _items(text: str):
     options whose label starts again (A after B), begin the next choice; a bullet under an option does not (the
     third and fourth reviews: decisions listed under a second-level heading were not read, a heading inside a fenced
     example was read as a choice, and a second entry lettered C and D was read as more options of the first)."""
-    for section in re.split(r"(?m)^#{1,3} ", _shown(text)):
+    for section in re.split(r"(?im)^#{1,3} (?![*_]*Option [A-Z0-9])", _shown(text)):
         lines, firsts, label, entry, fresh = section.splitlines(), [], None, -1, False
         for at, line in enumerate(lines):
             listed = re.match(r"( *)(?:>\s*)*(?:[-*+] |\d+[.)] )", line) if at and not (SAID.match(line) or CLOSED.match(line)) else None
@@ -294,11 +314,32 @@ def _items(text: str):
                 entry = len(listed[1])  # the entry a choice's options stand under, by how far it is indented
             elif listed and len(listed[1]) <= entry:
                 entry, fresh = len(listed[1]), True  # the list's next entry: its options are another choice, whatever their letters
+            elif label is not None and HEAD.match(line) and not (SAID.match(line) or CLOSED.match(line)):
+                fresh = True  # a deeper heading or a bold title after a choice's options: what follows is another choice
+        def depth(j):  # how far in a line's own text stands, its quote marks set aside
+            return len(QUOTE.sub(r"\1", lines[j])) - len(QUOTE.sub(r"\1", lines[j]).lstrip(" "))
         def titled(k):  # the line a choice starts at: the entry just above its options, else the section's own first line
             floor = firsts[k - 1] + 1 if k else 0
             above = next((j for j in range(firsts[k] - 1, floor - 1, -1) if lines[j].strip()
                           and not (OPTION.match(lines[j]) or SAID.match(lines[j]) or CLOSED.match(lines[j]))), None)
-            entry = above is not None and (len(firsts) > 1 or ENTRY.match(lines[above]))
+            if above is not None and depth(above) and not ENTRY.match(QUOTE.sub(r"\1", lines[above])):
+                # a sentence of explanation between an entry and its options: the entry is the one it stands in,
+                # the nearest above whose own text begins at or left of it
+                for j in range(above - 1, floor - 1, -1):
+                    found = ENTRY.match(QUOTE.sub(r"\1", lines[j]))
+                    if found and len(found[0]) <= depth(above):
+                        above = j
+                        break
+                    if lines[j].strip() and depth(j) < depth(above):
+                        break  # a line left of it that is no entry: the sentence stands in no list
+            if above is not None and not depth(above) and not (ENTRY.match(lines[above]) or HEAD.match(lines[above])):
+                # a sentence between a title and its options: the title is the nearest heading or bold line above it
+                for j in range(above - 1, floor - 1, -1):
+                    if HEAD.match(lines[j]) and not (SAID.match(lines[j]) or CLOSED.match(lines[j])):
+                        above = j
+                    if HEAD.match(lines[j]) or OPTION.match(lines[j]) or ENTRY.match(lines[j]):
+                        break
+            entry = above is not None and (len(firsts) > 1 or ENTRY.match(lines[above]) or HEAD.match(lines[above]))
             return above if entry else 0 if k == 0 else firsts[k]
         starts = [titled(k) for k in range(len(firsts))]
         for k, start in enumerate(starts):
@@ -316,9 +357,12 @@ def choices(workspace: str, day: str) -> str:
         text = plan.read_text(encoding="utf-8", errors="replace") if plan.is_file() else ""
         for item in _items(text):
             title, options = MARK.sub("", item.splitlines()[0]).strip(), OPTION.findall(item)
-            if not options or CLOSED.search(item) or title.startswith(("~~", "[x]", "[X]", "✓", "✔")) or "✅" in title:
+            done = any(not NOTHING.fullmatch(m[1]) and not OPEN.match(m[1]) for m in CLOSED.finditer(item))  # it says what was decided
+            if not options or done or title.lstrip("*_ ").startswith(("~~", "[x]", "[X]", "✓", "✔")) or "✅" in title:
                 continue
-            said = {m[1].lower(): m[2] for m in [*SAID.finditer(item), *TITLED.finditer(title)] if not NOTHING.fullmatch(m[2])}
+            said = {"recommendation" if m[1].lower().startswith("recommend") else "consequences" if m[1].lower().startswith("consequence") else m[1].lower(): m[2]
+                    for m in [*SAID.finditer(item), *TITLED.finditer(title)] if not NOTHING.fullmatch(m[2]) and not OPEN.match(m[2])}
+            said.update({"recommendation": "on the option"} if any(re.search(r"(?i)(?<!not )\brecommended\b", option) for option in options) else {})
             needs = ["recommendation"] + ["consequences"] * ("commits" in said or any(map(COMMITS.search, options)))
             lacks = [word for word in needs if word not in said]
             open_items += 1

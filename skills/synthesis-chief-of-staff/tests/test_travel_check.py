@@ -199,7 +199,7 @@ def test_an_all_day_event_with_a_place_is_asked_for_its_line(tmp_path):
 
 
 def test_an_entry_with_no_start_is_passed_over_and_the_rest_are_judged(tmp_path):
-    code, report = check(tmp_path, [{"summary": "A note with no time", "location": "Somewhere 5"}, LAUNCH])
+    code, report = check(tmp_path, [{"summary": "A note with no time"}, LAUNCH])          # no time and no place: no event
     assert code == 1 and report["in_person"] == 1 and report["events"][0]["summary"].startswith("Book launch")
 
 
@@ -464,3 +464,115 @@ def test_a_block_in_another_form_is_named_not_reported_as_missing(tmp_path):
     code, report = check(tmp_path, [session, *far])
     missing = lacks(report, "Training session")
     assert all("labeled form" not in item for item in missing) and "no travel block before it" in missing[0], missing   # not beside it: no block at all
+
+
+def test_an_event_at_a_place_with_no_start_stops_the_check(tmp_path):
+    """The eighth review: an in-person event whose start was absent or empty was left out, and the check said OK."""
+    for start in (None, "", {}):
+        entry = {"summary": "Dinner at Rosa's", "location": "Rosa's, 12 Smith St, Harbor Town", "start": start, "end": f"{DAY}T21:00"}
+        code, report = check(tmp_path, [entry])
+        assert code == 2 and "Dinner at Rosa's" in report and "start" in report, (start, report)
+    online = {"summary": "Weekly call", "location": "Zoom", "start": None, "end": None}
+    code, report = check(tmp_path, [online])                                                # nothing to travel to: not this check's to judge
+    assert code == 0
+
+
+def test_an_event_whose_title_only_begins_with_the_block_word_is_an_event(tmp_path):
+    """The ninth review: "Travel planning workshop", three hours at a place with no address, was read as a travel
+    block and passed over. A block's title is the word alone, or the word and then a colon, a dash or a direction."""
+    workshop = event("Travel planning workshop", "19:00", "22:00", "Harbor Town (address on the invitation)")
+    code, report = check(tmp_path, [workshop])
+    assert code == 1 and report["in_person"] == 1
+    missing = " | ".join(lacks(report, "Travel planning workshop"))
+    assert "exact address" in missing and "travel line" in missing
+    code, report = check(tmp_path, [RESOLVED, GOING, RETURNING])                              # real blocks are still blocks
+    assert code == 0 and report["in_person"] == 1, report
+    plain = [RESOLVED, event("Travel to the Grand Theatre", "17:05", "18:30", "Central Station, 1 Station Sq", OUT),
+             event("Travel home", "22:13", "23:20", "", BACK)]
+    code, report = check(tmp_path, plain)
+    assert code == 0 and report["in_person"] == 1, report
+    labeled = [RESOLVED, event("Travel planning for the evening", "17:05", "18:30", "", OUT), RETURNING]
+    code, report = check(tmp_path, labeled)                                                   # one that carries a block's lines is a block
+    assert code == 0 and report["in_person"] == 1, report
+
+
+# --- the tenth review (2026-11-12), each as a test that failed first ------------------------------------------
+
+def test_a_commitment_begun_before_the_return_ends_leaves_no_night(tmp_path):
+    """The tenth review: the return ended at 07:30 the next day, a commitment had begun at 07:00, and the check
+    said OK: an entry that began before the principal was home was not looked at."""
+    rested = {**CONFIG, "travel_policy": {**{k: v for k, v in POLICY.items() if k != "latest_return"}, "sleep_hours": 8}}
+    slow = dict(RETURNING, end="2026-11-12T07:30", description=BACK.replace("Arrive: 23:20", "Arrive: 07:30"))
+    early = event("Training session", "07:00", "08:00", "Office", day="2026-11-12")
+    code, report = check(tmp_path, [RESOLVED, GOING, slow, early], config=rested)
+    assert code == 1, report
+    night = next(item for item in lacks(report) if "home at 07:30" in item)
+    assert '"Training session" began at 07:00 before the return' in night and "no night" in night and "decision" in night, night
+    decided = dict(slow, description=slow["description"] + '\nDecision: "the first train home, and the session is on the way"')
+    assert check(tmp_path, [RESOLVED, GOING, decided, early], config=rested)[0] == 0
+    assert check(tmp_path, [RESOLVED, GOING, slow], config=rested)[0] == 0                    # its own way home is no commitment
+
+
+def test_a_mornings_outing_is_not_a_night_out(tmp_path):
+    """Found by this project's own probe after the tenth review: with no hour given for the morning, a breakfast
+    across town, home at 09:00 and a call at 09:30 read as a night of half an hour."""
+    rested = {**CONFIG, "travel_policy": {**POLICY, "sleep_hours": 8}}
+    day = "2026-11-12"
+    said = lambda text, leave, arrive: (text.replace("Book launch at the Grand Theatre", "Breakfast with the board")  # noqa: E731
+                                        .replace(text.split("Leave: ")[1][:5], leave).replace(text.split("Arrive: ")[1][:5], arrive))
+    outing = [event("Breakfast with the board", "07:30", "08:30", "Cafe Aroma, 5 Dock St, Harbor Town", "Travel: blocks before and after", day),
+              event("Travel: to breakfast", "06:40", "07:10", "", said(OUT, "06:40", "07:10"), day),
+              event("Travel: back from breakfast", "08:30", "09:00", "", said(BACK, "08:30", "09:00"), day),
+              event("Standup", "09:30", "10:00", "Zoom", day=day)]
+    code, report = check(tmp_path, outing, config=rested)
+    assert code == 0, report
+
+
+def test_an_entry_titled_like_a_block_with_no_clock_times_is_still_an_event(tmp_path):
+    """The tenth review: "Travel planning workshop" with no start, or all day, was passed over as a block: the
+    older test of a title's first word had been kept for entries without clock times."""
+    place = "Harbor Town (address on the invitation)"
+    code, report = check(tmp_path, [{"summary": "Travel planning workshop", "start": None, "end": None, "location": place}])
+    assert code == 2 and "Travel planning workshop" in report and "start" in report, report
+    all_day = {"summary": "Travel planning workshop", "start": {"date": "2026-11-13"}, "end": {"date": "2026-11-14"}, "location": place}
+    code, report = check(tmp_path, [all_day])
+    assert code == 1 and report["in_person"] == 1, report
+    missing = " | ".join(lacks(report, "Travel planning workshop"))
+    assert "exact address" in missing and "travel line" in missing
+    marker = {"summary": "Travel: to Lisbon", "start": {"date": "2026-11-13"}, "end": {"date": "2026-11-14"}, "location": "Lisbon"}
+    code, report = check(tmp_path, [marker])                                                  # a block with no clock times is still a block
+    assert code == 0 and report["in_person"] == 0, report
+
+
+def test_a_night_before_an_all_day_commitment_cannot_be_judged_and_says_so(tmp_path):
+    """The eleventh review: home at 23:20 with eight hours kept, and the next morning's commitment an all-day
+    workshop at a place: it holds no start, so it was left out, and the evening passed as if the night were whole."""
+    rested = {**CONFIG, "travel_policy": {**POLICY, "sleep_hours": 8}}
+    workshop = {"summary": "Workshop", "start": {"date": "2026-11-12"}, "end": {"date": "2026-11-13"},
+                "location": "12 Mill Lane, Harbor Town", "description": "Travel: none, a ride with a colleague"}
+    code, report = check(tmp_path, [RESOLVED, GOING, RETURNING, workshop], config=rested)
+    assert code == 1, report
+    night = next(item for item in lacks(report) if "home at 23:20" in item)
+    assert '"Workshop"' in night and "all day" in night and "cannot be judged" in night and "decision" in night, night
+    decided = dict(RETURNING, description=BACK + '\nDecision: "the workshop starts at ten; the night is fine"')
+    assert check(tmp_path, [RESOLVED, GOING, decided, workshop], config=rested)[0] == 0
+    later = dict(workshop, start={"date": "2026-11-13"}, end={"date": "2026-11-14"})        # the day after next is not that morning
+    assert check(tmp_path, [RESOLVED, GOING, RETURNING, later], config=rested)[0] == 0
+    timed = event("Workshop", "10:00", "17:00", "12 Mill Lane, Harbor Town", "Travel: none, a ride with a colleague", day="2026-11-12")
+    assert check(tmp_path, [RESOLVED, GOING, RETURNING, timed], config=rested)[0] == 0      # with a start, it is judged by it: 10 h 40 min
+
+
+def test_an_all_day_commitment_at_the_principals_own_office_leaves_the_night_unjudged_too(tmp_path):
+    """The twelfth review: the all-day workshop the next morning was at the office the policy names, which is no
+    place to travel to, so it never reached the night check and the evening passed."""
+    rested = {**CONFIG, "travel_policy": {**POLICY, "sleep_hours": 8}}
+    workshop = {"summary": "Workshop", "start": {"date": "2026-11-12"}, "end": {"date": "2026-11-13"}, "location": "200 Market St, Example City"}
+    code, report = check(tmp_path, [RESOLVED, GOING, RETURNING, workshop], config=rested)
+    assert code == 1, report
+    night = next(item for item in lacks(report) if "home at 23:20" in item)
+    assert '"Workshop"' in night and "all day" in night and "cannot be judged" in night, night
+    assert [e["summary"] for e in report["events"]] == ["Book launch at the Grand Theatre"]      # and it is still no trip of its own
+    hours = {**CONFIG, "travel_policy": {**POLICY, "sleep_hours": 8, "morning_starts": "09:00"}}
+    assert check(tmp_path, [RESOLVED, GOING, RETURNING, workshop], config=hours)[0] == 1        # an hour for the morning does not give the workshop one
+    note = {"summary": "A colleague's birthday", "start": {"date": "2026-11-12"}, "end": {"date": "2026-11-13"}}
+    assert check(tmp_path, [RESOLVED, GOING, RETURNING, note], config=rested)[0] == 0          # an entry at no place is a note on the day

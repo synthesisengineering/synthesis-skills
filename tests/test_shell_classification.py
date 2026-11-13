@@ -126,7 +126,7 @@ def test_destructive_commands_follow_the_same_reading(where, command, blocked):
     assert (_check(command, where) is not None) is blocked, command
 
 
-def test_reading_a_long_command_stays_fast(where):
+def test_reading_a_long_command_stays_fast(where, pace):
     elsewhere, _ = where
     commands = [c.replace("{site}", "x") for c in RUNS + DATA + PUSHES] + ["cat <<'EOF' > f.md\n" + "line of text\n" * 2000 + "EOF"]
     times = []
@@ -134,7 +134,7 @@ def test_reading_a_long_command_stays_fast(where):
         start = time.perf_counter()
         guards._parse(command, str(elsewhere))
         times.append(time.perf_counter() - start)
-    assert statistics.median(times) < 0.002 and max(times) < 0.03
+    assert statistics.median(times) < 0.002 * pace and max(times) < 0.03 * pace
 
 
 # The project-state helper's comparison with publication_command's tests (2026-10-05), as named cases.

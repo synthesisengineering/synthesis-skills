@@ -4,7 +4,199 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
-## [5.7.0] - 2026-11-11
+## [5.8.1] - 2026-11-12
+
+- **A guard's check takes half the time** (core). A hook is a new Python process on every tool call, and a session
+  whose environment tells Python to write no bytecode cached nothing it compiled: the guards were compiled from
+  their source on every call. On one Mac a shell command's check took about 72 ms against the 50 ms budget, and
+  `synthesis doctor` said so (`hook self-test`). The installer now compiles the runtime once, for the interpreter
+  that installs it, and the same check takes 33 ms. The plugin folders stay as each harness installed them, the
+  runtime's hash is of its source as before, and an install over a runtime without compiled code adds it. So
+  does a session start: an upgrade through a harness is made by the installer of the release already there,
+  which before this release compiled nothing, and the interpreter a hook runs on can change under a runtime; the
+  check costs a session start about 1 ms. Each compiled file carries its source's hash and is checked against it
+  when it is loaded, not against its date and size, and nothing that goes wrong while compiling stops an install.
+  An interpreter that keeps compiled code under one folder of its own (Apple's Python) finds the runtime's there,
+  under the path a hook imports from; a test run under such an interpreter keeps its compiled code in a
+  temporary folder.
+- CI runs the suite in three jobs for each system and Python: the core's tests in two halves by file name, and
+  the skills'. The whole suite had come to take up to 526 seconds on a macOS runner, and on main one job was
+  cancelled at its ten-minute limit with no test failing; as two jobs, the core's tests still ran over the limit
+  on one slow runner. A lint test holds that the three jobs together miss no test file, by either name pytest
+  collects (`test_*.py` and `*_test.py`) and in any folder.
+- The tests' time bounds follow the machine that runs them. The guard hook was held to a fixed 150 ms: one slow
+  runner failed it with nothing changed, and the 72 ms above had passed it. Its test now runs the installed,
+  compiled runtime as a session runs it, told to write no bytecode, and allows twice what a fresh interpreter
+  takes, on that machine at that moment, to load the standard-library modules the hook needs. It names those
+  modules and fails when the hook's own code imports another while the call runs, at a module's top or inside a
+  function; and it fails a runtime that is not compiled (2.7 times, where the compiled one takes 1.3 to 1.5).
+  The turn-end check's test does the same, and eight bounds on work inside the test process stretch by how much
+  slower the machine runs a fixed piece of work.
+
+## [5.8.0] - 2026-11-12
+
+- **Nothing another person is given stands on an address that can change** (core, message guard 2.8.0, implementation
+  integrity 2.1.0, knowledge-base distribution 1.2.0, daily rituals 3.10.0, autopilot 4.1.0). A connector tested on a
+  laptop behind a quick tunnel, with sign-ins kept in memory, was handed to two colleagues in direct messages that
+  carried the tunnel's address. One relied on it for real work. When the laptop's app restarted the address was gone
+  for good, and two scheduled check-ins ran without looking at it.
+  - **The send guard.** With `temporary_addresses` in the config, a send, a draft, a shell command that posts and
+    words typed into a messaging app are refused, before any approval is asked for, when they hold a quick tunnel's
+    host (twenty-four services, and a service's own host with a port, as bore hands one out), a local name or a
+    private, shared or link-local address written with any scheme or a port, a loopback address or a private IPv6
+    literal however written, or a wildcard-DNS name that carries one (`192.168.1.20.nip.io`). A host is read
+    whole: a public name that begins like a local one, a file's name with its line number (`config.local:7`) and
+    a range written with a prefix length (`10.0.0.0/8`) go on to the ordinary approval. The approval of the
+    message does not release an address: only the principal's typed approval of the addresses themselves does,
+    for fifteen minutes, and the message then still waits for its own. `{}` turns the rule on, `hosts` adds host
+    names, `local: false` leaves local addresses out, and a key that is there and null stops sends as a setting
+    that cannot be read. On 2,562 recorded sends of thirty days it would have fired six times: four on that
+    tunnel's address, two on a database port on localhost in a ticket.
+  - **Starting a quick tunnel** (`cloudflared tunnel --url` or `--hello-world`, `ngrok http`, `devtunnel host`,
+    `localtunnel`, `bore local` to bore.pub, `tmole`, `loophole http`, `tailscale funnel`, a reverse `ssh` or
+    `autossh` to a tunnel service) waits for the principal's code and says what a quick tunnel is for: their own
+    test, with an address that is never given to anyone. The program is read however it is named: outright,
+    through a variable set in the same command, by a package runner with its options and a version, or as a
+    container's image. A named tunnel is not held (`cloudflared tunnel run --url ... <name>`), nor is a lookup
+    (`tailscale funnel status`), nor a reverse forward to a host that only ends with a service's letters.
+  - **The knowledge-base connector** refuses to start when `KB_PUBLIC_URL` is on one of those services, a local
+    name, a name under a wildcard-DNS service or an address the internet cannot reach, outside an operator-only
+    test mode (`KB_OPERATOR_TEST=1` with `KB_OPERATOR_ADDRESSES`, three addresses at most: one person's own
+    accounts). In the mode nobody but the operator signs in, a refresh by anyone else is refused at the token
+    endpoint, a line that begins `TEST ONLY` is logged whatever the log level, and `/health` says
+    `test_only: true`. **A deployment must keep its sign-ins in a store that survives a restart:** outside the
+    mode `KB_OAUTH_STORE` left unset or set to `memory` refuses the start, and memory is allowed only in the
+    mode. **`KB_PUBLIC_URL` is an origin and nothing more:** with a path, a query, a fragment or a user-info part
+    the start is refused, each part named and never shown, with the origin to write. An address in an old
+    numeric spelling is refused whatever it denotes, and a host no address could have, a port that is no port
+    and an address that cannot be parsed are malformed and raise nothing. A `KB_LOG_LEVEL` that is no level
+    refuses the start. A test holds the connector's list of tunnel services and the guard's equal.
+  - **The handoff gate** (implementation integrity, `references/handoff-gate.md`, rule 10): before anyone but the
+    principal is given something to use, five lines pass with evidence read that session (where it runs, a
+    permanent address, state that survives a restart, a watched health check, a named owner), each recipient's own
+    access is proved, and every outside dependency is listed with where its notices arrive. A miss blocks the
+    handoff. Each line names the evidence that proves it and the look-alike that does not: a preview deployment
+    has a project and a revision too, a restart of the process keeps a temporary folder, and an alert can come
+    from a check run by hand.
+  - **A standing health check.** A workspace declares what other people rely on in the ritual config (`relied_on`:
+    what, by whom, and a check as a list of words). `relied_on.py` runs each check, prints whatever is down first
+    and exits 1 on any failure. The day-start, the mid-day sync and the day-end run it first; a `DOWN` line opens
+    the plan (`## Down: needs your attention`, above the critical deadlines) and the reply, and is an incident
+    the principal hears first. An autopilot run's standing checklist gains `others-rely-on`, and every wake runs
+    the check before its next item. A check is a standing command, so each is put to the guard first: one the
+    guard would hold for an agent is reported down and never started. A declaration of the wrong shape is
+    reported as down, and a checker that cannot run (no runtime to import, a guard config it cannot read) prints
+    one `NOT CHECKED` line and exits 2, which a ritual or a wake reports first and never reads as healthy.
+  - `synthesis doctor` proves the address rule reads a quick tunnel's address under the installed config
+    (`temporary addresses`).
+  **Every seat:** do not hand anyone a test's address, and pass the handoff gate first. Declare what other people
+  rely on under `relied_on` the day it is handed over.
+- **A send's attachments are read before the approval, as the connector reads them** (core, message guard 2.8.0,
+  agent correspondence 4.2.0, meeting transcripts 1.2.0, onboarding 3.4.0). A mail send with a file attached was
+  approved and then refused by the mail connector, which reads a local file only from its own attachment folder
+  and the folders it was started with; beside a file it could read, the mail went out without the other.
+  - Agents stage outgoing files in one folder, the outbox under the synthesis home. The connector's `start.sh`
+    makes it and adds it to `ALLOWED_FILE_DIRS`; Codex's sandbox is granted it.
+  - Before any code is issued the guard refuses what the connector would refuse or silently change: an attachment
+    whose file is outside the outbox and the connector's own attachment folder, is named under a key the
+    connector does not read, gives two sources, gives `content` that is not standard base64 or has no
+    `filename`, or whose name or folder marks secrets; a `url` that is the connector's own download link, one it
+    does not fetch (anything but http or https, a `file://` URL among them) or one on a host it fetches nothing
+    from (a local one, or an address that is not on the internet); an entry that carries a key the connector
+    sets itself, a name or a type with a control character, or a content id it rejects; a linked path with no
+    `filename`, which would go out under the link target's name; an `attachments` value in a shape the connector
+    refuses. Five Drive tools that read a local file follow the same rule, a Drive call that gives a file's
+    content twice is refused, and the ones that ask for no code refuse a file that cannot be read. A source that
+    cannot be parsed is a refusal, and nothing raises out of the guard. The guard counts nothing its own process
+    has in `ALLOWED_FILE_DIRS`: that is the session's setting, and a connector a supervisor started carries its
+    own.
+  - An approval binds the bytes of each file the connector will read. A file replaced, or a link pointed
+    elsewhere, between the approval and the call needs a new code. The read is bounded: a file that cannot be
+    read within two seconds is refused at that limit.
+  - `synthesis doctor` has an `outbox` line: the folder is there to write, and a connector kept running by its
+    auto-start was started with it and without `WORKSPACE_MCP_DISABLE_LOCAL_FILES=true`. It reads what the
+    connector was started with from the process record itself, so a value that holds a space is read whole.
+  - `start.sh` runs one release of the server, `workspace-mcp@2.1.0`, the one whose rules for a local file the
+    guard copies; `WORKSPACE_MCP_VERSION` names another. The installer escapes every value it writes for a plist
+    or a systemd unit, quotes a start path systemd would misread and refuses a value that holds a control
+    character. Run over an installation that is already there, it leaves the installed unit as it was until the
+    answer is yes (a no once removed it), then replaces what the service manager holds: a loaded launch agent is
+    booted out before the new one is loaded, a running systemd unit is restarted, and what launchd holds is read
+    back.
+  **Every seat:** copy a file you attach into the outbox and give that copy's full path. **Once per machine:**
+  restart the mail connector after this release, since a running one keeps the folders it was started with.
+- **Waiting for an expected event is a task** (core, new skill synthesis-waiting 1.0.0). A session told to expect a
+  peer's message ended its turn with nothing armed: a board message reaches a session only when a prompt is
+  submitted, so it sat until its principal typed. Its first watcher then polled `synthesis inbox`, which marks what
+  it prints as read, and waited half an hour beside mail addressed to a project its session was not bound to. Now:
+  - `synthesis wait message|file|run` blocks until its event or its bound (`--for`, at most twelve hours) and holds
+    a record on the board while it runs, so the watcher is its own registration. On the event it prints one line and
+    exits 0; at the bound it exits 3 and says nothing arrived; a bound it cannot read, or a command whose program
+    cannot be started, exits 2 at once with the reason. A try of `wait run` runs in a session of its own, reads
+    nothing from the terminal, and is stopped with all it started unless it succeeds in time. `wait note` records
+    a wait the harness itself holds, `wait clear` withdraws this session's notes, and `wait list` shows every
+    session's.
+  - `synthesis inbox --peek` lists unread mail and marks none of it; `wait message` reads the same way and names the
+    sender, never the message.
+  - `synthesis msg` ends with what will deliver the message: the recipient is watching (and how often its watcher
+    looks, when that is not within seconds), it reads it at its next prompt, or no session is bound to that
+    project. `--wake` nudges an idle recipient through its own harness where a command can, with one fixed line
+    that carries no instruction; with `--durable`, each live session on the project. A session that holds a live
+    wait stays addressable for the wait's whole bound, and `who`, `resume` and an address error's list of seats
+    mark it `waiting until HH:MM`. A message whose text is `wait` or `doctor` is a message: the command is the
+    first word that is no option of the CLI's own.
+  - The turn-end check sends back, once, a final reply that announces the session's own wait with nothing armed.
+    It reads the reply clause by clause: a first-person wait ("I'm waiting for", "I'll wait"), a first-person
+    future tied to an event still to come ("I'll merge once the checks pass", "when the bank confirms, I'll record
+    it"), or a sentence that opens "Waiting on". Armed means a live `synthesis wait`, an autopilot run the session
+    owns, or, in Claude Code, background work the session started that has not reported yet (an agent, a shell
+    task, a workflow, a monitor), which it reads from the last 32 megabytes of the transcript: only the harness's
+    own entries start and end such work. A reply that hands the principal the turn passes: it ends by asking,
+    offers an approval code to type (one named as spent offers nothing), asks them to act in so many words, or
+    says plainly that nothing wakes this seat until they prompt it. So does a list of open loops (a wait with no
+    subject as a label before a colon, in a heading or in a table row; a wait after a dash or a semicolon), a
+    rule for next time, an explanation, a clause that awaits the principal's own move, a wait whose next clause
+    asks them to hand the thing over, and a continuation on the session's own next step. A first-person wait is
+    read wherever it stands, and the text between a `BEGIN` and an `END` line is set aside as quoted text is. It
+    was measured on recorded replies, not invented ones: of 4,443 turn-ending replies from thirty days on one
+    machine it reads 542 as a wait, finds background work out in 463, and sends back 79, under three a day; read
+    one by one, three in four of those are the session's own wait with nothing to end it. The first form of the
+    check would have sent back 815. Config `wait_phrases` adds phrases.
+  - A session bound to no project is told at its start which projects hold mail its inbox would deliver, the newest
+    first, and `synthesis doctor` runs the turn-end check on a canned reply.
+  - The skill holds the rule, the commands and, harness by harness, what wakes a session and what a watcher costs,
+    each line with how it was learned. **Every seat:** a reply that ends on "I'm waiting for…" or "I'll do it
+    once…" now needs a watcher armed (`synthesis wait`, or `synthesis wait note` for one the harness holds), the
+    wait said to be the principal's, or a plain statement that nothing wakes the seat.
+- **The provenance scan reads the folders a workspace keeps its plan in** (agent guardrails 2.5.0). A workspace
+  kept its daily plan in `ritual-workers/`, so neither its plan nor its close was ever scanned.
+  `provenance_scan.py` now also reads `ritual-workers/` and `drafts/`, a file named outright whatever its suffix,
+  and every file under a folder given with `--records` (a plan folder under another name), at any depth and in
+  hidden folders. A record it cannot open is named and the scan exits 1; a file that is not text is counted and
+  fails nothing; a path that does not exist exits 2. The day-end step says to pass each declared plan folder.
+- **One passage moved, nothing trimmed** (thinking framework 3.0.1). The two sections of
+  `references/decisive-uncertainty.md` that describe an autopilot run's journal moved word for word to the
+  autopilot skill's `references/uncertainty-journal.md`, with one sentence left in their place: a package of the
+  method skills alone does not carry that runtime.
+- The checklist before an approval says to read how a form takes its input before a send through it is staged
+  (five addresses typed into one field were rejected after the code was used).
+- The reader of inline Python programs no longer passes on Python's own warning about a program's escapes, which
+  a replay showed the hook printing.
+- A config file that is JSON and no object is unreadable to every reader of it, as one that is not JSON is, and
+  a `synthesis` command that reads an unreadable config says so in one line with the file to fix
+  (`synthesis resume` and `synthesis sessions list` ended in a traceback). `synthesis resume` on the project a
+  session already works names the live seats there, a waiting one with its bound.
+- The audit reference lists every check the doctor runs, held by a test that reads the names from the code
+  (agent conformance 2.0.2). The README's command table gains `wait`, `journal`, `index set` and `sends`, and
+  lists `synthesis-waiting` and `synthesis-kb-distribution`: 72 skills. Checkpoint 2.0.2, project resume 2.0.1
+  and the skills manager 3.4.1 say what a waiting seat's row shows.
+- A second model read the release branch and returned 42 findings, every one in the pieces this release adds.
+  Each was fixed with a failing test first, with what the fixes' own probes found beside them, and the suite
+  and the replays were run again before the release.
+- The thirty days of commands then recorded (114,398) were replayed through this release's write guard and
+  5.7.0's: 60 refused before and after, none newly refused or newly passed, and none on which it raised.
+
+## [5.7.0] - 2026-11-12
 
 - **An in-person commitment is not on the calendar until its travel is** (chief of staff 2.3.0, daily rituals
   3.9.0, message guard 2.7.0, core). A principal who owns no car found an evening event 28 miles from home that
@@ -21,13 +213,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
     leaves before the end, one that ends after the latest hour, a night shorter than the policy keeps, a car on a
     personal trip). A block serves the events its `For:` lines name, or, naming none, the one event nearest it. An
     entry beside the event that is titled like a trip but is not in the labeled form is named as that, not
-    reported as no block. It plans no trip: an agent does that from a live source.
+    reported as no block; a block is known by the form of its title (the block's word alone, or followed by a
+    colon, a dash or a direction) or by its lines, so an event whose title only begins with that word is an event, with clock times or without; and an event at a place whose start cannot be read stops the check and is named. It
+    plans no trip: an agent does that from a live source.
   - `slot_check.py` takes `--travel-before` and `--travel-after`, counts the trip as taken time and says when
-    the principal is home; `--in-person` with neither is refused.
+    the principal is home; `--in-person` with neither is refused. An event is taken time on each day it covers (a
+    block that began the night before is part of this morning, and a trip back past midnight meets the next day's
+    first entry), and a slot on top of another event says so.
   - Daily rituals: where a workspace turns it on (`travel_check` in the ritual config), day-start, mid-day and
     day-end run the check over that day and the six after and put each flagged event in the plan, and
-    `ritual_state.py record --travel` refuses without today's result, with one that does not agree with itself,
-    or while an event lacks its travel. A leaving or returning time in a plan or draft is taken from a travel
+    `ritual_state.py record --travel` refuses without today's result, with one that does not agree with itself
+    (an event that ends before it starts among them), or while an event lacks its travel. A leaving or returning time in a plan or draft is taken from a travel
     block.
   - The guard: with `in_person_travel` in the config, a calendar write that creates an event at a place, or gives
     one a place, is refused unless the call carries the travel line. It asks for no approval and holds no copy of
@@ -43,14 +239,30 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
     `slot_check.py` gives a `return` line (home after `travel_policy.latest_return` is the principal's decision)
     and a `sleep` line (less than `travel_policy.sleep_hours` before the next morning's first commitment, or
     before the hour `travel_policy.morning_starts` gives the morning if that is earlier: a morning that begins at
-    a fixed hour with nothing on the calendar cost nothing the check could see).
+    a fixed hour with nothing on the calendar cost nothing the check could see). A commitment already begun when
+    the principal gets home leaves no night at all, and with no hour for the morning an outing that begins and ends
+    on one morning is judged against the next night. An all-day commitment at a place the next morning gives no
+    hour, so both checks say the night cannot be judged and neither calls it enough; an all-day block the
+    principal marked as their own, or one that says it is busy, takes its whole day; and of several events at a
+    slot's own hours one is the slot and the rest are other events. The night before an all-day commitment at
+    the principal's own office is unjudged too, a trip back that runs into a day blocked whole is no clear trip,
+    and the agent's own hold kept all day is still a hold.
   - Chief of staff binding rule 14 and `references/asks-and-decisions.md`: every invitation, request or choice
     carries what it costs, a recommendation, and a plain challenge when the costs outweigh the event.
   - `ritual_state.py record` reads the day's plan in each declared plan folder and refuses while an open item that
     offers options (under a heading of its own, or as an entry of a list under a shared heading) has no
     `Recommendation:` line, or, when it is an accept-or-decline or carries a `Commits:` line, no `Consequences:`
     line. Options indented under their entry, at any depth of a list, are that entry's own; an example is not read
-    (a fenced block, or a block Markdown shows as code). **This applies to every workspace that declares plan
+    (a fenced block, quoted or not, closed or not, or a block Markdown shows as code, also inside a quote under
+    a list entry), nor is an HTML comment; emphasis may be written with asterisks or underscores, and a title
+    struck or ticked inside bold is closed. A line may be a quote inside a list entry, a task-list box, a heading or
+    a row of a table; a choice is titled by its own heading at any depth, by the entry its options and any sentence
+    of explanation stand in, or by a line all in bold; a recommendation is also read as `Recommended:`, as
+    `My recommendation:`, with a dash, or marked on the option; a sentence that begins "Option A was fine" is no
+    option; and a closing line closes a choice when it says what was decided. Each deeper heading or bold title
+    begins its own choice whatever its options are lettered, a recommendation or a decision that only puts the
+    answer off ("pending", "undecided", "not yet") is none, a pin or a tick before the label does not hide it, and
+    a fenced example that begins a list entry is an example (the deadline sweep reads such a fence the same way). **This applies to every workspace that declares plan
     folders,** from its next ritual record.
   - The decision packet generator refuses a row that is not blind and recommends nothing. Until now one
     recommended row covered for rows with none.
@@ -60,15 +272,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   where those blocks belong. A meeting is now an event someone else is on. An event with no other attendee, with
   only the principal's own addresses (`principal_addresses`, or the calendar's own mark), or with a title carrying
   a personal marker (`calendar_guardian.personal_markers`) is taken time for every other check and left out of
-  the load, and the line says how many it left out. A read that names no one else on any event counts each one,
-  and says so. Protected hours may also be a section that holds a list of `windows` beside lines of prose another
+  the load, and the line says how many it left out. A marker is a tag the principal puts on their own blocks
+  (`#reserved`), matched as a whole word: a plain word that a meeting's title might carry stops the check. A read
+  that names no one else on any event counts each one, and says so. Protected hours may also be a section that holds a list of `windows` beside lines of prose another
   reader depends on: a line of prose is named as unchecked unless a window gives it as its `source`, a slot is
   checked against the windows of each day it touches, and `24:00` ends a day.
 - **The write guard reads a path however a command names it, passes a protected path only to a program it knows
   to only read it, and reads an inline Python program by its syntax** (core). It began as two faults: a write
   through a variable the command had just assigned was judged as a write somewhere else, and the file tools were
-  refused in a project's memory folder. Seven rounds of review by a second model, and this project's own probes
-  and replays while answering them, showed the guard was narrower than what it guards against in four ways.
+  refused in a project's memory folder. Twelve rounds of review by a second model, and this project's own probes
+  (more than 2,100 plain commands and programs) and replays while answering them, showed the guard was narrower
+  than what it guards against in four ways.
   - **How a path is read.** Every write in a command is resolved and judged, whether or not the command spells a
     protected folder out: relative to the session's folder, to a `cd` (`cd -`, `pushd` and `popd` are followed) or
     to where `env -C` or `sudo -D` sends the command, through a variable, through a link the same command makes (a
@@ -76,12 +290,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
     (an assignment, `+=`, after `export`, `readonly`, `declare` or `env`, in a `for … in` list, inside a quoted
     script), with the environment's value for one it does not set, the default a use carries and an end trimmed by
     `%` or `#`. The words after a shell's script (`sh -c 'script' name word`, `sh -s word`) are put where the script
-    uses them. A path is compared the way a Mac's file system finds it, whatever its case. A target outside a
+    uses them, quoted for where they land, a substitution's own quoting included. `$PWD` and `$OLDPWD` are the
+    folder each command is in and the one before, not the guard's own. A word that starts with a substitution the
+    guard can read is read with what that names put in (`$(dirname <path>)`, `$(mktemp)`, `$(pwd)`, the top of the
+    repository), for a `cd`, a target and a variable given one; after a `cd` it cannot read, a bare file name
+    written in a command that names a protected folder is a write the guard cannot place, and is refused. A
+    keyword argument in a program (`env=dict(os.environ, OUT=target)`) is that program's text, not the command's
+    `OUT=…`. A path is compared the way a Mac's file system finds it, whatever its case. A target outside a
     protected folder that changes one is judged so: a folder changed throughout that holds it (`rm -rf` of the
     folder above the transcripts, that folder moved away, a tree copied over it, a `find -delete` across it), and
     a pattern that may name what lies in it. The destructive-command guard and the claim check read the same
     readings, so a recursive delete, a force push or a write into another session's claim through a variable or a
-    loop is seen.
+    loop is seen. `~` and `$HOME` are the home a command gives itself when it sets `HOME`.
   - **What counts as a change.** A list of the programs that write never ends (a move's source, `find -delete`,
     `xargs rm`, an archive unpacked into the folder, a download saved there, a file compressed in place), so the
     rule is turned round: a path inside a protected folder may be handed to a program the guard knows only reads
@@ -90,24 +310,77 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
     utility changes is read from its own words: a copy's destination, both ends of a move, what `find` deletes or
     runs a changing command on, what an awk program writes or what a command it is given as a plain string writes,
     the files `xargs` hands on. Each command `find` runs is also read as a command of its own, for what it writes
-    besides the files found. A word handed to a program the guard does not know (`watch`, `ssh`, `osascript`) is
-    read as a command line and held for what it would plainly write; a message that mentions a folder is not.
+    besides the files found, in the folder of what it found when `-execdir` runs it (the top of the search and each
+    protected folder under it). What `printf` prints into a shell is its format with its words put in, and an inline
+    program for an interpreter the guard does not read (`php -r`, `lua -e`) is held for each path it names. A word
+    handed to a program the
+    guard does not know (`watch`, `ssh`, `osascript`) is read as a command line where it starts with a program
+    the guard has a rule for (a shell, an interpreter, a file utility, `awk`, or a reader that redirects, as in
+    `date >> file`) and held for what it would
+    write, run or start; the value of a message option (`--body`, `-m`, `--prompt`, attached or not) and a
+    sentence that mentions a folder are words for a reader. What `trap` keeps to run when the shell ends is
+    read as a script, also after `--`, and an operand that is `-` is a command's input, so the operand after it is still its
+    output (`uniq - <file>`).
   - **How a Python program is read.** A program given to Python inline or on its stdin is read by its syntax and
     alone, since a pattern over its text stopped at the first closing parenthesis and every heredoc of a line was
     read as one program. A write is a file opened to write, a `pathlib` call that changes a file, a call into
-    `os`, `shutil` or `subprocess`, a database opened, an archive unpacked, however the call was imported or
-    renamed. A link a program makes is judged at both ends. A target the program spells out is judged where it
-    leads; any other by what it is built from, a name followed through assignments, loops, `with`, defaults, the
-    program's own functions, lists and attributes. The words after the program are placed where it reads
+    `os`, `shutil` or `subprocess`, a database opened, an archive unpacked or made (judged where it lands), a call
+    named as a writer in any library, a store or a file a library opens to be written (`shelve.open`,
+    `h5py.File(path, "w")`, `ExcelWriter(path)`), however the call was imported or renamed. A writer by its name is
+    judged at the argument that writer takes as its path: the first (`df.to_csv`, `arr.tofile`, `savefig`, a
+    thing's own `save`, numpy's), the second (`dump`, and `save` where the library takes the thing first, as
+    `torch.save` does), either when the reader cannot tell; a bare name is a file where the program stands, what
+    is handed besides the path is content whatever it spells, and a function of the program's own named like a
+    writer is read as it is written. A link a program makes is judged at both ends. A
+    target the program spells out is judged where it leads. A name is read through every value the program gives
+    it: where it is read, the value its own body last gave it, with what a branch, a loop or another function may
+    have given it since, and before any, what each caller handed the function. Each function is read by its own
+    names, and a call of the program's own function by what that call hands it. A member (`job.out`,
+    `cfg["out"]`, `rows[0]`, `os.environ["OUT"]`) is read by the thing that holds it: each object, table and list
+    the program makes is one thing, known by the place that makes it however many names it is kept under, and it
+    holds what it was made with (a table's entries; what the `__init__` that runs, its own or an inherited one,
+    gives each field from what that call hands it; the class's constants and properties) and whatever any
+    statement gives it afterwards. Along one path from one name, in statements that run once and in order, the
+    last plain gift stands for those before it; the environment is read the same way, and a home the program gives
+    itself counts from where it is given. One of two values, what a loop or a walk visits and a template filled
+    are read the same way, and a target lands in a protected folder if any reading does. (Each review round had met one or two
+    needless refusals with one cause, a name read only when it was given one value, once, in one place: of the
+    first hundred everyday programs this project then ran from inside a transcript folder thirty were refused for
+    it, and of the second hundred nineteen. The eleventh round then found the same merging one level up: a field
+    or a key had one set of values whatever carried it, so two objects of one class, a reader and a writer that
+    each keep a `path`, and a table whose entry is replaced before it is written were refused, and of two hundred
+    programs this project wrote on objects, tables and the environment 68 were judged wrongly, four of them
+    writes let through: a class that inherits its `__init__`, a field set through `__dict__`, a table reached
+    under a second name, a home set before it is asked for. A third pass found one more that had been there since
+    the tenth round: a function that gives its own name another value in a branch and hands it back was read by
+    the caller's value alone. The twelfth round found one write the member model itself had let through (a table
+    made from pairs, `dict([("out", path)])`, was read as holding nothing, and nothing is no target) and eight
+    kinds of everyday program refused: a mode kept in a name, a factory called once for the transcript and once
+    for the file elsewhere, an inherited data-class field, a table filled from literal rows, a union of two
+    tables, the environment given a value through `update`, a template kept in a name. Each is fixed with a test
+    that failed first. No round was clean; the release goes out on the principal's ruling that every finding is
+    fixed and nothing measured got worse, with review continuing after it.) A target the reader cannot read is judged by what it is built from, a
+    name followed through assignments, loops, `with`, defaults, the program's own functions, lists, attributes, a
+    class's fields, a parser's defaults and the environment the program sets. The words after the program are placed where it reads
     `sys.argv[n]`, and a variable of the environment where it reads it by name; taken another way, one that names
     a protected path makes any write a refusal. What the program reads from a file is content and names no path
     (the `.name` of a file it opened is that file's path). A copy out of a protected folder changes only the copy.
     The folder a call is made in is followed in the order the program's statements run: a folder change that is a
-    statement of the program is sure, one in a loop, a branch or a function may not have happened, and a
-    descriptor stands for the folder it was opened on. A command the program spells whole (`subprocess`,
+    statement of the program is sure; the body of a `with`, a `try`, a branch, a loop and the program's main
+    block is followed the same way (a branch may not be taken, a loop may run no times, and the body of `with
+    contextlib.chdir` runs in that folder); one inside a function may come at any time; and a descriptor stands
+    for the folder it was opened on, as it stood then. A command the program spells whole (`subprocess`,
     `os.system`, asyncio's and pty's ways to start one) is judged as the shell guard judges that command, with
     what the program gives it: the folder, the variables it keeps for it however the mapping is kept, the words
-    after a shell's script, a script fed on its input or written down a pipe. A tree removed, moved or copied over
+    after a shell's script, a script fed on its input or written down a pipe to that process, piece after piece.
+    A relative path the program makes whole (`abspath`, `resolve`, `getcwd`) is whole from where the program stood
+    at that call, wherever it stands when the path is used. A word of a list built round a path the program found
+    keeps that path; what is written to `os.popen(command, "w")` is that command's input; the standard library's
+    own writers count (a log file, a download, a temporary file made in a folder it is told). The last part of a
+    path, one part of it, a path taken relative to a folder that holds it (`relative_to`, `relpath` with its
+    start), a path flattened into a name and a digest name no folder, and a fresh temporary folder is a folder
+    somewhere else, so a tree of transcripts can be mirrored or summarized into another folder. A tree removed,
+    moved or copied over
     whole that holds a protected folder, and what a walk or a pattern over such a folder finds, are judged as a
     change to it. A program that runs code it builds (`exec`, `eval`, a module named at run time) is taken to
     write. A script on stdin for another interpreter is judged by its own heredoc.
@@ -123,26 +396,36 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
     tool result the harness saved beside a transcript is material any program may be given; changing it where
     it lies stays refused. The hook is run when it is the script an interpreter runs, not when another program
     is handed its file.
-  - **Measured before release.** 109,893 distinct shell commands from 30 days of one machine's transcripts were
+  - **Measured before release.** 112,964 distinct shell commands from 30 days of one machine's transcripts were
     run through the 5.6.0 guard and this one, again after each change, and every command whose verdict changed was
     read. The needless refusals each pass showed are now tests. At the end the new guard refused 9 commands the
     old one passed (three runs of a property-list tool from inside the sessions archive, a database tool opening a
     session store, a move of a saved tool result and a subagent's transcript to the Trash, and four programs that
-    ran the hook through `subprocess`, which the same command typed in the shell always was) and passed 80 the old
-    one refused: 51 inline programs that read a protected path and write somewhere else, 21 commands that write what
+    ran the hook through `subprocess`, which the same command typed in the shell always was) and passed 85 the old
+    one refused: 54 inline programs that read a protected path and write somewhere else, 21 commands that write what
     is the agent's own (memory notes and saved workflow scripts, 15 from the shell and 6 by program), 3 writes
-    from inside a protected folder to a path elsewhere named through a variable, 3 programs judged by their own
-    text where a file the same line wrote named the guard's code, and 2 programs handed the hook's file. Of the 58
-    it still refuses, 43 are commands whose own program names the guard's approval code (work on the guard
-    itself), 6 run the hook, and 9 are the ones above. The rule for a folder that holds a protected one, added
-    last, refused nothing in those 30 days. The destructive guard newly refused 2 recursive deletes of
+    from inside a protected folder to a path elsewhere named through a variable, 5 programs judged by their own
+    text where a file the same line wrote named the guard's code, and 2 programs handed the hook's file. Of the 62
+    it still refuses, 45 are commands whose own program names the guard's approval code (work on the guard
+    itself), 8 run the hook, and 9 are the ones above. The rules added last (a folder that holds a protected one,
+    a folder the guard cannot read, words read as command lines, `$PWD`, `find -execdir`, a keyword in a program)
+    refused nothing in those 30 days, and neither did the reading of a program through every value a name may
+    hold, once the replay had shown two faults in it that the probes had not: the reader stopped on 180 recorded
+    commands that loop over an attribute or an entry, and `export` taken as a writer's name refused 4 that exported
+    a transcript into another archive. On the 300 longest recorded Python commands (9 to 32 thousand characters)
+    the guard takes 9 ms at the median and 46 ms at the ninetieth percentile, where it took 5 and 10. After the eleventh
+    round the 30 days then current were replayed again (110,444 commands): eight of those nine newly refused, 79
+    newly passed, and none on which the reader raised, once the replay had shown two recorded commands on which
+    the member model raised and two on which it did not come back (a table rebuilt from itself). Over all 27,497
+    recorded commands that hand Python a program the guard takes 6 ms at the median, 14 ms at the ninetieth
+    percentile and 52 ms at the ninety-ninth. The destructive guard newly refused 2 recursive deletes of
     a scratch clone named through a variable, which it always refused when the path was written out.
     `docs/runtime-integration.md` says what the reader does not follow.
 - **The plugin's own Drive publisher waits for a code** (core, agent guardrails). A script wrote 36 files into a
   shared Drive folder in a principal's name with no hold, while a read-only request by `curl` was held the same
   afternoon: the guard reads a command's text and cannot see what a script sends. The knowledge base's
-  `publish_drive.py` is now among the default deploy patterns, as the action sheet's publisher is; `--dry-run` and
-  `--help` pass.
+  `publish_drive.py` is now among the default deploy patterns, as the action sheet's publisher is, and is found
+  past the interpreter's own options (`python3 -W ignore`, `-X dev`); `--dry-run` and `--help` pass.
 - **One SKILL.md reorganized, nothing trimmed.** Chief of staff's four points under the prime directive moved
   word for word into `references/meetings-correspondence-travel.md` to make room for binding rules 13 and 14.
 - synthesis-kb-distribution: the connector's no-token-logged test captures FastMCP's own log lines under pytest

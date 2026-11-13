@@ -9,7 +9,7 @@ depends_on:
   - synthesis-checkpoint
 metadata:
   author: "Rajiv Pant"
-  version: "3.9.0"
+  version: "3.10.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
   format: v5
@@ -38,6 +38,7 @@ slips silently. Each workspace runs its own; a project supplement may add repos 
 13. **LinkedIn's conversation list is read from the new-message view, never the bare messaging page,** which opens the newest conversation and marks it read. Scroll back to the day the plan names and stop there. Open a thread only when its preview cannot show whether something is owed, and name each one opened.
 14. **An in-person event is not planned until its travel is.** Where the workspace checks travel, each ritual runs `travel_check.py` over the days ahead, no ritual is recorded while an event lacks its travel, and a leaving or returning time in a plan or draft is taken from a travel block, never estimated (2026-11-11).
 15. **A choice in the plan is put with a recommendation, and with what it costs when it would commit the principal's time.** `ritual_state.py record` refuses while an open item that offers options lacks either (2026-11-11).
+16. **What another person relies on is checked first, at every ritual:** run `relied_on.py`. A `DOWN` line opens the plan and the reply before anything else. It is an incident: the principal is told first, the people affected only on the principal's approval. A test two colleagues relied on once stopped, unseen through two check-ins.
 
 ## Contents
 
