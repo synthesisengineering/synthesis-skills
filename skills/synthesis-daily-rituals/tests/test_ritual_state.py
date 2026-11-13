@@ -380,6 +380,7 @@ def test_concurrent_writers_keep_whole_records(tmp_path: Path) -> None:
     procs = [subprocess.Popen([sys.executable, str(SCRIPT), "--state-dir", str(tmp_path), "record",
                                "--direction", "day-end", "--workspace", f"ws{i}", "--date", "2026-09-14"],
                               stdout=subprocess.PIPE, stderr=subprocess.PIPE) for i in range(12)]
-    assert all(p.wait() == 0 for p in procs)
+    said = [p.communicate() for p in procs]  # reads each to its end and closes its pipes
+    assert all(p.returncode == 0 for p in procs), said
     lines = (tmp_path / "history.jsonl").read_text(encoding="utf-8").splitlines()
     assert sorted(json.loads(line)["workspace"] for line in lines) == sorted(f"ws{i}" for i in range(12))
