@@ -130,7 +130,9 @@ address was gone for good. With `temporary_addresses` in the config:
   `serveousercontent.com`, `localhost.run`, `lhr.life`, `lhr.rocks`, `pinggy.io`, `pinggy.link`,
   `pinggy-free.link`, `devtunnels.ms`, `app.github.dev`, `ts.net`, `tunnelmole.net`, `bore.pub` or
   `loophole.site`, the services the knowledge-base
-  connector refuses to start on, or a host the config's `hosts` names and its subdomains), and, unless `local` is
+  connector refuses to start on, or a host the config's `hosts` names and its subdomains), a tunnel
+  service's own host with a port, with or without a scheme, since bore hands out `bore.pub:<port>`
+  (`bore.pub:41234`, `http://bore.pub:41234`), and, unless `local` is
   false: `localhost`, a `.local` or `.localhost` name or a private-range address written with a
   scheme or a port (`http://localhost:8787`, `my-laptop.local:3000`, `http://192.168.1.20:8000`),
   and a loopback or any-interface address however written (`127.0.0.1`, `0.0.0.0`). A port is one
@@ -150,8 +152,9 @@ address was gone for good. With `temporary_addresses` in the config:
   on to the ordinary approval of the message, for fifteen minutes. The approval of a message never
   releases an address, and an approval of one address covers no other.
 - **What passes:** the word `localhost` in a sentence, a file named `.env.local`, a version number
-  that looks like an address (`10.2.3.4`), a tunnel service's own site, a look-alike host, and an
-  address at a host no rule names. A public name that only begins like a local one is that public
+  that looks like an address (`10.2.3.4`), a tunnel service's own site (its bare name in prose,
+  `bore.pub`, and a documentation link, `https://ngrok.io/docs`), a look-alike host
+  (`notbore.pub:41234`, `bore.pub.example.com:41234`), and an address at a host no rule names. A public name that only begins like a local one is that public
   name (`https://localhost.example.org`, `https://10.2.3.4.example.org`,
   `https://example.localhost.org`), and so is a name that a wildcard-DNS service points at a
   private address (`https://app.192.168.1.20.nip.io`): put the service in `hosts` (`nip.io`) to
@@ -187,6 +190,15 @@ address was gone for good. With `temporary_addresses` in the config:
   (`serveo.net`, `qr@a.pinggy.io`). A host that only ends with a service's letters is someone
   else's (`notserveo.net`, `team-pinggy.io`), and a jump host, a key file's name or a word of the
   remote command that carries a service's name makes no tunnel.
+- **The services added last, in their own forms:** `bore local <port> --to bore.pub` (or `-t`,
+  or `--to=`), `tmole <port>` and `tunnelmole <port>` (`tmole 8080 as demo.tunnelmole.net`
+  too), `loophole http <port>`, `loophole path <folder>` and `loophole webdav <folder>`, and
+  `tailscale funnel <port or target>` (`tailscale funnel --bg 3000`,
+  `tailscale funnel --https=8443 localhost:3000`) wait for the code. Their lookups start
+  nothing: `bore --version`, `bore server`, `tmole --help`, `loophole account login`,
+  `loophole version`, `tailscale funnel status`, `tailscale funnel reset`, a funnel turned
+  `off`, and `tailscale serve ...`, which a tailnet's own members reach and the public does not.
+  Nor does `bore local` to a server of one's own (`--to tunnel.example.com`).
 - **The forms a start takes:** each of those is read however the command spells it.
   - The program named through a variable the command sets:
     `tunnel_program=cloudflared; $tunnel_program tunnel --url ...`.

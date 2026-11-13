@@ -171,6 +171,7 @@ TUNNELS = (".trycloudflare.com", ".ngrok.io", ".ngrok.app", ".ngrok.dev", ".ngro
            ".ts.net", ".tunnelmole.net", ".bore.pub", ".loophole.site")
 # The knowledge-base connector refuses to start on the same services (its TEMPORARY_HOSTS); a test holds the two equal.
 HOSTNAME = re.compile(r"(?<![\w.@-])(?:[a-z0-9-]+\.)+[a-z][a-z0-9-]*(?![\w-])")
+NAMED = re.compile(rf"({HOSTNAME.pattern})(?::(\d{{1,5}})(?!\w))?")  # a name and its port, if it has one
 _HOST = r"(localhost|[a-z0-9-]+(?:\.[a-z0-9-]+)*\.local(?:host)?|\d{1,3}(?:\.\d{1,3}){3}|\[[0-9a-f:.]+(?:%[\w.-]+)?\])"
 # A host is read whole: after any scheme or where a bare one starts, to where its name ends, then its port. A public
 # name that only begins like a local one (localhost.example.org, 10.2.3.4.example.org) is no match (2026-11-12). The
@@ -211,7 +212,8 @@ def _only_here(m, low: str) -> str:
 
 def temporary_addresses(texts: list, config: dict):
     """The addresses in these words that can change, or that only this machine or its network answers: a quick tunnel's
-    host (a subdomain of a tunnel service, or a host the config names and its subdomains) and, unless `local` is false,
+    host (a subdomain of a tunnel service, or a host the config names and its subdomains), a tunnel service's own host
+    with a port (bore.pub:41234, as bore hands one out; its bare name and its documentation are none) and, unless `local` is false,
     a local name or a private address written with a scheme or a port, and a loopback address however written
     (`_only_here`). A user and password before a host are read past and never shown. A string when the setting
     cannot be read. {"temporary_addresses": {"hosts": ["<more>"], "local": true}}; no key, no rule, and a key that is
@@ -223,10 +225,11 @@ def temporary_addresses(texts: list, config: dict):
     if not isinstance(more, list) or not all(isinstance(h, str) and h.strip() for h in more) or not isinstance(local, bool):
         return ('temporary_addresses in the synthesis config needs an object, {} or one with "hosts" as a list of host names '
                 'and "local" as true or false (either may be absent); sends are blocked until it is fixed')
-    exact = {h.strip().lower().lstrip(".") for h in more}
+    exact, own = {h.strip().lower().lstrip(".") for h in more}, {h.lstrip(".") for h in TUNNELS}
     ends, found = TUNNELS + tuple("." + h for h in exact), set()
     for low in (re.sub(r"://[^\s/?#]*@", "://", str(text).lower()) for text in texts):  # to the last @: a password may hold one
-        found |= {h for h in HOSTNAME.findall(low) if h in exact or h.endswith(ends)}
+        for h, port in NAMED.findall(low):
+            found |= {h} if h in exact or h.endswith(ends) else {f"{h}:{port}"} if port and h in own else set()
         found |= {_only_here(m, low) for m in LOCAL.finditer(low)} - {""} if local else set()
     return sorted(found)
 
@@ -1716,6 +1719,7 @@ TUNNEL_SSH = ("serveo.net", "localhost.run", "pinggy.io")
 CARRIERS = ("pnpm", "yarn", "npm", "bun", "docker", "podman", "nerdctl")  # run the package, the program or the image their words name
 NGROK = ("http", "tcp", "tls", "start", "start-all", "config", "version", "update", "diagnose", "api", "service", "credits",
          "completion", "help", "authtoken")  # its subcommands: the first five start a tunnel
+LOOPHOLE = ("http", "path", "webdav", "account", "completion", "help", "version")  # its subcommands: the first three start one
 SSH_VALUED = "BbcDEeFIiJLlmOoPpQRSWw"  # ssh's options that take a value: joined on, or the next word
 CLOUDFLARED = ("login", "create", "route", "vnet", "run", "list", "ready", "info", "ingress", "delete", "cleanup", "token",
                "diag", "proxy-dns", "help", "h")  # `cloudflared tunnel`'s subcommands: each one a named tunnel's
@@ -1743,18 +1747,30 @@ def _tunnels(words: list[str]) -> bool:
     without a version or a tag (localtunnel@2.0.2, cloudflare/cloudflared:latest), and the words of a package runner or
     a container from each one on, as the command it runs (2026-11-12: `docker run cloudflare/cloudflared tunnel --url`,
     `ngrok --log=stdout http` and `npx --yes localtunnel@2.0.2 --port` started unheld). `cloudflared tunnel` is quick
-    with --url or --hello-world and no subcommand; with one (`tunnel run --url ... <name>`) it is a named tunnel's."""
+    with --url or --hello-world and no subcommand; with one (`tunnel run --url ... <name>`) it is a named tunnel's.
+    `bore local` to bore.pub, `tmole <port>`, `loophole http`, `path` or `webdav` and `tailscale funnel <target>` start one;
+    their lookups (`tailscale funnel status`) and a bore server of one's own do not."""
     def named(word: str) -> str:
         return re.split("[:@]", os.path.basename(word))[0]
 
     def starts(name: str, rest: list) -> bool:
         def flag(*names):
             return any(w in names or w.startswith(tuple(n + "=" for n in names)) for w in rest)
+
+        def value(*names) -> str:  # what an option is given: joined on after "=", or the next word
+            return next((w.split("=", 1)[1] if "=" in w else after for w, after in zip(rest, rest[1:] + [""])
+                         if w in names or w.startswith(tuple(n + "=" for n in names))), "")
+        plain = [w for w in rest if not w.startswith("-")]
         return bool(name == "cloudflared" and "tunnel" in rest and flag("--url", "--hello-world")
                     and not any(w in CLOUDFLARED for w in rest[rest.index("tunnel") + 1:])
                     or name == "ngrok" and next((w for w in rest if w in NGROK), "") in NGROK[:5]  # past its own options and their values
                     or name == "devtunnel" and rest[:1] == ["host"]
                     or name in ("lt", "localtunnel") and flag("--port", "-p")
+                    or name == "bore" and rest[:1] == ["local"] and ("." + value("--to", "-t").lower()).endswith(".bore.pub")
+                    or name in ("tmole", "tunnelmole") and plain[:1] and plain[0].isdigit()
+                    or name == "loophole" and next((w for w in rest if w in LOOPHOLE), "") in LOOPHOLE[:3]
+                    or name == "tailscale" and plain[:1] == ["funnel"] and plain[1:2] and "off" not in plain
+                    and plain[1] not in ("status", "reset", "help")  # a funnel is public; `tailscale serve` is the tailnet's own
                     or name in ("ssh", "pinggy")  # to the service's own name, or a subdomain of it
                     and ("." + _reverse_host(rest)).endswith(tuple("." + s for s in TUNNEL_SSH)))
     spots = [i for i, w in enumerate(words) if i and not w.startswith("-")] if named(words[0]) in CARRIERS else [0]
