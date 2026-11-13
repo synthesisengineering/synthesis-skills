@@ -974,3 +974,41 @@ def test_the_doctor_runs_the_turn_end_check_on_a_canned_reply(monkeypatch):
     monkeypatch.setattr(reply_check, "check", lambda payload, config: None)
     failed = doctor.check_wait_check()
     assert failed.status == "fail" and "not sent back" in failed.detail
+
+
+# --- three things the follow-ups' own notes left open (2026-11-12) ---------------------------------------------
+
+def test_a_try_reads_nothing_from_the_terminal_the_wait_was_started_in(monkeypatch):
+    """A watcher runs unattended. A try that inherited the wait's standard input could sit reading the terminal, or
+    take what the person typed there for something else."""
+    from synthesis import wait
+    seen = {}
+    real = subprocess.Popen
+
+    def started(command, **how):
+        seen.update(how)
+        return real(command, **how)
+    monkeypatch.setattr(wait.subprocess, "Popen", started)
+    assert wait.attempt([sys.executable, "-c", "import sys; sys.exit(0 if sys.stdin.read() == '' else 1)"], time.time() + 20)
+    assert seen["stdin"] == subprocess.DEVNULL
+
+
+def test_a_sessions_waits_are_its_own_when_another_id_shares_its_folder_name(two):
+    """Two ids that differ only in a character a file name cannot hold share one folder. Each sees its own waits there,
+    and neither removes the other's."""
+    from synthesis import wait
+    wait.record("S/9", "the build", time.time() + 600, by="a timer")
+    wait.record("S:9", "the review", time.time() + 600, by="a timer")
+    assert [w["what"] for w in wait.live("S/9")] == ["the build"]
+    assert [w["what"] for w in wait.live("S:9")] == ["the review"]
+    assert sorted(w["what"] for w in wait.live()) == ["the build", "the review"]
+
+
+def test_a_list_of_candidate_seats_marks_the_one_that_is_waiting(two):
+    from synthesis import wait
+    until = time.time() + 3600
+    wait.record("S2", "the reviewer's answer", until, by="a timer")
+    quiet("S2")
+    listed = board._describe([board.load("S1"), board.load("S2")])
+    assert f"waiting until {time.strftime('%H:%M', time.localtime(until))}" in listed.splitlines()[-1]
+    assert "waiting until" not in listed.splitlines()[-2] and "stale" not in listed
