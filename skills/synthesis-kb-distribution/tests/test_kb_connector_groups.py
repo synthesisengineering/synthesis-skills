@@ -105,9 +105,21 @@ def test_a_listed_address_needs_no_group_and_hosted_domains_still_apply():
     assert policy.decide({**claims("lead@example.com"), "hd": "example.com"}).reason == "allowed_by_group"
 
 
+def test_the_operator_only_test_mode_refuses_a_group_member_who_is_not_the_operator():
+    people = roster()
+    assert people.refresh()
+    policy = AccessPolicy.from_settings("", "", people, "lead@example.com")
+    assert policy.decide(claims("Lead@Example.com")).reason == "allowed_by_group"
+    refused = policy.decide(claims("ea@example.com"))  # in the group, which would let them in
+    assert not refused.allowed and refused.reason == "operator_only_test_mode"
+    assert "ea@example.com is not on this knowledge base's access list" in refused.message
+    outside = AccessPolicy.from_settings("", "", people, "owner@example.com")  # an operator the group does not hold
+    assert outside.decide(claims("owner@example.com")).reason == "email_not_listed"
+
+
 def test_settings_take_groups_alone_and_refuse_neither():
     base = {"KB_SOURCE_DIR": "/kb", "KB_PUBLIC_URL": "https://kb.example.com", "KB_GOOGLE_CLIENT_ID": "id",
-            "KB_GOOGLE_CLIENT_SECRET": "secret"}
+            "KB_GOOGLE_CLIENT_SECRET": "secret", "KB_OAUTH_STORE": "memory"}
     settings = load({**base, "KB_ALLOWED_GROUPS": "leads@example.com"})
     assert settings.allowed_emails == "" and settings.group_refresh_seconds == 300
     assert load({**base, "KB_ALLOWED_GROUPS": "a@example.com", "KB_GROUP_REFRESH_SECONDS": "60"}).group_refresh_seconds == 60

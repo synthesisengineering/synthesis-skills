@@ -6,7 +6,9 @@ no grant reaches their client), to every token on every request (load_access_tok
 bearer middleware calls, so a person removed from the list loses access at once), and to every tool
 call and tool listing (AuthMiddleware). The sign-in check reads the OAuth proxy's stored grant
 through two private attributes, `_code_store` and `_token_validator`; if a FastMCP upgrade moves
-them, the check fails closed and the tests in tests/test_kb_connector_server.py fail.
+them, the check fails closed and the tests in tests/test_kb_connector_server.py fail. In the
+operator-only test mode all three admit the operator alone, main() logs a line that begins TEST ONLY
+and /health reports `test_only`.
 
 Tokens are never logged: log lines name the email address and the reason only, and the access log
 is off, since the callback's query string carries Google's authorization code.
@@ -190,7 +192,7 @@ def build_server(settings: config.Settings, library: Library, policy: AccessPoli
 
     @mcp.custom_route("/health", methods=["GET"])
     async def health(request: Request) -> JSONResponse:
-        report, ok = library.health(), True
+        report, ok = {**library.health(), "test_only": bool(policy.operators)}, True
         if policy.roster is not None:
             report["access_groups"] = policy.roster.health()
             ok = report["access_groups"]["status"] == "ok"
@@ -204,14 +206,22 @@ def main(env=None) -> int:
     try:
         settings = config.load(env)
         roster = GroupRoster(listed(settings.allowed_groups), settings.group_refresh_seconds) if settings.allowed_groups else None
-        policy = AccessPolicy.from_settings(settings.allowed_emails, settings.allowed_hosted_domains, roster)
+        policy = AccessPolicy.from_settings(settings.allowed_emails, settings.allowed_hosted_domains, roster,
+                                            settings.operator_addresses)
     except (config.ConfigError, ValueError) as error:
         print(f"kb-connector: {error}", file=sys.stderr)
         return 2
     logging.basicConfig(level=settings.log_level, stream=sys.stderr,
                         format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+    if policy.operators:
+        temporary = config.temporary(urlparse(settings.public_url).hostname)
+        loud = max(logging.WARNING, LOG.getEffectiveLevel())  # a warning, raised when KB_LOG_LEVEL would hide one
+        LOG.log(loud, "TEST ONLY: operator-only test mode at %s. %s Only %s can sign in.", settings.public_url,
+                "The address is temporary and must not be given to anyone: a restart of this process, this machine "
+                "or its tunnel ends it." if temporary else
+                "Do not give this address to anyone while the mode is on.", ", ".join(sorted(policy.operators)))
     if settings.oauth_store == "memory":
-        LOG.warning("KB_OAUTH_STORE=memory: sign-ins and registrations are lost when this process stops")
+        LOG.warning("KB_OAUTH_STORE=memory: sign-ins live in this process only, so every restart signs everyone out")
     try:
         source = DirectorySource(settings.source_dir) if settings.source_dir else GitSource(
             settings.git_url, settings.work_dir or tempfile.mkdtemp(prefix="kb-connector-"), settings.git_branch,

@@ -5,7 +5,7 @@ Contents:
 1. What it does
 2. How access works
 3. Settings (environment variables)
-4. Run it locally
+4. Run it locally: the operator's own test
 5. Deploy on Google Cloud Run
 6. Add it in ChatGPT and in Claude
 7. Change the access list
@@ -48,9 +48,10 @@ MCP server (Model Context Protocol, the protocol both products use for custom co
   folders are never served.
 - **Health.** `GET /health` answers without sign-in:
   `{"status": "ok", "commit": "<sha>", "files": 412, "refreshed_at": "...Z", "last_attempt_at":
-  "...Z", "last_refresh_failed": false}`, with status 200 while a copy is served and 503 before
-  the first load. The path is `/health`, not `/healthz`: Cloud Run reserves some paths that end in
-  `z`.
+  "...Z", "last_refresh_failed": false, "test_only": false}`, with status 200 while a copy is
+  served and 503 before the first load. `test_only` is `true` while the connector runs as the
+  operator's own test (section 4) and `false` otherwise. The path is `/health`, not `/healthz`:
+  Cloud Run reserves some paths that end in `z`.
 - **Sign-in.** Google, through FastMCP's OAuth proxy (`GoogleProvider`). ChatGPT and Claude
   register themselves (dynamic client registration, or client ID metadata documents), the person
   approves the connection on a consent page, then signs in with Google. The connector issues its
@@ -94,6 +95,14 @@ The messages a refused person sees:
 
 There is no setting that serves without sign-in, and a start with no addresses and no groups stops.
 
+**The operator-only test mode.** With `KB_OPERATOR_TEST=1`, only the addresses in
+`KB_OPERATOR_ADDRESSES` pass, at all three checks. Anyone else is refused first, whatever the list,
+a group or an allowed domain would say: they see the message a person not on the list sees, and
+the log line gives the reason `operator_only_test_mode`. The operator is then checked as anyone
+is: Google must report the address verified, the account must be in an allowed domain when domains
+are set, and the address must be on the list or in a group. The mode narrows who gets in and never
+adds anyone. Section 4 says what the mode is for.
+
 Logs name the email address and the reason, never a token. The HTTP access log is off, because the
 Google callback's address carries Google's authorization code in its query string. Cloud Run's own
 request log still records that address; the code is single-use, already spent by the time it is
@@ -121,7 +130,9 @@ lists every problem at once.
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `KB_PUBLIC_URL` | required | The service's public `https://` address, with no path. `http://` is accepted only for localhost. |
+| `KB_PUBLIC_URL` | required | The service's public `https://` address, with no path. `http://` is accepted only for localhost. A temporary or local address starts only as the operator's own test (below the tables). |
+| `KB_OPERATOR_TEST` | off | `1` turns on the operator-only test mode (section 4): only `KB_OPERATOR_ADDRESSES` can sign in, the start logs a line that begins `TEST ONLY`, and `/health` carries `"test_only": true`. Any value but `1`, `0` or none stops the start. |
+| `KB_OPERATOR_ADDRESSES` | required with `KB_OPERATOR_TEST=1` | The operator's own email address, or several separated by commas. Set while the mode is off, it stops the start, so a misspelled switch cannot leave the whole list admitted. |
 | `KB_GOOGLE_CLIENT_ID` | required | The Google OAuth client's ID. |
 | `KB_GOOGLE_CLIENT_SECRET` | required, secret | The Google OAuth client's secret. |
 | `KB_ALLOWED_EMAILS` | required unless `KB_ALLOWED_GROUPS` is set | Comma-separated addresses that may read the knowledge base. |
@@ -129,7 +140,7 @@ lists every problem at once.
 | `KB_GROUP_REFRESH_SECONDS` | `300` | How often the groups are read again, 60 to 86400. |
 | `KB_ALLOWED_HOSTED_DOMAINS` | none | Comma-separated Google Workspace domains; when set, accounts outside them are refused even if listed. |
 | `KB_JWT_SIGNING_KEY` | derived from the client secret | Secret that signs the connector's own tokens. Set it so rotating the Google client secret does not sign everyone out. |
-| `KB_OAUTH_STORE` | `memory` | `firestore` for any deployment: registrations, grants and Google tokens survive restarts and are shared by every instance. `memory` loses them when the process stops. |
+| `KB_OAUTH_STORE` | required; `memory` in the operator-only test mode | `firestore` for any deployment: registrations, grants and Google tokens survive restarts and are shared by every instance. `memory` keeps them in the process, so every restart signs everyone out, and the start logs a warning that says so. Outside the test mode a start that names no store stops (below the tables). |
 | `KB_STORAGE_ENCRYPTION_KEY` | required with `firestore`, secret | A Fernet key (44 characters) that encrypts everything the OAuth store writes. |
 | `KB_FIRESTORE_PROJECT` | the runtime's project | Google Cloud project of the Firestore database. |
 | `KB_FIRESTORE_DATABASE` | `(default)` | Firestore database name. |
@@ -146,9 +157,72 @@ lists every problem at once.
 | `KB_SEARCH_LIMIT` | `10` | Results per search, 1 to 50. |
 | `PORT` | `8080` | Port to listen on; Cloud Run sets it. |
 | `KB_HOST` | `0.0.0.0` | Address to listen on. |
-| `KB_LOG_LEVEL` | `INFO` | Log level. |
+| `KB_LOG_LEVEL` | `INFO` | Log level: `DEBUG`, `INFO`, `WARNING`, `ERROR` or `CRITICAL`. The line that begins `TEST ONLY` is logged whatever the level. |
 
-## 4. Run it locally
+**Temporary addresses.** Outside the operator-only test mode the connector does not start when
+`KB_PUBLIC_URL` names an address that lasts only as long as one machine or its tunnel:
+
+- a tunnel service's own domain, or any host under it: `trycloudflare.com`, `ngrok.io`,
+  `ngrok.app`, `ngrok.dev`, `ngrok.pizza`, `ngrok-free.app`, `ngrok-free.dev`, `ngrok-free.pizza`,
+  `loca.lt`, `localtunnel.me`, `serveo.net`, `serveousercontent.com`, `localhost.run`, `lhr.life`,
+  `lhr.rocks`, `pinggy.io`, `pinggy.link`, `pinggy-free.link`, `devtunnels.ms` and
+  `app.github.dev`;
+- `localhost`, and any name that ends in `.localhost` or `.local`;
+- an IP address the internet cannot reach: loopback (`127.0.0.1`, `[::1]`), `0.0.0.0`, the private
+  ranges (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `fc00::/7`), link-local addresses, the
+  shared range `100.64.0.0/10` and the reserved ranges; and any IP address in an old spelling,
+  such as `127.1`.
+
+The address is read as a host. `demo.trycloudflare.com` counts, and so does the same host in upper
+case or with a port; `nottrycloudflare.com` and `https://kb.example.com/trycloudflare.com` do not.
+The list is `TEMPORARY_HOSTS` in `kb_connector/config.py`. A tunnel service that is not on it is
+not caught, so add its domain there when one comes into use.
+
+The start prints this, with the host it read, and exits 2:
+
+```text
+kb-connector: the connector cannot start:
+  - KB_PUBLIC_URL names a temporary or local address (<host>): it lasts only while this machine and its tunnel stay up, so nobody else may depend on it. To serve other people, deploy the connector to the organization's own infrastructure at a permanent address; for the operator's own test, set KB_OPERATOR_TEST=1 and KB_OPERATOR_ADDRESSES to the operator's own email address
+```
+
+Those are the two ways forward: deploy it (section 5), or run the operator's own test (section 4).
+
+**The sign-in store.** Outside the test mode `KB_OAUTH_STORE` has no default, so a deployment
+cannot end up on the memory store because a setting was forgotten. A start that names no store
+prints this and exits 2:
+
+```text
+kb-connector: the connector cannot start:
+  - KB_OAUTH_STORE is required: firestore, with KB_STORAGE_ENCRYPTION_KEY, keeps sign-ins across restarts; memory signs everyone out at every restart and is the default only in the operator-only test mode
+```
+
+`KB_OAUTH_STORE=memory` named on purpose still starts, in either mode, and every start then logs
+`KB_OAUTH_STORE=memory: sign-ins live in this process only, so every restart signs everyone out`.
+After such a restart each person's client is refused and has to connect again, and a platform
+that stops idle instances, as Cloud Run does, restarts often.
+
+## 4. Run it locally: the operator's own test
+
+**A local run is the operator's own test, and nobody else's.** Its address is never given to
+anyone. The moment anyone else is to use the connector, deploy it to the organization's own
+infrastructure first (section 5), at a permanent address, and give people that address.
+
+A local run stops when the laptop's lid closes, when the process or the app that started it
+restarts, and when the tunnel in front of it drops. Each of those cuts off everyone who was using
+it. A restart signs them all out, since a local run keeps sign-ins in memory, and a free tunnel's
+address does not come back: the next tunnel gets a new one, so a person who was given the old one
+holds a connector that no longer exists.
+
+The connector holds to this itself. On a temporary or local address (section 3) it starts only in
+the operator-only test mode:
+
+- `KB_OPERATOR_TEST=1` turns the mode on and `KB_OPERATOR_ADDRESSES` names the operator's own
+  address. Either without the other stops the start.
+- Only the operator can sign in, and only the operator's token works on any later request,
+  whatever `KB_ALLOWED_EMAILS`, `KB_ALLOWED_GROUPS` and `KB_ALLOWED_HOSTED_DOMAINS` would admit
+  (section 2). The operator still has to be on the list or in a group, so the test also checks
+  the access list as it stands.
+- The start logs a line that begins `TEST ONLY`, and `/health` carries `"test_only": true`.
 
 Use a virtual environment outside the plugin, with Python 3.12 or newer:
 
@@ -158,12 +232,31 @@ python3.12 -m venv ~/.venvs/kb-connector
 cd <skill-root>/scripts/connector
 KB_SOURCE_DIR=<published-tree> KB_PUBLIC_URL=http://localhost:8080 \
 KB_GOOGLE_CLIENT_ID=<id> KB_GOOGLE_CLIENT_SECRET=<secret> KB_ALLOWED_EMAILS=<you@example.com> \
+KB_OPERATOR_TEST=1 KB_OPERATOR_ADDRESSES=<you@example.com> \
   ~/.venvs/kb-connector/bin/python -B -m kb_connector
 ```
 
-It prints `serving <n> documents from commit <sha>` and then uvicorn's startup lines. `-B` keeps
-Python from writing bytecode into the plugin folder. For Google sign-in to work locally, add
-`http://localhost:8080/auth/callback` as an authorized redirect URI on the OAuth client.
+It logs these two warnings, then `serving <n> documents from commit <sha>` and uvicorn's startup
+lines:
+
+```text
+<time> WARNING kb_connector: TEST ONLY: operator-only test mode at http://localhost:8080. The address is temporary and must not be given to anyone: a restart of this process, this machine or its tunnel ends it. Only <you@example.com> can sign in.
+<time> WARNING kb_connector: KB_OAUTH_STORE=memory: sign-ins live in this process only, so every restart signs everyone out
+```
+
+`-B` keeps Python from writing bytecode into the plugin folder. For Google sign-in to work
+locally, add `http://localhost:8080/auth/callback` as an authorized redirect URI on the OAuth
+client.
+
+ChatGPT's and Claude's hosted apps cannot reach `localhost`. To try the connector from them, put a
+tunnel in front of the local run, set `KB_PUBLIC_URL` to the tunnel's `https://` address and add
+that address's `/auth/callback` to the OAuth client. It is the same test under the same mode: the
+operator's alone, on an address that ends with the tunnel.
+
+The mode also runs on a deployed connector, to try a deployment before anyone on the list is told
+about it. It admits only the operator there too, and the `TEST ONLY` line then says not to give
+the address to anyone while the mode is on. Remove `KB_OPERATOR_TEST` and `KB_OPERATOR_ADDRESSES`
+to open the deployment to the list.
 
 ## 5. Deploy on Google Cloud Run
 
@@ -288,13 +381,16 @@ curl -s https://<service>-<number>.<region>.run.app/health
 curl -s -i -X POST https://<service>-<number>.<region>.run.app/mcp | grep -i www-authenticate
 ```
 
-The first prints the health JSON with the commit CI last published. The second prints
+The first prints the health JSON with the commit CI last published and `"test_only": false`. The
+second prints
 `www-authenticate: Bearer ... resource_metadata="https://.../.well-known/oauth-protected-resource/mcp"`,
 which is how clients discover the sign-in.
 
 ## 6. Add it in ChatGPT and in Claude
 
-The connector's address for both is `KB_PUBLIC_URL` followed by `/mcp`.
+The connector's address for both is `KB_PUBLIC_URL` followed by `/mcp`. Give people the address of
+a deployed connector only (section 5), whose `/health` shows `"test_only": false`. A local run's
+address is the operator's own and is never given to anyone (section 4).
 
 **ChatGPT** (OpenAI's developer documentation, read 2026-11-09): open ChatGPT Plugins at
 `https://chatgpt.com/plugins`, select the plus button, then **Add custom MCP server**. Give it a
@@ -358,18 +454,29 @@ The running connector (`python -B -m kb_connector` from `scripts/connector/`) pr
 `serving <n> documents from commit <sha>` when a copy loads, `refresh failed (...)` when a refresh
 fails, and `sign-in allowed for <email>` or `sign-in refused for <email>: <reason>` per sign-in. If
 its settings are wrong it prints `kb-connector: the connector cannot start:` and every problem,
-then exits 2; if the first load fails it prints `kb-connector: the first load failed: <reason>` and
+then exits 2; a temporary address and an unnamed sign-in store are two of those problems
+(section 3). If the first load fails it prints `kb-connector: the first load failed: <reason>` and
 exits 1.
 
 - **Is it current?** `/health` shows the served commit. Compare it with the published repository's
   head. `last_refresh_failed: true` means the last check, clone or load failed and the last good
   copy is still served; the log line `refresh failed (last good copy kept): ...` says why.
+- **Is it a test?** `/health` shows `"test_only": true` while the operator-only test mode is on,
+  and every start in the mode logs a line that begins `TEST ONLY`, naming the address and who can
+  sign in. A connector other people use shows `false`. With the mode on, everyone but the operator
+  is refused, with `sign-in refused for <email>: operator_only_test_mode` or
+  `token refused for <email>: operator_only_test_mode` in the log.
+- **Memory store:** a start with `KB_OAUTH_STORE=memory` logs
+  `KB_OAUTH_STORE=memory: sign-ins live in this process only, so every restart signs everyone out`.
+  On a connector other people use, move it to `firestore` (5.4, 5.7, 5.8 and 5.10).
 - **Groups:** with `KB_ALLOWED_GROUPS` set, `/health` also reports `access_groups`: its `status`
   (`ok`, or `stale` once the membership is older than three intervals, which also makes `/health`
   answer 503), when it was last read, and whether the last read failed.
 - **Log lines worth alerting on:** `access group refresh failed`, `refresh failed`, `sign-in refused for <email>: <reason>`,
   `token refused for <email>: <reason>` and `sign-in check failed`. The first means stale content;
-  the others show who was refused.
+  the others show who was refused. On a deployed connector, alert on `TEST ONLY` and on
+  `KB_OAUTH_STORE=memory` as well: the first means only the operator can get in, the second that
+  the next restart signs everyone out.
 - **Rotate a secret:** add a new version in Secret Manager and redeploy (or update the service) so
   a new revision reads it. Rotating `KB_JWT_SIGNING_KEY` or `KB_STORAGE_ENCRYPTION_KEY` signs
   everyone out; they sign in again on their next use.
@@ -391,3 +498,5 @@ exits 1.
 - It does not reach the knowledge base's source repository, only the published tree.
 - It does not replace the organization plugin for people inside the workspaces; both serve the same
   published commit.
+- It does not serve other people from a temporary address. There it starts only as the operator's
+  own test, which admits the operator alone (sections 3 and 4).
