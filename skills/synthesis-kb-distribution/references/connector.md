@@ -104,6 +104,28 @@ is: Google must report the address verified, the account must be in an allowed d
 are set, and the address must be on the list or in a group. The mode narrows who gets in and never
 adds anyone. Section 4 says what the mode is for.
 
+**A refresh in the test mode.** A client that holds a refresh token, from a sign-in before the
+mode came on, asks the token endpoint (`/token`) for a new token when its old one runs out. In the
+test mode the list is checked there too, on the token the refresh produced: anyone the list
+refuses gets no token. The client gets the error OAuth defines for a grant that is no longer
+valid, with HTTP status 401:
+
+```json
+{"error":"invalid_grant","error_description":"Access denied: <email> is not on this knowledge base's access list. Ask its administrator to add the address."}
+```
+
+The log says `refresh refused for <email>: operator_only_test_mode`. The refresh token is spent
+by the attempt, so the grant is gone on the connector too: the person signs in again, and while
+the mode is on that sign-in shows the same message on a page. The operator's own refresh is
+checked as every request is. While the operator passes it gets a new token; while the operator
+does not, it is refused with the reason the list gives (`email_not_listed`, `email_unverified`,
+`domain_not_allowed`, `group_unchecked`, or `no_identity` when Google does not say whose the new
+token is), and the operator signs in again.
+
+Outside the test mode the token endpoint does not consult the list. A refresh is given to whoever
+holds the refresh token, and the list is checked on every request with the new token (the second
+check above), so a person removed from the list gets a token that every request refuses.
+
 Logs name the email address and the reason, never a token. The HTTP access log is off, because the
 Google callback's address carries Google's authorization code in its query string. Cloud Run's own
 request log still records that address; the code is single-use, already spent by the time it is
@@ -235,10 +257,10 @@ store (section 3), it starts only in the operator-only test mode:
 - `KB_OPERATOR_TEST=1` turns the mode on and `KB_OPERATOR_ADDRESSES` names the operator's own
   address, or up to three of that one person's own accounts. Either without the other stops the
   start, and so does a fourth address.
-- Only the operator can sign in, and only the operator's token works on any later request,
-  whatever `KB_ALLOWED_EMAILS`, `KB_ALLOWED_GROUPS` and `KB_ALLOWED_HOSTED_DOMAINS` would admit
-  (section 2). The operator still has to be on the list or in a group, so the test also checks
-  the access list as it stands.
+- Only the operator can sign in, only the operator's token works on any later request, and only
+  the operator's client gets a new token when it refreshes, whatever `KB_ALLOWED_EMAILS`,
+  `KB_ALLOWED_GROUPS` and `KB_ALLOWED_HOSTED_DOMAINS` would admit (section 2). The operator still
+  has to be on the list or in a group, so the test also checks the access list as it stands.
 - The start logs a line that begins `TEST ONLY`, and `/health` carries `"test_only": true`.
 
 Use a virtual environment outside the plugin, with Python 3.12 or newer:
@@ -275,6 +297,10 @@ about it. It admits only the operator there too, and the `TEST ONLY` line then s
 the address to anyone while the mode is on. Remove `KB_OPERATOR_TEST` and `KB_OPERATOR_ADDRESSES`
 to open the deployment to the list. It then has to be on `firestore`: a deployment tried on the
 memory store stops at its first start without the mode (section 3).
+
+Turning the mode on over a deployment people already use ends their sign-ins. Each request is
+refused, and a client that asks for a new token is told its grant is no longer valid (section 2),
+so each of those people signs in again once the mode is off.
 
 ## 5. Deploy on Google Cloud Run
 
@@ -482,8 +508,9 @@ those problems (section 3). If the first load fails it prints
 - **Is it a test?** `/health` shows `"test_only": true` while the operator-only test mode is on,
   and every start in the mode logs a line that begins `TEST ONLY`, naming the address and who can
   sign in. A connector other people use shows `false`. With the mode on, everyone but the operator
-  is refused, with `sign-in refused for <email>: operator_only_test_mode` or
-  `token refused for <email>: operator_only_test_mode` in the log.
+  is refused, with `sign-in refused for <email>: operator_only_test_mode`,
+  `token refused for <email>: operator_only_test_mode` or
+  `refresh refused for <email>: operator_only_test_mode` in the log.
 - **Memory store:** only the operator's own test runs on it. A start in the test mode with
   `KB_OAUTH_STORE=memory`, or with no store named, logs
   `KB_OAUTH_STORE=memory: sign-ins live in this process only, so every restart signs everyone out`.
@@ -501,7 +528,8 @@ those problems (section 3). If the first load fails it prints
   (`ok`, or `stale` once the membership is older than three intervals, which also makes `/health`
   answer 503), when it was last read, and whether the last read failed.
 - **Log lines worth alerting on:** `access group refresh failed`, `refresh failed`, `sign-in refused for <email>: <reason>`,
-  `token refused for <email>: <reason>` and `sign-in check failed`. The first means stale content;
+  `token refused for <email>: <reason>`, `refresh refused for <email>: <reason>` and
+  `sign-in check failed`. The first two mean the access groups or the content are going stale;
   the others show who was refused. On a deployed connector, alert on `TEST ONLY` as well: it means
   only the operator can get in. `KB_OAUTH_STORE=memory` is logged only beside it, in the test
   mode, and means the next restart signs the operator out.
@@ -514,6 +542,10 @@ those problems (section 3). If the first load fails it prints
   its header, and run the connector's tests with the new lock installed. The sign-in check reads
   two private attributes of FastMCP's OAuth proxy (`_code_store`, `_token_validator`); if an
   upgrade moves them, the sign-in check fails closed and `test_kb_connector_server.py` fails.
+  The test mode's refresh check stands on the provider's own methods: it wraps
+  `exchange_refresh_token`, which the token endpoint calls for a refresh grant, reads the new
+  token through `load_access_token`, and refuses by raising the SDK's `TokenError`. The same tests
+  fail if an upgrade changes how the token endpoint calls them or what it answers.
 - **Tests:** `python3 -m pytest -q skills/synthesis-kb-distribution/tests` from the repository
   root. Without the requirements installed, the FastMCP tests skip; with
   `SYNTHESIS_REQUIRE_FASTMCP=1` they fail instead of skipping.

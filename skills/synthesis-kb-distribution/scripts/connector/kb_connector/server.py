@@ -7,8 +7,9 @@ bearer middleware calls, so a person removed from the list loses access at once)
 call and tool listing (AuthMiddleware). The sign-in check reads the OAuth proxy's stored grant
 through two private attributes, `_code_store` and `_token_validator`; if a FastMCP upgrade moves
 them, the check fails closed and the tests in tests/test_kb_connector_server.py fail. In the
-operator-only test mode all three admit the operator alone, main() logs a line that begins TEST ONLY
-and /health reports `test_only`.
+operator-only test mode all three admit the operator alone, the token endpoint refuses a refresh to
+anyone else (exchange_refresh_token, which the SDK's token handler calls for a refresh grant), main()
+logs a line that begins TEST ONLY and /health reports `test_only`.
 
 Tokens are never logged: log lines name the email address and the reason only, and the access log
 is off, since the callback's query string carries Google's authorization code.
@@ -28,6 +29,7 @@ from fastmcp.exceptions import AuthorizationError, ToolError
 from fastmcp.server.auth.oauth_proxy.ui import create_error_html
 from fastmcp.server.auth.providers.google import GoogleProvider
 from fastmcp.server.middleware import AuthMiddleware
+from mcp.server.auth.provider import TokenError
 from mcp_types import ToolAnnotations
 from starlette.requests import Request
 from starlette.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
@@ -66,7 +68,7 @@ class FetchedDocument(TypedDict):
 
 
 class AccessListGoogleProvider(GoogleProvider):
-    """FastMCP's Google OAuth proxy with the access list applied at sign-in and to every token."""
+    """FastMCP's Google OAuth proxy with the access list at sign-in, on every token and, in the test mode, on a refresh."""
 
     def __init__(self, *, policy: AccessPolicy, **kwargs):
         super().__init__(redirect_path=CALLBACK, **kwargs)
@@ -81,6 +83,18 @@ class AccessListGoogleProvider(GoogleProvider):
             LOG.warning("token refused for %s: %s", decision.email or "(no address)", decision.reason)
             return None
         return access
+
+    async def exchange_refresh_token(self, client, refresh_token, scopes):
+        """FastMCP's refresh. In the operator-only test mode the access list then reads the new token, and a client
+        whose person it refuses is told the grant is gone, in place of a token that every request would refuse."""
+        tokens = await super().exchange_refresh_token(client, refresh_token, scopes)
+        if self.policy.operators:
+            access = await super().load_access_token(tokens.access_token)
+            decision = self.policy.decide(access.claims if access else None)
+            if not decision.allowed:  # the tokens just made reach nobody, and the old refresh token is spent
+                LOG.warning("refresh refused for %s: %s", decision.email or "(no address)", decision.reason)
+                raise TokenError("invalid_grant", decision.message)
+        return tokens
 
     def get_routes(self, mcp_path: str | None = None):
         return [Route(CALLBACK, endpoint=self.checked_callback, methods=["GET"])
