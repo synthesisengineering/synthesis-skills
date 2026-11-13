@@ -662,9 +662,11 @@ except ImportError:  # an interpreter with none reads no region label
     ZoneInfo = None
 # The time an entry gives for itself, in the three places a record states one: the line opens with the day and a
 # time (behind a list mark, a box, a heading, emphasis), a parenthesis opens with them, or the line opens with a
-# time alone (read only in a session log, under a heading that names the day). A time may be rounded ("18:3x",
-# "about 18:35"), a range (its later end counts) and may name its zone. Measured on thirty days of commits before
-# this was written (2026-11-12): 688 such stamps, 36 of them later than their commit and 111 rounding the present.
+# time alone (read only in a session log, in a list item or a heading, under a heading that names the day). A time
+# may be rounded ("18:3x", "about 18:35"), a range (its later end counts) and may name its zone. Measured on thirty
+# days of commits before this was written (2026-11-12): 688 such stamps, 36 of them later than their commit and 111
+# rounding the present. Replayed over the same commits, the first form refused five wrapped lines that began with a
+# time by chance: a line set in from the margin with no mark opens no entry.
 _MARKS = r"^\s*(?:(?:[-*+]|\d+\.)\s+)?(?:\[[ xX]\]\s+)?(?:#{1,6}\s+)?[*_`\s]*"
 _CLOCK = r"(?:[01]?\d|2[0-3]):[0-5][\dx](?::\d\d(?:\.\d+)?)?"
 _SPAN = (r"(?P<about>(?:about|around|roughly|approximately|approx\.?|circa|~|≈)\s*)?(?P<first>" + _CLOCK + r")"
@@ -673,6 +675,7 @@ _SPAN = (r"(?P<about>(?:about|around|roughly|approximately|approx\.?|circa|~|≈
 _DAY = r"(?P<year>\d{4}-)?(?P<month>\d\d)-(?P<day>\d\d)(?:(?P<iso>T)|[ ,]+(?:at\s+)?)"
 STAMPS = (re.compile(_MARKS + r"\(?" + _DAY + _SPAN), re.compile(r"\((?:[a-z]+ ){0,2}" + _DAY + _SPAN),
           re.compile(_MARKS + _SPAN + r"(?=[\s,.:;)*_—-]|$)"))
+ENTRY = re.compile(r"\s*(?:(?:[-*+]|\d+\.)\s|#{1,6}\s)")  # what opens an entry: a list item or a heading
 HOURS = {"Z": 0, "UTC": 0, "GMT": 0, "EST": -5, "EDT": -4, "CST": -6, "CDT": -5, "MST": -7, "MDT": -6, "PST": -8, "PDT": -7}
 REGIONS = {"ET": "America/New_York", "CT": "America/Chicago", "MT": "America/Denver", "PT": "America/Los_Angeles"}
 
@@ -724,9 +727,10 @@ def record_times(lines: list, settings, now: datetime, read) -> list:
         if not path.lower().endswith(".md") or "transcripts" in parts or any(fnmatch.fnmatch(path, pattern) for pattern in skip):
             continue
         text = line.decode("utf-8", "replace")
-        head = STAMPS[0].match(text)
+        marked = bool(ENTRY.match(text))  # set in from the margin with no mark, a line is the rest of the one above
+        head = STAMPS[0].match(text) if marked or text[:1].strip() else None
         stamps = ([head] if head else []) + [m for m in STAMPS[1].finditer(text) if not (head and m.start() < head.end())]
-        bare = None if head or "sessions" not in parts else STAMPS[2].match(text)
+        bare = STAMPS[2].match(text) if marked and not head and "sessions" in parts else None
         if bare:  # a list item's own time counts under the nearest heading that names a day, when that day is today
             above = texts.setdefault(path, read(path).split("\n"))[:number - 1]
             dated = next((h for h in reversed(above) if re.match(r"#{1,6}\s", h) and re.search(r"\d{4}-\d\d-\d\d", h)), "")
