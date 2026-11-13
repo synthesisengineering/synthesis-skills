@@ -472,15 +472,16 @@ def test_the_rule_finds_an_import_at_the_top_and_spares_one_that_is_guarded_or_i
     assert bare_runtime_imports(tmp_path) == ["skills/probe/scripts/bare.py:2", "skills/probe/scripts/silent.py:3", "skills/probe/scripts/whole.py:1"]
 
 
-def twice_bound(source: str) -> list:
-    """The names a module binds more than once at its top: a function, a class or an assignment."""
+def twice_bound(source: str, defs_only: bool = False) -> list:
+    """The names a module binds more than once at its top: a function, a class or an assignment (`defs_only`: a
+    function or a class)."""
     import ast
     import collections
     names = collections.Counter()
     for node in ast.parse(source).body:
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
             names[node.name] += 1
-        elif isinstance(node, (ast.Assign, ast.AnnAssign)):
+        elif not defs_only and isinstance(node, (ast.Assign, ast.AnnAssign)):
             for target in (node.targets if isinstance(node, ast.Assign) else [node.target]):
                 names.update(leaf.id for leaf in ast.walk(target) if isinstance(leaf, ast.Name))
     return sorted(name for name, count in names.items() if count > 1)
