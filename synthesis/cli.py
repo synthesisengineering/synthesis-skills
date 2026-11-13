@@ -386,6 +386,14 @@ def parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    try:
+        return _main(argv)
+    except paths.Unreadable as exc:  # a command whose reader of the config handles nothing itself: one line, no traceback
+        print(f"synthesis: the config cannot be read ({exc}); fix {paths.config_file()}", file=sys.stderr)
+        return 2
+
+
+def _main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
     split = next((i for i, w in enumerate(argv) if not w.startswith("-") and argv[i - 1:i] != ["--session"]), len(argv))
     name = "".join(argv[split:split + 1])  # the command is the first word that is no option of the CLI's own, not a word of a message

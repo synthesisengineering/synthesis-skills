@@ -45,14 +45,20 @@ def config_file() -> Path:
     return home() / "config.json"
 
 
+class Unreadable(ValueError):
+    """The config file is there and holds no settings: it is not JSON, or it is JSON that is no object."""
+
+
 def config() -> dict:
     """Merged config: public defaults, then the user's file. Missing file is fine; JSON that is no object is unreadable."""
     try:
         found = json.loads(config_file().read_text(encoding="utf-8"))
     except FileNotFoundError:
         return {}
+    except ValueError as exc:
+        raise Unreadable(str(exc)) from None
     if not isinstance(found, dict):
-        raise ValueError(f"{config_file()} is not a JSON object")
+        raise Unreadable(f"{config_file()} is not a JSON object")
     return found
 
 
