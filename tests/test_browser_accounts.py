@@ -422,12 +422,13 @@ def test_with_no_page_named_the_hold_says_what_a_read_showed_and_no_more():
     ran("navigate")
     shows(OTHER)
     reason = call(*TYPE)
-    assert misrouted(reason) and "only mentions" in reason and f"showed {OTHER}" in reason and "is signed in to" not in reason
+    assert misrouted(reason) and "only mentions" in reason and reason.startswith(f"A read of {SITE} in the WorkCo browser profile showed {OTHER}")
+    assert f"If the profile is signed in to {SITE} as {OTHER}" in reason  # said as a condition: the page may only mention the address
     assert "only mentions" in stop()
     paged = config({f"{SITE}/settings": MINE})
     shows(OTHER, path="/settings")
     reason = call(*TYPE, using=paged)
-    assert misrouted(reason) and "only mentions" not in reason and f"is signed in to {SITE} as {OTHER}" in reason
+    assert misrouted(reason) and "only mentions" not in reason and reason.startswith(f"The WorkCo browser profile is signed in to {SITE} as {OTHER}")
     assert "only mentions" not in stop(using=paged)
 
 
@@ -464,7 +465,8 @@ def test_a_page_key_ends_where_a_name_ends_and_may_be_written_without_a_slash():
         shows(OTHER, path="/settings")                                    # the page last showed another account
         shows(MINE, path=path)
         assert (call(*TYPE, using=using) is None) is counts, path
-    for key, there in ((f"{SITE}#settings", "/#settings/profile"), (f"{SITE}?view=account", "/?view=account&x=1"), (f" {SITE}/settings ", "/settings")):
+    for key, there in ((f"{SITE}#settings", "/#settings/profile"), (f"{SITE}?view=account", "/?view=account&x=1"), (f" {SITE}/settings ", "/settings"),
+                       (f"{SITE.upper()}./settings", "/settings")):
         shows(MINE, path=there)
         assert call(*TYPE, using=config({key: MINE})) is None, key
     assert "blocked until it is fixed" in call(*TYPE, using=config({f"{SITE}/set tings": MINE}))
@@ -495,6 +497,12 @@ def test_the_doctor_names_a_profile_with_no_label_by_its_workspace():
     del using["browser_routing"]["workspaces"][str(ROOT)]["label"]
     check = doctor.check_browser_accounts(using, {f"{WORK} {SITE}": {"seen": OTHER, "at": time.time()}})
     assert check.status == "warn" and "the a " not in check.detail and str(ROOT) in check.detail
+
+
+def test_the_doctor_compares_addresses_as_the_guard_does_and_the_turns_end_survives_a_record_that_is_gone():
+    assert doctor.check_browser_accounts(CONFIG, {f"{WORK} {SITE}": {"seen": MINE.upper(), "at": time.time()}}).status == "ok"
+    gone = {"last_assistant_message": "Done.", "transcript_path": str(RECORD) + ".gone", "session_id": "S1", "cwd": str(ROOT)}
+    assert reply_check.misrouted_accounts(gone, CONFIG) == []
 
 
 def test_two_sessions_that_write_what_they_saw_at_once_lose_neither(tmp_path):

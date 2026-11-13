@@ -492,7 +492,10 @@ def misrouted_accounts(payload: dict, config: dict) -> list[str]:
     from synthesis import guards
 
     def lines() -> list:
-        return [line.decode("utf-8", "replace") for line in _turn(payload.get("transcript_path"), (b"Tab Context",))[1]]
+        try:
+            return [line.decode("utf-8", "replace") for line in _turn(payload.get("transcript_path"), (b"Tab Context",))[1]]
+        except OSError:  # a record that is gone shows nothing
+            return []
     return guards.accounts_misrouted(lines, config, str(payload.get("cwd") or ""), payload)
 
 

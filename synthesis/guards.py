@@ -1089,39 +1089,48 @@ def _browser_workspace(config: dict, cwd: str, session: dict | None) -> tuple | 
 # page of a site the workspace's `accounts` name waits until a read of that site has shown the workspace's account.
 # The guard sees no browser. It reads the record: each browser result names the tab it ran on and that tab's
 # address, and a page read holds what the page showed. A click never waits, since the account often sits behind a menu.
-PUTS = ("form_input", "file_upload", "upload_image", "javascript_tool")  # and a `computer` call that types or presses a key
+PUTS = ("form_input", "file_upload", "upload_image", "javascript_tool")  # and a `computer` call that types, or presses a key that is not quiet
+READS, STILL = ("get_page_text", "read_page", "find"), ("screenshot", "wait", "scroll", "scroll_to", "zoom", "hover")  # what cannot move a tab
+QUIET_KEYS = {"escape", "esc", "tab", "up", "down", "left", "right", "arrowup", "arrowdown", "arrowleft", "arrowright", "pageup", "pagedown", "home", "end", "f5"}
+QUIET_CHORDS = {"cmd+r", "ctrl+r", "cmd+c", "ctrl+c", "cmd+a", "ctrl+a", "cmd+f", "ctrl+f"}  # reload, copy, select, find: nothing is put
 MAIL = re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
 
 
 def named_sites(meta: dict) -> list | None:
     """[(site, page, account)] from a workspace's `accounts`: each key a site, or the page of one that shows the
-    signed-in account ("example.com/settings"), each value the workspace's address there. None for another shape."""
+    signed-in account ("example.com/settings", "example.com#settings"), each value the workspace's address there.
+    None for another shape."""
     accounts, named = meta.get("accounts", {}), []
     for key, account in accounts.items() if isinstance(accounts, dict) else [(None, None)]:
-        site, _, page = (key.split("://", 1)[-1] if isinstance(key, str) else "").partition("/")
-        site = site.lower()
+        found = re.fullmatch(r"(?:[A-Za-z][A-Za-z0-9+.-]*://)?([^/?#\s]*)([/?#]\S*)?", key.strip()) if isinstance(key, str) else None
+        site, page = (found.group(1).lower().rstrip("."), found.group(2) or "") if found else ("", "")
         if (not re.fullmatch(r"[a-z0-9-]+(?:\.[a-z0-9-]+)+", site) or not isinstance(account, str) or not MAIL.fullmatch(account.strip())
                 or any(site == n[0] or site.endswith("." + n[0]) or n[0].endswith("." + site) for n in named)):  # one entry covers a site
             return None
-        named.append((site, "/" + page if page else "", _address(account)))
+        named.append((site, page if page[:1] in ("", "/") else "/" + page, _address(account)))
     return named
 
 
 def _where(url: str) -> tuple:
-    """(host, the path with any query and fragment) of an address, with or without its scheme; ("", "/") for one
-    that cannot be read."""
-    from urllib.parse import urlsplit
+    """(host, the path with any query and fragment) of an address as a browser reads it: with or without its scheme
+    or its slashes, a backslash for a slash, a host in capitals, with an escaped letter or a closing dot. ("", "/")
+    for one that cannot be read."""
+    from urllib.parse import unquote, urlsplit
+    url = re.sub(r"(?i)^(https?):/*", r"\1://", url.strip().replace("\\", "/"))
     try:
-        parts = urlsplit(url if "://" in url else "https://" + url)
-        return (parts.hostname or "").lower(), (parts.path or "/") + "?" * bool(parts.query) + parts.query + "#" * bool(parts.fragment) + parts.fragment
+        parts = urlsplit(url if "://" in url else "https://" + url.lstrip("/"))
+        return (unquote(parts.hostname or "").lower().rstrip("."),
+                (parts.path or "/") + "?" * bool(parts.query) + parts.query + "#" * bool(parts.fragment) + parts.fragment)
     except ValueError:
         return "", "/"
 
 
 def _on_site(address: str, site: str, page: str = "") -> bool:
-    """Whether an address is on a site (its host, or one under it) and, where a page is named, begins with it."""
-    host, path = _where(address)
-    return (host == site or host.endswith("." + site)) and path.startswith(page)
+    """Whether an address is on a site (its host, or one under it) and, where a page is named, is that page or one
+    under it: the page's name ends where the address goes on with `/`, `?`, `#` or `&`."""
+    host, rest = _where(address)
+    return (host == site or host.endswith("." + site)) and (not page or rest == page or rest.startswith(page) and (
+        page[-1] in "/?#&=" or rest[len(page)] in "/?#&"))
 
 
 def _everyone(config: dict) -> set:
@@ -1138,55 +1147,106 @@ def _account_shown(lines: list, site: str, page: str, mine: str, others: set) ->
     """(address, the read's id) for the newest read in these lines that settles which account a site shows: the
     result of a browser call, not an error, that ran on a tab of the site (on the page, where the key names one)
     and holds, before its list of tabs and apart from what the call itself named, the workspace's address and none
-    of the principal's others, or one of the others without it."""
+    of the principal's others, or one of the others without it. The call is a page read, or a batch with a page
+    read in it that ran on one tab and held nothing after its first read that can move a tab: a batch's result names
+    one tab, the one it ended on."""
+    from urllib.parse import unquote
+    known = others | {mine}
     for i in range(len(lines) - 1, -1, -1):
-        for block in reversed(_blocks(lines[i]) if "Tab Context" in lines[i] and site in lines[i] and "@" in lines[i] else []):
+        line = lines[i]
+        if "Tab Context" not in line or site not in line or "@" not in line:
+            continue
+        low = line.lower()
+        if not any(address in low for address in known):
+            continue  # most results hold none of the principal's addresses, and reading one as JSON is what costs (2026-11-13: 130 ms a call)
+        for block in reversed(_blocks(line)):
             text = _said(block) if block.get("type") == "tool_result" and not block.get("is_error") else ""
             cut = text.rfind("Tab Context")
             ran, call = re.search(r"Executed on tabId: (\d+)", text[cut:]), cut >= 0 and _browser_call(lines, i, str(block.get("tool_use_id") or ""))
             if not (ran and call and _on_site(dict(TAB_LINE.findall(text[cut:])).get(ran.group(1), ""), site, page)):
                 continue
             steps = [s for s in (call.get("input") or {}).get("actions") or [] if isinstance(s, dict) and isinstance(s.get("input"), dict)]
-            if len({str(s["input"].get("tabId")) for s in steps}) > 1 or any(str(s.get("name")).endswith("navigate") for s in steps[1:]):
-                continue  # a batch's result names one tab, where it ended: one that moved or ran on two is no read of that page
-            named = {m.lower() for m in MAIL.findall(json.dumps(call.get("input")))}
-            found = ({m.lower() for m in MAIL.findall(text[:cut])} & (others | {mine})) - named
+            kinds = [str(s.get("name", "")).rpartition("__")[2] for s in steps] or [str(call.get("name", "")).rpartition("__")[2]]
+            first = next((k for k, kind in enumerate(kinds) if kind in READS), len(kinds))
+            if first == len(kinds) or len({str(s["input"].get("tabId")) for s in steps}) > 1 or not all(
+                    kind in READS or kind == "computer" and steps[k]["input"].get("action") in STILL for k, kind in enumerate(kinds) if k > first):
+                continue
+            named = {m.lower() for m in MAIL.findall(unquote(json.dumps(call.get("input"))))}
+            found = ({m.lower() for m in MAIL.findall(text[:cut])} & known) - named
             if found == {mine} or found and mine not in found:
                 return min(found), str(block.get("tool_use_id"))
     return None
 
 
+def _note_account(device: str, site: str, shown: tuple, me: str) -> None:
+    """Writes down what a settling read showed, by profile and site, for the doctor, unless that read is what the
+    file already holds. One writer at a time, so that two sessions lose neither's site."""
+    import fcntl
+    listed, sight = paths.state() / "browser-accounts.json", {"seen": shown[0], "read": shown[1], "session": me}
+    listed.parent.mkdir(parents=True, exist_ok=True)
+    with open(listed.with_suffix(".lock"), "a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        seen = paths.read_json(listed)
+        last = seen.get(f"{device} {site}")
+        if {k: v for k, v in (last.items() if isinstance(last, dict) else []) if k != "at"} != sight:
+            paths.write_json(listed, {**seen, f"{device} {site}": {**sight, "at": time.time()}})
+
+
 def _account(lines: list, device: str, entry: tuple, config: dict, me: str) -> str | None:
-    """The address the newest settling read of a named site showed, written down for the doctor unless that read
-    already is; None when no read settles it."""
+    """The address the newest settling read of a named site showed, written down for the doctor; None when no read
+    settles it."""
     shown = _account_shown(lines, entry[0], entry[1], entry[2], _everyone(config) - {entry[2]})
     if shown:
-        listed, sight = paths.state() / "browser-accounts.json", {"seen": shown[0], "read": shown[1], "session": me}
-        seen = paths.read_json(listed)
-        last = seen.get(f"{device} {entry[0]}")
-        if {k: v for k, v in (last.items() if isinstance(last, dict) else []) if k != "at"} != sight:
-            paths.write_json(listed, {**seen, f"{device} {entry[0]}": {**sight, "at": time.time()}})
+        _note_account(device, entry[0], shown, me)
     return shown[0] if shown else None
 
 
-def _misrouted(label: str, site: str, mine: str, seen: str) -> str:
-    return (f"The {label} browser profile is signed in to {site} as {seen}, and this workspace's account there is {mine}. That "
-            "is a misconfiguration to tell the principal about now, with the profile and the site named; it is not a limit "
-            "on the work and no reason to do the work somewhere else.")
+def _misrouted(label: str, site: str, page: str, mine: str, seen: str) -> str:
+    """What a read that showed another of the principal's addresses is called. Where the key names the page that shows
+    the account, the read is of that page; where it names the site alone, the page may only mention the address
+    (2026-11-13, a review), and the words say what was read and no more."""
+    what = (f"The {label} browser profile is signed in to {site} as {seen}, and this workspace's account there is {mine}. That is"
+            if page else f"A read of {site} in the {label} browser profile showed {seen} and not this workspace's account there, "
+            f"{mine}. If the profile is signed in to {site} as {seen}, that is")
+    return (f"{what} a misconfiguration to tell the principal about now, with the profile and the site named; it is not a limit on "
+            "the work and no reason to do the work somewhere else." + ("" if page else " If the page only mentions that address, "
+                                                                        "read the page that shows the signed-in account."))
+
+
+def _puts(step: str, given: dict) -> bool:
+    """Whether a browser step puts something into a page, sends it or changes it: a form's value, an upload, a
+    script, typed text, or a key press other than one that only moves, selects, copies, finds or reloads."""
+    kind = step.rpartition("__")[2]
+    chords = [[MODIFIERS.get(part, part) for part in chord.split("+")] for chord in str(given.get("text") or "").lower().split()]
+    quiet = bool(chords) and all(chord[-1].replace("_", "") in QUIET_KEYS or "+".join(chord) in QUIET_CHORDS for chord in chords)
+    return kind in PUTS or kind == "computer" and (given.get("action") == "type" or given.get("action") == "key" and not quiet)
 
 
 def _account_hold(name: str, tool_input: dict, named: list, config: dict, device: str, label: str, session: dict | None) -> str | None:
-    """Why a call that puts something into a page of a named site waits (keys, a form's value, an upload or a
-    script, alone or as a step of a batch, which waits whole); None for every other call."""
-    transcript, me = str((session or {}).get("transcript_path") or ""), paths.session_id(session)
+    """Why a call that puts something into a page of a named site waits (typed text, a key that is not quiet, a
+    form's value, an upload or a script, alone or as a step of a batch, which waits whole); None for every other
+    call. The record is read once for a site, however many steps act there."""
+    transcript, me, shown = str((session or {}).get("transcript_path") or ""), paths.session_id(session), {}
+    steps = tool_input.get("actions") if name == "browser_batch" else [{"name": name, "input": tool_input}]
+    if not any(_puts(str(s.get("name", "")), s["input"]) for s in steps or [] if isinstance(s, dict) and isinstance(s.get("input"), dict)):
+        return None  # a call that puts nothing reads no record
     for step, given, address in _steps(name, tool_input, session):
-        kind = step.rpartition("__")[2]
-        for site, page, mine in named if kind in PUTS or kind == "computer" and given.get("action") in ("type", "key") else []:
-            seen = _account(_tail(transcript), device, (site, page, mine), config, me) if _on_site(address, site) else mine
-            if seen and seen != mine:
-                return (f"{_misrouted(label, site, mine, seen)} Nothing is typed, uploaded or run on {site} from this profile "
-                        f"until a read of it shows {mine}.")
-            if not seen:
+        if not _puts(step, given):
+            continue
+        if not address:  # a tab no list of tabs in the record names, or one a step sent where no host is named
+            return (f"The {label} browser profile has sites named for it, and this session's record does not show which page "
+                    f"{'tab ' + str(given['tabId']) if given.get('tabId') else 'this call'} is on, so the call may put something into "
+                    "one of them. Run a browser call that lists the tabs (a screenshot or a page read), in a call of its own, then "
+                    "run this call again.")
+        for site, page, mine in named:
+            if not _on_site(address, site):
+                continue
+            if site not in shown:
+                shown[site] = _account(_tail(transcript), device, (site, page, mine), config, me)
+            if shown[site] and shown[site] != mine:
+                return (f"{_misrouted(label, site, page, mine, shown[site])} Nothing is typed, uploaded or run on {site} from this "
+                        f"profile until a read of it shows {mine}.")
+            if not shown[site]:
                 where = f"https://{site}{page}" if page else "its settings, or its account menu, which a click opens without waiting"
                 return (f"The {label} browser profile has not shown which account it is signed in to on {site} in this session, "
                         f"and this call puts something into a page there. Read a page of the site that shows the signed-in "
@@ -1197,14 +1257,14 @@ def _account_hold(name: str, tool_input: dict, named: list, config: dict, device
 
 def accounts_misrouted(lines, config: dict, cwd: str, session: dict | None) -> list:
     """A sentence for each site the session's workspace names whose newest settling read showed another of the
-    principal's addresses. `lines` gives the lines to judge and is asked only where a site is named; what each
-    settling read showed is written down for the doctor."""
+    principal's addresses. `lines` gives the lines to judge and is asked only where a site is named; what the
+    newest settling read showed is written down for the doctor."""
     found = _browser_workspace(config, cwd, session)
     named = named_sites(found[1]) if found else None
     if not named:
         return []
     device, label, lines, me = str(found[1].get("device") or "").strip(), found[1].get("label") or found[0], lines(), paths.session_id(session)
-    return [_misrouted(label, site, mine, seen) for site, page, mine in named
+    return [_misrouted(label, site, page, mine, seen) for site, page, mine in named
             for seen in [_account(lines, device, (site, page, mine), config, me)] if seen and seen != mine]
 
 
@@ -4376,8 +4436,10 @@ def _web_app(url: str):
 
 
 def _browser_call(lines: list, i: int, ident: str) -> dict | None:
-    """The call whose result is on line i, when it went to a browser server (a shell printing a tab list did not)."""
-    for line in reversed(lines[max(0, i - 200):i] if ident else []):
+    """The call whose result is on line i, when it went to a browser server (a shell printing a tab list did not).
+    It is looked for in the 5,000 lines above (2026-11-13: in 200, a result far below its call was passed over, and an
+    older list of tabs was used)."""
+    for line in reversed(lines[max(0, i - 5000):i] if ident else []):
         for call in (_blocks(line) if ident in line else []):
             if call.get("type") == "tool_use" and call.get("id") == ident:
                 return call if re.search(r"browser|chrome", str(call.get("name", "")).rpartition("__")[0], re.I) else None
@@ -4406,8 +4468,9 @@ def _steps(name: str, tool_input: dict, session: dict | None):
         if isinstance(s, dict) and isinstance(s.get("input"), dict)]
     for step, given in steps:
         tab = str(given.get("tabId") or front)
-        if step.endswith("navigate"):  # the steps after it act on the new page
-            tabs[tab] = str(given.get("url") or "")
+        if step.endswith("navigate"):  # the steps after it act on the new page; `back`, a path or a script names no host, and that page is not known
+            url = str(given.get("url") or "").strip().replace("\\", "/")
+            tabs[tab] = url if re.match(r"(?i)(?:https?:|//|localhost\b|[\w-]+(?:\.[\w-]+)+(?:[:/?#]|$))", url) else ""
         yield step, given, tabs.get(tab, "")
 
 

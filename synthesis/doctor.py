@@ -934,16 +934,16 @@ def check_browser_accounts(config: dict, seen: dict) -> Check | None:
     from synthesis import guards
     routing = config.get("browser_routing")
     spaces = routing.get("workspaces") if isinstance(routing, dict) and isinstance(routing.get("workspaces"), dict) else {}
-    named = [(meta, site, mine) for meta in spaces.values() if isinstance(meta, dict) for site, _, mine in guards.named_sites(meta) or []]
+    named = [(root, meta, site, mine) for root, meta in spaces.items() if isinstance(meta, dict) for site, _, mine in guards.named_sites(meta) or []]
     wrong = []
-    for meta, site, mine in named:
+    for root, meta, site, mine in named:
         last = seen.get(f"{str(meta.get('device') or '').strip()} {site}")
-        if isinstance(last, dict) and isinstance(last.get("seen"), str) and last["seen"] != mine:
+        if isinstance(last, dict) and isinstance(last.get("seen"), str) and last["seen"].strip().lower() != mine:
             try:
                 when = time.strftime("%Y-%m-%d %H:%M", time.localtime(float(last.get("at"))))
             except (TypeError, ValueError, OverflowError, OSError):
                 when = "a day that was not written down"
-            label = meta.get("label") or "a workspace's"
+            label = meta.get("label") or root  # the name the guard's hold gives a profile with no label
             wrong.append(f"{site} in the {label} browser profile showed {last['seen']} on {when}, where the workspace's account is {mine}")
     if wrong:
         return Check("warn", "browser accounts", "; ".join(wrong) + ". That is a misconfiguration to fix in the profile (sign in there "
