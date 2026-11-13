@@ -13,6 +13,7 @@ A verified grant lets exactly one matching call through and expires.
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
 import os
@@ -226,6 +227,19 @@ def void(kind: str, subject) -> None:
     for code in pending():
         if paths.read_json(_dir("approval-requests") / f"{code}.json").get("digest") == key:
             (_dir("approval-requests") / f"{code}.json").unlink(missing_ok=True)
+
+
+@contextlib.contextmanager
+def alone():
+    """One decision at a time for a thing that can go on either of two codes: the code that lets it go spends the
+    other before an identical call, judged at the same moment, is looked at (2026-11-13, a review: between the two
+    steps a second copy went on the other code)."""
+    import fcntl
+    held = _dir("approvals.lock")  # beside the folder: a spent or expired approval leaves no file in it
+    held.parent.mkdir(parents=True, exist_ok=True)
+    with open(held, "a") as handle:
+        fcntl.flock(handle, fcntl.LOCK_EX)
+        yield
 
 
 def consume(kind: str, subject, session: dict | None = None) -> bool:
