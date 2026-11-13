@@ -4,6 +4,36 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [5.13.0] - 2026-11-13
+
+- **What the principal typed is filed as a prompt in every shape a transcript holds it** (`synthesis-context-lifecycle`
+  2.4.0). The session archive filed a `user` record only for a prompt that begins a turn. A prompt typed while a turn
+  runs, which Claude Code keeps as a queued command and in no row of its own, was a `system` record; so were the
+  words typed after a system reminder that the harness put before them in one block; and a slash command that
+  reaches the agent was a `system` record the first time and nothing the second, dropped as a copy. Measured on
+  thirty days of transcripts, each row given to the export's own reader: 578 of 3,327 things typed, 17 in every 100,
+  were in no list of prompts, 32 of them with no record at all. The day's list of prompts (`synthesis sessions
+  prompts`) is read from these records, and a day's close that accounts for every prompt was missing those. Each
+  is a `user` record now: a queued prompt, a slash command written as it was typed (`/review the last change`, and
+  the same command typed twice is two prompts), and the typed words with their reminder kept apart as a `system`
+  record. A command to the harness itself (`/model`) and its output stay `system`, as do a task's notification and
+  another agent's message that arrive as queued commands, and a sub-agent's queued prompt is a `brief`. Replayed with
+  the new reader over the same transcripts: every one of them is filed as a prompt.
+- **A session belongs to the projects it wrote into.** `projects` in a session's `meta.json` held only the project
+  the session-start hook named, and the hook names one only where the session is already bound to a project as it
+  starts or compacts: of 147 archived sessions that wrote into a project's folder, 134 named no project. A session is now tagged with each project whose
+  folder one of its tool calls wrote into (`<a knowledge root>/projects/<id>/`): a file tool's target, or what a
+  shell line writes, read with the guard's own readers. Reading a project's files adds none, and a call whose
+  written files could not be read is counted in `meta.json` among what was skipped. Replayed over thirty days of
+  Claude Code transcripts: 47 of 119 sessions end with a project where 12 did, no call went unread, and the reading
+  costs under half a millisecond a tool call.
+- **After the upgrade, export once more from the start.** Sessions already in the archive keep the records they
+  were given. `synthesis sessions export --rebuild` moves the archive aside and files every transcript still on
+  disk again under these rules; the list of prompts for a past day then grows by about a fifth.
+- **A lint: no Python file defines a function or a class twice at its top.** Renaming a helper in a new test file
+  gave two functions one name; a second definition replaces the first without a word, and a test function defined
+  twice never runs. 5.12.0's lint read the core alone.
+
 ## [5.12.0] - 2026-11-13
 
 - **A status in a record carries its evidence, or says it is unverified** (`synthesis-git-hooks` 3.4.0). Off unless

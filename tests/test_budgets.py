@@ -772,10 +772,17 @@ ROOT = Path(__file__).resolve().parents[1]
 # (the texts' own sender, run and not read), check 4, _result 2, unwatched_sends 2, FAILED 1, one import and two
 # blank lines. approvals.py 14: alone 11 (one decision at a time for a thing that can go on either of two codes),
 # one import and two blank lines. wait.py 5: past 1 MB the file of statements keeps its last 64 KB.
+# 5.13.0, core 73 more, all in sessions.py: what the principal typed is filed as a prompt in every shape a Claude Code
+# transcript holds it, and a session is tagged with the projects it wrote into. _Session 31 (wrote: the projects a
+# tool call's written files lie in, by the guard's own readers, with the row's working directory kept for a relative
+# target and a call that cannot be read counted), _typed 15 (one text block as its records: a prompt, a slash
+# command as it was typed, a reminder and then the typed words), _queued 12 (a prompt typed while a turn runs, which
+# the harness keeps as a queued command; a notification and another agent's message stay what they were), _claude 7
+# (the two routed through _typed, and the working directory), SLASH 5 with its note, _codex 2 and REMINDED 1.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # consolidate first).
-CORE_BUDGET = 13224
-PLUGIN_BUDGET = 34693
+CORE_BUDGET = 13297
+PLUGIN_BUDGET = 34766
 
 
 def _lines(files):
