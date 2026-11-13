@@ -729,19 +729,23 @@ ROOT = Path(__file__).resolve().parents[1]
 # said 6, plain 5, listed 4), 140 for the shape in which 27 scripts import the runtime (five lines each, ten in
 # autopilot_cli.py, which imports it twice): one line that says the runtime is not there, where a traceback was;
 # and 1 in the knowledge-base connector's server.py, whose start line in the test mode asks for the teardown list.
-# 5.11.0 (2026-11-13): core 135, plugin 135. guards.py 68, the rule that a message naming a clock time goes on a
-# fresh calendar read, off unless the config has `fresh_calendar`: _time_without_calendar 25 (the setting, the times
-# in the words, the age of the read, the hold's words), _calendar_read 21 (the newest calendar read that succeeded,
-# from the transcript's tail), check_send 11 (asked before any code and again at the approved call, with a code of
-# its own), the note of what was measured and CLOCK 8, CALENDAR_READ 1, and two blank lines. reply_check.py 54, the
-# question after a message to a person, off unless the config has `reply_watch`: unwatched_sends 33, check 11 (its
-# words, and a setting of another shape said once), 7 for the turn's reader now shared with the calendar read-back
-# (_turn_calls 8, unread_calendar_writes 1 fewer), and one each for SENDS, TIMERS and NONE. wait.py 13: the
-# statement that no answer is awaited (main 10, its usage line, its sentence and one import).
+# 5.11.0 (2026-11-13): core 278, plugin 278. guards.py 125, the rule that a message naming a clock time goes on a
+# fresh calendar read, off unless the config has `fresh_calendar`: _time_without_calendar 33 (the setting, the times
+# in the words, the age of the read, the hold's words for this harness and for one whose record is not read),
+# _calendar_read 29 (the calls, then the results that name one of them, each line looked at once), check_send 14 and
+# check_outgoing 15 (asked before any code and again at the approved call, a code of its own, and either code
+# spending the other), to_a_person 11 (what a message to a person is, for this rule and the next), CLOCK with the
+# note of what was measured 10, _reads_calendar 9, one each for CALENDAR_READ and CALENDARS, and two blank lines.
+# reply_check.py 125, the question after a message to a person, off unless the config has `reply_watch`:
+# unwatched_sends 47, _result 26 (whether a call went, by its error mark and by the guard's own words for a hold,
+# and when), 14 for the turn's reader now shared with the calendar read-back (_turn 21, unread_calendar_writes 7
+# fewer), _stated 21 (the statement's line on the board), check 11, HELD 3, TIMERS 1 and two imports. wait.py 17: the
+# statement that no answer is awaited (main 14, its usage line, its sentence and one import). approvals.py 11: void
+# 9 (a grant and a waiting request of one subject dropped unused) and two blank lines.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # consolidate first).
-CORE_BUDGET = 12659
-PLUGIN_BUDGET = 34128
+CORE_BUDGET = 12802
+PLUGIN_BUDGET = 34271
 
 
 def _lines(files):
