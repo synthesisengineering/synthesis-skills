@@ -43,6 +43,11 @@ from .source import DirectorySource, GitSource, Library, SourceError
 LOG = logging.getLogger("kb_connector")
 CALLBACK = "/auth/callback"
 GOOGLE_SCOPES = ["openid", "https://www.googleapis.com/auth/userinfo.email"]
+# select_account makes Google show its account chooser at every sign-in. Without it, a browser that holds only a
+# personal account signs that account straight in, and an Internal client refuses it (org_internal) with no way to
+# switch to the work account. consent and offline keep Google returning a refresh token (FastMCP's defaults, which
+# this replaces whole).
+GOOGLE_AUTHORIZE_PARAMS = {"access_type": "offline", "prompt": "select_account consent"}
 READ_ONLY = ToolAnnotations(read_only_hint=True, destructive_hint=False, idempotent_hint=True, open_world_hint=False)
 UNCHECKED = Decision(False, "check_failed", "", "Access denied: this sign-in could not be checked against the "
                      "access list. Try again; if it keeps happening, tell the knowledge base's administrator.")
@@ -183,7 +188,8 @@ def build_auth(settings: config.Settings, policy: AccessPolicy, **overrides) -> 
                    base_url=settings.public_url, required_scopes=GOOGLE_SCOPES,
                    jwt_signing_key=settings.jwt_signing_key or None, client_storage=oauth_storage(settings),
                    cache_ttl_seconds=settings.token_cache_seconds or None,
-                   allowed_client_redirect_uris=list(settings.allowed_redirect_uris) or None)
+                   allowed_client_redirect_uris=list(settings.allowed_redirect_uris) or None,
+                   extra_authorize_params=dict(GOOGLE_AUTHORIZE_PARAMS))
     options.update(overrides)
     return AccessListGoogleProvider(policy=policy, **options)
 

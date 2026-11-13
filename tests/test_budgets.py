@@ -852,10 +852,12 @@ ROOT = Path(__file__).resolve().parents[1]
 # plans for a record of today, by the plan's day) and critical_deadlines 5 (the refusal names each source not taken
 # in full). The repository's conftest 9 (no test reads a rituals folder named in the shell). The context doctor 1
 # fewer (cited_entries: a folder is a session's where it holds its meta.json).
+# 5.15.1, plugin 6 more: the connector's GOOGLE_AUTHORIZE_PARAMS 5 (the setting and its four-line note) and
+# build_auth 1 (the argument that passes it), so Google shows its account chooser at every sign-in.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # consolidate first).
 CORE_BUDGET = 13639
-PLUGIN_BUDGET = 35522
+PLUGIN_BUDGET = 35528
 
 
 def _lines(files):
