@@ -444,3 +444,15 @@ def test_two_helpers_started_together_write_one_table_and_both_marks(seat):
     text = register.read_text(encoding="utf-8")
     assert text.count("| Lapsed | Item |") == 2 and "`thanks` |" in text and "`older` |" in text
     assert plan.read_text(encoding="utf-8").count("**Lapsed:**") == 2
+
+
+def test_a_tag_that_stands_in_a_tables_row_is_refused(seat):
+    """The first review did not reach this, and it was wrong: a mark is a line of its own, and written after a
+    table's row it would cut the table in two."""
+    plan, register, env = seat
+    table = ("# Plan\n\n## Priority Tasks\n\n### Renewals\n\n| What | When |\n|---|---|\n"
+             "| The licence | **Decays:** 2026-11-10 (it runs out) |\n| The pass | spring |\n")
+    plan.write_text(table, encoding="utf-8")
+    done = lapse(env, "--at", f"{plan}:9")
+    assert done.returncode == 2 and "table" in done.stderr, done.stderr
+    assert plan.read_text(encoding="utf-8") == table and register.read_text(encoding="utf-8") == REGISTER
