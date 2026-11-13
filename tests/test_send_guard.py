@@ -748,6 +748,39 @@ def test_the_rule_is_these_five_tools_and_a_remote_address_or_another_tool_is_as
     assert _uploaded(outside.as_uri(), NEW_FILE, "file_path") is None  # the key this tool reads is `fileUrl`
 
 
+@pytest.mark.parametrize("tool,key", [(UPDATE, "file_path"), (DOC_IMPORT, "file_path"), (NEW_FILE, "fileUrl")])
+def test_a_source_that_cannot_be_parsed_is_refused_naming_its_field_and_nothing_raises(tool, key, scratch):
+    """The connector parses the source as a URL first and fails the call on one that does not parse; the guard
+    raised there, out of the hook, instead of refusing."""
+    for named in ("file://[oops", "file://[oops/plan.pdf", "https://[::1/plan.docx"):
+        reason = _uploaded(named, tool, key)
+        assert f"`{key}` {named} cannot be parsed as a path or a URL" in reason, (named, reason)
+        assert "make this call again" in reason and "approve" not in reason and approvals.pending() == [], reason
+
+
+def test_a_path_holding_a_nul_is_refused_and_nothing_raises(scratch):
+    """A NUL names no file; where a path with one is resolved, newer Pythons raise."""
+    nul = str(paths.outbox() / "plan\0.pdf")
+    for reason in (_attached(nul), _uploaded(nul), _uploaded(nul, DOC_IMPORT), _uploaded("file://" + quote(nul), NEW_FILE, "fileUrl")):
+        assert "holds a NUL character" in reason and "\0" not in reason and "approve" not in reason, reason
+    assert approvals.pending() == []
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root reads a file whatever its mode")
+@pytest.mark.parametrize("tool,key", NO_CODE)
+def test_a_drive_tool_that_asks_for_no_code_refuses_a_staged_file_that_cannot_be_read(tool, key, scratch):
+    """The mail path refused such a file and these passed it, since no hash was asked for and so nothing was read."""
+    staged = _staged(scratch)
+    named = staged.as_uri() if key == "fileUrl" else str(staged)
+    staged.chmod(0)
+    try:
+        reason = _uploaded(named, tool, key)
+        assert f"the file {staged} cannot be read" in reason and "approve" not in reason, reason
+    finally:
+        staged.chmod(0o600)
+    assert _uploaded(named, tool, key) is None and approvals.pending() == []
+
+
 # --- the approval binds the bytes of each file the connector reads ---------------------------------------------
 # An approval is keyed by a digest of the whole call, and a file the call names went into it as its path alone:
 # a copy replaced in the outbox between the principal's code and the call went out under the old approval. The
