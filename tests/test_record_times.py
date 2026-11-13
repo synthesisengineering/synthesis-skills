@@ -8,6 +8,7 @@ A time inside an entry's text says nothing of the kind: three in ten of those ar
 (a meeting, a deadline, a scheduled wake).
 """
 
+import os
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -171,6 +172,12 @@ def test_only_markdown_records_are_read_and_transcripts_and_skipped_folders_are_
     assert said("daily-plans/2026-11-12.md", late, settings=skip) == []
     assert said("projects/drafts/reply.md", late, settings=skip) == []
     assert said(RECORD, late, settings=skip) != []
+    assert said("projects/alpha/notes.markdown", late) != []
+    for path in ("Transcripts/call.md", "projects/alpha/meeting-transcripts/2026-11-12.md"):
+        assert said(path, late) == [], path                                   # whatever a folder of transcripts is called
+    for folder in ("daily-plans", "daily-plans/", "./daily-plans", "projects/alpha"):   # a folder from the root, as it is written
+        assert said(f"{folder.strip('./')}/2026-11-12.md", late, settings={"skip": [folder]}) == [], folder
+    assert said("projects/daily-plans-old/x.md", late, settings={"skip": ["daily-plans"]}) != []       # and no other that begins like it
 
 
 def test_the_check_runs_only_where_the_config_turns_it_on_and_a_setting_of_another_shape_is_refused():
@@ -180,6 +187,9 @@ def test_the_check_runs_only_where_the_config_turns_it_on_and_a_setting_of_anoth
     for wrong in (True, "on", ["x"], {"skip": "daily-plans/**"}, {"skip": [7]}):
         with pytest.raises(cc.Refused, match="record_times"):
             cc.record_times(late, wrong, NOW, lambda name: "")
+    for key in ("enabled", "on", "skips", "only"):  # 2026-11-13, a review: `{"enabled": false}` turned the check on
+        with pytest.raises(cc.Refused, match=f'"{key}"'):
+            cc.record_times(late, {key: False, "skip": []}, NOW, lambda name: "")
 
 
 def test_each_stamp_of_a_line_is_judged_and_a_line_that_is_not_text_is_passed_over():
@@ -206,3 +216,167 @@ def test_a_commit_is_refused_for_a_stamp_ahead_of_it_and_passes_once_the_time_is
     log.write_text("## 2026-11-12\n\n- 18:40: the present, as the clock gives it\n- 18:39: read from the clock\n", encoding="utf-8")
     subprocess.run(["git", "add", "-A"], check=True)
     assert cc.problems({"record_times": {}}, "S1", str(repo), now=NOW)[0] == []
+
+
+# --- after the first review round (2026-11-13) --------------------------------------------------------------------
+# Counted over the replay's 153 refusals, every stamp that was later than its commit stood at most 30 minutes ahead.
+# What the review showed refused wrongly stood far off: a deadline, a schedule, a zone read as local, a merge from
+# another zone. The bound is the rule.
+
+@pytest.mark.parametrize("line", [
+    "- [x] Send the draft (due 2026-11-12 23:59)",
+    "The job is set (next run 2026-11-12 19:21).",
+    "- the room (booked for 11-12 19:30)",
+    "- the review (moved to 11-12 19:30, with the owner)",
+    "- the call (11-12 19:30 to 20:30)",
+    "- 2026-11-12 23:59 submit the form",
+    "### 2026-11-12 19:30 Board call",
+    "- **2026-11-12 19:11, a plan for later.**",                             # 31 minutes ahead
+    "- 2026-11-12 23:30 IST: pushed",                                        # hours off, whatever the zone
+    "2026-11-12 23:41:07,123 - worker - ERROR the job failed",
+    "- 2026-11-12 12:30 am: the nightly run",                                # half past midnight, long past
+])
+def test_a_time_more_than_half_an_hour_ahead_is_no_mistaken_stamp(line):
+    assert said(RECORD, line) == []
+
+
+def test_the_bound_is_thirty_minutes_after_and_a_rounding_fifteen_before():
+    assert "30 min after" in said(RECORD, "- **2026-11-12 19:10, done.**")[0]
+    assert said(RECORD, "- **2026-11-12 19:11, done.**") == []
+    assert "rounds" in said(RECORD, "- **2026-11-12 about 19:10, done.**")[0]
+    assert said(RECORD, "- **2026-11-12 about 19:15, the call.**") == []
+    today = ["## 2026-11-12 — the day", ""]
+    for line in ("- 19:30 call the owner", "- 23:59 tonight is the deadline", "### 19:30 Board call", "  - 19:30 call the owner"):
+        assert said(LOG, line, before=today) == [], line
+
+
+@pytest.mark.parametrize("line", [
+    "- the owner (call 11-12 19:00)", "- the draft (due 2026-11-12 18:55)", "The job (next run 2026-11-12 18:50).",
+    "- the room (booked for 11-12 19:00)", "- the review (moved to 11-12 18:55)", "- (at 11-12 18:50 the call starts)",
+    "- (by 2026-11-12 19:00, the answer is due)",
+])
+def test_a_parenthesis_that_opens_with_an_events_words_gives_the_events_time(line):
+    """`(call 11-12 19:30)` follows the refusal's own advice, the event's words before its time, and was refused (a
+    review, 2026-11-13). A parenthesis is an entry's stamp where it opens with the day, or with one word that says
+    what was done then."""
+    assert said(RECORD, line) == []
+
+
+@pytest.mark.parametrize("lead", ["added", "written", "updated", "extended", "deleted", "found", "run", "sent", "as of", "current to", "shown"])
+def test_a_parenthesis_that_opens_with_what_was_done_then_is_a_stamp(lead):
+    assert "6 min after" in said(RECORD, f"- the list ({lead} 11-12 18:46, in the plan)")[0]
+
+
+@pytest.mark.parametrize("line", [
+    "- [ ] 2026-11-12 18:54 submit the form",
+    "1. [ ] 2026-11-12 18:54: call the owner",
+])
+def test_an_unchecked_box_is_a_plan(line):
+    assert said(RECORD, line) == []
+    assert said(LOG, "- [ ] 18:54 call the owner", before=["## 2026-11-12", ""]) == []
+    assert "14 min after" in said(RECORD, line.replace("[ ]", "[x]"))[0]                  # ticked, it says when it was done
+    assert "6 min after" in said(RECORD, "- [ ] 17.3 (added 11-12 18:46) the six checks")[0]   # and an item's own stamp is still one
+
+
+def test_a_code_fence_is_not_read():
+    """A log line pasted into a fence opens with a day and a time, in whatever zone the log keeps."""
+    before = ["# Reference", "", "The job's log:", "", "```"]
+    inside = ["2026-11-12 18:54:07,123 - worker - ERROR the job failed", "  - 2026-11-12 18:50", "```", "", "- **2026-11-12 18:54, read after the fence.**"]
+    found = said(RECORD, *inside, before=before)
+    assert len(found) == 1 and found[0].startswith(f"{RECORD}:10: ")
+    assert said(RECORD, "- 2026-11-12 18:54 a line", before=["~~~text"]) == []
+    assert "14 min after" in said(RECORD, "- 2026-11-12 18:54 a line", before=["```", "x", "```", ""])[0]
+
+
+@pytest.mark.parametrize("label", ["IST", "CET", "BST", "AEST", "CEST", "JST", "HKT"])
+def test_a_zone_the_check_does_not_know_lets_the_stamp_pass(label):
+    assert said(RECORD, f"- **2026-11-12 18:54 {label}, done.**") == []
+
+
+@pytest.mark.parametrize("line, minutes", [
+    ("- **2026-11-12 18:54 est, done.**", 14), ("- **2026-11-12 18:54 Est, done.**", 14),
+    ("- 2026-11-13 00:54 UTC+1: pushed", 14), ("- 2026-11-12 15:54 UTC-08:00: pushed", 14), ("- 2026-11-12 23:54 GMT: pushed", 14),
+    ("- 2026-11-13T00:05Z merged", 25),                                       # tomorrow by its own zone's calendar, and not yet come
+    ("- **2026-11-12 18:54 done**", 14),                                      # a word after the time is no zone
+])
+def test_a_stamp_is_placed_by_its_own_day_in_its_own_zone(line, minutes):
+    assert f"{minutes} min after" in said(RECORD, line)[0]
+
+
+def test_a_stamp_just_past_midnight_is_read_and_yesterdays_last_minutes_pass():
+    late = datetime(2026, 11, 12, 23, 55, 10, tzinfo=EST)
+    assert "15 min after" in said(RECORD, "- **2026-11-13 00:10, done.**", now=late)[0]
+    early = datetime(2026, 11, 13, 0, 5, 10, tzinfo=EST)
+    assert said(RECORD, "- **2026-11-12 23:58, done.**", now=early) == []
+    assert "10 min after" in said(RECORD, "- 2026-11-13 12:15 am: the nightly run", now=early)[0]
+
+
+@pytest.mark.parametrize("line", [
+    "- [2026-11-12 18:54] pushed the branch", "- **2026-11-12** 18:54 pushed the branch", "- 2026-11-12: 18:54 pushed",
+    "- 2026-11-12 \u2014 18:54 pushed", "- Thu 2026-11-12 18:54 pushed", "- Thursday, 2026-11-12 18:54 pushed",
+    "1) 2026-11-12 18:54 pushed", "- 2026-11-12 6:54 pm: pushed", "- 2026-11-12 6:54 PM pushed",
+])
+def test_more_ways_of_writing_a_stamp_are_read(line):
+    assert "14 min after" in said(RECORD, line)[0]
+
+
+@pytest.mark.parametrize("line", ["- 2026-11-12 18:40-ish: asked", "- 2026-11-12 c. 18:35: asked", "- 2026-11-12 18:35 (approx.): asked"])
+def test_more_ways_of_rounding_are_read_and_the_refusal_quotes_the_rounding(line):
+    found = said(RECORD, line)
+    assert len(found) == 1 and "rounds" in found[0]
+    assert "`about 18:35" in said(RECORD, "(11-12 about 18:35: merged)")[0]
+
+
+def test_a_line_with_no_mark_opens_an_entry_only_where_it_begins_a_paragraph():
+    wrapped = ["The owner asked to meet, and the notes are due on"]
+    assert said(RECORD, "2026-11-12 18:54 with the plan attached.", before=wrapped) == []
+    assert "14 min after" in said(RECORD, "2026-11-12 18:54 the release went out.", before=wrapped + [""])[0]
+
+
+def test_each_file_is_read_once_and_a_long_run_of_spaces_costs_nothing():
+    """`setdefault` read the file again for every line (a review, 2026-11-13): moving a session log made one git
+    process for each of its entries, and 7,000 of them ran out the check's time."""
+    import time
+    reads, today = [], ["## 2026-11-12", ""]
+    lines = [f"- 18:{n % 40:02d}: entry {n}" for n in range(3000)]
+    added = [(LOG.encode(), len(today) + n, line.encode()) for n, line in enumerate(lines, 1)]
+
+    def read(name):
+        reads.append(name)
+        return "\n".join(today + lines)
+    start = time.monotonic()
+    cc.record_times(added, {}, NOW, read)
+    assert reads == [LOG] and time.monotonic() - start < 2
+    start = time.monotonic()
+    assert said(RECORD, "- " + " " * 20000 + "x 18:54", "-" + " " * 20000 + "2026-11-12 18:54") == []
+    assert time.monotonic() - start < 1
+    assert cc.record_times([(RECORD.encode(), 1, b"- no time on this line")], {}, NOW, lambda name: reads.append("again") or "") == []
+    assert reads == [LOG]                                                     # a file with no time on its added lines is not opened
+
+
+def test_a_merge_is_not_judged(tmp_path, monkeypatch):
+    """A merge brings lines that were judged when they were committed, on another machine or in another zone. An
+    entry committed at 18:54 eastern blocked a merge made at 16:05 pacific, and no approval clears this check."""
+    import subprocess
+    repo = tmp_path / "kb"
+    repo.mkdir()
+    monkeypatch.chdir(repo)
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", os.devnull)
+
+    def git(*words):
+        subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@example.invalid", *words], check=True, capture_output=True)
+    git("init", "-q", "-b", "main")
+    (repo / "a.md").write_text("# A\n", encoding="utf-8")
+    git("add", "-A"); git("commit", "-q", "-m", "one")
+    git("checkout", "-q", "-b", "other")
+    (repo / "b.md").write_text("- **2026-11-12 18:54, written on the other branch.**\n", encoding="utf-8")
+    git("add", "-A"); git("commit", "-q", "-m", "two")
+    git("checkout", "-q", "main")
+    (repo / "c.md").write_text("# C\n", encoding="utf-8")
+    git("add", "-A"); git("commit", "-q", "-m", "three")
+    git("merge", "--no-commit", "--no-ff", "other")
+    assert cc.problems({"record_times": {}}, "S1", str(repo), now=NOW)[0] == []
+    git("commit", "-q", "-m", "merged")
+    (repo / "d.md").write_text("- **2026-11-12 18:54, written ahead.**\n", encoding="utf-8")
+    git("add", "-A")
+    assert len(cc.problems({"record_times": {}}, "S1", str(repo), now=NOW)[0]) == 1      # and the next commit is judged as any other
