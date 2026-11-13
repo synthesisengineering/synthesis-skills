@@ -1,5 +1,5 @@
-import ast
 import json
+import os
 import re
 import subprocess
 import sys
@@ -52,24 +52,31 @@ def pace():
     return max(1.0, min(once() for _ in range(3)) * 1000 / PACE_WORK_MS)
 
 
-def _imported(call: list, **run) -> set:
-    """Every module a fresh interpreter imports while it runs `call`, read from the interpreter's own import log."""
-    log = subprocess.run([sys.executable, "-S", "-X", "importtime", *call], capture_output=True, text=True, **run).stderr
-    return {line.rsplit("|", 1)[1].strip() for line in log.splitlines() if line.startswith("import time:")}
-
-
-def _asks(source: str) -> set:
-    """What a module imports as it loads: every import statement outside a function or a class."""
-    found, pending = set(), list(ast.parse(source).body)
-    while pending:
-        node = pending.pop()
-        if isinstance(node, ast.Import):
-            found.update(alias.name for alias in node.names)
-        elif isinstance(node, ast.ImportFrom) and not node.level:
-            found.add(node.module)
-        elif not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-            pending.extend(ast.iter_child_nodes(node))
-    return found
+# Runs a call as the interpreter would and writes down, for each import statement the call's own code runs (its
+# script or its `-c` program, and the synthesis modules), which module asked for what. At a module's top or inside a
+# function is the same to it: what runs is recorded, and what never runs is not.
+_ASKED = r'''
+import builtins, json, runpy, sys
+asked, real, call = {}, builtins.__import__, sys.argv[1:]
+def traced(name, globals=None, locals=None, fromlist=(), level=0):
+    who = (globals or {}).get("__name__") or ""
+    if not level and (who == "__main__" or who.split(".")[0] == "synthesis"):
+        asked.setdefault(name, who)
+    return real(name, globals, locals, fromlist, level)
+builtins.__import__ = traced
+try:
+    if call[0] == "-c":
+        sys.argv = ["-c"] + call[2:]
+        exec(compile(call[1], "<the caller>", "exec"), {"__name__": "__main__"})
+    else:
+        sys.argv = call
+        runpy.run_path(call[0], run_name="__main__")
+except SystemExit:
+    pass
+finally:
+    builtins.__import__ = real
+    print("\nasked " + json.dumps(asked), file=sys.stderr)
+'''
 
 
 @pytest.fixture
@@ -83,46 +90,49 @@ def compiled_runtime(isolated_home):
 @pytest.fixture
 def hook_budget(compiled_runtime):
     """Holds one hook call, as a fresh interpreter runs it from the installed runtime, to the hook budget on
-    whatever machine runs the test.
+    whatever machine runs the test. Returns what the call printed the first time it ran.
 
     The budget is 50 ms on the principal's Mac, where the doctor's self-test holds it. A shared runner is several
     times slower and no two are alike (2026-11-12: a fixed 150 ms failed on a runner whose fastest run took 156 ms).
     A bare interpreter start is no steadier a unit: the guard hook took 2.2 times one on one machine and 7.1 times
     one on another, where a process starts in 3 ms. So the unit is what a fresh interpreter takes to load the
     standard-library modules the call needs, timed beside the call, round by round, so both meet the same machine at
-    the same moment; the fastest of fifteen rounds is each one's own cost. The call may take twice that: its own
-    code may cost as much again as the library it stands on. Measured on ten interpreters and machines (Python 3.9
-    to 3.15, macOS and Linux, one of them emulated), the guard hook took 1.1 to 1.5 times.
+    the same moment; the fastest round is each one's own cost. The call may take twice that: its own code may cost as
+    much again as the library it stands on. Measured on ten interpreters and machines (Python 3.9 to 3.15, macOS and
+    Linux, one of them emulated), the guard hook took 1.1 to 1.5 times, and 2.7 times or more with its runtime not
+    compiled.
 
-    The test names those modules, and they are exactly what the call's own modules import as they load, read from
-    their source: one more is paid on every call, so it is imported where it is used or named in the test, where a
-    reviewer sees it. A module named that none of them imports is refused too, since the allowance is measured from
-    what is named."""
-    def hold(call: list, needs: tuple, **run) -> None:
-        def own(name: str) -> bool:
-            return name.split(".")[0] == "synthesis"
-        sources = {"the caller": call[1]} if call[0] == "-c" else {Path(call[0]).name: Path(call[0]).read_text(encoding="utf-8")}
-        for name in sorted(filter(own, _imported(call, **run))):
-            file = compiled_runtime.joinpath(*name.split("."))
-            sources[name] = (file / "__init__.py" if file.is_dir() else file.with_suffix(".py")).read_text(encoding="utf-8")
-        asked = {}
-        for where, source in sources.items():
-            for name in _asks(source):
-                asked.setdefault(name, where)
-        unnamed = sorted(name for name in asked if not own(name) and name not in needs)
-        assert not unnamed, ("; ".join(f"{asked[name]} imports {name} as it loads" for name in unnamed)
-                             + ": every call pays for it, so import it where it is used or name it in the test's needs")
+    Every run here is told to write no bytecode, as a session's hooks are: a process that may write it compiles the
+    runtime at its first call, and the budget would then time compiled code whatever the installer had left. One
+    start before them, free to write, lets an interpreter that keeps compiled code in a folder of its own keep the
+    standard library's there.
+
+    The test names the modules, and they are exactly what the call's own code imports while it runs, at a module's
+    top or inside a function: one more is paid on every call, so it is taken out of the call's path or named in the
+    test, where a reviewer sees it. A module named that nothing of the call's own imports is refused too, since the
+    allowance is measured from what is named."""
+    def hold(call: list, needs: tuple, rounds: int = 15, **run) -> str:
+        quiet = {**run, "env": {**run.get("env", os.environ), "PYTHONDONTWRITEBYTECODE": "1"}}
+        first = subprocess.run([sys.executable, "-S", "-c", _ASKED, *call], capture_output=True, text=True, **quiet)
+        asked = json.loads(first.stderr.rsplit("\nasked ", 1)[1])
+        script = "the caller" if call[0] == "-c" else Path(call[0]).name
+        unnamed = sorted(name for name in asked if name.split(".")[0] != "synthesis" and name not in needs)
+        assert not unnamed, ("; ".join(f"{asked[name].replace('__main__', script)} imports {name} while the call runs"
+                                       for name in unnamed)
+                             + ": every call pays for it, so take it out of the call's path or name it in the test's needs")
         idle = sorted(set(needs) - set(asked))
-        assert not idle, f"{', '.join(idle)} is named as a need and nothing in this call imports it as it loads: take it out"
+        assert not idle, f"{', '.join(idle)} is named as a need and nothing of the call's own imports it: take it out"
 
         def once(args: list, **how) -> float:
             began = time.perf_counter()
             subprocess.run([sys.executable, "-S", *args], capture_output=True, text=True, check=True, **how)
             return time.perf_counter() - began
         floor = ["-c", "import " + ", ".join(needs)]
-        rounds = [(once(floor), once(call, **run)) for _ in range(15)]
-        least, cost = (min(column) * 1000 for column in zip(*rounds))
+        once(floor, env={key: value for key, value in os.environ.items() if key != "PYTHONDONTWRITEBYTECODE"})
+        took = [(once(floor, env=quiet["env"]), once(call, **quiet)) for _ in range(rounds)]
+        least, cost = (min(column) * 1000 for column in zip(*took))
         assert cost < 2 * least, f"the call took {cost:.0f} ms; its standard-library modules alone load in {least:.0f} ms here"
+        return first.stdout
     return hold
 
 

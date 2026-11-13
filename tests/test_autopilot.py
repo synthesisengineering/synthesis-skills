@@ -597,10 +597,8 @@ def test_a_cold_hook_process_stays_inside_the_hook_budget(tmp_path, compiled_run
     engage("S1", path)
     call = ["-c", "import json, sys; sys.path.insert(0, sys.argv[1]); from synthesis import autopilot; "
                   "print(autopilot.evaluate(json.load(sys.stdin), {})[0] or '')", str(compiled_runtime)]
-    asked = json.dumps({"session_id": "S1"})
-    out = subprocess.run([sys.executable, "-S", *call], input=asked, capture_output=True, text=True, check=True).stdout
-    assert "Migrate /orders" in out
-    hook_budget(call, CHECK_NEEDS, input=asked)  # later runs meet the repeat cap, which does the same work
+    said = hook_budget(call, CHECK_NEEDS, input=json.dumps({"session_id": "S1"}))
+    assert "Migrate /orders" in said  # the first run; later ones meet the repeat cap, which does the same work
 
 
 def test_the_helpers_run_as_a_script_without_site_packages(tmp_path, isolated_home):
