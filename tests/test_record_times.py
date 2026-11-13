@@ -34,7 +34,7 @@ def said(path, *lines, settings=None, now=NOW, before=()):
     ("## 2026-11-12 18:41", 1),
     ("- [x] 2026-11-12 18:45: the suite passed", 5),
     ("2026-11-12T18:54-05:00 merged", 14),
-    ("- **2026-11-12 18:25 to 18:55, the review round.**", 15),          # a range is read by its later end
+    ("- **2026-11-12 18:45 to 18:55, the review round.**", 15),          # a range is read by its later end
     ("- 2026-11-12, 18:50: told the owner", 10),
     ("- **2026-11-12 at 18:52**, the answer came", 12),
 ])
@@ -182,9 +182,9 @@ def test_only_markdown_records_are_read_and_transcripts_and_skipped_folders_are_
 
 def test_the_check_runs_only_where_the_config_turns_it_on_and_a_setting_of_another_shape_is_refused():
     late = [(RECORD.encode(), 1, b"- **2026-11-12 18:54, done.**")]
-    assert cc.record_times(late, None, NOW, lambda name: "") == []           # no key: the check does not run
+    assert cc.record_times(late, False, NOW, lambda name: "") == []          # no key, or false: the check does not run
     assert cc.record_times(late, {}, NOW, lambda name: "") != []
-    for wrong in (True, "on", ["x"], {"skip": "daily-plans/**"}, {"skip": [7]}):
+    for wrong in (None, True, 0, "", "on", ["x"], [], {"skip": "daily-plans/**"}, {"skip": [7]}):  # `null` is no way to say off
         with pytest.raises(cc.Refused, match="record_times"):
             cc.record_times(late, wrong, NOW, lambda name: "")
     for key in ("enabled", "on", "skips", "only"):  # 2026-11-13, a review: `{"enabled": false}` turned the check on
@@ -262,9 +262,19 @@ def test_a_parenthesis_that_opens_with_an_events_words_gives_the_events_time(lin
     assert said(RECORD, line) == []
 
 
-@pytest.mark.parametrize("lead", ["added", "written", "updated", "extended", "deleted", "found", "run", "sent", "as of", "current to", "shown"])
+@pytest.mark.parametrize("lead", ["added", "written", "updated", "extended", "deleted", "found", "run", "sent", "as of", "current to", "shown",
+                                  "Updated", "As of", "updated:", "closed", "probed", "searched", "released", "verified"])
 def test_a_parenthesis_that_opens_with_what_was_done_then_is_a_stamp(lead):
     assert "6 min after" in said(RECORD, f"- the list ({lead} 11-12 18:46, in the plan)")[0]
+
+
+@pytest.mark.parametrize("word", ["scheduled", "rescheduled", "planned", "expected", "booked", "postponed", "proposed", "offered", "promised",
+                                  "declined", "confirmed", "between", "when", "open", "then", "set", "reticulated"])
+def test_a_parenthesis_is_a_stamp_only_behind_a_word_the_check_knows(word):
+    """A review, 2026-11-13: any word that ended in -ed, -en or -wn made the parenthesis a stamp, so
+    `(scheduled 11-12 18:55)` was refused twenty minutes before the call it names. The words are a closed list, each
+    saying what was done at that time; a word that is not on it is read as naming the event."""
+    assert said(RECORD, f"- Vendor call ({word} 2026-11-12 18:55)") == []
 
 
 @pytest.mark.parametrize("line", [
@@ -291,6 +301,124 @@ def test_a_code_fence_is_not_read():
 @pytest.mark.parametrize("label", ["IST", "CET", "BST", "AEST", "CEST", "JST", "HKT"])
 def test_a_zone_the_check_does_not_know_lets_the_stamp_pass(label):
     assert said(RECORD, f"- **2026-11-12 18:54 {label}, done.**") == []
+
+
+@pytest.mark.parametrize("word", ["TEST", "POST", "SENT", "START", "ALERT:", "DRAFT", "NEXT", "pt 2 of the plan", "et al. signed"])
+def test_a_word_after_the_time_is_no_zone(word):
+    """A review, 2026-11-13: any capital word ending in T after the time was taken for a zone the check does not
+    know, so `18:54 TEST passed` passed; and `et` or `pt` in lower case was read as a region."""
+    assert "14 min after" in said(RECORD, f"- 2026-11-12 18:54 {word}")[0]
+
+
+def test_a_standard_or_daylight_label_names_its_regions_clock():
+    """`10:25 EST` written in July means 10:25 on the eastern clock: people keep the winter label all year. Read as
+    five hours behind UTC it stood an hour ahead, and a commit made half an hour after it was refused (a review,
+    2026-11-13)."""
+    try:
+        cc.ZoneInfo("America/New_York")
+    except Exception:
+        pytest.skip("no zone data on this machine: a region's label is not read here")
+    summer = datetime(2026, 7, 15, 11, 0, 20, tzinfo=timezone(timedelta(hours=-4)))
+    assert said(RECORD, "- 2026-07-15 10:25 EST pushed", now=summer) == []
+    assert "10 min after" in said(RECORD, "- 2026-07-15 11:10 EST pushed", now=summer)[0]
+    assert "10 min after" in said(RECORD, "- 2026-07-15 08:10 PST pushed", now=summer)[0]
+    assert "10 min after" in said(RECORD, "- 2026-11-12 18:50 EDT pushed")[0]             # and the summer label in winter
+
+
+def test_a_twelve_hour_clock_written_with_dots_is_read():
+    assert "14 min after" in said(RECORD, "- **2026-11-12 6:54 p.m., done.**")[0]
+    assert "14 min after" in said(RECORD, "- **2026-11-12 6:54 P.M., done.**")[0]
+    assert said(RECORD, "- **2026-11-12 6:54 a.m., done.**") == []
+    morning = NOW.replace(hour=6)
+    assert said(RECORD, "- **2026-11-12 6:54 p.m., done.**", now=morning) == []           # read as the morning, it was refused
+    assert "14 min after" in said(RECORD, "- **2026-11-12 6:54 a.m., done.**", now=morning)[0]
+
+
+def test_a_hyphen_between_the_day_and_the_time_is_read():
+    assert "6 min after" in said(RECORD, "- 2026-11-12 - 18:46: asked")[0]
+
+
+NOTES = "projects/alpha/resources/artifacts/weekly-sync.md"
+
+
+@pytest.mark.parametrize("line", ["### 2026-11-12 18:30–19:00 Weekly sync", "- 2026-11-12 18:30 to 19:00 standup",
+                                  "(2026-11-12 18:25-18:55: the call)", "## 2026-11-12 18:40 - 19:10"])
+def test_a_span_that_holds_the_present_is_not_ahead_of_it(line):
+    """A review, 2026-11-13: a meeting's notes, written while it ran under a heading that gives its hours, were
+    refused for the hour it ends. A span that began and has not ended holds the present."""
+    assert said(NOTES, line) == []
+
+
+def test_a_span_that_has_not_begun_and_a_rounded_end_are_still_read():
+    assert "20 min after" in said(NOTES, "### 2026-11-12 18:45–19:00 Weekly sync")[0]
+    assert "rounds" in said(NOTES, "- 2026-11-12 18:25 to 18:4x: the round")[0]
+
+
+def test_in_a_session_log_a_span_ends_when_its_entry_is_written():
+    """A session log's entry gives the hours it covers, and the later one is now: thirty days of real commits held
+    eight such spans whose end had not come (2026-11-13)."""
+    assert "15 min after" in said(LOG, "### 2026-11-12 18:25 to 18:55 — the review round")[0]
+    assert "15 min after" in said(LOG, "- 18:25–18:55 the review round", before=("## 2026-11-12",))[0]
+
+
+def test_the_refusal_of_a_rounding_says_where_an_events_time_goes():
+    """`- ~18:30 the build broke`, written ten minutes on: nobody knows that minute, and "write the minute `date`
+    prints" would put a false one there (a review, 2026-11-13)."""
+    (found,) = said(LOG, "- ~18:30 the build broke", before=("## 2026-11-12",))
+    assert "`date`" in found and "after the words" in found
+
+
+def test_front_matter_is_not_read_and_a_heading_inside_a_code_fence_names_no_day():
+    assert said(RECORD, "- 2026-11-12 18:54", "---", before=("---", "updated:")) == []
+    assert said(LOG, "- 18:54 asked", before=("## 2026-11-11", "```", "## 2026-11-12", "```")) == []
+    assert len(said(LOG, "- 18:54 asked", before=("## 2026-11-12", "```", "## 2026-11-11", "```"))) == 1
+
+
+def _repo(tmp_path, monkeypatch):
+    import subprocess
+    repo = tmp_path / "kb"
+    repo.mkdir()
+    monkeypatch.chdir(repo)
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", os.devnull)
+
+    def git(*words):
+        return subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@example.invalid", *words], check=True, capture_output=True, text=True).stdout
+    git("init", "-q", "-b", "main")
+    (repo / "a.md").write_text("# A\n", encoding="utf-8")
+    git("add", "-A"); git("commit", "-q", "-m", "one")
+    git("checkout", "-q", "-b", "other")
+    (repo / "b.md").write_text("- **2026-11-12 18:54, written on the other branch.**\n", encoding="utf-8")
+    git("add", "-A"); git("commit", "-q", "-m", "two")
+    git("checkout", "-q", "main")
+    return repo, git
+
+
+@pytest.mark.parametrize("bring", [("merge", "--squash", "other"), ("cherry-pick", "-n", "other"), ("cherry-pick", "other")])
+def test_a_commit_that_brings_lines_written_before_is_not_judged(bring, tmp_path, monkeypatch):
+    """A review, 2026-11-13: a squash merge and a cherry-pick bring lines that were judged when they were first
+    committed, as a merge does, and were judged again by the clock of the replay."""
+    repo, git = _repo(tmp_path, monkeypatch)
+    if bring == ("cherry-pick", "other"):  # one that stops on a conflict and is finished by hand
+        (repo / "b.md").write_text("here first\n", encoding="utf-8")
+        git("add", "-A"); git("commit", "-q", "-m", "three")
+        import subprocess
+        subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@example.invalid", *bring], capture_output=True)
+        (repo / "b.md").write_text("- **2026-11-12 18:54, written on the other branch.**\n", encoding="utf-8")
+        git("add", "-A")
+    else:
+        git(*bring)
+    assert "b.md" in git("diff", "--cached", "--name-only")
+    assert cc.problems({"record_times": {}}, "S1", str(repo), now=NOW)[0] == []
+
+
+def test_a_setting_of_null_is_refused_and_a_config_without_the_key_runs_nothing(tmp_path, monkeypatch):
+    repo, git = _repo(tmp_path, monkeypatch)
+    (repo / "d.md").write_text("- **2026-11-12 18:54, written ahead.**\n", encoding="utf-8")
+    git("add", "-A")
+    assert cc.problems({}, "S1", str(repo), now=NOW)[0] == []
+    assert cc.problems({"record_times": False}, "S1", str(repo), now=NOW)[0] == []
+    with pytest.raises(cc.Refused, match="record_times"):
+        cc.problems({"record_times": None}, "S1", str(repo), now=NOW)
 
 
 @pytest.mark.parametrize("line, minutes", [
