@@ -240,8 +240,8 @@ It logs these two warnings, then `serving <n> documents from commit <sha>` and u
 lines:
 
 ```text
-TEST ONLY: operator-only test mode at http://localhost:8080. The address is temporary and must not be given to anyone: a restart of this process, this machine or its tunnel ends it. Only <you@example.com> can sign in.
-KB_OAUTH_STORE=memory: sign-ins live in this process only, so every restart signs everyone out
+<time> WARNING kb_connector: TEST ONLY: operator-only test mode at http://localhost:8080. The address is temporary and must not be given to anyone: a restart of this process, this machine or its tunnel ends it. Only <you@example.com> can sign in.
+<time> WARNING kb_connector: KB_OAUTH_STORE=memory: sign-ins live in this process only, so every restart signs everyone out
 ```
 
 `-B` keeps Python from writing bytecode into the plugin folder. For Google sign-in to work
