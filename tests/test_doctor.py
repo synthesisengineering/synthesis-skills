@@ -1273,6 +1273,7 @@ def test_what_a_running_process_was_started_with_is_read_from_the_os(connector):
     finally:
         child.kill()
         child.wait()
+        child.stdout.close()
     assert seen.get("WORKSPACE_MCP_PORT") == "8765" and seen.get("ALLOWED_FILE_DIRS") == env["ALLOWED_FILE_DIRS"]
     assert check.status == "ok", check.detail
     stopped = doctor.check_outbox(*connector)
