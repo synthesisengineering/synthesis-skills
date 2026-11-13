@@ -553,6 +553,17 @@ def check_send(tool: str, tool_input: dict, config: dict, session: dict | None =
     if isinstance(others, str):
         return others
     kind = "send-same-day" if others else "send"
+    unread = _time_without_calendar(tool_input, chan, config, session)
+    if unread and unread.startswith("fresh_calendar"):
+        return unread
+    if unread and not approvals.consume("send-time", subject, session):  # asked before any other code, and again when the approved call comes
+        code = approvals.request("send-time", subject, f"{tool}, a time in its words and no calendar read: {summary[len(tool) + 2:][:100]}")
+        return (f"{unread} Read the calendar for the day it names, check each time against what is there, and make this identical "
+                "call again: an approval already typed for it stands. If its time is no calendar's, or this session has no "
+                f"calendar to read, show the principal the exact text and ask them to type {approvals.how(code)} to send it as it is.")
+    if unread:  # released as it is, by the code that says so
+        sends.log(chan, tool, summary, "approval", session)
+        return None
     if not others and sends.covered(chan, [t for _, t in _strings(tool_input)], _project(session), config):
         sends.log(chan, tool, summary, "window", session)
         sends.settle()
@@ -587,6 +598,62 @@ def _reshapes_calendar(tool: str, tool_input: dict) -> bool:
     deletes = tool.endswith("delete_event") or str(tool_input.get("action", "")).lower() == "delete"
     timed = {"start", "end", "start_time", "end_time", "startTime", "endTime", "recurrence", "rrule"} & set(tool_input)
     return bool(re.search(r"(?:create|update|manage|delete|move)_event$", tool)) and (deletes or bool(timed))
+
+
+# --- a message that names a time, and the calendar ----------------------------------------------
+# 2026-11-12: a meeting request offered a time that a new invitation, arrived half an hour earlier, overlapped. The
+# calendar was read when the message was drafted, and the draft then waited for its approval. The guard cannot know
+# that a message proposes a meeting; it knows the words name a clock time, and when this session last read a
+# calendar. Measured first (2026-11-13): of 439 distinct messages to people on 73 days, 144 named a clock time, about
+# six in ten of those were about when people meet, and 39 went with a calendar read in the ten minutes before.
+CLOCK = re.compile(r"(?i)\b(?:1[0-2]|0?[1-9])(?::[0-5]\d)?\s?[ap]\.?m\.?(?![a-z])|\b(?:[01]?\d|2[0-3]):[0-5]\d\b")  # `2:00 pm` whole, then `14:00`
+CALENDAR_READ = re.compile(r"(?:get|list|search|list[_-]all)[_-]events?$|query_freebusy$|suggest_time$")
+
+
+def _calendar_read(transcript: str, reads: list) -> float | None:
+    """When this session last read a calendar: the time on the result of the newest such call in a Claude Code
+    transcript's last 8 MB, where that result is no error. None where there is none or the record cannot be read."""
+    lines = _tail(transcript)
+    for i in range(len(lines) - 1, -1, -1):
+        if '"tool_use"' not in lines[i] or not any(word in lines[i] for word in ("event", "freebusy", "suggest_time", *reads)):
+            continue
+        for call in _blocks(lines[i]):
+            name, ident = str(call.get("name") or "").rsplit("__", 1)[-1], str(call.get("id") or "-")
+            if call.get("type") != "tool_use" or not (CALENDAR_READ.search(name) or name in reads):
+                continue
+            for later in lines[i + 1:]:
+                if ident in later and any(r.get("type") == "tool_result" and r.get("tool_use_id") == ident and not r.get("is_error")
+                                          for r in _blocks(later)):
+                    try:
+                        return datetime.fromisoformat(str(json.loads(later).get("timestamp")).replace("Z", "+00:00")).timestamp()
+                    except ValueError:
+                        break  # a result with no time on it places nothing
+    return None
+
+
+def _time_without_calendar(tool_input: dict, chan: str, config: dict, session: dict | None) -> str | None:
+    """Config: {"fresh_calendar": {"minutes": 10, "reads": ["<the end of a tool's name>", ...]}}; off when the key is
+    absent or false, and `{}` is ten minutes with the tools above. What to say of a mail, Slack, chat or text message
+    (a mail draft too) whose words name a clock time while this session read no calendar in those minutes; None where
+    the rule is off, the call is no such message, it names no time, or the read is fresh. A setting of another shape
+    is its own refusal, which begins with the key."""
+    rule = config.get("fresh_calendar", False)
+    if rule is False or chan not in ("email", "slack", "chat", "messages"):
+        return None
+    minutes, reads = (rule.get("minutes", 10), rule.get("reads", [])) if isinstance(rule, dict) and not set(rule) - {"minutes", "reads"} else (0, None)
+    if not (type(minutes) is int and 1 <= minutes <= 60 and isinstance(reads, list) and all(isinstance(name, str) and name for name in reads)):
+        return ('fresh_calendar in the synthesis config needs "minutes" as a whole number from 1 to 60 and "reads" as a list of '
+                "tool names, each where it has one; messages are blocked until it is fixed")
+    times = list(dict.fromkeys(found.group(0) for _, text in _strings(tool_input) for found in CLOCK.finditer(text)))
+    if not times:
+        return None
+    at = _calendar_read(str((session or {}).get("transcript_path") or ""), reads)
+    ago = None if at is None else int((time.time() - at) // 60)
+    if ago is not None and ago < minutes:
+        return None
+    return (f"This message names a time ({', '.join(f'`{t}`' for t in times[:3])}), and this session "
+            + ("has not read a calendar" if ago is None else f"last read a calendar {ago} minutes ago")
+            + f": one is read in the {minutes} minutes before such a message goes.")
 
 
 # --- same-day meetings (R3.1, R5) ---------------------------------------------------------------
