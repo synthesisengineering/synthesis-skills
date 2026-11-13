@@ -994,7 +994,7 @@ _TAILS: dict = {}
 
 
 def _tail(transcript: str) -> list:
-    """The lines of a Claude Code transcript's last 8 MB, read once per version of the file; [] if unreadable."""
+    """The lines of a Claude Code transcript's last 8 MB, read once per call of the guard and per version of the file; [] if unreadable."""
     try:
         state = os.stat(transcript)
         key = (transcript, state.st_size, state.st_mtime_ns)
@@ -4615,6 +4615,7 @@ def guarded(tool: str, tool_input: dict | None = None) -> bool:
 def check(tool: str, tool_input: dict, config: dict, cwd: str | None = None, session: dict | None = None) -> str | None:
     """cwd is the session's working directory (the hook payload's `cwd`); defaults to this process's.
     session is the hook payload, which names the transcript an approval is checked against."""
+    _TAILS.clear()  # each call reads the record anew: a rewrite in place can keep a file's size and its time stamp
     if not cwd:
         try:
             cwd = str(tool_input.get("workdir") or "") or os.getcwd()

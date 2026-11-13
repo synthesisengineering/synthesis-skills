@@ -9,6 +9,7 @@ calendar in the ten minutes before for 59 of them; of the 37 with words of offer
 """
 
 import json
+import os
 import time
 from datetime import datetime, timedelta, timezone
 
@@ -281,6 +282,20 @@ def test_the_code_of_its_own_releases_the_message_whatever_the_read_then_is():
     read_calendar(minutes_ago=0.1)
     assert ask() is None                                                 # he approved this text as it is
     age_reads(30)
+    assert stale(ask())
+
+
+def test_each_call_reads_the_record_anew_though_a_rewrite_kept_its_size_and_its_time():
+    """The record's lines were kept by the file's size and time stamp. Where time stamps tick every few milliseconds,
+    a record rewritten in place within one tick keeps both, and the next call judged the lines it had kept
+    (2026-11-13: in a Linux container, a different one of this file's tests failed on each run)."""
+    read_calendar(minutes_ago=0.1)
+    before = os.stat(RECORD)
+    assert ordinary(ask())
+    age_reads(30)
+    os.utime(RECORD, ns=(before.st_atime_ns, before.st_mtime_ns))
+    after = os.stat(RECORD)
+    assert (after.st_size, after.st_mtime_ns) == (before.st_size, before.st_mtime_ns)
     assert stale(ask())
 
 
