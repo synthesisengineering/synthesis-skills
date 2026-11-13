@@ -2027,6 +2027,24 @@ def test_a_label_with_no_subject_that_names_a_state_is_still_set_aside(reply):
     assert _sent_back(reply) is None
 
 
+# A reply that ends by asking hands the principal the turn. A table or a heading after the question is not what the
+# reply ends on: both cases passed while those lines were dropped whole, and reading them must not send them back.
+A_QUESTION_BEFORE_A_TABLE_OR_A_HEADING = {
+    "options-in-a-table": "I'm waiting on the venue's answer. Which of these should I hold in the meantime?\n\n| Option | Price |\n|---|---|\n"
+                          "| Garden room | 400 |\n| Hall | 650 |",
+    "a-heading-after-the-question": "I'll resume once the registrar replies. Do you want the long report or the short one?\n\n## Appendix",
+}
+
+
+@pytest.mark.parametrize("reply", _cases(A_QUESTION_BEFORE_A_TABLE_OR_A_HEADING))
+def test_a_reply_that_ends_by_asking_still_passes_with_a_table_or_a_heading_after_the_question(reply):
+    assert _sent_back(reply) is None
+
+
+def test_a_table_after_a_wait_and_no_question_excuses_nothing():
+    assert "nothing is armed" in _sent_back("I'm waiting on the venue's answer.\n\n| Option | Price |\n|---|---|\n| Garden room | 400 |")
+
+
 # Findings 8, 9 and 10 of the review, on the reader of what the harness holds. Work is started by the harness's own
 # tool-result entry, which is a `user` entry. It is ended by the harness's own notification, in one of the three forms
 # it writes, with the tag opening the text. And no record, however malformed, makes the reader raise. In 112 recorded
