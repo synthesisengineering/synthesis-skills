@@ -183,9 +183,63 @@ def test_a_temporary_address_stops_the_start_and_names_both_ways_forward(url, ho
 
 
 @pytest.mark.parametrize("url", [
-    "https://nottrycloudflare.com", "https://trycloudflare.com.example.com", "https://kb.example.com/trycloudflare.com",
-    "https://kb.example.com/?via=demo.ngrok.io", "https://localhost.example.com:8443", "https://8.8.8.8",
-    "https://[2606:4700:4700::1111]:8443",
+    "https://nottrycloudflare.com", "https://trycloudflare.com.example.com", "https://localhost.example.com:8443",
+    "https://8.8.8.8", "https://[2606:4700:4700::1111]:8443",
 ])
-def test_a_look_alike_host_or_a_listed_name_in_the_path_starts_as_any_permanent_address_does(url):
+def test_a_look_alike_host_starts_as_any_permanent_address_does(url):
     assert load({**BASE, "KB_PUBLIC_URL": url}).public_url == url.rstrip("/")
+
+
+@pytest.mark.parametrize("url", ["https://kb.example.com/trycloudflare.com", "https://kb.example.com/?via=demo.ngrok.io"])
+def test_a_listed_name_in_the_path_or_the_query_is_refused_as_a_path_or_a_query_and_not_as_temporary(url):
+    text = problems({**BASE, "KB_PUBLIC_URL": url})
+    assert "which is not allowed. Write it as https://kb.example.com" in text and "temporary" not in text
+
+
+ORIGIN = ("KB_PUBLIC_URL must be an origin and nothing more: the scheme, the host and a port if it needs one, since the "
+          "connector builds its own addresses (/mcp, /auth/callback) on it. It has ")
+
+
+@pytest.mark.parametrize("url", [
+    "https://kb.example.com", "https://kb.example.com/",                       # with a trailing slash or without
+    "https://kb.example.com:8443", "HTTPS://KB.Example.COM:8443/",             # a port, and a host in upper case
+    "https://[2606:4700:4700::1111]:8443/",
+])
+def test_an_origin_starts_with_a_trailing_slash_a_port_or_a_host_in_upper_case(url):
+    assert load({**BASE, "KB_PUBLIC_URL": url}).public_url == url.rstrip("/")
+
+
+@pytest.mark.parametrize("url, parts, origin", [
+    ("https://kb.example.com/mcp", "a path, which is", "https://kb.example.com"),
+    ("https://kb.example.com//", "a path, which is", "https://kb.example.com"),
+    ("https://kb.example.com/;v=1", "a path, which is", "https://kb.example.com"),
+    ("https://kb.example.com/?x=1", "a query, which is", "https://kb.example.com"),
+    ("https://kb.example.com?", "a query, which is", "https://kb.example.com"),                 # an empty query is one
+    ("https://kb.example.com#top", "a fragment, which is", "https://kb.example.com"),
+    ("https://kb.example.com/#", "a fragment, which is", "https://kb.example.com"),
+    ("https://reader:s3cret@kb.example.com", "a user-info part (user:password@), which is", "https://kb.example.com"),
+    ("https://@kb.example.com:8443/", "a user-info part (user:password@), which is", "https://kb.example.com:8443"),
+    ("HTTPS://Reader:S3cret@KB.Example.COM:8443/base/?token=t0ken-value#top",
+     "a user-info part (user:password@), a path, a query and a fragment, which are", "https://kb.example.com:8443"),
+    ("https://[2606:4700:4700::1111]:8443/mcp", "a path, which is", "https://[2606:4700:4700::1111]:8443"),
+])
+def test_a_path_a_query_a_fragment_or_a_user_info_part_stops_the_start_and_the_origin_is_shown(url, parts, origin):
+    text = problems({**BASE, "KB_PUBLIC_URL": url})
+    assert f"{ORIGIN}{parts} not allowed. Write it as {origin}\n" in text + "\n"
+    assert "s3cret" not in text.lower() and "t0ken-value" not in text  # each part is named, never shown: it may be a secret
+    assert "temporary" not in text and "must be the service's https://" not in text
+
+
+def test_the_origin_shown_is_one_the_connector_takes():
+    local = problems({**BASE, **OPERATOR, "KB_PUBLIC_URL": "http://localhost:8080/mcp"})
+    assert "It has a path, which is not allowed. Write it as http://localhost:8080" in local
+    plain = problems({**BASE, "KB_PUBLIC_URL": "http://kb.example.com/mcp"})  # http only for localhost: shown as https
+    assert "It has a path, which is not allowed. Write it as https://kb.example.com" in plain
+    assert "KB_PUBLIC_URL must be the service's https:// address (http:// only for localhost)" in plain
+
+
+@pytest.mark.parametrize("url", ["https://kb.example.com:abc", "https://kb.example.com:99999", "https://kb.example.com:0",
+                                 "https://kb.example.com:abc/mcp"])
+def test_a_port_that_is_no_port_stops_the_start(url):
+    text = problems({**BASE, "KB_PUBLIC_URL": url})
+    assert "KB_PUBLIC_URL must be the service's https:// address" in text and "Write it as" not in text
