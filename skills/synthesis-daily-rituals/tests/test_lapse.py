@@ -191,3 +191,33 @@ def test_a_tag_that_ends_the_file_with_no_line_end_takes_its_mark_on_a_line_of_i
     plan.write_text("# Plan\n\n## Priority Tasks\n- Send it\n  **Decay ID:** last\n  **Decays:** 2026-11-09 (promised)", encoding="utf-8")
     assert lapse(env, "--id", "last").returncode == 0
     assert plan.read_text(encoding="utf-8").endswith(f"  **Decays:** 2026-11-09 (promised)\n  **Lapsed:** {DAY} — no one was told the event had moved")
+
+
+def test_two_lapses_written_at_once_take_turns(seat, tmp_path):
+    """The design asks for one lock around both writes: two helpers that each read the register before either wrote
+    would both start a new table, and the second to reach a plan would replace what the first had written there."""
+    import fcntl
+    import time
+    plan, register, env = seat
+    with open(tmp_path / "state" / "lapse.lock", "a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        waiting = subprocess.Popen([sys.executable, str(SCRIPTS / "lapse.py"), "--workspace", "desk", "--as-of", DAY, "--id", "thanks", *WORDS],
+                                   stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=env)
+        time.sleep(1.0)
+        assert waiting.poll() is None and register.read_text(encoding="utf-8") == REGISTER    # it waits, and has written nothing
+    out, err = waiting.communicate(timeout=30)
+    assert waiting.returncode == 0, err
+    assert f"{register}:13" in out and "`thanks` |" in register.read_text(encoding="utf-8")
+
+
+def test_a_row_is_read_back_as_it_was_written():
+    """The row is the register's permanent record, so the helper reads it back from the file before it says it is
+    written: its day, and each of its seven cells."""
+    sys.path.insert(0, str(SCRIPTS))
+    import lapse
+    cells = [DAY, "**Send it** `x`", "[p.md:5](../plans/p.md)", "a \\| b", "open", "the team", "ask again"]
+    row = {"lapsed": DAY, "item": cells[1], "where": cells[2], "why": cells[3], "outcome": "open", "affected": cells[5], "still": cells[6], "line": 13}
+    assert lapse.read_back([row], 13, cells)
+    assert not lapse.read_back([row], 12, cells)                                 # another line
+    assert not lapse.read_back([{**row, "still": "ask"}], 13, cells)             # a cell that reads back as something else
+    assert not lapse.read_back([], 13, cells)
