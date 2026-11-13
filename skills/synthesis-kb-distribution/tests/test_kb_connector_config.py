@@ -143,6 +143,7 @@ def test_http_is_allowed_only_for_a_local_address():
     "demo.localtunnel.me", "demo.serveo.net", "demo.serveousercontent.com", "demo.localhost.run", "demo.lhr.life",
     "demo.lhr.rocks", "demo.a.pinggy.io", "demo.a.pinggy.link", "demo.run.pinggy-free.link",
     "demo-8080.use.devtunnels.ms", "demo-8080.app.github.dev",                     # a tunnel service, at any depth
+    "laptop.tail1234.ts.net", "demo-ip-203-0-113-7.tunnelmole.net", "bore.pub", "demo.loophole.site",
     "localhost", "kb.localhost", "laptop.local", "LOCALHOST", "Demo.TryCloudflare.COM", "demo.trycloudflare.com.",
     "127.0.0.1", "0.0.0.0", "::1", "10.1.2.3", "172.16.5.4", "192.168.1.20", "169.254.10.10", "100.100.100.100",
     "fd12:3456:789a::1", "fe80::1",                                                # no address the internet can reach
@@ -156,6 +157,7 @@ def test_a_tunnel_host_a_local_name_and_an_unreachable_ip_are_temporary(host):
     "kb.example.com", "nottrycloudflare.com", "trycloudflare.com.example.com", "ngrok.io.example.org",
     "my-ngrok.app.example", "localhost.example.com", "local.example.com", "mylocalhost", "notlocal", "kb.locale",
     "8.8.8.8", "172.32.0.1", "2606:4700:4700::1111", "", None,
+    "myts.net", "ts.net.example.com", "notbore.pub", "bore.pub.example.org", "tunnelmole.network", "myloophole.site",
 ])
 def test_a_look_alike_host_and_a_public_address_are_not_temporary(host):
     assert config.temporary(host) is False

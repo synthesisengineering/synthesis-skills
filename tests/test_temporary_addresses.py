@@ -60,7 +60,9 @@ def test_the_approval_names_the_address_and_covers_no_other(principal):
     "https://abc.localtunnel.me", "https://x.serveo.net", "https://abc.lhr.life", "https://abc.localhost.run",
     "https://rnd.a.pinggy.link", "<a href=\"https://abc.trycloudflare.com\">the tool</a>", "(abc.trycloudflare.com).",
     "https://abc.ngrok.pizza", "https://x.serveousercontent.com", "https://abc.lhr.rocks", "https://rnd.a.free.pinggy-free.link",
-    "https://k2j3-8080.use.devtunnels.ms", "https://fluffy-space-8080.app.github.dev/login"])
+    "https://k2j3-8080.use.devtunnels.ms", "https://fluffy-space-8080.app.github.dev/login",
+    "https://laptop.tail1234.ts.net/mcp", "https://abcd-ip-203-0-113-7.tunnelmole.net", "http://demo.bore.pub:41234",
+    "https://demo.loophole.site"])
 def test_each_quick_tunnel_host_is_read_however_it_is_written(text):
     assert held_for_the_address(said(text))
 
