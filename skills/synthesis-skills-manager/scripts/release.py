@@ -49,9 +49,9 @@ for path in (REPO, REPO / "skills" / "synthesis-onboarding" / "scripts"):
 import setup  # noqa: E402  (each harness's install commands)
 try:
     from synthesis import board, doctor, install, paths  # noqa: E402
-except Exception as exc:  # no runtime beside this copy, or one that fails as it loads
-    print(f"{__file__}: the synthesis runtime cannot be imported, so this did not run ({exc}). Run it from the installed "
-          "synthesis-skills plugin", file=sys.stderr)
+except ImportError as exc:  # no runtime beside this copy; one that fails otherwise as it loads keeps its traceback
+    print(f"{__file__} needs the synthesis runtime, which cannot be imported ({exc}), so nothing ran. Run it from the "
+          "installed synthesis-skills plugin or a checkout of it", file=sys.stderr)
     sys.exit(2)
 
 MANIFESTS = (".claude-plugin/plugin.json", ".codex-plugin/plugin.json", ".muse-plugin/plugin.json")

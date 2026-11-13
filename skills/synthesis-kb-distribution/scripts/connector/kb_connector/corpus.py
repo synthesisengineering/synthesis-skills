@@ -25,9 +25,9 @@ if _ROOT is not None and str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 try:
     from synthesis import yamlish  # noqa: E402
-except Exception as exc:  # no runtime beside this copy or in this image, or one that fails as it loads
-    print(f"{__file__}: the synthesis runtime cannot be imported, so this did not run ({exc}). Run it from the installed "
-          "synthesis-skills plugin, or in the image this connector's Dockerfile builds", file=sys.stderr)
+except ImportError as exc:  # no runtime beside this copy or in this image; one that fails otherwise as it loads keeps its traceback
+    print(f"{__file__} needs the synthesis runtime, which cannot be imported ({exc}), so nothing ran. Run it from the "
+          "installed synthesis-skills plugin or a checkout of it, or in the image this connector's Dockerfile builds", file=sys.stderr)
     sys.exit(2)
 
 LOG = logging.getLogger("kb_connector")

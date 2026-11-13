@@ -30,9 +30,9 @@ sys.dont_write_bytecode = True  # an installed plugin must stay byte-identical; 
 import setup
 try:
     from synthesis import yamlish  # the plugin's YAML reader; setup put the plugin root on sys.path
-except Exception as exc:  # no runtime beside this copy, or one that fails as it loads
-    print(f"{__file__}: the synthesis runtime cannot be imported, so this did not run ({exc}). Run it from the installed "
-          "synthesis-skills plugin", file=sys.stderr)
+except ImportError as exc:  # no runtime beside this copy; one that fails otherwise as it loads keeps its traceback
+    print(f"{__file__} needs the synthesis runtime, which cannot be imported ({exc}), so nothing ran. Run it from the "
+          "installed synthesis-skills plugin or a checkout of it", file=sys.stderr)
     sys.exit(2)
 
 ARCHIVE_NOTE = "<!-- synthesis-instructions:generated -->"

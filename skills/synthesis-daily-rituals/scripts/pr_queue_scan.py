@@ -61,9 +61,9 @@ sys.dont_write_bytecode = True  # an installed plugin must stay byte-identical; 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))  # the plugin root, which holds synthesis/
 try:
     from synthesis.yamlish import load as load_yaml  # noqa: E402 -- stdlib reader; PyYAML is not on Apple's python3
-except Exception as exc:  # no runtime beside this copy, or one that fails as it loads
-    print(f"{__file__}: the synthesis runtime cannot be imported, so this did not run ({exc}). Run it from the installed "
-          "synthesis-skills plugin", file=sys.stderr)
+except ImportError as exc:  # no runtime beside this copy; one that fails otherwise as it loads keeps its traceback
+    print(f"{__file__} needs the synthesis runtime, which cannot be imported ({exc}), so nothing ran. Run it from the "
+          "installed synthesis-skills plugin or a checkout of it", file=sys.stderr)
     sys.exit(2)
 
 DEFAULT_THRESHOLD_DAYS = 0

@@ -35,9 +35,9 @@ HERE = Path(__file__).resolve().parent
 sys.path[:0] = [str(HERE.parents[2]), str(HERE / "connector")]  # the plugin root (synthesis/) and the connector
 try:
     from synthesis import yamlish  # noqa: E402
-except Exception as exc:  # no runtime beside this copy, or one that fails as it loads
-    print(f"{__file__}: the synthesis runtime cannot be imported, so this did not run ({exc}). Run it from the installed "
-          "synthesis-skills plugin", file=sys.stderr)
+except ImportError as exc:  # no runtime beside this copy; one that fails otherwise as it loads keeps its traceback
+    print(f"{__file__} needs the synthesis runtime, which cannot be imported ({exc}), so nothing ran. Run it from the "
+          "installed synthesis-skills plugin or a checkout of it", file=sys.stderr)
     sys.exit(2)
 from kb_connector.corpus import split_front_matter  # noqa: E402  the connector reads what this build writes
 

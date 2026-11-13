@@ -33,9 +33,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[3]))  # the plugin root 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 try:
     from synthesis import yamlish  # noqa: E402
-except Exception as exc:  # no runtime beside this copy, or one that fails as it loads
-    print(f"{__file__}: the synthesis runtime cannot be imported, so this did not run ({exc}). Run it from the installed "
-          "synthesis-skills plugin", file=sys.stderr)
+except ImportError as exc:  # no runtime beside this copy; one that fails otherwise as it loads keeps its traceback
+    print(f"{__file__} needs the synthesis runtime, which cannot be imported ({exc}), so nothing ran. Run it from the "
+          "installed synthesis-skills plugin or a checkout of it", file=sys.stderr)
     sys.exit(2)
 from okf_validate import split_frontmatter  # noqa: E402  (beside this script; one splitter for all three)
 

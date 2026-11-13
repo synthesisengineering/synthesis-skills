@@ -452,6 +452,7 @@ def test_a_runtime_that_is_there_and_fails_as_it_loads_keeps_its_traceback(tmp_p
     alone.write_text((ROOT / script).read_text(encoding="utf-8"), encoding="utf-8")
     (tmp_path / "synthesis").mkdir()
     (tmp_path / "synthesis" / "__init__.py").write_text("raise RuntimeError('broken in itself')\n", encoding="utf-8")
+    (tmp_path / "synthesis" / "rituals.py").write_text("", encoding="utf-8")  # the module the script looks for to find its runtime
     import sys
     ran = subprocess.run([sys.executable, "-I", str(alone), "--help"], capture_output=True, text=True, cwd=tmp_path,
                          env={"PATH": "/usr/bin:/bin", "SYNTHESIS_HOME": str(tmp_path / "none"), "HOME": str(tmp_path)})
