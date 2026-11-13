@@ -294,6 +294,23 @@ def test_a_host_with_letters_digits_hyphens_or_underscores_starts(url):
     assert load({**BASE, "KB_PUBLIC_URL": url}).public_url == url
 
 
+@pytest.mark.parametrize("url", ["https://[oops", "https://[::1", "https://kb.example.com:", "https://kb.example.com:/",
+                                 "http://localhost:"])
+def test_an_address_that_cannot_be_parsed_or_ends_its_host_with_a_bare_colon_is_malformed_and_nothing_else_is_raised(url):
+    """Brackets that close no IPv6 address raised out of the loader, and a colon with no port after it started the
+    connector on an address no OAuth client's callback would match."""
+    text = problems({**BASE, **OPERATOR, "KB_PUBLIC_URL": url})
+    assert "KB_PUBLIC_URL must be the service's https:// address" in text and "Write it as" not in text
+
+
+@pytest.mark.parametrize("url", ["https://[64:ff9b:1::1]", "https://[64:ff9b:1:abcd::808:808]"])
+def test_the_prefix_for_translation_inside_one_network_is_temporary_on_every_python(url):
+    """64:ff9b:1::/48 is for translating addresses inside one network. One Python calls it global and a later one
+    does not, so the connector judges it itself."""
+    assert "KB_PUBLIC_URL names a temporary or local address" in problems({**BASE, "KB_PUBLIC_URL": url})
+    assert load({**BASE, **OPERATOR, "KB_PUBLIC_URL": url}).public_url == url
+
+
 REFERENCE = Path(__file__).resolve().parents[1] / "references" / "connector.md"
 
 
