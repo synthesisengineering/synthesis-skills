@@ -724,3 +724,140 @@ def test_a_day_that_is_none_names_its_flag(seat, flag, args, as_of):
     plan, register, env = seat
     done = lapse(env, "--id", "thanks", *args, as_of=as_of)
     assert done.returncode == 2 and flag in done.stderr, done.stderr
+
+
+# --- the third review -------------------------------------------------------------------------------------------------
+
+THREE = ("# Plan\n\n## Priority Tasks\n- Send the deck **Decays:** 2026-11-09 (the board)\n"
+         "- Book the venue **Decays:** 2026-11-10 (the hall)\n- Call the vendor **Decays:** 2026-11-11 (the chairs)\n")
+
+
+def test_what_came_of_a_lapse_is_not_guessed_when_two_lapses_name_one_place(seat):
+    """Finding 3: a mark moves what stands under it, so a second item can lapse at the line a first one lapsed at.
+    `--came --at` took the newest row of that place, another item's, and its outcome went on the wrong lapse."""
+    plan, register, env = seat
+    plan.write_text(THREE, encoding="utf-8")
+    for line in (6, 4, 6):                                                       # the vendor, the deck, then the venue, moved to 6
+        done = lapse(env, "--at", f"{plan}:{line}")
+        assert done.returncode == 0, done.stderr
+    rows = {row["item"]: row["line"] for row in review_of(env)["rows"]}
+    assert set(rows) == {"Send the deck", "Book the venue", "Call the vendor"}, rows
+    before = register.read_bytes()
+    asked = lapse(env, "--at", f"{plan}:6", "--came", "called a day late", words=())
+    assert asked.returncode == 2 and register.read_bytes() == before, asked.stderr
+    assert f"--row {rows['Call the vendor']}" in asked.stderr and f"--row {rows['Book the venue']}" in asked.stderr, asked.stderr
+    done = lapse(env, "--at", f"{plan}:6", "--came", "called a day late", "--row", str(rows["Call the vendor"]), words=())
+    assert done.returncode == 0, done.stderr
+    outcomes = {row["item"]: row["outcome"] for row in review_of(env)["rows"]}
+    assert outcomes == {"Send the deck": "open", "Book the venue": "open", "Call the vendor": "called a day late"}, outcomes
+
+
+def test_an_item_already_marked_is_asked_about_a_row_of_its_title_at_another_line(seat):
+    """Finding 4: the row was taken for this lapse's, and the refusal said both stood, so the mark was left with no row."""
+    plan, register, env = seat
+    plan.write_text(PLAN.replace("   **Decays:** 2026-11-09 (net 30)\n", "   **Decays:** 2026-11-09 (net 30)\n   **Lapsed:** 2026-11-12 — by hand\n"),
+                    encoding="utf-8")
+    register.write_text(REGISTER + "| 2026-11-12 | **Pay the invoice** | [2026-11-10.md:40](../plans/2026-11-10.md) | another one | open |\n",
+                        encoding="utf-8")
+    before = (plan.read_bytes(), register.read_bytes())
+    asked = lapse(env, "--at", f"{plan}:11")
+    assert asked.returncode == 2 and "--row-missing" in asked.stderr and (plan.read_bytes(), register.read_bytes()) == before, asked.stderr
+    done = lapse(env, "--at", f"{plan}:11", "--row-missing")
+    assert done.returncode == 0 and register.read_text(encoding="utf-8").count("Pay the invoice") == 2, done.stderr
+
+
+def test_a_row_still_held_by_the_item_at_its_line_is_not_taken_for_another(seat):
+    """Finding 5: two items of one title in one plan; the second was offered the first's row, and taking it left two
+    lapses under one row."""
+    plan, register, env = seat
+    plan.write_text("# Plan\n\n## Priority Tasks\n- Call the bank **Decays:** 2026-11-09 (about the card)\n"
+                    "- Call the bank **Decays:** 2026-11-10 (about the loan)\n", encoding="utf-8")
+    assert lapse(env, "--at", f"{plan}:4").returncode == 0                       # its row is the register's line 13; the other moves to 6
+    asked = lapse(env, "--at", f"{plan}:6")
+    assert asked.returncode == 2 and "--row 13" in asked.stderr and "--row-missing" in asked.stderr, asked.stderr
+    before = (plan.read_bytes(), register.read_bytes())
+    taken = lapse(env, "--at", f"{plan}:6", "--row", "13")
+    assert taken.returncode == 2 and "still holds" in taken.stderr and (plan.read_bytes(), register.read_bytes()) == before, taken.stderr
+    done = lapse(env, "--at", f"{plan}:6", "--row-missing")
+    assert done.returncode == 0 and plan.read_text(encoding="utf-8").count("**Lapsed:**") == 2, done.stderr
+    assert len(review_of(env)["rows"]) == 2
+
+
+def test_a_copy_of_an_item_with_no_id_in_an_older_plan_is_asked_about_the_newer_copys_row(seat):
+    """Finding 6: the newest copy lapsed and was marked; the older copy, which the sweep still lists, got a second row."""
+    plan, register, env = seat
+    newer = plan.parent / "2026-11-12.md"
+    newer.write_text("# Thursday\n\n## Priority Tasks\n3. **Pay the invoice**\n   **Decays:** 2026-11-09 (net 30)\n", encoding="utf-8")
+    assert lapse(env, "--at", f"{newer}:5").returncode == 0                      # its row is line 13
+    asked = lapse(env, "--at", f"{plan}:11")
+    assert asked.returncode == 2 and "--row 13" in asked.stderr, asked.stderr
+    done = lapse(env, "--at", f"{plan}:11", "--row", "13")
+    assert done.returncode == 0 and "row: already there" in done.stdout, done.stderr
+    assert register.read_text(encoding="utf-8").count("Pay the invoice") == 1 and "**Lapsed:**" in plan.read_text(encoding="utf-8")
+    assert len(review_of(env)["rows"]) == 1
+
+
+@pytest.mark.parametrize("odd", [" ", "\x0c", "\x85", "\r"])
+def test_a_plan_whose_lines_some_readers_count_otherwise_is_refused(seat, odd):
+    """Finding 8: a character that Python's reader of lines takes for a line's end, inside the tag's line, put the mark
+    in the middle of it and glued the rest of the line on."""
+    plan, register, env = seat
+    plan.write_text(PLAN.replace("   **Decays:** 2026-11-11 (two days after the event)\n",
+                                 f"   **Decays:** 2026-11-11 (two days after the event){odd}see the thread\n"), encoding="utf-8", newline="")
+    before = (plan.read_bytes(), register.read_bytes())
+    done = lapse(env, "--id", "thanks")
+    assert done.returncode == 2 and "line" in done.stderr and (plan.read_bytes(), register.read_bytes()) == before, done.stderr
+
+
+def test_an_interrupt_while_the_marked_plan_is_read_back_leaves_nothing_beside_the_plan(seat, monkeypatch):
+    helper, args = in_process(seat, monkeypatch)
+    plan, register, _ = seat
+    real = helper.sweep_reads
+
+    def interrupted(path, name, as_of):
+        if Path(path).name.startswith("."):
+            raise KeyboardInterrupt
+        return real(path, name, as_of)
+    monkeypatch.setattr(helper, "sweep_reads", interrupted)
+    with pytest.raises(KeyboardInterrupt):
+        helper.main([*args, "--id", "thanks"])
+    assert [path.name for path in plan.parent.iterdir()] == [plan.name]
+    assert plan.read_text(encoding="utf-8") == PLAN and register.read_text(encoding="utf-8") == REGISTER
+
+
+def test_a_stop_asked_by_the_system_is_an_interrupt_while_it_writes(seat, monkeypatch):
+    """A SIGTERM ended the process with no cleanup at all; while the helper runs it is taken as an interrupt, and
+    what was there before is put back once it ends."""
+    import signal
+    helper, args = in_process(seat, monkeypatch)
+    before, seen = signal.getsignal(signal.SIGTERM), []
+    real = helper.place
+
+    def looking(*given):
+        seen.append(signal.getsignal(signal.SIGTERM))
+        return real(*given)
+    monkeypatch.setattr(helper, "place", looking)
+    assert helper.main([*args, "--id", "thanks"]) == 0
+    assert seen == [signal.default_int_handler] and signal.getsignal(signal.SIGTERM) == before
+
+
+def test_a_mark_the_sweep_reads_as_dated_before_the_item_is_not_written(seat, monkeypatch):
+    """The read-back's date was held by no test (the third review)."""
+    helper, args = in_process(seat, monkeypatch)
+    plan, register, _ = seat
+    real = helper.prepare
+    monkeypatch.setattr(helper, "prepare", lambda found, text, reads: real(found, "**Lapsed:** 2026-11-01 — said too early", reads))
+    assert helper.main([*args, "--id", "thanks"]) == 2
+    assert plan.read_text(encoding="utf-8") == PLAN and register.read_text(encoding="utf-8") == REGISTER
+    assert [path.name for path in plan.parent.iterdir()] == [plan.name]
+
+
+def test_a_declared_folder_that_holds_only_a_placeholder_hides_nothing(seat, tmp_path):
+    """Finding 2: a folder kept in git holds a placeholder, and macOS writes `.DS_Store` into folders it opens."""
+    plan, register, env = seat
+    (tmp_path / "artifacts").mkdir()
+    for name in (".gitkeep", ".DS_Store"):
+        (tmp_path / "artifacts" / name).write_text("", encoding="utf-8")
+    declare(env, artifacts_dirs=[str(tmp_path / "artifacts")])
+    done = lapse(env, "--id", "thanks")
+    assert done.returncode == 0 and "did not stand in the way" in done.stdout, done.stdout + done.stderr

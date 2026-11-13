@@ -14,6 +14,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 SCRIPTS = Path(__file__).resolve().parents[1] / "scripts"
 DAY = "2026-11-13"
 
@@ -253,9 +255,10 @@ def test_two_items_of_one_title_and_date_in_one_plan_are_two_entries_each_merged
     assert f"({newest}:5)" in due and f"({newest}:7)" in due, due                  # each at its own Decays line
 
 
-def test_a_merged_entry_is_passed_where_any_copy_is_and_names_its_newest_unannounced_copy(tmp_path):
-    """The merged entry took the oldest copy's flag and place: a copy whose date passed with nothing written was listed
-    without those words, at a copy already marked Lapsed."""
+def test_a_merged_entry_is_passed_only_where_no_copy_carries_a_mark_and_stands_at_its_newest_copy(tmp_path):
+    """The second review: the merged entry took the oldest copy's flag and place. The third: said passed wherever any
+    copy was, it named a lapse already marked on the newest copy as one nobody was told of. An item is read as the sweep
+    reads one with an ID: announced where any copy carries a mark for its date, and placed at its newest copy."""
     env = seat(tmp_path)
     plans = tmp_path / "plans"
     bare = "# Plan\n\n## Priority Tasks\n1. **Pay the invoice**\n   **Decays:** 2026-11-05 (net 30)\n"
@@ -268,11 +271,11 @@ def test_a_merged_entry_is_passed_where_any_copy_is_and_names_its_newest_unannou
         assert done.returncode == 0, done.stderr
         return next(line for line in done.stdout.splitlines() if "**Pay the invoice**" in line)
 
-    assert line_for("# Plan\n", marked, bare) == (
-        f"- 2026-11-05 **Pay the invoice**, passed with nothing written, 2 copies with no Decay ID ({plans / '2026-11-08.md'}:5)")
-    assert line_for(bare, bare, marked) == (
-        f"- 2026-11-05 **Pay the invoice**, passed with nothing written, 3 copies with no Decay ID ({plans / '2026-11-07.md'}:5)")
+    assert line_for("# Plan\n", marked, bare) == f"- 2026-11-05 **Pay the invoice**, 2 copies with no Decay ID ({plans / '2026-11-08.md'}:5)"
+    assert line_for(bare, bare, marked) == f"- 2026-11-05 **Pay the invoice**, 3 copies with no Decay ID ({plans / '2026-11-08.md'}:5)"
     assert line_for(marked, marked, marked) == f"- 2026-11-05 **Pay the invoice**, 3 copies with no Decay ID ({plans / '2026-11-08.md'}:5)"
+    assert line_for(bare, bare, bare) == (
+        f"- 2026-11-05 **Pay the invoice**, passed with nothing written, 3 copies with no Decay ID ({plans / '2026-11-08.md'}:5)")
 
 
 def test_a_choice_is_placed_at_the_line_it_opens_on_and_not_at_an_earlier_line_that_reads_the_same(tmp_path):
@@ -301,3 +304,30 @@ def test_a_gap_names_its_ledger_and_its_line(tmp_path):
                              capture_output=True, text=True, env=env)                # `plate` would write the seat's ledger again
     assert refused.returncode == 2 and f"  {ledger}: 1 row(s) of a ledger" in refused.stderr, refused.stderr
     assert f"  {broken}: invalid Decays date (line 4)" in refused.stderr, refused.stderr
+
+
+def test_an_item_with_no_id_dated_ahead_is_listed_once_with_its_copies(tmp_path):
+    """The third review: each plan's copy was its own entry under Dated ahead, and the count of what is open grew with
+    every plan that carried it."""
+    env = seat(tmp_path)
+    for day in ("2026-11-10", "2026-11-11", "2026-11-12"):
+        (tmp_path / "plans" / f"{day}.md").write_text("# Plan\n\n## Priority Tasks\n1. **Renew the lease**\n   **Decays:** 2026-12-01 (a month out)\n",
+                                                       encoding="utf-8")
+    done = swept(tmp_path, env)
+    assert done.returncode == 0, done.stderr
+    ahead = done.stdout.split("## Dated ahead")[1].split("\n## ")[0]
+    assert ahead.count("**Renew the lease**") == 1 and "3 copies with no Decay ID" in ahead, ahead
+    assert f"({tmp_path / 'plans' / '2026-11-12.md'}:5)" in ahead, ahead
+
+
+@pytest.mark.skipif(sys.platform != "darwin", reason="a folder named in another case is the same folder only where names are compared so")
+def test_out_in_a_declared_folder_named_in_another_case_is_refused(tmp_path):
+    """The third review: on a volume that compares names without case, `PLANS/` is `plans/`, and the list was written
+    among the plans, where the next sweep read it as a plan dated ahead."""
+    env = seat(tmp_path)
+    if not (tmp_path / "PLANS").exists():
+        pytest.skip("this volume compares names with case")
+    out = tmp_path / "PLANS" / "2026-11-14.md"
+    done = swept(tmp_path, env, "--out", str(out))
+    assert done.returncode == 2 and "a folder this workspace declares" in done.stderr, done.stderr
+    assert sorted(path.name for path in (tmp_path / "plans").iterdir()) == sorted(["2026-11-10.md", f"{DAY}.md"])

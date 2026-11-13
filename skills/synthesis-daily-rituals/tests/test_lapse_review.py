@@ -234,3 +234,15 @@ def test_a_table_whose_header_opens_with_the_word_lapsed_is_the_registers(tmp_pa
     done = review(tmp_path, "--json", register=register)
     assert done.returncode == 0, done.stderr
     assert [row["item"] for row in json.loads(done.stdout)["rows"]] == ["Second", "First"]
+
+
+def test_rows_with_no_id_that_differ_only_in_spacing_or_emphasis_are_one_lapse(tmp_path):
+    """The third review: the helper's row and a row written after it by hand, `**Pay** the invoice` beside `Pay the
+    invoice`, read as two lapses."""
+    register = HEAD.replace("| Lapsed | Item | Where it waited | Why it lapsed | Outcome |\n|---|---|---|---|---|\n",
+                            "| Lapsed | Item | Where it waited | Why it lapsed | Outcome | Who it affected | What can still be done |\n"
+                            "|---|---|---|---|---|---|---|\n") + (
+        "| 2026-11-12 | Pay the invoice | [2026-11-10.md:11](../plans/2026-11-10.md) | no one asked | open | the supplier | pay late |\n"
+        "| 2026-11-12 | **Pay**  the invoice | [2026-11-10.md:11](../plans/2026-11-10.md)  | no one asked | paid on 11-13 | the supplier | — |\n")
+    data = json.loads(review(tmp_path, "--json", register=register).stdout)
+    assert [row["outcome"] for row in data["rows"]] == ["paid on 11-13"] and data["patterns"]["open"] == 0, data["rows"]
