@@ -1334,6 +1334,12 @@ def test_an_export_that_finishes_says_when_and_a_busy_one_does_not(harness):
     first = json.loads(stamp.read_text())["exported"]
     assert re.fullmatch(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d[+-]\d\d:\d\d", first)
     assert sessions.export(0) == [] and json.loads(stamp.read_text())["exported"] >= first    # nothing new still counts as a run
+    assert "scheduled" not in json.loads(stamp.read_text())           # a session's own export is not the schedule's
+    assert cli.main(["sessions", "export", "--all", "--scheduled"]) == 0
+    ran = json.loads(stamp.read_text())["scheduled"]
+    assert ran == json.loads(stamp.read_text())["exported"]           # the schedule's command marks its own run,
+    sessions.export(0)
+    assert json.loads(stamp.read_text())["scheduled"] == ran          # and a session's export after it leaves the mark
 
 
 def test_a_run_that_could_not_copy_a_transcript_stays_visible_until_a_run_copies_everything(harness, tmp_path):

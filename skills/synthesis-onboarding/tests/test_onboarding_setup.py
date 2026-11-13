@@ -613,7 +613,7 @@ def test_the_hourly_export_is_scheduled_to_run_the_installed_command(day_end):
     command = setup.install._home() / "bin" / "synthesis"
     spec = plistlib.loads(setup._export_plist().read_bytes())
     assert spec["Label"] == "com.synthesis.sessions-export" and spec["StartInterval"] == 3600 and spec["RunAtLoad"] is True
-    assert f'"{command}" sessions export --all' in spec["ProgramArguments"][-1]
+    assert f'"{command}" sessions export --all --scheduled; ' in spec["ProgramArguments"][-1]
     assert f'"{command}" sessions sync' in spec["ProgramArguments"][-1]
     assert calls(day_end)[-1].startswith("bootstrap gui/") and any("every hour" in line for line in lines)
 
@@ -693,7 +693,7 @@ def test_the_scheduled_job_runs_the_sync_whatever_the_exports_exit_status(day_en
         f"sys.exit({status} if sys.argv[1:3] == ['sessions', 'export'] else 0)\n")
     done = subprocess.run(spec["ProgramArguments"], capture_output=True, text=True, timeout=60,
                           env={"HOME": str(Path.home()), "PATH": "/usr/bin:/bin"})
-    assert seen.read_text().splitlines() == ["sessions export --all", "sessions sync"] and done.returncode == 0, done.stderr
+    assert seen.read_text().splitlines() == ["sessions export --all --scheduled", "sessions sync"] and done.returncode == 0, done.stderr
 
 
 def test_uninstall_removes_only_an_export_schedule_that_runs_this_install(day_end):

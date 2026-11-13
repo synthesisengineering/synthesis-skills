@@ -1069,7 +1069,7 @@ def _schedule(plist: Path, line=None) -> Path:
     login shell; a list is its program arguments whole, a dictionary the job itself, bytes the file."""
     import plistlib
     own = install._home() / "bin" / "synthesis"
-    line = f'"{own}" sessions export --all; "{own}" sessions sync' if line is None else line
+    line = f'"{own}" sessions export --all --scheduled; "{own}" sessions sync' if line is None else line
     job = line if isinstance(line, dict) else {"ProgramArguments": line if isinstance(line, list) else ["/bin/bash", "-lc", line]}
     plist.write_bytes(line if isinstance(line, bytes) else plistlib.dumps({"Label": plist.stem, **job}))
     return plist
@@ -1091,9 +1091,30 @@ def test_the_hourly_export_is_checked_for_its_schedule_and_its_last_run(tmp_path
     stamp.write_text(json.dumps({"exported": "2026-11-11T08:00:00-05:00"}), encoding="utf-8")
     found = doctor.check_sessions_export(plist, stamp, now, loaded)
     assert found.status == "fail" and "25 hours" in found.detail
-    stamp.write_text(json.dumps({"exported": "2026-11-12T08:20:00-05:00"}), encoding="utf-8")
+    stamp.write_text(json.dumps({"exported": "2026-11-12T08:20:00-05:00", "scheduled": "2026-11-12T08:20:00-05:00"}), encoding="utf-8")
     found = doctor.check_sessions_export(plist, stamp, now, loaded)
     assert found.status == "ok" and "every hour" in found.detail and "40 min ago" in found.detail
+
+
+def test_the_hourly_export_is_known_by_a_run_of_the_schedule_itself(tmp_path):
+    """The doctor read the schedule's file and asked launchd only whether the label was loaded. What launchd holds
+    is what it loaded, which may be an older file's commands: a file replaced and never loaded again passed, while a
+    session's own exports kept the stamp fresh (noted by a review, 2026-11-12). The schedule's command marks its
+    runs, and a loaded schedule with no run of its own in a day fails."""
+    from datetime import datetime
+    plist, stamp = _schedule(tmp_path / "com.synthesis.sessions-export.plist"), tmp_path / "export.json"
+    loaded = lambda argv, **kw: subprocess.CompletedProcess(argv, 0, "", "")           # noqa: E731
+    now = datetime.fromisoformat("2026-11-12T09:00:00-05:00").timestamp()
+    stamp.write_text(json.dumps({"exported": "2026-11-12T08:20:00-05:00"}), encoding="utf-8")  # a session's own export
+    found = doctor.check_sessions_export(plist, stamp, now, loaded)
+    assert found.status == "fail" and "the schedule itself has finished no export yet" in found.detail
+    assert "--sessions-export" in found.detail and "launchd" in found.detail
+    stamp.write_text(json.dumps({"exported": "2026-11-12T08:20:00-05:00", "scheduled": "2026-11-11T02:00:00-05:00"}), encoding="utf-8")
+    found = doctor.check_sessions_export(plist, stamp, now, loaded)
+    assert found.status == "fail" and "the schedule itself has finished no export in 31 hours" in found.detail
+    stamp.write_text(json.dumps({"exported": "2026-11-12T08:20:00-05:00", "scheduled": "2026-11-12T07:10:00-05:00"}), encoding="utf-8")
+    found = doctor.check_sessions_export(plist, stamp, now, loaded)
+    assert found.status == "ok" and "40 min ago" in found.detail
 
 
 def test_the_hourly_export_fails_while_a_transcript_it_tried_is_not_copied(tmp_path):
@@ -1184,7 +1205,8 @@ def exporting(tmp_path):
     the schedule loaded."""
     from datetime import datetime
     plist, stamp = tmp_path / "com.synthesis.sessions-export.plist", tmp_path / "export.json"
-    stamp.write_text(json.dumps({"exported": "2026-11-12T08:20:00-05:00", "complete": "2026-11-12T08:20:00-05:00"}), encoding="utf-8")
+    stamp.write_text(json.dumps({"exported": "2026-11-12T08:20:00-05:00", "complete": "2026-11-12T08:20:00-05:00",
+                                 "scheduled": "2026-11-12T08:20:00-05:00"}), encoding="utf-8")
     now = datetime.fromisoformat("2026-11-12T09:00:00-05:00").timestamp()
 
     def check(line=None, code: int = 0, **given):
