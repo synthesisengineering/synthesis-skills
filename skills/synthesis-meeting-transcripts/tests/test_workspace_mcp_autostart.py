@@ -51,6 +51,15 @@ def unit_file(home: Path, platform: str) -> Path:
 
 def written(tmp_path: Path, platform: str, installer: Path = INSTALL, **extra: str) -> str:
     """The unit install-autostart.sh writes as `platform`, from a shell with `extra` set. It is answered "n"."""
+    result, home, loaded = installed(tmp_path, platform, installer, **extra)
+    assert result.returncode == 0 and result.stdout.endswith("\nCancelled.\n"), result.stdout + result.stderr
+    assert not loaded.exists(), loaded.read_text(encoding="utf-8")  # nothing was loaded
+    assert not unit_file(home, platform).exists()  # and the unit it printed is gone
+    return result.stdout.split("\n\n", 1)[1].rsplit("\n\nCancelled.\n", 1)[0] + "\n"
+
+
+def installed(tmp_path: Path, platform: str, installer: Path = INSTALL, **extra: str):
+    """(install-autostart.sh's run as `platform`, answered "n", the home it ran in, the record a loader writes)."""
     home, binaries, loaded = tmp_path / "home", tmp_path / "bin", tmp_path / "loaded"
     unit_file(home, "Darwin").parent.mkdir(parents=True, exist_ok=True)  # macOS makes launchd's folder; the installer does not
     executable(binaries / "uname", f'printf "%s\\n" "{platform}"\n')
@@ -62,10 +71,7 @@ def written(tmp_path: Path, platform: str, installer: Path = INSTALL, **extra: s
                    "XDG_CONFIG_HOME": str(home / ".config"), "GOOGLE_CLIENT_SECRET_PATH": str(secret), **extra}
     result = subprocess.run(["/bin/bash", str(installer)], input="n\n", env=environment, text=True, capture_output=True,
                             check=False, timeout=30)
-    assert result.returncode == 0 and result.stdout.endswith("\nCancelled.\n"), result.stdout + result.stderr
-    assert not loaded.exists(), loaded.read_text(encoding="utf-8")  # nothing was loaded
-    assert not unit_file(home, platform).exists()  # and the unit it printed is gone
-    return result.stdout.split("\n\n", 1)[1].rsplit("\n\nCancelled.\n", 1)[0] + "\n"
+    return result, home, loaded
 
 
 def unquoted(word: str) -> str:
@@ -184,6 +190,33 @@ def test_every_path_the_unit_carries_is_written_so_the_supervisor_reads_it_back(
     assert served["GOOGLE_CLIENT_SECRET_PATH"] == str(chosen / "client_secret.json")
     assert served["GOOGLE_MCP_CREDENTIALS_DIR"] == str(chosen / "tokens")
     assert "SYNTHESIS_HOME" not in served and served["WORKSPACE_MCP_PORT"] == "8765"
+
+
+# A plist parser reads a carriage return back as a line feed and takes most other control characters for no XML at
+# all; a line break in a systemd Environment= value ends its line. The installer wrote such a value as it was, so
+# the server was started with another value than the one set, or the unit did not load.
+CONTROLLED = [("GOOGLE_CLIENT_SECRET_PATH", "client-secret\rfolder/client_secret.json"), ("SYNTHESIS_HOME", "Review\nHome/v5"),
+              ("GOOGLE_MCP_CREDENTIALS_DIR", "creds\tdir"), ("WORKSPACE_MCP_TOOL_TIER", "complete\x1b[0m"),
+              ("WORKSPACE_MCP_PORT", "8765\n"), ("HOME", "ho\rme")]
+
+
+@pytest.mark.parametrize("platform", PLATFORMS)
+@pytest.mark.parametrize("name,value", CONTROLLED, ids=[name for name, _ in CONTROLLED])
+def test_a_value_holding_a_control_character_is_refused_by_name_before_any_unit_is_written(platform, name, value, tmp_path):
+    value = value if name in ("WORKSPACE_MCP_TOOL_TIER", "WORKSPACE_MCP_PORT") else str(tmp_path / value)
+    result, home, loaded = installed(tmp_path, platform, **{name: value})
+    assert result.returncode == 1 and "Will install" not in result.stdout, result.stdout + result.stderr
+    assert f"ERROR: {name} holds a control character" in result.stderr and "run this again" in result.stderr, result.stderr
+    assert not re.search(r"[\x00-\x09\x0b-\x1f\x7f]", result.stderr), result.stderr  # the value is shown escaped
+    assert not unit_file(home, platform).exists() and not loaded.exists()
+
+
+@pytest.mark.parametrize("platform", PLATFORMS)
+def test_a_checkout_under_a_folder_with_a_line_break_is_refused_naming_its_start_script(platform, tmp_path):
+    scripts = Path(shutil.copytree(SCRIPTS, tmp_path / "check\nouts" / "optional-workspace-mcp"))
+    result, home, loaded = installed(tmp_path, platform, scripts / "install-autostart.sh")
+    assert result.returncode == 1 and "ERROR: this checkout's start.sh holds a control character" in result.stderr, result.stderr
+    assert "Will install" not in result.stdout and not unit_file(home, platform).exists() and not loaded.exists()
 
 
 # ---- doctor.sh reports the outbox that unit gives the server -----------------------------------------------------

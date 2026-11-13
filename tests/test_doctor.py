@@ -1158,27 +1158,54 @@ def test_a_connector_started_by_hand_is_judged_when_it_can_be_read_and_expected_
     assert stopped.status == "ok" and "no mail connector auto-start" in stopped.detail
 
 
-def test_the_environment_macos_prints_after_a_command_is_read_and_a_hidden_one_is_nothing(tmp_path):
-    shown = ("/opt/tools/uvx workspace-mcp --single-user --transport streamable-http --tool-tier complete "
-             "PATH=/usr/bin:/bin WORKSPACE_MCP_PORT=8765 ALLOWED_FILE_DIRS=/srv/with space/reports:/srv/synthesis/outbox "
-             "OAUTHLIB_INSECURE_TRANSPORT=1\n")
-    asked = []
+def _procargs(argv: list, env: list, argc=None) -> bytes:
+    """What macOS keeps for a process (kern.procargs2): its argument count, the program's path and its padding, each
+    argument and each variable ended by a NUL, then an empty string and the system's own strings."""
+    strings = [argv[0], "", "", *argv, *env, "", "ptr_munge=", "main_stack="]
+    return (len(argv) if argc is None else argc).to_bytes(4, sys.byteorder) + b"\0".join(s.encode() for s in strings) + b"\0"
 
-    def ps(output):
-        return lambda argv, **kwargs: asked.append(argv) or subprocess.CompletedProcess(argv, 0, output, "")
 
-    no_proc = tmp_path / "no-proc"  # as on macOS, which has no /proc
-    assert doctor.started_with("4242", ps(shown), no_proc) == {
+# `ps -E` prints the environment after the command, each variable after a space, so a value holding a space and
+# then a name and "=" read as two variables: a folder named "r3 owner=demo" gave ALLOWED_FILE_DIRS=/srv/r3 and a
+# variable `owner`, and the outbox line failed though the connector had been started to read it.
+AWKWARD_DIRS = "/srv/r3 owner=demo/outbox:/srv/with space/reports"
+
+
+def test_the_environment_macos_keeps_for_a_process_is_read_whole_and_a_hidden_one_is_nothing(tmp_path):
+    argv = ["/opt/tools/uvx", "workspace-mcp", "--single-user", "NOT_A_VARIABLE=1"]  # an argument is no variable
+    env = ["PATH=/usr/bin:/bin", "WORKSPACE_MCP_PORT=8765", f"ALLOWED_FILE_DIRS={AWKWARD_DIRS}", "OAUTHLIB_INSECURE_TRANSPORT=1"]
+    asked, no_proc = [], tmp_path / "no-proc"  # as on macOS, which has no /proc
+    assert doctor.started_with("4242", lambda pid: asked.append(pid) or _procargs(argv, env), no_proc) == {
         "PATH": "/usr/bin:/bin", "WORKSPACE_MCP_PORT": "8765", "OAUTHLIB_INSECURE_TRANSPORT": "1",
-        "ALLOWED_FILE_DIRS": "/srv/with space/reports:/srv/synthesis/outbox"}
-    assert asked[0][0] == "ps" and "-p" in asked[0] and asked[0][-1] == "4242"
-    assert doctor.started_with("4242", ps("/bin/bash /opt/tools/start.sh\n"), no_proc) == {}  # one of the system's own programs
-    assert doctor.started_with("4242", ps(""), no_proc) == {}  # no such process
+        "ALLOWED_FILE_DIRS": AWKWARD_DIRS}
+    assert asked == ["4242"]
+    assert doctor.started_with("4242", lambda pid: b"", no_proc) == {}  # one of the system's own programs, or none
+    assert doctor.started_with("4242", lambda pid: _procargs(argv, env, argc=9), no_proc) == {}  # fewer strings than counted
 
-    def refused(argv, **kwargs):
-        raise PermissionError("ps: Operation not permitted")
+    def refused(pid):
+        raise PermissionError("Operation not permitted")
 
     assert doctor.started_with("4242", refused, no_proc) == {}
+
+
+def test_a_folder_named_with_a_space_and_an_equals_sign_is_the_one_the_connector_was_started_to_read(connector, tmp_path):
+    _, unit, pid_file = connector
+    outbox = Path(AWKWARD_DIRS.split(":")[0].replace("/srv", str(tmp_path), 1))
+    _installed(outbox, unit, pid_file)
+    env = ["WORKSPACE_MCP_PORT=8765", f"ALLOWED_FILE_DIRS={outbox}:/srv/x"]
+    (tmp_path / "proc" / "4242").mkdir(parents=True)
+    (tmp_path / "proc" / "4242" / "environ").write_bytes("\0".join(env).encode() + b"\0")
+    for proc in (tmp_path / "no-proc", tmp_path / "proc"):  # macOS's record of the process, and Linux's /proc
+        check = doctor.check_outbox(outbox, unit, pid_file,
+                                    lambda pid: doctor.started_with(pid, lambda p: _procargs(["/bin/sh"], env), proc))
+        assert check.status == "ok" and "started to read it" in check.detail, (proc, check)
+
+
+@pytest.mark.skipif(sys.platform != "darwin" and not Path("/proc/self/environ").is_file(), reason="no record of it here")
+def test_this_processs_own_environment_is_read_back():
+    """A positive control on the system's own record: nothing is started, and this process reads itself."""
+    read = doctor.started_with(str(os.getpid()))
+    assert read and any(os.environ.get(name) == value for name, value in read.items()), sorted(read)
 
 
 def test_the_environment_linux_keeps_under_proc_is_read_and_an_unreadable_one_is_nothing(tmp_path):
