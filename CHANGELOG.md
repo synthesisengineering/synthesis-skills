@@ -21,10 +21,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   `teardown.py add "<what>" --remove "<how>"` writes down each thing a test sets up before it is made, `list`
   shows what is left, and `done <number>` takes one off once it is gone. `synthesis doctor` reads the list at
   every run, in whichever session, and warns while a line remains, with the oldest's age and the three oldest.
-  It refuses nothing and runs nothing a line names.
+  It refuses nothing and runs nothing a line names. The knowledge-base connector's test mode asks for it
+  (`synthesis-kb-distribution` 1.2.1): its `TEST ONLY` start line ends with the instruction, and its reference
+  names what such a test sets up (the address, a tunnel, a redirect URI, a deploy key, each client's entry).
 - **A script that needs the runtime says so in one line when it is not there.** Run from a copy with no
-  `synthesis/` beside it, 25 skill scripts ended in a traceback, even for `--help`. Each now prints one line that
-  names the script and exits 2, and a lint holds the shape.
+  `synthesis/` beside it, 27 skill scripts ended in a traceback, even for `--help`. Each now prints one line that
+  names the script and exits 2, and a lint holds the shape. One of them is the connector's `corpus.py`, which is
+  imported, not run: a start that cannot import the runtime ends the same way.
 
 ## [5.9.0] - 2026-11-13
 

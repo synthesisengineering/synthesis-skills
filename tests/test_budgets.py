@@ -716,20 +716,21 @@ ROOT = Path(__file__).resolve().parents[1]
 # fixed place is refused, and a day is one written YYYY-MM-DD; cmd_record 4; 9 lines of the module's note and
 # imports) and setup.py 52 (register_sessions_export 27, unregister_sessions_export 11, main 5, _homes 4,
 # _export_plist 4, EXPORT_LABEL 3, workspace_archive 2, HOMES 1 and a note 1, less 6 in _points_at).
-# 5.10.0 (2026-11-13): core 159, plugin 379. commit_check.py 133, the check on an entry's own time, off unless the
+# 5.10.0 (2026-11-13): core 159, plugin 390. commit_check.py 133, the check on an entry's own time, off unless the
 # config has `record_times`: record_times 53 (which lines of a staged diff are an entry's stamp, and the two
 # refusals), _stamped 29 (a stamp placed by its own day in its own zone), _around 13 (for each line of a file, its
 # code fence and the dated heading above it, in one pass), AHEAD with the note of what was measured 11, problems 6
 # (a merge is not judged), 6 lines of imports (zoneinfo where there is one), and the patterns 15 (_SPAN 4, _DAY 2,
 # STAMPS 2, and one each for _MARKS, _CLOCK, _DONE, ENTRY, BOX, HOURS and REGIONS). doctor.py 26: check_teardown 24
 # and the two blank lines after it.
-# Outside the core 220: teardown.py 90, new (a test's teardown list: main 41, its header and imports 27, read 12,
-# said 6, listed 4), and 130 for the shape in which 25 scripts import the runtime (five lines each, ten in
-# autopilot_cli.py, which imports it twice): one line that says the runtime is not there, where a traceback was.
+# Outside the core 231: teardown.py 90, new (a test's teardown list: main 41, its header and imports 27, read 12,
+# said 6, listed 4), 140 for the shape in which 27 scripts import the runtime (five lines each, ten in
+# autopilot_cli.py, which imports it twice): one line that says the runtime is not there, where a traceback was;
+# and 1 in the knowledge-base connector's server.py, whose start line in the test mode asks for the teardown list.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # consolidate first).
 CORE_BUDGET = 12483
-PLUGIN_BUDGET = 33917
+PLUGIN_BUDGET = 33928
 
 
 def _lines(files):

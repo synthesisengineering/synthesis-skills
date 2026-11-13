@@ -33,7 +33,12 @@ from pathlib import Path
 sys.dont_write_bytecode = True  # an installed plugin must stay byte-identical; Muse verifies its bundle
 HERE = Path(__file__).resolve().parent
 sys.path[:0] = [str(HERE.parents[2]), str(HERE / "connector")]  # the plugin root (synthesis/) and the connector
-from synthesis import yamlish  # noqa: E402
+try:
+    from synthesis import yamlish  # noqa: E402
+except Exception as exc:  # no runtime beside this copy, or one that fails as it loads
+    print(f"{__file__}: the synthesis runtime cannot be imported, so this did not run ({exc}). Run it from the installed "
+          "synthesis-skills plugin", file=sys.stderr)
+    sys.exit(2)
 from kb_connector.corpus import split_front_matter  # noqa: E402  the connector reads what this build writes
 
 TEMPLATES = HERE.parent / "templates"
