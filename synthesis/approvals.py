@@ -235,7 +235,7 @@ def alone():
     other before an identical call, judged at the same moment, is looked at (2026-11-13, a review: between the two
     steps a second copy went on the other code)."""
     import fcntl
-    held = _dir("approvals") / "one-at-a-time.lock"
+    held = _dir("approvals.lock")  # beside the folder: a spent or expired approval leaves no file in it
     held.parent.mkdir(parents=True, exist_ok=True)
     with open(held, "a") as handle:
         fcntl.flock(handle, fcntl.LOCK_EX)
