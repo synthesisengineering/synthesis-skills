@@ -164,7 +164,12 @@ address was gone for good. With `temporary_addresses` in the config:
   `devtunnel host`, `localtunnel` or `lt` with a port (also through `npx`, `bunx`, `pnpm` or `yarn`), and a reverse
   `ssh -R` to `serveo.net`, `localhost.run` or `pinggy.io` wait for the principal's code. The hold
   says what a quick tunnel is for: their own test, with an address that is never given to anyone. A
-  named tunnel (`cloudflared tunnel run <name>`) is a deployment and is not held here.
+  named tunnel (`cloudflared tunnel run <name>`) is a deployment and is not held here. The `ssh`
+  destination is read as a host, in any case, with or without a user, an `ssh://` scheme or a
+  port: a reverse forward is a tunnel when that host is the service's name or a subdomain of it
+  (`serveo.net`, `qr@a.pinggy.io`). A host that only ends with a service's letters is someone
+  else's (`notserveo.net`, `team-pinggy.io`), and a jump host, a key file's name or a word of the
+  remote command that carries a service's name makes no tunnel.
 - **The doctor** proves the rule reads a quick tunnel's address under the installed config
   (`temporary addresses`), and fails when the setting cannot be read.
 - **A setting that cannot be read:** anything but an object of that shape, a key that is present

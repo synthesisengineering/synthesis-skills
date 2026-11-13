@@ -1638,6 +1638,18 @@ def check_deploy(command: str, config: dict, cwd: str | None = None, session: di
 
 TUNNEL_SSH = ("serveo.net", "localhost.run", "pinggy.io")
 RUNNERS = ("npx", "bunx", "pnpx", "pnpm", "yarn")
+SSH_VALUED = "BbcDEeFIiJLlmOoPpQRSWw"  # ssh's options that take a value: joined on, or the next word
+
+
+def _ssh_host(rest: list[str]) -> str:
+    """The host an ssh command connects to: its first word that is no option and no option's value, without the user,
+    a scheme or a port. A jump host, a key file's name and the words of the remote command are none of it (2026-11-12:
+    a forward to a host that ends with a service's letters, and one that only named a service, were held)."""
+    i = 0
+    while i < len(rest) and rest[i].startswith("-"):
+        at = next((j for j, c in enumerate(rest[i]) if c in SSH_VALUED), 0)  # the first letter that takes a value
+        i += 1 + (0 < at == len(rest[i]) - 1)  # nothing joined on: its value is the next word
+    return re.match(r"(?:ssh://)?(?:[^@/]*@)?([^:/]*)", "".join(rest[i:i + 1]).lower())[1].rstrip(".")
 
 
 def _tunnels(words: list[str]) -> bool:
@@ -1650,7 +1662,8 @@ def _tunnels(words: list[str]) -> bool:
                 or name == "ngrok" and rest[:1] in (["http"], ["tcp"], ["tls"], ["start"], ["start-all"])
                 or name == "devtunnel" and rest[:1] == ["host"]
                 or (name in ("lt", "localtunnel") or name in RUNNERS and "localtunnel" in rest) and flag("--port", "-p")
-                or name == "ssh" and any(w.startswith("-R") for w in rest) and any(w.rsplit("@", 1)[-1].endswith(TUNNEL_SSH) for w in rest))
+                or name == "ssh" and any(w.startswith("-R") for w in rest)  # to the service's own name, or a subdomain of it
+                and ("." + _ssh_host(rest)).endswith(tuple("." + s for s in TUNNEL_SSH)))
 
 
 def check_tunnel(command: str, config: dict, cwd: str, session: dict | None = None) -> str | None:
