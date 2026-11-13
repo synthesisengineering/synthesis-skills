@@ -891,10 +891,16 @@ ROOT = Path(__file__).resolve().parents[1]
 # _sync_workspace 8 (a refusal for one session, the pull first), Diverged 4, around 4, export 2, peek 2 and mask 1 (a
 # named policy that cannot be read refuses), with _rebuild 14 fewer (nothing is moved aside). cli.py 6: the sessions
 # command 5 (show says a number this Mac gave as that, and one that names nothing, with why) and the parser 1.
+# 5.18.0 (2026-11-13): core 55 more and plugin 62, so the desktop app's local agent-mode sessions are archived and
+# guarded. paths.py 31: desktop_agent_roots 25 (their projects folders, read level by level, a folder that cannot be
+# listed said) and desktop_dir 6. sessions.py 13: natives 8 (those roots, and what of them could not be listed) and
+# _identity 5 (a desktop session named with its own folder). guards.py 11: _claude_parts 12 (a path's parts below the
+# CLI's projects folder or a desktop session's, by its words alone) and _protected_roots 1, with _own and _material one
+# fewer each. The repository's conftest 7 (no test reads this Mac's desktop sessions).
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # consolidate first).
-CORE_BUDGET = 13858
-PLUGIN_BUDGET = 36824
+CORE_BUDGET = 13913
+PLUGIN_BUDGET = 36886
 
 
 def _lines(files):
