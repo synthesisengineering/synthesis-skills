@@ -772,10 +772,9 @@ def test_a_prompt_is_accounted_for_by_a_record_that_cites_it_alone_or_in_a_range
     assert sessions.uncited([first, second], roots) == [first, second]      # another record, another session, no citation
     asked["log"].write_text(f"- both, c1 #{first['seq']} to #{second['seq']}\n", encoding="utf-8")
     assert sessions.uncited([first, second], roots) == []
-    for joined in ("—", " – ", " through #", "..."):
+    for joined in ("—", " – #", " through #", "-#", "...", " – "):  # a dash set off by spaces joins a number that has its `#`
         asked["log"].write_text(f"- planned and drafted: `claude-code c1 #{first['seq']}{joined}{second['seq']}`\n", encoding="utf-8")
-        assert sessions.uncited([first, second], roots) == ([first, second][1:] if joined == "..." else []), joined
-    assert sessions.uncited([first], [str(asked["kb"] / "absent")]) == [first]
+        assert sessions.uncited([first, second], roots) == ([first, second][1:] if joined in ("...", " – ") else []), joined
 
 
 def test_a_range_is_joined_on_one_line_and_ends_in_a_record_number(asked):
@@ -793,9 +792,28 @@ def test_a_range_is_joined_on_one_line_and_ends_in_a_record_number(asked):
     asked["log"].write_text(f"- claude-code c1 #{second['seq']} - 3 options weighed, the second chosen\n", encoding="utf-8")
     assert sessions.uncited(found, roots) == [first]                # a number below the record's own ends no range: that record is cited
     for record in (f"c1 #{first['seq']}-{second['seq']}", f"(c1 #{first['seq']}–{second['seq']}).", f"c1 #{first['seq']} to\n  #{second['seq']}",
-                   f"c1 #{first['seq']} through {second['seq']}, then lunch", f"c1 #{first['seq']} -\n  {second['seq']}"):
+                   f"c1 #{first['seq']} through #{second['seq']}, then lunch", f"c1 #{first['seq']} -\n  #{second['seq']}",
+                   f"c1 #{first['seq']}-#{second['seq']}", f"c1 #{first['seq']} — #{second['seq']}"):
         asked["log"].write_text(f"- the morning's work, {record}\n", encoding="utf-8")
         assert sessions.uncited(found, roots) == [], record          # a range as the documents write it, wrapped or not
+
+
+def test_a_number_after_a_dash_or_a_word_ends_a_range_only_with_its_own_mark(asked):
+    """A range could end in a bare number after a dash set off by spaces, or after `to` or `through`. Prose that
+    uses a dash as a separator then turned one citation into a range: `#12 — 2027 planning starts in January` cited
+    #12 to #2027, and early in a session `#5 - 30 min call` cited #5 to #30, clearing prompts nothing was written
+    about (a review, 2026-11-13). The end of a range carries its `#`, unless the dash is tight (`#12-40`)."""
+    first, second = found = sessions.prompts("acme", "2026-10-30")
+    roots, cite = [str(asked["kb"])], f"claude-code c1 #{first['seq']}"
+    assert first["seq"] < second["seq"] < 10
+    for record in (f"- Scope cut: {cite} — 2027 planning starts in January\n",
+                   f"- {cite} - 30 min call with the team, plan agreed\n",
+                   f"- {cite} – 40 items left on the list\n",
+                   f"- the plan of {cite} went to 30 people\n",
+                   f"- {cite} through 2027 the plan holds\n",
+                   f"- {cite} to\n  30 people, as asked\n"):
+        asked["log"].write_text(record, encoding="utf-8")
+        assert sessions.uncited(found, roots) == [second], record
 
 
 def test_sessions_prompts_names_each_one_no_record_cites_and_exits_1_while_any_is_open(asked, capsys):
@@ -965,6 +983,36 @@ def test_the_listing_saved_among_the_records_cites_nothing_in_any_form(asked, ca
         "pretty-string.json": json.dumps({"day": "2026-10-30", "listing": printed}, indent=2, ensure_ascii=False),  # pretty-printed,
         "string.yaml": "ran: synthesis sessions prompts\nprinted: " + json.dumps(printed) + "\n",     # and as YAML writes a quoted string
     }
+    parts = [line.split("  ", 2) for line in lines]                                  # each line's citation, minute and words
+    assert all(len(p) == 3 and p[0] in cites for p in parts)
+    forms.update({  # 2026-11-13, a third review: the listing made into a checklist closed the day clean
+        "boxes.md": "## Open prompts to work through\n\n" + "".join(f"- [ ] {line}\n" for line in lines),
+        "ticked.md": "".join(f"- [x] {line}\n" for line in lines) + "".join(f"1. [X] {line}\n" for line in lines),
+        "backticks.md": "".join(f"- `{cite}`  {at}  {words}\n" for cite, at, words in parts),
+        "whole-in-backticks.md": "".join(f"- `{line}`\n" for line in lines),
+        "bold.md": "".join(f"* **{cite}**  {at}  {words}\n" for cite, at, words in parts),
+        "table.md": "| prompt | at | first words |\n|---|---|---|\n" + "".join(f"| {cite} | {at} | {words} |\n" for cite, at, words in parts),
+        "quoted-boxes.md": "".join(f"> - [ ] `{cite}` {at} {words}\n" for cite, at, words in parts),
+        # the JSON answer kept as a string, which the answer's own removal ran too early to see
+        "answer-string.jsonl": json.dumps({"cmd": "synthesis sessions prompts --json", "out": json.dumps(answer)}) + "\n",
+        "answer-string-fenced.md": "```\n" + json.dumps({"out": json.dumps(answer)}) + "\n```\n",
+        "answer-string.yaml": "out: " + json.dumps(json.dumps(answer, indent=2)) + "\n",
+        # what is open, alone: the answer's `open` list as `jq` writes it, and the refusal retyped as data
+        "open-list.json": json.dumps(answer["open"]),
+        "open-list-pretty.json": json.dumps(answer["open"], indent=2),
+        "open-lines.jsonl": "".join(json.dumps(cite) + "\n" for cite in cites),
+        "open-raw.txt": "".join(f"{cite}\n" for cite in cites),
+        "open-fenced.md": "Open after the day-end:\n\n```json\n" + json.dumps(answer["open"], indent=2) + "\n```\n",
+        "open-pasted.md": "Open after the day-end:\n\n" + json.dumps(answer["open"]) + "\n",
+        "open.yaml": "open:\n" + "".join(f"  - {cite}\n" for cite in cites),
+        "open-quoted.yaml": "day: 2026-10-30\nopen:\n" + "".join(f'  - "{cite}"\n' for cite in cites),
+        "open-flow.yaml": "open: [" + ", ".join(cites) + "]\n",
+        "open-keys.yaml": "".join(f"prompt{n}: {cite}\n" for n, cite in enumerate(cites)),
+        "open-maps.yaml": "".join(f"- open: {cite}\n  day: 2026-10-30\n" for cite in cites),
+        "open-string.jsonl": json.dumps({"tool": "Bash", "output": "".join(f"{cite}\n" for cite in cites)}) + "\n",
+        "open-beside-words.json": json.dumps({"ran": "the day-end record", "refused": True, "open": answer["open"]}),
+        "open-beside-words.yaml": "ran: the day-end record\nopen:\n" + "".join(f"  - {cite}\n" for cite in cites) + "refused: true\n",
+    })
     command = ["sessions", "prompts", "--workspace", "acme", "--date", "2026-10-30", "--records", kb]
     wrong = []
     for name, text in forms.items():
@@ -1074,7 +1122,11 @@ def test_a_line_that_holds_only_citations_cites_nothing(asked):
         "one line, as a range": f"- c1 #{first['seq']} to #{second['seq']}\n",
         "bold, in brackets": f"**({one})**\n[{two}]\n",
         "a row of a table": f"| prompt |\n|---|\n| {one} |\n| {two} |\n",
-        "under an entry, on a line of its own": f"- 10:00 planned the release and drafted the announcement.\n  {one}\n  {two}\n",
+        "a row of two": f"| {one} | {two} |\n",
+        "a list right under the line that leads into it": f"Still open after the day-end:\n- {one}\n- {two}\n",
+        "a paragraph of its own under an entry": f"- 10:00 planned the release and drafted the announcement.\n\n  {one}\n  {two}\n",
+        "a list of them wrapped over two lines": f"- {one},\n  {two}\n",
+        "quoted as a list in JSON": f'[\n  "{one}",\n  "{two}"\n]\n',
     }
     for name, text in bare.items():
         asked["log"].write_text(text, encoding="utf-8")
@@ -1084,18 +1136,60 @@ def test_a_line_that_holds_only_citations_cites_nothing(asked):
         "inside the entry's sentence": f"- 10:00 planned the release ({one}) and drafted the announcement ({two}).\n",
         "a row that says what became of it": f"| prompt | what became of it |\n|---|---|\n| {one} | planned |\n| {two} | drafted |\n",
         "a range the entry covers": f"- the day's work, c1 #{first['seq']} to #{second['seq']}\n",
+        "a heading over its entry": f"### {one}\nPlanned the release.\n\n### {two}\n\nDrafted the announcement.\n",
     }
     for name, text in said.items():
         asked["log"].write_text(text, encoding="utf-8")
         assert sessions.uncited(found, [kb]) == [], name
     asked["log"].unlink()
-    for name, text in {  # a record kept as data holds its citations in a field of their own
+    for name, text in {  # a record kept as data holds its citations in a field named `cites`
         "entry.yaml": f"decided: the release is planned and the announcement drafted\ncites:\n  - {one}\n  - {two}\n",
         "entry.json": json.dumps({"decided": "planned and drafted", "cites": [one, two]}, indent=2),
+        "line.jsonl": json.dumps({"decided": "planned and drafted", "cites": [one, two]}) + "\n",
+        "one.json": json.dumps({"decided": "planned"}) + "\n" + json.dumps({"cites": one, "then": {"cites": two}}),
+        "flow.yaml": f"decided: planned and drafted\ncites: [{one}, {two}]\n",
+        "quoted.yml": f'"decided": "planned and drafted"\n"cites":\n  - "{one}"\n  - \'{two}\'\n',
+        "each.yaml": f"- decided: the release is planned\n  cites: {one}\n- decided: the announcement is drafted\n  cites:\n    - {two}\n",
+        "level.yaml": f"entries:\n  cites:\n  - {one}\n  - {two}\n  day: 2026-10-30\n",
     }.items():
         saved = asked["kb"] / "projects" / "alpha" / name
         saved.write_text(text, encoding="utf-8")
         assert sessions.uncited(found, [kb]) == [], name
+        saved.unlink()
+    for name, text, left in (  # and under any other name a string of citations alone is a list of numbers
+        ("other.json", json.dumps({"decided": "planned and drafted", "open": [one], "cites": [two]}), [first]),
+        ("other.yaml", f"decided: planned and drafted\ncites:\n  - {one}\nopen:\n  - {two}\n", [second]),
+        ("maps.yaml", f"- cites:\n    - {one}\n- open: {two}\n", [second]),
+        ("not-cited.yaml", f"decided: planned and drafted\nnot cited:\n  - {one}\nuncited: {two}\n", found),
+        ("recites.json", json.dumps({"decided": "planned and drafted", "recites": [one], "cites_none": two}), found),
+    ):
+        saved = asked["kb"] / "projects" / "alpha" / name
+        saved.write_text(text, encoding="utf-8")
+        assert sessions.uncited(found, [kb]) == left, name
+        saved.unlink()
+
+
+def test_a_citation_counts_wherever_its_entry_wraps(asked):
+    """A record hard-wrapped at a column put its citation on a line of its own, and that line, read alone, held
+    citations and nothing else: a correct record was refused (a review, 2026-11-13). What says something is the
+    entry: a paragraph, or a list entry with the lines that continue it, however its lines break."""
+    first, second = found = sessions.prompts("acme", "2026-10-30")
+    kb, one = str(asked["kb"]), f"claude-code c1 #{first['seq']}"
+    wrapped = {
+        "the citation alone on the entry's next line": f"- 10:00 the release is planned; the decision is in REFERENCE.md under Scope\n  ({one}).\n",
+        "under the entry, on a line of its own": f"- 10:00 planned the release.\n  {one}\n",
+        "between the harness and the session": f"- 10:00 the release is planned; recorded in REFERENCE.md (claude-code\n  c1 #{first['seq']}).\n",
+        "between the session and the number": f"- 10:00 the release is planned; recorded in REFERENCE.md (claude-code c1\n  #{first['seq']}).\n",
+        "a paragraph that is no list": f"The release is planned, after the review;\nthe plan is in REFERENCE.md\n({one})\n",
+        "a quoted paragraph": f"> the release is planned, as asked\n> ({one})\n",
+        "a numbered entry with a box": f"1. [x] the release is planned\n   {one}\n2. [ ] the announcement\n",
+        "the citation first": f"- {one}\n  planned; the plan is in REFERENCE.md\n",
+        "an entry of a YAML record": f"note: the release is planned, and the plan is in REFERENCE.md\n  ({one})\n",
+    }
+    for name, text in wrapped.items():
+        saved = asked["kb"] / "projects" / "alpha" / ("entry.yaml" if "YAML" in name else "log.md")
+        saved.write_text(text, encoding="utf-8")
+        assert sessions.uncited(found, [kb]) == [second], name
         saved.unlink()
 
 
@@ -1123,8 +1217,53 @@ def test_a_listing_line_an_agent_wrote_on_is_a_record_and_the_lines_left_as_prin
     of that prompt. The lines it left as the listing printed them still say nothing."""
     first, second = found = sessions.prompts("acme", "2026-10-30")
     one, two = _listed(capsys).splitlines()[:2]
-    asked["log"].write_text(f"{one} -> planned; the plan is in REFERENCE.md\n{two}\n", encoding="utf-8")
-    assert sessions.uncited(found, [str(asked["kb"])]) == [second]
+    cite, at, words = one.split("  ", 2)
+    for worked in (f"{one} -> planned; the plan is in REFERENCE.md\n{two}\n",
+                   f"- [x] {one} -> planned; the plan is in REFERENCE.md\n- [ ] {two}\n",          # the checklist, one box worked
+                   f"- [x] `{cite}` planned; the plan is in REFERENCE.md\n- [ ] {two}\n",
+                   f"| prompt | at | first words | what became of it |\n|---|---|---|---|\n| {cite} | {at} | {words} | planned |\n"
+                   f"| {' | '.join(two.split('  ', 2))} | |\n"):
+        asked["log"].write_text(worked, encoding="utf-8")
+        assert sessions.uncited(found, [str(asked["kb"])]) == [second], worked
+
+
+def test_a_records_folder_that_cannot_be_read_is_named_and_nothing_is_listed(asked, tmp_path, capsys):
+    """A folder of records that is not there was walked as an empty one: every prompt stayed open, the day-end
+    refused each day, and a citation written in the real folder was never read, with no word of why (a review,
+    2026-11-13). A folder that cannot be read, or one inside it, is named, and the listing says nothing of what
+    is open."""
+    found, kb = sessions.prompts("acme", "2026-10-30"), asked["kb"]
+    asked["log"].write_text("".join(f"- done (claude-code c1 #{p['seq']})\n" for p in found), encoding="utf-8")
+    command = ["sessions", "prompts", "--workspace", "acme", "--date", "2026-10-30"]
+    assert cli.main(command + ["--records", str(kb)]) == 0                          # the control: read, it accounts for both
+    capsys.readouterr()
+    absent, a_file = kb / "recrods", asked["log"]
+    for wrong in (absent, a_file):
+        with pytest.raises(OSError):
+            sessions.uncited(found, [str(kb), str(wrong)])
+        for more in ([], ["--json"]):
+            assert cli.main(command + ["--records", str(kb), "--records", str(wrong)] + more) == 2
+            said = capsys.readouterr()
+            assert str(wrong) in said.err and "no record" in said.err and said.out == "", (wrong, said)
+    with _closed(kb / "projects" / "alpha" / "sessions"):                           # a folder inside it that may not be listed
+        assert cli.main(command + ["--records", str(kb)]) == 2
+        assert str(kb / "projects" / "alpha" / "sessions") in capsys.readouterr().err
+    record, history = _day_end(asked, tmp_path, records=[str(absent)])              # and the day-end record says which
+    refused = record()
+    assert refused.returncode and str(absent) in refused.stderr and not history.exists()
+
+
+def test_a_folder_reached_through_a_link_is_read_when_it_is_named_and_not_from_above(asked, tmp_path):
+    """The walk follows no link to a folder: a link may lead out of the records, or back into them. A folder kept
+    elsewhere and linked into the records is read by naming it."""
+    first, second = found = sessions.prompts("acme", "2026-10-30")
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    (elsewhere / "log.md").write_text(f"- planned the release (claude-code c1 #{first['seq']})\n", encoding="utf-8")
+    (asked["kb"] / "linked").symlink_to(elsewhere, target_is_directory=True)
+    assert sessions.uncited(found, [str(asked["kb"])]) == found
+    assert sessions.uncited(found, [str(asked["kb"] / "linked")]) == [second]
+    assert sessions.uncited(found, [str(asked["kb"]), str(elsewhere)]) == [second]
 
 
 def test_a_record_after_the_pasted_refusal_closes_what_it_cites_and_no_more(asked, tmp_path):
