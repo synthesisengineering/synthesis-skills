@@ -5,23 +5,30 @@ Three groups. The first reads one real build, made once into a temporary folder:
 byte came from, and that no packaged line promises what the package cannot do. The second gives the checks
 checkouts and archives that must fail. The third is the command line: one line of output and an exit code.
 
-Which phrases count, decided from what the skills outside the list say (the guards, the board, the rituals):
+Which phrases count, decided from what the skills outside the list say (the guards, the board, the rituals). A file
+is read a paragraph at a time, so a phrase that hard wrapping splits across two lines is read whole:
 
   a hook claim            PreToolUse, SessionStart, UserPromptSubmit; "Stop hook", "session-start hook", "prompt
-                          hook", "lifecycle hooks", "git hooks", "v5 hooks", "synthesis-hook"; "the commit check";
-                          hooks.json; core.hooksPath; and "hook" before a verb of enforcement ("the hook refuses"):
-                          refuse, block, deny, stop, check, enforce, catch, hold, ask, wait, let, run, re-inject
+                          hook", "lifecycle hooks", "v5 hooks", "synthesis-hook"; "the git hooks" and
+                          "synthesis-git-hooks"; hooks.json; core.hooksPath; and a hook or the commit check doing
+                          what only enforcement does, with a word between or in the passive too ("the hook
+                          refuses", "the hook will refuse", "the commit check refuses", "blocked by the hook"):
+                          refuse, block, deny, enforce, re-inject
   a guard claim           a guard by its name, spaced or hyphenated, so the name of a guard skill counts: a send,
-                          message, deploy, shell, write, browser, account-routing, repo, commit, publish, pre-tool,
-                          synthesis or v5 guard; "the guard"; "agent guardrails"; guards.py; and "guard" before
-                          one of the same verbs ("each guard blocks")
+                          message, deploy, shell, browser, account-routing, repo, commit, publish, pre-tool,
+                          synthesis or v5 guard; "the guard", but not "the guard clause"; "agent guardrails";
+                          guards.py; and a guard doing one of the same ("each guard blocks", "blocked by a guard")
   an approval-code claim  "approve <code>", "approval code", "six-character code", "type approve" and
                           "waits for the code"
-  a runtime need          the `synthesis` command in backticks, ~/.synthesis/v5, SYNTHESIS_HOME and an import of
-                          the synthesis core
+  a runtime need          the `synthesis` command in backticks, or one of its subcommands at the start of a line
+                          ("synthesis doctor" in a fenced block, "$ synthesis who") or after "python3 -m";
+                          ~/.synthesis/ and ~/.synthesis/v5; SYNTHESIS_HOME; an import of the synthesis core; and
+                          the coordination board: "board claims", "board row", "the coordination board", "the
+                          board records your claim", "release the claim"
 
-The same words in their ordinary senses pass: a writer's opening hook, a guard clause, a pull request someone
-approved, a project's own pre-commit hooks in a review checklist. SPARED pins them.
+The same words in their ordinary senses pass: a writer's hook that lets, asks or catches, a React hook that runs, a
+guard clause, a write guard on a migration, a project's own git hooks and commit check, a pull request someone
+approved, a board of directors, a board update and a press release that claims. SPARED pins them.
 """
 
 from __future__ import annotations
@@ -82,14 +89,13 @@ def dependencies(skill_md: str) -> list:
 
 
 def claimed(skill: str) -> list:
-    """(path, line number, kinds) for each line a package of this skill would carry that the check refuses."""
+    """(path, line number, kinds) for each claim a package of this skill would carry, read as the check reads."""
     found = []
     for path in sorted((ROOT / "skills" / skill).rglob("*")):
         name = path.relative_to(ROOT).as_posix()
         if path.is_file() and "__pycache__" not in path.parts and not is_test(name):
             lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
-            found += [(name, number, kinds) for number, line in enumerate(lines, 1)
-                      for kinds in [package.claims(line)] if kinds]
+            found += [(name, number, kinds) for number, kinds, _ in package.claimed(lines)]
     return found
 
 
@@ -258,8 +264,7 @@ def test_every_name_on_the_list_is_a_skill_here_and_none_is_both_listed_and_left
 def test_no_packaged_line_claims_a_hook_a_guard_or_an_approval_code_or_needs_the_runtime(built):
     found = [f"{name}:{number}: {', '.join(kinds)}: {line.strip()[:100]}"
              for name, data in sorted(built.items())
-             for number, line in enumerate(data.decode("utf-8").splitlines(), 1)
-             for kinds in [package.claims(line)] if kinds]
+             for number, kinds, line in package.claimed(data.decode("utf-8").splitlines())]
     assert found == []
 
 
@@ -322,6 +327,32 @@ CLAIMED = [  # (kind, a line as a skill outside the list writes it)
     ("a runtime need", "1. **Configure** in `~/.synthesis/v5/config.json` (references/config.md)"),
     ("a runtime need", "For one-off testing of the engine itself, point `SYNTHESIS_HOME` at a scratch folder"),
     ("a runtime need", "from synthesis import yamlish  # noqa: E402"),
+    # A word between the noun and its verb, and the passive.
+    ("a hook claim", "The hook will refuse the send"),
+    ("a hook claim", "the hook then refuses the commit"),
+    ("a hook claim", "A send is blocked by the hook"),
+    ("a hook claim", "a commit that is refused by the commit check"),
+    ("a guard claim", "a send is blocked by a guard until the principal approves it"),
+    # One line for each name that nothing else on its line catches, so no name can go without a test noticing.
+    ("a hook claim", "- SessionStart establishes verified time and project state;"),
+    ("a hook claim", "the plugin's `hooks/hooks.json` decides what runs"),
+    ("a hook claim", "it shows whether git still runs the commit check (`core.hooksPath`). A"),
+    ("a hook claim", "Core `install.register_git_hooks` and `install.uninstall` (the git hooks path)"),
+    ("a guard claim", "short_description: \"Apply the agent guardrails synthesis workflow\""),
+    ("a guard claim", "(`synthesis/guards.py`), and two checks sit at the end of a turn and of a day."),
+    ("an approval-code claim", "`approve <code>`; the block message says \"approve followed by the code\""),
+    # A command with no backtick on its line, as inside a fenced block, and the runtime's own folder.
+    ("a runtime need", "synthesis doctor"),
+    ("a runtime need", "synthesis claim \"$KB/...\" --project <id>"),
+    ("a runtime need", "$ synthesis who"),
+    ("a runtime need", "`python3 -m synthesis doctor`"),
+    ("a runtime need", "`~/.synthesis/`"),
+    ("a runtime need", "Never copy one Mac's `~/.synthesis`, board session files, harness caches or transcript caches"),
+    # The coordination board and its claims.
+    ("a runtime need", "The board records your claim; release it when you pause."),
+    ("a runtime need", "Check the coordination board for live foreign claims on the"),
+    ("a runtime need", "4. **Continuity:** board claims, each session's active project, the project records,"),
+    ("a runtime need", "the one edit, commit it with `git commit -o`, and release the claim:"),
 ]
 
 SPARED = [  # the same words in their ordinary senses: lines of method skills, and one made up at the end
@@ -347,6 +378,24 @@ SPARED = [  # the same words in their ordinary senses: lines of method skills, a
     "The state directory defaults to `~/.synthesis/local-models/`. A successful",
     # The discipline's name at the start of a wrapped line, and a skill's name in backticks, are no command.
     "synthesis engineering practices, and `synthesis-content-quality` is the skill that checks them",
+    "synthesis project the work belongs to (synthesis-project-management). If the work",
+    # A writer's hook and a React hook act too; a guard, git hooks and a commit check can be a project's own.
+    "A strong hook lets the reader know what is at stake.",
+    "The best hook asks a question the reader wants answered.",
+    "A good hook catches the reader in the first line.",
+    "The useEffect hook runs after every render.",
+    "Put the guard clause first so the happy path is not nested.",
+    "Use git hooks (husky, lefthook) to run the linter.",
+    "Make sure each commit check passes in CI.",
+    "Add a write guard to the migration so two workers cannot run it at once.",
+    # The ordinary boards, which the executive-communication skill on the list writes about, and a claim of fact.
+    "The board of directors meets each quarter.",
+    "quality across the board.",
+    "Sketch it on a whiteboard first.",
+    "Once everyone is on board, send the plan.",
+    "Read when writing a progress report, executive summary or board update.",
+    "The board questioned the claim that revenue would double.",
+    "the press release claims a 40 percent gain",
 ]
 
 
@@ -358,6 +407,27 @@ def test_each_phrase_is_caught(kind, line):
 @pytest.mark.parametrize("line", SPARED)
 def test_the_ordinary_senses_of_the_words_pass(line):
     assert package.claims(line) == []
+
+
+def test_a_claim_split_by_hard_wrapping_is_read_whole_and_reported_where_it_begins():
+    """This repository hard-wraps its Markdown, so a file is read a paragraph at a time: its lines up to a blank one.
+    A claim is reported at the line where it begins, the paragraph's first line when it begins there."""
+    text = ["Draft the reply and show it to the principal. Nothing reaches Slack until the send",
+            "    guard has the principal's code.",
+            "",
+            "Only the principal types the approval",
+            "code in their own prompt.",
+            "",
+            "Three lines, and the claim",
+            "on the last: write the reply, then",
+            "never route around the guard.",
+            "",
+            "A blank line ends a paragraph, so this send",
+            "",
+            "guard is two paragraphs and no claim."]
+    assert package.claimed(text) == [(1, ["a guard claim"], text[0]), (4, ["an approval-code claim"], text[3]),
+                                     (9, ["a guard claim"], text[8])]
+    assert package.claimed([]) == [] and package.claimed(["", "Prose only.", ""]) == []
 
 
 # ---- checkouts and archives that must fail --------------------------------------------
@@ -424,6 +494,10 @@ def test_a_sound_checkout_has_no_problem(tmp_path):
      "skills/alpha/references/setup.md:1: a runtime need: Run `synthesis doctor` first."),
     ({"alpha": {**skill("alpha"), "scripts/run.py": "from synthesis import yamlish\n"}}, None, None,
      "skills/alpha/scripts/run.py:1: a runtime need: from synthesis import yamlish"),
+    ({"alpha": skill("alpha", body="Nothing reaches Slack until the send\nguard has the principal's code.\n")},
+     None, None, "skills/alpha/SKILL.md:6: a guard claim: Nothing reaches Slack until the send"),
+    ({"alpha": {**skill("alpha"), "references/setup.md": "First:\n\n```bash\nsynthesis doctor\n```\n"}}, None, None,
+     "skills/alpha/references/setup.md:4: a runtime need: synthesis doctor"),
     ({"alpha": skill("alpha")}, None, {"name": "methods", "description": "The guard refuses what it must."},
      ".codex-plugin/plugin.json:4: a guard claim"),
     ({"alpha": skill("alpha")}, None, {"name": "methods", "version": "9.9.9"},
