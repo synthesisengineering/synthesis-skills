@@ -4,6 +4,38 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [5.17.0] - 2026-11-13
+
+- **A record's number names the same record for good** (`synthesis-context-lifecycle` 2.6.0). Project records cite a
+  conversation's record as `<session> #<n>`. `synthesis sessions export --rebuild` moved the archive aside and
+  numbered every session anew, so under a reader that files more than the one before it every later number moved:
+  counted on one machine before the change, 157 of the 373 record numbers that project records cite would have named
+  another record. A rebuild now reads each session again from its start and appends only what the archive does not
+  hold (the same kind, time, words and source, read as today's reader would write it, so a secret pattern added since
+  makes nothing new), after the archive's last number; no line it holds is changed or moved. Run on a scratch copy
+  of the cited sessions of that machine's archive with this release's code: 373 of the 373 cited numbers name the
+  same record, and 841 records are gained, none lost.
+- **An export reads a session again the same way wherever it must**: where the archive holds more than its state
+  counts (a write cut short after its lines, a state lost) and where the harness rewrote its transcript smaller.
+  Nothing is dropped by count, and nothing is filed twice.
+- **A Mac with no archive of a session begins it from another Mac's synced copy**, where a sessions repo cloned there
+  holds it (the copy in the workspace and month that Mac files the session in): the copy's records keep their
+  numbers, and what it does not hold is numbered past every number the other Mac had given (`next`, now in
+  `meta.json`). `numbers_from.own_from` says where that Mac's own numbers start, and `synthesis sessions show --seq`
+  says when a number names a record only the other Mac holds, and when it is this Mac's own. `peek` reads a copy's
+  numbers too, and writes nothing.
+- **A sync pulls before it writes.** A session whose copy another Mac numbered or extended is refused alone, with
+  why, while the workspace's other sessions sync, and a pull that fails is undone, so the repo stays on its branch.
+  Clone a new Mac's sessions repos before its first export.
+- **A session is shown in the order said**: `show`, the records around a cited one, and `recent` order by the moment
+  each record's time names, whatever its fraction of a second, on every Python; so does the day's list of prompts.
+- **A commit policy the config names and that cannot be read masks nothing and writes nothing**: the session is not
+  exported, and the export's stamp says why, as for any transcript it could not copy.
+- **How it was checked.** Tests first, and one review round by a fresh reviewer given the code and no conclusion:
+  ten findings, three serious (a second Mac gave the first Mac's numbers to other records; a write cut short, then
+  a rebuild or an export, dropped records; two Macs wedged a workspace's sync), each fixed with a test that failed
+  before its fix, or kept with its reason stated.
+
 ## [5.16.0] - 2026-11-13
 
 - **A lapse is written in one step** (`synthesis-daily-rituals` 3.14.0). When a dated item passes its date with no
