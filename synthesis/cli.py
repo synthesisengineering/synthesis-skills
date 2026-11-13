@@ -35,7 +35,11 @@ def cmd_claim(args) -> int:
         return 1
     print("claimed:\n  " + "\n  ".join(session.claims))
     claimed = [board.as_claim(p) for p in args.paths]
-    found = checkout.dirty_under(claimed)  # someone's uncommitted work already here (2026-10-20)
+    try:
+        found = checkout.dirty_under(claimed)  # someone's uncommitted work already here (2026-10-20)
+    except checkout.Unreadable as exc:
+        found = []
+        print(f"note: {exc}, so whether anyone's uncommitted work is already here cannot be said", file=sys.stderr)
     checkout.snapshot_paths(claimed, "claim", sid)
     for f in found[:10]:
         last = checkout.last_claimant(f, exclude=sid)
@@ -54,7 +58,12 @@ def cmd_release(args) -> int:
     held = getattr(me, "claims", [])
     wanted = {board.normalize(p) for p in args.paths}
     going = [c for c in held if not args.paths or c in wanted or c.removesuffix("/**") in wanted]
-    left_dirty = checkout.dirty_under(going)
+    try:
+        left_dirty = checkout.dirty_under(going)
+    except checkout.Unreadable as exc:  # what nobody could read is never released as clean
+        print(f"refused: {exc}, so the uncommitted work under these claims cannot be told; nothing was released",
+              file=sys.stderr)
+        return 1
     shots = checkout.snapshot_paths(going, "release", sid)
     if left_dirty and not args.hand_to:
         print("refused: these files under the claims you are releasing have uncommitted changes:\n  "
@@ -63,7 +72,8 @@ def cmd_release(args) -> int:
         return 1
     if left_dirty:
         board.message(args.hand_to, sid, "Handing you uncommitted changes I leave in: " + ", ".join(left_dirty[:10])
-                      + (f" (snapshot {shots[0][:10]}; `synthesis journal <path>` restores them)" if shots else "")
+                      + (f" (snapshot {shots[0][:10]}; `synthesis journal <path>` says whether each was kept, and "
+                         "`--show` gives back what was)" if shots else "")
                       + ". They are yours to commit or carry on.")
     before = len(held)
     left = len(getattr(board.release(sid, args.paths or None), "claims", []))
@@ -74,14 +84,17 @@ def cmd_release(args) -> int:
 def cmd_journal(args) -> int:
     from synthesis import checkout
     if args.show:
-        sys.stdout.write(checkout.show(args.show, args.path))
+        sys.stdout.flush()
+        sys.stdout.buffer.write(checkout.show(args.show, args.path))  # byte for byte: a binary file, CRLF line ends
+        sys.stdout.buffer.flush()
         return 0
     for row in checkout.journal(args.path)[:args.limit]:
         left = row.get("left", [])
         print(f"{time.strftime('%Y-%m-%d %H:%M', time.localtime(row['at']))}  {row['sha'][:10] or 'none kept':<10}  "
               f"{row['reason']:<14} {row.get('session', '')[:8]:<8}  {row['repo']}: {', '.join(row['files'][:4])}"
               + (f" and {len(row['files']) - 4} more" if len(row["files"]) > 4 else "")
-              + (f"; {row.get('left_count', len(left))} untracked not kept (past a limit): {', '.join(left[:4])}" if left else "")
+              + (f"; {row.get('left_count', len(left))} not kept (past a limit, unreadable, or holding a credential): "
+                 f"{', '.join(left[:4])}" if left else "")
               + ("; untracked files not looked at" if row.get("tracked_only") else ""))
     return 0
 
@@ -238,7 +251,7 @@ def cmd_sessions(args) -> int:
         report = sessions.export(0 if args.all else args.days, args.session or "", rebuild=args.rebuild, scheduled=args.scheduled)
         print("\n".join(report[:1] + report[1:][-50:] + [f"{len(report)} line(s)"]) if report else "nothing new to export")
         if args.scheduled:  # the hourly job also fetches; a fetch that fails is the doctor's to say, not the copy's
-            print("\n".join(sessions.fetch()) or "fetched every knowledge and sessions repo")
+            print("\n".join(sessions.fetch()))
         if any("not exported" in line or "not copied" in line for line in report):  # 2026-11-12: every copy was refused, and it exited 0
             stamp = sessions.root() / ".state" / "export.json"  # left before this is said, unless the archive itself could not be written
             print(next((line for line in report if line.startswith("not exported")), f"{paths.read_json(stamp).get('failed')} transcript(s) "

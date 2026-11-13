@@ -128,8 +128,8 @@ each harness writes its own transcript to disk as the session runs. The copy is 
   `synthesis sessions export --all --scheduled` and `synthesis sessions sync` every hour and at login, so a
   transcript is copied whether or not any session remembers to. `--scheduled` marks a run as the schedule's
   own; it is the job's flag and no one else's. Since 5.19.0 the schedule's run also fetches each knowledge root
-  and sessions repo (`git fetch`, never a merge), so how far a checkout is behind its remote is known without
-  an agent fetching first; `synthesis doctor` says when each was last fetched, and config `scheduled_fetch:
+  and sessions repo (`git fetch`, never a merge), so `git status` says how far a checkout is behind its remote
+  without an agent fetching first; `synthesis doctor` says when each was last fetched, and config `scheduled_fetch:
   false` turns it off. `synthesis doctor` fails when that schedule is not loaded,
   when it runs another command than this install's (one label holds one schedule, so another install's setup
   replaces it; the doctor names what it runs), when no export has finished in a day, or when none of the

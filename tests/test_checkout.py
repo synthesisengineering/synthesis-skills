@@ -193,14 +193,16 @@ def test_an_untracked_file_git_cannot_read_is_named_and_the_rest_kept(repo):
     assert checkout.journal(str(locked))[0]["left"] == ["locked.md"]
 
 
-def test_a_snapshot_git_cannot_write_keeps_the_tracked_changes_and_names_the_rest(repo, monkeypatch):
+def test_a_snapshot_git_cannot_write_names_every_file_it_did_not_keep(repo, monkeypatch):
+    """Since the first review every snapshot is one commit through a temporary index (doc 3: `git stash create`
+    wrote the real index), so there is no second way to fall back on: when git writes nothing, the journal names
+    every file the snapshot would have kept."""
     monkeypatch.setattr(checkout, "_tree_commit", lambda *args: "")
     (repo / "notes.md").write_text("first line\nedited\n", encoding="utf-8")
     (repo / "new.md").write_text("untracked\n", encoding="utf-8")
-    sha = checkout.snapshot(str(repo), "claim", "S1")
-    assert sha and checkout.show(sha, str(repo / "notes.md")) == b"first line\nedited\n"
+    assert checkout.snapshot(str(repo), "claim", "S1") == ""
     row = checkout.journal()[0]
-    assert row["files"] == ["notes.md"] and row["left"] == ["new.md"] and "tracked_only" not in row
+    assert row["sha"] == "" and row["files"] == [] and sorted(row["left"]) == ["new.md", "notes.md"]
 
 
 def test_the_session_start_snapshot_stays_tracked_only_and_its_journal_line_says_so(repo, capsys):
@@ -342,7 +344,7 @@ def test_finders_files_are_not_records(repo, capsys):
     for name in (".DS_Store", "._draft.md", "Icon\r"):
         (folder / name).write_bytes(b"\x00\x01")
     assert cli.main(["--session", "S1", "release"]) == 0
-    assert checkout.snapshot(str(repo), "claim", "S1") == "" and checkout.journal()[0]["reason"] != "claim"
+    assert checkout.snapshot(str(repo), "claim", "S1") == "" and checkout.journal() == []  # nothing kept, nothing to name
 
 
 def test_names_with_a_carriage_return_or_staged_twice_are_kept_once_as_written(repo):

@@ -456,8 +456,10 @@ def check_sessions_export(plist: Path, stamp: Path, now: float = 0, run=subproce
 def unsaved(claims: list, hours: float, now: float = 0) -> dict:
     """Records that leave this Mac (plan item 13.5, part 2): per repository, the files under these claims that are
     uncommitted, or in a commit no remote holds, for longer than `hours`. {repo: (files, the oldest in hours,
-    uncommitted, in unpushed commits)}. A deleted file is as old as its folder's last change; in a repository with
-    no remote, what is pushed cannot be told, so its commits are not counted. Reads git and writes nothing."""
+    uncommitted, in unpushed commits)}, or the reason git could not read the repository, which is said, never read
+    as nothing. A deleted file is as old as the last change to the nearest folder still there; commits on every local
+    branch are read; in a repository with no remote, what is pushed cannot be told, so its commits are not counted.
+    Finder's files are not records. Reads git and writes nothing."""
     from synthesis import board, checkout
     now, held, found = now or time.time(), {}, {}
     for claim in claims:
@@ -470,20 +472,26 @@ def unsaved(claims: list, hours: float, now: float = 0) -> dict:
             full = os.path.join(repo, rel)
             return any(full == base or board.overlaps(claim, full) for claim, base in under)
         spec = ["--", *sorted({os.path.relpath(base, repo) for _, base in under})]
-        changed, committed = {}, {}
-        for rel in (row[3:] for row in checkout._changes(repo, True, *spec)):
-            for where in (os.path.join(repo, rel), os.path.dirname(os.path.join(repo, rel))):
-                try:
-                    changed[rel] = (now - os.lstat(where).st_mtime) / 3600
-                    break
-                except OSError:
-                    continue
-        if checkout._git(repo, "remote")[1].strip():
-            code, out = checkout._git(repo, "log", "--format=%x00%ct", "--name-only", "HEAD", "--not", "--remotes", *spec)
-            for chunk in out.split("\0")[1:] if code == 0 else []:
-                when, _, names = chunk.partition("\n")
-                for rel in filter(None, names.splitlines()):
-                    committed[rel] = max(committed.get(rel, 0.0), (now - int(when)) / 3600)
+        changed, committed, rows = {}, {}, checkout._changes(repo, True, *spec)
+        if rows is None:
+            found[repo] = "git could not read its status"
+            continue
+        for rel in (row[3:].rstrip("/") for row in rows):
+            where = os.path.join(repo, rel)
+            while where != repo and not os.path.lexists(where):  # deleted: as old as the nearest folder still there
+                where = os.path.dirname(where)
+            changed[rel] = (now - os.lstat(where).st_mtime) / 3600
+        if checkout._git(repo, "remote")[1].strip():  # every local branch, with names as written (-z: never quoted)
+            code, out = checkout._git(repo, "log", "-z", "--format=%x00%ct", "--name-only", "--branches", "--not", "--remotes", *spec)
+            when, fresh = 0, True
+            for token in out.split("\0") if code == 0 else []:
+                if not token:
+                    fresh = True
+                elif fresh and token.isdigit():
+                    when, fresh = int(token), False
+                else:
+                    rel = token.lstrip("\n")
+                    committed[rel] = max(committed.get(rel, 0.0), (now - when) / 3600)
         late = {r: a for r, a in changed.items() if a > hours and claimed(r)}
         gone = {r: a for r, a in committed.items() if a > hours and claimed(r)}
         if late or gone:
@@ -510,9 +518,10 @@ def check_unsaved(config: dict, claims: list, now: float = 0) -> Check:
     if not found:
         return Check("warn" if note else "ok", "unsaved records", f"nothing under a claim unsaved past {hours:g} h{note}")
     return Check("warn", "unsaved records", f"{len(found)} {'repository holds' if len(found) == 1 else 'repositories hold'} "
-                 f"claimed records unsaved past {hours:g} h{note}: " + "; ".join(
-                     f"{_short(Path(repo))}: {files} file(s), the oldest {age:.0f} h ({late} uncommitted, {gone} in commits no "
-                     "remote holds)" for repo, (files, age, late, gone) in found.items())
+                 f"claimed records unsaved past {hours:g} h, or could not be read{note}: " + "; ".join(
+                     f"{_short(Path(repo))}: could not read it ({counts})" if isinstance(counts, str) else
+                     f"{_short(Path(repo))}: {counts[0]} file(s), the oldest {counts[1]:.0f} h ({counts[2]} uncommitted, "
+                     f"{counts[3]} in commits no remote holds)" for repo, counts in found.items())
                  + ". Commit and push them, or ask the seat that holds the claim (`synthesis who`)")
 
 
@@ -530,9 +539,11 @@ def check_fetch(stamp: Path, config: dict, now: float = 0) -> Check:
         except ValueError:
             return None
     ran = ago(last.get("at"))
-    if not repos or ran is None:
+    if ran is None:
         return Check("warn", "scheduled fetch", "no run of the hourly job has fetched yet (it fetches each knowledge root and "
                      "sessions repo, and never merges)")
+    if not repos:
+        return Check("ok", "scheduled fetch", "nothing to fetch: no knowledge root or sessions repo is a git checkout")
     failed = sorted((r, e) for r, e in repos.items() if e.get("failed"))
     detail = f"{len(repos) - len(failed)} of {len(repos)} repositories fetched by the hourly job, " + (
         f"{ran * 60:.0f} min ago" if ran < 1 else f"{ran:.0f} h ago")
