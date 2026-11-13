@@ -223,8 +223,8 @@ ID_NAMED = "mcp__0a1b2c3d-0000-4000-8000-000000000000__"
 
 
 @pytest.mark.parametrize("tool, given", [
-    (ID_NAMED + "reply", {"messageId": "m1", "body": "<p>Would 3:30 pm work?</p>"}),
-    (ID_NAMED + "update_draft", {"draftId": "d1", "body": "<p>Would 3:30 pm work?</p>"}),
+    (ID_NAMED + "reply", {"messageId": "m1", "htmlBody": "<p>Would 3:30 pm work?</p>"}),
+    (ID_NAMED + "update_draft", {"draftId": "d1", "htmlBody": "<p>Would 3:30 pm work?</p>"}),
     ("messages_send", {"to": "+15550100", "text": "See you at 3:30 pm"}),
 ])
 def test_a_message_by_a_connector_the_guard_has_no_name_for_is_a_message_too(tool, given):
@@ -261,6 +261,7 @@ def test_a_message_that_went_on_one_code_spends_the_other():
     read_calendar(minutes_ago=0.1)
     assert ordinary(ask())                                               # a second copy asks again
     other = mail("Would 4:15 pm on Thursday work for you?")
+    age_reads(30)
     held = ask(given=other)                                              # the code of its own is asked for and not typed
     assert stale(held)
     read_calendar(minutes_ago=0.1)
