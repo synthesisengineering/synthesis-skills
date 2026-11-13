@@ -526,7 +526,8 @@ def register_sessions_export(load: bool = True) -> list:
     log = f"/tmp/{EXPORT_LABEL}.log"
     spec = {"Label": EXPORT_LABEL, "StartInterval": 3600, "RunAtLoad": True, "ProcessType": "Background",
             "StandardOutPath": log, "StandardErrorPath": log,  # a login shell, for the user's PATH and git credentials
-            "ProgramArguments": ["/bin/bash", "-lc", f'{_homes()}"{command}" sessions export --all; "{command}" sessions sync']}
+            "ProgramArguments": ["/bin/bash", "-lc",  # `--scheduled`: the run marks itself, and the doctor knows the schedule by it
+                                 f'{_homes()}"{command}" sessions export --all --scheduled; "{command}" sessions sync']}
     lines = []
     if plist.exists() and not install.runs_only(plist, command):  # one label holds one schedule: another install's copy stops here
         lines.append(f"archived another install's export schedule to {workspace_archive([plist])}")

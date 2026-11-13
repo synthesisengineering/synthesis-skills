@@ -232,7 +232,7 @@ def cmd_sessions(args) -> int:
             print(exc, file=sys.stderr)
             return 1 if isinstance(exc, ValueError) else 2
     elif args.action == "export":
-        report = sessions.export(0 if args.all else args.days, args.session or "", rebuild=args.rebuild)
+        report = sessions.export(0 if args.all else args.days, args.session or "", rebuild=args.rebuild, scheduled=args.scheduled)
         print("\n".join(report[:1] + report[1:][-50:] + [f"{len(report)} line(s)"]) if report else "nothing new to export")
         if any("not exported" in line or "not copied" in line for line in report):  # 2026-11-12: every copy was refused, and it exited 0
             stamp = sessions.root() / ".state" / "export.json"  # left before this is said, unless the archive itself could not be written
@@ -403,6 +403,7 @@ def parser() -> argparse.ArgumentParser:
     s.add_argument("action", choices=("export", "sync", "list", "show", "recent", "search", "prompts"))
     s.add_argument("target", nargs="?", default="", help="show: a session id or its start; search: a pattern")
     s.add_argument("--all", action="store_true", help="export: every transcript, not only those changed in --days")
+    s.add_argument("--scheduled", action="store_true", help="export: the schedule's own run, which it marks for the doctor")
     s.add_argument("--days", type=float, default=2, help="export: transcripts changed in the last N days (default 2)")
     s.add_argument("--session", default="", help="export: only this session")
     s.add_argument("--rebuild", action="store_true", help="export: move the archive aside and export everything again")

@@ -663,7 +663,7 @@ def test_the_scheduled_copy_runs_with_each_home_selected_at_install(day_end, tmp
         monkeypatch.delenv(name, raising=False)
     elsewhere = {name: f"/elsewhere/{name.lower()}" for name in HOMES}
     runs = _started_by_launchd(tmp_path, "".join(f"export {name}={folder}\n" for name, folder in elsewhere.items()) if login else "")
-    assert [run["words"] for run in runs] == [["sessions", "export", "--all"], ["sessions", "sync"]]
+    assert [run["words"] for run in runs] == [["sessions", "export", "--all", "--scheduled"], ["sessions", "sync"]]
     for name in HOMES:
         wanted = picked[name] if name in chosen else elsewhere[name] if login else None
         assert [run[name] for run in runs] == [wanted, wanted], name
@@ -832,7 +832,8 @@ def _doctor() -> tuple:
     from datetime import datetime
     stamp = setup.install._home() / "sessions" / ".state" / "export.json"
     stamp.parent.mkdir(parents=True, exist_ok=True)
-    stamp.write_text(json.dumps({"exported": datetime.now().astimezone().isoformat(timespec="seconds")}))
+    now = datetime.now().astimezone().isoformat(timespec="seconds")
+    stamp.write_text(json.dumps({"exported": now, "scheduled": now}))  # the schedule's own run, as its command marks it
     found = setup.doctor.check_sessions_export(setup._export_plist(), stamp, run=lambda argv, **kw: subprocess.CompletedProcess(argv, 0, "", ""))
     return found.status, found.detail
 

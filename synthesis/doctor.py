@@ -412,6 +412,14 @@ def check_sessions_export(plist: Path, stamp: Path, now: float = 0, run=subproce
     if age is None or age > 24:
         return Check("fail", "sessions export", "scheduled, and no export has finished " + ("yet" if age is None else f"in {age:.0f} hours")
                      + f": read /tmp/{plist.stem}.log")
+    try:  # launchd runs what it loaded, which a file replaced since does not show: the schedule's own run does
+        own = ((now or time.time()) - datetime.fromisoformat(last.get("scheduled", "")).timestamp()) / 3600
+    except ValueError:
+        own = None
+    if own is None or own > 24:
+        return Check("fail", "sessions export", "loaded, and the schedule itself has finished no export "
+                     + ("yet" if own is None else f"in {own:.0f} hours") + ": launchd may hold an older schedule under this label, "
+                     f"or the job cannot run ({how}, which loads this one again; it writes /tmp/{plist.stem}.log)")
     return Check("ok", "sessions export", f"every hour; the last one finished {age * 60:.0f} min ago")
 
 

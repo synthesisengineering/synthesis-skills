@@ -1349,7 +1349,7 @@ def test_a_run_that_could_not_copy_a_transcript_stays_visible_until_a_run_copies
     stamp, plist = sessions.root() / ".state" / "export.json", _scheduled(tmp_path)
 
     def doctors() -> tuple:
-        found = doctor.check_sessions_export(plist, stamp, run=lambda argv, **kw: subprocess.CompletedProcess(argv, 0, "", ""))
+        found = doctor.check_sessions_export(plist, _its_own(stamp), run=lambda argv, **kw: subprocess.CompletedProcess(argv, 0, "", ""))
         return found.status, found.detail, json.loads(stamp.read_text())
 
     try:
@@ -1385,15 +1385,22 @@ def _scheduled(tmp_path) -> Path:
     import plistlib
     own, plist = sessions.paths.home() / "bin" / "synthesis", tmp_path / "com.synthesis.sessions-export.plist"
     plist.write_bytes(plistlib.dumps({"Label": plist.stem, "ProgramArguments": [
-        "/bin/bash", "-lc", f'"{own}" sessions export --all; "{own}" sessions sync']}))
+        "/bin/bash", "-lc", f'"{own}" sessions export --all --scheduled; "{own}" sessions sync']}))
     return plist
+
+
+def _its_own(stamp: Path) -> Path:
+    """The runs these tests make stand for the schedule's own, which its command marks in the stamp."""
+    done = json.loads(stamp.read_text())
+    stamp.write_text(json.dumps({**done, "scheduled": done["exported"]}), encoding="utf-8")
+    return stamp
 
 
 def _checked(tmp_path) -> tuple:
     """The doctor's answer about the export where its schedule is loaded: the status, the words, the stamp it read."""
     from synthesis import doctor
     stamp, plist = sessions.root() / ".state" / "export.json", _scheduled(tmp_path)
-    found = doctor.check_sessions_export(plist, stamp, run=lambda argv, **kw: subprocess.CompletedProcess(argv, 0, "", ""))
+    found = doctor.check_sessions_export(plist, _its_own(stamp), run=lambda argv, **kw: subprocess.CompletedProcess(argv, 0, "", ""))
     return found.status, found.detail, json.loads(stamp.read_text())
 
 

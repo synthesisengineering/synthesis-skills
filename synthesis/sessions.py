@@ -592,26 +592,28 @@ def _writer(wait: bool):
         yield None
 
 
-def export(days: float = 0, only: str = "", wait: bool = True, rebuild: bool = False) -> list:
+def export(days: float = 0, only: str = "", wait: bool = True, rebuild: bool = False, scheduled: bool = False) -> list:
     """Export every native transcript changed in the last `days` days (all when 0); `only` names one session.
-    Without `wait` a busy archive is read as it is."""
+    Without `wait` a busy archive is read as it is. `scheduled` marks the run as the schedule's own."""
     with _writer(wait) as busy:
         if busy:
             return [busy]
         moved = [f"previous archive moved to {_rebuild()}"] if rebuild else []
-        return moved + _export(0 if rebuild else days, only)
+        return moved + _export(0 if rebuild else days, only, scheduled)
 
 
-def _export(days: float, only: str) -> list:
+def _export(days: float, only: str, scheduled: bool = False) -> list:
     """Every run, a sync's too, leaves a stamp, the doctor's heartbeat for the scheduled export: a run that found
     nothing new still ran, and a transcript a run could not copy is named there, with why and when, until a run
     copies it (2026-11-12: every copy was refused and the doctor answered ok), as is a folder the search could not
     list, until a run of everything lists it. A transcript that a run of everything no longer finds can never be
     copied: the stamp says since when, and only the principal clears it (`lost`; the same day: a harness removed a
-    transcript whose copy had failed, and the next run stamped complete)."""
+    transcript whose copy had failed, and the next run stamped complete). A run the schedule itself made
+    (`scheduled`) is marked as that, and the mark stays through other runs: the doctor knows the schedule by it."""
     from synthesis import board
     stamp = root() / ".state" / "export.json"
     last, now = paths.read_json(stamp), datetime.now().astimezone().isoformat(timespec="seconds")
+    ran = now if scheduled else last.get("scheduled")
     report, failed, tried, waiting, unread = [], [], set(), dict(last.get("uncopied") or {}), []
     for harness, native in natives(days, unread):
         session = _identity(harness, native)
@@ -648,7 +650,7 @@ def _export(days: float, only: str) -> list:
     else:
         last = {"complete": now}
     try:
-        paths.write_json(stamp, {**last, "exported": now})
+        paths.write_json(stamp, {**last, "exported": now, **({"scheduled": ran} if ran else {})})
     except OSError as exc:  # an archive that cannot be written is read as it is, as a busy one is
         return [f"not exported: {exc}"] + report
     return report
