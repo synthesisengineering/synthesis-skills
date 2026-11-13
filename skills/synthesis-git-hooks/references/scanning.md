@@ -196,29 +196,47 @@ approved the same way as a file line, bound to the repository and the line
 
 Off unless the config has `record_times` (`{}` turns it on; see the guardrails'
 [config reference](../../synthesis-agent-guardrails/references/config.md)). In a Markdown
-file outside a `transcripts/` folder, and outside the folders the setting's `skip` list
-names, the check reads the time an added entry gives for itself. An entry states one in
-three places:
+file (`.md`, `.markdown`) outside a folder of transcripts and outside what the setting's
+`skip` list names, the check reads the time an added entry gives for itself. An entry
+states one in three places:
 
 | Place | Example |
 |---|---|
-| The line opens with the day and a time, behind a list mark, a box, a heading or emphasis | `- **2026-11-12 19:30, the release is out.**`, `### 2026-11-12 14:40 CDT` |
-| A parenthesis opens with them | `(11-12 18:54: approved in the dialog)`, `(added 11-12 18:46, ...)` |
+| The line opens with the day and a time, behind a list mark, a ticked box, a heading, emphasis or a bracket. A line with no mark counts where it begins a paragraph | `- **2026-11-12 19:30, the release is out.**`, `### 2026-11-12 14:40 CDT`, `- [2026-11-12 6:54 pm]` |
+| A parenthesis opens with the day and a time, or with one word that says what was done then (`added`, `written`, `sent`, `as of`, `current to`) | `(11-12 18:54: approved in the dialog)`, `(added 11-12 18:46, ...)` |
 | In a file under a `sessions/` folder, a list item or a heading opens with a time, and the nearest dated heading above it names today | `- 18:54 ET: pushed the branch` |
 
-For a stamp that names today, the commit is refused when the stamp is:
+The commit is refused when such a stamp is:
 
-1. **later than now.** A range is read by its later end. A zone the stamp names is honored
-   (`ET`, `CDT`, `UTC`, `Z`, `-05:00`); a time with no label is taken to be this machine's.
-2. **a rounding of the present:** `18:3x`, `about 18:35`, `~18:40` or `18:40ish`, for a
-   moment within the last 15 minutes or one that has not come. The clock could be read.
+1. **1 to 30 minutes after now.** A range is read by its later end. A zone the stamp
+   names is honored (`ET`, `CDT`, `est`, `UTC`, `Z`, `UTC+1`, `-05:00`), and a time with no
+   label is taken to be this machine's. The stamp is placed by its own day in its own zone,
+   so `2026-11-13T00:05Z` written at 18:40 eastern on the twelfth is 25 minutes ahead.
+2. **a rounding of the present:** `18:3x`, `about 18:35`, `c. 18:35`, `~18:40`, `18:40ish`
+   or `18:35 (approx.)`, for a moment from 15 minutes back to 30 ahead. The clock could be
+   read.
 
-It passes an exact time at or before now; a rounded time for a moment more than 15 minutes
-old, which may be all the writer knows; every time that is not an entry's own stamp (a
-meeting, a deadline, a scheduled wake, a time quoted inside the text); another day's
-entries; a line set in from the margin with no mark, which is the wrapped rest of the line
-above; transcripts, whose lines carry other people's times; and a zone label the machine
-cannot resolve.
+**The half hour is the rule.** Counted over thirty days of real commits, every stamp that
+was later than its commit stood at most 30 minutes ahead: a mistaken stamp is a near miss.
+A time farther ahead is something else (a deadline, a schedule, a time read in the wrong
+zone), and it passes.
+
+It also passes:
+
+- an exact time at or before now, and a rounded time for a moment more than 15 minutes
+  old, which may be all the writer knows;
+- every time that is not an entry's own stamp: a time inside the text, and a parenthesis
+  that opens with an event's words (`(call 11-12 19:00)`, `(due 2026-11-12 18:55)`);
+- an unchecked box (`- [ ] 18:54 call the owner`): a plan, whose time is when it is to be
+  done. A stamp in a parenthesis inside one is still read;
+- a code fence, where a pasted log keeps its own clock;
+- a line with no mark that continues a paragraph: the wrapped rest of the sentence above;
+- transcripts (any folder whose name ends in `transcripts`), whose lines carry other
+  people's times;
+- a zone label the check does not know (`IST`, `CET`, `AEST`) or the machine cannot
+  resolve;
+- a merge: its lines were judged when they were committed, by the clock of the machine
+  that wrote them.
 
 No approval clears a refusal: the line states a time that has not come, or rounds one the
 clock gives. Read the clock in the command that writes the entry (`date "+%H:%M"`), and
@@ -227,14 +245,15 @@ entry's stamp stands is written after the words that name the event, not at the 
 the line or of a parenthesis.
 
 The check does not see a time that is wrong and earlier than the commit (17:40 written for
-17:36, committed at 17:45): only reading the clock in the command that writes the time
-prevents that. It was measured before it was built, on thirty days of commits to
-twenty-seven knowledge repositories: a time inside an entry's text is later than its commit
-three times in ten, and rightly, so only an entry's own stamp is judged. Of 688 such
-stamps, 36 named a minute that had not come and 111 rounded the present. Replayed over the
-same commits, the check refuses 153 lines in 123 of 1,032 commits; its first form also
-refused five wrapped lines that began with a time by chance, which is why a line needs a
-mark or the margin to open an entry (`tests/test_record_times.py`).
+17:36, committed at 17:45), nor a present rounded to a neat quarter hour with no mark of
+rounding: only reading the clock in the command that writes the time prevents those. It
+was measured before it was built, on thirty days of commits to twenty-seven knowledge
+repositories: a time inside an entry's text is later than its commit three times in ten,
+and rightly, so only an entry's own stamp is judged. Replayed over the same 1,032 commits
+as it stands, it refuses 191 lines in 136 of them (44 later, 147 rounding the present).
+Its first form also refused five wrapped lines that began with a time by chance, and its
+second, before a review, refused deadlines and schedules hours ahead
+(`tests/test_record_times.py`).
 
 ## Claims
 

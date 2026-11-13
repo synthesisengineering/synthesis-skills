@@ -348,7 +348,7 @@ def test_each_file_is_read_once_and_a_long_run_of_spaces_costs_nothing():
     cc.record_times(added, {}, NOW, read)
     assert reads == [LOG] and time.monotonic() - start < 2
     start = time.monotonic()
-    assert said(RECORD, "- " + " " * 20000 + "x 18:54", "-" + " " * 20000 + "2026-11-12 18:54") == []
+    assert said(RECORD, "- " + " " * 20000 + "x 18:54", "*" * 20000 + " x 2026-11-12 18:54", "(" + "a " * 20000 + "11-12 18:54)") == []
     assert time.monotonic() - start < 1
     assert cc.record_times([(RECORD.encode(), 1, b"- no time on this line")], {}, NOW, lambda name: reads.append("again") or "") == []
     assert reads == [LOG]                                                     # a file with no time on its added lines is not opened
