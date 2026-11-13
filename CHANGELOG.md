@@ -19,6 +19,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   the skills'. The whole suite had come to take up to 526 seconds on a macOS runner, and on main one job was
   cancelled at its ten-minute limit with no test failing; as two jobs, the core's tests still ran over the limit
   on one slow runner. A lint test holds that the three jobs together miss no test file.
+- The tests' time bounds follow the machine that runs them. The guard hook was held to a fixed 150 ms: one slow
+  runner failed it with nothing changed, and the 72 ms above had passed it. Its test now runs the installed,
+  compiled runtime and allows twice what a fresh interpreter takes, on that machine at that moment, to load the
+  standard-library modules the hook needs; it names those modules and fails when the hook loads another. The
+  turn-end check's test does the same, and eight bounds on work inside the test process stretch by how much
+  slower the machine runs a fixed piece of work.
 
 ## [5.8.0] - 2026-11-12
 

@@ -572,7 +572,7 @@ def test_session_start_brief_brings_the_run_back_after_compaction(tmp_path):
 
 # ---- R6.4 and R8.1: fast enough for every turn end ------------------------------
 
-def test_the_check_takes_well_under_50_ms(tmp_path):
+def test_the_check_takes_well_under_50_ms(tmp_path, pace):
     path = write_plan(tmp_path, checklist=[f"- [x] {i}. step" for i in range(200)] + ["- [ ] 200. last step"])
     edit(path, "## Cycle ledger\n", "## Cycle ledger\n\n" + "".join(f"- 2026-10-05T{i % 24:02}:00 advanced: x\n"
                                                                     for i in range(2000)))
@@ -582,23 +582,25 @@ def test_the_check_takes_well_under_50_ms(tmp_path):
         start = time.perf_counter()
         _check({"session_id": "S1", "stop_hook_active": False}, {})
         times.append(time.perf_counter() - start)
-    assert statistics.median(times) < 0.05
+    assert statistics.median(times) < 0.05 * pace
 
 
-def test_a_cold_hook_process_stays_inside_the_hook_budget(tmp_path, isolated_home):
+# What the modules the turn-end check loads import as they load, by the module that asks.
+CHECK_NEEDS = ("json", "sys",                                                       # the caller
+               "__future__", "datetime", "hashlib", "os", "pathlib", "re", "time",  # autopilot.py
+               "unicodedata")                                                       # paths.py
+
+
+def test_a_cold_hook_process_stays_inside_the_hook_budget(tmp_path, compiled_runtime, hook_budget):
+    """The check as a session meets it: a new process, the installed runtime, compiled as the installer leaves it."""
     path = write_plan(tmp_path)
     engage("S1", path)
-    code = ("import json, sys; sys.path.insert(0, sys.argv[1]); from synthesis import autopilot; "
-            "print(autopilot.evaluate(json.load(sys.stdin), {})[0] or '')")
-    env = {**os.environ, "SYNTHESIS_HOME": str(isolated_home)}
-    times, out = [], ""
-    for _ in range(10):
-        start = time.perf_counter()
-        out = subprocess.run([sys.executable, "-S", "-c", code, str(ROOT)], input=json.dumps({"session_id": "S1"}),
-                             capture_output=True, text=True, env=env, check=True).stdout
-        times.append(time.perf_counter() - start)
-    assert "Migrate /orders" in out or out.strip() == ""  # the repeat cap may silence later runs
-    assert statistics.median(times) < 0.15  # same headroom as the guard hook's budget test
+    call = ["-c", "import json, sys; sys.path.insert(0, sys.argv[1]); from synthesis import autopilot; "
+                  "print(autopilot.evaluate(json.load(sys.stdin), {})[0] or '')", str(compiled_runtime)]
+    asked = json.dumps({"session_id": "S1"})
+    out = subprocess.run([sys.executable, "-S", *call], input=asked, capture_output=True, text=True, check=True).stdout
+    assert "Migrate /orders" in out
+    hook_budget(call, CHECK_NEEDS, input=asked)  # later runs meet the repeat cap, which does the same work
 
 
 def test_the_helpers_run_as_a_script_without_site_packages(tmp_path, isolated_home):
