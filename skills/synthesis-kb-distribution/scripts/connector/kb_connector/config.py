@@ -102,12 +102,12 @@ def old_spelling(host) -> bool:
 
 
 def _beyond_origin(raw, parsed, port, local) -> str:
-    """Why KB_PUBLIC_URL is more than an origin (the scheme, the host and a port), or "" when it is one or no address at
-    all. It names each part it found and shows the origin alone; it never shows a part, since a user-info part or a
-    query can carry a secret and the message is printed."""
+    """Why a well-formed KB_PUBLIC_URL is more than an origin (the scheme, the host and a port), or "" when it is one.
+    It names each part it found and shows the origin alone; it never shows a part, since a user-info part or a query
+    can carry a secret and the message is printed."""
     more = [part for part, found in zip(ORIGIN_PARTS, ("@" in parsed.netloc, parsed.path not in ("", "/"),
                                                        "?" in raw.split("#")[0], "#" in raw)) if found]
-    if not more or parsed.scheme not in ("https", "http") or not parsed.hostname or port == 0:
+    if not more:
         return ""
     host = f"[{parsed.hostname}]" if ":" in parsed.hostname else parsed.hostname
     origin = f"{'http' if parsed.scheme == 'http' and local else 'https'}://{host}" + (f":{port}" if port else "")
@@ -139,10 +139,11 @@ def load(env) -> Settings:
     except ValueError:
         port = 0  # not a port, so not an address
     local = (parsed.hostname or "").rstrip(".") in ("localhost", "127.0.0.1", "::1")  # localhost. is localhost
-    if (parsed.scheme not in ("https", "http") or not parsed.hostname or port == 0
-            or (parsed.scheme == "http" and not local)):
+    malformed = (parsed.scheme not in ("https", "http") or not parsed.hostname or port == 0  # a host is a name or an IP
+                 or (_ip(parsed.hostname) is None and not re.fullmatch(r"[\w.-]+", parsed.hostname)))
+    if malformed or (parsed.scheme == "http" and not local):
         problems.append("KB_PUBLIC_URL must be the service's https:// address (http:// only for localhost)")
-    if beyond := _beyond_origin(raw, parsed, port, local):
+    if not malformed and (beyond := _beyond_origin(raw, parsed, port, local)):
         problems.append(beyond)
     test, operators = get("KB_OPERATOR_TEST"), get("KB_OPERATOR_ADDRESSES")
     if test not in ("", "0", "1") or (test == "1") != bool(listed(operators)):

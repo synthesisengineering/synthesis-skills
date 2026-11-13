@@ -198,8 +198,12 @@ kb-connector: the connector cannot start:
 With more than one part it names each, in order: `It has a user-info part (user:password@), a path,
 a query and a fragment, which are not allowed.` It names a part and never shows it, since a password
 or a query can be a secret and the message is printed. The address it shows keeps `http://` only
-for localhost and is `https://` otherwise. A port that is not a number from 1 to 65535 is a malformed
-address: `KB_PUBLIC_URL must be the service's https:// address (http:// only for localhost)`.
+for localhost and is `https://` otherwise. A port that is not a number from 1 to 65535, and a host
+with a character no host has, make a malformed address, with no address shown:
+`KB_PUBLIC_URL must be the service's https:// address (http:// only for localhost)`. A host is an
+IP address or a name of letters, digits, hyphens, underscores and dots, so a backslash
+(`https://kb.example.com\mcp`, which a browser reads as a slash and so as a path), a semicolon, a
+space or a `%` in it stops the start.
 
 **An IP address in an old spelling.** A host written as a number in an old spelling, such as
 `127.1`, `2130706433`, `0x08080808` or `010.8.8.8`, stops the start in either mode, whatever
