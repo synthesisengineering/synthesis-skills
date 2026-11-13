@@ -5,15 +5,20 @@
 
 Each workspace keeps a register of what slipped, one appended row for each item that passed its date with no
 decision. The Friday review reads its last fourteen days and the quarterly, six-month and annual reviews their
-whole window; until 2026-11-13 no script read it. This prints a review's section from the register: how many rows
-the window holds, what repeats among them (the same item more than once, by the ID its row carries; a weekday or a
-place it waited at, three times or more; how many outcomes are still open), then the rows, newest first, as the
-register has them. Why a thing repeats and what to change is the review's to say.
+whole window; until 2026-11-13 no script read it. This prints a review's section from the register: how many
+lapses the window holds, what repeats among them (the same item more than once, by the ID its row carries, the
+last code span of its Item cell; the weekday a lapse was recorded on, or a place it waited at, three times or
+more; how many outcomes are still open), then each lapse's row, newest first, as the register has it. Why a thing
+repeats and what to change is the review's to say.
+
+A row is never rewritten, so what came of a lapse later is a later row for the same item on the same day: rows
+that carry one ID and one day are one lapse, and its last row is the one read.
 
 The register is the file the ritual config names for the workspace (`"lapse_register": "<file>"`), read from its
 tables whose header opens with `Lapsed`: the five-cell form, and the seven-cell form that also says whom a lapse
 affected and what can still be done. It writes nothing. A register it cannot read is said, with exit 2, and never
-read as empty.
+read as empty; a row of the register whose first cell gives no day is said by its line, and never passed over
+without a word.
 """
 from __future__ import annotations
 
@@ -60,12 +65,14 @@ def register_path(workspace: str) -> Path:
     return path
 
 
-def read_register(path: Path) -> tuple[list[dict], list[tuple[int, int]]]:
+def read_register(path: Path, unread: list | None = None) -> tuple[list[dict], list[tuple[int, int]]]:
     """(every dated row of the register, each of its headers as (its line, its cells)). A table is the register's
-    where its header opens with `Lapsed`. A row is a line that opens with a pipe and a day, in such a table or in a
-    run of lines with no header of its own after one: a register is appended to, and rows written beneath the notes
-    under its table are still its rows (2026-11-13: read by its first table alone, a real register gave 14 of its
-    64). A table with a header of its own that is not the register's is passed over."""
+    where its header opens with `Lapsed`. A row is a line that opens with a pipe and a day (written plainly, in
+    emphasis, in code or as a link's text), in such a table or in a run of lines of five cells or more with no
+    header of its own after one: a register is appended to, and rows written beneath the notes under its table are
+    still its rows (2026-11-13: read by its first table alone, a real register gave 14 of its 64). A table with a
+    header of its own that is not the register's is passed over. A line of the register's own table whose first
+    cell gives no day is no row and is not passed over in silence: its line goes into `unread`."""
     try:
         lines = path.read_text(encoding="utf-8").splitlines()
     except (OSError, UnicodeError) as exc:
@@ -76,30 +83,53 @@ def read_register(path: Path) -> tuple[list[dict], list[tuple[int, int]]]:
             run = None
             continue
         cells = decay_sweep._cells(line)
-        day = re.match(decay_sweep.DATE, cells[0])
-        if run is None:  # the run's first line: the register's header, a row that continues it, or another table's header
-            head = re.sub(r"[*_`]", "", cells[0]).strip().lower() == "lapsed"
-            run = head or bool(day and heads)
+        first = re.sub(r"[*_`]", "", re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", cells[0])).strip()  # a day in bold, in code or as a link's text
+        day, opens = re.match(decay_sweep.DATE, first), run is None
+        if opens:  # the run's first line: the register's header, a row that continues it, or another table's header
+            head = first.lower() == "lapsed"
+            run = head or bool(day and heads and len(cells) >= 5)
             heads += [(number, len(cells))] if head else []
-        if run and day:
-            try:
-                rows.append({**dict(zip(CELLS, [decay_sweep.iso_day(day[0]).isoformat(), *cells[1:]])), "line": number})
-            except ValueError:
-                pass  # a first cell that only looks like a day is no row
+            if head:
+                continue
+        if not run or all(re.fullmatch(r":?-*:?", cell) for cell in cells):  # another table's line, or the rule under a header
+            continue
+        try:
+            rows.append({**dict(zip(CELLS, [decay_sweep.iso_day(day[0]).isoformat(), *cells[1:]])), "line": number})
+        except (ValueError, TypeError):  # no day, or one that is on no calendar
+            if unread is not None:
+                unread.append(number)
     if not heads:
         raise Unread(f"{path} holds no register table: none of its tables has a header that opens with `Lapsed`")
     return rows, heads
 
 
+def row_id(row: dict) -> str:
+    """The Decay ID a row carries: the last code span of its Item cell (a title may hold code of its own before it)."""
+    spans = re.findall(r"`([^`]+)`", str(row.get("item", "")))
+    return spans[-1] if spans else ""
+
+
+def lapses(rows: list[dict]) -> list[dict]:
+    """One row for each lapse: rows that carry one ID and one day are the lapse and what came of it since, and the
+    last of them written is read. A row with no ID is a lapse of its own."""
+    last = {}
+    for row in sorted(rows, key=lambda row: row["line"]):
+        last[(row_id(row), row["lapsed"]) if row_id(row) else ("", row["line"])] = row
+    return list(last.values())
+
+
 def place(where: str) -> str:
-    """The folder a row's locator names: of a link's target, a code span or a bare path, whichever stands first."""
-    found = re.search(r"\]\(([^)\s]+)\)|`([^`]+)`|((?:[\w.~-]+/)+[\w.-]+)", where)
+    """The folder a row's locator names: of a link's target (between angle brackets where it holds a space), a code
+    span or a bare path, whichever stands first; a folder named for a month or a day is passed over for the one it
+    stands in, which says what kind of record it was."""
+    found = re.search(r"\]\(<([^>]+)>\)|\]\(([^)\s]+)\)|`([^`]+)`|((?:[\w.~-]+/)+[\w.-]+)", where)
     path = re.sub(r":\d+$", "", next((part for part in found.groups() if part), "")) if found else ""
-    return Path(path).parent.name if "/" in path else ""
+    folders = [part for part in Path(path).parts[:-1] if part not in ("..", ".", "/") and not re.fullmatch(r"\d{4}(?:-\d{2}){0,2}", part)]
+    return folders[-1] if folders else ""
 
 
 def patterns(rows: list[dict]) -> dict:
-    items = Counter(found[1] for row in rows for found in [re.search(r"`([^`]+)`", row.get("item", ""))] if found)
+    items = Counter(row_id(row) for row in rows if row_id(row))
     days = Counter(date.fromisoformat(row["lapsed"]).strftime("%A") for row in rows)
     places = Counter(name for row in rows for name in [place(row.get("where", ""))] if name)
     return {"item": {k: n for k, n in items.most_common() if n > 1}, "weekday": {k: n for k, n in days.most_common() if n >= REPEATS},
@@ -111,34 +141,45 @@ def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--workspace", required=True)
     parser.add_argument("--as-of", required=True, help="verified current calendar date, YYYY-MM-DD")
-    parser.add_argument("--window", choices=sorted(WINDOWS), default="week", help="week is the last fourteen days")
+    parser.add_argument("--window", choices=sorted(WINDOWS), help="week, the default, is the last fourteen days")
     parser.add_argument("--since", help="the window's first day, in place of --window")
     parser.add_argument("--until", help="the window's last day (default: --as-of)")
     parser.add_argument("--json", action="store_true")
     args = parser.parse_args(argv)
+    unread: list = []
     try:
-        as_of = decay_sweep.iso_day(args.as_of)
-        until = decay_sweep.iso_day(args.until) if args.until else as_of
-        since = decay_sweep.iso_day(args.since) if args.since else until - timedelta(days=WINDOWS[args.window] - 1)
+        if args.window and args.since:
+            raise Unread("--window and --since both say where the window starts: give one of them")
+        days = {}
+        for flag in ("as_of", "since", "until"):
+            try:
+                days[flag] = decay_sweep.iso_day(getattr(args, flag)) if getattr(args, flag) else None
+            except ValueError as exc:
+                raise Unread(f"--{flag.replace('_', '-')} {getattr(args, flag)!r} is no calendar day ({exc})") from None
+        as_of, until = days["as_of"], days["until"] or days["as_of"]
+        since = days["since"] or until - timedelta(days=WINDOWS[args.window or "week"] - 1)
         if until < since:
             raise Unread(f"the window ends ({until}) before it starts ({since})")
         path = register_path(args.workspace)
-        rows, _ = read_register(path)
+        rows, _ = read_register(path, unread)
     except (Unread, ValueError) as exc:
         print(f"lapse_review: {exc}", file=sys.stderr)
         return 2
-    inside = sorted((row for row in rows if since.isoformat() <= row["lapsed"] <= until.isoformat()),
+    inside = sorted((row for row in lapses(rows) if since.isoformat() <= row["lapsed"] <= until.isoformat()),
                     key=lambda row: (row["lapsed"], row["line"]), reverse=True)
     found = patterns(inside)
     if args.json:
         print(json.dumps({"register": str(path), "since": since.isoformat(), "until": until.isoformat(), "total": len(rows),
-                          "rows": inside, "patterns": found}, indent=2))
+                          "unread": unread, "rows": inside, "patterns": found}, indent=2))
         return 0
-    print(f"Slipped through: {len(inside)} rows from {since} to {until} (of {len(rows)} in the register)")
+    print(f"Slipped through: {len(inside)} lapse{'s' * (len(inside) != 1)} from {since} to {until} "
+          f"({len(rows)} row{'s' * (len(rows) != 1)} in the register)")
+    if unread:
+        print(f"{len(unread)} row(s) of the register could not be read, their first cell giving no day: lines {', '.join(map(str, unread))}")
     if not inside:
         return 0
     said = ([f"  the same item more than once: {', '.join(f'`{k}` ({n})' for k, n in found['item'].items())}"] if found["item"] else []) + (
-        [f"  weekday: {', '.join(f'{k} ({n})' for k, n in found['weekday'].items())}"] if found["weekday"] else []) + (
+        [f"  the weekday it was recorded on: {', '.join(f'{k} ({n})' for k, n in found['weekday'].items())}"] if found["weekday"] else []) + (
         [f"  where it waited: {', '.join(f'{k} ({n})' for k, n in found['place'].items())}"] if found["place"] else []) + (
         [f"  outcome still open: {found['open']} of {len(inside)}"] if found["open"] else [])
     print("\n".join(["Patterns:", *said] if said else ["Patterns: none repeats"]))
