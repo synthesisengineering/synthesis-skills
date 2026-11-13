@@ -285,6 +285,46 @@ its third took any word in -ed at a parenthesis's head for a stamp and any capit
 ending in T for a zone, neither of which those commits bear out
 (`tests/test_record_times.py`).
 
+## A status and its evidence
+
+Off unless the config has `status_evidence` (`{}` turns it on; see the guardrails'
+[config reference](../../synthesis-agent-guardrails/references/config.md)). On 2026-11-12
+obligation statuses said colleagues could use a tool "now" when none of them could: the
+status had been written from an assumption, and nothing asked what it rested on. That a
+line claims a thing works is meaning, which the check does not read. That a table has a
+column headed Status and a column for evidence is the table's own statement, and the
+table is held to it.
+
+In a Markdown file the check reads (the same files as for an entry's time: not a folder of
+transcripts, not what the setting's `skip` names, not a code fence), for each table row a
+commit adds:
+
+1. **Refused:** the row's table has a column headed `Status` (alone or after one word, as
+   `Current status`; or `State`) and a column for evidence, and the row says something in
+   its status cell and nothing in any evidence cell. A column for evidence is one whose
+   header says `evidence`, `proof`, `source`, `checked`, `verified`, `basis` or `how we
+   know`. A cell says nothing when it is empty or holds only a dash, `n/a`, `none`, `tbd`
+   or a question mark. The word `unverified` anywhere in the row is an answer. The refusal
+   names the row: say where it was checked (a link, a command, a record), or write
+   `unverified`. No approval clears it.
+2. **Noted, never refused:** the table has a Status column and no column for evidence, the
+   row's status says a thing works or is done (`works`, `live`, `done`, `ready`,
+   `available`, `shipped`, `released`, `deployed`, `complete`, `enabled`, `passing`,
+   `fixed`, `resolved`, `installed`, `running`, a check mark), and the row holds no link,
+   no code span and not the word `unverified`. The commit goes through and prints one line
+   for the file: how many such rows, and that the table can take a column for evidence.
+   This part reads a list of words, so it only informs.
+
+A row's table is read from the file as staged: the rows above it up to a header row with a
+rule under it. A header, its rule, a row with no header above it, and a status written in
+prose are not read. The check cannot know that the evidence is evidence: a cell that says
+`checked` is filled. What it changes is that the reader of the record sees what was
+written there, where before nothing was asked.
+
+Replayed before it shipped over thirty days of real commits (1,032): 11 rows refused in 5
+commits, and 12 rows noted in 10. Where a table has a column for evidence it is nearly
+always filled: 919 of 931 added rows (`tests/test_status_evidence.py`).
+
 ## Claims
 
 Every staged path, both sides of a rename and deletions included, is checked against the
