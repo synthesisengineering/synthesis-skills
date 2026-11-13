@@ -42,7 +42,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   move up: a citation written before the rebuild then names another record. The reference says so; rebuild only an
   archive whose records nothing cites yet.
 - **The guard reads a patch from the key Codex gives its hook** (`command`, by Codex's source; it read `input` and
-  `patch`, and found no file in such a call), and takes a tool named `shell_command` for a shell.
+  `patch`, and found no file in such a call), and takes a tool named `shell_command` for a shell; the hook's matcher
+  names it too, so that such a call reaches the guard.
 - **A lint: no Python file defines a function or a class twice**, at its top or in a class's body. Renaming a helper
   in a new test file gave two functions one name; a second definition replaces the first without a word, and a test
   defined twice never runs. An overload's stubs and a property's setter share a name by design. 5.12.0's lint read
