@@ -51,10 +51,13 @@ def unit_file(home: Path, platform: str) -> Path:
 
 def written(tmp_path: Path, platform: str, installer: Path = INSTALL, **extra: str) -> str:
     """The unit install-autostart.sh writes as `platform`, from a shell with `extra` set. It is answered "n"."""
+    unit = unit_file(tmp_path / "home", platform)
+    before = unit.read_bytes() if unit.exists() else None  # a test may have put a unit there for the doctor to read
     result, home, loaded = installed(tmp_path, platform, installer, **extra)
     assert result.returncode == 0 and result.stdout.endswith("\nCancelled.\n"), result.stdout + result.stderr
     assert not loaded.exists(), loaded.read_text(encoding="utf-8")  # nothing was loaded
-    assert not unit_file(home, platform).exists()  # and the unit it printed is gone
+    assert (unit.read_bytes() if unit.exists() else None) == before  # a "no" leaves what was installed as it was
+    assert not unit.with_name(unit.name + ".new").exists()  # and the unit it printed is gone
     return result.stdout.split("\n\n", 1)[1].rsplit("\n\nCancelled.\n", 1)[0] + "\n"
 
 

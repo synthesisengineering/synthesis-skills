@@ -91,8 +91,11 @@ install_macos() {
   fi
 
   mkdir -p "$log_dir"
+  # Written beside the installed unit, which stays as it is until the answer is yes
+  # (written over it, a "no" once removed the unit that was installed).
+  local candidate="$plist.new"
 
-  cat > "$plist" <<PLIST
+  cat > "$candidate" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -138,22 +141,33 @@ PLIST
   echo "Will install macOS LaunchAgent:"
   echo "  $plist"
   echo
-  cat "$plist"
+  cat "$candidate"
   echo
   read -r -p "Proceed? [y/N] " answer
   if [[ ! "$answer" =~ ^[Yy]$ ]]; then
-    rm -f "$plist"
+    rm -f "$candidate"
     echo "Cancelled."
     exit 0
   fi
+  mv -f "$candidate" "$plist"
 
-  # Modern launchctl (macOS 10.11+). Fallback to `load` for older.
-  if launchctl bootstrap "gui/$UID" "$plist" 2>/dev/null; then
-    echo "Loaded via launchctl bootstrap."
-  else
-    launchctl load "$plist"
-    echo "Loaded via launchctl load (legacy fallback)."
+  # launchd keeps the definition it loaded, and bootstrap fails for a label that is
+  # loaded: the old agent is booted out first, or the new unit would sit on disk
+  # while the old one ran. Booting out ends the running server, which takes a moment.
+  if launchctl print "gui/$UID/$label" >/dev/null 2>&1; then
+    launchctl bootout "gui/$UID/$label" 2>/dev/null || true
+    for try in 1 2 3 4 5 6 7 8 9 10; do
+      launchctl print "gui/$UID/$label" >/dev/null 2>&1 || break
+      sleep 0.5
+    done
+    echo "Replaced the launch agent that was loaded."
   fi
+  if ! launchctl bootstrap "gui/$UID" "$plist" || ! launchctl print "gui/$UID/$label" >/dev/null 2>&1; then
+    echo "ERROR: $plist is written and is not loaded: launchctl did not take it." >&2
+    echo "       Run this again, or read what launchd holds: launchctl print gui/$UID/$label" >&2
+    exit 1
+  fi
+  echo "Loaded."
 
   echo "workspace-mcp will now start on login."
   echo "Logs: $log_dir/"
@@ -170,8 +184,9 @@ Environment=\"SYNTHESIS_HOME=$(as_unit "$SYN_HOME")\""
   fi
 
   mkdir -p "$unit_dir"
+  local candidate="$unit.new"  # beside the installed unit, which stays as it is until the answer is yes
 
-  cat > "$unit" <<UNIT
+  cat > "$candidate" <<UNIT
 [Unit]
 Description=Self-hosted Google Workspace MCP server
 After=network-online.target
@@ -196,17 +211,26 @@ UNIT
   echo "Will install systemd user unit:"
   echo "  $unit"
   echo
-  cat "$unit"
+  cat "$candidate"
   echo
   read -r -p "Proceed? [y/N] " answer
   if [[ ! "$answer" =~ ^[Yy]$ ]]; then
-    rm -f "$unit"
+    rm -f "$candidate"
     echo "Cancelled."
     exit 0
   fi
+  mv -f "$candidate" "$unit"
 
+  # `enable --now` starts a unit that is stopped and leaves a running one on the
+  # definition it was started with, so a unit that was running is restarted.
+  local was_running=""
+  systemctl --user is-active --quiet workspace-mcp.service && was_running=1
   systemctl --user daemon-reload
   systemctl --user enable --now workspace-mcp.service
+  if [ -n "$was_running" ]; then
+    systemctl --user restart workspace-mcp.service
+    echo "Restarted the running unit, so it runs as this unit says."
+  fi
 
   echo "workspace-mcp enabled and running."
   echo "Status: systemctl --user status workspace-mcp.service"
