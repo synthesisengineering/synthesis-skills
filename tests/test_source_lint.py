@@ -338,3 +338,48 @@ def test_the_split_rule_finds_a_file_no_job_runs_and_one_that_two_run(tmp_path):
              "tests/sub/test_beta.py: run by 0 of the jobs"]
     assert unrun_core_tests(tmp_path, halves) == unrun
     assert unrun_core_tests(tmp_path, halves + ["tests/test_a*.py"]) == unrun + ["tests/test_alpha.py: run by 2 of the jobs"]
+
+
+# A script that imports the runtime at its top says so in one line when the runtime is not there (2026-11-13: run from
+# a copy with no `synthesis/` beside it, as a package of skills without the runtime would hold them, two rituals'
+# scripts ended in a traceback, even for `--help`). The two files of the knowledge-base skill belong to its own seat,
+# which takes the same shape in a change of its own.
+THEIRS = ("skills/synthesis-kb-distribution/",)
+
+
+def bare_runtime_imports(root: Path = ROOT) -> list:
+    import ast
+    found = []
+    for path in sorted(root.glob("skills/**/*.py")):
+        name = path.relative_to(root).as_posix()
+        if "/tests/" in name or path.name.startswith("test_") or name.startswith(THEIRS):
+            continue
+        for node in ast.parse(path.read_text(encoding="utf-8")).body:  # top-level statements only: a function's own import fails where it is called
+            names = [node.module or ""] if isinstance(node, ast.ImportFrom) else [a.name for a in node.names] if isinstance(node, ast.Import) else []
+            if any(n == "synthesis" or n.startswith("synthesis.") for n in names):
+                found.append(f"{name}:{node.lineno}")
+    return found
+
+
+def test_a_script_that_needs_the_runtime_says_so_in_a_line_when_it_is_not_there(tmp_path):
+    assert bare_runtime_imports() == []
+    script = ROOT / "skills" / "synthesis-daily-rituals" / "scripts" / "decay_sweep.py"
+    alone = tmp_path / "skills" / "synthesis-daily-rituals" / "scripts"
+    alone.mkdir(parents=True)
+    (alone / script.name).write_text(script.read_text(encoding="utf-8"), encoding="utf-8")
+    import sys
+    ran = subprocess.run([sys.executable, "-I", str(alone / script.name), "--help"], capture_output=True, text=True, cwd=tmp_path,
+                         env={"PATH": "/usr/bin:/bin", "SYNTHESIS_HOME": str(tmp_path / "none"), "HOME": str(tmp_path)})
+    assert ran.returncode == 2 and "Traceback" not in ran.stderr and len(ran.stderr.strip().splitlines()) == 1
+    assert "synthesis runtime cannot be imported" in ran.stderr and "decay_sweep.py" in ran.stderr
+
+
+def test_the_rule_finds_an_import_at_the_top_and_spares_one_that_is_guarded_or_inside_a_function(tmp_path):
+    scripts = tmp_path / "skills" / "probe" / "scripts"
+    scripts.mkdir(parents=True)
+    (scripts / "bare.py").write_text("import sys\nfrom synthesis import paths\n", encoding="utf-8")
+    (scripts / "whole.py").write_text("import synthesis.paths\n", encoding="utf-8")
+    (scripts / "guarded.py").write_text("import sys\ntry:\n    from synthesis import paths\nexcept Exception as exc:\n    sys.exit(2)\n", encoding="utf-8")
+    (scripts / "late.py").write_text("def run():\n    from synthesis import paths\n    return paths\n", encoding="utf-8")
+    (scripts / "test_probe.py").write_text("from synthesis import paths\n", encoding="utf-8")
+    assert bare_runtime_imports(tmp_path) == ["skills/probe/scripts/bare.py:2", "skills/probe/scripts/whole.py:1"]
