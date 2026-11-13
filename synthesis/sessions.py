@@ -785,7 +785,8 @@ def natives(days: float = 0, unread: list | None = None) -> list:
     since, found, absent = time.time() - days * 86400 if days else 0, [], (FileNotFoundError, NotADirectoryError)
     for harness, base in paths.transcript_roots().items():
         pattern = {"claude-code": "*/**/*.jsonl", "codex": "**/rollout-*.jsonl", "muse": "*/*/*/*"}[harness]
-        for b in [base, base.parent / "archived_sessions"] if harness == "codex" else [base]:  # Codex moves archived ones
+        extra = {"codex": [base.parent / "archived_sessions"], "claude-code": paths.desktop_agent_roots()}.get(harness, [])
+        for b in [base, *extra]:  # Codex moves archived ones; the desktop app's agent-mode sessions keep their own folders
             def shut(exc, harness=harness):  # a folder that is not there holds no transcript
                 unread.extend([] if isinstance(exc, absent) else [(harness, str(exc.filename), exc.strerror or str(exc))])
             for top, dirs, _ in os.walk(b, onerror=shut) if unread is not None else ():

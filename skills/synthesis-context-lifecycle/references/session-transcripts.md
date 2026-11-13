@@ -9,6 +9,12 @@ session in one form that outlives each of them.
 ## What is kept
 
 `synthesis sessions export` reads each harness's native transcript past the point it already exported and writes:
+Claude Code's (`CLAUDE_CONFIG_DIR`'s `projects`, and from 5.18.0 the Claude desktop app's local agent-mode sessions,
+each of which keeps a Claude Code folder of its own under the app's data folder, `~/Library/Application
+Support/Claude/local-agent-mode-sessions/<account>/<org>/local_<session>/.claude/projects`, or under
+`SYNTHESIS_CLAUDE_DESKTOP_DIR`), Codex's (`CODEX_HOME`'s `sessions` and `archived_sessions`) and Muse's
+(`XDG_DATA_HOME`'s `muse/sessions`). A desktop session that ran in a virtual machine's folder is in no workspace, so
+it is kept and never synced. It writes:
 
 ```
 <synthesis home>/sessions/<workspace>/<YYYY-MM>/<harness>-<session>/

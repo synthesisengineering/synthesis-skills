@@ -177,6 +177,18 @@ def transcript_roots() -> dict:
             "muse": Path(env.get("XDG_DATA_HOME") or user / ".local" / "share") / "muse" / "sessions"}
 
 
+def desktop_agent_roots() -> list:
+    """The projects folders of the Claude desktop app's local agent-mode sessions: each such session runs with a
+    Claude Code configuration folder of its own under the app's data folder (`local-agent-mode-sessions/<account>/
+    <org>/local_<session>/.claude/projects`), which `transcript_roots` never names (the audit of 2026-11-11, gap 14).
+    `SYNTHESIS_CLAUDE_DESKTOP_DIR` names the app's data folder where it is not the macOS one."""
+    app = Path(os.environ.get("SYNTHESIS_CLAUDE_DESKTOP_DIR") or Path.home() / "Library" / "Application Support" / "Claude")
+    try:
+        return sorted(app.glob("local-agent-mode-sessions/*/*/local_*/.claude/projects"))
+    except OSError:  # a folder above that cannot be searched holds none this can name
+        return []
+
+
 def harness(payload: dict | None = None) -> str:
     """The harness running this process: where its transcript lives, else its environment. Codex sets
     CODEX_THREAD_ID in its shell but not in hook processes, so a hook knows Codex by its rollout file."""
