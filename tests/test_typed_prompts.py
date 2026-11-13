@@ -357,13 +357,19 @@ def test_codex_arguments_kept_as_json_text_are_read_with_their_working_directory
     assert meta["projects"] == ["beta"]
 
 
-@pytest.mark.parametrize("line", ["echo 'unbalanced > notes.md", "echo $(date > notes.md", "cat <<EOF > notes.md"])
+@pytest.mark.parametrize("line", ["echo 'unbalanced > notes.md", "echo $(date > notes.md"])
 def test_a_shell_line_the_guards_reader_cannot_read_is_counted(harness, line):
     """A review, 2026-11-13: the reader of what a line writes passes over a reading it cannot make and says nothing,
     so such a line was never counted, and the test of the count replaced the reader with one that raises."""
     there = {**called(harness, "Bash", {"command": line}), "cwd": f"{harness['kb']}/projects/beta"}
     _, meta = exported(harness, [there])
     assert not meta.get("projects") and meta["skipped"]["a tool call whose written files could not be read"] == 1
+
+
+def test_a_heredoc_with_no_end_is_read_for_the_file_it_writes(harness):
+    there = {**called(harness, "Bash", {"command": "cat <<EOF > notes.md"}), "cwd": f"{harness['kb']}/projects/beta"}
+    _, meta = exported(harness, [there])
+    assert meta["projects"] == ["beta"] and not meta.get("skipped", {}).get("a tool call whose written files could not be read")
 
 
 def test_the_guard_reads_a_patch_from_the_key_codex_gives_its_hook():

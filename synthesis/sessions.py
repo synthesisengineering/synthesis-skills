@@ -183,21 +183,28 @@ class _Session:
         from synthesis import guards, project
         tool, given = str(rec.get("tool") or ""), rec.get("input")
         try:
-            if tool in guards.FILE_TOOLS:
-                targets = guards._file_targets(tool, given) if isinstance(given, dict) else []
+            if isinstance(given, str) and given.lstrip().startswith("{"):  # Codex's own tools keep a call's arguments as JSON text
+                try:
+                    given = json.loads(given)
+                except ValueError:
+                    pass
+            cwd, unread = (str(given.get("workdir") or "") if isinstance(given, dict) else "") or self.cwd or os.sep, []
+            if tool in guards.FILE_TOOLS:  # Codex's patch tool keeps its patch as text
+                targets = guards._file_targets(tool, given if isinstance(given, dict) else {"input": given} if isinstance(given, str) else {})
             elif guards.shell_tool(tool):
                 line = given if isinstance(given, str) else guards.shell_command(given) if isinstance(given, dict) else ""
-                targets = guards._shell_writes(line, self.cwd or os.sep) if line else []
+                targets = guards._shell_writes(line, cwd, unread) if line else []
             else:
                 return
+            self.skipped["a tool call whose written files could not be read"] += bool(unread)
             if self.roots is None:
                 self.roots = [os.path.realpath(root / "projects") for root in project.roots()]
             for target in targets:
-                real = os.path.realpath(os.path.join(self.cwd or os.sep, os.path.expanduser(str(target))))
+                real = os.path.realpath(os.path.join(cwd, os.path.expanduser(str(target))))
                 for root in self.roots:
                     name, _, rest = real[len(root) + 1:].partition(os.sep) if real.startswith(root + os.sep) else ("", "", "")
-                    if (rest and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", name) and os.path.isdir(os.path.join(root, name))
-                            and name not in self.meta.setdefault("projects", [])):  # a project's id, as the hook's line names one
+                    if (rest and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", name) and os.path.isfile(os.path.join(root, name, "CONTEXT.md"))
+                            and name not in self.meta.setdefault("projects", [])):  # a project is a folder that holds its CONTEXT.md
                         self.meta["projects"].append(name)
         except Exception:  # noqa: BLE001  the export goes on: a line no reader was written for is no reason to lose a session
             self.skipped["a tool call whose written files could not be read"] += 1
