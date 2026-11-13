@@ -67,6 +67,22 @@ def test_each_quick_tunnel_host_is_read_however_it_is_written(text):
     assert held_for_the_address(said(text))
 
 
+@pytest.mark.parametrize("text, address", [
+    ("http://bore.pub:41234", "bore.pub:41234"), ("Connect to bore.pub:41234 now.", "bore.pub:41234"),
+    ("tcp://bore.pub:5000/x", "bore.pub:5000"), ("(BORE.PUB:41234)", "bore.pub:41234"), ("ngrok.io:443", "ngrok.io:443")])
+def test_a_tunnel_services_own_host_with_a_port_is_a_quick_tunnels_address_with_or_without_a_scheme(text, address):
+    """bore hands out the service's own host with a port: bore.pub:<port>, for as long as the command runs."""
+    reason = said(text)
+    assert held_for_the_address(reason) and f"({address})" in reason
+
+
+@pytest.mark.parametrize("text", [
+    "bore.pub is the free public server.", "https://ngrok.io/docs", "Read https://bore.pub first.", "notbore.pub:41234",
+    "bore.pub.example.com:41234", "https://tailscale.com/kb/1311/tailscale-funnel", "bore.pub:123456", "ts.net, tunnelmole.net"])
+def test_a_services_bare_name_its_documentation_and_a_look_alike_with_a_port_go_on(text):
+    assert "Sending needs the principal's approval" in said(text)
+
+
 @pytest.mark.parametrize("text", [
     "http://localhost:8787/mcp", "localhost:3000", "http://127.0.0.1:8000", "127.0.0.1", "0.0.0.0:8000", "http://[::1]:8080/",
     "http://my-laptop.local:8080", "my-laptop.local:3000", "http://192.168.1.20:8000", "http://10.0.0.5:3000/x",
@@ -242,7 +258,13 @@ STARTS_A_TUNNEL = [
     # cloudflared's two quick forms: `tunnel` with --url and no subcommand, and `tunnel --hello-world`, past its options
     "cloudflared tunnel --hello-world", "cloudflared tunnel --no-autoupdate --url http://localhost:8080",
     "cloudflared tunnel --loglevel debug --url http://localhost:8080 --protocol http2",
-    "docker run --rm cloudflare/cloudflared tunnel --no-autoupdate --hello-world"]
+    "docker run --rm cloudflare/cloudflared tunnel --no-autoupdate --hello-world",
+    # the services added last, in their own forms
+    "bore local 8000 --to bore.pub", "bore local 8000 -t bore.pub", "bore local 8000 --to=bore.pub -p 41234",
+    "bore local --local-host 127.0.0.1 8000 --to bore.pub", "tmole 8080", "tunnelmole 8080", "tmole 8080 as demo.tunnelmole.net",
+    "npx tunnelmole 8080", "loophole http 3000", "./loophole http 3000 --hostname demo", "loophole path ./site",
+    "loophole webdav ./site", "tailscale funnel 3000", "tailscale funnel --bg 3000", "tailscale funnel --https=8443 localhost:3000",
+    "tailscale funnel --bg --set-path=/docs 3000"]
 NO_TUNNEL = [
     "cloudflared tunnel run production", "cloudflared tunnel list", "cloudflared --version", "ngrok config check", "ngrok version",
     "echo cloudflared tunnel --url http://localhost:1", "grep -rn 'ngrok http' docs/", "brew install cloudflared",
@@ -274,7 +296,12 @@ NO_TUNNEL = [
     "cloudflared tunnel create demo", "cloudflared tunnel route dns demo app.example.com", "cloudflared tunnel delete demo",
     "cloudflared tunnel info demo", "cloudflared tunnel cleanup demo", "cloudflared tunnel login", "cloudflared tunnel token demo",
     "cloudflared tunnel ingress validate", "cloudflared tunnel vnet list", "cloudflared tunnel ready", "cloudflared tunnel diag",
-    "cloudflared tunnel help", "cloudflared tunnel --help", "docker run --rm cloudflare/cloudflared tunnel run --url http://web:80 demo"]
+    "cloudflared tunnel help", "cloudflared tunnel --help", "docker run --rm cloudflare/cloudflared tunnel run --url http://web:80 demo",
+    # their lookups, a server of one's own, turning a funnel off, and a tailnet's own serve
+    "bore --version", "bore server", "bore local 8000 --to tunnel.example.com", "bore local 8000 --to notbore.pub", "tmole --version",
+    "tmole --help", "echo tmole 8080", "loophole account login", "loophole --help", "loophole version", "tailscale funnel status",
+    "tailscale funnel status --json", "tailscale funnel reset", "tailscale funnel", "tailscale funnel --https=443 localhost:3000 off",
+    "tailscale serve 3000", "tailscale serve --bg 3000", "tailscale status", "brew install bore-cli"]
 
 
 @pytest.mark.parametrize("command", STARTS_A_TUNNEL)
