@@ -37,6 +37,14 @@ than half-reading it.
 
 ## Files the scripts keep
 
+- Each host's ritual history (5.20.0): `record` also appends its line to
+  `<history folder>/<host>.jsonl` and commits that file alone (`git commit --only`; the repository's
+  hooks run, and what others staged stays staged); the next handoff pushes it. The history folder is
+  the workspace's `history_dir`, or else `.agents/ritual-history` at the top of the repository
+  holding its first `plans_dirs` folder; with neither, the record says its history stays on this
+  Mac. The host is `SYNTHESIS_HOST`, or the host name without `.local`. Every view reads this Mac's
+  log and every host's file there, each record once; what another Mac pushed is read once this
+  checkout is pulled. A commit that fails is said in the record's output and never fails it.
 - The ritual log, `<synthesis home>/rituals/history.jsonl`, and its `config.json`
   (`{"defaults": {...}, "workspaces": {"<W>": {"streak": "expected-days", "weekdays": [0,1,2,3,4],
   "non_working_dates": ["YYYY-MM-DD"], "plans_dirs": ["<folder of dated plans>"],

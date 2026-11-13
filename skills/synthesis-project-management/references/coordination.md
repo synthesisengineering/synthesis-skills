@@ -269,6 +269,16 @@ display name at the moment of sending. The protocol removes that moment.
   session that joins later does not see it. `--durable` (project addresses only)
   reaches every session that works on the project, now or later, once each:
   use it for handoffs that must survive session turnover.
+- **A durable message travels with the project** (5.20.0). The board lives on one
+  Mac, so `synthesis handoff` writes each durable message to a project that no
+  session on this Mac has been shown into `projects/<p>/inbox/<message id>.md`
+  (a header with the id, sender, address and time, then the words) and commits it
+  with the records, when the session's claims cover that folder; a project whose
+  folder they do not cover is named in the handoff's report. On another Mac the
+  session start and `synthesis inbox` copy each such file whose id that board does
+  not hold into the project's box under the same id, so each session there sees
+  it once, marked as carried in the project's records. A file in `inbox/` not
+  named as a message is not read; one that is and cannot be read as one is named.
 - **Never assign work to a guess.** An unresolvable peer means a message to
   `project:<id>`, which its sessions see at their next prompt; a dispatch to the
   wrong session starts work in a context with the wrong claims, and the

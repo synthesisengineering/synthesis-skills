@@ -35,8 +35,10 @@ if an agent remembered). Only a missing key or `false` turns it off: any other v
 setting is refused, and so is a first day that is not a day.
 
 The log is `<synthesis home>/rituals/history.jsonl` (`RITUAL_STATE_DIR` or
-`--state-dir` points elsewhere, to exercise a copy). Derivations live in the
-plugin's `synthesis/rituals.py`, which the SessionStart line and the nudge share.
+`--state-dir` points elsewhere, to exercise a copy). `record` also keeps its line
+in the workspace's history folder, in this host's own file (5.20.0), and every view
+reads both. Derivations live in the plugin's `synthesis/rituals.py`, which the
+SessionStart line and the nudge share.
 """
 
 from __future__ import annotations
