@@ -64,6 +64,7 @@ ITEM = re.compile(r"^[ \t]*[-*][ \t]+(?:\[(?P<box>[ xX])\][ \t]+)?(?P<text>.+?)[
 # holds prose, and including it once flagged 140 of 294 items across 18 projects.
 OPEN_SECTION = re.compile(r"open|pending|next|action|todo|to do|blocked|waiting|in progress", re.I)
 REVIEW_DAYS = 14
+CITE_DAYS = 14  # the weekly review's window
 
 
 class CannotTell(Exception):
@@ -486,13 +487,57 @@ def active_project() -> str:
 
 # --- reporting -------------------------------------------------------------------------------------
 
+def cited_entries(projects: list, today: date) -> tuple:
+    """(entries that cite a session record, entries) among these project folders' session-log entries dated in the
+    last CITE_DAYS days; the first is None where this machine holds no session archive to tell by. A citation is
+    read by the rule the day's prompt check reads one by (`sessions.CITED`, `sessions.named`): before `#<seq>`, a
+    session's id, or eight or more of its first characters that name one session, here one of the archive or of a
+    sessions repo this machine has cloned: a folder named for the session that holds its `meta.json` (a sub-agent's
+    id begins with its parent's, so only its whole id names it). Any eight characters of hexadecimal before a
+    number once counted, a commit and an order number among them. A config that cannot be read names no sessions
+    repo, and the archive here is still counted by. Counted, never a finding: measured on 2026-11-13, 8 of 267
+    entries cited one, and the day's prompt check is what asks."""
+    from synthesis import sessions
+    try:
+        repos = list(sessions.repos().values())
+    except (OSError, ValueError):
+        repos = []
+    held: dict = {}  # a session's id: the folders named for it
+    for folder in [*sessions.root().glob("*/*/*-*"), *(f for repo in repos for f in repo.glob("*/*-*"))]:
+        for harness in sessions.ADAPTERS:
+            if folder.name.startswith(harness + "-"):
+                held.setdefault(folder.name[len(harness) + 1:], []).append(folder)
+    mains, cited, total = [s for s in held if "-agent-" not in s], 0, 0
+
+    def names(token: str) -> bool:
+        one = [token] if token in held else sessions.named(token, mains)
+        return len(one) == 1 and any((folder / "meta.json").is_file() for folder in held[one[0]])
+    for project in projects:
+        for log in sorted((project / "sessions").glob("*.md")) if (project / "sessions").is_dir() else []:
+            try:
+                text = "" if log.name == "INDEX.md" else log.read_text(encoding="utf-8")
+            except (OSError, UnicodeError):
+                continue
+            heads = list(LOG_ENTRY.finditer(text))
+            for i, head in enumerate(heads):
+                try:
+                    age = (today - date.fromisoformat(head.group(1))).days
+                except ValueError:
+                    continue
+                if 0 <= age < CITE_DAYS:
+                    body = text[head.start():heads[i + 1].start() if i + 1 < len(heads) else len(text)]
+                    total += 1
+                    cited += any(names(found[0]) for found in sessions.CITED.findall(body))
+    return (cited if held else None), total
+
+
 def _lines_for(findings: list, label: bool = False) -> list[str]:
     return [line for f in sorted(findings, key=lambda f: (f.severity != "defect", f.check))
             for line in (f"  {'FAIL' if f.severity == 'defect' else 'warn'}  [{f.check}] "
                          + (f"{f.project}: " if label else "") + f.message, f"        -> {f.remedy}")]
 
 
-def render(audits: list, source: list, active: str, coverage: dict) -> str:
+def render(audits: list, source: list, active: str, coverage: dict, citations: dict | None = None) -> str:
     findings = source + [f for a in audits for f in a.findings]
     defects = sum(f.severity == "defect" for f in findings)
     out = [f"synthesis context doctor: {len(audits)} project(s) audited"]
@@ -515,6 +560,10 @@ def render(audits: list, source: list, active: str, coverage: dict) -> str:
     for check, c in sorted(coverage.items()):
         if c["skipped"]:
             out.append(f"coverage  {check}: examined {c['examined']}, skipped {c['skipped']} ({', '.join(sorted(c['why']))})")
+    for name, c in sorted((citations or {}).items()):
+        window = f"{c['entries']} session entries dated in the last {CITE_DAYS} days cite a session record"
+        out.append(f"citations  {name}: cannot tell how many of {window}: this machine has no session archive" if c["cited"] is None
+                   else f"citations  {name}: {c['cited']} of {window}")
     out.append(f"\n{'DEFECTS' if defects else 'HEALTHY'}: {defects} defect(s), {len(findings) - defects} warning(s).")
     return "\n".join(out)
 
@@ -558,14 +607,20 @@ def main(argv: list | None = None) -> int:
     findings = source + [f for a in audits for f in a.findings]
     code = 1 if any(f.severity == "defect" for f in findings) else 0
     active = Path(args.project).name if args.project else active_project()
+    groups: dict = {}
+    for a in audits:  # one line for a project asked for by itself, else one for each knowledge root
+        groups.setdefault(a.path if args.project else a.path.parent.parent, []).append(a.path)
+    twice = {r.name for r in groups if sum(o.name == r.name for o in groups) > 1}  # two roots of one name: each with its folder
+    citations = {f"{root.parent.name}/{root.name}" if root.name in twice else root.name: {"cited": cited, "entries": entries}
+                 for root, folders in groups.items() for cited, entries in [cited_entries(folders, today)] if entries}
     if args.json:
         print(json.dumps({"ok": code == 0, "exit": code, "active": active, "projects_audited": len(audits),
                           "defects": sum(f.severity == "defect" for f in findings),
                           "warnings": sum(f.severity == "warning" for f in findings),
-                          "coverage": {k: {**v, "why": sorted(v["why"])} for k, v in coverage.items()},
+                          "coverage": {k: {**v, "why": sorted(v["why"])} for k, v in coverage.items()}, "citations": citations,
                           "findings": [vars(f) for f in findings]}, indent=2))
     else:
-        print(render(audits, source, active, coverage))
+        print(render(audits, source, active, coverage, citations))
     return code
 
 

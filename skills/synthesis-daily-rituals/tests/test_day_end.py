@@ -13,8 +13,10 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
+import time
 from datetime import date
 from pathlib import Path
 
@@ -115,8 +117,68 @@ def test_the_nudge_fires_when_its_state_tool_cannot_answer(tmp_path: Path, break
 
 def test_the_banner_texts_are_fixed_and_name_nothing() -> None:
     text = (SCRIPTS / "day-end-nudge.sh").read_text(encoding="utf-8")
-    assert text.count("display notification") == 2
+    assert text.count("display notification") == 5
     assert all("$" not in part.splitlines()[0] for part in text.split("display notification")[1:])
+
+
+ONE = '-e display notification "One agent app has guards not confirmed running — details in your synthesis console" with title "Synthesis"'
+SEVERAL = '-e display notification "More than one agent app has guards not confirmed running — details in your synthesis console" with title "Synthesis"'
+NO_LOOK = '-e display notification "Agent app guards not checked since synthesis last updated — details in your synthesis console" with title "Synthesis"'
+EVENTS = ["session_start", "user_prompt_submit", "pre_tool_use", "stop"]
+
+
+def _all_closed(home: Path, ago: float = 3600.0, version: str = "", raw: str = "", **waiting) -> None:
+    """Every workspace closed, and the note as a run of the doctor `ago` seconds back would have left it."""
+    closed = [{"date": TODAY, "direction": d, "workspace": w, "ts": "x"} for w in ("alpha", "beta") for d in ("day-start", "day-end")]
+    state(home, closed, EVERY_DAY)
+    (home / "state").mkdir(exist_ok=True)
+    released = re.search(r'__version__ = "([^"]+)"', (home / "current" / "synthesis" / "__init__.py").read_text(encoding="utf-8"))[1]
+    names = {"codex": "codex hook trust", "muse": "muse hook approval"}
+    (home / "state" / "harness-approvals.json").write_text(raw or json.dumps({"seen": {names[k]: {
+        "at": time.time() - ago, "version": version or released, "waiting": v, "struck": {}, "said": "the doctor's line"}
+        for k, v in waiting.items()}}), encoding="utf-8")
+
+
+def test_the_nudge_says_when_a_harness_has_not_shown_its_guard_running(tmp_path: Path) -> None:
+    """2026-11-13: after each of six releases in a day, one harness ran none of the plugin's hooks until its hooks
+    were approved again, and only the doctor's own line said so. The doctor writes down which hooks wait; the
+    evening job reads that note, asks no harness anything, and shows a fixed banner: one, or more than one."""
+    home = runtime(tmp_path)
+    _all_closed(home, codex=EVENTS)
+    before = snapshot(home)
+    assert nudge(home, tmp_path) == [ONE]
+    assert snapshot(home) == before, "the nudge must never write state"
+    assert not list(home.rglob("__pycache__")), "nor compiled files beside the runtime it reads"
+    _all_closed(home, codex=EVENTS, muse=["pre_tool_use"])
+    assert nudge(home, tmp_path) == [SEVERAL]
+    state(home, [{"date": TODAY, "direction": "day-end", "workspace": "alpha", "ts": "x"}], EVERY_DAY)
+    assert nudge(home, tmp_path) == [SEVERAL, BANNER]                           # and the evening banner beside it
+
+
+def test_the_nudge_says_when_no_look_was_taken_since_synthesis_changed(tmp_path: Path) -> None:
+    """Review of 5.14.0, finding 2: a release installed with no run of the doctor left a note saying none wait."""
+    home = runtime(tmp_path)
+    _all_closed(home, version="5.0.0", codex=[], muse=[])
+    assert nudge(home, tmp_path) == [NO_LOOK]
+    _all_closed(home, version="5.0.0", codex=EVENTS)                            # what waited under another release is not counted
+    assert nudge(home, tmp_path) == [NO_LOOK]
+    _all_closed(home, ago=3 * 86400.0, version="5.0.0", codex=[])               # and three days on it is still not checked
+    assert nudge(home, tmp_path) == [NO_LOOK]
+
+
+@pytest.mark.parametrize("note", [{"codex": [], "muse": []}, {"codex": ["stop", "session_start"]}, {"ago": 2 * 86400.0, "codex": EVENTS},
+                                  {"raw": "{not json"}, {"raw": '{"at": 1, "waiting": ["codex hook trust"]}'}])
+def test_the_nudge_says_nothing_of_guards_when_none_waits_or_the_note_is_old_or_unreadable(tmp_path: Path, note) -> None:
+    home = runtime(tmp_path)
+    _all_closed(home, **note)
+    assert nudge(home, tmp_path) == []
+
+
+def test_the_nudge_says_nothing_of_guards_where_no_run_of_the_doctor_wrote_the_note(tmp_path: Path) -> None:
+    home = runtime(tmp_path)
+    _all_closed(home, codex=[])
+    (home / "state" / "harness-approvals.json").unlink()
+    assert nudge(home, tmp_path) == []
 
 
 def test_the_nudge_sounds_the_critical_alert_on_a_day_with_no_ritual(tmp_path: Path) -> None:

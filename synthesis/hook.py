@@ -100,8 +100,55 @@ def session_start(payload):
     notes += [f"This session is bound to no project, so mail addressed to one does not reach it. Mail it has not read is "
               f"waiting for: {', '.join(kept[:8])}{f' and {len(kept) - 8} more' if len(kept) > 8 else ''}. If this session works on one of them, `synthesis resume "
               f"{kept[0]}` binds it and delivers the mail."] if kept else []
-    notes += [n for n in [_window_note()] if n]
+    notes += [n for n in (_window_note(), _unguarded_note()) if n]
     return _emit("SessionStart", context="\n\n".join(notes))
+
+
+HARNESSES = {"codex hook trust": "Codex", "muse hook approval": "Muse"}
+
+
+def _ran(payload: dict, event: str) -> None:
+    """A hook that runs is one its harness has approved: strike its own event from what the doctor saw not running
+    there under this release, and no other (2026-11-13, a review: a start hook that ran was taken for proof that
+    the guard runs). What was seen under another release is the doctor's to look at again. The harness is the one
+    in whose own folder of session records the payload's transcript is a file, read past any link: never the
+    environment's, since the doctor's self-test runs this hook from whatever shell the doctor is in, and never a
+    path that only looks like a record. Muse hands its hooks no transcript, so only the doctor's next look clears
+    Muse; in Claude Code, which asks for no approval, nothing is read."""
+    try:
+        from synthesis import __version__, paths
+        where = payload.get("transcript_path")
+        where = os.path.realpath(where) if isinstance(where, str) and where else ""
+        for name, harness in paths.HOOK_APPROVALS.items() if where and os.path.isfile(where) else ():
+            if where.startswith(os.path.realpath(paths.transcript_roots()[harness]) + os.sep) and event in paths.waits().get(name, {}).get("waiting", ()):
+                paths.note_wait(name, lambda old: {**old, "waiting": [e for e in old["waiting"] if e != event],
+                                                   "struck": {**old["struck"], event: time.time()}}
+                                if old and old["version"] == __version__ and event in old["waiting"] else None)
+    except Exception:
+        pass  # a note must never cost a hook its answer
+
+
+def _unguarded_note() -> str:
+    """What was last seen of the hooks in Codex and in Muse, where not all is well: the hooks that were not running
+    when the doctor looked and have not run since, with the doctor's own line for what mends it (an approval, or a
+    plugin that registers no hooks), and a harness nothing has looked at since this release replaced the one it was
+    seen under (a harness can ask for its approval again when the plugin changes)."""
+    try:
+        from synthesis import __version__, paths
+        said, stale = [], []
+        for name, entry in paths.waits().items():
+            hooks, one = [e.replace("_", "-") for e in entry["waiting"]], len(entry["waiting"]) == 1
+            if entry["version"] != __version__:
+                stale.append(HARNESSES[name])
+            elif hooks:
+                said.append(f"{HARNESSES[name]}: its {' and '.join(filter(None, [', '.join(hooks[:-1]), hooks[-1]]))} hook{'' if one else 's'} "
+                            f"{'was' if one else 'were'} not running when the doctor looked ({time.strftime('%a %H:%M', time.localtime(entry['at']))}) "
+                            f"and {'has' if one else 'have'} not been seen to run since (the doctor's line then: {entry['said']})."
+                            + " Nothing is known to guard a send or a deploy made from there." * ("pre-tool-use" in hooks))
+        return " ".join(said + [f"Whether {' and '.join(stale)} run{'s' * (len(stale) == 1)} synthesis's hooks has not been checked since "
+                                f"synthesis changed to {__version__}: `synthesis doctor` checks it."] * bool(stale))
+    except Exception:
+        return ""  # a note must never cost a session its start
 
 
 def _window_note() -> str:
@@ -243,6 +290,8 @@ def main(argv):
             pass  # never blocks a call; doctor names what is left
     handler = {"session-start": session_start, "user-prompt-submit": user_prompt_submit,
                "pre-tool-use": pre_tool_use, "stop": stop}.get(event)
+    if handler:
+        _ran(payload, event.replace("-", "_"))
     return handler(payload) if handler else 0
 
 

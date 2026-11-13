@@ -229,3 +229,36 @@ def test_a_mailbox_manifest_that_cannot_be_read_counts_as_unread(isolated_home, 
     monkeypatch.setenv("HOME", str(tmp_path))
     assert rituals.stale_mailboxes(datetime(2026, 9, 14, 16, tzinfo=timezone.utc)) == [
         ("beta", "(manifest or watermark store unreadable)", "")]
+
+
+def test_a_config_whose_workspace_is_no_object_is_refused_in_words(isolated_home):
+    """2026-11-13, a review: such a file raised a TypeError from inside `settings`, which no caller expected."""
+    for config in ({"workspaces": {"alpha": ["x"]}}, {"workspaces": {"alpha": "x"}}, {"workspaces": {"alpha": True}},
+                   {"defaults": ["x"], "workspaces": {"alpha": {}}}):
+        log(isolated_home, config=config)
+        try:
+            rituals.config()
+        except ValueError as exc:
+            assert "must be an object" in str(exc)
+        else:
+            raise AssertionError(config)
+    for empty in (None, False, 0, "", []):                                       # nothing set is no fault, as it never was
+        log(isolated_home, config={"defaults": empty, "workspaces": {"alpha": empty, "beta": {}}})
+        assert rituals.settings(rituals.config(), "alpha")["streak"] == "none", empty
+
+
+def test_the_prompt_checks_setting_is_read_in_one_place_for_the_day_end_and_the_doctor():
+    """Off by a missing key or `false` alone; on with its folders and first day; every other value refused, with
+    which of the three faults it is."""
+    def fault(setting):
+        try:
+            return rituals.prompt_check({"prompt_reconcile": setting})
+        except ValueError as exc:
+            return exc.args[1]
+
+    assert rituals.prompt_check({}) is False and fault(False) is False
+    assert fault({"records": ["~/kb", "/abs/kb"]}) == (["~/kb", "/abs/kb"], "")
+    assert fault({"records": ["/abs/kb"], "from": "2026-11-14"}) == (["/abs/kb"], "2026-11-14")
+    assert [fault(s) for s in (None, 0, {}, [], "yes", {"records": []}, {"records": [""]}, {"records": "kb"})] == ["folders"] * 8
+    assert fault({"records": ["kb"]}) == "loose" and fault({"records": ["/abs/kb", "./kb"]}) == "loose"
+    assert [fault({"records": ["/abs/kb"], "from": day}) for day in ("tomorrow", 20261114, "2026-W46-4", "20261114", None)] == ["from"] * 5
