@@ -2776,20 +2776,24 @@ def _material(real: str) -> bool:
 
 
 def _file_targets(tool: str, tool_input: dict) -> list[str]:
-    text = str(tool_input.get("input") or tool_input.get("patch") or "") if tool == "apply_patch" else ""
+    # a patch arrives under `input` or `patch`, and from Codex's own hook under `command` (its apply_patch.rs)
+    text = str(tool_input.get("input") or tool_input.get("patch") or tool_input.get("command") or "") if tool == "apply_patch" else ""
     return [a or b for a, b in PATCH_PATHS.findall(text)] or [str(tool_input.get(k)) for k in (
         "file_path", "path", "notebook_path") if tool_input.get(k)]
 
 
-def _shell_writes(command: str, cwd: str) -> list[str]:
+def _shell_writes(command: str, cwd: str, unread: list | None = None) -> list[str]:
     """The files a shell line writes or removes: redirects, what its utilities change (`_landing`), `apply_patch`;
-    in every reading of the line (`_resolved`)."""
+    in every reading of the line (`_resolved`). A reading that cannot be made is passed over, and kept in `unread`
+    for a caller that counts them."""
     targets = []
     for text in _resolved(command):
         writes = []
         try:
             found = _commands(text, cwd, writes=writes)
         except (Unreadable, StopIteration, IndexError):
+            if unread is not None:
+                unread.append(text)
             continue
         targets += [os.path.join(w, t) for t, w in writes]
         for words, where in found:
@@ -4574,7 +4578,7 @@ def check_desktop(name: str, tool: str, tool_input: dict, config: dict, session:
 
 # --- dispatch -----------------------------------------------------------------------------------
 
-SHELL_TOOLS = {"Bash", "bash", "exec_command", "exec", "shell", "local_shell", "run_shell_command"}  # "bash": Muse
+SHELL_TOOLS = {"Bash", "bash", "exec_command", "exec", "shell", "shell_command", "local_shell", "run_shell_command"}  # "bash": Muse
 
 
 def shell_tool(tool: str) -> bool:

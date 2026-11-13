@@ -36,9 +36,13 @@ STABLE_HOOK = "$HOME/.synthesis/v5/bin/synthesis-hook"
 EVENTS = {"SessionStart": "session-start", "UserPromptSubmit": "user-prompt-submit",
           "PreToolUse": "pre-tool-use", "Stop": "stop"}
 HARNESSES = ("claude", "codex", "muse")
+MARKETPLACE = "synthesis-engineering"  # the one marketplace the plugin ships from
+CODEX_WHOLE = ["plugin", "list", "--json"]
 LISTINGS = {  # each harness's own read-only listing command
     "claude": ["plugin", "list", "--json"],
-    "codex": ["plugin", "list", "--json"],
+    # Asked for one marketplace, Codex fetches no remote catalog. Its whole listing fetches one when its copy is over
+    # three hours old (73 MB and 52 s on 2026-11-13), and the limit below stopped that fetch on every run.
+    "codex": CODEX_WHOLE + ["-m", MARKETPLACE],
     "muse": ["plugins", "inspect", PLUGIN, "--json"],
 }
 HOOK_BUDGET_MS = 50
@@ -564,17 +568,21 @@ def _expand(candidate: str) -> list:
     return sorted(glob.glob(os.path.expanduser(candidate)), key=newest, reverse=True)
 
 
-def _version_ok(path: str, timeout: float = 2.0):
+PROBE_TIMEOUT = 2.0
+
+
+def _version_ok(path: str, timeout: float | None = None):
     """`<cli> --version` with stdin closed, time-bounded, its process group reaped: a stale
-    launcher can outlive the app it launches. None means the probe could not be cleaned up."""
+    launcher can outlive the app it launches. True when it answered, False when it failed, "slow" when
+    it gave no answer in time, None when the probe could not be cleaned up."""
     try:
         proc = subprocess.Popen([path, "--version"], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                                 stderr=subprocess.DEVNULL, start_new_session=True)
-        ok = proc.wait(timeout=timeout) == 0
+        ok = proc.wait(timeout=PROBE_TIMEOUT if timeout is None else timeout) == 0
     except OSError:
         return False
     except subprocess.TimeoutExpired:
-        ok = False
+        ok = "slow"
     try:
         os.killpg(proc.pid, 9)  # the group too: a launcher's children can outlive it
     except ProcessLookupError:
@@ -591,7 +599,7 @@ def find_client(name: str, which=shutil.which, locations=None) -> str | None:
         value = os.environ[CLIENT_ENV[name]]
         path = os.path.abspath(os.path.expanduser(value)) if value else ""
         return path if path and os.path.isfile(path) and os.access(path, os.X_OK) else None
-    seen = set()
+    seen, slow = set(), None
     for candidate in [which(name)] + [p for c in (KNOWN_LOCATIONS[name] if locations is None else locations)
                                       for p in _expand(c)]:
         path = os.path.abspath(os.path.expanduser(candidate)) if candidate else ""
@@ -601,9 +609,10 @@ def find_client(name: str, which=shutil.which, locations=None) -> str | None:
         ok = _version_ok(path) if name == "codex" else True
         if ok is None:
             return None  # a probe that would not die must not be hidden by a fallback
-        if ok:
+        if ok is True:
             return path
-    return None
+        slow = slow or (path if ok == "slow" else None)
+    return slow  # no answer in time is not absence: where no other install answers, that command is the one
 
 
 # ---- Codex skill catalog, through its read-only app-server -----------------------
@@ -1273,10 +1282,11 @@ def _start(argv: list):
         return exc
 
 
-def _finish(proc, timeout: float = CLI_TIMEOUT):
+def _finish(proc, timeout: float | None = None):
     """(parsed JSON or None, error). Time-bounded; the child is always reaped."""
     if isinstance(proc, Exception):
         return None, f"could not run: {proc}"
+    timeout = CLI_TIMEOUT if timeout is None else timeout
     try:
         out, err = proc.communicate(timeout=timeout)
     except subprocess.TimeoutExpired:
@@ -1284,16 +1294,27 @@ def _finish(proc, timeout: float = CLI_TIMEOUT):
         proc.communicate()
         return None, f"cannot tell: `{' '.join(proc.args)}` did not answer within {timeout:.0f} s; run the doctor again"
     _reap(proc)  # helpers it started (git, MCP servers) end with it
-    starts = [i for i in (out.find("{"), out.find("[")) if i >= 0]
-    try:
-        return json.JSONDecoder().raw_decode(out[min(starts):])[0], ""
-    except (ValueError, IndexError):
+    found = json_in(out)
+    if found is None:
         return None, f"`{' '.join(proc.args)}` gave no JSON (exit {proc.returncode}): {(err or out).strip()[:120]}"
+    return found, ""
+
+
+def json_in(text: str):
+    """The JSON a command printed, read past the words before it: from a brace or bracket that opens a line, else
+    from the first one anywhere. None when it printed none."""
+    opens = [m.start(1) for m in re.finditer(r"(?m)^[ \t]*([{\[])", text)] + [i for i in (text.find("{"), text.find("[")) if i >= 0]
+    for start in opens:
+        try:
+            return json.JSONDecoder().raw_decode(text[start:])[0]
+        except ValueError:
+            continue
+    return None
 
 
 def claude_entry(listing) -> dict | None:
     for item in listing if isinstance(listing, list) else (listing or {}).get("plugins") or []:
-        if str(item.get("id", "")).split("@")[0] == PLUGIN:
+        if isinstance(item, dict) and str(item.get("id", "")).split("@")[0] == PLUGIN:
             path = item.get("installPath")
             return {"enabled": bool(item.get("enabled")), "version": item.get("version", ""),
                     "path": Path(path) if path else None}
@@ -1302,10 +1323,11 @@ def claude_entry(listing) -> dict | None:
 
 def codex_entry(listing, codex_home: Path) -> dict | None:
     for item in (listing if isinstance(listing, dict) else {}).get("installed") or []:
-        if item.get("name") == PLUGIN or str(item.get("pluginId", "")).split("@")[0] == PLUGIN:
-            folder = codex_home / "plugins" / "cache" / item.get("marketplaceName", "") / item.get("name", PLUGIN) / item.get("version", "")
-            return {"enabled": bool(item.get("enabled")), "version": item.get("version", ""),
-                    "path": folder if folder.is_dir() else None, "id": item.get("pluginId", "")}
+        if isinstance(item, dict) and (item.get("name") == PLUGIN or str(item.get("pluginId", "")).split("@")[0] == PLUGIN):
+            version = str(item.get("version") or "")  # a listing with no version names no folder
+            folder = codex_home / "plugins" / "cache" / str(item.get("marketplaceName") or "") / str(item.get("name") or PLUGIN) / version
+            return {"enabled": bool(item.get("enabled")), "version": version,
+                    "path": folder if version and folder.is_dir() else None, "id": item.get("pluginId", "")}
     return None
 
 
@@ -1347,6 +1369,14 @@ def harness_checks(found: list, procs: dict, home: Path, runtime: str, catalog=N
         codex_home = Path(os.environ.get("CODEX_HOME") or Path.home() / ".codex")
         listing, error = _finish(procs["codex"])
         entry = codex_entry(listing, codex_home)
+        if entry is None and not error.startswith(("cannot tell", "could not run")):
+            # Not shown by its own marketplace, or a Codex that does not know the option: absent is said only from
+            # the whole listing, the one that may fetch the catalog.
+            listing, error = _finish(_start(procs["codex"].args[:1] + CODEX_WHOLE))
+            entry = codex_entry(listing, codex_home)
+            if entry is None and error.startswith("cannot tell"):
+                error = error.replace("; run the doctor again", ": Codex's whole listing fetches its remote plugin catalog when its "
+                                      "copy is old, and this limit stops the fetch each time; run `codex plugin list` once, then the doctor again")
         try:
             config = read_toml((codex_home / "config.toml").read_text(encoding="utf-8"))
         except OSError:
@@ -1358,7 +1388,7 @@ def harness_checks(found: list, procs: dict, home: Path, runtime: str, catalog=N
             versions["codex"] = entry.get("version", "")
             hooks = _hooks_file(entry["path"])
             checks += [check_package("codex", entry["path"], runtime), check_hooks_wired("codex", _commands(hooks)),
-                       check_codex_trust(hooks, config, entry.get("id") or PLUGIN, Path(entry["path"]), codex_home)]
+                       check_codex_trust(hooks, config, entry.get("id") or PLUGIN, entry["path"], codex_home)]
             if catalog is not None:
                 result, catalog_error = catalog()
                 checks.append(check_codex_catalog(result, catalog_error, entry["path"], config, codex_home))

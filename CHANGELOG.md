@@ -4,6 +4,80 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [5.13.0] - 2026-11-13
+
+- **What the principal typed is filed as a prompt in every shape a transcript holds it** (`synthesis-context-lifecycle`
+  2.4.0). The session archive filed a `user` record only for a prompt that begins a turn. A prompt typed while a turn
+  runs, which Claude Code keeps as a queued command and in no row of its own, was a `system` record; so was what was
+  typed after a system reminder that the harness put before it in one block; and a slash command that reaches the
+  agent was a `system` record the first time and nothing the second, dropped as a copy. Measured on thirty days of
+  transcripts, each row given to the export's own reader: 578 of 3,327 things typed, 17 in every 100, were in no list
+  of prompts, 32 of them with no record at all. The day's list of prompts (`synthesis sessions prompts`) is read from
+  these records, and a day's close that accounts for every prompt was missing those. Each is a `user` record now: a
+  queued prompt, at the time it was typed; a slash command as the harness records it, its name and arguments with
+  any words beside them (`/review the last change`), and the same command typed twice is two prompts; and the typed
+  words with their reminder kept apart as a `system` record.
+- **Whether a row can be the principal's is the approval reader's own test.** A row or a queued command the harness
+  marks as its own (a tool's result, the tool call it came from, a synthetic or a transcript-only row), one whose
+  origin is not a person, and words beside a tool's result are `system` whatever they say; some of these were `user`
+  records before. A command to the harness (`/model`) and its output stay `system`, as do a command run in the
+  harness's bash mode with its output, which had been a `user` record, a task's notification and a CI event. Another
+  agent's or another session's message is a `brief` whether it comes in a row or queued, and so is what is said to
+  a session a program drives. Measured against the approval reader row by row on the same thirty days: the two
+  agree on 3,598 rows, and where they differ the text is a wrapped block with no words outside it or the harness's
+  own line that a request was interrupted.
+- **A session belongs to the projects it wrote into.** `projects` in a session's `meta.json` held the project the
+  session-start hook named and the one the board had for it at export: of 147 archived sessions that wrote into a
+  project's folder, 134 named no project. A session is now tagged with each project whose folder one of its tool
+  calls wrote into (`<a knowledge root>/projects/<id>/`, a folder that holds its `CONTEXT.md`): a file tool's
+  target, or what a shell line writes, read with the guard's readers; Codex's arguments kept as JSON text are read
+  with their working directory, and its patch as text. Reading a project's files adds none, and a shell line the
+  reader cannot read is counted in `meta.json` among what was skipped. Replayed over thirty days of Claude Code
+  transcripts, with the same rows read a second time without it: 47 of 120 sessions end with a project where 12 did;
+  150 of 100,800 tool calls were shell lines the reader could not read, and are counted; the reading costs under half
+  a millisecond a call.
+- **A rebuild numbers records anew, so it is not asked for.** Sessions already in the archive keep the records they
+  were given, and every row exported from this release on follows the new rules. `synthesis sessions export
+  --rebuild` files the past again, and where a record now exists that did not, the later records of that session
+  move up: a citation written before the rebuild then names another record. The reference says so; rebuild only an
+  archive whose records nothing cites yet.
+- **The guard reads a patch from the key Codex gives its hook** (`command`, by Codex's source; it read `input` and
+  `patch`, and found no file in such a call), and takes a tool named `shell_command` for a shell; the hook's matcher
+  names it too, so that such a call reaches the guard.
+- **A lint: no Python file defines a function or a class twice**, at its top or in a class's body. Renaming a helper
+  in a new test file gave two functions one name; a second definition replaces the first without a word, and a test
+  defined twice never runs. An overload's stubs and a property's setter share a name by design. 5.12.0's lint read
+  the core alone.
+
+## [5.12.2] - 2026-11-13
+
+- **`synthesis doctor` can tell again whether Codex holds the plugin** (`synthesis-onboarding` 3.5.1,
+  `synthesis-agent-conformance` 2.0.5). The doctor and the installer asked Codex for its whole plugin listing, which
+  takes in Codex's remote catalog. Codex fetches that catalog again when its copy is over three hours old (73 MB and
+  52 s on 2026-11-13), and the doctor's limit of 45 s stopped it before the fetch finished, twice running on the
+  morning this was reported: the Codex lines said `cannot tell`, and the day's first look at Codex's hooks did not
+  happen. Both now ask for the plugin's own marketplace first (`codex plugin list --json -m synthesis-engineering`),
+  for which Codex fetches no remote catalog, so the doctor's daily run and every release's update no longer wait on
+  it. "Not installed" is said only from the whole listing, which is asked when the marketplace's own shows no plugin
+  or a Codex does not know the option; the installer gives that one five minutes, and where it does not answer the
+  doctor in time, the doctor's line says to run `codex plugin list` once, since its limit stops the fetch each time.
+- **A Codex that is slow to say its version is still the Codex on the machine.** Before a Codex command is used it
+  is asked for its version, with a limit of two seconds, so that a launcher which outlived its app is passed over for
+  another install. Where no other install answered, Codex was taken for absent: the doctor printed none of its nine
+  lines and nothing said they were missing (seen once, on a busy machine, in a test), and the installer, a release
+  and the dispatch script would each have skipped Codex as not on the machine. A command that gives no answer in
+  time is now passed over only for an install that answers; with none, it is the one, and its own commands say what
+  is wrong if it answers nothing. A command that exits with an error is still no Codex.
+- **The installer does not add a second copy beside one from another marketplace.** A plugin installed from a
+  fork's marketplace is found by the whole listing; the installer stops, names that copy and the command that removes
+  it, and uninstall removes the copy that is there by its listed name. A listing that does not answer within its
+  limit stops the install with that said, the next listing is not started after it, and a listing that is no JSON is
+  reported with the harness's own last line.
+- **The doctor keeps reporting when a listed plugin's folder is missing.** A Codex listing with no version, or one
+  that names a folder that is not there, ended the doctor with a traceback and no report; it fails the package line
+  now. A listing is read past any words a command prints before it (from a brace or a bracket that opens a line),
+  where the first brace anywhere was taken and an installed plugin could read as not installed.
+
 ## [5.12.1] - 2026-11-13
 
 - **The knowledge-base connector signs in ChatGPT and Codex on Firestore** (`synthesis-kb-distribution` 1.2.2). Its
