@@ -125,9 +125,11 @@ tunnel's address. One of them relied on it for real work; when the laptop's app 
 address was gone for good. With `temporary_addresses` in the config:
 
 - **What it refuses:** a message whose words hold a quick tunnel's host (a subdomain of
-  `trycloudflare.com`, `ngrok.io`, `ngrok.app`, `ngrok.dev`, `ngrok-free.app`, `ngrok-free.dev`,
-  `loca.lt`, `localtunnel.me`, `serveo.net`, `localhost.run`, `lhr.life`, `pinggy.io` or
-  `pinggy.link`, or a host the config's `hosts` names and its subdomains), and, unless `local` is
+  `trycloudflare.com`, `ngrok.io`, `ngrok.app`, `ngrok.dev`, `ngrok.pizza`, `ngrok-free.app`,
+  `ngrok-free.dev`, `ngrok-free.pizza`, `loca.lt`, `localtunnel.me`, `serveo.net`,
+  `serveousercontent.com`, `localhost.run`, `lhr.life`, `lhr.rocks`, `pinggy.io`, `pinggy.link`,
+  `pinggy-free.link`, `devtunnels.ms` or `app.github.dev`, the services the knowledge-base
+  connector refuses to start on, or a host the config's `hosts` names and its subdomains), and, unless `local` is
   false: `localhost`, a `.local` or `.localhost` name or a private-range address written with a
   scheme or a port (`http://localhost:8787`, `my-laptop.local:3000`, `http://192.168.1.20:8000`),
   and a loopback or any-interface address however written (`127.0.0.1`, `0.0.0.0`). It reads every
@@ -141,7 +143,7 @@ address was gone for good. With `temporary_addresses` in the config:
   that looks like an address (`10.2.3.4`), a tunnel service's own site, a look-alike host, and an
   address at a host no rule names.
 - **Starting a tunnel:** `cloudflared tunnel --url ...`, `ngrok http`, `tcp`, `tls` or `start`,
-  `localtunnel` or `lt` with a port (also through `npx`, `bunx`, `pnpm` or `yarn`), and a reverse
+  `devtunnel host`, `localtunnel` or `lt` with a port (also through `npx`, `bunx`, `pnpm` or `yarn`), and a reverse
   `ssh -R` to `serveo.net`, `localhost.run` or `pinggy.io` wait for the principal's code. The hold
   says what a quick tunnel is for: their own test, with an address that is never given to anyone. A
   named tunnel (`cloudflared tunnel run <name>`) is a deployment and is not held here.

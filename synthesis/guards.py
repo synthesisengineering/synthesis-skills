@@ -163,8 +163,10 @@ def _is_email(tool: str, tool_input: dict) -> bool:
 
 # 2026-11-12: a connector tested on a laptop behind a quick tunnel was handed to two colleagues in direct messages that
 # carried the tunnel's address. One relied on it, and a restart of the laptop's app took the address away for good.
-TUNNELS = (".trycloudflare.com", ".ngrok.io", ".ngrok.app", ".ngrok.dev", ".ngrok-free.app", ".ngrok-free.dev", ".loca.lt",
-           ".localtunnel.me", ".serveo.net", ".localhost.run", ".lhr.life", ".pinggy.io", ".pinggy.link")
+TUNNELS = (".trycloudflare.com", ".ngrok.io", ".ngrok.app", ".ngrok.dev", ".ngrok.pizza", ".ngrok-free.app", ".ngrok-free.dev",
+           ".ngrok-free.pizza", ".loca.lt", ".localtunnel.me", ".serveo.net", ".serveousercontent.com", ".localhost.run",
+           ".lhr.life", ".lhr.rocks", ".pinggy.io", ".pinggy.link", ".pinggy-free.link", ".devtunnels.ms", ".app.github.dev")
+# The knowledge-base connector refuses to start on the same services (its TEMPORARY_HOSTS); a test holds the two equal.
 HOSTNAME = re.compile(r"(?<![\w.@-])(?:[a-z0-9-]+\.)+[a-z][a-z0-9-]*(?![\w-])")
 _NAME = r"(?:localhost|[a-z0-9-]+(?:\.[a-z0-9-]+)*\.local(?:host)?|\[::1\])"
 _NET = r"(?:10(?:\.\d{1,3}){3}|192\.168(?:\.\d{1,3}){2}|172\.(?:1[6-9]|2\d|3[01])(?:\.\d{1,3}){2})"
@@ -1617,6 +1619,7 @@ def _tunnels(words: list[str]) -> bool:
         return any(w in names or w.startswith(tuple(n + "=" for n in names)) for w in rest)
     return bool(name == "cloudflared" and "tunnel" in rest and flag("--url")
                 or name == "ngrok" and rest[:1] in (["http"], ["tcp"], ["tls"], ["start"], ["start-all"])
+                or name == "devtunnel" and rest[:1] == ["host"]
                 or (name in ("lt", "localtunnel") or name in RUNNERS and "localtunnel" in rest) and flag("--port", "-p")
                 or name == "ssh" and any(w.startswith("-R") for w in rest) and any(w.rsplit("@", 1)[-1].endswith(TUNNEL_SSH) for w in rest))
 
