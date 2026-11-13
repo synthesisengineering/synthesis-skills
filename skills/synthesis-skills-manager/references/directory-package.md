@@ -129,12 +129,12 @@ The checks read the ZIP that was built, not the folders it came from. It fails w
    every listed skill, so the whole chain of dependencies stays inside the list);
 5. a packaged file differs from its source;
 6. the manifest's version is not the repository's;
-7. a line of a packaged file claims a hook, a guard or an approval code, or needs the
-   runtime;
+7. a packaged file claims a hook, a guard or an approval code at work, sends its reader
+   to the coordination board, or needs the runtime;
 8. the manifest does not name a logo and a composer icon, each as a `./assets/` path to
    an image the package holds (a dark variant, `logoDark` or `composerIconDark`, is
    held to the same rule when it is named), or the package holds an image that no such
-   field names.
+   field names;
 9. an image that is text (an SVG) holds a script, or a link or `url()` that leads
    anywhere but into the image itself (`#name`) or to data written in it (`data:`): a
    directory shows the image to everyone who opens the package's page.

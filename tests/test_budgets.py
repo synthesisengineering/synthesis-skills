@@ -685,19 +685,20 @@ ROOT = Path(__file__).resolve().parents[1]
 # to, a compiled file is held to its source's hash and not its date, and compiling cannot fail an install).
 # conftest.py at the root 27, new: under an interpreter that keeps compiled code in one folder of the person's own
 # (Apple's Python), a test run keeps its compiled code in a temporary folder, in this process and in each it starts.
-# 5.8.2 (2026-11-13): core 3, plugin 265. doctor.py: _reap 3 (the doctor closes the three pipes it opened to a harness
+# 5.8.2 (2026-11-13): core 3, plugin 294. doctor.py: _reap 3 (the doctor closes the three pipes it opened to a harness
 # CLI when it stops it; they were left to the collector, which Python 3.13 reports at every such query).
-# build_directory_package.py 262, new (the package of method skills for a plugin directory that lists no plugin with
-# hooks; it left 5.8.0 for a passage since moved): verify 48 (the nine things that fail a built ZIP), main 45 (build,
-# --check, --changed-since), its header, imports and constants' notes 44, carried 23 (what a package carries, read
-# from the last commit itself for a ZIP that is written), build 17, CLAIMS 15 and ACTS 5 (the phrases of a line that
-# claims a guard, a hook or an approval code, or needs the runtime), read_list 8, depends_on 7, git 7, read_json 7,
-# committed 7, differing 7, Unreadable 4, claims 4, is_test 4, count 4, and 6 lines of constants (REPO, LIST, IMAGES,
-# ICONS, MANIFEST).
+# build_directory_package.py 291, new (the package of method skills for a plugin directory that lists no plugin with
+# hooks; it left 5.8.0 for a passage since moved): verify 48 (the nine things that fail a built ZIP), its header,
+# imports and constants' notes 47, main 45 (build, --check, --changed-since), carried 23 (what a package carries,
+# read from the last commit itself for a ZIP that is written), CLAIMS 20, ACTS 6, COMMANDS 2 and BY 1 (the phrases of
+# a text that claims a guard, a hook or an approval code at work, sends its reader to the board or needs the
+# runtime), build 17, claimed 16 (a file read a paragraph at a time, so a claim that wrapping splits is caught),
+# read_list 8, depends_on 7, git 7, read_json 7, committed 7, differing 7, claims 5, Unreadable 4, is_test 4,
+# count 4, and 6 lines of constants (REPO, LIST, IMAGES, ICONS, MANIFEST).
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # consolidate first).
 CORE_BUDGET = 11880
-PLUGIN_BUDGET = 32926
+PLUGIN_BUDGET = 32955
 
 
 def _lines(files):

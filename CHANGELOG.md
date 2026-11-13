@@ -12,15 +12,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   need nothing from the runtime (writing, review, fact-checking, planning, thinking), each file byte for byte, one
   manifest that registers no hook, and one mark as its logo and its composer icon. A ZIP that is written is read
   from the last commit itself, each file as git holds it. Its name and description say what it is not: no guard
-  checks a send, a deploy or a commit, and there is no board and no ritual. `--check`
-  reads the built ZIP and fails on a hook, a file that is no listed skill's, a listed name that is no skill here, a
-  listed skill that depends on one outside the list, a file that differs from its source, a version that is not the
-  repository's, a line that claims a guard, a hook or an approval code or needs the runtime, a manifest without
-  its two images, an image no field names, or one that runs a script or loads from outside itself. A skill that
-  gains a line that claims a guard leaves the list in the pull request
-  that adds it; its text is not edited to pass. `--changed-since TAG` names what changed in the package since a
-  release, so a new submission is made when one is due. Building submits nothing: the upload is the owner's step,
-  and the reference lists what a submission asks of them.
+  checks a send, a deploy or a commit, and there is no board and no ritual. `--check` reads the built ZIP and
+  fails on a hook; a file that is no listed skill's; a listed name that is no skill here; a listed skill that
+  depends on one outside the list; a file that differs from its source; a version that is not the repository's; a
+  text that claims a guard, a hook or an approval code at work, sends its reader to the coordination board or
+  needs the runtime; a manifest without its two images; an image no field names; and an image that runs a script
+  or loads from outside itself. The claim rule reads a file a paragraph at a time, so a claim that wrapping
+  splits is caught, and it knows the runtime's commands with or without backticks; the ordinary senses of the
+  same words pass (a writer's hook, a guard clause, a board of directors), and the tests pin both. A skill that
+  gains such a claim leaves the list in the pull request that adds it; its text is not edited to pass.
+  `--changed-since TAG` names what changed in the package since a release, so a new submission is made when one
+  is due. Building submits nothing: the upload is the owner's step, and the reference lists what a submission
+  asks of them.
 - **Nothing the core does warns under Python 3.13 or 3.14.** Three calls passed a split's limit to `re` by
   position, which Python 3.13 deprecates and a later Python will refuse; they name it now, and a lint test reads
   the repository's own Python files for the same. The doctor closes the three pipes it opened to a harness CLI when it stops it,
