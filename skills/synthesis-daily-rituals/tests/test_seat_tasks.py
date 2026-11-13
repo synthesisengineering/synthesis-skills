@@ -105,12 +105,21 @@ def test_every_commitment_dated_or_parked_leaves_nothing_to_review(tmp_path):
     assert report["untagged"] == [] and report["no_id"] == [] and report["status"] == "CLEAR", report["untagged"]
 
 
-def test_only_the_days_own_plan_is_read_for_commitments(tmp_path):
-    """Yesterday's plan was held to the rule yesterday; an entry it left untagged is not today's to list again."""
+def test_the_newest_plan_is_the_one_read_for_commitments(tmp_path):
+    """A seat's commitments stand in its newest plan until a newer one is written: on a day with no ritual they are
+    still open (counted 2026-11-13: one seat's newest plan was a day old and held nine). An older plan was held to
+    the rule on its own day, and a plan dated ahead is not read."""
     write(tmp_path / "plans", "2026-11-12.md", "# Plan\n\n## Priority Tasks\n1. **An old line**\n")
     write(tmp_path / "plans", f"{DAY}.md", "# Plan\n\n## Priority Tasks\n1. **Today's line**\n")
     assert titles(sweep(tmp_path)[1]) == ["**Today's line**"]
-    assert titles(sweep(tmp_path, as_of="2026-11-14")[1]) == []                  # no plan for that day yet
+    assert titles(sweep(tmp_path, as_of="2026-11-16")[1]) == ["**Today's line**"]   # no plan since: it is still the seat's plan
+    assert titles(sweep(tmp_path, as_of="2026-11-12")[1]) == ["**An old line**"]
+
+
+def test_a_seat_that_keeps_a_dated_plan_is_read_there_and_not_in_its_rituals_artifacts(tmp_path):
+    write(tmp_path / "plans", "2026-11-12.md", "# Plan\n\n## Priority Tasks\n1. **The plan's line**\n")
+    write(tmp_path / "workers", f"{DAY}-day-start.md", "# Start\n\n## Carried Items\n- A worker's line\n")
+    assert titles(sweep(tmp_path)[1]) == ["**The plan's line**"]
 
 
 def test_a_seat_whose_plan_is_a_rituals_artifact_is_read_at_its_newest_of_the_day(tmp_path):
@@ -124,7 +133,7 @@ def test_a_seat_whose_plan_is_a_rituals_artifact_is_read_at_its_newest_of_the_da
 def test_the_text_report_counts_the_commitments_and_names_each(tmp_path):
     write(tmp_path / "plans", f"{DAY}.md", PLAN.format(filed="", carried=""))
     _, out = sweep(tmp_path, json_out=False)
-    assert "Commitments with no date and no park: 6 in the day's plan" in out
+    assert "Commitments with no date and no park: 6 in the newest plan" in out
     assert f"  **File the return** before the window closes ({tmp_path / 'plans' / (DAY + '.md')}:8)" in out
 
 
@@ -261,7 +270,7 @@ BARE = "# Friday\n\n## Priority Tasks\n\n1. **Call the landlord**\n\n## Waiting 
 def test_a_clean_record_is_refused_while_a_commitment_has_no_date_and_no_park(tmp_path, record):
     code, _, refusal = record(workspace(tmp_path, BARE, check=True))
     assert code != 0 and not (tmp_path / "state" / "history.jsonl").exists()
-    assert "2 commitment(s) in today's plan carry no date and no park" in refusal
+    assert "2 commitment(s) in the newest plan carry no date and no park" in refusal
     assert "Call the landlord" in refusal and "The vendor's quote" in refusal and f"{DAY}.md:5" in refusal
     assert "**Decays:** YYYY-MM-DD" in refusal and "parked (" in refusal
 
@@ -269,7 +278,7 @@ def test_a_clean_record_is_refused_while_a_commitment_has_no_date_and_no_park(tm
 def test_a_partial_record_goes_through_and_says_how_many(tmp_path, record):
     code, out, refusal = record(workspace(tmp_path, BARE, check=True), outcome="partial")
     assert code == 0, refusal
-    assert "commitments: 2 in today's plan carry no date and no park" in out
+    assert "commitments: 2 in the newest plan carry no date and no park" in out
 
 
 def test_with_each_dated_or_parked_the_record_says_so(tmp_path, record):
@@ -277,7 +286,7 @@ def test_with_each_dated_or_parked_the_record_says_so(tmp_path, record):
         "- The vendor's quote", "- The vendor's quote, parked (they answer in January)")
     code, out, refusal = record(workspace(tmp_path, plan, check={}))
     assert code == 0, refusal
-    assert "commitments: 2 open in today's plan, each with a date or a park" in out
+    assert "commitments: 2 open in the newest plan, each with a date or a park" in out
 
 
 def test_a_clean_record_is_refused_over_an_open_dated_item_with_no_decay_id(tmp_path, record):

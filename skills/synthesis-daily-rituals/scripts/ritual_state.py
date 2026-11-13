@@ -386,6 +386,38 @@ def choices(workspace: str, day: str) -> str:
     return f"\nchoices: {open_items} open in today's plan, each with a recommendation" if roots else ""
 
 
+def commitments(workspace: str, day: str, outcome: str) -> str:
+    """The line `record` prints about the day's commitments, or a refusal, for a workspace that turns the check on
+    (`"commitment_check": true`, or `{"from": "YYYY-MM-DD"}` for its first day): a clean outcome is refused while
+    an open entry under a task, waiting or carried heading of the newest plan carries no date and no park, or an
+    open dated item carries no Decay ID; any other outcome records and says how many. The sweep reads both
+    (2026-11-11, an audit: a commitment written with no tag never reached the sweep, and only a rule said to tag
+    it). Only a missing key or `false` turns the check off; any other value that is not that setting is refused."""
+    wanted = rituals.settings(rituals.config(), workspace).get("commitment_check", False)
+    if wanted is False:
+        return ""
+    if not (wanted is True or isinstance(wanted, dict) and ("from" not in wanted or _is_day(wanted["from"]))):
+        refuse(f"{workspace} sets commitment_check to {json.dumps(wanted)[:80]}, which turns the check neither on nor off, so "
+               f'this ritual is not recorded. In {rituals.state_dir() / "config.json"}, under workspaces.{workspace}, write '
+               '"commitment_check": true, or {"from": "YYYY-MM-DD"} for its first day; only false, or no key at all, turns it off')
+    since = wanted.get("from", "") if isinstance(wanted, dict) else ""
+    if day < since:
+        return f"\ncommitments: checked from {since}"
+    report = decay_sweep.collect(decay_sweep.declared(rituals.config(), workspace) or [], date.fromisoformat(day), workspace)
+    bare, loose = report["untagged"], report["no_id"]
+    said = ([f"{len(bare)} in the newest plan carry no date and no park"] if bare else []) + (
+        [f"{len(loose)} open dated item(s) carry no Decay ID"] if loose else [])
+    if said and outcome in CLEAN:
+        lines = [f"  {Path(row['path']).name}:{row['line']}: {row['title']}" for row in bare + loose]
+        what = " and ".join(([f"{len(bare)} commitment(s) in the newest plan carry no date and no park"] if bare else []) + said[len(said) - bool(loose):])
+        refuse(f"{what}, so this ritual is not recorded as {outcome}:\n" + "\n".join(lines) + "\nA commitment the sweep cannot see "
+               "is carried only for as long as someone copies it. Under each commitment write `**Decays:** YYYY-MM-DD (why "
+               "then)`, the day to look at it again, with a `**Decay ID:**` of its own that every later copy keeps; or, where the "
+               "principal has said it waits for no date, `parked (the reason)` on its own line. Or record --outcome partial, "
+               "which closes the day with these counted as open.")
+    return "\ncommitments: " + ("; ".join(said) if said else f"{report['commitments']} open in the newest plan, each with a date or a park")
+
+
 def cmd_record(args) -> int:
     check_workspace(args.workspace, "record --direction <direction> --workspace <workspace> --date YYYY-MM-DD")
     if not _is_day(args.date):  # 20261111 or 2026-W46-3, a date to Python 3.11, names no day a listing or a view finds
@@ -399,7 +431,8 @@ def cmd_record(args) -> int:
     if args.mode == "migration":
         refuse("mode 'migration' marks old bookkeeping and cannot be written")
     critical = (critical_deadlines(args.workspace, args.outcome) + travel(args.workspace, args.date, args.travel)
-                + choices(args.workspace, args.date) + prompts(args.workspace, args.date, args.direction, args.outcome))
+                + choices(args.workspace, args.date) + commitments(args.workspace, args.date, args.outcome)
+                + prompts(args.workspace, args.date, args.direction, args.outcome))
     record = {"ts": datetime.now().astimezone().isoformat(timespec="seconds"), "date": args.date,
               "direction": args.direction, "workspace": args.workspace, "mode": args.mode,
               "outcome": args.outcome}

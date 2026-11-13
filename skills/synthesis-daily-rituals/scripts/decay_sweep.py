@@ -48,6 +48,14 @@ ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
 RUN_ORDER = {"day-start": 0, "midday": 1, "day-end": 2}
 LEAD_DAYS, ALERT_DAYS = 7, (3, 1, 0)  # a critical item leads from a week out; alerts three days and one day out and on its day
 WORDS = ("enrollment", "insurance", "tax(?:es)?", "patent", "visa", "passport", "immigration", "payroll", "FSA", "HSA")
+DONE = re.compile(r"(?:\[[xX]\]\s|~~.+~~|✅|(?:DONE|SENT)\b)")  # a title that closes its own item
+# The headings under which the plan format keeps commitments: the task section and its synonyms, what is waited on,
+# what is carried. A heading of things finished holds none.
+COMMIT = re.compile(r"(?i)\btasks\b|priorities|still to do|this week|pending (?:this|from)|waiting|delegated|carried|carry[- ]forward")
+FINISHED = re.compile(r"(?i)\b(?:completed|done|sent|closed)\b")
+PARKED = re.compile(r"(?i)\bparked\s*\(\s*[^)\s][^)]*\)|\*\*Parked:\*\*\s*\S")  # a park says why
+LEDGER_CLOSED = ("SENT", "SUPERSEDED", "DECAYED", "CLOSED", "RELEASED", "RESOLVED", "LAPSED", "DONE", "ANSWERED")
+OWED_DAYS = 14  # the weekly review's window
 
 
 def iso_day(value: str) -> date:
@@ -166,7 +174,7 @@ def parse_plan(path: Path, day: date, rank: int, as_of: date, report: dict) -> l
             if due is None or parsed < due:
                 due = parsed
                 reason = parts[1] if len(parts) > 1 else ""
-        closed = struck_release or bool(re.match(r"(?:\[[xX]\]\s|~~.+~~|✅|(?:DONE|SENT)\b)", title))
+        closed = struck_release or bool(DONE.match(title))
         for name in ("sent", "released", "resolved"):
             for number, value in fields[name]:
                 try:
@@ -198,6 +206,74 @@ def parse_plan(path: Path, day: date, rank: int, as_of: date, report: dict) -> l
     return entries
 
 
+def commitments(path: Path) -> list[dict]:
+    """The open commitments of one plan: each top-level list entry that stands under a heading of the second level
+    or deeper which the plan format places among tasks, things waited on or things carried (any enclosing heading
+    places it, so every bucket under the task section is read; the plan's own title places nothing). `bare` is
+    true where the entry's block carries no Decays date, no Critical tag and no park that says why (2026-11-13,
+    counted on three seats' newest plans: 12, 0 and 9 such entries, none of them a task box)."""
+    try:
+        text = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeError):
+        return []  # the sweep's own read of the file reports it as a gap
+    rows, chain, section = [], {}, ""
+    for block in item_blocks(text, []):
+        number, first = next(((n, line) for n, line in block if line.strip()), block[0])
+        heading = HEADING.match(first)
+        if heading:
+            level = len(first.lstrip()) - len(first.lstrip().lstrip("#"))
+            chain = {k: v for k, v in chain.items() if k < level}
+            chain[level] = level > 1 and bool(COMMIT.search(heading[1])) and not FINISHED.search(heading[1])
+            section = heading[1].strip()
+        elif LIST.match(first) and any(chain.values()):
+            fields = {match[1].lower() for _, line in block for match in [FIELD.search(line)] if match}
+            title = re.sub(r"^\s*(?:[-*+]\s+|\d+[.)]\s+)", "", first).strip()
+            if not (DONE.match(title) or fields & {"sent", "released", "resolved"}):
+                rows.append({"title": title, "path": str(path), "line": number, "section": section,
+                             "bare": not (fields & {"decays", "critical"} or PARKED.search("\n".join(line for _, line in block)))})
+    return rows
+
+
+def ledger_rows(path: Path, as_of: date, closed: tuple) -> tuple[list[dict], int]:
+    """(the open rows, the rows that could not be read) of each table in a record whose header has a `Status` cell
+    and an `Owed since` cell: a correspondence ledger. A row is closed where its status opens with a tick or with
+    a closing word; every other status, an empty one included, is open, since a status the reader does not know
+    is not read as finished. A row with too few cells for those two columns is counted as not read."""
+    try:
+        text = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeError):
+        return [], 0
+    raw, rows, unread, head, last = text.splitlines(), [], 0, None, 0
+    for number, _ in operative_lines(text, []):  # outside fences, quotes and frontmatter; the line itself keeps its code spans
+        line = raw[number - 1].strip()
+        if number != last + 1 or not line.startswith("|"):
+            head = None
+        last = number
+        if not line.startswith("|"):
+            continue
+        cells = [cell.strip() for cell in re.split(r"(?<!\\)\|", line.strip("|"))]
+        names = [re.sub(r"[*_`]", "", cell).strip().lower() for cell in cells]
+        if head is None:  # a table's first row is its header
+            head = (names.index("status"), names.index("owed since"), names.index("item") if "item" in names else 0) if {
+                "status", "owed since"} <= set(names) else False
+        elif head and not all(re.fullmatch(r":?-*:?", cell) for cell in cells):  # not the rule under the header
+            if len(cells) <= max(head[:2]):
+                unread += 1
+                continue
+            status, word = cells[head[0]], re.search(r"[A-Za-z_]+", re.sub(r"[*`~]", "", cells[head[0]]))
+            word = word[0].upper() if word else ""
+            if re.sub(r"[*`~\s]", "", status).startswith("✅") or word in closed:
+                continue
+            since = re.search(DATE, cells[head[1]])
+            try:
+                since = iso_day(since[0]) if since else None
+            except ValueError:
+                since = None
+            rows.append({"item": re.sub(r"[*`~]", "", cells[head[2]]).strip(), "status": word, "path": str(path), "line": number,
+                         "owed_since": since.isoformat() if since else None, "days": (as_of - since).days if since else None})
+    return rows, unread
+
+
 def declared(cfg: dict, workspace: str):
     """The plan and artifact folders a workspace declares in the ritual config, with any folders of other records
     (drafts, a ledger) whose items it wants swept; None when it declares neither plans nor artifacts."""
@@ -227,19 +303,29 @@ def alert_today(due: date, as_of: date, working) -> bool:
     return False
 
 
+def _tool(tool: str, *args: str) -> str:
+    path = shutil.which(tool)
+    return "unavailable" if not path else "" if subprocess.run([path, *args], capture_output=True).returncode == 0 else "failed"
+
+
 def alert(count: int) -> dict:
     """One banner and one spoken line: a count and a pointer, never a title. The mute flag silences the audio only."""
     if not count:
         return {"count": 0}
     text = f"{count} critical deadline{'' if count == 1 else 's'} closing soon or past due. Details are in your day plan."
-
-    def run(tool: str, *args: str) -> str:
-        path = shutil.which(tool)
-        return "unavailable" if not path else "" if subprocess.run([path, *args], capture_output=True).returncode == 0 else "failed"
-
-    banner = run("osascript", "-e", f'display notification "{text}" with title "Synthesis"') or "posted"
+    banner = _tool("osascript", "-e", f'display notification "{text}" with title "Synthesis"') or "posted"
     muted = (Path.home() / ".synthesis" / "quiet-audio").exists()
-    return {"count": count, "banner": banner, "audio": "suppressed (mute flag)" if muted else run("say", text) or "played"}
+    return {"count": count, "banner": banner, "audio": "suppressed (mute flag)" if muted else _tool("say", text) or "played"}
+
+
+def passed(count: int) -> dict:
+    """One banner for dated items whose date passed with nothing written: a count and a pointer, never a title, and
+    no spoken line (these are ordinary items; a deadline whose miss cannot be undone has the alert above)."""
+    if not count:
+        return {"count": 0}
+    text = (f"{count} dated item{' passed its' if count == 1 else 's passed their'} date with nothing written. "
+            "Details are in your day plan.")
+    return {"count": count, "banner": _tool("osascript", "-e", f'display notification "{text}" with title "Synthesis"') or "posted"}
 
 
 def critical_row(identity: str, history: list, settled: bool, as_of: date, working, report: dict):
@@ -273,17 +359,19 @@ def collect(roots: list[tuple[Path, str]], as_of: date, workspace: str | None = 
               "scope": "all available dated Markdown within explicitly declared roots; no lookback cutoff",
               "declared_roots": [{"path": str(p), "kind": k} for p, k in roots],
               "scanned": [], "excluded": [], "future_files": [], "gaps": [], "due": [],
-              "critical": {"open": [], "closed": [], "unclassified": []}}
-    conf, words = dict(rituals.DEFAULTS), WORDS
+              "critical": {"open": [], "closed": [], "unclassified": []}, "untagged": [], "commitments": 0, "no_id": []}
+    conf, words, closed_words = dict(rituals.DEFAULTS), WORDS, LEDGER_CLOSED
     try:
         cfg = rituals.config()
         conf, words = rituals.settings(cfg, workspace or ""), cfg.get("critical_words") or WORDS
+        closed_words = tuple(str(word).upper() for word in cfg.get("ledger_closed_words") or LEDGER_CLOSED)
         unclassified = re.compile(r"\b(?:" + "|".join(words) + r")\b", re.I)
     except (ValueError, OSError, TypeError, re.error) as exc:
         gap(report, rituals.state_dir() / "config.json", f"ritual config unreadable: {exc}")
         unclassified = re.compile(r"\b(?:" + "|".join(WORDS) + r")\b", re.I)
     entries = []
     seen = set()
+    newest, owed, unread = defaultdict(list), [], 0  # the plans and the artifacts read, by kind; a ledger's open rows
     if not roots:
         gap(report, "", "no plan or artifact roots declared")
     for raw_root, kind in roots:
@@ -333,6 +421,8 @@ def collect(roots: list[tuple[Path, str]], as_of: date, workspace: str | None = 
                 if kind == "records":
                     found = parse_plan(path, day, 0, as_of, report)
                     entries.extend(dict(entry, record=True) for entry in found)
+                    rows, missed = ledger_rows(path, as_of, closed_words)
+                    owed, unread = owed + rows, unread + missed
                     continue
                 if kind != "artifacts":
                     rank = 2
@@ -341,8 +431,22 @@ def collect(roots: list[tuple[Path, str]], as_of: date, workspace: str | None = 
                 else:
                     rank = RUN_ORDER[match[2]]
                 entries.extend(parse_plan(path, day, rank, as_of, report))
+                newest[kind].append((day, rank, str(root), path))
         if selected == 0 and kind != "records":  # a folder of drafts may hold none today
             gap(report, root, "no dated source files; coverage is not established")
+    # The seat's commitments stand in its newest plan, today's or not: every plan of that day, or, where the seat
+    # keeps no dated plan, the last run of that day among its rituals' artifacts in each folder of them.
+    files = newest["plans"] or newest["artifacts"]
+    last = max((found[0] for found in files), default=None)
+    current = [found for found in files if found[0] == last]
+    for path in sorted({found[3] for found in current} if newest["plans"] else {max(f for f in current if f[2] == found[2])[3] for found in current}):
+        found = commitments(path)
+        report["commitments"] += len(found)
+        report["untagged"] += [{k: v for k, v in row.items() if k != "bare"} for row in found if row["bare"]]
+    owed.sort(key=lambda row: (row["owed_since"] is not None, row["owed_since"] or "", row["path"], row["line"]))
+    dated = [row["owed_since"] for row in owed if row["owed_since"]]
+    report["owed"] = {"open": len(owed), "oldest": min(dated) if dated else None, "undated": len(owed) - len(dated), "unread": unread,
+                      "over_14_days": sum(row["days"] > OWED_DAYS for row in owed if row["days"] is not None), "rows": owed}
     grouped = defaultdict(list)
     for entry in entries:
         grouped[entry["identity"]].append(entry)
@@ -373,16 +477,23 @@ def collect(roots: list[tuple[Path, str]], as_of: date, workspace: str | None = 
             continue  # never in the dated list, whose items may be released or lapse
         if not latest["closed"] and not any(e["not_critical"] for e in history) and unclassified.search(f"{latest['title']} {latest['reason']}"):
             report["critical"]["unclassified"].append({k: latest[k] for k in ("identity", "title", "due_date", "path", "line")})
+        if identity.startswith("source:") and latest["due_date"] and not latest["closed"]:  # no copy of it can be matched to it
+            report["no_id"].append({k: latest[k] for k in ("title", "due_date", "path", "line")})
         due_choices = [e for e in choices if e["due_date"] and e["due_date"] <= as_of.isoformat() and not e["closed"]]
         if due_choices:
             chosen = min(due_choices, key=lambda e: e["due_date"])
             result = {k: v for k, v in chosen.items() if k not in ("closed", "run_rank", "invalid", "record")}
             result["sources"] = [{"path": e["path"], "line": e["line"]} for e in history]
+            # its date passed and no copy says it lapsed: nobody was told (a seat that runs its rituals re-dates
+            # what it carries each day, so this is the mark of a day with no ritual)
+            result["unannounced"] = chosen["due_date"] < as_of.isoformat() and not any(e["lapsed"] for e in history)
             report["due"].append(result)
     report["due"].sort(key=lambda e: (e["due_date"], e["path"], e["line"]))
+    report["no_id"].sort(key=lambda e: (e["due_date"], e["path"], e["line"]))
     report["critical"]["open"].sort(key=lambda e: (e["due_date"], e["path"], e["line"]))
     report["total_obligations"] = len(grouped)
-    review = report["due"] or report["critical"]["unclassified"] or any(r["lead"] or r["problems"] for r in report["critical"]["open"])
+    review = (report["due"] or report["critical"]["unclassified"] or any(r["lead"] or r["problems"] for r in report["critical"]["open"])
+              or report["untagged"] or report["no_id"] or owed)
     report["status"] = "BLOCKED" if report["gaps"] else "REVIEW" if review else "CLEAR"
     return report
 
@@ -428,8 +539,11 @@ def main(argv=None) -> int:
                   "critical": {"open": [], "closed": [], "unclassified": []}}
     else:
         if args.alert_declared:  # folders two workspaces share are read once
-            count = sum(row["alert"] for found, name in sets.items() for row in collect(list(found), as_of, name)["critical"]["open"])
+            reports = [collect(list(found), as_of, name) for found, name in sets.items()]
+            count = sum(row["alert"] for found in reports for row in found["critical"]["open"])
             print(f"critical alert: {count} due across {len(sets)} declared set(s) of plan folders; {alert(count)}")
+            late = sum(row["unannounced"] for found in reports for row in found["due"])  # a day with no ritual tells no one
+            print(f"passed dates: {late} with nothing written across {len(sets)} declared set(s) of plan folders; {passed(late)}")
             return 0
         report = collect(roots, as_of, args.workspace)
     if args.alert:
@@ -448,8 +562,27 @@ def main(argv=None) -> int:
             f"{len(report.get('future_files', []))} future); "
             f"{len(report['gaps'])} gaps"
         )
+        late = sum(row.get("unannounced", False) for row in report["due"])
+        if late:
+            print(f"{late} of them passed {'its' if late == 1 else 'their'} date with nothing written: mark each Lapsed where it "
+                  "sits and give it a row in the lapse register, or record what was decided")
         for row in report["due"]:
             print(f"{row['due_date']} {row['title']} ({row['path']}:{row['line']})")
+        loose, bare, owed = report.get("no_id", []), report.get("untagged", []), report.get("owed", {"open": 0, "rows": []})
+        if loose:
+            print(f"{len(loose)} open dated item{' has' if len(loose) == 1 else 's have'} no Decay ID, so no copy can be matched to "
+                  + ("it:" if len(loose) == 1 else "them:"))
+            print("\n".join(f"  {row['due_date']} {row['title']} ({row['path']}:{row['line']})" for row in loose))
+        if bare:
+            print(f"Commitments with no date and no park: {len(bare)} in the newest plan (of {report.get('commitments', 0)} open); "
+                  "the sweep cannot keep these in view")
+            print("\n".join(f"  {row['title']} ({row['path']}:{row['line']})" for row in bare))
+        if owed["open"] or owed.get("unread"):
+            print(f"Owed: {owed['open']} open ledger row{'' if owed['open'] == 1 else 's'} (oldest {owed['oldest'] or 'none dated'}, "
+                  f"{owed['over_14_days']} owed over {OWED_DAYS} days, {owed['undated']} with no date, "
+                  f"{owed['unread']} row{'' if owed['unread'] == 1 else 's'} not read)")
+            print("\n".join(f"  {row['owed_since'] or 'no date   '} {row['item']} [{row['status'] or 'no status'}] ({row['path']}:{row['line']})"
+                            for row in owed["rows"][:10]))
         for row in report["gaps"]:
             print(f"NOT COVERED: {row['path']}: {row['reason']}")
     return 2 if report["status"] == "BLOCKED" else 0
