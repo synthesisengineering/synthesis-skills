@@ -207,6 +207,20 @@ that lies further back in one long turn is not seen, and other harnesses' record
 saying so. Replayed before it shipped, with its own code at the end of each recorded turn: a message to a person
 went out in 257 turns of 89 days, and nothing was armed after 251 of them.
 
+### A site signed in to another account
+
+On only where the workspace's `browser_routing` names sites under `accounts`
+([account-routing.md](account-routing.md#the-account-a-site-shows)). On 2026-11-12 an agent read a site in a work
+browser profile, found it signed in to the principal's personal account, and reported that the work could not be
+done from there. No call was held, so no guard spoke, and the principal was not told what to fix.
+
+The check reads the turn's own lines with the guard's reader. Where the newest read that settles a named site's
+account shows another of the principal's addresses, the reply goes back once, saying that the profile is signed
+in to the site as that account, that this is a misconfiguration to tell the principal about in this reply, with
+the profile and the site named, and that it is not a limit on the work. What the read showed is written down for
+`synthesis doctor` either way. The check does not read the reply's words: a reply that already says so is sent
+back once all the same, and says it again.
+
 ## The file-link rule
 
 The principal's rule: every file referenced in a reply is a markdown link with the full

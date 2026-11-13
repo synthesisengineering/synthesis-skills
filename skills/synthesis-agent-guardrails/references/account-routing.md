@@ -12,6 +12,7 @@ is ever spent on a call from the wrong account.
 - [Design](#design)
 - [Tests](#tests)
 - [Browser profiles](#browser-profiles)
+- [The account a site shows](#the-account-a-site-shows)
 
 ## The incident
 
@@ -117,3 +118,58 @@ and browsers driven by other harnesses' own browser tools. The selection is read
 elsewhere it never confirms, so the calls stay blocked.
 
 Tests: `tests/test_browser_guard.py`.
+
+## The account a site shows
+
+`guards._account_hold`, which `check_browser` asks once the profile is the right one (2026-11-13).
+
+THE INCIDENT (2026-11-12). A work browser profile was signed in, on a site where an AI assistant is used, to the
+principal's personal account. The agent found it and reported that the work could not be tested from there. It
+was no limit on the work: it was a misconfiguration to bring to the principal, and nothing brought it. The right
+profile can show the wrong account, and what is typed or uploaded there then goes into an account the workspace
+does not own.
+
+What it does, when the workspace's entry under `browser_routing.workspaces` has `accounts`:
+
+- `accounts` maps a site to the workspace's address there: `{"assistant.example": "me@clientco.example"}`. A site
+  covers the hosts under it. A key may name the page of the site that shows the signed-in account
+  (`"assistant.example/settings"`); then only a read of an address that begins with the key counts.
+- **A call that puts something into a page of a named site waits:** `computer` with `type` or `key`,
+  `form_input`, `file_upload`, `upload_image` and `javascript_tool`, alone or as a step of `browser_batch`, which
+  waits whole. The page a step acts on is its tab's address in the newest list of tabs in the session's record,
+  or the address a `navigate` step earlier in the same batch went to.
+- **Going to the site, reading it and clicking on it never wait.** The account often shows only after a menu is
+  opened, so a rule that held clicks could not always be satisfied.
+- **What lets the call through:** the newest read that settles the question shows the workspace's address. A read
+  settles it when it is the result of a browser call that ran on a tab of the site, is no error, and holds,
+  before its list of tabs and apart from any address the call itself named, either the workspace's address and
+  none of the principal's others, or one of the others without it. A page that shows both, as an account
+  switcher does, settles nothing. The principal's addresses are those the config names: `account_routing`'s, the
+  same-day rule's `own`, and every workspace's `accounts`.
+- **Another of the principal's addresses is called what it is.** The hold says that the profile is signed in to
+  the site as that account, that this is a misconfiguration to tell the principal about now, with the profile
+  and the site named, and that it is not a limit on the work and no reason to do the work somewhere else.
+- **The doctor remembers it.** What each settling read showed is written to `state/browser-accounts.json`, by
+  profile and site. `synthesis doctor` warns (`browser accounts`) while the newest one for a named site is not
+  the account the config names now. The line clears when a session next reads the site and it shows that account.
+- **The end of the turn asks too.** The reply check reads the turn's own lines the same way, and a turn that read
+  another of the principal's accounts on a named site has its reply sent back once with the same words, whether
+  or not a call was held ([reply-and-provenance.md](reply-and-provenance.md#a-site-signed-in-to-another-account)).
+  In the incident no call was held: the agent read the page and stopped.
+
+A map of another shape (a value that is no address, a key with no site, two keys for one site) blocks the
+workspace's browser calls until it is fixed.
+
+What it cannot see: a browser. It knows only what a read brought into the record. So a page that shows the
+workspace's address for another reason (a conversation that mentions it) counts as showing the account, unless
+the key names the account's page. An account shown only in a picture is not read. An address the config does not
+name settles nothing. A tab that moved since its last result is judged by where that result left it. A call
+through computer use on the desktop is not a browser call. The record is read from its last 8 MB, so a long
+session may be asked to read the account again.
+
+Replayed over thirty days of recorded browser calls (2026-11-13), with the sites where an AI assistant is used
+named for two workspaces: of 3,130 browser calls, 349 had a step on a named site. None of the 250 that only read,
+pointed or went there was held. Of the 99 that put something into a page there, 26 came after a read that had
+shown the workspace's account, and 73 came before any such read, in four sessions.
+
+Tests: `tests/test_browser_accounts.py`.
