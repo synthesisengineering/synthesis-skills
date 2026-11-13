@@ -130,6 +130,12 @@ def test_a_seat_whose_plan_is_a_rituals_artifact_is_read_at_its_newest_of_the_da
     assert titles(sweep(tmp_path)[1]) == ["Evening's line"]                      # the day-end is the day's last word
 
 
+def test_a_heading_of_things_finished_holds_no_commitment_wherever_it_stands(tmp_path):
+    write(tmp_path / "plans", f"{DAY}.md", "# Plan\n\n## Priority Tasks\n\n### Today\n1. Open one\n\n### Done\n1. Finished, with no tick\n\n"
+          "## Tasks completed\n- Another finished line\n\n## Sent Messages\n\n### Still waiting on replies\n- A reply that is owed\n")
+    assert titles(sweep(tmp_path)[1]) == ["Open one", "A reply that is owed"]
+
+
 def test_the_text_report_counts_the_commitments_and_names_each(tmp_path):
     write(tmp_path / "plans", f"{DAY}.md", PLAN.format(filed="", carried=""))
     _, out = sweep(tmp_path, json_out=False)

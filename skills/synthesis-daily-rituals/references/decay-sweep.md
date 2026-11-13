@@ -70,7 +70,8 @@ heading or peer list item. Put metadata directly under that heading/list item,
 not in a separate subheading. The collector does not use a matching title to
 merge obligations. Existing tags without IDs retain a source-path-and-line
 identity and remain review candidates until a grounded outcome is recorded at
-their original item. Do not bulk-generate IDs or infer resolutions from prose.
+their original item. Do not bulk-generate IDs or infer resolutions from prose; a workspace that checks
+commitments gives each open dated item its ID where it sits, one at a time.
 
 Carry the ID and Decays line into the new plan, including on the due date. A
 later dated plan with that ID can re-date the obligation with a stated reason,
@@ -110,9 +111,10 @@ plan (every plan of the newest day on or before the sweep's; where the seat keep
 the newest day among its rituals' artifacts), each open top-level list entry that stands under a heading of the
 second level or deeper which the plan format places among tasks, things waited on or things carried is a
 commitment: `Priority Tasks`, `Tasks`, `Today's Priorities`, `Still To Do`, `This Week`, `Pending This Session`,
-`Waiting On Others`, `Watch / waiting`, `Delegated`, `Carried Items`, `Carry Forward`. Any enclosing heading of
-those places an entry, so every bucket under the task section is read; the plan's own title places nothing, and
-neither does a heading of things finished. An entry passes with a `**Decays:**` date or a `**Critical:**` tag in
+`Waiting On Others`, `Watch / waiting`, `Delegated`, `Carried Items`, `Carry Forward`. The nearest enclosing
+heading that says either way decides: a bucket under the task section is read whatever its own words, a heading
+of things finished (`Completed`, `Done`, `Sent`, `Closed`) holds none wherever it stands, and the plan's own
+title places nothing. An entry passes with a `**Decays:**` date or a `**Critical:**` tag in
 its block, or a park that says why: `parked (reason)` on its line, or a `**Parked:** reason` line under it. It is
 closed, and not read, where its title carries a tick, a strike, DONE or SENT, or its block a Sent, Released or
 Resolved line. Listed entries make the status REVIEW. Counted: 12, 0 and 9 such entries in three seats' newest

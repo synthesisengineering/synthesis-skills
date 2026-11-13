@@ -208,8 +208,9 @@ def parse_plan(path: Path, day: date, rank: int, as_of: date, report: dict) -> l
 
 def commitments(path: Path) -> list[dict]:
     """The open commitments of one plan: each top-level list entry that stands under a heading of the second level
-    or deeper which the plan format places among tasks, things waited on or things carried (any enclosing heading
-    places it, so every bucket under the task section is read; the plan's own title places nothing). `bare` is
+    or deeper which the plan format places among tasks, things waited on or things carried. The nearest enclosing
+    heading that says either way decides: a bucket under the task section is read whatever its own words, a
+    heading of things finished holds none wherever it stands, and the plan's own title places nothing. `bare` is
     true where the entry's block carries no Decays date, no Critical tag and no park that says why (2026-11-13,
     counted on three seats' newest plans: 12, 0 and 9 such entries, none of them a task box)."""
     try:
@@ -223,9 +224,9 @@ def commitments(path: Path) -> list[dict]:
         if heading:
             level = len(first.lstrip()) - len(first.lstrip().lstrip("#"))
             chain = {k: v for k, v in chain.items() if k < level}
-            chain[level] = level > 1 and bool(COMMIT.search(heading[1])) and not FINISHED.search(heading[1])
+            chain[level] = None if level < 2 else False if FINISHED.search(heading[1]) else True if COMMIT.search(heading[1]) else None
             section = heading[1].strip()
-        elif LIST.match(first) and any(chain.values()):
+        elif LIST.match(first) and next((chain[k] for k in sorted(chain, reverse=True) if chain[k] is not None), False):
             fields = {match[1].lower() for _, line in block for match in [FIELD.search(line)] if match}
             title = re.sub(r"^\s*(?:[-*+]\s+|\d+[.)]\s+)", "", first).strip()
             if not (DONE.match(title) or fields & {"sent", "released", "resolved"}):
