@@ -22,7 +22,8 @@ from its own attachment folder and the folders it was started with (2026-11-12).
 `start.sh` now makes the synthesis outbox and adds it to `ALLOWED_FILE_DIRS`, and runs one release of the server,
 `workspace-mcp@2.1.0`, the one whose rules for a local file the send guard copies (`WORKSPACE_MCP_VERSION` names
 another). `install-autostart.sh` carries `SYNTHESIS_HOME` into the unit when it is set, escapes every value it
-writes for a plist or a systemd unit, and quotes a start path systemd would misread. `doctor.sh` reports the
+writes for a plist or a systemd unit, refuses by name before writing either a value that holds a control
+character (neither can carry one as it is), and quotes a start path systemd would misread. `doctor.sh` reports the
 outbox the unit gives the server and reads a quoted start path back. The fetch and verify scripts are unchanged
 but for their version.
 

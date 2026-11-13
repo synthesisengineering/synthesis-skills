@@ -1180,7 +1180,7 @@ def test_the_environment_macos_keeps_for_a_process_is_read_whole_and_a_hidden_on
         "ALLOWED_FILE_DIRS": AWKWARD_DIRS}
     assert asked == ["4242"]
     assert doctor.started_with("4242", lambda pid: b"", no_proc) == {}  # one of the system's own programs, or none
-    assert doctor.started_with("4242", lambda pid: _procargs(argv, env, argc=9), no_proc) == {}  # fewer strings than counted
+    assert doctor.started_with("4242", lambda pid: _procargs(argv, env, argc=40), no_proc) == {}  # fewer strings than counted
 
     def refused(pid):
         raise PermissionError("Operation not permitted")
