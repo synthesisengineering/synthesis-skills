@@ -4,6 +4,28 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [5.14.1] - 2026-11-13
+
+- **The connector's Firestore fix, tested on the path that failed, and the cleanup after an upgrade**
+  (`synthesis-kb-distribution` 1.2.3), from 5.12.1's review.
+  - A test sends `/authorize` a client ID that is a URL, through the real Firestore store over an in-memory client
+    whose references the real client library builds, so its own path check applies. Against 5.12.0's connector it
+    answers 500, the deployment's error; with the fix the lookup goes on to the metadata document, which the test
+    never fetches, and the unknown client gets a 400. 5.12.1's tests stored a URL client directly, which the proxy
+    never does, through a stand-in that refused any "/" where the library refuses an odd number of path elements.
+  - Another test pins what an upgrade does: a record stored under its raw key is not read again. A third shows the
+    library itself refusing the URL as a document ID, and that a hashed store keeps no key in a document.
+  - `references/connector.md` 5.7 says what an upgrade from 5.4.0 to 5.12.0 on Firestore does (each client
+    registers again and each person signs in once more) and gives the command that removes the old documents, which
+    are named by codes and token IDs in clear text: `gcloud firestore bulk-delete` on the seven collections.
+  - The settings check refuses a `KB_FIRESTORE_COLLECTION_PREFIX` that begins with `H_` or `S_`: Firestore's
+    collection strategy keeps those for itself and, since 5.12.1, refused every collection under such a prefix.
+  - A key that holds an unpaired surrogate hashes instead of raising.
+  - What 5.12.1 said wrongly, now corrected in its entry and in the code's own words: the proxy looked the client
+    up, it never stored it; only one of its two tests failed with the deployment's error; its stand-in client did
+    not keep Firestore's rules as the library does; and the key strategy builds on the public Firestore strategy for
+    its type only, both methods being its own.
+
 ## [5.14.0] - 2026-11-13
 
 - **A harness whose hooks wait for approval is said where someone will see it** (`synthesis-agent-conformance`
@@ -123,17 +145,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
 
 - **The knowledge-base connector signs in ChatGPT and Codex on Firestore** (`synthesis-kb-distribution` 1.2.2). Its
   first deployment answered every sign-in from ChatGPT and Codex with a server error: both identify themselves by
-  a client metadata document, so their client ID is a URL, and the OAuth proxy stores each client under its ID.
-  Firestore reads a "/" in a document ID as a path separator and refused the record ("A document must have an even
-  number of path elements"); py-key-value's Firestore store passes keys through unless it is given a strategy. The
-  connector now hashes every key into a SHA-256 document ID (the OAuth proxy only gets, puts and deletes by key, so
-  nothing is lost) and passes Firestore's own collection strategy, and authorization codes and token IDs no longer
-  appear as document names. The tests had replaced Firestore with a memory store that accepts any key; they now run
-  the real Firestore store over a client that keeps Firestore's ID rules, store and read back a client whose ID is
-  a URL, and fail without the fix with the error the deployment logged. Every release from 5.4.0, the skill's
-  first, to 5.12.0 has the defect on `firestore`; the operator's own test (`memory`) never saw it. A store that
-  already holds records under unhashed keys keeps them and never reads them again: a client registered by dynamic
-  registration (Claude) is told its ID is unknown and registers again, and each person signs in once more.
+  a client metadata document, so their client ID is a URL, and the OAuth proxy first looks a client up in its store
+  by that ID. py-key-value's Firestore store passes keys through unless it is given a strategy, and Firestore's
+  client library refused the URL as a document ID before any request was sent ("A document must have an even number
+  of path elements"), so the lookup raised instead of going on to fetch the metadata document. The connector now
+  stores every key under its SHA-256 hash (the OAuth proxy only gets, puts and deletes by key) and passes Firestore's
+  own collection strategy; records written since keep authorization codes and token IDs out of document names.
+  Every release from 5.4.0, the skill's first, to 5.12.0 has the defect on `firestore`; the operator's own test
+  (`memory`) never saw it. A store that already holds records under unhashed keys keeps them and never reads them
+  again: a client registered by dynamic registration (Claude) is told its ID is unknown and registers again, and
+  each person signs in once more; 5.14.1 gives the step that removes the old records. (Corrected in 5.14.1, which
+  says what this entry first said wrongly.)
 
 ## [5.12.0] - 2026-11-13
 

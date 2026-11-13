@@ -56,6 +56,8 @@ def test_every_problem_is_reported_together():
     ({"KB_OAUTH_STORE": "redis"}, "KB_OAUTH_STORE must be one of memory, firestore"),
     ({"KB_STORAGE_ENCRYPTION_KEY": ""}, "KB_OAUTH_STORE=firestore needs KB_STORAGE_ENCRYPTION_KEY"),
     ({"KB_STORAGE_ENCRYPTION_KEY": "short"}, "KB_OAUTH_STORE=firestore needs KB_STORAGE_ENCRYPTION_KEY"),
+    ({"KB_FIRESTORE_COLLECTION_PREFIX": "H_kb"}, "KB_FIRESTORE_COLLECTION_PREFIX may not begin with H_ or S_ ('H_kb')"),
+    ({"KB_FIRESTORE_COLLECTION_PREFIX": "S_kb"}, "KB_FIRESTORE_COLLECTION_PREFIX may not begin with H_ or S_ ('S_kb')"),
     ({"KB_DOCUMENT_URL_TEMPLATE": "https://x.example/{commit}"}, "needs {id} or {source_path}"),
     ({"KB_DOCUMENT_URL_TEMPLATE": "https://x.example/{id}/{secret}"}, "may use only {id}, {source_path}, {commit}"),
     ({"KB_DOCUMENT_URL_TEMPLATE": "https://x.example/{id"}, "may use only"),
