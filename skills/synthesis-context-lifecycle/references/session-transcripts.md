@@ -66,12 +66,15 @@ run journals, file backups, and sync markers. `meta.json` counts each. Text auto
 put in the prompt slot (heartbeats, scheduled-task prompts, recommended plugins, UI actions) is `system`, not `user`.
 
 A sub-agent belongs to the workspace its parent session started in, even when it worked in another folder; `cwd` in
-`meta.json` keeps where it actually ran. After an adapter changes, `synthesis sessions export --rebuild` moves the
-archive aside (to `<synthesis home>/archive/sessions-<time>/`, never deleted) and exports everything again. A rebuild
-numbers a session's records anew: where the adapter now files a record it did not, every later record of that
-session moves up, and a citation written before the rebuild names another record. Rebuild an archive whose records
-nothing cites yet, or leave the past as it was filed: the sessions exported from the change on follow the new rules
-without one.
+`meta.json` keeps where it actually ran. After an adapter changes, `synthesis sessions export --rebuild` reads
+every transcript again from its start under today's reader and keeps what the archive does not hold: a record it
+holds already (the same kind, time and words) is passed over, and one it does not hold is appended with the next
+number. No line the archive holds is changed or moved, so a record's number is its name for good and a citation
+written before the rebuild names the record it named; a session whose transcript the harness has since removed
+stays as it is. The order of a session is then its records' times, not their numbers: a record a later reading
+filed has a number after every other, and `synthesis sessions show` puts around a cited record what was said around
+it. (Until 5.17.0 a rebuild moved the archive aside and numbered every session anew; counted on one machine before
+the change, 157 of the 373 record numbers that project records cite would have named another record.)
 
 ## Secrets and privacy
 
@@ -122,8 +125,8 @@ each harness writes its own transcript to disk as the session runs. The copy is 
   `synthesis sessions export --lost <session>` clears it. Run by an agent, it asks for the principal's approval
   code first; typed by the principal in a terminal of their own, it needs none. It refuses a transcript that is
   still there, that the harness only moved, or whose harness has a folder that cannot be listed, and it appends
-  each loss it clears to `<synthesis home>/sessions/.state/lost.jsonl`. `--rebuild` carries the stamp and that
-  file into the new archive.
+  each loss it clears to `<synthesis home>/sessions/.state/lost.jsonl`. `--rebuild` leaves the stamp and that
+  file as they are.
 - `synthesis sessions export` says in its exit status whether everything it was asked for was copied:
 
   | Status | What happened |

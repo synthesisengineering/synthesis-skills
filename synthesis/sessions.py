@@ -173,6 +173,16 @@ class _Session:
         self.model, self.turn, self.trigger, self.lines = s.get("model", ""), s.get("turn", []), s.get("trigger"), []
         self.skipped = collections.Counter(self.meta.get("skipped", {}))
         self.cwd, self.roots = str(s.get("cwd") or ""), None  # where the session's calls run; the projects folders, found once
+        self.again = None  # reading the session again: what the archive already holds, each record counted (`read_again`)
+
+    def read_again(self) -> None:
+        """Begin at the transcript's start as a first reading would, keeping the numbers already given: a record the
+        archive holds (`_same`) is passed over by `emit`, and one it does not hold takes the next number. No line the
+        archive holds is changed, so a number names its record for good (2026-11-13: a rebuild numbered each session
+        anew, and of 373 record numbers that project records cite, 157 would have named another record)."""
+        self.again = collections.Counter(_same(rec) for rec in records(str(self.folder)))
+        self.offset, self.seen, self.turn, self.trigger, self.model, self.cwd = 0, set(), [], None, "", ""
+        self.skipped = collections.Counter()
 
     def wrote(self, rec: dict) -> None:
         """A session belongs to each project whose folder a tool call of it writes into (2026-11-13: of 147 sessions
@@ -301,6 +311,11 @@ class _Session:
                 if len(body) > BLOB_CHARS:
                     rec[field], rec[f"{field}_blob"], rec[f"{field}_chars"] = body[:HEAD_CHARS], self.blob(body), len(body)
         line = json.dumps({"seq": self.seq, **rec}, ensure_ascii=False, default=str)
+        if self.again is not None:
+            key = _same(json.loads(line))  # as the archive would hold it
+            if self.again[key] > 0:  # held already, under the number it was given
+                self.again[key] -= 1
+                return
         self.lines.append(line + "\n")
         self.seq += 1
 
@@ -363,6 +378,13 @@ class _Session:
                                      "folder": str(self.folder or ""), "seen": sorted(self.seen), "meta": self.meta,
                                      "model": self.model, "turn": self.turn, "trigger": self.trigger, "cwd": self.cwd})
         return written
+
+
+def _same(rec: dict) -> str:
+    """What a record is, apart from its number and whatever else a reader may come to note beside it: its kind, its
+    time, and its words or its call. Filed under another kind, the same words are another record."""
+    return hashlib.sha256(json.dumps([rec.get(key) for key in ("kind", "at", "text", "text_blob", "tool", "input", "input_blob")],
+                                     sort_keys=True, default=str).encode("utf-8")).hexdigest()[:24]
 
 
 # --- the harnesses --------------------------------------------------------------------------------------------
@@ -621,10 +643,14 @@ def _place(harness: str, native: Path, session: str) -> tuple:
     return root() / workspace / month / f"{harness}-{session}", cwd
 
 
-def export_file(harness: str, native: Path, project: str = "") -> int:
-    """Copy what the native transcript gained since the last export; returns how many records were kept."""
+def export_file(harness: str, native: Path, project: str = "", again: bool = False) -> int:
+    """Copy what the native transcript gained since the last export; returns how many records were kept. With
+    `again`, a session the archive holds is read from its start under today's reader, and only what the archive
+    does not hold is kept, after the numbers it has given."""
     native = Path(native)
     s = _Session(harness, native, _identity(harness, native))
+    if again and s.folder:
+        s.read_again()
     size = native.stat().st_size
     if size < s.offset:  # the harness rewrote the file: read it again from the start, under the same session
         s.offset = 0
@@ -683,20 +709,6 @@ def natives(days: float = 0, unread: list | None = None) -> list:
     return found
 
 
-def _rebuild() -> str:
-    """Move the whole archive aside, never deleting it, so this export reads every transcript again with the current
-    adapters. The stamp and the losses come along: what was not copied is still not copied, and what was lost stays
-    on record. Returns where the old archive went."""
-    target = paths.home() / "archive" / f"sessions-{time.strftime('%Y%m%dT%H%M%S')}"
-    target.parent.mkdir(parents=True, exist_ok=True)
-    if root().exists():
-        os.replace(root(), target)
-        for kept in (f for f in (target / ".state" / "export.json", target / ".state" / "lost.jsonl") if f.is_file()):
-            (root() / ".state").mkdir(parents=True, exist_ok=True)
-            (root() / ".state" / kept.name).write_bytes(kept.read_bytes())
-    return str(target)
-
-
 @contextlib.contextmanager
 def _writer(wait: bool):
     """One writer of the archive and the sessions repos at a time on a Mac: two sessions resuming or handing off
@@ -718,15 +730,17 @@ def _writer(wait: bool):
 
 def export(days: float = 0, only: str = "", wait: bool = True, rebuild: bool = False, scheduled: bool = False) -> list:
     """Export every native transcript changed in the last `days` days (all when 0); `only` names one session.
-    Without `wait` a busy archive is read as it is. `scheduled` marks the run as the schedule's own."""
+    Without `wait` a busy archive is read as it is. `scheduled` marks the run as the schedule's own. `rebuild`
+    reads every transcript again from its start under today's reader and keeps what the archive does not hold,
+    after the numbers it has given: no line it holds is changed, and a session whose transcript is gone stays as
+    it is (until 5.17.0 a rebuild moved the archive aside and numbered every session anew)."""
     with _writer(wait) as busy:
         if busy:
             return [busy]
-        moved = [f"previous archive moved to {_rebuild()}"] if rebuild else []
-        return moved + _export(0 if rebuild else days, only, scheduled)
+        return _export(0 if rebuild else days, only, scheduled, again=rebuild)
 
 
-def _export(days: float, only: str, scheduled: bool = False) -> list:
+def _export(days: float, only: str, scheduled: bool = False, again: bool = False) -> list:
     """Every run, a sync's too, leaves a stamp, the doctor's heartbeat for the scheduled export: a run that found
     nothing new still ran, and a transcript a run could not copy is named there, with why and when, until a run
     copies it (2026-11-12: every copy was refused and the doctor answered ok), as is a folder the search could not
@@ -746,7 +760,7 @@ def _export(days: float, only: str, scheduled: bool = False) -> list:
         tried.add(f"{harness} {session}")
         live = board.load(native.stem) if harness == "claude-code" else board.load(session)
         try:
-            kept = export_file(harness, native, getattr(live, "project", "") or "")
+            kept = export_file(harness, native, getattr(live, "project", "") or "", again)
         except Exception as exc:  # unreadable, or a row of a shape the adapter does not expect: named, and the run goes on
             failed.append(f"{harness} {session}: not exported ({exc if isinstance(exc, OSError) else f'{type(exc).__name__}: {exc}'})")
             waiting[f"{harness} {session}"] = {"native": str(native), "at": now, "reason": failed[-1]}
@@ -994,8 +1008,16 @@ def find(prefix: str) -> list:
 
 
 def around(folder: str, seq: int, span: int = 3) -> list:
-    """The record a citation names (`<harness> <session> #<seq>`, R10.5), whole, with `span` records either side."""
-    return [_whole(r, Path(folder)) if r.get("seq") == seq else r for r in records(folder) if abs(int(r.get("seq", -1)) - seq) <= span]
+    """The record a citation names (`<harness> <session> #<seq>`, R10.5), whole, with `span` records either side of
+    it in time: a record that a later reading filed has a number after every other, and what stands around it is
+    what was said around it. A record with no time of its own stands with the one before it."""
+    rows, last = [], ""
+    for rec in records(folder):
+        last = str(rec.get("at") or last)
+        rows.append((last, int(rec.get("seq", -1)), rec))
+    rows.sort(key=lambda row: row[:2])
+    at = next((place for place, row in enumerate(rows) if row[1] == seq), None)
+    return [] if at is None else [_whole(rec, Path(folder)) if number == seq else rec for _, number, rec in rows[max(0, at - span):at + span + 1]]
 
 
 def _whole(rec: dict, folder: Path) -> dict:

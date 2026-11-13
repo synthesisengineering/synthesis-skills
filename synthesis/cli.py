@@ -421,7 +421,8 @@ def parser() -> argparse.ArgumentParser:
     s.add_argument("--scheduled", action="store_true", help=argparse.SUPPRESS)  # the schedule's own run, marked for the doctor
     s.add_argument("--days", type=float, default=2, help="export: transcripts changed in the last N days (default 2)")
     s.add_argument("--session", default="", help="export: only this session")
-    s.add_argument("--rebuild", action="store_true", help="export: move the archive aside and export everything again")
+    s.add_argument("--rebuild", action="store_true", help="export: read every transcript again from its start and keep what the "
+                   "archive does not hold, after the numbers it has given; no record it holds is changed")
     s.add_argument("--lost", default="", metavar="SESSION", help="export: accept as lost a transcript that was never copied "
                    "and is gone, as the doctor names it; an agent needs the principal's code")
     s.add_argument("--no-push", action="store_true", help="sync: commit in each sessions repo but do not push")

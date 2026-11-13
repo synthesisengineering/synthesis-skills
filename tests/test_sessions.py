@@ -473,12 +473,17 @@ def test_a_sub_agent_belongs_to_the_workspace_its_parent_started_in_and_workflow
     assert not [m for m in sessions.catalog() if m["native"].endswith("journal.jsonl")]
 
 
-def test_a_rebuild_moves_the_archive_aside_and_exports_everything_again(harness):
-    native = _jsonl(harness["claude"], _claude_rows(harness["work"]))
-    first = sessions.export_file("claude-code", native)
-    report = sessions.export(rebuild=True)
-    moved = Path(report[0].split(" moved to ")[1])
-    assert (moved / "acme").is_dir() and report[1:] == [f"claude-code c1: {first} record(s)"]
+def test_a_rebuild_changes_no_record_and_keeps_a_session_whose_transcript_is_gone(harness):
+    """Until 5.17.0 a rebuild moved the whole archive aside and exported the transcripts that were still there: a
+    session whose transcript its harness had since removed left the archive, and every other was numbered anew."""
+    _jsonl(harness["claude"], _claude_rows(harness["work"]))
+    gone = _jsonl(harness["claude"].with_name("c2.jsonl"), _claude_rows(harness["work"]))
+    sessions.export(0)
+    before = {meta["session"]: Path(meta["folder"], "transcript-0001.jsonl").read_bytes() for meta in sessions.catalog()}
+    gone.unlink()
+    assert sessions.export(rebuild=True) == [] and sorted(before) == ["c1", "c2"]
+    assert {meta["session"]: Path(meta["folder"], "transcript-0001.jsonl").read_bytes() for meta in sessions.catalog()} == before
+    assert not (sessions.paths.home() / "archive").exists()                       # nothing is moved aside
 
 
 def test_one_export_at_a_time_and_a_resume_never_waits_for_it(harness):
