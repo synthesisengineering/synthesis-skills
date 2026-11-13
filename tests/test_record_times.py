@@ -363,7 +363,7 @@ def test_a_span_that_has_not_begun_and_a_rounded_end_are_still_read():
 
 def test_in_a_session_log_a_span_ends_when_its_entry_is_written():
     """A session log's entry gives the hours it covers, and the later one is now: thirty days of real commits held
-    eight such spans whose end had not come (2026-11-13)."""
+    six such spans, in session logs, whose end had not come (2026-11-13)."""
     assert "15 min after" in said(LOG, "### 2026-11-12 18:25 to 18:55 — the review round")[0]
     assert "15 min after" in said(LOG, "- 18:25–18:55 the review round", before=("## 2026-11-12",))[0]
 
