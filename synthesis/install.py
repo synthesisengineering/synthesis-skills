@@ -104,15 +104,35 @@ def _write_exec(path: Path, text: str) -> None:
     os.replace(tmp, path)
 
 
-def _compile(package: Path) -> None:
-    """Compiled code beside the runtime's source, for the interpreter that installs. A hook is a new process on every
-    tool call, and a caller told to write no bytecode caches nothing it compiles: the guards were compiled from their
-    source each time, 72 ms for a shell command's check where 33 ms is what it takes (2026-11-12). Files already
-    compiled are left; a folder that cannot be written leaves the runtime as it was, slower and whole."""
-    import compileall
+def _compiled(package: Path) -> bool:
+    """Whether this interpreter would load every module of the runtime from compiled code: a compiled file for each,
+    where it looks for one, made from the source that is there now."""
+    from importlib import util
     try:
-        compileall.compile_dir(str(package), maxlevels=0, quiet=2)
-    except OSError:
+        for source in package.glob("*.py"):
+            cached = Path(util.cache_from_source(str(source))).read_bytes()
+            if cached[:4] != util.MAGIC_NUMBER or not cached[4] & 1 or cached[8:16] != util.source_hash(source.read_bytes()):
+                return False
+    except (OSError, NotImplementedError):
+        return False
+    return True
+
+
+def _compile(package: Path) -> None:
+    """Compiles the runtime once, for the interpreter that installs: beside its source, or under the folder that
+    interpreter keeps compiled code in (Apple's Python has one, keyed by the path through `current`). A hook is a new
+    process on every tool call, and a caller told to write no bytecode caches nothing it compiles: the guards were
+    compiled from their source each time, 72 ms for a shell command's check where 33 ms is what it takes (2026-11-12).
+    Each compiled file carries its source's hash and is checked against it when loaded, since by date and size a file
+    of the next release could pass for the one before it. A runtime already compiled is left as it is. Nothing here
+    stops an install: whatever goes wrong leaves the runtime as it was, slower and whole."""
+    import compileall
+    import py_compile
+    try:
+        if not _compiled(package):
+            compileall.compile_dir(str(package), maxlevels=0, quiet=2,
+                                   invalidation_mode=py_compile.PycInvalidationMode.CHECKED_HASH)
+    except Exception:
         pass
 
 
@@ -129,6 +149,7 @@ def install(plugin_root: Path, forward_only: bool = False) -> str:
     except OSError as exc:  # never blocks a session start; the doctor names what is left in state/
         print(f"synthesis: the board could not be moved out of {home / 'state'}: {exc}", file=sys.stderr)
     if forward_only and current_hash() and version(plugin_root) <= version(home / "current"):
+        _compile(home / "current" / "synthesis")  # an older release's installer made the switch, or the interpreter changed
         return f"synthesis runtime kept at {current_hash()}: {plugin_root} is not newer"
     wanted = package_hash(plugin_root)
     if wanted != current_hash():
