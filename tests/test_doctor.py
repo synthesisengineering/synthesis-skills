@@ -1050,6 +1050,29 @@ done
             time.sleep(0.02)
 
 
+def test_the_doctor_closes_the_pipes_of_a_cli_it_has_stopped(tmp_path, monkeypatch):
+    """The three pipes opened to a harness CLI were left for the collector to close: nothing a person saw, and a
+    warning for each under a Python that says so (3.13: `unclosed file` three times at every such query)."""
+    fake, started, real = tmp_path / "codex", [], subprocess.Popen
+    fake.write_text("""#!/bin/sh
+while read line; do
+  case "$line" in
+    *'"id": 0'*) echo '{"id": 0, "result": {}}' ;;
+    *'"id": 1'*) echo '{"id": 1, "result": {"data": []}}' ;;
+  esac
+done
+""")
+    fake.chmod(0o755)
+
+    def recorded(*args, **kwargs):
+        started.append(real(*args, **kwargs))
+        return started[-1]
+    monkeypatch.setattr(subprocess, "Popen", recorded)
+    assert doctor.app_server_query(str(fake), "skills/list", {}) == {"data": []}
+    cli, = started
+    assert cli.returncode is not None and [pipe.closed for pipe in (cli.stdin, cli.stdout, cli.stderr)] == [True] * 3
+
+
 def test_each_sessions_repo_is_checked_for_clone_recent_sync_and_size(tmp_path):
     state = tmp_path / "state"
     state.mkdir()
