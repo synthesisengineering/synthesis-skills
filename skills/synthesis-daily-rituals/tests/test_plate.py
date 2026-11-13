@@ -119,7 +119,7 @@ def test_a_list_of_everything_is_not_built_over_records_that_could_not_be_read(t
     seat(tmp_path)
     (tmp_path / "plans" / "2026-11-09.md").write_text("# Plan\n\n### A broken one\n**Decays:** someday (x)\n**Decay ID:** broken\n", encoding="utf-8")
     refused = plate(tmp_path)
-    assert refused.returncode == 2 and refused.stdout == "" and "could not be read whole" in refused.stderr and "2026-11-09.md" in refused.stderr
+    assert refused.returncode == 2 and refused.stdout == "" and "not taken in full" in refused.stderr and "2026-11-09.md" in refused.stderr
     asked = plate(tmp_path, "--with-gaps")
     assert asked.returncode == 0 and "## Not read (1)" in asked.stdout and asked.stdout.index("## Not read (1)") < asked.stdout.index("## Critical deadlines")
 
@@ -129,3 +129,87 @@ def test_a_workspace_that_declares_no_folders_has_no_plate(tmp_path):
     (tmp_path / "state" / "config.json").write_text(json.dumps({"workspaces": {"desk": {}}}), encoding="utf-8")
     done = subprocess.run([sys.executable, str(SCRIPTS / "plate.py"), "--workspace", "desk", "--as-of", DAY], capture_output=True, text=True, env=env)
     assert done.returncode == 2 and "declares no plan folders" in done.stderr
+
+
+# --- the first review -------------------------------------------------------------------------------------------------
+
+def test_a_ledger_row_too_short_to_read_is_a_gap_for_a_list_of_everything(tmp_path):
+    """Finding 8: the list left such a row out and said that nothing had gone unread."""
+    seat(tmp_path)
+    (tmp_path / "drafts" / "_LEDGER.md").write_text(LEDGER + "| A short one | Sam |\n", encoding="utf-8")
+    refused = subprocess.run([sys.executable, str(SCRIPTS / "plate.py"), "--workspace", "desk", "--as-of", DAY], capture_output=True, text=True,
+                             env={**os.environ, "RITUAL_STATE_DIR": str(tmp_path / "state"), "SYNTHESIS_HOME": str(tmp_path / "home")})
+    assert refused.returncode == 2 and "1 row(s) of a ledger" in refused.stderr, refused.stderr
+    asked = subprocess.run([sys.executable, str(SCRIPTS / "plate.py"), "--workspace", "desk", "--as-of", DAY, "--with-gaps"], capture_output=True, text=True,
+                           env={**os.environ, "RITUAL_STATE_DIR": str(tmp_path / "state"), "SYNTHESIS_HOME": str(tmp_path / "home")})
+    assert asked.returncode == 0 and "## Not read (1)" in asked.stdout and "1 row(s) of a ledger" in asked.stdout
+
+
+def test_an_item_with_no_id_copied_into_two_plans_is_listed_once_and_said(tmp_path):
+    """Finding 8: each copy of an item with no ID is another item to the sweep, and the list showed the task twice."""
+    env = seat(tmp_path)
+    for day in ("2026-11-08", "2026-11-09"):
+        (tmp_path / "plans" / f"{day}.md").write_text("# Plan\n\n## Priority Tasks\n1. **Pay the invoice**\n   **Decays:** 2026-11-07 (net 30)\n", encoding="utf-8")
+    done = subprocess.run([sys.executable, str(SCRIPTS / "plate.py"), "--workspace", "desk", "--as-of", DAY], capture_output=True, text=True, env=env)
+    assert done.returncode == 0, done.stderr
+    assert done.stdout.count("**Pay the invoice**") == 1 and "2 copies with no Decay ID" in done.stdout and "## Due or past (3)" in done.stdout
+
+
+def test_what_reads_like_a_critical_deadline_and_is_not_classified_is_said(tmp_path):
+    """Finding 8: the sweep flags an untagged deadline that reads like a critical class, and the list dropped the flag."""
+    env = seat(tmp_path)
+    (tmp_path / "plans" / "2026-11-12.md").write_text("# Plan\n\n## Priority Tasks\n1. **Renew the passport**\n   **Decays:** 2026-12-10 (it runs out)\n"
+                                                    "   **Decay ID:** passport\n", encoding="utf-8")
+    done = subprocess.run([sys.executable, str(SCRIPTS / "plate.py"), "--workspace", "desk", "--as-of", DAY], capture_output=True, text=True, env=env)
+    assert done.returncode == 0 and "## Possibly critical, not classified (1)" in done.stdout and "**Renew the passport**" in done.stdout.split(
+        "## Possibly critical, not classified (1)")[1].split("##")[0]
+
+
+def test_the_list_is_never_written_over_a_plan_or_over_a_file_that_is_not_a_list(tmp_path):
+    """Finding 9: `--out` replaced whatever it named, today's plan included."""
+    seat(tmp_path)
+    plan = tmp_path / "plans" / f"{DAY}.md"
+    over_a_plan = plate(tmp_path, "--out", str(plan))
+    assert over_a_plan.returncode == 2 and "a folder this workspace declares" in over_a_plan.stderr and plan.read_text(encoding="utf-8") == PLAN
+    notes = tmp_path / "artifacts" / "notes.md"
+    notes.parent.mkdir()
+    notes.write_text("# My notes\n", encoding="utf-8")
+    over_notes = plate(tmp_path, "--out", str(notes))
+    assert over_notes.returncode == 2 and "is not a list this script wrote" in over_notes.stderr and notes.read_text(encoding="utf-8") == "# My notes\n"
+    out = tmp_path / "artifacts" / "plate.md"
+    assert plate(tmp_path, "--out", str(out)).returncode == 0 and plate(tmp_path, "--out", str(out)).returncode == 0   # its own list is written again
+
+
+def test_a_folder_that_is_not_there_is_a_refusal_and_not_a_traceback(tmp_path):
+    """Finding 10."""
+    done = plate(tmp_path, "--out", str(tmp_path / "nowhere" / "plate.md"))
+    assert done.returncode == 2 and "Traceback" not in done.stderr and "could not be written" in done.stderr
+
+
+def test_a_workspace_that_keeps_no_dated_plans_is_told_so(tmp_path):
+    """Finding 16: it was refused over a gap with no path, and `--with-gaps` built a list over nothing."""
+    env = seat(tmp_path)
+    (tmp_path / "state" / "config.json").write_text(json.dumps({"workspaces": {"desk": {"plans_dirs": []}}}), encoding="utf-8")
+    for extra in ((), ("--with-gaps",)):
+        done = subprocess.run([sys.executable, str(SCRIPTS / "plate.py"), "--workspace", "desk", "--as-of", DAY, *extra], capture_output=True, text=True, env=env)
+        assert done.returncode == 2 and "keeps no dated plans" in done.stderr and done.stdout == "", extra
+
+
+def test_a_choice_is_listed_with_the_line_it_stands_on_and_a_path_with_spaces_is_a_link(tmp_path):
+    """The list says each entry with where it sits; a choice had its file and no line. Finding 12: a folder with a
+    space in its name made no link."""
+    done = plate(tmp_path)
+    assert f"Dinner on Thursday? ({tmp_path / 'plans' / (DAY + '.md')}:11)" in done.stdout
+    out = tmp_path / "my artifacts" / "plate.md"
+    out.parent.mkdir()
+    assert plate(tmp_path, "--out", str(out)).returncode == 0
+    assert f"]({'../plans/' + DAY + '.md'})" in out.read_text(encoding="utf-8")
+    spaced = tmp_path / "artifacts"
+    spaced.mkdir()
+    (tmp_path / "plans").rename(tmp_path / "my plans")
+    (tmp_path / "state").mkdir(exist_ok=True)
+    (tmp_path / "state" / "config.json").write_text(json.dumps({"workspaces": {"desk": {"plans_dirs": [str(tmp_path / "my plans")]}}}), encoding="utf-8")
+    done = subprocess.run([sys.executable, str(SCRIPTS / "plate.py"), "--workspace", "desk", "--as-of", DAY, "--out", str(spaced / "plate.md")],
+                          capture_output=True, text=True, env={**os.environ, "RITUAL_STATE_DIR": str(tmp_path / "state"), "SYNTHESIS_HOME": str(tmp_path / "home")})
+    assert done.returncode == 0, done.stderr
+    assert f"](<../my plans/{DAY}.md>)" in (spaced / "plate.md").read_text(encoding="utf-8")
