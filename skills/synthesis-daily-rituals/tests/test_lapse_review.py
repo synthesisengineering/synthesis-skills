@@ -169,7 +169,7 @@ def test_the_place_is_the_folder_that_says_what_kind_of_record_it_was_not_a_mont
     """Finding 14: plans kept in month folders gave every row of a month the place `2026-11`. Finding 12: a link
     written between angle brackets, as a path with spaces has to be, gave `..`."""
     register = HEAD + "".join(f"| 2026-11-0{n} | Item {n} | [plan](../daily-plans/2026-11/2026-11-0{n}.md) | a | open |\n" for n in (3, 4, 5)) + (
-        "| 2026-11-06 | Item 6 | [plan](<../My  drafts/2026-11-06.md>) | a | open |\n" * 3)
+        "".join(f"| 2026-11-06 | Item 6{which} | [plan](<../My  drafts/2026-11-06.md>) | a | open |\n" for which in "abc"))  # three items: one row thrice is one lapse
     data = json.loads(review(tmp_path, "--json", register=register).stdout)
     assert data["patterns"]["place"] == {"daily-plans": 3, "My  drafts": 3}
 

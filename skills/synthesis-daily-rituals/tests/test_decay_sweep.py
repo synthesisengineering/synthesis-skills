@@ -274,10 +274,12 @@ def test_a_gap_on_an_items_own_line_names_the_item(tmp_path):
     """A gap said its file and line and not whose line it was, so nothing could tell another item's bad date from a
     source that was not read (2026-11-13, a review: one stopped every lapse of the seat)."""
     root = tmp_path / "plans"
-    plan(root, "2026-09-07", item("fine", "2026-09-07") + item("broken", "2026-09-31") + "### No id\n**Decays:** 2026-13-01 (x)\n")
+    path = plan(root, "2026-09-07", item("fine", "2026-09-07") + item("broken", "2026-09-31") + "### No id\n**Decays:** 2026-13-01 (x)\n"
+                + "### Two ids\n**Decay ID:** one\n**Decay ID:** other\n**Decays:** 2026-09-07 (x)\n")
     code, report = run(root)
     named = {(gap.get("identity"), gap["reason"]) for gap in report["gaps"]}
-    assert code == 2 and ("id:broken", "invalid Decays date") in named and (None, "invalid Decays date") in named, report["gaps"]
+    assert code == 2 and ("id:broken", "invalid Decays date") in named and (f"source:{path}:8", "invalid Decays date") in named, report["gaps"]
+    assert (None, "invalid or multiple Decay ID fields") in named, report["gaps"]            # an ID line that cannot be read may be any item's
 
 
 def test_a_declared_folder_with_no_dated_file_says_how_many_files_it_holds(tmp_path):

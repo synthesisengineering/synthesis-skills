@@ -111,10 +111,13 @@ def row_id(row: dict) -> str:
 
 def lapses(rows: list[dict]) -> list[dict]:
     """One row for each lapse: rows that carry one ID and one day are the lapse and what came of it since, and the
-    last of them written is read. A row with no ID is a lapse of its own."""
+    last of them written is read. Rows with no ID are one lapse where their Item cell, their Where cell and their
+    day are the same, which is how what came of such a lapse is written (2026-11-13, a review: each was a lapse of
+    its own, so one lapse and two rows of what came of it read as three)."""
     last = {}
     for row in sorted(rows, key=lambda row: row["line"]):
-        last[(row_id(row), row["lapsed"]) if row_id(row) else ("", row["line"])] = row
+        named = row_id(row)
+        last[(named, row["lapsed"]) if named else ("", str(row.get("item", "")).strip(), str(row.get("where", "")).strip(), row["lapsed"])] = row
     return list(last.values())
 
 
