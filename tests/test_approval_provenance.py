@@ -418,10 +418,10 @@ def test_hook_text_stays_unread_after_wrapped_blocks_are_removed():
     "<x>" * 50_000 + "approve 3a1b2c" + "</x>" * 50_000,
     "approve 3a1b2c " + "<x a='" * 60_000,
 ])
-def test_a_long_prompt_full_of_tags_is_read_within_the_hooks_time(prompt):
+def test_a_long_prompt_full_of_tags_is_read_within_the_hooks_time(prompt, pace):
     began = time.perf_counter()
     approvals.typed_codes(prompt)
-    assert time.perf_counter() - began < 0.5
+    assert time.perf_counter() - began < 0.5 * pace
 
 
 @pytest.mark.parametrize("record", [
@@ -591,11 +591,11 @@ def test_a_typed_block_between_two_wrapped_blocks_of_one_name_is_still_read(tmp_
     "approve 3a1b2c " * 20_000,
     "<a>" + "</a>" * 100_000,
 ])
-def test_no_reader_stalls_on_a_long_hostile_prompt(prompt):
+def test_no_reader_stalls_on_a_long_hostile_prompt(prompt, pace):
     for read in (approvals.typed_text, approvals.typed_codes, approvals.mentioned):
         began = time.perf_counter()
         read(prompt)
-        assert time.perf_counter() - began < 0.5, read.__name__
+        assert time.perf_counter() - began < 0.5 * pace, read.__name__
 
 
 def test_a_pending_code_inside_markup_or_a_wrapped_block_is_still_named(isolated_home):

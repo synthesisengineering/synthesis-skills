@@ -1,12 +1,9 @@
 """R8: budgets that make machinery regrowth a failing build, and hook latency."""
 
 import json
-import os
-import statistics
-import subprocess
-import sys
-import time
 from pathlib import Path
+
+import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 # Ceilings at the measured size once every verdict was applied and duplication removed (2026-10-06):
@@ -682,10 +679,14 @@ ROOT = Path(__file__).resolve().parents[1]
 # old_spelling 8, temporary 2 and 7 lines of constants and notes; server.py 14: a refresh refused in the test mode;
 # together its owner's five rulings and the review's three findings); relied_on.py 10 (a checker or a check that
 # cannot run says so).
+# 5.8.1 (2026-11-12): core 13, plugin 40. install.py: _compile 10 and install 3 (the runtime is compiled once at
+# install, so a hook does not compile the guards from source on every call: 72 ms to 33 ms for a shell command's check).
+# conftest.py at the root 27, new: under an interpreter that keeps compiled code in one folder of the person's own
+# (Apple's Python), a test run keeps its compiled code in a temporary folder, in this process and in each it starts.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # consolidate first).
-CORE_BUDGET = 11843
-PLUGIN_BUDGET = 32600
+CORE_BUDGET = 11856
+PLUGIN_BUDGET = 32640
 
 
 def _lines(files):
@@ -701,14 +702,35 @@ def test_whole_plugin_stays_within_its_budget():
     assert _lines(code) <= PLUGIN_BUDGET
 
 
-def test_bash_guard_hook_is_fast(tmp_path):
+# What the modules a pre-tool-use call for a shell command loads import as they load, by the module that asks.
+HOOK_NEEDS = ("json", "os", "re", "sys", "time",                                  # hook.py
+              "__future__", "datetime", "fnmatch", "itertools", "math", "shlex",  # guards.py
+              "hashlib", "pathlib", "unicodedata",                                # approvals.py and paths.py
+              "base64", "contextlib", "dataclasses",                              # board.py
+              "urllib.parse")                                                     # sends.py
+
+
+def test_bash_guard_hook_is_fast(compiled_runtime, tmp_path, hook_budget):
+    """What a session pays on every shell command: a new process that runs the installed runtime, compiled as the
+    installer leaves it. On the principal's Mac the modules named above load in 27 ms, so twice that is 54 ms,
+    beside the 50 ms the doctor's self-test holds there. The hook took 1.3 times when this was written (35 ms), and
+    2.7 times with its own code compiled on every call (73 ms: the fault 5.8.1 fixed, which a fixed 150 ms had let
+    pass)."""
     payload = json.dumps({"tool_name": "Bash", "tool_input": {"command": "ls -la && git status"}})
-    env = {**os.environ, "SYNTHESIS_HOME": str(tmp_path)}
-    times = []
-    for _ in range(15):
-        start = time.perf_counter()
-        subprocess.run([sys.executable, "-S", str(ROOT / "synthesis" / "hook.py"), "pre-tool-use"],
-                       input=payload, capture_output=True, text=True, env=env, check=True)
-        times.append(time.perf_counter() - start)
-    # 50 ms is the target on the principal's Mac; shared CI runners get headroom.
-    assert statistics.median(times) < 0.15
+    hook_budget([str(compiled_runtime / "synthesis" / "hook.py"), "pre-tool-use"], HOOK_NEEDS,
+                input=payload, cwd=str(tmp_path))
+
+
+def test_the_hook_budget_fails_an_unnamed_import_a_name_nothing_imports_and_a_slow_call(compiled_runtime, tmp_path, hook_budget):
+    """The budget is a test's only word on a hook's cost, so each way it can refuse is shown to refuse."""
+    hook = [str(compiled_runtime / "synthesis" / "hook.py"), "pre-tool-use"]
+    payload = json.dumps({"tool_name": "Bash", "tool_input": {"command": "ls"}})
+    with pytest.raises(AssertionError, match=r"synthesis\.sends imports urllib\.parse as it loads: every call pays for it"):
+        hook_budget(hook, tuple(name for name in HOOK_NEEDS if name != "urllib.parse"), input=payload, cwd=str(tmp_path))
+    with pytest.raises(AssertionError, match="asyncio is named as a need and nothing in this call imports it as it loads"):
+        hook_budget(hook, HOOK_NEEDS + ("asyncio",), input=payload, cwd=str(tmp_path))
+    with pytest.raises(AssertionError, match="the caller imports json as it loads"):
+        hook_budget(["-c", "import time\ntry:\n    import json\nexcept ImportError:\n    pass"], ("time",))
+    slow = "import time\n\ndef later():\n    import asyncio\n\nsum(range(5_000_000))"  # work, where the need is a start
+    with pytest.raises(AssertionError, match=r"the call took \d+ ms; its standard-library modules alone load in \d+ ms here"):
+        hook_budget(["-c", slow], ("time",))

@@ -328,3 +328,48 @@ def test_the_guard_finds_the_holds_ledgers_reader_in_the_runtime(tmp_path, isola
     done = subprocess.run([sys.executable, "-S", "-c", probe, str(isolated_home / "current")], capture_output=True, text=True)
     assert done.returncode == 0, done.stderr
     assert done.stdout.strip() == os.path.realpath(reader)
+
+
+# ---- the runtime is compiled once, at install ---------------------------------------------------------------------
+# A hook is a new Python process on every tool call. A caller whose environment says to write no bytecode caches
+# nothing it compiles, so the guards were compiled from their source on every call: about 72 ms for a shell
+# command's check on the principal's Mac, against a 50 ms budget, and 33 ms once the runtime carried compiled code
+# (2026-11-12, measured on 5.8.0).
+
+def _compiled(runtime) -> set:
+    """The runtime's modules this interpreter finds compiled code for, where it looks for it: beside the source, or
+    under the prefix an interpreter keeps its compiled code in (Apple's Python has one, keyed by the path a module
+    is imported from, which for a hook is the path through `current`)."""
+    from importlib.util import cache_from_source
+    return {path.stem for path in (runtime / "synthesis").glob("*.py") if Path(cache_from_source(str(path))).is_file()}
+
+
+def test_the_runtime_carries_compiled_code_whatever_the_callers_environment_says(tmp_path, isolated_home, monkeypatch):
+    monkeypatch.setenv("PYTHONDONTWRITEBYTECODE", "1")
+    monkeypatch.setattr(sys, "dont_write_bytecode", True)
+    plugin = _plugin_copy(tmp_path)
+    install.install(plugin)
+    assert {"guards", "hook", "approvals", "paths", "commit_check", "reply_check"} <= _compiled(isolated_home / "current")
+    assert not (plugin / "synthesis" / "__pycache__").exists()  # the plugin folder stays as its harness installed it
+    assert install.current_hash() == install.package_hash(plugin)  # the hash is of the source, not of what was compiled
+
+
+def test_a_hook_started_from_the_compiled_runtime_guards_as_before(tmp_path, isolated_home):
+    install.install(_plugin_copy(tmp_path))
+    out = _run_hook(isolated_home, "pre-tool-use", {"tool_name": "Bash", "tool_input": {"command": "rm -rf ~"}})
+    assert json.loads(out.stdout)["hookSpecificOutput"]["permissionDecision"] == "deny"
+
+
+def test_an_install_over_a_runtime_without_compiled_code_adds_it(tmp_path, isolated_home):
+    """A runtime installed before this, or one whose compiled code was cleaned away, is repaired by the next install
+    of the same release: nothing is rebuilt, and the compiled code is put back."""
+    plugin = _plugin_copy(tmp_path)
+    install.install(plugin)
+    runtime = isolated_home / "current"
+    from importlib.util import cache_from_source
+    for source in (runtime / "synthesis").glob("*.py"):
+        Path(cache_from_source(str(source))).unlink()
+    assert _compiled(runtime) == set()
+    stamp = (runtime / "SOURCE").read_text(encoding="utf-8")
+    install.install(plugin)
+    assert "guards" in _compiled(runtime) and (runtime / "SOURCE").read_text(encoding="utf-8") == stamp

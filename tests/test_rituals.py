@@ -166,7 +166,7 @@ def test_the_nudge_entry_point_fails_toward_nudging(isolated_home, tmp_path):
     assert owed(isolated_home) != 0
 
 
-def test_the_line_is_fast_on_a_year_of_records(isolated_home, tmp_path, monkeypatch):
+def test_the_line_is_fast_on_a_year_of_records(isolated_home, tmp_path, monkeypatch, pace):
     start = MONDAY - timedelta(days=400)
     log(isolated_home, *[rec(d, w, start + timedelta(days=i)) for i in range(400)
                          for w in ("alpha", "beta", "gamma") for d in ("day-start", "day-end")],
@@ -174,7 +174,7 @@ def test_the_line_is_fast_on_a_year_of_records(isolated_home, tmp_path, monkeypa
     cwd = here(tmp_path, monkeypatch)
     began = time.perf_counter()
     line = rituals.session_line(cwd, MONDAY)
-    assert time.perf_counter() - began < 0.1 and "streak" in line
+    assert time.perf_counter() - began < 0.1 * pace and "streak" in line
 
 
 def test_session_start_carries_the_ritual_line(isolated_home, tmp_path, monkeypatch):

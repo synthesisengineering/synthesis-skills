@@ -49,7 +49,7 @@ def test_attributed_quote_must_appear_in_the_session_record(tmp_path):
     assert "not found in this session's record" in reason
 
 
-def test_large_transcript_is_searched_fast(tmp_path):
+def test_large_transcript_is_searched_fast(tmp_path, pace):
     transcript = tmp_path / "big.jsonl"
     with open(transcript, "w") as handle:
         for i in range(400_000):
@@ -57,7 +57,7 @@ def test_large_transcript_is_searched_fast(tmp_path):
     start = time.perf_counter()
     reply_check.check({"last_assistant_message": 'She said: "this phrase is nowhere in the record at all".',
                        "transcript_path": str(transcript)}, {})
-    assert time.perf_counter() - start < 0.2
+    assert time.perf_counter() - start < 0.2 * pace
 
 
 def test_stop_hook_emits_a_block_decision_and_fails_open_on_bad_input(isolated_home):
@@ -1645,7 +1645,7 @@ def test_work_started_many_megabytes_before_the_turn_ended_still_holds(tmp_path)
     assert reply_check.held_by_harness(str(path)) is True
 
 
-def test_the_record_is_read_from_its_end_and_fast(tmp_path):
+def test_the_record_is_read_from_its_end_and_fast(tmp_path, pace):
     path = tmp_path / "long.jsonl"
     filler = _entry(type="assistant", message={"role": "assistant", "content": [{"type": "text", "text": "x" * 900}]}) + "\n"
     with path.open("w", encoding="utf-8") as record:
@@ -1655,7 +1655,7 @@ def test_the_record_is_read_from_its_end_and_fast(tmp_path):
         record.write(_started("toolu_new", BACKGROUND_WORK["a-shell-command"]) + "\n" + _reported("toolu_new") + "\n")
     began = time.perf_counter()
     assert reply_check.held_by_harness(str(path)) is False                              # the old start is beyond what is read
-    assert time.perf_counter() - began < 0.5
+    assert time.perf_counter() - began < 0.5 * pace
     assert reply_check.held_by_harness(str(path), tail=10**9) is True
 
 

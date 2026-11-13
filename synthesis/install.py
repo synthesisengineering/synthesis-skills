@@ -104,6 +104,18 @@ def _write_exec(path: Path, text: str) -> None:
     os.replace(tmp, path)
 
 
+def _compile(package: Path) -> None:
+    """Compiled code beside the runtime's source, for the interpreter that installs. A hook is a new process on every
+    tool call, and a caller told to write no bytecode caches nothing it compiles: the guards were compiled from their
+    source each time, 72 ms for a shell command's check where 33 ms is what it takes (2026-11-12). Files already
+    compiled are left; a folder that cannot be written leaves the runtime as it was, slower and whole."""
+    import compileall
+    try:
+        compileall.compile_dir(str(package), maxlevels=0, quiet=2)
+    except OSError:
+        pass
+
+
 def install(plugin_root: Path, forward_only: bool = False) -> str:
     """Install the plugin's runtime if it differs from the current one. Returns a one-line report.
 
@@ -136,6 +148,7 @@ def install(plugin_root: Path, forward_only: bool = False) -> str:
         link = home / f".current.{os.getpid()}"
         link.symlink_to(release)
         os.replace(link, home / "current")  # atomic switch: a running hook sees old or new, never neither
+    _compile(home / "current" / "synthesis")
     _write_exec(home / "bin" / "synthesis-hook", HOOK_SCRIPT)
     _write_exec(home / "bin" / "synthesis", CLI_SCRIPT)
     for name in GIT_HOOKS:
