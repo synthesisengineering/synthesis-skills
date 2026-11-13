@@ -305,7 +305,7 @@ def test_ci_runs_the_local_command_in_three_jobs_that_together_miss_nothing():
     parts = re.findall(r'"([^"]+)"', re.search(r"^\s+part: \[(.+)\]$", workflow, re.M).group(1))
     assert "skills/" in parts and len(parts) == 3
     assert "run: python -m pytest -q ${{ matrix.part }}\n" in workflow
-    assert "pytest -q tests/ skills/\n" not in workflow.replace("`", "\n")  # no job runs the whole of it
+    assert "run: python -m pytest -q tests/ skills/" not in workflow  # no job runs the whole of it
     halves = [part for part in parts if part != "skills/"]
     files = sorted(path.relative_to(ROOT).as_posix() for path in (ROOT / "tests").glob("test_*.py"))
     assert files and [[half for half in halves if fnmatch(name, half)] for name in files if

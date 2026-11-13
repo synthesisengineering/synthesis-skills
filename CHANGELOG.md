@@ -15,9 +15,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   interpreter that keeps compiled code under one folder of its own (Apple's Python) finds the runtime's there,
   under the path a hook imports from; a test run under such an interpreter keeps its compiled code in a
   temporary folder.
-- CI runs the suite in two jobs for each system and Python, the core's tests and the skills'. The whole suite had
-  come to take up to 526 seconds on a macOS runner, and on main one job was cancelled at its ten-minute limit with
-  no test failing. A lint test holds the workflow to both folders, each in a job.
+- CI runs the suite in three jobs for each system and Python: the core's tests in two halves by file name, and
+  the skills'. The whole suite had come to take up to 526 seconds on a macOS runner, and on main one job was
+  cancelled at its ten-minute limit with no test failing; as two jobs, the core's tests still ran over the limit
+  on one slow runner. A lint test holds that the three jobs together miss no test file.
 
 ## [5.8.0] - 2026-11-12
 
