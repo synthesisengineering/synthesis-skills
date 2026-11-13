@@ -13,6 +13,7 @@ Replayed as built over the same 1,032 commits: 11 rows refused in 5 commits, and
 """
 
 import os
+import time
 
 import pytest
 
@@ -168,6 +169,18 @@ def test_each_file_is_read_once():
         return "\n".join([*HEAD, *("| A | live | |" for _ in range(40))])
     added = [(RECORD.encode(), number, b"| A | live | |") for number in range(3, 43)]
     assert len(cc.status_evidence(added, {}, read)[0]) == 40 and reads == [RECORD]
+
+
+@pytest.mark.parametrize("head", [HEAD, ("| Name | Kind |", "|---|---|")], ids=["status", "no-status"])
+def test_a_table_of_forty_thousand_added_rows_is_judged_in_one_pass(head, pace):
+    # A review of 2026-11-13: each added row walked back to its table's top, so 10,000 rows took 6.1 s and a commit
+    # of a 40,000-row table with no Status column took 86 s, and was then refused for running out of time.
+    rows = [f"| item-{k} | live | the deploy log |" for k in range(40_000)]
+    whole = "\n".join([*head, *rows])
+    added = [(RECORD.encode(), number, row.encode()) for number, row in enumerate(rows, len(head) + 1)]
+    began = time.perf_counter()
+    assert cc.status_evidence(added, {}, lambda name: whole) == ([], [])
+    assert time.perf_counter() - began < 0.5 * pace
 
 
 def test_a_commit_is_refused_for_a_status_with_no_evidence_and_passes_with_it(tmp_path, monkeypatch):
