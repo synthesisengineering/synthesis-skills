@@ -7,7 +7,7 @@ transcripts (2026-11-13), each row given to the export's own reader: 2,749 plain
 typed while a turn ran (a queued command), 46 slash commands that reach the agent and 19 that followed a system
 reminder in one block were not, 17 of every 100 things typed, and 32 of the slash commands left no record at
 all, each dropped as a copy of the one before. Of 147 sessions that wrote into a project's folder, 134 named no
-project: a session's project came only from the session-start hook's line.
+project: a session's project came from the session-start hook's line or the board's live claim.
 """
 
 import json
@@ -230,7 +230,7 @@ def test_a_tool_call_of_another_shape_tags_nothing_and_stops_nothing(harness, gi
 
 # --- a review, 2026-11-13 ------------------------------------------------------------------------------------------
 # Measured after it on thirty days of transcripts, each row given to this reader and to the approval reader's own
-# test of what the principal typed (`approvals._prompt`): the two agree on 3,597 rows; where the approval reader
+# test of what the principal typed (`approvals._prompt`): the two agree on 3,598 rows; where the approval reader
 # says typed and no `user` record is filed, the text is a wrapped block with no words outside it (a command to the
 # harness and its output 253, a scheduled task 22, another session's message 23, a CI event 18) or the harness's
 # own line that a request was interrupted (18). The cases below did not occur in those days; the reader is held to

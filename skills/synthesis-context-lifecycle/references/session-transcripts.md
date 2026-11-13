@@ -29,18 +29,35 @@ reply, with its model), `reasoning`
 keeps its first 1,000 in the record and the whole text in a blob (`text_blob`, `text_chars`); `--whole` reads it back.
 
 What the principal typed is a `user` record in each shape a Claude Code transcript holds it: a prompt that begins a
-turn; a prompt typed while a turn runs, which the harness keeps as a queued command and in no row of its own; a
-slash command that reaches the agent, written as it was typed (`/review the last change`), where the same command
-typed twice is two prompts; and the words typed after a system reminder that the harness put before them in one block,
-the reminder kept apart as a `system` record. Until 2026-11-13 the last three were `system` records, or none, and
-so in no list of what was typed: measured on thirty days of transcripts, 578 of 3,327 things typed. A command to the
-harness itself (`/model`) and its output stay `system`, and so do a task's notification and another agent's message
-that arrive as queued commands.
+turn; a prompt typed while a turn runs, which the harness keeps as a queued command and in no row of its own, filed
+at the time it was typed; a slash command that reaches the agent, as the harness records it (its name and its
+arguments, `/review the last change`, with any words beside them), where the same command typed twice is two
+prompts; and what was typed after a system reminder that the harness put before it in one block, the reminder kept
+apart as a `system` record. Until 2026-11-13 the last three were `system` records, or none, and so in no list of
+what was typed: measured on thirty days of transcripts, 578 of 3,327 things typed.
 
-`projects` in `meta.json` are the projects the session-start hook named and each project whose folder a tool call
-of the session wrote into (`<a knowledge root>/projects/<id>/`): a file tool's target, or what a shell line writes,
-read as the guard reads them. Reading a project's files adds none. A call whose written files could not be read is
-counted in `meta.json` among what was skipped.
+Whether a row can be the principal's at all is the approval reader's own test of one (`approvals._prompt`): a row or
+a queued command that the harness marks as its own (a tool's result, the tool call it came from, a synthetic or a
+transcript-only row), one whose origin is not a person, and words beside a tool's result are `system`, whatever they
+say. A command to the harness itself (`/model`, `/compact` with its instructions) and its output stay `system`, and
+so do a command run in the harness's bash mode with its output, a task's notification, a CI event, and a queued
+command with no origin that opens with a tag of the harness's. Another agent's or another session's message is a
+`brief`, in a row of its own or queued, and so is everything said to a session that a program drives; a `brief` is
+synced as a prompt is. Two limits: a reminder that holds the tag's own closing text ends at its last one, so words
+typed after such a reminder that themselves quote the closing tag lose what stands before the quote; and a prompt
+that opens with words is kept whole, a reminder the harness put after them included. Measured on the same thirty
+days against the approval reader's test, row by row: the two agree on 3,598 rows, and where that reader says typed
+and no `user` record is filed, the text is a wrapped block with no words outside it or the harness's own line that
+a request was interrupted. A queued prompt was never also a row of its own (0 of 513), and its own time was within
+a second of its row's (530 of 530).
+
+`projects` in `meta.json` are the project the session-start hook named, the one the board had for the session when
+it was exported, and each project whose folder a tool call of the session wrote into (`<a knowledge root>/projects/<id>/`,
+a folder that holds its `CONTEXT.md`): a file tool's target, or what a shell line writes, read with the guard's
+readers. Codex's own tools keep a call's arguments as JSON text, and they are read with the working directory they
+name; its patch tool's patch is read as text. Reading a project's files adds none. A shell line the reader cannot
+read adds none and is counted in `meta.json` among what was skipped. Not read: `git mv` and `git checkout` of a
+file, and a connector's own file tools.
 
 What is left out: copies the harness keeps of the same content (Claude Code's request blobs and `toolUseResult`,
 Codex's UI events and the history replayed into each compaction), the copy of the whole conversation Codex hands its
@@ -50,7 +67,11 @@ put in the prompt slot (heartbeats, scheduled-task prompts, recommended plugins,
 
 A sub-agent belongs to the workspace its parent session started in, even when it worked in another folder; `cwd` in
 `meta.json` keeps where it actually ran. After an adapter changes, `synthesis sessions export --rebuild` moves the
-archive aside (to `<synthesis home>/archive/sessions-<time>/`, never deleted) and exports everything again.
+archive aside (to `<synthesis home>/archive/sessions-<time>/`, never deleted) and exports everything again. A rebuild
+numbers a session's records anew: where the adapter now files a record it did not, every later record of that
+session moves up, and a citation written before the rebuild names another record. Rebuild an archive whose records
+nothing cites yet, or leave the past as it was filed: the sessions exported from the change on follow the new rules
+without one.
 
 ## Secrets and privacy
 

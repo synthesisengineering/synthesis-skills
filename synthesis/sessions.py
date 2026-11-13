@@ -176,10 +176,11 @@ class _Session:
 
     def wrote(self, rec: dict) -> None:
         """A session belongs to each project whose folder a tool call of it writes into (2026-11-13: of 147 sessions
-        that had, 134 named no project, since only the session-start hook's line named one). The files a call writes
-        are read as the guard reads them: a file tool's targets, and what a shell line writes, which Claude Code
-        keeps as an object and Codex as text. Reading a project's files tags nothing. A call no reader can read
-        adds nothing and is counted."""
+        that had, 134 named no project: the session-start hook's line and the board's live project were the only
+        sources). The files a call writes are read with the guard's readers: a file tool's targets, and what a shell
+        line writes, which Claude Code keeps as an object and Codex as text or as JSON text with its working
+        directory. A project is a folder that holds its CONTEXT.md. Reading a project's files tags nothing. A shell
+        line the reader cannot read adds nothing and is counted, as is a call that raises."""
         from synthesis import guards, project
         tool, given = str(rec.get("tool") or ""), rec.get("input")
         try:
