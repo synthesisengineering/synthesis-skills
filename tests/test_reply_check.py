@@ -1914,3 +1914,70 @@ def test_a_block_between_begin_and_end_excuses_no_wait_outside_it(reply):
 @pytest.mark.parametrize("reply", _cases(A_WAIT_FOR_THE_BLOCK_TO_BE_SENT))
 def test_beside_a_block_a_wait_for_it_to_be_sent_awaits_the_principals_go(reply):
     assert _sent_back(reply) is None
+
+
+# Finding 3 of the review: a request hands the principal the turn when it is put to them. After "and", "then" or a comma
+# the same words may be one more verb of somebody else's ("the worker will restart and send me its result"), and that
+# asks the principal for nothing. No recorded reply turns on this: the cases are written for the class.
+R3_THIRD_PARTY_REVIEW = {"R3-03": "The build instructions are corrected. The worker will restart and send me its result. I'm waiting on "
+                                  "the service."}
+ONE_MORE_VERB_OF_SOMEBODY_ELSES = {
+    "should-sign-and-send-me": "The vendor should sign today and send me the copy. I'm waiting on that.",
+    "she-will-review-and-let-me-know": "She'll review the contract tonight and let me know. I'm waiting for her answer.",
+    "asked-to-check-and-tell-me": "I asked the registrar to check the transfer and tell me the date. Waiting on their reply.",
+    "waiting-for-the-bank-to-send-me": "I'm waiting for the bank to confirm the wire and send me the receipt.",
+    "the-bot-will-then-message-me": "The deploy bot will then message me the result. I'll continue once it does.",
+    "a-list-of-its-verbs": "The job will finish the export, send me the totals, and exit. I'll check them when it's done.",
+}
+STILL_A_REQUEST_PUT_TO_THEM = {
+    "you-can-sign-and-send-me": "You can sign the form and send me a photo of it. I'll file it once the bank confirms.",
+    "if-the-vendor-can-then-tell-me": "If the vendor can deliver by Friday, tell me and I'll book the room. I'm waiting on that.",
+    "check-whether-it-will-and-tell-me": "Check whether the bank will accept the form and tell me. I'll wait.",
+    "a-statement-so-tell-me": "The vendor will call at noon, so tell me what to say. Waiting on that before I draft the notes.",
+    "wait-for-it-and-tell-me": "Wait for the build to finish and tell me what its last line says. I'll continue once I have it.",
+    "you-will-need-to-and-tell-me": "You'll need to approve the prompt on your phone and tell me when it's through. I'm waiting on that.",
+    "i-will-draft-then-tell-me": "I'll draft both versions tonight, then tell me which one reads better. I'll send it once the venue confirms.",
+}
+
+
+@pytest.mark.parametrize("reply", _cases(R3_THIRD_PARTY_REVIEW, ONE_MORE_VERB_OF_SOMEBODY_ELSES))
+def test_one_more_verb_of_a_third_partys_is_no_request_to_the_principal(reply):
+    reason = _sent_back(reply)
+    assert reason and "nothing is armed" in reason
+
+
+@pytest.mark.parametrize("reply", _cases(STILL_A_REQUEST_PUT_TO_THEM))
+def test_a_request_put_to_the_principal_still_hands_them_the_turn(reply):
+    assert _sent_back(reply) is None
+
+
+# Finding 6 of the review: "going forward" anywhere in front of a wait made it a rule for next time. A rule phrase
+# explains a wait when it governs the wait's own clause: it opens the sentence or a clause of it, and no new clause of
+# the session's comes between it and the wait. No recorded reply turns on this either.
+R3_INCIDENTAL_RULE_REVIEW = {"R3-06": "The proposed change going forward is documented, and I am waiting on the external review. The "
+                                      "branch is ready."}
+A_RULE_PHRASE_THAT_GOVERNS_SOMETHING_ELSE = {
+    "in-a-noun-phrase": "The plan for next time is in the runbook and I'm waiting on the reviewer.",
+    "opens-another-clause": "Going forward, the cache is rebuilt nightly, and I'm waiting for tonight's run to confirm it.",
+    "between-commas": "The schedule, going forward, is weekly and I'm waiting on the first export.",
+    "inside-the-event": "When the policy for every time zone is approved, I'll resume the rollout.",
+    "what-to-do-next-time": "I wrote down what to do next time, and I'm now waiting on the vendor's fix.",
+}
+A_RULE_THAT_GOVERNS_THE_WAIT = {
+    "after-and": "You're right, and from now on I'll wait for the checks before I merge.",
+    "after-so": "The merge went out early, so going forward I'll hold the tag until the smoke test passes.",
+    "whenever-opens": "Whenever a deploy is in flight, I'll wait for the health check before I report.",
+    "as-a-rule-opens": "As a rule I'll wait for the second review before merging to main.",
+    "inside-the-wait": "When a send fails, from now on I'll follow up once the retry returns.",
+}
+
+
+@pytest.mark.parametrize("reply", _cases(R3_INCIDENTAL_RULE_REVIEW, A_RULE_PHRASE_THAT_GOVERNS_SOMETHING_ELSE))
+def test_a_rule_phrase_that_governs_something_else_explains_no_wait(reply):
+    reason = _sent_back(reply)
+    assert reason and "nothing is armed" in reason
+
+
+@pytest.mark.parametrize("reply", _cases(A_RULE_THAT_GOVERNS_THE_WAIT))
+def test_a_rule_phrase_that_governs_the_waits_own_clause_still_explains_it(reply):
+    assert _sent_back(reply) is None
