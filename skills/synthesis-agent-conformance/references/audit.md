@@ -95,6 +95,9 @@ there with no item here fails:
 - `outbox`: the folder agents stage outgoing attachments in is there to write, and a
   mail connector kept running by its auto-start was started with it among
   `ALLOWED_FILE_DIRS` (one whose start cannot be read is a warning, never a pass);
+- `teardown`: nothing a test set up is left in place. The list is written as each thing is made
+  (`<synthesis-agent-guardrails>/scripts/teardown.py add`), and a line stays until `done` takes it
+  off; the check warns with the oldest's age and the three oldest, and runs nothing a line names;
 - `pr gate`: when `pr_gated` is configured, every commit on a gated repository's default
   branch since its gate began came through a pull request;
 - `temporary addresses`: when `temporary_addresses` is configured, a quick tunnel's

@@ -832,6 +832,32 @@ def _procargs(pid: str) -> bytes:
     return buffer.raw[:size.value]
 
 
+def check_teardown(listed: Path, now: float = 0) -> Check:
+    """What a test set up and has not taken down (2026-11-12: an entry in a client's config that pointed at a dead
+    address, and a key marked for removal, stayed a day after their test stopped, with no list to run). The
+    guardrails' teardown.py writes the list as each thing is made; this reads it, and runs nothing it names."""
+    try:
+        lines = [line for line in listed.read_text(encoding="utf-8").splitlines() if line.strip()] if os.path.lexists(listed) else []
+    except OSError as exc:
+        return Check("warn", "teardown", f"{_short(listed)} cannot be read ({exc.strerror}), so what a test left in place is not known")
+    if not lines:
+        return Check("ok", "teardown", "nothing a test set up is left in place")
+    items = []
+    for line in lines:
+        try:
+            row = json.loads(line)
+            items.append((datetime.fromisoformat(str(row["at"])).timestamp(), f"{row['id']}: {row['what']} ({row['remove']})"))
+        except (ValueError, KeyError, TypeError):
+            items.append((float("inf"), line[:120]))  # a line someone wrote by hand: shown as it is, after those with a time
+    items.sort()
+    hours = ((now or time.time()) - items[0][0]) / 3600 if items[0][0] != float("inf") else 0
+    age = "under an hour" if hours < 1 else f"{hours:.0f} hours" if hours < 48 else f"{hours / 24:.0f} days"
+    return Check("warn", "teardown", f"{len(items)} thing{'s' if len(items) != 1 else ''} a test set up {'are' if len(items) != 1 else 'is'} "
+                 f"still in place, the oldest for {age}: " + "; ".join(text for _, text in items[:3])
+                 + (f"; and {len(items) - 3} more" if len(items) > 3 else "")
+                 + ". Take each down, then `python3 <synthesis-agent-guardrails>/scripts/teardown.py done <number>`")
+
+
 def check_outbox(outbox: Path, unit: Path, pid_file: Path, started=started_with) -> Check:
     """Agents stage outgoing attachments in the outbox and the send guard passes a file there, so it must be there to
     write, and a mail connector its auto-start keeps running must have been started with it among ALLOWED_FILE_DIRS
@@ -1276,7 +1302,7 @@ def run_checks(home: Path | None = None, find=find_client, latest_ref: str = "",
     checks += [check_versions(versions, sessions), check_instruction_adapters(repos),
                check_temporary_work(repos, [s.cwd for s in sessions if not s.stale]),
                check_home_paths([home / "config.json"]), check_packets(project.roots()),
-               check_outbox(paths.outbox(), *connector_files())]
+               check_outbox(paths.outbox(), *connector_files()), check_teardown(home / "teardown.jsonl")]
     if config.get("pr_gated") is not None:
         checks.append(check_pr_gate(config["pr_gated"], repos))
     if "temporary_addresses" in config:  # null is a setting that cannot be read, and fails its line

@@ -80,7 +80,7 @@ def test_a_line_someone_wrote_by_hand_is_kept_and_shown(home, capsys):
     assert teardown.main(["done", "7"]) == 0
     assert (home / "teardown.jsonl").read_text(encoding="utf-8") == "remember the DNS record\n"
     teardown.main(["add", "a key", "--remove", "revoke it"])
-    assert rows_after(home) == ["remember the DNS record", 8]
+    assert rows_after(home) == ["remember the DNS record", 1]
 
 
 def rows_after(home: Path) -> list:
