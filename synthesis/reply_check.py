@@ -15,6 +15,7 @@ import json
 import mmap
 import os
 import re
+import time
 from datetime import datetime, timezone
 
 DEFAULT_PHRASES = [
@@ -438,20 +439,23 @@ def _turn(transcript_path: str | None, needles: tuple, tail: int = 8_000_000) ->
         content = entry["message"].get("content")
         parts = [p for p in content if isinstance(p, dict)] if isinstance(content, list) else []
         if entry.get("type") == "user" and not any(entry.get(flag) for flag in NOT_TYPED) and (
-                isinstance(content, str) or any(p.get("type") == "text" for p in parts)) and not any(p.get("type") == "tool_result" for p in parts):
-            calls, start = [], number
+                isinstance(content, str) or parts) and not any(p.get("type") == "tool_result" for p in parts):
+            calls, start = [], number  # words, or a picture alone: a prompt with no text part begins a turn too
         elif entry.get("type") == "assistant":
             calls += [(p["id"], str(p.get("name", "")), p.get("input")) for p in parts if p.get("type") == "tool_use" and isinstance(p.get("id"), str)]
     return calls, lines[start:]
 
 
 HELD = ("approve followed by the code ", "can't go out as written", "can't go as written")  # the guard's words for a call it did not let through
+FAILED = re.compile(r'\s*\{\s*"ok"\s*:\s*false\b')  # a connector's own word, in its answer, that nothing went
 
 
 def _result(ident: str, lines: list) -> tuple:
-    """(whether a call went, when its result was recorded): False for an error, and for a hold or a refusal of the
-    guard's, which is not always recorded as an error (of 706 held sends in thirty days, 55 were not); None while
-    it has no result. The time is None where the record gives none."""
+    """(whether a call went, when its result was recorded): False for an error, which is how a harness records a
+    hook's refusal (633 of 633 in thirty days of records, 2026-11-13; an earlier count of holds with no error mark
+    had taken a shell's and a file's own output for holds); for the guard's own words for a hold, should a record
+    not mark one; and for a connector's answer that says it failed. None while it has no result. The time is None
+    where the record gives none."""
     mark = ident.encode()
     for line in lines:
         if mark not in line or b'"tool_result"' not in line:
@@ -470,7 +474,7 @@ def _result(ident: str, lines: list) -> tuple:
                     at = (stamp if stamp.tzinfo else stamp.replace(tzinfo=timezone.utc)).timestamp()
                 except ValueError:
                     at = None
-                return not (part.get("is_error") or any(words in text[:2000] for words in HELD)), at
+                return not (part.get("is_error") or any(words in text[:2000] for words in HELD) or FAILED.match(text)), at
     return None, None
 
 
@@ -516,11 +520,19 @@ def _stated(session_id: str, since: float) -> bool:
     for row in rows:
         try:
             said = json.loads(row)
-            if said.get("session") == session_id and float(said.get("at")) >= since:
+            if said.get("session") == session_id and since <= float(said.get("at")) <= time.time() + 60:  # a line dated ahead covers nothing later
                 return True
         except (ValueError, TypeError, AttributeError):
             continue
     return False
+
+
+def _sender(words: list) -> bool:
+    """Whether a command runs the local-messaging skill's sender: the script itself, or an interpreter whose first
+    argument that is no option is the script. Reading the file or testing it sends nothing."""
+    head = os.path.basename(words[0]) if words else ""
+    ran = words[0] if not head.startswith("python") else next((word for word in words[1:] if not word.startswith("-")), "")
+    return os.path.basename(ran) == "messages_send.py" and (head.startswith("python") or head == "messages_send.py") and "-m" not in words[1:2]
 
 
 def unwatched_sends(payload: dict, config: dict) -> list[str]:
@@ -554,10 +566,10 @@ def unwatched_sends(payload: dict, config: dict) -> list[str]:
         try:
             if guards.to_a_person(name, given, config) and "draft" not in short and "schedule" not in short:
                 what = short
-            elif "osascript" in str(given.get("command") or "") and any(
-                    sends.command_send(words, where, config) == "messages"
-                    for words, where in guards._parse(given["command"], str(payload.get("cwd") or os.getcwd()))[0]):
-                what = "a text from the shell"
+            elif guards.shell_tool(name) and any(  # what the send guard holds for its time, and the texts' own sender, which asks the guard itself
+                    sends.command_send(words, where, config) in guards.PERSON or _sender(words)
+                    for words, where in guards._parse(guards.shell_command(given), str(payload.get("cwd") or os.getcwd()))[0]):
+                what = "a message from the shell"
         except Exception:  # a call the guard cannot read is none this check can name
             continue
         if what:

@@ -2375,7 +2375,7 @@ def test_a_text_sent_from_the_shell_is_a_message_to_a_person(tmp_path):
     text = """osascript -e 'tell application "Messages" to send "Could you send the figures?" to buddy "+15550100"'"""
     _turn(record, _prompt("Text him."), _did("s1", "Bash", command=text), _came("s1"))
     payload = {"last_assistant_message": "Sent.", "transcript_path": str(record), "session_id": "S1"}
-    assert "a text" in reply_check.check(payload, WATCH) or "messages" in reply_check.check(payload, WATCH)
+    assert "a message from the shell" in reply_check.check(payload, WATCH)
     for quiet in ("cat messages_send.py", "osascript -e 'display notification \"done\"'", "echo osascript Messages send"):
         other = tmp_path / f"{abs(hash(quiet))}.jsonl"
         _turn(other, _prompt("Look."), _did("s1", "Bash", command=quiet), _came("s1"))

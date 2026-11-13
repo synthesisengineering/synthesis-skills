@@ -434,7 +434,7 @@ def test_a_call_whose_name_says_it_sends_a_message_is_one_whatever_its_server(to
 def test_a_mail_sent_from_the_shell_is_held_as_a_text_is():
     """The documents said a text or a mail from the shell; only the channel named `messages` was held."""
     using = {**CONFIG, "send_commands": [["email", r"mutt\b"], ["messages", r"imsg\s+send\b"], ["slack", r"slackcat\b"]]}
-    for command in ("mutt -s 'A time' a@example.com <<< 'Would 3:30 pm work?'", "imsg send +15550100 'See you at 3:30 pm'", "slackcat -c team 'Standup at 3:30 pm'"):
+    for command in ("mutt --subject 'Would 3:30 pm work?' a@example.com", "imsg send +15550100 --text 'See you at 3:30 pm'", "slackcat -c team --message 'Standup at 3:30 pm'"):
         held = guards.check("Bash", {"command": command}, using, cwd="/tmp", session=SESSION)
         assert stale(held), command
     assert "names a time" not in guards.check("Bash", {"command": "gh pr comment 7 -b 'Deployed at 3:30 pm'"}, using, cwd="/tmp", session=SESSION)

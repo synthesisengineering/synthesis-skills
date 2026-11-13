@@ -540,7 +540,14 @@ def check_upload(tool: str, tool_input: dict) -> str | None:
 
 
 def check_send(tool: str, tool_input: dict, config: dict, session: dict | None = None) -> str | None:
-    """session: the hook payload, whose transcript shows who typed an approval (a shell's script passes none)."""
+    """session: the hook payload, whose transcript shows who typed an approval (a shell's script passes none). One
+    send is judged at a time: the code that lets a message go spends its other code before an identical call is
+    looked at."""
+    with approvals.alone():
+        return _judged_send(tool, tool_input, config, session)
+
+
+def _judged_send(tool: str, tool_input: dict, config: dict, session: dict | None) -> str | None:
     files: dict = {}  # each file the connector will read, with the hash of its bytes: an approval of a path alone let
     # a copy replaced in the outbox after the principal's code go out in its place (as the iMessage sender binds a photo)
     problems = message_problems(tool, tool_input, config, session=session) or _unread_files(tool, tool_input, files)
@@ -610,22 +617,26 @@ def _reshapes_calendar(tool: str, tool_input: dict) -> bool:
 # calendar. Replayed over recorded messages (2026-11-13): of 445 distinct messages sent to people on 75 days, 145
 # named a clock time, about six in ten of those were about when people meet, and 59 went with a calendar read in the
 # ten minutes before.
-CLOCK = re.compile(r"(?i)(?<![\w:=/.+-])(?:(?:1[0-2]|0?[1-9])(?:[:.][0-5]\d)?\s?[ap]\.?m\.?(?:ish)?(?![a-z])"  # 3 pm, 3:30 p.m., 7.30 pm
-                   r"|(?:[01]?\d|2[0-3]):[0-5]\d(?:\s?[ap]\b|h\b)?(?![\w:])"  # 14:00, 3:30p, 14:00h; no part of 1:23:45, of a stamp or of an offset
-                   r"|(?:[01]?\d|2[0-3])h[0-5]\d\b)")  # 15h30
+CLOCK = re.compile(r"(?i)(?:(?<![\w:=/.+#])(?:1[0-2]|0?[1-9])(?:[:.][0-5]\d)?\s?[ap]\.?m\.?(?:ish)?(?![a-z])"  # 3 pm, 3:30 p.m., 7.30 pm, and the 3pm of 2-3pm
+                   r"|(?<![\w:=/.+#-])(?:(?:[01]?\d|2[0-3]):[0-5]\d(?:\s?[ap]\b|h\b)?(?![\w:])"  # 14:00, 3:30p, 14:00h; no part of 1:23:45, of a stamp, of an offset or of an address
+                   r"|(?:[01]?\d|2[0-3])h[0-5]\d\b))")  # 15h30
 CALENDAR_READ = re.compile(r"(?:get|list|search|list[_-]all)[_-]events?$")
-CALENDARS = re.compile(r"calendar|gcal|caldav|workspace")  # what says, in a tool's whole name, that its events are a calendar's
+CALENDARS = re.compile(r"calendar|gcal|caldav|__(?:google[_-])?workspace(?:[_-]mcp)?__")  # what says, in a tool's whole name, that its events are a calendar's
+PERSON = ("email", "slack", "chat", "messages")  # the channels on which a message reaches a person
+CARRIES = {"send", "reply", "forward", "draft", "drafts", "message", "messages", "dm"}  # what a tool's name says when it carries one
 
 
 def to_a_person(tool: str, tool_input: dict, config: dict) -> bool:
-    """Whether a call puts words in front of a person as a message: what the guard takes for a send, on a channel of
-    messages (mail, Slack, chat, texts) or on one it has no name for, as a connector whose server is named by an id
-    is. A calendar write is none (an event states its own time, and the calendar rules judge it), and neither is a
-    harness's own tool (`SendMessage` to an agent, a file for the principal), a ticket, a document or a page."""
+    """Whether a call puts words in front of a person as a message: a call the guard takes for a send, whose own
+    name says it sends, replies, forwards or drafts a message, on a channel of messages (mail, Slack, chat, texts)
+    or on one the guard has no name for, as a connector whose server is named by an id is. A calendar write is none
+    (an event states its own time, and the calendar rules judge it), and neither is a harness's own tool
+    (`SendMessage` to an agent, a file for the principal), a ticket, a comment, a reaction, a share, a document or a
+    page (2026-11-13, a review: each of those on a channel with no name had counted)."""
     from synthesis import sends
-    own = "__" not in tool and tool[:1].isupper()
-    return (not own and not CALENDAR_WRITE.search(tool) and _sends(tool, tool_input, config)
-            and sends.channel(tool, tool_input) in ("email", "slack", "chat", "messages", "other"))
+    short, own = tool.rsplit("__", 1)[-1], "__" not in tool and tool[:1].isupper()
+    return (not own and not CALENDAR_WRITE.search(tool) and bool(CARRIES & set(sends._words(short)))
+            and sends.channel(short, tool_input) in (*PERSON, "other") and _sends(tool, tool_input, config))
 
 
 def _reads_calendar(name: str, reads: list) -> bool:
@@ -633,8 +644,9 @@ def _reads_calendar(name: str, reads: list) -> bool:
     workspace server's events are its calendar's), a free-busy query or a suggestion of times, or one the setting
     names by its whole name, a pattern over it, or its end. An error tracker's `search_events` is none."""
     short = name.rsplit("__", 1)[-1]
-    return bool(CALENDAR_READ.search(short) and CALENDARS.search(name.lower()) or short in ("query_freebusy", "suggest_time")
-                or any(fnmatch.fnmatchcase(name, known) or known == short for known in reads))
+    return not CALENDAR_WRITE.search(short) and bool(  # a write is no read, whatever pattern names its server
+        CALENDAR_READ.search(short) and CALENDARS.search(name.lower()) or short in ("query_freebusy", "suggest_time")
+        or any(fnmatch.fnmatchcase(name, known) or known == short for known in reads))
 
 
 def _calendar_read(transcript: str, reads: list) -> float | None:
@@ -642,9 +654,10 @@ def _calendar_read(transcript: str, reads: list) -> float | None:
     that reads one, in a Claude Code transcript's last 8 MB. None where there is none or the record cannot be read.
     Each line is looked at once: the calls first, then the results that name one of them."""
     lines, calls = _tail(transcript), set()
-    hints = ("event", "freebusy", "suggest_time", *(known.strip("*").rsplit("__", 1)[-1].strip("*") for known in reads))
+    fixed = [max(re.split(r"[*?\[\]]", known), key=len) for known in reads]  # the longest stretch of an entry that is no pattern
+    hints = ("event", "freebusy", "suggest_time", *fixed) if all(fixed) else ("",)  # an entry with none can name any tool: every call is looked at
     for line in lines:
-        if '"tool_use"' in line and any(hint and hint in line for hint in hints):
+        if '"tool_use"' in line and any(hint in line for hint in hints):
             calls |= {call["id"] for call in _blocks(line) if call.get("type") == "tool_use" and isinstance(call.get("id"), str)
                       and _reads_calendar(str(call.get("name") or ""), reads)}
     if not calls:
@@ -685,11 +698,13 @@ def _time_without_calendar(texts: list, config: dict, session: dict | None) -> s
         return None
     named = f"This message names a time ({', '.join(f'`{t}`' for t in times[:3])})"
     release = "show the principal the exact text and ask them to type {code} to send it as it is."
-    if paths.harness(session) in ("codex", "muse"):
-        return (f"{named}, and the guard cannot see a calendar read in this harness's record, so reading one does not clear this. "
+    unseen = ("a sub-agent's own record" if (session or {}).get("agent_id") else "this harness's record"
+              if paths.harness(session) in ("codex", "muse") else "")  # a sub-agent's reads are kept apart from its session's
+    if unseen:
+        return (f"{named}, and the guard cannot see a calendar read in {unseen}, so reading one does not clear this. "
                 f"Read the calendar for the day it names and check each time against what is there; then say to the principal when "
                 f"you read it, {release}")
-    at = _calendar_read(str((session or {}).get("transcript_path") or ""), reads)
+    at = _calendar_read(approvals.transcript(session), reads)  # a sender that asks from a script passes no record: the session's id finds it
     ago = None if at is None else max(0.0, time.time() - at) / 60
     if ago is not None and ago < minutes:
         return ""
@@ -4639,31 +4654,32 @@ def check_outgoing(command: str, config: dict, cwd: str, session: dict | None = 
     dirs = sorted({w for _, _, w in posts})  # where it runs, after its own cd: a re-run elsewhere is the same send
     summary = f"{', '.join(chans)} (runs in {', '.join(dirs)}): {command[:160]}"
     subject = {"command": command, "runs_in": dirs, "message": hashlib.sha256(text.encode("utf-8")).hexdigest()}
-    timed = _time_without_calendar([text], config, session) if "messages" in chans else None  # a text or a mail from the shell is a message to a person
+    timed = _time_without_calendar([text], config, session) if set(chans) & set(PERSON) else None  # a text or a mail from the shell is a message to a person
     if timed and timed.startswith("fresh_calendar"):
         return timed
-    if timed is not None and approvals.consume("send-time", subject, session):
-        approvals.void("send", subject)
-        for c in chans:
-            sends.log(c, "shell", summary, "approval", session)
-        return None
-    if timed:
-        code = approvals.request("send-time", subject, f"a time in its words and no calendar read: {summary[:120]}")
-        return timed.replace("make this identical call", "run the identical command").replace("{code}", approvals.how(code))
-    if all(sends.covered(c, [text], _project(session), config) for c in chans):
-        for c in chans:
-            sends.log(c, "shell", summary, "window", session)
-        sends.settle()
-        if timed is not None:
-            approvals.void("send-time", subject)
-        return None
-    if approvals.consume("send", subject, session):
-        for c in chans:
-            sends.log(c, "shell", summary, "approval", session)
-        if timed is not None:
-            approvals.void("send-time", subject)
-        return None
-    code = approvals.request("send", subject, summary)
+    with approvals.alone():  # the code that lets it go spends the other before an identical command is judged
+        if timed is not None and approvals.consume("send-time", subject, session):
+            approvals.void("send", subject)
+            for c in chans:
+                sends.log(c, "shell", summary, "approval", session)
+            return None
+        if timed:
+            code = approvals.request("send-time", subject, f"a time in its words and no calendar read: {summary[:120]}")
+            return timed.replace("make this identical call", "run the identical command").replace("{code}", approvals.how(code))
+        if all(sends.covered(c, [text], _project(session), config) for c in chans):
+            for c in chans:
+                sends.log(c, "shell", summary, "window", session)
+            sends.settle()
+            if timed is not None:
+                approvals.void("send-time", subject)
+            return None
+        if approvals.consume("send", subject, session):
+            for c in chans:
+                sends.log(c, "shell", summary, "approval", session)
+            if timed is not None:
+                approvals.void("send-time", subject)
+            return None
+        code = approvals.request("send", subject, summary)
     return (f"This command posts to {', '.join(chans)} on the principal's behalf; it runs in {', '.join(dirs)}. Show "
             f"them the exact command and its message and ask them to type {approvals.how(code)}. Then run the identical "
             "command again from any directory: the approval binds where it runs, not where the shell started.")
