@@ -97,7 +97,33 @@ there with no item here fails:
   trusted, and the skill catalog (asked of `codex app-server`) within budget with every
   shipped skill discoverable;
 - `muse hook approval`, `<harness> shell guard`: for Muse, hooks approved, and its shell
-  tool name treated as a shell by the guard;
+  tool name treated as a shell by the guard. A hook that waits for the person's approval
+  (Codex's hook trust, Muse's hook approval) does not run, and neither does one a harness
+  cannot register, so each run of the doctor writes down, for each of the two harnesses it
+  looked at, which of the four hooks were not running
+  (`<synthesis home>/state/harness-approvals.json`: the hooks its own line names, all four
+  where it names none, with the line itself; each harness's entry with its own date and
+  the release it was seen under). A harness the run could not look at, or could not tell
+  of, keeps its entry. An entry of this release says nothing once it is a day old. One
+  seen under another release is kept at any age, as not checked since synthesis changed:
+  a harness can ask for its approval again when the plugin changes, and a release can be
+  installed with no run of the doctor. It goes when a run of this release looks at that
+  harness, or finds no line of it at all. A hook that runs strikes its own event from its
+  harness's entry and no other: it shows that one hook approved. The harness is the one in
+  whose own folder of session records the hook's transcript is a file, never the
+  environment's, so the doctor's own self-test run from a harness's shell strikes nothing;
+  Muse hands its hooks no transcript, and only the doctor's next look clears Muse. A
+  change to an entry is made under the note's lock from what the note holds then, and a
+  hook that ran after a look began stays struck when that look is written. A session's
+  start says which hooks in which harness were not running when the doctor looked and
+  have not been seen to run since, with the doctor's own line for what mends it; where
+  the guard's hook is among them it adds that nothing is known to guard a send or a
+  deploy made from there. The weekday evening job shows a fixed banner for one harness
+  whose guard has not been seen to run, or for more than one, or that nothing has looked
+  since synthesis was updated; and `synthesis doctor --waiting` prints that count and
+  those names, or `unchecked` and the names, or `unknown`, running no check and writing
+  nothing. The note speaks of approvals alone: a harness whose hooks are switched off in
+  its settings is reported by its own line of the doctor;
 - `versions`: harness versions equal (or a release visibly in progress, never repaired);
 - `instruction adapters`: every workspace folder and repository under `~/workspaces/*`
   (or the configured `workspace_roots`) has `AGENTS.md` with `CLAUDE.md` importing it, so
@@ -115,6 +141,12 @@ there with no item here fails:
   line names;
 - `pr gate`: when `pr_gated` is configured, every commit on a gated repository's default
   branch since its gate began came through a pull request;
+- `prompt check`: where the day's prompt check is on, by the rituals' config: the workspaces
+  whose day does not close while something the principal typed is cited by no record, and
+  the ones where it is off. Each workspace's setting is read as its day-end reads it, with
+  the config's defaults under it. Information, not a finding: turning it on is each
+  workspace's own word. A setting the day-end refuses warns, since no day of that
+  workspace closes until it is mended, and so does a config that cannot be read;
 - `temporary addresses`: when `temporary_addresses` is configured, a quick tunnel's
   address in a message is read as one under the installed config, so such a message is
   refused; a setting that cannot be read fails;

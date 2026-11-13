@@ -49,8 +49,16 @@ INJECTED = ("<system-reminder>", "<command-", "<local-command-", "<task-notifica
             "<environment_context>", "<user_instructions>", "# AGENTS.md instructions", "<permissions instructions>",
             # measured 2026-10-30 among records filed as prompts: automations, harness context and UI events
             "<heartbeat>", "<recommended_plugins>", "<external_codex_apps", "<in-app-browser-context", "<hook_prompt",
-            "<user_action>", "<scheduled-task", "<skill>", "<create-pr-command>", "[Request interrupted by user")
-AGENT_WRITTEN = ("<cross-session-message",)  # another session's message arrives as a prompt
+            "<user_action>", "<scheduled-task", "<skill>", "<create-pr-command>", "[Request interrupted by user",
+            "<bash-")  # what the harness keeps of a command run in its bash mode, and of its output
+AGENT_WRITTEN = ("<cross-session-message", "<agent-message")  # another session's or an agent's message arrives as a prompt
+# What the principal typed arrives in more shapes than a plain user row (measured 2026-11-13 on thirty days of Claude
+# Code transcripts, each row given to this reader: 2,749 plain prompts were filed as the principal's, and 578 other things typed were
+# not). A slash command that reaches the agent opens with its message, then its name and arguments; a command to
+# the harness (`/model`) opens with its name and is no prompt. A system reminder can stand before the typed words in one block.
+SLASH = re.compile(r"\s*<command-message>.*?</command-message>\s*<command-name>\s*(/[^\s<]+)\s*</command-name>(?:\s*<command-args>(.*?)</command-args>)?", re.S)
+REMINDED = re.compile(r"((?:\s*<system-reminder>.*?</system-reminder>)+)\s*(.*)", re.S)
+OWN_TAGS = ("<pasted_content", "<command-message>", "<system-reminder>")  # what a typed prompt can open with
 MIME = {"image/png": "png", "image/jpeg": "jpg", "image/gif": "gif", "image/webp": "webp", "application/pdf": "pdf"}
 # Claude Code rows that only repeat or instrument what other rows hold: request copies, file backups, sync markers.
 CLAUDE_SKIP = {"api-request", "api-request-blob", "api-request-shape", "file-history-snapshot", "file-history-delta",
@@ -164,6 +172,43 @@ class _Session:
         self.seen, self.meta = set(s.get("seen", [])), s.get("meta", {})
         self.model, self.turn, self.trigger, self.lines = s.get("model", ""), s.get("turn", []), s.get("trigger"), []
         self.skipped = collections.Counter(self.meta.get("skipped", {}))
+        self.cwd, self.roots = str(s.get("cwd") or ""), None  # where the session's calls run; the projects folders, found once
+
+    def wrote(self, rec: dict) -> None:
+        """A session belongs to each project whose folder a tool call of it writes into (2026-11-13: of 147 sessions
+        that had, 134 named no project: the session-start hook's line and the board's live project were the only
+        sources). The files a call writes are read with the guard's readers: a file tool's targets, and what a shell
+        line writes, which Claude Code keeps as an object and Codex as text or as JSON text with its working
+        directory. A project is a folder that holds its CONTEXT.md. Reading a project's files tags nothing. A shell
+        line the reader cannot read adds nothing and is counted, as is a call that raises."""
+        from synthesis import guards, project
+        tool, given = str(rec.get("tool") or ""), rec.get("input")
+        try:
+            if isinstance(given, str) and given.lstrip().startswith("{"):  # Codex's own tools keep a call's arguments as JSON text
+                try:
+                    given = json.loads(given)
+                except ValueError:
+                    pass
+            cwd, unread = (str(given.get("workdir") or "") if isinstance(given, dict) else "") or self.cwd or os.sep, []
+            if tool in guards.FILE_TOOLS:  # Codex's patch tool keeps its patch as text
+                targets = guards._file_targets(tool, given if isinstance(given, dict) else {"input": given} if isinstance(given, str) else {})
+            elif guards.shell_tool(tool):
+                line = given if isinstance(given, str) else guards.shell_command(given) if isinstance(given, dict) else ""
+                targets = guards._shell_writes(line, cwd, unread) if line else []
+            else:
+                return
+            self.skipped["a tool call whose written files could not be read"] += bool(unread)
+            if self.roots is None:
+                self.roots = [os.path.realpath(root / "projects") for root in project.roots()]
+            for target in targets:
+                real = os.path.realpath(os.path.join(cwd, os.path.expanduser(str(target))))
+                for root in self.roots:
+                    name, _, rest = real[len(root) + 1:].partition(os.sep) if real.startswith(root + os.sep) else ("", "", "")
+                    if (rest and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", name) and os.path.isfile(os.path.join(root, name, "CONTEXT.md"))
+                            and name not in self.meta.setdefault("projects", [])):  # a project is a folder that holds its CONTEXT.md
+                        self.meta["projects"].append(name)
+        except Exception:  # noqa: BLE001  the export goes on: a line no reader was written for is no reason to lose a session
+            self.skipped["a tool call whose written files could not be read"] += 1
 
     def once(self, rec: dict):
         """A record whose content was already kept for this session is counted, not kept again."""
@@ -243,6 +288,8 @@ class _Session:
             for found in ACTIVE_PROJECT.findall(text):  # the session-start hook names the project the session works on
                 if found not in self.meta.setdefault("projects", []):
                     self.meta["projects"].append(found)
+        if rec.get("kind") == "tool_call":
+            self.wrote(rec)
         if rec.get("at"):
             self.meta.setdefault("started", rec["at"])
             self.meta["last"] = rec["at"]
@@ -314,15 +361,81 @@ class _Session:
             paths.write_json(self.folder / "meta.json", self.meta)
         paths.write_json(self.file, {"offset": self.offset, "seq": self.seq, "segment": self.segment,
                                      "folder": str(self.folder or ""), "seen": sorted(self.seen), "meta": self.meta,
-                                     "model": self.model, "turn": self.turn, "trigger": self.trigger})
+                                     "model": self.model, "turn": self.turn, "trigger": self.trigger, "cwd": self.cwd})
         return written
 
 
 # --- the harnesses --------------------------------------------------------------------------------------------
 
 
+def _machine(part: dict) -> bool:
+    """A row or an attachment the principal cannot have typed, by the approval reader's own test (`approvals._prompt`):
+    a flag that says the harness wrote it, the tool call it came from, or an origin that is not a person. A meta
+    row, a sub-agent's and a compaction's summary have records of their own and are told apart before this."""
+    from synthesis import approvals
+    origin = part.get("origin")
+    flags = [k for k in approvals.NOT_TYPED if k not in ("isMeta", "isSidechain", "isCompactSummary")] + ["sourceToolUseID"]
+    return any(part.get(k) for k in flags) or (isinstance(origin, dict) and origin.get("kind") != "human")
+
+
+def _reminded(text: str) -> tuple:
+    """(the reminders a block opens with, what follows them). A reminder that shows a file can hold the tag's own
+    closing text: where a closing tag follows with no opening one before it, the reminder ends there."""
+    found = REMINDED.match(text)
+    lead, rest = (found.group(1), found.group(2)) if found else ("", text)
+    while lead:
+        close, opened = rest.find("</system-reminder>"), rest.find("<system-reminder>")
+        if close < 0 or 0 <= opened < close:
+            break
+        lead, rest = lead + rest[:close + 18], rest[close + 18:]
+    return lead, rest
+
+
+def _typed(s: "_Session", at, block: dict, agent: bool, machine: bool = False):
+    """The records of one block that neither a compaction nor a meta row holds: the principal's prompt; or the
+    command as typed, with any words beside it, for a slash command that reaches the agent; or a system reminder
+    and then what was typed after it, as two records; or a system record, where the whole block is the harness's
+    or the row is one the principal cannot have typed."""
+    text = block.get("text") or ""
+    if machine and not text.lstrip().startswith(AGENT_WRITTEN):
+        yield s.once({"at": at, "kind": "system", **s.content([block])})
+        return
+    lead, rest = _reminded(text) if block.get("type", "text") == "text" else ("", text)
+    command = SLASH.match(rest)
+    if lead and (command or rest.strip() and not _injected(rest)):
+        yield s.once({"at": at, "kind": "system", "text": lead.strip()})
+    elif lead or not command and _injected(text):
+        yield s.once({"at": at, "kind": "system", **s.content([block])})
+        return
+    if command:  # the same command typed again is another prompt: a prompt is never dropped as a copy
+        args, after = command.group(2), rest[command.end():].strip()
+        said = " ".join(filter(None, [command.group(1), (args or "").strip()]))
+        yield _prompt(s, at, {"text": said + (("\n" if args is not None else " ") + after if after else "")}, agent)
+    else:
+        yield _prompt(s, at, {"text": rest.strip()} if lead else s.content([block]), agent)
+
+
+def _queued(a: dict, row: dict) -> list:
+    """The blocks of a queued command that is a prompt typed while a turn ran: its mode is `prompt`, neither it nor
+    its row is meta or one the principal cannot have typed, and its origin is `human`, or is not given and the
+    text does not open with a tag of the harness's (a CI event has no origin; a paste and a slash command are the
+    principal's, and another agent's message goes on to be a brief). Nothing for a task's notification, every other
+    queued command and a prompt with nothing in it."""
+    prompt = a.get("prompt")
+    if (a.get("type") != "queued_command" or a.get("commandMode") != "prompt" or a.get("isMeta") or row.get("isMeta")
+            or _machine(a) or _machine(row)):
+        return []
+    blocks = [{"type": "text", "text": prompt}] if isinstance(prompt, str) else prompt if isinstance(prompt, list) else []
+    blocks = [b for b in blocks if isinstance(b, dict) and (str(b.get("text") or "").strip() or b.get("type") in ("image", "document"))]
+    opens = [str(b.get("text") or "").lstrip() for b in blocks]
+    if a.get("origin") is None and any(t.startswith("<") and not t.startswith((*OWN_TAGS, *AGENT_WRITTEN)) for t in opens):
+        return []
+    return blocks
+
+
 def _claude(row: dict, s: _Session):
     t, at = row.get("type"), row.get("timestamp")
+    s.cwd = row.get("cwd") if isinstance(row.get("cwd"), str) and row.get("cwd") else s.cwd
     if t in ("user", "assistant"):
         msg = row.get("message") if isinstance(row.get("message"), dict) else {}
         content = msg.get("content")
@@ -346,13 +459,13 @@ def _claude(row: dict, s: _Session):
                 yield {"at": at, "kind": "tool_result", "id": b.get("tool_use_id"), "error": bool(b.get("is_error")),
                        **s.content(b.get("content"))}
             elif kind in ("text", "image", "document"):
-                text = b.get("text") or ""
-                if row.get("isCompactSummary") or row.get("isMeta") or _injected(text):
+                if row.get("isCompactSummary") or row.get("isMeta"):
                     who = "compaction" if row.get("isCompactSummary") else "system"
                     rec = {"at": at, "kind": who, **s.content([b])}
                     yield s.once(rec) if who == "system" else rec
                 else:  # a sub-agent's prompts (isSidechain) are written by the agent that started it
-                    yield _prompt(s, at, s.content([b]), bool(row.get("isSidechain")) or row.get("entrypoint") == "sdk-cli")  # `claude -p`
+                    yield from _typed(s, at, b, bool(row.get("isSidechain")) or row.get("entrypoint") == "sdk-cli",  # `claude -p`
+                                      _machine(row) or any(isinstance(o, dict) and o.get("type") == "tool_result" for o in blocks))
     elif t == "system":
         sub = row.get("subtype")
         if sub == "compact_boundary":
@@ -362,6 +475,12 @@ def _claude(row: dict, s: _Session):
                           "text": row.get("content") or json.dumps(row.get("hookInfos") or row.get("error") or "")})
     elif t == "attachment":
         a = row.get("attachment") if isinstance(row.get("attachment"), dict) else {}
+        typed = _queued(a, row)
+        when = a.get("timestamp") if isinstance(a.get("timestamp"), str) and a.get("timestamp") else at  # when it was typed
+        for block in typed:  # a prompt typed while a turn ran is here and in no user row (measured: 0 of 513 in both)
+            yield from _typed(s, when, block, bool(row.get("isSidechain")) or row.get("entrypoint") == "sdk-cli")
+        if typed:
+            return
         body = a.get("content") or a.get("text") or a.get("prompt") or {k: v for k, v in a.items() if k != "type"}
         yield s.once({"at": at, "kind": "system", "source": a.get("type"),
                       "text": body if isinstance(body, str) else json.dumps(body, default=str)})
@@ -375,6 +494,8 @@ def _claude(row: dict, s: _Session):
 def _codex(row: dict, s: _Session):
     t, at, p = row.get("type"), row.get("timestamp"), row.get("payload") if isinstance(row.get("payload"), dict) else {}
     kind = p.get("type")
+    if t in ("session_meta", "turn_context") and isinstance(p.get("cwd"), str) and p["cwd"]:
+        s.cwd = p["cwd"]
     if t == "session_meta":
         sub = p.get("source", {}).get("subagent") if isinstance(p.get("source"), dict) else None
         if isinstance(sub, dict):  # a child thread: Codex's approval reviewer ("guardian") or a spawned agent

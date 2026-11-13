@@ -786,10 +786,48 @@ ROOT = Path(__file__).resolve().parents[1]
 # folder). The plugin 12 more beside those, in the installer: plugin_entry 12 (the marketplace first, absent said
 # only from the whole listing, a listing past its limit stops the install), install_plugin 3 (no second copy beside
 # one from another marketplace), LIST_TIMEOUT 1, _uninstall 1 (the copy that is there), and _json 5 fewer.
+# 5.13.0, core 125 more. sessions.py 121: what the principal typed is filed as a prompt in every shape a Claude Code
+# transcript holds it, and a session is tagged with the projects it wrote into. _Session 39 (wrote 36 with the blank
+# line after it: the projects a tool call's written files lie in, by the guard's own readers, with arguments kept as
+# JSON text read as the object they are, the working directory a call names or the row's kept for a relative
+# target, a project taken as a folder that holds its CONTEXT.md, and a reading that cannot be made counted; its
+# call 2, and the working directory kept 1), _typed 24 (one text block as its records: a prompt, a slash command as
+# it was typed with the words beside it, a reminder and then the typed words, and a system record for a row the
+# principal cannot have typed), _queued 18 (a prompt typed while a turn runs, which the harness keeps as a queued
+# command: its mode, its origin, and no tag of the harness's at its head where no origin is given), _reminded 13
+# (the reminders a block opens with; one that holds the tag's own closing text ends at its last one), _claude 9
+# (the two routed through _typed, a queued prompt filed at its own time, and the working directory), _machine 8
+# (the approval reader's own test of a row the principal cannot have typed), SLASH 5 with its note, _codex 2 (the
+# working directory), and one each for INJECTED (what the harness keeps of its bash mode), REMINDED and OWN_TAGS;
+# _reminded, _typed, _queued and _claude are each counted with the two blank lines before them. guards.py 4:
+# _shell_writes 3 (the readings it could not make, handed to a caller that counts them) and _file_targets 1 (Codex's
+# own hook gives a patch under `command`).
+# 5.14.0, core 198 more: what the doctor saw of each harness's hooks is written down, a hook that runs strikes
+# itself from it, and the doctor says where the day's prompt check is on. doctor.py 70: _note_waits 27 (for each
+# harness the run looked at, the hooks its check's own line names and the line itself; a harness not looked at keeps
+# its entry, another release's entry goes where the run found no line of that harness, and a hook that ran after the
+# run began stays struck), check_prompt_check 26 (each workspace's setting read as its day-end reads it, the
+# defaults' own for a workspace the config does not list, a refused one a warning; with two blank lines), main 10
+# (--waiting: the count whose guard has not been seen to run, or that nothing looked since the release changed) and
+# run_checks 7 (when the run began, the rituals' config read for the prompt check's line, the note written last).
+# hook.py 49: _unguarded_note 25 (the hooks not running when the doctor looked and not seen since, with the doctor's
+# line, for each harness, and a harness seen under another release; with two blank lines), _ran 21 (a hook that
+# runs strikes its own event, where its transcript is a file in its harness's own folder of them and the entry is
+# this release's), main 2 and HARNESSES 1. paths.py 50: _waits 18 (the entries that say anything: sound in shape and
+# in time, a day old at most unless another release wrote them), note_wait 18 (one entry changed under the note's
+# lock from what the file holds then, the other left), waits 10, WAITS and HOOK_APPROVALS 2, and two blank lines.
+# rituals.py 29: prompt_check 18 (the one reader of that setting for the day-end and the doctor: off, on with its
+# folders and first day, or refused with which fault), is_day 7 (moved from the record script, which reads it here),
+# config 2 (a workspace that is a string, a number or a list of things refused in words) and two blank lines. The
+# plugin 53 more beside those: the context doctor 55 (cited_entries 44 with two blank lines, a citation counted where
+# it names a session whose folder holds its meta.json, in the archive here or a cloned sessions repo, and the count
+# kept when the config cannot be read; main 6, its call with two roots of one name told apart; render 4, its line
+# and the one where no archive is here; CITE_DAYS 1) and the record script 2 fewer (prompts 3 more, the setting read
+# where the doctor reads it; its day test 5 fewer, moved to the core).
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # consolidate first).
-CORE_BUDGET = 13254
-PLUGIN_BUDGET = 34760
+CORE_BUDGET = 13577
+PLUGIN_BUDGET = 35136
 
 
 def _lines(files):

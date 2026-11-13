@@ -4,6 +4,92 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [5.14.0] - 2026-11-13
+
+- **A harness whose hooks wait for approval is said where someone will see it** (`synthesis-agent-conformance`
+  2.1.0, `synthesis-daily-rituals` 3.12.0, `synthesis-onboarding` 3.5.2). A hook that waits for the person's approval
+  does not run: no send guard, no deploy guard, no reply check. Codex asks again after every release, there were
+  nine on 2026-11-13, and the doctor said so on one line of forty, to whoever read the doctor. Each run of the
+  doctor now writes down, for Codex and for Muse, which of the four hooks were not running: the ones its own line
+  names, all four where it names none, with the line itself, each harness's entry with its own date and the release
+  it was seen under. A harness the run could not look at, or could not tell of, keeps its entry, and an entry of
+  this release says nothing once it is a day old. A session's start says which hooks in which harness were not
+  running when the doctor looked and have not been seen to run since, with the doctor's own line for what mends it;
+  where the guard's hook is among them it adds that nothing is known to guard a send or a deploy made from there.
+  The weekday evening job shows a fixed banner for one harness whose guard has not been seen to run, or for more
+  than one. `synthesis doctor --waiting` prints that count and the names, running no check and writing nothing.
+- **A hook that runs strikes itself from that note, and only itself.** It shows that one hook approved, so a
+  harness approved in the middle of a session stops being named at its next guarded call, with no run of the doctor
+  between. The harness is the one in whose own folder of session records the hook's transcript is a file, never
+  the environment's: the doctor's own self-test runs the installed hook from whatever shell the doctor is in, and
+  from Codex's shell that would have read as Codex's guard running. Muse hands its hooks no transcript, so only the
+  doctor's next look clears Muse. A change to an entry is made under a lock from what the note holds at that
+  moment, and a hook that ran after a look of the doctor began stays struck when that look is written.
+- **Seen under another release is said as not checked, until this release looks.** A release can be installed
+  with no run of the doctor (a harness that pulls it, a second Mac), and a harness can ask for its approval again
+  when the plugin changes. An entry written under another release is reported as not checked since synthesis
+  changed, at any age, by a session's start, which names `synthesis doctor` as what checks it, and by a banner of
+  its own. It goes when a run of this release looks at that harness, or finds no line of it on the machine.
+- **The doctor says where the day's prompt check is on.** One line names the workspaces whose day does not close
+  while something the principal typed is cited by no record, and the ones where it is off (measured: on for one
+  workspace of three). The setting is read in one place for the day-end and for this line (`rituals.prompt_check`),
+  with the config's defaults under each workspace, so a setting every day-end refuses is a warning here and not
+  `on`, and a check the defaults turn on is named for any workspace the config does not list. A rituals config
+  whose workspace is a string, a number or a list of things is refused in words by its reader; it raised a
+  TypeError that no caller expected.
+- **The context doctor counts the session entries that cite a record** (`synthesis-context-lifecycle` 2.5.0). An
+  audit asked for a warning on each entry that cites none; counted first, that was 259 lines of 267, in a report
+  nobody reads at that length. The report carries one counted line for each knowledge root, or for the one project
+  asked for, and no finding. A citation is counted where its id names one session of the archive, by the rule the
+  day's prompt check reads an id by, so a commit's hash or an order number before a number is none; a machine with
+  no archive says it cannot tell. On one root: 6 of 102 entries in fourteen days.
+- **The evening job leaves no compiled files beside the runtime it reads** (`-B`), which a test now holds.
+
+## [5.13.0] - 2026-11-13
+
+- **What the principal typed is filed as a prompt in every shape a transcript holds it** (`synthesis-context-lifecycle`
+  2.4.0). The session archive filed a `user` record only for a prompt that begins a turn. A prompt typed while a turn
+  runs, which Claude Code keeps as a queued command and in no row of its own, was a `system` record; so was what was
+  typed after a system reminder that the harness put before it in one block; and a slash command that reaches the
+  agent was a `system` record the first time and nothing the second, dropped as a copy. Measured on thirty days of
+  transcripts, each row given to the export's own reader: 578 of 3,327 things typed, 17 in every 100, were in no list
+  of prompts, 32 of them with no record at all. The day's list of prompts (`synthesis sessions prompts`) is read from
+  these records, and a day's close that accounts for every prompt was missing those. Each is a `user` record now: a
+  queued prompt, at the time it was typed; a slash command as the harness records it, its name and arguments with
+  any words beside them (`/review the last change`), and the same command typed twice is two prompts; and the typed
+  words with their reminder kept apart as a `system` record.
+- **Whether a row can be the principal's is the approval reader's own test.** A row or a queued command the harness
+  marks as its own (a tool's result, the tool call it came from, a synthetic or a transcript-only row), one whose
+  origin is not a person, and words beside a tool's result are `system` whatever they say; some of these were `user`
+  records before. A command to the harness (`/model`) and its output stay `system`, as do a command run in the
+  harness's bash mode with its output, which had been a `user` record, a task's notification and a CI event. Another
+  agent's or another session's message is a `brief` whether it comes in a row or queued, and so is what is said to
+  a session a program drives. Measured against the approval reader row by row on the same thirty days: the two
+  agree on 3,598 rows, and where they differ the text is a wrapped block with no words outside it or the harness's
+  own line that a request was interrupted.
+- **A session belongs to the projects it wrote into.** `projects` in a session's `meta.json` held the project the
+  session-start hook named and the one the board had for it at export: of 147 archived sessions that wrote into a
+  project's folder, 134 named no project. A session is now tagged with each project whose folder one of its tool
+  calls wrote into (`<a knowledge root>/projects/<id>/`, a folder that holds its `CONTEXT.md`): a file tool's
+  target, or what a shell line writes, read with the guard's readers; Codex's arguments kept as JSON text are read
+  with their working directory, and its patch as text. Reading a project's files adds none, and a shell line the
+  reader cannot read is counted in `meta.json` among what was skipped. Replayed over thirty days of Claude Code
+  transcripts, with the same rows read a second time without it: 47 of 120 sessions end with a project where 12 did;
+  150 of 100,800 tool calls were shell lines the reader could not read, and are counted; the reading costs under half
+  a millisecond a call.
+- **A rebuild numbers records anew, so it is not asked for.** Sessions already in the archive keep the records they
+  were given, and every row exported from this release on follows the new rules. `synthesis sessions export
+  --rebuild` files the past again, and where a record now exists that did not, the later records of that session
+  move up: a citation written before the rebuild then names another record. The reference says so; rebuild only an
+  archive whose records nothing cites yet.
+- **The guard reads a patch from the key Codex gives its hook** (`command`, by Codex's source; it read `input` and
+  `patch`, and found no file in such a call), and takes a tool named `shell_command` for a shell; the hook's matcher
+  names it too, so that such a call reaches the guard.
+- **A lint: no Python file defines a function or a class twice**, at its top or in a class's body. Renaming a helper
+  in a new test file gave two functions one name; a second definition replaces the first without a word, and a test
+  defined twice never runs. An overload's stubs and a property's setter share a name by design. 5.12.0's lint read
+  the core alone.
+
 ## [5.12.2] - 2026-11-13
 
 - **`synthesis doctor` can tell again whether Codex holds the plugin** (`synthesis-onboarding` 3.5.1,

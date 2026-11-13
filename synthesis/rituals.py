@@ -41,6 +41,8 @@ def config() -> dict:  # an unreadable file raises: refuse rather than guess
     data = json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {"workspaces": {}}
     if not isinstance(data, dict) or not isinstance(data.get("workspaces"), dict):
         raise ValueError("ritual config.json has no 'workspaces' mapping")
+    if not all(isinstance(v, dict) or not v for v in (data.get("defaults"), *data["workspaces"].values())):  # nothing set reads as nothing
+        raise ValueError("ritual config.json: 'defaults' and each workspace must be an object")  # settings() raised a TypeError on it
     if any(type(v) is not int or v < 1 for v in (settings(data, w).get("quiet_after_days", 1) for w in data["workspaces"])):
         raise ValueError("ritual config.json: quiet_after_days must be a whole number of days")
     return data
@@ -48,6 +50,33 @@ def config() -> dict:  # an unreadable file raises: refuse rather than guess
 
 def settings(cfg: dict, workspace: str) -> dict:
     return {**DEFAULTS, **(cfg.get("defaults") or {}), **(cfg["workspaces"].get(workspace) or {})}
+
+
+def is_day(text) -> bool:
+    """Whether text is one day written YYYY-MM-DD: Python 3.11 and later also read 20261112 and 2026-W46-4 as dates."""
+    import re
+    try:
+        return bool(re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", text)) and bool(date.fromisoformat(text))
+    except (TypeError, ValueError):
+        return False
+
+
+def prompt_check(conf: dict):
+    """How a workspace's settings put the day's prompt check: False where a missing key or `false` turns it off
+    (null and 0 once closed a day unchecked), else (its folders of records, its first day or ""). Any other value
+    is refused, as the day-end refuses it: a ValueError that says why, then which of the three faults it is. The
+    day-end and the doctor's line both read the setting here, so neither calls on what the other refuses."""
+    wanted = conf.get("prompt_reconcile", False)
+    if wanted is False:
+        return False
+    roots = wanted.get("records") if isinstance(wanted, dict) else None
+    if not (isinstance(roots, list) and roots and all(isinstance(r, str) and r for r in roots)):
+        raise ValueError("its prompt_reconcile names no folder of records", "folders")
+    if any(not os.path.isabs(os.path.expanduser(r)) for r in roots):  # read from wherever the day-end runs
+        raise ValueError("its prompt_reconcile names a folder of records from no fixed place", "loose")
+    if "from" in wanted and not is_day(wanted["from"]):  # compared as text, `tomorrow` or a number put every day before it
+        raise ValueError("its prompt_reconcile starts from what is not a day written YYYY-MM-DD", "from")
+    return roots, wanted.get("from", "")
 
 
 def expected(day: date, conf: dict) -> bool:
