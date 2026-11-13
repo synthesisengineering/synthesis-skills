@@ -866,9 +866,7 @@ def _invited_today(tool: str, tool_input: dict, config: dict) -> int | str:
     if not all(isinstance(names, list) and all(isinstance(e, str) for e in names) for names in (exempt, mine)):
         return ("same_day_meetings in the synthesis config needs \"exempt\" and \"own\" as lists of addresses or patterns "
                 "(either may be empty or absent); calendar writes are blocked until it is fixed")
-    routing = config.get("account_routing") if isinstance(config.get("account_routing"), dict) else {}
-    own = {_address(str(a)) for meta in [routing, *(routing.get("workspaces") or {}).values()] if isinstance(meta, dict)
-           for a in [meta.get("default_account"), meta.get("account"), *(meta.get("aliases") or [])] if a}
+    own = _principal(config)
     moves = bool(re.search(r"(?:update|move)[_-]events?$", tool)) or str(tool_input.get("action", "")).lower() == "update"
     shared = {k: v for k, v in tool_input.items() if isinstance(v, str)}  # a zone named once for the whole call
     count = 0
@@ -922,6 +920,13 @@ def routed(tool: str, tool_input: dict) -> bool:
 def _address(value: str) -> str:
     found = re.search(r"<([^<>]+)>", value)
     return (found.group(1) if found else value).strip().lower()
+
+
+def _principal(config: dict) -> set:
+    """The addresses `account_routing` names as the principal's: the default, each workspace's account and its aliases."""
+    routing = config.get("account_routing") if isinstance(config.get("account_routing"), dict) else {}
+    return {_address(str(a)) for meta in [routing, *(routing.get("workspaces") or {}).values()] if isinstance(meta, dict)
+            for a in [meta.get("default_account"), meta.get("account"), *(meta.get("aliases") or [])] if a}
 
 
 def check_account(tool: str, tool_input: dict, config: dict, cwd: str) -> str | None:
@@ -978,6 +983,12 @@ def _blocks(line: str) -> list:
     return [b for b in content if isinstance(b, dict)] if isinstance(content, list) else []
 
 
+def _said(result: dict) -> str:
+    """The text of a tool's result."""
+    content = result.get("content")
+    return "\n".join(str(p.get("text", "")) for p in content if isinstance(p, dict)) if isinstance(content, list) else str(content or "")
+
+
 _TAILS: dict = {}
 
 
@@ -1011,9 +1022,7 @@ def _last_selection(transcript: str) -> tuple[str, bool] | None:
         for later in lines[i + 1:]:
             for result in (_blocks(later) if ident in later else []):
                 if result.get("type") == "tool_result" and result.get("tool_use_id") == ident:
-                    text = result.get("content")
-                    text = " ".join(str(p.get("text", "")) for p in text if isinstance(p, dict)) if isinstance(text, list) else str(text or "")
-                    return device, not result.get("is_error") and text.strip().startswith('Selected browser "')
+                    return device, not result.get("is_error") and _said(result).strip().startswith('Selected browser "')
         return device, False
     return None
 
@@ -1021,22 +1030,22 @@ def _last_selection(transcript: str) -> tuple[str, bool] | None:
 def check_browser(tool: str, tool_input: dict, config: dict, cwd: str, session: dict | None) -> str | None:
     """Config: {"browser_routing": {"workspaces": {"<root>": {"device": "<deviceId>", "label": "<name>"}}}}. The
     workspace is the one the session started in, so changing directory never changes its browser."""
-    from synthesis import board
     routing = config.get("browser_routing")
     if routing is None:
         return None
-    workspaces = routing.get("workspaces") if isinstance(routing, dict) else None
-    if not isinstance(workspaces, dict):
+    if not isinstance(routing, dict) or not isinstance(routing.get("workspaces"), dict):
         return "browser_routing in the synthesis config needs a \"workspaces\" map; browser calls are blocked until it is fixed"
-    me = paths.session_id(session)
-    record = board.load(me) if me else None
-    found = _workspace_of(workspaces, (record.cwd if record and record.cwd else "") or cwd)
+    found, me = _browser_workspace(config, cwd, session), paths.session_id(session)
     if found is None:
         return None
     root, meta = found
     device, label, name = str(meta.get("device") or "").strip(), meta.get("label") or root, tool[len(BROWSER):]
     if not device:
         return f"browser_routing names no browser for {root}; browser calls there are blocked until it does"
+    named = named_sites(meta)
+    if named is None:
+        return (f"browser_routing's accounts for {root} must map each site, or the page of it that shows the signed-in account, to "
+                "the workspace's address there, with one entry for a site; browser calls there are blocked until it is fixed")
     if name == "list_connected_browsers":
         return None
     if name == "switch_browser":
@@ -1060,7 +1069,136 @@ def check_browser(tool: str, tool_input: dict, config: dict, cwd: str, session: 
             return (f"This session's last select_browser for {device} has not reported success ('Selected browser ...'), "
                     "so actions could reach another profile. Call select_browser again and wait for its result.")
         paths.write_json(paths.state() / "browser.json", {**current, "confirmed": True})
+    return _account_hold(name, tool_input, named, config, device, label, session) if named else None
+
+
+def _browser_workspace(config: dict, cwd: str, session: dict | None) -> tuple | None:
+    """(root, settings) of the workspace whose browser a session uses, the one it started in; None where
+    `browser_routing` names none for it."""
+    from synthesis import board
+    routing, me = config.get("browser_routing"), paths.session_id(session)
+    workspaces, record = routing.get("workspaces") if isinstance(routing, dict) else None, board.load(me) if me else None
+    return _workspace_of(workspaces, (record.cwd if record and record.cwd else "") or cwd) if isinstance(workspaces, dict) else None
+
+
+# --- the account a site shows -------------------------------------------------------------------
+# The right profile can show the wrong account on a site (2026-11-12: a work profile was signed in, on a site where
+# an AI assistant is used, to the principal's personal account, and the agent called that a limit on the work). What
+# is typed or uploaded there goes into an account the workspace does not own. So a call that puts something into a
+# page of a site the workspace's `accounts` name waits until a read of that site has shown the workspace's account.
+# The guard sees no browser. It reads the record: each browser result names the tab it ran on and that tab's
+# address, and a page read holds what the page showed. A click never waits, since the account often sits behind a menu.
+PUTS = ("form_input", "file_upload", "upload_image", "javascript_tool")  # and a `computer` call that types or presses a key
+MAIL = re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
+
+
+def named_sites(meta: dict) -> list | None:
+    """[(site, page, account)] from a workspace's `accounts`: each key a site, or the page of one that shows the
+    signed-in account ("example.com/settings"), each value the workspace's address there. None for another shape."""
+    accounts, named = meta.get("accounts", {}), []
+    for key, account in accounts.items() if isinstance(accounts, dict) else [(None, None)]:
+        site, _, page = (key.split("://", 1)[-1] if isinstance(key, str) else "").partition("/")
+        if not site or not isinstance(account, str) or not MAIL.fullmatch(account.strip()) or site.lower() in [n[0] for n in named]:
+            return None
+        named.append((site.lower(), "/" + page if page else "", _address(account)))
+    return named
+
+
+def _where(url: str) -> tuple:
+    """(host, path) of an address, with or without its scheme; ("", "/") for one that cannot be read."""
+    from urllib.parse import urlsplit
+    try:
+        parts = urlsplit(url if "://" in url else "https://" + url)
+        return (parts.hostname or "").lower(), parts.path or "/"
+    except ValueError:
+        return "", "/"
+
+
+def _on_site(address: str, site: str, page: str = "") -> bool:
+    """Whether an address is on a site (its host, or one under it) and, where a page is named, begins with it."""
+    host, path = _where(address)
+    return (host == site or host.endswith("." + site)) and path.startswith(page)
+
+
+def _everyone(config: dict) -> set:
+    """Every address the config names as the principal's: account_routing's, the same-day rule's own (a pattern is
+    none) and each site's account in every workspace's browser."""
+    rule, routing = config.get("same_day_meetings"), config.get("browser_routing")
+    mine = rule.get("own") if isinstance(rule, dict) and isinstance(rule.get("own"), list) else []
+    spaces = routing.get("workspaces") if isinstance(routing, dict) and isinstance(routing.get("workspaces"), dict) else {}
+    return (_principal(config) | {_address(a) for a in mine if isinstance(a, str) and MAIL.fullmatch(a.strip())}
+            | {n[2] for meta in spaces.values() if isinstance(meta, dict) for n in named_sites(meta) or []})
+
+
+def _account_shown(lines: list, site: str, page: str, mine: str, others: set) -> tuple | None:
+    """(address, the read's id) for the newest read in these lines that settles which account a site shows: the
+    result of a browser call, not an error, that ran on a tab of the site (on the page, where the key names one)
+    and holds, before its list of tabs and apart from what the call itself named, the workspace's address and none
+    of the principal's others, or one of the others without it."""
+    for i in range(len(lines) - 1, -1, -1):
+        for block in reversed(_blocks(lines[i]) if "Tab Context" in lines[i] and site in lines[i] and "@" in lines[i] else []):
+            text = _said(block) if block.get("type") == "tool_result" and not block.get("is_error") else ""
+            cut = text.rfind("Tab Context")
+            ran, call = re.search(r"Executed on tabId: (\d+)", text[cut:]), cut >= 0 and _browser_call(lines, i, str(block.get("tool_use_id") or ""))
+            if not (ran and call and _on_site(dict(TAB_LINE.findall(text[cut:])).get(ran.group(1), ""), site, page)):
+                continue
+            named = {m.lower() for m in MAIL.findall(json.dumps(call.get("input")))}
+            found = ({m.lower() for m in MAIL.findall(text[:cut])} & (others | {mine})) - named
+            if found == {mine} or found and mine not in found:
+                return min(found), str(block.get("tool_use_id"))
     return None
+
+
+def _account(lines: list, device: str, entry: tuple, config: dict, me: str) -> str | None:
+    """The address the newest settling read of a named site showed, written down for the doctor unless that read
+    already is; None when no read settles it."""
+    shown = _account_shown(lines, entry[0], entry[1], entry[2], _everyone(config) - {entry[2]})
+    if shown:
+        listed, sight = paths.state() / "browser-accounts.json", {"seen": shown[0], "read": shown[1], "session": me}
+        seen = paths.read_json(listed)
+        last = seen.get(f"{device} {entry[0]}")
+        if {k: v for k, v in (last.items() if isinstance(last, dict) else []) if k != "at"} != sight:
+            paths.write_json(listed, {**seen, f"{device} {entry[0]}": {**sight, "at": time.time()}})
+    return shown[0] if shown else None
+
+
+def _misrouted(label: str, site: str, mine: str, seen: str) -> str:
+    return (f"The {label} browser profile is signed in to {site} as {seen}, and this workspace's account there is {mine}. That "
+            "is a misconfiguration to tell the principal about now, with the profile and the site named; it is not a limit "
+            "on the work and no reason to do the work somewhere else.")
+
+
+def _account_hold(name: str, tool_input: dict, named: list, config: dict, device: str, label: str, session: dict | None) -> str | None:
+    """Why a call that puts something into a page of a named site waits (keys, a form's value, an upload or a
+    script, alone or as a step of a batch, which waits whole); None for every other call."""
+    transcript, me = str((session or {}).get("transcript_path") or ""), paths.session_id(session)
+    for step, given, address in _steps(name, tool_input, session):
+        kind = step.rpartition("__")[2]
+        for site, page, mine in named if kind in PUTS or kind == "computer" and given.get("action") in ("type", "key") else []:
+            seen = _account(_tail(transcript), device, (site, page, mine), config, me) if _on_site(address, site) else mine
+            if seen and seen != mine:
+                return (f"{_misrouted(label, site, mine, seen)} Nothing is typed, uploaded or run on {site} from this profile "
+                        f"until a read of it shows {mine}.")
+            if not seen:
+                where = f"https://{site}{page}" if page else "its settings, or its account menu, which a click opens without waiting"
+                return (f"The {label} browser profile has not shown which account it is signed in to on {site} in this session, "
+                        f"and this call puts something into a page there. Read a page of the site that shows the signed-in "
+                        f"account ({where}) with get_page_text, read_page or find, in a call of its own, and run this call "
+                        f"again once a read holds {mine}.")
+    return None
+
+
+def accounts_misrouted(lines, config: dict, cwd: str, session: dict | None) -> list:
+    """A sentence for each site the session's workspace names whose newest settling read showed another of the
+    principal's addresses. `lines` gives the lines to judge and is asked only where a site is named; what each
+    settling read showed is written down for the doctor."""
+    found = _browser_workspace(config, cwd, session)
+    named = named_sites(found[1]) if found else None
+    if not named:
+        return []
+    device, label, lines, me = str(found[1].get("device") or "").strip(), found[1].get("label") or found[0], lines(), paths.session_id(session)
+    return [_misrouted(label, site, mine, seen) for site, page, mine in named
+            for seen in [_account(lines, device, (site, page, mine), config, me)] if seen and seen != mine]
 
 
 # --- shell reading ------------------------------------------------------------------------------
@@ -4223,25 +4361,20 @@ TAB_LINE = re.compile(r'tabId (\d+): .*\("([^"\s]+)"\)\s*$', re.M)
 
 def _web_app(url: str):
     """(page, (channel, line-break modifier)) when url is a messaging site's page, else None."""
-    from urllib.parse import urlsplit
-    try:
-        parts = urlsplit(url if "://" in url else "https://" + url)
-    except ValueError:
-        return None
-    host, path = (parts.hostname or "").lower(), parts.path or "/"
+    host, path = _where(url)
     for site, prefix, chan, brk in WEB_MESSAGING:
         if (host == site or site[0] == "." and host.endswith(site)) and path.startswith(prefix):
             return host + prefix, (chan, brk)
     return None
 
 
-def _browser_call(lines: list, i: int, ident: str) -> bool:
-    """Whether the call whose result is on line i went to a browser server (a shell printing a tab list did not)."""
+def _browser_call(lines: list, i: int, ident: str) -> dict | None:
+    """The call whose result is on line i, when it went to a browser server (a shell printing a tab list did not)."""
     for line in reversed(lines[max(0, i - 200):i] if ident else []):
         for call in (_blocks(line) if ident in line else []):
             if call.get("type") == "tool_use" and call.get("id") == ident:
-                return bool(re.search(r"browser|chrome", str(call.get("name", "")).rpartition("__")[0], re.I))
-    return False
+                return call if re.search(r"browser|chrome", str(call.get("name", "")).rpartition("__")[0], re.I) else None
+    return None
 
 
 def _tabs(transcript: str) -> tuple:
@@ -4249,9 +4382,7 @@ def _tabs(transcript: str) -> tuple:
     lines = _tail(transcript)
     for i in range(len(lines) - 1, -1, -1):
         for block in reversed(_blocks(lines[i]) if "Tab Context" in lines[i] else []):
-            content = block.get("content") if block.get("type") == "tool_result" else ""
-            text = ("\n".join(str(p.get("text", "")) for p in content if isinstance(p, dict))
-                    if isinstance(content, list) else str(content or ""))
+            text = _said(block) if block.get("type") == "tool_result" else ""
             if "Tab Context" in text and _browser_call(lines, i, str(block.get("tool_use_id") or "")):
                 context = text[text.rindex("Tab Context"):]
                 front = re.search(r"Executed on tabId: (\d+)", context)
@@ -4259,18 +4390,25 @@ def _tabs(transcript: str) -> tuple:
     return {}, ""
 
 
-def _pages(name: str, tool_input: dict, session: dict | None) -> dict:
-    """page: (channel, line-break modifier) for each messaging site this browser call acts on."""
+def _steps(name: str, tool_input: dict, session: dict | None):
+    """(step, its input, the address of the page it acts on) for a browser call, or for each step of a batch: its
+    tab's address in the newest list of tabs, or the one a navigate step earlier in the batch went to."""
     tabs, front = _tabs(str((session or {}).get("transcript_path") or ""))
-    steps = [("computer", tool_input)] if name == "browser" else [
+    steps = [(name, tool_input)] if name != "browser_batch" else [
         (str(s.get("name", "")), s["input"]) for s in tool_input.get("actions") or []
         if isinstance(s, dict) and isinstance(s.get("input"), dict)]
-    reached = {}
     for step, given in steps:
         tab = str(given.get("tabId") or front)
         if step.endswith("navigate"):  # the steps after it act on the new page
             tabs[tab] = str(given.get("url") or "")
-        page = _web_app(tabs.get(tab, ""))
+        yield step, given, tabs.get(tab, "")
+
+
+def _pages(name: str, tool_input: dict, session: dict | None) -> dict:
+    """page: (channel, line-break modifier) for each messaging site this browser call acts on."""
+    reached = {}
+    for _, _, address in _steps("computer" if name == "browser" else name, tool_input, session):
+        page = _web_app(address)
         if page:
             reached[page[0]] = page[1]
     return reached

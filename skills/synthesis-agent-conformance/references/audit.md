@@ -108,6 +108,11 @@ there with no item here fails:
 - `temporary addresses`: when `temporary_addresses` is configured, a quick tunnel's
   address in a message is read as one under the installed config, so such a message is
   refused; a setting that cannot be read fails;
+- `browser accounts`: when a workspace's `browser_routing` names sites under `accounts`, no named
+  site last showed, in that workspace's browser profile, another account than the workspace's. The
+  guard writes down what each session's page reads showed; the check holds the newest against the
+  config as it now is, warns with the site, the profile, the account seen and when, and clears when
+  a session next reads the site and it shows the workspace's account;
 - `latest release`: only with `--latest`, whether an installed harness is behind the
   published release;
 - `git hooks`: the global `core.hooksPath` (report only).

@@ -11,6 +11,7 @@ the principal's addresses is called what it is.
 """
 
 import json
+import time
 
 import pytest
 
@@ -282,15 +283,19 @@ def test_the_doctor_warns_while_a_named_site_last_showed_another_account():
 
 
 def test_the_doctor_reads_only_what_the_config_still_names_and_whatever_the_file_holds():
-    stale = {f"{WORK} gone.example": {"seen": OTHER, "at": "2026-11-12T10:00:00Z"}, f"{WORK} {SITE}": "not an entry", "x": 7}
+    at = time.time() - 86400
+    stale = {f"{WORK} gone.example": {"seen": OTHER, "at": at}, f"{WORK} {SITE}": "not an entry", "x": 7}
     assert doctor.check_browser_accounts(CONFIG, stale).status == "ok"
-    assert doctor.check_browser_accounts({}, stale).status == "ok"
-    last = {f"{WORK} {SITE}": {"seen": OTHER, "at": "2026-11-12T10:00:00Z", "session": "S0"}}
+    last = {f"{WORK} {SITE}": {"seen": OTHER, "at": at, "session": "S0"}}
     check = doctor.check_browser_accounts(CONFIG, last)
-    assert check.status == "warn" and "2026-11-12 10:00" in check.detail
+    assert check.status == "warn" and time.strftime("%Y-%m-%d %H:%M", time.localtime(at)) in check.detail
     assert doctor.check_browser_accounts(config({SITE: OTHER}), last).status == "ok"  # the config has since named that account there
     assert doctor.check_browser_accounts(config({f"{SITE}/settings": MINE}), last).status == "warn"  # the same site, by its page
-    assert doctor.check_browser_accounts(config([]), last).status == "ok"  # a map of another shape is the guard's to say
+    for unread in ("yesterday", None, 1e300, [at]):                        # a time that cannot be read is said to be unknown
+        check = doctor.check_browser_accounts(CONFIG, {f"{WORK} {SITE}": {"seen": OTHER, "at": unread}})
+        assert check.status == "warn" and "not written down" in check.detail
+    for nothing_named in ({}, config({}), config([]), {"browser_routing": 7}, {"browser_routing": {"workspaces": [7]}}):
+        assert doctor.check_browser_accounts(nothing_named, last) is None  # a map of another shape is the guard's to say
 
 
 def stop(reply="I can't test from that profile.", using=None):

@@ -485,6 +485,17 @@ def unread_calendar_writes(transcript_path: str | None, tail: int = 2_000_000) -
     return pending
 
 
+def misrouted_accounts(payload: dict, config: dict) -> list[str]:
+    """A sentence for each site the workspace's browser profile names that this turn's reads showed signed in to
+    another of the principal's accounts (2026-11-12: such a profile was called a limit on the work, with no call
+    for a guard to hold). The guard's own reader judges the turn's lines and writes down what they showed."""
+    from synthesis import guards
+
+    def lines() -> list:
+        return [line.decode("utf-8", "replace") for line in _turn(payload.get("transcript_path"), (b"Tab Context",))[1]]
+    return guards.accounts_misrouted(lines, config, str(payload.get("cwd") or ""), payload)
+
+
 TIMERS = ("CronCreate", "ScheduleWakeup", "Monitor", "create_scheduled_task")
 
 
@@ -590,6 +601,10 @@ def check(payload: dict, config: dict) -> str | None:
                         "watch sized to how soon the answer matters (`synthesis wait message`, `file` or `run` as a background "
                         "task; `synthesis wait note` for a timer the harness holds), or say that none is awaited: "
                         '`synthesis wait none "<why>"`.')
+    wrong = misrouted_accounts(payload, config)
+    if wrong:
+        problems.append("a site read this turn is signed in to an account that is not the workspace's. " + " ".join(wrong)
+                        + " Say so in this reply.")
     missing = unsourced_quotes(reply, payload.get("transcript_path"))
     if missing:
         problems.append("quotes not found in this session's record: " + "; ".join(f'"{q}"' for q in missing)
