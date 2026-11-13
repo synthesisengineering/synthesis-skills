@@ -170,18 +170,19 @@ TUNNELS = (".trycloudflare.com", ".ngrok.io", ".ngrok.app", ".ngrok.dev", ".ngro
 HOSTNAME = re.compile(r"(?<![\w.@-])(?:[a-z0-9-]+\.)+[a-z][a-z0-9-]*(?![\w-])")
 _HOST = r"(localhost|[a-z0-9-]+(?:\.[a-z0-9-]+)*\.local(?:host)?|\d{1,3}(?:\.\d{1,3}){3}|\[[0-9a-f:.]+(?:%[\w.-]+)?\])"
 # A host is read whole: after any scheme or where a bare one starts, to where its name ends, then its port. A public
-# name that only begins like a local one (localhost.example.org, 10.2.3.4.example.org) is no match (2026-11-12).
-LOCAL = re.compile(rf"(?:(://)|(?<![\w.@-])){_HOST}(?![\w-]|\.[\w-])\.?(?::(\d+)(?!\w))?")
+# name that only begins like a local one (localhost.example.org, 10.2.3.4.example.org) is no match (2026-11-12). The
+# host of a file:// URL names this disk, as a connector takes a local file: file://localhost/<path> is no address.
+LOCAL = re.compile(rf"(?:(?<!file)(://)|(?<![\w.@-])){_HOST}(?![\w-]|\.[\w-])\.?(?::(\d+)(?!\w))?")
 NEAR = ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "fc00::/7")  # the private ranges, and IPv6's unique-local one
 FILED = re.compile(r"(?:^|\.)(?:config|conf|cfg|cnf|ini|env|rc|settings|properties|json|ya?ml|toml|makefile|dockerfile)\.local$")
 
 
 def _only_here(m, low: str) -> str:
     """The address one match of LOCAL spells, host and port, when only this machine or its network answers it: a local
-    name or a private or link-local address written as an address (after any scheme, or with a port of one to five
-    digits), a loopback or any-interface address however written, and a bracketed IPv6 one that is any of these or
-    unique-local, however written. "" for any other, and for a file's name with its line number: a name
-    ending in .local with no scheme before it that is a configuration file's (config.local:7), follows a path
+    name or a private or link-local address written as an address (after any scheme but file://, or with a port of one
+    to five digits), a loopback or any-interface address however written, and a bracketed IPv6 one that is any of
+    these or unique-local, however written. "" for any other, and for a file's name with its line number: a name ending
+    in .local with no scheme before it that is a configuration file's (config.local:7), follows a path
     (src/app.local:42) or has a column after its line (notes.local:17:3). A dotfile (.env.local:12) and a name that
     goes on (settings.local.json:3) are no match at all."""
     import ipaddress

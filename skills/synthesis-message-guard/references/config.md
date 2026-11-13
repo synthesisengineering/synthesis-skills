@@ -134,8 +134,10 @@ address was gone for good. With `temporary_addresses` in the config:
   scheme or a port (`http://localhost:8787`, `my-laptop.local:3000`, `http://192.168.1.20:8000`),
   and a loopback or any-interface address however written (`127.0.0.1`, `0.0.0.0`). A port is one
   to five digits (`localhost:9`, `laptop.local:9`), and a host is read whole, to where its name
-  ends. The scheme may be any, and a user and password before the host are read past and never
-  shown (`ssh://10.1.2.3`, `ftp://192.168.1.2/data`, `postgres://app:secret@10.1.2.3:5432/app`);
+  ends. The scheme may be any but `file://`, whose host names this disk
+  (`file://localhost/tmp/plan.pdf` is a file, as a connector takes one), and a user and password
+  before the host are read past and never shown (`ssh://10.1.2.3`, `ftp://192.168.1.2/data`,
+  `postgres://app:secret@10.1.2.3:5432/app`);
   a quick tunnel's host is read past them too. A link-local address counts with the private ranges
   (`http://169.254.169.254`, `169.254.10.1:8080`). A bracketed IPv6 address that is loopback,
   any-interface, unique-local or link-local is refused however written (`http://[fd12::42]:8080`,
