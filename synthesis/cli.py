@@ -291,8 +291,11 @@ def cmd_sessions(args) -> int:
         if args.json:
             print(json.dumps({"workspace": args.workspace, "date": day, "prompts": len(found), "open": named if roots else [], "records": roots}))
         else:
-            for name, p in zip(named, left):
-                print(f"{name}  {p['at'][11:16]}  {' '.join(p['text'].split())[:args.width or None]}")
+            ids = {str(p["session"]) for p in found}
+            for name, p in zip(named, left):  # a citation the principal typed is none here: its number stands apart from its `#`
+                said = sessions.CITED.sub(lambda m: m.group(0).replace("#", "# ") if sessions.named(m.group(1), ids) else m.group(0),
+                                          " ".join(p["text"].split())[:args.width or None])
+                print(f"{name}  {p['at'][11:16]}  {said}")
             print(f"{len(found)} prompts on {day} in {args.workspace}" + (f", so nothing to cite{where}" if roots else "") if not (roots and found) else
                   f"all {len(found)} prompts on {day} in {args.workspace} are cited by a record{where}" if not left else
                   f"{len(left)} of {len(found)} prompts on {day} in {args.workspace} {'is' if len(left) == 1 else 'are'} cited by no record{where}")

@@ -1148,6 +1148,28 @@ def test_a_record_in_the_same_file_as_the_listing_still_cites(asked, capsys):
     assert sessions.uncited(found, [kb]) == [first]
 
 
+def test_a_citation_the_principal_typed_is_not_one_in_the_listing(harness, tmp_path, capsys):
+    """The listing prints each prompt's first words, and a prompt may itself cite an earlier one. Printed as typed,
+    a saved listing would account for that earlier prompt. The listing sets the number apart from its `#`, in a
+    citation of a session it lists and nowhere else; `show` prints the prompt as it was typed."""
+    base = {"cwd": harness["work"], "sessionId": "c1"}
+    _jsonl(harness["claude"], [_typed(base, "Plan the release.", "2026-10-30T15:00:00.000Z")])
+    sessions.export(0)
+    first = sessions.prompts("acme", "2026-10-30")[0]
+    again = f"Do claude-code c1 #{first['seq']} again, and c1 #{first['seq']}-{first['seq'] + 1}; see PR #291 and other9 #{first['seq']}."
+    _jsonl(harness["claude"], [_typed(base, again, "2026-10-30T15:05:00.000Z")])
+    kb = tmp_path / "kb"
+    kb.mkdir()
+    command = ["sessions", "prompts", "--workspace", "acme", "--date", "2026-10-30", "--records", str(kb)]
+    assert cli.main(command) == 1
+    listing = capsys.readouterr().out
+    assert "2 of 2 prompts" in listing and "see PR #291 and other9 #" in listing       # what cites nothing listed is printed as typed
+    (kb / "open.md").write_text(listing, encoding="utf-8")
+    assert cli.main(command) == 1 and "2 of 2 prompts" in capsys.readouterr().out
+    second = sessions.prompts("acme", "2026-10-30")[1]
+    assert cli.main(["sessions", "show", "c1", "--seq", str(second["seq"])]) == 0 and again in capsys.readouterr().out
+
+
 def test_a_citation_counts_wherever_it_is_written(asked):
     """No tool prints a citation for a prompt that is open: the listing, its answer and the refusal name one as
     `<session> --seq <n>`. A citation in a record was therefore written by whoever wrote the record, and it counts

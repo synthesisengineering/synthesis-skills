@@ -817,10 +817,15 @@ def uncited(found: list, roots: list) -> list:
                         continue
                     raise
                 for cited, first, last in CITED.findall(_text(text)):
-                    named = [s for s in ids if s == cited] or [s for s in ids if len(cited) >= 8 and s.startswith(cited)]
-                    if len(named) == 1:  # a few characters that two sessions share name neither; a lower number ends no range
-                        spans[named[0]].append((int(first), max(int(first), int(last or first))))
+                    one = named(cited, ids)
+                    if len(one) == 1:  # a few characters that two sessions share name neither; a lower number ends no range
+                        spans[one[0]].append((int(first), max(int(first), int(last or first))))
     return [p for p in found if not any(first <= p["seq"] <= last for first, last in spans[str(p["session"])])]
+
+
+def named(cited: str, ids) -> list:
+    """The sessions among `ids` that a citation's id names: the one it is, else each it begins by eight characters or more."""
+    return [s for s in ids if s == cited] or [s for s in ids if len(cited) >= 8 and s.startswith(cited)]
 
 
 def _text(text: str) -> str:

@@ -695,16 +695,17 @@ ROOT = Path(__file__).resolve().parents[1]
 # runtime), build 17, claimed 16 (a file read a paragraph at a time, so a claim that wrapping splits is caught),
 # read_list 8, depends_on 7, git 7, read_json 7, committed 7, differing 7, claims 5, Unreadable 4, is_test 4,
 # count 4, and 6 lines of constants (REPO, LIST, IMAGES, ICONS, MANIFEST).
-# 5.9.0 (2026-11-13): core 416, plugin 555. What the principal typed reaches a record, and the archive is copied on
-# a schedule. sessions.py 273: _Session 46 (held and flush: a line torn by a cut write is finished as a whole record,
+# 5.9.0 (2026-11-13): core 424, plugin 563. What the principal typed reaches a record, and the archive is copied on
+# a schedule. sessions.py 278: _Session 46 (held and flush: a line torn by a cut write is finished as a whole record,
 # and a copy cut before its state was saved repeats none), uncited 42 (the prompts no record cites: which files are
 # read, what is passed over, and what stops the listing with its name) and _text 11 (a string that carries an escape
-# is read as the text it holds), _export 36 and lost 35 (the stamp every export leaves: what it could not copy, what
+# is read as the text it holds), named 5 (the sessions a citation's id names, which the listing asks too, so that a
+# citation the principal typed is none in its line), _export 36 and lost 35 (the stamp every export leaves: what it could not copy, what
 # is gone, the schedule's own mark; a loss only the principal clears), behind 20 (the listing stops while a
 # transcript that may hold the day's prompts is not copied), prompts 19, natives 17 (a folder or a transcript the
 # search cannot look at is named), short 13, _codex 9 (a turn is read by how it says it began, and a mirrored copy is
 # one prompt), CITED 6, STRING 1 and RECORDS 1, _rebuild 4, _shift 4, catalog 2, find 2, _prompt 1 and 4 lines of
-# imports. cli.py 61: cmd_sessions 53 (the prompts action, which names a prompt by what opens it and says where it
+# imports. cli.py 64: cmd_sessions 56 (the prompts action, which names a prompt by what opens it and says where it
 # looked; --lost; the export's exit status), parser 6, imports 2. doctor.py 46: check_sessions_export 41,
 # run_checks 3, check_board 2. install.py 35: scheduled 24 and runs_only 9 (what the loaded schedule runs, read from
 # its own command line), _git_global 2. project.py 1 (_recent_conversation).
@@ -715,8 +716,8 @@ ROOT = Path(__file__).resolve().parents[1]
 # _export_plist 4, EXPORT_LABEL 3, workspace_archive 2, HOMES 1 and a note 1, less 6 in _points_at).
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # consolidate first).
-CORE_BUDGET = 12296
-PLUGIN_BUDGET = 33510
+CORE_BUDGET = 12304
+PLUGIN_BUDGET = 33518
 
 
 def _lines(files):
