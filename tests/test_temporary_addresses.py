@@ -109,6 +109,38 @@ def test_a_file_named_like_a_host_with_its_line_number_is_no_address(text):
     assert "Sending needs the principal's approval" in said(f"The key is set at {text} now")
 
 
+@pytest.mark.parametrize("text, address", [
+    ("Open http://[fd12::42]:8080/.", "[fd12::42]:8080"), ("Open http://[fe80::12]:9090/.", "[fe80::12]:9090"),
+    ("[fd12::42]:8080", "[fd12::42]:8080"), ("bind it to [fe80::12]", "[fe80::12]"), ("it listens on [::1]", "[::1]"),
+    ("http://[fe80::12%25en0]:9090/", "[fe80::12%25en0]:9090"), ("http://[::ffff:10.0.0.1]/", "[::ffff:10.0.0.1]"),
+    ("http://[::]:8000", "[::]:8000"), ("Use ssh://10.1.2.3.", "10.1.2.3"), ("Open ftp://192.168.1.2/data.", "192.168.1.2"),
+    ("redis://localhost", "localhost"), ("ws://my-laptop.local/x", "my-laptop.local"),
+    ("git+ssh://git@192.168.1.5/app.git", "192.168.1.5"), ("jdbc:postgresql://10.1.2.3:5432/app", "10.1.2.3:5432"),
+    ("http://169.254.169.254/latest/meta-data", "169.254.169.254"), ("169.254.10.1:8080", "169.254.10.1:8080"),
+    ("http://172.31.255.254", "172.31.255.254")])
+def test_a_private_address_is_read_however_it_is_written(text, address):
+    reason = said(text)
+    assert held_for_the_address(reason) and f"({address})" in reason
+    assert "Sending needs" in said(text, config={**CONFIG, "temporary_addresses": {"local": False}})
+
+
+@pytest.mark.parametrize("text, address", [
+    ("The database is postgres://app:secret@10.1.2.3:5432/app", "10.1.2.3:5432"),
+    ("https://user:secret@abc.trycloudflare.com/mcp", "abc.trycloudflare.com"), ("http://admin:secret@localhost:8000", "localhost:8000")])
+def test_what_stands_before_the_host_in_an_address_is_read_past_and_never_shown(text, address):
+    reason = said(text)
+    assert held_for_the_address(reason) and f"({address})" in reason and "secret" not in reason
+
+
+@pytest.mark.parametrize("text", [
+    "http://[2001:db8::1]:8080/", "https://[2606:4700:4700::1111]/", "rows[::1] keeps every row", "rows[::2] and [::-1]",
+    "ssh://build.example.com", "postgres://app:secret@db.example.com:5432/app", "http://172.32.0.1", "ftp://192.169.1.2/data",
+    "https://203.0.113.9:8443", "http://169.255.0.1", "mail user@10.1.2.3 about it", "http://[fd12::42",
+    "https://user:secret@docs.example.com/x"])
+def test_an_address_outside_those_ranges_goes_on_however_it_is_written(text):
+    assert "Sending needs the principal's approval" in said(text)
+
+
 def test_a_host_the_config_adds_counts_and_its_subdomains_too():
     config = {**CONFIG, "temporary_addresses": {"hosts": ["preview.example.dev"]}}
     assert held_for_the_address(said("https://pr-12.preview.example.dev", config=config))
