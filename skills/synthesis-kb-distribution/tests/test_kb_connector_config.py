@@ -1,5 +1,5 @@
 """Settings from the environment: defaults, every problem reported at once, nothing served without sign-in, and
-no temporary address and no unnamed sign-in store outside the operator's own test."""
+no temporary address and no memory sign-in store outside the operator's own test."""
 
 import pytest
 
@@ -9,7 +9,8 @@ from kb_connector.config import ConfigError, load
 KEY = "A" * 43 + "="
 BASE = {"KB_GIT_URL": "git@git.example.com:example/knowledge-plugin.git", "KB_PUBLIC_URL": "https://kb.example.com/",
         "KB_GOOGLE_CLIENT_ID": "id.apps.googleusercontent.com", "KB_GOOGLE_CLIENT_SECRET": "secret",
-        "KB_ALLOWED_EMAILS": "lead@example.com", "KB_OAUTH_STORE": "memory"}  # a deployment names its store
+        "KB_ALLOWED_EMAILS": "lead@example.com", "KB_OAUTH_STORE": "firestore",
+        "KB_STORAGE_ENCRYPTION_KEY": KEY}  # a deployment keeps its sign-ins in Firestore
 OPERATOR = {"KB_OPERATOR_TEST": "1", "KB_OPERATOR_ADDRESSES": "lead@example.com"}  # the operator-only test mode
 
 
@@ -44,15 +45,15 @@ def test_every_problem_is_reported_together():
     for expected in ("set exactly one of KB_GIT_URL", "KB_PUBLIC_URL must be the service's https://",
                      "KB_GOOGLE_CLIENT_ID is required", "KB_GOOGLE_CLIENT_SECRET is required",
                      "KB_ALLOWED_EMAILS or KB_ALLOWED_GROUPS is required", "KB_SEARCH_LIMIT must be a whole number from 1 to 50",
-                     "PORT must be a whole number", "KB_OAUTH_STORE is required"):
+                     "PORT must be a whole number", "KB_OAUTH_STORE must be firestore, with KB_STORAGE_ENCRYPTION_KEY"):
         assert expected in text
 
 
 @pytest.mark.parametrize("change, expected", [
     ({"KB_SOURCE_DIR": "/srv/kb"}, "set exactly one of"),
     ({"KB_OAUTH_STORE": "redis"}, "KB_OAUTH_STORE must be one of memory, firestore"),
-    ({"KB_OAUTH_STORE": "firestore"}, "needs KB_STORAGE_ENCRYPTION_KEY"),
-    ({"KB_OAUTH_STORE": "firestore", "KB_STORAGE_ENCRYPTION_KEY": "short"}, "needs KB_STORAGE_ENCRYPTION_KEY"),
+    ({"KB_STORAGE_ENCRYPTION_KEY": ""}, "KB_OAUTH_STORE=firestore needs KB_STORAGE_ENCRYPTION_KEY"),
+    ({"KB_STORAGE_ENCRYPTION_KEY": "short"}, "KB_OAUTH_STORE=firestore needs KB_STORAGE_ENCRYPTION_KEY"),
     ({"KB_DOCUMENT_URL_TEMPLATE": "https://x.example/{commit}"}, "needs {id} or {source_path}"),
     ({"KB_DOCUMENT_URL_TEMPLATE": "https://x.example/{id}/{secret}"}, "may use only {id}, {source_path}, {commit}"),
     ({"KB_DOCUMENT_URL_TEMPLATE": "https://x.example/{id"}, "may use only"),
@@ -86,15 +87,31 @@ def test_a_test_mode_set_by_halves_stops_the_start(change):
             in problems({**BASE, **change}))
 
 
-def test_the_sign_in_store_is_named_outside_the_operators_own_test():
-    unnamed = {name: value for name, value in BASE.items() if name != "KB_OAUTH_STORE"}
-    text = problems(unnamed)  # a deployment that names no store does not fall back to memory
-    assert "KB_OAUTH_STORE is required: firestore, with KB_STORAGE_ENCRYPTION_KEY, keeps sign-ins across" in text
-    assert "memory signs everyone out at every restart and is the default only in the operator-only test mode" in text
-    assert load({**unnamed, "KB_OAUTH_STORE": " Memory "}).oauth_store == "memory"  # named on purpose; the start warns
-    assert load({**unnamed, **OPERATOR}).oauth_store == "memory"  # the operator's own test needs no store named
-    kept = load({**unnamed, **OPERATOR, "KB_OAUTH_STORE": "firestore", "KB_STORAGE_ENCRYPTION_KEY": KEY})
-    assert kept.oauth_store == "firestore"
+NO_STORE = {name: value for name, value in BASE.items() if name not in ("KB_OAUTH_STORE", "KB_STORAGE_ENCRYPTION_KEY")}
+MEMORY_REFUSED = ("KB_OAUTH_STORE must be firestore, with KB_STORAGE_ENCRYPTION_KEY: anything other people use must keep "
+                  "its state across restarts, and with more than one instance a memory store breaks sign-in outright. A "
+                  "single person's use is what the operator-only test mode is for, and memory is allowed only there, "
+                  "with KB_OPERATOR_TEST=1")
+
+
+@pytest.mark.parametrize("store", [
+    {},                                                                # no store named
+    {"KB_OAUTH_STORE": "memory"}, {"KB_OAUTH_STORE": " Memory "},      # memory named on purpose
+    {"KB_OAUTH_STORE": "memory", "KB_STORAGE_ENCRYPTION_KEY": KEY},    # a key beside it changes nothing
+])
+def test_the_memory_sign_in_store_stops_the_start_outside_the_operators_own_test_named_or_not(store):
+    for off in ({}, {"KB_OPERATOR_TEST": "0"}):
+        text = problems({**NO_STORE, **store, **off})
+        assert MEMORY_REFUSED in text and "KB_OAUTH_STORE must be one of" not in text  # one refusal, with its reason
+    assert load({**NO_STORE, **store, **OPERATOR}).oauth_store == "memory"  # the operator's own test: the default, or named
+
+
+def test_firestore_serves_in_both_modes_and_a_test_mode_set_by_halves_lets_no_memory_store_in():
+    assert load(BASE).oauth_store == "firestore" and load({**BASE, **OPERATOR}).oauth_store == "firestore"
+    for half in ({"KB_OPERATOR_ADDRESSES": "lead@example.com"},                          # an operator named, the mode not on
+                 {"KB_OPERATOR_TEST": "yes", "KB_OPERATOR_ADDRESSES": "lead@example.com"}):  # only 1 turns it on
+        text = problems({**NO_STORE, "KB_OAUTH_STORE": "memory", **half})
+        assert MEMORY_REFUSED in text and "needs both KB_OPERATOR_TEST=1 and KB_OPERATOR_ADDRESSES" in text
 
 
 def test_http_is_allowed_only_for_a_local_address():
