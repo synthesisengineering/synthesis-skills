@@ -133,7 +133,7 @@ def critical_deadlines(workspace: str, outcome: str, sweep=None) -> str:
                "confirmation, or the principal's own words quoted with the time), or carries a new date with its reason. "
                "Never decide for the principal that nothing is needed, and never mark it Lapsed.")
     if report["gaps"] and outcome in CLEAN:
-        refuse(f"{len(report['gaps'])} plan source(s) could not be read whole, so critical deadlines are not fully "
+        refuse(f"{len({str(entry['path']) for entry in report['gaps']})} plan source(s) could not be read whole, so critical deadlines are not fully "
                f"covered and outcome {outcome!r} would claim they are. Record --outcome partial and name the gaps "
                "(decay_sweep.py lists each as NOT COVERED)")
     rows = report["critical"]["open"]
@@ -403,8 +403,13 @@ def commitments(workspace: str, day: str, outcome: str, sweep=None) -> str:
     since = wanted.get("from", "") if isinstance(wanted, dict) else ""
     if day < since:
         return f"\ncommitments: checked from {since}"
-    as_of = date.fromisoformat(day)
-    report = sweep(as_of) if sweep else decay_sweep.collect(decay_sweep.declared(rituals.config(), workspace) or [], as_of, workspace)
+    roots = decay_sweep.declared(rituals.config(), workspace) or []
+    if not roots:  # it keeps no dated plans, and the deadlines' own line has said so
+        return "\ncommitments: no dated plan to read"
+    # the plan read is the newest on or before the record's day; what is closed is judged as of today, so that a
+    # record made after midnight for the day before takes a closing mark written since
+    plan_day = date.fromisoformat(day)
+    report = sweep(plan_day) if sweep else decay_sweep.collect(roots, max(today(), plan_day), workspace, plan_day)
     bare, loose = report["untagged"], report["no_id"]
     said = ([f"{len(bare)} in the newest plan carry no date and no park"] if bare else []) + (
         [f"{len(loose)} open dated item(s) carry no Decay ID"] if loose else [])
@@ -420,7 +425,7 @@ def commitments(workspace: str, day: str, outcome: str, sweep=None) -> str:
                    "copy closes no other. Give each a `**Decay ID:**` line where it sits, the same in every copy that is "
                    "still open, or record its outcome there (`**Resolved:** YYYY-MM-DD (what happened)`)." * bool(loose))
                + "\nOr record --outcome partial, which closes the day with these counted as open.")
-    unread = f"; {len(report['gaps'])} source(s) could not be read whole" * bool(report["gaps"])
+    unread = f"; {len({str(entry['path']) for entry in report['gaps']})} source(s) could not be read whole" * bool(report["gaps"])
     if not report.get("plans_read"):
         return "\ncommitments: no dated plan to read" + unread
     return "\ncommitments: " + ("; ".join(said) if said else f"{report['commitments']} open in the newest plan, each with a date or a park") + unread
@@ -440,10 +445,11 @@ def cmd_record(args) -> int:
         refuse("mode 'migration' marks old bookkeeping and cannot be written")
     made: dict = {}
 
-    def sweep(as_of: date) -> dict:  # one read of the workspace's plans for each day asked about
-        if as_of not in made:
-            made[as_of] = decay_sweep.collect(decay_sweep.declared(rituals.config(), args.workspace) or [], as_of, args.workspace)
-        return made[as_of]
+    def sweep(plan_day: date) -> dict:  # one read of the workspace's plans, as of today, for each day's plan asked about
+        if plan_day not in made:
+            made[plan_day] = decay_sweep.collect(decay_sweep.declared(rituals.config(), args.workspace) or [],
+                                                 max(today(), plan_day), args.workspace, plan_day)
+        return made[plan_day]
     critical = (critical_deadlines(args.workspace, args.outcome, sweep) + travel(args.workspace, args.date, args.travel)
                 + choices(args.workspace, args.date) + commitments(args.workspace, args.date, args.outcome, sweep)
                 + prompts(args.workspace, args.date, args.direction, args.outcome))

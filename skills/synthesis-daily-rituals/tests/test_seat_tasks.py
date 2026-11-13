@@ -1,12 +1,12 @@
 """A seat's tasks, read by code where a rule asked an agent to remember (an audit of 2026-11-11, gaps 2, 3, 7, 8).
 
 Counted on three seats' real plans on 2026-11-13 before anything here refused: the commitments with no deadline
-tag and no park stood under the task and waiting headings (12, 0 and 9 in the newest plans) and no seat used task
+tag and no park stood under the task and waiting headings (12, 0 and 11 in the newest plans) and no seat used task
 boxes; every open dated item already carried a Decay ID; in a seat that runs its rituals no date ever showed as
 passed, because each day's ritual re-dates what it carries, so a passed date exists only where no ritual ran; and
 one seat kept a correspondence ledger, a table with a status and an owed-since column, 341 rows that nothing read.
-Its first tests were committed before the code; those under "the first review" follow that review, and each
-failed before its fix.
+Its first tests were committed before the code; those under "the first review" and "the second review" follow
+those reviews, and each failed before its fix.
 """
 from __future__ import annotations
 
