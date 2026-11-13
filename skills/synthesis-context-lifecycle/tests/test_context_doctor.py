@@ -368,3 +368,38 @@ def test_discovered_roots_without_projects_are_skipped_but_a_named_one_cannot_be
     (tmp_path / "synthesis-home" / "config.json").write_text(json.dumps({"knowledge_roots": [str(kb), str(bare)]}))
     assert run(capsys=capsys)[0] == 0  # the configured roots, one of them holding no projects
     assert run("--root", str(bare), capsys=capsys)[0] == 2
+
+
+# --- session entries that cite a record ------------------------------------------------------------------------------
+# An audit of 2026-11-11 found citations of session records rare in session logs and asked for a warning on each
+# entry with none. Measured on 2026-11-13: 8 of 267 entries in thirty days cite one, so the warning would be 259
+# lines in a report nobody reads at that length, and it would ask whether an entry cites anything where the day's
+# prompt check asks whether each prompt is accounted for. So: one counted line for what was audited, and no finding.
+
+def _entries(kb):
+    old = (TODAY - timedelta(days=30)).isoformat()
+    log = (f"### {RECENT}: work\n\nDecided after claude-code 0a1b2c3d #42, and again at #44.\n\n"
+           f"### {RECENT}: more work\n\nNo citation here: pull request #295 is none, and neither is step #3.\n\n"
+           f"### {old}: long ago\n\nCites codex 01a18a2b-0000 #7, outside the window.\n")
+    add_project(kb, "alpha", context(), log=log)
+    publish(kb)
+
+
+def test_the_report_counts_the_session_entries_that_cite_a_record(kb, capsys):
+    _entries(kb)
+    code, out = run("--root", str(kb), capsys=capsys)
+    assert code == 0
+    assert "citations  ai-knowledge-test: 1 of 2 session entries dated in the last 14 days cite a session record" in out.splitlines()
+    code, found, data = findings(kb, capsys)
+    assert code == 0 and found == set() and data["citations"] == {"ai-knowledge-test": {"cited": 1, "entries": 2}}
+    code, out = run("--project", str(kb / "projects" / "alpha"), capsys=capsys)
+    assert "citations  alpha: 1 of 2 session entries dated in the last 14 days cite a session record" in out.splitlines()
+
+
+def test_a_root_with_no_entry_in_the_window_prints_no_citation_line(kb, capsys):
+    old = (TODAY - timedelta(days=40)).isoformat()
+    add_project(kb, "alpha", context(last=old), log=f"### {old}: work\n\nDone, claude-code 0a1b2c3d #42.\n")
+    write_index(kb, [{"id": "alpha", "status": "active", "last_session": old}])
+    publish(kb)
+    code, out = run("--root", str(kb), capsys=capsys)
+    assert "citations  " not in out
