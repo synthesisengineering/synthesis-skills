@@ -96,12 +96,35 @@ The messages a refused person sees:
 There is no setting that serves without sign-in, and a start with no addresses and no groups stops.
 
 **The operator-only test mode.** With `KB_OPERATOR_TEST=1`, only the addresses in
-`KB_OPERATOR_ADDRESSES` pass, at all three checks. Anyone else is refused first, whatever the list,
+`KB_OPERATOR_ADDRESSES` pass, at all three checks. They are one person's own accounts, three at
+most (section 3). Anyone else is refused first, whatever the list,
 a group or an allowed domain would say: they see the message a person not on the list sees, and
 the log line gives the reason `operator_only_test_mode`. The operator is then checked as anyone
 is: Google must report the address verified, the account must be in an allowed domain when domains
 are set, and the address must be on the list or in a group. The mode narrows who gets in and never
 adds anyone. Section 4 says what the mode is for.
+
+**A refresh in the test mode.** A client that holds a refresh token, from a sign-in before the
+mode came on, asks the token endpoint (`/token`) for a new token when its old one runs out. In the
+test mode the list is checked there too, on the token the refresh produced: anyone the list
+refuses gets no token. The client gets the error OAuth defines for a grant that is no longer
+valid, with HTTP status 401:
+
+```json
+{"error":"invalid_grant","error_description":"Access denied: <email> is not on this knowledge base's access list. Ask its administrator to add the address."}
+```
+
+The log says `refresh refused for <email>: operator_only_test_mode`. The refresh token is spent
+by the attempt, so the grant is gone on the connector too: the person signs in again, and while
+the mode is on that sign-in shows the same message on a page. The operator's own refresh is
+checked as every request is. While the operator passes it gets a new token; while the operator
+does not, it is refused with the reason the list gives (`email_not_listed`, `email_unverified`,
+`domain_not_allowed`, `group_unchecked`, or `no_identity` when Google does not say whose the new
+token is), and the operator signs in again.
+
+Outside the test mode the token endpoint does not consult the list. A refresh is given to whoever
+holds the refresh token, and the list is checked on every request with the new token (the second
+check above), so a person removed from the list gets a token that every request refuses.
 
 Logs name the email address and the reason, never a token. The HTTP access log is off, because the
 Google callback's address carries Google's authorization code in its query string. Cloud Run's own
@@ -130,9 +153,9 @@ lists every problem at once.
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `KB_PUBLIC_URL` | required | The service's public `https://` address, with no path. `http://` is accepted only for localhost. A temporary or local address starts only as the operator's own test (below the tables). |
+| `KB_PUBLIC_URL` | required | The service's origin and nothing more: `https://`, the host, and a port if it needs one, such as `https://kb.example.com`. A trailing `/` is accepted; a path, a query, a fragment or a user-info part stops the start, and so does a host written as a number in an old spelling, in either mode (below the tables). `http://` is accepted only for `localhost` (also written `localhost.`), `127.0.0.1` and `[::1]`. A temporary or local address starts only as the operator's own test (below the tables). |
 | `KB_OPERATOR_TEST` | off | `1` turns on the operator-only test mode (section 4): only `KB_OPERATOR_ADDRESSES` can sign in, the start logs a line that begins `TEST ONLY`, and `/health` carries `"test_only": true`. Any value but `1`, `0` or none stops the start. |
-| `KB_OPERATOR_ADDRESSES` | required with `KB_OPERATOR_TEST=1` | The operator's own email address, or several separated by commas. Set while the mode is off, it stops the start, so a misspelled switch cannot leave the whole list admitted. |
+| `KB_OPERATOR_ADDRESSES` | required with `KB_OPERATOR_TEST=1` | The operator's own email address, or up to three of that one person's own accounts, separated by commas. A fourth address stops the start (below the tables). Set while the mode is off, it stops the start, so a misspelled switch cannot leave the whole list admitted. |
 | `KB_GOOGLE_CLIENT_ID` | required | The Google OAuth client's ID. |
 | `KB_GOOGLE_CLIENT_SECRET` | required, secret | The Google OAuth client's secret. |
 | `KB_ALLOWED_EMAILS` | required unless `KB_ALLOWED_GROUPS` is set | Comma-separated addresses that may read the knowledge base. |
@@ -140,7 +163,7 @@ lists every problem at once.
 | `KB_GROUP_REFRESH_SECONDS` | `300` | How often the groups are read again, 60 to 86400. |
 | `KB_ALLOWED_HOSTED_DOMAINS` | none | Comma-separated Google Workspace domains; when set, accounts outside them are refused even if listed. |
 | `KB_JWT_SIGNING_KEY` | derived from the client secret | Secret that signs the connector's own tokens. Set it so rotating the Google client secret does not sign everyone out. |
-| `KB_OAUTH_STORE` | required; `memory` in the operator-only test mode | `firestore` for any deployment: registrations, grants and Google tokens survive restarts and are shared by every instance. `memory` keeps them in the process, so every restart signs everyone out, and the start logs a warning that says so. Outside the test mode a start that names no store stops (below the tables). |
+| `KB_OAUTH_STORE` | `firestore` is required outside the operator-only test mode; `memory` in it | `firestore` for any deployment: registrations, grants and Google tokens survive restarts and are shared by every instance. `memory` keeps them in the process, so every restart signs everyone out; it is allowed only in the test mode, where the start logs a warning that says so. Outside the test mode a start with `memory`, named or not, stops (below the tables). |
 | `KB_STORAGE_ENCRYPTION_KEY` | required with `firestore`, secret | A Fernet key (44 characters) that encrypts everything the OAuth store writes. |
 | `KB_FIRESTORE_PROJECT` | the runtime's project | Google Cloud project of the Firestore database. |
 | `KB_FIRESTORE_DATABASE` | `(default)` | Firestore database name. |
@@ -159,24 +182,71 @@ lists every problem at once.
 | `KB_HOST` | `0.0.0.0` | Address to listen on. |
 | `KB_LOG_LEVEL` | `INFO` | Log level: `DEBUG`, `INFO`, `WARNING`, `ERROR` or `CRITICAL`. The line that begins `TEST ONLY` is logged whatever the level. |
 
+**An origin and nothing more.** `KB_PUBLIC_URL` is the origin the connector builds its own
+addresses on: `/mcp` for the clients and `/auth/callback` for Google. It is the scheme, the host and
+a port if it needs one. `https://kb.example.com`, `https://kb.example.com/`, `https://kb.example.com:8443`
+and `HTTPS://KB.Example.COM` all start. A path other than `/`, a query, a fragment or a user-info
+part (`user:password@`) stops the start, in either mode, and so does an empty query or fragment
+(`https://kb.example.com/?`), since the address is read as written. The start prints which parts it
+found and the address written correctly, then exits 2; `https://kb.example.com/mcp` prints:
+
+```text
+kb-connector: the connector cannot start:
+  - KB_PUBLIC_URL must be an origin and nothing more: the scheme, the host and a port if it needs one, since the connector builds its own addresses (/mcp, /auth/callback) on it. It has a path, which is not allowed. Write it as https://kb.example.com
+```
+
+With more than one part it names each, in order: `It has a user-info part (user:password@), a path,
+a query and a fragment, which are not allowed.` It names a part and never shows it, since a password
+or a query can be a secret and the message is printed. The address it shows keeps `http://` only
+for localhost and is `https://` otherwise. A port that is not a number from 1 to 65535, a colon
+with no port after it, brackets that close no IPv6 address, and a host with a character no host has,
+make a malformed address, with no address shown:
+`KB_PUBLIC_URL must be the service's https:// address (http:// only for localhost)`. A host is an
+IP address or a name of letters, digits, hyphens, underscores and dots, so a backslash
+(`https://kb.example.com\mcp`, which a browser reads as a slash and so as a path), a semicolon, a
+space or a `%` in it stops the start.
+
+**An IP address in an old spelling.** A host written as a number in an old spelling, such as
+`127.1`, `2130706433`, `0x08080808` or `010.8.8.8`, stops the start in either mode, whatever
+address it denotes, public or not. Programs read such a spelling differently: one takes `010.8.8.8`
+for `8.8.8.8`, another for `10.8.8.8`, and a third looks it up as a name. The start prints this,
+with the host it read, and exits 2:
+
+```text
+kb-connector: the connector cannot start:
+  - KB_PUBLIC_URL writes its host as a number in an old spelling (0x08080808): programs read such a spelling differently, as one IP address, as another or as a name to look up, so the connector refuses it whatever address it denotes. Write the host as a name: the service's domain, or localhost for the operator's own test
+```
+
+An IP address in its standard form (`8.8.8.8`, `[2606:4700:4700::1111]`) is not an old spelling,
+and is judged by the next rule.
+
 **Temporary addresses.** Outside the operator-only test mode the connector does not start when
 `KB_PUBLIC_URL` names an address that lasts only as long as one machine or its tunnel:
 
 - a tunnel service's own domain, or any host under it: `trycloudflare.com`, `ngrok.io`,
   `ngrok.app`, `ngrok.dev`, `ngrok.pizza`, `ngrok-free.app`, `ngrok-free.dev`, `ngrok-free.pizza`,
   `loca.lt`, `localtunnel.me`, `serveo.net`, `serveousercontent.com`, `localhost.run`, `lhr.life`,
-  `lhr.rocks`, `pinggy.io`, `pinggy.link`, `pinggy-free.link`, `devtunnels.ms` and
-  `app.github.dev`;
+  `lhr.rocks`, `pinggy.io`, `pinggy.link`, `pinggy-free.link`, `devtunnels.ms`,
+  `app.github.dev`, `ts.net`, `tunnelmole.net`, `bore.pub` and `loophole.site`;
 - `localhost`, and any name that ends in `.localhost` or `.local`;
 - an IP address the internet cannot reach: loopback (`127.0.0.1`, `[::1]`), `0.0.0.0`, the private
   ranges (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `fc00::/7`), link-local addresses, the
-  shared range `100.64.0.0/10` and the reserved ranges; and any IP address in an old spelling,
-  such as `127.1`.
+  shared range `100.64.0.0/10` and the reserved ranges.
+
+An IPv6 address that carries an IPv4 address is judged as the IPv4 address it carries: mapped
+(`[::ffff:100.64.0.1]`), compatible (`[::100.64.0.1]`), NAT64's well-known prefix
+(`[64:ff9b::100.64.0.1]`) and 6to4 (`[2002:6440:1::1]`) are all `100.64.0.1`, in the shared range,
+and `[::ffff:8.8.8.8]` is `8.8.8.8`, a public address. The prefix for translation inside one
+network, `64:ff9b:1::/48`, is temporary. The verdict is the same on every Python from 3.9 on;
+Python's own verdicts on these forms differ from one version to the next.
 
 The address is read as a host. `demo.trycloudflare.com` counts, and so does the same host in upper
-case or with a port; `nottrycloudflare.com` and `https://kb.example.com/trycloudflare.com` do not.
-The list is `TEMPORARY_HOSTS` in `kb_connector/config.py`. A tunnel service that is not on it is
-not caught, so add its domain there when one comes into use.
+case, with a port or with a trailing dot (`localhost.` is `localhost`); `nottrycloudflare.com` does
+not, and a listed name in a path or a query (`https://kb.example.com/trycloudflare.com`) is refused
+as a path or a query, not as a temporary address. The list is `TEMPORARY_HOSTS` in
+`kb_connector/config.py`; the send guard keeps the same list (`TUNNELS` in `synthesis/guards.py`), and
+a test holds the two equal. A tunnel service that is not on it is not caught, so add its domain to
+both when one comes into use.
 
 The start prints this, with the host it read, and exits 2:
 
@@ -187,19 +257,34 @@ kb-connector: the connector cannot start:
 
 Those are the two ways forward: deploy it (section 5), or run the operator's own test (section 4).
 
-**The sign-in store.** Outside the test mode `KB_OAUTH_STORE` has no default, so a deployment
-cannot end up on the memory store because a setting was forgotten. A start that names no store
-prints this and exits 2:
+**The sign-in store.** The memory store is allowed only in the operator-only test mode. Anything
+other people use must keep its state across restarts: a restart on the memory store signs
+everyone out, each person's client is refused and has to connect again, and a platform that stops
+idle instances, as Cloud Run does, restarts often. With more than one instance a memory store
+breaks sign-in outright, since each instance holds its own registrations, grants and tokens and
+knows nothing of a sign-in another instance began. Outside the test mode `KB_OAUTH_STORE` has no
+default, and a start with no store named, or with `KB_OAUTH_STORE=memory` named on purpose, prints
+this and exits 2:
 
 ```text
 kb-connector: the connector cannot start:
-  - KB_OAUTH_STORE is required: firestore, with KB_STORAGE_ENCRYPTION_KEY, keeps sign-ins across restarts; memory signs everyone out at every restart and is the default only in the operator-only test mode
+  - KB_OAUTH_STORE must be firestore, with KB_STORAGE_ENCRYPTION_KEY: anything other people use must keep its state across restarts, and with more than one instance a memory store breaks sign-in outright. A single person's use is what the operator-only test mode is for, and memory is allowed only there, with KB_OPERATOR_TEST=1
 ```
 
-`KB_OAUTH_STORE=memory` named on purpose still starts, in either mode, and every start then logs
+In the test mode `memory` is the default and may also be named, and every such start logs
 `KB_OAUTH_STORE=memory: sign-ins live in this process only, so every restart signs everyone out`.
-After such a restart each person's client is refused and has to connect again, and a platform
-that stops idle instances, as Cloud Run does, restarts often.
+`firestore` serves in both modes and logs nothing about the store.
+
+**The operator's addresses.** `KB_OPERATOR_ADDRESSES` names one person's own accounts, so it
+takes three addresses at most. An address written twice, or again in other letter case, counts
+once. A fourth prints this, with the number of addresses it read, and exits 2:
+
+```text
+kb-connector: the connector cannot start:
+  - KB_OPERATOR_ADDRESSES names 4 addresses and may name three at most: they are one person's own accounts, since the operator-only test mode is that person's test and nobody else's. Other people come in through KB_ALLOWED_EMAILS or KB_ALLOWED_GROUPS, on a deployed connector with the mode off
+```
+
+The line that begins `TEST ONLY` names each address that can sign in.
 
 ## 4. Run it locally: the operator's own test
 
@@ -213,15 +298,16 @@ it. A restart signs them all out, since a local run keeps sign-ins in memory, an
 address does not come back: the next tunnel gets a new one, so a person who was given the old one
 holds a connector that no longer exists.
 
-The connector holds to this itself. On a temporary or local address (section 3) it starts only in
-the operator-only test mode:
+The connector holds to this itself. On a temporary or local address, and on the memory sign-in
+store (section 3), it starts only in the operator-only test mode:
 
 - `KB_OPERATOR_TEST=1` turns the mode on and `KB_OPERATOR_ADDRESSES` names the operator's own
-  address. Either without the other stops the start.
-- Only the operator can sign in, and only the operator's token works on any later request,
-  whatever `KB_ALLOWED_EMAILS`, `KB_ALLOWED_GROUPS` and `KB_ALLOWED_HOSTED_DOMAINS` would admit
-  (section 2). The operator still has to be on the list or in a group, so the test also checks
-  the access list as it stands.
+  address, or up to three of that one person's own accounts. Either without the other stops the
+  start, and so does a fourth address.
+- Only the operator can sign in, only the operator's token works on any later request, and only
+  the operator's client gets a new token when it refreshes, whatever `KB_ALLOWED_EMAILS`,
+  `KB_ALLOWED_GROUPS` and `KB_ALLOWED_HOSTED_DOMAINS` would admit (section 2). The operator still
+  has to be on the list or in a group, so the test also checks the access list as it stands.
 - The start logs a line that begins `TEST ONLY`, and `/health` carries `"test_only": true`.
 
 Use a virtual environment outside the plugin, with Python 3.12 or newer:
@@ -256,7 +342,12 @@ operator's alone, on an address that ends with the tunnel.
 The mode also runs on a deployed connector, to try a deployment before anyone on the list is told
 about it. It admits only the operator there too, and the `TEST ONLY` line then says not to give
 the address to anyone while the mode is on. Remove `KB_OPERATOR_TEST` and `KB_OPERATOR_ADDRESSES`
-to open the deployment to the list.
+to open the deployment to the list. It then has to be on `firestore`: a deployment tried on the
+memory store stops at its first start without the mode (section 3).
+
+Turning the mode on over a deployment people already use ends their sign-ins. Each request is
+refused, and a client that asks for a new token is told its grant is no longer valid (section 2),
+so each of those people signs in again once the mode is off.
 
 ## 5. Deploy on Google Cloud Run
 
@@ -454,9 +545,10 @@ The running connector (`python -B -m kb_connector` from `scripts/connector/`) pr
 `serving <n> documents from commit <sha>` when a copy loads, `refresh failed (...)` when a refresh
 fails, and `sign-in allowed for <email>` or `sign-in refused for <email>: <reason>` per sign-in. If
 its settings are wrong it prints `kb-connector: the connector cannot start:` and every problem,
-then exits 2; a temporary address and an unnamed sign-in store are two of those problems
-(section 3). If the first load fails it prints `kb-connector: the first load failed: <reason>` and
-exits 1.
+then exits 2; outside the test mode a temporary address and the memory sign-in store are two of
+those problems, and in either mode an address that is more than an origin and a host in an old
+numeric spelling are two more (section 3). If the first load fails it prints
+`kb-connector: the first load failed: <reason>` and exits 1.
 
 - **Is it current?** `/health` shows the served commit. Compare it with the published repository's
   head. `last_refresh_failed: true` means the last check, clone or load failed and the last good
@@ -464,19 +556,37 @@ exits 1.
 - **Is it a test?** `/health` shows `"test_only": true` while the operator-only test mode is on,
   and every start in the mode logs a line that begins `TEST ONLY`, naming the address and who can
   sign in. A connector other people use shows `false`. With the mode on, everyone but the operator
-  is refused, with `sign-in refused for <email>: operator_only_test_mode` or
-  `token refused for <email>: operator_only_test_mode` in the log.
-- **Memory store:** a start with `KB_OAUTH_STORE=memory` logs
+  is refused, with `sign-in refused for <email>: operator_only_test_mode`,
+  `token refused for <email>: operator_only_test_mode` or
+  `refresh refused for <email>: operator_only_test_mode` in the log.
+- **Memory store:** only the operator's own test runs on it. A start in the test mode with
+  `KB_OAUTH_STORE=memory`, or with no store named, logs
   `KB_OAUTH_STORE=memory: sign-ins live in this process only, so every restart signs everyone out`.
-  On a connector other people use, move it to `firestore` (5.4, 5.7, 5.8 and 5.10).
+  Outside the mode the same start stops (section 3).
+- **A deployment set up under version 1.1.0 of this skill or earlier** does not start under this
+  version in these cases, each with the refusal section 3 shows. Change the setting first, then
+  deploy the new version:
+  - `KB_OAUTH_STORE` is `memory`, or is not set, which then meant `memory`: set
+    `KB_OAUTH_STORE=firestore` and `KB_STORAGE_ENCRYPTION_KEY`, with the database and the role
+    they need (5.4, 5.7, 5.8 and 5.10). Everyone signs in once more, because the sign-ins the
+    memory store held ended with its process.
+  - `KB_PUBLIC_URL` is a temporary or local address: deploy the connector at a permanent address
+    (section 5), and give people that address in place of the old one.
+  - `KB_PUBLIC_URL` has a path, a query, a fragment or a user-info part: set it to the origin the
+    refusal shows. The connector is served at the root of its own origin, so a deployment reached
+    through a path on a shared host moves to a host of its own; when the address changes, add the
+    new `/auth/callback` to the OAuth client (5.3) and give each person the new origin followed by
+    `/mcp` (section 6).
+  - `KB_PUBLIC_URL` writes its host as a number in an old spelling: write it as the host's name.
 - **Groups:** with `KB_ALLOWED_GROUPS` set, `/health` also reports `access_groups`: its `status`
   (`ok`, or `stale` once the membership is older than three intervals, which also makes `/health`
   answer 503), when it was last read, and whether the last read failed.
 - **Log lines worth alerting on:** `access group refresh failed`, `refresh failed`, `sign-in refused for <email>: <reason>`,
-  `token refused for <email>: <reason>` and `sign-in check failed`. The first means stale content;
-  the others show who was refused. On a deployed connector, alert on `TEST ONLY` and on
-  `KB_OAUTH_STORE=memory` as well: the first means only the operator can get in, the second that
-  the next restart signs everyone out.
+  `token refused for <email>: <reason>`, `refresh refused for <email>: <reason>` and
+  `sign-in check failed`. The first two mean the access groups or the content are going stale;
+  the others show who was refused. On a deployed connector, alert on `TEST ONLY` as well: it means
+  only the operator can get in. `KB_OAUTH_STORE=memory` is logged only beside it, in the test
+  mode, and means the next restart signs the operator out.
 - **Rotate a secret:** add a new version in Secret Manager and redeploy (or update the service) so
   a new revision reads it. Rotating `KB_JWT_SIGNING_KEY` or `KB_STORAGE_ENCRYPTION_KEY` signs
   everyone out; they sign in again on their next use.
@@ -486,6 +596,10 @@ exits 1.
   its header, and run the connector's tests with the new lock installed. The sign-in check reads
   two private attributes of FastMCP's OAuth proxy (`_code_store`, `_token_validator`); if an
   upgrade moves them, the sign-in check fails closed and `test_kb_connector_server.py` fails.
+  The test mode's refresh check stands on the provider's own methods: it wraps
+  `exchange_refresh_token`, which the token endpoint calls for a refresh grant, reads the new
+  token through `load_access_token`, and refuses by raising the SDK's `TokenError`. The same tests
+  fail if an upgrade changes how the token endpoint calls them or what it answers.
 - **Tests:** `python3 -m pytest -q skills/synthesis-kb-distribution/tests` from the repository
   root. Without the requirements installed, the FastMCP tests skip; with
   `SYNTHESIS_REQUIRE_FASTMCP=1` they fail instead of skipping.

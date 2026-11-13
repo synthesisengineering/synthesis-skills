@@ -128,7 +128,8 @@ address was gone for good. With `temporary_addresses` in the config:
   `trycloudflare.com`, `ngrok.io`, `ngrok.app`, `ngrok.dev`, `ngrok.pizza`, `ngrok-free.app`,
   `ngrok-free.dev`, `ngrok-free.pizza`, `loca.lt`, `localtunnel.me`, `serveo.net`,
   `serveousercontent.com`, `localhost.run`, `lhr.life`, `lhr.rocks`, `pinggy.io`, `pinggy.link`,
-  `pinggy-free.link`, `devtunnels.ms` or `app.github.dev`, the services the knowledge-base
+  `pinggy-free.link`, `devtunnels.ms`, `app.github.dev`, `ts.net`, `tunnelmole.net`, `bore.pub` or
+  `loophole.site`, the services the knowledge-base
   connector refuses to start on, or a host the config's `hosts` names and its subdomains), and, unless `local` is
   false: `localhost`, a `.local` or `.localhost` name or a private-range address written with a
   scheme or a port (`http://localhost:8787`, `my-laptop.local:3000`, `http://192.168.1.20:8000`),

@@ -1,5 +1,7 @@
 """Settings from the environment: defaults, every problem reported at once, nothing served without sign-in, and
-no temporary address and no unnamed sign-in store outside the operator's own test."""
+no temporary address and no memory sign-in store outside the operator's own test."""
+
+from pathlib import Path
 
 import pytest
 
@@ -9,7 +11,8 @@ from kb_connector.config import ConfigError, load
 KEY = "A" * 43 + "="
 BASE = {"KB_GIT_URL": "git@git.example.com:example/knowledge-plugin.git", "KB_PUBLIC_URL": "https://kb.example.com/",
         "KB_GOOGLE_CLIENT_ID": "id.apps.googleusercontent.com", "KB_GOOGLE_CLIENT_SECRET": "secret",
-        "KB_ALLOWED_EMAILS": "lead@example.com", "KB_OAUTH_STORE": "memory"}  # a deployment names its store
+        "KB_ALLOWED_EMAILS": "lead@example.com", "KB_OAUTH_STORE": "firestore",
+        "KB_STORAGE_ENCRYPTION_KEY": KEY}  # a deployment keeps its sign-ins in Firestore
 OPERATOR = {"KB_OPERATOR_TEST": "1", "KB_OPERATOR_ADDRESSES": "lead@example.com"}  # the operator-only test mode
 
 
@@ -44,15 +47,15 @@ def test_every_problem_is_reported_together():
     for expected in ("set exactly one of KB_GIT_URL", "KB_PUBLIC_URL must be the service's https://",
                      "KB_GOOGLE_CLIENT_ID is required", "KB_GOOGLE_CLIENT_SECRET is required",
                      "KB_ALLOWED_EMAILS or KB_ALLOWED_GROUPS is required", "KB_SEARCH_LIMIT must be a whole number from 1 to 50",
-                     "PORT must be a whole number", "KB_OAUTH_STORE is required"):
+                     "PORT must be a whole number", "KB_OAUTH_STORE must be firestore, with KB_STORAGE_ENCRYPTION_KEY"):
         assert expected in text
 
 
 @pytest.mark.parametrize("change, expected", [
     ({"KB_SOURCE_DIR": "/srv/kb"}, "set exactly one of"),
     ({"KB_OAUTH_STORE": "redis"}, "KB_OAUTH_STORE must be one of memory, firestore"),
-    ({"KB_OAUTH_STORE": "firestore"}, "needs KB_STORAGE_ENCRYPTION_KEY"),
-    ({"KB_OAUTH_STORE": "firestore", "KB_STORAGE_ENCRYPTION_KEY": "short"}, "needs KB_STORAGE_ENCRYPTION_KEY"),
+    ({"KB_STORAGE_ENCRYPTION_KEY": ""}, "KB_OAUTH_STORE=firestore needs KB_STORAGE_ENCRYPTION_KEY"),
+    ({"KB_STORAGE_ENCRYPTION_KEY": "short"}, "KB_OAUTH_STORE=firestore needs KB_STORAGE_ENCRYPTION_KEY"),
     ({"KB_DOCUMENT_URL_TEMPLATE": "https://x.example/{commit}"}, "needs {id} or {source_path}"),
     ({"KB_DOCUMENT_URL_TEMPLATE": "https://x.example/{id}/{secret}"}, "may use only {id}, {source_path}, {commit}"),
     ({"KB_DOCUMENT_URL_TEMPLATE": "https://x.example/{id"}, "may use only"),
@@ -86,15 +89,47 @@ def test_a_test_mode_set_by_halves_stops_the_start(change):
             in problems({**BASE, **change}))
 
 
-def test_the_sign_in_store_is_named_outside_the_operators_own_test():
-    unnamed = {name: value for name, value in BASE.items() if name != "KB_OAUTH_STORE"}
-    text = problems(unnamed)  # a deployment that names no store does not fall back to memory
-    assert "KB_OAUTH_STORE is required: firestore, with KB_STORAGE_ENCRYPTION_KEY, keeps sign-ins across" in text
-    assert "memory signs everyone out at every restart and is the default only in the operator-only test mode" in text
-    assert load({**unnamed, "KB_OAUTH_STORE": " Memory "}).oauth_store == "memory"  # named on purpose; the start warns
-    assert load({**unnamed, **OPERATOR}).oauth_store == "memory"  # the operator's own test needs no store named
-    kept = load({**unnamed, **OPERATOR, "KB_OAUTH_STORE": "firestore", "KB_STORAGE_ENCRYPTION_KEY": KEY})
-    assert kept.oauth_store == "firestore"
+THREE = "lead@example.com, second@example.com, third@example.com"
+
+
+def test_the_operator_addresses_are_one_persons_own_accounts_three_at_most():
+    assert load({**BASE, **OPERATOR, "KB_OPERATOR_ADDRESSES": THREE}).operator_addresses == THREE
+    twice = THREE + ", LEAD@Example.com ,third@example.com"                     # an address named twice is one address
+    assert load({**BASE, **OPERATOR, "KB_OPERATOR_ADDRESSES": twice}).operator_addresses == twice
+    for more, count in ((", fourth@example.com", 4), (", fourth@example.com, LEAD@example.com, fifth@example.com", 5)):
+        text = problems({**BASE, **OPERATOR, "KB_OPERATOR_ADDRESSES": THREE + more})
+        assert (f"KB_OPERATOR_ADDRESSES names {count} addresses and may name three at most: they are one person's own "
+                "accounts, since the operator-only test mode is that person's test and nobody else's. Other people come "
+                "in through KB_ALLOWED_EMAILS or KB_ALLOWED_GROUPS, on a deployed connector with the mode off") in text
+    off = problems({**BASE, "KB_OPERATOR_ADDRESSES": THREE + ", fourth@example.com"})  # four named, the mode not on
+    assert "names 4 addresses and may name three at most" in off and "needs both KB_OPERATOR_TEST=1" in off
+
+
+NO_STORE = {name: value for name, value in BASE.items() if name not in ("KB_OAUTH_STORE", "KB_STORAGE_ENCRYPTION_KEY")}
+MEMORY_REFUSED = ("KB_OAUTH_STORE must be firestore, with KB_STORAGE_ENCRYPTION_KEY: anything other people use must keep "
+                  "its state across restarts, and with more than one instance a memory store breaks sign-in outright. A "
+                  "single person's use is what the operator-only test mode is for, and memory is allowed only there, "
+                  "with KB_OPERATOR_TEST=1")
+
+
+@pytest.mark.parametrize("store", [
+    {},                                                                # no store named
+    {"KB_OAUTH_STORE": "memory"}, {"KB_OAUTH_STORE": " Memory "},      # memory named on purpose
+    {"KB_OAUTH_STORE": "memory", "KB_STORAGE_ENCRYPTION_KEY": KEY},    # a key beside it changes nothing
+])
+def test_the_memory_sign_in_store_stops_the_start_outside_the_operators_own_test_named_or_not(store):
+    for off in ({}, {"KB_OPERATOR_TEST": "0"}):
+        text = problems({**NO_STORE, **store, **off})
+        assert MEMORY_REFUSED in text and "KB_OAUTH_STORE must be one of" not in text  # one refusal, with its reason
+    assert load({**NO_STORE, **store, **OPERATOR}).oauth_store == "memory"  # the operator's own test: the default, or named
+
+
+def test_firestore_serves_in_both_modes_and_a_test_mode_set_by_halves_lets_no_memory_store_in():
+    assert load(BASE).oauth_store == "firestore" and load({**BASE, **OPERATOR}).oauth_store == "firestore"
+    for half in ({"KB_OPERATOR_ADDRESSES": "lead@example.com"},                          # an operator named, the mode not on
+                 {"KB_OPERATOR_TEST": "yes", "KB_OPERATOR_ADDRESSES": "lead@example.com"}):  # only 1 turns it on
+        text = problems({**NO_STORE, "KB_OAUTH_STORE": "memory", **half})
+        assert MEMORY_REFUSED in text and "needs both KB_OPERATOR_TEST=1 and KB_OPERATOR_ADDRESSES" in text
 
 
 def test_http_is_allowed_only_for_a_local_address():
@@ -104,12 +139,31 @@ def test_http_is_allowed_only_for_a_local_address():
                                                                       "KB_PUBLIC_URL": "http://192.168.1.20:8080"})
 
 
+@pytest.mark.parametrize("url", ["http://localhost.:8080", "http://LocalHost.:8080/", "http://127.0.0.1.:8080"])
+def test_localhost_written_with_a_trailing_dot_is_localhost(url):
+    assert load({**BASE, **OPERATOR, "KB_PUBLIC_URL": url}).public_url == url.rstrip("/")  # as http://localhost:8080 does
+    text = problems({**BASE, "KB_PUBLIC_URL": url})  # and only as the operator's own test, for the same reason
+    assert "KB_PUBLIC_URL names a temporary or local address" in text and "must be the service's https://" not in text
+
+
+@pytest.mark.parametrize("host, temporary", [
+    ("::ffff:100.64.0.1", True), ("::FFFF:100.64.0.1", True), ("::ffff:10.1.2.3", True),       # IPv4-mapped
+    ("::ffff:127.0.0.1", True), ("::ffff:8.8.8.8", False),
+    ("::100.64.0.1", True), ("::8.8.8.8", False),                                               # IPv4-compatible
+    ("64:ff9b::100.64.0.1", True), ("64:ff9b::8.8.8.8", False),                                 # NAT64
+    ("2002:6440:1::1", True), ("2002:808:808::1", False),                                       # 6to4
+])
+def test_an_ipv4_address_carried_in_an_ipv6_literal_is_judged_as_that_ipv4_address_on_every_python(host, temporary):
+    assert config.temporary(host) is temporary
+
+
 @pytest.mark.parametrize("host", [
     "trycloudflare.com", "quiet-river-demo.trycloudflare.com", "demo.ngrok.io", "demo.ngrok.app", "demo.ngrok-free.app",
     "demo.ngrok.dev", "demo.ngrok-free.dev", "demo.ngrok.pizza", "demo.ngrok-free.pizza", "demo.loca.lt",
     "demo.localtunnel.me", "demo.serveo.net", "demo.serveousercontent.com", "demo.localhost.run", "demo.lhr.life",
     "demo.lhr.rocks", "demo.a.pinggy.io", "demo.a.pinggy.link", "demo.run.pinggy-free.link",
     "demo-8080.use.devtunnels.ms", "demo-8080.app.github.dev",                     # a tunnel service, at any depth
+    "laptop.tail1234.ts.net", "demo-ip-203-0-113-7.tunnelmole.net", "bore.pub", "demo.loophole.site",
     "localhost", "kb.localhost", "laptop.local", "LOCALHOST", "Demo.TryCloudflare.COM", "demo.trycloudflare.com.",
     "127.0.0.1", "0.0.0.0", "::1", "10.1.2.3", "172.16.5.4", "192.168.1.20", "169.254.10.10", "100.100.100.100",
     "fd12:3456:789a::1", "fe80::1",                                                # no address the internet can reach
@@ -123,6 +177,7 @@ def test_a_tunnel_host_a_local_name_and_an_unreachable_ip_are_temporary(host):
     "kb.example.com", "nottrycloudflare.com", "trycloudflare.com.example.com", "ngrok.io.example.org",
     "my-ngrok.app.example", "localhost.example.com", "local.example.com", "mylocalhost", "notlocal", "kb.locale",
     "8.8.8.8", "172.32.0.1", "2606:4700:4700::1111", "", None,
+    "myts.net", "ts.net.example.com", "notbore.pub", "bore.pub.example.org", "tunnelmole.network", "myloophole.site",
 ])
 def test_a_look_alike_host_and_a_public_address_are_not_temporary(host):
     assert config.temporary(host) is False
@@ -139,6 +194,7 @@ def test_a_look_alike_host_and_a_public_address_are_not_temporary(host):
     ("https://0.0.0.0:8443", "0.0.0.0"),
     ("https://192.168.1.20", "192.168.1.20"),
     ("https://laptop.local", "laptop.local"),
+    ("https://[::ffff:100.64.0.1]", "::ffff:100.64.0.1"),                                    # the shared range, carried
 ])
 def test_a_temporary_address_stops_the_start_and_names_both_ways_forward(url, host):
     text = problems({**BASE, "KB_PUBLIC_URL": url})
@@ -149,10 +205,130 @@ def test_a_temporary_address_stops_the_start_and_names_both_ways_forward(url, ho
     assert "needs both KB_OPERATOR_TEST=1" in problems({**BASE, "KB_OPERATOR_TEST": "1", "KB_PUBLIC_URL": url})
 
 
-@pytest.mark.parametrize("url", [
-    "https://nottrycloudflare.com", "https://trycloudflare.com.example.com", "https://kb.example.com/trycloudflare.com",
-    "https://kb.example.com/?via=demo.ngrok.io", "https://localhost.example.com:8443", "https://8.8.8.8",
-    "https://[2606:4700:4700::1111]:8443",
+OLD_SPELLING = ("KB_PUBLIC_URL writes its host as a number in an old spelling ({}): programs read such a spelling "
+                "differently, as one IP address, as another or as a name to look up, so the connector refuses it whatever "
+                "address it denotes. Write the host as a name: the service's domain, or localhost for the operator's own "
+                "test")
+
+
+@pytest.mark.parametrize("url, host", [
+    ("https://134744072", "134744072"), ("https://0x08080808", "0x08080808"),       # 8.8.8.8: a public address
+    ("https://010.8.8.8", "010.8.8.8"), ("https://8.8.8.010:8443", "8.8.8.010"),    # 8.8.8.8 or 10.8.8.8, 8.8.8.8 or 8.8.8.10
+    ("https://127.1", "127.1"), ("https://2130706433", "2130706433"),               # 127.0.0.1: a local one
+    ("https://0x7f000001/", "0x7f000001"), ("https://127.1.", "127.1."),
 ])
-def test_a_look_alike_host_or_a_listed_name_in_the_path_starts_as_any_permanent_address_does(url):
+def test_an_ip_address_in_an_old_spelling_is_refused_whatever_it_denotes_and_the_message_says_why(url, host):
+    for mode in ({}, OPERATOR):  # the reason holds in the operator's own test too
+        text = problems({**BASE, **mode, "KB_PUBLIC_URL": url})
+        assert OLD_SPELLING.format(host) in text and "temporary" not in text
+
+
+@pytest.mark.parametrize("url", [
+    "https://nottrycloudflare.com", "https://trycloudflare.com.example.com", "https://localhost.example.com:8443",
+    "https://8.8.8.8", "https://[2606:4700:4700::1111]:8443", "https://[::ffff:8.8.8.8]",
+])
+def test_a_look_alike_host_starts_as_any_permanent_address_does(url):
     assert load({**BASE, "KB_PUBLIC_URL": url}).public_url == url.rstrip("/")
+
+
+@pytest.mark.parametrize("url", ["https://kb.example.com/trycloudflare.com", "https://kb.example.com/?via=demo.ngrok.io"])
+def test_a_listed_name_in_the_path_or_the_query_is_refused_as_a_path_or_a_query_and_not_as_temporary(url):
+    text = problems({**BASE, "KB_PUBLIC_URL": url})
+    assert "which is not allowed. Write it as https://kb.example.com" in text and "temporary" not in text
+
+
+ORIGIN = ("KB_PUBLIC_URL must be an origin and nothing more: the scheme, the host and a port if it needs one, since the "
+          "connector builds its own addresses (/mcp, /auth/callback) on it. It has ")
+
+
+@pytest.mark.parametrize("url", [
+    "https://kb.example.com", "https://kb.example.com/",                       # with a trailing slash or without
+    "https://kb.example.com:8443", "HTTPS://KB.Example.COM:8443/",             # a port, and a host in upper case
+    "https://[2606:4700:4700::1111]:8443/",
+])
+def test_an_origin_starts_with_a_trailing_slash_a_port_or_a_host_in_upper_case(url):
+    assert load({**BASE, "KB_PUBLIC_URL": url}).public_url == url.rstrip("/")
+
+
+@pytest.mark.parametrize("url, parts, origin", [
+    ("https://kb.example.com/mcp", "a path, which is", "https://kb.example.com"),
+    ("https://kb.example.com//", "a path, which is", "https://kb.example.com"),
+    ("https://kb.example.com/;v=1", "a path, which is", "https://kb.example.com"),
+    ("https://kb.example.com/?x=1", "a query, which is", "https://kb.example.com"),
+    ("https://kb.example.com?", "a query, which is", "https://kb.example.com"),                 # an empty query is one
+    ("https://kb.example.com#top", "a fragment, which is", "https://kb.example.com"),
+    ("https://kb.example.com/#", "a fragment, which is", "https://kb.example.com"),
+    ("https://reader:s3cret@kb.example.com", "a user-info part (user:password@), which is", "https://kb.example.com"),
+    ("https://@kb.example.com:8443/", "a user-info part (user:password@), which is", "https://kb.example.com:8443"),
+    ("HTTPS://Reader:S3cret@KB.Example.COM:8443/base/?token=t0ken-value#top",
+     "a user-info part (user:password@), a path, a query and a fragment, which are", "https://kb.example.com:8443"),
+    ("https://[2606:4700:4700::1111]:8443/mcp", "a path, which is", "https://[2606:4700:4700::1111]:8443"),
+])
+def test_a_path_a_query_a_fragment_or_a_user_info_part_stops_the_start_and_the_origin_is_shown(url, parts, origin):
+    text = problems({**BASE, "KB_PUBLIC_URL": url})
+    assert f"{ORIGIN}{parts} not allowed. Write it as {origin}\n" in text + "\n"
+    assert "s3cret" not in text.lower() and "t0ken-value" not in text  # each part is named, never shown: it may be a secret
+    assert "temporary" not in text and "must be the service's https://" not in text
+
+
+def test_the_origin_shown_is_one_the_connector_takes():
+    local = problems({**BASE, **OPERATOR, "KB_PUBLIC_URL": "http://localhost:8080/mcp"})
+    assert "It has a path, which is not allowed. Write it as http://localhost:8080" in local
+    plain = problems({**BASE, "KB_PUBLIC_URL": "http://kb.example.com/mcp"})  # http only for localhost: shown as https
+    assert "It has a path, which is not allowed. Write it as https://kb.example.com" in plain
+    assert "KB_PUBLIC_URL must be the service's https:// address (http:// only for localhost)" in plain
+
+
+@pytest.mark.parametrize("url", [
+    "https://kb.example.com\\mcp", "https://kb.example.com\\", "https://kb.example.com;v=1", "https://kb example.com",
+    "https://kb.example.com%2fmcp", "https://kb.example.com\\mcp/x?y=1",   # a browser reads a backslash as a slash
+    "https://kb.example.com:abc", "https://kb.example.com:99999", "https://kb.example.com:0", "https://kb.example.com:abc/mcp",
+])
+def test_a_host_or_a_port_no_address_could_have_stops_the_start_as_a_malformed_address(url):
+    text = problems({**BASE, "KB_PUBLIC_URL": url})
+    assert "KB_PUBLIC_URL must be the service's https:// address" in text and "Write it as" not in text
+
+
+@pytest.mark.parametrize("url", ["https://bücher.example", "https://kb-1.example.com", "https://kb_1.example.com"])
+def test_a_host_with_letters_digits_hyphens_or_underscores_starts(url):
+    assert load({**BASE, "KB_PUBLIC_URL": url}).public_url == url
+
+
+@pytest.mark.parametrize("url", ["https://[oops", "https://[::1", "https://kb.example.com:", "https://kb.example.com:/",
+                                 "http://localhost:"])
+def test_an_address_that_cannot_be_parsed_or_ends_its_host_with_a_bare_colon_is_malformed_and_nothing_else_is_raised(url):
+    """Brackets that close no IPv6 address raised out of the loader, and a colon with no port after it started the
+    connector on an address no OAuth client's callback would match."""
+    text = problems({**BASE, **OPERATOR, "KB_PUBLIC_URL": url})
+    assert "KB_PUBLIC_URL must be the service's https:// address" in text and "Write it as" not in text
+
+
+@pytest.mark.parametrize("url", ["https://[64:ff9b:1::1]", "https://[64:ff9b:1:abcd::808:808]"])
+def test_the_prefix_for_translation_inside_one_network_is_temporary_on_every_python(url):
+    """64:ff9b:1::/48 is for translating addresses inside one network. One Python calls it global and a later one
+    does not, so the connector judges it itself."""
+    assert "KB_PUBLIC_URL names a temporary or local address" in problems({**BASE, "KB_PUBLIC_URL": url})
+    assert load({**BASE, **OPERATOR, "KB_PUBLIC_URL": url}).public_url == url
+
+
+REFERENCE = Path(__file__).resolve().parents[1] / "references" / "connector.md"
+
+
+@pytest.mark.parametrize("change, placeholders", [
+    ({"KB_PUBLIC_URL": "https://demo.trycloudflare.com"}, {"demo.trycloudflare.com": "<host>"}),
+    ({"KB_PUBLIC_URL": "https://kb.example.com/mcp"}, {}),
+    ({"KB_PUBLIC_URL": "https://0x08080808"}, {}),
+    ({"KB_OAUTH_STORE": "memory"}, {}),
+    ({**OPERATOR, "KB_OPERATOR_ADDRESSES": THREE + ", fourth@example.com"}, {}),
+], ids=["temporary", "origin", "old-spelling", "memory-store", "fourth-operator"])
+def test_the_reference_shows_each_refusal_of_the_rulings_word_for_word(change, placeholders):
+    reference = REFERENCE.read_text(encoding="utf-8")
+    for line in problems({**BASE, **change}).splitlines()[1:]:
+        for value, placeholder in placeholders.items():
+            line = line.replace(value, placeholder)
+        assert line.startswith("  - ") and f"\n{line}\n" in reference
+
+
+def test_the_reference_names_every_tunnel_service_the_connector_refuses():
+    reference = REFERENCE.read_text(encoding="utf-8")
+    assert [name for name in config.TEMPORARY_HOSTS if f"`{name}`" not in reference and name != "local"] == []
