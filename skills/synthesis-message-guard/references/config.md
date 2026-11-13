@@ -203,14 +203,16 @@ address was gone for good. With `temporary_addresses` in the config:
   else's (`notserveo.net`, `team-pinggy.io`), and a jump host, a key file's name or a word of the
   remote command that carries a service's name makes no tunnel.
 - **The services added last, in their own forms:** `bore local <port> --to bore.pub` (or `-t`,
-  or `--to=`), `tmole <port>` and `tunnelmole <port>` (`tmole 8080 as demo.tunnelmole.net`
+  or `--to=`; the server read as a host, in any case and with or without a closing dot,
+  `--to BORE.PUB.`), `tmole <port>` and `tunnelmole <port>` (`tmole 8080 as demo.tunnelmole.net`
   too), `loophole http <port>`, `loophole path <folder>` and `loophole webdav <folder>`, and
   `tailscale funnel <port or target>` (`tailscale funnel --bg 3000`,
   `tailscale funnel --https=8443 localhost:3000`) wait for the code. Their lookups start
   nothing: `bore --version`, `bore server`, `tmole --help`, `loophole account login`,
   `loophole version`, `tailscale funnel status`, `tailscale funnel reset`, a funnel turned
   `off`, and `tailscale serve ...`, which a tailnet's own members reach and the public does not.
-  Nor does `bore local` to a server of one's own (`--to tunnel.example.com`).
+  Nor does `bore local` to a server of one's own (`--to tunnel.example.com`) or to a name that
+  only starts with the service's (`--to bore.pub.example.com`).
 - **The forms a start takes:** each of those is read however the command spells it.
   - The program named through a variable the command sets:
     `tunnel_program=cloudflared; $tunnel_program tunnel --url ...`.

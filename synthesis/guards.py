@@ -236,10 +236,10 @@ def _carried(name: str) -> str:
 def temporary_addresses(texts: list, config: dict):
     """The addresses in these words that can change, or that only this machine or its network answers: a quick tunnel's
     host (a subdomain of a tunnel service, or a host the config names and its subdomains), a tunnel service's own host
-    with a port (bore.pub:41234, as bore hands one out; its bare name and its documentation are none) and, unless `local` is false,
-    a wildcard-DNS name that carries such an address however written (`_carried`: 192.168.1.20.nip.io),
-    a local name or a private address written with a scheme or a port, and a loopback address however written
-    (`_only_here`). A user and password before a host are read past and never shown. A string when the setting
+    with a port (bore.pub:41234, as bore hands one out; its bare name and its documentation are none) and, unless
+    `local` is false, a local name or a private address written with a scheme or a port, a loopback address however
+    written (`_only_here`), and a wildcard-DNS name that carries a private or loopback address however written
+    (`_carried`: 192.168.1.20.nip.io). A user and password before a host are read past and never shown. A string when the setting
     cannot be read. {"temporary_addresses": {"hosts": ["<more>"], "local": true}}; no key, no rule, and a key that is
     there and null is a setting that cannot be read."""
     if "temporary_addresses" not in config:
@@ -1802,7 +1802,7 @@ def _tunnels(words: list[str]) -> bool:
                     or name == "ngrok" and next((w for w in rest if w in NGROK), "") in NGROK[:5]  # past its own options and their values
                     or name == "devtunnel" and plain[:1] == ["host"]  # past its own options
                     or name in ("lt", "localtunnel") and flag("--port", "-p")
-                    or name == "bore" and rest[:1] == ["local"] and ("." + value("--to", "-t").lower()).endswith(".bore.pub")
+                    or name == "bore" and rest[:1] == ["local"] and ("." + value("--to", "-t").lower().rstrip(".")).endswith(".bore.pub")
                     or name in ("tmole", "tunnelmole") and plain[:1] and plain[0].isdigit()
                     or name == "loophole" and next((w for w in rest if w in LOOPHOLE), "") in LOOPHOLE[:3]
                     or name == "tailscale" and plain[:1] == ["funnel"] and plain[1:2] and "off" not in plain
