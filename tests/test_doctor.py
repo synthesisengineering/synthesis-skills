@@ -1475,6 +1475,28 @@ def test_catalog_budget_follows_the_configured_model(tmp_path):
     assert doctor._context_window({"model": "other"}, tmp_path) is None
 
 
+def test_a_model_cache_with_an_older_copys_tail_after_it_is_read_by_its_first_whole_value(tmp_path):
+    """2026-11-13: in the minute after a release, Codex's cache of its models held one whole fresh value and, after
+    it, the tail of a longer copy: what two writers leave when a shorter body lands over a longer one. Read as no
+    cache, the model's window was unknown, and the catalog failed at 2,794 of 2,000 tokens where it reads 2,794 of
+    10,000."""
+    whole = json.dumps({"fetched_at": "2026-11-13T17:09:18Z", "models": [{"slug": "m", "context_window": 500000}]}, indent=2)
+    (tmp_path / "models_cache.json").write_text(whole + 'ly",\n      "multi_agent_version": "v1"\n    }\n  ]\n}')
+    assert doctor._context_window({"model": "m"}, tmp_path) == 500000
+
+
+def test_a_model_cache_that_cannot_be_read_is_said_and_fails_no_catalog(tmp_path):
+    """With no value to read in it, the doctor cannot tell the budget Codex gives the catalog: Codex rewrites the
+    file when it next lists its models, and knows the window then. That is a warning, and no failure on the budget
+    for a model Codex does not know. With no cache at all Codex knows no window either, and that budget is its own."""
+    big = {"data": [{"skills": [_skill(tmp_path / f"p{i}", f"s{i}", description="d" * 1024) for i in range(9)]}]}
+    (tmp_path / "models_cache.json").write_text('{"models": [{"slug": "m", "context_w')
+    check = doctor.check_codex_catalog(big, "", None, {"model": "m"}, tmp_path)
+    assert check.status == "warn" and "cannot tell" in check.detail and "model cache" in check.detail, check
+    (tmp_path / "models_cache.json").unlink()
+    assert doctor.check_codex_catalog(big, "", None, {"model": "m"}, tmp_path).status == "fail"
+
+
 def test_instruction_chain_is_measured_against_the_limit_with_a_reserve(tmp_path):
     codex_home, repo = tmp_path / "codex", tmp_path / "repo"
     (repo / ".git").mkdir(parents=True)
