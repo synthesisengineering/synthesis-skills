@@ -1981,3 +1981,47 @@ def test_a_rule_phrase_that_governs_something_else_explains_no_wait(reply):
 @pytest.mark.parametrize("reply", _cases(A_RULE_THAT_GOVERNS_THE_WAIT))
 def test_a_rule_phrase_that_governs_the_waits_own_clause_still_explains_it(reply):
     assert _sent_back(reply) is None
+
+
+# Finding 5 of the review: a heading and a table row were dropped whole, and "we" before a colon was a label, so a wait
+# the session states in the first person passed in each. A first-person wait is read wherever it stands. What is set
+# aside is a label with no subject that names a state: "Waiting on X:", and such a wait in a heading or a table cell.
+# The "we" form before a colon decides one recorded verdict in thirty days, a status line that counts what is open and
+# lists it after the colon ("two-things" above). So "we" with a count or a pointer before the colon stays a label, and
+# "we" with the thing itself named there is the wait it says, as "I" is. One recorded reply holds a first-person wait
+# in a table cell, with background work out, so it was armed.
+R3_STRUCTURE_REVIEW = {
+    "R3-05-we-before-a-colon": "The patch is committed. We are waiting for the required pipeline: no further work is possible.",
+    "R3-05-in-a-heading": "The patch is committed.\n## I'm waiting on CI\nThe branch is ready.",
+    "R3-05-in-a-table-row": "The patch is committed.\n| State | I'm waiting on CI |\nThe branch is ready.",
+}
+A_FIRST_PERSON_WAIT_WHEREVER_IT_STANDS = {
+    "after-a-label-in-a-heading": "## Where things stand: I'm waiting for the registrar\n\nNothing else is open.",
+    "a-future-in-a-table-cell": "| Step | Status |\n|---|---|\n| Export | done |\n| Import | I'll start it once the export is verified by the "
+                                "warehouse |",
+    "a-subject-left-out-in-a-cell": "| Check | Next |\n|---|---|\n| CI | Will merge once it is green |",
+    "a-hold-in-a-heading": "### I'm holding the tag until the smoke test passes\n| Check | State |\n|---|---|\n| smoke | running |",
+    "we-and-the-thing-before-a-colon": "We're waiting on the certificate authority: the renewal is in their queue.",
+    "we-will-before-a-colon": "We'll resume once the audit closes: the plan is in the runbook.",
+    "i-before-a-colon": "I'm waiting on the mirror: the sync started at noon.",
+}
+A_LABEL_WITH_NO_SUBJECT_IN_A_HEADING_OR_A_CELL = {
+    "a-heading-over-a-list": "## Waiting on the vendor\n\n- the signed order form\n- the tax certificate",
+    "the-first-cell-of-a-row": "| Waiting on the vendor | 3 items |\n|---|---|\n| Done | 12 items |",
+    "a-cell-after-a-sentence": "| Deploy | Done. Awaiting sign-off |\n| Docs | Published |",
+    "resuming-in-a-cell": "| Step | State |\n|---|---|\n| Import | Resuming when the index rebuild is done |",
+    "a-heading-that-names-the-list": "## What we're waiting on\n\n- the address\n- the DNS record",
+    "we-and-a-bare-colon": "We're waiting on: the fee, the venue and the caterer's quote.",
+    "we-and-a-count": "We are still waiting on three things from the landlord: the countersigned lease, the keys and the meter reading.",
+}
+
+
+@pytest.mark.parametrize("reply", _cases(R3_STRUCTURE_REVIEW, A_FIRST_PERSON_WAIT_WHEREVER_IT_STANDS))
+def test_a_first_person_wait_is_read_in_a_heading_in_a_table_row_and_before_a_colon(reply):
+    reason = _sent_back(reply)
+    assert reason and "nothing is armed" in reason
+
+
+@pytest.mark.parametrize("reply", _cases(A_LABEL_WITH_NO_SUBJECT_IN_A_HEADING_OR_A_CELL))
+def test_a_label_with_no_subject_that_names_a_state_is_still_set_aside(reply):
+    assert _sent_back(reply) is None
