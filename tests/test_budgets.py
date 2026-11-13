@@ -878,6 +878,22 @@ def test_the_hook_budget_fails_an_unnamed_import_a_name_nothing_imports_and_a_sl
         hook_budget(["-c", slow], ("time",), rounds=3)
 
 
+def test_a_call_that_met_a_busy_machine_is_timed_again_before_it_is_called_slow(tmp_path, hook_budget):
+    """2026-11-13: on a shared runner whose whole job ran at half its usual speed, the guard hook's fastest of fifteen
+    runs read 92 ms beside 45 for its modules, and the release waited on a hook that had not changed. Other work on
+    a machine stretches the longer run more, so one block of rounds can leave the call without a single quiet run.
+    A call over its allowance is timed for more rounds, all of them counted, before it is called slow; one that is
+    slow in every round still fails (the test above)."""
+    runs = tmp_path / "runs"
+    runs.mkdir()
+    busy = ("import os, time\n"
+            f"n = len(os.listdir({str(runs)!r}))\n"
+            f"open(os.path.join({str(runs)!r}, str(n)), 'w').close()\n"
+            "time.sleep(0.3 if n <= 3 else 0)")  # the first look at it and its first three rounds meet a busy machine
+    hook_budget(["-c", busy], ("os", "time"), rounds=3)
+    assert len(list(runs.iterdir())) == 7  # one look, three rounds over, three more that settle it
+
+
 def test_the_hook_budget_fails_a_runtime_that_is_not_compiled(compiled_runtime, tmp_path, hook_budget, monkeypatch):
     """What 5.8.1 fixed is what the budget has to catch, on any machine: it looks at the runtime, since by time alone
     an uncompiled one passed where starting a process costs more than compiling does. A process that may write
