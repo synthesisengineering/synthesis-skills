@@ -85,6 +85,21 @@ def write_json(path: Path, data: dict) -> None:
     os.replace(tmp, path)
 
 
+WAITS = "harness-approvals.json"  # which hook approvals waited when the doctor last ran
+
+
+def waits(home_: Path | None = None) -> tuple:
+    """(when a run of the doctor wrote it, the hook approvals that waited then), or (0.0, None) when no run wrote it
+    within a day: an older note says nothing of today. Kept here, not in the doctor, so a session's start reads it
+    without loading the doctor."""
+    import time
+    note = read_json((home_ or home()) / "state" / WAITS)
+    at, waiting = note.get("at"), note.get("waiting")
+    if not isinstance(at, (int, float)) or isinstance(at, bool) or not 0 <= time.time() - at < 86400 or not isinstance(waiting, list):
+        return 0.0, None
+    return float(at), [n for n in waiting if isinstance(n, str)]
+
+
 def spelled(path: str) -> str:
     """A path as a Mac's file system compares it: neither the case of a letter nor the form an accent is written in
     makes it another file (2026-11-11: a protected file named in capitals was written)."""

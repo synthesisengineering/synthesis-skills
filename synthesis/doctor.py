@@ -1413,6 +1413,7 @@ def run_checks(home: Path | None = None, find=find_client, latest_ref: str = "",
     except (OSError, subprocess.SubprocessError):
         value = ""
     checks.append(check_git_hooks_path(value, home / "git-hooks"))
+    _note_waits(home, checks)
     return checks
 
 
@@ -1424,6 +1425,17 @@ def summary(checks: list, ms: float) -> str:
 
 
 APPROVALS = ("codex hook trust", "muse hook approval")  # the person gives these in the harness; no release can
+
+
+def _note_waits(home: Path, checks: list) -> None:
+    """Write down which approvals wait, for a session's start and the evening job to show (`paths.waits`). A harness
+    this run did not get to look at keeps what the last run wrote."""
+    ran = {c.name: c.status == "fail" for c in checks if c.name in APPROVALS}
+    before = paths.waits(home)[1] or []
+    try:
+        paths.write_json(home / "state" / paths.WAITS, {"at": time.time(), "waiting": [n for n in APPROVALS if ran.get(n, n in before)]})
+    except OSError:
+        pass  # a note that cannot be written must not cost the doctor its report
 
 
 def report(checks: list, ms: float) -> str:
@@ -1438,7 +1450,13 @@ def main(argv=None) -> int:
     parser.add_argument("--json", action="store_true", help="print the checks as JSON")
     parser.add_argument("--latest", nargs="?", const="stable", default="", metavar="REF",
                         help="also ask GitHub whether a newer release exists on REF (default stable); network")
+    parser.add_argument("--waiting", action="store_true", help="print how many harnesses waited for a hook approval at the last "
+                        "run within a day, then which (`unknown` when none wrote it); runs no check and writes nothing")
     args = parser.parse_args(list(argv or []))
+    if args.waiting:
+        at, waiting = paths.waits()
+        print("unknown" if waiting is None else f"{len(waiting)}\n{', '.join(waiting)} (the doctor's run at {time.strftime('%H:%M', time.localtime(at))})")
+        return 0
     start = time.perf_counter()
     checks = run_checks(latest_ref=args.latest)
     ms = (time.perf_counter() - start) * 1000

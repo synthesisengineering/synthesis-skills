@@ -100,8 +100,34 @@ def session_start(payload):
     notes += [f"This session is bound to no project, so mail addressed to one does not reach it. Mail it has not read is "
               f"waiting for: {', '.join(kept[:8])}{f' and {len(kept) - 8} more' if len(kept) > 8 else ''}. If this session works on one of them, `synthesis resume "
               f"{kept[0]}` binds it and delivers the mail."] if kept else []
-    notes += [n for n in [_window_note()] if n]
+    notes += [n for n in (_window_note(), _unguarded_note(paths.harness(payload))) if n]
     return _emit("SessionStart", context="\n\n".join(notes))
+
+
+HOW_APPROVED = {"codex hook trust": ("codex", "Codex, until the principal approves them in /hooks"),
+                "muse hook approval": ("muse", "Muse, until the principal runs `muse plugins approve synthesis-skills`")}
+
+
+def _unguarded_note(harness: str) -> str:
+    """The harnesses whose hooks waited for the person's approval when the doctor last ran: none of the plugin's
+    hooks run there, so nothing guards a send or a deploy from them. This hook running is the evidence that its own
+    harness's hooks run, and strikes that entry."""
+    try:
+        from synthesis import paths
+        at, waiting = paths.waits()
+        waiting = [n for n in waiting or [] if n in HOW_APPROVED]
+        mine = [n for n in waiting if HOW_APPROVED[n][0] == harness]
+        if mine:
+            waiting = [n for n in waiting if n not in mine]
+            paths.write_json(paths.state() / paths.WAITS, {"at": at, "waiting": waiting})
+        if not waiting:
+            return ""
+        many = len(waiting) != 1
+        return (f"{len(waiting)} harness{'es' * many} on this machine {'are' if many else 'is'} not running synthesis's hooks "
+                f"(the doctor's run at {time.strftime('%H:%M', time.localtime(at))}): {'; '.join(HOW_APPROVED[n][1] for n in waiting)}. "
+                "Nothing guards a send or a deploy made from there until then.")
+    except Exception:
+        return ""  # a note must never cost a session its start
 
 
 def _window_note() -> str:
