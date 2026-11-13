@@ -417,15 +417,35 @@ HASH_SECONDS = 2.0  # of the 5 a pre-tool-use hook is given: a harness passes ov
 
 def _sha256(file: str, until: float, whole: bool = True) -> str:
     """The hash of a file's bytes (of its first byte alone when not `whole`), read before `until`: a file that takes
-    longer is one the guard cannot bind."""
+    longer is one the guard cannot bind. A read on a stalled disk or mount blocks inside one call, past any check made
+    between chunks, so the read runs in a daemon thread the guard stops waiting for at `until`, and the thread checks
+    the limit again on its way out, an empty file's included. A read that never returns is left behind: the hook's
+    process answers and exits without waiting for it."""
     import hashlib
-    digest = hashlib.sha256()
-    with open(file, "rb") as handle:
-        for chunk in iter(lambda: handle.read(1 << 20), b"") if whole else [handle.read(1)]:
-            digest.update(chunk)
-            if time.monotonic() >= until:
-                raise TimeoutError(f"not within the {HASH_SECONDS:g} s the guard may spend reading the files a call names")
-    return digest.hexdigest()
+    import threading
+    late = TimeoutError(f"not within the {HASH_SECONDS:g} s the guard may spend reading the files a call names")
+    done, out = threading.Event(), []
+
+    def read() -> None:
+        try:
+            digest = hashlib.sha256()
+            with open(file, "rb") as handle:
+                for chunk in iter(lambda: handle.read(1 << 20), b"") if whole else [handle.read(1)]:
+                    digest.update(chunk)
+                    if time.monotonic() >= until:
+                        break
+            out.append(late if time.monotonic() >= until else digest.hexdigest())
+        except Exception as exc:  # handed to the guard's thread, which says why the file cannot be read
+            out.append(exc)
+        finally:
+            done.set()
+
+    threading.Thread(target=read, name="synthesis-file-hash", daemon=True).start()
+    if not done.wait(max(0.0, until - time.monotonic())):
+        raise late
+    if isinstance(out[0], Exception):
+        raise out[0]
+    return out[0]
 
 
 def check_upload(tool: str, tool_input: dict) -> str | None:

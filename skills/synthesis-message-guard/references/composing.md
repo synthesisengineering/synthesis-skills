@@ -121,7 +121,11 @@ that file's bytes, read when the code is asked for and again when the call is ma
 file replaced in between needs a new approval, and the request ends `The approval covers
 each file the call has the connector read as it is now, so name those files to the
 principal too: one changed before the call needs a new code.` The read is bounded,
-because a harness passes over a hook that runs past its time.
+because a harness passes over a hook that runs past its time. It runs in a thread of its
+own and the guard stops waiting for it at the limit, so a read that blocks (a stalled
+disk or mount) is refused at the limit, not when the read returns, and every way out of
+the read checks the limit, the empty file included; a read that never returns is left
+behind, and the hook answers and its process exits without waiting for it.
 
 ## Email transports and their fields
 
