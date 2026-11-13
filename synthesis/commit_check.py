@@ -823,9 +823,12 @@ _CODE = re.compile(r" {4}| {0,3}\t")  # a line of an indented code block, where 
 _STATUS = re.compile(r"(?i)(?:[\w-]+ )?status")  # fullmatched against a header cell's words (`_name`)
 _EVIDENCE = re.compile(r"(?i)\b(?:evidence|proofs?|verified|how we know)\b")
 _SOFT = re.compile(r"(?i)\b(?:sources?|checked|basis)\b")
-_BLANK = re.compile(r"(?i)[\s*_`~—–-]|n/a|none|tbd|\?")  # what a cell holds when it says nothing
+# What a cell holds when it says nothing; a line break, `&nbsp;`, an ellipsis and a zero-width character were evidence
+# until a review of 2026-11-13.
+_BLANK = re.compile(r"(?i)<br\s*/?>|&nbsp;|\.{3}|…|[\s*_`~—–\u200b-\u200d\u2060\ufeff-]|n/a|none|tbd|\?")
 _WORKS = re.compile(r"(?i)\b(?:works?|working|live|done|shipped|released|deployed|completed?|ready|available|enabled|passing|passed|"
                     r"fixed|resolved|installed|running)\b|✅|✓")
+_NOT = re.compile(r"(?i)(?:\b(?:not|never|no longer|cannot)|n['’]t)(?:\s+[\w'’]+){0,2}\s+$")  # ends the words before a claim it negates
 _POINTS = re.compile(r"\[[^\]]+\]\([^)]+\)|`[^`]+`|https?://|(?i:\bunverified\b)")
 
 
@@ -862,11 +865,12 @@ def _tables(whole: list) -> list:
 def status_evidence(lines: list, settings, read) -> tuple:
     """Config: {"status_evidence": {"skip": ["<folder or pattern>", ...]}}; off when the key is absent or false.
     (refusals, notes) for the table rows a commit adds to Markdown records. A row is refused where its table has a
-    column headed Status and a column for evidence, the row says something in the first and nothing in the second,
-    and does not say `unverified`: the table is held to its own header, and no word of the status is read. Where
-    the table has a Status column and no column for evidence, rows whose status says a thing works or is done and
-    that hold no link, no code span and not the word `unverified` are counted in a note for their file. A row's
-    table is read from the staged file, once: the rows above it up to a header row with a rule under it."""
+    Status column (`_STATUS`) and a column for evidence (`_EVIDENCE`), the row says something in the first and nothing
+    in any of the second or of a `Source`, `Checked` or `Basis` column (`_SOFT`), and does not say `unverified`: the
+    table is held to its own header, and no word of the status is read. Where the table has a Status column and no
+    column for evidence, rows whose status says a thing works or is done, not negated, with no `_SOFT` cell filled and
+    no link, no code span and not the word `unverified`, are counted in a note for their file. Each file is read
+    once, as staged, and its tables found in one pass (`_tables`)."""
     if settings is False:
         return [], []
     skip = settings.get("skip", []) if isinstance(settings, dict) and not set(settings) - {"skip"} else None
@@ -886,7 +890,8 @@ def status_evidence(lines: list, settings, read) -> tuple:
         if (path, top) not in heads:  # a table's columns, read once; under a header with no delimiter row, none
             names = [_name(cell) for cell in _cells(files[path][top][0])] if RULE.fullmatch(files[path][top + 1][0]) else []
             status = next((k for k, name in enumerate(names) if _STATUS.fullmatch(name)), None)
-            heads[path, top] = (status, *([k for k, name in enumerate(names) if k != status and pattern.search(name)] for pattern in (_EVIDENCE, _SOFT)))
+            heads[path, top] = (status, [k for k, name in enumerate(names) if k != status and _EVIDENCE.search(name)],
+                                [k for k, name in enumerate(names) if k != status and _SOFT.search(name)])
         status, hard, soft = heads[path, top]
         if status is None:
             continue
@@ -896,7 +901,8 @@ def status_evidence(lines: list, settings, read) -> tuple:
             if status in filled and not filled & {*hard, *soft} and not re.search(r"(?i)\bunverified\b", text):
                 found.append(f"{path}:{number}: this row gives a status and no evidence, in a table that has a column for it. Say "
                              "where it was checked (a link, a command, a record), or write `unverified`")
-        elif not filled & set(soft) and _WORKS.search(row[status] if status < len(row) else "") and not _POINTS.search(text):
+        elif (not filled & set(soft) and not _POINTS.search(text)  # `not done`, `won't be ready`: no claim (2026-11-13)
+              and any(not _NOT.search(said[:claim.start()]) for said in row[status:status + 1] for claim in _WORKS.finditer(said))):
             noted[path] = noted.get(path, 0) + 1
     return found, [f"{path}: {count} row{'s' if count != 1 else ''} added to a table with a Status column say a thing works or is done and "
                    "point at nothing. Give the table a column for evidence (`Evidence`), or write `unverified`" for path, count in noted.items()]

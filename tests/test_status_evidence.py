@@ -51,7 +51,7 @@ def test_a_row_with_its_evidence_or_the_word_unverified_passes(row):
 
 # A review of 2026-11-13: a cell that holds only a line break, a non-breaking space, an ellipsis or a zero-width
 # character says nothing, and counted as evidence.
-SILENT = ["<br>", "<br/>", "<BR />", "&nbsp;", "...", "…", "​", "⁠", "﻿", "<br> &nbsp; …"]
+SILENT = ["<br>", "<br/>", "<BR />", "&nbsp;", "...", "…", "\u200b", "\u2060", "\ufeff", "<br> &nbsp; …"]
 
 
 @pytest.mark.parametrize("status", ["", " ", "-", "—", "n/a", "N/A", "tbd", "?", "**", *SILENT])
