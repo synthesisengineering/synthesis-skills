@@ -203,6 +203,24 @@ def test_a_temporary_address_stops_the_start_and_names_both_ways_forward(url, ho
     assert "needs both KB_OPERATOR_TEST=1" in problems({**BASE, "KB_OPERATOR_TEST": "1", "KB_PUBLIC_URL": url})
 
 
+OLD_SPELLING = ("KB_PUBLIC_URL writes its host as a number in an old spelling ({}): programs read such a spelling "
+                "differently, as one IP address, as another or as a name to look up, so the connector refuses it whatever "
+                "address it denotes. Write the host as a name: the service's domain, or localhost for the operator's own "
+                "test")
+
+
+@pytest.mark.parametrize("url, host", [
+    ("https://134744072", "134744072"), ("https://0x08080808", "0x08080808"),       # 8.8.8.8: a public address
+    ("https://010.8.8.8", "010.8.8.8"), ("https://8.8.8.010:8443", "8.8.8.010"),    # 8.8.8.8 or 10.8.8.8, 8.8.8.8 or 8.8.8.10
+    ("https://127.1", "127.1"), ("https://2130706433", "2130706433"),               # 127.0.0.1: a local one
+    ("https://0x7f000001/", "0x7f000001"), ("https://127.1.", "127.1."),
+])
+def test_an_ip_address_in_an_old_spelling_is_refused_whatever_it_denotes_and_the_message_says_why(url, host):
+    for mode in ({}, OPERATOR):  # the reason holds in the operator's own test too
+        text = problems({**BASE, **mode, "KB_PUBLIC_URL": url})
+        assert OLD_SPELLING.format(host) in text and "temporary" not in text
+
+
 @pytest.mark.parametrize("url", [
     "https://nottrycloudflare.com", "https://trycloudflare.com.example.com", "https://localhost.example.com:8443",
     "https://8.8.8.8", "https://[2606:4700:4700::1111]:8443", "https://[::ffff:8.8.8.8]",
