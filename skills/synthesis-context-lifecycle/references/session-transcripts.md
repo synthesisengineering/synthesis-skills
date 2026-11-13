@@ -175,11 +175,13 @@ what `synthesis sessions show` takes. Then one line counts, and says where it lo
 **That name is not a citation.** The listing, its JSON answer and the list the day-end record prints when it
 refuses all name a prompt with `--seq`, and a record cites one with `#`: `<harness> <session> #<n>`. So nothing a
 tool prints about an open prompt can account for it, however it is kept: pasted, quoted, made into a checklist or a
-table, or saved as data. Where a prompt's own words cite a session the listing lists, the line sets the number
-apart from its `#` (`c1 # 12`); `show` prints the prompt as typed. The citation is written by whoever writes the record, and it counts where it stands: in a
-sentence however it wraps, on a line of its own, in a heading, a table, a footnote or a field of a JSON or YAML
-record. (Until 2026-11-13 the listing printed citations, and rules tried to know its saved output by its shape.
-Four reviews each found ordinary shapes those rules did not know, where a list of what was open closed the day.)
+table, or saved as data. Where a prompt's own words cite a session the listing lists, its line sets the number
+apart from its `#` (`c1 # 12`); `show` prints the prompt as typed.
+
+The citation is written by whoever writes the record, and it counts where it stands: in a sentence however it
+wraps, on a line of its own, in a heading, a table, a footnote or a field of a JSON or YAML record. (Until
+2026-11-13 the listing printed citations, and rules tried to know its saved output by its shape. Four reviews each
+found ordinary shapes those rules did not know, where a list of what was open closed the day.)
 
 A citation claims that its record accounts for the prompt, and nothing can check that it does. Write one only
 where the record says what became of the prompt. To note that prompts are open, give their number or their names
