@@ -2,7 +2,8 @@ name: CI
 
 # The only release gate (R7.3): core tests, every skill's tests (collected from all of
 # skills/, beside scripts or in tests/) and the source lint, within the 10-minute budget,
-# on Linux and macOS, including the Python 3.9 Apple ships as /usr/bin/python3.
+# on Linux and macOS, including the Python 3.9 Apple ships as /usr/bin/python3. The suite
+# runs in two jobs for each system and Python, tests/ and skills/, so no job nears the limit.
 # tests/test_source_lint.py fails if any test_*.py under skills/ would not be collected.
 
 on:
@@ -19,6 +20,10 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest]
         python: ["3.12", "3.13"]
+        # The two folders `python3 -m pytest -q tests/ skills/` runs, each in a job of its own. On 2026-11-12 the
+        # whole suite took 526 seconds on a macOS runner, and on main one job was cancelled at the ten-minute limit
+        # with no test failing.
+        part: [tests, skills]
         include:
           # Apple's own /usr/bin/python3 (3.9), the oldest Python the plugin runs on. Until 2026-11-11 a Linux job on
           # setup-python's 3.9 stood in for it. That day apt on the two images that still have a 3.9 build
@@ -26,6 +31,10 @@ jobs:
           # test, and the newest image has no 3.9 build at all. macOS needs no apt and has the interpreter itself.
           - os: macos-latest
             python: apple
+            part: tests
+          - os: macos-latest
+            python: apple
+            part: skills
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -64,8 +73,8 @@ jobs:
         run: |
           python -m pip install --require-hashes --no-deps -r skills/synthesis-kb-distribution/scripts/connector/requirements.txt
           echo "SYNTHESIS_REQUIRE_FASTMCP=1" >> "$GITHUB_ENV"
-      - name: Core tests, source lint and every skill's tests, wherever they live
-        run: python -m pytest -q tests/ skills/
+      - name: Core tests and the source lint, or every skill's tests, wherever they live
+        run: python -m pytest -q ${{ matrix.part }}/
         env:
           SYNTHESIS_REQUIRE_SANDBOX: "1"  # sandbox tests fail instead of skipping
           SYNTHESIS_REQUIRE_CHROMIUM: "1"  # browser tests fail instead of skipping

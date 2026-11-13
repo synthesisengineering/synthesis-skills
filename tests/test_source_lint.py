@@ -291,3 +291,20 @@ def test_the_bytecode_rule_finds_a_late_guard_and_spares_an_early_one(tmp_path):
     (tmp_path / "skills" / "b" / "tests" / "conftest.py").write_text("from synthesis import board\n")
     assert bytecode_writers(tmp_path) == ["skills/a/scripts/late.py:2", "skills/a/scripts/lazy.py:1",
                                           "skills/b/optional-helper/fetch.py:2"]
+
+
+# ---- CI runs the local command's two folders, each in a job of its own ---------------
+
+def test_ci_runs_tests_and_skills_each_in_a_job_of_its_own():
+    """The suite is run in two jobs for each system and Python, the core's tests and the skills', so that no job
+    runs near its ten-minute limit. On 2026-11-12 the whole suite took 526 seconds on a macOS runner, and on main
+    one job was cancelled at ten minutes with no test failing. Together the two jobs run what
+    `python3 -m pytest -q tests/ skills/` runs."""
+    workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    assert "part: [tests, skills]" in workflow
+    assert "run: python -m pytest -q ${{ matrix.part }}/" in workflow
+    assert "run: python -m pytest -q tests/ skills/" not in workflow  # no job runs the whole of it
+    apple = re.findall(r"- os: macos-latest\n\s+python: apple\n\s+part: (\w+)", workflow)
+    assert sorted(apple) == ["skills", "tests"]  # an entry added to a matrix by hand names both
+    assert sorted(path.name for path in ROOT.iterdir() if path.is_dir() and any(path.rglob("test_*.py"))
+                  and path.name in ("tests", "skills")) == ["skills", "tests"]

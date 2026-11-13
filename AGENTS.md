@@ -59,6 +59,9 @@ CI runs exactly what you run locally, and it is the only gate (R7.3):
 python3 -m pytest -q tests/ skills/
 ```
 
+It runs the two folders in two jobs for each system and Python, so that no job nears its
+ten-minute limit; together they are this command.
+
 That covers the v5 core (`synthesis/`), every skill's own tests wherever they live
 (beside its scripts, at its root or in `tests/`), the format check for
 v5 skills (`tests/test_skill_format.py`), the budgets and hook latency
