@@ -132,7 +132,9 @@ address was gone for good. With `temporary_addresses` in the config:
   connector refuses to start on, or a host the config's `hosts` names and its subdomains), and, unless `local` is
   false: `localhost`, a `.local` or `.localhost` name or a private-range address written with a
   scheme or a port (`http://localhost:8787`, `my-laptop.local:3000`, `http://192.168.1.20:8000`),
-  and a loopback or any-interface address however written (`127.0.0.1`, `0.0.0.0`). It reads every
+  and a loopback or any-interface address however written (`127.0.0.1`, `0.0.0.0`). A port is one
+  to five digits (`localhost:9`, `laptop.local:9`), and a host is read whole, to where its name
+  ends. It reads every
   path a message takes: a connector's send or draft, a shell command that posts, and words typed
   into a messaging app or a browser page.
 - **What releases it:** the principal's approval of the address itself. The refusal carries a code
@@ -141,7 +143,16 @@ address was gone for good. With `temporary_addresses` in the config:
   releases an address, and an approval of one address covers no other.
 - **What passes:** the word `localhost` in a sentence, a file named `.env.local`, a version number
   that looks like an address (`10.2.3.4`), a tunnel service's own site, a look-alike host, and an
-  address at a host no rule names.
+  address at a host no rule names. A public name that only begins like a local one is that public
+  name (`https://localhost.example.org`, `https://10.2.3.4.example.org`,
+  `https://example.localhost.org`). A file's name with its line number is no address: a dotfile
+  (`.env.local:12`), a name that goes on past `.local` (`settings.local.json:3`), and a name ending
+  in `.local` with no scheme before it that is a configuration file's (`config.local:7`: the word
+  before `.local` is `config`, `conf`, `cfg`, `cnf`, `ini`, `env`, `rc`, `settings`, `properties`,
+  `json`, `yaml`, `yml`, `toml`, `makefile` or `dockerfile`), that follows a path
+  (`src/app.local:42`, `/etc/rc.local:14`) or that has a column after its line
+  (`notes.local:17:3`). Any other name ending in `.local` with a port is an address
+  (`app.local:7`), and so is every one after a scheme (`http://config.local:7`).
 - **Starting a tunnel:** `cloudflared tunnel --url ...`, `ngrok http`, `tcp`, `tls` or `start`,
   `devtunnel host`, `localtunnel` or `lt` with a port (also through `npx`, `bunx`, `pnpm` or `yarn`), and a reverse
   `ssh -R` to `serveo.net`, `localhost.run` or `pinggy.io` wait for the principal's code. The hold
