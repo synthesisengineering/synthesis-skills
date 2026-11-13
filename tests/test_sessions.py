@@ -1253,6 +1253,12 @@ def test_a_records_folder_that_cannot_be_read_is_named_and_nothing_is_listed(ask
     with _closed(kb / "projects" / "alpha" / "sessions"):                           # a folder inside it that may not be listed
         assert cli.main(command + ["--records", str(kb)]) == 2
         assert str(kb / "projects" / "alpha" / "sessions") in capsys.readouterr().err
+    with _closed(asked["log"]):                                                     # and a record that may not be read
+        assert cli.main(command + ["--records", str(kb)]) == 2
+        assert str(asked["log"]) in capsys.readouterr().err
+    (kb / "gone.md").symlink_to(kb / "nowhere.md")                                  # a link that leads nowhere is no record
+    assert cli.main(command + ["--records", str(kb)]) == 0
+    capsys.readouterr()
     record, history = _day_end(asked, tmp_path, records=[str(absent)])              # and the day-end record says which
     refused = record()
     assert refused.returncode and str(absent) in refused.stderr and not history.exists()
