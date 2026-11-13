@@ -9,9 +9,12 @@ no list to run and nothing to say so the next day).
     teardown.py done <number>
 
 `add` answers with the item's number; `done` takes one number and says what it took off. The list is
-`<synthesis home>/teardown.jsonl`, and `synthesis doctor` warns while a line of it remains. Nothing here runs what
-`--remove` says: those are words for whoever takes the thing down. A line written into the file by hand is kept and
-shown. Exit 0, or 1 when `done` finds no item by that number, or 2 for words it cannot take.
+`<synthesis home>/teardown.jsonl`, and it is a log: `add` and `done` each append one line, and nothing in it is ever
+written again. So a number is never given twice, and a line written into the file by hand stays as it was written:
+`list` shows it, and only a hand takes it out. `synthesis doctor` warns while a thing on the list is not taken off.
+Nothing here runs what `--remove` says: those are words for whoever takes the thing down. Exit 0; 1 when `done` finds
+nothing still in place by that number, or when the list cannot be read or written (one line says why); 2 for words
+it cannot take.
 """
 
 import argparse
@@ -27,22 +30,32 @@ def listed() -> Path:
     return Path(os.environ.get("SYNTHESIS_HOME") or Path.home() / ".synthesis" / "v5") / "teardown.jsonl"
 
 
-def read(path: Path) -> list:
-    """Each line of the list: an item (a dict with its number), or the line itself where it is no item."""
-    rows = []
-    for line in path.read_text(encoding="utf-8").splitlines() if path.is_file() else ():
+def plain(text) -> str:
+    """Words as a terminal may print them: what it would obey, or take for a line's end, is shown as a mark."""
+    return "".join(ch if ch.isprintable() else "?" for ch in str(text))
+
+
+def read(text: str) -> tuple:
+    """(what is still in place, by number; every number ever given; the lines that are no item of the list)."""
+    items, closed, other = {}, set(), []
+    for line in text.split("\n"):  # a line ends at a newline only: a separator inside a hand-written line is part of it
         try:
             row = json.loads(line)
         except ValueError:
             row = None
-        rows.append(row if isinstance(row, dict) and isinstance(row.get("id"), int) else line)
-    return [row for row in rows if row != ""]
+        if isinstance(row, dict) and type(row.get("done")) is int:
+            closed.add(row["done"])
+        elif isinstance(row, dict) and type(row.get("id")) is int and isinstance(row.get("what"), str):
+            items[row["id"]] = row
+        elif line.strip():
+            other.append(line)
+    return {number: row for number, row in items.items() if number not in closed}, set(items), other
 
 
 def said(text: str) -> str:
     if not text.strip():
         raise argparse.ArgumentTypeError("say it in words")
-    return " ".join(text.split())
+    return plain(" ".join(text.split()))
 
 
 def main(argv=None) -> int:
@@ -56,33 +69,44 @@ def main(argv=None) -> int:
     done = verbs.add_parser("done", help="take one thing off the list, by its number, once it is gone")
     done.add_argument("number", type=int)
     args = parser.parse_args(argv)
-    path = listed()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with open(path.with_suffix(".lock"), "w") as lock:  # one writer at a time: two sessions may end their tests together
-        fcntl.flock(lock, fcntl.LOCK_EX)
-        rows = read(path)
-        if args.verb == "list":
-            for row in rows:
-                print(f"{row['id']}  {str(row.get('at', ''))[:16]}  {row.get('what')}  (remove: {row.get('remove')})"
-                      + (f"  [{row['test']}]" if row.get("test") else "") if isinstance(row, dict) else f"?  {row}")
-            if not rows:
+    path, now = listed(), datetime.now().astimezone().isoformat(timespec="seconds")
+    try:
+        if args.verb == "list":  # read only: it needs nothing it could write
+            text = ""
+            if os.path.lexists(path):
+                with open(path, encoding="utf-8-sig", errors="replace") as source:
+                    text = source.read()
+            left, _, other = read(text)
+            for number, row in sorted(left.items()):
+                print(f"{number}  {plain(row.get('at', ''))[:16]}  {plain(row['what'])}  (remove: {plain(row.get('remove', 'not said'))})"
+                      + (f"  [{plain(row['test'])}]" if row.get("test") else ""))
+            for line in other:
+                print(f"?  {plain(line)}")
+            if not left and not other:
                 print("nothing a test set up is left in place")
             return 0
-        if args.verb == "add":
-            number = max([row["id"] for row in rows if isinstance(row, dict)] + [0]) + 1
-            rows.append({"id": number, "at": datetime.now().astimezone().isoformat(timespec="seconds"), "what": args.what,
-                         "remove": args.remove, "test": " ".join(args.test.split())})
-            print(f"{number}  {args.what}  (remove: {args.remove}); when it is gone: teardown.py done {number}")
-        else:
-            gone = [row for row in rows if isinstance(row, dict) and row["id"] == args.number]
-            if not gone:
-                print(f"no item {args.number} on the list: `teardown.py list` shows what is", file=sys.stderr)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with open(path, "a+b") as log:  # appended to, never written again
+            fcntl.flock(log, fcntl.LOCK_EX)  # one writer at a time: two sessions may end their tests together
+            log.seek(0)
+            before = log.read()
+            left, given, _ = read(before.decode("utf-8-sig", "replace"))
+            if args.verb == "add":
+                number = max(given | {0}) + 1
+                row = {"id": number, "at": now, "what": args.what, "remove": args.remove, "test": plain(" ".join(args.test.split()))}
+                answer = f"{number}  {args.what}  (remove: {args.remove}); when it is gone: teardown.py done {number}"
+            elif args.number not in left:
+                print(f"no item {args.number} is still in place on the list: `teardown.py list` shows what is", file=sys.stderr)
                 return 1
-            rows = [row for row in rows if row is not gone[0]]
-            print(f"taken off: {args.number}  {gone[0].get('what')}")
-        fresh = path.with_suffix(".new")
-        fresh.write_text("".join((json.dumps(row, ensure_ascii=False) if isinstance(row, dict) else row) + "\n" for row in rows), encoding="utf-8")
-        os.replace(fresh, path)
+            else:
+                row, answer = {"done": args.number, "at": now}, f"taken off: {args.number}  {plain(left[args.number]['what'])}"
+            log.write((b"" if before[-1:] in (b"", b"\n") else b"\n") + json.dumps(row, ensure_ascii=False).encode("utf-8") + b"\n")
+            log.flush()
+        print(answer)  # said once it is written
+    except OSError as error:
+        print(f"{path}: the teardown list cannot be {'read' if args.verb == 'list' else 'written'} ({error.strerror or error}), so "
+              + ("what is left in place is not known" if args.verb == "list" else "nothing was changed"), file=sys.stderr)
+        return 1
     return 0
 
 

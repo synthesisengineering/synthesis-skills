@@ -881,26 +881,48 @@ def _procargs(pid: str) -> bytes:
 def check_teardown(listed: Path, now: float = 0) -> Check:
     """What a test set up and has not taken down (2026-11-12: an entry in a client's config that pointed at a dead
     address, and a key marked for removal, stayed a day after their test stopped, with no list to run). The
-    guardrails' teardown.py writes the list as each thing is made; this reads it, and runs nothing it names."""
-    try:
-        lines = [line for line in listed.read_text(encoding="utf-8").splitlines() if line.strip()] if os.path.lexists(listed) else []
-    except OSError as exc:
-        return Check("warn", "teardown", f"{_short(listed)} cannot be read ({exc.strerror}), so what a test left in place is not known")
-    if not lines:
-        return Check("ok", "teardown", "nothing a test set up is left in place")
-    items = []
+    guardrails' teardown.py appends a line as each thing is made and one as it is taken off; this reads them,
+    whatever else the file holds, and runs nothing a line names."""
+    lines = []
+    if os.path.lexists(listed):
+        try:
+            with open(listed, encoding="utf-8-sig", errors="replace") as source:  # a byte that is no text is read as a mark
+                lines = source.read().split("\n")
+        except OSError as exc:
+            return Check("warn", "teardown", f"{_short(listed)} cannot be read ({exc.strerror}), so what a test left in place is not known")
+    items, closed, other = {}, set(), 0
     for line in lines:
         try:
             row = json.loads(line)
-            items.append((datetime.fromisoformat(str(row["at"])).timestamp(), f"{row['id']}: {row['what']} ({row['remove']})"))
-        except (ValueError, KeyError, TypeError):
-            items.append((float("inf"), line[:120]))  # a line someone wrote by hand: shown as it is, after those with a time
-    items.sort()
-    hours = ((now or time.time()) - items[0][0]) / 3600 if items[0][0] != float("inf") else 0
-    age = "under an hour" if hours < 1 else f"{hours:.0f} hours" if hours < 48 else f"{hours / 24:.0f} days"
-    return Check("warn", "teardown", f"{len(items)} thing{'s' if len(items) != 1 else ''} a test set up {'are' if len(items) != 1 else 'is'} "
-                 f"still in place, the oldest for {age}: " + "; ".join(text for _, text in items[:3])
-                 + (f"; and {len(items) - 3} more" if len(items) > 3 else "")
+        except ValueError:
+            row = None
+        if isinstance(row, dict) and type(row.get("done")) is int:
+            closed.add(row["done"])
+        elif isinstance(row, dict) and type(row.get("id")) is int and isinstance(row.get("what"), str):
+            items[row["id"]] = row
+        else:
+            other += bool(line.strip())
+    left = []
+    for number in set(items) - closed:
+        try:
+            left.append((datetime.fromisoformat(str(items[number].get("at"))).timestamp(), number))
+        except ValueError:
+            left.append((float("inf"), number))  # an item with no time it can be placed by: shown after those with one
+    left.sort()
+
+    def plain(text) -> str:  # what a terminal would obey is shown as a mark, and one long line does not fill the screen
+        return "".join(ch if ch.isprintable() else "?" for ch in str(text))[:120]
+    beside = f"{other} line{'s' if other != 1 else ''} that {'are' if other != 1 else 'is'} no item of the list" if other else ""
+    if not left:
+        return Check("warn", "teardown", f"{_short(listed)} holds {beside}: read it and edit it by hand") if other else Check(
+            "ok", "teardown", "nothing a test set up is left in place")
+    hours = ((now or time.time()) - left[0][0]) / 3600
+    age = "" if hours == float("-inf") else ", the oldest for " + ("under an hour" if hours < 1 else f"{hours:.0f} hour{'s' if round(hours) != 1 else ''}"
+                                                                    if hours < 48 else f"{hours / 24:.0f} days")
+    return Check("warn", "teardown", f"{len(left)} thing{'s' if len(left) != 1 else ''} a test set up {'are' if len(left) != 1 else 'is'} "
+                 f"still in place{age}: " + "; ".join(f"{number}: {plain(items[number]['what'])} ({plain(items[number].get('remove', 'how it is removed was not said'))})"
+                                                      for _, number in left[:3])
+                 + (f"; and {len(left) - 3} more" if len(left) > 3 else "") + (f"; and {beside} (edit the file by hand)" if other else "")
                  + ". Take each down, then `python3 <synthesis-agent-guardrails>/scripts/teardown.py done <number>`")
 
 
