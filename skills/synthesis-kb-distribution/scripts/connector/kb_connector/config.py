@@ -26,6 +26,7 @@ TEMPORARY_HOSTS = ("trycloudflare.com", "ngrok.io", "ngrok.app", "ngrok.dev", "n
                    "pinggy-free.link", "devtunnels.ms", "app.github.dev", "ts.net", "tunnelmole.net", "bore.pub",
                    "loophole.site", "localhost", "local")
 ORIGIN_PARTS = ("a user-info part (user:password@)", "a path", "a query", "a fragment")  # what KB_PUBLIC_URL may not have
+NAT64 = ipaddress.ip_network("64:ff9b::/96")  # the well-known prefix: its last 32 bits are the IPv4 address reached
 URL_FIELDS = ("id", "source_path", "commit")
 FERNET_KEY = re.compile(r"[A-Za-z0-9_-]{43}=")
 
@@ -68,16 +69,29 @@ class Settings:
     log_level: str
 
 
+def _ip(host):
+    """The IP address a host is, or None for a name. An IPv6 address that carries an IPv4 address is that IPv4 address:
+    mapped (::ffff:a.b.c.d), compatible (::a.b.c.d), NAT64 (64:ff9b::a.b.c.d) or 6to4 (2002:aabb:ccdd::). Python's own
+    verdicts on these differ from one version to the next, so they are never asked."""
+    try:
+        address = ipaddress.ip_address(host)
+    except ValueError:
+        return None
+    if address.version == 6 and (address.ipv4_mapped or address in NAT64 or int(address) >> 32 == 0):
+        return ipaddress.IPv4Address(int(address) & 0xFFFFFFFF)
+    return getattr(address, "sixtofour", None) or address
+
+
 def temporary(host) -> bool:
     """True for an address that lasts only as long as one machine or its tunnel: a host in TEMPORARY_HOSTS or under
     one, or an IP address the internet cannot reach. Read as a host: a look-alike or a name in a path does not count."""
     host = (host or "").lower().rstrip(".")
     if any(host == name or host.endswith("." + name) for name in TEMPORARY_HOSTS):
         return True
-    try:
-        return not ipaddress.ip_address(host).is_global
-    except ValueError:  # a name, unless its last label is a number: an IP address in an old spelling, such as 127.1
+    address = _ip(host)
+    if address is None:  # a name, unless its last label is a number: an IP address in an old spelling, such as 127.1
         return bool(re.fullmatch(r"\d+|0x[0-9a-f]*", host.rsplit(".", 1)[-1]))
+    return not address.is_global
 
 
 def _beyond_origin(raw, parsed, port, local) -> str:
@@ -117,7 +131,7 @@ def load(env) -> Settings:
         port = parsed.port
     except ValueError:
         port = 0  # not a port, so not an address
-    local = parsed.hostname in ("localhost", "127.0.0.1", "::1")
+    local = (parsed.hostname or "").rstrip(".") in ("localhost", "127.0.0.1", "::1")  # localhost. is localhost
     if (parsed.scheme not in ("https", "http") or not parsed.hostname or port == 0
             or (parsed.scheme == "http" and not local)):
         problems.append("KB_PUBLIC_URL must be the service's https:// address (http:// only for localhost)")
