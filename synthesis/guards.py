@@ -171,29 +171,59 @@ TUNNELS = (".trycloudflare.com", ".ngrok.io", ".ngrok.app", ".ngrok.dev", ".ngro
            ".ts.net", ".tunnelmole.net", ".bore.pub", ".loophole.site")
 # The knowledge-base connector refuses to start on the same services (its TEMPORARY_HOSTS); a test holds the two equal.
 HOSTNAME = re.compile(r"(?<![\w.@-])(?:[a-z0-9-]+\.)+[a-z][a-z0-9-]*(?![\w-])")
-_NAME = r"(?:localhost|[a-z0-9-]+(?:\.[a-z0-9-]+)*\.local(?:host)?|\[::1\])"
-_NET = r"(?:10(?:\.\d{1,3}){3}|192\.168(?:\.\d{1,3}){2}|172\.(?:1[6-9]|2\d|3[01])(?:\.\d{1,3}){2})"
-LOCAL = re.compile(rf"https?://((?:{_NAME}|{_NET})(?::\d+)?)(?![\w-])|(?<![\w.@-])((?:{_NAME}|{_NET}):\d{{2,5}})\b"
-                   r"|(?<![\w.@-])((?:127(?:\.\d{1,3}){3}|0\.0\.0\.0)(?::\d+)?)(?![\w]|\.\d)")
+_HOST = r"(localhost|[a-z0-9-]+(?:\.[a-z0-9-]+)*\.local(?:host)?|\d{1,3}(?:\.\d{1,3}){3}|\[[0-9a-f:.]+(?:%[\w.-]+)?\])"
+# A host is read whole: after any scheme or where a bare one starts, to where its name ends, then its port. A public
+# name that only begins like a local one (localhost.example.org, 10.2.3.4.example.org) is no match (2026-11-12). The
+# host of a file:// URL names this disk, as a connector takes a local file: file://localhost/<path> is no address.
+LOCAL = re.compile(rf"(?:(?<!file)(://)|(?<![\w.@-])){_HOST}(?![\w-]|\.[\w-])\.?(?::(\d+)(?!\w))?")
+NEAR = ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "fc00::/7")  # the private ranges, and IPv6's unique-local one
+FILED = re.compile(r"(?:^|\.)(?:config|conf|cfg|cnf|ini|env|rc|settings|properties|json|ya?ml|toml|makefile|dockerfile)\.local$")
+
+
+def _only_here(m, low: str) -> str:
+    """The address one match of LOCAL spells, host and port, when only this machine or its network answers it: a local
+    name or a private or link-local address written as an address (after any scheme but file://, or with a port of one
+    to five digits), a loopback or any-interface address however written, and a bracketed IPv6 one that is any of
+    these or unique-local, however written. "" for any other, and for a file's name with its line number: a name ending
+    in .local with no scheme before it that is a configuration file's (config.local:7), follows a path
+    (src/app.local:42) or has a column after its line (notes.local:17:3). A dotfile (.env.local:12) and a name that
+    goes on (settings.local.json:3) are no match at all."""
+    import ipaddress
+    (scheme, host, port), at = m.groups(), m.start(2)
+    shown, told = host + (":" + port if port else ""), bool(scheme) or bool(port) and len(port) < 6
+    if host[-1].isalpha():
+        filed = host.endswith(".local") and not scheme and bool(
+            FILED.search(host) or low[at - 1:at] in ("/", "\\") and low[max(at - 2, 0):at] != "//"
+            or re.match(r":\d", low[m.end():m.end() + 2]))
+        return shown if told and not filed else ""
+    try:
+        ip = ipaddress.ip_address(host.strip("[]").split("%")[0])  # past a zone: fe80::12%en0
+    except ValueError:
+        return ""
+    ip = getattr(ip, "ipv4_mapped", None) or ip  # ::ffff:10.0.0.1 is 10.0.0.1
+    near = ip.is_link_local or any(ip in ipaddress.ip_network(net) for net in NEAR)
+    return shown if ip.is_loopback or ip.is_unspecified or near and (told or host[0] == "[") else ""
 
 
 def temporary_addresses(texts: list, config: dict):
     """The addresses in these words that can change, or that only this machine or its network answers: a quick tunnel's
     host (a subdomain of a tunnel service, or a host the config names and its subdomains) and, unless `local` is false,
-    a local name or a private address written with a scheme or a port, and a loopback address however written. A
-    string when the setting cannot be read. {"temporary_addresses": {"hosts": ["<more>"], "local": true}}; no key, no rule."""
-    rule = config.get("temporary_addresses")
-    if rule is None:
+    a local name or a private address written with a scheme or a port, and a loopback address however written
+    (`_only_here`). A user and password before a host are read past and never shown. A string when the setting
+    cannot be read. {"temporary_addresses": {"hosts": ["<more>"], "local": true}}; no key, no rule, and a key that is
+    there and null is a setting that cannot be read."""
+    if "temporary_addresses" not in config:
         return []
+    rule = config["temporary_addresses"]
     more, local = (rule.get("hosts", []), rule.get("local", True)) if isinstance(rule, dict) else (None, None)
     if not isinstance(more, list) or not all(isinstance(h, str) and h.strip() for h in more) or not isinstance(local, bool):
-        return ('temporary_addresses in the synthesis config needs "hosts" as a list of host names and "local" as true or '
-                "false (either may be absent); sends are blocked until it is fixed")
+        return ('temporary_addresses in the synthesis config needs an object, {} or one with "hosts" as a list of host names '
+                'and "local" as true or false (either may be absent); sends are blocked until it is fixed')
     exact = {h.strip().lower().lstrip(".") for h in more}
     ends, found = TUNNELS + tuple("." + h for h in exact), set()
-    for low in (str(text).lower() for text in texts):
+    for low in (re.sub(r"://[^\s/?#]*@", "://", str(text).lower()) for text in texts):  # to the last @: a password may hold one
         found |= {h for h in HOSTNAME.findall(low) if h in exact or h.endswith(ends)}
-        found |= {next(g for g in m.groups() if g) for m in LOCAL.finditer(low)} if local else set()
+        found |= {_only_here(m, low) for m in LOCAL.finditer(low)} - {""} if local else set()
     return sorted(found)
 
 
@@ -1679,26 +1709,56 @@ def check_deploy(command: str, config: dict, cwd: str | None = None, session: di
 
 
 TUNNEL_SSH = ("serveo.net", "localhost.run", "pinggy.io")
-RUNNERS = ("npx", "bunx", "pnpx", "pnpm", "yarn")
+CARRIERS = ("pnpm", "yarn", "npm", "bun", "docker", "podman", "nerdctl")  # run the package, the program or the image their words name
+NGROK = ("http", "tcp", "tls", "start", "start-all", "config", "version", "update", "diagnose", "api", "service", "credits",
+         "completion", "help", "authtoken")  # its subcommands: the first five start a tunnel
+SSH_VALUED = "BbcDEeFIiJLlmOoPpQRSWw"  # ssh's options that take a value: joined on, or the next word
+
+
+def _reverse_host(rest: list[str]) -> str:
+    """The host an ssh command opens a reverse forward on, "" when it opens none: its destination (the first word that
+    is no option and no option's value, without the user, a scheme or a port) when -R is among its options, before the
+    destination or after it: alone, in a cluster (-NR) or with its value joined on. A jump host, a key file's name and
+    the words of the remote command are none of it (2026-11-12: a forward to a host that ends with a service's
+    letters, and one that only named a service, were held; -NR was not)."""
+    reverse, host, i = False, None, 0
+    while i < len(rest) and (host is None or rest[i].startswith("-")):  # the next plain word after the destination starts the remote command
+        word, i = rest[i], i + 1
+        if not word.startswith("-"):
+            host = re.match(r"(?:ssh://)?(?:[^@/]*@)?([^:/]*)", word.lower())[1].rstrip(".")
+            continue
+        at = next((j for j, c in enumerate(word) if c in SSH_VALUED), 0)  # the first letter that takes a value
+        reverse, i = reverse or word[at] == "R", i + (0 < at == len(word) - 1)  # nothing joined on: its value is the next word
+    return host or "" if reverse else ""
 
 
 def _tunnels(words: list[str]) -> bool:
-    """Does this command start a quick tunnel: an address handed out for as long as the command runs?"""
-    name, rest = os.path.basename(words[0]), words[1:]
+    """Does this command start a quick tunnel: an address handed out for as long as the command runs? A program is read
+    without a version or a tag (localtunnel@2.0.2, cloudflare/cloudflared:latest), and the words of a package runner or
+    a container from each one on, as the command it runs (2026-11-12: `docker run cloudflare/cloudflared tunnel --url`,
+    `ngrok --log=stdout http` and `npx --yes localtunnel@2.0.2 --port` started unheld)."""
+    def named(word: str) -> str:
+        return re.split("[:@]", os.path.basename(word))[0]
 
-    def flag(*names):
-        return any(w in names or w.startswith(tuple(n + "=" for n in names)) for w in rest)
-    return bool(name == "cloudflared" and "tunnel" in rest and flag("--url")
-                or name == "ngrok" and rest[:1] in (["http"], ["tcp"], ["tls"], ["start"], ["start-all"])
-                or name == "devtunnel" and rest[:1] == ["host"]
-                or (name in ("lt", "localtunnel") or name in RUNNERS and "localtunnel" in rest) and flag("--port", "-p")
-                or name == "ssh" and any(w.startswith("-R") for w in rest) and any(w.rsplit("@", 1)[-1].endswith(TUNNEL_SSH) for w in rest))
+    def starts(name: str, rest: list) -> bool:
+        def flag(*names):
+            return any(w in names or w.startswith(tuple(n + "=" for n in names)) for w in rest)
+        return bool(name == "cloudflared" and "tunnel" in rest and flag("--url")
+                    or name == "ngrok" and next((w for w in rest if w in NGROK), "") in NGROK[:5]  # past its own options and their values
+                    or name == "devtunnel" and rest[:1] == ["host"]
+                    or name in ("lt", "localtunnel") and flag("--port", "-p")
+                    or name in ("ssh", "pinggy")  # to the service's own name, or a subdomain of it
+                    and ("." + _reverse_host(rest)).endswith(tuple("." + s for s in TUNNEL_SSH)))
+    spots = [i for i, w in enumerate(words) if i and not w.startswith("-")] if named(words[0]) in CARRIERS else [0]
+    return any(starts(named(words[i]), words[i + 1:]) for i in spots)
 
 
 def check_tunnel(command: str, config: dict, cwd: str, session: dict | None = None) -> str | None:
-    """Starting a quick tunnel waits for the principal's code, where the config has `temporary_addresses`: its address
-    is gone when the command stops, so it serves their own test and nothing another person is given."""
-    if config.get("temporary_addresses") is None or not any(_tunnels(words) for words, _ in _parse(command, cwd)[0] if words):
+    """Starting a quick tunnel waits for the principal's code, where the config has `temporary_addresses` (the key,
+    whatever it holds): its address is gone when the command stops, so it serves their own test and nothing another
+    person is given."""
+    if "temporary_addresses" not in config or not any(  # in each reading of it: `T=cloudflared; $T tunnel --url ...`
+            _tunnels(words) for text in _resolved(command) for words, _ in _parse(text, cwd)[0] if words):
         return None
     if approvals.consume("tunnel", command, session):
         return None

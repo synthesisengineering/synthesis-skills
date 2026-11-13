@@ -1279,7 +1279,7 @@ def run_checks(home: Path | None = None, find=find_client, latest_ref: str = "",
                check_outbox(paths.outbox(), *connector_files())]
     if config.get("pr_gated") is not None:
         checks.append(check_pr_gate(config["pr_gated"], repos))
-    if config.get("temporary_addresses") is not None:
+    if "temporary_addresses" in config:  # null is a setting that cannot be read, and fails its line
         checks.append(check_temporary_addresses(config))
     if latest_ref:
         checks.append(check_latest(versions, latest_ref))

@@ -704,6 +704,19 @@ def test_doctor_with_no_harness_on_path_warns(machine):
     assert any(c.name == "harnesses" and c.status == "warn" for c in checks)
 
 
+def test_a_setting_that_is_present_and_null_fails_its_line_and_an_absent_one_has_no_line(machine):
+    """`"temporary_addresses": null` is a setting that cannot be read, not a rule that is off: only an absent key is."""
+    def line():
+        return [c for c in doctor.run_checks(find=lambda name: None) if c.name == "temporary addresses"]
+
+    assert line() == []
+    paths.config_file().write_text(json.dumps({"temporary_addresses": None}), encoding="utf-8")
+    found = line()
+    assert len(found) == 1 and found[0].status == "fail" and "temporary_addresses" in found[0].detail
+    paths.config_file().write_text(json.dumps({"temporary_addresses": {}}), encoding="utf-8")
+    assert [c.status for c in line()] == ["ok"]
+
+
 def test_a_hung_cli_is_bounded_and_reaped(tmp_path):
     script = tmp_path / "hang"
     script.write_text("#!/bin/sh\nexec sleep 30\n")

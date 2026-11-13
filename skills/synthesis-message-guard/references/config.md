@@ -26,7 +26,7 @@ no `~/.synthesis`.
 | `messaging_apps` | Extra bundle ids of chat apps where computer use counts as messaging (Return sends, shift with Return writes a line), beside the built-in list below. A value that is not a list of strings stops every computer-use action. |
 | `same_day_meetings` | `{"exempt": ["<address or pattern>"], "own": ["<address or pattern>"]}` (`own` optional: the principal's addresses beyond those `account_routing` names). With this key present, a calendar create, update or move that starts today and invites anyone but the principal waits for an approval of its own that names it same-day. A meeting with an exempt attendee keeps the ordinary approval. Absent means no rule; a value that is not this shape blocks calendar writes. See below. |
 | `in_person_travel` | `{"preferences": "<the chief-of-staff preferences file>"}`. With this key present, a calendar write that creates an event at a place, or gives one a place, is refused unless the call carries the event's travel line (`Travel: ...` in its description). What a place is comes from that file's `travel_policy` and the chief of staff's `travel_check.py`. No approval is asked. Without the key nothing changes; a policy that cannot be read refuses the write |
-| `temporary_addresses` | `{"hosts": ["<more host names>"], "local": true}` (both optional; `{}` turns the rule on). With this key present, a send, a draft, a shell post or typed words that hold an address that can change, or that only this machine or its network answers, are refused before any approval is asked, and starting a quick tunnel waits for a code of its own. Absent means no rule; a value that is not this shape blocks sends. See below. |
+| `temporary_addresses` | `{"hosts": ["<more host names>"], "local": true}` (both optional; `{}` turns the rule on). With this key present, a send, a draft, a shell post or typed words that hold an address that can change, or that only this machine or its network answers, are refused before any approval is asked, and starting a quick tunnel waits for a code of its own. Absent means no rule; a value that is not this shape, `null` included, blocks sends. See below. |
 | `preferred_names` | People who go by a name other than their official first name: `[{"official": "Robert", "preferred": "Bob", "identifiers": ["bob@example.test", "U0EXAMPLE"]}]`. Optional; absent means no name check. See below. |
 
 None of these keys can grant a send: approval is always the principal's, and overrides
@@ -133,7 +133,16 @@ address was gone for good. With `temporary_addresses` in the config:
   connector refuses to start on, or a host the config's `hosts` names and its subdomains), and, unless `local` is
   false: `localhost`, a `.local` or `.localhost` name or a private-range address written with a
   scheme or a port (`http://localhost:8787`, `my-laptop.local:3000`, `http://192.168.1.20:8000`),
-  and a loopback or any-interface address however written (`127.0.0.1`, `0.0.0.0`). It reads every
+  and a loopback or any-interface address however written (`127.0.0.1`, `0.0.0.0`). A port is one
+  to five digits (`localhost:9`, `laptop.local:9`), and a host is read whole, to where its name
+  ends. The scheme may be any but `file://`, whose host names this disk
+  (`file://localhost/tmp/plan.pdf` is a file, as a connector takes one), and a user and password
+  before the host are read past and never shown (`ssh://10.1.2.3`, `ftp://192.168.1.2/data`,
+  `postgres://app:secret@10.1.2.3:5432/app`);
+  a quick tunnel's host is read past them too. A link-local address counts with the private ranges
+  (`http://169.254.169.254`, `169.254.10.1:8080`). A bracketed IPv6 address that is loopback,
+  any-interface, unique-local or link-local is refused however written (`http://[fd12::42]:8080`,
+  `http://[fe80::12]:9090`, `[::1]`). It reads every
   path a message takes: a connector's send or draft, a shell command that posts, and words typed
   into a messaging app or a browser page.
 - **What releases it:** the principal's approval of the address itself. The refusal carries a code
@@ -142,14 +151,59 @@ address was gone for good. With `temporary_addresses` in the config:
   releases an address, and an approval of one address covers no other.
 - **What passes:** the word `localhost` in a sentence, a file named `.env.local`, a version number
   that looks like an address (`10.2.3.4`), a tunnel service's own site, a look-alike host, and an
-  address at a host no rule names.
+  address at a host no rule names. A public name that only begins like a local one is that public
+  name (`https://localhost.example.org`, `https://10.2.3.4.example.org`,
+  `https://example.localhost.org`), and so is a name that a wildcard-DNS service points at a
+  private address (`https://app.192.168.1.20.nip.io`): put the service in `hosts` (`nip.io`) to
+  have its names refused. A file's name with its line number is no address: a dotfile
+  (`.env.local:12`), a name that goes on past `.local` (`settings.local.json:3`), and a name ending
+  in `.local` with no scheme before it that is a configuration file's (`config.local:7`: the word
+  before `.local` is `config`, `conf`, `cfg`, `cnf`, `ini`, `env`, `rc`, `settings`, `properties`,
+  `json`, `yaml`, `yml`, `toml`, `makefile` or `dockerfile`), that follows a path
+  (`src/app.local:42`, `/etc/rc.local:14`) or that has a column after its line
+  (`notes.local:17:3`). Any other name ending in `.local` with a port is an address
+  (`app.local:7`), and so is every one after a scheme (`http://config.local:7`). An address
+  outside those ranges passes after any scheme (`ssh://build.example.com`, `http://172.32.0.1`,
+  `http://[2001:db8::1]:8080`), and so does a bracket that follows a word (`rows[::1]`).
 - **Starting a tunnel:** `cloudflared tunnel --url ...`, `ngrok http`, `tcp`, `tls` or `start`,
   `devtunnel host`, `localtunnel` or `lt` with a port (also through `npx`, `bunx`, `pnpm` or `yarn`), and a reverse
   `ssh -R` to `serveo.net`, `localhost.run` or `pinggy.io` wait for the principal's code. The hold
   says what a quick tunnel is for: their own test, with an address that is never given to anyone. A
-  named tunnel (`cloudflared tunnel run <name>`) is a deployment and is not held here.
+  named tunnel (`cloudflared tunnel run <name>`) is a deployment and is not held here. The `ssh`
+  destination is read as a host, in any case, with or without a user, an `ssh://` scheme or a
+  port: a reverse forward is a tunnel when that host is the service's name or a subdomain of it
+  (`serveo.net`, `qr@a.pinggy.io`). A host that only ends with a service's letters is someone
+  else's (`notserveo.net`, `team-pinggy.io`), and a jump host, a key file's name or a word of the
+  remote command that carries a service's name makes no tunnel.
+- **The forms a start takes:** each of those is read however the command spells it.
+  - The program named through a variable the command sets:
+    `tunnel_program=cloudflared; $tunnel_program tunnel --url ...`.
+  - A package or an image without its version or tag: `npx --yes localtunnel@2.0.2 --port 7777`,
+    `cloudflare/cloudflared:latest`.
+  - The words of `pnpm`, `yarn`, `npm`, `bun`, `docker`, `podman` and `nerdctl`, read from each
+    one on as the command it runs: `pnpm dlx localtunnel@2.0.2 --port 7777`,
+    `npm exec --yes localtunnel@2 -- --port 3000`,
+    `docker run --rm cloudflare/cloudflared tunnel --url ...`,
+    `docker run ngrok/ngrok:latest http 8080` and
+    `docker run pinggy/pinggy -p 443 -R0:localhost:8000 a.pinggy.io` (`pinggy` takes the words
+    `ssh` does).
+  - `ngrok`'s subcommand after its own options and their values: `ngrok --log=stdout http 7777`,
+    `ngrok --config ngrok.yml start web`. It is the first word that names one of its subcommands;
+    `http`, `tcp`, `tls`, `start` and `start-all` start a tunnel.
+  - `-R` alone, in a cluster or with its value joined on, before the destination or after it:
+    `ssh -NR 80:localhost:7777 nokey@localhost.run`, `ssh -NR80:localhost:3000 serveo.net`.
+  - What starts nothing still passes: a variable that only names the program
+    (`echo "$tunnel_program"`), a named tunnel in a container
+    (`docker run cloudflare/cloudflared tunnel run <name>`), `docker pull` of an image,
+    `ngrok help http`, `ngrok --log=stdout config check`, a package that is installed or looked
+    up (`npm install localtunnel@2.0.2`), another package with a port
+    (`npx --yes cowsay@1.6.0 --port 7777`), a forward the other way (`ssh -NT -L ...`), and `-R`
+    among the words of a remote command (`ssh nokey@localhost.run ls -R /tmp`).
 - **The doctor** proves the rule reads a quick tunnel's address under the installed config
   (`temporary addresses`), and fails when the setting cannot be read.
+- **A setting that cannot be read:** anything but an object of that shape, a key that is present
+  and `null` included. Sends stop with a message that names the setting, starting a quick tunnel
+  is still held for its code, and the doctor fails its line. Only an absent key means no rule.
 
 What a handoff to another person needs instead is in synthesis-implementation-integrity,
 `references/handoff-gate.md`.
