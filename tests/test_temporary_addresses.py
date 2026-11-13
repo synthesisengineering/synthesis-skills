@@ -165,6 +165,17 @@ def test_no_key_is_no_rule_and_a_setting_that_cannot_be_read_stops_the_send():
         assert "temporary_addresses" in reason and "Sending needs" not in reason
 
 
+def test_a_setting_that_is_present_and_null_cannot_be_read_only_an_absent_key_is_no_rule():
+    null = {**CONFIG, "temporary_addresses": None}
+    reason = said("An ordinary note.", config=null)
+    assert "temporary_addresses" in reason and "needs an object" in reason and "Sending needs" not in reason
+    held = guards.check("Bash", {"command": STARTS_A_TUNNEL[0]}, null, cwd="/tmp")
+    assert held and "temporary tunnel" in held                          # starting one is held under a setting no one can read
+    from synthesis import doctor
+    check = doctor.check_temporary_addresses(null)
+    assert check.status == "fail" and "temporary_addresses" in check.detail and "needs an object" in check.detail
+
+
 STARTS_A_TUNNEL = [
     "cloudflared tunnel --url http://localhost:8787", "cloudflared tunnel --url=http://localhost:8787 --no-autoupdate",
     "nohup cloudflared tunnel --url http://localhost:8787 > /tmp/t.log 2>&1 &", "env X=1 ngrok http 8080", "ngrok tcp 22",
