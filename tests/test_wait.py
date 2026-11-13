@@ -450,14 +450,16 @@ def test_a_command_that_cannot_be_started_is_refused_at_once_in_one_line(two, tm
 
 
 def test_a_command_that_cannot_be_started_gets_no_second_try_and_one_that_starts_and_fails_does(two, clock, monkeypatch, capsys):
-    """Whatever the system says of a command it cannot run is the refusal, said once, with no sleep and no second try,
-    and so it is for a command that goes missing between two tries. Of a program that is there to run, only the
-    system's own words are said. A command that starts and exits with anything but 0, the 126 and 127 of a shell
-    included, has failed a try: it is tried again until the bound."""
+    """The refusal is said once, with no sleep and no second try, and so it is for a command that goes missing between
+    two tries. Its plain words are said only of what is there: "was not found" when nothing by that name is and the
+    system found none, "is not executable" when a file by that name is and cannot be run. Of a program that can be
+    run, and of a name nothing was seen of, only the system's own words are said. A command that starts and exits
+    with anything but 0, the 126 and 127 of a shell included, has failed a try: it is tried again until the bound."""
     import shutil
     from synthesis import paths, wait
-    starts, tried, there, asked = [], [], [], signal.getsignal(signal.SIGTERM)
-    monkeypatch.setattr(shutil, "which", lambda name: f"/usr/bin/{name}" if there else None)   # whether a program by the name is there to run
+    starts, tried, there, asked = [], [], set(), signal.getsignal(signal.SIGTERM)
+    monkeypatch.setattr(shutil, "which",                                              # what is there by the name: a file, and whether it runs
+                        lambda name, mode=os.F_OK | os.X_OK: f"/usr/bin/{name}" if ("runs" if mode & os.X_OK else "file") in there else None)
 
     class Check:                                                                      # each start ends as the test set it: an exit code, or no start
         def __init__(self, command, **kwargs):
@@ -478,14 +480,16 @@ def test_a_command_that_cannot_be_started_gets_no_second_try_and_one_that_starts
         assert not list((paths.board() / "waits").rglob("*.json")) and signal.getsignal(signal.SIGTERM) is asked
         return code, said.out, said.err, len(tried), round(clock.now - began, 2)      # what it returned and printed, its tries, the seconds it took
     refused = "`ci-check --branch main` could not be started: its program 'ci-check' {}\n"
-    for error, why in ((FileNotFoundError(errno.ENOENT, "No such file or directory", "ci-check"), "was not found"),
-                       (PermissionError(errno.EACCES, "Permission denied", "ci-check"), "is not executable"),
-                       (OSError(errno.ENOEXEC, "Exec format error", "ci-check"), "cannot be run (Exec format error)")):   # a file that is no program
-        assert run(error) == (2, "", refused.format(why), 1, 0)
-    there.append("ci-check")                                                          # now a program by that name is there, and may be run
-    for error, why in ((FileNotFoundError(errno.ENOENT, "No such file or directory", "ci-check"), "cannot be run (No such file or directory)"),
-                       (PermissionError(errno.EPERM, "Operation not permitted", "ci-check"), "cannot be run (Operation not permitted)")):
-        assert run(error) == (2, "", refused.format(why), 1, 0)                       # its interpreter is missing; a sandbox forbids the run
+    for seen, code, why in (
+            ((), errno.ENOENT, "was not found"),
+            ((), errno.EACCES, "cannot be run (Permission denied)"),                  # a folder of PATH could not be searched: nothing was seen
+            (("file",), errno.EACCES, "is not executable"),                           # a file by that name, with no execute bit
+            (("file", "runs"), errno.ENOENT, "cannot be run (No such file or directory)"),   # a script whose interpreter is missing
+            (("file", "runs"), errno.EPERM, "cannot be run (Operation not permitted)"),      # a program a sandbox forbids
+            (("file", "runs"), errno.ENOEXEC, "cannot be run (Exec format error)")):         # a file that is no program
+        there.clear()
+        there.update(seen)
+        assert run(OSError(code, os.strerror(code), "ci-check")) == (2, "", refused.format(why), 1, 0), (seen, code)
     there.clear()
     gone = FileNotFoundError(errno.ENOENT, "No such file or directory", "ci-check")
     assert run(1, gone) == (2, "", refused.format("was not found"), 2, 30.02)         # it started and failed, then it was gone
