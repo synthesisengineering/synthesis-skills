@@ -87,6 +87,22 @@ def test_a_test_mode_set_by_halves_stops_the_start(change):
             in problems({**BASE, **change}))
 
 
+THREE = "lead@example.com, second@example.com, third@example.com"
+
+
+def test_the_operator_addresses_are_one_persons_own_accounts_three_at_most():
+    assert load({**BASE, **OPERATOR, "KB_OPERATOR_ADDRESSES": THREE}).operator_addresses == THREE
+    twice = THREE + ", LEAD@Example.com ,third@example.com"                     # an address named twice is one address
+    assert load({**BASE, **OPERATOR, "KB_OPERATOR_ADDRESSES": twice}).operator_addresses == twice
+    for more, count in ((", fourth@example.com", 4), (", fourth@example.com, LEAD@example.com, fifth@example.com", 5)):
+        text = problems({**BASE, **OPERATOR, "KB_OPERATOR_ADDRESSES": THREE + more})
+        assert (f"KB_OPERATOR_ADDRESSES names {count} addresses and may name three at most: they are one person's own "
+                "accounts, since the operator-only test mode is that person's test and nobody else's. Other people come "
+                "in through KB_ALLOWED_EMAILS or KB_ALLOWED_GROUPS, on a deployed connector with the mode off") in text
+    off = problems({**BASE, "KB_OPERATOR_ADDRESSES": THREE + ", fourth@example.com"})  # four named, the mode not on
+    assert "names 4 addresses and may name three at most" in off and "needs both KB_OPERATOR_TEST=1" in off
+
+
 NO_STORE = {name: value for name, value in BASE.items() if name not in ("KB_OAUTH_STORE", "KB_STORAGE_ENCRYPTION_KEY")}
 MEMORY_REFUSED = ("KB_OAUTH_STORE must be firestore, with KB_STORAGE_ENCRYPTION_KEY: anything other people use must keep "
                   "its state across restarts, and with more than one instance a memory store breaks sign-in outright. A "

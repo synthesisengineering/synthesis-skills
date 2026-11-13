@@ -573,6 +573,23 @@ def test_main_says_test_only_at_the_start_of_the_operators_own_test(published, m
     assert "needs both KB_OPERATOR_TEST=1 and KB_OPERATOR_ADDRESSES" in capsys.readouterr().err
 
 
+def test_main_names_each_of_three_operator_addresses_and_refuses_to_start_with_a_fourth(published, monkeypatch, caplog,
+                                                                                       capsys):
+    env = {"KB_SOURCE_DIR": str(published), "KB_PUBLIC_URL": "http://localhost:8080", "KB_GOOGLE_CLIENT_ID": CLIENT_ID,
+           "KB_GOOGLE_CLIENT_SECRET": "test-secret", "KB_ALLOWED_EMAILS": "lead@example.com", "KB_REFRESH_SECONDS": "0",
+           "KB_OPERATOR_TEST": "1"}
+    three = "third@example.com, Second@Example.com, lead@example.com"
+    served = []
+    monkeypatch.setattr(server.FastMCP, "run", lambda self, **kwargs: served.append(self))
+    assert server.main({**env, "KB_OPERATOR_ADDRESSES": three}) == 0
+    assert served[-1].auth.policy.operators == {"lead@example.com", "second@example.com", "third@example.com"}
+    (line,) = [message for message in caplog.messages if message.startswith("TEST ONLY")]
+    assert "Only lead@example.com, second@example.com, third@example.com can sign in." in line
+    assert server.main({**env, "KB_OPERATOR_ADDRESSES": three + ", fourth@example.com"}) == 2 and len(served) == 1
+    assert ("kb-connector: the connector cannot start:\n  - KB_OPERATOR_ADDRESSES names 4 addresses and may name three "
+            "at most: they are one person's own accounts") in capsys.readouterr().err
+
+
 def test_main_refuses_a_temporary_address_and_the_operators_own_test_says_what_ends_it(published, monkeypatch, caplog,
                                                                                       capsys):
     env = {"KB_SOURCE_DIR": str(published), "KB_PUBLIC_URL": "https://quiet-river-demo.trycloudflare.com",
