@@ -153,7 +153,7 @@ lists every problem at once.
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `KB_PUBLIC_URL` | required | The service's public `https://` address, with no path. `http://` is accepted only for localhost. A temporary or local address starts only as the operator's own test (below the tables). |
+| `KB_PUBLIC_URL` | required | The service's origin and nothing more: `https://`, the host, and a port if it needs one, such as `https://kb.example.com`. A trailing `/` is accepted; a path, a query, a fragment or a user-info part stops the start, and so does a host written as a number in an old spelling, in either mode (below the tables). `http://` is accepted only for `localhost` (also written `localhost.`), `127.0.0.1` and `[::1]`. A temporary or local address starts only as the operator's own test (below the tables). |
 | `KB_OPERATOR_TEST` | off | `1` turns on the operator-only test mode (section 4): only `KB_OPERATOR_ADDRESSES` can sign in, the start logs a line that begins `TEST ONLY`, and `/health` carries `"test_only": true`. Any value but `1`, `0` or none stops the start. |
 | `KB_OPERATOR_ADDRESSES` | required with `KB_OPERATOR_TEST=1` | The operator's own email address, or up to three of that one person's own accounts, separated by commas. A fourth address stops the start (below the tables). Set while the mode is off, it stops the start, so a misspelled switch cannot leave the whole list admitted. |
 | `KB_GOOGLE_CLIENT_ID` | required | The Google OAuth client's ID. |
@@ -182,24 +182,65 @@ lists every problem at once.
 | `KB_HOST` | `0.0.0.0` | Address to listen on. |
 | `KB_LOG_LEVEL` | `INFO` | Log level: `DEBUG`, `INFO`, `WARNING`, `ERROR` or `CRITICAL`. The line that begins `TEST ONLY` is logged whatever the level. |
 
+**An origin and nothing more.** `KB_PUBLIC_URL` is the origin the connector builds its own
+addresses on: `/mcp` for the clients and `/auth/callback` for Google. It is the scheme, the host and
+a port if it needs one. `https://kb.example.com`, `https://kb.example.com/`, `https://kb.example.com:8443`
+and `HTTPS://KB.Example.COM` all start. A path other than `/`, a query, a fragment or a user-info
+part (`user:password@`) stops the start, in either mode, and so does an empty query or fragment
+(`https://kb.example.com/?`), since the address is read as written. The start prints which parts it
+found and the address written correctly, then exits 2; `https://kb.example.com/mcp` prints:
+
+```text
+kb-connector: the connector cannot start:
+  - KB_PUBLIC_URL must be an origin and nothing more: the scheme, the host and a port if it needs one, since the connector builds its own addresses (/mcp, /auth/callback) on it. It has a path, which is not allowed. Write it as https://kb.example.com
+```
+
+With more than one part it names each, in order: `It has a user-info part (user:password@), a path,
+a query and a fragment, which are not allowed.` It names a part and never shows it, since a password
+or a query can be a secret and the message is printed. The address it shows keeps `http://` only
+for localhost and is `https://` otherwise. A port that is not a number from 1 to 65535 is a malformed
+address: `KB_PUBLIC_URL must be the service's https:// address (http:// only for localhost)`.
+
+**An IP address in an old spelling.** A host written as a number in an old spelling, such as
+`127.1`, `2130706433`, `0x08080808` or `010.8.8.8`, stops the start in either mode, whatever
+address it denotes, public or not. Programs read such a spelling differently: one takes `010.8.8.8`
+for `8.8.8.8`, another for `10.8.8.8`, and a third looks it up as a name. The start prints this,
+with the host it read, and exits 2:
+
+```text
+kb-connector: the connector cannot start:
+  - KB_PUBLIC_URL writes its host as a number in an old spelling (0x08080808): programs read such a spelling differently, as one IP address, as another or as a name to look up, so the connector refuses it whatever address it denotes. Write the host as a name: the service's domain, or localhost for the operator's own test
+```
+
+An IP address in its standard form (`8.8.8.8`, `[2606:4700:4700::1111]`) is not an old spelling,
+and is judged by the next rule.
+
 **Temporary addresses.** Outside the operator-only test mode the connector does not start when
 `KB_PUBLIC_URL` names an address that lasts only as long as one machine or its tunnel:
 
 - a tunnel service's own domain, or any host under it: `trycloudflare.com`, `ngrok.io`,
   `ngrok.app`, `ngrok.dev`, `ngrok.pizza`, `ngrok-free.app`, `ngrok-free.dev`, `ngrok-free.pizza`,
   `loca.lt`, `localtunnel.me`, `serveo.net`, `serveousercontent.com`, `localhost.run`, `lhr.life`,
-  `lhr.rocks`, `pinggy.io`, `pinggy.link`, `pinggy-free.link`, `devtunnels.ms` and
-  `app.github.dev`;
+  `lhr.rocks`, `pinggy.io`, `pinggy.link`, `pinggy-free.link`, `devtunnels.ms`,
+  `app.github.dev`, `ts.net`, `tunnelmole.net`, `bore.pub` and `loophole.site`;
 - `localhost`, and any name that ends in `.localhost` or `.local`;
 - an IP address the internet cannot reach: loopback (`127.0.0.1`, `[::1]`), `0.0.0.0`, the private
   ranges (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `fc00::/7`), link-local addresses, the
-  shared range `100.64.0.0/10` and the reserved ranges; and any IP address in an old spelling,
-  such as `127.1`.
+  shared range `100.64.0.0/10` and the reserved ranges.
+
+An IPv6 address that carries an IPv4 address is judged as the IPv4 address it carries: mapped
+(`[::ffff:100.64.0.1]`), compatible (`[::100.64.0.1]`), NAT64's well-known prefix
+(`[64:ff9b::100.64.0.1]`) and 6to4 (`[2002:6440:1::1]`) are all `100.64.0.1`, in the shared range,
+and `[::ffff:8.8.8.8]` is `8.8.8.8`, a public address. The verdict is the same on every Python from
+3.9 on; Python's own verdicts on these forms differ from one version to the next.
 
 The address is read as a host. `demo.trycloudflare.com` counts, and so does the same host in upper
-case or with a port; `nottrycloudflare.com` and `https://kb.example.com/trycloudflare.com` do not.
-The list is `TEMPORARY_HOSTS` in `kb_connector/config.py`. A tunnel service that is not on it is
-not caught, so add its domain there when one comes into use.
+case, with a port or with a trailing dot (`localhost.` is `localhost`); `nottrycloudflare.com` does
+not, and a listed name in a path or a query (`https://kb.example.com/trycloudflare.com`) is refused
+as a path or a query, not as a temporary address. The list is `TEMPORARY_HOSTS` in
+`kb_connector/config.py`; the send guard keeps the same list (`TUNNELS` in `synthesis/guards.py`), and
+a test holds the two equal. A tunnel service that is not on it is not caught, so add its domain to
+both when one comes into use.
 
 The start prints this, with the host it read, and exits 2:
 
@@ -499,7 +540,8 @@ The running connector (`python -B -m kb_connector` from `scripts/connector/`) pr
 fails, and `sign-in allowed for <email>` or `sign-in refused for <email>: <reason>` per sign-in. If
 its settings are wrong it prints `kb-connector: the connector cannot start:` and every problem,
 then exits 2; outside the test mode a temporary address and the memory sign-in store are two of
-those problems (section 3). If the first load fails it prints
+those problems, and in either mode an address that is more than an origin and a host in an old
+numeric spelling are two more (section 3). If the first load fails it prints
 `kb-connector: the first load failed: <reason>` and exits 1.
 
 - **Is it current?** `/health` shows the served commit. Compare it with the published repository's
@@ -524,6 +566,12 @@ those problems (section 3). If the first load fails it prints
     memory store held ended with its process.
   - `KB_PUBLIC_URL` is a temporary or local address: deploy the connector at a permanent address
     (section 5), and give people that address in place of the old one.
+  - `KB_PUBLIC_URL` has a path, a query, a fragment or a user-info part: set it to the origin the
+    refusal shows. The connector is served at the root of its own origin, so a deployment reached
+    through a path on a shared host moves to a host of its own; when the address changes, add the
+    new `/auth/callback` to the OAuth client (5.3) and give each person the new origin followed by
+    `/mcp` (section 6).
+  - `KB_PUBLIC_URL` writes its host as a number in an old spelling: write it as the host's name.
 - **Groups:** with `KB_ALLOWED_GROUPS` set, `/health` also reports `access_groups`: its `status`
   (`ok`, or `stale` once the membership is older than three intervals, which also makes `/health`
   answer 503), when it was last read, and whether the last read failed.

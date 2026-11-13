@@ -40,7 +40,8 @@ Notebook (`scripts/publish_drive.py`).
 6. **Secrets come from a secret manager,** never from the image, a repository or a deploy script:
    the OAuth client secret, the JWT signing key, the storage encryption key and the deploy key.
 7. **Production uses `KB_OAUTH_STORE=firestore` with `KB_STORAGE_ENCRYPTION_KEY`.** The memory
-   store loses every sign-in when an instance stops, and Cloud Run stops instances freely.
+   store loses every sign-in when an instance stops, and Cloud Run stops instances freely. The
+   connector starts on it only in the operator-only test mode.
 8. **Use an Internal OAuth consent screen** in the organization's Google Workspace, so accounts
    outside the organization cannot even begin a sign-in.
 9. **Pin known-hosts lines you checked against the git host's published fingerprints;** host keys
