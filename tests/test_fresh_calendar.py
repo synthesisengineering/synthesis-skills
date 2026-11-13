@@ -38,8 +38,8 @@ def _session(principal):
     SESSION = {"transcript_path": str(RECORD), "session_id": "S-principal"}
 
 
-def read_calendar(minutes_ago=1.0, tool="mcp__workspace__get_events", error=False, result=True):
-    at = (datetime.now(timezone.utc) - timedelta(minutes=minutes_ago)).isoformat().replace("+00:00", "Z")
+def read_calendar(minutes_ago=1.0, tool="mcp__workspace__get_events", error=False, result=True, stamp=None):
+    at = stamp or (datetime.now(timezone.utc) - timedelta(minutes=minutes_ago)).isoformat().replace("+00:00", "Z")
     ident = f"toolu_{time.time_ns()}"
     with RECORD.open("a", encoding="utf-8") as handle:
         handle.write(json.dumps({"type": "assistant", "timestamp": at, "message": {"role": "assistant", "content": [
@@ -161,14 +161,17 @@ def test_the_config_names_more_tools_that_read_a_calendar():
 
 
 @pytest.mark.parametrize("body", ["Does 3:30 suit you?", "Let's say 15:30 on Thursday.", "I'm free at 3 pm.", "How about 11am?",
-                                  "Thursday, 3:30 p.m. Eastern.", "The call is at 9:05."])
+                                  "Thursday, 3:30 p.m. Eastern.", "The call is at 9:05.", "Shall we say 7.30 pm?", "Jeudi 15h30 ?",
+                                  "I can do 3:30p.", "Um 14:00h.", "Around 3PMish."])
 def test_a_clock_time_in_any_common_form_is_one(body):
     assert stale(ask(given=mail(body)))
 
 
 @pytest.mark.parametrize("body", ["I'll send the three items on Thursday.", "Version 2.10 is out.", "It costs $15 a seat.",
                                   "Due 2026-11-17.", "The ratio is 16:9 on that screen.", "Thursday afternoon suits me.",
-                                  "See section 3 of the plan, pm me if it is unclear."])
+                                  "See section 3 of the plan, pm me if it is unclear.", "The run took 1:23:45 in all.",
+                                  "It is at https://example.com/watch?t=1:30 on the page.",
+                                  "The job logged 2026-11-13T10:20:00-05:00 and stopped."])
 def test_what_names_no_clock_time_is_not_held_for_one(body):
     assert ordinary(ask(given=mail(body, subject="A note")))
 
@@ -211,3 +214,123 @@ def test_a_setting_of_another_shape_refuses_the_send_and_says_why(wrong):
 def test_a_session_with_no_record_to_read_is_held_and_can_be_released_by_the_code():
     held = guards.check(MAIL, mail(), CONFIG, cwd="/tmp", session={"transcript_path": "/nowhere/at/all.jsonl", "session_id": "S-principal"})
     assert stale(held) and "as it is" in held
+
+
+
+# --- after a review round (2026-11-13) ------------------------------------------------------------------------------
+
+ID_NAMED = "mcp__0a1b2c3d-0000-4000-8000-000000000000__"
+
+
+@pytest.mark.parametrize("tool, given", [
+    (ID_NAMED + "reply", {"messageId": "m1", "body": "<p>Would 3:30 pm work?</p>"}),
+    (ID_NAMED + "update_draft", {"draftId": "d1", "body": "<p>Would 3:30 pm work?</p>"}),
+    ("messages_send", {"to": "+15550100", "text": "See you at 3:30 pm"}),
+])
+def test_a_message_by_a_connector_the_guard_has_no_name_for_is_a_message_too(tool, given):
+    """The mail connector's server is named by an id, and its reply names no recipient: the rule had no channel for
+    it, so the incident's own kind of message asked only the ordinary code."""
+    assert stale(ask(tool, given))
+
+
+def test_a_calendar_write_and_a_harnesss_own_tool_are_none_of_this_rules(monkeypatch):
+    """A mail product's calendar tool has `mail` in its name and was held as a message; the code of its own then
+    released a meeting on today without the code a same-day meeting has."""
+    from datetime import date
+    monkeypatch.setattr(guards, "_today", lambda: date(2026, 11, 9), raising=False)
+    config = {**CONFIG, "send_tools": CONFIG["send_tools"] + ["mcp__*__create_event"], "same_day_meetings": {"exempt": []}}
+    event = {"summary": "Sync at 2:00 pm", "start_time": "2026-11-09T14:00:00", "end_time": "2026-11-09T14:30:00",
+             "attendees": ["a@example.com"], "user_google_email": "me@example.com"}
+    reason = ask("mcp__fastmail__create_event", event, config)
+    assert "same-day" in reason and "names a time" not in reason
+    assert "names a time" not in (ask("SendUserFile", {"files": ["plan.md"], "caption": "The call is at 3:30 pm."}) or "")
+
+
+def test_a_message_that_went_on_one_code_spends_the_other():
+    """With the ordinary code typed and the read grown old, the code of its own released the message, and the
+    ordinary grant stayed live: an identical call after a fresh read went a second time on it."""
+    read_calendar(minutes_ago=1)
+    first = ask()
+    assert ordinary(first)
+    _approve(first)
+    age_reads(30)
+    held = ask()
+    assert stale(held)
+    _approve(held)
+    assert ask() is None
+    read_calendar(minutes_ago=0.1)
+    assert ordinary(ask())                                               # a second copy asks again
+    other = mail("Would 4:15 pm on Thursday work for you?")
+    held = ask(given=other)                                              # the code of its own is asked for and not typed
+    assert stale(held)
+    read_calendar(minutes_ago=0.1)
+    again = ask(given=other)
+    assert ordinary(again)
+    _approve(again)
+    assert ask(given=other) is None
+    age_reads(30)
+    waiting = _approve(held, grant=False)                                # the earlier request went with the message: its code opens nothing
+    from synthesis import approvals
+    assert waiting not in approvals.pending()
+
+
+def test_the_code_of_its_own_releases_the_message_whatever_the_read_then_is():
+    held = ask()
+    _approve(held)
+    read_calendar(minutes_ago=0.1)
+    assert ask() is None                                                 # he approved this text as it is
+    age_reads(30)
+    assert stale(ask())
+
+
+@pytest.mark.parametrize("tool", ["mcp__sentry__search_events", "mcp__github__list_events", ID_NAMED + "list_events"])
+def test_a_tool_that_only_ends_like_a_calendar_read_is_none(tool):
+    """Any name that ended in `list_events` or `search_events` counted, an error tracker's and a repository's
+    among them. A calendar's tool says so in its name, or the setting names it."""
+    read_calendar(tool=tool)
+    assert stale(ask())
+
+
+@pytest.mark.parametrize("reads", [[ID_NAMED + "list_events"], ["mcp__0a1b2c3d-*__list_events"], ["list_events"]])
+def test_the_setting_names_a_calendar_tool_by_its_whole_name_a_pattern_or_its_end(reads):
+    read_calendar(tool=ID_NAMED + "list_events")
+    assert ordinary(ask(config={**CONFIG, "fresh_calendar": {"reads": reads}}))
+
+
+def test_a_read_dated_ahead_of_the_clock_is_no_read_of_the_last_minutes_and_a_time_with_no_zone_is_universal():
+    read_calendar(minutes_ago=-120)
+    assert stale(ask())
+    read_calendar(stamp=(datetime.now(timezone.utc) - timedelta(minutes=2)).replace(tzinfo=None).isoformat())
+    assert ordinary(ask())
+
+
+def test_many_reads_that_failed_cost_one_look_at_the_record(pace):
+    with RECORD.open("a", encoding="utf-8") as handle:
+        for n in range(3000):
+            handle.write(json.dumps({"type": "assistant", "timestamp": "2026-11-13T09:00:00.000Z", "message": {"role": "assistant", "content": [
+                {"type": "tool_use", "id": f"toolu_{n:05}", "name": "mcp__workspace__get_events", "input": {}}]}}) + "\n")
+            handle.write(json.dumps({"type": "user", "timestamp": "2026-11-13T09:00:01.000Z", "message": {"role": "user", "content": [
+                {"type": "tool_result", "tool_use_id": f"toolu_{n:05}", "is_error": n % 2 == 0, "content": "x" * 600}]}}) + "\n")
+    begun = time.perf_counter()
+    assert stale(ask())
+    assert time.perf_counter() - begun < 0.6 * pace
+
+
+def test_in_a_harness_whose_record_the_guard_does_not_read_the_hold_says_so(tmp_path):
+    """In Codex and Muse the read is never seen, so the hold asked for a read that could not clear it."""
+    rollout = tmp_path / "rollout-2026-11-13T09-00-00-0a1b2c3d.jsonl"
+    rollout.write_text(json.dumps({"timestamp": datetime.now(timezone.utc).isoformat(), "type": "response_item",
+                                   "payload": {"type": "function_call", "name": "get_events", "call_id": "c1", "arguments": "{}"}}) + "\n", encoding="utf-8")
+    held = guards.check(MAIL, mail(), CONFIG, cwd="/tmp", session={"transcript_path": str(rollout), "session_id": "S-principal"})
+    assert stale(held) and "cannot see" in held and "as it is" in held and "make this identical call again:" not in held
+
+
+def test_a_text_sent_from_the_shell_that_names_a_time_is_held():
+    command = """osascript -e 'tell application "Messages" to send "See you at 3:30 pm" to buddy "+15550100"'"""
+    held = guards.check("Bash", {"command": command}, CONFIG, cwd="/tmp", session=SESSION)
+    assert stale(held) and "3:30 pm" in held
+    read_calendar(minutes_ago=0.1)
+    reason = guards.check("Bash", {"command": command}, CONFIG, cwd="/tmp", session=SESSION)
+    assert reason and "posts to messages" in reason and "names a time" not in reason
+    quiet = """osascript -e 'tell application "Messages" to send "On my way" to buddy "+15550100"'"""
+    assert "names a time" not in guards.check("Bash", {"command": quiet}, CONFIG, cwd="/tmp", session=SESSION)
