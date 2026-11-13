@@ -1737,3 +1737,101 @@ def test_a_list_of_open_loops_a_label_or_a_rule_is_no_announcement(reply):
 @pytest.mark.parametrize("reply", _cases(A_SENTENCE_THAT_OPENS_WITH_THE_WAIT))
 def test_a_sentence_that_opens_with_the_wait_is_still_sent_back(reply):
     assert "nothing is armed" in _sent_back(reply)
+
+
+# --- review round 3 of 5.8.0 (2026-11-12) --------------------------------------------------------------------------
+# A third fresh review found ten defects in this check: one of forty replies that need no watcher sent back, three of
+# thirty unarmed waits passed, and six more in probes of each exemption and of the transcript reader. Each is fixed as
+# a class. The R3 ids are the review's replies; every other reply is written fresh for these tests.
+
+# Finding 1 of the review: what the session will do next is no outside event. After "once", "when", "after" or "until",
+# "I" or "we" with a verb of the session's own is a step in its own sequence; with a verb of receiving ("once I have
+# it", "when I hear back") the thing still has to come from somewhere, and that is a wait.
+R3_OWN_STEP_REVIEW = {"R3-01": "The branch is ready. I will resume after I update the snapshots."}
+THE_SESSIONS_OWN_NEXT_STEP = {
+    "continue-once-i-have-pushed": "I'll continue once I've pushed the rename.",
+    "after-i-finish-i-resume": "After I finish the migration notes, I'll resume the review.",
+    "continue-until-i-reach": "I'll continue until I reach the end of the list.",
+    "proceed-when-we-are-done": "We'll proceed when we're done with the fixtures.",
+    "resuming-after-i-rerun": "Resuming after I rerun the linter.",
+    "pick-up-once-i-have-run": "I'll pick the refactor back up once I have run the last test file.",
+    "follow-up-after-i-read": "I'll follow up after I read the second log.",
+    "merge-when-i-have-checked": "I'll merge when I've checked the diff once more.",
+    "finish-as-soon-as-i-get-to-it": "I'll finish the changelog as soon as I get to it.",
+    "report-back-once-i-have-time": "I'll report back once I have time to read the whole trace.",
+    "hold-until-i-have-rerun": "I'll hold the merge until I've rerun the suite on the rebased branch.",
+    "holding-until-i-finish": "Holding the tag until I finish the changelog.",
+}
+WHAT_THE_SESSION_WAITS_TO_RECEIVE = {
+    "resume-once-i-hear": "I'll resume once I hear back from the registrar.",
+    "continue-when-i-get": "I'll continue when I get the vendor's file.",
+    "proceed-as-soon-as-i-have-word": "I'll proceed as soon as I have word from legal.",
+    "after-i-receive-i-finish": "After I receive the signed copy from the landlord, I'll finish the filing.",
+    "merge-once-i-see": "I'll merge once I see the checks go green.",
+    "follow-up-once-i-have-received": "I'll follow up once I've received the courier's answer.",
+    "continue-when-i-am-told": "I'll continue when I'm told the export is ready.",
+    "proceed-once-we-know": "We'll proceed once we know the audit result.",
+    "resuming-when-i-hear": "Resuming when I hear from the vendor.",
+    "an-own-step-then-an-event": "I'll continue after I update the snapshots, once the nightly build is green.",
+    "hold-until-i-have-it": "The signed form is with the bank. I'll hold the filing until I have it.",
+    "hold-until-i-hear": "I'll hold the release until I hear from the security team.",
+    # "when I can" waits to be able: the one recorded reply of thirty days that this class touched, a true wait, said it.
+    "report-back-when-i-can-reach-it": "The registry is down for maintenance. I'll report back when I can reach it again.",
+    "resume-once-i-am-able-to": "I'll resume once I'm able to reach the staging database again.",
+}
+
+
+@pytest.mark.parametrize("reply", _cases(R3_OWN_STEP_REVIEW, THE_SESSIONS_OWN_NEXT_STEP))
+def test_carrying_on_after_the_sessions_own_next_step_waits_on_nothing(reply):
+    assert _sent_back(reply) is None
+
+
+@pytest.mark.parametrize("reply", _cases(WHAT_THE_SESSION_WAITS_TO_RECEIVE))
+def test_carrying_on_once_something_is_received_is_still_a_wait(reply):
+    reason = _sent_back(reply)
+    assert reason and "nothing is armed" in reason
+
+
+# Finding 7 of the review: the check's own message names a last resort, "say plainly that nothing wakes this seat until
+# they prompt it". A reply that says so has done what the check asks, and was sent back with the same advice.
+R3_FALLBACK_REVIEW = {"R3-07": "The patch is committed. I am waiting for CI. Nothing wakes this seat until you prompt it."}
+NOTHING_WAKES_THIS_SEAT = {
+    "nothing-will-wake-this-session": "I'm waiting on the vendor's reply. Nothing will wake this session until you message it.",
+    "nothing-is-armed-to-wake-me": "Waiting for the nightly export. Nothing is armed to wake me, so I'll pick it up at your next prompt.",
+    "no-watcher-so-it-sleeps": "I'll merge once CI is green. No watcher is armed, so this seat sleeps until you prompt it.",
+    "stays-asleep": "I'm waiting for the registrar. This seat stays asleep until your next message.",
+    "i-will-not-see-it": "Once the export lands, I'll rebuild the index. I won't see it land until you prompt me.",
+    "i-will-only-see-it-when": "I'm waiting for the build. I'll only see the result when you next prompt me.",
+    "before-your-next-message": "Waiting on the second reviewer. Nothing wakes me before your next message.",
+    "nothing-happens-here": "I'm waiting for the deploy to finish. Nothing happens here until you prompt me.",
+    "nobody-wakes-this-seat": "I'll resume when the vendor replies. Nobody wakes this seat until you write again.",
+    "will-not-wake": "I am waiting on the pipeline. This session will not wake until you nudge it.",
+    "cannot-wake-myself": "I'm waiting for CI; I can't wake myself, so the next step comes with your next prompt.",
+    "it-stays-idle": "I'm waiting on the vendor's patch. Nothing can wake this seat; it stays idle until you prompt it.",
+    "i-am-idle": "The checks are still running, and I'll tag the release when they pass. I'm idle until you prompt me.",
+    "in-a-list-item": "- The export: waiting on the warehouse.\n- Nothing wakes this seat until you prompt it.\n\nI'll load it once it lands.",
+}
+ONLY_SOUNDS_LIKE_THE_FALLBACK = {
+    "another-seat": "I'm waiting on the reviewer's verdict. Nothing wakes her session until you prompt it.",
+    "until-the-build-finishes": "I'm waiting on the build. Nothing wakes this seat until the build finishes.",
+    "a-watcher-that-is-not-armed": "A watcher wakes this seat when CI finishes. I'm waiting for CI.",
+    "in-the-past": "Nothing woke this seat overnight, so the release sat until you prompted it. I'm waiting for CI now.",
+    "until-your-registrar": "I'm waiting on the domain transfer. Nothing wakes this seat until your registrar releases the domain.",
+    "no-need-to-prompt": "You don't need to prompt me. I'm waiting for CI and will merge when it passes.",
+    "in-quotation-marks": "The check asks for \"nothing wakes this seat until you prompt it\", which is not true here. I'm waiting for CI.",
+    "a-worker-that-sleeps": "The worker sleeps until you prompt it from the console. I'm waiting on the queue to drain.",
+    "until-they-send-it": "I won't see the vendor's reply until they send it. I'm waiting on their answer.",
+    "prompt-me-if": "I'm waiting for CI. Prompt me if you want the logs first.",
+    "in-a-code-fence": "The message to copy:\n```\nNothing wakes this seat until you prompt it.\n```\nI'm waiting for the registry to publish.",
+}
+
+
+@pytest.mark.parametrize("reply", _cases(R3_FALLBACK_REVIEW, NOTHING_WAKES_THIS_SEAT))
+def test_a_reply_that_says_nothing_wakes_this_seat_until_the_principal_prompts_it_passes(reply):
+    assert _sent_back(reply) is None
+
+
+@pytest.mark.parametrize("reply", _cases(ONLY_SOUNDS_LIKE_THE_FALLBACK))
+def test_a_reply_that_only_sounds_like_the_fallback_is_still_sent_back(reply):
+    reason = _sent_back(reply)
+    assert reason and "nothing is armed" in reason
