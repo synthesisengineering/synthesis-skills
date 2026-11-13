@@ -198,8 +198,9 @@ kb-connector: the connector cannot start:
 With more than one part it names each, in order: `It has a user-info part (user:password@), a path,
 a query and a fragment, which are not allowed.` It names a part and never shows it, since a password
 or a query can be a secret and the message is printed. The address it shows keeps `http://` only
-for localhost and is `https://` otherwise. A port that is not a number from 1 to 65535, and a host
-with a character no host has, make a malformed address, with no address shown:
+for localhost and is `https://` otherwise. A port that is not a number from 1 to 65535, a colon
+with no port after it, brackets that close no IPv6 address, and a host with a character no host has,
+make a malformed address, with no address shown:
 `KB_PUBLIC_URL must be the service's https:// address (http:// only for localhost)`. A host is an
 IP address or a name of letters, digits, hyphens, underscores and dots, so a backslash
 (`https://kb.example.com\mcp`, which a browser reads as a slash and so as a path), a semicolon, a
@@ -235,8 +236,9 @@ and is judged by the next rule.
 An IPv6 address that carries an IPv4 address is judged as the IPv4 address it carries: mapped
 (`[::ffff:100.64.0.1]`), compatible (`[::100.64.0.1]`), NAT64's well-known prefix
 (`[64:ff9b::100.64.0.1]`) and 6to4 (`[2002:6440:1::1]`) are all `100.64.0.1`, in the shared range,
-and `[::ffff:8.8.8.8]` is `8.8.8.8`, a public address. The verdict is the same on every Python from
-3.9 on; Python's own verdicts on these forms differ from one version to the next.
+and `[::ffff:8.8.8.8]` is `8.8.8.8`, a public address. The prefix for translation inside one
+network, `64:ff9b:1::/48`, is temporary. The verdict is the same on every Python from 3.9 on;
+Python's own verdicts on these forms differ from one version to the next.
 
 The address is read as a host. `demo.trycloudflare.com` counts, and so does the same host in upper
 case, with a port or with a trailing dot (`localhost.` is `localhost`); `nottrycloudflare.com` does

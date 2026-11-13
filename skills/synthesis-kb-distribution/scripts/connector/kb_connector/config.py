@@ -28,6 +28,7 @@ TEMPORARY_HOSTS = ("trycloudflare.com", "ngrok.io", "ngrok.app", "ngrok.dev", "n
                    "loophole.site", "localhost", "local")
 ORIGIN_PARTS = ("a user-info part (user:password@)", "a path", "a query", "a fragment")  # what KB_PUBLIC_URL may not have
 NAT64 = ipaddress.ip_network("64:ff9b::/96")  # the well-known prefix: its last 32 bits are the IPv4 address reached
+NAT64_LOCAL = ipaddress.ip_network("64:ff9b:1::/48")  # translation inside one network: Python's verdict on it changed
 URL_FIELDS = ("id", "source_path", "commit")
 FERNET_KEY = re.compile(r"[A-Za-z0-9_-]{43}=")
 
@@ -90,7 +91,9 @@ def temporary(host) -> bool:
     if any(host == name or host.endswith("." + name) for name in TEMPORARY_HOSTS):
         return True
     address = _ip(host)
-    return old_spelling(host) if address is None else not address.is_global  # an old spelling: load() refuses it first
+    if address is None:
+        return old_spelling(host)  # an old spelling: load() refuses it first
+    return not address.is_global or (address.version == 6 and address in NAT64_LOCAL)
 
 
 def old_spelling(host) -> bool:
@@ -133,11 +136,14 @@ def load(env) -> Settings:
     if bool(git_url) == bool(source_dir):
         problems.append("set exactly one of KB_GIT_URL (the published repository) and KB_SOURCE_DIR (a local folder)")
     raw = get("KB_PUBLIC_URL")
-    public_url, parsed = raw.rstrip("/"), urlsplit(raw)
+    public_url, parsed = raw.rstrip("/"), urlsplit("")
     try:
+        parsed = urlsplit(raw)
         port = parsed.port
-    except ValueError:
-        port = 0  # not a port, so not an address
+    except ValueError:  # brackets that close no IPv6 address, or a port that is no number: not an address
+        port = 0
+    if parsed.netloc.endswith(":"):
+        port = 0  # a colon with no port after it: the addresses built on it would match no OAuth client's callback
     local = (parsed.hostname or "").rstrip(".") in ("localhost", "127.0.0.1", "::1")  # localhost. is localhost
     malformed = (parsed.scheme not in ("https", "http") or not parsed.hostname or port == 0  # a host is a name or an IP
                  or (_ip(parsed.hostname) is None and not re.fullmatch(r"[\w.-]+", parsed.hostname)))
