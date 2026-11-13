@@ -814,8 +814,11 @@ def test_catalog_counts_only_implicit_skills_against_two_percent(tmp_path):
 
 
 def test_catalog_cuts_descriptions_at_1024_characters(tmp_path):
-    long = [_skill(tmp_path, "a", description="d" * 5000)]
-    assert doctor.catalog_cost(long, None)[0] < 256 + 1100 // 4 + 40
+    """Held against the same skill with a shorter description, not against a number: the catalog names the folder the
+    skill is in, so a fixed bound failed wherever the temporary folder's path was long (572 against 571)."""
+    def cost(length: int) -> int:  # a folder for each, named by a number of the same width
+        return doctor.catalog_cost([_skill(tmp_path / str(length), "a", description="d" * length)], None)[0]
+    assert cost(5000) == cost(1024) == cost(1020) + 1  # four characters are one token
 
 
 def test_catalog_check_names_undiscoverable_skills_and_overruns(tmp_path):

@@ -96,7 +96,17 @@ def claimed(skill: str) -> list:
 # ---- one real build, read back -----------------------------------------------------
 
 @pytest.fixture(scope="module")
-def zip_path(tmp_path_factory):
+def this_checkout():
+    """The package is cut from the files git tracks, so a test of the real package needs the checkout itself. A copy
+    of the source with no `.git` (a release's archive) holds no record of what is tracked, and says so here."""
+    top = subprocess.run(["git", "-C", str(ROOT), "rev-parse", "--show-toplevel"], capture_output=True, text=True)
+    if top.returncode or Path(top.stdout.strip()).resolve() != ROOT.resolve():
+        pytest.skip("not a git checkout of this repository: the package is cut from the files git tracks")
+    return ROOT
+
+
+@pytest.fixture(scope="module")
+def zip_path(tmp_path_factory, this_checkout):
     out = tmp_path_factory.mktemp("directory-package") / "methods.zip"
     out.write_bytes(package.build(ROOT, SPEC))
     return out
@@ -253,7 +263,7 @@ def test_no_packaged_line_claims_a_hook_a_guard_or_an_approval_code_or_needs_the
     assert found == []
 
 
-def test_the_real_package_passes_its_own_check(capsys):
+def test_the_real_package_passes_its_own_check(capsys, this_checkout):
     assert package.main(["--check"]) == 0
     assert capsys.readouterr().out.startswith(f"ok: {len(LISTED)} skills, ")
 

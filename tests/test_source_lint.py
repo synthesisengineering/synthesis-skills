@@ -359,10 +359,12 @@ def test_the_re_rule_finds_a_positional_limit_and_spares_a_named_one(tmp_path):
 
 # ---- A deprecated call in the core fails its test on the Python that deprecates it --------
 
-def test_a_deprecation_met_in_the_core_fails_the_test_and_one_met_elsewhere_does_not():
+def test_a_deprecation_met_in_the_core_fails_the_test_and_one_met_elsewhere_does_not(request):
     """`pytest.ini` turns a DeprecationWarning raised for a line of the core into an error. The three positional
     limits above warned under Python 3.13 at every use, in a summary at the end of a run that nobody read."""
     import warnings
+    if request.config.getoption("pythonwarnings"):
+        pytest.skip("this run was told how to treat warnings (-W), which outranks pytest.ini")
     with pytest.raises(DeprecationWarning):
         warnings.warn_explicit("refused by a later Python", DeprecationWarning, "synthesis/guards.py", 1, module="synthesis.guards")
     with warnings.catch_warnings(record=True) as seen:
