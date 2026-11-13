@@ -141,6 +141,51 @@ def test_what_is_no_row_of_a_status_table_is_not_read():
     assert said(RECORD, "| A | live | |", "```", before=fenced) == ([], [])                                        # a code fence is not read
 
 
+# A review of 2026-11-13 found rows the check did not read (a file with CRLF endings, a delimiter row of one dash a
+# cell, a table in a block quote) and one it read wrongly (a table in an indented code block), and a delimiter row
+# taken from any line that began with two dashes.
+def test_a_file_with_crlf_endings_is_judged_as_its_lf_twin():
+    for rows, before in ((("| The connector | live | |", "| The key | live | the log |"), HEAD), (("| The connector | live |",), BARE)):
+        lf = said(RECORD, *rows, before=before)
+        assert lf != ([], []) and said(RECORD, *(row + "\r" for row in rows), before=tuple(line + "\r" for line in before)) == lf
+
+
+@pytest.mark.parametrize("rule", ["|-|-|-|", "|:-:|:-:|:-:|", "| - | :- | -: |", "|:--|:--|--:|", "| --- | --- | --- |  "])
+def test_a_delimiter_row_may_have_one_dash_a_cell(rule):
+    assert len(said(RECORD, "| The connector | live | |", before=(HEAD[0], rule))[0]) == 1
+
+
+@pytest.mark.parametrize("second", ["| -- a dash, then words | done | |", "|--x--|--y--|--z--|", "| --- | --- | note |", "| --- | | --- |"])
+def test_a_line_that_only_begins_with_dashes_is_no_delimiter_row(second):
+    assert said(RECORD, "| The connector | live | |", before=(HEAD[0], second)) == ([], [])
+
+
+@pytest.mark.parametrize("quote", ["> ", ">", "> > ", "  > "])
+def test_a_table_in_a_block_quote_is_read(quote):
+    before = tuple(quote + line for line in HEAD)
+    assert len(said(RECORD, quote + "| The connector | live | |", before=before)[0]) == 1
+    assert said(RECORD, quote + "| The connector | live | the log |", before=before) == ([], [])
+    found, notes = said(RECORD, quote + "| The connector | done |", before=tuple(quote + line for line in BARE))
+    assert found == [] and len(notes) == 1
+
+
+@pytest.mark.parametrize("indent", ["    ", "\t", "  \t", "      "])
+def test_a_table_in_an_indented_code_block_is_not_read_and_one_under_a_list_item_is(indent):
+    row = indent + "| The connector | live | |"
+    assert said(RECORD, row, before=("Some text.", "", indent + HEAD[0], indent + HEAD[1])) == ([], [])
+    assert said(RECORD, row, before=(indent + HEAD[0], indent + HEAD[1])) == ([], [])
+    assert said(RECORD, row, before=("", indent + "- a line of code", indent + HEAD[0], indent + HEAD[1])) == ([], [])
+    assert len(said(RECORD, row, before=("1. The rollout", indent + HEAD[0], indent + HEAD[1]))[0]) == 1
+    assert len(said(RECORD, row, before=("- The rollout", "  more of the item", indent + HEAD[0], indent + HEAD[1]))[0]) == 1
+    assert len(said(RECORD, "  | The connector | live | |", before=("- The rollout", "  " + HEAD[0], "  " + HEAD[1]))[0]) == 1
+
+
+def test_a_table_without_its_outer_pipes_is_not_read():
+    assert said(RECORD, "The connector | live | ", before=("Item | Status | Evidence", "--- | --- | ---")) == ([], [])
+    assert said(RECORD, "| The connector | live | ", before=("| Item | Status | Evidence", "|---|---|---")) == ([], [])
+    assert said(RECORD, "The connector | live |", before=("Item | Status | Evidence |", "---|---|---|")) == ([], [])
+
+
 def test_only_markdown_records_are_read_and_transcripts_and_skipped_folders_are_not():
     row = "| A | live | |"
     assert len(said("notes/status.markdown", row)[0]) == 1
@@ -209,3 +254,21 @@ def test_a_commit_is_refused_for_a_status_with_no_evidence_and_passes_with_it(tm
     assert found == [] and any(note.startswith("PLAIN.md: 1 row ") for note in notes)
     with pytest.raises(cc.Refused, match="status_evidence"):
         cc.problems({"status_evidence": None}, "S1", str(repo))
+
+
+def test_a_commit_of_a_file_with_crlf_endings_is_judged_as_its_lf_twin(tmp_path, monkeypatch):
+    import subprocess
+    repo = tmp_path / "kb"
+    repo.mkdir()
+    monkeypatch.chdir(repo)
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", os.devnull)
+
+    def git(*words):
+        subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@example.invalid", "-c", "core.autocrlf=false", *words],
+                       check=True, capture_output=True)
+    git("init", "-q", "-b", "main")
+    for name, end in (("LF.md", "\n"), ("CRLF.md", "\r\n")):
+        (repo / name).write_bytes((end.join([*HEAD, "| The connector | live | |"]) + end).encode())
+    git("add", "-A")
+    found, _, _ = cc.problems({"status_evidence": {}}, "S1", str(repo))
+    assert sorted(problem.split(": ")[0] for problem in found) == ["CRLF.md:3", "LF.md:3"]
