@@ -13,6 +13,7 @@ import re
 import subprocess
 from pathlib import Path
 
+import pytest
 
 from synthesis import doctor
 
@@ -354,4 +355,17 @@ def test_the_re_rule_finds_a_positional_limit_and_spares_a_named_one(tmp_path):
     (tmp_path / ".venv").mkdir()
     (tmp_path / ".venv" / "y.py").write_text("import re\nre.split(r',', text, 1)\n")  # not the repository's own
     assert positional_re_limits(tmp_path) == ["skills/a/x.py:2", "skills/a/x.py:4", "skills/a/x.py:6"]
+
+
+# ---- A deprecated call in the core fails its test on the Python that deprecates it --------
+
+def test_a_deprecation_met_in_the_core_fails_the_test_and_one_met_elsewhere_does_not():
+    """`pytest.ini` turns a DeprecationWarning raised for a line of the core into an error. The three positional
+    limits above warned under Python 3.13 at every use, in a summary at the end of a run that nobody read."""
+    import warnings
+    with pytest.raises(DeprecationWarning):
+        warnings.warn_explicit("refused by a later Python", DeprecationWarning, "synthesis/guards.py", 1, module="synthesis.guards")
+    with warnings.catch_warnings(record=True) as seen:
+        warnings.warn_explicit("another project's to fix", DeprecationWarning, "elsewhere.py", 1, module="elsewhere")
+    assert [str(w.message) for w in seen] == ["another project's to fix"]
 
