@@ -388,11 +388,18 @@ def test_a_five_cell_table_that_ends_the_file_is_not_written_under(seat):
 
 
 def test_an_item_that_lapsed_was_given_a_new_date_and_lapsed_again_gets_a_second_row(seat):
-    """A row for an earlier date is no row for this one."""
+    """A row for an earlier date is no row for this one, and a mark for an earlier date is no mark for it (the
+    second review: the plan here had neither the earlier mark nor the new date's reason)."""
     plan, register, env = seat
+    plan.write_text(PLAN.replace("   **Decays:** 2026-11-11 (two days after the event)\n",
+                                 "   **Decays:** 2026-11-11 (moved from the 4th: the event slipped)\n"
+                                 "   **Lapsed:** 2026-11-05 — the first date passed unsaid\n"), encoding="utf-8")
     register.write_text(REGISTER + "\n| 2026-11-05 | **Send the thanks** `thanks` | old | first time | open |\n", encoding="utf-8")
-    assert lapse(env, "--id", "thanks").returncode == 0
-    assert register.read_text(encoding="utf-8").count("`thanks` |") == 2
+    done = lapse(env, "--id", "thanks")
+    assert done.returncode == 0, done.stderr
+    assert register.read_text(encoding="utf-8").count("`thanks` |") == 2 and plan.read_text(encoding="utf-8").count("**Lapsed:**") == 2
+    review = json.loads(lapse(env, "--json", words=(), script="lapse_review.py").stdout)
+    assert [row["lapsed"] for row in review["rows"]] == [DAY, "2026-11-05"] and review["patterns"]["item"] == {"thanks": 2}
 
 
 def test_a_row_that_does_not_read_back_stops_the_helper_before_the_mark(seat, monkeypatch):
@@ -456,3 +463,264 @@ def test_a_tag_that_stands_in_a_tables_row_is_refused(seat):
     done = lapse(env, "--at", f"{plan}:9")
     assert done.returncode == 2 and "table" in done.stderr, done.stderr
     assert plan.read_text(encoding="utf-8") == table and register.read_text(encoding="utf-8") == REGISTER
+
+
+# --- the second review ------------------------------------------------------------------------------------------------
+
+TWO = ("# Plan\n\n## Priority Tasks\n- Call the bank\n  **Decays:** 2026-11-10 (the card)\n"
+       "- Write to the landlord\n  **Decays:** 2026-11-11 (the lease)\n")
+
+
+def review_of(env):
+    return json.loads(lapse(env, "--json", words=(), script="lapse_review.py").stdout)
+
+
+def declare(env, **more):
+    """Add to what the seat's workspace declares in the ritual config."""
+    config = Path(env["RITUAL_STATE_DIR"]) / "config.json"
+    conf = json.loads(config.read_text(encoding="utf-8"))
+    conf["workspaces"]["desk"].update(more)
+    config.write_text(json.dumps(conf), encoding="utf-8")
+
+
+def test_what_came_of_a_lapse_with_no_id_is_still_one_lapse(seat):
+    """Finding 1: each row of an item with no ID was a lapse of its own, so a lapse and two rows of what came of it
+    read as three, one of them still open, on a weekday and at a place that then looked like patterns."""
+    plan, register, env = seat
+    assert lapse(env, "--at", f"{plan}:11").returncode == 0
+    for said in ("sent a day late", "paid, and the supplier thanked"):
+        assert lapse(env, "--at", f"{plan}:11", "--came", said, words=()).returncode == 0
+    review = review_of(env)
+    assert [(row["item"], row["outcome"]) for row in review["rows"]] == [("**Pay the invoice**", "paid, and the supplier thanked")]
+    assert review["patterns"] == {"item": {}, "weekday": {}, "place": {}, "open": 0}
+
+
+def test_code_in_a_title_is_not_read_as_a_decay_id(seat):
+    """Finding 2: a row's ID is the last code span of its Item cell, and a title was written there with its own
+    code. An item with no ID whose title named `older` in code was then the lapse of the item whose ID that is,
+    which got its mark and no row."""
+    plan, register, env = seat
+    plan.write_text(PLAN.replace("3. **Pay the invoice**", "3. Reply about `thanks` and `older`"), encoding="utf-8")
+    assert lapse(env, "--at", f"{plan}:11").returncode == 0
+    assert "| Reply about 'thanks' and 'older' | [2026-11-10.md:11]" in register.read_text(encoding="utf-8")
+    done = lapse(env, "--id", "older")                                           # the item whose ID that is lapses next
+    assert done.returncode == 0 and "already there" not in done.stdout, done.stdout + done.stderr
+    assert register.read_text(encoding="utf-8").count("`older` |") == 1
+    came = lapse(env, "--id", "thanks", "--came", "sent late", words=())         # no row names `thanks`: a title's words are no ID
+    assert came.returncode == 2 and "holds no row" in came.stderr, came.stderr
+    assert len(review_of(env)["rows"]) == 2
+
+
+def test_two_items_whose_titles_hold_the_same_code_are_two_lapses(seat):
+    plan, register, env = seat
+    plan.write_text("# Plan\n\n## Priority Tasks\n- Deploy `api`\n  **Decays:** 2026-11-10 (the window)\n"
+                    "- Roll back `api`\n  **Decays:** 2026-11-11 (if it fails)\n", encoding="utf-8")
+    assert lapse(env, "--at", f"{plan}:7").returncode == 0                       # the lower one first: a mark moves what stands under it
+    assert lapse(env, "--at", f"{plan}:5").returncode == 0
+    review = review_of(env)
+    assert sorted(row["item"] for row in review["rows"]) == ["Deploy 'api'", "Roll back 'api'"] and review["patterns"]["item"] == {}
+
+
+@pytest.mark.parametrize("opens", ["* ", "+ ", "1. ", "2) "])
+def test_a_field_under_any_list_mark_is_its_items_and_so_is_the_mark(seat, opens):
+    """Finding 3: the sweep read a field as its item's only under `- `. Under `* ` or `1. ` each field was an entry
+    of its own, so the mark written with that lead never reached the item, which stayed unannounced: every run
+    added another mark, and the row named no item."""
+    plan, register, env = seat
+    plan.write_text(f"# Plan\n\n## Priority Tasks\n\n### Send the deck\n{opens}**Decays:** 2026-11-10 (after the meeting)\n"
+                    f"{opens}**Decay ID:** deck\n", encoding="utf-8")
+    done = lapse(env, "--id", "deck")
+    assert done.returncode == 0, done.stderr
+    assert plan.read_text(encoding="utf-8").splitlines()[6] == f"{opens}**Lapsed:** {DAY} — no one was told the event had moved"
+    assert "| Send the deck `deck` |" in register.read_text(encoding="utf-8")
+    report = json.loads(lapse(env, "--json", words=(), script="decay_sweep.py").stdout)
+    assert report["gaps"] == [] and [(row["title"], row["unannounced"]) for row in report["due"]] == [("Send the deck", False)]
+    again = lapse(env, "--id", "deck")
+    assert again.returncode == 2 and "already has a row" in again.stderr, again.stderr
+
+
+def test_a_mark_the_sweep_would_not_read_as_the_items_is_not_written(seat, monkeypatch):
+    """The mark is read by the sweep's own reader before anything is written: one that would stand as an entry of
+    its own leaves the item unannounced, and the next run writes it again."""
+    helper, args = in_process(seat, monkeypatch)
+    plan, register, _ = seat
+    monkeypatch.setattr(helper, "lead", lambda line, tag: "## ")                 # a lead that makes the mark a heading of its own
+    assert helper.main([*args, "--id", "thanks"]) == 2
+    assert plan.read_text(encoding="utf-8") == PLAN and register.read_text(encoding="utf-8") == REGISTER
+    assert [path.name for path in plan.parent.iterdir()] == [plan.name]          # and nothing is left beside the plan
+
+
+@pytest.mark.skipif(hasattr(os, "geteuid") and os.geteuid() == 0, reason="a folder's mode does not hold the superuser")
+def test_a_plan_whose_folder_may_not_be_written_is_refused_before_the_row(seat):
+    """Finding 5: only the plan's own mode was asked, and a mark is written beside the plan and put in its place. The
+    row was written, the mark could not be, and every run after ended the same way."""
+    plan, register, env = seat
+    plan.parent.chmod(0o555)
+    try:
+        done = lapse(env, "--id", "thanks")
+    finally:
+        plan.parent.chmod(0o755)
+    assert done.returncode == 2 and "may not be written" in done.stderr, done.stderr
+    assert plan.read_text(encoding="utf-8") == PLAN and register.read_text(encoding="utf-8") == REGISTER
+
+
+def test_a_line_that_moved_is_refused_with_where_the_files_items_now_stand(seat):
+    """Finding 6: a mark is a line, so the items under it stand a line lower than the sweep printed. The next one was
+    refused as closed, never dated or not there."""
+    plan, register, env = seat
+    plan.write_text(TWO, encoding="utf-8")
+    assert lapse(env, "--at", f"{plan}:5").returncode == 0
+    once = (plan.read_bytes(), register.read_bytes())
+    done = lapse(env, "--at", f"{plan}:7")                                       # the line the sweep printed before that mark
+    assert done.returncode == 2 and f"{plan.name}:8 (Write to the landlord)" in done.stderr, done.stderr
+    assert (plan.read_bytes(), register.read_bytes()) == once
+    assert lapse(env, "--at", f"{plan}:8").returncode == 0
+
+
+def test_a_row_written_without_its_mark_is_named_so_that_no_second_row_is_written(seat, monkeypatch, capsys):
+    """Finding 7: the row stood and the mark did not; the item, which has no ID, then moved a line, and the next run
+    wrote a second row for the same lapse. The run that leaves a row without its mark now names the row, and a
+    run that finds a row of the same title in the same file at another line asks which it is."""
+    helper, args = in_process(seat, monkeypatch)
+    plan, register, _ = seat
+    real = helper.append_row
+
+    def then_a_line_is_written_above(*given):
+        line = real(*given)
+        plan.write_text(PLAN.replace("## Priority Tasks\n", "## Priority Tasks\nCarried from Monday.\n"), encoding="utf-8")
+        return line
+    monkeypatch.setattr(helper, "append_row", then_a_line_is_written_above)
+    assert helper.main([*args, "--at", f"{plan}:11"]) == 1
+    assert "--row 13" in capsys.readouterr().err
+    once = register.read_bytes()
+    monkeypatch.setattr(helper, "append_row", real)
+    assert helper.main([*args, "--at", f"{plan}:12"]) == 2                        # it does not guess
+    assert "--row 13" in capsys.readouterr().err and register.read_bytes() == once
+    assert helper.main([*args, "--at", f"{plan}:12", "--row", "13"]) == 0
+    said = capsys.readouterr().out
+    assert "row: already there" in said and f"mark: {plan}:13" in said and register.read_bytes() == once
+    assert [path.name for path in plan.parent.iterdir()] == [plan.name]
+
+
+def test_a_row_named_for_this_lapse_that_is_another_items_is_refused(seat):
+    plan, register, env = seat
+    assert lapse(env, "--id", "older").returncode == 0                           # its row is the register's line 13
+    before = (plan.read_bytes(), register.read_bytes())
+    done = lapse(env, "--id", "thanks", "--row", "13")
+    assert done.returncode == 2 and "--row 13" in done.stderr and (plan.read_bytes(), register.read_bytes()) == before, done.stderr
+
+
+def test_an_item_that_stands_twice_in_one_plan_takes_its_mark_on_the_copy_the_sweep_reads(seat):
+    """Finding 8: an item under its tasks and again under what is carried, in one plan, was refused on every run as
+    a plan that had changed. The sweep reads a file's last copy of an item, and that copy takes the mark."""
+    plan, register, env = seat
+    twice = PLAN + ("\n## Carried\n- **Send the thanks** to the review team\n  **Decays:** 2026-11-11 (two days after the event)\n"
+                    "  **Decay ID:** thanks\n")
+    plan.write_text(twice, encoding="utf-8")
+    done = lapse(env, "--id", "thanks")
+    assert done.returncode == 0, done.stderr
+    lines = plan.read_text(encoding="utf-8").splitlines()
+    assert lines[28] == f"  **Lapsed:** {DAY} — no one was told the event had moved" and len(lines) == len(twice.splitlines()) + 1
+    again = lapse(env, "--id", "thanks")
+    assert again.returncode == 2 and "already has a row" in again.stderr, again.stderr
+
+
+def test_a_register_named_through_a_link_gets_a_link_that_leads_to_the_plan(seat, tmp_path):
+    """Finding 9: the link was written from the folder as the config names it, so from the folder the register
+    really lies in it led nowhere, and what came of the lapse could not find its row."""
+    plan, register, env = seat
+    (tmp_path / "deep" / "er").mkdir(parents=True)
+    (tmp_path / "deep" / "er" / "kept").symlink_to(register.parent, target_is_directory=True)
+    declare(env, lapse_register=str(tmp_path / "deep" / "er" / "kept" / register.name))
+    assert lapse(env, "--at", f"{plan}:11").returncode == 0
+    assert "| [2026-11-10.md:11](../plans/2026-11-10.md) |" in register.read_text(encoding="utf-8")
+    came = lapse(env, "--at", f"{plan}:11", "--came", "paid late", words=())
+    assert came.returncode == 0, came.stderr
+
+
+def test_an_item_named_by_its_place_is_still_recorded_by_its_id(seat):
+    """Finding 10: `--at` on an item that has a Decay ID wrote a row with no ID, which nothing could then find."""
+    plan, register, env = seat
+    done = lapse(env, "--at", f"{plan}:5")
+    assert done.returncode == 0, done.stderr
+    assert "to the review team `thanks` | [2026-11-10.md:5]" in register.read_text(encoding="utf-8")
+    assert lapse(env, "--id", "thanks", "--came", "sent with an apology", words=()).returncode == 0
+
+
+def test_a_gap_that_is_another_items_own_does_not_stand_in_the_way(seat):
+    """Finding 13: any gap of the sweep stopped every lapse of the seat: another item's date that is on no calendar
+    in an old plan, and a link named for convenience beside the plans, which the refusal said to mend."""
+    plan, register, env = seat
+    (plan.parent / "2026-11-03.md").write_text("# Old\n\n## Priority Tasks\n- A thing long gone\n  **Decays:** 2026-11-31 (no such day)\n"
+                                                "  **Decay ID:** gone\n", encoding="utf-8")
+    (plan.parent / "latest.md").symlink_to(plan.name)
+    done = lapse(env, "--id", "thanks")
+    assert done.returncode == 0 and "another item" in done.stdout, done.stdout + done.stderr
+
+
+def test_a_gap_that_is_the_items_own_still_stands_in_the_way_and_is_said_with_its_line(seat):
+    plan, register, env = seat
+    newer = plan.parent / "2026-11-12.md"
+    newer.write_text("# Wed\n\n## Priority Tasks\n- **Send the thanks** to the review team\n  **Decays:** 2026-11-14\n"
+                     "  **Decay ID:** thanks\n", encoding="utf-8")              # another date, and no reason for it
+    done = lapse(env, "--id", "thanks")
+    assert done.returncode == 2 and "not taken in full" in done.stderr, done.stderr
+    assert f"{newer}:5: changed Decays date requires a stated reason" in done.stderr, done.stderr
+    assert plan.read_text(encoding="utf-8") == PLAN and register.read_text(encoding="utf-8") == REGISTER
+
+
+def test_a_declared_folder_that_holds_no_file_hides_nothing(seat, tmp_path):
+    plan, register, env = seat
+    (tmp_path / "artifacts").mkdir()
+    declare(env, artifacts_dirs=[str(tmp_path / "artifacts")])
+    assert lapse(env, "--id", "thanks").returncode == 0
+    (tmp_path / "artifacts" / "2026-11-12 day-end.md").write_text("# named as the sweep does not read it\n", encoding="utf-8")
+    done = lapse(env, "--id", "older")                                           # a folder whose file was passed over may hide a copy
+    assert done.returncode == 2 and "no dated source files" in done.stderr, done.stderr
+
+
+@pytest.mark.parametrize("old, new", [
+    ("   **Decay ID:** thanks\n", "   **Decay ID:** thanks\n   **Resolved:** 2026-11-12 (sent after all)\n"),
+    ("   **Decays:** 2026-11-11 (two days after the event)\n", "   **Decays:** 2026-11-20 (the event slipped a week)\n"),
+    ("   **Decay ID:** thanks\n", "   **Decay ID:** thanks\n   **Lapsed:** 2026-11-12 — said by hand meanwhile\n"),
+])
+def test_an_item_that_changed_since_the_sweep_read_it_is_refused(seat, monkeypatch, old, new):
+    """Finding 14: found again by its ID alone, an item that was closed, given a later date or marked after the
+    sweep read it still got a row and a mark."""
+    helper, args = in_process(seat, monkeypatch)
+    plan, register, _ = seat
+    changed, real = PLAN.replace(old, new), helper.decay_sweep.collect
+
+    def changed_meanwhile(*given, **more):
+        report = real(*given, **more)
+        plan.write_text(changed, encoding="utf-8")
+        return report
+    monkeypatch.setattr(helper.decay_sweep, "collect", changed_meanwhile)
+    assert helper.main([*args, "--id", "thanks"]) == 2
+    assert plan.read_text(encoding="utf-8") == changed and register.read_text(encoding="utf-8") == REGISTER
+
+
+def test_a_tag_in_a_tables_row_written_without_its_first_pipe_is_refused(seat):
+    """Finding 15: a table's row need not open with a pipe, and the mark cut such a table in two."""
+    plan, register, env = seat
+    table = ("# Plan\n\n## Priority Tasks\n\n### Renewals\n\nWhat | When\n--- | ---\n"
+             "The licence | **Decays:** 2026-11-10 (it runs out)\nThe pass | spring\n")
+    plan.write_text(table, encoding="utf-8")
+    done = lapse(env, "--at", f"{plan}:9")
+    assert done.returncode == 2 and "table" in done.stderr, done.stderr
+    assert plan.read_text(encoding="utf-8") == table and register.read_text(encoding="utf-8") == REGISTER
+
+
+def test_a_pipe_in_an_entry_that_is_no_table_takes_its_mark(seat):
+    """Held as it was: a pipe in a title makes no table."""
+    plan, register, env = seat
+    plan.write_text("# Plan\n\n## Priority Tasks\n- Choose red | blue for the cover **Decays:** 2026-11-10 (the print run)\n", encoding="utf-8")
+    assert lapse(env, "--at", f"{plan}:4").returncode == 0
+    assert plan.read_text(encoding="utf-8").splitlines()[4] == f"  **Lapsed:** {DAY} — no one was told the event had moved"
+
+
+@pytest.mark.parametrize("flag, args, as_of", [("--lapsed", ("--lapsed", "11/12"), DAY), ("--as-of", (), "13 Nov")])
+def test_a_day_that_is_none_names_its_flag(seat, flag, args, as_of):
+    plan, register, env = seat
+    done = lapse(env, "--id", "thanks", *args, as_of=as_of)
+    assert done.returncode == 2 and flag in done.stderr, done.stderr

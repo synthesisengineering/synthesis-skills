@@ -250,3 +250,40 @@ def test_a_fenced_example_that_begins_a_list_entry_is_closed_by_its_own_fence(tm
     code, report = run(tmp_path)
     assert not report["gaps"], report["gaps"]
     assert len(report["due"]) == 1, report["due"]                                               # the example is no item, the item after it is
+
+
+def test_a_link_that_hides_nothing_is_no_gap(tmp_path):
+    """A link beside the plans was a gap whatever it was named and wherever it led, so a `latest.md` kept for
+    convenience left every sweep blocked until it was deleted (2026-11-13, a review). A link the sweep would not
+    read as a file of that name, or one that leads to a file it reads under that file's own name, hides nothing."""
+    root = tmp_path / "plans"
+    today = plan(root, "2026-09-07", item("past-due", "2026-09-07"))
+    (root / "latest.md").symlink_to(today.name)                                  # no plan's name: passed over like any file of that name
+    (root / "2026-09-05.md").symlink_to(today.name)                              # a plan's name, and it leads to a plan that is read
+    code, report = run(root)
+    assert report["gaps"] == [] and len(report["due"]) == 1 and report["scanned"] == [str(today)]
+    assert {str(root / "latest.md"), str(root / "2026-09-05.md")} <= set(report["excluded"])
+    outside = tmp_path / "elsewhere.md"
+    outside.write_text(item("hidden", "2026-09-01"), encoding="utf-8")
+    (root / "2026-09-06.md").symlink_to(outside)                                 # a plan's name that leads to a file the sweep does not read
+    code, report = run(root)
+    assert code == 2 and [(gap["path"], gap["reason"]) for gap in report["gaps"]] == [(str(root / "2026-09-06.md"), "symlink file not scanned")]
+
+
+def test_a_gap_on_an_items_own_line_names_the_item(tmp_path):
+    """A gap said its file and line and not whose line it was, so nothing could tell another item's bad date from a
+    source that was not read (2026-11-13, a review: one stopped every lapse of the seat)."""
+    root = tmp_path / "plans"
+    plan(root, "2026-09-07", item("fine", "2026-09-07") + item("broken", "2026-09-31") + "### No id\n**Decays:** 2026-13-01 (x)\n")
+    code, report = run(root)
+    named = {(gap.get("identity"), gap["reason"]) for gap in report["gaps"]}
+    assert code == 2 and ("id:broken", "invalid Decays date") in named and (None, "invalid Decays date") in named, report["gaps"]
+
+
+def test_a_declared_folder_with_no_dated_file_says_how_many_files_it_holds(tmp_path):
+    empty, other = tmp_path / "empty", tmp_path / "other"
+    empty.mkdir()
+    other.mkdir()
+    (other / "notes.md").write_text("# not a dated plan\n", encoding="utf-8")
+    code, report = run(empty, other)
+    assert code == 2 and {gap["path"]: gap.get("files") for gap in report["gaps"]} == {str(empty): 0, str(other): 1}, report["gaps"]
