@@ -85,9 +85,10 @@ def mask(text: str) -> str:
     if not _SECRETS:
         from synthesis import commit_check
         try:
-            policy = commit_check.load_policy(paths.config()) or {}
-        except (commit_check.Refused, OSError, ValueError):  # the check itself refuses without a readable policy
-            policy = {}
+            policy = commit_check.load_policy(paths.config()) or {}  # None where the config names no policy
+        except (commit_check.Refused, OSError, ValueError) as exc:  # named and not read: what it would hide cannot be masked
+            raise ValueError(f"the commit policy the config names cannot be read ({exc}), so what its tier-0 list hides cannot be "
+                             "masked and nothing is written") from None
         _SECRETS.append(("private key", re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY(?: BLOCK)?-----[\s\S]{40,}?"
                                                    r"-----END [A-Z ]*PRIVATE KEY(?: BLOCK)?-----")))
         _SECRETS.append(("private key", re.compile(r"(?<=PRIVATE KEY-----)(?:\\[nr]|\s)+[A-Za-z0-9+/]{40,}={0,2}")))
@@ -180,37 +181,60 @@ class _Session:
         """Begin from the copy another Mac synced. Where this Mac's archive holds nothing of the session and a
         workspace's sessions repo, cloned here, holds it, the session is filed where that Mac filed it, the copy's
         records under the numbers they were given there, and the transcript is then read from its start as
-        `read_again` reads it: what the copy holds is passed over, and what it does not hold (what a tool printed,
-        text a harness injected, whatever today's reader files besides) takes the numbers after the copy's last. A
-        citation of the conversation or of a tool call then names the same record on every Mac; one of a record
-        the copy never held names none here, and `no_record` says why (2026-11-13: a Mac with no archive numbered
-        each session anew from the harness's transcript, and every citation written elsewhere named another
-        record there)."""
+        `read_again` reads it: what the copy holds is passed over. What it does not hold (what a tool printed, text
+        a harness injected, whatever today's reader files besides) takes numbers past every number that Mac had
+        given when it synced (its `next`, or its `records` where a copy is older), never one it gave to a record the
+        copy does not hold; `meta.json` says from which number on the numbers are this Mac's own (`own_from`). A
+        citation of the conversation or of a tool call then names the same record on every Mac, one of a record the
+        copy never held names none here and `no_record` says why, and one of a number this Mac gave is said to be
+        this Mac's (`given_here`). The copy taken is the one in the workspace and month this Mac places the session
+        in, where one is; otherwise the first other. A dry session (`peek`) reads the copy and writes nothing
+        (2026-11-13: a Mac with no archive numbered each session anew from the harness's transcript, and every
+        citation written elsewhere named another record there; then, two reviews: numbering went on from the
+        copy's last number, which that Mac had given to records the copy does not hold, and a stale copy in
+        another workspace's repo was taken by name)."""
         if any(self.folder.glob("transcript-*.jsonl")):
             return
-        for workspace, repo in sorted(repos().items()):
-            for copy in sorted(found.parent for found in repo.glob(f"*/{self.folder.name}/meta.json")):
-                numbers = {rec["seq"] for rec in records(str(copy)) if isinstance(rec.get("seq"), int)}
-                if not numbers:
-                    continue
-                self.folder = root() / workspace / copy.parent.name / copy.name
+        placed = (self.folder.parent.parent.name, self.folder.parent.name)  # the workspace and month this Mac files it in
+        copies = sorted(((workspace, found.parent) for workspace, repo in repos().items()
+                         for found in repo.glob(f"*/{self.folder.name}/meta.json")),
+                        key=lambda pair: (pair[0] != placed[0], pair[1].parent.name != placed[1], pair[0], pair[1].parent.name))
+        for workspace, copy in copies:
+            held = records(str(copy))
+            numbers = [rec["seq"] for rec in held if isinstance(rec.get("seq"), int) and not isinstance(rec.get("seq"), bool)]
+            if not numbers:
+                continue
+            theirs = paths.read_json(copy / "meta.json")
+            given = [n for n in (theirs.get("next"), theirs.get("records")) if isinstance(n, int) and not isinstance(n, bool)]
+            start = max([max(numbers) + 1, *given[:1]])  # past every number that Mac had given when it synced
+            self.folder = root() / workspace / copy.parent.name / copy.name
+            segments = sorted(copy.glob("transcript-*.jsonl"))
+            if not self.dry:
                 self.folder.mkdir(parents=True, exist_ok=True)
-                segments = sorted(copy.glob("transcript-*.jsonl"))
                 for segment in segments:
                     (self.folder / segment.name).write_bytes(segment.read_bytes())
-                self.seq, self.segment, self.absent = max(numbers) + 1, len(segments), max(numbers) + 1 - len(numbers)
-                theirs = paths.read_json(copy / "meta.json").get("projects")
-                self.meta["projects"] = [name for name in theirs if isinstance(name, str)] if isinstance(theirs, list) else []
-                self.meta["numbers_from"] = {"workspace": workspace, "records": len(numbers), "last": max(numbers)}
-                self.read_again()
-                return
+            self.seq, self.segment, self.absent = start, max(1, len(segments)), start - len(set(numbers))
+            projects = theirs.get("projects")
+            self.meta["projects"] = [name for name in projects if isinstance(name, str)] if isinstance(projects, list) else []
+            self.meta["numbers_from"] = {"workspace": workspace, "records": len(set(numbers)), "last": max(numbers), "own_from": start,
+                                         "copies": len(copies)}
+            self.read_again(held)
+            return
 
-    def read_again(self) -> None:
+    def read_again(self, held: list | None = None) -> None:
         """Begin at the transcript's start as a first reading would, keeping the numbers already given: a record the
-        archive holds (`_same`) is passed over by `emit`, and one it does not hold takes the next number. No line the
-        archive holds is changed, so a number names its record for good (2026-11-13: a rebuild numbered each session
-        anew, and of 373 record numbers that project records cite, 157 would have named another record)."""
-        self.again = collections.Counter(_same(rec) for rec in records(str(self.folder)))
+        archive holds is passed over by `emit`, and one it does not hold takes a number past the archive's own last
+        (or past the state's count, where that is further). No line the archive holds is changed, so a number names
+        its record for good (2026-11-13: a rebuild numbered each session anew, and of 373 record numbers that project
+        records cite, 157 would have named another record). A held record is matched as today's reader would write
+        it (`_as_today`), so a secret pattern added since does not make it new; and the next number is read from the
+        archive, so a write cut short after its lines and before its state neither numbers two records alike nor
+        drops one (the first review of 5.17.0). `held`: the records to match, where they are not this archive's
+        (a copy another Mac synced, read by `seed`)."""
+        if held is None:
+            self.seq = max(self.seq, self.held() + 1)  # a torn last line is taken off first
+            held = records(str(self.folder))
+        self.again = collections.Counter(_same(_as_today(rec, self.folder)) for rec in held)
         self.offset, self.seen, self.turn, self.trigger, self.model, self.cwd = 0, set(), [], None, "", ""
         self.skipped = collections.Counter()
 
@@ -335,11 +359,7 @@ class _Session:
             self.meta["last"] = rec["at"]
         rec = _clean({k: v for k, v in rec.items() if v not in (None, "", [], {})})
         if rec.get("kind") in BLOB_KINDS:
-            for field in ("text", "input"):
-                value = rec.get(field)
-                body = value if isinstance(value, str) else json.dumps(value, ensure_ascii=False) if value is not None else ""
-                if len(body) > BLOB_CHARS:
-                    rec[field], rec[f"{field}_blob"], rec[f"{field}_chars"] = body[:HEAD_CHARS], self.blob(body), len(body)
+            rec = _blobbed(rec, self.blob)
         line = json.dumps({"seq": self.seq, **rec}, ensure_ascii=False, default=str)
         if self.again is not None:
             key = _same(json.loads(line))  # as the archive would hold it
@@ -369,8 +389,10 @@ class _Session:
                     lines = whole.split(b"\n")
                     for line in reversed(lines if not start else lines[1:]):  # read from mid-file, the first is part of a line
                         try:
-                            number = int(json.loads(line)["seq"])
+                            number = json.loads(line)["seq"]
                         except (ValueError, KeyError, TypeError):
+                            continue
+                        if not isinstance(number, int) or isinstance(number, bool):  # a number written as words is none (a review: "40" was read as 40)
                             continue
                         self.segment = max(self.segment, int(file.stem.rsplit("-", 1)[1]))
                         return number
@@ -380,11 +402,12 @@ class _Session:
         return -1
 
     def flush(self, offset: int) -> int:
-        """Append the kept records the archive does not hold yet, rotating segments, then record how far the native
-        file was read."""
+        """Append the kept records, rotating segments, then record how far the native file was read and the next
+        number to give (`next` in `meta.json`, which a Mac that begins the session from a synced copy numbers past).
+        What the archive already holds was passed over as it was read (`read_again`, which `export_file` turns to
+        wherever the archive is ahead of the state), so nothing is dropped here by count (the first review of
+        5.17.0: a count taken after a reading again dropped records the archive did not hold)."""
         written = 0
-        if self.lines:
-            del self.lines[:max(0, self.held() + 1 - (self.seq - len(self.lines)))]
         while self.lines:
             target = self.folder / f"transcript-{self.segment:04d}.jsonl"
             size, batch = target.stat().st_size if target.exists() else 0, []
@@ -400,7 +423,7 @@ class _Session:
                 self.segment += 1
         self.offset = offset
         self.meta.update({"harness": self.harness, "session": self.session, "native": str(self.native),
-                          "records": self.seq - self.absent, "skipped": dict(self.skipped), "updated": _iso(time.time()),
+                          "records": self.seq - self.absent, "next": self.seq, "skipped": dict(self.skipped), "updated": _iso(time.time()),
                           "segments": self.segment})
         if self.folder:
             paths.write_json(self.folder / "meta.json", self.meta)
@@ -413,9 +436,42 @@ class _Session:
 
 def _same(rec: dict) -> str:
     """What a record is, apart from its number and whatever else a reader may come to note beside it: its kind, its
-    time, and its words or its call. Filed under another kind, the same words are another record."""
-    return hashlib.sha256(json.dumps([rec.get(key) for key in ("kind", "at", "text", "text_blob", "tool", "input", "input_blob")],
+    time, its words or its call, and where it comes from (the first review of 5.17.0: two notes of one time, a title
+    and a setting, were one record, and a rebuild filed the title twice and the setting never). What a note carries
+    is left out, as a reader may come to keep more of it. Filed under another kind, the same words are another
+    record."""
+    return hashlib.sha256(json.dumps([rec.get(key) for key in ("kind", "at", "text", "text_blob", "tool", "input", "input_blob", "source")],
                                      sort_keys=True, default=str).encode("utf-8")).hexdigest()[:24]
+
+
+def _blobbed(rec: dict, keep) -> dict:
+    """A record as the archive holds it: a text or a call longer than BLOB_CHARS kept whole by `keep`, which names it,
+    and its first HEAD_CHARS in the record."""
+    for field in ("text", "input"):
+        value = rec.get(field)
+        body = value if isinstance(value, str) else json.dumps(value, ensure_ascii=False) if value is not None else ""
+        if len(body) > BLOB_CHARS:
+            rec[field], rec[f"{field}_blob"], rec[f"{field}_chars"] = body[:HEAD_CHARS], keep(body), len(body)
+    return rec
+
+
+def _as_today(rec: dict, folder) -> dict:
+    """A held record as today's reader would write it: masked by today's patterns, and a long text read back whole from
+    its blob, masked and kept again as `emit` keeps it (named by its hash, and written nowhere). A record whose whole
+    text is not here (a copy synced from another Mac keeps no blob) is matched as it is held."""
+    rec = _clean(dict(rec))
+    for field in ("text", "input"):
+        digest = rec.get(f"{field}_blob")
+        blob = Path(folder).parent.parent / "blobs" / str(digest)[:2] / f"{digest}.txt" if digest and folder else None
+        try:
+            body = mask(blob.read_text(encoding="utf-8")) if blob else None
+        except (OSError, UnicodeError):
+            body = None
+        if body is not None:
+            rec.pop(f"{field}_blob", None)
+            rec.pop(f"{field}_chars", None)
+            rec[field] = body
+    return _blobbed(rec, lambda body: hashlib.sha256(body.encode("utf-8")).hexdigest()) if rec.get("kind") in BLOB_KINDS else rec
 
 
 # --- the harnesses --------------------------------------------------------------------------------------------
@@ -683,9 +739,11 @@ def export_file(harness: str, native: Path, project: str = "", again: bool = Fal
     if again and s.folder:
         s.read_again()
     size = native.stat().st_size
-    if size < s.offset:  # the harness rewrote the file: read it again from the start, under the same session
-        s.offset = 0
+    if size < s.offset and s.folder:  # the harness rewrote the file: read it again, passing over what is held (a review: all of it was filed twice)
+        s.read_again()
         s.skipped["rewritten"] += 1
+    elif size < s.offset:
+        s.offset = 0
     if size == s.offset and not project:
         return 0
     if not s.folder:
@@ -693,6 +751,8 @@ def export_file(harness: str, native: Path, project: str = "", again: bool = Fal
         if harness == "claude-code" and "subagents" in native.parts:  # its prompts are the parent agent's briefs
             s.meta.update(role="subagent", parent=native.parts[native.parts.index("subagents") - 1])
         s.seed()  # the numbers another Mac gave it, where a cloned sessions repo holds the session
+    if s.again is None and s.held() + 1 > s.seq:  # the archive is ahead of the state: a write cut short after its lines, or a state lost
+        s.read_again()
     if project and project not in s.meta.setdefault("projects", []):
         s.meta["projects"].append(project)
     adapter, end = ADAPTERS[harness], s.offset
@@ -1080,11 +1140,22 @@ def no_record(meta: dict, seq: int) -> str:
     another Mac: the copy a Mac syncs holds the conversation and the tool calls, and not what a tool printed."""
     said = f"no record #{seq} in {meta.get('harness')} {meta.get('session')}"
     given = meta.get("numbers_from") if isinstance(meta.get("numbers_from"), dict) else None
-    if meta.get("synced") or (given and seq <= given.get("last", -1)):
+    if meta.get("synced") or (given and seq < given.get("own_from", given.get("last", -1) + 1)):
         said += (f": this Mac holds the session as another Mac synced it into {meta.get('synced') or given.get('workspace')}'s sessions repo, "
                  "which keeps the conversation and the tool calls and not what a tool printed or a harness injected. A number given "
                  "there to such a record names none here; the Mac that gave it holds the record")
     return said
+
+
+def given_here(meta: dict, seq: int) -> str:
+    """What to say of a number this Mac gave to a session it began from another Mac's copy: a citation written there
+    with that number may name another record, since that Mac numbers what its copy does not hold for itself."""
+    given = meta.get("numbers_from") if isinstance(meta.get("numbers_from"), dict) else None
+    if not given or not isinstance(given.get("own_from"), int) or seq < given["own_from"]:
+        return ""
+    return (f"#{seq} was given on this Mac, which began {meta.get('harness')} {meta.get('session')} from the copy in "
+            f"{given.get('workspace')}'s sessions repo and numbers from #{given['own_from']} on for itself: a citation of that number written on "
+            "another Mac may name another record there")
 
 
 def _whole(rec: dict, folder: Path) -> dict:
@@ -1105,7 +1176,9 @@ def peek(days: float = 2) -> list:
         try:
             if native.stat().st_size <= s.offset:
                 continue
-            s.folder = s.folder or _place(harness, native, s.session)[0]
+            if not s.folder:  # never exported here: a copy another Mac synced gives its numbers, read and not written
+                s.folder = _place(harness, native, s.session)[0]
+                s.seed()
             with native.open("rb") as f:
                 f.seek(s.offset)
                 for raw in f:
@@ -1140,7 +1213,16 @@ def recent(project: str = "", workspace: str = "", turns: int = 12, live: bool =
         if (not project or project in meta.get("projects", [])) and (not workspace or Path(meta["folder"]).parts[-3] == workspace):
             found += [{**r, "harness": meta["harness"], "session": meta["session"]} for r in recs
                       if r.get("kind") in ("user", "assistant")]
-    return sorted(found, key=lambda r: r.get("at", ""))[-turns:]
+    return sorted(found, key=lambda r: (_moment(r.get("at")), str(r.get("session")), r.get("seq") if isinstance(r.get("seq"), int) else -1))[-turns:]
+
+
+def _moment(value) -> float:
+    """The moment a time names, as seconds, for putting records of several sessions in the order said; none before all."""
+    when = _when(value)
+    try:
+        return when.timestamp() if when else float("-inf")
+    except (OverflowError, OSError, ValueError):
+        return float("-inf")
 
 
 def search(pattern: str, workspace: str = "", project: str = "", kinds: tuple = ()) -> list:
@@ -1195,11 +1277,19 @@ def _sync_workspace(ws: str, repo: Path, push: bool) -> list:
     state_file = root() / ".state" / f"sync-{ws}.json"
     state = paths.read_json(state_file)
     done, months, lines = dict(state.get("sessions", {})), collections.Counter(), []
+    refused, behind = [], _pulled(ws, repo) if push else ""
+    if behind:  # nothing is written over a copy older than the upstream's
+        return [behind]
     for meta in catalog(ws, local_only=True):
         rel = Path(meta["folder"]).relative_to(root() / ws).as_posix()
         if done.get(rel) != meta.get("records"):
-            months[rel.split("/")[0]] += _write_synced(Path(meta["folder"]), repo / rel, meta)
+            try:
+                months[rel.split("/")[0]] += _write_synced(Path(meta["folder"]), repo / rel, meta)
+            except (Diverged, ValueError) as exc:  # a copy another Mac numbered otherwise, or text that cannot be masked
+                refused.append(f"FAILED {ws}: {rel}: {exc}")
+                continue
             done[rel] = meta.get("records")
+    lines.extend(refused)
     for month in sorted(months):
         added = _git(repo, "add", "-A", "--", month)
         if added.returncode:
@@ -1217,9 +1307,9 @@ def _sync_workspace(ws: str, repo: Path, push: bool) -> list:
         if _git(repo, "rev-parse", "--abbrev-ref", "@{u}").returncode:
             pushed = _git(repo, "push", "-q", "-u", "origin", "HEAD")
         else:
-            pulled = _git(repo, "pull", "-q", "--rebase")
-            if pulled.returncode:
-                return lines + [f"FAILED {ws}: pull --rebase: {pulled.stderr.strip()[-300:]}"]
+            behind = _pulled(ws, repo)  # what another Mac pushed meanwhile
+            if behind:
+                return lines + [behind]
             pushed = _git(repo, "push", "-q")
         if pushed.returncode:
             return lines + [f"FAILED {ws}: push: {pushed.stderr.strip()[-300:]}"]
@@ -1227,9 +1317,34 @@ def _sync_workspace(ws: str, repo: Path, push: bool) -> list:
     return lines + [f"{ws}: {repo.name} up to date" + ("" if push else " (not pushed)")]
 
 
+def _pulled(ws: str, repo: Path) -> str:
+    """Bring a sessions repo up to its upstream; '' when it is, or has none, else the line that says why not. A sync
+    pulls before it writes, so a copy another Mac pushed is the one each session's copy is compared with
+    (`_write_synced`), and again before it pushes. A working tree that holds what a refused commit left is not
+    pulled into until it is committed. A rebase that fails is undone, so the repo is back on its branch (the first
+    review of 5.17.0: one left mid-rebase failed every sync of its workspace after it)."""
+    if _git(repo, "rev-parse", "--abbrev-ref", "@{u}").returncode or _git(repo, "status", "--porcelain").stdout.strip():
+        return ""
+    pulled = _git(repo, "pull", "-q", "--rebase")
+    if not pulled.returncode:
+        return ""
+    stuck = (repo / ".git" / "rebase-merge").exists() or (repo / ".git" / "rebase-apply").exists()
+    undone = _git(repo, "rebase", "--abort") if stuck else None
+    return (f"FAILED {ws}: pull --rebase: {pulled.stderr.strip()[-300:]}"
+            + ("" if undone is None or not undone.returncode else f"; and the rebase could not be undone: {undone.stderr.strip()[-200:]}"))
+
+
+class Diverged(Exception):
+    """A synced copy that holds records this Mac's archive does not: it is not written over."""
+
+
 def _write_synced(src: Path, dst: Path, meta: dict) -> int:
     """Write a session's synced copy from the archive, whole and in order, so the same records always give the same
-    files: closed segments never change and a rebuilt archive simply rewrites them. Returns 1 if anything changed."""
+    files: closed segments never change, and since no line of the archive is ever changed, what this Mac wrote
+    before is the start of what it writes now. A copy that is not (another Mac numbered the session too: it
+    exported before its sessions repo was cloned, or both went on with it) is not written over, and `Diverged` says
+    so: its numbers are the ones citations written there use (the first review of 5.17.0). Returns 1 if anything
+    changed."""
     segments, size = [[]], 0
     for rec in records(str(src), SYNC_KINDS):
         line = json.dumps(_clean(rec), ensure_ascii=False) + "\n"
@@ -1238,6 +1353,11 @@ def _write_synced(src: Path, dst: Path, meta: dict) -> int:
             size = 0
         segments[-1].append(line)
         size += len(line.encode("utf-8"))
+    held = "".join(old.read_text(encoding="utf-8") for old in sorted(dst.glob("transcript-*.jsonl"))) if dst.is_dir() else ""
+    if held and not "".join(line for lines in segments for line in lines).startswith(held):
+        raise Diverged("the synced copy holds records this Mac's archive does not (another Mac numbered this session too), so it is "
+                       "not written over; its numbers are the ones citations written there use. Clone the sessions repo before a "
+                       "Mac's first export, and see the reference's paragraph on another Mac")
     dst.mkdir(parents=True, exist_ok=True)
     changed, wanted = 0, set()
     for number, lines in enumerate(segments, 1):

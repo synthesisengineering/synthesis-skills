@@ -260,6 +260,8 @@ def cmd_sessions(args) -> int:
         who = f"[{found[0].get('harness')} {sessions.short(str(found[0].get('session')))}] "  # no line begins with a bare `#<seq>`
         for rec in rows:
             out(rec, who + sessions.render(rec, 0 if args.whole or rec.get("seq") == args.seq else args.width))
+        if args.seq is not None and sessions.given_here(found[0], args.seq):  # a number this Mac gave, said as that
+            print(sessions.given_here(found[0], args.seq), file=sys.stderr)
     elif args.action == "prompts":
         if not args.workspace:
             print("name the workspace whose prompts to list: --workspace <name>", file=sys.stderr)
