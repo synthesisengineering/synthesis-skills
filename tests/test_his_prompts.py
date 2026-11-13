@@ -26,7 +26,7 @@ AT = "2026-11-13T15:00:00.000Z"
 def harness(tmp_path, write_config):
     work, kb = tmp_path / "workspaces" / "acme" / "repo", tmp_path / "workspaces" / "acme" / "ai-knowledge-acme"
     work.mkdir(parents=True)
-    for name in ("alpha", "beta"):
+    for name in ("alpha", "beta", "_templates", ".cache/a"):
         (kb / "projects" / name).mkdir(parents=True)
     (kb / "projects" / "index.yaml").write_text("projects: []\n", encoding="utf-8")
     write_config({"workspace_roots": [str(tmp_path / "workspaces" / "*")], "knowledge_roots": [str(kb)]})
@@ -79,9 +79,12 @@ def test_the_shapes_a_transcript_holds_his_words_in(harness):
 
 def test_a_prompt_typed_while_a_turn_runs_is_his(harness):
     said, _ = exported(harness, [typed(harness, "Start the build."), queued(harness, "Also bump the version."),
-                                 queued(harness, [{"type": "text", "text": "And tag it."}, {"type": "text", "text": "Then stop."}]),
-                                 queued(harness, "<pasted_content id=\"a1\">a log he pasted</pasted_content>")])
-    assert his(said) == ["Start the build.", "Also bump the version.", "And tag it.\nThen stop.", "<pasted_content id=\"a1\">a log he pasted</pasted_content>"]
+                                 queued(harness, [{"type": "text", "text": "And tag it."}, {"type": "text", "text": "Then stop."}, {"type": "text", "text": " "}]),
+                                 queued(harness, "<pasted_content id=\"a1\">a log he pasted</pasted_content>"),
+                                 queued(harness, "<command-message>review</command-message>\n<command-name>/review</command-name>"),
+                                 queued(harness, "<system-reminder>The date has changed.</system-reminder>\nAnd then stop.")])
+    assert his(said) == ["Start the build.", "Also bump the version.", "And tag it.", "Then stop.",   # a block is a record, as in a user row
+                         "<pasted_content id=\"a1\">a log he pasted</pasted_content>", "/review", "And then stop."]
     assert ("system", "Also bump the version.") not in said
 
 
@@ -171,6 +174,8 @@ def test_a_session_belongs_to_the_projects_its_tool_calls_wrote_into(harness):
         called(harness, "Write", {"file_path": f"{kb}/projects/gamma/CONTEXT.md", "content": "x"}),  # no such project folder
         called(harness, "Write", {"file_path": f"{kb}/projects/index.yaml", "content": "x"}),        # a file beside the projects
         called(harness, "Write", {"file_path": f"{harness['work']}/projects/alpha/notes.md", "content": "x"}),  # a folder of that name elsewhere
+        called(harness, "Write", {"file_path": f"{kb}/projects/_templates/CONTEXT.md", "content": "x"}),         # a folder that is no project's
+        called(harness, "Write", {"file_path": f"{kb}/projects/.cache/a/b.md", "content": "x"}),
     ])
     assert "projects" not in meta or meta["projects"] == []
     said, meta = exported(harness, [called(harness, "Edit", {"file_path": f"{kb}/projects/alpha/CONTEXT.md", "old_string": "a", "new_string": "b"}),
