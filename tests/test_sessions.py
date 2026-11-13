@@ -715,6 +715,30 @@ def asked(harness, tmp_path):
     return {**harness, "kb": kb, "log": kb / "projects" / "alpha" / "sessions" / "2026-10.md"}
 
 
+def test_a_prompt_that_holds_a_line_separator_is_read_back_whole(harness):
+    """Text pasted from a web page, or once decoded as another encoding, carries characters that Python counts as
+    the end of a line and JSON does not escape (U+2028, U+2029, U+0085). A record that held one was written whole
+    and read back as two halves, neither of them a record: the prompt was in the archive and nothing could list
+    it, open it or sync it (a review, 2026-11-13)."""
+    base = {"cwd": harness["work"], "sessionId": "c1"}
+    typed = ["plain prompt", "pasted\u2028text from a page", "one paragraph\u2029and the next", "decoded wrong\x85once"]
+    native = _jsonl(harness["claude"], [_typed(base, text, f"2026-10-30T15:0{at}:00.000Z") for at, text in enumerate(typed)])
+    assert sessions.export_file("claude-code", native) == len(typed)
+    kept = sessions.records(_meta(native)["folder"])
+    assert [r["text"] for r in kept] == typed and [r["seq"] for r in kept] == list(range(len(typed)))
+    assert [p["text"] for p in sessions.prompts("acme", "2026-10-30")] == typed
+    assert sessions.export_file("claude-code", _jsonl(native, [_typed(base, "and one more", "2026-10-30T15:09:00.000Z")])) == 1
+    assert [r["seq"] for r in sessions.records(_meta(native)["folder"])] == list(range(len(typed) + 1))
+
+
+def test_the_schedules_own_flag_is_not_offered_to_a_person_or_an_agent(capsys):
+    """`--scheduled` says a run is the schedule's own, and the doctor believes it. It works for the job that passes
+    it and is in no help text, so nothing offers it as a way to quiet the doctor."""
+    with pytest.raises(SystemExit):
+        cli.main(["sessions", "--help"])
+    assert "--scheduled" not in capsys.readouterr().out
+
+
 def test_the_principals_prompts_of_a_day_are_listed_and_nothing_else(asked):
     found = sessions.prompts("acme", "2026-10-30")
     assert [p["text"] for p in found] == ["Please plan the release.", "Also draft the announcement."]
@@ -1435,8 +1459,12 @@ def test_a_transcript_removed_before_it_was_copied_stays_named_until_the_princip
     refused = capsys.readouterr().err
     assert "type approve" in refused and _checked(tmp_path)[0] == "fail"
     principal(refused)                                                                                # the principal can
+    marked = json.loads(_its_own(sessions.root() / ".state" / "export.json").read_text())["scheduled"]
     assert cli.main(clear) == 0
     assert "claude-code c2" in capsys.readouterr().out
+    # Clearing a loss kept the stamp's last export and dropped the schedule's own mark with the rest: the doctor then
+    # said the schedule had never run, just when a person is likeliest to ask it (a review, 2026-11-13).
+    assert json.loads((sessions.root() / ".state" / "export.json").read_text())["scheduled"] == marked
     status, detail, stamp = _checked(tmp_path)
     assert status == "ok" and not {"failed", "reason", "uncopied"} & set(stamp)
     lost = [json.loads(line) for line in (sessions.root() / ".state" / "lost.jsonl").read_text(encoding="utf-8").splitlines()]
