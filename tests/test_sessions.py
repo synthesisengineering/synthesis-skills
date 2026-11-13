@@ -2285,3 +2285,88 @@ def test_the_command_keeps_the_numbers_too(filed_by_an_older_reader, capsys):
     assert cli.main(["sessions", "export", "--rebuild"]) == 0
     after = _numbered(native)
     assert {number: after.get(number) for number in before} == before and len(after) == len(before) + 1
+
+
+def test_the_newest_turns_are_the_newest_by_time_after_a_reading_again(filed_by_an_older_reader):
+    """A record a later reading filed stands last in the session's files and is not the last thing said."""
+    sessions.export(rebuild=True)
+    assert [rec["text"] for rec in sessions.recent(workspace="acme", turns=2)] == ["And send me the draft.", "Sent."]
+
+
+def test_a_session_is_shown_in_the_order_it_was_said(filed_by_an_older_reader, capsys):
+    sessions.export(rebuild=True)
+    capsys.readouterr()
+    assert cli.main(["sessions", "show", "c1"]) == 0
+    shown = capsys.readouterr().out
+    assert 0 < shown.index("Also draft the announcement.") < shown.index("Drafting it.") < shown.index("And send me the draft.")
+
+
+def test_a_number_that_names_no_record_is_said(filed_by_an_older_reader, capsys):
+    """It printed nothing and exited 0, which reads as a record with no words."""
+    assert cli.main(["sessions", "show", "c1", "--seq", "9999"]) == 1
+    assert "no record #9999" in capsys.readouterr().err
+
+
+# A Mac whose archive holds nothing of a session (a new Mac, a restored one) numbered it anew from the harness's
+# transcript, so every citation written on the first Mac named another record there. Where the workspace's sessions
+# repo, cloned on that Mac, holds the session, its records keep the numbers they were given.
+
+@pytest.fixture
+def on_a_second_mac(synced, tmp_path, monkeypatch):
+    """A session exported and synced on one Mac under a reader that files less than today's; then that Mac's archive
+    is gone, as on another Mac that has the harness's transcript and the cloned sessions repo. Returns the
+    transcript and the numbers the first Mac gave."""
+    base = {"cwd": synced["work"], "sessionId": "c1"}
+
+    def said(text, at):
+        return {**base, "timestamp": at, "type": "assistant", "message": {"model": "claude-opus-5-5", "content": [{"type": "text", "text": text}]}}
+    native = _jsonl(synced["claude"], _claude_rows(synced["work"]) + [
+        _typed(base, "Also draft the announcement.", "2026-10-30T15:00:00.000Z"), said("Drafting it.", "2026-10-30T15:00:05.000Z"),
+        _typed(base, "And send me the draft.", "2026-10-30T15:10:00.000Z"), said("Sent.", "2026-10-30T15:10:05.000Z")])
+    today = sessions.ADAPTERS["claude-code"]
+
+    def older(row, s):
+        return [rec for rec in today(row, s) if not (rec and rec.get("kind") == "user" and rec.get("text") == "Also draft the announcement.")]
+    with monkeypatch.context() as then:
+        then.setitem(sessions.ADAPTERS, "claude-code", older)
+        assert not any(line.startswith("FAILED") for line in sessions.sync())
+    first = _numbered(native)
+    sessions.root().rename(tmp_path / "the-first-macs-archive")
+    return native, first
+
+
+def test_a_mac_with_no_archive_of_a_session_keeps_the_numbers_its_synced_copy_gave(on_a_second_mac, synced):
+    native, first = on_a_second_mac
+    copy = synced["repo"] / "2026-10" / "claude-code-c1" / "transcript-0001.jsonl"
+    theirs = copy.read_bytes()
+    sessions.export(0)
+    here = _numbered(native)
+    kept = {number: record for number, record in first.items() if record[1] in sessions.SYNC_KINDS}
+    assert kept and {number: here.get(number) for number in kept} == kept        # what the copy holds keeps its number
+    late = {record[2]: number for number, record in here.items() if number > max(first)}
+    assert "Also draft the announcement." in late                                # what today's reader files besides comes after
+    others = [number for number, record in here.items() if record[1] not in sessions.SYNC_KINDS]
+    assert others and min(others) > max(first)                                   # and so does what the copy never held
+    meta = _meta(native)
+    assert meta["numbers_from"]["workspace"] == "acme" and meta["records"] == len(here)
+    assert sessions.export(0) == [] or not any(line.startswith("claude-code c1:") for line in sessions.export(0))
+    assert _numbered(native) == here                                             # a second reading adds nothing
+    assert not any(line.startswith("FAILED") for line in sessions.sync())
+    assert copy.read_bytes().startswith(theirs)                                  # and the copy is only ever added to
+
+
+def test_a_number_the_synced_copy_does_not_hold_is_said_with_why(on_a_second_mac, capsys):
+    native, first = on_a_second_mac
+    sessions.export(0)
+    gone = next(number for number, record in first.items() if record[1] == "tool_result")
+    capsys.readouterr()
+    assert cli.main(["sessions", "show", "c1", "--seq", str(gone)]) == 1
+    said = capsys.readouterr().err
+    assert f"no record #{gone}" in said and "another Mac" in said
+
+
+def test_a_session_with_no_synced_copy_is_numbered_from_its_start(synced):
+    """Held as it was: where neither the archive nor a cloned repo holds the session, nothing cited it."""
+    native = _jsonl(synced["claude"], _claude_rows(synced["work"]))
+    sessions.export(0)
+    assert min(_numbered(native)) == 0 and "numbers_from" not in _meta(native)
