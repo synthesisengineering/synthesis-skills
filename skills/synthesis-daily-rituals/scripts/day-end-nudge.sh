@@ -35,9 +35,25 @@ if ! python3 -S "$SWEEP" --alert-declared --as-of "$(date +%F)" >/dev/null 2>&1;
   /usr/bin/osascript -e 'display notification "Critical-deadline check could not run — details in your synthesis console" with title "Synthesis"'
 fi
 
+# HOOK APPROVALS since 2026-11-13. A harness whose hooks wait for the person's approval runs
+# none of them (one asks again after every release). The doctor writes down which hooks
+# wait when it runs, and a hook that runs strikes itself from that note; this reads the note
+# through the doctor (no check is run, no harness is asked and nothing is written, `-B`
+# keeping Python from leaving compiled files beside the runtime) and shows a fixed banner:
+# one harness whose guard has not been seen to run since it was found waiting, or more than
+# one; or that nothing has looked since synthesis was last updated. A note older than a day,
+# or none, says nothing, and so does a doctor that cannot answer.
+DOCTOR="$SELF_DIR/../current/synthesis/doctor.py"
+waiting="$(python3 -S -B "$DOCTOR" --waiting 2>/dev/null | head -1 || true)"
+case "$waiting" in
+  1) /usr/bin/osascript -e 'display notification "One agent app has guards not confirmed running — details in your synthesis console" with title "Synthesis"' ;;
+  2) /usr/bin/osascript -e 'display notification "More than one agent app has guards not confirmed running — details in your synthesis console" with title "Synthesis"' ;;
+  unchecked) /usr/bin/osascript -e 'display notification "Agent app guards not checked since synthesis last updated — details in your synthesis console" with title "Synthesis"' ;;
+esac
+
 # Fail OPEN (nudge) rather than silent if the tool is missing or errors: a
 # reminder that never fires is indistinguishable from a day with nothing owed.
-if [ -f "$STATE_TOOL" ] && python3 -S "$STATE_TOOL" --owed-today >/dev/null 2>&1; then
+if [ -f "$STATE_TOOL" ] && python3 -S -B "$STATE_TOOL" --owed-today >/dev/null 2>&1; then
   exit 0  # every expected seat has closed today — stay silent
 fi
 

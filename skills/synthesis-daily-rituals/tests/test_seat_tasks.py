@@ -1,12 +1,12 @@
 """A seat's tasks, read by code where a rule asked an agent to remember (an audit of 2026-11-11, gaps 2, 3, 7, 8).
 
 Counted on three seats' real plans on 2026-11-13 before anything here refused: the commitments with no deadline
-tag and no park stood under the task and waiting headings (12, 0 and 9 in the newest plans) and no seat used task
+tag and no park stood under the task and waiting headings (12, 0 and 11 in the newest plans) and no seat used task
 boxes; every open dated item already carried a Decay ID; in a seat that runs its rituals no date ever showed as
 passed, because each day's ritual re-dates what it carries, so a passed date exists only where no ritual ran; and
 one seat kept a correspondence ledger, a table with a status and an owed-since column, 341 rows that nothing read.
-Its first tests were committed before the code; those under "the first review" follow that review, and each
-failed before its fix.
+Its first tests were committed before the code; those under "the first review" and "the second review" follow
+those reviews, and each failed before its fix.
 """
 from __future__ import annotations
 
@@ -351,31 +351,44 @@ def test_a_reader_that_fails_on_one_record_is_a_gap_and_the_rest_is_still_read(t
 def test_an_entry_closed_in_any_of_the_ways_a_plan_closes_one_is_no_open_commitment(tmp_path):
     """The first review, finding 2: only a title that opens with its mark was read as closed."""
     write(tmp_path / "plans", f"{DAY}.md", "# Plan\n\n## Priority Tasks\n1. **Call the landlord** ✅ DONE 10:00\n2. Called the bank ✅\n"
-          "3. **Book the room** — SENT 09:00\n4. **DONE** Call the school\n5. ✓ Paid the bill\n6. ✔ Paid the rent\n7. Posted the form DONE\n"
+          "3. **Book the room** — SENT 09:00\n4. **DONE** Call the school\n5. ✓ Paid the bill\n6. ✔ Paid the rent\n7. Posted the form: DONE\n"
           "8. Ask whether the form was SENT to them\n9. Get it DONE by Friday\n"
-          "10. Renew the pass\n    **Decays:** ~~2026-11-01~~ (released: no longer needed)\n11. Call back\n    **Critical:** no\n")
-    assert titles(sweep(tmp_path)[1]) == ["Ask whether the form was SENT to them", "Get it DONE by Friday", "Call back"]
+          "10. Renew the pass\n    **Decays:** ~~2026-11-01~~ (released: no longer needed)\n11. Call back\n    **Critical:** no\n"
+          "12. Ship the release (staging ✅, prod pending)\n13. Migrate the database — tests ✅, docs still to write\n"
+          "14. Confirm the deploy is DONE\n15. Make sure the invoice is SENT\n16. DONE? check with Pat\n17. SENT? not sure\n"
+          "18. Chase the refund\n    - **Resolved:** not yet\n19. Return the keys\n    - **Resolved:** 2026-11-12 (handed over)\n")
+    assert titles(sweep(tmp_path)[1]) == ["Ask whether the form was SENT to them", "Get it DONE by Friday", "Call back",
+                                          "Ship the release (staging ✅, prod pending)", "Migrate the database — tests ✅, docs still to write",
+                                          "Confirm the deploy is DONE", "Make sure the invoice is SENT", "DONE? check with Pat",
+                                          "SENT? not sure", "Chase the refund"]
 
 
 def test_which_headings_hold_commitments(tmp_path):
     """The first review, finding 3: headings were read by a word anywhere in them."""
     read = ("## Priority Tasks\n\n### Not done yet\n- a1\n\n### To be sent today\n- a2\n\n## Waiting On Others\n\n### Sent, awaiting reply\n- a3\n\n"
             "## Done and still waiting\n- a4\n\n## Task list\n- a5\n\n## Action Items\n- a6\n\n## To-do\n- a7\n\n## Follow-ups\n- a8\n\n"
-            "## Not completed yet\n\n### Tasks\n- a9\n\n")
+            "## Not completed yet\n\n### Tasks\n- a9\n\n## To do\n- a10\n\n## Action items from standup\n- a11\n\n"
+            "## Waiting on PR review\n- a12\n\n## Waiting on decisions\n- a13\n\n## Tasks from Slack sync\n- a14\n\n"
+            "## Carry-over tasks (from the sync)\n- a15\n\n## This Week\n- a16\n\n")
     unread = ("## 📅 Calendar (this week)\n- b1\n\n## Things to Know\n\n### This week's calendar\n- b2\n\n## Priority Tasks\n\n"
               "### Tasks finished yesterday\n- b3\n\n## Drafts — Ready to Send\n\n### Draft A — Reply to Pat, who is waiting on the contract\n- b4\n\n"
-              "## Sent Messages\n- b5\n\n## Completed Today\n- b6\n")
+              "## Sent Messages\n- b5\n\n## Completed Today\n- b6\n\n## Tasks done today\n- b7\n\n## Follow-ups sent\n- b8\n\n"
+              "## Action items closed\n- b9\n\n## Tasks — closed\n- b10\n\n## Meetings this week\n- b11\n\n## Shipped this week\n- b12\n")
     write(tmp_path / "plans", f"{DAY}.md", "# Plan\n\n" + read + unread)
-    assert titles(sweep(tmp_path)[1]) == [f"a{n}" for n in range(1, 10)]
+    assert titles(sweep(tmp_path)[1]) == [f"a{n}" for n in range(1, 17)]
 
 
 def test_a_tables_rows_under_such_a_heading_are_commitments_too(tmp_path):
     """The first review, finding 4: the day-start asks for what is waited on, and a seat that kept it as a table had
     no row read. A row can carry a park and no date, so each is listed until it is parked or written as an entry."""
     plan = write(tmp_path / "plans", f"{DAY}.md", "# Plan\n\n## Waiting On Others\n\n| What | From | Since |\n|---|---|---|\n"
-                 "| The quote | Pat | Monday |\n| ~~The letter~~ ✅ | Lee | Tuesday |\n| The keys, parked (after the move) | Sam | May |\n")
+                 "| The quote | Pat | Monday |\n| ~~The letter~~ ✅ | Lee | Tuesday |\n| The keys, parked (after the move) | Sam | May |\n"
+                 "| The deposit | Kim | ✅ received |\n| The badge | Ola | DONE |\n| The reply | Ana | **Sent:** 2026-11-12 |\n| | | |\n"
+                 "| What | From | Since |\n\n## Priority Tasks\n\n| # | Task |\n|---|---|\n| 1 | Book the venue |\n\n"
+                 "### Today's hours\n\n| When | What |\n|---|---|\n| 09:00 | Standup |\n| 14:30 | Review |\n")
     _, report = sweep(tmp_path)
-    assert [(row["title"], row["line"]) for row in report["untagged"]] == [("The quote", 7)] and report["commitments"] == 2
+    assert [(row["title"], row["line"]) for row in report["untagged"]] == [("The quote", 7), ("Book the venue", 20)]
+    assert report["commitments"] == 3
     assert report["untagged"][0]["path"] == str(plan)
 
 
@@ -415,15 +428,22 @@ def test_a_ledgers_status_is_read_by_its_own_first_word(tmp_path):
     assert [row["item"] for row in report["owed"]["rows"]] == [f"row {n}" for n, (_, is_open) in enumerate(rows) if is_open] + ["last"]
 
 
-def test_a_list_of_closing_words_that_is_no_list_is_a_gap_and_the_built_in_words_stand(tmp_path):
-    write(tmp_path / "drafts", "_LEDGER.md", "| Item | Status | Owed since |\n|---|---|---|\n| A | DONE | 2026-11-01 |\n| B | FILED | 2026-11-01 |\n")
+def test_a_seats_own_closing_words_are_added_and_a_value_that_is_no_list_blocks_nothing(tmp_path):
+    """The second review, findings 2 and 8: a `ledger_closed_words` that was no list was a gap in every sweep, so a
+    typo there refused the clean record of every workspace, for a reason that named plans; and a list dropped the
+    built-in words. A seat's words are added, a phrase is a word, and a bad value is said in the ledger's own view."""
+    write(tmp_path / "drafts", "_LEDGER.md", "| Item | Status | Owed since |\n|---|---|---|\n| A | DONE | 2026-11-01 |\n| B | FILED | 2026-11-01 |\n"
+          "| C | Not needed | 2026-11-01 |\n| D | Replied ✅ | 2026-11-01 |\n| E | [SENT](https://example.com/thread) | 2026-11-01 |\n"
+          "| F | SENT ? | 2026-11-01 |\n| G | N/A | 2026-11-01 |\n")
     write(tmp_path / "plans", "2026-11-12.md", "# Plan\n\nNothing dated.\n")
     state = tmp_path / "state"
-    for words, expected, blocked in (("SENT", ["B"], True), (["filed"], ["A"], False), ([], ["B"], False)):
+    for words, expected, said in (("SENT", ["B", "C", "F", "G"], True), (["filed", "Not needed", "n/a"], ["F"], False),
+                                  ([], ["B", "C", "F", "G"], False), (["FILED", 3], ["B", "C", "F", "G"], True)):
         write(state, "config.json", json.dumps({"workspaces": {}, "ledger_closed_words": words}))
         code, report = sweep(tmp_path, env={"RITUAL_STATE_DIR": str(state)})
         assert [row["item"] for row in report["owed"]["rows"]] == expected, words
-        assert (report["status"] == "BLOCKED") == blocked and any("ledger_closed_words" in gap["reason"] for gap in report["gaps"]) == blocked
+        assert code == 0 and report["status"] == "CLEAR" and report["gaps"] == [], words
+        assert ("ledger_closed_words" in report["owed"].get("config", "")) == said, words
 
 
 def test_an_item_two_declared_sets_share_is_counted_once_by_the_evening_job(tmp_path):
@@ -460,3 +480,67 @@ def test_one_read_of_the_plans_serves_a_record_of_today(tmp_path, record, monkey
     plan = BARE.replace("**Call the landlord**", "**Call the landlord**" + TAG.format("landlord")).replace(
         "- The vendor's quote", "- The vendor's quote, parked (they answer in January)")
     assert record(workspace(tmp_path, plan, check=True))[0] == 0 and len(calls) == 1
+
+
+# --- the second review ------------------------------------------------------------------------------------------------
+
+def test_a_record_for_yesterday_made_after_midnight_takes_a_closing_mark_written_today(tmp_path, record, monkeypatch):
+    """The second review, finding 6: the record swept as of the day it was for, so an item resolved after midnight
+    carried a date ahead of that day: the sweep called it open and blocked, and a clean record of yesterday was
+    refused over an item whose own remedy had been written. The plan read is the one of the record's day; what is
+    closed is judged as of today."""
+    plan = ("# Thursday\n\n## Priority Tasks\n\n1. **Pay the invoice**\n   **Decays:** 2026-11-12 (net 30)\n"
+            "   **Resolved:** 2026-11-13 (paid at 00:20)\n")
+    state = workspace(tmp_path, "# Friday\n\n## Priority Tasks\n\n1. **A line of the next day's plan**\n", check=True, older=plan)
+    monkeypatch.setenv("RITUAL_STATE_DIR", str(state))
+    monkeypatch.setattr(ritual_state, "today", lambda: date.fromisoformat(DAY), raising=False)
+    try:
+        code, refusal = ritual_state.main(["record", "--direction", "day-end", "--workspace", "desk", "--date", "2026-11-12", "--outcome", "clean"]), ""
+    except SystemExit as exc:
+        code, refusal = 1, str(exc)
+    assert code == 0, refusal
+
+
+def test_a_lapsed_mark_on_a_records_copy_announces_the_item(tmp_path):
+    """The second review, finding 7: once a plan carried an item, a Lapsed mark on its draft was not looked at."""
+    write(tmp_path / "plans", "2026-11-10.md", "# Plan\n\n" + dated("draft-reply", "2026-11-11"))
+    write(tmp_path / "drafts", "2026-11-09-reply.md", "# Draft\n\n" + dated("draft-reply", "2026-11-11", "**Lapsed:** 2026-11-12 (not sent)\n"))
+    assert [row["unannounced"] for row in sweep(tmp_path)[1]["due"]] == [False]
+
+
+def test_a_lapsed_mark_dated_ahead_is_a_gap_and_announces_nothing(tmp_path):
+    write(tmp_path / "plans", "2026-11-10.md", "# Plan\n\n" + dated("typo", "2026-11-11", "**Lapsed:** 2026-12-06 (a slip of the hand)\n"))
+    code, report = sweep(tmp_path)
+    assert code == 2 and [row["unannounced"] for row in report["due"]] == [True]
+    assert any("Lapsed" in gap["reason"] and "ahead" in gap["reason"] for gap in report["gaps"])
+
+
+def test_a_plan_that_cannot_be_read_is_one_source_and_is_not_among_those_read(tmp_path, monkeypatch):
+    """The second review, finding 9."""
+    import decay_sweep
+    monkeypatch.setenv("RITUAL_STATE_DIR", str(tmp_path / "no-config"))
+    good = write(tmp_path / "plans", f"{DAY}.md", "# Plan\n\n## Priority Tasks\n1. One\n")
+    bad = write(tmp_path / "more" / "plans", f"{DAY}.md", "# Plan\n\n## Priority Tasks\n1. Two\n")
+    bad.write_bytes(b"# Plan\n\n\xff\xfe not text\n")
+    report = decay_sweep.collect([(tmp_path / "plans", "plans"), (tmp_path / "more" / "plans", "plans")], date.fromisoformat(DAY))
+    assert report["plans_read"] == [str(good)] and [gap["path"] for gap in report["gaps"]] == [str(bad)]
+
+
+def test_a_workspace_that_keeps_no_dated_plans_is_told_so_and_nothing_else(tmp_path, record):
+    state = workspace(tmp_path, BARE, check=True)
+    config = json.loads((state / "config.json").read_text(encoding="utf-8"))
+    config["workspaces"]["desk"]["plans_dirs"] = []
+    (state / "config.json").write_text(json.dumps(config), encoding="utf-8")
+    out = record(state)[1]
+    assert "commitments: no dated plan to read" in out and "could not be read" not in out
+
+
+def test_the_refusal_over_a_source_that_could_not_be_read_names_it_and_says_why(tmp_path, record):
+    """The second review, finding 2 at its least: a refusal that only counts what could not be read leaves the
+    reader to guess whether a plan, a record or a setting is meant."""
+    state = workspace(tmp_path, BARE)
+    plan = tmp_path / "plans" / f"{DAY}.md"
+    plan.write_bytes(b"# Plan\n\n\xff\xfe not text\n")
+    code, _, refusal = record(state)
+    assert code == 1 and "1 plan source(s) could not be read whole" in refusal, refusal
+    assert f"{plan}: unreadable source" in refusal, refusal

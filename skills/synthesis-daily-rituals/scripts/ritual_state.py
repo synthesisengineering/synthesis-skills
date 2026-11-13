@@ -133,9 +133,14 @@ def critical_deadlines(workspace: str, outcome: str, sweep=None) -> str:
                "confirmation, or the principal's own words quoted with the time), or carries a new date with its reason. "
                "Never decide for the principal that nothing is needed, and never mark it Lapsed.")
     if report["gaps"] and outcome in CLEAN:
-        refuse(f"{len(report['gaps'])} plan source(s) could not be read whole, so critical deadlines are not fully "
-               f"covered and outcome {outcome!r} would claim they are. Record --outcome partial and name the gaps "
-               "(decay_sweep.py lists each as NOT COVERED)")
+        unread = {}  # each source once, with the first reason given for it
+        for entry in report["gaps"]:
+            unread.setdefault(str(entry["path"]) or "(no folder declared)", entry["reason"])
+        refuse(f"{len(unread)} plan source(s) could not be read whole, so critical deadlines are not fully "
+               f"covered and outcome {outcome!r} would claim they are:\n"
+               + "\n".join(f"  {path}: {why}" for path, why in list(unread.items())[:5])
+               + f"\n  and {len(unread) - 5} more" * (len(unread) > 5)
+               + "\nRecord --outcome partial and name the gaps (decay_sweep.py lists each as NOT COVERED)")
     rows = report["critical"]["open"]
     return f"critical deadlines: {len(rows)} open, {sum(r['lead'] for r in rows)} within {decay_sweep.LEAD_DAYS} days"
 
@@ -149,12 +154,7 @@ def _day(moment) -> str:
     return _when(moment).date().isoformat()
 
 
-def _is_day(text) -> bool:
-    """Whether text is one day written YYYY-MM-DD: Python 3.11 and later also read 20261112 and 2026-W46-4 as dates."""
-    try:
-        return bool(re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", text)) and bool(date.fromisoformat(text))
-    except (TypeError, ValueError):
-        return False
+_is_day = rituals.is_day  # one day written YYYY-MM-DD, read where the prompt check's first day is read
 
 
 def travel(workspace: str, day: str, given) -> str:
@@ -202,18 +202,21 @@ def prompts(workspace: str, day: str, direction: str, outcome: str) -> str:
     wanted = rituals.settings(rituals.config(), workspace).get("prompt_reconcile", False)
     if wanted is False or direction != "day-end":  # off by a missing key or `false` alone: null and 0 closed a day unchecked
         return ""
-    roots = wanted.get("records") if isinstance(wanted, dict) else None
-    where = f'{rituals.state_dir() / "config.json"}, under workspaces.{workspace}'
-    if not (isinstance(roots, list) and roots and all(isinstance(r, str) and r for r in roots)):
+    where, fault = f'{rituals.state_dir() / "config.json"}, under workspaces.{workspace}', ""
+    try:  # read where the doctor's line reads it, so neither calls on what the other refuses
+        roots, _ = rituals.prompt_check({"prompt_reconcile": wanted})
+    except ValueError as exc:
+        fault = exc.args[1]
+    if fault == "folders":
         refuse(f"{workspace} sets prompt_reconcile to {json.dumps(wanted)[:80]}, which names no folder of records: the check can "
                f'neither run nor count as off, so this ritual is not recorded. In {where}, write "prompt_reconcile": '
                '{"records": ["<folder of project records>"]}; only false, or no key at all, turns the check off')
-    loose = [r for r in roots if not os.path.isabs(os.path.expanduser(r))]
-    if loose:  # read from wherever the day-end runs: another folder of that name, or none
+    loose = [r for r in wanted["records"] if not os.path.isabs(os.path.expanduser(r))]
+    if fault == "loose":  # read from wherever the day-end runs: another folder of that name, or none
         refuse(f"{workspace} names its folder of records {json.dumps(loose[0])} from no fixed place, so it would be read from wherever the "
                f"day-end runs, and this ritual is not recorded. In {where}, write each folder from the root (`/`) or from the home folder (`~`)")
     since = wanted.get("from", "")
-    if "from" in wanted and not _is_day(since):  # compared as text, `tomorrow` or a number put every day before it
+    if fault == "from":  # compared as text, `tomorrow` or a number put every day before it
         refuse(f'{workspace} starts prompt_reconcile "from" {json.dumps(since)[:80]}, which is not a day written YYYY-MM-DD, so no '
                f'day can be told to come before it and this ritual is not recorded. In {where}, write "from": "YYYY-MM-DD", '
                "or leave it out")
@@ -409,8 +412,13 @@ def commitments(workspace: str, day: str, outcome: str, sweep=None) -> str:
     since = wanted.get("from", "") if isinstance(wanted, dict) else ""
     if day < since:
         return f"\ncommitments: checked from {since}"
-    as_of = date.fromisoformat(day)
-    report = sweep(as_of) if sweep else decay_sweep.collect(decay_sweep.declared(rituals.config(), workspace) or [], as_of, workspace)
+    roots = decay_sweep.declared(rituals.config(), workspace) or []
+    if not roots:  # it keeps no dated plans, and the deadlines' own line has said so
+        return "\ncommitments: no dated plan to read"
+    # the plan read is the newest on or before the record's day; what is closed is judged as of today, so that a
+    # record made after midnight for the day before takes a closing mark written since
+    plan_day = date.fromisoformat(day)
+    report = sweep(plan_day) if sweep else decay_sweep.collect(roots, max(today(), plan_day), workspace, plan_day)
     bare, loose = report["untagged"], report["no_id"]
     said = ([f"{len(bare)} in the newest plan carry no date and no park"] if bare else []) + (
         [f"{len(loose)} open dated item(s) carry no Decay ID"] if loose else [])
@@ -426,7 +434,7 @@ def commitments(workspace: str, day: str, outcome: str, sweep=None) -> str:
                    "copy closes no other. Give each a `**Decay ID:**` line where it sits, the same in every copy that is "
                    "still open, or record its outcome there (`**Resolved:** YYYY-MM-DD (what happened)`)." * bool(loose))
                + "\nOr record --outcome partial, which closes the day with these counted as open.")
-    unread = f"; {len(report['gaps'])} source(s) could not be read whole" * bool(report["gaps"])
+    unread = f"; {len({str(entry['path']) for entry in report['gaps']})} source(s) could not be read whole" * bool(report["gaps"])
     if not report.get("plans_read"):
         return "\ncommitments: no dated plan to read" + unread
     return "\ncommitments: " + ("; ".join(said) if said else f"{report['commitments']} open in the newest plan, each with a date or a park") + unread
@@ -446,10 +454,11 @@ def cmd_record(args) -> int:
         refuse("mode 'migration' marks old bookkeeping and cannot be written")
     made: dict = {}
 
-    def sweep(as_of: date) -> dict:  # one read of the workspace's plans for each day asked about
-        if as_of not in made:
-            made[as_of] = decay_sweep.collect(decay_sweep.declared(rituals.config(), args.workspace) or [], as_of, args.workspace)
-        return made[as_of]
+    def sweep(plan_day: date) -> dict:  # one read of the workspace's plans, as of today, for each day's plan asked about
+        if plan_day not in made:
+            made[plan_day] = decay_sweep.collect(decay_sweep.declared(rituals.config(), args.workspace) or [],
+                                                 max(today(), plan_day), args.workspace, plan_day)
+        return made[plan_day]
     critical = (critical_deadlines(args.workspace, args.outcome, sweep) + travel(args.workspace, args.date, args.travel)
                 + choices(args.workspace, args.date) + commitments(args.workspace, args.date, args.outcome, sweep)
                 + prompts(args.workspace, args.date, args.direction, args.outcome))

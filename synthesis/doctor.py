@@ -163,6 +163,32 @@ def check_wait_check() -> Check:
     return Check("fail", "wait check", "a reply that announced a wait with nothing armed was not sent back: waits can end a turn unseen")
 
 
+def check_prompt_check(cfg: dict | None, error: str = "") -> Check | None:
+    """Where the day's prompt check is on: the workspaces whose day does not close while something the principal
+    typed is cited by no record, and the ones where nothing asks. Each workspace's setting is read as its day-end
+    reads it (`rituals.prompt_check`, over its settings with the defaults under them); one the day-end refuses is a
+    warning, since no day of that workspace closes until it is mended. Otherwise information: turning the check on
+    is each workspace's own word (measured 2026-11-13: on for one workspace of three; 8 of 267 session entries
+    cited a record)."""
+    if cfg is None:
+        return Check("warn", "prompt check", f"cannot tell: the rituals' config cannot be read ({error})")
+    from synthesis import rituals
+    on, off, refused = [], [], []
+    unlisted = [""] if "prompt_reconcile" in (cfg.get("defaults") or {}) else []  # a workspace the config does not list reads the defaults
+    for space in [*(cfg.get("workspaces") or {}), *unlisted]:
+        label = space or "any workspace the config does not list"
+        try:
+            found = rituals.prompt_check(rituals.settings(cfg, space))
+        except ValueError as exc:
+            refused.append(f"every day-end of {label} is refused: {exc.args[0]}")
+        else:
+            if found or space:  # that the defaults leave it off is said of each workspace listed
+                (on if found else off).append(f"{label} (from {found[1]})" if found and found[1] else label)
+    said = refused + [f"on for {', '.join(on)}" if on else "on for no workspace"] + (
+        [f"off for {', '.join(off)}, where nothing asks whether what the principal typed reached a record"] if off else [])
+    return Check("warn" if refused else "info", "prompt check", "; ".join(said)) if on or off or refused else None
+
+
 def check_temporary_addresses(config: dict) -> Check:
     """Under this config a message that carries a quick tunnel's address must be read as one."""
     from synthesis import guards
@@ -1398,7 +1424,7 @@ def _background(fn, *args):
 
 
 def run_checks(home: Path | None = None, find=find_client, latest_ref: str = "", cwd: Path = None) -> list:
-    home, cwd = home or paths.home(), cwd or Path.cwd()
+    home, cwd, began = home or paths.home(), cwd or Path.cwd(), time.time()
     checks = [check_runtime(home), check_config(home), check_board(home)]
     from synthesis import sessions
     checks += check_sessions_repos(sessions.repos(), home / "sessions" / ".state")
@@ -1435,6 +1461,12 @@ def run_checks(home: Path | None = None, find=find_client, latest_ref: str = "",
     if "temporary_addresses" in config:  # null is a setting that cannot be read, and fails its line
         checks.append(check_temporary_addresses(config))
     checks += [c for c in [check_browser_accounts(config, paths.read_json(paths.state() / "browser-accounts.json"))] if c]
+    try:
+        from synthesis import rituals
+        asked = check_prompt_check(rituals.config())
+    except (OSError, ValueError) as exc:
+        asked = check_prompt_check(None, str(exc)[:120])
+    checks += [asked] if asked else []
     if latest_ref:
         checks.append(check_latest(versions, latest_ref))
     try:
@@ -1443,6 +1475,7 @@ def run_checks(home: Path | None = None, find=find_client, latest_ref: str = "",
     except (OSError, subprocess.SubprocessError):
         value = ""
     checks.append(check_git_hooks_path(value, home / "git-hooks"))
+    _note_waits(home, checks, began)
     return checks
 
 
@@ -1453,7 +1486,48 @@ def summary(checks: list, ms: float) -> str:
             f"{counts['info']} info) in {ms:.0f} ms")
 
 
-APPROVALS = ("codex hook trust", "muse hook approval")  # the person gives these in the harness; no release can
+APPROVALS = tuple(paths.HOOK_APPROVALS)  # the person gives these in the harness; no release can
+
+
+def _note_waits(home: Path, checks: list, began: float) -> None:
+    """Write down what this run saw of each harness's hooks, for a session's start and the evening job to show
+    (`paths.waits`).
+    - Its approval line says ok or fail: the hooks that were not running, the ones the line names (Muse writes them
+      with dashes), all four where it names none or says none run, with the line itself. A hook that ran after this
+      run began is the later sight of its own event: that one stays struck, and no other.
+    - Its plugin line says the plugin is not installed there: no approval waits, and its entry is dropped.
+    - The run could not tell (a listing that did not answer, a trust state that cannot be read from here): what this
+      release saw within the day stands. Otherwise the run writes that it could not tell, with the line that says
+      why, dates it again on each run that still cannot, and keeps what hooks have struck since, the only sight
+      there is.
+    - The run did not find the harness: it says so once in place of another release's entry, and that entry keeps
+      its date, so it says nothing after a day.
+    2026-11-13, a review: another release's entry stayed for ever under a sentence that said the doctor checks it."""
+    from synthesis import __version__
+    hooks = [arg.replace("-", "_") for arg in EVENTS.values()]  # as Codex keys their trust
+    for name, harness in paths.HOOK_APPROVALS.items():
+        check = next((c for c in checks if c.name == name), None)
+        plugin = next((c for c in checks if c.name == f"{harness} plugin"), None)
+
+        def change(old, check=check, plugin=plugin, harness=harness):
+            mine, line = old if old and old["version"] == __version__ else None, check or plugin
+            if check is not None and check.status in ("ok", "fail"):
+                named = [e for e in hooks if re.search(rf"\b{e}:\d|synthesis-{e.replace('_', '-')}\b", check.detail)]
+                waiting = [] if check.status == "ok" else named if named and "none of its hooks" not in check.detail else hooks
+                struck, now = mine["struck"] if mine else {}, time.time()  # the clock is read under the note's lock
+                waiting = [e for e in waiting if not began < struck.get(e, 0) <= now]
+                return {"at": began, "waiting": waiting, "struck": {}, "said": check.detail[:300] if waiting else "", "untold": False}
+            if plugin is not None and plugin.status == "fail" and plugin.detail.endswith("is not installed"):
+                return "drop" if old else None
+            if mine and not mine["untold"] or line is None and (mine or not old):
+                return None
+            why = line.detail if line is not None else f"it did not find {harness.capitalize()} on PATH or in its install folders"
+            return {"at": began, "waiting": mine["waiting"] if mine else hooks, "struck": mine["struck"] if mine else {},
+                    "said": why[:300], "untold": True}
+        try:
+            paths.note_wait(name, change, home)
+        except OSError:
+            pass  # a note that cannot be written must not cost the doctor its report
 
 
 def report(checks: list, ms: float) -> str:
@@ -1468,7 +1542,17 @@ def main(argv=None) -> int:
     parser.add_argument("--json", action="store_true", help="print the checks as JSON")
     parser.add_argument("--latest", nargs="?", const="stable", default="", metavar="REF",
                         help="also ask GitHub whether a newer release exists on REF (default stable); network")
+    parser.add_argument("--waiting", action="store_true", help="print, from what the doctor wrote down within a day and the hooks that "
+                        "have run since: how many harnesses' guards have not been seen to run and which; or `unchecked` and "
+                        "which, where nothing looked since this release was installed; or `unknown`. Runs no check, writes nothing")
     args = parser.parse_args(list(argv or []))
+    if args.waiting:
+        from synthesis import __version__
+        seen = paths.waits()
+        guards = [n for n, e in seen.items() if e["version"] == __version__ and "pre_tool_use" in e["waiting"]]
+        stale = [n for n, e in seen.items() if e["version"] != __version__]
+        print("unknown" if not seen else f"{len(guards)}\n{', '.join(guards)}" if guards else f"unchecked\n{', '.join(stale)}" if stale else "0")
+        return 0
     start = time.perf_counter()
     checks = run_checks(latest_ref=args.latest)
     ms = (time.perf_counter() - start) * 1000

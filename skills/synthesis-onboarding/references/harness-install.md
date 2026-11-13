@@ -174,7 +174,10 @@ Every install copies the rituals skill's `day-end` launcher and `day-end-nudge.s
 file at that name is refused, never replaced), records which agent the launcher opens
 (`~/.synthesis/v5/agent-cli`), and writes the LaunchAgent
 `~/Library/LaunchAgents/com.synthesis.day-end-nudge.plist`, which runs the installed nudge
-at 16:55 on weekdays, with the folders the install was made with (as the hourly copy
+at 16:55 on weekdays (the evening banner, the critical-deadline alert, and a fixed banner
+when a harness's guard has not been seen to run since the doctor, within a day, found its
+hooks waiting for approval, or when nothing has looked since synthesis was last updated),
+with the folders the install was made with (as the hourly copy
 below). An older schedule under that label is archived first and unloaded;
 the new one is loaded with `launchctl bootstrap`, or only written with `--no-launchctl`.
 The banner text is generic and fixed (others see banners on screen-shares). Uninstall

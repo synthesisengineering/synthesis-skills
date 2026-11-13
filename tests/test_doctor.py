@@ -16,6 +16,7 @@ from pathlib import Path
 
 import pytest
 
+import synthesis
 from synthesis import doctor, install, paths
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -660,6 +661,385 @@ def test_doctor_reports_a_healthy_machine_and_writes_no_harness_state(machine, c
     assert not any(line.split()[0] == "fail" for line in lines[1:])
     assert any(line.split()[:4] == ["ok", "codex", "skill", "catalog"] for line in lines[1:])
     assert snapshot(home) == before
+
+
+# --- approvals that wait ----------------------------------------------------------------------------------------------
+# A harness whose hooks wait for the person's approval runs none of them: no send guard, no deploy guard, no reply
+# check. Codex asks again after every release, and on 2026-11-13 there were six. The doctor says so on one line of
+# forty, which reaches no one who does not read it. So a run of the doctor writes down which approvals wait, and
+# two readers show it: a session's start in a harness that does run its hooks, and the weekday evening job.
+
+def _waiting(home):
+    return home / ".synthesis" / "v5" / "state" / "harness-approvals.json"
+
+
+def _seen(home):
+    return json.loads(_waiting(home).read_text())["seen"]
+
+
+EVENTS = ["session_start", "user_prompt_submit", "pre_tool_use", "stop"]
+
+
+def _note(home, version=None, ago=3600.0, struck=None, **waiting):
+    """The note as a run of the doctor `ago` seconds back would have left it: `codex=[...]`, `muse=[...]` are the
+    hook events that waited in each; `struck` is when a hook that ran since struck its own."""
+    names = {"codex": "codex hook trust", "muse": "muse hook approval"}
+    _waiting(home).parent.mkdir(parents=True, exist_ok=True)
+    _waiting(home).write_text(json.dumps({"seen": {names[k]: {
+        "at": time.time() - ago, "version": version or synthesis.__version__, "waiting": v, "struck": struck or {},
+        "said": "needs /hooks approval"} for k, v in waiting.items()}}))
+
+
+def test_a_run_of_the_doctor_writes_down_which_hooks_wait_in_each_harness(machine, capsys):
+    home, _, _ = machine
+    assert doctor.main([]) == 0
+    seen = _seen(home)
+    assert {name: entry["waiting"] for name, entry in seen.items()} == {"codex hook trust": [], "muse hook approval": []}
+    assert all(abs(entry["at"] - time.time()) < 120 and entry["version"] == synthesis.__version__ for entry in seen.values())
+    config = home / ".codex" / "config.toml"
+    config.write_text(config.read_text().replace(f'[hooks.state."{PLUGIN_ID}:hooks/hooks.json:pre_tool_use:0:0"]', "[unrelated]"))
+    assert doctor.main([]) == 1
+    assert _seen(home)["codex hook trust"]["waiting"] == ["pre_tool_use"]        # the hook its line names, not all four
+    assert _seen(home)["muse hook approval"]["waiting"] == []
+
+
+def test_the_hooks_that_wait_are_the_ones_the_checks_own_line_names(machine):
+    """Review of 5.14.0, finding 1: trust is kept for each hook, and the note held one word for a harness. A line
+    that names no hook (no hooks file, no fingerprint) is read as all four."""
+    home = machine[0] / ".synthesis" / "v5"
+    stale = ("needs /hooks approval: session_start:0:0, user_prompt_submit:0:0, pre_tool_use:0:0, stop:0:0 approved "
+             "before the plugin last changed (Codex ties an approval to the plugin's files), so Codex runs none of them")
+    for name, detail, events in (
+            ("codex hook trust", stale, EVENTS),
+            ("codex hook trust", "needs /hooks approval: stop:0:0 disabled, session_start:0:0 untrusted", ["session_start", "stop"]),
+            ("codex hook trust", "the installed plugin has no hooks/hooks.json", EVENTS),
+            ("muse hook approval", "run `muse plugins approve synthesis-skills`: synthesis-pre-tool-use (untrusted)", ["pre_tool_use"]),
+            ("muse hook approval", "the installed plugin registers no hooks", EVENTS)):
+        doctor._note_waits(home, [doctor.Check("fail", name, detail)], time.time())
+        assert paths.waits(home)[name]["waiting"] == events, detail
+        doctor._note_waits(home, [doctor.Check("ok", name, "all 4 hooks approved and enabled")], time.time())
+        assert paths.waits(home)[name]["waiting"] == []
+
+
+def test_a_harness_the_run_could_not_look_at_keeps_its_own_date_and_says_nothing_after_a_day(machine):
+    """Review of 5.14.0, findings 3 and 7: an entry the run did not look at was carried into a note dated now, so
+    it never aged (Codex removed from the machine waited for ever, with a banner every evening), and a look that
+    could not tell (Muse's `warn`) was written down as nothing waiting."""
+    home = machine[0] / ".synthesis" / "v5"
+    _note(machine[0], ago=3600.0, codex=EVENTS, muse=["stop"])
+    before = _seen(machine[0])
+    doctor._note_waits(home, [doctor.Check("warn", "muse hook approval", "cannot tell whether Muse approved the 4 hooks")], time.time())
+    assert _seen(machine[0]) == before                                           # neither entry changed, neither re-dated
+    assert {name: entry["waiting"] for name, entry in paths.waits(home).items()} == {
+        "codex hook trust": EVENTS, "muse hook approval": ["stop"]}
+    _note(machine[0], ago=2 * 86400.0, codex=EVENTS)
+    doctor._note_waits(home, [], time.time())
+    assert paths.waits(home) == {}                                               # two days with no look: it says nothing
+
+
+def test_a_hook_that_ran_while_the_doctor_was_looking_stays_struck_and_what_newly_waits_is_still_written(machine):
+    """A run of the doctor reads a harness's trust, and seconds later writes what it read. A hook that ran in
+    between is the later sight of its own event, and of no other (the second review: the first rule kept the whole
+    older list, so a hook the run found newly waiting was dropped with the one that had been struck)."""
+    home, now = machine[0] / ".synthesis" / "v5", time.time()
+    found = doctor.Check("fail", "codex hook trust",
+                         "needs /hooks approval: pre_tool_use:0:0 untrusted, stop:0:0 untrusted, session_start:0:0 disabled")
+    _note(machine[0], ago=60, struck={"pre_tool_use": now}, codex=["stop"])      # the guard's hook ran a moment ago
+    doctor._note_waits(home, [found], now - 30)                                  # a look that began before it ran
+    assert paths.waits(home)["codex hook trust"]["waiting"] == ["session_start", "stop"]
+    _note(machine[0], ago=60, struck={"pre_tool_use": now}, codex=["stop"])
+    doctor._note_waits(home, [found], time.time())                               # a look that began after it is the later sight
+    assert paths.waits(home)["codex hook trust"]["waiting"] == ["session_start", "pre_tool_use", "stop"]
+    _note(machine[0], ago=60, struck={"pre_tool_use": now + 3600}, codex=["stop"])   # a strike dated ahead of the clock is no sight
+    doctor._note_waits(home, [found], now - 30)
+    assert paths.waits(home)["codex hook trust"]["waiting"] == ["session_start", "pre_tool_use", "stop"]
+
+
+def test_what_was_seen_under_another_release_is_news_until_this_release_looks(machine):
+    """The second review, finding 2: an entry of another release dropped out after a day like any other, so the
+    word that nothing had looked since the release changed went silent on the second day. It is kept at any age
+    until a run of this release has looked: every such run writes what it saw in that entry's place (the third
+    review, findings 1 and 8, in the tests below)."""
+    home = machine[0] / ".synthesis" / "v5"
+    _note(machine[0], version="5.0.0", ago=3 * 86400.0, codex=EVENTS, muse=[])
+    assert {entry["version"] for entry in paths.waits(home).values()} == {"5.0.0"} and len(paths.waits(home)) == 2
+    doctor._note_waits(home, [doctor.Check("ok", "codex hook trust", "all 4 synthesis hooks trusted")], time.time())
+    assert paths.waits(home)["codex hook trust"]["version"] == synthesis.__version__
+
+
+# --- the third review of 5.14.0 ---------------------------------------------------------------------------------------
+
+CANNOT = "cannot tell: `codex plugin list` did not answer in 45 s; run the doctor again"
+UNREAD = ("cannot tell whether Muse approved the 4 hooks: it reported no trust state, which happens when its state "
+          "cannot be read from here (in a sandbox, for example)")
+
+
+def test_a_look_that_could_not_tell_is_written_down_as_that_in_place_of_another_releases_entry(machine):
+    """The third review, finding 1: Codex's listing did not answer, or Muse's trust could not be read, and what
+    another release saw stayed for ever under a sentence that said the doctor checks it. The run writes that it
+    could not tell, with the harness's own line; a later run that still cannot tell dates it again and keeps what
+    a hook has struck since, the only sight there is."""
+    home, now = machine[0] / ".synthesis" / "v5", time.time()
+    _note(machine[0], version="5.0.0", ago=30 * 86400.0, codex=[], muse=[])
+    blind = [doctor.Check("warn", "codex plugin", CANNOT), doctor.Check("ok", "muse plugin", "synthesis-skills 9 installed and enabled"),
+             doctor.Check("warn", "muse hook approval", UNREAD)]
+    doctor._note_waits(home, blind, now - 60)
+    seen = paths.waits(home)
+    assert {name: (entry["version"], entry["untold"], entry["waiting"]) for name, entry in seen.items()} == {
+        "codex hook trust": (synthesis.__version__, True, EVENTS), "muse hook approval": (synthesis.__version__, True, EVENTS)}
+    assert seen["codex hook trust"]["said"] == CANNOT and seen["muse hook approval"]["said"] == UNREAD
+    paths.note_wait("codex hook trust", lambda old: {**old, "waiting": ["stop"], "struck": {"pre_tool_use": now - 45}}, home)
+    doctor._note_waits(home, blind, now - 30)
+    again = paths.waits(home)["codex hook trust"]
+    assert again["at"] == now - 30 and again["waiting"] == ["stop"] and again["untold"] is True
+    doctor._note_waits(home, [doctor.Check("ok", "codex hook trust", "all 4 synthesis hooks trusted")], time.time())
+    told = paths.waits(home)["codex hook trust"]
+    assert told["untold"] is False and told["waiting"] == [] and told["said"] == ""          # a look that can tell replaces it
+
+
+def test_what_this_release_saw_stands_while_a_later_look_cannot_tell(machine):
+    """A look from inside a sandbox cannot read Muse's trust: it must not turn what an earlier look saw today into
+    a word that nothing is known."""
+    home = machine[0] / ".synthesis" / "v5"
+    _note(machine[0], ago=3600.0, codex=[], muse=["stop"])
+    before = _seen(machine[0])
+    doctor._note_waits(home, [doctor.Check("warn", "codex plugin", CANNOT), doctor.Check("warn", "muse hook approval", UNREAD)], time.time())
+    assert _seen(machine[0]) == before
+
+
+def test_a_harness_with_no_plugin_in_it_has_no_approval_to_wait_for(machine):
+    """The third review, finding 1: the plugin was removed from a harness, and the entry another release wrote of it
+    stayed. The harness's own line says the plugin is not there, in the doctor's words for Codex or in Muse's own."""
+    home = machine[0] / ".synthesis" / "v5"
+    gone = [doctor.Check("fail", "codex plugin", "synthesis-skills is not installed"),
+            doctor.Check("fail", "muse plugin", "plugin `synthesis-skills` is not installed")]
+    for version in ("5.0.0", None):
+        _note(machine[0], version=version, ago=600.0, codex=EVENTS, muse=EVENTS)
+        doctor._note_waits(home, gone, time.time())
+        assert paths.waits(home) == {} and _seen(machine[0]) == {}, version
+
+
+def test_a_harness_the_run_did_not_find_is_told_of_for_a_day_and_no_longer(machine):
+    """The third review, finding 8: a run that found no trace of a harness dropped what another release saw of it, so
+    a Codex installed where the doctor does not look went unmentioned. The run says that it did not find it; a
+    later run that still does not leaves that entry its own date, so it says nothing once it is a day old."""
+    home, now = machine[0] / ".synthesis" / "v5", time.time()
+    _note(machine[0], version="5.0.0", ago=30 * 86400.0, codex=["stop"])
+    doctor._note_waits(home, [], now - 60)
+    first = _seen(machine[0])["codex hook trust"]
+    assert first["version"] == synthesis.__version__ and first["untold"] is True and first["waiting"] == EVENTS
+    assert "did not find Codex" in first["said"]
+    doctor._note_waits(home, [], now)
+    assert _seen(machine[0])["codex hook trust"] == first                        # not dated again
+    _waiting(machine[0]).write_text(json.dumps({"seen": {"codex hook trust": {**first, "at": now - 2 * 86400}}}))
+    doctor._note_waits(home, [], now)
+    assert paths.waits(home) == {}                                               # a day on it says nothing, and nothing brings it back
+
+
+def test_a_strike_made_while_the_doctor_waits_for_the_note_stays_struck(machine, monkeypatch):
+    """The third review, finding 2: the doctor read the clock before it took the note's lock, so a hook that struck
+    its event while the doctor waited for the lock was written back as waiting."""
+    home = machine[0] / ".synthesis" / "v5"
+    found = doctor.Check("fail", "codex hook trust", "needs /hooks approval: pre_tool_use:0:0 untrusted, stop:0:0 untrusted")
+    _note(machine[0], ago=60, codex=["pre_tool_use", "stop"])
+    real = paths.note_wait
+
+    def after_a_hook(name, change, *rest, **more):  # the doctor comes to the lock just after a hook has struck under it
+        if name == "codex hook trust":
+            time.sleep(0.02)
+            real(name, lambda old: {**old, "waiting": ["stop"], "struck": {"pre_tool_use": time.time()}}, home)
+        return real(name, change, *rest, **more)
+    monkeypatch.setattr(paths, "note_wait", after_a_hook)
+    doctor._note_waits(home, [found], time.time() - 30)
+    assert paths.waits(home)["codex hook trust"]["waiting"] == ["stop"]
+
+
+def _held(home, name="codex hook trust"):
+    """A writer inside the note's lock, and the word that lets it out."""
+    import threading
+    inside, leave = threading.Event(), threading.Event()
+
+    def hold(old):
+        inside.set()
+        leave.wait(10)
+    holder = threading.Thread(target=paths.note_wait, args=(name, hold, home))
+    holder.start()
+    assert inside.wait(10)
+    return holder, leave
+
+
+def test_two_writers_of_the_note_take_turns_and_the_second_reads_what_the_first_wrote(machine):
+    """The third review, finding 3: the test of the locked change would have passed with the lock taken out."""
+    import threading
+    home = machine[0] / ".synthesis" / "v5"
+    _note(machine[0], codex=EVENTS)
+    inside, leave, order = threading.Event(), threading.Event(), []
+
+    def first(old):
+        inside.set()
+        leave.wait(10)
+        order.append("first")
+        return {**old, "waiting": ["stop"]}
+
+    def second(old):
+        order.append(("second", old["waiting"]))
+    one = threading.Thread(target=paths.note_wait, args=("codex hook trust", first, home))
+    two = threading.Thread(target=paths.note_wait, args=("codex hook trust", second, home))
+    one.start()
+    assert inside.wait(10)
+    two.start()
+    two.join(0.3)
+    assert two.is_alive() and order == []                                        # the second waits its turn
+    leave.set()
+    one.join(10)
+    two.join(10)
+    assert order == ["first", ("second", ["stop"])]
+
+
+def test_a_writer_that_will_not_wait_leaves_a_held_note_alone(machine):
+    """The third review, finding 4: a hook with something to strike waited for whoever held the note's lock, for as
+    long as that took. Asked not to wait, the change is not made and not called."""
+    home = machine[0] / ".synthesis" / "v5"
+    _note(machine[0], codex=EVENTS)
+    holder, leave = _held(home)
+    called, began = [], time.monotonic()
+    paths.note_wait("codex hook trust", lambda old: called.append(old) or {**old, "waiting": []}, home, wait=False)
+    assert time.monotonic() - began < 1 and called == []
+    leave.set()
+    holder.join(10)
+    assert paths.waits(home)["codex hook trust"]["waiting"] == EVENTS
+    paths.note_wait("codex hook trust", lambda old: {**old, "waiting": []}, home, wait=False)
+    assert paths.waits(home)["codex hook trust"]["waiting"] == []                # free, the change is made
+
+
+def test_a_state_file_that_cannot_be_replaced_leaves_nothing_half_written_beside_it(tmp_path):
+    """The third review, finding 6: each failed write left its temporary file in the state folder."""
+    target = tmp_path / "state" / "harness-approvals.json"
+    target.mkdir(parents=True)                                                   # a folder where the file should be
+    with pytest.raises(OSError):
+        paths.write_json(target, {"seen": {}})
+    assert [path.name for path in target.parent.iterdir()] == [target.name]
+
+
+def test_a_guard_the_doctor_could_not_tell_of_is_counted_as_not_confirmed(machine, capsys):
+    home = machine[0]
+    _note(home, codex=EVENTS, muse=[])
+    seen = _seen(home)
+    seen["codex hook trust"]["untold"] = True
+    _waiting(home).write_text(json.dumps({"seen": seen}))
+    capsys.readouterr()
+    assert doctor.main(["--waiting"]) == 0
+    assert capsys.readouterr().out.splitlines() == ["1", "codex hook trust"]
+
+
+def test_one_entry_is_changed_from_what_the_file_holds_at_that_moment(machine):
+    """The second review, finding 4: a hook read the note, the doctor wrote it, and the hook wrote back what it had
+    read less one event. A change is now made from the entry as it is read under the note's lock."""
+    home = machine[0] / ".synthesis" / "v5"
+    _note(machine[0], codex=EVENTS, muse=["stop"])
+    seen = []
+    paths.note_wait("codex hook trust", lambda old: seen.append(old["waiting"]) or {**old, "waiting": ["stop"]}, home)
+    assert seen == [EVENTS] and paths.waits(home)["codex hook trust"]["waiting"] == ["stop"]
+    assert paths.waits(home)["muse hook approval"]["waiting"] == ["stop"]
+    before = _waiting(machine[0]).read_bytes()
+    paths.note_wait("codex hook trust", lambda old: None, home)                  # no change is no write
+    assert _waiting(machine[0]).read_bytes() == before
+
+
+def test_what_waits_is_read_back_without_a_check_and_without_a_write(machine, capsys):
+    home, fakebin, _ = machine
+    capsys.readouterr()
+
+    def said():
+        assert doctor.main(["--waiting"]) == 0
+        return capsys.readouterr().out.splitlines()
+
+    assert said() == ["unknown"]                                                 # no run of the doctor has written it down
+    _note(home, codex=EVENTS, muse=["pre_tool_use"])
+    for name in ("claude", "codex", "muse"):                                     # it asks no harness anything
+        (fakebin / name).write_text("#!/bin/sh\nexit 9\n")
+    before = _waiting(home).read_bytes()
+    out = said()
+    assert out[0] == "2" and "codex hook trust" in out[1] and "muse hook approval" in out[1] and len(out) == 2
+    assert _waiting(home).read_bytes() == before
+    _note(home, codex=["stop"], muse=[])
+    assert said() == ["0"]              # a hook that is no guard waits: the doctor's own line says so; and no second line
+    _note(home, codex=EVENTS, muse=[], version="5.0.0")
+    out = said()                        # seen under another release: what a harness asks again after one is not known
+    assert out[0] == "unchecked" and "codex hook trust" in out[1] and "muse hook approval" in out[1]
+    _note(home, ago=3 * 86400, codex=EVENTS)
+    assert said() == ["unknown"]                                                 # three days old says nothing of today
+    _note(home, version="5.0.0", ago=3 * 86400, codex=[])
+    assert said()[0] == "unchecked"                                              # but another release's is news at any age
+    now, version = time.time(), synthesis.__version__
+    for text in ("{not json", json.dumps({"seen": ["codex hook trust"]}), json.dumps({"at": now, "waiting": ["codex hook trust"]}),
+                 json.dumps({"seen": {"codex hook trust": {"at": int("9" * 400), "version": version, "waiting": ["pre_tool_use"]}}}),
+                 json.dumps({"seen": {"codex hook trust": {"at": now + 3600, "version": version, "waiting": ["pre_tool_use"]}}}),
+                 json.dumps({"seen": {"codex hook trust": {"at": now, "version": version, "waiting": "pre_tool_use"}}}),
+                 json.dumps({"seen": {"a name of another release": {"at": now, "version": version, "waiting": ["pre_tool_use"]}}})):
+        _waiting(home).write_text(text)
+        assert said() == ["unknown"], text
+
+
+def test_the_doctor_says_where_the_days_prompt_check_is_on(machine, capsys):
+    """The day's prompt check is what asks whether each thing the principal typed reached a record, and it is a
+    setting of each workspace. Measured on 2026-11-13: it was on for one workspace of three, and in thirty days 8 of
+    267 session entries cited a record. The line says where it is on and where nothing asks."""
+    cfg = {"workspaces": {"alpha": {"prompt_reconcile": {"records": ["~/kb/projects"], "from": "2026-11-14"}}, "beta": {},
+                          "gamma": {"prompt_reconcile": False}, "delta": {"prompt_reconcile": {"records": ["~/kb"]}}}}
+    check = doctor.check_prompt_check(cfg)
+    assert (check.status, check.name) == ("info", "prompt check")
+    assert check.detail.startswith("on for alpha (from 2026-11-14), delta; off for beta, gamma")
+    assert doctor.check_prompt_check({"workspaces": {}}) is None
+    assert doctor.check_prompt_check({"workspaces": {"alpha": {"prompt_reconcile": {"records": ["/x"]}}}}).detail == "on for alpha"
+    assert doctor.check_prompt_check({"workspaces": {"alpha": {}}}).detail.startswith("on for no workspace; off for alpha")
+    unread = doctor.check_prompt_check(None, "not JSON")
+    assert unread.status == "warn" and "cannot tell" in unread.detail and "not JSON" in unread.detail
+    home, _, _ = machine
+    rituals = home / ".synthesis" / "v5" / "rituals"
+    rituals.mkdir(parents=True, exist_ok=True)
+    (rituals / "config.json").write_text(json.dumps(cfg))
+    doctor.main([])
+    lines = [line for line in capsys.readouterr().out.splitlines() if line.split()[1:3] == ["prompt", "check"]]
+    assert len(lines) == 1 and lines[0].split()[0] == "info" and "on for alpha (from 2026-11-14), delta" in lines[0]
+    (rituals / "config.json").write_text("{not json")
+    doctor.main([])
+    lines = [line for line in capsys.readouterr().out.splitlines() if line.split()[1:3] == ["prompt", "check"]]
+    assert len(lines) == 1 and lines[0].split()[0] == "warn"
+
+
+def test_the_prompt_check_line_reads_the_setting_as_the_day_end_does():
+    """Review of 5.14.0, findings 5 and 6: the line read a workspace's own entry, so a check set under `defaults`
+    was reported off where every day-end asked; and it called `on` a setting every day-end of that workspace
+    refuses (null, 0, an empty object, a folder named from no fixed place, a first day that is no day)."""
+    inherited = {"defaults": {"prompt_reconcile": {"records": ["/abs/kb"]}},
+                 "workspaces": {"alpha": {}, "beta": {"prompt_reconcile": False}}}
+    assert doctor.check_prompt_check(inherited).detail.startswith("on for alpha, any workspace the config does not list; off for beta")
+    only = {"defaults": {"prompt_reconcile": {"records": ["/abs/kb"]}}, "workspaces": {}}
+    assert doctor.check_prompt_check(only).detail == "on for any workspace the config does not list"
+    loose = doctor.check_prompt_check({"defaults": {"prompt_reconcile": {"records": ["rel"]}},
+                                       "workspaces": {"beta": {"prompt_reconcile": False}}})
+    assert loose.status == "warn" and "every day-end of any workspace the config does not list is refused" in loose.detail
+    assert "off for beta" in loose.detail
+    for bad in (None, 0, {}, [], "yes", {"records": ["kb"]}, {"records": ["/abs/kb"], "from": "tomorrow"}):
+        check = doctor.check_prompt_check({"workspaces": {"alpha": {"prompt_reconcile": bad},
+                                                          "beta": {"prompt_reconcile": {"records": ["/abs/kb"]}}}})
+        assert check.status == "warn" and "every day-end of alpha is refused" in check.detail and "on for beta" in check.detail, bad
+
+
+@pytest.mark.parametrize("config", [{"workspaces": {"alpha": ["x"]}}, {"workspaces": {"alpha": "x"}},
+                                    {"workspaces": {"alpha": True}}, {"defaults": ["x"], "workspaces": {"alpha": {}}}])
+def test_a_rituals_config_whose_workspace_is_no_object_costs_the_doctor_one_line_and_not_its_report(machine, capsys, config):
+    """Review of 5.14.0, finding 4: the rituals' config reader raised a TypeError for such a file, which the doctor
+    did not expect: no report, a traceback, and the release's own check after installing ended with it."""
+    home, _, _ = machine
+    rituals = home / ".synthesis" / "v5" / "rituals"
+    rituals.mkdir(parents=True, exist_ok=True)
+    (rituals / "config.json").write_text(json.dumps(config))
+    doctor.main([])
+    lines = [line for line in capsys.readouterr().out.splitlines() if line.split()[1:3] == ["prompt", "check"]]
+    assert len(lines) == 1 and lines[0].split()[0] == "warn" and "cannot tell" in lines[0] and "object" in lines[0]
+    assert _waiting(home).is_file()                                              # and the run reached its end
 
 
 # --- Codex's listing, asked of one marketplace -----------------------------------------------------------------------
