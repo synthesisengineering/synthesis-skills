@@ -5,7 +5,7 @@ license: "Apache-2.0"
 depends_on: ["synthesis-agent-correspondence"]
 metadata:
   author: "Rajiv Pant"
-  version: "2.8.0"
+  version: "2.9.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
   format: v5

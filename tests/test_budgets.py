@@ -729,10 +729,19 @@ ROOT = Path(__file__).resolve().parents[1]
 # said 6, plain 5, listed 4), 140 for the shape in which 27 scripts import the runtime (five lines each, ten in
 # autopilot_cli.py, which imports it twice): one line that says the runtime is not there, where a traceback was;
 # and 1 in the knowledge-base connector's server.py, whose start line in the test mode asks for the teardown list.
+# 5.11.0 (2026-11-13): core 135, plugin 135. guards.py 68, the rule that a message naming a clock time goes on a
+# fresh calendar read, off unless the config has `fresh_calendar`: _time_without_calendar 25 (the setting, the times
+# in the words, the age of the read, the hold's words), _calendar_read 21 (the newest calendar read that succeeded,
+# from the transcript's tail), check_send 11 (asked before any code and again at the approved call, with a code of
+# its own), the note of what was measured and CLOCK 8, CALENDAR_READ 1, and two blank lines. reply_check.py 54, the
+# question after a message to a person, off unless the config has `reply_watch`: unwatched_sends 33, check 11 (its
+# words, and a setting of another shape said once), 7 for the turn's reader now shared with the calendar read-back
+# (_turn_calls 8, unread_calendar_writes 1 fewer), and one each for SENDS, TIMERS and NONE. wait.py 13: the
+# statement that no answer is awaited (main 10, its usage line, its sentence and one import).
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # consolidate first).
-CORE_BUDGET = 12524
-PLUGIN_BUDGET = 33993
+CORE_BUDGET = 12659
+PLUGIN_BUDGET = 34128
 
 
 def _lines(files):

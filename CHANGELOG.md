@@ -4,6 +4,28 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [5.11.0] - 2026-11-13
+
+- **A message that names a clock time goes out on a fresh read of the calendar** (`synthesis-message-guard` 2.9.0).
+  Off unless the config has `fresh_calendar` (`{}` turns it on; leaving the key out, or `false`, turns it off, and
+  any other shape blocks messages and is named). A mail, Slack, chat or text message, or a mail draft, whose words
+  name a clock time (`3:30`, `15:30`, `3 pm`) is held unless this session read a calendar, and the read succeeded,
+  in the ten minutes before the call. The question is asked at the first call, before any approval code, and again
+  at the approved call, where the approval already typed stands: on 2026-11-12 an offer of a time went out on a
+  calendar read half an hour old, past a new invitation. A code of its own releases a message whose time is no
+  calendar's, or one from a session with no calendar to read; the ordinary approval and a send window do not
+  waive the read. The guard cannot know that a message proposes a meeting. Replayed over recorded messages, about
+  six in ten of those that name a clock time were about when people meet, and a hold on one of the others costs
+  one calendar read and reaches no one.
+- **A turn that sent a message to a person ends with a watch for its answer, or says that none is awaited**
+  (`synthesis-waiting` 1.1.0, `synthesis-agent-guardrails` 2.7.0). Off unless the config has `reply_watch` (`{}`
+  turns it on). `synthesis wait none "<why>"` is the statement: it arms nothing and leaves one line on the board
+  with its reason. Where neither a timer or a monitor, nor the statement, follows the last such message of a
+  turn, and the session holds no wait on the board, the reply check sends the reply back once. A draft, a
+  scheduled message, a calendar event, a ticket, a document and a note to another session are not such messages,
+  and a send the guard held went nowhere. No hook judges whether a message asked for something today: the seat
+  that sent it says what it awaits. `{"sends": [...]}` replaces the list of tools that send to a person.
+
 ## [5.10.0] - 2026-11-13
 
 - **The commit check can hold an entry's own time to the clock** (`synthesis-git-hooks` 3.3.0,
