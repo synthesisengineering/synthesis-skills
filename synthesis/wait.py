@@ -213,13 +213,17 @@ def main(argv: list[str], session_id: str) -> int:
                   f"until {time.strftime('%H:%M', time.localtime(w['until']))}  ({'woken by ' + w['by'] if w.get('by') else 'a watcher is running'})")
         return 0
     if args.kind == "none":  # the seat's own statement, which the turn-end check reads after a message to a person
-        why = " ".join(args.target.split())
-        if not why:
-            print('say why no answer is awaited: synthesis wait none "<why>"', file=sys.stderr)
+        why = "".join(ch if ch.isprintable() else "?" for ch in " ".join(args.target.split()))  # nothing a terminal would obey
+        if not why or len(why) > 300:
+            print('say why no answer is awaited, in a sentence of 300 characters at most: synthesis wait none "<why>"', file=sys.stderr)
             return 2
-        (paths.board() / "waits").mkdir(parents=True, exist_ok=True)
-        with open(paths.board() / "waits" / "none.jsonl", "a", encoding="utf-8") as log:
-            log.write(json.dumps({"session": session_id, "at": time.time(), "why": why}) + "\n")
+        try:
+            (paths.board() / "waits").mkdir(parents=True, exist_ok=True)
+            with open(paths.board() / "waits" / "none.jsonl", "a", encoding="utf-8") as log:
+                log.write(json.dumps({"session": session_id, "at": time.time(), "why": why}) + "\n")
+        except OSError as exc:
+            print(f"{paths.board() / 'waits' / 'none.jsonl'} cannot be written ({exc.strerror or exc}), so nothing is stated", file=sys.stderr)
+            return 1
         print(f"noted: no answer is awaited ({why})")
         return 0
     if args.kind == "clear":  # a note has no process whose end takes it down: its own seat does, and a watcher's record is not a note
