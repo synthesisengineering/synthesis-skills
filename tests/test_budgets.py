@@ -627,10 +627,40 @@ ROOT = Path(__file__).resolve().parents[1]
 # by a function written in place). slot_check.py 1 and travel_check.py 2 (an all-day hold; a trip into a day
 # blocked whole; an all-day commitment at the principal's own place), decay_sweep.py 1 (a fence on a list mark's
 # line).
+# 5.8.0 adds 886 to the core and 1,070 to the plugin.
+# wait.py 253, new (waiting for an expected event is a task): main 59, its usage 29, attempt 23 (a try in a session
+# of its own, stopped with all it started; a program that cannot be started refuses), _watch 18, live 14, wake 11,
+# _signal 10, _stop 10, _alive 8, span 7, record 7, sent_by 6, watching 6, said 3, unread 3, _folder 2, four
+# constants, and the lines between them.
+# reply_check.py 259 (the turn-end check reads a wait): the forms a wait takes 66 (WAITS and the patterns it is
+# built from); the principal's own move 68 (THEIRS, YOURS, _theirs and their parts; a staged message, an approval
+# code and a request hand them the turn); what announces nothing 43 (a wait as its sentence's subject, a label, a
+# heading, a rule); held_by_harness 43 with its constants (background work the harness holds, read from the
+# transcript's tail: of 815 recorded replies read as a wait, 586 were of this kind); unarmed_wait 22, check 8,
+# quoted text 5, _probe 2, the module's note 2.
+# guards.py 214: _unread_files 82 with _standard_base64 10, _sha256 12, HASH_SECONDS 3, check_upload 7 and the
+# constants that say which tools read a local file and which names mark secrets 19 (a send's attachments are read
+# as the connector reads them, before the approval, and the approval binds their bytes); temporary_addresses 20
+# with TUNNELS 5, HOSTNAME, LOCAL and their parts 6, and message_problems 12 (an address that can change is refused
+# before any approval); check_tunnel 13, _tunnels 13 and their two constants (a quick tunnel's start waits for a
+# code); check_send 4, _python_writes 3 (a parsed program's own warnings are not the hook's to print),
+# _protected 2, check 1.
+# doctor.py 90: check_outbox 41, started_with 13 and connector_files 10 (the outbox is there, and the running
+# connector was started to read it); check_temporary_addresses 10; check_wait_check 8; run_checks 3,
+# check_shell_name 2, RELEASE_MANIFEST 2, check_codex_board 1.
+# cli.py 22 (cmd_msg 10: what will deliver a message; cmd_who 6: a waiting seat; parser 3, main 3), board.py 22
+# (waiting 6, Session 5, _describe 5, _held 4, _read_marker 2, ClaimConflict 1, less inbox 1), approvals.py 13
+# (backed 11: a grant of a thing, held and not spent; 2 beside it), paths.py 6 (outbox 4, BOARD_FILES 2), hook.py 4
+# (the mail hint at a session's start), project.py 3 (resume names a waiting seat).
+# Outside the core 184: relied_on.py 94, new (main 48, its note 29, answer 17: the health of what other people rely
+# on, each check put to the guard first); the knowledge-base connector 54 (config.py 40: load 18, temporary 10,
+# TEMPORARY_HOSTS 6 and 6 beside them; server.py 10; access.py 4: the operator-only test mode); provenance_scan.py
+# 33 (scan 9, main 9, its note 8, records 7: the folders a workspace keeps its plan in); setup.py 2 and
+# autopilot_cli.py 1.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # consolidate first).
-CORE_BUDGET = 10615
-PLUGIN_BUDGET = 31099
+CORE_BUDGET = 11501
+PLUGIN_BUDGET = 32169
 
 
 def _lines(files):

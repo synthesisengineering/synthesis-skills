@@ -4,6 +4,128 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [5.8.0] - 2026-11-12
+
+- **Nothing another person is given stands on an address that can change** (core, message guard 2.8.0, implementation
+  integrity 2.1.0, knowledge-base distribution 1.2.0, daily rituals 3.10.0, autopilot 4.1.0). A connector tested on a
+  laptop behind a quick tunnel, with sign-ins kept in memory, was handed to two colleagues in direct messages that
+  carried the tunnel's address. One relied on it for real work. When the laptop's app restarted the address was gone
+  for good, and two scheduled check-ins ran without looking at it.
+  - **The send guard.** With `temporary_addresses` in the config, a send, a draft, a shell command that posts and
+    words typed into a messaging app are refused, before any approval is asked for, when they hold a quick tunnel's
+    host (twenty services), a local name or a private address written with a scheme or a port, or a loopback
+    address. The approval of the message does not release them: only the principal's typed approval of the
+    addresses themselves does, for fifteen minutes, and the message then still waits for its own. `{}` turns the
+    rule on, `hosts` adds host names, `local: false` leaves local addresses out. On 2,540 recorded sends of thirty
+    days it would have fired six times: four on that tunnel's address, two on a database port on localhost in a
+    ticket.
+  - **Starting a quick tunnel** (`cloudflared tunnel --url`, `ngrok http`, `devtunnel host`, `localtunnel`, a
+    reverse `ssh` to a tunnel service) waits for the principal's code and says what a quick tunnel is for: their
+    own test, with an address that is never given to anyone. A named tunnel is not held.
+  - **The knowledge-base connector** refuses to start when `KB_PUBLIC_URL` is on one of those services, a local
+    name or an address the internet cannot reach, outside an operator-only test mode (`KB_OPERATOR_TEST=1` with
+    `KB_OPERATOR_ADDRESSES`). In the mode nobody but the operator signs in, a line that begins `TEST ONLY` is
+    logged whatever the log level, and `/health` says `test_only: true`. **A deployment that left
+    `KB_OAUTH_STORE` unset must now name it:** outside the mode an unnamed store refuses the start, and `memory`
+    named on purpose warns that every restart signs everyone out. A `KB_LOG_LEVEL` that is no level refuses the
+    start. A test holds the connector's list of tunnel services and the guard's equal.
+  - **The handoff gate** (implementation integrity, `references/handoff-gate.md`, rule 10): before anyone but the
+    principal is given something to use, five lines pass with evidence read that session (where it runs, a
+    permanent address, state that survives a restart, a watched health check, a named owner), each recipient's own
+    access is proved, and every outside dependency is listed with where its notices arrive. A miss blocks the
+    handoff.
+  - **A standing health check.** A workspace declares what other people rely on in the ritual config (`relied_on`:
+    what, by whom, and a check as a list of words). `relied_on.py` runs each check, prints whatever is down first
+    and exits 1 on any failure. The day-start, the mid-day sync and the day-end run it first; a `DOWN` line opens
+    the plan (`## Down: needs your attention`, above the critical deadlines) and the reply, and is an incident
+    the principal hears first. An autopilot run's standing checklist gains `others-rely-on`, and every wake runs
+    the check before its next item. A check is a standing command, so each is put to the guard first: one the
+    guard would hold for an agent is reported down and never started.
+  - `synthesis doctor` proves the address rule reads a quick tunnel's address under the installed config
+    (`temporary addresses`).
+  **Every seat:** do not hand anyone a test's address, and pass the handoff gate first. Declare what other people
+  rely on under `relied_on` the day it is handed over.
+- **A send's attachments are read before the approval, as the connector reads them** (core, message guard 2.8.0,
+  agent correspondence 4.2.0, meeting transcripts 1.2.0, onboarding 3.4.0). A mail send with a file attached was
+  approved and then refused by the mail connector, which reads a local file only from its own attachment folder
+  and the folders it was started with; beside a file it could read, the mail went out without the other.
+  - Agents stage outgoing files in one folder, the outbox under the synthesis home. The connector's `start.sh`
+    makes it and adds it to `ALLOWED_FILE_DIRS`; Codex's sandbox is granted it.
+  - Before any code is issued the guard refuses what the connector would refuse or silently change: an attachment
+    whose file is outside the outbox and the connector's own attachment folder, is named under a key the
+    connector does not read, gives two sources, gives `content` that is not standard base64 or has no
+    `filename`, or whose name or folder marks secrets; an `attachments` value in a shape the connector refuses.
+    Five Drive tools that read a local file follow the same rule, and a Drive call that gives a file's content
+    twice is refused. The guard counts nothing its own process has in `ALLOWED_FILE_DIRS`: that is the session's
+    setting, and a connector a supervisor started carries its own.
+  - An approval binds the bytes of each file the connector will read. A file replaced, or a link pointed
+    elsewhere, between the approval and the call needs a new code.
+  - `synthesis doctor` has an `outbox` line: the folder is there to write, and a connector kept running by its
+    auto-start was started with it and without `WORKSPACE_MCP_DISABLE_LOCAL_FILES=true`.
+  - `start.sh` runs one release of the server, `workspace-mcp@2.1.0`, the one whose rules for a local file the
+    guard copies; `WORKSPACE_MCP_VERSION` names another. The installer escapes every value it writes for a plist
+    or a systemd unit and quotes a start path systemd would misread.
+  **Every seat:** copy a file you attach into the outbox and give that copy's full path. **Once per machine:**
+  restart the mail connector after this release, since a running one keeps the folders it was started with.
+- **Waiting for an expected event is a task** (core, new skill synthesis-waiting 1.0.0). A session told to expect a
+  peer's message ended its turn with nothing armed: a board message reaches a session only when a prompt is
+  submitted, so it sat until its principal typed. Its first watcher then polled `synthesis inbox`, which marks what
+  it prints as read, and waited half an hour beside mail addressed to a project its session was not bound to. Now:
+  - `synthesis wait message|file|run` blocks until its event or its bound (`--for`, at most twelve hours) and holds
+    a record on the board while it runs, so the watcher is its own registration. On the event it prints one line and
+    exits 0; at the bound it exits 3 and says nothing arrived; a bound it cannot read, or a command whose program
+    cannot be started, exits 2 at once with the reason. A try of `wait run` runs in a session of its own, reads
+    nothing from the terminal, and is stopped with all it started unless it succeeds in time. `wait note` records
+    a wait the harness itself holds, `wait clear` withdraws this session's notes, and `wait list` shows every
+    session's.
+  - `synthesis inbox --peek` lists unread mail and marks none of it; `wait message` reads the same way and names the
+    sender, never the message.
+  - `synthesis msg` ends with what will deliver the message: the recipient is watching (and how often its watcher
+    looks, when that is not within seconds), it reads it at its next prompt, or no session is bound to that
+    project. `--wake` nudges an idle recipient through its own harness where a command can, with one fixed line
+    that carries no instruction; with `--durable`, each live session on the project. A session that holds a live
+    wait stays addressable for the wait's whole bound, and `who`, `resume` and an address error's list of seats
+    mark it `waiting until HH:MM`. A message whose text is `wait` or `doctor` is a message: the command is the
+    first word that is no option of the CLI's own.
+  - The turn-end check sends back, once, a final reply that announces the session's own wait with nothing armed.
+    It reads the reply clause by clause: a first-person wait ("I'm waiting for", "I'll wait"), a first-person
+    future tied to an event still to come ("I'll merge once the checks pass", "when the bank confirms, I'll record
+    it"), or a sentence that opens "Waiting on". Armed means a live `synthesis wait`, an autopilot run the session
+    owns, or, in Claude Code, background work the session started that has not reported yet (an agent, a shell
+    task, a workflow, a monitor), which it reads from the tail of the transcript. A reply that hands the principal
+    the turn passes: it ends by asking, shows a message staged between a `BEGIN` and an `END` line, asks for an
+    approval code, or asks them to act in so many words. So does a list of open loops (a label before a colon, a
+    heading, a table row, a wait after a dash or a semicolon), a rule for next time, an explanation, and a clause
+    that awaits the principal's own move. It was measured on recorded replies, not invented ones: of 4,443
+    turn-ending replies from thirty days on one machine it reads 542 as a wait, finds background work out in 452,
+    and sends back 90, about three a day; read one by one, three in four of those are the session's own wait with
+    nothing to end it. The first form of the check would have sent back 815. Config `wait_phrases` adds phrases.
+  - A session bound to no project is told at its start which projects hold mail its inbox would deliver, the newest
+    first, and `synthesis doctor` runs the turn-end check on a canned reply.
+  - The skill holds the rule, the commands and, harness by harness, what wakes a session and what a watcher costs,
+    each line with how it was learned. **Every seat:** a reply that ends on "I'm waiting for…" or "I'll do it
+    once…" now needs a watcher armed (`synthesis wait`, or `synthesis wait note` for one the harness holds), the
+    wait said to be the principal's, or a plain statement that nothing wakes the seat.
+- **The provenance scan reads the folders a workspace keeps its plan in** (agent guardrails 2.5.0). A workspace
+  kept its daily plan in `ritual-workers/`, so neither its plan nor its close was ever scanned.
+  `provenance_scan.py` now also reads `ritual-workers/` and `drafts/`, a file named outright whatever its suffix,
+  and every file under a folder given with `--records` (a plan folder under another name), at any depth and in
+  hidden folders. A record it cannot open is named and the scan exits 1; a file that is not text is counted and
+  fails nothing; a path that does not exist exits 2. The day-end step says to pass each declared plan folder.
+- **One passage moved, nothing trimmed** (thinking framework 3.0.1). The two sections of
+  `references/decisive-uncertainty.md` that describe an autopilot run's journal moved word for word to the
+  autopilot skill's `references/uncertainty-journal.md`, with one sentence left in their place: a package of the
+  method skills alone does not carry that runtime.
+- The checklist before an approval says to read how a form takes its input before a send through it is staged
+  (five addresses typed into one field were rejected after the code was used).
+- The reader of inline Python programs no longer passes on Python's own warning about a program's escapes, which
+  a replay showed the hook printing.
+- The audit reference lists every check the doctor runs, held by a test that reads the names from the code
+  (agent conformance 2.0.2). The README's command table gains `wait`, `journal`, `index set` and `sends`, and
+  lists `synthesis-waiting` and `synthesis-kb-distribution`: 72 skills.
+- The thirty days of commands then recorded (112,695) were replayed through this release's write guard and
+  5.7.0's: 60 refused before and after, none newly refused or newly passed, and none on which it raised.
+
 ## [5.7.0] - 2026-11-12
 
 - **An in-person commitment is not on the calendar until its travel is** (chief of staff 2.3.0, daily rituals
