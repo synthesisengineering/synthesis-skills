@@ -15,6 +15,7 @@ import json
 import os
 import shutil
 import subprocess
+import time
 from datetime import date
 from pathlib import Path
 
@@ -115,8 +116,49 @@ def test_the_nudge_fires_when_its_state_tool_cannot_answer(tmp_path: Path, break
 
 def test_the_banner_texts_are_fixed_and_name_nothing() -> None:
     text = (SCRIPTS / "day-end-nudge.sh").read_text(encoding="utf-8")
-    assert text.count("display notification") == 2
+    assert text.count("display notification") == 4
     assert all("$" not in part.splitlines()[0] for part in text.split("display notification")[1:])
+
+
+ONE = '-e display notification "One agent app is running without its guards — details in your synthesis console" with title "Synthesis"'
+SEVERAL = '-e display notification "More than one agent app is running without its guards — details in your synthesis console" with title "Synthesis"'
+
+
+def _all_closed(home: Path, waiting, ago: float = 3600.0) -> None:
+    closed = [{"date": TODAY, "direction": d, "workspace": w, "ts": "x"} for w in ("alpha", "beta") for d in ("day-start", "day-end")]
+    state(home, closed, EVERY_DAY)
+    (home / "state").mkdir(exist_ok=True)
+    (home / "state" / "harness-approvals.json").write_text(
+        waiting if isinstance(waiting, str) else json.dumps({"at": time.time() - ago, "waiting": waiting}), encoding="utf-8")
+
+
+def test_the_nudge_says_when_a_harness_runs_without_its_hooks(tmp_path: Path) -> None:
+    """2026-11-13: after each of six releases in a day, one harness ran none of the plugin's hooks until its hooks
+    were approved again, and only the doctor's own line said so. The doctor writes down which approvals wait; the
+    evening job reads that note, asks no harness anything, and shows a fixed banner: one, or more than one."""
+    home = runtime(tmp_path)
+    _all_closed(home, ["codex hook trust"])
+    before = snapshot(home)
+    assert nudge(home, tmp_path) == [ONE]
+    assert snapshot(home) == before, "the nudge must never write state"
+    _all_closed(home, ["codex hook trust", "muse hook approval"])
+    assert nudge(home, tmp_path) == [SEVERAL]
+    state(home, [{"date": TODAY, "direction": "day-end", "workspace": "alpha", "ts": "x"}], EVERY_DAY)
+    assert nudge(home, tmp_path) == [SEVERAL, BANNER]                           # and the evening banner beside it
+
+
+@pytest.mark.parametrize("waiting, ago", [([], 60.0), (["codex hook trust"], 2 * 86400.0), ("{not json", 0.0)])
+def test_the_nudge_says_nothing_of_guards_when_none_wait_or_the_note_is_old_or_unreadable(tmp_path: Path, waiting, ago) -> None:
+    home = runtime(tmp_path)
+    _all_closed(home, waiting, ago)
+    assert nudge(home, tmp_path) == []
+
+
+def test_the_nudge_says_nothing_of_guards_where_no_run_of_the_doctor_wrote_the_note(tmp_path: Path) -> None:
+    home = runtime(tmp_path)
+    _all_closed(home, [])
+    (home / "state" / "harness-approvals.json").unlink()
+    assert nudge(home, tmp_path) == []
 
 
 def test_the_nudge_sounds_the_critical_alert_on_a_day_with_no_ritual(tmp_path: Path) -> None:
