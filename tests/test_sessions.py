@@ -2207,3 +2207,76 @@ def test_a_run_started_by_a_command_line_is_briefed_not_prompted(harness):
              if r.get("kind") in ("user", "brief")}
     assert kinds == {"Review this branch.": "brief", "Summarize the diff.": "brief", "Now ship it.": "user"}
     assert [p["text"] for p in sessions.prompts("acme", "2026-10-30")] == ["Now ship it."]
+
+
+# --- a record's number is its name: reading a session again keeps every number it gave (2026-11-13) -------------------
+# A citation names a record by its number, and a rebuild numbered every session anew: under a reader that files more
+# than the one before it, each later record moved up, and a citation written earlier named another record with
+# nothing to say so. Counted on one machine's records before this was written: 349 citations, 373 distinct numbers in
+# 49 sessions, of which a rebuild under the reader of that day would have moved 157. Committed before the code.
+
+def _numbered(native: Path) -> dict:
+    """{number: (time, kind, words)} of a session's records as the archive holds them."""
+    return {rec["seq"]: (rec.get("at"), rec.get("kind"), rec.get("text")) for rec in sessions.records(_meta(native)["folder"])}
+
+
+@pytest.fixture
+def filed_by_an_older_reader(harness, monkeypatch):
+    """A session exported under a reader that files less than today's: it passes over one thing the principal
+    typed, as the reader before 5.13.0 passed over a prompt typed while a turn ran."""
+    base = {"cwd": harness["work"], "sessionId": "c1"}
+
+    def said(text, at):
+        return {**base, "timestamp": at, "type": "assistant", "message": {"model": "claude-opus-5-5", "content": [{"type": "text", "text": text}]}}
+    native = _jsonl(harness["claude"], _claude_rows(harness["work"]) + [
+        _typed(base, "Also draft the announcement.", "2026-10-30T15:00:00.000Z"), said("Drafting it.", "2026-10-30T15:00:05.000Z"),
+        _typed(base, "And send me the draft.", "2026-10-30T15:10:00.000Z"), said("Sent.", "2026-10-30T15:10:05.000Z")])
+    today = sessions.ADAPTERS["claude-code"]
+
+    def older(row, s):
+        return [rec for rec in today(row, s) if not (rec and rec.get("kind") == "user" and rec.get("text") == "Also draft the announcement.")]
+    with monkeypatch.context() as then:
+        then.setitem(sessions.ADAPTERS, "claude-code", older)
+        sessions.export(0)
+    return native
+
+
+def test_reading_a_session_again_keeps_every_number_and_files_what_is_new_after_them(filed_by_an_older_reader):
+    native = filed_by_an_older_reader
+    before = _numbered(native)
+    files = {path: path.read_bytes() for path in Path(_meta(native)["folder"]).glob("transcript-*.jsonl")}
+    assert "Also draft the announcement." not in [words for _, _, words in before.values()]
+    report = sessions.export(rebuild=True)
+    after = _numbered(native)
+    assert {number: after.get(number) for number in before} == before            # every number names the record it named
+    added = sorted(set(after) - set(before))
+    assert [after[number][2] for number in added] == ["Also draft the announcement."] and added[0] > max(before)
+    assert all(path.read_bytes().startswith(old) for path, old in files.items())  # no line the archive held is changed
+    assert "claude-code c1: 1 record(s)" in report
+    again = sessions.export(rebuild=True)                                        # and a second reading adds nothing
+    assert _numbered(native) == after and not any(line.startswith("claude-code c1:") for line in again)
+
+
+def test_what_stands_around_a_record_is_what_was_said_around_it(filed_by_an_older_reader):
+    """A record filed by a later reading has a number after every other, so its neighbours by number are the end of
+    the session; the lines shown around a cited record are its neighbours in time."""
+    native = filed_by_an_older_reader
+    sessions.export(rebuild=True)
+    folder = _meta(native)["folder"]
+    late = next(rec["seq"] for rec in sessions.records(folder) if rec.get("text") == "Also draft the announcement.")
+    near = [rec.get("text") for rec in sessions.around(folder, late, span=1)]
+    assert near[1:] == ["Also draft the announcement.", "Drafting it."] and "Sent." not in near
+
+
+def test_a_days_prompts_stay_in_the_order_they_were_typed(filed_by_an_older_reader):
+    sessions.export(rebuild=True)
+    assert [prompt["text"] for prompt in sessions.prompts("acme", "2026-10-30")] == [
+        "Please plan the release.", "Also draft the announcement.", "And send me the draft."]
+
+
+def test_the_command_keeps_the_numbers_too(filed_by_an_older_reader, capsys):
+    native = filed_by_an_older_reader
+    before = _numbered(native)
+    assert cli.main(["sessions", "export", "--rebuild"]) == 0
+    after = _numbered(native)
+    assert {number: after.get(number) for number in before} == before and len(after) == len(before) + 1
