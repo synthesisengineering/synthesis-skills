@@ -137,6 +137,24 @@ def test_http_is_allowed_only_for_a_local_address():
                                                                       "KB_PUBLIC_URL": "http://192.168.1.20:8080"})
 
 
+@pytest.mark.parametrize("url", ["http://localhost.:8080", "http://LocalHost.:8080/", "http://127.0.0.1.:8080"])
+def test_localhost_written_with_a_trailing_dot_is_localhost(url):
+    assert load({**BASE, **OPERATOR, "KB_PUBLIC_URL": url}).public_url == url.rstrip("/")  # as http://localhost:8080 does
+    text = problems({**BASE, "KB_PUBLIC_URL": url})  # and only as the operator's own test, for the same reason
+    assert "KB_PUBLIC_URL names a temporary or local address" in text and "must be the service's https://" not in text
+
+
+@pytest.mark.parametrize("host, temporary", [
+    ("::ffff:100.64.0.1", True), ("::FFFF:100.64.0.1", True), ("::ffff:10.1.2.3", True),       # IPv4-mapped
+    ("::ffff:127.0.0.1", True), ("::ffff:8.8.8.8", False),
+    ("::100.64.0.1", True), ("::8.8.8.8", False),                                               # IPv4-compatible
+    ("64:ff9b::100.64.0.1", True), ("64:ff9b::8.8.8.8", False),                                 # NAT64
+    ("2002:6440:1::1", True), ("2002:808:808::1", False),                                       # 6to4
+])
+def test_an_ipv4_address_carried_in_an_ipv6_literal_is_judged_as_that_ipv4_address_on_every_python(host, temporary):
+    assert config.temporary(host) is temporary
+
+
 @pytest.mark.parametrize("host", [
     "trycloudflare.com", "quiet-river-demo.trycloudflare.com", "demo.ngrok.io", "demo.ngrok.app", "demo.ngrok-free.app",
     "demo.ngrok.dev", "demo.ngrok-free.dev", "demo.ngrok.pizza", "demo.ngrok-free.pizza", "demo.loca.lt",
@@ -174,6 +192,7 @@ def test_a_look_alike_host_and_a_public_address_are_not_temporary(host):
     ("https://0.0.0.0:8443", "0.0.0.0"),
     ("https://192.168.1.20", "192.168.1.20"),
     ("https://laptop.local", "laptop.local"),
+    ("https://[::ffff:100.64.0.1]", "::ffff:100.64.0.1"),                                    # the shared range, carried
 ])
 def test_a_temporary_address_stops_the_start_and_names_both_ways_forward(url, host):
     text = problems({**BASE, "KB_PUBLIC_URL": url})
@@ -186,7 +205,7 @@ def test_a_temporary_address_stops_the_start_and_names_both_ways_forward(url, ho
 
 @pytest.mark.parametrize("url", [
     "https://nottrycloudflare.com", "https://trycloudflare.com.example.com", "https://localhost.example.com:8443",
-    "https://8.8.8.8", "https://[2606:4700:4700::1111]:8443",
+    "https://8.8.8.8", "https://[2606:4700:4700::1111]:8443", "https://[::ffff:8.8.8.8]",
 ])
 def test_a_look_alike_host_starts_as_any_permanent_address_does(url):
     assert load({**BASE, "KB_PUBLIC_URL": url}).public_url == url.rstrip("/")

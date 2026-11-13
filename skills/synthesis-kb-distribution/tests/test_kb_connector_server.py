@@ -711,6 +711,17 @@ def test_main_refuses_a_temporary_address_and_the_operators_own_test_says_what_e
     assert "Only lead@example.com can sign in." in line
 
 
+def test_main_starts_localhost_written_with_a_trailing_dot_as_the_operators_own_test(published, monkeypatch, caplog):
+    env = {"KB_SOURCE_DIR": str(published), "KB_PUBLIC_URL": "http://localhost.:8080", "KB_GOOGLE_CLIENT_ID": CLIENT_ID,
+           "KB_GOOGLE_CLIENT_SECRET": "test-secret", "KB_ALLOWED_EMAILS": "lead@example.com", "KB_REFRESH_SECONDS": "0",
+           **OPERATOR}
+    served = []
+    monkeypatch.setattr(server.FastMCP, "run", lambda self, **kwargs: served.append(self))
+    assert server.main(env) == 0 and len(served) == 1  # as http://localhost:8080 starts
+    (line,) = [message for message in caplog.messages if message.startswith("TEST ONLY")]
+    assert "operator-only test mode at http://localhost.:8080. The address is temporary" in line
+
+
 def test_main_refuses_the_memory_store_outside_the_operators_own_test_and_warns_of_it_at_every_start_inside(
         published, monkeypatch, caplog, capsys):
     from key_value.aio.stores.memory import MemoryStore
