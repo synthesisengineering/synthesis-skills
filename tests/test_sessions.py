@@ -7,6 +7,7 @@ import json
 import os
 import re
 import subprocess
+from datetime import datetime
 from pathlib import Path
 
 import pytest
@@ -2719,3 +2720,74 @@ def test_a_desktop_folder_that_cannot_be_listed_is_said_and_nothing_behind_it_is
     assert any("cannot be listed" in line and str(folder) in line for line in report), report
     assert not any("removed" in line for line in report), report
     assert "complete" not in json.loads((sessions.root() / ".state" / "export.json").read_text(encoding="utf-8"))
+
+
+# Records that leave this Mac, part 3 (plan item 13.5, 5.19.0). The audit of 2026-11-11 (§3.2): nothing fetched the
+# knowledge and sessions repos unless an agent did, so no one could say how far a checkout was behind its remote.
+
+def _g(repo, *args):
+    return subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True, check=True).stdout.strip()
+
+
+def _cloned(tmp_path: Path, name: str) -> tuple:
+    """A checkout of a remote, and a commit pushed to that remote from elsewhere since: (checkout, the new commit)."""
+    remote, here, there = tmp_path / f"{name}.git", tmp_path / "workspaces" / name, tmp_path / f"{name}-elsewhere"
+    subprocess.run(["git", "init", "-q", "--bare", "-b", "main", str(remote)], check=True)
+    for checkout in (here, there):
+        subprocess.run(["git", "clone", "-q", str(remote), str(checkout)], check=True, capture_output=True)
+    (here / "a.md").write_text("a\n", encoding="utf-8")
+    _g(here, "add", ".")
+    _g(here, "commit", "-q", "-m", "first")
+    _g(here, "push", "-q", "-u", "origin", "main")
+    _g(there, "pull", "-q", "origin", "main")
+    (there / "b.md").write_text("b\n", encoding="utf-8")
+    _g(there, "add", ".")
+    _g(there, "commit", "-q", "-m", "second")
+    _g(there, "push", "-q", "origin", "main")
+    return here, _g(there, "rev-parse", "HEAD")
+
+
+def test_the_hourly_job_fetches_each_knowledge_and_sessions_repo_and_never_merges(tmp_path, write_config, capsys):
+    knowledge, new_k = _cloned(tmp_path, "ai-knowledge-test")
+    archive, new_s = _cloned(tmp_path, "sessions-test")
+    broken = tmp_path / "workspaces" / "ai-knowledge-broken"
+    _g(tmp_path, "init", "-q", str(broken))
+    _g(broken, "remote", "add", "origin", str(tmp_path / "no-such-remote.git"))
+    write_config({"knowledge_roots": [str(knowledge), str(broken), str(tmp_path / "not-a-repo")],
+                  "sessions_repos": {"test": str(archive)}})
+    heads = {repo: _g(repo, "rev-parse", "HEAD") for repo in (knowledge, archive)}
+    assert cli.main(["sessions", "export", "--all"]) == 0  # a session's own export does not fetch
+    assert _g(knowledge, "rev-parse", "origin/main") != new_k and not (sessions.root() / ".state" / "fetch.json").exists()
+    assert cli.main(["sessions", "export", "--all", "--scheduled"]) == 0  # a fetch that fails does not fail the copy
+    assert f"{broken}: not fetched" in capsys.readouterr().out
+    for repo, new in ((knowledge, new_k), (archive, new_s)):
+        assert _g(repo, "rev-parse", "origin/main") == new and _g(repo, "rev-parse", "HEAD") == heads[repo]  # fetched, not merged
+        assert _g(repo, "status", "--porcelain") == ""
+    kept = json.loads((sessions.root() / ".state" / "fetch.json").read_text(encoding="utf-8"))["repos"]
+    assert sorted(kept) == sorted(map(str, (knowledge, archive, broken)))
+    assert kept[str(knowledge)]["fetched"] == kept[str(knowledge)]["tried"] and "failed" not in kept[str(knowledge)]
+    assert kept[str(broken)]["failed"] and "fetched" not in kept[str(broken)]
+
+
+def test_the_doctor_says_when_each_repo_was_last_fetched_and_which_could_not_be(tmp_path, write_config):
+    from synthesis import doctor
+    stamp = tmp_path / "fetch.json"
+    assert doctor.check_fetch(stamp, {}).status == "warn"  # never run
+    assert doctor.check_fetch(stamp, {"scheduled_fetch": False}) == doctor.Check("ok", "scheduled fetch", "off (scheduled_fetch is false)")
+    now = 1_800_000_000.0
+    at = lambda hours: datetime.fromtimestamp(now - hours * 3600).astimezone().isoformat(timespec="seconds")  # noqa: E731
+    stamp.write_text(json.dumps({"at": at(0.5), "repos": {"/r/one": {"tried": at(0.5), "fetched": at(0.5)},
+                                                            "/r/two": {"tried": at(0.5), "fetched": at(0.5)}}}), encoding="utf-8")
+    line = doctor.check_fetch(stamp, {}, now)
+    assert line.status == "ok" and line.detail == "2 of 2 repositories fetched by the hourly job, 30 min ago"
+    stamp.write_text(json.dumps({"at": at(0.5), "repos": {
+        "/r/one": {"tried": at(0.5), "fetched": at(0.5)},
+        "/r/two": {"tried": at(0.5), "fetched": at(30), "failed": "could not read from remote repository"},
+        "/r/three": {"tried": at(0.5), "failed": "repository not found"}}}), encoding="utf-8")
+    line = doctor.check_fetch(stamp, {}, now)
+    assert line.status == "warn" and line.detail.startswith("1 of 3 repositories fetched by the hourly job, 30 min ago; not fetched: ")
+    assert "/r/three (repository not found; never fetched)" in line.detail
+    assert "/r/two (could not read from remote repository; last fetched 30 h ago)" in line.detail
+    stamp.write_text(json.dumps({"at": at(30), "repos": {"/r/one": {"tried": at(30), "fetched": at(30)}}}), encoding="utf-8")
+    line = doctor.check_fetch(stamp, {}, now)
+    assert line.status == "warn" and "the hourly job last fetched 30 h ago" in line.detail
