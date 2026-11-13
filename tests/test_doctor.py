@@ -659,6 +659,103 @@ def test_doctor_reports_a_healthy_machine_and_writes_no_harness_state(machine, c
     assert snapshot(home) == before
 
 
+# --- Codex's listing, asked of one marketplace -----------------------------------------------------------------------
+# 2026-11-13: a day-start doctor said it could not tell whether Codex held the plugin, twice. `codex plugin list`
+# lists every marketplace, the remote catalog among them, and Codex fetches that catalog again when its copy is over
+# three hours old (73 MB that morning, 52 s). The doctor's limit of 45 s stopped the fetch before it could finish, so
+# the copy stayed old and the next run stopped it again. Asked for one marketplace (`-m`), Codex fetches no remote
+# catalog (its source returns before the fetch), and the plugin ships from one marketplace.
+
+ENTRY = {"pluginId": PLUGIN_ID, "name": "synthesis-skills", "version": "5.0.0", "marketplaceName": "synthesis-engineering", "enabled": True}
+LIMITED, WHOLE = "plugin list --json -m synthesis-engineering", "plugin list --json"
+
+
+def codex_listings(fakebin: Path, limited, whole) -> Path:
+    """The fake Codex tells its two listings apart: `limited` answers the one asked of the plugin's marketplace,
+    `whole` the one asked of every marketplace. A payload is printed; "hang" stands for the catalog's download, which
+    does not end in time; "usage" for a build that does not know the option. Returns the log of the listings asked."""
+    log, answers, script = fakebin / "codex-listings.log", fakebin / "codex-listings.json", fakebin / "codex"
+    answers.write_text(json.dumps({"limited": limited, "whole": whole}))
+    listing = f"""if sys.argv[1:3] == ["plugin", "list"]:
+    import time
+    open({str(log)!r}, "a").write(" ".join(sys.argv[1:]) + "\\n")
+    answer = json.load(open({str(answers)!r}))["limited" if "-m" in sys.argv else "whole"]
+    if answer == "hang":
+        time.sleep(60)
+    elif answer == "usage":
+        sys.stderr.write("error: unexpected argument '-m' found\\n")
+        sys.exit(2)
+    else:
+        sys.stdout.write(json.dumps(answer))
+el"""
+    script.write_text(script.read_text().replace('if sys.argv[1:2] == ["app-server"]:', listing + 'if sys.argv[1:2] == ["app-server"]:', 1))
+    return log
+
+
+def codex_lines(capsys) -> dict:
+    return {" ".join(line.split()[1:3]): line for line in capsys.readouterr().out.splitlines()[1:] if line.split()[1] == "codex"}
+
+
+def test_codex_is_asked_for_the_plugins_own_marketplace_and_the_remote_catalog_is_never_waited_on(machine, monkeypatch, capsys):
+    _, fakebin, _ = machine
+    log = codex_listings(fakebin, limited={"installed": [ENTRY], "available": []}, whole="hang")
+    monkeypatch.setattr(doctor, "CLI_TIMEOUT", 5)
+    assert doctor.main([]) == 0
+    lines = codex_lines(capsys)
+    assert lines["codex plugin"].split()[0] == "ok" and "5.0.0 installed and enabled" in lines["codex plugin"]
+    assert log.read_text().splitlines() == [LIMITED]                             # the whole listing was never started
+
+
+def test_a_plugin_the_one_marketplace_does_not_show_is_looked_for_in_the_whole_listing(machine, capsys):
+    """Absent is not said from the narrower look: a plugin installed from a marketplace of another name is found."""
+    home, fakebin, _ = machine
+    cache = home / ".codex" / "plugins" / "cache"
+    (cache / "synthesis-engineering").rename(cache / "a-fork")
+    fork = {**ENTRY, "pluginId": "synthesis-skills@a-fork", "marketplaceName": "a-fork"}
+    log = codex_listings(fakebin, limited={"installed": [], "available": []}, whole={"installed": [fork], "available": []})
+    doctor.main([])
+    lines = codex_lines(capsys)
+    assert lines["codex plugin"].split()[0] == "ok" and "a-fork" in lines["codex plugin"]
+    assert lines["codex package"].split()[0] == "ok"
+    assert log.read_text().splitlines() == [LIMITED, WHOLE]
+
+
+def test_a_codex_that_does_not_know_the_option_is_asked_for_the_whole_listing(machine, capsys):
+    _, fakebin, _ = machine
+    log = codex_listings(fakebin, limited="usage", whole={"installed": [ENTRY], "available": []})
+    assert doctor.main([]) == 0
+    assert codex_lines(capsys)["codex plugin"].split()[0] == "ok"
+    assert log.read_text().splitlines() == [LIMITED, WHOLE]
+
+
+def test_a_plugin_in_neither_listing_is_not_installed(machine, capsys):
+    _, fakebin, _ = machine
+    empty = {"installed": [], "available": []}
+    log = codex_listings(fakebin, limited=empty, whole=empty)
+    assert doctor.main([]) == 1
+    line = codex_lines(capsys)["codex plugin"]
+    assert line.split()[0] == "fail" and "is not installed" in line
+    assert log.read_text().splitlines() == [LIMITED, WHOLE]
+
+
+def test_a_listing_that_does_not_answer_is_not_waited_on_a_second_time_and_the_line_says_what_ends_it(machine, monkeypatch, capsys):
+    """A listing stopped at the limit says nothing about the install. The whole listing is where Codex fetches its
+    catalog, and stopping it leaves the copy old, so the line names what lets it finish."""
+    _, fakebin, _ = machine
+    log = codex_listings(fakebin, limited="hang", whole={"installed": [ENTRY], "available": []})
+    monkeypatch.setattr(doctor, "CLI_TIMEOUT", 1)
+    doctor.main([])
+    line = codex_lines(capsys)["codex plugin"]
+    assert line.split()[0] == "warn" and "cannot tell" in line and "did not answer within 1 s" in line
+    assert log.read_text().splitlines() == [LIMITED]
+    log.unlink()
+    codex_listings(fakebin, limited={"installed": [], "available": []}, whole="hang")
+    doctor.main([])
+    line = codex_lines(capsys)["codex plugin"]
+    assert line.split()[0] == "warn" and "cannot tell" in line and "`codex plugin list`" in line and "once" in line
+    assert log.read_text().splitlines() == [LIMITED, WHOLE]
+
+
 def test_doctor_names_each_problem_and_exits_nonzero(machine, capsys):
     home, fakebin, muse_dir = machine
     config = home / ".codex" / "config.toml"

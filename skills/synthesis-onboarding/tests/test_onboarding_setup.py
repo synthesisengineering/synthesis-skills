@@ -105,6 +105,36 @@ def test_plugin_list_shapes_and_text_output(tmp_path):
         setup.plugin_entry("codex", codex_text)
 
 
+CODEX_ENTRY = {"pluginId": PLUGIN_ID, "name": "synthesis-skills", "version": "5.0.0", "marketplaceName": "synthesis-engineering", "enabled": True}
+LIMITED = "plugin list --json -m synthesis-engineering"
+
+
+def test_codex_is_asked_for_the_plugins_marketplace_alone(tmp_path):
+    """Codex's whole listing fetches its remote catalog again when its copy is over three hours old (52 s on
+    2026-11-13, against this command's limit of 60). Asked for one marketplace it fetches none, and the installer
+    installs from one marketplace: what that marketplace does not show is absent for it."""
+    binary, log = fake_cli(tmp_path, "codex", {LIMITED: (0, {"installed": [CODEX_ENTRY], "available": []}), "plugin list": (0, {"installed": []})})
+    assert setup.plugin_entry("codex", binary)["version"] == "5.0.0"
+    assert calls(log) == [LIMITED]
+    (tmp_path / "absent").mkdir()
+    absent, log = fake_cli(tmp_path / "absent", "codex", {"plugin list": (0, {"installed": [], "available": []})})
+    assert setup.plugin_entry("codex", absent) is None
+    assert calls(log) == [LIMITED]
+
+
+def test_a_codex_that_does_not_know_the_option_is_asked_for_the_whole_listing(tmp_path):
+    binary, log = fake_cli(tmp_path, "codex", {"plugin list --json -m": (2, "error: unexpected argument '-m' found"),
+                                               "plugin list": (0, {"installed": [CODEX_ENTRY]})})
+    assert setup.plugin_entry("codex", binary)["version"] == "5.0.0"
+    assert calls(log) == [LIMITED, "plugin list --json"]
+
+
+def test_claude_is_asked_as_before(tmp_path):
+    binary, log = fake_cli(tmp_path, "claude", {"plugin list": (0, [{"id": PLUGIN_ID, "version": "5"}])})
+    assert setup.plugin_entry("claude", binary)["version"] == "5"
+    assert calls(log) == ["plugin list --json"]
+
+
 def test_a_disabled_plugin_is_reported_not_silently_enabled(tmp_path, monkeypatch):
     binary, log = fake_cli(tmp_path, "claude", {"plugin": (0, "")})
     monkeypatch.setattr(setup, "configured_ref", lambda client: "stable")
