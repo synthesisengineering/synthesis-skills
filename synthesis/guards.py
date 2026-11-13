@@ -364,7 +364,8 @@ def _unread_files(tool: str, tool_input: dict, bound: dict | None = None, whole:
     def fetched(url: str) -> str:
         """Why the mail connector would not attach a `url` as given (2.1.0: _resolve_url_attachments). Its own download
         link it reads from its disk, with no host or on one its settings name, which the guard cannot see; any other
-        `url` it fetches over http or https from a named host, and in no other way."""
+        `url` it fetches over http or https from a named host, and in no other way, and from no host only this machine
+        or its network answers (core.http_utils: it records the entry as failed and sends the mail without it)."""
         from urllib.parse import urlparse
         try:
             parsed = urlparse(url)
@@ -374,6 +375,10 @@ def _unread_files(tool: str, tool_input: dict, bound: dict | None = None, whole:
         if len(parts) == 2 and parts[0] == "attachments":
             return (f"gives the `url` {url}, which the mail connector reads as its own download link (`/attachments/<id>`, "
                     "on any host it may serve) from a file it saved on this disk, bytes an approval cannot bind: "
+                    f"{stage}as the attachment's `path`, and file this send again")
+        if web and (_here(parsed.netloc.rsplit("@", 1)[-1].lower()) or _here(_carried(parsed.hostname))):
+            return (f"gives the `url` {url}, whose host only this machine or its network answers, and the mail connector "
+                    "fetches from no such host: it would send the mail without it. For a file on this disk, "
                     f"{stage}as the attachment's `path`, and file this send again")
         return "" if web else (f"gives the `url` {url}, and the mail connector fetches a `url` only over http or https "
                                f"from a named host, so it would attach nothing: for a file on this disk, {stage}as the "
@@ -448,8 +453,13 @@ def _unread_files(tool: str, tool_input: dict, bound: dict | None = None, whole:
             problems.append(f"attachment {place} gives the `content_id` {cid!r}, which the mail connector refuses, leaving the "
                             "entry out: it takes letters, digits, '.', '_', '+', '-' and '@', led by a letter or a digit, in "
                             "angle brackets or not. Give one such and file this send again")
-        if sources == ["path"]:
-            problems.append(unread(str(entry["path"])))
+        if sources == ["path"]:  # with no `filename` it sends a file under the name of the one its path leads to
+            fault, file = unread(str(entry["path"])), str(entry["path"])
+            real = "" if fault or entry.get("filename") else os.path.basename(os.path.realpath(file))
+            problems.append(fault or real != os.path.basename(file) and real and (
+                f"{which} is a link, {file}, to a file named {real}, and the mail connector sends a file it reaches "
+                "through a link under the name of the file a link leads to, not the name shown here: give the name to "
+                "show as its `filename`, or the file's own path as its `path`, and file this send again"))
         elif sources == ["url"] and isinstance(url, str) and url.strip():
             fault = fetched(url)
             problems.append(fault and f"{which} {fault}")

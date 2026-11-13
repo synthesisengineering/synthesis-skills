@@ -882,13 +882,14 @@ def test_a_link_pointed_at_another_file_after_the_approval_needs_a_new_one_thoug
     other.write_bytes(b"%PDF-1.4\nthe other plan\n")
     link = scratch / "latest.pdf"
     link.symlink_to(staged)
-    _approve(_attached(link))
+    call = {**MAIL, "attachments": [{"path": str(link), "filename": "latest.pdf"}]}  # named, as a link of another name must be
+    _approve(guards.check(SEND, call, CONFIG))
     link.unlink()
     link.symlink_to(other)
-    assert "approval" in _attached(link)
+    assert "approval" in guards.check(SEND, call, CONFIG)
     link.unlink()
     link.symlink_to(staged)
-    assert _attached(link) is None
+    assert guards.check(SEND, call, CONFIG) is None
 
 
 def test_each_file_of_a_call_is_bound_and_a_file_the_call_does_not_name_is_not(scratch):
