@@ -203,8 +203,9 @@ prompt it reads none. It reads every folder under the one named, except:
 
 - a folder whose name begins with a dot, and `node_modules`;
 - a folder reached through a link (name such a folder itself);
-- a sessions repo, and this Mac's archive: they hold the conversations, and so every citation an agent wrote,
-  tried to write or talked about.
+- a sessions repo the config names (`sessions_repos`), and this Mac's archive: they hold the conversations, and so
+  every citation an agent wrote, tried to write or talked about. A copy of one kept anywhere else is read as
+  records.
 
 A folder that is not there or may not be listed, a record that may not be read, and a folder that is a sessions
 repo or lies in one are each named, and nothing is listed (exit 2): read as empty, a folder would leave every
