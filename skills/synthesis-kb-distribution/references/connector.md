@@ -421,11 +421,27 @@ The line in `known-host` is `KB_GIT_KNOWN_HOSTS`.
 
 **5.7 Firestore.** Create a Firestore database in Native mode in `<project>` (the `(default)`
 database, or a named one given in `KB_FIRESTORE_DATABASE`). The OAuth store writes small encrypted
-records under collections starting with `KB_FIRESTORE_COLLECTION_PREFIX`. Each record's document ID
-is the SHA-256 hash of its key: ChatGPT and Codex identify themselves by a URL, and Firestore refuses
-a "/" in a document ID, and the hash also keeps authorization codes and token IDs out of document
-names. Expired records are ignored when read and stay until overwritten; their expiry is stored as
-text, so a Firestore TTL policy cannot remove them.
+records under collections starting with `KB_FIRESTORE_COLLECTION_PREFIX`, each under the SHA-256
+hash of its key. ChatGPT and Codex identify themselves by a URL, which Firestore's client library
+refuses as a document ID, and the hash also keeps authorization codes and token IDs out of the
+document names. The prefix may not begin with `H_` or `S_`, which Firestore's collection strategy
+keeps for itself; the settings check refuses one. Expired records are ignored when read and stay
+until overwritten; their expiry is stored as text, so a Firestore TTL policy cannot remove them.
+
+**Upgrading from 5.4.0 to 5.12.0 on Firestore.** Those releases stored each record under its raw
+key, so after the upgrade none of them is read again: a client registered by dynamic registration
+registers again, each person signs in once more, and a sign-in under way starts over. The old
+documents stay, named by codes and token IDs in clear text. Remove them right after the upgrade is
+deployed, with your prefix in place of `<prefix>` (`kb-connector` unless you set one):
+
+```
+gcloud firestore bulk-delete --project=<project> \
+  --collection-ids=<prefix>__mcp-oauth-proxy-clients,<prefix>__mcp-oauth-transactions,<prefix>__mcp-consent-csrf-tokens,<prefix>__mcp-authorization-codes,<prefix>__mcp-upstream-tokens,<prefix>__mcp-jti-mappings,<prefix>__mcp-refresh-tokens
+```
+
+These are the seven collections of FastMCP 4.1.6's OAuth proxy; for a named database add
+`--database=<name>`. The command removes the new records in them too, so anyone who signed in
+between the deploy and the command signs in once more.
 
 **5.8 Service account.** Create a service account for the service and grant it the Secret Manager
 Secret Accessor role on the four secrets and the Cloud Datastore User role on the project (the

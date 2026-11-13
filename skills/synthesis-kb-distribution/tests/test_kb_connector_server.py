@@ -603,28 +603,29 @@ def test_the_tool_check_refuses_everyone_but_the_operator_in_the_test_mode(publi
     assert {tool.name for tool in tools} == {"search", "fetch"} and not result.is_error
 
 
-class StrictFirestoreClient:
-    """Firestore's own ID rules, in memory. The real client refuses a document or collection ID that holds "/" (it
-    reads each one as a path separator: "A document must have an even number of path elements"), that is "." or
-    "..", or that matches __.*__. A memory store that ignores them hid a sign-in failure for every client with a URL
-    for its ID (ChatGPT, Codex) until the first deployment."""
+class FirestoreLikeClient:
+    """An in-memory Firestore whose document references are first built by the real client library, so the
+    library's own path check applies: an ID whose slashes leave an odd number of path elements raises "A document must
+    have an even number of path elements", the error the first deployment logged. The ID rules the Firestore service
+    enforces are then applied here (no "/", not "." or "..", not __.*__, at most 1,500 bytes), since the library leaves
+    those to the service. Building a reference makes no network call; get, set and delete keep the fields here."""
 
     def __init__(self):
+        from google.auth.credentials import AnonymousCredentials
+        from google.cloud import firestore
+        self.library = firestore.AsyncClient(project="example-project", credentials=AnonymousCredentials())
         self.documents = {}  # (collection, document ID) -> the stored fields
 
-    @staticmethod
-    def check(value):
-        if not value or "/" in value or value in (".", "..") or re.fullmatch(r"__.*__", value):
-            raise ValueError("A document must have an even number of path elements")
-
     def collection(self, name):
-        self.check(name)
         client = self
 
         class Collection:
             def document(self, document_id):
-                client.check(document_id)
-                return StrictFirestoreClient.Document(client, name, document_id)
+                client.library.collection(name).document(document_id)  # the library's own path check
+                if "/" in document_id or document_id in ("", ".", "..") or re.fullmatch(r"__.*__", document_id) \
+                        or len(document_id.encode("utf-8", "surrogatepass")) > 1500:
+                    raise ValueError(f"the Firestore service refuses the document ID {document_id[:60]!r}")
+                return FirestoreLikeClient.Document(client, name, document_id)
         return Collection()
 
     class Document:
@@ -644,20 +645,20 @@ class StrictFirestoreClient:
 
 
 def firestore_over(monkeypatch, client):
-    """server.oauth_storage builds the real FirestoreStore, here over a strict in-memory client; returns what
+    """server.oauth_storage builds the real FirestoreStore, here over the in-memory client; returns what
     oauth_storage passed to it."""
     import key_value.aio.stores.firestore as firestore_package
     from key_value.aio.stores.firestore import store as firestore_store
     real = firestore_store.FirestoreStore
     made = {}
 
-    class OverStrictClient(real):
+    class OverInMemoryClient(real):
         def __init__(self, **kwargs):
             made.update(kwargs)
             options = {k: v for k, v in kwargs.items() if k not in ("project", "database")}
             super().__init__(client=client, **options)
-    monkeypatch.setattr(firestore_store, "FirestoreStore", OverStrictClient)
-    monkeypatch.setattr(firestore_package, "FirestoreStore", OverStrictClient)
+    monkeypatch.setattr(firestore_store, "FirestoreStore", OverInMemoryClient)
+    monkeypatch.setattr(firestore_package, "FirestoreStore", OverInMemoryClient)
     return made
 
 
@@ -667,18 +668,23 @@ def firestore_settings(published):
                         KB_FIRESTORE_PROJECT="example-project", KB_FIRESTORE_COLLECTION_PREFIX="kb-test")
 
 
-def test_oauth_state_goes_to_firestore_encrypted_and_prefixed(published, monkeypatch):
+CODEX = "https://chatgpt.com/oauth/codex/client.json"  # a client ID that is a metadata document's URL
+
+
+def test_oauth_state_goes_to_firestore_encrypted_prefixed_and_under_hashed_ids(published, monkeypatch):
     from key_value.aio.stores.firestore import FirestoreV1CollectionSanitizationStrategy
     from key_value.aio.stores.memory import MemoryStore
     from key_value.aio.wrappers.encryption import FernetEncryptionWrapper
     from key_value.aio.wrappers.prefix_collections import PrefixCollectionsWrapper
 
-    client = StrictFirestoreClient()
+    client = FirestoreLikeClient()
     made = firestore_over(monkeypatch, client)
     settings = firestore_settings(published)
     storage = server.oauth_storage(settings)
     assert (made["project"], made["database"]) == ("example-project", None)
-    assert made["key_sanitization_strategy"].sanitize("a/b") == hashlib.sha256(b"a/b").hexdigest()
+    keys = made["key_sanitization_strategy"]
+    assert keys.sanitize("a/b") == hashlib.sha256(b"a/b").hexdigest()
+    assert re.fullmatch(r"[0-9a-f]{64}", keys.sanitize("\ud800"))  # an unpaired surrogate hashes too
     assert isinstance(made["collection_sanitization_strategy"], FirestoreV1CollectionSanitizationStrategy)
     assert isinstance(storage, FernetEncryptionWrapper) and isinstance(storage.key_value, PrefixCollectionsWrapper)
     assert storage.key_value.prefix == "kb-test"
@@ -693,25 +699,81 @@ def test_oauth_state_goes_to_firestore_encrypted_and_prefixed(published, monkeyp
     assert run(go())[1]
     assert client.documents and all(re.fullmatch(r"[0-9a-f]{64}", key) for _, key in client.documents)
     assert {collection.split("__")[0] for collection, _ in client.documents} == {"kb-test"}
+    for fields in client.documents.values():  # what a document keeps: no key, no address, the value encrypted
+        assert set(fields) <= {"created_at", "expires_at", "value", "version"}
+        assert "lead@example.com" not in repr(fields)
 
 
-def test_a_client_with_a_url_for_its_id_is_stored_and_read_back_in_firestore(published, monkeypatch):
-    """ChatGPT and Codex identify themselves by a metadata document, so their client ID is a URL; Firestore refused it
-    as a document ID, and every sign-in from them failed with a server error (2026-11-13, the first deployment)."""
-    client = StrictFirestoreClient()
-    firestore_over(monkeypatch, client)
-    storage = server.oauth_storage(firestore_settings(published))
-    codex = "https://chatgpt.com/oauth/codex/client.json"
+def test_a_client_that_identifies_by_a_url_gets_past_its_lookup_on_firestore(published, monkeypatch):
+    """ChatGPT and Codex identify themselves by a metadata document, so their client ID is a URL. On Firestore the
+    OAuth proxy's lookup of that ID raised in the client library, and /authorize answered 500 to both (2026-11-13, the
+    first deployment). With hashed keys the lookup finds nothing and goes on to the metadata document, which this
+    test never fetches: the client is then unknown, a 400."""
+    firestore_over(monkeypatch, FirestoreLikeClient())
+    settings = firestore_settings(published)
+    policy = AccessPolicy.from_settings(settings.allowed_emails)
+    auth = google_auth(settings, policy, FakeGoogle())
+    fetched = []
+
+    async def no_fetch(client_id):
+        fetched.append(client_id)
+        return None
+    auth._cimd_manager.get_client = no_fetch
 
     async def go():
-        await storage.put(key=codex, value={"client_name": "Codex"}, collection="mcp-oauth-proxy-clients")
-        stored = await storage.get(key=codex, collection="mcp-oauth-proxy-clients")
-        deleted = await storage.delete(key=codex, collection="mcp-oauth-proxy-clients")
-        return stored, deleted, await storage.get(key=codex, collection="mcp-oauth-proxy-clients")
-    stored, deleted, after = run(go())
+        mcp = server.build_server(settings, loaded(published), policy, auth)
+        async with asgi_server(mcp, stateless_http=True) as srv, srv.http_client() as http:
+            return await http.get("/authorize", params={
+                "response_type": "code", "client_id": CODEX, "redirect_uri": "http://127.0.0.1:5555/callback",
+                "code_challenge": "c" * 43, "code_challenge_method": "S256", "state": "s", "scope": SCOPES,
+                "resource": RESOURCE})
+    answer = run(go())
+    assert answer.status_code == 400 and fetched == [CODEX], (answer.status_code, answer.text[:300])
+
+
+def test_the_client_library_refuses_a_url_as_a_document_id_and_a_hashed_store_keeps_one(published, monkeypatch):
+    with pytest.raises(ValueError, match="even number of path elements"):  # the library's own check, why keys are hashed
+        FirestoreLikeClient().collection("kb-test__mcp-oauth-proxy-clients").document(CODEX)
+    client = FirestoreLikeClient()
+    firestore_over(monkeypatch, client)
+    storage = server.oauth_storage(firestore_settings(published))
+
+    async def go():
+        await storage.put(key=CODEX, value={"client_name": "Codex"}, collection="mcp-oauth-proxy-clients")
+        stored = await storage.get(key=CODEX, collection="mcp-oauth-proxy-clients")
+        kept = dict(client.documents)
+        deleted = await storage.delete(key=CODEX, collection="mcp-oauth-proxy-clients")
+        return stored, kept, deleted, await storage.get(key=CODEX, collection="mcp-oauth-proxy-clients")
+    stored, kept, deleted, after = run(go())
     assert stored == {"client_name": "Codex"} and deleted and after is None
-    with pytest.raises(ValueError, match="even number of path elements"):  # what the store did before the fix
-        StrictFirestoreClient().collection("kb-test__mcp-oauth-proxy-clients").document(codex)
+    assert [key for _, key in kept] == [hashlib.sha256(CODEX.encode()).hexdigest()]
+    assert CODEX not in repr(kept)
+
+
+def test_records_from_before_the_hashed_ids_are_not_read_so_each_person_signs_in_again(published, monkeypatch):
+    """What an upgrade from 5.4.0 to 5.12.0 does on Firestore, as the changelog and connector.md 5.7 say: a record
+    stored under its raw key is never found again, and stays until it is removed."""
+    from cryptography.fernet import Fernet
+    from key_value.aio.stores.firestore import store as firestore_store
+    from key_value.aio.wrappers.encryption import FernetEncryptionWrapper
+    from key_value.aio.wrappers.prefix_collections import PrefixCollectionsWrapper
+
+    client = FirestoreLikeClient()
+    settings = firestore_settings(published)
+    before = FernetEncryptionWrapper(PrefixCollectionsWrapper(firestore_store.FirestoreStore(client=client),
+                                                              prefix="kb-test"),
+                                     fernet=Fernet(settings.storage_key.encode()))  # how 5.4.0 to 5.12.0 stored
+    firestore_over(monkeypatch, client)
+    after = server.oauth_storage(settings)
+    uuid = "0b6f0e3c-5a3e-4f7e-9d7a-2b9b7f1c1e11"  # a client registered by dynamic registration
+
+    async def go():
+        await before.put(key=uuid, value={"client_name": "Claude"}, collection="mcp-oauth-proxy-clients")
+        return await before.get(key=uuid, collection="mcp-oauth-proxy-clients"), \
+            await after.get(key=uuid, collection="mcp-oauth-proxy-clients")
+    old_read, new_read = run(go())
+    assert old_read == {"client_name": "Claude"} and new_read is None
+    assert [key for _, key in client.documents] == [uuid]  # the old document stays until it is removed
 
 
 def test_main_refuses_bad_settings_and_serves_good_ones_statelessly(published, monkeypatch, capsys, firestore):
