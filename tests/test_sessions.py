@@ -2493,19 +2493,46 @@ def test_a_copy_another_mac_numbered_otherwise_is_not_written_over(synced, write
     assert (theirs / "transcript-0001.jsonl").read_bytes() == held
 
 
-def test_a_sync_whose_pull_conflicts_leaves_the_repo_on_its_branch(synced, tmp_path):
-    """Finding 3: a failed rebase left the repo mid-rebase on no branch, and every sync after it failed."""
+def test_a_copy_another_mac_extended_is_not_written_over_and_the_repo_stays_on_its_branch(synced, tmp_path):
+    """Finding 3: two Macs went on with one session; the first Mac's next sync wrote its own copy over the other's,
+    failed its rebase and left the repo mid-rebase on no branch, and every sync of the workspace after it failed. It
+    now pulls first, and the session whose copy another Mac extended is refused alone."""
     native = _jsonl(synced["claude"], _claude_rows(synced["work"]))
+    _jsonl(synced["claude"].with_name("c2.jsonl"), [{**row, "sessionId": "c2"} for row in _claude_rows(synced["work"])])
     assert not any(line.startswith("FAILED") for line in sessions.sync())
     other = tmp_path / "another-mac"
     subprocess.run(["git", "clone", "-q", str(synced["remote"]), str(other)], check=True, capture_output=True)
-    with (other / "2026-10" / "claude-code-c1" / "transcript-0001.jsonl").open("a", encoding="utf-8") as out:
+    copy = Path("2026-10") / "claude-code-c1" / "transcript-0001.jsonl"
+    with (other / copy).open("a", encoding="utf-8") as out:
         out.write(json.dumps({"seq": 99, "kind": "user", "text": "written on another Mac"}) + "\n")
     _commit(other, "another Mac")
     _git(other, "push", "-q")
     _jsonl(native, [_typed({"cwd": synced["work"], "sessionId": "c1"}, "One more thing.", "2026-10-30T16:00:00.000Z")])
+    _jsonl(synced["claude"].with_name("c2.jsonl"), [_typed({"cwd": synced["work"], "sessionId": "c2"}, "And this.", "2026-10-30T16:00:00.000Z")])
     report = sessions.sync()
-    assert report[-1].startswith("FAILED acme: pull --rebase"), report
+    assert any(line.startswith("FAILED acme: 2026-10/claude-code-c1:") and "not written over" in line for line in report), report
+    assert report[-1] == "acme: ai-sessions-acme up to date", report                # the workspace's other sessions sync
+    assert "written on another Mac" in (synced["repo"] / copy).read_text(encoding="utf-8")
+    assert "And this." in (synced["repo"] / "2026-10" / "claude-code-c2" / "transcript-0001.jsonl").read_text(encoding="utf-8")
+    assert _git(synced["repo"], "rev-parse", "--abbrev-ref", "HEAD") == "main" and not (synced["repo"] / ".git" / "rebase-merge").exists()
+
+
+def test_a_pull_that_conflicts_is_undone_and_writes_nothing(synced, tmp_path):
+    """A commit that could not be pushed, and another Mac's change to the same file: the rebase fails, and is undone."""
+    _jsonl(synced["claude"], _claude_rows(synced["work"]))
+    assert not any(line.startswith("FAILED") for line in sessions.sync())
+    copy = Path("2026-10") / "claude-code-c1" / "transcript-0001.jsonl"
+    with (synced["repo"] / copy).open("a", encoding="utf-8") as out:
+        out.write(json.dumps({"seq": 98, "kind": "user", "text": "committed here, never pushed"}) + "\n")
+    _commit(synced["repo"], "a commit whose push failed")
+    other = tmp_path / "another-mac"
+    subprocess.run(["git", "clone", "-q", str(synced["remote"]), str(other)], check=True, capture_output=True)
+    with (other / copy).open("a", encoding="utf-8") as out:
+        out.write(json.dumps({"seq": 99, "kind": "user", "text": "written on another Mac"}) + "\n")
+    _commit(other, "another Mac")
+    _git(other, "push", "-q")
+    report = sessions.sync()
+    assert report and report[0].startswith("FAILED acme: pull --rebase"), report
     assert not (synced["repo"] / ".git" / "rebase-merge").exists() and not (synced["repo"] / ".git" / "rebase-apply").exists()
     assert _git(synced["repo"], "rev-parse", "--abbrev-ref", "HEAD") == "main"
 
