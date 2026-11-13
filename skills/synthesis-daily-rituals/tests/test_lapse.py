@@ -861,3 +861,17 @@ def test_a_declared_folder_that_holds_only_a_placeholder_hides_nothing(seat, tmp
     declare(env, artifacts_dirs=[str(tmp_path / "artifacts")])
     done = lapse(env, "--id", "thanks")
     assert done.returncode == 0 and "did not stand in the way" in done.stdout, done.stdout + done.stderr
+
+
+def test_what_came_of_a_lapse_is_not_written_to_another_items_lapse_at_the_line_it_now_holds(seat):
+    """The third review's probe E: one item lapsed at a line; another item now stands there. `--came --at` that line
+    wrote the outcome on the first item's lapse, though the line named the second."""
+    plan, register, env = seat
+    plan.write_text(THREE, encoding="utf-8")
+    assert lapse(env, "--at", f"{plan}:5").returncode == 0                       # the venue, its row at 13 and its mark at 6
+    plan.write_text(THREE.replace("- Book the venue **Decays:** 2026-11-10 (the hall)\n", ""), encoding="utf-8")  # the venue goes; the vendor is at 5
+    before = register.read_bytes()
+    asked = lapse(env, "--at", f"{plan}:5", "--came", "the vendor was called late", words=())
+    assert asked.returncode == 2 and "Call the vendor" in asked.stderr and "--row 13" in asked.stderr and register.read_bytes() == before, asked.stderr
+    meant = lapse(env, "--at", f"{plan}:5", "--came", "the venue was booked late", "--row", "13", words=())
+    assert meant.returncode == 0 and {row["item"]: row["outcome"] for row in review_of(env)["rows"]} == {"Book the venue": "the venue was booked late"}
