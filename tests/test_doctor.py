@@ -2378,7 +2378,9 @@ def test_the_doctor_warns_of_unsaved_records_never_fails_and_reads_its_hours_fro
         assert line.status == "warn" and "is not a number of hours above 0, so 24 is used" in line.detail, bad
     assert doctor.check_unsaved({}, []).status == "ok"
     assert doctor.main(["--unsaved"]) == 0 and capsys.readouterr().out == "1\n"
+    assert [c.status for c in doctor.run_checks(find=lambda h: None) if c.name == "unsaved records"] == ["warn"]
     paths.config_file().parent.mkdir(parents=True, exist_ok=True)
+    paths.config_file().write_text(json.dumps({"unsaved_hours": False}), encoding="utf-8")
+    assert doctor.main(["--unsaved"]) == 0 and capsys.readouterr().out == "0\n"
     paths.config_file().write_text("{not json", encoding="utf-8")
     assert doctor.main(["--unsaved"]) == 0 and capsys.readouterr().out == "unknown\n"
-    assert "unsaved records" in [c.name for c in doctor.run_checks(find=lambda h: None)]

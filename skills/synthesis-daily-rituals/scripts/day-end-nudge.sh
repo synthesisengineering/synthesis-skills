@@ -51,6 +51,17 @@ case "$waiting" in
   unchecked) /usr/bin/osascript -e 'display notification "Agent app guards not checked since synthesis last updated — details in your synthesis console" with title "Synthesis"' ;;
 esac
 
+# RECORDS LEFT UNSAVED since 5.19.0 (the audit of 2026-11-11, gap 4). A record a seat claimed
+# and left uncommitted, or committed and never pushed, longer than the config's `unsaved_hours`
+# (24 by default) has not left this Mac. The doctor counts the repositories holding one, reading
+# the board and git and writing nothing; a fixed banner says one, or more than one, and names
+# nothing. A doctor that cannot answer says nothing.
+unsaved="$(python3 -S -B "$DOCTOR" --unsaved 2>/dev/null | head -1 || true)"
+case "$unsaved" in
+  1) /usr/bin/osascript -e 'display notification "One repository has claimed records left unsaved — details in your synthesis console" with title "Synthesis"' ;;
+  [2-9]|[1-9][0-9]*) /usr/bin/osascript -e 'display notification "More than one repository has claimed records left unsaved — details in your synthesis console" with title "Synthesis"' ;;
+esac
+
 # Fail OPEN (nudge) rather than silent if the tool is missing or errors: a
 # reminder that never fires is indistinguishable from a day with nothing owed.
 if [ -f "$STATE_TOOL" ] && python3 -S -B "$STATE_TOOL" --owed-today >/dev/null 2>&1; then

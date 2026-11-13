@@ -118,7 +118,7 @@ def test_the_nudge_fires_when_its_state_tool_cannot_answer(tmp_path: Path, break
 
 def test_the_banner_texts_are_fixed_and_name_nothing() -> None:
     text = (SCRIPTS / "day-end-nudge.sh").read_text(encoding="utf-8")
-    assert text.count("display notification") == 5
+    assert text.count("display notification") == 7
     assert all("$" not in part.splitlines()[0] for part in text.split("display notification")[1:])
 
 

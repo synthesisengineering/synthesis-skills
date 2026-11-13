@@ -66,6 +66,10 @@ there with no item here fails:
   defaults, and one that does not parse makes the send and deploy guards block everything;
 - `board`: no board file is left under `state/`, where no session has read one since
   5.1.18;
+- `unsaved records`: no file under a claim on the board has stayed uncommitted, or in a
+  commit no remote holds, longer than the config's `unsaved_hours` (24 when absent; false
+  turns the line off), counted per repository with the oldest age; a warning, never a
+  failure (5.19.0);
 - `sessions repo <ws>`: each workspace's sessions repository is cloned where the config
   says, was synced within two days, and is under 3 GB;
 - `sessions export`: the last copy of session transcripts left none it could not copy;
