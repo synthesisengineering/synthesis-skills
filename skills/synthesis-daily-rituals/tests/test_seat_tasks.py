@@ -533,3 +533,14 @@ def test_a_workspace_that_keeps_no_dated_plans_is_told_so_and_nothing_else(tmp_p
     (state / "config.json").write_text(json.dumps(config), encoding="utf-8")
     out = record(state)[1]
     assert "commitments: no dated plan to read" in out and "could not be read" not in out
+
+
+def test_the_refusal_over_a_source_that_could_not_be_read_names_it_and_says_why(tmp_path, record):
+    """The second review, finding 2 at its least: a refusal that only counts what could not be read leaves the
+    reader to guess whether a plan, a record or a setting is meant."""
+    state = workspace(tmp_path, BARE)
+    plan = tmp_path / "plans" / f"{DAY}.md"
+    plan.write_bytes(b"# Plan\n\n\xff\xfe not text\n")
+    code, _, refusal = record(state)
+    assert code == 1 and "1 plan source(s) could not be read whole" in refusal, refusal
+    assert f"{plan}: unreadable source" in refusal, refusal
