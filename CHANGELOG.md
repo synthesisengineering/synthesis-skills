@@ -4,6 +4,19 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [5.12.1] - 2026-11-13
+
+- **`synthesis doctor` can tell again whether Codex holds the plugin** (`synthesis-onboarding` 3.5.1). The doctor
+  and the installer asked Codex for its whole plugin listing, which takes in Codex's remote catalog. Codex fetches
+  that catalog again when its copy is over three hours old (73 MB and 52 s on 2026-11-13), and the doctor's limit of
+  45 s stopped it before the fetch finished, twice running on the morning this was reported: the Codex lines said
+  `cannot tell`, and the day's first look at Codex's hooks did not happen. Both now ask for the plugin's own
+  marketplace (`codex plugin list --json -m synthesis-engineering`), for which Codex fetches no remote catalog.
+  The doctor says the plugin is not installed only from the whole listing, which it asks when the marketplace's
+  own shows nothing or a Codex does not know the option; where the whole listing does not answer in time, the line
+  says to run `codex plugin list` once, since the limit stops the fetch each time. The installer's limit for the
+  same command is 60 s, eight more than the fetch took that morning.
+
 ## [5.12.0] - 2026-11-13
 
 - **A status in a record carries its evidence, or says it is unverified** (`synthesis-git-hooks` 3.4.0). Off unless

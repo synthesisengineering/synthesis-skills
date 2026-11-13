@@ -39,7 +39,7 @@ except ImportError as exc:  # no runtime beside this copy; one that fails otherw
           "installed synthesis-skills plugin or a checkout of it", file=sys.stderr)
     sys.exit(2)
 
-PLUGIN, MARKETPLACE, SOURCE = "synthesis-skills", "synthesis-engineering", "synthesisengineering/synthesis-skills"
+PLUGIN, MARKETPLACE, SOURCE = "synthesis-skills", doctor.MARKETPLACE, "synthesisengineering/synthesis-skills"
 CODEX_DOC_BYTES = 98_304
 HOOKS_BEGIN, HOOKS_END = "# synthesis-setup:begin hooks-feature", "# synthesis-setup:end hooks-feature"
 BOARD_BEGIN, BOARD_END = "# synthesis-setup:begin board-writable", "# synthesis-setup:end board-writable"
@@ -135,7 +135,13 @@ def plugin_entry(client: str, binary: str):
     """The installed plugin's entry (enabled or not), None when absent. Unreadable listings raise."""
     if client == "muse":
         return muse_record(binary)
-    data = _json(run([binary, "plugin", "list", "--json"], 60).stdout)
+    # Codex is asked for the plugin's own marketplace, the one this script installs from: its whole listing fetches the
+    # remote catalog again when its copy is old (52 s on 2026-11-13, against the limit here). A build that does not
+    # know the option prints no JSON and is asked for the whole listing.
+    for ask in ([doctor.LISTINGS["codex"], doctor.CODEX_WHOLE] if client == "codex" else [doctor.LISTINGS["claude"]]):
+        data = _json(run([binary, *ask], 60).stdout)
+        if data is not None:
+            break
     if data is None:  # some builds print text; never crash on it, never take it for "absent"
         raise SetupError(f"{client} printed no plugin list; refusing to guess whether synthesis is installed")
     codex_home = Path(os.environ.get("CODEX_HOME") or Path.home() / ".codex")

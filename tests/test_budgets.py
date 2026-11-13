@@ -772,10 +772,16 @@ ROOT = Path(__file__).resolve().parents[1]
 # (the texts' own sender, run and not read), check 4, _result 2, unwatched_sends 2, FAILED 1, one import and two
 # blank lines. approvals.py 14: alone 11 (one decision at a time for a thing that can go on either of two codes),
 # one import and two blank lines. wait.py 5: past 1 MB the file of statements keeps its last 64 KB.
+# 5.12.1, core 13 more, all in doctor.py: Codex is asked for the plugin's own marketplace, for which it fetches no
+# remote catalog (its whole listing fetched 73 MB in 52 s on 2026-11-13, and the doctor's limit stopped the fetch
+# on every run). harness_checks 8 (the whole listing is asked before the plugin is called not installed, and its
+# line says what lets the fetch finish), MARKETPLACE and CODEX_WHOLE 2, the note above Codex's listing 2, and
+# _finish 1 (the limit is read when it is used). The plugin 6 more beside those, in the installer's plugin_entry: it
+# asks Codex the same way, and a build that does not know the option is asked for the whole listing.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # consolidate first).
-CORE_BUDGET = 13224
-PLUGIN_BUDGET = 34693
+CORE_BUDGET = 13237
+PLUGIN_BUDGET = 34712
 
 
 def _lines(files):

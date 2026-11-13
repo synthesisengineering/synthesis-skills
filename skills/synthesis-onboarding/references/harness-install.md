@@ -67,7 +67,15 @@ missing `git` or `python3`, or a `python3` older than 3.9, is named and nothing 
 
 Setup reads each harness's plugin list as JSON (Claude Code may print a list or a
 `plugins` map; Codex prints `installed`). A list it cannot parse stops that harness with
-a message; it is never taken to mean "not installed".
+a message; it is never taken to mean "not installed". Codex is asked for the plugin's own
+marketplace (`codex plugin list --json -m synthesis-engineering`), the one setup installs
+from: its whole listing fetches Codex's remote plugin catalog again when its copy is over
+three hours old (73 MB and 52 s on 2026-11-13), and asked for one marketplace it fetches
+none. A Codex that does not know the option prints no JSON and is asked for the whole
+listing. `synthesis doctor` asks the same way, and asks for the whole listing before it
+says the plugin is not installed; where that one does not answer within the doctor's
+limit, its line says to run `codex plugin list` once, since the limit stops the fetch
+each time.
 
 - **Claude Code**, new: `claude plugin marketplace add synthesisengineering/synthesis-skills@<ref>`,
   then `claude plugin install synthesis-skills@synthesis-engineering`. Update:

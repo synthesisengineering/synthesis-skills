@@ -36,9 +36,13 @@ STABLE_HOOK = "$HOME/.synthesis/v5/bin/synthesis-hook"
 EVENTS = {"SessionStart": "session-start", "UserPromptSubmit": "user-prompt-submit",
           "PreToolUse": "pre-tool-use", "Stop": "stop"}
 HARNESSES = ("claude", "codex", "muse")
+MARKETPLACE = "synthesis-engineering"  # the one marketplace the plugin ships from
+CODEX_WHOLE = ["plugin", "list", "--json"]
 LISTINGS = {  # each harness's own read-only listing command
     "claude": ["plugin", "list", "--json"],
-    "codex": ["plugin", "list", "--json"],
+    # Asked for one marketplace, Codex fetches no remote catalog. Its whole listing fetches one when its copy is over
+    # three hours old (73 MB and 52 s on 2026-11-13), and the limit below stopped that fetch on every run.
+    "codex": CODEX_WHOLE + ["-m", MARKETPLACE],
     "muse": ["plugins", "inspect", PLUGIN, "--json"],
 }
 HOOK_BUDGET_MS = 50
@@ -1250,10 +1254,11 @@ def _start(argv: list):
         return exc
 
 
-def _finish(proc, timeout: float = CLI_TIMEOUT):
+def _finish(proc, timeout: float | None = None):
     """(parsed JSON or None, error). Time-bounded; the child is always reaped."""
     if isinstance(proc, Exception):
         return None, f"could not run: {proc}"
+    timeout = CLI_TIMEOUT if timeout is None else timeout
     try:
         out, err = proc.communicate(timeout=timeout)
     except subprocess.TimeoutExpired:
@@ -1324,6 +1329,14 @@ def harness_checks(found: list, procs: dict, home: Path, runtime: str, catalog=N
         codex_home = Path(os.environ.get("CODEX_HOME") or Path.home() / ".codex")
         listing, error = _finish(procs["codex"])
         entry = codex_entry(listing, codex_home)
+        if entry is None and not error.startswith(("cannot tell", "could not run")):
+            # Not shown by its own marketplace, or a Codex that does not know the option: absent is said only from
+            # the whole listing, the one that may fetch the catalog.
+            listing, error = _finish(_start(procs["codex"].args[:1] + CODEX_WHOLE))
+            entry = codex_entry(listing, codex_home)
+            if entry is None and error.startswith("cannot tell"):
+                error = error.replace("; run the doctor again", ": Codex's whole listing fetches its remote plugin catalog when its "
+                                      "copy is old, and this limit stops the fetch each time; run `codex plugin list` once, then the doctor again")
         try:
             config = read_toml((codex_home / "config.toml").read_text(encoding="utf-8"))
         except OSError:
