@@ -70,6 +70,11 @@ The 1.x ledger's attestations, now the agent's own check before showing the prin
   skill is the source of truth the register patterns derive from).
 - **Invented precision:** every number in the text has a source.
 - **Recipient address:** right person, right address, right account.
+- **The form:** for a send through a web form or an app's dialog, read how the form takes
+  its input before staging the send: one value to a field, how several recipients are
+  entered, what a field accepts. A form that refuses the input after the approval has
+  spent the code for nothing (five addresses typed into one field were rejected once the
+  code was used, 2026-11-12).
 - **Names:** everyone the text greets or names is called by the name they go by
   (`synthesis-agent-correspondence` binding rule 12). The guard catches only the
   people the principal's `preferred_names` lists, when the call identifies them.
