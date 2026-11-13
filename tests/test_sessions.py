@@ -2667,7 +2667,7 @@ def _desktop_session(session: str, cwd: str) -> Path:
 def test_a_desktop_agent_mode_session_and_its_sub_agent_are_archived(harness):
     native = _desktop_session("d1", "/sessions/a-virtual-machine")
     report = sessions.export(0)
-    assert "claude-code d1: 9 record(s)" in report and any(line.startswith("claude-code d1-agent-a1:") for line in report), report
+    assert "claude-code local_d1-d1: 9 record(s)" in report and any(line.startswith("claude-code local_d1-d1-agent-a1:") for line in report), report
     meta = _meta(native)
     assert meta["harness"] == "claude-code" and Path(meta["folder"]).parts[-3] == "other"  # it ran in no workspace, and is never synced
     assert [r["text"] for r in sessions.records(meta["folder"], ("user",))] == ["Please plan the release."]
@@ -2685,3 +2685,37 @@ def test_no_desktop_folder_is_no_gap(harness):
     assert not Path(os.environ["SYNTHESIS_CLAUDE_DESKTOP_DIR"]).exists()
     assert sessions.export(0) == ["claude-code c1: 9 record(s)"]
     assert "failed" not in json.loads((sessions.root() / ".state" / "export.json").read_text(encoding="utf-8"))
+
+
+def test_one_session_id_under_the_cli_and_the_desktop_app_is_two_sessions(harness):
+    """The review of 5.18.0, finding 4: a session was named by its file alone, and one id under both roots was one
+    state and one archive folder for two sessions, which gained a copy of each other's records at every run."""
+    regular = _jsonl(harness["claude"], _claude_rows(harness["work"]))
+    desktop = _desktop_session("c1", "/sessions/a-virtual-machine")
+    first = sessions.export(0)
+    assert "claude-code c1: 9 record(s)" in first and "claude-code local_c1-c1: 9 record(s)" in first, first
+    assert sessions.export(0) == []                                                # settled
+    assert _meta(regular)["folder"] != _meta(desktop)["folder"]
+
+
+@pytest.mark.skipif(hasattr(os, "geteuid") and os.geteuid() == 0, reason="a folder's mode does not hold the superuser")
+@pytest.mark.parametrize("closed", ["account", "claude"])
+def test_a_desktop_folder_that_cannot_be_listed_is_said_and_nothing_behind_it_is_called_removed(harness, closed):
+    """Finding 1: a folder above a desktop session's transcripts that could not be listed was passed over in silence,
+    the run stamped itself complete, and a transcript behind it whose copy had failed was called removed."""
+    native = _desktop_session("d3", "/sessions/a-virtual-machine")
+    native.chmod(0)                                                                # its copy fails first
+    try:
+        failed = sessions.export(0)
+    finally:
+        native.chmod(0o644)
+    assert any("not exported" in line for line in failed), failed
+    folder = native.parents[4] if closed == "account" else native.parents[2]       # <account>, or the session's .claude
+    folder.chmod(0)
+    try:
+        report = sessions.export(0)
+    finally:
+        folder.chmod(0o755)
+    assert any("cannot be listed" in line and str(folder) in line for line in report), report
+    assert not any("removed" in line for line in report), report
+    assert "complete" not in json.loads((sessions.root() / ".state" / "export.json").read_text(encoding="utf-8"))
