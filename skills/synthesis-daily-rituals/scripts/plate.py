@@ -7,14 +7,17 @@ One task lives as many copies: in each plan that carried it, a ledger, a registe
 one in nine plans). This builds a single list from the deadline sweep over the folders the workspace declares, so
 that nothing depends on memory or on which plan an item was last copied into: the critical deadlines that are
 open and what reads like one and is not classified, the dated items due or past (one whose date passed with
-nothing written is marked; an item with no Decay ID that several plans copy is listed once, with how many copies),
+nothing written is marked; an item with no Decay ID that several plans copy is listed once, with how many copies,
+at its newest copy whose date passed with nothing written, else at its newest: with no ID, copies are paired by
+their order in each plan, and two of one title and date in one plan are two entries),
 the dated items ahead, the newest plan's commitments with no date and no park, a ledger's open rows, and the
 choices the newest plan puts with no decision. Each entry says where it sits.
 
 It reads, and writes only the file it is told to: never a file in a folder the workspace declares (its plans, its
-artifacts, its records), and never over a file that is not a list of its own. A list that claims to be everything
-is not built over records the sweep did not take in full, a ledger's row too short to read among them: it exits 2,
-unless `--with-gaps` asks for the list with those named at its head. Without `--out` the list is printed.
+artifacts, its records, however the config writes the folder), and never over a file that is not a list of its
+own. A list that claims to be everything is not built over records the sweep did not take in full, a ledger's row
+too short to read among them: it exits 2 and names each by its file, a gap by its line, unless `--with-gaps` asks
+for the list with those named at its head. Without `--out` the list is printed.
 """
 from __future__ import annotations
 

@@ -12,13 +12,17 @@ more; how many outcomes are still open), then each lapse's row, newest first, as
 repeats and what to change is the review's to say.
 
 A row is never rewritten, so what came of a lapse later is a later row for the same item on the same day: rows
-that carry one ID and one day are one lapse, and its last row is the one read.
+that carry one ID and one day are one lapse, and so are rows with no ID whose Item cell, Where cell and day are the
+same; its last row is the one read. The ID a row carries is the last code span of its Item cell. The helper writes
+a title's own code between plain quotes, so a row of its writing holds no other code; in a row written by hand the
+ID is whatever code stands last there.
 
 The register is the file the ritual config names for the workspace (`"lapse_register": "<file>"`), read from its
-tables whose header opens with `Lapsed`: the five-cell form, and the seven-cell form that also says whom a lapse
-affected and what can still be done. It writes nothing. A register it cannot read is said, with exit 2, and never
-read as empty; a row of the register whose first cell gives no day is said by its line, and never passed over
-without a word.
+tables whose header's first cell opens with the word `Lapsed`: the five-cell form, and the seven-cell form that
+also says whom a lapse affected and what can still be done. It writes nothing. A register it cannot read is said,
+with exit 2, and never read as empty; a line that cannot be read as a row (its first cell gives no day, or it
+stands beneath the register's table under no header of its own with fewer than five cells) is said by its line,
+and never passed over without a word.
 """
 from __future__ import annotations
 
