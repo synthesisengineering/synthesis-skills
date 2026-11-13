@@ -75,7 +75,14 @@ there with no item here fails:
 - `harnesses`: at least one of the three harnesses was found on this Mac;
 - `<harness> plugin`, `<harness> package`, `<harness> hooks`: per harness, the plugin
   installed and enabled, its code equal to the runtime (never a version label), all four
-  events wired to the stable hook;
+  events wired to the stable hook. A command that does not answer says nothing about
+  the install, and its plugin line warns `cannot tell`: a listing past 45 seconds, or a
+  Codex whose `--version` takes over two seconds and has no other install beside it
+  (it is named, and its other lines are absent). Codex is asked for the plugin's own
+  marketplace (`codex plugin list --json -m synthesis-engineering`), for which it
+  fetches no remote catalog; its whole listing, which fetches one when Codex's copy is
+  over three hours old, is asked only before the plugin is called not installed, and
+  when that does not answer the line says to run `codex plugin list` once;
 - `claude transcripts`: Claude Code keeps transcripts past its 30-day default
   (`cleanupPeriodDays` is set, and to a year or more);
 - `codex hooks feature`, `codex instruction bytes`, `codex board access`,

@@ -545,17 +545,22 @@ def _expand(candidate: str) -> list:
     return sorted(glob.glob(os.path.expanduser(candidate)), key=newest, reverse=True)
 
 
-def _version_ok(path: str, timeout: float = 2.0):
+PROBE_TIMEOUT = 2.0
+UNANSWERED: list = []  # commands whose version probe did not answer in this run: named, never passed over as absent
+
+
+def _version_ok(path: str, timeout: float | None = None):
     """`<cli> --version` with stdin closed, time-bounded, its process group reaped: a stale
     launcher can outlive the app it launches. None means the probe could not be cleaned up."""
     try:
         proc = subprocess.Popen([path, "--version"], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                                 stderr=subprocess.DEVNULL, start_new_session=True)
-        ok = proc.wait(timeout=timeout) == 0
+        ok = proc.wait(timeout=PROBE_TIMEOUT if timeout is None else timeout) == 0
     except OSError:
         return False
     except subprocess.TimeoutExpired:
         ok = False
+        UNANSWERED.append(path)
     try:
         os.killpg(proc.pid, 9)  # the group too: a launcher's children can outlive it
     except ProcessLookupError:
@@ -1392,10 +1397,14 @@ def run_checks(home: Path | None = None, find=find_client, latest_ref: str = "",
     if (home / "bin" / "synthesis-hook").is_file():  # when it is missing, the runtime line already says so
         checks += [check_hook_script(home), check_self_test(home), check_wait_check()]  # before the CLIs start, so they don't skew timing
     clis, started = {}, {}
+    del UNANSWERED[:]
     for h in ("claude", "muse", "codex"):  # each listing starts as soon as its CLI is found; finding Codex
         path = find(h)                     # means a version probe, which overlaps the others' listings
         if path:
             clis[h], started[h] = path, _start([path] + LISTINGS[h])
+    if "codex" not in clis and UNANSWERED:  # a command that did not answer is not a harness that is absent
+        checks.append(check_plugin("codex", None, f"cannot tell: `{_short(UNANSWERED[0])} --version` did not answer within "
+                                   f"{PROBE_TIMEOUT:g} s, so Codex was not looked at; run the doctor again"))
     catalog = _background(app_server_query, clis["codex"], "skills/list",
                           {"cwds": [str(cwd)], "forceReload": False}) if "codex" in clis else None
     if not clis:

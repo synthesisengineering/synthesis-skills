@@ -16,6 +16,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   own shows nothing or a Codex does not know the option; where the whole listing does not answer in time, the line
   says to run `codex plugin list` once, since the limit stops the fetch each time. The installer's limit for the
   same command is 60 s, eight more than the fetch took that morning.
+- **A Codex that is slow to say its version is named, not passed over** (`synthesis-agent-conformance` 2.0.5). The
+  doctor asks a Codex command for its version before it uses it, with a limit of two seconds, so that a launcher
+  which outlived its app is skipped for another install. Where no other install answered, the doctor took Codex
+  for absent and printed none of its nine lines, with nothing to say they were missing: seen once on a busy
+  machine, in a test. It now prints `cannot tell` on Codex's plugin line, with the command that did not answer.
+  A launcher beside an install that answers is still skipped without a word.
 
 ## [5.12.0] - 2026-11-13
 
