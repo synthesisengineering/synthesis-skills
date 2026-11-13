@@ -159,6 +159,22 @@ def check_wait_check() -> Check:
     return Check("fail", "wait check", "a reply that announced a wait with nothing armed was not sent back: waits can end a turn unseen")
 
 
+def check_prompt_check(cfg: dict | None, error: str = "") -> Check | None:
+    """Where the day's prompt check is on: the workspaces whose day does not close while something the principal
+    typed is cited by no record, and the ones where nothing asks. Information, since turning it on is each
+    workspace's own word (measured 2026-11-13: on for one workspace of three; 8 of 267 session entries cited a record)."""
+    if cfg is None:
+        return Check("warn", "prompt check", f"cannot tell: the rituals' config cannot be read ({error})")
+    spaces = {w: v if isinstance(v, dict) else {} for w, v in (cfg.get("workspaces") or {}).items()}
+    if not spaces:
+        return None
+    on = [f"{w} (from {s['from']})" if isinstance(s, dict) and s.get("from") else w
+          for w, v in spaces.items() for s in [v.get("prompt_reconcile", False)] if s is not False]
+    off = [w for w, v in spaces.items() if v.get("prompt_reconcile", False) is False]
+    return Check("info", "prompt check", (f"on for {', '.join(on)}" if on else "on for no workspace") + (
+        f"; not set for {', '.join(off)}, where nothing asks whether what the principal typed reached a record" if off else ""))
+
+
 def check_temporary_addresses(config: dict) -> Check:
     """Under this config a message that carries a quick tunnel's address must be read as one."""
     from synthesis import guards
@@ -1405,6 +1421,12 @@ def run_checks(home: Path | None = None, find=find_client, latest_ref: str = "",
     if "temporary_addresses" in config:  # null is a setting that cannot be read, and fails its line
         checks.append(check_temporary_addresses(config))
     checks += [c for c in [check_browser_accounts(config, paths.read_json(paths.state() / "browser-accounts.json"))] if c]
+    try:
+        from synthesis import rituals
+        asked = check_prompt_check(rituals.config())
+    except (OSError, ValueError) as exc:
+        asked = check_prompt_check(None, str(exc)[:120])
+    checks += [asked] if asked else []
     if latest_ref:
         checks.append(check_latest(versions, latest_ref))
     try:

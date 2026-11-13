@@ -105,6 +105,10 @@ there with no item here fails:
   line names;
 - `pr gate`: when `pr_gated` is configured, every commit on a gated repository's default
   branch since its gate began came through a pull request;
+- `prompt check`: where the day's prompt check is on, by the rituals' config: the workspaces
+  whose day does not close while something the principal typed is cited by no record, and
+  the ones where nothing asks. Information, not a finding: turning it on is each
+  workspace's own word. A config that cannot be read warns;
 - `temporary addresses`: when `temporary_addresses` is configured, a quick tunnel's
   address in a message is read as one under the installed config, so such a message is
   refused; a setting that cannot be read fails;
