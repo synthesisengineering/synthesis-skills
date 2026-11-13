@@ -46,11 +46,14 @@ def config_file() -> Path:
 
 
 def config() -> dict:
-    """Merged config: public defaults, then the user's file. Missing file is fine."""
+    """Merged config: public defaults, then the user's file. Missing file is fine; JSON that is no object is unreadable."""
     try:
-        return json.loads(config_file().read_text(encoding="utf-8"))
+        found = json.loads(config_file().read_text(encoding="utf-8"))
     except FileNotFoundError:
         return {}
+    if not isinstance(found, dict):
+        raise ValueError(f"{config_file()} is not a JSON object")
+    return found
 
 
 def line_allowances(config: dict) -> Path | None:

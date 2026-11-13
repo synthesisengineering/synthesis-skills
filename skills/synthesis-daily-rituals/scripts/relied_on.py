@@ -54,7 +54,8 @@ def main(argv=None) -> int:
         cfg = rituals.config()
         if not args.all and args.workspace not in cfg["workspaces"]:
             raise ValueError(f"workspace {args.workspace} is not in it")
-        declared = {w: rituals.settings(cfg, w).get("relied_on") or [] for w in (cfg["workspaces"] if args.all else [args.workspace])}
+        declared = {w: rituals.settings(cfg, w).get("relied_on") for w in (cfg["workspaces"] if args.all else [args.workspace])}
+        declared = {w: [] if found is None else found if isinstance(found, list) else [found] for w, found in declared.items()}  # one that is there is read
     except (OSError, ValueError, TypeError) as exc:
         print(f"NOT CHECKED: {rituals.state_dir() / 'config.json'}: {exc}", file=sys.stderr)
         return 2
@@ -65,7 +66,7 @@ def main(argv=None) -> int:
         return 2
     rows = []
     for workspace, entries in declared.items():
-        for n, entry in enumerate(entries if isinstance(entries, list) else [entries], 1):
+        for n, entry in enumerate(entries, 1):
             entry = entry if isinstance(entry, dict) else {}
             what, by = (str(entry.get(key) or "").strip() for key in ("what", "by"))
             check = entry.get("check")
