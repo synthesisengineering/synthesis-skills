@@ -11,6 +11,7 @@ import shutil
 import subprocess
 import sys
 import time
+from datetime import datetime
 from pathlib import Path
 
 import pytest
@@ -1367,3 +1368,30 @@ def test_the_audit_reference_says_what_the_newer_checks_look_at():
     assert "`ALLOWED_FILE_DIRS`" in lines["outbox"] and "auto-start" in lines["outbox"]
     assert "`--latest`" in lines["latest release"] and "`pr_gated`" in lines["pr gate"]
     assert "`cleanupPeriodDays`" in lines["claude transcripts"] and "`config.json`" in lines["config"]
+
+
+def test_the_doctor_warns_while_something_a_test_set_up_is_still_in_place(tmp_path):
+    """2026-11-12: a stopped test's leftovers stayed a day, with no list and nothing to say so. The list is written
+    as each thing is made (the guardrails' teardown.py); the doctor reads it, and runs nothing it names."""
+    listed, now = tmp_path / "teardown.jsonl", 1794600000.0
+    assert doctor.check_teardown(listed, now).status == "ok"
+    listed.write_text("", encoding="utf-8")
+    assert doctor.check_teardown(listed, now) == doctor.Check("ok", "teardown", "nothing a test set up is left in place")
+
+    def item(number, what, hours):
+        at = datetime.fromtimestamp(now - hours * 3600).astimezone().isoformat(timespec="seconds")
+        return json.dumps({"id": number, "what": what, "remove": f"remove {what}", "test": "connector test", "at": at})
+    listed.write_text(item(1, "an entry", 30) + "\n" + item(2, "a key", 2) + "\n", encoding="utf-8")
+    found = doctor.check_teardown(listed, now)
+    assert found.status == "warn" and found.name == "teardown"
+    assert "2 things" in found.detail and "30 hours" in found.detail
+    assert "1: an entry (remove an entry)" in found.detail and "2: a key (remove a key)" in found.detail and "teardown.py done" in found.detail
+    listed.write_text("".join(item(n, f"thing {n}", n) + "\n" for n in range(1, 6)) + "a line by hand\n", encoding="utf-8")
+    found = doctor.check_teardown(listed, now)
+    assert "6 things" in found.detail and "5: thing 5" in found.detail and "3: thing 3" in found.detail     # the oldest three,
+    assert "2: thing 2" not in found.detail and "and 3 more" in found.detail                                 # and how many more
+    listed.write_text(item(1, "an entry", 0.5) + "\n", encoding="utf-8")
+    assert "1 thing " in doctor.check_teardown(listed, now).detail and "under an hour" in doctor.check_teardown(listed, now).detail
+    listed.unlink()
+    listed.mkdir()
+    assert doctor.check_teardown(listed, now).status == "warn"                                               # a list that cannot be read is said
