@@ -852,26 +852,32 @@ ROOT = Path(__file__).resolve().parents[1]
 # plans for a record of today, by the plan's day) and critical_deadlines 5 (the refusal names each source not taken
 # in full). The repository's conftest 9 (no test reads a rituals folder named in the shell). The context doctor 1
 # fewer (cited_entries: a folder is a session's where it holds its meta.json).
-# 5.16.0 (2026-11-13): plugin 923 more, all in the daily rituals' scripts; the core is as it was. lapse.py 489, new
-# (a lapse written in one step: the register's row, then the mark at the item): main 128, its opening words and
-# imports 67, locate 32 (the item read again by the sweep's own reader), prepare 31 (the marked plan written beside
-# the plan and read back before it is put in place), standing 30 (the row a lapse already has, asked about and not
-# guessed), find 26, came 22, in_table 15, append_row 15, sweep_reads 11, lead 9, place 9, where_cell 8, pick 8,
-# _gone 8, _title 7, day_of 7, _at 7, bears 7 (which gaps stand in a lapse's way), link 6, file_of 6, read_back 6,
-# _cell 5, listed 5, Refused 4, and 10 for its eight constants. lapse_review.py 210, new (the register read for a
-# review): main 53, read_register 46, its opening words and imports 44, register_path 18, lapses 12, place 11,
-# patterns 9, row_id 6, Unread 4, and 7 for its five constants. plate.py 158, new (everything open for a seat in one
-# list): build 88, its opening words and imports 37, main 28, and 5 for its three constants. The deadline sweep 28:
-# collect 17 (a link that hides nothing is listed and is no gap, a declared folder's gap says how many files it
-# holds, a ledger's unread rows are counted by ledger, two gaps say whose they are), gap 5 (whose line a gap is on),
-# parse_plan 4 (the same, for a gap on an item's own lines) and item_blocks 2 (a field under any list mark). The
-# record script 38, in the reader of a plan's choices, which now says the line each choice opens on: _plan_lines 20
-# (each line it reads, by the plan's own line past its fenced blocks), _located 54 with _items 44 fewer (the reader
-# under a name that also gives the line, _items its wrapper), and open_choices with the lines about it 8.
+# 5.16.0 (2026-11-13): plugin 1,077 more, all in the daily rituals' scripts; the core is as it was. lapse.py 592, new
+# (a lapse written in one step: the register's row, then the mark at the item): _run 129, its opening words and
+# imports 75, came 42 (what came of a lapse, and which lapse, asked where the rows are more than one item's or the
+# line holds another), standing 42 (the row a lapse already has, asked about and not guessed, a copy's in another
+# plan included), locate 35 (the item read again by the sweep's own reader; a plan whose lines are counted otherwise
+# refused), prepare 34 (the marked plan written beside the plan and read back before it is put in place, taken away
+# on an interrupt), find 26, held_by 16 (a row still held by the item at its line), in_table 15, occupant 15 (what a
+# line holds now), append_row 15, main 14 (a stop the system asks for taken as an interrupt), sweep_reads 11, lead
+# 9, place 9, title_of 8, where_cell 8, pick 8, _gone 8, _title 7, day_of 7, _at 7, bears 7 (which gaps stand in a
+# lapse's way), link 6, file_of 6, read_back 6, _cell 5, listed 5, Refused 4, and 13 for its ten constants and the
+# runtime it names. lapse_review.py 221, new (the register read for a review): main 53, read_register 46, its opening
+# words and imports 44, register_path 18, lapses 11, place 11, patterns 9, row_id 6, plain 6, lapse_key 6, Unread 4,
+# and 7 for its five constants. plate.py 190, new (everything open for a seat in one list): build 75, its opening
+# words and imports 39, main 28, within 20 (a folder by what the file system takes for it), merge 19 (the copies of
+# one item), newest 4, and 5 for its three constants. The deadline sweep 36: collect 22 (a link that hides nothing,
+# of the same kind, is listed and is no gap; a declared folder's gap says how many files it holds that the sweep
+# could read; a ledger's unread rows are counted by ledger; two gaps say whose they are; the dated items ahead say
+# their plan's day), gap 5 (whose line a gap is on), item_blocks 5 (a field written as a list entry is its item's
+# only beneath it) and parse_plan 4 (a gap on an item's own lines). The record script 38, in the reader of a plan's
+# choices, which now says the line each choice opens on: _plan_lines 20 (each line it reads, by the plan's own line
+# past its fenced blocks), _located 54 with _items 44 fewer (the reader under a name that also gives the line,
+# _items its wrapper), and open_choices with the lines about it 8.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # consolidate first).
 CORE_BUDGET = 13639
-PLUGIN_BUDGET = 36445
+PLUGIN_BUDGET = 36599
 
 
 def _lines(files):

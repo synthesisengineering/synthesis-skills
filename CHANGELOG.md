@@ -17,12 +17,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   anything is written the item is read again by the sweep's own reader (its file's last copy, still open, with the
   date the sweep read and no mark since), and the plan with its mark is written beside the plan and read by that
   reader too, so a mark that would stand as an entry of its own is refused. One helper writes at a time. A row is
-  never rewritten: what came of a lapse later is said with `--came`, a row for the same lapse on its day.
+  never rewritten: what came of a lapse later is said with `--came`, a row for the same lapse on its day; where the
+  rows it finds are those of more than one item, or the line it is given now holds another item, it asks which lapse
+  with `--row`. An interrupt, or a stop the system asks for, leaves nothing beside the plan.
 - **What it refuses, with both files as they were:** a critical item (it never lapses), an item closed or not
   found, a date not yet passed, words that say nothing, a gap of the sweep where a copy of the item could stand, a
   tag in a table's row, a plan, its folder or a register it may not write, and an item whose row and mark both
-  stand. It does not guess: an item already marked whose row it cannot find is asked about (`--row-missing`), and
-  so is an item with no ID that the register holds a row for at another line (`--row <line>` or `--row-missing`).
+  stand, and a plan holding a character some readers take for the end of a line and an editor does not. It does not
+  guess: an item already marked whose row it cannot find is asked about (`--row-missing`), and so is an item with no
+  ID that the register holds a row of its title for at another place, another line of its plan or another plan that
+  carries a copy of it (`--row <line>` or `--row-missing`), whether it is still to be marked or already marked; a row
+  whose line still holds a marked item of that title is that item's, and is not taken for this one.
   Where the row is written and the mark could not be put in place it exits 1 and names the row, and the next run
   with `--row` writes the mark alone.
 - **The register is read for a review** (`lapse_review.py`): the lapses of a window (the last fourteen days, a
@@ -33,25 +38,32 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
 - **Everything open for a seat in one list** (`plate.py`), built from the sweep and not from memory: the critical
   deadlines, what reads like one and is not classified, dated items due or past and ahead, the newest plan's
   commitments with no date and no park, a ledger's open rows, and the choices put with no decision, each with its
-  file and line. It is not built over records the sweep did not take in full unless asked (`--with-gaps`), and it
-  is never written into a folder the workspace declares.
-- **The sweep, where these three lean on it.** A field under any list mark (`*`, `+`, `1.`) is its item's field,
-  as it was under `-` alone. A gap on a line of one item says whose it is (`identity`), so another item's date that
-  is on no calendar no longer stands in the way of a lapse. A link the sweep would not read by its name, or one
-  that leads to a file it reads under that file's own name, is listed as excluded and is no gap: a `latest.md`
-  kept beside the plans had left every sweep blocked. The gap for a declared folder with no dated file says how
-  many files it holds, and a ledger's rows too short to read are counted by ledger (`owed.unread_in`).
+  file and line. Copies of an item with no Decay ID in several plans are listed once, at the newest copy, and said to
+  have passed with nothing written only where no copy carries a mark for its date, as the sweep reads an item with
+  an ID. It is not built over records the sweep did not take in full unless asked (`--with-gaps`), and it is never
+  written into a folder the workspace declares, by whatever name the file system takes for it.
+- **The sweep, where these three lean on it.** A field written as a list entry, under any mark, is the field of the
+  item it stands under (directly under a heading, or deeper than the open entry); at the open entry's level it is
+  an entry of its own, which closes nothing of its neighbour's and is no commitment. Until now a sibling
+  `- **Resolved:**` about something else closed the item above it. A gap on a line of one item says whose it is
+  (`identity`), so another item's date that is on no calendar no longer stands in the way of a lapse. A link the
+  sweep would not read by its name, or one that leads to a file it reads under that file's own name and as the same
+  kind of record, is listed as excluded and is no gap: a `latest.md` kept beside the plans had left every sweep
+  blocked. The gap for a declared folder with no dated file says how many files it holds that the sweep could read
+  (a `.gitkeep` or `.DS_Store` is none), and a ledger's rows too short to read are counted by ledger
+  (`owed.unread_in`).
 - **To use it** a workspace names its register in the ritual config. Until it does, `lapse.py` and
   `lapse_review.py` say how, and nothing else changes. The day-end's lapse step, the weekly and longer reviews and
   the day-start's list are written for the three scripts ([day-end.md](skills/synthesis-daily-rituals/references/day-end.md),
   [weekly-and-longer.md](skills/synthesis-daily-rituals/references/weekly-and-longer.md),
   [scripts.md](skills/synthesis-daily-rituals/references/scripts.md)).
-- **How it was checked.** Tests first throughout, and two review rounds by fresh reviewers given the code and no
-  conclusion: sixteen findings and then fifteen, each fixed with a test that failed before its fix. Two of the
-  first round's and two of the second's could put a false row into a permanent register, or lose one, with no
-  error. Counted on real records (counts only) with the second round's fixes and without: three seats' plans read
-  the same (238, 211 and 28 sources, no gap), and three registers of 355, 64 and 1 rows read the same lapses with
-  no line unread.
+- **How it was checked.** Tests first throughout, and three review rounds by fresh reviewers given the code and no
+  conclusion: sixteen findings, fifteen, then nine with four contrived cases, each fixed with a test that failed
+  before its fix. Two of the first round's and two of the second's could put a false row into a permanent register,
+  or lose one, with no error; the third's worst was the second's own widening of where a field belongs, which let a
+  sibling entry close the item above it. Counted on real records (counts only): with the fixes, the sweep reads
+  three seats' plans exactly as 5.15.0 does (the same items due and undated, no gap), and three registers of 355, 64
+  and 1 rows read the same lapses with no line unread.
 
 ## [5.15.0] - 2026-11-13
 
