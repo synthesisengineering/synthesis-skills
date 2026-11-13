@@ -3,9 +3,9 @@
 2026-11-12: a meeting request offered a time that a new invitation, arrived half an hour earlier, overlapped. The
 calendar had been read when the message was drafted, and the draft then waited for its approval. Every send waits
 for one, so every offer of a time has that window. The guard cannot know that a message proposes a meeting; it can
-know that its words name a clock time and when this session last read a calendar. Measured before it was built
-(2026-11-13): of 439 distinct messages to people on 73 days, 144 named a clock time, and the session had read a
-calendar in the ten minutes before for 39 of them; of the 35 with words of offering beside the time, for 6.
+know that its words name a clock time and when this session last read a calendar. Replayed over recorded messages
+(2026-11-13): of 445 distinct messages sent to people on 75 days, 145 named a clock time, and the session had read a
+calendar in the ten minutes before for 59 of them; of the 37 with words of offering beside the time, for 20.
 """
 
 import json
@@ -145,6 +145,13 @@ def test_only_a_calendar_read_that_succeeded_inside_the_ten_minutes_counts(how):
 def test_each_way_of_reading_a_calendar_is_known(tool):
     read_calendar(tool=tool)
     assert ordinary(ask())
+
+
+def test_a_list_of_some_sessions_events_is_no_calendar():
+    """A tool that lists a session's events ends as a calendar read does, and is none."""
+    read_calendar(tool="mcp__ccd_session_mgmt__list_events")
+    read_calendar(tool="mcp__notes__notion-list-session-events")
+    assert stale(ask())
 
 
 def test_the_config_names_more_tools_that_read_a_calendar():

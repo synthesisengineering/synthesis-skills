@@ -604,8 +604,9 @@ def _reshapes_calendar(tool: str, tool_input: dict) -> bool:
 # 2026-11-12: a meeting request offered a time that a new invitation, arrived half an hour earlier, overlapped. The
 # calendar was read when the message was drafted, and the draft then waited for its approval. The guard cannot know
 # that a message proposes a meeting; it knows the words name a clock time, and when this session last read a
-# calendar. Measured first (2026-11-13): of 439 distinct messages to people on 73 days, 144 named a clock time, about
-# six in ten of those were about when people meet, and 39 went with a calendar read in the ten minutes before.
+# calendar. Replayed over recorded messages (2026-11-13): of 445 distinct messages sent to people on 75 days, 145
+# named a clock time, about six in ten of those were about when people meet, and 59 went with a calendar read in the
+# ten minutes before.
 CLOCK = re.compile(r"(?i)\b(?:1[0-2]|0?[1-9])(?::[0-5]\d)?\s?[ap]\.?m\.?(?![a-z])|\b(?:[01]?\d|2[0-3]):[0-5]\d\b")  # `2:00 pm` whole, then `14:00`
 CALENDAR_READ = re.compile(r"(?:get|list|search|list[_-]all)[_-]events?$|query_freebusy$|suggest_time$")
 
@@ -619,8 +620,8 @@ def _calendar_read(transcript: str, reads: list) -> float | None:
             continue
         for call in _blocks(lines[i]):
             name, ident = str(call.get("name") or "").rsplit("__", 1)[-1], str(call.get("id") or "-")
-            if call.get("type") != "tool_use" or not (CALENDAR_READ.search(name) or name in reads):
-                continue
+            if call.get("type") != "tool_use" or not (CALENDAR_READ.search(name) and "session" not in str(call.get("name")).lower() or name in reads):
+                continue  # a list of some session's events ends as a calendar read does, and is none
             for later in lines[i + 1:]:
                 if ident in later and any(r.get("type") == "tool_result" and r.get("tool_use_id") == ident and not r.get("is_error")
                                           for r in _blocks(later)):
