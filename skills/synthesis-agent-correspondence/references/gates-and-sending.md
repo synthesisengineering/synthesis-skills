@@ -87,6 +87,8 @@ would not attach as given is blocked before any approval code is issued.
 | Gives `content` with no `filename` | Leaves it out | ``attachment <n> gives `content` with no `filename` `` |
 | Gives `content` that is not standard base64: the URL-safe letters, a `data:` prefix, wrong padding | Leaves it out, or skips the letters it does not know and attaches other bytes | ``attachment <n> gives `content` that is not standard base64`` |
 | Carries an empty `url` | Fetches nothing, and reads no `path` beside it | ``attachment <n> has an empty `url` `` |
+| Carries a `url` that is the connector's own download link, `/attachments/<id>`, with no host or on any host (the hosts it serves are in its own settings, which the guard cannot see) | Reads the bytes from a file it saved on this disk, which no approval binds | ``attachment <n> gives the `url` <url>, which the mail connector reads as its own download link`` |
+| Carries a `url` it does not fetch: anything but http or https with a host, a `file://` URL or a bare path among them | Attaches nothing for it | ``attachment <n> gives the `url` <url>, and the mail connector fetches a `url` only over http or https`` |
 | Names a `path` that is not a full path, names no file, or lies outside the outbox and the connector's default attachment folder (`~/.workspace-mcp/attachments`). Another folder a connector was started to read is not counted: the guard runs in the session's process and cannot see what a connector started elsewhere was given, so the file is staged in the outbox | Refuses the file | `the attachment <path> is outside the folders the mail connector reads` (or `is not a full path`, `does not exist`, `is not a file`) |
 | Names a file whose name or folder marks secrets (a `.env`, key or credentials file), staged or not | Reads it from no folder | `the attachment <path> is one the mail connector never reads` |
 
@@ -116,7 +118,10 @@ URL or a path there is refused with `file_path` named.
   a relative path in its own folder, expands no `~`, follows links, and then compares
   the letters as written.
 - An attachment passed as content needs no staging: standard base64 `content` with a
-  `filename`, or a `url` (the connector's own download link for a Drive file is one).
+  `filename`, or a `url` the connector fetches over http or https from a named host. Its
+  own download link for a Drive file or a mail attachment (`/attachments/<id>`) is not
+  one: it reads that from a file it saved on this disk, so the guard refuses the link and
+  asks for the file's path, staged in the outbox.
 - The approval covers the file's bytes, not only its path. The guard hashes each file
   the connector will read when it asks for the code and again when the call is made, so
   a copy replaced in between needs a new approval. The request ends `The approval covers

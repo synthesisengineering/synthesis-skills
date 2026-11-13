@@ -292,6 +292,25 @@ def _unread_files(tool: str, tool_input: dict, bound: dict | None = None) -> lis
     rule = (": the mail connector takes an attachment only from its `url`, the file at its `path` or standard base64 "
             "`content` with a `filename`, so this one would not go as given. Give one of the three (a file by its full "
             f"path, staged in {outbox}) and file this send again")
+    stage = f"copy the file into {outbox} (make the folder if it is missing), give that copy's full path "
+
+    def fetched(url: str) -> str:
+        """Why the mail connector would not attach a `url` as given (2.1.0: _resolve_url_attachments). Its own download
+        link it reads from its disk, with no host or on one its settings name, which the guard cannot see; any other
+        `url` it fetches over http or https from a named host, and in no other way."""
+        from urllib.parse import urlparse
+        try:
+            parsed = urlparse(url)
+            parts, web = parsed.path.strip("/").split("/"), parsed.scheme in ("http", "https") and bool(parsed.hostname)
+        except ValueError:
+            parts, web = [], False
+        if len(parts) == 2 and parts[0] == "attachments":
+            return (f"gives the `url` {url}, which the mail connector reads as its own download link (`/attachments/<id>`, "
+                    "on any host it may serve) from a file it saved on this disk, bytes an approval cannot bind: "
+                    f"{stage}as the attachment's `path`, and file this send again")
+        return "" if web else (f"gives the `url` {url}, and the mail connector fetches a `url` only over http or https "
+                               f"from a named host, so it would attach nothing: for a file on this disk, {stage}as the "
+                               "attachment's `path`, and file this send again")
 
     def unread(file: str, what: str = "the attachment", who: str = "the mail connector",
                give: str = "as the attachment's `path`, and file this send again") -> str:
@@ -309,8 +328,7 @@ def _unread_files(tool: str, tool_input: dict, bound: dict | None = None) -> lis
                 bound[real] = _sha256(real, until)
         except OSError as exc:
             return f"{what} {file} cannot be read ({exc.strerror or exc})"
-        return why and (f"{what} {file} {why}: copy the file into {outbox} (make the folder if it is missing), give "
-                        f"that copy's full path {give}")
+        return why and f"{what} {file} {why}: {stage}{give}"
 
     named, remote = tool_input.get(key) if key else None, tool_input.get("file_url") if key == "file_path" else None
     twice = [k for k in ("content", "file_path", "file_url", "base64_content") if tool_input.get(k) is not None] if key == "file_path" else []
@@ -341,13 +359,16 @@ def _unread_files(tool: str, tool_input: dict, bound: dict | None = None) -> lis
         unknown, url = ", ".join(f"`{k}`" for k in entry if k not in ENTRY_KEYS), entry.get("url")
         if sources == ["path"]:
             problems.append(unread(str(entry["path"])))
+        elif sources == ["url"] and isinstance(url, str) and url.strip():
+            fault = fetched(url)
+            problems.append(fault and f"{which} {fault}")
         elif len(sources) > 1:
             problems.append(f"{which} gives {' and '.join(f'`{s}`' for s in sources)}: the mail connector reads only the "
                             f"`{sources[0]}` of such an entry, empty or not, and never the rest; give one of them and file "
                             "this send again")
         else:
             fault = ("has none of `path`, `content` and `url`" + (f" ({unknown}: not read)" if unknown else "") if not sources
-                     else ("" if isinstance(url, str) and url.strip() else "has an empty `url`") if sources == ["url"]
+                     else "has an empty `url`" if sources == ["url"]
                      else "gives `content` with no `filename`" if not entry.get("filename")
                      else "" if _standard_base64(entry["content"]) else "gives `content` that is not standard base64")
             problems.append(fault and f"{which} {fault}{rule}")
