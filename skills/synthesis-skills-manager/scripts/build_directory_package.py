@@ -7,24 +7,26 @@
 The package is the skills that assets/directory-package.json lists: every tracked file of each that is not a
 test, byte for byte; the images kept beside that list in assets/directory-package/, carried as assets/; and one
 Codex manifest, which is that file's `manifest` with the repository's version. It holds no hooks folder and
-registers no hook. Nothing is submitted: the upload is the owner's.
+registers no hook. Nothing is submitted: the upload is the owner's. A ZIP that is written is read from the last
+commit itself; `--check` reads the checkout's files, so that an edit can be checked before it is committed.
 
 A ZIP is written only when it passes, and the checks read the ZIP: it holds only files of listed skills, its
 images and the manifest; each file equals its source; every dependency of a listed skill is listed; the version
-is the repository's; the manifest names a logo and a composer icon among the images, and no image goes unnamed;
+is the repository's; the manifest names a logo and a composer icon among the images, no image goes unnamed and
+none runs a script or loads from outside itself;
 and no line claims a hook, a guard or an approval code, or needs the runtime (CLAIMS). A skill that gains such a
 line fails here until it leaves the list; its text is never edited to pass.
 
 One line on stdout, and the exit code:
-  OUT.zip              built OUT.zip: 32 skills, 235 files, 845797 bytes, version 5.8.0                    0
-  --check              ok: 32 skills, 235 files, 845797 bytes, version 5.8.0; nothing written              0
+  OUT.zip              built OUT.zip: 32 skills, 235 files, 844523 bytes, version 5.8.2                    0
+  --check              ok: 32 skills, 235 files, 844523 bytes, version 5.8.2; nothing written              0
   either, on a defect  refused: 2 problems; nothing written      (then each problem on its own line)       1
   --changed-since TAG  unchanged since TAG: no new submission is due                                       0
                        changed since TAG: the list, its images, synthesis-preplan; a new submission is due 1
   any                  cannot continue: <why>    (the list, a manifest, a file, git or TAG cannot be read,
                        a listed skill holds a symbolic link, or OUT cannot be written)                     2
-A build also refuses, with 1, while the list or a file it would carry differs from the last commit: a package
-is cut from committed files. `--repo-root DIR` reads another checkout. A wrong command line exits 2 with
+A build also refuses, with 1, while the list, the version or a file it would carry differs from the last commit:
+a package is cut from committed files. `--repo-root DIR` reads another checkout. A wrong command line exits 2 with
 argparse's usage. Standard library only; runs on Python 3.9.
 """
 
@@ -76,11 +78,6 @@ def is_test(path: str) -> bool:
     return "tests" in path.split("/") or path.rsplit("/", 1)[-1].startswith("test_")
 
 
-def source(path: str) -> str:
-    """Where a packaged file is kept in the checkout: an image beside the list, anything else under its own name."""
-    return IMAGES + path[len("assets"):] if path.startswith("assets/") else path
-
-
 def depends_on(skill_md: str) -> list:
     """The names in a skill's frontmatter `depends_on`, written as a flow list or as a block list."""
     front = re.match(r"---\n(.*?)\n---\n", skill_md, re.S)
@@ -88,11 +85,11 @@ def depends_on(skill_md: str) -> list:
     return re.findall(r"[A-Za-z][\w.-]*", found.group(1)) if found else []
 
 
-def git(repo: Path, *args: str) -> str:
-    done = subprocess.run(["git", "-C", str(repo), *args], capture_output=True, encoding="utf-8", errors="replace")
+def git(repo: Path, *args: str, text: bool = True):
+    done = subprocess.run(["git", "-C", str(repo), *args], capture_output=True)
     if done.returncode:
-        raise Unreadable(f"git {args[0]}: {done.stderr.strip() or 'failed'}")
-    return done.stdout
+        raise Unreadable(f"git {args[0]}: {done.stderr.decode('utf-8', 'replace').strip() or 'failed'}")
+    return done.stdout.decode("utf-8", "replace") if text else done.stdout
 
 
 def read_json(path: Path) -> dict:
@@ -102,27 +99,50 @@ def read_json(path: Path) -> dict:
         raise Unreadable(f"cannot read {path}: {error}")
 
 
-def read_list(repo: Path) -> dict:
-    spec = read_json(repo / LIST)
+def committed(repo: Path, path: str, ref: str = "HEAD") -> dict:
+    try:
+        return json.loads(git(repo, "show", f"{ref}:{path}"))
+    except ValueError as error:
+        raise Unreadable(f"cannot read {path} at {ref}: {error}")
+
+
+def read_list(repo: Path, commit: bool = False) -> dict:
+    spec = committed(repo, LIST) if commit else read_json(repo / LIST)
     if not (isinstance(spec, dict) and isinstance(spec.get("skills"), list) and spec["skills"]
             and isinstance(spec.get("manifest"), dict)):
         raise Unreadable(f"{repo / LIST} needs a `skills` list that names a skill and a `manifest` object")
     return spec
 
 
-def build(repo: Path, spec: dict) -> bytes:
-    """The package as ZIP bytes. The same checkout gives the same bytes: names in order, one date, and the
-    executable bit as git records it."""
-    listing = git(repo, "ls-files", "-s", "-z", "--", IMAGES,
-                  *[f"skills/{name}" for name in spec["skills"]]).split("\0")
-    modes = {path: meta[:6] for meta, path in (entry.split("\t", 1) for entry in listing if entry)}
-    links = [path for path, mode in modes.items() if mode == "120000"]
+def carried(repo: Path, spec: dict, commit: bool = False) -> tuple:
+    """({path in the ZIP: bytes}, {path in the ZIP: git's mode}, the repository's version) of what a package carries.
+    A ZIP that is written is read from the last commit itself (`commit`): read from the checkout's files it carried a
+    version not yet committed, a file git had been told to assume unchanged, and line ends a checkout had converted.
+    A check reads the checkout's files, so that an edit can be checked before it is committed."""
+    roots = [IMAGES, *[f"skills/{name}" for name in spec["skills"]]]
+    if commit:  # `<mode> blob <object>\t<path>`
+        found = {path: meta.split() for meta, path in (
+            entry.split("\t", 1) for entry in git(repo, "ls-tree", "-r", "-z", "HEAD", "--", *roots).split("\0") if entry)}
+        version = committed(repo, MANIFEST).get("version")
+    else:  # `<mode> <object> <stage>\t<path>`
+        found = {path: meta.split() for meta, path in (
+            entry.split("\t", 1) for entry in git(repo, "ls-files", "-s", "-z", "--", *roots).split("\0") if entry)}
+        version = read_json(repo / MANIFEST).get("version")
+    links = [path for path, meta in found.items() if meta[0] == "120000"]
     if links:  # followed, one could carry a file from outside its skill, or from the machine that builds
         raise Unreadable(f"{links[0]} is a symbolic link, and a package follows none")
-    files = {("assets" + path[len(IMAGES):] if path.startswith(IMAGES + "/") else path): (repo / path).read_bytes()
-             for path in modes if not is_test(path)}
+    name = lambda path: "assets" + path[len(IMAGES):] if path.startswith(IMAGES + "/") else path  # noqa: E731
+    files = {name(path): git(repo, "cat-file", "blob", meta[2], text=False) if commit else (repo / path).read_bytes()
+             for path, meta in found.items() if not is_test(path)}
+    return files, {name(path): meta[0] for path, meta in found.items()}, version
+
+
+def build(repo: Path, spec: dict, commit: bool = False) -> bytes:
+    """The package as ZIP bytes. The same commit gives the same bytes: names in order, one date, and the
+    executable bit as git records it."""
+    files, modes, version = carried(repo, spec, commit)
     fields = dict(spec["manifest"])
-    made = {"name": fields.pop("name", ""), "version": read_json(repo / MANIFEST).get("version"), **fields}
+    made = {"name": fields.pop("name", ""), "version": version, **fields}
     files[MANIFEST] = (json.dumps(made, indent=2, ensure_ascii=False) + "\n").encode("utf-8")
     data = io.BytesIO()
     with zipfile.ZipFile(data, "w") as package:
@@ -134,9 +154,10 @@ def build(repo: Path, spec: dict) -> bytes:
     return data.getvalue()
 
 
-def verify(repo: Path, spec: dict, data: bytes) -> list:
+def verify(repo: Path, spec: dict, data: bytes, commit: bool = False) -> list:
     """Each reason this ZIP may not ship, read from the ZIP itself; empty when it may."""
     listed, found = set(spec["skills"]), []
+    kept, _, version = carried(repo, spec, commit)
     with zipfile.ZipFile(io.BytesIO(data)) as package:
         files = {name: package.read(name) for name in package.namelist()}
     for name in spec["skills"]:
@@ -146,7 +167,7 @@ def verify(repo: Path, spec: dict, data: bytes) -> list:
         found += [f"skills/{name}/SKILL.md: depends on {need}, which is not on the list"
                   for need in depends_on((skill or b"").decode("utf-8", "replace")) if need not in listed]
     for path, content in sorted(files.items()):
-        parts, kept, image = path.split("/"), repo / source(path), path.startswith("assets/")
+        parts, image = path.split("/"), path.startswith("assets/")
         try:
             lines = content.decode("utf-8").splitlines()
         except UnicodeDecodeError:
@@ -158,11 +179,13 @@ def verify(repo: Path, spec: dict, data: bytes) -> list:
         if path != MANIFEST and not image and (len(parts) < 3 or parts[0] != "skills" or parts[1] not in listed
                                                or is_test(path)):
             found.append(f"{path}: not a file of a listed skill")
-        elif path != MANIFEST and (not kept.is_file() or kept.read_bytes() != content):
+        elif path != MANIFEST and kept.get(path) != content:
             found.append(f"{path}: differs from its source")
+        if image and re.search(r"""(?i)<script|(?:href\s*=\s*["']|url\(\s*["']?)\s*(?!#|data:)""", "\n".join(lines)):
+            found.append(f"{path}: an image that runs a script or loads from outside itself")
         found += [f"{path}:{number}: {', '.join(kinds)}: {line.strip()[:120]}"
                   for number, line in enumerate(lines, 1) for kinds in [claims(line)] if kinds]
-    version, manifest = read_json(repo / MANIFEST).get("version"), json.loads(files.get(MANIFEST, b"{}"))
+    manifest = json.loads(files.get(MANIFEST, b"{}"))
     if not version or manifest.get("version") != version:
         found.append(f"{MANIFEST}: version {manifest.get('version')}, not the repository's {version}")
     interface = manifest.get("interface") if isinstance(manifest.get("interface"), dict) else {}
@@ -179,9 +202,9 @@ def verify(repo: Path, spec: dict, data: bytes) -> list:
     return found
 
 
-def differing(repo: Path, spec: dict, ref: str) -> list:
-    """The list and the files a package would carry, where the checkout differs from `ref`."""
-    paths = git(repo, "diff", "--name-only", "--no-renames", "-z", ref, "--", LIST, IMAGES,
+def differing(repo: Path, spec: dict, ref: str, also: tuple = ()) -> list:
+    """The list and the files a package would carry (and `also`), where the checkout differs from `ref`."""
+    paths = git(repo, "diff", "--name-only", "--no-renames", "-z", ref, "--", LIST, IMAGES, *also,
                 *[f"skills/{name}" for name in spec["skills"]]).split("\0")
     return [path for path in paths if path and not is_test(path)]
 
@@ -201,20 +224,25 @@ def main(argv=None) -> int:
         parser.error("give the ZIP to write, or --check, or --changed-since TAG")
     repo, tag = args.repo_root.resolve(), args.changed_since
     try:
-        spec = read_list(repo)
+        spec = read_list(repo, bool(args.out))
         if tag:
             paths = differing(repo, spec, f"refs/tags/{tag}")
             images = [path for path in paths if path.startswith(IMAGES + "/")]
             changed = sorted({path.split("/")[1] for path in paths if path != LIST and path not in images})
-            changed = (["the list"] if LIST in paths else []) + (["its images"] if images else []) + changed
+            try:  # of the list, its skills and its manifest are in a package; why a skill was left out is not
+                was = committed(repo, LIST, f"refs/tags/{tag}")
+                same = isinstance(was, dict) and (was.get("skills"), was.get("manifest")) == (spec["skills"], spec["manifest"])
+            except Unreadable:  # no list at that tag: the package is newer than it
+                same = False
+            changed = (["the list"] if LIST in paths and not same else []) + (["its images"] if images else []) + changed
             print(f"changed since {tag}: {', '.join(changed)}; a new submission is due" if changed
                   else f"unchanged since {tag}: no new submission is due")
             return 1 if changed else 0
-        data = build(repo, spec)
-        found = verify(repo, spec, data)
-        if args.out:
+        data = build(repo, spec, bool(args.out))
+        found = verify(repo, spec, data, bool(args.out))
+        if args.out:  # the ZIP holds the commit either way; an edit it does not hold is said, not passed over
             found = [f"{path}: differs from the last commit; a package is cut from committed files"
-                     for path in differing(repo, spec, "HEAD")] + found
+                     for path in differing(repo, spec, "HEAD", (MANIFEST,))] + found
         if found:
             print("\n".join([f"refused: {count(len(found), 'problem')}; nothing written"] + found))
             return 1
@@ -222,7 +250,7 @@ def main(argv=None) -> int:
             args.out.write_bytes(data)
         with zipfile.ZipFile(io.BytesIO(data)) as package:
             holds = (f"{count(len(spec['skills']), 'skill')}, {count(len(package.namelist()), 'file')}, "
-                     f"{len(data)} bytes, version {read_json(repo / MANIFEST)['version']}")
+                     f"{len(data)} bytes, version {json.loads(package.read(MANIFEST))['version']}")
         print(f"built {args.out}: {holds}" if args.out else f"ok: {holds}; nothing written")
         return 0
     except (Unreadable, OSError) as error:

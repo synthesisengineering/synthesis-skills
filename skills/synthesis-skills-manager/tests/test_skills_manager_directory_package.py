@@ -765,9 +765,14 @@ def test_what_cannot_be_read_exits_2_and_says_why(tmp_path, capsys):
     code, lines = run(capsys, tmp_path / "no-such-folder" / "methods.zip", "--repo-root", repo)
     assert code == 2 and lines[0].startswith("cannot continue: ")  # a ZIP that cannot be written
     (repo / package.LIST).write_text("{")
-    for argv in (("--check",), (tmp_path / "methods.zip",), ("--changed-since", "v0.0.0")):
+    for argv in (("--check",), ("--changed-since", "v0.0.0")):
         code, lines = run(capsys, *argv, "--repo-root", repo)
         assert code == 2 and lines[0].startswith("cannot continue: ") and package.LIST in lines[0]
+    code, lines = run(capsys, tmp_path / "methods.zip", "--repo-root", repo)  # written from the commit, where the list is whole
+    assert code == 1 and lines[1].startswith(f"{package.LIST}: differs from the last commit")
+    git(repo, "commit", "-qam", "a list that cannot be read")
+    code, lines = run(capsys, tmp_path / "methods.zip", "--repo-root", repo)
+    assert code == 2 and lines[0].startswith("cannot continue: ") and package.LIST in lines[0]
     (repo / package.LIST).write_text(json.dumps({"skills": [], "manifest": {}}))
     assert run(capsys, "--check", "--repo-root", repo)[0] == 2
     assert not (tmp_path / "methods.zip").exists()

@@ -79,18 +79,23 @@ print one line.
 python3 skills/synthesis-skills-manager/scripts/build_directory_package.py OUT.zip
 ```
 
-writes the ZIP and prints `built OUT.zip: 32 skills, 235 files, 845797 bytes, version
-5.8.0` (exit 0). It writes nothing unless every check passes. It also refuses while the
-list or a file it would carry differs from the last commit, because a package is cut
-from committed files: build it from a clean checkout of the release's tag. A build is
+writes the ZIP and prints `built OUT.zip: 32 skills, 235 files, 844523 bytes, version
+5.8.2` (exit 0; the numbers are that release's). It writes nothing unless every check
+passes. A ZIP that is written is read from the last commit itself, each file as git
+holds it, and the list and the version with it: what the checkout's files hold beside
+that never reaches it (an edit not committed, a file git was told to assume unchanged,
+line ends a checkout converted). So that an edit is not passed over in silence, the
+build also refuses while the list, the version or a file it would carry differs from
+the last commit: build it from a clean checkout of the release's tag. A build is
 repeatable: entries in name order, one fixed date, the executable bit as git records it.
 
 ```bash
 python3 skills/synthesis-skills-manager/scripts/build_directory_package.py --check
 ```
 
-runs the same checks on the same bytes and writes nothing: `ok: 32 skills, 235 files,
-845797 bytes, version 5.8.0; nothing written` (exit 0). On a defect either command
+runs the same checks and writes nothing: `ok: 32 skills, 235 files, 844523 bytes,
+version 5.8.2; nothing written` (exit 0). It reads the checkout's files as they are,
+so an edit can be checked before it is committed. On a defect either command
 prints `refused: 2 problems; nothing written`, then one line for each problem, and exits
 1. CI makes the same checks on every pull request, in
 [tests/test_skills_manager_directory_package.py](../tests/test_skills_manager_directory_package.py).
@@ -102,9 +107,10 @@ python3 skills/synthesis-skills-manager/scripts/build_directory_package.py --cha
 says whether a release needs a new submission: `unchanged since v5.7.0: no new
 submission is due` (exit 0), or `changed since v5.7.0: the list, its images,
 synthesis-preplan; a new submission is due` (exit 1). It names each listed skill with a
-packaged file that differs from the tag, `the list` when the list file differs (its
-skills, or the manifest's name and description), and `its images` when an image does.
-The version changes with every release and is not counted.
+packaged file that differs from the tag, `the list` when its `skills` or its `manifest`
+differ (what it says of the skills left out, and its own description, are not in a
+package), and `its images` when an image does. The version changes with every release
+and is not counted.
 
 When the script cannot tell, it prints `cannot continue: <why>` and exits 2: the list or
 a manifest cannot be read, the tag does not exist, the folder is not a git checkout, a
@@ -129,6 +135,9 @@ The checks read the ZIP that was built, not the folders it came from. It fails w
    an image the package holds (a dark variant, `logoDark` or `composerIconDark`, is
    held to the same rule when it is named), or the package holds an image that no such
    field names.
+9. an image that is text (an SVG) holds a script, or a link or `url()` that leads
+   anywhere but into the image itself (`#name`) or to data written in it (`data:`): a
+   directory shows the image to everyone who opens the package's page.
 
 Rule 7 is a set of phrases, decided from what the skills outside the list say; the test
 file names every one. They are: the lifecycle hooks and the git hooks by name

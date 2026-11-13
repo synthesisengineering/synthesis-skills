@@ -322,13 +322,14 @@ def positional_re_limits(root: Path) -> list:
     """Calls such as `re.split(pattern, text, 1)`. Python 3.13 deprecates passing `maxsplit`, `count` or `flags` to
     `re.split`, `re.sub` and `re.subn` by position, and a later Python will refuse it. On 2026-11-12 the core held
     three such calls: silent under 3.12, where the suite is run by hand, and a warning at every use under 3.13.
-    This reads the source, so it holds under every Python."""
+    This reads the source, so it holds under every Python. It reads the repository's own code: the files at its
+    root and under the four folders that hold code, not a virtual environment or a build folder beside them."""
     import ast
     most = {"split": 2, "sub": 3, "subn": 3}
     found = []
-    for path in sorted(root.rglob("*.py")):
-        if any(part.startswith(".") for part in path.relative_to(root).parts):
-            continue
+    own = [*root.glob("*.py"), *(path for folder in ("synthesis", "hooks", "skills", "tests")
+                                 for path in (root / folder).rglob("*.py"))]
+    for path in sorted(own):
         for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
             if (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and isinstance(node.func.value, ast.Name)
                     and node.func.value.id == "re" and len(node.args) > most.get(node.func.attr, len(node.args))):
@@ -364,9 +365,10 @@ def test_the_re_rule_finds_a_positional_limit_and_spares_a_named_one(tmp_path):
 def test_a_deprecation_met_in_the_core_fails_the_test_and_one_met_elsewhere_does_not(request):
     """`pytest.ini` turns a DeprecationWarning raised for a line of the core into an error. The three positional
     limits above warned under Python 3.13 at every use, in a summary at the end of a run that nobody read."""
+    import sys
     import warnings
-    if request.config.getoption("pythonwarnings"):
-        pytest.skip("this run was told how to treat warnings (-W), which outranks pytest.ini")
+    if request.config.getoption("pythonwarnings") or sys.warnoptions:
+        pytest.skip("this run was told how to treat warnings (-W or PYTHONWARNINGS), which outranks or reshapes pytest.ini")
     with pytest.raises(DeprecationWarning):
         warnings.warn_explicit("refused by a later Python", DeprecationWarning, "synthesis/guards.py", 1, module="synthesis.guards")
     with warnings.catch_warnings(record=True) as seen:
