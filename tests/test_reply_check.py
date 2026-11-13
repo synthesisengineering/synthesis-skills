@@ -298,11 +298,11 @@ def test_the_principals_move_exempts_only_the_clause_it_stands_in():
 
 
 def test_a_configured_phrase_is_judged_in_its_own_clause():
-    config = {"wait_phrases": ["standing by"]}
-    assert _sent_back("Standing by for the vendor.") is None                          # not a built-in form
-    assert "standing by" in _sent_back("Standing by for the vendor.", config)
-    assert _sent_back("Standing by for the vendor. You can review the draft meanwhile.", config)
-    assert _sent_back("Standing by until you send the code.", config) is None
+    config = {"wait_phrases": ["parked"]}
+    assert _sent_back("Parked for the vendor.") is None                               # not a built-in form
+    assert "parked" in _sent_back("Parked for the vendor.", config)
+    assert _sent_back("Parked for the vendor. You can review the draft meanwhile.", config)
+    assert _sent_back("Parked until you send the code.", config) is None
     assert _sent_back(OWN_WAIT["W08"], {"wait_phrases": None})                        # a null list is no list, not an error
 
 
@@ -1678,6 +1678,31 @@ STANDING_BY_FOR_THE_PRINCIPAL = {
     "a-judgment-on-it": "Standing by for a reply costs nothing here, so the batch goes on.",
     "no-thing-named": "The run is finished and the report is filed. Standing by.",
 }
+
+
+# A wait whose next clause asks the principal to hand over the thing awaited is theirs to end, whichever word waits.
+THE_NEXT_CLAUSE_HANDS_IT_OVER = {
+    "waiting-then-paste": "I'm waiting for the confirmation code that was emailed to you; paste it here and I'll complete the registration.",
+    "standing-by-then-paste": "I'm standing by for the confirmation code that was emailed to you; paste it here and I'll complete the registration.",
+    "next-sentence": "I'm waiting for the signed form from their office. Forward it to me when it lands in your inbox.",
+    "reply-with": "Waiting on the reference number from the portal. Reply with it and I'll file the claim.",
+}
+THE_NEXT_CLAUSE_HANDS_NOTHING_OVER = {
+    "an-aside": "I'm waiting for the registry to publish the package. Check the logs if you are curious.",
+    "a-statement": "I'm waiting for the vendor's file. The paste buffer is empty, so nothing is staged.",
+    "another-subject": "I'm waiting for the build. Sharing the report comes after it.",
+}
+
+
+@pytest.mark.parametrize("reply", _cases(THE_NEXT_CLAUSE_HANDS_IT_OVER))
+def test_a_wait_followed_by_a_request_to_hand_the_thing_over_is_the_principals_to_end(reply):
+    assert _sent_back(reply) is None
+
+
+@pytest.mark.parametrize("reply", _cases(THE_NEXT_CLAUSE_HANDS_NOTHING_OVER))
+def test_a_wait_followed_by_anything_else_is_still_sent_back(reply):
+    reason = _sent_back(reply)
+    assert reason and "nothing is armed" in reason
 
 
 @pytest.mark.parametrize("reply", _cases(STANDING_BY_FOR_A_THING))
