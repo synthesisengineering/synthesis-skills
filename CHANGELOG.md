@@ -65,6 +65,19 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   three seats' plans exactly as 5.15.0 does (the same items due and undated, no gap), and three registers of 355, 64
   and 1 rows read the same lapses with no line unread.
 
+## [5.15.1] - 2026-11-13
+
+- **The connector asks Google for its account chooser at every sign-in** (`synthesis-kb-distribution` 1.2.4). Found
+  by an end-to-end test of a production connector from a personal ChatGPT account: in a browser that held only a
+  personal Google account, Google signed that account straight in and refused it (`Error 403: org_internal`, the
+  client's audience being Internal), with no account chooser and no "Use another account", so a person whose browser
+  knows only their personal account could not reach their work one. FastMCP's `GoogleProvider` sends Google
+  `prompt=consent` and `access_type=offline` by default, and the connector passed nothing of its own. It now sends
+  `prompt=select_account consent` with `access_type=offline`: the chooser every time, and Google still returns a
+  refresh token. A test reads the address the consent step sends to Google and checks both; against 5.15.0's
+  connector it fails with `prompt` `consent` alone. `references/connector.md` 5.2 says what a person sees. Nothing
+  changes for a deployment until it is deployed again.
+
 ## [5.15.0] - 2026-11-13
 
 - **The deadline sweep lists the commitments a plan carries with no date** (`synthesis-daily-rituals` 3.13.0). The

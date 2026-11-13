@@ -377,7 +377,9 @@ domain. Confirm it after the first deploy with
 
 **5.2 Google OAuth consent screen.** In the Google Cloud console for `<project>`, under Google Auth
 Platform, set the audience (user type) to **Internal**, so only accounts in the organization's
-Google Workspace can sign in at all. Request the `openid` and `email` scopes.
+Google Workspace can sign in at all. Request the `openid` and `email` scopes. At every sign-in the
+connector asks Google for its account chooser, so someone whose browser holds only a personal account
+can pick or add their work account there instead of meeting Google's `org_internal` refusal.
 
 **5.3 OAuth client.** Create an OAuth client of type **Web application**. Add the authorized
 redirect URI `https://<service>-<number>.<region>.run.app/auth/callback` (or the custom domain's).

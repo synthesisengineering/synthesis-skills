@@ -852,6 +852,8 @@ ROOT = Path(__file__).resolve().parents[1]
 # plans for a record of today, by the plan's day) and critical_deadlines 5 (the refusal names each source not taken
 # in full). The repository's conftest 9 (no test reads a rituals folder named in the shell). The context doctor 1
 # fewer (cited_entries: a folder is a session's where it holds its meta.json).
+# 5.15.1, plugin 6 more: the connector's GOOGLE_AUTHORIZE_PARAMS 5 (the setting and its four-line note) and
+# build_auth 1 (the argument that passes it), so Google shows its account chooser at every sign-in.
 # 5.16.0 (2026-11-13): plugin 1,077 more, all in the daily rituals' scripts; the core is as it was. lapse.py 592, new
 # (a lapse written in one step: the register's row, then the mark at the item): _run 129, its opening words and
 # imports 75, came 42 (what came of a lapse, and which lapse, asked where the rows are more than one item's or the
@@ -877,7 +879,7 @@ ROOT = Path(__file__).resolve().parents[1]
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # consolidate first).
 CORE_BUDGET = 13639
-PLUGIN_BUDGET = 36599
+PLUGIN_BUDGET = 36605
 
 
 def _lines(files):
