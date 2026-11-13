@@ -149,12 +149,7 @@ def _day(moment) -> str:
     return _when(moment).date().isoformat()
 
 
-def _is_day(text) -> bool:
-    """Whether text is one day written YYYY-MM-DD: Python 3.11 and later also read 20261112 and 2026-W46-4 as dates."""
-    try:
-        return bool(re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", text)) and bool(date.fromisoformat(text))
-    except (TypeError, ValueError):
-        return False
+_is_day = rituals.is_day  # one day written YYYY-MM-DD, read where the prompt check's first day is read
 
 
 def travel(workspace: str, day: str, given) -> str:
@@ -202,18 +197,21 @@ def prompts(workspace: str, day: str, direction: str, outcome: str) -> str:
     wanted = rituals.settings(rituals.config(), workspace).get("prompt_reconcile", False)
     if wanted is False or direction != "day-end":  # off by a missing key or `false` alone: null and 0 closed a day unchecked
         return ""
-    roots = wanted.get("records") if isinstance(wanted, dict) else None
-    where = f'{rituals.state_dir() / "config.json"}, under workspaces.{workspace}'
-    if not (isinstance(roots, list) and roots and all(isinstance(r, str) and r for r in roots)):
+    where, fault = f'{rituals.state_dir() / "config.json"}, under workspaces.{workspace}', ""
+    try:  # read where the doctor's line reads it, so neither calls on what the other refuses
+        roots, _ = rituals.prompt_check({"prompt_reconcile": wanted})
+    except ValueError as exc:
+        fault = exc.args[1]
+    if fault == "folders":
         refuse(f"{workspace} sets prompt_reconcile to {json.dumps(wanted)[:80]}, which names no folder of records: the check can "
                f'neither run nor count as off, so this ritual is not recorded. In {where}, write "prompt_reconcile": '
                '{"records": ["<folder of project records>"]}; only false, or no key at all, turns the check off')
-    loose = [r for r in roots if not os.path.isabs(os.path.expanduser(r))]
-    if loose:  # read from wherever the day-end runs: another folder of that name, or none
+    loose = [r for r in wanted["records"] if not os.path.isabs(os.path.expanduser(r))]
+    if fault == "loose":  # read from wherever the day-end runs: another folder of that name, or none
         refuse(f"{workspace} names its folder of records {json.dumps(loose[0])} from no fixed place, so it would be read from wherever the "
                f"day-end runs, and this ritual is not recorded. In {where}, write each folder from the root (`/`) or from the home folder (`~`)")
     since = wanted.get("from", "")
-    if "from" in wanted and not _is_day(since):  # compared as text, `tomorrow` or a number put every day before it
+    if fault == "from":  # compared as text, `tomorrow` or a number put every day before it
         refuse(f'{workspace} starts prompt_reconcile "from" {json.dumps(since)[:80]}, which is not a day written YYYY-MM-DD, so no '
                f'day can be told to come before it and this ritual is not recorded. In {where}, write "from": "YYYY-MM-DD", '
                "or leave it out")

@@ -15,7 +15,7 @@ def isolated_home(tmp_path, monkeypatch):
     """Every test gets its own synthesis state and no inherited harness identity."""
     home = tmp_path / "synthesis-home"
     monkeypatch.setenv("SYNTHESIS_HOME", str(home))
-    for key in ("SYNTHESIS_SESSION", "CLAUDE_CODE_SESSION_ID", "CLAUDECODE", "CODEX_THREAD_ID", "MUSE_SESSION_ID"):
+    for key in ("SYNTHESIS_SESSION", "CLAUDE_CODE_SESSION_ID", "CLAUDECODE", "CODEX_THREAD_ID", "MUSE_SESSION_ID", "MUSE_PLUGIN_ROOT"):
         monkeypatch.delenv(key, raising=False)
     gitconfig = tmp_path / "gitconfig"
     gitconfig.write_text("[user]\n\temail = test@example.com\n\tname = test\n", encoding="utf-8")

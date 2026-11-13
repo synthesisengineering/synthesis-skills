@@ -737,11 +737,12 @@ def test_a_hook_that_ran_while_the_doctor_was_looking_is_not_written_over(machin
     """A run of the doctor reads a harness's trust, and seconds later writes what it read. A hook that ran in
     between is the later sight of the two."""
     home = machine[0] / ".synthesis" / "v5"
-    paths.note_wait("codex hook trust", ["stop"], home_=home)                    # struck down to one after the look began
+    paths.note_wait("codex hook trust", ["stop"], time.time() - 60, struck=time.time(), home_=home)   # a hook ran just now
     found = doctor.Check("fail", "codex hook trust", "needs /hooks approval: pre_tool_use:0:0 untrusted, stop:0:0 untrusted")
-    doctor._note_waits(home, [found], time.time() - 30)
+    doctor._note_waits(home, [found], time.time() - 30)                          # a look that began before that hook ran
     assert paths.waits(home)["codex hook trust"]["waiting"] == ["stop"]
-    doctor._note_waits(home, [found], time.time() + 1)                           # a look that began after it is the later one
+    paths.note_wait("codex hook trust", ["stop"], time.time() - 60, struck=time.time(), home_=home)
+    doctor._note_waits(home, [found], time.time())                               # a look that began after it is the later one
     assert paths.waits(home)["codex hook trust"]["waiting"] == ["pre_tool_use", "stop"]
 
 

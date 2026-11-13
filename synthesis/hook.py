@@ -100,32 +100,49 @@ def session_start(payload):
     notes += [f"This session is bound to no project, so mail addressed to one does not reach it. Mail it has not read is "
               f"waiting for: {', '.join(kept[:8])}{f' and {len(kept) - 8} more' if len(kept) > 8 else ''}. If this session works on one of them, `synthesis resume "
               f"{kept[0]}` binds it and delivers the mail."] if kept else []
-    notes += [n for n in (_window_note(), _unguarded_note(paths.harness(payload))) if n]
+    notes += [n for n in (_window_note(), _unguarded_note()) if n]
     return _emit("SessionStart", context="\n\n".join(notes))
 
 
-HOW_APPROVED = {"codex hook trust": ("codex", "Codex, until the principal approves them in /hooks"),
-                "muse hook approval": ("muse", "Muse, until the principal runs `muse plugins approve synthesis-skills`")}
+HOW_APPROVED = {"codex hook trust": ("Codex", "in /hooks"), "muse hook approval": ("Muse", "`muse plugins approve synthesis-skills`")}
 
 
-def _unguarded_note(harness: str) -> str:
-    """The harnesses whose hooks waited for the person's approval when the doctor last ran: none of the plugin's
-    hooks run there, so nothing guards a send or a deploy from them. This hook running is the evidence that its own
-    harness's hooks run, and strikes that entry."""
+def _ran(payload: dict, event: str) -> None:
+    """A hook that runs is one its harness has approved: strike its own event from what the doctor saw waiting
+    there under this release, and no other (2026-11-13, a review: a start hook that ran was taken for proof that
+    the guard runs). What was seen under another release is the doctor's to look at again. The harness is the one
+    whose transcript the payload names, never the environment's: the doctor's own self-test runs this hook from
+    whatever shell the doctor is in, and that is no hook of Codex's. Muse hands its hooks no transcript, so only
+    the doctor's next look clears Muse; a harness that asks for no approval (Claude Code) reads nothing here."""
     try:
-        from synthesis import paths
-        at, waiting = paths.waits()
-        waiting = [n for n in waiting or [] if n in HOW_APPROVED]
-        mine = [n for n in waiting if HOW_APPROVED[n][0] == harness]
-        if mine:
-            waiting = [n for n in waiting if n not in mine]
-            paths.write_json(paths.state() / paths.WAITS, {"at": at, "waiting": waiting})
-        if not waiting:
-            return ""
-        many = len(waiting) != 1
-        return (f"{len(waiting)} harness{'es' * many} on this machine {'are' if many else 'is'} not running synthesis's hooks "
-                f"(the doctor's run at {time.strftime('%H:%M', time.localtime(at))}): {'; '.join(HOW_APPROVED[n][1] for n in waiting)}. "
-                "Nothing guards a send or a deploy made from there until then.")
+        from synthesis import __version__, paths
+        harness = paths.harness(payload, by_env=False)
+        for name, entry in paths.waits().items() if harness in paths.HOOK_APPROVALS.values() else ():
+            if paths.HOOK_APPROVALS[name] == harness and entry["version"] == __version__ and event in entry["waiting"]:
+                paths.note_wait(name, [e for e in entry["waiting"] if e != event], entry["at"], time.time())
+    except Exception:
+        pass  # a note must never cost a hook its answer
+
+
+def _unguarded_note() -> str:
+    """What was last seen of the hooks' approval in Codex and in Muse, where not all is well: the hooks that waited
+    for the person's approval when the doctor looked and that have not run since, and a harness nothing has looked
+    at since this release replaced the one it was seen under (a harness can ask again when the plugin changes)."""
+    try:
+        from synthesis import __version__, paths
+        said, stale = [], []
+        for name, entry in paths.waits().items():
+            who, how = HOW_APPROVED[name]
+            hooks = [e.replace("_", "-") for e in entry["waiting"]]
+            if entry["version"] != __version__:
+                stale.append(who)
+            elif hooks:
+                said.append(f"{who}: its {' and '.join(filter(None, [', '.join(hooks[:-1]), hooks[-1]]))} hook{'s' * (len(hooks) != 1)} waited "
+                            f"for the principal's approval ({how}) when the doctor looked ({time.strftime('%a %H:%M', time.localtime(entry['at']))}) "
+                            f"and {'has' if len(hooks) == 1 else 'have'} not been seen to run since." + (
+                                " Nothing guards a send or a deploy made from there until its pre-tool-use hook runs." * ("pre-tool-use" in hooks)))
+        return " ".join(said + [f"Whether {' and '.join(stale)} run{'s' * (len(stale) == 1)} synthesis's hooks has not been checked since "
+                                f"synthesis changed to {__version__}: `synthesis doctor` checks it."] * bool(stale))
     except Exception:
         return ""  # a note must never cost a session its start
 
@@ -269,6 +286,8 @@ def main(argv):
             pass  # never blocks a call; doctor names what is left
     handler = {"session-start": session_start, "user-prompt-submit": user_prompt_submit,
                "pre-tool-use": pre_tool_use, "stop": stop}.get(event)
+    if handler:
+        _ran(payload, event.replace("-", "_"))
     return handler(payload) if handler else 0
 
 

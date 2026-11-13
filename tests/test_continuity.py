@@ -146,14 +146,16 @@ def test_a_hook_that_runs_in_a_harness_strikes_its_own_event_and_no_other(tmp_pa
     assert _waiting(note, "muse hook approval") == ALL
 
 
-def test_a_hook_that_runs_in_muse_strikes_muses_entry(tmp_path, write_config):
+def test_the_hook_run_from_a_harnesss_shell_strikes_nothing(tmp_path, write_config):
+    """The doctor's self-test sends `rm -rf ~` to this hook from whatever shell the doctor runs in. In Codex's shell
+    that carries Codex's environment and no transcript: it is no hook of Codex's, and must not read as the guard
+    running there. Muse hands its hooks no transcript either, so nothing but the doctor's next look clears Muse."""
     write_config({})
     note = _waits(codex=ALL, muse=ALL)
-    out = _hook("pre-tool-use", {"session_id": "M1", "cwd": "/tmp", "tool_name": "bash", "tool_input": {"command": "true"}},
-                env={"MUSE_SESSION_ID": "M1"})
-    assert out.returncode == 0, out.stderr
-    assert _waiting(note, "muse hook approval") == ["session_start", "user_prompt_submit", "stop"]
-    assert _waiting(note, "codex hook trust") == ALL
+    for env in ({"CODEX_THREAD_ID": "0199aaaa-bbbb-7ccc-8ddd-eeeeffff0000"}, {"MUSE_SESSION_ID": "M1"}, {"MUSE_PLUGIN_ROOT": "/x"}):
+        out = _hook("pre-tool-use", {"tool_name": "Bash", "tool_input": {"command": "rm -rf ~"}}, env=env)
+        assert out.returncode == 0 and "deny" in out.stdout, out.stderr
+        assert _waiting(note, "codex hook trust") == ALL and _waiting(note, "muse hook approval") == ALL, env
 
 
 def test_a_hook_seen_under_another_release_is_left_for_the_doctor(tmp_path, write_config):
@@ -174,7 +176,7 @@ def test_a_note_that_cannot_be_written_costs_no_hook_its_answer(tmp_path, write_
     def refused(*args, **kwargs):
         raise PermissionError("read-only")
     monkeypatch.setattr(paths, "write_json", refused)
-    hook._ran("codex", "session_start")                                          # raises nothing
+    hook._ran({"transcript_path": str(tmp_path / "rollout-2026-11-13T09-00-00-0199aaaa.jsonl")}, "session_start")   # raises nothing
     said = hook._unguarded_note()
     assert "Muse: its" in said and "Codex: its" in said
 

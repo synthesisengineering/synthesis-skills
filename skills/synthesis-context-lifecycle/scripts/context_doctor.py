@@ -65,7 +65,6 @@ ITEM = re.compile(r"^[ \t]*[-*][ \t]+(?:\[(?P<box>[ xX])\][ \t]+)?(?P<text>.+?)[
 OPEN_SECTION = re.compile(r"open|pending|next|action|todo|to do|blocked|waiting|in progress", re.I)
 REVIEW_DAYS = 14
 CITE_DAYS = 14  # the weekly review's window
-SESSION_ID = re.compile(r"[0-9a-f]{8}[0-9a-f-]*")
 
 
 class CannotTell(Exception):
@@ -490,11 +489,17 @@ def active_project() -> str:
 
 def cited_entries(projects: list, today: date) -> tuple:
     """(entries that cite a session record, entries) among these project folders' session-log entries dated in the
-    last CITE_DAYS days. A citation is what the archive's reader takes for one (`sessions.CITED`) whose session part
-    is eight or more characters of a session's id, whether or not that session is in the archive. Counted, never a
-    finding: measured on 2026-11-13, 8 of 267 entries cited one, and the day's prompt check is what asks."""
+    last CITE_DAYS days; the first is None where this machine holds no session archive to tell by. A citation is
+    what the day's prompt check takes for one (`sessions.CITED`, `sessions.named`): before `#<seq>`, a session's
+    id, or eight or more of its first characters that name one session, here one of the archive or of a sessions
+    repo this machine has cloned, read from the folders' own names (a sub-agent's id begins with its parent's, so
+    only its whole id names it). Any eight characters of hexadecimal before a number once counted, a commit and an
+    order number among them. Counted, never a finding: measured on 2026-11-13, 8 of 267 entries cited one, and the
+    day's prompt check is what asks."""
     from synthesis import sessions
-    cited = total = 0
+    names = [f.name for f in sessions.root().glob("*/*/*-*")] + [f.name for repo in sessions.repos().values() for f in repo.glob("*/*-*")]
+    ids = {name[len(h) + 1:] for name in names for h in sessions.ADAPTERS if name.startswith(h + "-")}
+    mains, cited, total = [s for s in ids if "-agent-" not in s], 0, 0
     for project in projects:
         for log in sorted((project / "sessions").glob("*.md")) if (project / "sessions").is_dir() else []:
             try:
@@ -510,8 +515,8 @@ def cited_entries(projects: list, today: date) -> tuple:
                 if 0 <= age < CITE_DAYS:
                     body = text[head.start():heads[i + 1].start() if i + 1 < len(heads) else len(text)]
                     total += 1
-                    cited += any(SESSION_ID.fullmatch(found[0]) for found in sessions.CITED.findall(body))
-    return cited, total
+                    cited += any(found[0] in ids or len(sessions.named(found[0], mains)) == 1 for found in sessions.CITED.findall(body))
+    return (cited if ids else None), total
 
 
 def _lines_for(findings: list, label: bool = False) -> list[str]:
@@ -544,7 +549,9 @@ def render(audits: list, source: list, active: str, coverage: dict, citations: d
         if c["skipped"]:
             out.append(f"coverage  {check}: examined {c['examined']}, skipped {c['skipped']} ({', '.join(sorted(c['why']))})")
     for name, c in sorted((citations or {}).items()):
-        out.append(f"citations  {name}: {c['cited']} of {c['entries']} session entries dated in the last {CITE_DAYS} days cite a session record")
+        window = f"{c['entries']} session entries dated in the last {CITE_DAYS} days cite a session record"
+        out.append(f"citations  {name}: cannot tell how many of {window}: this machine has no session archive" if c["cited"] is None
+                   else f"citations  {name}: {c['cited']} of {window}")
     out.append(f"\n{'DEFECTS' if defects else 'HEALTHY'}: {defects} defect(s), {len(findings) - defects} warning(s).")
     return "\n".join(out)
 
@@ -590,9 +597,10 @@ def main(argv: list | None = None) -> int:
     active = Path(args.project).name if args.project else active_project()
     groups: dict = {}
     for a in audits:  # one line for a project asked for by itself, else one for each knowledge root
-        groups.setdefault(a.path.name if args.project else a.path.parent.parent.name, []).append(a.path)
-    citations = {name: {"cited": cited, "entries": entries} for name, folders in groups.items()
-                 for cited, entries in [cited_entries(folders, today)] if entries}
+        groups.setdefault(a.path if args.project else a.path.parent.parent, []).append(a.path)
+    twice = {r.name for r in groups if sum(o.name == r.name for o in groups) > 1}  # two roots of one name: each with its folder
+    citations = {f"{root.parent.name}/{root.name}" if root.name in twice else root.name: {"cited": cited, "entries": entries}
+                 for root, folders in groups.items() for cited, entries in [cited_entries(folders, today)] if entries}
     if args.json:
         print(json.dumps({"ok": code == 0, "exit": code, "active": active, "projects_audited": len(audits),
                           "defects": sum(f.severity == "defect" for f in findings),

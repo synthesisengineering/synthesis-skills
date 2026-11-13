@@ -85,19 +85,40 @@ def write_json(path: Path, data: dict) -> None:
     os.replace(tmp, path)
 
 
-WAITS = "harness-approvals.json"  # which hook approvals waited when the doctor last ran
+WAITS = "harness-approvals.json"  # what was last seen of each harness's hook approval
+HOOK_APPROVALS = {"codex hook trust": "codex", "muse hook approval": "muse"}  # the doctor's line: the harness it speaks of
 
 
-def waits(home_: Path | None = None) -> tuple:
-    """(when a run of the doctor wrote it, the hook approvals that waited then), or (0.0, None) when no run wrote it
-    within a day: an older note says nothing of today. Kept here, not in the doctor, so a session's start reads it
+def waits(home_: Path | None = None) -> dict:
+    """{the doctor's line: {"at", "version", "waiting", "struck"}} for each harness whose hook approval the doctor saw
+    within a day: when it looked, under which release, the hook events that waited then and have not run since,
+    and when a hook that ran last struck one. An older sight says nothing of today, and each entry has its own
+    date, so a harness nothing looks at any more drops out. Kept here, not in the doctor, so a hook reads it
     without loading the doctor."""
     import time
-    note = read_json((home_ or home()) / "state" / WAITS)
-    at, waiting = note.get("at"), note.get("waiting")
-    if not isinstance(at, (int, float)) or isinstance(at, bool) or not 0 <= time.time() - at < 86400 or not isinstance(waiting, list):
-        return 0.0, None
-    return float(at), [n for n in waiting if isinstance(n, str)]
+    seen, found = read_json((home_ or home()) / "state" / WAITS).get("seen"), {}
+    for name, entry in seen.items() if isinstance(seen, dict) else ():
+        at, waiting = (entry.get("at"), entry.get("waiting")) if isinstance(entry, dict) else (None, None)
+        try:
+            fresh = type(at) in (int, float) and 0 <= time.time() - at < 86400
+        except OverflowError:  # a number no clock gives
+            fresh = False
+        if name in HOOK_APPROVALS and fresh and isinstance(waiting, list):
+            struck = entry.get("struck")
+            found[name] = {"at": float(at), "version": str(entry.get("version") or ""), "waiting": [e for e in waiting if isinstance(e, str)],
+                           "struck": float(struck) if type(struck) in (int, float) and abs(struck) < 1e12 else 0.0}
+    return found
+
+
+def note_wait(name: str, waiting: list, at: float | None = None, struck: float = 0.0, home_: Path | None = None) -> None:
+    """Write down what was seen of one harness's hook approval, under this release: the doctor's look at `at`, or
+    a hook that ran and struck its own event at `struck`. The other harness's entry stays as it was."""
+    import time
+    from synthesis import __version__
+    file = (home_ or home()) / "state" / WAITS
+    seen = read_json(file).get("seen")
+    write_json(file, {"seen": {**(seen if isinstance(seen, dict) else {}),
+                               name: {"at": time.time() if at is None else at, "version": __version__, "waiting": waiting, "struck": struck}}})
 
 
 def spelled(path: str) -> str:
@@ -129,13 +150,17 @@ def transcript_roots() -> dict:
             "muse": Path(env.get("XDG_DATA_HOME") or user / ".local" / "share") / "muse" / "sessions"}
 
 
-def harness(payload: dict | None = None) -> str:
+def harness(payload: dict | None = None, by_env: bool = True) -> str:
     """The harness running this process: where its transcript lives, else its environment. Codex sets
-    CODEX_THREAD_ID in its shell but not in hook processes, so a hook knows Codex by its rollout file."""
+    CODEX_THREAD_ID in its shell but not in hook processes, so a hook knows Codex by its rollout file. Without
+    `by_env`, only the transcript a harness hands its own hook counts: a command run from a harness's shell carries
+    that harness's environment and is no hook of it."""
     where = str((payload or {}).get("transcript_path") or "")
     for name, root in transcript_roots().items():
         if inside(where, str(root)) or (name == "codex" and os.path.basename(where).startswith("rollout-")):
             return name
+    if not by_env:
+        return "unknown"
     if os.environ.get("CLAUDECODE") or os.environ.get("CLAUDE_CODE_SESSION_ID"):
         return "claude-code"
     if os.environ.get("CODEX_THREAD_ID"):
