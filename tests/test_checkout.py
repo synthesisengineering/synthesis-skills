@@ -120,3 +120,120 @@ def test_a_claimed_path_named_another_way_is_protected_too(repo):
         assert "claimed by session S1" in (guards.check("Bash", {"command": command}, {}, str(repo), other) or ""), command
     for command in (f"F={notes}; cat \"$F\"", f"cp {notes} /tmp/elsewhere/", f"dd if={notes} of=/tmp/copy"):
         assert guards.check("Bash", {"command": command}, {}, str(repo), other) is None, command
+
+
+# Records that leave this Mac, part 1 (plan item 13.5, 5.19.0). The audit of 2026-11-11 (§3.2): a snapshot kept
+# tracked changes only, so a record no commit had taken yet was in no snapshot when something removed it.
+
+def _tree(repo, sha):
+    return _git(repo, "ls-tree", "-r", "--name-only", sha).split()
+
+
+def test_a_claim_snapshot_keeps_untracked_files_and_changes_nothing(repo):
+    (repo / ".gitignore").write_text("build/\n", encoding="utf-8")
+    _git(repo, "add", ".gitignore")
+    _git(repo, "commit", "-q", "-m", "ignore")
+    (repo / "notes.md").write_text("first line\nan edit\n", encoding="utf-8")
+    _git(repo, "add", "notes.md")  # one change staged, so the real index is seen to stay as it was
+    (repo / "notes.md").write_text("first line\nan edit\nand one more\n", encoding="utf-8")
+    (repo / "drafts").mkdir()
+    new = repo / "drafts" / "new.md"
+    new.write_text("a record not yet committed\n", encoding="utf-8")
+    (repo / "build").mkdir()
+    (repo / "build" / "out.txt").write_text("ignored\n", encoding="utf-8")
+
+    def state():
+        return (_git(repo, "status", "--porcelain=v1", "-uall"), _git(repo, "diff", "--cached"), _git(repo, "diff"),
+                _git(repo, "ls-files", "--stage"), _git(repo, "stash", "list"))
+
+    before = state()
+    sha = checkout.snapshot(str(repo), "claim", "S1")
+    assert sha and state() == before and before[-1] == ""
+    new.unlink()  # what the audit names: a record nobody had committed, removed
+    assert checkout.show(sha, str(new)) == "a record not yet committed\n"
+    assert checkout.show(sha, str(repo / "notes.md")) == "first line\nan edit\nand one more\n"  # the working tree's
+    assert "build/out.txt" not in _tree(repo, sha)  # what .gitignore excludes is not kept
+    row = checkout.journal(str(new))[0]
+    assert row["sha"] == sha and sorted(row["files"]) == ["drafts/new.md", "notes.md"] and "tracked_only" not in row
+
+
+def test_an_untracked_file_past_a_limit_is_named_in_the_journal_and_not_kept(repo, monkeypatch):
+    monkeypatch.setattr(checkout, "UNTRACKED_MAX", 100)  # bytes in one file (2 MB in use)
+    monkeypatch.setattr(checkout, "UNTRACKED_ALL", 150)  # bytes in all
+    monkeypatch.setattr(checkout, "UNTRACKED_FILES", 2)  # files in all
+    monkeypatch.setattr(checkout, "LEFT_NAMED", 2)  # names the journal lists
+    for name, size in (("a.md", 80), ("b.md", 80), ("big.bin", 101), ("c.md", 10), ("d.md", 10)):
+        (repo / name).write_bytes(b"x" * size)
+    sha = checkout.snapshot(str(repo), "release", "S1")
+    assert sorted(_tree(repo, sha)) == ["a.md", "c.md", "notes.md"]  # b.md past the total, big.bin past one file's, d.md past the count
+    row = checkout.journal()[0]
+    assert row["files"] == ["a.md", "c.md"] and row["left"] == ["b.md", "big.bin"] and row["left_count"] == 3
+    for name in ("a.md", "b.md", "big.bin", "c.md", "d.md"):
+        (repo / name).unlink()
+    (repo / "huge.bin").write_bytes(b"x" * 101)
+    assert checkout.snapshot(str(repo), "release", "S1") == ""  # nothing kept, so no snapshot...
+    row = checkout.journal()[0]
+    assert row["sha"] == "" and row["files"] == [] and row["left"] == ["huge.bin"]  # ...but the journal names it
+
+
+def test_the_session_start_snapshot_stays_tracked_only_and_its_journal_line_says_so(repo, capsys):
+    """The session-start snapshot runs inside the hook's 50 ms budget, so it keeps tracked changes alone."""
+    from synthesis import hook
+    (repo / "new.md").write_text("untracked\n", encoding="utf-8")
+    assert checkout.snapshot(str(repo), "session start", "S1", untracked=False) == ""  # an untracked file alone
+    (repo / "notes.md").write_text("first line\nedited\n", encoding="utf-8")
+    hook.session_start({"session_id": "S1", "cwd": str(repo)})
+    row = checkout.journal()[0]
+    assert row["reason"] == "session start" and row["files"] == ["notes.md"] and row["tracked_only"] is True
+    assert "new.md" not in _tree(repo, row["sha"])
+    assert cli.main(["journal"]) == 0 and "untracked files not looked at" in capsys.readouterr().out
+
+
+def test_a_snapshot_needs_no_configured_identity_and_never_signs(repo, tmp_path, monkeypatch):
+    """`git stash create` falls back to an identity of its own; a snapshot written as a commit must as well, and
+    must never wait on a signing program."""
+    config = tmp_path / "no-identity-gitconfig"
+    config.write_text("[commit]\n\tgpgsign = true\n[gpg]\n\tprogram = false\n", encoding="utf-8")
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(config))
+    for key in ("GIT_AUTHOR_NAME", "GIT_AUTHOR_EMAIL", "GIT_COMMITTER_NAME", "GIT_COMMITTER_EMAIL", "EMAIL"):
+        monkeypatch.delenv(key, raising=False)
+    (repo / "new.md").write_text("untracked\n", encoding="utf-8")
+    sha = checkout.snapshot(str(repo), "claim", "S1")
+    assert sha and checkout.show(sha, str(repo / "new.md")) == "untracked\n"
+
+
+def test_a_snapshot_keeps_a_checkout_with_no_commit_yet_and_one_in_a_merge(tmp_path, repo):
+    """`git stash create` refuses both: a checkout with no commit, and one with unmerged paths."""
+    fresh = tmp_path / "fresh"
+    fresh.mkdir()
+    _git(fresh, "init", "-q", "-b", "main")
+    (fresh / "first.md").write_text("the first record\n", encoding="utf-8")
+    sha = checkout.snapshot(str(fresh), "claim", "S1")
+    assert sha and checkout.show(sha, str(fresh / "first.md")) == "the first record\n"
+    _git(repo, "checkout", "-q", "-b", "other")
+    (repo / "notes.md").write_text("theirs\n", encoding="utf-8")
+    _git(repo, "commit", "-q", "-am", "theirs")
+    _git(repo, "checkout", "-q", "main")
+    (repo / "notes.md").write_text("ours\n", encoding="utf-8")
+    _git(repo, "commit", "-q", "-am", "ours")
+    subprocess.run(["git", "-C", str(repo), "merge", "-q", "other"], capture_output=True, text=True)  # a conflict
+    assert "UU notes.md" in _git(repo, "status", "--porcelain")
+    sha = checkout.snapshot(str(repo), "claim", "S1")
+    assert sha and "<<<<<<<" in checkout.show(sha, str(repo / "notes.md"))
+    assert "UU notes.md" in _git(repo, "status", "--porcelain")  # the merge is left as it was
+
+
+def test_release_and_claim_count_an_untracked_file_under_the_claim(repo, capsys):
+    """IR-07 counted tracked changes only, so a new record under a claim was released unowned, and the next claim
+    over it said nothing."""
+    folder = repo / "drafts"
+    folder.mkdir()
+    new = folder / "new.md"
+    assert cli.main(["--session", "S1", "claim", str(folder), "--project", "alpha"]) == 0
+    new.write_text("a new record\n", encoding="utf-8")
+    assert cli.main(["--session", "S1", "release"]) == 1
+    assert str(new) in capsys.readouterr().err and board.load("S1").claims
+    assert cli.main(["--session", "S1", "release", "--hand-to", "project:alpha"]) == 0
+    assert cli.main(["--session", "S2", "claim", str(folder)]) == 0
+    assert f"{new} already has uncommitted changes, last claimed by S1" in capsys.readouterr().out
+    assert checkout.show(checkout.journal(str(new))[0]["sha"], str(new)) == "a new record\n"

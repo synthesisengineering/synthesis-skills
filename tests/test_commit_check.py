@@ -37,6 +37,18 @@ def _commit(repo, name, text, env_extra=None):
     return subprocess.run(["git", "-C", str(repo), "commit", "-qm", "test"], capture_output=True, text=True, env=env)
 
 
+def test_a_commit_keeps_the_untracked_files_beside_it_recoverable(repo):
+    """Plan item 13.5, part 1 (5.19.0): the snapshot every commit takes holds the files no commit has taken yet."""
+    from synthesis import checkout
+    assert _commit(repo, "first.md", "first\n").returncode == 0
+    draft = repo / "drafts" / "draft.md"
+    draft.parent.mkdir()
+    draft.write_text("not committed yet\n")
+    assert _commit(repo, "second.md", "second\n").returncode == 0
+    rows = [r for r in checkout.journal(str(draft)) if r["reason"] == "commit"]
+    assert rows and checkout.show(rows[0]["sha"], str(draft)) == "not committed yet\n"
+
+
 def test_credentials_are_refused(repo):
     result = _commit(repo, "config.txt", f"key = {FAKE_AWS}\n")
     assert result.returncode != 0 and "looks like an AWS access key" in result.stderr
