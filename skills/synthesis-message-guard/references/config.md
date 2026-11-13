@@ -174,7 +174,14 @@ address was gone for good. With `temporary_addresses` in the config:
   `devtunnel host`, `localtunnel` or `lt` with a port (also through `npx`, `bunx`, `pnpm` or `yarn`), and a reverse
   `ssh -R` to `serveo.net`, `localhost.run` or `pinggy.io` wait for the principal's code. The hold
   says what a quick tunnel is for: their own test, with an address that is never given to anyone. A
-  named tunnel (`cloudflared tunnel run <name>`) is a deployment and is not held here. The `ssh`
+  named tunnel (`cloudflared tunnel run <name>`) is a deployment and is not held here. `cloudflared
+  tunnel` is a quick tunnel with `--url` and no subcommand, or with `--hello-world`
+  (`cloudflared tunnel --no-autoupdate --url http://localhost:8080`, `cloudflared tunnel
+  --hello-world`); followed by any of its subcommands (`login`, `create`, `route`, `vnet`, `run`,
+  `list`, `ready`, `info`, `ingress`, `delete`, `cleanup`, `token`, `diag`, `proxy-dns`, `help`)
+  it is a named tunnel's command, whatever options it carries
+  (`cloudflared tunnel run --url http://localhost:8080 production`,
+  `cloudflared tunnel --config config.yml run`). The `ssh`
   destination is read as a host, in any case, with or without a user, an `ssh://` scheme or a
   port: a reverse forward is a tunnel when that host is the service's name or a subdomain of it
   (`serveo.net`, `qr@a.pinggy.io`). A host that only ends with a service's letters is someone

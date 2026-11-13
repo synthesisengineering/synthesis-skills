@@ -1717,6 +1717,8 @@ CARRIERS = ("pnpm", "yarn", "npm", "bun", "docker", "podman", "nerdctl")  # run 
 NGROK = ("http", "tcp", "tls", "start", "start-all", "config", "version", "update", "diagnose", "api", "service", "credits",
          "completion", "help", "authtoken")  # its subcommands: the first five start a tunnel
 SSH_VALUED = "BbcDEeFIiJLlmOoPpQRSWw"  # ssh's options that take a value: joined on, or the next word
+CLOUDFLARED = ("login", "create", "route", "vnet", "run", "list", "ready", "info", "ingress", "delete", "cleanup", "token",
+               "diag", "proxy-dns", "help", "h")  # `cloudflared tunnel`'s subcommands: each one a named tunnel's
 
 
 def _reverse_host(rest: list[str]) -> str:
@@ -1740,14 +1742,16 @@ def _tunnels(words: list[str]) -> bool:
     """Does this command start a quick tunnel: an address handed out for as long as the command runs? A program is read
     without a version or a tag (localtunnel@2.0.2, cloudflare/cloudflared:latest), and the words of a package runner or
     a container from each one on, as the command it runs (2026-11-12: `docker run cloudflare/cloudflared tunnel --url`,
-    `ngrok --log=stdout http` and `npx --yes localtunnel@2.0.2 --port` started unheld)."""
+    `ngrok --log=stdout http` and `npx --yes localtunnel@2.0.2 --port` started unheld). `cloudflared tunnel` is quick
+    with --url or --hello-world and no subcommand; with one (`tunnel run --url ... <name>`) it is a named tunnel's."""
     def named(word: str) -> str:
         return re.split("[:@]", os.path.basename(word))[0]
 
     def starts(name: str, rest: list) -> bool:
         def flag(*names):
             return any(w in names or w.startswith(tuple(n + "=" for n in names)) for w in rest)
-        return bool(name == "cloudflared" and "tunnel" in rest and flag("--url")
+        return bool(name == "cloudflared" and "tunnel" in rest and flag("--url", "--hello-world")
+                    and not any(w in CLOUDFLARED for w in rest[rest.index("tunnel") + 1:])
                     or name == "ngrok" and next((w for w in rest if w in NGROK), "") in NGROK[:5]  # past its own options and their values
                     or name == "devtunnel" and rest[:1] == ["host"]
                     or name in ("lt", "localtunnel") and flag("--port", "-p")
