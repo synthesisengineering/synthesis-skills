@@ -161,8 +161,10 @@ def attempt(command: list[str], until: float) -> bool:
     except subprocess.TimeoutExpired:
         pass
     except OSError as exc:  # nothing started, so the wait refuses the command, in plain words only where they are true of what is there
-        found = shutil.which(command[0], os.F_OK) or os.path.dirname(command[0]) and os.path.isdir(command[0])  # a file by the name, or a folder
-        plain = not shutil.which(command[0]) and ("is not executable" if found else isinstance(exc, FileNotFoundError) and "was not found")
+        looked = [command[0]] if os.path.dirname(command[0]) else [os.path.join(d, command[0]) for d in os.get_exec_path() if command[0]]
+        found = shutil.which(command[0], os.F_OK) or any(map(os.path.isdir, looked))  # a file by the name, or a folder where it was looked for
+        missing = isinstance(exc, (FileNotFoundError, NotADirectoryError))  # a path through a file, or a PATH that ends with one, finds nothing
+        plain = not shutil.which(command[0]) and ("is not executable" if found else missing and "was not found")
         raise ValueError(f"`{' '.join(command)}` could not be started: its program {command[0]!r} {plain or f'cannot be run ({exc.strerror})'}")
     finally:
         if proc and not done:

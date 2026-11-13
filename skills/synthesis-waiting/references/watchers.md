@@ -64,7 +64,8 @@ would ask for a password there fails instead of asking.
 - A command that cannot be started is no failed try. The wait prints
   `` `<command>` could not be started: its program '<first word>' <why> `` on stderr and exits 2 at once, on the
   first try or on a later one whose program has gone: `was not found` for a name that is not on PATH or a path
-  that does not exist, `is not executable` for a file without its execute bit or a directory, and `cannot be run`
+  that does not exist, `is not executable` for a file without its execute bit or a directory, given by its path
+  or found by its name in a folder of PATH, and `cannot be run`
   with the system's own words for anything else (`Exec format error` for a file that is no program). The two
   plain reasons are given only where they are true of what is there. A script whose interpreter is missing is
   refused with `cannot be run (No such file or directory)`, since the script itself was found. A name that is
