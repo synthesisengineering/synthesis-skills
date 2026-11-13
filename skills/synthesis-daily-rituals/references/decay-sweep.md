@@ -168,12 +168,12 @@ anything struck through set aside and a link read as its words, opens with a tic
 RELEASED, RESOLVED, LAPSED, DONE, ANSWERED, REPLIED. A top-level `ledger_closed_words` list in the ritual config
 adds a seat's own words and phrases to those (`"N/A"`, `"Not needed"`); a value that is no such list adds nothing
 and is said in this view (`config`), where it blocks no record. Every other status is open, an empty one included:
-a status the reader does not know is not read as finished. The view
-gives the count, the oldest date, how many have been owed more than fourteen days, how many carry no date and how
-many rows had too few cells to read, then the rows: those with no date first, then the oldest. The text report
-prints the count line and the first ten of them. A ledger's rows are never in `due` and change no status: an
-owed-since date is when the debt began, not a day it decays on. Counted in the one seat that keeps a ledger: 141
-open rows of 341, the oldest four months old, where the due list held 73.
+a status the reader does not know is not read as finished. The view gives the count, the oldest date, how many
+have been owed more than fourteen days, how many carry no date and how many rows had too few cells to read, then
+the rows: those with no date first, then the oldest. The text report prints the count line and the first ten of
+them. A ledger's rows are never in `due` and change no status: an owed-since date is when the debt began, not a
+day it decays on. Counted in the one seat that keeps a ledger: 141 open rows of 341, the oldest four months old,
+where the due list held 73.
 
 **A record the readers cannot read.** A plan's or a ledger's shape that either reader fails on is a gap for that
 file (BLOCKED), and everything else is still read: the critical view, the due list and the evening's alert.
