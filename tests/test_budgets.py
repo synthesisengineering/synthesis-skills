@@ -683,12 +683,18 @@ ROOT = Path(__file__).resolve().parents[1]
 # install, so a hook does not compile the guards from source on every call: 72 ms to 33 ms for a shell command's check).
 # conftest.py at the root 27, new: under an interpreter that keeps compiled code in one folder of the person's own
 # (Apple's Python), a test run keeps its compiled code in a temporary folder, in this process and in each it starts.
-# 5.8.2 (2026-11-13): core 3, plugin 3. doctor.py: _reap 3 (the doctor closes the three pipes it opened to a harness
+# 5.8.2 (2026-11-12): core 3, plugin 237. doctor.py: _reap 3 (the doctor closes the three pipes it opened to a harness
 # CLI when it stops it; they were left to the collector, which Python 3.13 reports at every such query).
+# build_directory_package.py 234, new (the package of method skills for a plugin directory that lists no plugin with
+# hooks; it left 5.8.0 for a passage since moved): verify 45 (the eight things that fail a built ZIP), its header,
+# imports and constants' notes 42, main 40 (build, --check, --changed-since), build 24, CLAIMS 15 and ACTS 5 (the
+# phrases of a line that claims a guard, a hook or an approval code, or needs the runtime), read_list 8, depends_on 7,
+# git 7, read_json 7, differing 7, source 5, Unreadable 4, claims 4, is_test 4, count 4, and 6 lines of constants
+# (REPO, LIST, IMAGES, ICONS, MANIFEST).
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # consolidate first).
 CORE_BUDGET = 11859
-PLUGIN_BUDGET = 32643
+PLUGIN_BUDGET = 32877
 
 
 def _lines(files):
