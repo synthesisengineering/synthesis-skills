@@ -9,6 +9,7 @@ A time inside an entry's text says nothing of the kind: three in ten of those ar
 """
 
 import os
+import re
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -16,6 +17,10 @@ import pytest
 from synthesis import commit_check as cc
 
 EST = timezone(timedelta(hours=-5))
+try:
+    ZONES = bool(cc.ZoneInfo("America/New_York"))
+except Exception:  # an interpreter with no zoneinfo, or a machine with no zone data
+    ZONES = False
 NOW = datetime(2026, 11, 12, 18, 40, 20, tzinfo=EST)  # the commit: 18:40 on the twelfth
 LOG = "projects/alpha/sessions/2026-11.md"
 RECORD = "projects/alpha/REFERENCE.md"
@@ -56,7 +61,7 @@ def test_a_parenthesis_that_opens_with_today_and_a_minute_that_has_not_come_is_r
 
 
 @pytest.mark.parametrize("line, minutes", [
-    ("### 2026-11-12 19:05 CDT", 25),      # 19:05 where the offset is five hours: the same minute as here
+    ("### 2026-11-12 18:05 CDT", 25),      # the central clock, whichever season its label names: 19:05 here
     ("### 2026-11-12 17:50 CST", 10),      # an hour behind: 18:50 here
     ("- 2026-11-12 23:45 UTC: the job ran", 5),
     ("- 2026-11-12 23:46Z: the job ran", 6),
@@ -64,8 +69,10 @@ def test_a_parenthesis_that_opens_with_today_and_a_minute_that_has_not_come_is_r
     ("- 2026-11-12 18:45 -05:00: pushed", 5),
 ])
 def test_a_zone_the_stamp_names_is_honored(line, minutes):
+    if not ZONES and re.search(r"\b[ECMP][SD]T\b", line):
+        pytest.skip("no zone data on this machine: a region's label is not read here")
     assert f"{minutes} min after" in said(RECORD, line)[0]
-    earlier = {"### 2026-11-12 19:05 CDT": "### 2026-11-12 18:39 CDT", "### 2026-11-12 17:50 CST": "### 2026-11-12 17:40 CST",
+    earlier = {"### 2026-11-12 18:05 CDT": "### 2026-11-12 17:39 CDT", "### 2026-11-12 17:50 CST": "### 2026-11-12 17:40 CST",
                "- 2026-11-12 23:45 UTC: the job ran": "- 2026-11-12 23:40 UTC: the job ran",
                "- 2026-11-12 23:46Z: the job ran": "- 2026-11-12 23:40Z: the job ran",
                "(11-12 15:50 PST: their reply)": "(11-12 15:40 PST: their reply)",

@@ -662,70 +662,84 @@ except ImportError:  # an interpreter with none reads no region label
     ZoneInfo = None
 # The time an entry gives for itself, in the three places a record states one: the line opens with the day and a
 # time (behind a list mark, a ticked box, a heading, emphasis, a bracket), a parenthesis opens with them or with one
-# word that says what was done then (`added`, `as of`), or the line opens with a time alone (read only in a session
-# log, in a list item or a heading, under a heading that names the day). A time may be rounded ("18:3x", "about
-# 18:35"), a range (its later end counts), on a 12-hour clock, and may name its zone. Measured on thirty days of
-# commits before this was written (2026-11-12): 688 such stamps, 36 of them later than their commit and 111
-# rounding the present. Replayed over the same commits, the first form refused five wrapped lines that began with a
-# time by chance: a line with no mark opens an entry only where it begins a paragraph. Counted again after a review
+# of the words below, each saying what was done then (`added`, `as of`), or the line opens with a time alone (read
+# only in a session log, in a list item or a heading, under a heading that names the day). A time may be rounded
+# ("18:3x", "about 18:35"), a range, on a 12-hour clock, and may name its zone. Measured on thirty days of commits
+# before this was written (2026-11-12): 688 such stamps, 36 of them later than their commit and 111 rounding the
+# present. Replayed over the same commits, the first form refused five wrapped lines that began with a time by
+# chance: a line with no mark opens an entry only where it begins a paragraph. Counted again after a review
 # (2026-11-13): every stamp later than its commit stood at most AHEAD minutes ahead, and what stood farther was a
-# deadline, a schedule or a zone read as local.
+# deadline, a schedule or a zone read as local. After a second review, from the 1,148 stamps the check read in
+# those commits: the words are a closed list (any word in -ed had made `(scheduled <a time>)` a stamp, and the
+# words met were these); a zone is one of the labels below (a capital word ending in T had been taken for one, and
+# none of the stamps named a zone outside these); a winter or summer label names its region's clock.
 AHEAD = 30
 _MARKS = r"^[ \t]*(?:(?:[-*+]|\d+[.)])[ \t]+)?(?:\[[xX]\][ \t]+)?(?:#{1,6}[ \t]+)?[*_`\[(]*"
 _CLOCK = r"(?:[01]?\d|2[0-3]):[0-5][\dx](?::\d\d(?:\.\d+)?)?"
 _SPAN = (r"(?P<about>(?:about|around|roughly|approximately|approx\.?|circa|c\.|~|≈)\s*)?(?P<first>" + _CLOCK + r")"
          r"(?P<ish>\s*-?(?:ish|or so)\b|\s*\((?:approx\.?|about|roughly)\))?(?:\s*(?P<dash>to|-|–|—|until)\s*(?P<last>" + _CLOCK + r"))?"
-         r"(?P<half>\s?(?:[ap]m|[AP]M)\b)?"
-         r"(?P<zone>(?:\s?(?:(?i:Z|UTC|GMT|[ECMP][SD]?T)(?:[+-]\d{1,2}(?::?\d\d)?)?\b|[A-Z]{1,4}T\b|[+-]\d\d:?\d\d\b))?)")
+         r"(?P<half>\s?(?i:[ap]\.?m\.?)(?![A-Za-z]))?"
+         r"(?P<zone>(?:\s?(?:(?:Z|UTC|GMT|[ECMP][SD]?T)(?:[+-]\d{1,2}(?::?\d\d)?)?\b|(?:IST|BST|CES?T|EES?T|WES?T|JST|KST|HKT|SGT|"
+         r"AE[SD]T|AC[SD]T|AWST|NZ[SD]T|AK[SD]T|HST|MSK)\b|[+-]\d\d:?\d\d\b))?)")
 _DAY = (r"(?:(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)[a-z]*\.?,?[ \t]+)?(?P<year>\d{4}-)?(?P<month>\d\d)-(?P<day>\d\d)[*_`\])]*"
-        r"(?:(?P<iso>T)|[ \t,:–—]+(?:at[ \t]+)?[*_`]*)")
-_DONE = r"(?:(?:as of|current to|[a-z]+(?:ed|en|wn)|found|run|sent|done|made|set|put|built|kept|read|said|told|held|left|begun) )?"
+        r"(?:(?P<iso>T)|[ \t,:–—]+(?:-[ \t]+)?(?:at[ \t]+)?[*_`]*)")
+_DONE = (r"(?:(?i:as of|current to|added|answered|approved|asked|begun|built|checked|closed|completed|corrected|counted|created|"
+         r"decided|deleted|deployed|done|extended|filed|finished|fixed|found|held|installed|kept|left|made|measured|merged|"
+         r"modified|noted|opened|posted|probed|proven|published|pushed|read|received|recorded|refreshed|released|removed|"
+         r"renamed|replied|returned|reviewed|ruled|run|said|searched|sent|shown|started|stopped|synced|tested|told|updated|"
+         r"verified|written):?[ \t]+)?")
 STAMPS = (re.compile(_MARKS + _DAY + _SPAN), re.compile(r"\(" + _DONE + _DAY + _SPAN),
           re.compile(_MARKS + _SPAN + r"(?=[\s,.:;)*_\]—-]|$)"))
 ENTRY = re.compile(r"[ \t]*(?:(?:[-*+]|\d+[.)])[ \t]|#{1,6}[ \t])")  # what opens an entry: a list item or a heading
 BOX = re.compile(r"[ \t]*(?:[-*+]|\d+[.)])[ \t]+\[ \]")  # an unchecked box: a plan, whose time is when it is to be done
-HOURS = {"Z": 0, "UTC": 0, "GMT": 0, "EST": -5, "EDT": -4, "CST": -6, "CDT": -5, "MST": -7, "MDT": -6, "PST": -8, "PDT": -7}
-REGIONS = {"ET": "America/New_York", "CT": "America/Chicago", "MT": "America/Denver", "PT": "America/Los_Angeles"}
+REGIONS = {"E": "America/New_York", "C": "America/Chicago", "M": "America/Denver", "P": "America/Los_Angeles"}  # ET, EST and EDT alike
 
 
 def _stamped(found, now: datetime):
-    """(minutes a stamp stands after `now`, whether it is rounded, its words), or None where it names a zone that
-    cannot be read here or a day that is none. The stamp is placed by its own day in its own zone, so one that
-    names tomorrow's date in UTC is read. A hyphen and a time that would end a range before it began is an offset."""
+    """(minutes a stamp stands after `now`, whether it is rounded, its words, whether it is a span that had begun by
+    `now`), or None where it names a zone that is not placed here or a day that is none. The stamp is placed by its
+    own day in its own zone, so one that names tomorrow's date in UTC is read; a range, by its later end. A hyphen
+    and a time that would end a range before it began is an offset."""
     part = found.groupdict()
-    clock, zone = part["last"] or part["first"], (part["zone"] or "").strip().upper()
+    clock, zone, first = part["last"] or part["first"], (part["zone"] or "").strip(), part["last"] and part["first"]
     if part["last"] and part["dash"] == "-" and (part.get("iso") or part["last"] < part["first"].zfill(5)):
-        clock, zone = part["first"], "-" + part["last"]
-    hour, minute = clock.split(":")[:2]
-    hour = int(hour) % 12 + 12 * (part["half"].strip().lower() == "pm") if part.get("half") else int(hour)
+        clock, zone, first = part["first"], "-" + part["last"], None
     offset = re.fullmatch(r"(?:UTC|GMT)?([+-])(\d{1,2}):?(\d\d)?", zone)
     try:
         if offset:
             there = timezone((-1 if offset.group(1) == "-" else 1) * timedelta(hours=int(offset.group(2)), minutes=int(offset.group(3) or 0)))
-        elif zone in REGIONS:
-            there = ZoneInfo(REGIONS[zone])
-        elif zone and zone not in HOURS:  # a zone this check does not know: what cannot be read is not refused
+        elif re.fullmatch(r"[ECMP][SD]?T", zone):
+            there = ZoneInfo(REGIONS[zone[0]])
+        elif zone and zone not in ("Z", "UTC", "GMT"):  # a zone this check names and does not place: what cannot be read is not refused
             return None
         else:
-            there = timezone(timedelta(hours=HOURS[zone])) if zone else now.tzinfo
+            there = timezone.utc if zone else now.tzinfo
         today = now.astimezone(there)
-        at = datetime(int((part.get("year") or f"{today.year}-")[:4]), int(part.get("month") or today.month), int(part.get("day") or today.day),
-                      hour, int(minute) if minute.isdigit() else int(minute[0]) * 10, tzinfo=there)
+
+        def placed(clock):
+            hour, minute = clock.split(":")[:2]
+            hour = int(hour) % 12 + 12 * ("p" in part["half"].lower()) if part.get("half") else int(hour)
+            return datetime(int((part.get("year") or f"{today.year}-")[:4]), int(part.get("month") or today.month), int(part.get("day") or today.day),
+                            hour, int(minute) if minute.isdigit() else int(minute[0]) * 10, tzinfo=there)
+        at, minute = placed(clock), now.replace(second=0, microsecond=0)
+        began = bool(first) and placed(first) <= minute
     except Exception:  # no zone data on this machine, or a day the calendar does not have
         return None
     words = found.group(0)[found.start("about" if part["about"] else "first") - found.start():].strip()
-    return int((at - now.replace(second=0, microsecond=0)).total_seconds() // 60), bool(part["about"] or part["ish"] or "x" in clock), words
+    return int((at - minute).total_seconds() // 60), bool(part["about"] or part["ish"] or "x" in clock), words, began
 
 
 def _around(whole: list) -> tuple:
-    """For each line of a file: whether it stands in a code fence, and the nearest heading above it that names a day."""
-    fenced, dated, inside, day = [], [], False, ""
-    for line in whole:
-        edge = line.lstrip().startswith(("```", "~~~"))
-        fenced.append(inside or edge)
+    """For each line of a file: whether it stands in a code fence or in front matter, and the nearest heading above
+    it, outside those, that names a day."""
+    fenced, dated, inside, day, front = [], [], False, "", whole[:1] == ["---"] or whole[:1] == ["---\r"]
+    for index, line in enumerate(whole):
+        edge = not front and line.lstrip().startswith(("```", "~~~"))
+        fenced.append(inside or edge or front)
+        front = front and not (index and line.strip() == "---")
         inside ^= edge
         dated.append(day)
-        if re.match(r"#{1,6}\s", line) and re.search(r"\d{4}-\d\d-\d\d", line):
+        if not fenced[-1] and re.match(r"#{1,6}\s", line) and re.search(r"\d{4}-\d\d-\d\d", line):
             day = line
     return fenced, dated
 
@@ -736,8 +750,10 @@ def record_times(lines: list, settings, now: datetime, read) -> list:
     and may not round a moment from 15 minutes back to AHEAD ahead: the clock could be read (a request of
     2026-11-12, after six such times in one day). A moment longer ago may be rounded. Not judged: a time inside an
     entry's text (three in ten of those are later than their commit, and rightly), a time farther ahead (a
-    deadline, a schedule), an unchecked box's, a code fence's. `read(path)` gives a staged file's text, once."""
-    if settings is None or settings is False:
+    deadline, a schedule), the time an unchecked box opens with, a code fence's, front matter's, and outside a
+    session log a span that had begun (a meeting's hours, in the notes written while it runs). `read(path)` gives a
+    staged file's text, once."""
+    if settings is False:
         return []
     skip = settings.get("skip", []) if isinstance(settings, dict) else None
     if not (isinstance(skip, list) and all(isinstance(pattern, str) for pattern in skip)):
@@ -771,11 +787,13 @@ def record_times(lines: list, settings, now: datetime, read) -> list:
         if bare and f"{now:%Y-%m-%d}" in "".join(dated[number - 1:number]):  # a list item's own time, under the nearest heading that names today
             stamps.append(bare)
         for stamp in stamps:
-            ahead, rounded, words = _stamped(stamp, now) or (0, False, "")
+            ahead, rounded, words, began = _stamped(stamp, now) or (0, False, "", False)
             if rounded and -15 <= ahead <= AHEAD:
-                found.append(f"{path}:{number}: `{words}` rounds a time the clock gives (it is {here}): write the minute "
-                             "`date` prints, in the command that writes the entry. A moment more than 15 minutes old may be rounded")
-            elif 0 < ahead <= AHEAD and not rounded:
+                found.append(f"{path}:{number}: `{words}` rounds a time the clock gives (it is {here}). If it is when this entry "
+                             "is written, write the minute `date` prints, in the command that writes the entry; if it is when "
+                             "something else happened, give that time after the words that say what happened. A moment more "
+                             "than 15 minutes old may be rounded")
+            elif 0 < ahead <= AHEAD and not (began and "sessions" not in parts):
                 found.append(f"{path}:{number}: the entry's own time, {words}, is {ahead} min after this commit ({here}): a "
                              "record's time is read from the clock (`date`) in the command that writes it. For a time in "
                              "another zone, name the zone; an event's time goes after the words that name the event, not "
@@ -806,9 +824,10 @@ def problems(config: dict, session_id: str, repo_root: str, message: str | None 
                       "--dst-prefix=b/", "--no-renames", "--diff-filter=AM", "-U0"], deadline)
     lines, texts = images(added(diff), deadline)
     found = scan(lines, policy, patterns, deadline, approve, own=own, texts=texts)
-    merging = HOOK == "pre-merge-commit" or git_bytes(["rev-parse", "-q", "--verify", "MERGE_HEAD"], deadline, ok=(0, 1)).strip()
-    if not merging:  # a merge's lines were judged when they were committed, by the clock of the machine that wrote them
-        found += record_times(lines, config.get("record_times"), now or datetime.now().astimezone(),
+    brought = HOOK == "pre-merge-commit" or any(os.path.exists(name) for name in git_bytes(  # what a merge, a squash merge, a
+        ["rev-parse", "--git-path", "MERGE_HEAD", "--git-path", "MERGE_MSG", "--git-path", "SQUASH_MSG"], deadline).split(b"\n") if name)
+    if not brought:  # cherry-pick, a revert and a stopped rebase leave: their lines were judged when they were first committed
+        found += record_times(lines, config.get("record_times", False), now or datetime.now().astimezone(),
                               lambda path: git_bytes(["cat-file", "blob", ":" + path], deadline).decode("utf-8", "replace"))
     names = git_bytes(["diff", "--cached", "--name-only", "-z", "--diff-filter=ACR"], deadline).split(b"\0")
     found += [f"{os.fsdecode(n)}: a credential file name; keep secrets out of git (a public certificate can be .crt)"
