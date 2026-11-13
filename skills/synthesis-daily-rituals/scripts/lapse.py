@@ -27,8 +27,9 @@ no open item, since by then the item may be closed, and the register's review re
 Exit 2, with both files as they were: a critical item (it never lapses), an item that is closed or not found, a
 date that has not passed, a lapse dated ahead of today or before the item's date, words that say nothing, a sweep
 that did not take every source in full (a row is permanent, so none is written from a reading that is not whole),
-a plan that changed so that the item is no longer where it was, a plan or a register this process may not write, a
-register that is not named or holds no register table, an item whose row and mark both stand, and an item already
+a plan that changed so that the item is no longer where it was, a tag that stands in a table's row (a mark on a
+line of its own would break the table), a plan or a register this process may not write, a register that is not
+named or holds no register table, an item whose row and mark both stand, and an item already
 marked whose row cannot be found by its ID (a row written by hand may name it in words: `--row-missing` says there
 is none). Exit 1: the row is written and what follows it is not, and the message says which: the mark could not be
 written (run this again, and it writes the mark alone), or the row does not read back as written (look at it first).
@@ -122,6 +123,9 @@ def locate(item: dict, wanted_id: str | None) -> dict:
         raise Refused(f"{plan} changed while this ran: the item is {'there more than once' if found else 'no longer where the sweep read it'}. "
                       "Nothing was written; run this again")
     lines = text.splitlines(keepends=True)
+    if lines[found[0][0] - 1].lstrip().startswith("|"):  # a mark is a line of its own, and there it would cut the table in two
+        raise Refused(f"the item's Decays tag stands in a table's row ({plan}:{found[0][0]}), where a mark on a line of its own would "
+                      "break the table. Write the item as an entry with its tag beneath it, or mark it by hand in that row; nothing was written")
     opening = re.sub(OPENS, "", lines[found[0][1] - 1]).strip()  # as written, inline code and all
     tagged = decay_sweep.FIELD.search(opening)  # a tag on the item's own line is no part of its title
     return {"plan": plan, "seen": (stat.st_size, stat.st_mtime_ns, stat.st_ino), "lines": lines, "tag": found[0][0],
