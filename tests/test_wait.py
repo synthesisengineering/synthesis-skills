@@ -422,11 +422,11 @@ def test_a_command_is_tried_every_interval_and_not_once_more_on_the_edge_of_the_
     ("a file that is no program", f"cannot be run ({os.strerror(errno.ENOEXEC)})"),
 ])
 def test_a_command_that_cannot_be_started_is_refused_at_once_in_one_line(two, tmp_path, monkeypatch, named, why):
-    """2026-11-12, a third review: `wait run --for 1m -- no-such-command` ended in a Python traceback. No try of such a
-    command starts, so the wait refuses it the way it refuses a bound it cannot read: one line, exit 2, at once. The
-    line names the program as it was given, which the traceback did: a command quoted whole after `--` is one word,
-    and reads as a program that was not found only when that word is shown. And the plain words are said only where
-    they are true: a script that is there, whose interpreter is not, fails with the error of a missing program."""
+    """2026-11-12, an open point of an earlier pass: `wait run --for 1m -- no-such-command` ended in a Python traceback.
+    No try of such a command starts, so the wait refuses it as it refuses a bound it cannot read: one line, exit 2, at
+    once. The line names the program as it was given, which the traceback did: a command quoted whole after `--` is one
+    word, and reads as a program that was not found only when that word is shown. And the plain words are said only
+    where they are true: a script that is there, whose interpreter is not, fails with the error of a missing program."""
     from synthesis import paths
     script, folder, orphan, text = tmp_path / "check.sh", tmp_path / "checks", tmp_path / "orphan.sh", tmp_path / "notes.txt"
     script.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
@@ -524,8 +524,8 @@ def outcome(done):
 
 
 def test_a_note_is_withdrawn_by_the_seat_that_made_it_one_by_its_words_or_all_at_once(two):
-    """2026-11-12, a third review: a note stood until its bound. When what it awaited was handled an hour into a note
-    of twelve, the board and the turn-end check showed a wait that was over for eleven hours more."""
+    """2026-11-12, an open point of an earlier pass: a note stood until its bound, so when what it awaited was handled
+    before then, the board and the turn-end check went on showing a wait that was over."""
     from synthesis import paths, wait
     for what in ("the CI run on the release branch", "a reply from the vendor", "the nightly export"):
         note(what)
@@ -691,9 +691,9 @@ def test_a_seat_in_a_live_wait_is_listed_for_the_whole_bound_of_its_wait(two, tm
 
 
 def test_resume_names_a_quiet_seat_that_holds_a_live_wait_and_marks_it_as_who_does(two, tmp_path, write_config, capsys):
-    """2026-11-12, a third review: `synthesis who` listed a seat nine hours into a twelve-hour wait on a project, and
-    `synthesis resume` of that project did not name it. The session that picked the project up was told of no one
-    else there, though the waiting seat would wake and write the same records."""
+    """2026-11-12, an open point of an earlier pass: `synthesis who` lists a seat that is quiet but holds a live wait,
+    and `synthesis resume` of its project named only the seats seen in the last eight hours. A session that picked
+    the project up was not told of a seat that would wake and write the same records."""
     from synthesis import cli, wait
     root, now = tmp_path / "ai-knowledge-test", time.time()
     home = root / "projects" / "alpha"
