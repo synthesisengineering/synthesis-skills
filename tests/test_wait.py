@@ -772,6 +772,28 @@ def test_resume_names_a_quiet_seat_that_holds_a_live_wait_and_marks_it_as_who_do
         assert re.search(r"waiting until \d\d:\d\d$", rows[name]).group(0) in named[name]
 
 
+def test_resume_of_the_project_the_session_already_holds_still_names_the_seats_that_work_there(two, tmp_path, write_config):
+    """Review round 3, finding 26: a resume of the project the session was already bound to answered "Already working"
+    and returned before it looked at the board, so a seat holding a live wait there went unnamed. It names the seats
+    a fresh resume names, the waiting one marked as `who` marks it."""
+    from synthesis import project, wait
+    root, until = tmp_path / "ai-knowledge-test", time.time() + 3600
+    (root / "projects" / "alpha").mkdir(parents=True)
+    (root / "projects" / "alpha" / "CONTEXT.md").write_text("# Alpha\n", encoding="utf-8")
+    write_config({"knowledge_roots": [str(root)]})
+    board.touch("Q1", project="alpha", harness="codex")
+    wait.record("Q1", "a message", until, pid=os.getpid())
+    quiet("Q1")
+
+    def named(out):
+        return [line for line in out.splitlines() if line.startswith("- Live session ")]
+    fresh, again = project.resume("alpha", "R1"), project.resume("alpha", "R1")     # the first binds R1 to alpha
+    assert again.startswith("Already working alpha in this session; continuing without reloading.\n"), again
+    assert named(again) == named(fresh) and len(named(fresh)) == 2, (fresh, again)    # S1, seen a moment ago, and Q1
+    waiting = next(line for line in named(again) if line.startswith("- Live session Q1 "))
+    assert f"works here, waiting until {time.strftime('%H:%M', time.localtime(until))};" in waiting
+
+
 # --- the sender is told what will deliver the message --------------------------------------------------------------
 
 def test_a_word_of_a_message_is_not_taken_for_the_command(two):
