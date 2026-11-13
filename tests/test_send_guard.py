@@ -440,10 +440,10 @@ def test_a_path_is_read_as_the_connector_reads_it(scratch, monkeypatch, tmp_path
     outbox, outside = paths.outbox(), scratch / "plan.pdf"
     staged = _put(outbox, "staged.pdf")
     (outbox / "leads-out.pdf").symlink_to(outside)  # in the outbox by name, elsewhere in fact
-    (scratch / "leads-in.pdf").symlink_to(staged)  # elsewhere by name, in the outbox in fact
+    (scratch / "staged.pdf").symlink_to(staged)  # elsewhere by name, in the outbox in fact
     (tmp_path / "also-the-outbox").symlink_to(outbox, target_is_directory=True)
     assert "outside the folders" in _attached(outbox / "leads-out.pdf")
-    assert "approval" in _attached(scratch / "leads-in.pdf")
+    assert "approval" in _attached(scratch / "staged.pdf")
     assert "approval" in _attached(tmp_path / "also-the-outbox" / "staged.pdf")
     assert f"the attachment {outbox / 'gone.pdf'} does not exist" in _attached(outbox / "gone.pdf")
     (outbox / "deck").mkdir()
@@ -549,6 +549,61 @@ def test_a_url_the_connector_fetches_goes_to_the_code_and_binds_no_local_file(sc
                 "https://files.example.com/user-attachments/a1", "https://files.example.com/Attachments/a1"):
         asked = guards.check(SEND, {**MAIL, "attachments": [{"url": url, "filename": "plan.pdf"}]}, CONFIG)
         assert "approval" in asked and "as it is now" not in asked, (url, asked)
+
+
+HERE_ONLY = ["http://localhost:8000/plan.pdf", "http://127.0.0.1/plan.pdf", "https://10.0.0.5/plan.pdf",
+             "http://192.168.1.20:8080/plan.pdf", "http://[::1]:8000/plan.pdf", "http://169.254.169.254/latest/plan.pdf",
+             "http://my-laptop.local/plan.pdf", "https://app.localhost/plan.pdf", "HTTP://LOCALHOST/plan.pdf",
+             "http://[fe80::1%25en0]/plan.pdf", "http://[fd12::42]/plan.pdf", "http://100.64.0.7/plan.pdf",
+             "http://10.0.0.5.nip.io/plan.pdf", "http://0.0.0.0:8000/plan.pdf"]
+
+
+@pytest.mark.parametrize("url", HERE_ONLY)
+def test_a_url_whose_host_only_this_machine_or_its_network_answers_is_refused_since_the_connector_drops_it(url, scratch):
+    """The connector refuses to fetch from localhost or any host that is not on the internet (core.http_utils,
+    resolve_and_validate_host, 2.1.0), records the entry as failed and sends the mail without the file."""
+    for given, place in (([{"url": url, "filename": "plan.pdf"}], "1 (plan.pdf)"), ([AS_CONTENT[1], {"url": url}], "2")):
+        _refused(given, f"attachment {place} gives the `url` {url}", "only this machine or its network answers",
+                 "would send the mail without it", f"copy the file into {paths.outbox()}",
+                 "full path as the attachment's `path`", "file this send again")
+
+
+def test_a_url_on_a_public_host_that_starts_like_a_local_one_goes_to_the_code(scratch):
+    for url in ("http://localhost.example.com/plan.pdf", "https://10.0.0.5.example.com/plan.pdf", "http://172.32.0.1/plan.pdf",
+                "https://203.0.113.9/plan.pdf", "http://100.128.0.1/plan.pdf", "https://[2606:4700:4700::1111]/plan.pdf",
+                "https://files.example.com/10.0.0.5/plan.pdf", "https://203.0.113.9.nip.io/plan.pdf"):
+        assert "approval" in guards.check(SEND, {**MAIL, "attachments": [{"url": url, "filename": "plan.pdf"}]}, CONFIG), url
+
+
+def test_a_path_that_is_a_link_to_a_file_of_another_name_is_refused_unless_a_filename_names_it(scratch, tmp_path):
+    """The connector follows the link and, with no `filename`, sends the file under its own name: the principal saw
+    plan.pdf in the call, and the mail carried q3-board-draft.pdf (core.utils.validate_file_path, 2.1.0)."""
+    outbox = paths.outbox()
+    real = _put(outbox, "q3-board-draft.pdf")
+    (outbox / "plan.pdf").symlink_to(real)
+    link = str(outbox / "plan.pdf")
+    for given, place in (([{"path": link}], 1), ([AS_CONTENT[0], {"path": link, "mime_type": "application/pdf"}], 2)):
+        _refused(given, f"attachment {place} is a link, {link}, to a file named q3-board-draft.pdf",
+                 "under the name of the file a link leads to", "give the name to show as its `filename`, or the file's own "
+                 "path as its `path`", "file this send again")
+    (tmp_path / "linked-outbox").symlink_to(outbox, target_is_directory=True)
+    (outbox / "deck.pdf").symlink_to(real.name)  # a link of another name, written relative
+    for named in ({"path": link, "filename": "plan.pdf"}, {"path": str(real)},
+                  {"path": str(tmp_path / "linked-outbox" / "q3-board-draft.pdf")}):  # a folder linked, the file's own name
+        assert "approval" in guards.check(SEND, {**MAIL, "attachments": [named]}, CONFIG), named
+    assert "a file named q3-board-draft.pdf" in _attached(outbox / "deck.pdf")
+
+
+def test_the_references_list_a_url_only_this_machine_answers_and_a_link_of_another_name(scratch):
+    skills = Path(__file__).resolve().parents[1] / "skills"
+    listed = " ".join((skills / "synthesis-message-guard" / "references" / "composing.md").read_text(encoding="utf-8").split())
+    sending = " ".join((skills / "synthesis-agent-correspondence" / "references" / "gates-and-sending.md")
+                       .read_text(encoding="utf-8").split())
+    real = _put(paths.outbox(), "q3-board-draft.pdf")
+    (paths.outbox() / "plan.pdf").symlink_to(real)
+    for entry, words in (({"url": "http://192.168.1.20:8080/plan.pdf"}, "whose host only this machine or its network answers"),
+                         ({"path": str(paths.outbox() / "plan.pdf")}, "under the name of the file a link leads to")):
+        assert words in guards.check(SEND, {**MAIL, "attachments": [entry]}, CONFIG) and words in listed and words in sending, words
 
 
 def test_the_references_say_which_url_the_connector_reads_from_this_disk_with_the_words_the_guard_refuses_with(scratch):
