@@ -83,6 +83,32 @@ def test_words_that_are_no_address_someone_could_be_sent_to_go_on_to_the_ordinar
     assert "Sending needs the principal's approval" in said(text)
 
 
+@pytest.mark.parametrize("text", [
+    "https://localhost.example.org", "https://10.2.3.4.example.org/x", "https://example.localhost.org", "https://127.0.0.1.example.org",
+    "127.0.0.1.example.org", "http://my-laptop.local.example.com:3000", "localhost.example.org:8080", "the key file 127.0.0.1-key.pem",
+    "localhost:123456"])
+def test_a_host_is_read_whole_so_a_public_name_that_starts_like_a_local_one_goes_on(text):
+    assert "Sending needs the principal's approval" in said(text)
+
+
+@pytest.mark.parametrize("text, address", [
+    ("The test UI is localhost:9.", "localhost:9"), ("Use laptop.local:9.", "laptop.local:9"), ("10.0.0.5:7 answers", "10.0.0.5:7"),
+    ("192.168.1.20:9", "192.168.1.20:9"), ("localhost:65535", "localhost:65535"), ("It is at http://localhost.", "localhost"),
+    ("http://localhost.:8080", "localhost:8080"), ("app.local:7", "app.local:7"), ("http://config.local:7", "config.local:7"),
+    ("//laptop.local:3000/x", "laptop.local:3000"), ("db.corp.local:5432", "db.corp.local:5432")])
+def test_a_port_of_one_to_five_digits_counts_and_the_refusal_names_the_host_with_it(text, address):
+    reason = said(text)
+    assert held_for_the_address(reason) and f"({address})" in reason
+
+
+@pytest.mark.parametrize("text", [
+    ".env.local:12", "settings.local.json:3", "config.local:7", "config.local:12", "/etc/rc.local:14", "src/app.local:42",
+    "apps/web/.env.local:12", "named.conf.local:31", "Makefile.local:12", "C:\\work\\app.local:7", "settings.local:120",
+    "notes.local:17:3"])
+def test_a_file_named_like_a_host_with_its_line_number_is_no_address(text):
+    assert "Sending needs the principal's approval" in said(f"The key is set at {text} now")
+
+
 def test_a_host_the_config_adds_counts_and_its_subdomains_too():
     config = {**CONFIG, "temporary_addresses": {"hosts": ["preview.example.dev"]}}
     assert held_for_the_address(said("https://pr-12.preview.example.dev", config=config))
