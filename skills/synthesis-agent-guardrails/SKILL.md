@@ -32,7 +32,7 @@ at the moment of acting. These guards sit before the tool call, in the v5 PreToo
 9. **At day-end, run the provenance scan** over the records written that day; a timestamp or quote that appears in no source is named, not trusted.
 10. **A browser call acts in the Chrome profile of the workspace its session started in.** The extension is shared: a call passes only when this session made the latest selection, to its workspace's browser, and that selection reported success (2026-10-21).
 11. **A repository listed under `pr_gated` takes changes only through a pull request.** A push that would move its default branch is refused with the route (branch, pull request, checks, merge, install); only the principal's code for that one push admits it, and `synthesis doctor` names any commit that reached the branch another way (2026-11-09).
-12. **What a test sets up goes on its teardown list before it is made,** and ending the test means running the list the same turn; `synthesis doctor` warns while a line remains (2026-11-12).
+12. **What a test sets up goes on its teardown list before it is made,** and ending the test means running the list the same turn; `synthesis doctor` warns while a thing on it is not taken off (2026-11-12).
 
 ## Contents
 

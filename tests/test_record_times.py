@@ -402,7 +402,8 @@ def _repo(tmp_path, monkeypatch):
     return repo, git
 
 
-@pytest.mark.parametrize("bring", [("merge", "--squash", "other"), ("cherry-pick", "-n", "other"), ("cherry-pick", "other")])
+@pytest.mark.parametrize("bring", [("merge", "--squash", "other"), ("cherry-pick", "-n", "other"), ("cherry-pick", "other"),
+                                   ("rebase", "stopped to edit")])
 def test_a_commit_that_brings_lines_written_before_is_not_judged(bring, tmp_path, monkeypatch):
     """A review, 2026-11-13: a squash merge and a cherry-pick bring lines that were judged when they were first
     committed, as a merge does, and were judged again by the clock of the replay."""
@@ -412,6 +413,10 @@ def test_a_commit_that_brings_lines_written_before_is_not_judged(bring, tmp_path
         git("add", "-A"); git("commit", "-q", "-m", "three")
         import subprocess
         subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@example.invalid", *bring], capture_output=True)
+        (repo / "b.md").write_text("- **2026-11-12 18:54, written on the other branch.**\n", encoding="utf-8")
+        git("add", "-A")
+    elif bring[0] == "rebase":  # a rebase stopped for an edit keeps its folder and no message file
+        (repo / ".git" / "rebase-merge").mkdir()
         (repo / "b.md").write_text("- **2026-11-12 18:54, written on the other branch.**\n", encoding="utf-8")
         git("add", "-A")
     else:

@@ -668,11 +668,11 @@ except ImportError:  # an interpreter with none reads no region label
 # before this was written (2026-11-12): 688 such stamps, 36 of them later than their commit and 111 rounding the
 # present. Replayed over the same commits, the first form refused five wrapped lines that began with a time by
 # chance: a line with no mark opens an entry only where it begins a paragraph. Counted again after a review
-# (2026-11-13): every stamp later than its commit stood at most AHEAD minutes ahead, and what stood farther was a
-# deadline, a schedule or a zone read as local. After a second review, from the 1,148 stamps the check read in
-# those commits: the words are a closed list (any word in -ed had made `(scheduled <a time>)` a stamp, and the
-# words met were these); a zone is one of the labels below (a capital word ending in T had been taken for one, and
-# none of the stamps named a zone outside these); a winter or summer label names its region's clock.
+# (2026-11-13), while the check had no bound: every stamp later than its commit stood at most AHEAD minutes ahead;
+# what that review showed refused farther off was a deadline, a schedule or a zone read as local. After a second
+# review, from the 1,148 stamps the check read in those commits: the words are a closed list (any word in -ed had
+# made `(scheduled <a time>)` a stamp, and the words met were these), and a zone is one of the labels below (a
+# capital word ending in T had been taken for one, and none of the stamps named a zone outside these).
 AHEAD = 30
 _MARKS = r"^[ \t]*(?:(?:[-*+]|\d+[.)])[ \t]+)?(?:\[[xX]\][ \t]+)?(?:#{1,6}[ \t]+)?[*_`\[(]*"
 _CLOCK = r"(?:[01]?\d|2[0-3]):[0-5][\dx](?::\d\d(?:\.\d+)?)?"
@@ -824,7 +824,8 @@ def problems(config: dict, session_id: str, repo_root: str, message: str | None 
     lines, texts = images(added(diff), deadline)
     found = scan(lines, policy, patterns, deadline, approve, own=own, texts=texts)
     brought = HOOK == "pre-merge-commit" or any(os.path.exists(name) for name in git_bytes(  # what a merge, a squash merge, a
-        ["rev-parse", "--git-path", "MERGE_HEAD", "--git-path", "MERGE_MSG", "--git-path", "SQUASH_MSG"], deadline).split(b"\n") if name)
+        ["rev-parse", *(word for name in ("MERGE_HEAD", "MERGE_MSG", "SQUASH_MSG", "rebase-merge", "rebase-apply")
+                        for word in ("--git-path", name))], deadline).split(b"\n") if name)
     if not brought:  # cherry-pick, a revert and a stopped rebase leave: their lines were judged when they were first committed
         found += record_times(lines, config.get("record_times", False), now or datetime.now().astimezone(),
                               lambda path: git_bytes(["cat-file", "blob", ":" + path], deadline).decode("utf-8", "replace"))
