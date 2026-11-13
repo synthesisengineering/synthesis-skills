@@ -744,10 +744,25 @@ ROOT = Path(__file__).resolve().parents[1]
 # fewer), _stated 21 (the statement's line on the board), check 11, HELD 3, TIMERS 1 and two imports. wait.py 17: the
 # statement that no answer is awaited (main 14, its usage line, its sentence and one import). approvals.py 11: void
 # 9 (a grant and a waiting request of one subject dropped unused) and two blank lines.
+# 5.12.0 (2026-11-13): core 256, plugin 256. commit_check.py 69, a status table held to its own header, off unless
+# the config has `status_evidence`: status_evidence 43 (the row's table read from the staged file, its Status and
+# evidence columns, the refusal and the note), ROW with the note of what was measured 8, _record 6 (which files are
+# records, shared with the time check), problems 5 (the call beside the time check, and the note's line), _WORKS 2,
+# and one each for RULE, _STATUS, _EVIDENCE, _BLANK and _POINTS. guards.py 145, the account a site shows in a
+# workspace's browser profile, on only where `browser_routing` names sites under `accounts`: _account_shown 22 (the
+# newest read of the site that settles its account), _account_hold 19 (which steps put something into a page, and
+# the words of the two holds), named_sites 14 (the map's shape), _account 13 (what a read showed, written down once
+# for the doctor), accounts_misrouted 11 (the same reading at the turn's end), _where 11 and _on_site 6 (a tab's
+# address against a site and its page; _web_app is 5 fewer for it), _everyone 10 and _principal 6 (the principal's
+# addresses; the same-day rule is 2 fewer for it), _browser_workspace 9 (the session's workspace, for the guard and
+# the reply check), _misrouted 6, _steps 5 and _pages 2 (the steps of a browser call and the page each acts on, now
+# shared), _said 4 (a result's text; _tabs and _last_selection are 2 fewer each), PUTS and MAIL with the rule's note
+# 11, check_browser 1, and six blank lines. doctor.py 27: check_browser_accounts 24, its call 1 and two blank lines.
+# reply_check.py 15: misrouted_accounts 9, check 4 and two blank lines.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # consolidate first).
-CORE_BUDGET = 12803
-PLUGIN_BUDGET = 34272
+CORE_BUDGET = 13059
+PLUGIN_BUDGET = 34528
 
 
 def _lines(files):

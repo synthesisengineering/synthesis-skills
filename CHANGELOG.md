@@ -4,6 +4,38 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [5.12.0] - 2026-11-13
+
+- **A status in a record carries its evidence, or says it is unverified** (`synthesis-git-hooks` 3.4.0). Off unless
+  the config has `status_evidence` (`{}` turns it on; `skip` names folders it does not read). On 2026-11-12 statuses
+  said colleagues could use a tool "now" when none of them could: they had been written from an assumption, and
+  nothing asked what they rested on. The commit check cannot know that a line claims a thing works. It can hold a
+  table to its own header: a row a commit adds to a Markdown table that has a column headed Status and a column
+  for evidence (`evidence`, `proof`, `source`, `checked`, `verified`, `basis`, `how we know`) is refused when it
+  gives a status and leaves the evidence empty, unless the row says `unverified`. No approval clears it. In a table
+  with a Status column and no column for evidence, a row that says a thing works or is done and holds no link, no
+  code span and not the word `unverified` gets one line of note for its file, and the commit goes through: that
+  part reads a list of words, so it only informs. Replayed over thirty days of commits to twenty-seven knowledge
+  repositories: 11 rows refused in 5 of 1,032 commits, and 12 rows noted in 10.
+- **The account a site shows in a workspace's browser profile** (`synthesis-agent-guardrails` 2.8.0,
+  `synthesis-agent-conformance` 2.0.4). On only where a workspace's `browser_routing` entry names sites under
+  `accounts`, each with the workspace's address there; a key may name the page of the site that shows the
+  signed-in account. On 2026-11-12 a work browser profile was signed in, on a site where an AI assistant is used,
+  to the principal's personal account, and the agent reported that the work could not be done from there. The
+  right profile can show the wrong account, and what is typed or uploaded there goes into an account the workspace
+  does not own. The guard sees no browser; it reads the session's record, where each browser result names the tab
+  it ran on and a page read holds what the page showed. A call that puts something into a page of a named site
+  (keys, a form's value, an upload, a script, alone or as a step of a batch) waits until a read of that site has
+  shown the workspace's address and none of the principal's others. Going there, reading and clicking never wait,
+  since the account often sits behind a menu. A read that shows another of the principal's addresses is called a
+  misconfiguration to tell the principal about, not a limit on the work: the hold says so, a turn that read it has
+  its reply sent back once with the same words, and `synthesis doctor` warns (`browser accounts`) until a later
+  read shows the right account. A map of another shape blocks the workspace's browser calls. What the guard cannot
+  see is stated in the reference: a page that mentions the address for another reason, an account shown only in a
+  picture, an address the config does not name. Replayed over thirty days of recorded browser calls: none of the
+  250 reads, clicks and navigations on such sites is held, and of the 99 calls that put something into a page
+  there, 26 came after a read that had shown the account and 73 before any, in four sessions.
+
 ## [5.11.0] - 2026-11-13
 
 - **A message that names a clock time goes out on a fresh read of the calendar** (`synthesis-message-guard` 2.9.0).
