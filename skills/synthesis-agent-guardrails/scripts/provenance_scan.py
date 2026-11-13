@@ -1,11 +1,17 @@
 #!/usr/bin/env python3
 """Find chat timestamps and quotes written into records that no source shows.
 
-    provenance_scan.py --since YYYY-MM-DD [--sources DIR]... [PATH ...]
+    provenance_scan.py --since YYYY-MM-DD [--sources DIR]... [--records FOLDER]... [PATH ...]
 
-Records: each PATH that is a file, and the files under each PATH that is a folder (default: the
-current directory), that sit in transcripts/, daily-plans/ or projects/<id>/sessions/, or are a
-project's CONTEXT.md or REFERENCE.md, and changed since the date.
+Records: each PATH that is a file, whatever its name; the .md, .txt, .jsonl and .json files under
+each PATH that is a folder (default: the current directory) that sit in transcripts/, daily-plans/,
+ritual-workers/, drafts/ or projects/<id>/sessions/, or are a project's CONTEXT.md or REFERENCE.md,
+hidden folders and node_modules not entered; and every regular file under each --records FOLDER, at
+any depth and in hidden folders too, .git alone left out, for a plan folder a workspace keeps under
+another name. A link to a folder is not followed. Each must have changed since the date. A record
+that cannot be opened, and a folder that cannot be listed, is named as unreadable: it was not
+checked. A file that is not text (bytes that are not UTF-8, or a NUL byte: an image, a database, the
+folder file a Mac keeps) holds nothing an agent wrote as text: it is counted, and fails nothing.
 What a record gained since then (against its last commit before the date) is checked: every
 Slack timestamp (1234567890.123456, or the p1234567890123456 permalink form) and every
 attributed quote (said, wrote, replied ...: "twelve or more characters").
@@ -15,8 +21,10 @@ or each --sources DIR). Only what a tool returned or a person typed counts; an a
 its writes, and a write's echoed result never source themselves. Origin: an agent made up a chat
 message by changing a real message's timestamp, and the fake landed in transcripts and context.
 
-Prints each unsourced item as `record: kind value`, then what it read. Exit 0 when everything is
-sourced, 1 when something is not, 2 when it could not run. Reads only; writes nothing.
+Prints each unsourced item as `record: kind value` and each unreadable record as `record: unreadable
+(why)`, then what it read and how many files that are not text it left out. Exit 0 when every record
+was read and everything is sourced, 1 when something is unsourced or unreadable, 2 when it could not run (no session log folder, or a path given
+that does not exist). Reads only; writes nothing.
 """
 
 from __future__ import annotations
@@ -29,7 +37,7 @@ import subprocess
 import sys
 import time
 
-RECORD = re.compile(r"(^|/)(transcripts/|daily-plans/|projects/[^/]+/sessions/|projects/[^/]+/(CONTEXT|REFERENCE)\.md$)")
+RECORD = re.compile(r"(^|/)(transcripts/|daily-plans/|ritual-workers/|drafts/|projects/[^/]+/sessions/|projects/[^/]+/(CONTEXT|REFERENCE)\.md$)")
 STAMP = re.compile(r"\b(\d{10})\.(\d{6})\b|/p(\d{10})(\d{6})\b")
 QUOTE = re.compile(r"\b(?:said|says|wrote|writes|replied|asked|told \w+|warned|noted|added)\s*[:,]?\s*"
                    r"(?:\"([^\"\n]{12,400})\"|“([^”\n]{12,400})”)", re.I)
@@ -46,16 +54,23 @@ def words(text: str) -> str:
     return " ".join(re.findall(r"[a-z0-9]+", text.lower()))
 
 
-def records(roots: list, since: float):
-    """Record files under each root (a root may be one file) changed since the date."""
-    for root in roots:
-        walk = [(os.path.dirname(root), [], [os.path.basename(root)])] if os.path.isfile(root) else os.walk(root)
+def records(roots: list, since: float, declared: tuple = (), lost=None):
+    """Record files changed since the date: a root that is one file, whatever its name; under a root that is a
+    folder, the ones a record's place names; and every regular file under a declared folder, hidden folders too
+    and .git alone left out (2026-11-11: a plan kept in ritual-workers/ was never read; 2026-11-12: a YAML plan
+    named outright counted as no record). `lost` is told of each folder that cannot be listed."""
+    seen = set()
+    for root, whole in [(r, False) for r in roots] + [(d, True) for d in declared]:
+        named = os.path.isfile(root)
+        walk = [(os.path.dirname(root), [], [os.path.basename(root)])] if named else os.walk(root, onerror=lost)
         for top, dirs, files in walk:
-            dirs[:] = [d for d in dirs if not d.startswith(".") and d != "node_modules"]
+            dirs[:] = [d for d in dirs if d != ".git" and (whole or not d.startswith(".") and d != "node_modules")]
             for name in files:
-                path = os.path.join(top, name)
-                if RECORD.search(os.path.abspath(path).replace(os.sep, "/")) and name.endswith((".md", ".txt", ".jsonl", ".json")) and os.path.getmtime(path) >= since:
-                    yield path
+                path = os.path.abspath(os.path.join(top, name))
+                placed = RECORD.search(path.replace(os.sep, "/")) and name.endswith((".md", ".txt", ".jsonl", ".json"))
+                if (named or whole or placed) and path not in seen and os.path.isfile(path) and os.path.getmtime(path) >= since:
+                    seen.add(path)
+                    yield os.path.join(top, name)
 
 
 def before(path: str, day: str) -> str:
@@ -133,13 +148,22 @@ def sourced(needles: dict, dirs: list, since: float) -> tuple[set, int]:
     return found, logs
 
 
-def scan(roots: list, day: str, source_dirs: list) -> tuple[list, dict]:
+def scan(roots: list, day: str, source_dirs: list, declared: tuple = ()) -> tuple[list, dict]:
     since = time.mktime(time.strptime(day, "%Y-%m-%d"))
-    gained, checked = [], 0
-    for path in records(roots, since):
+    gained, checked, unread, binary = [], 0, [], 0
+    for path in records(roots, since, declared, lambda exc: unread.append((exc.filename, exc.strerror or "cannot be listed"))):
+        try:
+            with open(path, encoding="utf-8") as handle:
+                now = "".join(iter(lambda: handle.read(1 << 20), ""))  # a large file that is not text fails at its first block
+            if "\0" in now:
+                raise UnicodeError
+        except UnicodeError:  # an image, a database: nothing an agent wrote as text
+            binary += 1
+            continue
+        except OSError as exc:  # named, never passed over: the scan cannot vouch for what it did not read
+            unread.append((path, exc.strerror or "cannot be opened"))
+            continue
         checked += 1
-        with open(path, encoding="utf-8", errors="replace") as handle:
-            now = handle.read()
         old = before(path, day)
         gained += [(path, "timestamp", s) for s in sorted(stamps(now) - stamps(old))]
         old_lines = set(old.splitlines())
@@ -156,13 +180,15 @@ def scan(roots: list, day: str, source_dirs: list) -> tuple[list, dict]:
                               lambda t, p=probe: p in words(t))
     found, logs = sourced(needles, source_dirs, since)
     missing = [(p, k, v if k == "timestamp" else f'"{v[:80]}"') for p, k, v in gained if v not in found]
-    return missing, {"records": checked, "session logs": logs}
+    return missing, {"records": checked, "session logs": logs, "unreadable": list(dict.fromkeys(unread)), "not text": binary}  # each named once
 
 
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--since", required=True, help="YYYY-MM-DD: check what records gained from this day on")
     parser.add_argument("--sources", action="append", help="a session log folder; repeat for more (default: Claude Code and Codex)")
+    parser.add_argument("--records", action="append", default=[], metavar="FOLDER",
+                        help="a folder whose every file is a record, such as a plan folder the workspace declares; repeat for more")
     parser.add_argument("paths", nargs="*", default=["."])
     args = parser.parse_args(argv)
     if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", args.since):
@@ -172,12 +198,19 @@ def main(argv=None) -> int:
     if not sources:
         print("provenance scan: no session log folder to check against; pass --sources", file=sys.stderr)
         return 2
-    found, read = scan(args.paths, args.since, sources)
-    for path, kind, value in found:
+    absent = [f for f in args.records if not os.path.isdir(os.path.expanduser(f))] + [p for p in args.paths if not os.path.exists(p)]
+    if absent:
+        print(f"provenance scan: no records can be read from {absent[0]}: it does not exist, or --records was given what is "
+              "no folder", file=sys.stderr)
+        return 2
+    found, read = scan(args.paths, args.since, sources, tuple(os.path.expanduser(folder) for folder in args.records))
+    for path, kind, value in found + [(path, "unreadable", f"({why})") for path, why in read["unreadable"]]:
         print(f"{path}: {kind} {value}")
-    print(f"provenance scan since {args.since}: {len(found)} unsourced; read {read['records']} records "
-          f"and {read['session logs']} session logs")
-    return 1 if found else 0
+    unread = f", {len(read['unreadable'])} unreadable" if read["unreadable"] else ""
+    left = read["not text"]
+    print(f"provenance scan since {args.since}: {len(found)} unsourced{unread}; read {read['records']} records "
+          f"and {read['session logs']} session logs" + (f"; {left} file{' that is not text was' if left == 1 else 's that are not text were'} not read" if left else ""))
+    return 1 if found or read["unreadable"] else 0
 
 
 if __name__ == "__main__":

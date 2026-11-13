@@ -149,6 +149,26 @@ def check_self_test(home: Path, runs: int = 3, run=subprocess.run, background=ba
     return Check("ok", "hook self-test", f"denied `rm -rf ~` in {ms:.0f} ms")
 
 
+def check_wait_check() -> Check:
+    """The turn-end check must send back a reply that announces a wait with nothing armed."""
+    from synthesis import reply_check
+    reason = reply_check.check({"last_assistant_message": "The build is running; I'll pick it up once it lands.",
+                                "session_id": "doctor-self-test"}, {})
+    if reason and "nothing is armed" in reason:
+        return Check("ok", "wait check", "a reply that announces a wait with nothing armed is sent back")
+    return Check("fail", "wait check", "a reply that announced a wait with nothing armed was not sent back: waits can end a turn unseen")
+
+
+def check_temporary_addresses(config: dict) -> Check:
+    """Under this config a message that carries a quick tunnel's address must be read as one."""
+    from synthesis import guards
+    found = guards.temporary_addresses(["https://doctor-probe.trycloudflare.com/x"], config)
+    if found and not isinstance(found, str):
+        return Check("ok", "temporary addresses", "a message that carries a quick tunnel's address is refused until the "
+                     "principal approves the address itself, and starting a quick tunnel waits for a code")
+    return Check("fail", "temporary addresses", found or "a quick tunnel's address in a message was not read: it could reach other people")
+
+
 def check_shell_name(home: Path, harness: str, tool: str, run=subprocess.run) -> Check:
     """Does the guard treat this harness's own shell tool name as a shell?"""
     if run_hook(home, {**SELF_TEST, "tool_name": tool}, run)[0]:
@@ -299,22 +319,23 @@ def codex_write_roots(config: dict) -> tuple:
     return found, name == ":danger-full-access"
 
 
-def check_codex_board(config: dict, board: Path, state: Path) -> Check:
+def check_codex_board(config: dict, board: Path, state: Path, outbox: Path) -> Check:
     """Codex's sandbox writes only the workspace and the folders its config grants: without the board among them, a
-    Codex session can neither claim files nor post (2026-10-30). A grant over the state folder would let a
-    sandboxed agent write approvals and send windows."""
+    Codex session can neither claim files nor post (2026-10-30), and without the outbox it cannot stage a file it
+    attaches. A grant over the state folder would let a sandboxed agent write approvals and send windows."""
     found, unsandboxed = codex_write_roots(config)
     roots = [os.path.realpath(os.path.expanduser(r)) for r in found]
     exposed = [r for r in roots if paths.inside(os.path.realpath(state), r)]
     if exposed:
-        return Check("fail", "codex board access", f"Codex's config lets its sandbox write {_short(exposed[0])}, which "
-                     f"holds {_short(state)}, where approvals and send windows live; grant only {_short(board)}")
+        return Check("fail", "codex board access", f"Codex's config lets its sandbox write {_short(exposed[0])}, which holds "
+                     f"{_short(state)}, where approvals and send windows live; grant only {_short(board)} and {_short(outbox)}")
     if unsandboxed:
         return Check("ok", "codex board access", "Codex runs without a sandbox (danger-full-access)")
-    if any(paths.inside(os.path.realpath(board), r) for r in roots):
-        return Check("ok", "codex board access", f"Codex's sandbox may write {_short(board)}")
-    return Check("fail", "codex board access", f"Codex's sandbox cannot write {_short(board)}, so a Codex session can "
-                 "neither claim files nor post on the board: run the onboarding setup for codex again")
+    for folder, cost in ((board, "can neither claim files nor post on the board"), (outbox, "cannot stage a file it attaches")):
+        if not any(paths.inside(os.path.realpath(folder), r) for r in roots):
+            return Check("fail", "codex board access", f"Codex's sandbox cannot write {_short(folder)}, so a Codex session "
+                         f"{cost}: run the onboarding setup for codex again")
+    return Check("ok", "codex board access", f"Codex's sandbox may write {_short(board)} and {_short(outbox)}")
 
 
 def check_claude_retention(settings: Path) -> Check:
@@ -762,6 +783,96 @@ def check_packets(roots: list) -> Check:
     return Check("ok", "decision packets", f"{len(pages)} packet and sheet pages carry their generator's marker")
 
 
+# ---- the outbox, and the mail connector that must read it --------------------------
+
+def connector_files(platform: str = sys.platform) -> tuple:
+    """(the unit install-autostart.sh writes for the workspace-mcp connector, the PID file its start.sh keeps)."""
+    home, env = Path.home(), os.environ
+    if platform == "darwin":
+        return (home / "Library" / "LaunchAgents" / "com.synthesis.workspace-mcp.plist",
+                home / "Library" / "Logs" / "workspace-mcp" / "server.pid")
+    return (Path(env.get("XDG_CONFIG_HOME") or home / ".config") / "systemd" / "user" / "workspace-mcp.service",
+            Path(env.get("XDG_STATE_HOME") or home / ".local" / "state") / "workspace-mcp" / "server.pid")
+
+
+def started_with(pid: str, procargs=None, proc: Path = Path("/proc")) -> dict:
+    """The environment a running process was started with, each variable whole; {} when the system does not show it.
+    Linux keeps it under /proc, macOS in the record `ps -E` reads (kern.procargs2), never for the system's own
+    programs or past a sandbox. Each variable ends with a NUL in both: `ps -E` prints them after a space instead,
+    so a value holding a space and a name with "=" was read as two variables."""
+    try:
+        if (proc / pid).is_dir():
+            text = (proc / pid / "environ").read_text(encoding="utf-8", errors="replace")
+            return dict(e.split("=", 1) for e in text.split("\0") if "=" in e)
+        raw = (procargs or _procargs)(pid)
+    except (OSError, ValueError):
+        return {}
+    count, strings = int.from_bytes(raw[:4], sys.byteorder), raw[4:].split(b"\0")[1:]  # the program's path, then padding
+    while strings and not strings[0]:
+        strings.pop(0)
+    if len(strings) <= count:  # fewer strings than the arguments it counts: nothing here can be read as variables
+        return {}
+    env = strings[count:]
+    env = env[:env.index(b"")] if b"" in env else env  # an empty string ends them; the system's own strings follow
+    return dict(e.decode("utf-8", "replace").split("=", 1) for e in env if b"=" in e)
+
+
+def _procargs(pid: str) -> bytes:
+    """macOS's record of a process's arguments and environment, as `ps -E` reads it; b"" elsewhere."""
+    if sys.platform != "darwin":
+        return b""
+    import ctypes
+    libc, size = ctypes.CDLL(None, use_errno=True), ctypes.c_size_t(0)
+    mib = (ctypes.c_int * 3)(1, 49, int(pid))  # CTL_KERN, KERN_PROCARGS2
+    if libc.sysctl(mib, 3, None, ctypes.byref(size), None, 0) != 0:
+        raise OSError(ctypes.get_errno(), "the system does not show this process")
+    buffer = ctypes.create_string_buffer(size.value)
+    if libc.sysctl(mib, 3, buffer, ctypes.byref(size), None, 0) != 0:
+        raise OSError(ctypes.get_errno(), "the system does not show this process")
+    return buffer.raw[:size.value]
+
+
+def check_outbox(outbox: Path, unit: Path, pid_file: Path, started=started_with) -> Check:
+    """Agents stage outgoing attachments in the outbox and the send guard passes a file there, so it must be there to
+    write, and a mail connector its auto-start keeps running must have been started with it among ALLOWED_FILE_DIRS
+    (its start.sh's export): one started before that refuses the staged file after the principal approved the send.
+    A connector started by hand is judged too when it can be read; only an installed one is expected to be running."""
+    where = _short(outbox)
+    if os.path.lexists(outbox) and not outbox.is_dir():
+        return Check("fail", "outbox", f"{where} is not a folder, so no agent can stage an attachment there: move it "
+                     "away and make the folder (the mail connector's start.sh makes it at each start)")
+    if not outbox.is_dir() and unit.is_file():
+        return Check("fail", "outbox", f"{where} is missing though a mail connector's auto-start is installed: restart "
+                     "the connector, whose start.sh makes the folder and starts the connector to read it")
+    if not outbox.is_dir():
+        return Check("info", "outbox", f"{where} is not made yet; the mail connector's start.sh makes it, and no "
+                     "auto-start for one is installed here")
+    if not os.access(outbox, os.W_OK | os.X_OK):
+        return Check("fail", "outbox", f"{where} cannot be written, so no agent can stage an attachment there")
+    try:
+        pid = pid_file.read_text(encoding="utf-8").strip()
+    except OSError:
+        pid = ""
+    env = started(pid) if pid.isdigit() else {}
+    if "WORKSPACE_MCP_PORT" not in env and not unit.is_file():  # start.sh always sets it: nothing of its starting was read
+        return Check("ok", "outbox", f"{where} is there to write; no mail connector auto-start is installed here")
+    if "WORKSPACE_MCP_PORT" not in env:
+        return Check("warn", "outbox", f"cannot tell whether the running mail connector reads {where}: what it was "
+                     "started with could not be read (it is not running, or this process may not see it)")
+    if env.get("WORKSPACE_MCP_DISABLE_LOCAL_FILES", "").strip().lower() == "true":  # the connector's own reading of it
+        return Check("fail", "outbox", "the running mail connector was started with WORKSPACE_MCP_DISABLE_LOCAL_FILES=true, so "
+                     f"it reads no local file and refuses one staged in {where} after the send is approved: start it without that")
+    allowed = env.get("ALLOWED_FILE_DIRS", "")  # compared as the connector compares: links followed, letters as written
+    roots = tuple(os.path.realpath(os.path.expanduser(a.strip())).rstrip(os.sep) + os.sep
+                  for a in allowed.split(os.pathsep) if a.strip())
+    if not (os.path.realpath(outbox) + os.sep).startswith(roots):  # a supervisor keeps the unit it loaded until it is unloaded
+        again = (f"; if it still lacks it, its auto-start carries another synthesis home, so run uninstall-autostart.sh and "
+                 f"then install-autostart.sh from a shell where SYNTHESIS_HOME is {_short(outbox.parent)}") if unit.is_file() else ""
+        return Check("fail", "outbox", f"the running mail connector was started without {where} in ALLOWED_FILE_DIRS "
+                     f"({allowed or 'not set'}), so it refuses a file staged there after the send is approved: restart it{again}")
+    return Check("ok", "outbox", f"{where} is there to write, and the running mail connector was started to read it")
+
+
 # ---- am I behind the latest release? (on demand: it is the only network call) ------
 
 RELEASE_MANIFEST = "https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/{ref}/.codex-plugin/plugin.json"
@@ -1098,7 +1209,7 @@ def harness_checks(found: list, procs: dict, home: Path, runtime: str, catalog=N
         except OSError:
             config = {}
         checks += [check_plugin("codex", entry, error), check_codex_features(config), check_codex_doc_bytes(config),
-                   check_codex_board(config, home / "board", home / "state"),
+                   check_codex_board(config, home / "board", home / "state", home / "outbox"),
                    check_codex_instructions(cwd or Path.cwd(), config, codex_home)]
         if entry:
             versions["codex"] = entry.get("version", "")
@@ -1143,7 +1254,7 @@ def run_checks(home: Path | None = None, find=find_client, latest_ref: str = "",
     checks += check_sessions_repos(sessions.repos(), home / "sessions" / ".state")
     runtime = runtime_hash(home) if checks[0].status == "ok" else ""
     if (home / "bin" / "synthesis-hook").is_file():  # when it is missing, the runtime line already says so
-        checks += [check_hook_script(home), check_self_test(home)]  # before the CLIs start, so they don't skew timing
+        checks += [check_hook_script(home), check_self_test(home), check_wait_check()]  # before the CLIs start, so they don't skew timing
     clis, started = {}, {}
     for h in ("claude", "muse", "codex"):  # each listing starts as soon as its CLI is found; finding Codex
         path = find(h)                     # means a version probe, which overlaps the others' listings
@@ -1164,9 +1275,12 @@ def run_checks(home: Path | None = None, find=find_client, latest_ref: str = "",
     sessions = board.sessions()
     checks += [check_versions(versions, sessions), check_instruction_adapters(repos),
                check_temporary_work(repos, [s.cwd for s in sessions if not s.stale]),
-               check_home_paths([home / "config.json"]), check_packets(project.roots())]
+               check_home_paths([home / "config.json"]), check_packets(project.roots()),
+               check_outbox(paths.outbox(), *connector_files())]
     if config.get("pr_gated") is not None:
         checks.append(check_pr_gate(config["pr_gated"], repos))
+    if "temporary_addresses" in config:  # null is a setting that cannot be read, and fails its line
+        checks.append(check_temporary_addresses(config))
     if latest_ref:
         checks.append(check_latest(versions, latest_ref))
     try:

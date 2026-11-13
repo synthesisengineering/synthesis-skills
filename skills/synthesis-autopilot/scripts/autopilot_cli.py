@@ -35,6 +35,7 @@ DEFAULT_STANDING = (
     ("verify-before-done", "Verification before any completion claim: focused tests per change, full suites per phase."),
     ("lessons-filed", "Durable lessons filed as work proceeds, not at the end."),
     ("completion-report", "Completion report plus batched questions (a decision packet when complex) ready at close."),
+    ("others-rely-on", "At every wake, check the health of everything a person other than the principal relies on (relied_on.py --all), and lead the reply with any failure, or with not checked when the check never started, exited 2 or printed none of the lines it documents; that is never read as healthy."),
 )
 
 

@@ -9,9 +9,11 @@ shared file.
 
 The board has its own folder (since 5.1.18) because Codex runs commands in a
 sandbox that writes only the workspace and the folders its config grants. The
-board is the one synthesis folder granted there (onboarding setup writes the
-permissions profile), so a Codex session can claim and post; approvals and send
-windows stay in `~/.synthesis/v5/state/`, out of any sandboxed agent's reach. Write the board only through `synthesis claim`,
+board is one of the two synthesis folders granted there (onboarding setup writes
+the permissions profile), so a Codex session can claim and post; the other is the
+outbox, `~/.synthesis/v5/outbox/`, where a session stages a file it attaches to a
+message. Approvals and send windows stay in `~/.synthesis/v5/state/`, out of any
+sandboxed agent's reach. Write the board only through `synthesis claim`,
 `release` and `msg`: the guard refuses file tools and shell writes there.
 
 ## Contents
@@ -130,7 +132,8 @@ Same-project parallelism uses a single-writer, multiple-contributor model:
 
 The board does not enforce this; the rule does. Before writing canonical
 context, check `synthesis who` for another live session on the project
-(`synthesis resume` names it). If one owns it, contribute instead and message
+(`synthesis resume` names it, and both mark a seat that holds a live wait
+`waiting until HH:MM`). If one owns it, contribute instead and message
 it.
 
 The contribution artifact records the claimed scope and branch or worktree;
@@ -231,6 +234,12 @@ uncommitted edit in that file, covered by no claim, was lost. Four protections n
   when it wakes. Never release, edit or delete another session's claims or session file.
 - **Live but idle is not stale.** A live holder is asked, not overridden: post a
   message, and when it does not answer, ask the principal.
+- **A seat in a live wait stays listed.** A session that holds a live wait
+  (`synthesis wait`, the synthesis-waiting skill) is listed by plain
+  `synthesis who` for the wait's whole bound, marked `waiting until HH:MM`, and
+  a message still reaches it. Once it has been quiet for 8 hours its row also
+  says STALE and its claims go stale like any other's: the wait keeps the seat
+  reachable, not its claims.
 
 ## Addressing a peer session
 

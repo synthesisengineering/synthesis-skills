@@ -1,11 +1,12 @@
 # Channels, gates and sending
 
-What each channel discloses on its own, the three gates every message passes, how email and other posts are built and verified, and the related skills, as written in 3.1.2. Signature-link rendering stays in SKILL.md.
+What each channel discloses on its own, the three gates every message passes, how email and other posts are built and verified, and the related skills, as written in 3.1.2. Signature-link rendering stays in SKILL.md. The section on attachments is newer: it came with the outbox.
 
 Contents:
 - Channel disclosure is a fact, not a preference
 - Three gates: reply history before composing, voice and anti-slop before drafting, relevance and grounding at send time
 - Email construction and verification, and other human-readable posts
+- Attachments: stage the file in the outbox first
 - Related
 
 ## Channel disclosure is a fact, not a preference
@@ -57,6 +58,103 @@ authorized post back through its transport. Intentional poetry and address block
 require an owner-approved override (`message_format.allow_line_breaks_in_paragraphs`);
 never normalize significant whitespace. Retain post IDs, retrieval evidence and any
 missing-readback gap.
+
+## Attachments: stage the file in the outbox first
+
+Stage every file attachment in the outbox before filing the send. The outbox is one
+folder, `~/.synthesis/v5/outbox` (`$SYNTHESIS_HOME/outbox` when that is set). Copy the
+file there, then attach the copy by its full path: `{"path": "<outbox>/<name>"}`.
+
+Why: a self-hosted mail connector reads a local file only from the folders it was
+started to read. workspace-mcp reads its own attachment folder
+(`WORKSPACE_ATTACHMENT_DIR`, by default `~/.workspace-mcp/attachments`) and the folders
+in `ALLOWED_FILE_DIRS`, where its `start.sh` (in `synthesis-meeting-transcripts`) names
+the outbox. It checks the path when the tool runs, which is after the principal approved
+the call. A file left in a session's scratch folder was refused there, so the send cost
+the principal that approval and a second one. When one attachment can be read and
+another cannot, the connector (2.1.0) sends the message without the second.
+
+**Only what the connector reads counts as attached.** It takes each attachment from the
+entry's `url`, else the file at its `path`, else base64 `content` with a `filename`, and
+from nothing else in the entry. The send guard reads a workspace-mcp `send_gmail_message`
+or `draft_gmail_message` call the same way and refuses first: an entry the connector
+would not attach as given is blocked before any approval code is issued.
+
+| The entry | What the connector does with it | The refusal says |
+|---|---|---|
+| Names its file under `file_path`, `filePath` or any key but `path`, or gives nothing to read | Leaves it out of the mail | ``attachment <n> has none of `path`, `content` and `url` `` |
+| Gives two of `url`, `path` and `content` | Reads the first of them and never the other | ``attachment <n> gives `url` and `path`: the mail connector reads only the `url` of such an entry`` |
+| Gives `content` with no `filename` | Leaves it out | ``attachment <n> gives `content` with no `filename` `` |
+| Gives `content` that is not standard base64: the URL-safe letters, a `data:` prefix, wrong padding | Leaves it out, or skips the letters it does not know and attaches other bytes | ``attachment <n> gives `content` that is not standard base64`` |
+| Carries an empty `url` | Fetches nothing, and reads no `path` beside it | ``attachment <n> has an empty `url` `` |
+| Carries a `url` that is the connector's own download link, `/attachments/<id>`, with no host or on any host (the hosts it serves are in its own settings, which the guard cannot see) | Reads the bytes from a file it saved on this disk, which no approval binds | ``attachment <n> gives the `url` <url>, which the mail connector reads as its own download link`` |
+| Carries a `url` it does not fetch: anything but http or https with a host, a `file://` URL or a bare path among them | Attaches nothing for it | ``attachment <n> gives the `url` <url>, and the mail connector fetches a `url` only over http or https`` |
+| Carries a `url` whose host only this machine or its network answers: a loopback, private, shared or link-local address (`http://192.168.1.20:8080/plan.pdf`, `http://[::1]:8000/plan.pdf`), `localhost`, a `.local` or `.localhost` name, or a wildcard-DNS name that carries such an address (`http://10.0.0.5.nip.io/plan.pdf`) | Fetches from no such host: records the entry as failed and sends the mail without it | ``attachment <n> gives the `url` <url>, whose host only this machine or its network answers`` |
+| Carries a `url` whose host is not an address on the internet: a documentation or a reserved address (`http://192.0.2.7/plan.pdf`) | Fetches from no address that is not global: records the entry as failed and sends the mail without it | ``attachment <n> gives the `url` <url>, whose host is not an address on the internet`` |
+| Names a `path` that is a link to a file of another name, with no `filename` | Follows the link and sends the file under the name of the file it leads to, not the name shown in the call | ``attachment <n> is a link, <path>, to a file named <name>, and the mail connector sends a file it reaches through a link under the name of the file a link leads to`` |
+| Carries `error` or `_resolved_bytes`, keys the connector writes into an entry itself | Leaves out an entry that carries `error`; takes `_resolved_bytes` before the entry's own source | ``attachment <n> carries `error`, which the mail connector sets on an entry itself`` |
+| Gives a `filename` or `mime_type` with a control character (a line break, a tab, a NUL), or not as text | Takes line breaks and NULs out of a filename, so the mail goes under another name than the one shown; leaves out an entry whose name or type is not text | ``attachment <n> gives `filename` '<name>' with a control character, or not as text`` |
+| Gives a `content_id` other than letters, digits, `.`, `_`, `+`, `-` and `@`, led by a letter or a digit | Refuses it and leaves the entry out | ``attachment <n> gives the `content_id` '<id>', which the mail connector refuses`` |
+| Names a `path` that is not a full path, names no file, or lies outside the outbox and the connector's default attachment folder (`~/.workspace-mcp/attachments`). Another folder a connector was started to read is not counted: the guard runs in the session's process and cannot see what a connector started elsewhere was given, so the file is staged in the outbox | Refuses the file | `the attachment <path> is outside the folders the mail connector reads` (or `is not a full path`, `does not exist`, `is not a file`) |
+| Names a file whose name or folder marks secrets (a `.env`, key or credentials file), staged or not | Reads it from no folder | `the attachment <path> is one the mail connector never reads` |
+
+For a file in the wrong place the refusal goes on: ``copy the file into <outbox> (make
+the folder if it is missing), give that copy's full path as the attachment's `path`, and
+file this send again``. Do that, and make the call again. For a file the connector never
+reads it says to leave the file out and tell the principal, since staging it again
+changes nothing.
+
+`attachments` itself is a list of such entries, or the JSON text of that list. The
+connector refuses the call for any other shape (one entry given bare, a list of paths),
+and so does the guard, before any code: `` `attachments` is neither a list of entries nor
+the JSON text of one``, or `attachment <n> is not an object`.
+
+The same rule holds for the connector's Drive tools that read a local file.
+`update_drive_file`, `import_to_google_doc`, `import_to_google_sheets` and
+`import_to_google_slides` take it as `file_path`, a full path or a `file://` URL;
+`create_drive_file` takes it as `fileUrl` when that is a `file://` URL.
+`update_drive_file` waits for a code and is refused before one is issued; the others ask
+for none and are refused before the call is made: ``the file <path> is outside the
+folders the connector reads: copy the file into <outbox> (make the folder if it is
+missing), give that copy's full path as `file_path` and make this call again``. Their
+`file_url` is fetched over http or https and never read from this disk, so a `file://`
+URL or a path there is refused with `file_path` named. A source that cannot be parsed as a
+path or a URL, or a path holding a NUL, is refused with its field named; and a staged file
+the connector could not read is refused for the tools that ask for no code too (the guard
+reads its first byte), as it is for a send.
+
+- Give the path whole, under the key `path`, the one the connector reads. It resolves
+  a relative path in its own folder, expands no `~`, follows links, and then compares
+  the letters as written. With no `filename` it sends a file under the name of the one
+  its path leads to, so a link of another name (`plan.pdf` leading to
+  `q3-board-draft.pdf`) carries a `filename` or is given by the file's own path.
+- An attachment passed as content needs no staging: standard base64 `content` with a
+  `filename`, or a `url` the connector fetches over http or https from a named host on the
+  internet (from a host only this machine or its network answers it fetches nothing). Its
+  own download link for a Drive file or a mail attachment (`/attachments/<id>`) is not
+  one: it reads that from a file it saved on this disk, so the guard refuses the link and
+  asks for the file's path, staged in the outbox.
+- The approval covers the file's bytes, not only its path. The guard hashes each file
+  the connector will read when it asks for the code and again when the call is made, so
+  a copy replaced in between needs a new approval. The request ends `The approval covers
+  each file the call has the connector read as it is now, so name those files to the
+  principal too: one changed before the call needs a new code.` Show the principal each
+  file's name with the text. A file that cannot be read when the call is made refuses
+  it (`<path> cannot be read (<why>)`), and so does one the guard cannot hash in 2
+  seconds, since a harness passes over a hook that runs past its time. Leave the staged
+  copy as it is until the call has returned: the connector reads it a moment after the
+  guard does.
+- Every session shares the one outbox, so give the copy a name no other session would
+  pick; a subfolder of your own inside the outbox is still inside it.
+- A sandboxed Codex session may write the outbox once setup has granted it, as it has
+  the board. `synthesis doctor` fails its `codex board access` line when either folder
+  is left out, and running the onboarding setup for Codex again grants it.
+- `synthesis doctor` has an `outbox` line: the folder is there to write, and a running
+  connector was started with it. A connector started before its `start.sh` named the
+  outbox keeps refusing a staged file until it is restarted. One kept running by its
+  auto-start reads the outbox of the synthesis home its unit carries: `doctor.sh` beside
+  `start.sh` says which, and `uninstall-autostart.sh` followed by `install-autostart.sh`,
+  run from the session's shell, replaces a unit that carries another.
 
 ## Related
 

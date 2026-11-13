@@ -38,13 +38,17 @@ def fixture(
     )
     secret = tmp_path / "client-secret.json"
     secret.write_text("{}\n", encoding="utf-8")
+    # A healthy service has started once, so its start script made the outbox; the unit names no synthesis home.
+    (home / ".synthesis" / "v5" / "outbox").mkdir(parents=True)
     binaries = tmp_path / "bin"
     binaries.mkdir()
     assert platform in {"Darwin", "Linux", "UnsupportedFixtureOS"}
     executable(binaries / "uname", f'printf "%s\\n" "{platform}"\n')
     executable(
         binaries / "plutil",
-        f'case "$2" in ProgramArguments.0) printf "%s\\n" "{START}" ;; *) printf "%s\\n" "{secret}" ;; esac\n',
+        f'case "$2" in ProgramArguments.0) printf "%s\\n" "{START}" ;; '
+        'EnvironmentVariables.SYNTHESIS_HOME) echo "Could not extract value, error: No value at that key path"; exit 1 ;; '
+        f'*) printf "%s\\n" "{secret}" ;; esac\n',
     )
     executable(binaries / "launchctl", launch)
     executable(binaries / "systemctl", f"exit {systemd_exit}\n")
@@ -282,4 +286,21 @@ def test_e26_sparse_path_finds_uvx_and_a_recycled_pid_is_not_a_running_server(tm
 
     assert result.returncode == 0, result.stdout + result.stderr
     assert "already running" not in result.stdout
-    assert ran.read_text().startswith("workspace-mcp --single-user --transport streamable-http")
+    assert ran.read_text().startswith("workspace-mcp@2.1.0 --single-user --transport streamable-http")
+
+
+def test_a_start_path_the_unit_holds_in_quotes_is_read_back_as_the_path_it_is(tmp_path: Path) -> None:
+    """The installer writes a start path with a space or one of systemd's own signs in double quotes, escaped. The
+    doctor reads the path back out of them: taken with its quotes on, an installed unit looked like a moved checkout."""
+    environment = fixture(tmp_path, launch="", lsof_exit=0, curl='printf "406"\n', platform="Linux")
+    script = tmp_path / "my checkouts" / '50% "done" $x \\ v2' / "start.sh"
+    script.parent.mkdir(parents=True)
+    executable(script, "exit 0\n")
+    unit = tmp_path / "home" / ".config" / "systemd" / "user" / "workspace-mcp.service"
+    escaped = str(script).replace("\\", "\\\\").replace('"', '\\"').replace("%", "%%").replace("$", "$$")
+    unit.write_text(f'[Service]\nExecStart="{escaped}"\n', encoding="utf-8")
+    full = subprocess.run(["bash", str(DOCTOR)], env=environment, text=True, capture_output=True, check=False, timeout=10)
+    assert "does not exist" not in full.stdout and "could not read the start-script path" not in full.stdout, full.stdout
+    unit.write_text(f'[Service]\nExecStart="{escaped}-gone"\n', encoding="utf-8")
+    gone = subprocess.run(["bash", str(DOCTOR)], env=environment, text=True, capture_output=True, check=False, timeout=10)
+    assert "does not exist" in gone.stdout and f"{script}-gone" in gone.stdout, gone.stdout

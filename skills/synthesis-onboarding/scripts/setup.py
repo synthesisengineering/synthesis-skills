@@ -37,7 +37,7 @@ PLUGIN, MARKETPLACE, SOURCE = "synthesis-skills", "synthesis-engineering", "synt
 CODEX_DOC_BYTES = 98_304
 HOOKS_BEGIN, HOOKS_END = "# synthesis-setup:begin hooks-feature", "# synthesis-setup:end hooks-feature"
 BOARD_BEGIN, BOARD_END = "# synthesis-setup:begin board-writable", "# synthesis-setup:end board-writable"
-PROFILE = "synthesis"  # the Codex permissions profile setup writes: the one in use, plus the board
+PROFILE = "synthesis"  # the Codex permissions profile setup writes: the one in use, plus the board and the outbox
 OWNED_BUNDLE_ROOTS = (Path.home() / ".cache" / "synthesis" / "muse-bundle",)
 RESTART = ("Now quit and reopen Claude Code, Codex and Muse (you can resume your conversation): "
            "a restart is what loads new skills and hooks.")
@@ -262,7 +262,7 @@ def _key_line(lines: list, table: str, key: str):
 
 def codex_overlay(text: str) -> tuple:
     """(new text, notes). Hooks on unless the person set them off; instruction bytes at least
-    98,304; CLAUDE.md as a fallback instruction name when the key is absent; the synthesis board,
+    98,304; CLAUDE.md as a fallback instruction name when the key is absent; the synthesis board and outbox,
     and no other synthesis folder, writable from Codex's sandbox (5.1.18). Nothing else changes."""
     config, lines, notes, add_top = doctor.read_toml(text), text.splitlines(), [], []
     limit = config.get("project_doc_max_bytes")
@@ -294,26 +294,28 @@ def codex_overlay(text: str) -> tuple:
             end = next((i for i in range(start + 1, len(lines)) if re.match(r"^\s*\[", lines[i])), len(lines))
             lines[end:end] = [HOOKS_BEGIN, "hooks = true", HOOKS_END]
         notes.append("enabled [features] hooks")
-    board = str(paths.board())
-    found, unsandboxed = doctor.codex_write_roots(config)
-    if not unsandboxed and not any(paths.inside(os.path.realpath(board), os.path.realpath(os.path.expanduser(r)))
-                                   for r in found):
-        edited = (_legacy_board if config.get("sandbox_mode") is not None else _profile_board)(lines, config, board)
-        notes.append(f"let Codex's sandbox write the synthesis board ({board}), so its sessions can claim files and post"
-                     if edited else f"Codex's sandbox settings are written in a form setup does not edit: grant {board}")
+    for what, folder, so in (("board", str(paths.board()), "claim files and post"),
+                             ("outbox", str(paths.outbox()), "stage a file they attach")):
+        found, unsandboxed = doctor.codex_write_roots(config)
+        if not unsandboxed and not any(paths.inside(os.path.realpath(folder), os.path.realpath(os.path.expanduser(r)))
+                                       for r in found):
+            edited = (_legacy_grant if config.get("sandbox_mode") is not None else _profile_grant)(lines, config, folder)
+            notes.append(f"let Codex's sandbox write the synthesis {what} ({folder}), so its sessions can {so}"
+                         if edited else f"Codex's sandbox settings are written in a form setup does not edit: grant {folder}")
+            config = doctor.read_toml("\n".join(lines))  # the next folder joins what this one wrote
     return "\n".join(lines).strip("\n") + "\n", notes
 
 
-def _profile_board(lines: list, config: dict, board: str) -> bool:
-    """Codex's permission profiles (0.166): the person's own default profile gains the board; a built-in or no
-    choice is replaced by PROFILE, which extends it with the board, so nothing else changes."""
+def _profile_grant(lines: list, config: dict, folder: str) -> bool:
+    """Codex's permission profiles (0.166): the person's own default profile gains the folder; a built-in or no
+    choice is replaced by PROFILE, which extends it with the folder, so nothing else changes."""
     chosen = config.get("default_permissions")
     name = chosen if isinstance(chosen, str) and not chosen.startswith(":") else PROFILE
     profile, header = (config.get("permissions") or {}).get(name), f"[permissions.{name}.filesystem]"
     at = next((i for i, line in enumerate(lines) if line.strip() == header), None)
     if at is None and profile is not None and (not isinstance(profile, dict) or "filesystem" in profile):
         return False  # written inline or as dotted keys
-    rule = f'{json.dumps(board)} = "write"'
+    rule = f'{json.dumps(folder)} = "write"'
     if at is not None:
         lines[at + 1:at + 1] = [rule]
     elif profile is None:
@@ -322,7 +324,7 @@ def _profile_board(lines: list, config: dict, board: str) -> bool:
     else:
         lines += ["", BOARD_BEGIN, header, rule, BOARD_END]
     if name != chosen:
-        line = f'default_permissions = "{name}"  # synthesis setup: {chosen or ":workspace"} plus the board'
+        line = f'default_permissions = "{name}"  # synthesis setup: {chosen or ":workspace"} plus the folders its sessions write'
         at = _key_line(lines, "", "default_permissions")
         if at is None:
             top = _top_level_end(lines)
@@ -334,9 +336,9 @@ def _profile_board(lines: list, config: dict, board: str) -> bool:
     return True
 
 
-def _legacy_board(lines: list, config: dict, board: str) -> bool:
+def _legacy_grant(lines: list, config: dict, folder: str) -> bool:
     """The older [sandbox_workspace_write] writable_roots, which Codex reads instead while `sandbox_mode` is set."""
-    table, entry = config.get("sandbox_workspace_write"), json.dumps(board)  # a TOML basic string
+    table, entry = config.get("sandbox_workspace_write"), json.dumps(folder)  # a TOML basic string
     if table is not None and not isinstance(table, dict):
         return False
     at = _key_line(lines, "sandbox_workspace_write", "writable_roots")
@@ -357,8 +359,8 @@ def configure_codex(dry_run: bool = False) -> list:
     path = Path(os.environ.get("CODEX_HOME") or Path.home() / ".codex") / "config.toml"
     text = path.read_text(encoding="utf-8") if path.exists() else ""
     new, notes = codex_overlay(text)
-    if not dry_run:
-        paths.board().mkdir(parents=True, exist_ok=True)  # Codex's sandbox may write inside it, never create it
+    for folder in (paths.board(), paths.outbox()) if not dry_run else ():
+        folder.mkdir(parents=True, exist_ok=True)  # Codex's sandbox may write inside it, never create it
     if new == (text if text.endswith("\n") else text + "\n") or dry_run:
         return [f"codex config: {'would ' if dry_run else ''}{n}" for n in notes] or ["codex config: already set"]
     if path.exists():

@@ -114,6 +114,62 @@ def test_engage_adds_the_principals_private_standing_items(tmp_path, write_confi
     assert any(t.startswith("blog-seeds:") for _, t in autopilot.load(path).items("standing checklist"))
 
 
+def test_engage_adds_the_check_of_what_other_people_rely_on_and_only_the_items_a_plan_lacks(tmp_path):
+    """A test two colleagues had come to rely on stopped, and two scheduled check-ins ran without looking at it.
+    Every run now carries the check as a standing item, added like any other the plan lacks."""
+    path = write_plan(tmp_path, standing=("- [ ] end-to-end: Complete the work, as this plan words it.",))
+    engage("S1", path)
+    standing = [text for _, text in autopilot.load(path).items("standing checklist")]
+    assert sorted(re.split(r"[:\s]", text, maxsplit=1)[0] for text in standing) == sorted(i for i, _ in cli.DEFAULT_STANDING)
+    assert "end-to-end: Complete the work, as this plan words it." in standing  # the plan's own wording stays
+    check = next((text for text in standing if text.startswith("others-rely-on: ")), "")
+    for words in ("At every wake", "everything a person other than the principal relies on", "relied_on.py --all",
+                  "lead the reply with any failure"):
+        assert words in check, words
+    engage("S1", path)  # nothing is added twice
+    assert [text for _, text in autopilot.load(path).items("standing checklist")] == standing
+
+
+def test_the_check_of_what_other_people_rely_on_needs_its_own_evidence_at_close(tmp_path, capsys):
+    """The item names the command it runs; `--all` in its text is not the dash that introduces evidence."""
+    path = done_ready(tmp_path)
+    engage("S1", path)
+    item = "others-rely-on: " + dict(cli.DEFAULT_STANDING)["others-rely-on"]
+    edit(path, f"- [x] {item} — done, see the session log", f"- [x] {item}")
+    assert run("--session", "S1", "close", "--plan", path, "--done") == 1
+    assert "standing item others-rely-on is checked without evidence after ' — '" in capsys.readouterr().err
+    edit(path, f"- [x] {item}", f"- [x] {item} — every wake's result is in the cycle ledger; nothing was down")
+    assert run("--session", "S1", "close", "--plan", path, "--done") == 0
+
+
+def test_a_wake_checks_what_other_people_rely_on_before_the_next_item_and_the_skill_says_how():
+    """A standing item nobody is told how to run is not a control: the wake's own steps and the binding rules carry
+    the command, by the path the install keeps in the runtime, and the plan-file page lists the item as engage adds it."""
+    command = 'python3 -S "$HOME/.synthesis/v5/current/skills/synthesis-daily-rituals/scripts/relied_on.py" --all'
+    reentry = (SKILL / "references" / "continuation.md").read_text(encoding="utf-8").split("\n## Re-entry protocol\n")[1].split("\n## ")[0]
+    reentry = " ".join(reentry.split())  # the page wraps its lines
+    places = [reentry.find(words) for words in ("Before the next open item, every wake checks what other people rely on",
+                                                command, "A `DOWN` line leads the wake's reply")]
+    assert -1 not in places and places == sorted(places), places
+    rules = (SKILL / "SKILL.md").read_text(encoding="utf-8").split("## Binding rules")[1].split("## Contents")[0]
+    rule = next((line for line in rules.splitlines() if command in line), "")
+    assert "At every wake" in rule and "`DOWN`" in rule and "approval" in rule
+    assert f"| `others-rely-on` | {dict(cli.DEFAULT_STANDING)['others-rely-on']} |" in TEMPLATE_DOC.read_text(encoding="utf-8")
+
+
+def test_a_wake_takes_a_check_that_did_not_run_as_not_checked_and_never_as_healthy():
+    """Review round 3, finding 24: a wake was told what a `DOWN` line and exit 2 ask for, and nothing of a checker that
+    never started or printed none of the lines it documents. The standing item, the binding rule and the re-entry
+    protocol each say such a run leads the reply as not checked."""
+    reentry = (SKILL / "references" / "continuation.md").read_text(encoding="utf-8").split("\n## Re-entry protocol\n")[1].split("\n## ")[0]
+    rules = (SKILL / "SKILL.md").read_text(encoding="utf-8").split("## Binding rules")[1].split("## Contents")[0]
+    places = {"standing item": dict(cli.DEFAULT_STANDING)["others-rely-on"], "re-entry protocol": reentry,
+              "binding rule": next((line for line in rules.splitlines() if "relied_on.py" in line), "")}
+    for where, text in places.items():
+        for words in ("never started", "printed none of the lines", "not checked", "never read as healthy"):
+            assert words in " ".join(text.split()), (where, words)
+
+
 def test_engage_refuses_a_plan_without_checklist_criteria_or_horizon(tmp_path, capsys):
     path = write_plan(tmp_path, checklist=(), criteria=(), header={"Horizon": None})
     assert run("--session", "S1", "engage", "--plan", path) == 1
@@ -562,19 +618,25 @@ def test_the_documented_helper_path_is_the_copy_the_install_makes_and_it_runs(tm
     docs = [SKILL / "SKILL.md"] + sorted((SKILL / "references").glob("*.md"))
     documented = {m.group(1) for doc in docs if not doc.name.startswith("preserved")
                   for m in re.finditer(r"\$HOME/\.synthesis/v5/current/([\w./-]+\.py)", doc.read_text(encoding="utf-8"))}
-    assert documented == {"skills/synthesis-autopilot/scripts/autopilot_cli.py"}
+    assert documented == {"skills/synthesis-autopilot/scripts/autopilot_cli.py",
+                          "skills/synthesis-daily-rituals/scripts/relied_on.py"}  # the check every wake runs
     assert cli.wake_prompt("<plan>") in (SKILL / "references" / "turn-end-check.md").read_text(encoding="utf-8")
-    assert "synthesis-autopilot" in install.STABLE_SKILL_SCRIPTS
+    assert {"synthesis-autopilot", "synthesis-daily-rituals"} <= set(install.STABLE_SKILL_SCRIPTS)
     plugin = tmp_path / "plugin"
     shutil.copytree(ROOT / "synthesis", plugin / "synthesis", ignore=shutil.ignore_patterns("__pycache__"))
-    shutil.copytree(CLI.parent, plugin / "skills" / "synthesis-autopilot" / "scripts",
-                    ignore=shutil.ignore_patterns("__pycache__"))
+    for skill in ("synthesis-autopilot", "synthesis-daily-rituals"):
+        shutil.copytree(ROOT / "skills" / skill / "scripts", plugin / "skills" / skill / "scripts",
+                        ignore=shutil.ignore_patterns("__pycache__"))
     install.install(plugin)
     shutil.rmtree(plugin)  # the runtime copy must stand alone
     helper = isolated_home / "current" / "skills" / "synthesis-autopilot" / "scripts" / "autopilot_cli.py"
     path = write_plan(tmp_path)
     env = {**os.environ, "SYNTHESIS_HOME": str(isolated_home), "HOME": str(tmp_path)}
+    env.pop("RITUAL_STATE_DIR", None)
     out = subprocess.run([sys.executable, "-S", str(helper), "--session", "S1", "engage", "--plan", str(path)],
                          capture_output=True, text=True, env=env, cwd=str(tmp_path))
     assert out.returncode == 0, out.stderr
     assert "Continue with the next one now" in stop("S1")
+    check = isolated_home / "current" / "skills" / "synthesis-daily-rituals" / "scripts" / "relied_on.py"
+    out = subprocess.run([sys.executable, "-S", str(check), "--all"], capture_output=True, text=True, env=env, cwd=str(tmp_path))
+    assert (out.returncode, out.stdout) == (0, "nothing another person relies on is declared for any workspace\n"), out.stderr

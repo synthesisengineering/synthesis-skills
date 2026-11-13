@@ -5,7 +5,7 @@ license: "Apache-2.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "2.4.0"
+  version: "2.5.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
   format: v5
@@ -51,5 +51,5 @@ at the moment of acting. These guards sit before the tool call, in the v5 PreToo
 4. **A calendar or mail call is blocked for its account:** use the tool that takes the workspace's account and pass it (for example `user_google_email`); afterwards, check the organizer or sender.
 5. **A delete or force push is refused:** name a narrower target; never route around the guard. **A direct push to a gated default branch is refused:** push a branch and open the pull request.
 6. **A reply is sent back:** revise exactly what it names, then end the turn.
-7. **Day-end:** `python3 <synthesis-agent-guardrails>/scripts/provenance_scan.py --since <today> <records or folders written today>`; resolve every line it prints against its source before the records are handed off.
+7. **Day-end:** `python3 <synthesis-agent-guardrails>/scripts/provenance_scan.py --since <today> [--records <a plan folder the workspace declares>]... <records or folders written today>`; resolve every line it prints against its source before the records are handed off.
 8. **A browser call is blocked:** call `list_connected_browsers`, then `select_browser` with the deviceId the message names, and wait for its result before the next browser call. Never select another workspace's browser to get past it.

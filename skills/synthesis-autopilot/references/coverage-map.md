@@ -224,3 +224,18 @@ scripts' tests read it"; and "3.6.7 `scripts/` (51 modules): left in place"), an
 [preserved-native.md](preserved-native.md) links the deleted `muse-launch-protocol.json`.
 Each gained a dated note saying the files are gone and how to read them at release
 `v4.154.12`; the preserved text itself is unchanged. SKILL.md is unchanged.
+
+**2026-11-12 (4.1.0): every wake checks what other people rely on.** `DEFAULT_STANDING`
+gains `others-rely-on`, so `engage` adds it to every plan and a done close needs its
+disposition like any other standing item's. The
+[re-entry protocol](continuation.md#re-entry-protocol) gives the command a wake runs before
+the next open item, `relied_on.py --all`, and what a `DOWN` line asks for; binding rule 13
+in [SKILL.md](../SKILL.md) carries it, and [plan-file.md](plan-file.md#default-standing-checklist)
+lists the item. The script is the daily-rituals skill's. The install already keeps that
+skill's scripts in the runtime, so the documents name it by that path, as they name `$AP`,
+and `depends_on` is unchanged: a wake needs the script, not that skill's text. A test two
+colleagues had come to rely on stopped when the app that ran it restarted, and two scheduled
+check-ins ran without looking at it. No rule was removed. Three tests in
+`tests/test_autopilot.py` cover the item, its evidence at close and the documents, and
+`test_the_documented_helper_path_is_the_copy_the_install_makes_and_it_runs` now checks both
+documented runtime paths and runs the check from there.

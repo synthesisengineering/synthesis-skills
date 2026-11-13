@@ -3278,3 +3278,16 @@ def test_a_transcript_hidden_in_a_table_a_list_or_an_object_is_still_found(above
     command = "python3 - <<'EOF'\n" + MEMBERS.format(**above) + program + "\nEOF"
     reason = guards.check("Bash", {"command": command}, {}, cwd=str(above["work"] if inside else here))
     assert (REFUSED in (reason or "")) == held, program
+
+
+# --- the reader parses a program without passing on Python's remarks about it (2026-11-12) ---------------------
+# Replaying thirty days of commands printed "SyntaxWarning: invalid escape sequence" from inside the hook: the reader
+# parses an inline program to see what it writes, and Python warned about the program's own sloppy escape.
+
+def test_reading_an_inline_program_with_a_sloppy_escape_prints_no_warning(tmp_path):
+    import warnings
+    command = "python3 - <<'EOF'\nimport re\nprint(re.sub('\\$', '', 'a$'))\nEOF"
+    with warnings.catch_warnings(record=True) as said:
+        warnings.simplefilter("always")
+        assert guards.check("Bash", {"command": command}, {}, cwd=str(tmp_path)) is None
+    assert [str(w.message) for w in said] == []

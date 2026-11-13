@@ -3,8 +3,25 @@
 The operating checklists live in [SKILL.md](../SKILL.md). This file keeps the
 release-by-release record of why each rule exists — the incidents, the
 design choices, the config schemas each version introduced — so the main
-document can stay within the repository's 500-line budget without losing
-the reasoning. Newest first.
+document can stay within the repository's size limit for a `SKILL.md`
+(8,000 bytes since v5; 500 lines before it) without losing the reasoning. Newest first.
+
+## v3.10.0 — What other people rely on
+
+v3.10.0 (2026-11-12) adds a health check of everything a person other than the principal relies
+on. A workspace declares each one as `relied_on` in the ritual config, with who relies on it and
+the command that says whether it is healthy, and `relied_on.py` runs them: whatever is down prints
+first, a check still running at its timeout is stopped with everything it started, and an entry
+that cannot be run as written counts as down. Day-start, each mid-day sync and day-end run it
+first, in every mode. A `DOWN` line is the first thing in the plan, under
+`## Down: needs your attention`, and in the reply to the principal, ahead of the critical
+deadlines (binding rule 16). It is an incident: the principal is told first, with who is affected
+and what the fix is, and the people affected are told only on the principal's approval. A test
+set up on a principal's own laptop had been given to two colleagues, who came to rely on it. It
+stopped when the app that ran it restarted, two scheduled check-ins ran afterwards without looking
+at it, and it was found hours later by accident. The rule in prose had not held, so the check is a
+command each ritual runs. An autopilot run checks the same at every wake (synthesis-autopilot
+4.1.0).
 
 ## v3.9.0 — Travel for in-person events
 

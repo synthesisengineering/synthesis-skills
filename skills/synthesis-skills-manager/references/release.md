@@ -167,8 +167,11 @@ same path). The board's claim-overlap refusal is the mutual exclusion, and
 when another live session has it. Claim it before authoring the version bump, hold it
 through merge and release, and let the script release it on success. A crashed holder
 blocks the train by design; the user — never another agent on its own initiative —
-frees it. A claim with no activity for eight hours shows as stale in `synthesis who`;
-taking it over (`synthesis claim --take`) is the principal's call.
+frees it. A session quiet for eight hours is stale, and its claims with it:
+`synthesis who --all` lists it marked `STALE` with its claims, and plain `synthesis who`
+leaves it out unless it holds a live wait, when its row says `STALE` and
+`waiting until HH:MM`. Taking a stale claim over (`synthesis claim --take`) is the
+principal's call.
 
 ## The stable path: never pin a version
 

@@ -52,6 +52,27 @@ THREAD_HEADERS = ("in_reply_to", "references", "inReplyTo", "in_reply_to_id")
 # Fields that never render a link: an RSVP's comment reaches the organizer as plain text, so a signature there
 # names its domain in words (2026-10-22: a declined invitation could not carry its signed note).
 PLAIN_FIELDS = frozenset({"rsvp_comment", "responseComment"})
+# The workspace connector's mail tools read an attachment given as a path from the connector's own disk, and only
+# from its attachment folder and the folders ALLOWED_FILE_DIRS names, where its start script names the outbox. A
+# file elsewhere was refused after the send was approved; beside one it could read, the mail went without it (2026-11-12).
+# The guard counts the outbox and the connector's default attachment folder and nothing its own process has in
+# ALLOWED_FILE_DIRS: that is the session's setting, and a connector a supervisor started carries its own.
+# What counts as attached is what its source (2.1.0) reads: the entry's `url`, else the file at its `path`, else base64
+# `content` with a `filename`, an entry it cannot read that way being left out (gmail_tools._prepare_gmail_message);
+# and from no folder a file whose name or folder marks secrets (core.utils.validate_file_path, copied here).
+# Five Drive tools read a local file under the same rule: `file_path`, a path or a file:// URL, for update_drive_file
+# and the three imports (drive_helpers._resolve_import_media); `fileUrl`, when it is a file:// URL, for
+# create_drive_file. Their `file_url`, and any other `fileUrl`, is fetched over http or https and is no file here.
+FILE_MAIL_TOOLS = frozenset({"send_gmail_message", "draft_gmail_message"})
+FILE_DRIVE_TOOLS = {"update_drive_file": "file_path", "import_to_google_doc": "file_path", "import_to_google_sheets": "file_path",
+                    "import_to_google_slides": "file_path", "create_drive_file": "fileUrl"}
+ENTRY_KEYS = ("url", "path", "content", "filename", "mime_type", "content_id")  # the first three are where it reads from
+CONTROL = re.compile(r"[\x00-\x1f\x7f-\x9f]")  # it takes line breaks and NULs out of a filename and fails on others
+CONTENT_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._+\-@]*")  # gmail_tools.CONTENT_ID_SAFE_RE, the `content_id` it takes
+SECRET_NAMES = frozenset({".credentials", ".credentials.json", "credentials.json", "client_secret.json", "client_secrets.json",
+                          "service_account.json", "service-account.json", ".npmrc", ".pypirc", ".netrc", ".git-credentials"})
+SECRET_FOLDERS = ("/proc", "/sys", "/dev", "/etc/shadow", "/etc/passwd", "/private/etc/shadow", "/private/etc/passwd",
+                  "~/.kube", "~/.gnupg", "~/.config/gcloud")
 HTML_TAGS = frozenset({"p", "div", "span", "a", "em", "strong", "b", "i", "u", "ul", "ol", "li", "blockquote",
                        "html", "body", "br"})
 LOOKS_HTML = re.compile(r"</?(?:p|div|span|br|a|b|i|em|strong|u|ul|ol|li|blockquote|html|body|table|img|pre|h[1-6])"
@@ -142,9 +163,107 @@ def _is_email(tool: str, tool_input: dict) -> bool:
         k in tool_input for k in ("to", "cc", "bcc", "subject", "htmlBody", "body_format")))
 
 
-def message_problems(tool: str, tool_input: dict, config: dict, chans: set | None = None) -> list[str]:
+# 2026-11-12: a connector tested on a laptop behind a quick tunnel was handed to two colleagues in direct messages that
+# carried the tunnel's address. One relied on it, and a restart of the laptop's app took the address away for good.
+TUNNELS = (".trycloudflare.com", ".ngrok.io", ".ngrok.app", ".ngrok.dev", ".ngrok.pizza", ".ngrok-free.app", ".ngrok-free.dev",
+           ".ngrok-free.pizza", ".loca.lt", ".localtunnel.me", ".serveo.net", ".serveousercontent.com", ".localhost.run",
+           ".lhr.life", ".lhr.rocks", ".pinggy.io", ".pinggy.link", ".pinggy-free.link", ".devtunnels.ms", ".app.github.dev",
+           ".ts.net", ".tunnelmole.net", ".bore.pub", ".loophole.site")
+# The knowledge-base connector refuses to start on the same services (its TEMPORARY_HOSTS); a test holds the two equal.
+HOSTNAME = re.compile(r"(?<![\w.@-])(?:[a-z0-9-]+\.)+[a-z][a-z0-9-]*(?![\w-])")
+NAMED = re.compile(rf"({HOSTNAME.pattern})(?::(\d{{1,5}})(?!\w))?")  # a name and its port, if it has one
+_HOST = r"(localhost|[a-z0-9-]+(?:\.[a-z0-9-]+)*\.local(?:host)?|\d{1,3}(?:\.\d{1,3}){3}|\[[0-9a-f:.]+(?:%[\w.-]+)?\])"
+# A host is read whole: after any scheme or where a bare one starts, to where its name ends, then its port. A public
+# name that only begins like a local one (localhost.example.org, 10.2.3.4.example.org) is no match (2026-11-12). The
+# host of a file:// URL names this disk, as a connector takes a local file: file://localhost/<path> is no address.
+LOCAL = re.compile(rf"(?:(?<!file)(://)|(?<![\w.@-])){_HOST}(?![\w-]|\.[\w-])\.?(?::(\d+)(?!\w))?")
+NEAR = ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "100.64.0.0/10", "fc00::/7")  # the private ranges, the shared one
+# (a carrier's, and a tailnet's addresses: the knowledge-base connector refuses it too) and IPv6's unique-local one
+FILED = re.compile(r"(?:^|\.)(?:config|conf|cfg|cnf|ini|env|rc|settings|properties|json|ya?ml|toml|makefile|dockerfile)\.local$")
+
+
+def _only_here(m, low: str) -> str:
+    """The address one match of LOCAL spells, host and port, when only this machine or its network answers it: a local
+    name or a private or link-local address written as an address (after any scheme but file://, or with a port of one
+    to five digits), a loopback or any-interface address however written, and a bracketed IPv6 one that is any of
+    these or unique-local, however written. "" for any other, and for a file's name with its line number: a name ending
+    in .local with no scheme before it that is a configuration file's (config.local:7), follows a path
+    (src/app.local:42) or has a column after its line (notes.local:17:3). A dotfile (.env.local:12) and a name that
+    goes on (settings.local.json:3) are no match at all. An IP address with no scheme, no `//` and no port before a
+    prefix length (/0 to /32, to /128 for a bracketed IPv6 one) names a range (10.0.0.0/8, [fd00::]/8): ""."""
+    import ipaddress
+    (scheme, host, port), at = m.groups(), m.start(2)
+    shown, told = host + (":" + port if port else ""), bool(scheme) or bool(port) and len(port) < 6
+    if host[-1].isalpha():
+        filed = host.endswith(".local") and not scheme and bool(
+            FILED.search(host) or low[at - 1:at] in ("/", "\\") and low[max(at - 2, 0):at] != "//"
+            or re.match(r":\d", low[m.end():m.end() + 2]))
+        return shown if told and not filed else ""
+    ranged = re.match(r"/(\d{1,3})(?![\w/]|\.\w)", low[m.end():])  # past it, only what ends a word
+    if ranged and not (scheme or port or low[max(at - 2, 0):at] == "//") and int(ranged[1]) <= (128 if host[0] == "[" else 32):
+        return ""
+    try:
+        ip = ipaddress.ip_address(host.strip("[]").split("%")[0])  # past a zone: fe80::12%en0
+    except ValueError:
+        return ""
+    ip = getattr(ip, "ipv4_mapped", None) or ip  # ::ffff:10.0.0.1 is 10.0.0.1
+    near = ip.is_link_local or any(ip in ipaddress.ip_network(net) for net in NEAR)
+    return shown if ip.is_loopback or ip.is_unspecified or near and (told or host[0] == "[") else ""
+
+
+def _here(host: str) -> bool:
+    """Whether only this machine or its network answers a host as a URL gives it (an IPv6 one in brackets, with a port
+    or none): `_only_here`, read as if a scheme stood before it."""
+    m = LOCAL.fullmatch("://" + host)
+    return bool(m and _only_here(m, m.string))
+
+
+def _carried(name: str) -> str:
+    """The address a wildcard-DNS name carries, as nip.io and sslip.io read it; "" for none. Four numbers joined by dots
+    or by dashes, or eight hex digits, after the start, a dot or a dash (www.10.0.0.5.nip.io, app-10-0-0-5.sslip.io,
+    0a000005.nip.io), or an IPv6 address with dashes for its colons as a label of its own (--1.sslip.io is [::1])."""
+    import ipaddress
+    four = re.fullmatch(r"(?:.*[.-])?(?:(\d{1,3}([.-])\d{1,3}\2\d{1,3}\2\d{1,3})|([0-9a-f]{8}))\.(?:nip|sslip)\.io", name)
+    six = re.fullmatch(r"(?:.*\.)?([0-9a-f]{0,4}(?:-[0-9a-f]{0,4}){2,7})\.(?:nip|sslip)\.io", name)
+    try:
+        if four:
+            return four[1].replace("-", ".") if four[1] else str(ipaddress.IPv4Address(int(four[3], 16)))
+        return f"[{ipaddress.IPv6Address(six[1].replace('-', ':'))}]" if six else ""
+    except ValueError:
+        return ""
+
+
+def temporary_addresses(texts: list, config: dict):
+    """The addresses in these words that can change, or that only this machine or its network answers: a quick tunnel's
+    host (a subdomain of a tunnel service, or a host the config names and its subdomains), a tunnel service's own host
+    with a port (bore.pub:41234, as bore hands one out; its bare name and its documentation are none) and, unless
+    `local` is false, a local name or a private address written with a scheme or a port, a loopback address however
+    written (`_only_here`), and a wildcard-DNS name that carries a private or loopback address however written
+    (`_carried`: 192.168.1.20.nip.io). A user and password before a host are read past and never shown. A string when the setting
+    cannot be read. {"temporary_addresses": {"hosts": ["<more>"], "local": true}}; no key, no rule, and a key that is
+    there and null is a setting that cannot be read."""
+    if "temporary_addresses" not in config:
+        return []
+    rule = config["temporary_addresses"]
+    more, local = (rule.get("hosts", []), rule.get("local", True)) if isinstance(rule, dict) else (None, None)
+    if not isinstance(more, list) or not all(isinstance(h, str) and h.strip() for h in more) or not isinstance(local, bool):
+        return ('temporary_addresses in the synthesis config needs an object, {} or one with "hosts" as a list of host names '
+                'and "local" as true or false (either may be absent); sends are blocked until it is fixed')
+    exact, own = {h.strip().lower().lstrip(".") for h in more}, {h.lstrip(".") for h in TUNNELS}
+    ends, found = TUNNELS + tuple("." + h for h in exact), set()
+    for low in (re.sub(r"://[^\s/?#]*@", "://", str(text).lower()) for text in texts):  # to the last @: a password may hold one
+        for h, port in NAMED.findall(low):
+            shown = h + (":" + port if port else "")
+            found |= ({h} if h in exact or h.endswith(ends) else {shown} if port and h in own
+                      else {shown} if local and _here(_carried(h)) else set())
+        found |= {_only_here(m, low) for m in LOCAL.finditer(low)} - {""} if local else set()
+    return sorted(found)
+
+
+def message_problems(tool: str, tool_input: dict, config: dict, chans: set | None = None, session: dict | None = None) -> list[str]:
     """Why this outgoing message can't go as written, before anyone is asked to approve it. A register rule naming
-    channels holds only there (2026-10-27: a line that fits scheduling went out on Jira answers)."""
+    channels holds only there (2026-10-27: a line that fits scheduling went out on Jira answers). An address that can
+    change is released only by the principal's approval of the address itself, which the message's own never is."""
     from synthesis import sends
     fmt, chans = config.get("message_format") or {}, chans or {sends.channel(tool, tool_input)}
     breaks_ok = bool(fmt.get("allow_line_breaks_in_paragraphs")) or any(  # a document's lines are its own
@@ -157,6 +276,15 @@ def message_problems(tool: str, tool_input: dict, config: dict, chans: set | Non
             shown, with_links, markup = _rendered(text, breaks_ok)
             texts.append(with_links)  # markup and entities must not hide a banned phrase (2026-07-29)
             html_parts.append((key, shown, markup))
+    held = temporary_addresses(texts, config)
+    if isinstance(held, str):
+        return [held]
+    if held and not approvals.backed("temporary-address", held, session):
+        code = approvals.request("temporary-address", held, "an address that can change, in a message: " + ", ".join(held)[:140])
+        return [f"it holds an address that can change or that only this machine answers ({', '.join(held)}). Such an address "
+                "is never given to anyone: what another person uses runs at a permanent address, on infrastructure that outlives "
+                f"this machine. If the principal means to send exactly this (their own test), they type {approvals.how(code)} "
+                "for the address itself; the message then still waits for its own approval"]
     for rule in config.get("forbidden_phrases", []):
         # Case-insensitive unless the rule says otherwise: a rule against a miscased brand
         # must not block the correctly cased one (2026-08-03).
@@ -207,16 +335,219 @@ def message_problems(tool: str, tool_input: dict, config: dict, chans: set | Non
         if official and any(i and str(i).lower() in raw.lower() for i in person.get("identifiers", [])) and any(
                 k not in ADDRESSED and re.search(rf"\b{re.escape(official)}\b", t) for k, t in strings):
             problems.append(f"this message involves someone who goes by {preferred}; write {preferred}, not {official}")
-    return problems
+    return problems + _unread_files(tool, tool_input)
+
+
+def _unread_files(tool: str, tool_input: dict, bound: dict | None = None, whole: bool = True) -> list[str]:
+    """Why a workspace-connector call would not attach or upload what it names, judged as the connector reads it. A
+    file is judged as it reads one: the path whole (it resolves a relative one in its own folder and expands no
+    `~`), links followed, letters as written, the file inside the outbox or the connector's default attachment
+    folder, and not one it reads from nowhere. A Drive call gives the file's content once. Given `bound`, each file
+    it would read goes into it under its real path with the hash of its bytes (of its first byte alone when not
+    `whole`, which shows it can be read), and one that cannot be read is a problem."""
+    name = tool.rsplit("__", 1)[-1]
+    key, given = FILE_DRIVE_TOOLS.get(name), tool_input.get("attachments") if name in FILE_MAIL_TOOLS else None
+    if not key and given is None:
+        return []
+    try:  # some clients send the list as its JSON text, which the connector reads too: a list's text and no other
+        parsed = json.loads(given) if isinstance(given, str) else None
+        given = parsed if isinstance(parsed, list) else given
+    except ValueError:
+        pass
+    outbox, problems, until = paths.outbox(), [], time.monotonic() + HASH_SECONDS
+    roots = tuple(os.path.realpath(os.path.expanduser(r)).rstrip(os.sep) + os.sep for r in (str(outbox), "~/.workspace-mcp/attachments"))
+    rule = (": the mail connector takes an attachment only from its `url`, the file at its `path` or standard base64 "
+            "`content` with a `filename`, so this one would not go as given. Give one of the three (a file by its full "
+            f"path, staged in {outbox}) and file this send again")
+    stage = f"copy the file into {outbox} (make the folder if it is missing), give that copy's full path "
+
+    def fetched(url: str) -> str:
+        """Why the mail connector would not attach a `url` as given (2.1.0: _resolve_url_attachments). Its own download
+        link it reads from its disk, with no host or on one its settings name, which the guard cannot see; any other
+        `url` it fetches over http or https from a named host, and in no other way, and from no host only this machine
+        or its network answers (core.http_utils: it records the entry as failed and sends the mail without it)."""
+        from urllib.parse import urlparse
+        try:
+            parsed = urlparse(url)
+            parts, web = parsed.path.strip("/").split("/"), parsed.scheme in ("http", "https") and bool(parsed.hostname)
+        except ValueError:
+            parts, web = [], False
+        if len(parts) == 2 and parts[0] == "attachments":
+            return (f"gives the `url` {url}, which the mail connector reads as its own download link (`/attachments/<id>`, "
+                    "on any host it may serve) from a file it saved on this disk, bytes an approval cannot bind: "
+                    f"{stage}as the attachment's `path`, and file this send again")
+        if web and (_here(parsed.netloc.rsplit("@", 1)[-1].lower()) or _here(_carried(parsed.hostname))):
+            return (f"gives the `url` {url}, whose host only this machine or its network answers, and the mail connector "
+                    "fetches from no such host: it would send the mail without it. For a file on this disk, "
+                    f"{stage}as the attachment's `path`, and file this send again")
+        try:  # it fetches from no address that is not global: a documentation or a reserved one too
+            import ipaddress
+            off = web and not ipaddress.ip_address(parsed.hostname.split("%")[0]).is_global
+        except ValueError:
+            off = False  # a name: where it leads is known only when it is looked up
+        if off:
+            return (f"gives the `url` {url}, whose host is not an address on the internet, and the mail connector fetches "
+                    "from no such host: it would send the mail without it. Give a `url` on a public host, or for a file "
+                    f"on this disk, {stage}as the attachment's `path`, and file this send again")
+        return "" if web else (f"gives the `url` {url}, and the mail connector fetches a `url` only over http or https "
+                               f"from a named host, so it would attach nothing: for a file on this disk, {stage}as the "
+                               "attachment's `path`, and file this send again")
+
+    def unread(file: str, what: str = "the attachment", who: str = "the mail connector",
+               give: str = "as the attachment's `path`, and file this send again") -> str:
+        if "\0" in file:  # it names no file, and a newer Python raises where such a path is resolved
+            return f"{what} {file!r} holds a NUL character, which names no file: {stage}{give}"
+        real = os.path.realpath(file)
+        names = real.lower().split(os.sep)
+        why = ("is not a full path" if not os.path.isabs(file) else "does not exist" if not os.path.exists(real)
+               else "is not a file" if not os.path.isfile(real) else "")
+        if not why and (names[-1] in SECRET_NAMES or any(n in (".env", ".ssh", ".aws") or n.startswith(".env.") for n in names)
+                        or any((real + os.sep).startswith(os.path.expanduser(f) + os.sep) for f in SECRET_FOLDERS)):
+            return (f"{what} {file} is one {who} never reads, whatever folder holds it, since its name "
+                    "or a folder above it marks secrets (a .env, key or credentials file): leave it out and tell the principal")
+        why = why or ("" if real.startswith(roots) else f"is outside the folders {who} reads")
+        try:
+            if not why and bound is not None:
+                bound[real] = _sha256(real, until, whole)
+        except (OSError, ValueError) as exc:
+            return f"{what} {file} cannot be read ({exc.strerror or exc})"
+        return why and f"{what} {file} {why}: {stage}{give}"
+
+    named, remote = tool_input.get(key) if key else None, tool_input.get("file_url") if key == "file_path" else None
+    twice = [k for k in ("content", "file_path", "file_url", "base64_content") if tool_input.get(k) is not None] if key == "file_path" else []
+    if len(twice) > 1:
+        problems.append(f"this call gives {' and '.join(f'`{k}`' for k in twice)}, and the connector takes exactly one source "
+                        "for a file's content: give one and make this call again")
+    if isinstance(named, str):
+        from urllib.parse import unquote, urlparse
+        give = f"as `{key}`" + (", after `file://`," if key == "fileUrl" else "") + " and make this call again"
+        try:
+            url = urlparse(named)  # a file:// URL is the path in it, percent-decoded, led by any host but localhost
+        except ValueError as exc:  # the connector parses it the same way first, and fails the call
+            problems.append(f"`{key}` {named} cannot be parsed as a path or a URL ({exc}), so the connector would refuse "
+                            f"the call: give the staged file's full path {give}")
+            url = None
+        if url and url.scheme == "file":
+            named = unquote(("//" + url.netloc if url.netloc.lower() not in ("", "localhost") else "") + url.path)
+        if url and (url.scheme == "file" or key == "file_path"):
+            problems.append(unread(named, "the file", "the connector", give))
+    if isinstance(remote, str) and (remote.lower().startswith("file:") or os.path.isabs(remote)):
+        problems.append(f"`file_url` is fetched over http or https, and {remote} is a file on this disk: copy the file into "
+                        f"{outbox} (make the folder if it is missing), give that copy's full path as `file_path` and make "
+                        "this call again")
+    if given is not None and not isinstance(given, list):
+        problems.append("`attachments` is neither a list of entries nor the JSON text of one, and the mail connector "
+                        "refuses any other shape: give a list with one entry for each file and file this send again")
+    for place, entry in enumerate(given if isinstance(given, list) else [], 1):
+        if not isinstance(entry, dict):
+            problems.append(f"attachment {place} is not an object{rule}")
+            continue
+        sources = [k for k in ENTRY_KEYS[:3] if (k in entry if k == "url" else entry.get(k))]  # a `url` key leads, even empty
+        shown, cid = entry.get("filename"), entry.get("content_id")
+        which = f"attachment {place}" + (f" ({shown})" if isinstance(shown, str) and shown and not CONTROL.search(shown) else "")
+        unknown, url = ", ".join(f"`{k}`" for k in entry if k not in ENTRY_KEYS), entry.get("url")
+        set_here = [f"`{k}`" for k in ("error", "_resolved_bytes") if k in entry]
+        if set_here:
+            problems.append(f"attachment {place} carries {' and '.join(set_here)}, which the mail connector sets on an entry "
+                            "itself: it leaves out an entry that carries `error`, and takes `_resolved_bytes` before the "
+                            "entry's own source. Remove it and file this send again")
+        texts = [f"`{k}` {entry[k]!r}" for k in ("filename", "mime_type")
+                 if entry.get(k) and not (isinstance(entry[k], str) and not CONTROL.search(entry[k]))]
+        if texts:
+            problems.append(f"attachment {place} gives {' and '.join(texts)} with a control character, or not as text: the "
+                            "mail connector takes line breaks and NULs out of a filename, so it goes under another name than "
+                            "the one shown, and leaves out an entry whose name or type is not text. Give each as plain text "
+                            "and file this send again")
+        if cid and (re.search(r"[\x00-\x1f\x7f]", str(cid)) or not CONTENT_ID.fullmatch(str(cid).strip().strip("<>").strip())):
+            problems.append(f"attachment {place} gives the `content_id` {cid!r}, which the mail connector refuses, leaving the "
+                            "entry out: it takes letters, digits, '.', '_', '+', '-' and '@', led by a letter or a digit, in "
+                            "angle brackets or not. Give one such and file this send again")
+        if sources == ["path"]:  # with no `filename` it sends a file under the name of the one its path leads to
+            fault, file = unread(str(entry["path"])), str(entry["path"])
+            real = "" if fault or entry.get("filename") else os.path.basename(os.path.realpath(file))
+            problems.append(fault or real != os.path.basename(file) and real and (
+                f"{which} is a link, {file}, to a file named {real}, and the mail connector sends a file it reaches "
+                "through a link under the name of the file a link leads to, not the name shown here: give the name to "
+                "show as its `filename`, or the file's own path as its `path`, and file this send again"))
+        elif sources == ["url"] and isinstance(url, str) and url.strip():
+            fault = fetched(url)
+            problems.append(fault and f"{which} {fault}")
+        elif len(sources) > 1:
+            problems.append(f"{which} gives {' and '.join(f'`{s}`' for s in sources)}: the mail connector reads only the "
+                            f"`{sources[0]}` of such an entry, empty or not, and never the rest; give one of them and file "
+                            "this send again")
+        else:
+            fault = ("has none of `path`, `content` and `url`" + (f" ({unknown}: not read)" if unknown else "") if not sources
+                     else "has an empty `url`" if sources == ["url"]
+                     else "gives `content` with no `filename`" if not entry.get("filename")
+                     else "" if _standard_base64(entry["content"]) else "gives `content` that is not standard base64")
+            problems.append(fault and f"{which} {fault}{rule}")
+    return [p for p in problems if p]
+
+
+def _standard_base64(text) -> bool:
+    """Whether the connector's decoder gives back the bytes this encodes. It skips every letter outside the standard
+    alphabet, so URL-safe text or a `data:` prefix decodes to other bytes, or to nothing it can attach."""
+    import base64
+    try:
+        return isinstance(text, str) and base64.b64decode("".join(text.split()), validate=True) is not None
+    except ValueError:
+        return False
+
+
+HASH_SECONDS = 2.0  # of the 5 a pre-tool-use hook is given: a harness passes over a hook that runs past its time
+
+
+def _sha256(file: str, until: float, whole: bool = True) -> str:
+    """The hash of a file's bytes (of its first byte alone when not `whole`), read before `until`: a file that takes
+    longer is one the guard cannot bind. A read on a stalled disk or mount blocks inside one call, past any check made
+    between chunks, so the read runs in a daemon thread the guard stops waiting for at `until`, and the thread checks
+    the limit again on its way out, an empty file's included. A read that never returns is left behind: the hook's
+    process answers and exits without waiting for it."""
+    import hashlib
+    import threading
+    late = TimeoutError(f"not within the {HASH_SECONDS:g} s the guard may spend reading the files a call names")
+    done, out = threading.Event(), []
+
+    def read() -> None:
+        try:
+            digest = hashlib.sha256()
+            with open(file, "rb") as handle:
+                for chunk in iter(lambda: handle.read(1 << 20), b"") if whole else [handle.read(1)]:
+                    digest.update(chunk)
+                    if time.monotonic() >= until:
+                        break
+            out.append(late if time.monotonic() >= until else digest.hexdigest())
+        except Exception as exc:  # handed to the guard's thread, which says why the file cannot be read
+            out.append(exc)
+        finally:
+            done.set()
+
+    threading.Thread(target=read, name="synthesis-file-hash", daemon=True).start()
+    if not done.wait(max(0.0, until - time.monotonic())):
+        raise late
+    if isinstance(out[0], Exception):
+        raise out[0]
+    return out[0]
+
+
+def check_upload(tool: str, tool_input: dict) -> str | None:
+    """A Drive upload that asks for no code still names a file the connector must read: one it would not read is
+    refused here, as a send's is before its code, and so is one it cannot read: its first byte is read, since no
+    approval binds its bytes."""
+    unread = _unread_files(tool, tool_input, {}, whole=False)
+    return "This call can't go as written: " + "; ".join(unread) + "." if unread else None
 
 
 def check_send(tool: str, tool_input: dict, config: dict, session: dict | None = None) -> str | None:
     """session: the hook payload, whose transcript shows who typed an approval (a shell's script passes none)."""
-    problems = message_problems(tool, tool_input, config)
+    files: dict = {}  # each file the connector will read, with the hash of its bytes: an approval of a path alone let
+    # a copy replaced in the outbox after the principal's code go out in its place (as the iMessage sender binds a photo)
+    problems = message_problems(tool, tool_input, config, session=session) or _unread_files(tool, tool_input, files)
     if problems:
         return "This message can't go out as written: " + "; ".join(problems[:6]) + "."
     from synthesis import sends
-    subject, chan = {"tool": tool, "input": tool_input}, sends.channel(tool, tool_input)
+    subject, chan = {"tool": tool, "input": tool_input, **({"files": files} if files else {})}, sends.channel(tool, tool_input)
     summary = f"{tool}: " + " ".join(t for _, t in _strings(tool_input))[:160]
     others = _invited_today(tool, tool_input, config)  # a meeting on today has an approval of its own; no window covers it
     if isinstance(others, str):
@@ -240,7 +571,9 @@ def check_send(tool: str, tool_input: dict, config: dict, session: dict | None =
                 "unless the principal asked for today. If they did, show them the exact event and ask them to type "
                 f"{approvals.how(code)} for this same-day meeting. Then make this identical call again." + reshape)
     return ("Sending needs the principal's approval of this exact message. Show them the exact text and "
-            f"recipient and ask them to type {approvals.how(code)}. Then make this identical call again." + reshape)
+            f"recipient and ask them to type {approvals.how(code)}. Then make this identical call again." + reshape
+            + (" The approval covers each file the call has the connector read as it is now, so name those files to the "
+               "principal too: one changed before the call needs a new code." if files else ""))
 
 
 # 2026-10-27: a series moved to a new hour brought back an occurrence canceled at the old hour, double-booked.
@@ -1427,6 +1760,84 @@ def check_deploy(command: str, config: dict, cwd: str | None = None, session: di
             "Then run the identical command again.")
 
 
+TUNNEL_SSH = ("serveo.net", "localhost.run", "pinggy.io")
+CARRIERS = ("pnpm", "yarn", "npm", "bun", "docker", "podman", "nerdctl")  # run the package, the program or the image their words name
+NGROK = ("http", "tcp", "tls", "start", "start-all", "config", "version", "update", "diagnose", "api", "service", "credits",
+         "completion", "help", "authtoken")  # its subcommands: the first five start a tunnel
+LOOPHOLE = ("http", "path", "webdav", "account", "completion", "help", "version")  # its subcommands: the first three start one
+SSH_VALUED = "BbcDEeFIiJLlmOoPpQRSWw"  # ssh's options that take a value: joined on, or the next word
+CLOUDFLARED = ("login", "create", "route", "vnet", "run", "list", "ready", "info", "ingress", "delete", "cleanup", "token",
+               "diag", "proxy-dns", "help", "h")  # `cloudflared tunnel`'s subcommands: each one a named tunnel's
+
+
+def _reverse_host(rest: list[str], valued: str = SSH_VALUED) -> str:
+    """The host an ssh command opens a reverse forward on, "" when it opens none: its destination (the first word that
+    is no option and no option's value, without the user, a scheme or a port) when -R is among its options, before the
+    destination or after it: alone, in a cluster (-NR) or with its value joined on. A jump host, a key file's name and
+    the words of the remote command are none of it (2026-11-12: a forward to a host that ends with a service's
+    letters, and one that only named a service, were held; -NR was not)."""
+    reverse, host, i = False, None, 0
+    while i < len(rest) and (host is None or rest[i].startswith("-")):  # the next plain word after the destination starts the remote command
+        word, i = rest[i], i + 1
+        if not word.startswith("-"):
+            host = re.match(r"(?:ssh://)?(?:[^@/]*@)?([^:/]*)", word.lower())[1].rstrip(".")
+            continue
+        at = next((j for j, c in enumerate(word) if c in valued), 0)  # the first letter that takes a value
+        reverse, i = reverse or word[at] == "R", i + (0 < at == len(word) - 1)  # nothing joined on: its value is the next word
+    return host or "" if reverse else ""
+
+
+def _tunnels(words: list[str]) -> bool:
+    """Does this command start a quick tunnel: an address handed out for as long as the command runs? A program is read
+    without a version or a tag (localtunnel@2.0.2, cloudflare/cloudflared:latest), and the words of a package runner or
+    a container from each one on, as the command it runs (2026-11-12: `docker run cloudflare/cloudflared tunnel --url`,
+    `ngrok --log=stdout http` and `npx --yes localtunnel@2.0.2 --port` started unheld). `cloudflared tunnel` is quick
+    with --url or --hello-world and no subcommand; with one (`tunnel run --url ... <name>`) it is a named tunnel's.
+    `bore local` to bore.pub, `tmole <port>`, `loophole http`, `path` or `webdav` and `tailscale funnel <target>` start one;
+    their lookups (`tailscale funnel status`) and a bore server of one's own do not."""
+    def named(word: str) -> str:
+        return re.split("[:@]", os.path.basename(word))[0]
+
+    def starts(name: str, rest: list) -> bool:
+        def flag(*names):
+            return any(w in names or w.startswith(tuple(n + "=" for n in names)) for w in rest)
+
+        def value(*names) -> str:  # what an option is given: joined on after "=", or the next word
+            return next((w.split("=", 1)[1] if "=" in w else after for w, after in zip(rest, rest[1:] + [""])
+                         if w in names or w.startswith(tuple(n + "=" for n in names))), "")
+        plain = [w for w in rest if not w.startswith("-")]
+        return bool(name == "cloudflared" and "tunnel" in rest and flag("--url", "--hello-world")
+                    and not any(w in CLOUDFLARED for w in rest[rest.index("tunnel") + 1:])
+                    or name == "ngrok" and next((w for w in rest if w in NGROK), "") in NGROK[:5]  # past its own options and their values
+                    or name == "devtunnel" and plain[:1] == ["host"]  # past its own options
+                    or name in ("lt", "localtunnel") and flag("--port", "-p")
+                    or name == "bore" and rest[:1] == ["local"] and ("." + value("--to", "-t").lower().rstrip(".")).endswith(".bore.pub")
+                    or name in ("tmole", "tunnelmole") and plain[:1] and plain[0].isdigit()
+                    or name == "loophole" and next((w for w in rest if w in LOOPHOLE), "") in LOOPHOLE[:3]
+                    or name == "tailscale" and plain[:1] == ["funnel"] and plain[1:2] and "off" not in plain
+                    and plain[1] not in ("status", "reset", "help")  # a funnel is public; `tailscale serve` is the tailnet's own
+                    or name in ("ssh", "pinggy", "autossh")  # to the service's own name, or a subdomain of it
+                    and ("." + _reverse_host(rest, SSH_VALUED + "M" * (name == "autossh"))).endswith(  # autossh's -M <port>
+                        tuple("." + s for s in TUNNEL_SSH)))
+    spots = [i for i, w in enumerate(words) if i and not w.startswith("-")] if named(words[0]) in CARRIERS else [0]
+    return any(starts(named(words[i]), words[i + 1:]) for i in spots)
+
+
+def check_tunnel(command: str, config: dict, cwd: str, session: dict | None = None) -> str | None:
+    """Starting a quick tunnel waits for the principal's code, where the config has `temporary_addresses` (the key,
+    whatever it holds): its address is gone when the command stops, so it serves their own test and nothing another
+    person is given."""
+    if "temporary_addresses" not in config or not any(  # in each reading of it: `T=cloudflared; $T tunnel --url ...`
+            _tunnels(words) for text in _resolved(command) for words, _ in _parse(text, cwd)[0] if words):
+        return None
+    if approvals.consume("tunnel", command, session):
+        return None
+    code = approvals.request("tunnel", command, f"a temporary tunnel: {command[:150]}")
+    return ("This starts a temporary tunnel: its address is gone for good when the command stops. It serves the principal's "
+            "own test and is never given to anyone; what another person uses is deployed at a permanent address first. Show "
+            f"them this exact command and ask them to type {approvals.how(code)}. Then run the identical command again.")
+
+
 # --- destruction (R3.4) -------------------------------------------------------------------------
 
 
@@ -2144,8 +2555,11 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
     be led by a plain folder elsewhere."""
     import ast
     import copy
+    import warnings
     try:
-        tree = ast.parse(source) if source.strip() else None
+        with warnings.catch_warnings():  # what Python thinks of the program's escapes is not the hook's to print
+            warnings.simplefilter("ignore")
+            tree = ast.parse(source) if source.strip() else None
     except (SyntaxError, ValueError, RecursionError):
         tree = None
     if tree is None:
@@ -3795,7 +4209,7 @@ def check_desktop(name: str, tool: str, tool_input: dict, config: dict, session:
         kind == "click" and not s.strip() or kind == "menu" and re.search(r"(?:^|> )send\b", v, re.I)
         or kind == "key" and _sends_key(v, reached) or kind == "type" and re.search(r"[\r\n]", v) and _sends_key("return", reached))]
     problems = message_problems("desktop_type", {"message_text": "\n\n".join(typed)}, config,
-                                {c for c, _ in reached.values()}) if typed and (reached or sending) else []
+                                {c for c, _ in reached.values()}, session) if typed and (reached or sending) else []
     if problems:
         return "These words can't go out as written: " + "; ".join(problems[:6]) + "."
     if not sending:
@@ -3901,7 +4315,7 @@ def check_outgoing(command: str, config: dict, cwd: str, session: dict | None = 
     if not posts:
         return None
     text, chans = "\n\n".join(t for _, t, _ in posts), sorted({c for c, _, _ in posts})
-    problems = message_problems("Bash", {"message_text": text}, config, set(chans))
+    problems = message_problems("Bash", {"message_text": text}, config, set(chans), session)
     if problems:
         return "This command posts a message that can't go out as written: " + "; ".join(problems[:6]) + "."
     dirs = sorted({w for _, _, w in posts})  # where it runs, after its own cd: a re-run elsewhere is the same send
@@ -3942,7 +4356,8 @@ def check(tool: str, tool_input: dict, config: dict, cwd: str | None = None, ses
         command = shell_command(tool_input)
         return (check_destructive(command, config, cwd) or check_self_grant(command, cwd, config)  # a recursive delete is named as one
                 or check_pr_gate(command, config, cwd, session)
-                or check_deploy(command, config, cwd, session) or check_outgoing(command, config, cwd, session)
+                or check_deploy(command, config, cwd, session) or check_tunnel(command, config, cwd, session)
+                or check_outgoing(command, config, cwd, session)
                 or check_claimed(_shell_writes(command, cwd), cwd, session))
     if tool in FILE_TOOLS:
         return check_file_write(tool, tool_input, cwd, config) or check_claimed(_file_targets(tool, tool_input), cwd, session)
@@ -3954,4 +4369,4 @@ def check(tool: str, tool_input: dict, config: dict, cwd: str | None = None, ses
     # The account is checked before the send approval, so no approval is spent on the wrong account.
     reason = routed(tool, tool_input) and check_account(tool, tool_input, config, cwd)
     return reason or check_travel(tool, tool_input, config) or (
-        check_send(tool, tool_input, config, session) if _sends(tool, tool_input, config) else None)
+        check_send(tool, tool_input, config, session) if _sends(tool, tool_input, config) else check_upload(tool, tool_input))

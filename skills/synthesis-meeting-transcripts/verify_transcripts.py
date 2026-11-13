@@ -72,7 +72,7 @@ from pathlib import Path
 # own output could reveal that the copy being run was stale. This constant plus the banner
 # line below close that gap — if the printed version doesn't match SKILL.md's frontmatter
 # version, the copy being run is not the one you think it is.
-SCRIPT_VERSION = "1.1.1"
+SCRIPT_VERSION = "1.2.0"
 
 # A Docs image exported to markdown links googleusercontent.com with an access key that opens the image to
 # anyone holding the URL; 94 such keys sat in saved transcripts by 2026-10-13. Saving redacts them, and the

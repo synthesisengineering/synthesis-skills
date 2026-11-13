@@ -5,7 +5,7 @@ license: "Apache-2.0"
 depends_on: ["synthesis-thinking-framework", "synthesis-context-lifecycle", "synthesis-checkpoint", "synthesis-anti-shortcuts", "synthesis-grounding-discipline", "synthesis-implementation-integrity", "synthesis-project-management", "synthesis-adversarial-review", "synthesis-decision-packet", "synthesis-fact-checking", "synthesis-writing-craft", "synthesis-agent-conformance"]
 metadata:
   author: "Rajiv Pant"
-  version: "4.0.0"
+  version: "4.1.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
   format: v5
@@ -32,6 +32,7 @@ skills that already exist rather than restating them.
 10. **Close honestly.** Done means every item and criterion checked with executed evidence, standing items dispositioned, no open blocker, cited evidence inside the project, and every scheduled job deleted and read back. Otherwise close incomplete with the reason.
 11. **Delegate with discipline.** At most five deliverables per brief, no minimizing words, each brief's share of shared budgets stated, and every non-clean return audited against its brief and diff.
 12. **Alerts carry counts and a pointer only,** honor the mute flag, record posted or suppressed, and fire again for each new question. The written report always exists.
+13. **At every wake, check what other people rely on before the next item:** `python3 -S "$HOME/.synthesis/v5/current/skills/synthesis-daily-rituals/scripts/relied_on.py" --all`. Lead the reply with any `DOWN` line. So does a check that never started, exited 2 or printed none of the lines it documents: not checked, never read as healthy. It is an incident: the principal is told first, the people affected only on the principal's approval. A test two colleagues relied on once stopped, unseen through two scheduled check-ins.
 
 ## Contents
 
@@ -42,6 +43,7 @@ skills that already exist rather than restating them.
 - `scripts/autopilot_cli.py`: the helper commands (`$AP` below); the turn-end check itself is the core's `synthesis/autopilot.py`.
 - [references/delegation.md](references/delegation.md): the 2.4.0 activation rules, delegation contract, decision protocol, orchestration, coordination, standing gates, fan-out and alerts. Read at engagement and before each decision or dispatch.
 - [references/execution-doctrine.md](references/execution-doctrine.md): delivery versus acceptance, ready work, retries, external effects, children, verification. Read when a step fails, waits, touches an outside system, or a child returns.
+- [references/uncertainty-journal.md](references/uncertainty-journal.md): how a run records a question that could change its next decision and holds the tasks that depend on it. Read when a missing fact blocks a task.
 - [references/domain-quality.md](references/domain-quality.md): what each kind of work must pass. Read before writing completion criteria and before accepting.
 - [references/coverage-map.md](references/coverage-map.md): where every rule of 2.4.0 and 3.6.7 lives now (ruling D8).
 - [references/preserved.md](references/preserved.md): what was not kept and why, the 3.6.7 SKILL.md verbatim, and 2.4.0 passages reworded; [references/preserved-engine.md](references/preserved-engine.md), [references/preserved-native.md](references/preserved-native.md) and [references/preserved-review.md](references/preserved-review.md) hold the 3.6.7 reference files verbatim. Read only to review the cut.

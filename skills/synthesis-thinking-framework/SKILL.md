@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "3.0.0"
+  version: "3.0.1"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
   format: v5
@@ -31,7 +31,7 @@ A five-mode thinking methodology with a pre-response protocol. Use it to choose 
 
 - [references/five-modes.md](references/five-modes.md): the five thinking modes in full, each with when to apply it, its discipline, practice and anti-pattern. Read it for a strategic, unfamiliar or cross-domain problem, or when unsure which mode a question needs.
 - [references/decision-ownership.md](references/decision-ownership.md): the shared contract for who resolves a choice. Read it before turning analysis into a question or an action.
-- [references/decisive-uncertainty.md](references/decisive-uncertainty.md): how to find and settle the fact that could change a decision, with the autopilot journal adapter. Read it when a missing fact could change the next decision.
+- [references/decisive-uncertainty.md](references/decisive-uncertainty.md): how to find and settle the fact that could change a decision (an autopilot run's journal for it is in synthesis-autopilot). Read it when a missing fact could change the next decision.
 - [references/related-skills.md](references/related-skills.md): how code planning, PR review, content framing and tree of thought build on this framework. Read it when choosing which sibling skill to load.
 - [references/coverage-map.md](references/coverage-map.md): where each part of the 2.1.1 text now lives.
 - Pre-Response Protocol, Depth Calibration, Decision ownership and execution: below.
@@ -80,4 +80,4 @@ Execute an already-decided or delegated technical choice after checking its cons
 
 For mixed-domain work, evaluate every promised outcome in its own terms. A software test does not establish writing quality, and an eloquent explanation does not establish a deployment. Define what observation would discriminate a useful result from a plausible but wrong one before implementation.
 
-Use the [decisive-uncertainty method](references/decisive-uncertainty.md) when a missing fact could change the next decision. Prefer the cheapest credible discriminating observation, retain refuted predictions, and stop when the required decision is supported. Its autopilot journal adapter binds actual local execution to the affected acceptance closure; unsupported semantic and external-state questions remain explicit.
+Use the [decisive-uncertainty method](references/decisive-uncertainty.md) when a missing fact could change the next decision. Prefer the cheapest credible discriminating observation, retain refuted predictions, and stop when the required decision is supported. In an autopilot run, the journal adapter (synthesis-autopilot, `references/uncertainty-journal.md`) binds actual local execution to the affected acceptance closure; unsupported semantic and external-state questions remain explicit.

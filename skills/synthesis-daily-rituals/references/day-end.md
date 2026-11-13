@@ -14,6 +14,8 @@ Remote readiness and final verification · Publishing at day-end.
 
 ## Day-End Modes (v2.14.0) — ask first, every time
 
+**Before the question, in every mode, check what other people rely on:** `python3 <rituals>/scripts/relied_on.py --workspace <W>`. **A `DOWN` line is the first thing in the plan and in the reply to the principal, before anything else,** the mode question and the critical deadlines included. It is an incident, so the principal is told first, with who is affected and what the fix is, and the people affected are told only on the principal's approval. Exit 2 means nothing was checked, and that is said in the same place ([day-start.md](day-start.md), Step 1). So is a run that never started or that printed none of the lines [scripts.md](scripts.md) documents: it is reported first, as not checked, and never read as healthy.
+
 Before Step 1, ask the user the one-letter mode question — **f** (full) / **q** (Quick Close) / **o** (observer) — every time, even when a mode seems obvious. If a launcher or opening prompt already named the mode, confirm it in one line instead of re-asking. Record the chosen mode in Step 7.
 
 | Mode | Human moments | Steps run | Steps skipped |
@@ -102,7 +104,7 @@ Native memory stays ON in every harness as a capture buffer; synthesis records a
 
 A quote or timestamp written into a record must come from something a tool actually read. An agent once fabricated a chat message by tweaking a real message's timestamp.
 
-- [ ] Run `python3 <synthesis-agent-guardrails>/scripts/provenance_scan.py --since <today> <today's transcripts, daily plan, and the CONTEXT.md and session logs written today>`. Each Slack timestamp written today must match a synced read; the scan names every one that does not. Fix or remove each named line before the close (correct it from the source, or mark it unverified); never "fix" it by inventing a source.
+- [ ] Run `python3 <synthesis-agent-guardrails>/scripts/provenance_scan.py --since <today> <today's transcripts, daily plan, and the CONTEXT.md and session logs written today>`, with `--records <folder>` for each plan folder the workspace declares (`plans_dirs` in the ritual config) that is not named `daily-plans`, `ritual-workers` or `drafts`: a plan kept somewhere else is a record too, and the line the scan ends with says how many records it read. A record it names as unreadable was not checked: read it another way, or take what is not a record out of that folder. Each Slack timestamp written today must match a synced read; the scan names every one that does not. Fix or remove each named line before the close (correct it from the source, or mark it unverified); never "fix" it by inventing a source.
 
 ## 6. Career Amplification
 

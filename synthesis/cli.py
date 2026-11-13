@@ -92,29 +92,45 @@ def cmd_index(args) -> int:
 
 
 def cmd_who(args) -> int:
+    """The seats that can be reached, with their claims; --all adds the stale ones. A seat that holds a live wait is
+    reachable for the wait's whole bound (2026-11-12: nine hours into a wait this list left it out), and its row says
+    until when it waits; STALE stays what it was, a seat quiet past the threshold, whose claims no longer block."""
+    from synthesis import wait
     now = time.time()
     found = board.sessions()
     for name in board.NEWER:
         print(f"note: session file {name} was written by a newer synthesis (schema above {board.SCHEMA}); "
               "update this plugin to read it fully, and never edit the file by hand")
     for s in sorted(found, key=lambda s: -s.seen):
-        if s.stale and not args.all:
+        until = max((w["until"] for w in wait.live(s.session)), default=0)
+        if s.stale and not until and not args.all:
             continue
         age = int((now - s.seen) / 60)
-        print(f"{s.short or '-':<7} {s.session}  {s.harness:<11} {s.project or '-':<34} {age:>4} min ago{'  STALE' if s.stale else ''}")
+        print(f"{s.short or '-':<7} {s.session}  {s.harness:<11} {s.project or '-':<34} {age:>4} min ago{'  STALE' if s.stale else ''}"
+              + (f"  waiting until {time.strftime('%H:%M', time.localtime(until))}" if until else ""))
         for c in s.claims:
             print(f"    {c}")
     return 0
 
 
 def cmd_msg(args) -> int:
+    """Send, and say what will deliver it (2026-11-11: mail to a project no session was bound to sat unseen)."""
+    from synthesis import wait
+    me = _session(args)
     try:
-        sent = board.message(args.to, _session(args), args.text, durable=args.durable)
+        sent = board.message(args.to, me, args.text, durable=args.durable)
     except board.AddressError as exc:
         print(f"refused: {exc}", file=sys.stderr)
         return 1
-    fallback = not args.durable and sent.parent == board._box(args.to.strip())
-    print(f"sent to {args.to}" + (" (no live session on it: kept for its next session)" if fallback else ""))
+    reached, name = str(paths.read_json(sent).get("session") or ""), args.to.strip()[len("project:"):]
+    target = board.load(reached) if reached else None
+    how = (wait.watching(reached, me) or "it reads it at its next prompt" + (f"; {wait.wake(target)}" if args.wake else "") if target
+           else f"it is kept for every session that works on {name}" if args.durable
+           else f"no session is bound to {name} now: it is kept for the next one that runs `synthesis resume {name}`")
+    if args.wake and not reached:  # a kept message names no one session: each live session on the project is nudged, once
+        how += "".join(f"; {s.short}: {wait.watching(s.session, me) or wait.wake(s)}" for s in board.sessions()
+                       if s.project == name and s.reachable and s.session != me)
+    print(f"sent to {args.to}: {how}")
     return 0
 
 
@@ -126,7 +142,7 @@ def cmd_worktree(args) -> int:
 def cmd_inbox(args) -> int:
     session_id = _session(args)
     me = board.load(session_id)
-    for m in board.inbox(session_id, me.project if me else "", mark_read=True, recent_hours=args.recent):
+    for m in board.inbox(session_id, me.project if me else "", mark_read=not args.peek, recent_hours=args.recent):
         print(f"--- {time.strftime('%Y-%m-%d %H:%M', time.localtime(m['at']))} from {m['from']} to {m['to']}\n{m['text']}")
     return 0
 
@@ -305,12 +321,15 @@ def parser() -> argparse.ArgumentParser:
     s.add_argument("to")
     s.add_argument("text")
     s.add_argument("--durable", action="store_true", help="reach every session that works on the project")
+    s.add_argument("--wake", action="store_true", help="also nudge an idle recipient through its own harness, where a command can")
     s.set_defaults(fn=cmd_msg)
     s = sub.add_parser("worktree", help="create, retire or land a worktree", add_help=False)
     s.add_argument("rest", nargs=argparse.REMAINDER)
     s.set_defaults(fn=cmd_worktree)
     s = sub.add_parser("inbox", help="show and mark unread messages")
     s.add_argument("--recent", type=float, default=0, metavar="HOURS", help="every message from the last HOURS, read or not")
+    s.add_argument("--peek", action="store_true", help="show unread messages and mark none")
+    sub.add_parser("wait", help="wait for a message, a file or a command, holding a record on the board", add_help=False)
     s.set_defaults(fn=cmd_inbox)
     s = sub.add_parser("sends", help="open, close or show the send window; list the day's sends")
     s.add_argument("action", choices=["open", "close", "status", "log"])
@@ -367,13 +386,24 @@ def parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    try:
+        return _main(argv)
+    except paths.Unreadable as exc:  # a command whose reader of the config handles nothing itself: one line, no traceback
+        print(f"synthesis: the config cannot be read ({exc}); fix {paths.config_file()}", file=sys.stderr)
+        return 2
+
+
+def _main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
-    for name, fn in (("worktree", cmd_worktree), ("doctor", cmd_doctor)):
-        if name in argv:  # hand everything after it to that command's own parser untouched
-            split = argv.index(name)
-            args = parser().parse_args(argv[:split] + [name])
-            args.rest = argv[split + 1:]
-            return fn(args)
+    split = next((i for i, w in enumerate(argv) if not w.startswith("-") and argv[i - 1:i] != ["--session"]), len(argv))
+    name = "".join(argv[split:split + 1])  # the command is the first word that is no option of the CLI's own, not a word of a message
+    if name == "wait":  # its own options, and a command after `--`
+        from synthesis import wait
+        return wait.main(argv[split + 1:], _session(parser().parse_args(argv[:split] + ["wait"])))
+    if name in ("worktree", "doctor"):  # hand everything after it to that command's own parser untouched
+        args = parser().parse_args(argv[:split] + [name])
+        args.rest = argv[split + 1:]
+        return {"worktree": cmd_worktree, "doctor": cmd_doctor}[name](args)
     args = parser().parse_args(argv)
     return args.fn(args)
 

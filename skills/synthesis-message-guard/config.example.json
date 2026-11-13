@@ -41,6 +41,10 @@
   "in_person_travel": {
     "preferences": "~/.synthesis/chief-of-staff/preferences.json"
   },
+  "temporary_addresses": {
+    "hosts": ["preview.example.test"],
+    "local": true
+  },
   "preferred_names": [
     {
       "official": "Robert",

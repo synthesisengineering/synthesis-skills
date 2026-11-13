@@ -1,6 +1,6 @@
 # Synthesis Skills
 
-Synthesis Skills is one plugin for Claude Code, Codex and Muse. It carries 70 skills
+Synthesis Skills is one plugin for Claude Code, Codex and Muse. It carries 72 skills
 for software engineering, writing, project management, correspondence and daily
 operations, plus a small runtime: a `synthesis` command and four lifecycle hooks. The
 skills follow the [Agent Skills](https://agentskills.io) standard. The runtime keeps
@@ -104,11 +104,15 @@ to get past the check. It then runs the repository's own hooks. Setup asks befor
 | `synthesis brief [project]` | Print the project's directive and current state, and any problems with its records. |
 | `synthesis resume <project>` | Pick up a project: directive, state, next actions, plan and warnings (a newer copy elsewhere, upstream changes, other sessions working there), then the project's latest prompts and replies from any harness. If the project differs from the session's own, it asks first; `--switch` switches after you agree. |
 | `synthesis sessions export\|sync\|list\|show\|recent\|search` | Keep every harness's session transcripts in one form under `~/.synthesis/v5/sessions/<workspace>/`, secrets masked; copy each workspace's conversation and tool calls to its own sessions repo (`sync`, run by handoff and day-end); read them: a session in full, a cited record (`show <session> --seq <n>`), a project's latest conversation, or a search. |
-| `synthesis who` | List live sessions and their claims (`--all` includes stale ones). |
+| `synthesis who` | List live sessions and their claims (`--all` includes stale ones). A session that holds a live `synthesis wait` is listed for the wait's whole bound, marked `waiting until HH:MM`. |
 | `synthesis claim <paths>` | Claim absolute paths or patterns before writing; a claim covers everything beneath what it names, unless that is an existing file. A refused claim names the holder. `--take` takes over a claim that has been quiet for 8 hours and tells its holder. |
 | `synthesis release [paths]` | Release some or all of this session's claims. |
 | `synthesis msg <address> "<text>"` | Message a session by id, short name or `project:<id>`. An ambiguous address is refused, never guessed. `--durable` reaches every session that works on the project. |
-| `synthesis inbox` | Show and mark unread messages. |
+| `synthesis inbox` | Show and mark unread messages. `--peek` lists them and marks none. |
+| `synthesis wait message\|file\|run\|note\|clear\|list` | Wait, inside a bound, for a peer's message, a file or a command that must succeed, holding a record on the board while it waits; `note` records a wait the harness itself holds, `clear` withdraws this session's notes, `list` shows every session's. Exit 0 on the event, 3 at the bound, 2 for a bound or a command it cannot use. |
+| `synthesis journal [path]` | List the snapshots kept of uncommitted changes; `--show <sha> <path>` prints a file from one. |
+| `synthesis index set <project> <field> <value>` | Set one field of one project in the shared project index, committed alone. |
+| `synthesis sends open\|close\|status\|log` | Open, close or show a send window (a number of planned sends on named channels, for at most 12 hours, on the principal's approval), or list a day's sends. |
 | `synthesis worktree create\|retire\|land` | Create a worktree under a claim, remove a merged clean one, or fast-forward the main checkout to the remote's default branch. |
 | `synthesis handoff -m "<message>"` | Commit and push only the changes inside this session's claims, running every hook. Ends `READY`, or `NOT READY` with what blocks it. |
 | `synthesis approvals` | List sends and deploys waiting for your approval. |
@@ -172,8 +176,8 @@ python3 ~/.synthesis/v5/source/skills/synthesis-onboarding/scripts/setup.py plug
 the plugin with that harness's own commands, installs the runtime, links the `synthesis`
 command, and for Codex sets `[features] hooks = true`, raises
 `project_doc_max_bytes` to at least 98,304 and lets the sandbox write the synthesis board
-(`~/.synthesis/v5/board`, through a permissions profile) in `~/.codex/config.toml`, after a
-backup.
+and outbox (`~/.synthesis/v5/board` and `~/.synthesis/v5/outbox`, through a permissions
+profile) in `~/.codex/config.toml`, after a backup.
 
 These are the native commands it runs, if you would rather type them yourself:
 
@@ -244,6 +248,7 @@ keeps Codex's skill catalog within its budget.
 | [synthesis-project-resume](skills/synthesis-project-resume/SKILL.md) | Start or resume a project in any harness on any Mac with verified context, respecting live claims and surfacing other Macs' changes. |
 | [synthesis-context-lifecycle](skills/synthesis-context-lifecycle/SKILL.md) | Keep a project's working memory small, current and durable: CONTEXT, REFERENCE and session logs, archiving, deletion units and the records doctor. |
 | [synthesis-checkpoint](skills/synthesis-checkpoint/SKILL.md) | Re-sync a session with ground truth: verified clock, project records, git, dated session entries and board claims. |
+| [synthesis-waiting](skills/synthesis-waiting/SKILL.md) | Arm a bounded watcher before a turn ends on an expected event: a peer's message, a CI run, a file, a clock time. |
 | [synthesis-autopilot](skills/synthesis-autopilot/SKILL.md) | Run an explicitly delegated whole task to the end from a plan file in the project, unattended when needed. |
 
 ### Engineering and review
@@ -332,6 +337,7 @@ keeps Codex's skill catalog within its budget.
 | [synthesis-knowledge-capture](skills/synthesis-knowledge-capture/SKILL.md) | Capture durable session facts in an OKF knowledge base with deduplication, confidentiality routing and provenance. |
 | [synthesis-kb-edit](skills/synthesis-kb-edit/SKILL.md) | Edit, validate and ship knowledge-base changes through the repository's `.agents/knowledge-base.yaml` workflow. |
 | [synthesis-okf](skills/synthesis-okf/SKILL.md) | Validate, convert and author content for Google's Open Knowledge Format (OKF v0.1). |
+| [synthesis-kb-distribution](skills/synthesis-kb-distribution/SKILL.md) | Publish an OKF knowledge base to Claude and ChatGPT as an organization plugin, and serve it to people outside those workspaces through a read-only connector. |
 
 ### Install, release and machines
 
