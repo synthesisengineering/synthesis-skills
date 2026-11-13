@@ -472,17 +472,27 @@ def test_the_rule_finds_an_import_at_the_top_and_spares_one_that_is_guarded_or_i
     assert bare_runtime_imports(tmp_path) == ["skills/probe/scripts/bare.py:2", "skills/probe/scripts/silent.py:3", "skills/probe/scripts/whole.py:1"]
 
 
-def twice_bound(source: str) -> list:
-    """The names a module binds more than once at its top: a function, a class or an assignment."""
+def twice_bound(source: str, defs_only: bool = False) -> list:
+    """The names a module binds more than once at its top: a function, a class or an assignment. With `defs_only`,
+    a function or a class, at the top and in each class's body, where the stubs of an overload and a property's
+    setter share a name by design."""
     import ast
     import collections
     names = collections.Counter()
-    for node in ast.parse(source).body:
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-            names[node.name] += 1
-        elif isinstance(node, (ast.Assign, ast.AnnAssign)):
-            for target in (node.targets if isinstance(node, ast.Assign) else [node.target]):
-                names.update(leaf.id for leaf in ast.walk(target) if isinstance(leaf, ast.Name))
+
+    def by_design(node) -> bool:
+        return any(ast.unparse(mark).split(".")[-1] in ("overload", "setter", "getter", "deleter") for mark in node.decorator_list)
+
+    def read(body, within=""):
+        for node in body:
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                names[within + node.name] += not (defs_only and by_design(node))
+                if defs_only and isinstance(node, ast.ClassDef):
+                    read(node.body, f"{within}{node.name}.")
+            elif not defs_only and isinstance(node, (ast.Assign, ast.AnnAssign)):
+                for target in (node.targets if isinstance(node, ast.Assign) else [node.target]):
+                    names.update(leaf.id for leaf in ast.walk(target) if isinstance(leaf, ast.Name))
+    read(ast.parse(source).body)
     return sorted(name for name, count in names.items() if count > 1)
 
 
@@ -495,3 +505,20 @@ def test_no_core_module_binds_a_name_twice_at_its_top():
     assert twice_bound("A, B = 1, 2\nC: int = 3\ntry:\n    import x\nexcept ImportError:\n    x = None\n") == []
     for path in sorted((ROOT / "synthesis").glob("*.py")):
         assert twice_bound(path.read_text(encoding="utf-8")) == [], path.name
+
+
+def test_no_python_file_defines_a_function_or_a_class_twice_at_its_top():
+    """2026-11-13, the same day: renaming a helper in a new test file gave two functions one name. A second
+    definition replaces the first without a word, and a test function defined twice never runs. Every Python file is
+    read for functions and classes; assigning a name again is ordinary in a script and a test (ten files do), so the
+    whole rule stays the core's."""
+    assert twice_bound("def test_a():\n    pass\n\n\ndef test_a():\n    pass\n", defs_only=True) == ["test_a"]
+    assert twice_bound("SPEC = 1\nSPEC = 2\n\n\ndef f():\n    pass\n", defs_only=True) == []
+    # a review, 2026-11-13: two methods of one name in a test class were missed, and an overload was taken for a copy
+    assert twice_bound("class TestA:\n    def test_a(self):\n        pass\n\n    def test_a(self):\n        pass\n", defs_only=True) == ["TestA.test_a"]
+    assert twice_bound("from typing import overload\n\n\n@overload\ndef f(a: int) -> int: ...\n@overload\ndef f(a: str) -> str: ...\ndef f(a):\n    return a\n", defs_only=True) == []
+    assert twice_bound("class A:\n    @property\n    def x(self):\n        return 1\n\n    @x.setter\n    def x(self, value):\n        pass\n", defs_only=True) == []
+    assert twice_bound("import typing\n\n\n@typing.overload\ndef f(a: int) -> int: ...\ndef f(a):\n    return a\n\n\ndef f(a):\n    return a\n", defs_only=True) == ["f"]
+    files = [p for p in sorted(ROOT.rglob("*.py")) if not any(part.startswith(".") for part in p.relative_to(ROOT).parts)]
+    assert len(files) > 200
+    assert {str(p.relative_to(ROOT)): found for p in files if (found := twice_bound(p.read_text(encoding="utf-8"), defs_only=True))} == {}
