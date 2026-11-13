@@ -157,8 +157,9 @@ def attempt(command: list[str], until: float) -> bool:
         done = proc.wait(timeout=until - time.time()) == 0 and time.time() <= until
     except subprocess.TimeoutExpired:
         pass
-    except OSError as exc:  # nothing started, so the wait refuses the command: in plain words only where no such program is there to run
-        plain = not shutil.which(command[0]) and {FileNotFoundError: "was not found", PermissionError: "is not executable"}.get(type(exc))
+    except OSError as exc:  # nothing started, so the wait refuses the command, in plain words only where they are true of what is there
+        found = shutil.which(command[0], os.F_OK) or os.path.dirname(command[0]) and os.path.isdir(command[0])  # a file by the name, or a folder
+        plain = not shutil.which(command[0]) and ("is not executable" if found else isinstance(exc, FileNotFoundError) and "was not found")
         raise ValueError(f"`{' '.join(command)}` could not be started: its program {command[0]!r} {plain or f'cannot be run ({exc.strerror})'}")
     finally:
         if proc and not done:
