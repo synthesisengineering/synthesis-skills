@@ -1,7 +1,8 @@
 """The server over HTTP, in process: the tools, /health, and the access list at sign-in, on every token and
-on every tool call. Sign-in runs FastMCP's real OAuth proxy end to end (registration, consent, the Google
-callback, the token exchange); only Google is replaced: its token endpoint by a stand-in client, its
-tokeninfo and userinfo endpoints by an httpx2 mock transport.
+on every tool call, and in the operator-only test mode on a refresh at the token endpoint. Sign-in runs
+FastMCP's real OAuth proxy end to end (registration, consent, the Google callback, the token exchange, a
+refresh); only Google is replaced: its token endpoint by a stand-in client, its tokeninfo and userinfo
+endpoints by an httpx2 mock transport.
 
 These need the connector's pinned requirements (requirements.txt), which need Python 3.12 or newer.
 Without FastMCP they skip, unless SYNTHESIS_REQUIRE_FASTMCP=1, which makes a missing FastMCP fail.
@@ -93,10 +94,18 @@ class ClaimsVerifier(TokenVerifier):
 
 
 class FakeGoogle:
-    """Google's token endpoint, tokeninfo and userinfo, for the people in PEOPLE."""
+    """Google's token endpoint, tokeninfo and userinfo, for the people in PEOPLE. It refreshes a token only for a
+    test that says it expects refreshes."""
 
-    def __init__(self):
-        self.tokens = {}
+    def __init__(self, refreshes=False):
+        self.tokens, self.refreshes = {}, refreshes
+
+    def issue(self, code_name):
+        """A new access token for the person who signed in with this code, as Google's token endpoint answers."""
+        token = f"ya29.test-{secrets.token_hex(12)}"
+        self.tokens[token] = PEOPLE[code_name]
+        return {"access_token": token, "expires_in": 3600, "expires_at": int(time.time()) + 3600,
+                "token_type": "Bearer", "scope": SCOPES}
 
     def upstream_client(self):
         google = self
@@ -104,13 +113,12 @@ class FakeGoogle:
         class TokenEndpoint:  # the surface OAuthProxy uses: fetch_token, refresh_token, aclose
             async def fetch_token(self, url, **params):
                 assert url == "https://oauth2.googleapis.com/token" and params["code_verifier"]
-                token = f"ya29.test-{secrets.token_hex(12)}"
-                google.tokens[token] = PEOPLE[params["code"]]
-                return {"access_token": token, "refresh_token": "1//test-refresh", "expires_in": 3600,
-                        "expires_at": int(time.time()) + 3600, "token_type": "Bearer", "scope": SCOPES}
+                return {**google.issue(params["code"]), "refresh_token": f"1//test-refresh-{params['code']}"}
 
             async def refresh_token(self, url, **params):
-                raise AssertionError("no refresh expected")
+                assert google.refreshes, "no refresh expected"
+                assert url == "https://oauth2.googleapis.com/token"
+                return google.issue(params["refresh_token"][len("1//test-refresh-"):])  # Google keeps the refresh token
 
             async def aclose(self):
                 pass
@@ -135,8 +143,9 @@ def google_auth(settings, policy, google):
     return auth
 
 
-async def sign_in(http, code_name):
-    """Register a client, consent, come back from Google, and exchange the code: (callback response, token)."""
+async def sign_in(http, code_name, client=None):
+    """Register a client, consent, come back from Google, and exchange the code: (callback response, token). A
+    dict passed as `client` is given what a client keeps: its id and the whole token response."""
     registered = await http.post("/register", json={"redirect_uris": [REDIRECT], "client_name": "test client",
                                                     "token_endpoint_auth_method": "none",
                                                     "grant_types": ["authorization_code", "refresh_token"],
@@ -164,7 +173,15 @@ async def sign_in(http, code_name):
                                               "code": parse_qs(location.query)["code"][0], "redirect_uri": REDIRECT,
                                               "code_verifier": verifier, "resource": RESOURCE})
     assert granted.status_code == 200, granted.text
+    if client is not None:
+        client.update(granted.json(), client_id=client_id)
     return callback, granted.json()["access_token"]
+
+
+async def refresh(http, client):
+    """What a client does when its access token runs out: the refresh grant at the token endpoint."""
+    return await http.post("/token", data={"grant_type": "refresh_token", "client_id": client["client_id"],
+                                           "refresh_token": client["refresh_token"]})
 
 
 def run(coro):
@@ -484,6 +501,89 @@ def test_a_token_from_before_the_test_mode_works_for_the_operator_alone(publishe
     assert before.status_code != 401 and kept.status_code != 401
     assert after.status_code == 401 and 'error="invalid_token"' in after.headers["www-authenticate"]
     assert "token refused for analyst@example.com: operator_only_test_mode" in caplog.text
+
+
+def unlisted(email):
+    return f"Access denied: {email} is not on this knowledge base's access list. Ask its administrator to add the address."
+
+
+def test_in_the_test_mode_the_token_endpoint_refuses_a_refresh_by_anyone_but_the_operator(published, caplog):
+    settings, google = settings_for(published, **OPERATOR), FakeGoogle(refreshes=True)
+    policy = AccessPolicy.from_settings(settings.allowed_emails)  # before the test: the list lets both in
+    analyst, operator = {}, {}
+
+    async def go():
+        auth = google_auth(settings, policy, google)
+        mcp = server.build_server(settings, loaded(published), policy, auth)
+        async with asgi_server(mcp, stateless_http=True) as srv, srv.http_client() as http:
+            await sign_in(http, "code-analyst", analyst)
+            await sign_in(http, "code-lead", operator)
+            auth.policy = policy_for(settings)  # the test mode comes on over a store that kept both grants
+            refused, renewed = await refresh(http, analyst), await refresh(http, operator)
+            used = await http.post("/mcp", headers={"authorization": f"Bearer {renewed.json()['access_token']}"}, json={})
+            return refused, renewed, used, await refresh(http, analyst)
+    refused, renewed, used, again = run(go())
+    assert refused.status_code == 401 and refused.headers["cache-control"] == "no-store"
+    assert refused.json()["error"] == "invalid_grant"  # RFC 6749, section 5.2: the grant is no longer valid
+    assert refused.json()["error_description"] == unlisted("analyst@example.com")
+    assert "access_token" not in refused.json() and "refresh_token" not in refused.json()
+    assert "refresh refused for analyst@example.com: operator_only_test_mode" in caplog.text
+    assert renewed.status_code == 200 and renewed.json()["access_token"] != operator["access_token"]
+    assert renewed.json()["refresh_token"] != operator["refresh_token"] and used.status_code != 401
+    assert "refresh refused for lead@example.com" not in caplog.text
+    assert again.status_code == 401 and again.json()["error"] == "invalid_grant"  # asked again, the answer is the same
+
+
+def test_outside_the_test_mode_a_refresh_is_given_whoever_asks_and_each_request_is_then_checked(published, caplog):
+    settings, google = settings_for(published), FakeGoogle(refreshes=True)
+    policy = AccessPolicy.from_settings(settings.allowed_emails)
+    analyst, lead = {}, {}
+
+    async def go():
+        auth = google_auth(settings, policy, google)
+        mcp = server.build_server(settings, loaded(published), policy, auth)
+        async with asgi_server(mcp, stateless_http=True) as srv, srv.http_client() as http:
+            await sign_in(http, "code-analyst", analyst)
+            await sign_in(http, "code-lead", lead)
+            auth.policy = AccessPolicy.from_settings("lead@example.com")  # the list no longer has analyst@
+            removed, kept = await refresh(http, analyst), await refresh(http, lead)
+            requests = [await http.post("/mcp", headers={"authorization": f"Bearer {answer.json()['access_token']}"}, json={})
+                        for answer in (removed, kept)]
+            return removed, kept, requests
+    removed, kept, (refused, served) = run(go())
+    for answer, client in ((removed, analyst), (kept, lead)):  # the token endpoint asks nothing of the list
+        assert answer.status_code == 200 and answer.json()["access_token"] != client["access_token"]
+        assert answer.json()["refresh_token"] != client["refresh_token"]
+    assert refused.status_code == 401 and 'error="invalid_token"' in refused.headers["www-authenticate"]  # each request does
+    assert served.status_code != 401
+    assert "token refused for analyst@example.com: email_not_listed" in caplog.text and "refresh refused" not in caplog.text
+
+
+def test_in_the_test_mode_the_operators_own_refresh_is_checked_as_every_request_is(published, caplog):
+    settings, google = settings_for(published, **OPERATOR), FakeGoogle(refreshes=True)
+    policy = policy_for(settings)
+    unread, off_the_list = {}, {}
+
+    async def go():
+        auth = google_auth(settings, policy, google)
+        mcp = server.build_server(settings, loaded(published), policy, auth)
+        async with asgi_server(mcp, stateless_http=True) as srv, srv.http_client() as http:
+            await sign_in(http, "code-lead", unread)
+            await sign_in(http, "code-lead", off_the_list)
+            issue = google.issue  # a new token Google's tokeninfo does not vouch for: nobody can say whose it is
+            google.issue = lambda code_name: {**issue(code_name), "access_token": "ya29.test-unknown-to-tokeninfo"}
+            unchecked = await refresh(http, unread)
+            google.issue = issue
+            auth.policy = AccessPolicy.from_settings("analyst@example.com", "", None, "lead@example.com")
+            return unchecked, await refresh(http, off_the_list)  # the operator, no longer on the list
+    unchecked, refused = run(go())
+    for answer in (unchecked, refused):
+        assert answer.status_code == 401 and answer.json()["error"] == "invalid_grant" and "access_token" not in answer.json()
+    assert unchecked.json()["error_description"] == ("Access denied: the sign-in did not identify a Google account. "
+                                                     "Sign in again.")
+    assert "refresh refused for (no address): no_identity" in caplog.text
+    assert refused.json()["error_description"] == unlisted("lead@example.com")
+    assert "refresh refused for lead@example.com: email_not_listed" in caplog.text
 
 
 def test_the_tool_check_refuses_everyone_but_the_operator_in_the_test_mode(published):
