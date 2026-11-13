@@ -130,9 +130,16 @@ Passes:
 - an armed wait: a live `synthesis wait` of the session; an autopilot run it owns; in
   Claude Code, background work the session started that has not reported yet (an agent, a
   shell command, a workflow, a monitor), since the harness wakes the session when it
-  does. That is read from the last four megabytes of the transcript: a tool's result that
-  opens with the harness's launch line starts it, and a task notification naming that
-  call ends it.
+  does. That is read from the last four megabytes of the transcript. Work is started by
+  the harness's own tool-result entry: a `user` entry, a result that opens with the launch
+  line, a call id that is a string. It is ended by the harness's own notification naming
+  that call: a `user` entry that is a task notification by its origin or opens with the
+  notification tag, a queued command or a queue operation that opens with it. A copy of a
+  launch in any other kind of entry starts nothing; the tag in the assistant's words, in a
+  tool's output or quoted inside other text ends nothing; a malformed record or a path that
+  cannot be read holds nothing, and the reader does not raise. Work launched before those
+  four megabytes is not seen, and a wait beside it is sent back once: say then what is
+  out.
 
 A thing that belongs to the principal is not their move. `your review bot`, `your code to
 compile`, `your registrar to release the domain`, `your lawyer's comments`, `the service to
@@ -147,10 +154,10 @@ that nothing is awaited: the rule in synthesis-waiting binds whether or not the 
 
 What it is measured against is recorded replies, not invented ones. Run over thirty days
 of turn-ending replies on one machine (4,443 delivered, November 2026), the forms above
-read 542 as a wait; in 452 the harness held background work, and 90 were sent back, about
+read 537 as a wait; in 450 the harness held background work, and 87 were sent back, about
 three a day. Of those, read one by one, three in four were the session's own wait with
-nothing to end it. The rest awaited a step of the principal's said in words the check
-does not read (`once it's sent, I'll read it back`, after a send they have yet to
+nothing to end it. Most of the rest awaited a step of the principal's said in words the
+check does not read (`once it's sent, I'll read it back`, after a send they have yet to
 approve). What it lets pass on purpose: a wait in a reply that also asks the principal
 for something, and a wait with no subject written after a label, a dash or a semicolon.
 

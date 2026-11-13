@@ -21,7 +21,10 @@ so none can grant an approval: the approval check reads only prompts the person 
 
 In Claude Code the turn-end check reads the first two rows from the session's own transcript: a background agent,
 shell task, workflow or monitor the session started, with no task notification for it yet, is a wait the harness
-holds, and a reply that announces a wait beside it passes without a `synthesis wait`. In thirty days of recorded
+holds, and a reply that announces a wait beside it passes without a `synthesis wait`. Only the harness's own entries
+count: its tool-result entry starts the work, and its notification naming that call ends it. A copy of either in
+other text does neither. The check reads the transcript's last four megabytes, so work started before that is not
+seen and a wait beside it is sent back once. In thirty days of recorded
 turn ends, five of every six replies that announced a wait were of this kind (the agent-guardrails reference has the
 count). A timer and a turn from another session are not read: record those with `synthesis wait note`.
 

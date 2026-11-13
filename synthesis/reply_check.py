@@ -280,14 +280,17 @@ REPORTED = re.compile(r"<tool-use-id>\s*([\w-]+)\s*</tool-use-id>")
 def held_by_harness(transcript_path: str | None, tail: int = 4_000_000) -> bool:
     """Has this session started background work that has not reported: an agent, a shell command, a workflow, a monitor,
     an agent resumed? The harness wakes the session when it does, so a wait beside it is armed. Reads the tail of a
-    Claude Code transcript: a tool's result that opens with the harness's own launch line starts it, and a task
-    notification the harness wrote (a prompt, a queued one, one that has arrived) naming that call ends it. Other
-    shapes, a record that cannot be read, and work started before the tail hold nothing."""
+    Claude Code transcript. Work is started by the harness's own tool-result entry: a `user` entry, a result that opens
+    with the launch line, a call id that is a string. It is ended by the harness's own notification naming that call:
+    a `user` entry that is a task notification by its origin or opens with the tag, a queued command or a queue
+    operation that opens with it. A copy of a launch in any other entry starts nothing, and the tag in an assistant's
+    words, in a tool's output or quoted inside other text ends nothing. Other shapes, a malformed record, a path that
+    cannot be read and work started before the tail hold nothing, and nothing here raises."""
     try:
-        with open(transcript_path or "", "rb") as handle:
+        with open(transcript_path if isinstance(transcript_path, str) else "", "rb") as handle:  # a number would name a descriptor
             handle.seek(max(0, handle.seek(0, 2) - tail))
             chunk = handle.read()
-    except OSError:
+    except (OSError, ValueError):
         return False
     out = set()
     for line in chunk.splitlines():
@@ -295,22 +298,25 @@ def held_by_harness(transcript_path: str | None, tail: int = 4_000_000) -> bool:
             continue
         try:
             entry = json.loads(line)
-        except ValueError:
+        except (ValueError, RecursionError):
             continue
         if not isinstance(entry, dict) or entry.get("isSidechain"):
             continue
-        content = entry["message"].get("content") if isinstance(entry.get("message"), dict) else None
+        kind, content = entry.get("type"), entry["message"].get("content") if isinstance(entry.get("message"), dict) else None
         if isinstance(content, list):  # a tool's result; a notification it only prints ends nothing
-            for part in content:
+            for part in content if kind == "user" else ():
                 body = part.get("content") if isinstance(part, dict) and part.get("type") == "tool_result" and not part.get("is_error") else None
                 text = (body if isinstance(body, str) else " ".join(str(x.get("text", "")) for x in body if isinstance(x, dict))
                         if isinstance(body, list) else "").lstrip()
-                if text.startswith(STARTED) or "moved to the background (ID:" in text[:300] or text.startswith("{") and '"resumedAgentId"' in text[:600]:
-                    out.add(part.get("tool_use_id"))
+                if (text.startswith(STARTED) or "moved to the background (ID:" in text[:300] or text.startswith("{") and '"resumedAgentId"' in text[:600]) \
+                        and isinstance(part.get("tool_use_id"), str):
+                    out.add(part["tool_use_id"])
             continue
         attachment = entry.get("attachment") if isinstance(entry.get("attachment"), dict) else {}
-        said = next((s for s in (content, attachment.get("prompt"), entry.get("content")) if isinstance(s, str)), "")
-        if "<task-notification>" in said:
+        origin = entry.get("origin") if isinstance(entry.get("origin"), dict) else {}
+        said = (content if kind == "user" else attachment.get("prompt") if kind == "attachment" and attachment.get("type") == "queued_command"
+                else entry.get("content") if kind == "queue-operation" else None)
+        if isinstance(said, str) and (said.lstrip().startswith("<task-notification>") or kind == "user" and origin.get("kind") == "task-notification"):
             out -= set(REPORTED.findall(said))
     return bool(out)
 
