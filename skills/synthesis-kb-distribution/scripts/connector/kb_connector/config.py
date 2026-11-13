@@ -3,7 +3,7 @@
 references/connector.md documents each variable. A required value that is missing or malformed
 stops the start (ConfigError lists them all); nothing falls back to serving without sign-in.
 KB_OPERATOR_TEST=1 with KB_OPERATOR_ADDRESSES is the operator-only test mode: nobody else signs in,
-and a temporary address (temporary() below) or an unnamed sign-in store starts in that mode alone.
+and a temporary address (temporary() below) or the memory sign-in store starts in that mode alone.
 """
 
 from __future__ import annotations
@@ -114,10 +114,11 @@ def load(env) -> Settings:
     if not get("KB_ALLOWED_EMAILS") and not get("KB_ALLOWED_GROUPS"):
         problems.append("KB_ALLOWED_EMAILS or KB_ALLOWED_GROUPS is required (either or both)")
     store = get("KB_OAUTH_STORE", "memory" if test == "1" else "").lower()
-    if not store:
-        problems.append("KB_OAUTH_STORE is required: firestore, with KB_STORAGE_ENCRYPTION_KEY, keeps sign-ins across "
-                        "restarts; memory signs everyone out at every restart and is the default only in the "
-                        "operator-only test mode")
+    if store in ("", "memory") and test != "1":
+        problems.append("KB_OAUTH_STORE must be firestore, with KB_STORAGE_ENCRYPTION_KEY: anything other people use must "
+                        "keep its state across restarts, and with more than one instance a memory store breaks sign-in "
+                        "outright. A single person's use is what the operator-only test mode is for, and memory is "
+                        "allowed only there, with KB_OPERATOR_TEST=1")
     elif store not in STORES:
         problems.append(f"KB_OAUTH_STORE must be one of {', '.join(STORES)}, not {store!r}")
     storage_key = get("KB_STORAGE_ENCRYPTION_KEY")

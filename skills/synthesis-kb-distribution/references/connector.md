@@ -140,7 +140,7 @@ lists every problem at once.
 | `KB_GROUP_REFRESH_SECONDS` | `300` | How often the groups are read again, 60 to 86400. |
 | `KB_ALLOWED_HOSTED_DOMAINS` | none | Comma-separated Google Workspace domains; when set, accounts outside them are refused even if listed. |
 | `KB_JWT_SIGNING_KEY` | derived from the client secret | Secret that signs the connector's own tokens. Set it so rotating the Google client secret does not sign everyone out. |
-| `KB_OAUTH_STORE` | required; `memory` in the operator-only test mode | `firestore` for any deployment: registrations, grants and Google tokens survive restarts and are shared by every instance. `memory` keeps them in the process, so every restart signs everyone out, and the start logs a warning that says so. Outside the test mode a start that names no store stops (below the tables). |
+| `KB_OAUTH_STORE` | `firestore` is required outside the operator-only test mode; `memory` in it | `firestore` for any deployment: registrations, grants and Google tokens survive restarts and are shared by every instance. `memory` keeps them in the process, so every restart signs everyone out; it is allowed only in the test mode, where the start logs a warning that says so. Outside the test mode a start with `memory`, named or not, stops (below the tables). |
 | `KB_STORAGE_ENCRYPTION_KEY` | required with `firestore`, secret | A Fernet key (44 characters) that encrypts everything the OAuth store writes. |
 | `KB_FIRESTORE_PROJECT` | the runtime's project | Google Cloud project of the Firestore database. |
 | `KB_FIRESTORE_DATABASE` | `(default)` | Firestore database name. |
@@ -187,19 +187,23 @@ kb-connector: the connector cannot start:
 
 Those are the two ways forward: deploy it (section 5), or run the operator's own test (section 4).
 
-**The sign-in store.** Outside the test mode `KB_OAUTH_STORE` has no default, so a deployment
-cannot end up on the memory store because a setting was forgotten. A start that names no store
-prints this and exits 2:
+**The sign-in store.** The memory store is allowed only in the operator-only test mode. Anything
+other people use must keep its state across restarts: a restart on the memory store signs
+everyone out, each person's client is refused and has to connect again, and a platform that stops
+idle instances, as Cloud Run does, restarts often. With more than one instance a memory store
+breaks sign-in outright, since each instance holds its own registrations, grants and tokens and
+knows nothing of a sign-in another instance began. Outside the test mode `KB_OAUTH_STORE` has no
+default, and a start with no store named, or with `KB_OAUTH_STORE=memory` named on purpose, prints
+this and exits 2:
 
 ```text
 kb-connector: the connector cannot start:
-  - KB_OAUTH_STORE is required: firestore, with KB_STORAGE_ENCRYPTION_KEY, keeps sign-ins across restarts; memory signs everyone out at every restart and is the default only in the operator-only test mode
+  - KB_OAUTH_STORE must be firestore, with KB_STORAGE_ENCRYPTION_KEY: anything other people use must keep its state across restarts, and with more than one instance a memory store breaks sign-in outright. A single person's use is what the operator-only test mode is for, and memory is allowed only there, with KB_OPERATOR_TEST=1
 ```
 
-`KB_OAUTH_STORE=memory` named on purpose still starts, in either mode, and every start then logs
+In the test mode `memory` is the default and may also be named, and every such start logs
 `KB_OAUTH_STORE=memory: sign-ins live in this process only, so every restart signs everyone out`.
-After such a restart each person's client is refused and has to connect again, and a platform
-that stops idle instances, as Cloud Run does, restarts often.
+`firestore` serves in both modes and logs nothing about the store.
 
 ## 4. Run it locally: the operator's own test
 
@@ -213,8 +217,8 @@ it. A restart signs them all out, since a local run keeps sign-ins in memory, an
 address does not come back: the next tunnel gets a new one, so a person who was given the old one
 holds a connector that no longer exists.
 
-The connector holds to this itself. On a temporary or local address (section 3) it starts only in
-the operator-only test mode:
+The connector holds to this itself. On a temporary or local address, and on the memory sign-in
+store (section 3), it starts only in the operator-only test mode:
 
 - `KB_OPERATOR_TEST=1` turns the mode on and `KB_OPERATOR_ADDRESSES` names the operator's own
   address. Either without the other stops the start.
@@ -256,7 +260,8 @@ operator's alone, on an address that ends with the tunnel.
 The mode also runs on a deployed connector, to try a deployment before anyone on the list is told
 about it. It admits only the operator there too, and the `TEST ONLY` line then says not to give
 the address to anyone while the mode is on. Remove `KB_OPERATOR_TEST` and `KB_OPERATOR_ADDRESSES`
-to open the deployment to the list.
+to open the deployment to the list. It then has to be on `firestore`: a deployment tried on the
+memory store stops at its first start without the mode (section 3).
 
 ## 5. Deploy on Google Cloud Run
 
@@ -454,9 +459,9 @@ The running connector (`python -B -m kb_connector` from `scripts/connector/`) pr
 `serving <n> documents from commit <sha>` when a copy loads, `refresh failed (...)` when a refresh
 fails, and `sign-in allowed for <email>` or `sign-in refused for <email>: <reason>` per sign-in. If
 its settings are wrong it prints `kb-connector: the connector cannot start:` and every problem,
-then exits 2; a temporary address and an unnamed sign-in store are two of those problems
-(section 3). If the first load fails it prints `kb-connector: the first load failed: <reason>` and
-exits 1.
+then exits 2; outside the test mode a temporary address and the memory sign-in store are two of
+those problems (section 3). If the first load fails it prints
+`kb-connector: the first load failed: <reason>` and exits 1.
 
 - **Is it current?** `/health` shows the served commit. Compare it with the published repository's
   head. `last_refresh_failed: true` means the last check, clone or load failed and the last good
@@ -466,17 +471,27 @@ exits 1.
   sign in. A connector other people use shows `false`. With the mode on, everyone but the operator
   is refused, with `sign-in refused for <email>: operator_only_test_mode` or
   `token refused for <email>: operator_only_test_mode` in the log.
-- **Memory store:** a start with `KB_OAUTH_STORE=memory` logs
+- **Memory store:** only the operator's own test runs on it. A start in the test mode with
+  `KB_OAUTH_STORE=memory`, or with no store named, logs
   `KB_OAUTH_STORE=memory: sign-ins live in this process only, so every restart signs everyone out`.
-  On a connector other people use, move it to `firestore` (5.4, 5.7, 5.8 and 5.10).
+  Outside the mode the same start stops (section 3).
+- **A deployment set up under version 1.1.0 of this skill or earlier** does not start under this
+  version in these cases, each with the refusal section 3 shows. Change the setting first, then
+  deploy the new version:
+  - `KB_OAUTH_STORE` is `memory`, or is not set, which then meant `memory`: set
+    `KB_OAUTH_STORE=firestore` and `KB_STORAGE_ENCRYPTION_KEY`, with the database and the role
+    they need (5.4, 5.7, 5.8 and 5.10). Everyone signs in once more, because the sign-ins the
+    memory store held ended with its process.
+  - `KB_PUBLIC_URL` is a temporary or local address: deploy the connector at a permanent address
+    (section 5), and give people that address in place of the old one.
 - **Groups:** with `KB_ALLOWED_GROUPS` set, `/health` also reports `access_groups`: its `status`
   (`ok`, or `stale` once the membership is older than three intervals, which also makes `/health`
   answer 503), when it was last read, and whether the last read failed.
 - **Log lines worth alerting on:** `access group refresh failed`, `refresh failed`, `sign-in refused for <email>: <reason>`,
   `token refused for <email>: <reason>` and `sign-in check failed`. The first means stale content;
-  the others show who was refused. On a deployed connector, alert on `TEST ONLY` and on
-  `KB_OAUTH_STORE=memory` as well: the first means only the operator can get in, the second that
-  the next restart signs everyone out.
+  the others show who was refused. On a deployed connector, alert on `TEST ONLY` as well: it means
+  only the operator can get in. `KB_OAUTH_STORE=memory` is logged only beside it, in the test
+  mode, and means the next restart signs the operator out.
 - **Rotate a secret:** add a new version in Secret Manager and redeploy (or update the service) so
   a new revision reads it. Rotating `KB_JWT_SIGNING_KEY` or `KB_STORAGE_ENCRYPTION_KEY` signs
   everyone out; they sign in again on their next use.
