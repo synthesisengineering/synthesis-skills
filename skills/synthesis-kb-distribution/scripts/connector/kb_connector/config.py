@@ -102,6 +102,11 @@ def load(env) -> Settings:
     if test not in ("", "0", "1") or (test == "1") != bool(listed(operators)):
         problems.append("the operator-only test mode needs both KB_OPERATOR_TEST=1 and KB_OPERATOR_ADDRESSES, the "
                         "operator's own email address or addresses: set both, or neither")
+    if len(listed(operators)) > 3:
+        problems.append(f"KB_OPERATOR_ADDRESSES names {len(listed(operators))} addresses and may name three at most: "
+                        "they are one person's own accounts, since the operator-only test mode is that person's test "
+                        "and nobody else's. Other people come in through KB_ALLOWED_EMAILS or KB_ALLOWED_GROUPS, on a "
+                        "deployed connector with the mode off")
     if temporary(parsed.hostname) and test != "1":
         problems.append(f"KB_PUBLIC_URL names a temporary or local address ({parsed.hostname}): it lasts only while "
                         "this machine and its tunnel stay up, so nobody else may depend on it. To serve other people, "

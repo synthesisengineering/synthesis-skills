@@ -96,7 +96,8 @@ The messages a refused person sees:
 There is no setting that serves without sign-in, and a start with no addresses and no groups stops.
 
 **The operator-only test mode.** With `KB_OPERATOR_TEST=1`, only the addresses in
-`KB_OPERATOR_ADDRESSES` pass, at all three checks. Anyone else is refused first, whatever the list,
+`KB_OPERATOR_ADDRESSES` pass, at all three checks. They are one person's own accounts, three at
+most (section 3). Anyone else is refused first, whatever the list,
 a group or an allowed domain would say: they see the message a person not on the list sees, and
 the log line gives the reason `operator_only_test_mode`. The operator is then checked as anyone
 is: Google must report the address verified, the account must be in an allowed domain when domains
@@ -132,7 +133,7 @@ lists every problem at once.
 |---|---|---|
 | `KB_PUBLIC_URL` | required | The service's public `https://` address, with no path. `http://` is accepted only for localhost. A temporary or local address starts only as the operator's own test (below the tables). |
 | `KB_OPERATOR_TEST` | off | `1` turns on the operator-only test mode (section 4): only `KB_OPERATOR_ADDRESSES` can sign in, the start logs a line that begins `TEST ONLY`, and `/health` carries `"test_only": true`. Any value but `1`, `0` or none stops the start. |
-| `KB_OPERATOR_ADDRESSES` | required with `KB_OPERATOR_TEST=1` | The operator's own email address, or several separated by commas. Set while the mode is off, it stops the start, so a misspelled switch cannot leave the whole list admitted. |
+| `KB_OPERATOR_ADDRESSES` | required with `KB_OPERATOR_TEST=1` | The operator's own email address, or up to three of that one person's own accounts, separated by commas. A fourth address stops the start (below the tables). Set while the mode is off, it stops the start, so a misspelled switch cannot leave the whole list admitted. |
 | `KB_GOOGLE_CLIENT_ID` | required | The Google OAuth client's ID. |
 | `KB_GOOGLE_CLIENT_SECRET` | required, secret | The Google OAuth client's secret. |
 | `KB_ALLOWED_EMAILS` | required unless `KB_ALLOWED_GROUPS` is set | Comma-separated addresses that may read the knowledge base. |
@@ -205,6 +206,17 @@ In the test mode `memory` is the default and may also be named, and every such s
 `KB_OAUTH_STORE=memory: sign-ins live in this process only, so every restart signs everyone out`.
 `firestore` serves in both modes and logs nothing about the store.
 
+**The operator's addresses.** `KB_OPERATOR_ADDRESSES` names one person's own accounts, so it
+takes three addresses at most. An address written twice, or again in other letter case, counts
+once. A fourth prints this, with the number of addresses it read, and exits 2:
+
+```text
+kb-connector: the connector cannot start:
+  - KB_OPERATOR_ADDRESSES names 4 addresses and may name three at most: they are one person's own accounts, since the operator-only test mode is that person's test and nobody else's. Other people come in through KB_ALLOWED_EMAILS or KB_ALLOWED_GROUPS, on a deployed connector with the mode off
+```
+
+The line that begins `TEST ONLY` names each address that can sign in.
+
 ## 4. Run it locally: the operator's own test
 
 **A local run is the operator's own test, and nobody else's.** Its address is never given to
@@ -221,7 +233,8 @@ The connector holds to this itself. On a temporary or local address, and on the 
 store (section 3), it starts only in the operator-only test mode:
 
 - `KB_OPERATOR_TEST=1` turns the mode on and `KB_OPERATOR_ADDRESSES` names the operator's own
-  address. Either without the other stops the start.
+  address, or up to three of that one person's own accounts. Either without the other stops the
+  start, and so does a fourth address.
 - Only the operator can sign in, and only the operator's token works on any later request,
   whatever `KB_ALLOWED_EMAILS`, `KB_ALLOWED_GROUPS` and `KB_ALLOWED_HOSTED_DOMAINS` would admit
   (section 2). The operator still has to be on the list or in a group, so the test also checks
