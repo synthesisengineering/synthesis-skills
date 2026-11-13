@@ -293,7 +293,7 @@ STARTS_A_TUNNEL = [
     "docker run --rm cloudflare/cloudflared tunnel --no-autoupdate --hello-world",
     # the services added last, in their own forms
     "bore local 8000 --to bore.pub", "bore local 8000 -t bore.pub", "bore local 8000 --to=bore.pub -p 41234",
-    "bore local --local-host 127.0.0.1 8000 --to bore.pub", "tmole 8080", "tunnelmole 8080", "tmole 8080 as demo.tunnelmole.net",
+    "bore local --local-host 127.0.0.1 8000 --to bore.pub", "bore local 8000 --to BORE.PUB.", "tmole 8080", "tunnelmole 8080", "tmole 8080 as demo.tunnelmole.net",
     "npx tunnelmole 8080", "loophole http 3000", "./loophole http 3000 --hostname demo", "loophole path ./site",
     "loophole webdav ./site", "tailscale funnel 3000", "tailscale funnel --bg 3000", "tailscale funnel --https=8443 localhost:3000",
     "tailscale funnel --bg --set-path=/docs 3000",
@@ -333,7 +333,8 @@ NO_TUNNEL = [
     "cloudflared tunnel ingress validate", "cloudflared tunnel vnet list", "cloudflared tunnel ready", "cloudflared tunnel diag",
     "cloudflared tunnel help", "cloudflared tunnel --help", "docker run --rm cloudflare/cloudflared tunnel run --url http://web:80 demo",
     # their lookups, a server of one's own, turning a funnel off, and a tailnet's own serve
-    "bore --version", "bore server", "bore local 8000 --to tunnel.example.com", "bore local 8000 --to notbore.pub", "tmole --version",
+    "bore --version", "bore server", "bore local 8000 --to tunnel.example.com", "bore local 8000 --to notbore.pub",
+    "bore local 8000 --to bore.pub.example.com", "tmole --version",
     "tmole --help", "echo tmole 8080", "loophole account login", "loophole --help", "loophole version", "tailscale funnel status",
     "tailscale funnel status --json", "tailscale funnel reset", "tailscale funnel", "tailscale funnel --https=443 localhost:3000 off",
     "tailscale serve 3000", "tailscale serve --bg 3000", "tailscale status", "brew install bore-cli",
