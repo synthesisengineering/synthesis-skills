@@ -495,3 +495,15 @@ def test_no_core_module_binds_a_name_twice_at_its_top():
     assert twice_bound("A, B = 1, 2\nC: int = 3\ntry:\n    import x\nexcept ImportError:\n    x = None\n") == []
     for path in sorted((ROOT / "synthesis").glob("*.py")):
         assert twice_bound(path.read_text(encoding="utf-8")) == [], path.name
+
+
+def test_no_python_file_defines_a_function_or_a_class_twice_at_its_top():
+    """2026-11-13, the same day: renaming a helper in a new test file gave two functions one name. A second
+    definition replaces the first without a word, and a test function defined twice never runs. Every Python file is
+    read for functions and classes; assigning a name again is ordinary in a script and a test (ten files do), so the
+    whole rule stays the core's."""
+    assert twice_bound("def test_a():\n    pass\n\n\ndef test_a():\n    pass\n", defs_only=True) == ["test_a"]
+    assert twice_bound("SPEC = 1\nSPEC = 2\n\n\ndef f():\n    pass\n", defs_only=True) == []
+    files = [p for p in sorted(ROOT.rglob("*.py")) if not any(part.startswith(".") for part in p.relative_to(ROOT).parts)]
+    assert len(files) > 200
+    assert {str(p.relative_to(ROOT)): found for p in files if (found := twice_bound(p.read_text(encoding="utf-8"), defs_only=True))} == {}
