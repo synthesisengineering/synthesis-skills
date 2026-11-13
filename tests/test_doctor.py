@@ -1237,8 +1237,13 @@ def test_what_a_running_process_was_started_with_is_read_from_the_os(connector):
     outbox = connector[0]
     _installed(*connector)
     env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"), **PORT, "ALLOWED_FILE_DIRS": f"/srv/with space/reports:{outbox}"}
-    child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"], env=env)
+    child = subprocess.Popen([sys.executable, "-c", "import time; print('up', flush=True); time.sleep(60)"], env=env,
+                             stdout=subprocess.PIPE, text=True)
     try:
+        # Linux fills in what /proc shows of a new program's environment a moment after the start call returns: read
+        # in that moment it is empty, which failed this test once on main (2026-11-12). The child's first line says
+        # its program is running.
+        assert child.stdout.readline().strip() == "up"
         seen = doctor.started_with(str(child.pid))
         connector[2].write_text(f"{child.pid}\n", encoding="utf-8")
         check = doctor.check_outbox(*connector)
