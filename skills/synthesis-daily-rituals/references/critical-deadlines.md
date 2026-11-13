@@ -131,8 +131,9 @@ writes, on today's date:
 - **A critical item past due and open refuses the record,** in every direction and mode, and
   names each one. Ask the principal then; the record goes through once each item closes with
   evidence or carries a new date with its reason.
-- **A clean outcome is refused when a plan source could not be read whole.** Record
-  `--outcome partial` and name the gaps.
+- **A clean outcome is refused when a plan source could not be read whole.** The refusal names
+  each such source once, with the reason the sweep gives for it (the first five, and how many
+  more). Record `--outcome partial` and name the gaps.
 - **A workspace that declares no plan folders is refused,** because its critical deadlines
   cannot be checked.
 - Otherwise it prints `critical deadlines: 2 open, 1 within 7 days` under the usual line.

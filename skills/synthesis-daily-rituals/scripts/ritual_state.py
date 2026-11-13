@@ -133,9 +133,14 @@ def critical_deadlines(workspace: str, outcome: str, sweep=None) -> str:
                "confirmation, or the principal's own words quoted with the time), or carries a new date with its reason. "
                "Never decide for the principal that nothing is needed, and never mark it Lapsed.")
     if report["gaps"] and outcome in CLEAN:
-        refuse(f"{len({str(entry['path']) for entry in report['gaps']})} plan source(s) could not be read whole, so critical deadlines are not fully "
-               f"covered and outcome {outcome!r} would claim they are. Record --outcome partial and name the gaps "
-               "(decay_sweep.py lists each as NOT COVERED)")
+        unread = {}  # each source once, with the first reason given for it
+        for entry in report["gaps"]:
+            unread.setdefault(str(entry["path"]) or "(no folder declared)", entry["reason"])
+        refuse(f"{len(unread)} plan source(s) could not be read whole, so critical deadlines are not fully "
+               f"covered and outcome {outcome!r} would claim they are:\n"
+               + "\n".join(f"  {path}: {why}" for path, why in list(unread.items())[:5])
+               + f"\n  and {len(unread) - 5} more" * (len(unread) > 5)
+               + "\nRecord --outcome partial and name the gaps (decay_sweep.py lists each as NOT COVERED)")
     rows = report["critical"]["open"]
     return f"critical deadlines: {len(rows)} open, {sum(r['lead'] for r in rows)} within {decay_sweep.LEAD_DAYS} days"
 

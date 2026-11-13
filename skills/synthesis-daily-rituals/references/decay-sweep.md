@@ -125,8 +125,9 @@ commitment written with no tag is carried for as long as someone copies it and n
   heading that says either way decides: a bucket under the task section is read unless its own words say
   finished, and the plan's own title places nothing. A heading that is all inline code is no heading to the sweep.
 - *Which entries.* Each top-level list entry there, and each row of a table that stands directly under such a
-  heading, before any list: a row is named by its first cell that says what it is (not a number), and a row that
-  is empty, repeats the table's header or opens with a clock time (a schedule's line) is passed over.
+  heading, before any list. A table's first row is its header, so a block of piped lines with no header loses its
+  first line. A row is named by its first cell that says what it is (not a number), and a row that is empty,
+  repeats the header or opens with a clock time (a schedule's line) is passed over.
 - *What is closed.* An entry is closed, and not read, where a mark stands as its status: a tick box, a strike, a
   tick (✅ ✓ ✔ ☑) or DONE or SENT in capitals at its start, with no question mark after the word; ✅ at its end,
   alone or before DONE or SENT; or DONE or SENT after a dash or a colon. A tick or a word inside a sentence closes
