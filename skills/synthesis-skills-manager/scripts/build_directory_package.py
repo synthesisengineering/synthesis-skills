@@ -12,8 +12,11 @@ registers no hook. Nothing is submitted: the upload is the owner's.
 A ZIP is written only when it passes, and the checks read the ZIP: it holds only files of listed skills, its
 images and the manifest; each file equals its source; every dependency of a listed skill is listed; the version
 is the repository's; the manifest names a logo and a composer icon among the images, and no image goes unnamed;
-and no line claims a hook, a guard or an approval code, or needs the runtime (CLAIMS). A skill that gains such a
-line fails here until it leaves the list; its text is never edited to pass.
+and nothing claims a hook, a guard or an approval code at work ("the hook will refuse the send"), sends its reader
+to the coordination board ("the board records your claim") or needs the runtime, whose command counts with or
+without backticks ("synthesis doctor" in a fenced block) (CLAIMS). A file is read a paragraph at a time, so a
+claim that hard wrapping splits is caught, at the line where it begins. A skill that gains such a line fails here
+until it leaves the list; its text is never edited to pass.
 
 One line on stdout, and the exit code:
   OUT.zip              built OUT.zip: 32 skills, 235 files, 845797 bytes, version 5.8.0                    0
@@ -43,24 +46,33 @@ IMAGES = "skills/synthesis-skills-manager/assets/directory-package"  # the packa
 ICONS = ("logo", "composerIcon")  # a package in the Codex format names both; each may have a Dark variant
 MANIFEST = ".codex-plugin/plugin.json"  # the repository's, for its version; and the package's own, at the same path
 # What no packaged line may say, in the words of the skills that need the runtime: a hook, a guard or an approval
-# code at work, or the runtime's command, folder or core. The tests name each phrase, hold it against skills that
-# must fail, and pin the ordinary senses (an opening hook, a guard clause) that pass. ACTS: the verbs of enforcement.
-ACTS = (r"(?:refus(?:e|es|ed)|block(?:s|ed)?|den(?:y|ies|ied)|stop(?:s|ped)?|check(?:s|ed)?|enforc(?:e|es|ed)"
-        r"|catch(?:es)?|holds?|asks?|waits?|lets?|runs?|re-injects?)\b")
+# code at work, or the runtime's command, folder, core or board. The tests name each phrase, hold it against skills
+# that must fail, and pin the ordinary senses (a hook that catches the reader, a guard clause) that pass. ACTS: what
+# only enforcement does, after a hook, the commit check or a guard with a word between allowed ("will refuse"); BY:
+# the passive ("blocked by the hook"). A line break is whitespace to every phrase: `claimed` joins a paragraph.
+ACTS = r"(?:\w+\s+)?(?:refus(?:e|es|ed)|block(?:s|ed)?|den(?:y|ies|ied)|enforc(?:e|es|ed)|re-injects?)\b"
+BY = r"\b(?:refused|blocked|denied|enforced)\s+(?:\w+\s+)?by\s+(?:the|an?|its|each|every)\s+(?:[\w-]+\s+)?"
+COMMANDS = ("claim|release|journal|index|who|msg|worktree|inbox|wait|sends|use|brief|resume|handoff|sessions"
+            "|approvals|install|uninstall|doctor|version")  # the subcommands of synthesis/cli.py
 CLAIMS = tuple((kind, re.compile(pattern)) for kind, pattern in (
     ("a hook claim",
      r"(?i)\b(?:PreToolUse|SessionStart|UserPromptSubmit)\b|\bhooks\.json\b|core\.hooksPath"
-     r"|\b(?:stop|session-start|prompt|lifecycle|git|v5|synthesis)[\s-]hooks?\b|(?<![\w-])commit[\s-]check\b"
-     r"|\bhooks?\s+(?:that\s+)?" + ACTS),
+     r"|\b(?:stop|session-start|prompt|lifecycle|v5|synthesis)[\s-]hooks?\b|(?:\bthe\s+git\s|\bgit-)hooks?\b"
+     r"|(?:\bhooks?|(?<![\w-])commit[\s-]checks?)\s+" + ACTS + "|" + BY + r"(?:hooks?|commit[\s-]checks?)\b"),
     ("a guard claim",
-     r"(?i)\b(?:send|messages?|deploy|shell|write|browser|account(?:-routing)?|repo(?:sitory)?|commit|publish"
-     r"|pre-tool|synthesis|v5)[\s-]guards?\b|\bthe\s+guards?\b|\bagent[\s-]guardrails\b|\bguards\.py\b"
-     r"|\bguards?\s+(?:that\s+)?" + ACTS),
+     r"(?i)\b(?:send|messages?|deploy|shell|browser|account(?:-routing)?|repo(?:sitory)?|commit|publish"
+     r"|pre-tool|synthesis|v5)[\s-]guards?\b|\bthe\s+guards?\b(?!\s+clauses?\b)|\bagent[\s-]guardrails\b"
+     r"|\bguards\.py\b|\bguards?\s+" + ACTS + "|" + BY + r"guards?\b"),
     ("an approval-code claim",
      r"(?i)approve`?\s+`?<code>|\bapproval[\s-]codes?\b|\bsix-character\s+codes?\b"
      r"|\btyp(?:e|es|ed|ing)\s+[`\"']?approve\b"
      r"|\b(?:waits?|waiting|awaiting)\s+(?:for\s+|on\s+)?(?:a|the|their|your|its)\s+codes?\b"),
-    ("a runtime need", r"`synthesis\s+[a-z]|\.synthesis/v5\b|\bSYNTHESIS_HOME\b|^\s*(?:from|import)\s+synthesis\b"),
+    ("a runtime need",
+     r"`synthesis\s+[a-z]|\.synthesis/v5\b|~/\.synthesis/?(?![\w./-])|\bSYNTHESIS_HOME\b"
+     r"|(?:(?<![^\n])[ \t]*(?:\$\s+)?|\bpython3?\s+-m\s+)synthesis\s+(?:" + COMMANDS + r")\b"
+     r"|(?<![^\n])[ \t]*(?:from|import)\s+synthesis\b|(?i:\b(?:coordination\s+board|board\s+(?:claims?|rows?))\b)"
+     r"|(?i:\bboard\s+(?:records?|holds?|shows?|lists?|keeps?|grants?|refuses?)\s+(?:\w+\s+){0,2}claims?\b)"
+     r"|(?i:\breleas(?:e|es|ed|ing)\s+(?:the|its|your|their|this\s+session's|those)\s+claims?\b)"),
 ))
 
 
@@ -68,8 +80,25 @@ class Unreadable(Exception):
     """The list, a manifest, a file or git cannot be read, so nothing can be said about the package (exit 2)."""
 
 
-def claims(line: str) -> list:
-    return [kind for kind, pattern in CLAIMS if pattern.search(line)]
+def claims(text: str) -> list:
+    """The kinds of claim a text makes, in the order of CLAIMS."""
+    return [kind for kind, pattern in CLAIMS if pattern.search(text)]
+
+
+def claimed(lines: list) -> list:
+    """(line number, kinds, line) for each line on which a claim begins. The lines are read a paragraph at a time
+    (consecutive lines that are not blank, each stripped, joined by a line break), so a claim that hard wrapping
+    splits is read whole; it is reported at the line where it begins."""
+    found, start = {}, 0
+    for end in range(len(lines) + 1):
+        if end == len(lines) or not lines[end].strip():
+            text = "\n".join(line.strip() for line in lines[start:end])
+            for kind, pattern in CLAIMS:
+                for match in pattern.finditer(text):
+                    kinds = found.setdefault(start + text.count("\n", 0, match.start()), [])
+                    kinds += [kind] * (kind not in kinds)
+            start = end + 1
+    return [(at + 1, kinds, lines[at]) for at, kinds in sorted(found.items())]
 
 
 def is_test(path: str) -> bool:
@@ -161,7 +190,7 @@ def verify(repo: Path, spec: dict, data: bytes) -> list:
         elif path != MANIFEST and (not kept.is_file() or kept.read_bytes() != content):
             found.append(f"{path}: differs from its source")
         found += [f"{path}:{number}: {', '.join(kinds)}: {line.strip()[:120]}"
-                  for number, line in enumerate(lines, 1) for kinds in [claims(line)] if kinds]
+                  for number, kinds, line in claimed(lines)]
     version, manifest = read_json(repo / MANIFEST).get("version"), json.loads(files.get(MANIFEST, b"{}"))
     if not version or manifest.get("version") != version:
         found.append(f"{MANIFEST}: version {manifest.get('version')}, not the repository's {version}")
