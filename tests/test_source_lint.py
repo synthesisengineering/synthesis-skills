@@ -296,12 +296,15 @@ def test_the_bytecode_rule_finds_a_late_guard_and_spares_an_early_one(tmp_path):
 # ---- CI runs the local command's two folders, each in a job of its own ---------------
 
 def unrun_core_tests(root: Path, halves: list) -> list:
-    """Test files under tests/ that the halves' patterns do not run exactly once."""
+    """Test files under tests/ that the halves' patterns do not run exactly once. pytest collects `test_*.py` and
+    `*_test.py` and enters folders; a job's shell pattern takes one kind of name in one folder."""
     from fnmatch import fnmatch
     found = []
-    for path in sorted((root / "tests").glob("test_*.py")):
+    for path in sorted((root / "tests").rglob("*.py")):
+        if not (fnmatch(path.name, "test_*.py") or fnmatch(path.name, "*_test.py")):
+            continue
         name = path.relative_to(root).as_posix()
-        runs = [half for half in halves if fnmatch(name, half)]
+        runs = [half for half in halves if path.parent == root / "tests" and fnmatch(name, half)]
         if len(runs) != 1:
             found.append(f"{name}: run by {len(runs)} of the jobs")
     return found
