@@ -135,7 +135,8 @@ def _all_closed(home: Path, ago: float = 3600.0, version: str = "", raw: str = "
     released = re.search(r'__version__ = "([^"]+)"', (home / "current" / "synthesis" / "__init__.py").read_text(encoding="utf-8"))[1]
     names = {"codex": "codex hook trust", "muse": "muse hook approval"}
     (home / "state" / "harness-approvals.json").write_text(raw or json.dumps({"seen": {names[k]: {
-        "at": time.time() - ago, "version": version or released, "waiting": v} for k, v in waiting.items()}}), encoding="utf-8")
+        "at": time.time() - ago, "version": version or released, "waiting": v, "struck": {}, "said": "the doctor's line"}
+        for k, v in waiting.items()}}), encoding="utf-8")
 
 
 def test_the_nudge_says_when_a_harness_has_not_shown_its_guard_running(tmp_path: Path) -> None:
@@ -160,6 +161,8 @@ def test_the_nudge_says_when_no_look_was_taken_since_synthesis_changed(tmp_path:
     _all_closed(home, version="5.0.0", codex=[], muse=[])
     assert nudge(home, tmp_path) == [NO_LOOK]
     _all_closed(home, version="5.0.0", codex=EVENTS)                            # what waited under another release is not counted
+    assert nudge(home, tmp_path) == [NO_LOOK]
+    _all_closed(home, ago=3 * 86400.0, version="5.0.0", codex=[])               # and three days on it is still not checked
     assert nudge(home, tmp_path) == [NO_LOOK]
 
 

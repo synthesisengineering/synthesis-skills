@@ -431,6 +431,29 @@ def test_a_machine_with_no_session_archive_says_it_cannot_tell_which_entries_cit
     assert findings(kb, capsys)[2]["citations"] == {"ai-knowledge-test": {"cited": None, "entries": 4}}
 
 
+def test_a_config_that_cannot_be_read_costs_the_report_nothing(kb, tmp_path, capsys):
+    """The second review, finding 1: the count asks where the sessions repos are, the config that says so was not
+    JSON, and the whole report ended in a traceback. The archive on this machine is still there to count by."""
+    _entries(kb)
+    _archive(tmp_path, ("claude-code", HERE), ("codex", THERE))
+    (tmp_path / "synthesis-home" / "config.json").write_text('{"knowledge_roots": [],}', encoding="utf-8")
+    code, out = run("--root", str(kb), capsys=capsys)
+    assert code == 0 and "citations  ai-knowledge-test: 2 of 4 session entries" in out
+
+
+def test_a_folder_named_like_a_session_that_holds_no_session_is_none(kb, tmp_path, capsys):
+    """The second review, finding 8: any folder of a sessions repo named `<harness>-<words>` was taken for a session."""
+    add_project(kb, "alpha", context(), log=f"### {RECENT}: work\n\nSee notes-2026 #3 and {HERE[:8]} #4.\n")
+    publish(kb)
+    _archive(tmp_path, ("claude-code", HERE))
+    (tmp_path / "synthesis-home" / "sessions" / "alpha" / "docs" / "claude-code-notes-2026").mkdir(parents=True)
+    code, out = run("--root", str(kb), capsys=capsys)
+    assert "citations  ai-knowledge-test: 1 of 1 session entries" in out
+    add_project(kb, "alpha", context(), log=f"### {RECENT}: work\n\nSee notes-2026 #3.\n")
+    publish(kb)
+    assert "citations  ai-knowledge-test: 0 of 1 session entries" in run("--root", str(kb), capsys=capsys)[1]
+
+
 def test_two_roots_of_one_name_each_get_their_own_line(kb, tmp_path, capsys):
     """Review of 5.14.0, finding 10: the lines were keyed by a root's folder name, so two roots of one name were
     counted as one."""

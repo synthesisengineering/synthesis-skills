@@ -69,8 +69,9 @@ def _waits(ago=3600.0, version=None, **waiting):
     names = {"codex": "codex hook trust", "muse": "muse hook approval"}
     note = paths.state() / "harness-approvals.json"
     note.parent.mkdir(parents=True, exist_ok=True)
-    note.write_text(json.dumps({"seen": {names[k]: {"at": time.time() - ago, "version": version or __version__, "waiting": v}
-                                         for k, v in waiting.items()}}), encoding="utf-8")
+    said = {"codex": "needs /hooks approval: pre_tool_use:0:0 untrusted", "muse": "run `muse plugins approve synthesis-skills`: x"}
+    note.write_text(json.dumps({"seen": {names[k]: {"at": time.time() - ago, "version": version or __version__, "waiting": v,
+                                                    "struck": {}, "said": said[k]} for k, v in waiting.items()}}), encoding="utf-8")
     return note
 
 
@@ -84,11 +85,17 @@ def _started(session, **more):
     return json.loads(out.stdout)["hookSpecificOutput"]["additionalContext"]
 
 
-def _in_codex(event, tmp_path, **more):
-    """One hook event as Codex runs it: a hook knows Codex by its rollout file."""
-    session = "0199aaaa-bbbb-7ccc-8ddd-eeeeffff0000"
-    rollout = tmp_path / f"rollout-2026-11-13T09-00-00-{session}.jsonl"
+def _rollout(session="0199aaaa-bbbb-7ccc-8ddd-eeeeffff0000"):
+    """A Codex session's own record, where Codex keeps them."""
+    rollout = Path(os.environ["CODEX_HOME"]) / "sessions" / "2026" / "11" / "13" / f"rollout-2026-11-13T09-00-00-{session}.jsonl"
+    rollout.parent.mkdir(parents=True, exist_ok=True)
     rollout.write_text("", encoding="utf-8")
+    return rollout
+
+
+def _in_codex(event, tmp_path, **more):
+    """One hook event as Codex runs it: with the session's own record, under Codex's folder of them."""
+    session, rollout = "0199aaaa-bbbb-7ccc-8ddd-eeeeffff0000", _rollout()
     out = _hook(event, {"session_id": session, "cwd": "/tmp", "transcript_path": str(rollout), **more})
     assert out.returncode == 0, out.stderr
     return out
@@ -100,19 +107,20 @@ def test_session_start_says_which_harness_has_hooks_not_seen_to_run(tmp_path, wr
     write_config({})
     _waits(codex=ALL, muse=ALL)
     context = _started("S-claude")
-    assert ("Codex: its session-start, user-prompt-submit, pre-tool-use and stop hooks waited for the principal's approval "
-            "(in /hooks) when the doctor looked") in context and "have not been seen to run since" in context
+    assert ("Codex: its session-start, user-prompt-submit, pre-tool-use and stop hooks were not running when the doctor "
+            "looked") in context and "have not been seen to run since" in context
+    assert "the doctor's line then: needs /hooks approval: pre_tool_use:0:0 untrusted" in context   # what mends it, in the doctor's words
     assert "Muse: its" in context and "`muse plugins approve synthesis-skills`" in context
-    assert context.count("Nothing guards a send or a deploy made from there") == 2
+    assert context.count("Nothing is known to guard a send or a deploy made from there") == 2
     _waits(codex=["stop"], muse=[])
     context = _started("S-claude-2")                                             # a hook that is no guard: said, with no alarm
-    assert "Codex: its stop hook waited" in context and "has not been seen to run since" in context
-    assert "Nothing guards" not in context and "Muse: its" not in context
+    assert "Codex: its stop hook was not running when the doctor looked" in context and "has not been seen to run since" in context
+    assert "Nothing is known to guard" not in context and "Muse: its" not in context
     for ago, waiting in ((60, {"codex": [], "muse": []}), (2 * 86400, {"codex": ALL})):   # nothing waits; or two days old
         _waits(ago, **waiting)
-        assert "waited for the principal's approval" not in _started(f"S-{ago}")
+        assert "not running when the doctor looked" not in _started(f"S-{ago}")
     _waits(codex=ALL).write_text("{not json", encoding="utf-8")
-    assert "waited for the principal's approval" not in _started("S-garbage")    # and the session still starts
+    assert "not running when the doctor looked" not in _started("S-garbage")     # and the session still starts
 
 
 def test_session_start_says_when_no_look_was_taken_since_synthesis_changed(tmp_path, write_config):
@@ -122,8 +130,8 @@ def test_session_start_says_when_no_look_was_taken_since_synthesis_changed(tmp_p
     _waits(version="5.0.0", codex=[], muse=ALL)
     context = _started("S-claude")
     assert "Whether Codex and Muse run synthesis's hooks has not been checked since synthesis changed" in context
-    assert "`synthesis doctor`" in context and "waited for the principal's approval" not in context
-    _waits(version="5.0.0", codex=[])
+    assert "`synthesis doctor`" in context and "not running when the doctor looked" not in context
+    _waits(3 * 86400, version="5.0.0", codex=[])                                 # three days on it is still not checked
     assert "Whether Codex runs synthesis's hooks has not been checked since" in _started("S-claude-2")
 
 
@@ -136,10 +144,11 @@ def test_a_hook_that_runs_in_a_harness_strikes_its_own_event_and_no_other(tmp_pa
     assert _waiting(note, "codex hook trust") == ["user_prompt_submit", "pre_tool_use", "stop"]
     assert _waiting(note, "muse hook approval") == ALL
     context = _started("S-claude")
-    assert "Codex: its user-prompt-submit, pre-tool-use and stop hooks waited" in context and context.count("Nothing guards") == 2
+    assert "Codex: its user-prompt-submit, pre-tool-use and stop hooks were not running" in context
+    assert context.count("Nothing is known to guard") == 2
     _in_codex("pre-tool-use", tmp_path, tool_name="Bash", tool_input={"command": "true"})
     assert _waiting(note, "codex hook trust") == ["user_prompt_submit", "stop"]
-    assert _started("S-claude-2").count("Nothing guards") == 1                   # Muse's alone: Codex's guard has run
+    assert _started("S-claude-2").count("Nothing is known to guard") == 1        # Muse's alone: Codex's guard has run
     _in_codex("user-prompt-submit", tmp_path, prompt="hello")
     _in_codex("stop", tmp_path)
     assert _waiting(note, "codex hook trust") == [] and "Codex: its" not in _started("S-claude-3")
@@ -156,6 +165,25 @@ def test_the_hook_run_from_a_harnesss_shell_strikes_nothing(tmp_path, write_conf
         out = _hook("pre-tool-use", {"tool_name": "Bash", "tool_input": {"command": "rm -rf ~"}}, env=env)
         assert out.returncode == 0 and "deny" in out.stdout, out.stderr
         assert _waiting(note, "codex hook trust") == ALL and _waiting(note, "muse hook approval") == ALL, env
+
+
+def test_only_a_record_in_the_harnesss_own_folder_of_them_strikes(tmp_path, write_config):
+    """The second review, finding 7: any path whose file was named like a Codex record struck Codex's entry. The
+    record must be a file under the folder where Codex keeps its sessions, read past any link or `..`."""
+    write_config({})
+    note, real = _waits(codex=ALL), _rollout()
+    elsewhere = tmp_path / "rollout-2026-11-13T09-00-00-0199aaaa.jsonl"
+    elsewhere.write_text("", encoding="utf-8")
+    link = real.parent / "rollout-link.jsonl"
+    link.symlink_to(elsewhere)
+    for path in (str(elsewhere), "rollout-x.jsonl", str(real.parent / ".." / ".." / ".." / ".." / ".." / ".." / elsewhere.name),
+                 str(real.parent / "rollout-missing.jsonl"), str(link), str(real.parent), ["a", "list"], 7):
+        out = _hook("pre-tool-use", {"session_id": "S", "cwd": "/tmp", "transcript_path": path, "tool_name": "Bash",
+                                     "tool_input": {"command": "true"}})
+        assert out.returncode == 0, out.stderr
+        assert _waiting(note, "codex hook trust") == ALL, path
+    _in_codex("pre-tool-use", tmp_path, tool_name="Bash", tool_input={"command": "true"})
+    assert _waiting(note, "codex hook trust") == ["session_start", "user_prompt_submit", "stop"]
 
 
 def test_a_hook_seen_under_another_release_is_left_for_the_doctor(tmp_path, write_config):
@@ -176,7 +204,7 @@ def test_a_note_that_cannot_be_written_costs_no_hook_its_answer(tmp_path, write_
     def refused(*args, **kwargs):
         raise PermissionError("read-only")
     monkeypatch.setattr(paths, "write_json", refused)
-    hook._ran({"transcript_path": str(tmp_path / "rollout-2026-11-13T09-00-00-0199aaaa.jsonl")}, "session_start")   # raises nothing
+    hook._ran({"transcript_path": str(_rollout())}, "session_start")             # raises nothing
     said = hook._unguarded_note()
     assert "Muse: its" in said and "Codex: its" in said
 

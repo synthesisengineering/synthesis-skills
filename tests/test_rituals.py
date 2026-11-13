@@ -242,8 +242,9 @@ def test_a_config_whose_workspace_is_no_object_is_refused_in_words(isolated_home
             assert "must be an object" in str(exc)
         else:
             raise AssertionError(config)
-    log(isolated_home, config={"defaults": None, "workspaces": {"alpha": None, "beta": {}}})   # nothing set is no fault
-    assert rituals.settings(rituals.config(), "alpha")["streak"] == "none"
+    for empty in (None, False, 0, "", []):                                       # nothing set is no fault, as it never was
+        log(isolated_home, config={"defaults": empty, "workspaces": {"alpha": empty, "beta": {}}})
+        assert rituals.settings(rituals.config(), "alpha")["streak"] == "none", empty
 
 
 def test_the_prompt_checks_setting_is_read_in_one_place_for_the_day_end_and_the_doctor():
