@@ -356,6 +356,16 @@ def _items(text: str):
             yield "\n".join(lines[start:starts[k + 1] if k + 1 < len(starts) else len(lines)])
 
 
+def open_choices(text: str):
+    """(its title, its own lines, its options) for each choice a plan puts that offers options and records no
+    decision: the record reads them for a recommendation, and the plate lists them."""
+    for item in _items(text):
+        title, options = MARK.sub("", item.splitlines()[0]).strip(), OPTION.findall(item)
+        done = any(not NOTHING.fullmatch(m[1]) and not OPEN.match(m[1]) for m in CLOSED.finditer(item))  # it says what was decided
+        if options and not done and not title.lstrip("*_ ").startswith(("~~", "[x]", "[X]", "✓", "✔")) and "✅" not in title:
+            yield title, item, options
+
+
 def choices(workspace: str, day: str) -> str:
     """The line `record` prints about the choices the day's plan puts to the principal, or a refusal: an open item
     that offers options with no recommendation, or, when it would commit their time (an accept or decline, or a
@@ -365,11 +375,7 @@ def choices(workspace: str, day: str) -> str:
     open_items, bare = 0, []
     for plan in (folder / f"{day}.md" for folder, kind in roots if kind == "plans"):
         text = plan.read_text(encoding="utf-8", errors="replace") if plan.is_file() else ""
-        for item in _items(text):
-            title, options = MARK.sub("", item.splitlines()[0]).strip(), OPTION.findall(item)
-            done = any(not NOTHING.fullmatch(m[1]) and not OPEN.match(m[1]) for m in CLOSED.finditer(item))  # it says what was decided
-            if not options or done or title.lstrip("*_ ").startswith(("~~", "[x]", "[X]", "✓", "✔")) or "✅" in title:
-                continue
+        for title, item, options in open_choices(text):
             said = {"recommendation" if m[1].lower().startswith("recommend") else "consequences" if m[1].lower().startswith("consequence") else m[1].lower(): m[2]
                     for m in [*SAID.finditer(item), *TITLED.finditer(title)] if not NOTHING.fullmatch(m[2]) and not OPEN.match(m[2])}
             said.update({"recommendation": "on the option"} if any(re.search(r"(?i)(?<!not )\brecommended\b", option) for option in options) else {})

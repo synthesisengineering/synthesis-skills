@@ -401,7 +401,7 @@ def collect(roots: list[tuple[Path, str]], as_of: date, workspace: str | None = 
               "scope": "all available dated Markdown within explicitly declared roots; no lookback cutoff",
               "declared_roots": [{"path": str(p), "kind": k} for p, k in roots],
               "scanned": [], "excluded": [], "future_files": [], "gaps": [], "due": [],
-              "critical": {"open": [], "closed": [], "unclassified": []}, "untagged": [], "commitments": 0, "no_id": []}
+              "critical": {"open": [], "closed": [], "unclassified": []}, "untagged": [], "commitments": 0, "no_id": [], "ahead": []}
     conf, words, closed_words = dict(rituals.DEFAULTS), WORDS, LEDGER_CLOSED
     try:
         cfg = rituals.config()
@@ -546,8 +546,11 @@ def collect(roots: list[tuple[Path, str]], as_of: date, workspace: str | None = 
             result["unannounced"] = chosen["due_date"] < as_of.isoformat() and not any(
                 e["lapsed_on"] >= chosen["due_date"] for e in history)  # a mark for an earlier date says nothing of this one
             report["due"].append(result)
+        elif latest["due_date"] and not latest["closed"]:  # open and not yet due: for a list of everything open
+            report["ahead"].append({k: latest[k] for k in ("identity", "title", "due_date", "path", "line")})
     report["due"].sort(key=lambda e: (e["due_date"], e["path"], e["line"]))
     report["no_id"].sort(key=lambda e: (e["due_date"], e["path"], e["line"]))
+    report["ahead"].sort(key=lambda e: (e["due_date"], e["path"], e["line"]))
     report["critical"]["open"].sort(key=lambda e: (e["due_date"], e["path"], e["line"]))
     report["total_obligations"] = len(grouped)
     review = (report["due"] or report["critical"]["unclassified"] or any(r["lead"] or r["problems"] for r in report["critical"]["open"])
