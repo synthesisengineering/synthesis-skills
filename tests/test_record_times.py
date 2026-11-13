@@ -1,7 +1,8 @@
 """The time an entry gives for itself is not later than the commit that records it, and is no rounding of the present.
 
-A record's entry states its own time in three places: the line opens with the day and a time, a parenthesis opens
-with them, or (in a session log) a list item opens with a time under a heading that names the day. Measured on thirty
+A record's entry states its own time in four places: the line opens with the day and a time, a parenthesis opens
+with them, (in a session log) a list item opens with a time under a heading that names the day, or the line opens
+with a word for what was done and then the time. Measured on thirty
 days of commits to twenty-seven knowledge repositories (2026-11-12): of 688 such stamps, 36 named a minute that had
 not come when they were committed and 111 rounded the present ("18:3x", "about 18:35") when the clock could be read.
 A time inside an entry's text says nothing of the kind: three in ten of those are later than the commit, and rightly

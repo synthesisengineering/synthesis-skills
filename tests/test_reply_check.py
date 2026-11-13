@@ -2214,7 +2214,7 @@ def test_a_number_given_as_the_path_names_no_file_descriptor(tmp_path):
 # 2026-11-12: the one reply that blocked a fix had no watch on it, and the next look was hours away. No hook can
 # know that a message asks for something today; the agent that sent it does. So a turn that sent a message to a
 # person ends with a watch for the answer, or with the statement that none is awaited. Replayed before it shipped
-# (2026-11-13): in recorded turns of 89 days a message to a person went out in 257, and nothing was armed after 251.
+# (2026-11-13): a message to a person went out in 275 recorded turns, and nothing was armed after 261 of them.
 # A review round then changed how each part is known (2026-11-13): a message to a person is what the send guard
 # takes for one, not a list of names here; the statement is the line `synthesis wait none` writes on the board, not
 # the command's text; and a turn begins at a prompt or a notification, never at a skill's text or a compaction.

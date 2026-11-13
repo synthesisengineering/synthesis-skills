@@ -10,13 +10,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   the config has `status_evidence` (`{}` turns it on; `skip` names folders it does not read). On 2026-11-12 statuses
   said colleagues could use a tool "now" when none of them could: they had been written from an assumption, and
   nothing asked what they rested on. The commit check cannot know that a line claims a thing works. It can hold a
-  table to its own header: a row a commit adds to a Markdown table that has a column headed Status and a column
-  for evidence (`evidence`, `proof`, `source`, `checked`, `verified`, `basis`, `how we know`) is refused when it
-  gives a status and leaves the evidence empty, unless the row says `unverified`. No approval clears it. In a table
-  with a Status column and no column for evidence, a row that says a thing works or is done and holds no link, no
-  code span and not the word `unverified` gets one line of note for its file, and the commit goes through: that
-  part reads a list of words, so it only informs. Replayed over thirty days of commits to twenty-seven knowledge
-  repositories: 11 rows refused in 5 of 1,032 commits, and 12 rows noted in 10.
+  table to its own header: a row a commit adds to a Markdown table that has a column headed `Status` and a column
+  for evidence (`Evidence`, `Proof`, `Verified`, `How we know`) is refused when it gives a status and leaves the
+  evidence empty, unless the row says `unverified`. No approval clears it, so only a header that can mean nothing
+  else refuses: a `Source`, `Checked` or `Basis` column never does, and a filled one counts as pointing somewhere.
+  In a table with a Status column and no column for evidence, a row that says a thing works or is done and holds
+  no link, no code span and not the word `unverified` gets one line of note for its file, and the commit goes
+  through: that part reads a list of words, so it only informs. A table is read in a block quote, under a list
+  item and in a file with CRLF endings, and not in a code fence or an indented code block; one written without
+  its outer pipes is not read. Replayed over thirty days of commits to twenty-seven knowledge repositories:
+  12 rows refused in 6 of 1,110 commits, and 11 rows noted in 7.
 - **The account a site shows in a workspace's browser profile** (`synthesis-agent-guardrails` 2.8.0,
   `synthesis-agent-conformance` 2.0.4). On only where a workspace's `browser_routing` entry names sites under
   `accounts`, each with the workspace's address there; a key may name the page of the site that shows the
@@ -24,17 +27,46 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   to the principal's personal account, and the agent reported that the work could not be done from there. The
   right profile can show the wrong account, and what is typed or uploaded there goes into an account the workspace
   does not own. The guard sees no browser; it reads the session's record, where each browser result names the tab
-  it ran on and a page read holds what the page showed. A call that puts something into a page of a named site
-  (keys, a form's value, an upload, a script, alone or as a step of a batch) waits until a read of that site has
-  shown the workspace's address and none of the principal's others. Going there, reading and clicking never wait,
-  since the account often sits behind a menu. A read that shows another of the principal's addresses is called a
-  misconfiguration to tell the principal about, not a limit on the work: the hold says so, a turn that read it has
-  its reply sent back once with the same words, and `synthesis doctor` warns (`browser accounts`) until a later
-  read shows the right account. A map of another shape blocks the workspace's browser calls. What the guard cannot
-  see is stated in the reference: a page that mentions the address for another reason, an account shown only in a
-  picture, an address the config does not name. Replayed over thirty days of recorded browser calls: none of the
-  250 reads, clicks and navigations on such sites is held, and of the 99 calls that put something into a page
-  there, 26 came after a read that had shown the account and 73 before any, in four sessions.
+  it ran on and a page read holds what the page showed. A call that types, sets a form's value, uploads or runs a
+  script on a page of a named site, alone or as a step of a batch, waits until a read of that site has shown the
+  workspace's address and none of the principal's others. Going there, reading, clicking and signing in never
+  wait, since the account often sits behind a menu, and neither does a key that only moves, selects, copies or
+  reloads. A put on a tab whose page the record does not show waits for a call that lists the tabs. A read that
+  shows another of the principal's addresses is called a misconfiguration to tell the principal about, not a limit
+  on the work: the hold says so (firmly where the key names the account's page, as a condition where it names the
+  site alone and a page may only mention the address), a turn that read it has its reply sent back once with the
+  same words, and `synthesis doctor` warns (`browser accounts`) until a later read shows the right account. A map
+  of another shape blocks the workspace's browser calls. What the guard cannot see is stated in the reference: an
+  account shown only in a picture, an address the config does not name, a page's text that runs the address
+  together with the words beside it. Replayed over thirty days of recorded browser calls: none of the 261 reads, clicks and navigations on such sites is held, and of the 88 calls that put
+  something into a page there, 22 came after a read that had shown the account and 66 before any, in four sessions.
+- **The two rules of 5.11.0 after a second review** (`synthesis-message-guard` 2.10.0, `synthesis-waiting` 1.1.1).
+  Both are still off unless the config turns them on. A message to a person is now a call whose own name says it
+  sends, replies, forwards or drafts a message: a reaction, an out-of-office note, a canvas, a comment on a file
+  and a share had each counted. From the shell it is `osascript` to Messages or Mail, a command `send_commands`
+  names for messages, mail, Slack or chat, and the local-messaging skill's sender, and both rules ask the same
+  thing of a command. A range of hours written with a hyphen (`2-3pm`) names a time. A `reads` pattern over a whole
+  server names its reads, a calendar write is never a read, and a server that only has `workspace` in a longer
+  name is no calendar's. A sender that asks from a script is judged by the record its session id finds, where
+  its hold had said the session read no calendar whatever it had read. A sub-agent's hold says its own reads are
+  not seen. Sends are judged one at a time, so two identical calls made at the same moment cannot each go on one
+  of a message's two codes. At the turn's end a connector's own answer that it failed is no send, a prompt that is
+  only a picture begins a turn, a statement dated ahead of the clock covers nothing, and the file of statements
+  keeps its last 64 KB. Replayed on the fixed code: the first rule holds 130 of 811 recorded calls to a person and 89 of 143 sends
+  that name a clock time at their last call; a message to a person went out in 275 recorded turns, 33 of them a
+  text by the local sender, and the second rule sends back 261.
+- **An entry's own time is read in a fourth place** (`synthesis-git-hooks` 3.4.0): a line that opens with a word
+  for what was done and then the time, with a weekday or a day between them or neither (`**Revised Fri 07:15
+  ET:**`, `Written 18:52:`). The morning the check first ran for a principal, a revision stamped with a weekday
+  and a placeholder minute was committed and no stamp was read. `revised` joins the words. A weekday that is not
+  today's names another day and is not judged. Replayed over thirty days of commits, it refuses 213
+  lines in 149 of 1,111 commits where 191 in 137 were refused before; each of the 22 more was read, and each is an
+  entry's own time, rounded or a few minutes ahead.
+- **The list of tabs is read in both of the browser extension's forms** (the address in quotes, and without them
+  as it was written until August 2026), for the browser rule above and for the rule that takes a page on a
+  messaging site for that messaging app; a new tab's empty address is a page that is known.
+- **A lint: no core module binds a name twice at its top.** Twice in one day a new helper took the name of an
+  older one further down the same file, and the later one won without a word.
 
 ## [5.11.0] - 2026-11-13
 

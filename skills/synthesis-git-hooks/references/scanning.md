@@ -198,24 +198,32 @@ Off unless the config has `record_times` (`{}` turns it on; see the guardrails'
 [config reference](../../synthesis-agent-guardrails/references/config.md)). In a Markdown
 file (`.md`, `.markdown`) outside a folder of transcripts and outside what the setting's
 `skip` list names, the check reads the time an added entry gives for itself. An entry
-states one in three places:
+states one in four places:
 
 | Place | Example |
 |---|---|
 | The line opens with the day and a time, behind a list mark, a ticked box, a heading, emphasis or a bracket. A line with no mark counts where it begins a paragraph | `- **2026-11-12 19:30, the release is out.**`, `### 2026-11-12 14:40 CDT`, `- [2026-11-12 6:54 pm]` |
 | A parenthesis opens with the day and a time, or with one of the words below, each saying what was done then | `(11-12 18:54: approved in the dialog)`, `(added 11-12 18:46, ...)`, `(Updated: 11-12 18:46)` |
 | In a file under a `sessions/` folder, a list item or a heading opens with a time, and the nearest dated heading above it, outside a code fence, names today | `- 18:54 ET: pushed the branch` |
+| The line opens, behind the same marks, with one of the words below and then the time, with a weekday or a day between them or neither. A weekday with no day is read only where it is today's | `**Revised Fri 07:15 ET:**`, `Written 18:52:`, `### Built 2026-11-12 18:47`, `- Released about 18:40` |
 
-**The words,** in either case, with or without a colon: `as of`, `current to`, `added`,
+**The words,** in any case, with or without a colon: `as of`, `current to`, `added`,
 `answered`, `approved`, `asked`, `begun`, `built`, `checked`, `closed`, `completed`,
 `corrected`, `counted`, `created`, `decided`, `deleted`, `deployed`, `done`, `extended`,
 `filed`, `finished`, `fixed`, `found`, `held`, `installed`, `kept`, `left`, `made`,
 `measured`, `merged`, `modified`, `noted`, `opened`, `posted`, `probed`, `proven`,
 `published`, `pushed`, `read`, `received`, `recorded`, `refreshed`, `released`, `removed`,
-`renamed`, `replied`, `returned`, `reviewed`, `ruled`, `run`, `said`, `searched`, `sent`,
-`shown`, `started`, `stopped`, `synced`, `tested`, `told`, `updated`, `verified`,
-`written`. A parenthesis that opens with any other word names an event, and its time is
-the event's: `(scheduled 11-12 18:55)`, `(call 11-12 19:00)`, `(due 2026-11-12 18:55)`.
+`renamed`, `replied`, `returned`, `reviewed`, `revised`, `ruled`, `run`, `said`, `searched`,
+`sent`, `shown`, `started`, `stopped`, `synced`, `tested`, `told`, `updated`, `verified`,
+`written`. A parenthesis or a line that opens with any other word names an event, and its
+time is the event's: `(scheduled 11-12 18:55)`, `(call 11-12 19:00)`, `(due 2026-11-12
+18:55)`, `Standup 18:45`, `Thu 18:45 review`.
+
+The fourth place was added on 2026-11-13, the morning the check first ran for a principal:
+a seat committed `**Revised Fri 07:1x ET:** ...` at 07:11 and no stamp was read, since the
+line opens with a word and a weekday. Counted over thirty days of commits, 110 added lines
+open with one of these words and then a time, and 28 of them round the time or stand a
+few minutes after their commit.
 
 The commit is refused when such a stamp is:
 
@@ -277,9 +285,9 @@ prevents those.
 
 It was measured before it was built, on thirty days of commits to twenty-seven knowledge
 repositories: a time inside an entry's text is later than its commit three times in ten,
-and rightly, so only an entry's own stamp is judged. Replayed over the same 1,032 commits
-as it stands, it reads 1,135 stamps and refuses 189 lines in 136 commits (42 later, 147
-rounding the present). Its first form also refused five wrapped lines that began with a
+and rightly, so only an entry's own stamp is judged. Replayed over thirty days of commits
+(1,111) as it stands, it refuses 213 lines in 149 commits (46 later, 167 rounding the
+present). Its first form also refused five wrapped lines that began with a
 time by chance; its second, before a review, refused deadlines and schedules hours ahead;
 its third took any word in -ed at a parenthesis's head for a stamp and any capital word
 ending in T for a zone, neither of which those commits bear out
@@ -357,8 +365,8 @@ The check cannot know that the evidence is evidence: a cell that says `checked` 
 What it changes is that the reader of the record sees what was written there, where
 before nothing was asked.
 
-Replayed before it shipped over thirty days of real commits (1,032): 11 rows refused in 5
-commits, and 12 rows noted in 10. Where a table has a column for evidence it is nearly
+Replayed as it stands over thirty days of real commits (1,110): 12 rows refused in 6
+commits, and 11 rows noted in 7. Where a table has a column for evidence it is nearly
 always filled: 919 of 931 added rows (`tests/test_status_evidence.py`).
 
 ## Claims

@@ -9,7 +9,8 @@ note is all a list of words may do.
 
 Measured before it was built (2026-11-13), on thirty days of commits to twenty-seven knowledge repositories: 1,520
 rows were added to tables with a Status column, 931 of them to tables that also have a column for evidence.
-Replayed as built over the same 1,032 commits: 11 rows refused in 5 commits, and 12 rows noted in 10.
+Replayed as it stands after a review, over thirty days of commits (1,110): 12 rows refused in 6 commits, and 11 rows
+noted in 7.
 """
 
 import os

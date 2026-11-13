@@ -4,8 +4,8 @@
 calendar had been read when the message was drafted, and the draft then waited for its approval. Every send waits
 for one, so every offer of a time has that window. The guard cannot know that a message proposes a meeting; it can
 know that its words name a clock time and when this session last read a calendar. Replayed over recorded messages
-(2026-11-13): of 445 distinct messages sent to people on 75 days, 145 named a clock time, and the session had read a
-calendar in the ten minutes before for 59 of them; of the 37 with words of offering beside the time, for 20.
+(2026-11-13): of 451 distinct messages sent to people on 76 days, 143 named a clock time, and the session had read a
+calendar in the ten minutes before for 54 of them; of the 37 with words of offering beside the time, for 20.
 """
 
 import json

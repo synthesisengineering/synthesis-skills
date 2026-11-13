@@ -660,10 +660,11 @@ try:
     from zoneinfo import ZoneInfo
 except ImportError:  # an interpreter with none reads no region label
     ZoneInfo = None
-# The time an entry gives for itself, in the three places a record states one: the line opens with the day and a
+# The time an entry gives for itself, in the four places a record states one: the line opens with the day and a
 # time (behind a list mark, a ticked box, a heading, emphasis, a bracket), a parenthesis opens with them or with one
-# of the words below, each saying what was done then (`added`, `as of`), or the line opens with a time alone (read
-# only in a session log, in a list item or a heading, under a heading that names the day). A time may be rounded
+# of the words below, each saying what was done then (`added`, `as of`), the line opens with a time alone (read
+# only in a session log, in a list item or a heading, under a heading that names the day), or the line opens with
+# one of those words and then the time. A time may be rounded
 # ("18:3x", "about 18:35"), a range, on a 12-hour clock, and may name its zone. Measured on thirty days of commits
 # before this was written (2026-11-12): 688 such stamps, 36 of them later than their commit and 111 rounding the
 # present. Replayed over the same commits, the first form refused five wrapped lines that began with a time by
@@ -817,8 +818,8 @@ def record_times(lines: list, settings, now: datetime, read) -> list:
 # status was written from an assumption. That a line claims a thing works is meaning, which this does not read. That
 # a table has a column headed Status and a column for evidence is the table's own statement, and a table is held to
 # it. Measured first (2026-11-13), on thirty days of commits: 1,520 rows added to tables with a Status column, 931 of
-# them to tables that also have a column for evidence. Replayed as built over the same commits: 11 rows refused in
-# 5 of 1,032 commits, and 12 rows noted in 10. The list of words below is used for a note only: a wrong note costs
+# them to tables that also have a column for evidence. Replayed as it stands after a review: 12 rows refused in 6
+# of 1,110 commits, and 11 rows noted in 7. The list of words below is used for a note only: a wrong note costs
 # a line of a commit's output. No approval clears a refusal, so few headers can refuse (a review of 2026-11-13 found
 # a lead's `Source`, a task's `Checked` and a US `State` refused): `Source`, `Checked` and `Basis` keep a row from
 # the note and never refuse it.

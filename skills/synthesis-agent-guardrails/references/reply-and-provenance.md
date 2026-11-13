@@ -183,29 +183,35 @@ something today; the seat that sent it can, and this check makes it say.
 
 - **Which calls:** what the send guard takes for a message to a person
   ([its reference](../../synthesis-message-guard/references/config.md#a-time-in-the-words-2026-11-12) says what
-  that is): a send on mail, Slack, chat or texts, or by a connector the guard has no name for, and a text or a mail
-  sent from the shell. A draft and a scheduled message are left out here: a draft is the principal's to send, and
-  a scheduled one has not gone. A calendar event, a ticket, a document, a file for the principal and a note to
-  another session are none. The guard's own settings decide the rest: `send_tools` adds a tool, and
-  `not_send_tools` takes out one whose name only reads like a send.
-- **A call that did not go is not counted:** one the guard held or refused, or that failed. A hold is read by its
-  own words as well as by the error mark, since the record does not always mark it.
+  that is): a call whose own name says it sends, replies or forwards a message, on mail, Slack, chat or texts or
+  by a connector the guard has no name for, and a message sent from the shell: `osascript` to Messages or Mail, a
+  command `send_commands` names for `messages`, `email`, `slack` or `chat`, and the local-messaging skill's sender.
+  A draft and a scheduled message are left out here: a draft is the principal's to send, and a scheduled one has
+  not gone. A calendar event, a ticket, a comment, a reaction, a share, a document, a file for the principal and a
+  note to another session are none, and neither is a tool the guard asks a code for whose name does not say it
+  carries a message. `not_send_tools` takes out a tool whose name only reads like a send. A message typed into a
+  web page or an app by computer use is not seen here.
+- **A call that did not go is not counted:** one the guard held or refused, or that failed. A harness records a
+  hook's refusal as an error (633 of 633 in thirty days of records). The guard's own words for a hold are read as
+  well, should a record not mark one, and so is a connector's answer that says it failed (`{"ok": false}`).
 - **What answers it:** a timer or a monitor of the harness that started after the last such call of the turn
   (`CronCreate`, `ScheduleWakeup`, `Monitor`, a scheduled task); or the statement `synthesis wait none "<why>"`,
   made after that message went; or a wait this session still holds on the board, whenever it was armed, which is
   what a running `synthesis wait message` or a `wait note` is. The statement is read from the line the command
   writes on the board, with its session and its time. The words in a shell command state nothing, and the command
-  states it however it was run.
-- **Where a turn begins:** at a prompt or at a notification that woke the session. A skill's text, a compaction's
-  summary and a sub-agent's entries begin none, and a sub-agent's own send is not this turn's.
+  states it however it was run. A line dated ahead of the clock states nothing.
+- **Where a turn begins:** at a prompt, with words or with a picture alone, or at a notification that woke the
+  session. A skill's text, a compaction's summary and a sub-agent's entries begin none, and a sub-agent's own send
+  is not this turn's.
 - **Otherwise** the reply is sent back once, naming the tool and both answers.
 
 What it does not know: whether the watch watches the right thing, and whether a reason given to `wait none` is
 true. Each is the seat's statement, on the record. It reads the last 8 MB of a Claude Code transcript, so a send
 that lies further back in one long turn is not seen, and other harnesses' records are not read for it. A
 `reply_watch` of another shape (`true`, a list, any key) turns nothing on in silence: the reply is sent back once
-saying so. Replayed before it shipped, with its own code at the end of each recorded turn: a message to a person
-went out in 257 turns of 89 days, and nothing was armed after 251 of them.
+saying so. Replayed with its own code at the end of each recorded turn (2026-11-13, as it stands after a second
+review): a message to a person went out in 275 turns, 33 of them a text by the local sender, and nothing was armed
+after 261 of them.
 
 ### A site signed in to another account
 
@@ -215,11 +221,13 @@ browser profile, found it signed in to the principal's personal account, and rep
 done from there. No call was held, so no guard spoke, and the principal was not told what to fix.
 
 The check reads the turn's own lines with the guard's reader. Where the newest read that settles a named site's
-account shows another of the principal's addresses, the reply goes back once, saying that the profile is signed
-in to the site as that account, that this is a misconfiguration to tell the principal about in this reply, with
-the profile and the site named, and that it is not a limit on the work. What the read showed is written down for
-`synthesis doctor` either way. The check does not read the reply's words: a reply that already says so is sent
-back once all the same, and says it again.
+account shows another of the principal's addresses, the reply goes back once with the guard's own words for it:
+that the profile is signed in to the site as that account, where the key names the page that shows the account,
+or what the read showed, put as a condition, where the key names the site alone and a page may only mention the
+address; that this is a misconfiguration to tell the principal about in this reply, with the profile and the
+site named; and that it is not a limit on the work. What the read showed is written down for `synthesis doctor`
+either way. The check does not read the reply's words: a reply that already says so is sent back once all the
+same, and says it again. A record that is gone shows nothing.
 
 ## The file-link rule
 

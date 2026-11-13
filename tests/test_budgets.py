@@ -744,25 +744,38 @@ ROOT = Path(__file__).resolve().parents[1]
 # fewer), _stated 21 (the statement's line on the board), check 11, HELD 3, TIMERS 1 and two imports. wait.py 17: the
 # statement that no answer is awaited (main 14, its usage line, its sentence and one import). approvals.py 11: void
 # 9 (a grant and a waiting request of one subject dropped unused) and two blank lines.
-# 5.12.0 (2026-11-13): core 256, plugin 256. commit_check.py 69, a status table held to its own header, off unless
-# the config has `status_evidence`: status_evidence 43 (the row's table read from the staged file, its Status and
-# evidence columns, the refusal and the note), ROW with the note of what was measured 8, _record 6 (which files are
-# records, shared with the time check), problems 5 (the call beside the time check, and the note's line), _WORKS 2,
-# and one each for RULE, _STATUS, _EVIDENCE, _BLANK and _POINTS. guards.py 145, the account a site shows in a
-# workspace's browser profile, on only where `browser_routing` names sites under `accounts`: _account_shown 22 (the
-# newest read of the site that settles its account), _account_hold 19 (which steps put something into a page, and
-# the words of the two holds), named_sites 14 (the map's shape), _account 13 (what a read showed, written down once
-# for the doctor), accounts_misrouted 11 (the same reading at the turn's end), _where 11 and _on_site 6 (a tab's
-# address against a site and its page; _web_app is 5 fewer for it), _everyone 10 and _principal 6 (the principal's
-# addresses; the same-day rule is 2 fewer for it), _browser_workspace 9 (the session's workspace, for the guard and
-# the reply check), _misrouted 6, _steps 5 and _pages 2 (the steps of a browser call and the page each acts on, now
-# shared), _said 4 (a result's text; _tabs and _last_selection are 2 fewer each), PUTS and MAIL with the rule's note
-# 11, check_browser 1, and six blank lines. doctor.py 27: check_browser_accounts 24, its call 1 and two blank lines.
-# reply_check.py 15: misrouted_accounts 9, check 4 and two blank lines.
+# 5.12.0 (2026-11-13): core 421, plugin 421. commit_check.py 119. Of them 111 are a status table held to its own header, off unless
+# the config has `status_evidence`: status_evidence 46 (a row against its table's Status column, its columns for
+# evidence and its softer ones, the refusal and the note), _tables 20 (each table's first row, found in one pass of the
+# file: quotes, fences, indented code and list items), ROW with the note of what was measured 10, _record 6 (which
+# files are records, shared with the time check), _name 6 (a header's words under its marks), problems 5 (the call
+# beside the time check, and the note's line), _cells 4, _BLANK 3, _WORKS 2, and one each for RULE, _QUOTE, _ITEM,
+# _CODE, _STATUS, _EVIDENCE, _SOFT, _NOT and _POINTS; and 8 are the fourth place an entry gives its own time, a line
+# that opens with what was done and then the time (STAMPS 5, _stamped 2 for a weekday that is not today's, and a
+# line of the note above them). guards.py 226. Of them 210 are the account a site shows in a
+# workspace's browser profile, on only where `browser_routing` names sites under `accounts`: _account_hold 35 (which
+# steps put something into a page, a page the record does not show, one reading for a site, and the words of the
+# holds), _account_shown 34 (the newest read of the site that settles its account, a line read as JSON only when it
+# holds one of the principal's addresses, and a batch only when nothing after its read can move a tab),
+# named_sites 15 (the map's shape), _where 14 and _on_site 8 (an address as a browser reads it, against a site and
+# its page; _web_app is 5 fewer for it), accounts_misrouted 13 (the same reading at the turn's end), _note_account
+# 12 and _account 9 (what a read showed, written down once and one writer at a time), _misrouted 12 (firm where
+# the key names the account's page, a condition where it names the site alone), _everyone 10 and _principal 6 (the
+# principal's addresses; the same-day rule is 2 fewer for it), _browser_workspace 9 (the session's workspace, for
+# the guard and the reply check), _puts 9 (a key that only moves puts nothing), _steps 8 (the steps of a browser
+# call and the page each acts on, shared with the messaging pages), _said 4 (a result's text; _tabs and
+# _last_selection are 2 fewer each), _browser_call 2, PUTS and its neighbors with the rule's note 14, check_browser
+# 1, and six blank lines. The other 16 are the second review of 5.11.0's two rules: check_send 4 and _judged_send
+# 3 (one send judged at a time), to_a_person 2, _time_without_calendar 2 (a sub-agent's record, and the session's
+# found by its id), and one each for PERSON, CARRIES, _reads_calendar, _calendar_read and check_outgoing. doctor.py
+# 27: check_browser_accounts 24, its call 1 and two blank lines. reply_check.py 30: misrouted_accounts 12, _sender 6
+# (the texts' own sender, run and not read), check 4, _result 2, unwatched_sends 2, FAILED 1, one import and two
+# blank lines. approvals.py 14: alone 11 (one decision at a time for a thing that can go on either of two codes),
+# one import and two blank lines. wait.py 5: past 1 MB the file of statements keeps its last 64 KB.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # consolidate first).
-CORE_BUDGET = 13059
-PLUGIN_BUDGET = 34528
+CORE_BUDGET = 13224
+PLUGIN_BUDGET = 34693
 
 
 def _lines(files):

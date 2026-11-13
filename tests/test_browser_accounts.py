@@ -10,9 +10,9 @@ a script) waits until a read of that site has shown the workspace's account ther
 the principal's addresses is called what it is.
 
 Replayed as built over thirty days of recorded browser calls (2026-11-13), with the sites where an AI assistant is
-used named for two workspaces: of 3,130 browser calls, 349 had a step on a named site. None of the 250 that only
-read, pointed or went there was held. Of the 99 that put something into a page there, 26 came after a read that had
-shown the workspace's account, and 73 came before any such read, in four sessions.
+used named for two workspaces: of 3,138 browser calls, 349 had a step on a named site. None of the 261 that only
+read, pointed or went there was held. Of the 88 that put something into a page there, 22 came after a read that had
+shown the workspace's account, and 66 came before any such read, in four sessions.
 """
 
 import json

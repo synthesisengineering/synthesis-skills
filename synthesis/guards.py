@@ -614,8 +614,8 @@ def _reshapes_calendar(tool: str, tool_input: dict) -> bool:
 # 2026-11-12: a meeting request offered a time that a new invitation, arrived half an hour earlier, overlapped. The
 # calendar was read when the message was drafted, and the draft then waited for its approval. The guard cannot know
 # that a message proposes a meeting; it knows the words name a clock time, and when this session last read a
-# calendar. Replayed over recorded messages (2026-11-13): of 445 distinct messages sent to people on 75 days, 145
-# named a clock time, about six in ten of those were about when people meet, and 59 went with a calendar read in the
+# calendar. Replayed over recorded messages (2026-11-13): of 451 distinct messages sent to people on 76 days, 143
+# named a clock time, about six in ten of those were about when people meet, and 54 went with a calendar read in the
 # ten minutes before.
 CLOCK = re.compile(r"(?i)(?:(?<![\w:=/.+#])(?:1[0-2]|0?[1-9])(?:[:.][0-5]\d)?\s?[ap]\.?m\.?(?:ish)?(?![a-z])"  # 3 pm, 3:30 p.m., 7.30 pm, and the 3pm of 2-3pm
                    r"|(?<![\w:=/.+#-])(?:(?:[01]?\d|2[0-3]):[0-5]\d(?:\s?[ap]\b|h\b)?(?![\w:])"  # 14:00, 3:30p, 14:00h; no part of 1:23:45, of a stamp, of an offset or of an address
