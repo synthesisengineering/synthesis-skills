@@ -3,6 +3,8 @@
 A workspace declares each one in the ritual config, as `relied_on`: a list of
 {"what": "<what it is>", "by": "<who relies on it>", "check": ["<program>", "<argument>", ...]}.
 A check runs with no shell and is healthy when it exits 0 in time. Whatever is down prints first.
+A check is a standing command, so each is put to the guard first as the shell command it is: one the guard would
+hold or refuse for an agent (a deploy, a send, a tunnel, a write to a protected folder) counts as down and is not run.
 Exit 0: every check passed, or nothing is declared. 1: something is down, or an entry cannot be run
 as written. 2: the config cannot be read or the workspace is not in it, so nothing was checked.
 A test two colleagues had come to rely on once stopped, and two scheduled check-ins ran without a look at it.
@@ -11,6 +13,7 @@ import argparse
 import contextlib
 import json
 import os
+import shlex
 import signal
 import subprocess
 import sys
@@ -19,7 +22,7 @@ from pathlib import Path
 
 sys.dont_write_bytecode = True  # an installed plugin must stay byte-identical; Muse verifies its bundle
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))  # the plugin root or the installed runtime: holds synthesis/
-from synthesis import rituals  # noqa: E402
+from synthesis import guards, paths, rituals  # noqa: E402
 
 
 def answer(check: list, timeout: float) -> str:
@@ -55,6 +58,11 @@ def main(argv=None) -> int:
     except (OSError, ValueError, TypeError) as exc:
         print(f"NOT CHECKED: {rituals.state_dir() / 'config.json'}: {exc}", file=sys.stderr)
         return 2
+    try:
+        policy = paths.config()  # the guards' own settings: unread, no check is judged and none is run
+    except (OSError, ValueError) as exc:
+        print(f"NOT CHECKED: the guards' config cannot be read, so no check can be judged: {exc}", file=sys.stderr)
+        return 2
     rows = []
     for workspace, entries in declared.items():
         for n, entry in enumerate(entries if isinstance(entries, list) else [entries], 1):
@@ -66,7 +74,9 @@ def main(argv=None) -> int:
             elif not (isinstance(check, list) and check and all(isinstance(word, str) for word in check)):
                 why = 'could not be run ("check" must be a list of words: the program, then its arguments)'
             else:
-                why = answer(check, args.timeout)
+                held = guards.check("Bash", {"command": shlex.join(check)}, policy, os.getcwd())
+                why = (f"could not be run (a guard holds it, as it would for an agent: {' '.join(held.split())[:160]})" if held
+                       else answer(check, args.timeout))
             rows.append({"workspace": workspace, "what": what or f"entry {n}", "by": by or "nobody named", "ok": not why, "why": why})
     rows.sort(key=lambda row: row["ok"])  # whatever is down first, each kind in the order the config lists it
     down, none = sum(not row["ok"] for row in rows), [w for w, entries in declared.items() if not entries]

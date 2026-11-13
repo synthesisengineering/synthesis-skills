@@ -56,8 +56,14 @@ than half-reading it.
   "check": ["curl", "-fsS", "--max-time", "10", "https://intake.example.com/health"]}]`. `check` is
   a list of words, the program and then its arguments. No shell runs it, so nothing in it is
   expanded: name a program on the PATH or give its full path. The thing is healthy when the check
-  exits 0 within the timeout. `relied_on.py` runs every entry at each ritual, and an entry is added
-  the day something is handed to another person to use. Declare it under the workspace it belongs
+  exits 0 within the timeout. A check is a standing command, so the script puts each one to the
+  guard first, as the shell command it is: one the guard would hold or refuse for an agent (a
+  deploy, a send, a tunnel, a write to a protected folder) is reported as `DOWN ... could not be run
+  (a guard holds it, as it would for an agent: ...)` and is never started. A check only looks: `curl`
+  on a health address, a status command, a script that reads. The config is the person's own and
+  outlives any one workspace, so word `what` and `by` as they can stay there (a role, not a name).
+  `relied_on.py` runs every entry at each ritual, and an entry is added the day something is handed
+  to another person to use. Declare it under the workspace it belongs
   to: an entry under `defaults` is checked for every workspace that declares none of its own. The
   synthesis home is
   `~/.synthesis/v5` unless `SYNTHESIS_HOME` says otherwise; `RITUAL_STATE_DIR` or `--state-dir`

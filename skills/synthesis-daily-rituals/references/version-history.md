@@ -3,8 +3,8 @@
 The operating checklists live in [SKILL.md](../SKILL.md). This file keeps the
 release-by-release record of why each rule exists — the incidents, the
 design choices, the config schemas each version introduced — so the main
-document can stay within the repository's 500-line budget without losing
-the reasoning. Newest first.
+document can stay within the repository's size limit for a `SKILL.md`
+(8,000 bytes since v5; 500 lines before it) without losing the reasoning. Newest first.
 
 ## v3.10.0 — What other people rely on
 
