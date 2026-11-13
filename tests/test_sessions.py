@@ -2647,3 +2647,41 @@ def test_a_prompt_whose_time_has_a_long_fraction_is_listed_on_its_day(harness):
     _jsonl(harness["claude"], [_typed({"cwd": harness["work"], "sessionId": "c1"}, "Nine digits.", "2026-10-30T15:00:00.123456789Z")])
     sessions.export(0)
     assert [p["text"] for p in sessions.prompts("acme", "2026-10-30")] == ["Nine digits."]
+
+
+# --- the desktop app's local agent-mode sessions (the audit's gap 14) ----------------------------------------------------
+# The Claude desktop app runs a local agent-mode session with a Claude Code configuration folder of its own, under the
+# app's data folder, and the archive read only `CLAUDE_CONFIG_DIR`'s projects: those sessions were in no record.
+
+def _desktop_session(session: str, cwd: str) -> Path:
+    projects = (Path(os.environ["SYNTHESIS_CLAUDE_DESKTOP_DIR"]) / "local-agent-mode-sessions" / "account-1" / "org-1"
+                / f"local_{session}" / ".claude" / "projects")
+    rows = [{**row, "sessionId": session} for row in _claude_rows(cwd)]
+    native = _jsonl(projects / ("-" + cwd.strip("/").replace("/", "-")) / f"{session}.jsonl", rows)
+    _jsonl(native.parent / session / "subagents" / "agent-a1.jsonl", [
+        {"cwd": cwd, "sessionId": session, "isSidechain": True, "timestamp": "2026-10-30T10:05:00.000Z", "type": "user",
+         "message": {"role": "user", "content": "Look the release notes over."}}])
+    return native
+
+
+def test_a_desktop_agent_mode_session_and_its_sub_agent_are_archived(harness):
+    native = _desktop_session("d1", "/sessions/a-virtual-machine")
+    report = sessions.export(0)
+    assert "claude-code d1: 9 record(s)" in report and any(line.startswith("claude-code d1-agent-a1:") for line in report), report
+    meta = _meta(native)
+    assert meta["harness"] == "claude-code" and Path(meta["folder"]).parts[-3] == "other"  # it ran in no workspace, and is never synced
+    assert [r["text"] for r in sessions.records(meta["folder"], ("user",))] == ["Please plan the release."]
+    assert sessions.export(0) == []                                                # read once
+
+
+def test_a_desktop_agent_mode_session_that_ran_in_a_workspace_is_filed_there(harness):
+    native = _desktop_session("d2", harness["work"])
+    sessions.export(0)
+    assert Path(_meta(native)["folder"]).parts[-3] == "acme"
+
+
+def test_no_desktop_folder_is_no_gap(harness):
+    _jsonl(harness["claude"], _claude_rows(harness["work"]))
+    assert not Path(os.environ["SYNTHESIS_CLAUDE_DESKTOP_DIR"]).exists()
+    assert sessions.export(0) == ["claude-code c1: 9 record(s)"]
+    assert "failed" not in json.loads((sessions.root() / ".state" / "export.json").read_text(encoding="utf-8"))
