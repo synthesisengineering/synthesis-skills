@@ -67,6 +67,8 @@ FILE_MAIL_TOOLS = frozenset({"send_gmail_message", "draft_gmail_message"})
 FILE_DRIVE_TOOLS = {"update_drive_file": "file_path", "import_to_google_doc": "file_path", "import_to_google_sheets": "file_path",
                     "import_to_google_slides": "file_path", "create_drive_file": "fileUrl"}
 ENTRY_KEYS = ("url", "path", "content", "filename", "mime_type", "content_id")  # the first three are where it reads from
+CONTROL = re.compile(r"[\x00-\x1f\x7f-\x9f]")  # it takes line breaks and NULs out of a filename and fails on others
+CONTENT_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._+\-@]*")  # gmail_tools.CONTENT_ID_SAFE_RE, the `content_id` it takes
 SECRET_NAMES = frozenset({".credentials", ".credentials.json", "credentials.json", "client_secret.json", "client_secrets.json",
                           "service_account.json", "service-account.json", ".npmrc", ".pypirc", ".netrc", ".git-credentials"})
 SECRET_FOLDERS = ("/proc", "/sys", "/dev", "/etc/shadow", "/etc/passwd", "/private/etc/shadow", "/private/etc/passwd",
@@ -355,8 +357,25 @@ def _unread_files(tool: str, tool_input: dict, bound: dict | None = None) -> lis
             problems.append(f"attachment {place} is not an object{rule}")
             continue
         sources = [k for k in ENTRY_KEYS[:3] if (k in entry if k == "url" else entry.get(k))]  # a `url` key leads, even empty
-        which = f"attachment {place}" + (f" ({entry['filename']})" if entry.get("filename") else "")
+        shown, cid = entry.get("filename"), entry.get("content_id")
+        which = f"attachment {place}" + (f" ({shown})" if isinstance(shown, str) and shown and not CONTROL.search(shown) else "")
         unknown, url = ", ".join(f"`{k}`" for k in entry if k not in ENTRY_KEYS), entry.get("url")
+        set_here = [f"`{k}`" for k in ("error", "_resolved_bytes") if k in entry]
+        if set_here:
+            problems.append(f"attachment {place} carries {' and '.join(set_here)}, which the mail connector sets on an entry "
+                            "itself: it leaves out an entry that carries `error`, and takes `_resolved_bytes` before the "
+                            "entry's own source. Remove it and file this send again")
+        texts = [f"`{k}` {entry[k]!r}" for k in ("filename", "mime_type")
+                 if entry.get(k) and not (isinstance(entry[k], str) and not CONTROL.search(entry[k]))]
+        if texts:
+            problems.append(f"attachment {place} gives {' and '.join(texts)} with a control character, or not as text: the "
+                            "mail connector takes line breaks and NULs out of a filename, so it goes under another name than "
+                            "the one shown, and leaves out an entry whose name or type is not text. Give each as plain text "
+                            "and file this send again")
+        if cid and (re.search(r"[\x00-\x1f\x7f]", str(cid)) or not CONTENT_ID.fullmatch(str(cid).strip().strip("<>").strip())):
+            problems.append(f"attachment {place} gives the `content_id` {cid!r}, which the mail connector refuses, leaving the "
+                            "entry out: it takes letters, digits, '.', '_', '+', '-' and '@', led by a letter or a digit, in "
+                            "angle brackets or not. Give one such and file this send again")
         if sources == ["path"]:
             problems.append(unread(str(entry["path"])))
         elif sources == ["url"] and isinstance(url, str) and url.strip():
