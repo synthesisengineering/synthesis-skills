@@ -50,7 +50,13 @@ INJECTED = ("<system-reminder>", "<command-", "<local-command-", "<task-notifica
             # measured 2026-10-30 among records filed as prompts: automations, harness context and UI events
             "<heartbeat>", "<recommended_plugins>", "<external_codex_apps", "<in-app-browser-context", "<hook_prompt",
             "<user_action>", "<scheduled-task", "<skill>", "<create-pr-command>", "[Request interrupted by user")
-AGENT_WRITTEN = ("<cross-session-message",)  # another session's message arrives as a prompt
+AGENT_WRITTEN = ("<cross-session-message", "<agent-message")  # another session's or an agent's message arrives as a prompt
+# What the principal typed arrives in more shapes than a plain user row (measured 2026-11-13 on thirty days of Claude
+# Code transcripts, each row given to this reader: 2,749 plain prompts were his, and 578 other things he typed were
+# not). A slash command that reaches the agent opens with its message, then its name and arguments; a command to
+# the harness (`/model`) opens with its name and is no prompt. A system reminder can stand before his words in one block.
+SLASH = re.compile(r"\s*<command-message>.*?</command-message>\s*<command-name>\s*(/[^\s<]+)\s*</command-name>(?:\s*<command-args>(.*?)</command-args>)?", re.S)
+REMINDED = re.compile(r"((?:\s*<system-reminder>.*?</system-reminder>)+)\s*(.*)", re.S)
 MIME = {"image/png": "png", "image/jpeg": "jpg", "image/gif": "gif", "image/webp": "webp", "application/pdf": "pdf"}
 # Claude Code rows that only repeat or instrument what other rows hold: request copies, file backups, sync markers.
 CLAUDE_SKIP = {"api-request", "api-request-blob", "api-request-shape", "file-history-snapshot", "file-history-delta",
@@ -164,6 +170,34 @@ class _Session:
         self.seen, self.meta = set(s.get("seen", [])), s.get("meta", {})
         self.model, self.turn, self.trigger, self.lines = s.get("model", ""), s.get("turn", []), s.get("trigger"), []
         self.skipped = collections.Counter(self.meta.get("skipped", {}))
+        self.cwd, self.roots = str(s.get("cwd") or ""), None  # where the session's calls run; the projects folders, found once
+
+    def wrote(self, rec: dict) -> None:
+        """A session belongs to each project whose folder a tool call of it writes into (2026-11-13: of 147 sessions
+        that had, 134 named no project, since only the session-start hook's line named one). The files a call writes
+        are read as the guard reads them: a file tool's targets, and what a shell line writes, which Claude Code
+        keeps as an object and Codex as text. Reading a project's files tags nothing. A call no reader can read
+        adds nothing and is counted."""
+        from synthesis import guards, project
+        tool, given = str(rec.get("tool") or ""), rec.get("input")
+        try:
+            if tool in guards.FILE_TOOLS:
+                targets = guards._file_targets(tool, given) if isinstance(given, dict) else []
+            elif guards.shell_tool(tool):
+                line = given if isinstance(given, str) else guards.shell_command(given) if isinstance(given, dict) else ""
+                targets = guards._shell_writes(line, self.cwd or os.sep) if line else []
+            else:
+                return
+            if self.roots is None:
+                self.roots = [os.path.realpath(root / "projects") for root in project.roots()]
+            for target in targets:
+                real = os.path.realpath(os.path.join(self.cwd or os.sep, os.path.expanduser(str(target))))
+                for root in self.roots:
+                    name, _, rest = real[len(root) + 1:].partition(os.sep) if real.startswith(root + os.sep) else ("", "", "")
+                    if rest and os.path.isdir(os.path.join(root, name)) and name not in self.meta.setdefault("projects", []):
+                        self.meta["projects"].append(name)
+        except Exception:  # noqa: BLE001  the export goes on: a line no reader was written for is no reason to lose a session
+            self.skipped["a tool call whose written files could not be read"] += 1
 
     def once(self, rec: dict):
         """A record whose content was already kept for this session is counted, not kept again."""
@@ -243,6 +277,8 @@ class _Session:
             for found in ACTIVE_PROJECT.findall(text):  # the session-start hook names the project the session works on
                 if found not in self.meta.setdefault("projects", []):
                     self.meta["projects"].append(found)
+        if rec.get("kind") == "tool_call":
+            self.wrote(rec)
         if rec.get("at"):
             self.meta.setdefault("started", rec["at"])
             self.meta["last"] = rec["at"]
@@ -314,15 +350,45 @@ class _Session:
             paths.write_json(self.folder / "meta.json", self.meta)
         paths.write_json(self.file, {"offset": self.offset, "seq": self.seq, "segment": self.segment,
                                      "folder": str(self.folder or ""), "seen": sorted(self.seen), "meta": self.meta,
-                                     "model": self.model, "turn": self.turn, "trigger": self.trigger})
+                                     "model": self.model, "turn": self.turn, "trigger": self.trigger, "cwd": self.cwd})
         return written
 
 
 # --- the harnesses --------------------------------------------------------------------------------------------
 
 
+def _typed(s: "_Session", at, block: dict, agent: bool):
+    """The records of one text block that neither a compaction nor the harness wrote: his prompt; or the command he
+    typed, for a slash command that reaches the agent; or a system reminder and then his words, as two records; or a
+    system record, where the whole block is the harness's."""
+    text = block.get("text") or ""
+    command, reminded = SLASH.match(text), REMINDED.match(text)
+    if command:  # the same command typed again is another prompt: a prompt is never dropped as a copy
+        yield _prompt(s, at, {"text": " ".join(filter(None, [command.group(1), (command.group(2) or "").strip()]))}, agent)
+    elif reminded and reminded.group(2).strip() and not _injected(reminded.group(2)):
+        yield s.once({"at": at, "kind": "system", "text": reminded.group(1).strip()})
+        yield _prompt(s, at, {"text": reminded.group(2).strip()}, agent)
+    elif _injected(text):
+        yield s.once({"at": at, "kind": "system", **s.content([block])})
+    else:
+        yield _prompt(s, at, s.content([block]), agent)
+
+
+def _queued(s: "_Session", a: dict):
+    """What a queued command holds when it is a prompt typed while a turn ran: its mode is `prompt`, it is not meta,
+    its origin is `human` or not given, and its words do not begin as the harness's do. None for a task's
+    notification, another agent's message and every other queued command."""
+    origin = a.get("origin")
+    if a.get("type") != "queued_command" or a.get("commandMode") != "prompt" or a.get("isMeta") or not (
+            origin is None or isinstance(origin, dict) and origin.get("kind") == "human"):
+        return None
+    body = s.content(a.get("prompt"))
+    return body if (body["text"].strip() or body.get("media")) and not _injected(body["text"]) else None
+
+
 def _claude(row: dict, s: _Session):
     t, at = row.get("type"), row.get("timestamp")
+    s.cwd = row.get("cwd") if isinstance(row.get("cwd"), str) and row.get("cwd") else s.cwd
     if t in ("user", "assistant"):
         msg = row.get("message") if isinstance(row.get("message"), dict) else {}
         content = msg.get("content")
@@ -346,13 +412,12 @@ def _claude(row: dict, s: _Session):
                 yield {"at": at, "kind": "tool_result", "id": b.get("tool_use_id"), "error": bool(b.get("is_error")),
                        **s.content(b.get("content"))}
             elif kind in ("text", "image", "document"):
-                text = b.get("text") or ""
-                if row.get("isCompactSummary") or row.get("isMeta") or _injected(text):
+                if row.get("isCompactSummary") or row.get("isMeta"):
                     who = "compaction" if row.get("isCompactSummary") else "system"
                     rec = {"at": at, "kind": who, **s.content([b])}
                     yield s.once(rec) if who == "system" else rec
                 else:  # a sub-agent's prompts (isSidechain) are written by the agent that started it
-                    yield _prompt(s, at, s.content([b]), bool(row.get("isSidechain")) or row.get("entrypoint") == "sdk-cli")  # `claude -p`
+                    yield from _typed(s, at, b, bool(row.get("isSidechain")) or row.get("entrypoint") == "sdk-cli")  # `claude -p`
     elif t == "system":
         sub = row.get("subtype")
         if sub == "compact_boundary":
@@ -362,6 +427,10 @@ def _claude(row: dict, s: _Session):
                           "text": row.get("content") or json.dumps(row.get("hookInfos") or row.get("error") or "")})
     elif t == "attachment":
         a = row.get("attachment") if isinstance(row.get("attachment"), dict) else {}
+        typed = _queued(s, a)
+        if typed is not None:  # a prompt typed while a turn ran is here and in no user row
+            yield _prompt(s, at, typed, bool(row.get("isSidechain")))
+            return
         body = a.get("content") or a.get("text") or a.get("prompt") or {k: v for k, v in a.items() if k != "type"}
         yield s.once({"at": at, "kind": "system", "source": a.get("type"),
                       "text": body if isinstance(body, str) else json.dumps(body, default=str)})
@@ -375,6 +444,8 @@ def _claude(row: dict, s: _Session):
 def _codex(row: dict, s: _Session):
     t, at, p = row.get("type"), row.get("timestamp"), row.get("payload") if isinstance(row.get("payload"), dict) else {}
     kind = p.get("type")
+    if t in ("session_meta", "turn_context") and isinstance(p.get("cwd"), str) and p["cwd"]:
+        s.cwd = p["cwd"]
     if t == "session_meta":
         sub = p.get("source", {}).get("subagent") if isinstance(p.get("source"), dict) else None
         if isinstance(sub, dict):  # a child thread: Codex's approval reviewer ("guardian") or a spawned agent
