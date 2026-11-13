@@ -1737,3 +1737,409 @@ def test_a_list_of_open_loops_a_label_or_a_rule_is_no_announcement(reply):
 @pytest.mark.parametrize("reply", _cases(A_SENTENCE_THAT_OPENS_WITH_THE_WAIT))
 def test_a_sentence_that_opens_with_the_wait_is_still_sent_back(reply):
     assert "nothing is armed" in _sent_back(reply)
+
+
+# --- review round 3 of 5.8.0 (2026-11-12) --------------------------------------------------------------------------
+# A third fresh review found ten defects in this check: one of forty replies that need no watcher sent back, three of
+# thirty unarmed waits passed, and six more in probes of each exemption and of the transcript reader. Each is fixed as
+# a class. The R3 ids are the review's replies; every other reply is written fresh for these tests.
+
+# Finding 1 of the review: what the session will do next is no outside event. After "once", "when", "after" or "until",
+# "I" or "we" with a verb of the session's own is a step in its own sequence; with a verb of receiving ("once I have
+# it", "when I hear back") the thing still has to come from somewhere, and that is a wait.
+R3_OWN_STEP_REVIEW = {"R3-01": "The branch is ready. I will resume after I update the snapshots."}
+THE_SESSIONS_OWN_NEXT_STEP = {
+    "continue-once-i-have-pushed": "I'll continue once I've pushed the rename.",
+    "after-i-finish-i-resume": "After I finish the migration notes, I'll resume the review.",
+    "continue-until-i-reach": "I'll continue until I reach the end of the list.",
+    "proceed-when-we-are-done": "We'll proceed when we're done with the fixtures.",
+    "resuming-after-i-rerun": "Resuming after I rerun the linter.",
+    "pick-up-once-i-have-run": "I'll pick the refactor back up once I have run the last test file.",
+    "follow-up-after-i-read": "I'll follow up after I read the second log.",
+    "merge-when-i-have-checked": "I'll merge when I've checked the diff once more.",
+    "finish-as-soon-as-i-get-to-it": "I'll finish the changelog as soon as I get to it.",
+    "report-back-once-i-have-time": "I'll report back once I have time to read the whole trace.",
+    "hold-until-i-have-rerun": "I'll hold the merge until I've rerun the suite on the rebased branch.",
+    "holding-until-i-finish": "Holding the tag until I finish the changelog.",
+}
+WHAT_THE_SESSION_WAITS_TO_RECEIVE = {
+    "resume-once-i-hear": "I'll resume once I hear back from the registrar.",
+    "continue-when-i-get": "I'll continue when I get the vendor's file.",
+    "proceed-as-soon-as-i-have-word": "I'll proceed as soon as I have word from legal.",
+    "after-i-receive-i-finish": "After I receive the signed copy from the landlord, I'll finish the filing.",
+    "merge-once-i-see": "I'll merge once I see the checks go green.",
+    "follow-up-once-i-have-received": "I'll follow up once I've received the courier's answer.",
+    "continue-when-i-am-told": "I'll continue when I'm told the export is ready.",
+    "proceed-once-we-know": "We'll proceed once we know the audit result.",
+    "resuming-when-i-hear": "Resuming when I hear from the vendor.",
+    "an-own-step-then-an-event": "I'll continue after I update the snapshots, once the nightly build is green.",
+    "hold-until-i-have-it": "The signed form is with the bank. I'll hold the filing until I have it.",
+    "hold-until-i-hear": "I'll hold the release until I hear from the security team.",
+    # "when I can" waits to be able: the one recorded reply of thirty days that this class touched, a true wait, said it.
+    "report-back-when-i-can-reach-it": "The registry is down for maintenance. I'll report back when I can reach it again.",
+    "resume-once-i-am-able-to": "I'll resume once I'm able to reach the staging database again.",
+}
+
+
+@pytest.mark.parametrize("reply", _cases(R3_OWN_STEP_REVIEW, THE_SESSIONS_OWN_NEXT_STEP))
+def test_carrying_on_after_the_sessions_own_next_step_waits_on_nothing(reply):
+    assert _sent_back(reply) is None
+
+
+@pytest.mark.parametrize("reply", _cases(WHAT_THE_SESSION_WAITS_TO_RECEIVE))
+def test_carrying_on_once_something_is_received_is_still_a_wait(reply):
+    reason = _sent_back(reply)
+    assert reason and "nothing is armed" in reason
+
+
+# Finding 7 of the review: the check's own message names a last resort, "say plainly that nothing wakes this seat until
+# they prompt it". A reply that says so has done what the check asks, and was sent back with the same advice.
+R3_FALLBACK_REVIEW = {"R3-07": "The patch is committed. I am waiting for CI. Nothing wakes this seat until you prompt it."}
+NOTHING_WAKES_THIS_SEAT = {
+    "nothing-will-wake-this-session": "I'm waiting on the vendor's reply. Nothing will wake this session until you message it.",
+    "nothing-is-armed-to-wake-me": "Waiting for the nightly export. Nothing is armed to wake me, so I'll pick it up at your next prompt.",
+    "no-watcher-so-it-sleeps": "I'll merge once CI is green. No watcher is armed, so this seat sleeps until you prompt it.",
+    "stays-asleep": "I'm waiting for the registrar. This seat stays asleep until your next message.",
+    "i-will-not-see-it": "Once the export lands, I'll rebuild the index. I won't see it land until you prompt me.",
+    "i-will-only-see-it-when": "I'm waiting for the build. I'll only see the result when you next prompt me.",
+    "before-your-next-message": "Waiting on the second reviewer. Nothing wakes me before your next message.",
+    "nothing-happens-here": "I'm waiting for the deploy to finish. Nothing happens here until you prompt me.",
+    "nobody-wakes-this-seat": "I'll resume when the vendor replies. Nobody wakes this seat until you write again.",
+    "will-not-wake": "I am waiting on the pipeline. This session will not wake until you nudge it.",
+    "cannot-wake-myself": "I'm waiting for CI; I can't wake myself, so the next step comes with your next prompt.",
+    "it-stays-idle": "I'm waiting on the vendor's patch. Nothing can wake this seat; it stays idle until you prompt it.",
+    "i-am-idle": "The checks are still running, and I'll tag the release when they pass. I'm idle until you prompt me.",
+    "in-a-list-item": "- The export: waiting on the warehouse.\n- Nothing wakes this seat until you prompt it.\n\nI'll load it once it lands.",
+}
+ONLY_SOUNDS_LIKE_THE_FALLBACK = {
+    "another-seat": "I'm waiting on the reviewer's verdict. Nothing wakes her session until you prompt it.",
+    "until-the-build-finishes": "I'm waiting on the build. Nothing wakes this seat until the build finishes.",
+    "a-watcher-that-is-not-armed": "A watcher wakes this seat when CI finishes. I'm waiting for CI.",
+    "in-the-past": "Nothing woke this seat overnight, so the release sat until you prompted it. I'm waiting for CI now.",
+    "until-your-registrar": "I'm waiting on the domain transfer. Nothing wakes this seat until your registrar releases the domain.",
+    "no-need-to-prompt": "You don't need to prompt me. I'm waiting for CI and will merge when it passes.",
+    "in-quotation-marks": "The check asks for \"nothing wakes this seat until you prompt it\", which is not true here. I'm waiting for CI.",
+    "a-worker-that-sleeps": "The worker sleeps until you prompt it from the console. I'm waiting on the queue to drain.",
+    "until-they-send-it": "I won't see the vendor's reply until they send it. I'm waiting on their answer.",
+    "prompt-me-if": "I'm waiting for CI. Prompt me if you want the logs first.",
+    "in-a-code-fence": "The message to copy:\n```\nNothing wakes this seat until you prompt it.\n```\nI'm waiting for the registry to publish.",
+}
+
+
+@pytest.mark.parametrize("reply", _cases(R3_FALLBACK_REVIEW, NOTHING_WAKES_THIS_SEAT))
+def test_a_reply_that_says_nothing_wakes_this_seat_until_the_principal_prompts_it_passes(reply):
+    assert _sent_back(reply) is None
+
+
+@pytest.mark.parametrize("reply", _cases(ONLY_SOUNDS_LIKE_THE_FALLBACK))
+def test_a_reply_that_only_sounds_like_the_fallback_is_still_sent_back(reply):
+    reason = _sent_back(reply)
+    assert reason and "nothing is armed" in reason
+
+
+# Finding 2 of the review: a code hands the principal the turn when it is offered for typing. One named as used, spent
+# or replaced offers nothing, and any code form at all excused the whole reply. In the recorded replies 475 carry a code
+# form; in four of them every code is a spent one, and two of those four announce a wait: one the harness held, and one
+# true wait that passed. A spent code beside one that is offered leaves the offer standing.
+R3_SPENT_CODE_REVIEW = {"R3-02": "The tests are complete. Approval code 1abcde was consumed earlier. I'm waiting on the registry."}
+A_CODE_THAT_IS_SPENT = {
+    "it-expired": "Code 2f9a01 expired before the send ran. I'm waiting on the registry to publish the package.",
+    "it-has-expired-in-brackets": "The code for the calendar change (3e7b10) has expired. I'll file it again once the organizer's reply comes in.",
+    "you-typed-it": "You typed approve 4a0c2d at noon and the note went out. I'll file the reply when the vendor answers.",
+    "the-earlier-code": "The earlier code `5d1e3f` no longer applies. Waiting on the mirror to sync.",
+    "do-not-use-the-old-codes": "Don't use the old codes `6b2f40` and `7e3a51`: both drafts changed. I'll merge once the checks pass.",
+    "already-used": "The send went through: code 8c4b62 was already used for it. I'm waiting for the recipient's answer.",
+    "replaced": "Code 9d5c73 was replaced when the text changed, and nothing is held now. I'm waiting on legal's redline.",
+    "void-in-brackets": "The code from this morning (0e6d84) no longer applies, since the wording changed. I'm waiting for the two reviewers "
+                        "before I stage it again.",
+    "a-spent-label": "- **1f7e95:** expired, and nothing replaces it.\n\nI'm waiting on the venue's answer.",
+}
+A_CODE_OFFERED_BESIDE_A_SPENT_ONE = {
+    "a-new-code-in-the-next-sentence": "Code 2a8fa6 expired, so I filed the send again. Type `approve 3b90b7` to release it. Once it's out, "
+                                       "I'll read it back.",
+    "a-new-code-in-the-same-sentence": "The old code died with the edit, so the send is up afresh as `approve 4ca1c8`. Once it's out, I'll read "
+                                       "it back.",
+    "a-new-label-under-the-old-one": "The earlier code `5db2d9` no longer applies.\n\n- **6ec3ea:** the same note, filed again.\n\nOnce it runs, "
+                                     "I'll read it back.",
+    "unless-it-has-lapsed": "For the reply to the editor: `approve 7fd4fb`, unless the code has lapsed by now. Once it's out, I'll log it.",
+    "codes-from-this-morning-still-held": "Both approval codes from this morning are still held: 8ae50c and 2f9a01. Once both go through, I'll "
+                                          "read them back.",
+    "wording-seen-earlier": "The digest can go under code `3e7b10`, worded as you saw it earlier. Once it's sent, I'll track the replies.",
+    "type-it-again": "The first try timed out, so it is up for your go a second time: type `approve 4a0c2d` and it leaves. Once it's out, I'll "
+                     "read it back.",
+}
+
+
+@pytest.mark.parametrize("reply", _cases(R3_SPENT_CODE_REVIEW, A_CODE_THAT_IS_SPENT))
+def test_a_code_named_as_used_or_spent_hands_the_principal_nothing(reply):
+    reason = _sent_back(reply)
+    assert reason and "nothing is armed" in reason
+
+
+@pytest.mark.parametrize("reply", _cases(A_CODE_OFFERED_BESIDE_A_SPENT_ONE))
+def test_a_code_offered_for_typing_still_hands_them_the_turn_beside_a_spent_one(reply):
+    assert _sent_back(reply) is None
+
+
+# Finding 4 of the review: a block between a BEGIN line and an END line excused the whole reply, whatever the block was
+# and whatever the reply waited for. Its text is set aside, as quoted text is, and the rest is judged. Of 118 recorded
+# replies with such a block, in none does the block alone excuse a wait outside it. Beside a block, a wait for it to be
+# sent is a wait for the principal's go (the two staged messages in THE_PRINCIPALS_TURN above stay where they are).
+R3_BLOCK_REVIEW = {"R3-04": "The delivery record is below.\nBEGIN\nYour invoice arrived.\nEND\nI'm waiting for the bank to respond."}
+A_WAIT_BESIDE_A_BLOCK = {
+    "after-the-block": "Here is the note I filed.\n\nBEGIN\nThe room is booked for Tuesday.\nEND\n\nI'll confirm the catering once the venue replies.",
+    "before-the-block": "Still waiting on the registrar. For the record, the notice they sent:\nBEGIN\nYour transfer is pending.\nEND",
+    "on-someone-else-after-a-staged-message": "The reply is staged.\n\n----- BEGIN -----\nThanks, Tuesday works.\n----- END -----\n\nSeparately, I'm "
+                                              "waiting on the caterer's quote.",
+    "sent-is-said-only-in-the-block": "BEGIN\nOnce it's sent, we will call you.\nEND\nI'll resume when the vendor's portal is back.",
+    "a-code-only-in-the-block": "The text message as delivered:\nBEGIN\nYour sign-in code 482913 is valid for ten minutes.\nEND\nI'm waiting for the "
+                                "portal to unlock the account.",
+    "a-label-then-the-block": "The reply to the vendor:\nBEGIN\nFriday works.\nEND\nWaiting on the bank.",
+}
+A_WAIT_FOR_THE_BLOCK_TO_BE_SENT = {
+    "once-it-goes-out": "The draft for the landlord:\n\nBEGIN\nThe signed lease is attached.\nEND\n\nOnce it goes out, I'll file the copy.",
+    "after-it-has-been-sent": "BEGIN\nTuesday at ten works for us.\nEND\nAfter it has been sent, I'll update the calendar.",
+    "once-the-note-is-sent": "Here it is.\n\n**BEGIN**\nThank you for the introduction.\n**END**\n\nI'll log it once the note is sent.",
+    "a-wait-only-in-the-block": "Here is the holding reply.\n\nBEGIN\nWe're waiting on the printer and will confirm as soon as the proof "
+                                "arrives.\nEND\n\nIt is ready whenever you are.",
+}
+
+
+@pytest.mark.parametrize("reply", _cases(R3_BLOCK_REVIEW, A_WAIT_BESIDE_A_BLOCK))
+def test_a_block_between_begin_and_end_excuses_no_wait_outside_it(reply):
+    reason = _sent_back(reply)
+    assert reason and "nothing is armed" in reason
+
+
+@pytest.mark.parametrize("reply", _cases(A_WAIT_FOR_THE_BLOCK_TO_BE_SENT))
+def test_beside_a_block_a_wait_for_it_to_be_sent_awaits_the_principals_go(reply):
+    assert _sent_back(reply) is None
+
+
+# Finding 3 of the review: a request hands the principal the turn when it is put to them. After "and", "then" or a comma
+# the same words may be one more verb of somebody else's ("the worker will restart and send me its result"), and that
+# asks the principal for nothing. No recorded reply turns on this: the cases are written for the class.
+R3_THIRD_PARTY_REVIEW = {"R3-03": "The build instructions are corrected. The worker will restart and send me its result. I'm waiting on "
+                                  "the service."}
+ONE_MORE_VERB_OF_SOMEBODY_ELSES = {
+    "should-sign-and-send-me": "The vendor should sign today and send me the copy. I'm waiting on that.",
+    "she-will-review-and-let-me-know": "She'll review the contract tonight and let me know. I'm waiting for her answer.",
+    "asked-to-check-and-tell-me": "I asked the registrar to check the transfer and tell me the date. Waiting on their reply.",
+    "waiting-for-the-bank-to-send-me": "I'm waiting for the bank to confirm the wire and send me the receipt.",
+    "the-bot-will-then-message-me": "The deploy bot will then message me the result. I'll continue once it does.",
+    "a-list-of-its-verbs": "The job will finish the export, send me the totals, and exit. I'll check them when it's done.",
+}
+STILL_A_REQUEST_PUT_TO_THEM = {
+    "you-can-sign-and-send-me": "You can sign the form and send me a photo of it. I'll file it once the bank confirms.",
+    "if-the-vendor-can-then-tell-me": "If the vendor can deliver by Friday, tell me and I'll book the room. I'm waiting on that.",
+    "check-whether-it-will-and-tell-me": "Check whether the bank will accept the form and tell me. I'll wait.",
+    "a-statement-so-tell-me": "The vendor will call at noon, so tell me what to say. Waiting on that before I draft the notes.",
+    "wait-for-it-and-tell-me": "Wait for the build to finish and tell me what its last line says. I'll continue once I have it.",
+    "you-will-need-to-and-tell-me": "You'll need to approve the prompt on your phone and tell me when it's through. I'm waiting on that.",
+    "i-will-draft-then-tell-me": "I'll draft both versions tonight, then tell me which one reads better. I'll send it once the venue confirms.",
+}
+
+
+@pytest.mark.parametrize("reply", _cases(R3_THIRD_PARTY_REVIEW, ONE_MORE_VERB_OF_SOMEBODY_ELSES))
+def test_one_more_verb_of_a_third_partys_is_no_request_to_the_principal(reply):
+    reason = _sent_back(reply)
+    assert reason and "nothing is armed" in reason
+
+
+@pytest.mark.parametrize("reply", _cases(STILL_A_REQUEST_PUT_TO_THEM))
+def test_a_request_put_to_the_principal_still_hands_them_the_turn(reply):
+    assert _sent_back(reply) is None
+
+
+# Finding 6 of the review: "going forward" anywhere in front of a wait made it a rule for next time. A rule phrase
+# explains a wait when it governs the wait's own clause: it opens the sentence or a clause of it, and no new clause of
+# the session's comes between it and the wait. No recorded reply turns on this either.
+R3_INCIDENTAL_RULE_REVIEW = {"R3-06": "The proposed change going forward is documented, and I am waiting on the external review. The "
+                                      "branch is ready."}
+A_RULE_PHRASE_THAT_GOVERNS_SOMETHING_ELSE = {
+    "in-a-noun-phrase": "The plan for next time is in the runbook and I'm waiting on the reviewer.",
+    "opens-another-clause": "Going forward, the cache is rebuilt nightly, and I'm waiting for tonight's run to confirm it.",
+    "between-commas": "The schedule, going forward, is weekly and I'm waiting on the first export.",
+    "inside-the-event": "When the policy for every time zone is approved, I'll resume the rollout.",
+    "what-to-do-next-time": "I wrote down what to do next time, and I'm now waiting on the vendor's fix.",
+}
+A_RULE_THAT_GOVERNS_THE_WAIT = {
+    "after-and": "You're right, and from now on I'll wait for the checks before I merge.",
+    "after-so": "The merge went out early, so going forward I'll hold the tag until the smoke test passes.",
+    "whenever-opens": "Whenever a deploy is in flight, I'll wait for the health check before I report.",
+    "as-a-rule-opens": "As a rule I'll wait for the second review before merging to main.",
+    "inside-the-wait": "When a send fails, from now on I'll follow up once the retry returns.",
+}
+
+
+@pytest.mark.parametrize("reply", _cases(R3_INCIDENTAL_RULE_REVIEW, A_RULE_PHRASE_THAT_GOVERNS_SOMETHING_ELSE))
+def test_a_rule_phrase_that_governs_something_else_explains_no_wait(reply):
+    reason = _sent_back(reply)
+    assert reason and "nothing is armed" in reason
+
+
+@pytest.mark.parametrize("reply", _cases(A_RULE_THAT_GOVERNS_THE_WAIT))
+def test_a_rule_phrase_that_governs_the_waits_own_clause_still_explains_it(reply):
+    assert _sent_back(reply) is None
+
+
+# Finding 5 of the review: a heading and a table row were dropped whole, and "we" before a colon was a label, so a wait
+# the session states in the first person passed in each. A first-person wait is read wherever it stands. What is set
+# aside is a label with no subject that names a state: "Waiting on X:", and such a wait in a heading or a table cell.
+# The "we" form before a colon decides one recorded verdict in thirty days, a status line that counts what is open and
+# lists it after the colon ("two-things" above). So "we" with a count or a pointer before the colon stays a label, and
+# "we" with the thing itself named there is the wait it says, as "I" is. One recorded reply holds a first-person wait
+# in a table cell, with background work out, so it was armed.
+R3_STRUCTURE_REVIEW = {
+    "R3-05-we-before-a-colon": "The patch is committed. We are waiting for the required pipeline: no further work is possible.",
+    "R3-05-in-a-heading": "The patch is committed.\n## I'm waiting on CI\nThe branch is ready.",
+    "R3-05-in-a-table-row": "The patch is committed.\n| State | I'm waiting on CI |\nThe branch is ready.",
+}
+A_FIRST_PERSON_WAIT_WHEREVER_IT_STANDS = {
+    "after-a-label-in-a-heading": "## Where things stand: I'm waiting for the registrar\n\nNothing else is open.",
+    "a-future-in-a-table-cell": "| Step | Status |\n|---|---|\n| Export | done |\n| Import | I'll start it once the export is verified by the "
+                                "warehouse |",
+    "a-subject-left-out-in-a-cell": "| Check | Next |\n|---|---|\n| CI | Will merge once it is green |",
+    "a-hold-in-a-heading": "### I'm holding the tag until the smoke test passes\n| Check | State |\n|---|---|\n| smoke | running |",
+    "we-and-the-thing-before-a-colon": "We're waiting on the certificate authority: the renewal is in their queue.",
+    "we-will-before-a-colon": "We'll resume once the audit closes: the plan is in the runbook.",
+    "i-before-a-colon": "I'm waiting on the mirror: the sync started at noon.",
+}
+A_LABEL_WITH_NO_SUBJECT_IN_A_HEADING_OR_A_CELL = {
+    "a-heading-over-a-list": "## Waiting on the vendor\n\n- the signed order form\n- the tax certificate",
+    "the-first-cell-of-a-row": "| Waiting on the vendor | 3 items |\n|---|---|\n| Done | 12 items |",
+    "a-cell-after-a-sentence": "| Deploy | Done. Awaiting sign-off |\n| Docs | Published |",
+    "resuming-in-a-cell": "| Step | State |\n|---|---|\n| Import | Resuming when the index rebuild is done |",
+    "a-heading-that-names-the-list": "## What we're waiting on\n\n- the address\n- the DNS record",
+    "we-and-a-bare-colon": "We're waiting on: the fee, the venue and the caterer's quote.",
+    "we-and-a-count": "We are still waiting on three things from the landlord: the countersigned lease, the keys and the meter reading.",
+}
+
+
+@pytest.mark.parametrize("reply", _cases(R3_STRUCTURE_REVIEW, A_FIRST_PERSON_WAIT_WHEREVER_IT_STANDS))
+def test_a_first_person_wait_is_read_in_a_heading_in_a_table_row_and_before_a_colon(reply):
+    reason = _sent_back(reply)
+    assert reason and "nothing is armed" in reason
+
+
+@pytest.mark.parametrize("reply", _cases(A_LABEL_WITH_NO_SUBJECT_IN_A_HEADING_OR_A_CELL))
+def test_a_label_with_no_subject_that_names_a_state_is_still_set_aside(reply):
+    assert _sent_back(reply) is None
+
+
+# A reply that ends by asking hands the principal the turn. A table or a heading after the question is not what the
+# reply ends on: both cases passed while those lines were dropped whole, and reading them must not send them back.
+A_QUESTION_BEFORE_A_TABLE_OR_A_HEADING = {
+    "options-in-a-table": "I'm waiting on the venue's answer. Which of these should I hold in the meantime?\n\n| Option | Price |\n|---|---|\n"
+                          "| Garden room | 400 |\n| Hall | 650 |",
+    "a-heading-after-the-question": "I'll resume once the registrar replies. Do you want the long report or the short one?\n\n## Appendix",
+}
+
+
+@pytest.mark.parametrize("reply", _cases(A_QUESTION_BEFORE_A_TABLE_OR_A_HEADING))
+def test_a_reply_that_ends_by_asking_still_passes_with_a_table_or_a_heading_after_the_question(reply):
+    assert _sent_back(reply) is None
+
+
+def test_a_table_after_a_wait_and_no_question_excuses_nothing():
+    assert "nothing is armed" in _sent_back("I'm waiting on the venue's answer.\n\n| Option | Price |\n|---|---|\n| Garden room | 400 |")
+
+
+# Findings 8, 9 and 10 of the review, on the reader of what the harness holds. Work is started by the harness's own
+# tool-result entry, which is a `user` entry. It is ended by the harness's own notification, in one of the three forms
+# it writes, with the tag opening the text. And no record, however malformed, makes the reader raise. In 112 recorded
+# transcripts (2026-11-12) every launch the harness wrote is a `user` entry (1,921). 473 more are copies of one inside a
+# record of a request, and 17 of those came after their call had reported: each started finished work a second time.
+# Every notification the harness wrote opens with its tag (about 7,450). 418 more lines carry one inside other text
+# (416 records of a request, one queued prompt, one message marked as meta); none of them named a call still out.
+NOTED = "<task-notification>\n<task-id>t1</task-id>\n<tool-use-id>toolu_1</tool-use-id>\n<status>completed</status>\n</task-notification>"
+LAUNCHED = [{"type": "tool_result", "tool_use_id": "toolu_1", "content": BACKGROUND_WORK["an-agent"]}]
+NOT_THE_HARNESSS_LAUNCH = {
+    "R3-08-an-assistant-entry": _entry(type="assistant", message={"role": "assistant", "content": LAUNCHED}),
+    "a-record-of-a-request": _entry(type="api-request-blob", message={"role": "user", "content": LAUNCHED}),
+    "an-attachment": _entry(type="attachment", message={"role": "user", "content": LAUNCHED}),
+    "an-entry-of-no-type": _entry(message={"role": "user", "content": LAUNCHED}),
+    "a-type-that-is-no-string": _entry(type=["user"], message={"role": "user", "content": LAUNCHED}),
+}
+NOT_THE_HARNESSS_NOTIFICATION = {
+    "R3-09-quoted-by-the-person": _entry(type="user", message={"role": "user", "content": "Here is an example: " + NOTED}),
+    "R3-09-in-the-assistants-words": _entry(type="assistant", message={"role": "assistant", "content": "The tool printed " + NOTED}),
+    "an-assistant-entry-that-opens-with-it": _entry(type="assistant", message={"role": "assistant", "content": NOTED}),
+    "an-assistants-text-part": _entry(type="assistant", message={"role": "assistant", "content": [{"type": "text", "text": NOTED}]}),
+    "quoted-in-a-queued-prompt": _entry(type="attachment", attachment={"type": "queued_command", "prompt": "Look at this: " + NOTED,
+                                                                         "commandMode": "prompt"}),
+    "quoted-in-a-queue-operation": _entry(type="queue-operation", operation="enqueue", content="Look at this: " + NOTED),
+    "quoted-in-a-hooks-message": _entry(type="user", isMeta=True, message={"role": "user", "content": "Stop hook feedback: " + NOTED}),
+    "in-a-record-of-a-request": _entry(type="api-request-blob", message={"role": "user", "content": NOTED}),
+    "an-attachment-of-another-kind": _entry(type="attachment", attachment={"type": "file", "prompt": NOTED}),
+    "an-entry-of-no-type": _entry(content=NOTED),
+}
+THE_HARNESSS_NOTIFICATION = {
+    "a-user-entry-that-opens-with-the-tag": _entry(type="user", message={"role": "user", "content": "\n" + NOTED}),
+    "a-task-notification-by-its-origin": _entry(type="user", origin={"kind": "task-notification"},
+                                                message={"role": "user", "content": "Background task update\n" + NOTED}),
+    "a-queue-operation-that-removes-it": _entry(type="queue-operation", operation="remove", content=NOTED),
+}
+
+
+@pytest.mark.parametrize("entry", _cases(NOT_THE_HARNESSS_LAUNCH))
+def test_only_a_user_entrys_tool_result_starts_background_work(tmp_path, entry):
+    assert "nothing is armed" in _with_record(A_WAIT, _record(tmp_path, entry))
+    reported_then_copied = _record(tmp_path, _started("toolu_1", BACKGROUND_WORK["an-agent"]), _reported("toolu_1"), entry)
+    assert "nothing is armed" in _with_record(A_WAIT, reported_then_copied)             # a copy after the report starts nothing again
+
+
+@pytest.mark.parametrize("entry", _cases(NOT_THE_HARNESSS_NOTIFICATION))
+def test_a_notification_quoted_in_other_text_or_outside_the_harnesss_forms_ends_nothing(tmp_path, entry):
+    assert _with_record(A_WAIT, _record(tmp_path, _started("toolu_1", BACKGROUND_WORK["an-agent"]), entry)) is None
+
+
+@pytest.mark.parametrize("entry", _cases(THE_HARNESSS_NOTIFICATION))
+def test_each_form_of_the_harnesss_own_notification_ends_the_work_it_names(tmp_path, entry):
+    assert "nothing is armed" in _with_record(A_WAIT, _record(tmp_path, _started("toolu_1", BACKGROUND_WORK["an-agent"]), entry))
+
+
+MALFORMED_RECORDS = {
+    "R3-10-an-id-that-is-a-list": _started(["bad"], BACKGROUND_WORK["an-agent"]),
+    "an-id-that-is-an-object": _started({"id": 1}, BACKGROUND_WORK["an-agent"]),
+    "an-id-that-is-null": _started(None, BACKGROUND_WORK["an-agent"]),
+    "an-id-that-is-a-number": _started(7, BACKGROUND_WORK["an-agent"]),
+    "parts-of-every-wrong-kind": _entry(type="user", message={"role": "user", "content": [
+        None, 7, "Async agent launched", ["tool_result"], {"type": "tool_result"}, {"type": "tool_result", "tool_use_id": "t", "content": 7},
+        {"type": "tool_result", "tool_use_id": "t", "content": [None, 7, {"text": None}, {"text": ["Async agent launched"]}]}]}),
+    "a-message-that-is-a-list": _entry(type="user", message=["tool_result", "Async agent launched"]),
+    "content-that-is-an-object": _entry(type="user", message={"content": {"tool_result": "Async agent launched"}}),
+    "an-origin-that-is-a-string": _entry(type="user", origin="task-notification", message={"role": "user", "content": ["<task-notification>"]}),
+    "an-attachment-that-is-a-string": _entry(type="attachment", attachment="queued_command <task-notification>"),
+    "a-prompt-that-is-a-list": _entry(type="attachment", attachment={"type": "queued_command", "prompt": ["<task-notification>"]}),
+    "queue-content-that-is-an-object": _entry(type="queue-operation", content={"said": "<task-notification>"}),
+    "a-line-cut-short": _started("toolu_1", BACKGROUND_WORK["an-agent"])[:-9],
+    "nested-past-what-the-parser-takes": "[" * 100_000 + '"<task-notification>"',
+    "a-bare-string": json.dumps(NOTED),
+}
+
+
+@pytest.mark.parametrize("line", _cases(MALFORMED_RECORDS))
+def test_a_malformed_record_holds_nothing_and_raises_nothing(tmp_path, line):
+    assert reply_check.held_by_harness(_record(tmp_path, line)) is False
+    assert "nothing is armed" in _with_record(A_WAIT, _record(tmp_path, line))
+    beside = _record(tmp_path, line, _started("toolu_2", BACKGROUND_WORK["a-shell-command"]), line)
+    assert reply_check.held_by_harness(beside) is True                                  # and it hides nothing a sound record holds
+
+
+@pytest.mark.parametrize("path", ["\u0000", "a\u0000b", "", None, 7.5, 2**40, ["x"], {"path": "x"}, b"bytes", "x" * 5000])
+def test_a_path_that_cannot_be_used_holds_nothing_and_raises_nothing(path):
+    assert reply_check.held_by_harness(path) is False
+
+
+def test_a_number_given_as_the_path_names_no_file_descriptor(tmp_path):
+    record = _record(tmp_path, _started("toolu_1", BACKGROUND_WORK["an-agent"]))
+    descriptor = os.open(record, os.O_RDONLY)
+    try:
+        assert reply_check.held_by_harness(descriptor) is False                         # a number is no path: its descriptor is not read
+        os.fstat(descriptor)                                                            # and not closed
+    finally:
+        try:
+            os.close(descriptor)
+        except OSError:
+            pass

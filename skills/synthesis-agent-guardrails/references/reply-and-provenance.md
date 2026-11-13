@@ -71,6 +71,10 @@ Passes:
   resumes once the queue has items`); a rule (`when a build fails, I'll read the first
   error`); advice (`we'll want to rotate the key once the audit ends`); a wait refused, in
   the past, or as a count (`once a day`, `as soon as possible`);
+- carrying on, or a hold, that runs to the session's own next step: `I will resume after I
+  update the snapshots`, `I'll hold the merge until I've rerun the suite`. After the
+  conjunction, `I` or `we` with a verb of receiving, or with `can`, is still an event to
+  come (`once I have it`, `when I hear back`, `when I can reach it again`);
 - text in quotation marks (double, single or curly), in inline code, in a fence of
   backticks or of tildes, and on a quoted line. A name set aside this way still counts as
   the thing awaited: `still waiting on` and a job's name in code is a wait;
@@ -85,21 +89,57 @@ Passes:
 - `your` and a thing named in a few words straight after the wait's own word (`waiting on
   your sign-in retry`, `waiting on your two answers before I write the log`);
 - a reply that hands them the turn, whatever else it waits for: it ends by asking them; it
-  shows a message staged for their go between a `BEGIN` line and an `END` line; it asks
-  for an approval code or names a held action's code; it asks them to act in so many words
-  (`Say go and it's out`, `Tell me when it's done and I'll confirm`, `only you can`, `one
-  step from you`);
+  offers an approval code to type (`approve 3b90b7`, `Code: 2f9a01`, a code as a label
+  before a colon); it asks them to act in so many words (`Say go and it's out`, `Tell me
+  when it's done and I'll confirm`, `only you can`, `one step from you`). A request is one
+  put to them: after `and`, `then` or a comma, one more verb of somebody else's asks them
+  nothing (`The worker will restart and send me its result`, `She'll review it and let me
+  know`, `I asked the vendor to check and tell me`). A code named as used, spent or
+  replaced offers nothing, and the words straight after it or straight before it are what
+  is read: `code 1abcde was consumed earlier`, `(3e7b10) has expired`, `you typed approve
+  4a0c2d at noon`, `don't use the old codes`. A spent code beside one that is offered
+  leaves the offer standing;
+- the text between a `BEGIN` line and an `END` line, which is set aside as quoted text is,
+  whether it is a message staged for their go or a record. The block excuses nothing
+  outside it: `I'm waiting for the bank to respond` after one is sent back. Beside a
+  block, a wait for it to be sent or to go out (`Once it's sent, I'll log it`, `when it
+  goes out`) awaits their go and passes;
+- a reply that says, in one sentence of its own, that nothing wakes this seat until the
+  principal prompts it. That is the last resort the check's own message names, so a reply
+  that has said it is not sent back to say it: `Nothing wakes this seat until you prompt
+  it`, `This seat stays idle until your next message`, `I won't see it land until you prompt
+  me`, `Nothing happens here until you prompt me`. It has to be this seat, in the present,
+  and their prompt: `nothing wakes her session`, `nothing woke this seat` and `nothing wakes
+  this seat until the build finishes` excuse nothing;
 - a list of open loops, which names what is outstanding and announces nothing: a label
-  before a colon (`Waiting on others: ...`, `What we're waiting on others for: ...`), a
-  heading, a table row, and a wait after a label, a dash or a semicolon inside a sentence
-  (`- The venue — sent; awaiting their pick`);
-- a rule for next time (`from now on`, `next time`, `whenever`, `every time`);
+  with no subject before a colon (`Waiting on others: ...`); such a label in a heading or
+  a table cell (`## Awaiting the vendor's go`, a cell that reads `awaiting re-auth`); a
+  wait with no subject after a label, a dash or a semicolon inside a sentence (`- The venue
+  — sent; awaiting their pick`); and `we` with a count or a pointer before the colon, where
+  what is awaited is listed after it (`We're waiting on two answers: ...`, `What we're
+  waiting on others for: ...`). A wait in the first person is read wherever it stands, in a
+  heading, in a table row and before a colon: `## I'm waiting on CI`, `| State | I'm
+  waiting on CI |`, `Will merge once it is green` in a cell and `We are waiting for the
+  required pipeline: no further work is possible` are sent back;
+- a rule for next time (`from now on`, `going forward`, `next time`, `whenever`, `every
+  time`), where the phrase governs the wait's own clause: it opens the sentence or a clause
+  of it, and no new clause of the session's stands between it and the wait (`From now on,
+  when a send fails, I'll finish it through the browser`). The phrase somewhere else
+  explains nothing: `The proposed change going forward is documented, and I am waiting on
+  the external review` is a wait;
 - an armed wait: a live `synthesis wait` of the session; an autopilot run it owns; in
   Claude Code, background work the session started that has not reported yet (an agent, a
   shell command, a workflow, a monitor), since the harness wakes the session when it
-  does. That is read from the last four megabytes of the transcript: a tool's result that
-  opens with the harness's launch line starts it, and a task notification naming that
-  call ends it.
+  does. That is read from the last four megabytes of the transcript. Work is started by
+  the harness's own tool-result entry: a `user` entry, a result that opens with the launch
+  line, a call id that is a string. It is ended by the harness's own notification naming
+  that call: a `user` entry that is a task notification by its origin or opens with the
+  notification tag, a queued command or a queue operation that opens with it. A copy of a
+  launch in any other kind of entry starts nothing; the tag in the assistant's words, in a
+  tool's output or quoted inside other text ends nothing; a malformed record or a path that
+  cannot be read holds nothing, and the reader does not raise. Work launched before those
+  four megabytes is not seen, and a wait beside it is sent back once: say then what is
+  out.
 
 A thing that belongs to the principal is not their move. `your review bot`, `your code to
 compile`, `your registrar to release the domain`, `your lawyer's comments`, `the service to
@@ -114,12 +154,12 @@ that nothing is awaited: the rule in synthesis-waiting binds whether or not the 
 
 What it is measured against is recorded replies, not invented ones. Run over thirty days
 of turn-ending replies on one machine (4,443 delivered, November 2026), the forms above
-read 542 as a wait; in 452 the harness held background work, and 90 were sent back, about
+read 537 as a wait; in 450 the harness held background work, and 87 were sent back, about
 three a day. Of those, read one by one, three in four were the session's own wait with
-nothing to end it. The rest awaited a step of the principal's said in words the check
-does not read (`once it's sent, I'll read it back`, after a send they have yet to
+nothing to end it. Most of the rest awaited a step of the principal's said in words the
+check does not read (`once it's sent, I'll read it back`, after a send they have yet to
 approve). What it lets pass on purpose: a wait in a reply that also asks the principal
-for something, and a wait written after a label, a dash or a semicolon.
+for something, and a wait with no subject written after a label, a dash or a semicolon.
 
 ## The file-link rule
 

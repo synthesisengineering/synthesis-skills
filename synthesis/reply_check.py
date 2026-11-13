@@ -38,9 +38,19 @@ DEFAULT_PHRASES = [
 # one, 96 were the session's own wait. The rest awaited the principal's own next step (STAGED, CODED, ASKED, "your"),
 # were a list of open loops under a label, a heading, a table or a fragment (TABLED, LABEL, a sentence's first clause
 # only), sat in a message drafted for someone else (STAGED), or stated a rule (RULE).
+# Review round 3 held each of those to what it claims; the notes at _GETS, STAGED, OTHERS, WOKEN, TABLED, COUNTED and RULE say how.
 # "once" is a conjunction here, not a count: not "at once", "once more", "once on staging", "once a day".
 _ONCE = r"(?<!\bat )once(?! (?:more|again|a|an|per|every|each|or|and|only|on|in|at|for|with|to|by|upon|daily|weekly)\b)"
-_ME, _WHEN = r"\b(?:i|we)", r"\b(?:" + _ONCE + r"|when|after|until|as soon as|the (?:moment|minute|instant))\b"
+# After the conjunction, "I" or "we" with a verb of the session's own is its next step and no event ("I will resume after I
+# update the snapshots"). With a verb of receiving the thing still has to come ("once I have it", "when I hear back"), and
+# "when I can" waits to be able (the one wait in thirty days of recorded replies that turns on this form is of that kind).
+_GETS = (r"(?:(?: do| finally| actually| also| then)? (?:get(?! (?:to|back to|started|going|around|on with|into|through|done|a (?:chance|moment|minute))\b)"
+         r"|receive|hear|see|know|learn|find out)|(?:['’]ve| have)(?: \w+ly| also)? (?:got|gotten|received|heard|seen|learned|learnt|found out)"
+         r"| have (?!(?:time|a (?:chance|moment|minute))\b)(?:it|them|that|this|those|these|the|a|an|its|their|his|her|your|my|our|both|all|some|any|more|enough"
+         r"|word|news|confirmation|access|approval|permission|feedback|results|what|everything|something|[\w-]+['’]s)"
+         r"|(?:['’]m| am|['’]re| are) (?:told|notified|given|sent|informed|pinged|unblocked|able to)| can)\b")
+_EVENT = r"(?! (?:i|we)\b(?!" + _GETS + "))"
+_ME, _WHEN = r"\b(?:i|we)", r"\b(?:" + _ONCE + r"|when|after|until|as soon as|the (?:moment|minute|instant))\b" + _EVENT
 # Ordinary grammar between a subject and its verb (review round 2): any run of adverbs ("currently still", "then",
 # "simply"; "not" and "no longer" are none), helping verbs ("continue to wait", "be able to resume", "go ahead and
 # merge"), "going to" and "need to" for "will", and a subject left out ("Will report back", "I pushed it and will").
@@ -77,7 +87,7 @@ _FIRST = (r"^\W*(?:after|when) (?!(?:i|we|a|an|any|each|every|some|no|in|that|th
           r"[^,;:]{2,100}?,? (?:and )?(?:then )?")
 _GOING = (r"(?:resuming|continuing(?! to\b)|proceeding|merging|finishing|following up|circling back|(?:reporting|checking|coming"
           r"|getting) back|picking (?:[\w'’-]+ ){1,4}?(?:back )?up)\b")
-_HELD = r"\b(?=.{0,160}?\b(?:until|till)\b)"  # a hold is a wait when it runs until something
+_HELD = r"\b(?=.{0,160}?\b(?:until|till)\b" + _EVENT + ")"  # a hold is a wait when it runs until something
 # "Waiting for X" is the subject of its sentence, an explanation, when a verb follows X: a helping verb, a verb of effect
 # ("blocks", "adds", "takes"), or any verb in -s before its object or "out", "up", "down", "off". The words between may
 # hold an infinitive ("the import to release its lock") but nothing that opens another clause (_STOP), so "waiting for
@@ -114,13 +124,13 @@ WAITS = re.compile(  # a clause that opens with the wait is tested as a subject 
     "(?i)" + _AM + r"(?:a?waiting\b(?! (?:for|on)(?: you\b| from\b|\W*$))|(?:holding|standing by|paus(?:ing|ed))" + _HELD + ")"
     "|" + _MUST + _HELP + r"(?:wait(?:ing)?\b|(?:hold(?:ing)?|stand(?:ing)? by|paus(?:e|ing))" + _HELD + r")(?! (?:for|on) you\b)"
     "|" + _WILL + _HELP + _GO + ".{0,160}?" + _WHEN + "|" + _WHEN + ".{0,160}?" + _WILL + _HELP + _GO
-    + r"|\b(?:until|till)\b.{0,160}?(?:" + _MUST + _HELP + r"(?:hold|pause)\b|" + _AM + r"(?:holding|pausing)\b)"
+    + r"|\b(?:until|till)\b" + _EVENT + ".{0,160}?(?:" + _MUST + _HELP + r"(?:hold|pause)\b|" + _AM + r"(?:holding|pausing)\b)"
     + "|" + _I + _SAYS + r"\b(?:" + _THEN + "|" + _DONE + "|" + _COMES + r")|\b" + _THEN + r"[^,;:]{0,100},? (?:and )?(?:then )?" + _I
     + r"|\b(?:" + _DONE + r"|should (?:come|arrive) shortly),?(?: and)?(?: then)? " + _WILL + "|" + _FIRST + _I
     + r"|^\W*" + _COMES + r"[^,;:]{0,80}?,? (?:and )?(?:then )?" + _I + "|" + _ME + r"(?:['’]ve| have) (?:paused|held)" + _HELD
     + r"|^\W*" + _SOON + r"(?:(?P<on>waiting (?:for|on|to (?:hear|see|get|learn|find out))\b(?! you\b)|awaiting\b)"
-    r"|(?P<till>waiting until\b|(?:holding|standing by|pausing)\b.{0,160}?\b(?:until|till)\b|" + _GOING
-    + r"[^;:]{0,100}?\b(?:when|after|as soon as|" + _ONCE + r")\b))")
+    r"|(?P<till>waiting until\b|(?:holding|standing by|pausing)\b.{0,160}?\b(?:until|till)\b" + _EVENT + "|" + _GOING
+    + r"[^;:]{0,100}?\b(?:when|after|as soon as|" + _ONCE + r")\b" + _EVENT + "))")
 # The principal's own next move is what is awaited: "you" as the one who acts and not in the past ("once you approve";
 # "after you approved" and "as you want" are context), or an act of theirs. An act counts where it is the thing
 # awaited: after the wait's own word ("for", "on", "until", "once I have"), a colon, a dash or the clause's start, and
@@ -152,7 +162,6 @@ THEIRS = re.compile(
     r"|\b(?:hear|know|learn|see|find out) (?:back )?(?:which|what|whether|how|when|where|who|if)\b[^,;:]*?(?<!\bto )(?<!\bwith )"
     r"(?<!\babout )\byou\b"  # a question the principal answers: "to hear which date works for you"
     r"|\b(?:your (?:move|turn)\b|(?:up|over) to you\b|in your court\b|(?:is|are) yours\b)"  # the turn handed over in so many words
-    r"|(?:^\W*|\b(?:and|then) )(?:please )?(?:(?:send|tell|give|show) me\b|let me know\b)"  # or asked for: a request put to them
     r"|^\W*(?:please )?(?:(?:paste|type|reply|forward|share|confirm)\b(?![\w-])|(?:read|review|check|choose|pick|decide|approve|sign"
     r"|answer|select) (?:the|this|that|these|those|it|them|which|whether|one|both|my|our|your)\b)"
     r"|(?:\b(?:for|on|until|till|once|when|after|as soon as|await(?:ing)?|needs?|is|are|was) |['’]s |(?:[:—–]| -) |^\W*"
@@ -170,16 +179,57 @@ BACK = re.compile(r"(?i)(?: (?:for|on))?(?: (?:that|this|it|them|those|both|here
 LEAD = re.compile(r"(?i)(?:(?:and|so|but|now|then|until then|till then|meanwhile),? )?")           # before a wait that opens its clause
 MARKS = re.compile(r"^[ \t]*>.*|[*_#]+|^[ \t]*(?:[-+•]|\d+[.)])[ \t]+", re.M)  # a quoted line; emphasis, heading and list marks
 EDGE = re.compile(r"(?<=[.!?])\s+|(?<![:\s])\s*\n\s*")  # a sentence's or a line's end; after a colon the line runs on
-# A reply that hands the turn to the principal awaits their answer, whatever else it waits for: it shows a message staged
-# for their go (between a BEGIN line and an END line), asks for an approval code, or asks them to act in so many words.
+# A reply that hands the turn to the principal awaits their answer, whatever else it waits for: it offers an approval code
+# to type, or asks them to act in so many words. A code named as used, spent or replaced offers nothing: SPENT reads the
+# words straight after it ("code 1abcde was consumed earlier", "(3e7b10) has expired"), USED those straight before it ("you
+# typed approve 4a0c2d", "don't use the old codes ..."). The text between a BEGIN line and an END line is set aside as
+# quoted text is, a message staged for their go or a record; beside one, a wait for it to be sent (SENT) awaits their go.
 STAGED = re.compile(r"(?m)^[ \t>*_-]*BEGIN[ \t*_-]*$[\s\S]*?^[ \t>*_-]*END[ \t*_-]*$")
-CODED = re.compile(r"(?i)\bapprove\W{1,3}[0-9][0-9a-f]{5}\b|\bcodes?\b[^.\n]{0,60}?\b[0-9][0-9a-f]{5}\b|(?:\*\*|`)[0-9][0-9a-f]{5}(?:\*\*|`)?:")
-ASKED = re.compile(r"(?i)(?:^\W*|, |\b(?:and|then|so|or|otherwise) )(?:please |just )?(?:say (?:go|yes|the word|so|when)\b"
+_CODE = r"([0-9][0-9a-f]{5})"
+CODED = re.compile(r"(?i)\bapprove\W{1,3}" + _CODE + r"\b|\bcodes?\b[^.\n]{0,60}?\b" + _CODE + r"\b|(?:\*\*|`)" + _CODE + r"(?:\*\*|`)?:")
+SPENT = re.compile(r"(?i)[)`*:\]]*,? (?:(?:which|that) )?(?:(?:has|had|have|was|were|is|are|got) )?(?:(?:already|since|now|just|then|also) )?(?:been )?"
+                   r"(?:expired|lapsed|consumed|used|spent|redeemed|typed|entered|taken|applied|replaced|superseded|voided|cancell?ed|withdrawn|revoked"
+                   r"|no longer|ran out|timed out|went (?:out|through)|void|invalid|stale|gone|dead)\b")
+USED = re.compile(r"(?i)(?:\b(?:earlier|old|older|previous|prior|former|expired|spent|used|dead|stale|first) (?:approval )?codes?"
+                  r"(?:[\s`*(),:–—-]|\band\b|\bor\b|\b[0-9][0-9a-f]{5}\b)*|\b(?:typed|entered|used|ran|gave|sent)\b[^.;:,\n]{0,20})$")
+SENT = re.compile(r"(?i)\b(?:once|when|after|as soon as|until) (?:it|that|this|they|both|each|the (?:message|note|email|reply|draft|post|send)s?)"
+                  r"(?:['’]s|['’]re| is| are| has been| have been| goes| go| gets?) (?:sent|out|approved|posted|delivered|through)\b")
+ASKED = re.compile(r"(?i)(?:^\W*|(?P<led>, |\b(?:and|then|so|or|otherwise) ))(?:please |just )?(?:say (?:go|yes|the word|so|when)\b"
                    r"|(?:tell|ping|text|message|send|give|show|point) me\b|let me know\b|press (?:enter|return)\b|sign in\b)"
                    r"|\bonly you can\b|\bone (?:step|thing|click|answer|word) from you\b")
-TABLED = re.compile(r"(?m)^[ \t]*#{1,6}[ \t].*$|^[ \t]*\|.*\|[ \t]*$")  # a heading or a table row names things; it announces nothing
+# After "and", "then" or a comma those words may be one more verb of somebody else's, and no request: "the worker will restart
+# and send me its result", "she'll review it and let me know", "I asked the vendor to check and tell me". OTHERS reads that
+# subject in the words before: a few plain words and "will", "should" or "can"; "'ll"; or one asked, or waited for, "to".
+_PLAIN = r"(?:(?!(?:you|i|we|if|when|whether|that|what|which|who|how|why|where|because|once|after|before|unless|while|since|as|until|and|but|or|so)\b)[\w'’-]+ )"
+OTHERS = re.compile(r"(?i)(?:^\W*" + _PLAIN + r"{1,6}?(?:will|would|should|shall|may|might|must|can|could)\b|^\W*" + _PLAIN + r"{0,5}?(?!(?:you|i|we)\b)[\w-]+['’](?:ll|d)\b"
+                    r"|\b(?:asked|told|want\w*|need\w*|expect\w*) (?!you\b)(?:[\w'’-]+ ){1,4}?to\b"
+                    r"|\b(?:i|we)\b[^,;:]{0,30}?\bwait(?:ing)? (?:for|on) (?!you\b)(?:[\w'’-]+ ){1,4}?to\b)[^,;:]*$")
+# The last resort the check's own message names, said in one sentence of the reply's own: nothing wakes this seat, or it
+# sleeps or stays idle, or it will not wake, see or move, until the principal prompts it. Not another's seat ("her
+# session"), not the past ("nothing woke"), not an event ("until the build finishes").
+_SEAT = r"this (?:seat|session|agent|chat|thread|conversation)"
+WOKEN = re.compile(
+    r"(?is)(?:\b(?:nothing|no ?one|nobody|no (?:watcher|timer|monitor|alarm|hook|trigger|task|job))\b.{0,50}?\b(?:wakes?|wake up) (?:up )?(?:" + _SEAT + r"|me|us|myself)\b"
+    r"|\b(?:" + _SEAT + r"|i)\b(?:['’]\w+)?(?: [\w'’]+){0,3}? (?:asleep|idle|parked|dormant|sleeps?|(?:won['’]t|will not|cannot|can['’]t|do(?:es)? not|do(?:es)?n['’]t|only)"
+    r"(?: be)? (?:wakes?|woken|resumes?|moves?|acts?|continues?|sees?|knows?|notices?|hears?|looks?))\b"
+    r"|\bnothing(?: else| more| further)?(?: here)? (?:happens|moves|resumes|continues|proceeds|runs)\b)"
+    r".{0,120}?\b(?:until|till|unless|before|without|at|on|with|when|once|after) (?:you (?:next )?(?:prompt|message|nudge|ping|wake|write|return|come back|are back)\b"
+    r"|your (?:next |own )?(?:prompt|message|nudge|ping|turn|word)\b|a (?:prompt|message|nudge|word) from you\b|the next (?:prompt|message)\b)")
+# A heading or a table row names things, so a wait with no subject there is a label ("## Awaiting the vendor's go", a cell
+# that reads "awaiting re-auth"): each is cut into fragments that open no sentence (CELL). A wait in the first person is
+# read there as anywhere ("## I'm waiting on CI"). Such lines after a closing question are not what the reply ends on (LAST).
+TABLED = re.compile(r"(?m)^[ \t]*#{1,6}[ \t].*$|^[ \t]*\|.*\|[ \t]*$")
+CELL, LAST = re.compile(r"\||(?<=[.!?])\s"), re.compile(r"(?m)(?:\s*^—;.*$)+\Z")
 LABEL = re.compile(r"[^.;!?:]{0,60}:(?:\s|$)")  # "Waiting on others: ..." is a label over a list of open loops
-RULE = re.compile(r"(?i)\b(?:from now on|going forward|in future|next time|whenever|every time|each time|as a rule)\b")
+# "We're waiting on two answers: ..." counts what is open and lists it after the colon, a label, as the one recorded reply
+# that turns on it was. "We are waiting for the required pipeline: ..." names the thing itself and is the wait it says.
+COUNTED = re.compile(r"(?i)(?: (?:for|on))?(?: (?:\d+|one|two|three|four|five|six|seven|eight|nine|ten|a few|a couple of|several|some|many|both|these|those"
+                     r"|the following|other\w*)\b[^.;!?:]{0,40})?(?: (?:for|on))?:(?:\s|$)")
+# A rule for next time explains a wait when it governs the wait's own clause: it opens the sentence or a clause of it (after
+# a comma, a colon, a dash, "and", "but", "so" or "then"), and no new clause of the session's stands between it and the
+# wait. "The proposed change going forward is documented, and I am waiting" has the phrase in another clause's subject.
+RULE = re.compile(r"(?i)(?:^\W*|[,:—–] |\b(?:and|but|so|then) )(?:from now on|going forward|in future|next time|whenever|every time|each time|as a rule)\b"
+                  r"(?:(?!,? (?:and|but|so|or|yet) (?:i|we)\b|, (?:and|but|so|or|yet) ).)*$")
 # Code and quoted text are not the reply's own words: a fence of three or more backticks, or of tildes at a line's start,
 # up to the same fence; inline code; double quotes; single quotes, which open after a space or a bracket and close
 # before one, so the apostrophe in "the caterer's estimate" ends nothing (review round 2).
@@ -218,7 +268,7 @@ def _explains(text: str, m: re.Match, opens: bool = True) -> bool:
     opened = m.groupdict()
     if (opened.get("on") or opened.get("till")) and not opens or RULE.search(text, 0, m.end()):
         return True
-    if (opened.get("on") or opened.get("till") or m.group(0)[:2].lower() == "we") and LABEL.match(text, m.end()):
+    if (opened.get("on") or opened.get("till")) and LABEL.match(text, m.end()) or m.group(0)[:2].lower() == "we" and COUNTED.match(text, m.end()):
         return True
     return bool(opened.get("on") and SUBJECT.match(text, m.end()) or opened.get("till") and UNTIL.match(text, m.end()))
 
@@ -231,14 +281,17 @@ REPORTED = re.compile(r"<tool-use-id>\s*([\w-]+)\s*</tool-use-id>")
 def held_by_harness(transcript_path: str | None, tail: int = 4_000_000) -> bool:
     """Has this session started background work that has not reported: an agent, a shell command, a workflow, a monitor,
     an agent resumed? The harness wakes the session when it does, so a wait beside it is armed. Reads the tail of a
-    Claude Code transcript: a tool's result that opens with the harness's own launch line starts it, and a task
-    notification the harness wrote (a prompt, a queued one, one that has arrived) naming that call ends it. Other
-    shapes, a record that cannot be read, and work started before the tail hold nothing."""
+    Claude Code transcript. Work is started by the harness's own tool-result entry: a `user` entry, a result that opens
+    with the launch line, a call id that is a string. It is ended by the harness's own notification naming that call:
+    a `user` entry that is a task notification by its origin or opens with the tag, a queued command or a queue
+    operation that opens with it. A copy of a launch in any other entry starts nothing, and the tag in an assistant's
+    words, in a tool's output or quoted inside other text ends nothing. Other shapes, a malformed record, a path that
+    cannot be read and work started before the tail hold nothing, and nothing here raises."""
     try:
-        with open(transcript_path or "", "rb") as handle:
+        with open(transcript_path if isinstance(transcript_path, str) else "", "rb") as handle:  # a number would name a descriptor
             handle.seek(max(0, handle.seek(0, 2) - tail))
             chunk = handle.read()
-    except OSError:
+    except (OSError, ValueError):
         return False
     out = set()
     for line in chunk.splitlines():
@@ -246,22 +299,25 @@ def held_by_harness(transcript_path: str | None, tail: int = 4_000_000) -> bool:
             continue
         try:
             entry = json.loads(line)
-        except ValueError:
+        except (ValueError, RecursionError):
             continue
         if not isinstance(entry, dict) or entry.get("isSidechain"):
             continue
-        content = entry["message"].get("content") if isinstance(entry.get("message"), dict) else None
+        kind, content = entry.get("type"), entry["message"].get("content") if isinstance(entry.get("message"), dict) else None
         if isinstance(content, list):  # a tool's result; a notification it only prints ends nothing
-            for part in content:
+            for part in content if kind == "user" else ():
                 body = part.get("content") if isinstance(part, dict) and part.get("type") == "tool_result" and not part.get("is_error") else None
                 text = (body if isinstance(body, str) else " ".join(str(x.get("text", "")) for x in body if isinstance(x, dict))
                         if isinstance(body, list) else "").lstrip()
-                if text.startswith(STARTED) or "moved to the background (ID:" in text[:300] or text.startswith("{") and '"resumedAgentId"' in text[:600]:
-                    out.add(part.get("tool_use_id"))
+                if (text.startswith(STARTED) or "moved to the background (ID:" in text[:300] or text.startswith("{") and '"resumedAgentId"' in text[:600]) \
+                        and isinstance(part.get("tool_use_id"), str):
+                    out.add(part["tool_use_id"])
             continue
         attachment = entry.get("attachment") if isinstance(entry.get("attachment"), dict) else {}
-        said = next((s for s in (content, attachment.get("prompt"), entry.get("content")) if isinstance(s, str)), "")
-        if "<task-notification>" in said:
+        origin = entry.get("origin") if isinstance(entry.get("origin"), dict) else {}
+        said = (content if kind == "user" else attachment.get("prompt") if kind == "attachment" and attachment.get("type") == "queued_command"
+                else entry.get("content") if kind == "queue-operation" else None)
+        if isinstance(said, str) and (said.lstrip().startswith("<task-notification>") or kind == "user" and origin.get("kind") == "task-notification"):
             out -= set(REPORTED.findall(said))
     return bool(out)
 
@@ -272,7 +328,7 @@ def _theirs(text: str, m: re.Match, before: str) -> bool:
     in front when nothing is named after the wait ("your answer is the only thing I'm awaiting"). What stands in front
     otherwise is context ("your review is filed and I'm waiting on CI"). A wait that opens its clause and names nothing,
     or only "that" or "it", awaits what the clause before it names: their move ("your approval is all that is left; I'm
-    waiting on that"), a request to them, or a question."""
+    waiting on that") or a question. A request put to them has handed them the turn already (_asked)."""
     if THEIRS.search(text, m.start()) or YOURS.match(text, m.end()) or (before and LEAD.fullmatch(text, 0, m.start()) and BACK.match(text, m.end())
                                           and (before.endswith("?") or THEIRS.search(before))):
         return True
@@ -280,20 +336,41 @@ def _theirs(text: str, m: re.Match, before: str) -> bool:
     return any(bare or t.group(0).lower().startswith(FRONT) for t in THEIRS.finditer(text, 0, m.start()))
 
 
+def _asked(text: str) -> bool:
+    """Is a request put to the principal in this clause? One more verb of a third party's is none: OTHERS reads the words
+    before the request, back to the last comma, or one comma further for "and" and "then", which may close a list of verbs."""
+    for m in ASKED.finditer(text):
+        led = m.group("led") or ""
+        head = text[:m.start("led")].rstrip(", " if led.strip() in ("and", "then") else "") if led else ""
+        if not OTHERS.search(head[head.rfind(",") + 1:]):
+            return True
+    return False
+
+
+def _offered(body: str) -> bool:
+    """Does the reply offer the principal an approval code to type? One named as used or spent offers nothing."""
+    return any(not SPENT.match(body, m.end(m.lastindex)) and not USED.search(body, max(0, m.start(m.lastindex) - 120), m.start(m.lastindex))
+               for m in CODED.finditer(body))
+
+
 def unarmed_wait(reply: str, payload: dict, config: dict) -> list[str]:
     """The words with which a reply announces the session's own wait that nothing will end: no live `synthesis wait`
     of this session, no autopilot run it owns, no background work the harness holds for it. A clause that awaits the
-    principal's own next move is no such wait, and a reply that hands them the turn has none."""
-    if STAGED.search(reply) or CODED.search(reply):
+    principal's own next move is no such wait, and a reply that hands them the turn, or says in so many words that
+    nothing wakes this seat until they prompt it, has none."""
+    body = STAGED.sub(" something ", reply)
+    if _offered(body):
         return []
-    plain = MARKS.sub("", QUOTED.sub(" something ", CODE.sub(" something ", TABLED.sub("", reply)))).strip()  # a name set aside is still a thing awaited
+    plain = TABLED.sub(lambda line: "—;" + CELL.sub(";", line.group(0)), body)  # fragments: the dash opens the line's sentence, so no cell does
+    plain = MARKS.sub("", QUOTED.sub(" something ", CODE.sub(" something ", plain))).strip()  # a name set aside is still a thing awaited
     forms = [WAITS] + [re.compile(rf"(?i)\b{re.escape(str(p))}\b") for p in config.get("wait_phrases") or [] if str(p).strip()]
-    clauses = [] if plain.endswith("?") else [(text, at == 0) for sentence in EDGE.split(plain)  # each clause, and whether it opens its sentence
-                                              for at, text in enumerate(c for c in (" ".join(part.split()) for part in sentence.split(";")) if c)]
-    if any(ASKED.search(text) for text, _ in clauses):
+    sentences = [] if LAST.sub("", plain).endswith("?") else EDGE.split(plain)
+    clauses = [(text, at == 0) for sentence in sentences  # each clause, and whether it opens its sentence
+               for at, text in enumerate(c for c in (" ".join(part.split()) for part in sentence.split(";")) if c)]
+    if any(_asked(text) for text, _ in clauses) or any(WOKEN.search(sentence) for sentence in sentences):
         return []
     hits = {m.group(0).lower().strip(" :—–-") for at, (text, opens) in enumerate(clauses) for form in forms for m in form.finditer(text)
-            if not _explains(text, m, opens) and not _theirs(text, m, clauses[at - 1][0] if at else "")}
+            if not _explains(text, m, opens) and not _theirs(text, m, clauses[at - 1][0] if at else "") and not (body != reply and SENT.search(text))}
     if not hits:
         return []
     from synthesis import autopilot, paths, wait
