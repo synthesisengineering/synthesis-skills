@@ -94,7 +94,7 @@ def test_with_the_check_on_a_day_end_lists_the_days_prompts_itself_and_a_day_sta
     assert code == 0, refusal
     assert json.loads(asked.read_text()) == ["sessions", "prompts", "--workspace", "desk", "--date", DAY,
                                              "--records", "/kb/desk", "--records", "/kb/plans", "--json"]
-    assert "prompts: all 3 typed on 2026-11-11 are cited by a record" in out and '"workspace":"desk"' in history(state)
+    assert "prompts: all 3 typed on 2026-11-11 are cited by a record under /kb/desk, /kb/plans" in out and '"workspace":"desk"' in history(state)
 
 
 def test_a_prompt_no_record_cites_keeps_the_day_from_closing_clean(tmp_path, record, monkeypatch):
@@ -110,7 +110,7 @@ def test_a_prompt_no_record_cites_keeps_the_day_from_closing_clean(tmp_path, rec
     listing(tmp_path, monkeypatch, "claude-code d20ab7c4 --seq 41")
     code, out, refusal = record(state, "--outcome", "partial")
     assert code == 0, refusal                                        # said to be partial, it is recorded, and says what is open
-    assert "prompts: 1 of 3 typed on 2026-11-11 is cited by no record" in out and '"outcome":"partial"' in history(state)
+    assert "prompts: 1 of 3 typed on 2026-11-11 is cited by no record under /kb/desk" in out and '"outcome":"partial"' in history(state)
 
 
 @pytest.mark.parametrize("folder", ["kb/desk", "./kb", "../kb", "records"])

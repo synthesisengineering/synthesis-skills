@@ -1149,25 +1149,105 @@ def test_a_record_in_the_same_file_as_the_listing_still_cites(asked, capsys):
 
 
 def test_a_citation_the_principal_typed_is_not_one_in_the_listing(harness, tmp_path, capsys):
-    """The listing prints each prompt's first words, and a prompt may itself cite an earlier one. Printed as typed,
-    a saved listing would account for that earlier prompt. The listing sets the number apart from its `#`, in a
-    citation of a session it lists and nowhere else; `show` prints the prompt as it was typed."""
+    """The listing prints each prompt's first words, and a prompt may itself cite another: one of today's, one of
+    another day's (a review, 2026-11-13: today's listing, saved, closed yesterday's prompt at a catch-up), or one
+    hidden in a string that carries an escape, which the reading of a record opens. In a line of the listing every
+    number stands apart from its `#`, so no reading makes a citation of it; `show` prints the prompt as typed."""
     base = {"cwd": harness["work"], "sessionId": "c1"}
-    _jsonl(harness["claude"], [_typed(base, "Plan the release.", "2026-10-30T15:00:00.000Z")])
+    _jsonl(harness["claude"], [_typed(base, "Plan the release.", "2026-10-29T15:00:00.000Z"),
+                               _typed(base, "Draft the announcement.", "2026-10-30T15:00:00.000Z")])
     sessions.export(0)
-    first = sessions.prompts("acme", "2026-10-30")[0]
-    again = f"Do claude-code c1 #{first['seq']} again, and c1 #{first['seq']}-{first['seq'] + 1}; see PR #291 and other9 #{first['seq']}."
-    _jsonl(harness["claude"], [_typed(base, again, "2026-10-30T15:05:00.000Z")])
+    before, first = sessions.prompts("acme", "2026-10-29")[0], sessions.prompts("acme", "2026-10-30")[0]
+    typed = [f"Do claude-code c1 #{first['seq']} again, and c1 #{first['seq']}-{first['seq'] + 1}; see PR #291.",
+             f"Yesterday in c1 #{before['seq']} I asked for the plan.",
+             'Read this: {"note": "see c1\\n#%d and c1\\u0020\\u0023%d"}' % (first["seq"], before["seq"])]
+    _jsonl(harness["claude"], [_typed(base, text, f"2026-10-30T15:0{n + 5}:00.000Z") for n, text in enumerate(typed)])
     kb = tmp_path / "kb"
     kb.mkdir()
-    command = ["sessions", "prompts", "--workspace", "acme", "--date", "2026-10-30", "--records", str(kb)]
-    assert cli.main(command) == 1
+    command = ["sessions", "prompts", "--workspace", "acme", "--records", str(kb), "--date"]
+    assert cli.main(command + ["2026-10-30"]) == 1
     listing = capsys.readouterr().out
-    assert "2 of 2 prompts" in listing and "see PR #291 and other9 #" in listing       # what cites nothing listed is printed as typed
-    (kb / "open.md").write_text(listing, encoding="utf-8")
-    assert cli.main(command) == 1 and "2 of 2 prompts" in capsys.readouterr().out
-    second = sessions.prompts("acme", "2026-10-30")[1]
-    assert cli.main(["sessions", "show", "c1", "--seq", str(second["seq"])]) == 0 and again in capsys.readouterr().out
+    assert "4 of 4 prompts" in listing and "see PR # 291" in listing and not re.search(r"#\d", listing)
+    kept = {"open.md": listing, "open.txt": listing, "quoted.md": "".join(f"> {line}\n" for line in listing.splitlines()),
+            "open.json": json.dumps({"listing": listing}), "list.md": "".join(f"- [ ] {line}\n" for line in listing.splitlines()),
+            "joined.md": " ".join(listing.split()) + "\n"}
+    for name, text in kept.items():
+        (kb / name).write_text(text, encoding="utf-8")
+        assert cli.main(command + ["2026-10-30"]) == 1 and "4 of 4 prompts" in capsys.readouterr().out, name
+        assert cli.main(command + ["2026-10-29"]) == 1 and "1 of 1 prompts" in capsys.readouterr().out, name   # nor yesterday's
+        (kb / name).unlink()
+    for prompt, text in zip(sessions.prompts("acme", "2026-10-30")[1:], typed):
+        assert cli.main(["sessions", "show", "c1", "--seq", str(prompt["seq"])]) == 0 and text in capsys.readouterr().out
+
+
+def test_what_show_prints_makes_no_citation_with_the_line_before_it(harness, tmp_path, capsys):
+    """Each line `show` printed began with `#<seq>`, so a session's id at the end of the line above made a citation
+    the conversation never held: a prompt that ended with another session's id closed that session's next prompt,
+    and the command itself, pasted above its output, closed the first (a review, 2026-11-13). Every line `show`
+    prints begins with the session, as `recent` and `search` do."""
+    one, two = "5f0c9e2a-aaaa-4000-8000-000000000001", "7d41b6e3-bbbb-4000-8000-000000000002"
+    for name, texts in ((one, ["Start here.", f"Pick this up where we left it in {two[:8]}", "And then stop."]),
+                        (two, ["First of the other.", "Second.", "Third."])):
+        _jsonl(harness["claude"].with_name(f"{name}.jsonl"),
+               [_typed({"cwd": harness["work"], "sessionId": name}, text, f"2026-10-30T15:0{n}:00.000Z") for n, text in enumerate(texts)])
+    sessions.export(0)
+    found = sessions.prompts("acme", "2026-10-30")
+    kb = tmp_path / "kb"
+    kb.mkdir()
+    for words in (["show", one[:8]], ["show", one], ["show", two[:8], "--kinds", "user"], ["show", one[:8], "--width", "0"],
+                  ["show", two[:8], "--seq", "1"]):
+        assert cli.main(["sessions", *words]) == 0
+        shown = capsys.readouterr().out
+        assert all(re.match(r"\[claude-code \S+\] #\d+ ", line) for line in shown.splitlines() if re.match(r"\[|#", line)), words
+        for name, text in {"shown.md": shown, "echoed.md": f"$ synthesis sessions {' '.join(words)}\n{shown}",
+                           "fenced.md": f"```\n$ synthesis sessions {' '.join(words)}\n{shown}```\n",
+                           "joined.txt": " ".join(shown.split())}.items():
+            (kb / name).write_text(text, encoding="utf-8")
+            assert sessions.uncited(found, [str(kb)]) == found, (words, name)
+            (kb / name).unlink()
+
+
+def test_a_torn_line_of_json_is_read_in_time_that_follows_its_length(asked):
+    """A string left open at the end of a torn line, with escaped quotes after it, was read again from every one of
+    them: 40 KB took two and a half seconds, a quarter of a megabyte more than half a minute, and the day-end
+    record waits on the listing with no limit (a review, 2026-11-13)."""
+    import time
+    first, second = found = sessions.prompts("acme", "2026-10-30")
+    cite = f"claude-code c1 #{first['seq']}"
+    torn = {"torn.jsonl": '{"at": "10:00", "payload": "{' + '\\"k\\": 1, ' * 60000,
+            "open.md": f"- planned ({cite}); the log said payload=\"" + '\\"' * 200000 + "\n",
+            "many.txt": ('"' + "\\" * 3 + "x" * 40 + "\n") * 20000 + f"planned: {cite}\n"}
+    for name, text in torn.items():
+        saved = asked["kb"] / "projects" / "alpha" / name
+        saved.write_text(text, encoding="utf-8")
+        start = time.monotonic()
+        left = sessions.uncited(found, [str(asked["kb"])])
+        assert time.monotonic() - start < 2, name
+        assert left == (found if name == "torn.jsonl" else [second]), name
+        saved.unlink()
+
+
+def test_without_records_the_json_answer_says_what_is_listed_and_nothing_of_what_is_open(asked, capsys):
+    """`--json` without `--records` answered `"open": []` beside two prompts, which reads as nothing open (a review,
+    2026-11-13). Nothing was held against any record, so the answer has no `open`: it lists."""
+    found = sessions.prompts("acme", "2026-10-30")
+    assert cli.main(["sessions", "prompts", "--workspace", "acme", "--date", "2026-10-30", "--json"]) == 0
+    assert json.loads(capsys.readouterr().out) == {"workspace": "acme", "date": "2026-10-30", "prompts": 2, "records": [],
+                                                   "listed": [f"claude-code c1 --seq {p['seq']}" for p in found]}
+
+
+def test_a_config_or_a_tree_the_reading_cannot_take_is_said_in_a_line(asked, write_config, tmp_path, monkeypatch, capsys):
+    command = ["sessions", "prompts", "--workspace", "acme", "--date", "2026-10-30", "--records", str(asked["kb"])]
+    write_config({"workspace_roots": [str(tmp_path / "workspaces" / "*")], "sessions_repos": ["not", "a", "mapping"]})
+    assert cli.main(command) == 1 and "2 of 2 prompts" in capsys.readouterr().out      # sessions repos that are no mapping name none
+
+    def deep(top, **more):
+        raise RecursionError("maximum recursion depth exceeded")
+        yield
+    monkeypatch.setattr(sessions.os, "walk", deep)
+    assert cli.main(command) == 2
+    said = capsys.readouterr()
+    assert said.out == "" and "no record was checked" in said.err and str(asked["kb"]) in said.err
 
 
 def test_a_citation_counts_wherever_it_is_written(asked):
