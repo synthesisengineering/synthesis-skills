@@ -13,6 +13,9 @@ import pytest
 
 from synthesis import cli, project, sessions
 
+# A test that closes a file or a folder by its mode says nothing as root, who reads and writes whatever the mode.
+closed_to_us = pytest.mark.skipif(os.geteuid() == 0, reason="root reads and writes a file whatever its mode")
+
 PNG = base64.b64encode(b"\x89PNG\r\n\x1a\n not really an image").decode()
 LONG = "line of tool output\n" * 300  # past BLOB_CHARS
 EXAMPLE_KEY = "AKIAIOSFODNN7EXAMPLE"  # AWS's published example: the commit check lets it through, the export masks it
@@ -608,6 +611,7 @@ def test_a_citation_of_a_parent_session_opens_it_not_its_sub_agents(harness, cap
     assert "Please plan the release." in capsys.readouterr().out
 
 
+@closed_to_us
 def test_a_session_that_cannot_export_still_sees_the_latest_turns(harness, tmp_path):
     """Codex's sandbox may write only the board: resume reads the archive as it is, plus what each harness recorded
     since, without writing anything."""
@@ -631,6 +635,7 @@ def test_a_session_that_cannot_export_still_sees_the_latest_turns(harness, tmp_p
         lock.chmod(0o644)
 
 
+@closed_to_us
 def test_sync_takes_the_same_writer_lock_as_export(synced):
     _jsonl(synced["claude"], _claude_rows(synced["work"]))
     sessions.export(0)
@@ -643,6 +648,7 @@ def test_sync_takes_the_same_writer_lock_as_export(synced):
     assert sessions.sync()[-1] == "acme: ai-sessions-acme up to date"
 
 
+@closed_to_us
 def test_a_sync_whose_export_could_not_copy_a_transcript_leaves_that_in_the_stamp(synced):
     """Handoff and the day-end copy through `sync`, which exports first (2026-11-12: a copy that export could not make
     was in no report and no stamp, so nothing said a conversation had stayed behind). The failure is over when the
@@ -1232,6 +1238,7 @@ def test_a_listing_line_an_agent_wrote_on_is_a_record_and_the_lines_left_as_prin
         assert sessions.uncited(found, [str(asked["kb"])]) == [second], worked
 
 
+@closed_to_us
 def test_a_records_folder_that_cannot_be_read_is_named_and_nothing_is_listed(asked, tmp_path, capsys):
     """A folder of records that is not there was walked as an empty one: every prompt stayed open, the day-end
     refused each day, and a citation written in the real folder was never read, with no word of why (a review,
@@ -1365,6 +1372,7 @@ def test_the_listing_exports_first_and_stops_when_a_transcript_could_not_be_copi
     assert said.out == "" and "not exported" in said.err and "2026-10-30" in said.err
 
 
+@closed_to_us
 def test_an_archive_that_cannot_be_written_stops_the_listing_with_its_reason(asked, capsys):
     """With the lock beside the archive free and the archive itself not writable, each copy failed and then the stamp
     could not be left: the listing ended in a traceback in place of saying why nothing was listed."""
@@ -1386,6 +1394,7 @@ def test_an_archive_that_cannot_be_written_stops_the_listing_with_its_reason(ask
     assert cli.main(command) == 0 and "A third thing." in capsys.readouterr().out
 
 
+@closed_to_us
 def test_a_day_is_not_listed_while_a_transcript_that_may_hold_its_prompts_is_not_copied(asked, capsys):
     """2026-11-12, a second review: a transcript whose copy had failed lay outside the two days the listing exports.
     Its failure stayed in the stamp, the listing of that older day held none of its prompts and exited 0, and the
@@ -1420,6 +1429,7 @@ def test_a_day_is_not_listed_while_a_transcript_that_may_hold_its_prompts_is_not
     assert cli.main(command) == 0 and "Book the venue." in capsys.readouterr().out          # and the day is listed with what it held
 
 
+@closed_to_us
 def test_a_transcript_that_cannot_hold_the_days_prompts_does_not_stop_the_listing(harness, tmp_path, monkeypatch, capsys):
     """What is not copied is weighed for the workspace and the day asked about. A transcript filed under another
     workspace holds nothing of this one's. One that is gone may have held anything written until a run found it
@@ -1457,6 +1467,7 @@ def test_a_transcript_that_cannot_hold_the_days_prompts_does_not_stop_the_listin
     assert "Order the parts." in listed and "And the spares." not in listed and "1 prompts on 2026-10-30 in beta" in listed
 
 
+@closed_to_us
 def test_a_sub_agents_transcript_that_is_not_copied_does_not_stop_the_listing(harness, capsys):
     """A sub-agent is briefed by an agent, so its transcript holds nothing the principal typed. While it is not copied
     the stamp names it for the doctor, and the day is still listed. A thread nothing is known of may be anyone's."""
@@ -1519,6 +1530,7 @@ def test_an_export_that_finishes_says_when_and_a_busy_one_does_not(harness):
     assert json.loads(stamp.read_text())["scheduled"] == ran          # and a session's export after it leaves the mark
 
 
+@closed_to_us
 def test_a_run_that_could_not_copy_a_transcript_stays_visible_until_a_run_copies_everything(harness, tmp_path):
     """2026-11-12: with every copy refused, the stamp still got a fresh time and the doctor answered ok."""
     from synthesis import doctor
@@ -1581,6 +1593,7 @@ def _checked(tmp_path) -> tuple:
     return found.status, found.detail, json.loads(stamp.read_text())
 
 
+@closed_to_us
 def test_a_transcript_removed_before_it_was_copied_stays_named_until_the_principal_clears_it(principal, harness, tmp_path, capsys):
     """2026-11-12, a second review: a copy failed, the harness then removed the transcript, and the next run of
     everything found nothing to copy, erased the failure and stamped complete. The doctor answered ok for a
@@ -1626,6 +1639,7 @@ def test_a_transcript_removed_before_it_was_copied_stays_named_until_the_princip
     assert sessions.export(0) is not None and _checked(tmp_path)[2]["complete"]                       # the next run copies everything there is
 
 
+@closed_to_us
 def test_only_a_transcript_that_is_gone_is_lost(principal, harness, tmp_path, monkeypatch, capsys):
     """A copy that failed is a loss only once no run can make it. A transcript still there is not cleared; a run that
     does not look where it is does not call it gone; one the harness moved is copied from where it is; and a
@@ -1671,6 +1685,7 @@ def test_only_a_transcript_that_is_gone_is_lost(principal, harness, tmp_path, mo
     assert [json.loads(line)["transcript"] for line in lost] == ["claude-code c2"]                              # and the cleared one still on record
 
 
+@closed_to_us
 def test_in_a_terminal_of_their_own_the_principal_clears_a_loss_without_a_code(harness, tmp_path, monkeypatch, capsys):
     """Run by an agent, `--lost` waits for the principal's code. Typed by the principal in their own terminal, outside
     any harness, it needs none: nobody else is at that keyboard."""
@@ -1692,6 +1707,7 @@ def test_in_a_terminal_of_their_own_the_principal_clears_a_loss_without_a_code(h
     assert _checked(tmp_path)[0] == "ok"
 
 
+@closed_to_us
 def test_a_loss_is_cleared_on_the_principals_code_however_the_clearing_is_called(principal, harness, tmp_path):
     """The command asked for the principal's code, and the function under it did not: a script that called it cleared
     a loss with no code at all."""
@@ -1709,6 +1725,7 @@ def test_a_loss_is_cleared_on_the_principals_code_however_the_clearing_is_called
     assert sessions.lost("claude-code c1").startswith("cleared: claude-code c1") and _checked(tmp_path)[0] == "ok"   # by either name
 
 
+@closed_to_us
 def test_a_loss_is_not_cleared_on_an_approval_the_sessions_transcript_does_not_back(principal, harness, tmp_path, capsys):
     """An approval of the loss is on record and the session's own transcript does not show the principal typing it: an
     agent runs as the same user and can write the grant itself. The clearing then says why and exits 2 with no
@@ -1835,6 +1852,7 @@ def _copied(report: list) -> set:
     return {line.split(":")[0] for line in report if "record(s)" in line}
 
 
+@closed_to_us
 def test_a_transcript_folder_that_cannot_be_listed_is_named_until_a_run_of_everything_lists_it(harness, tmp_path, capsys):
     from datetime import date
     native = _everywhere(harness)["claude"]
@@ -1876,6 +1894,7 @@ SHUT = {  # the folder closed, the harness whose transcripts it holds, the folde
 }
 
 
+@closed_to_us
 @pytest.mark.parametrize("shut, kept, named, hidden", SHUT.values(), ids=SHUT.keys())
 def test_wherever_a_folder_cannot_be_listed_it_is_named_and_the_run_goes_on(harness, tmp_path, request, shut, kept, named, hidden):
     at = _everywhere(harness)
@@ -1890,6 +1909,7 @@ def test_wherever_a_folder_cannot_be_listed_it_is_named_and_the_run_goes_on(harn
     assert _copied(report) == hidden and _checked(tmp_path)[0] == "ok"    # and once it can be listed, what it held is copied
 
 
+@closed_to_us
 def test_transcripts_the_search_can_name_and_not_look_at_are_each_named(harness, tmp_path):
     """A folder that can be listed and not searched gives the names of its transcripts and nothing else. The search
     stopped there with a traceback: no transcript of any harness was copied and no stamp was left. The same for a
@@ -1907,6 +1927,7 @@ def test_transcripts_the_search_can_name_and_not_look_at_are_each_named(harness,
     assert _copied(sessions.export(0)) == {"claude-code c1", "claude-code c1-agent-a1", "muse 01a1-muse"} and _checked(tmp_path)[0] == "ok"
 
 
+@closed_to_us
 def test_a_transcript_is_not_called_gone_while_the_folder_it_was_in_cannot_be_listed(principal, harness, tmp_path, capsys):
     """A transcript whose copy failed is gone once a run of everything no longer finds it. A run that cannot list the
     folder it was in has not looked: it is not gone, the doctor does not send for the principal, and it is not a
@@ -1933,6 +1954,7 @@ def test_a_transcript_is_not_called_gone_while_the_folder_it_was_in_cannot_be_li
     assert sessions.export(0) == [] and _checked(tmp_path)[0] == "ok"               # nothing is left there to list
 
 
+@closed_to_us
 def test_the_export_command_exits_1_once_it_has_stamped_what_it_could_not_copy(harness, tmp_path, capsys):
     """2026-11-12: every copy was refused and the command still exited 0, so the script or the job that ran it could
     not tell. It exits 1 when something it was asked for was not copied, after leaving the stamp, and says how many
