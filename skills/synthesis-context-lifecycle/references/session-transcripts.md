@@ -173,6 +173,11 @@ range. The listing's own output saved among the records cites nothing, however i
 only what the listing prints for a prompt (its citation, its minute and its first words), the JSON answer in any
 layout, and the list the day-end record prints when it refuses. Only those are set aside: what is written beside
 them in the same file is read, and a listing line with what became of the prompt written on it is a record.
+A line of a text record that holds citations and nothing else cites nothing either, wherever it stands and
+however it is marked (a list of what is open, such as the refusal retyped): write the citation on the line
+that says what became of the prompt. A record kept as JSON or YAML may hold its citations in a field of their
+own, and a string in one is read as the text it holds, so a listing kept as a string cites nothing and an
+escaped dash still joins its range.
 `--json` prints
 `{"workspace", "date", "prompts", "open": [...], "records": [...]}`; the day-end record runs it itself. `records`
 names each folder as the listing read it, by its real path: `~` expanded, links followed, and `..` taken from

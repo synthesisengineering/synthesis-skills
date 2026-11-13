@@ -752,6 +752,11 @@ CITED = re.compile(r"(?<![\w.-])([A-Za-z0-9][\w.-]*)\s+#(\d+)(?:(?:[^\S\n]*(?:-|
 LISTED = re.compile(r"(?m)^[ \t>]*(?:(?:[-*+]|\d+[.)])[ \t]+)?[A-Za-z][\w-]*[ \t]+(\S+)[ \t]+#(\d{1,9})[^\S\n]+\d\d:\d\d(?:[^\S\n]+(.*))?$")
 ANSWER = re.compile(r'\{\s*"(?:workspace|date|prompts|open|records)"\s*:')
 REFUSED = re.compile(r"(?m)^.*\d+ of \d+ prompts typed on \d{4}-\d\d-\d\d (?:is|are) cited by no record.*\n(?:[ \t>]*[\w-]+ \S+ #\d+[^\S\n]*(?:\n|\Z))+")
+# A line that holds citations and nothing else, behind whatever marks a line: a quote, a list entry, a box to tick,
+# a cell of a table, backticks, emphasis or brackets.
+_ONE = r"(?:[A-Za-z][\w-]*[ \t]+)?[A-Za-z0-9][\w.-]*[ \t]+#\d+(?:[ \t]*(?:-|–|—|to|through)[ \t]*#?\d+)?"
+BARE = re.compile(r"(?m)^[ \t>|]*(?:(?:[-*+]|\d+[.)])[ \t]+)?(?:\[[ xX]\][ \t]+)?[`*_(\[]*" + _ONE
+                  + r"(?:[`*_)\]]*[ \t]*(?:[,;]|and\b)?[ \t]*[`*_(\[]*" + _ONE + r")*[`*_)\].,;| \t]*$")
 STRING = re.compile(r'"(?:[^"\\\n]|\\.)*"')  # a string as JSON writes one, and YAML between double quotes
 
 
@@ -812,6 +817,8 @@ def _record(text: str, typed: dict, data: bool = False) -> str:
     list of what is open, and each line that says of a prompt only what the listing says, which is its citation,
     its minute and its first words. Only those go (the same day: a log the listing was pasted into lost every
     citation it held), and a mark stands where each was, so nothing either side of it joins into a citation.
+    A line of prose that holds citations and nothing else goes too: it is a list of numbers, such as the day-end's
+    refusal retyped, and says nothing of what was asked (the same review's note).
     A string is first read as the text it holds, on lines of its own: one that carries an escape, and every one in
     a file of `data` (JSON or YAML), so a listing kept as a string cites nothing and a dash an encoder escaped
     still joins its range (the same review's notes). `typed` holds, by seq, each prompt's session and words."""
@@ -828,6 +835,8 @@ def _record(text: str, typed: dict, data: bool = False) -> str:
             return "\n" + json.loads(m.group(0)) + "\n" if data or "\\" in m.group(0) else m.group(0)
         except ValueError:
             return m.group(0)
+    if not data:  # a record kept as data holds its citations in a field of their own, which is no bare list
+        text = BARE.sub("\0", text)
     text = STRING.sub(held, text)
 
     def line(m) -> str:

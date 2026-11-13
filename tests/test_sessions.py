@@ -781,11 +781,11 @@ def test_sessions_prompts_names_each_one_no_record_cites_and_exits_1_while_any_i
     first, second = sessions.prompts("acme", "2026-10-30")
     assert out[0].startswith(f"claude-code c1 #{first['seq']} ") and "Please plan the release." in out[0]
     assert out[-1] == "2 of 2 prompts on 2026-10-30 in acme are cited by no record"
-    asked["log"].write_text(f"- c1 #{first['seq']}\n", encoding="utf-8")
+    asked["log"].write_text(f"- planned the release: c1 #{first['seq']}\n", encoding="utf-8")
     assert cli.main(command) == 1
     out = capsys.readouterr().out.splitlines()
     assert len(out) == 2 and "Also draft the announcement." in out[0] and out[-1].startswith("1 of 2 prompts")
-    asked["log"].write_text(f"- c1 #{first['seq']}-{second['seq']}\n", encoding="utf-8")
+    asked["log"].write_text(f"- planned and drafted: c1 #{first['seq']}-{second['seq']}\n", encoding="utf-8")
     assert cli.main(command) == 0
     assert capsys.readouterr().out.strip() == "all 2 prompts on 2026-10-30 in acme are cited by a record"
     assert cli.main(command[:-2]) == 0                                       # with no records given it only lists
