@@ -31,7 +31,12 @@ REPO = Path(__file__).resolve().parents[3]
 sys.dont_write_bytecode = True  # an installed plugin must stay byte-identical; Muse verifies its bundle
 if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
-from synthesis import doctor, install, paths  # noqa: E402  (the plugin's own core: listings, CLI finder, TOML reader)
+try:
+    from synthesis import doctor, install, paths  # noqa: E402  (the plugin's own core: listings, CLI finder, TOML reader)
+except Exception as exc:  # no runtime beside this copy, or one that fails as it loads
+    print(f"{__file__}: the synthesis runtime cannot be imported, so this did not run ({exc}). Run it from the installed "
+          "synthesis-skills plugin", file=sys.stderr)
+    sys.exit(2)
 
 PLUGIN, MARKETPLACE, SOURCE = "synthesis-skills", "synthesis-engineering", "synthesisengineering/synthesis-skills"
 CODEX_DOC_BYTES = 98_304

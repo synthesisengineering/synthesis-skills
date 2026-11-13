@@ -31,7 +31,12 @@ from typing import Any, Iterable, Optional
 sys.dont_write_bytecode = True  # an installed plugin must stay byte-identical; Muse verifies its bundle
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))  # the plugin root or the installed runtime: holds synthesis/
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from synthesis import yamlish  # noqa: E402
+try:
+    from synthesis import yamlish  # noqa: E402
+except Exception as exc:  # no runtime beside this copy, or one that fails as it loads
+    print(f"{__file__}: the synthesis runtime cannot be imported, so this did not run ({exc}). Run it from the installed "
+          "synthesis-skills plugin", file=sys.stderr)
+    sys.exit(2)
 from okf_validate import split_frontmatter  # noqa: E402  (beside this script; one splitter for all three)
 
 CONFIG_RELATIVE = Path(".agents/knowledge-base.yaml")

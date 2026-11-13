@@ -46,7 +46,12 @@ from pathlib import Path
 
 sys.dont_write_bytecode = True  # an installed plugin must stay byte-identical; Muse verifies its bundle
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))  # the plugin root, which holds synthesis/
-from synthesis.yamlish import load as load_yaml  # noqa: E402 -- stdlib reader; PyYAML is not on Apple's python3
+try:
+    from synthesis.yamlish import load as load_yaml  # noqa: E402 -- stdlib reader; PyYAML is not on Apple's python3
+except Exception as exc:  # no runtime beside this copy, or one that fails as it loads
+    print(f"{__file__}: the synthesis runtime cannot be imported, so this did not run ({exc}). Run it from the installed "
+          "synthesis-skills plugin", file=sys.stderr)
+    sys.exit(2)
 
 # A project claiming any of these is asserting that it wants attention.
 # `paused` deliberately asserts the opposite, which is the whole point of

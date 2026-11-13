@@ -21,10 +21,20 @@ from pathlib import Path
 
 sys.dont_write_bytecode = True  # an installed plugin must stay byte-identical; Muse verifies its bundle
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))  # the plugin root or the installed runtime: holds synthesis/
-from synthesis import board, paths  # noqa: E402
-from synthesis.autopilot import (  # noqa: E402
-    FIELD, FIRST_WAKE_GRACE, LIST, OPEN, Plan, _continuation_problems, _pointer_file, _read_pointer,
-    _write_pointer, close_problems, load)
+try:
+    from synthesis import board, paths  # noqa: E402
+except Exception as exc:  # no runtime beside this copy, or one that fails as it loads
+    print(f"{__file__}: the synthesis runtime cannot be imported, so this did not run ({exc}). Run it from the installed "
+          "synthesis-skills plugin", file=sys.stderr)
+    sys.exit(2)
+try:
+    from synthesis.autopilot import (  # noqa: E402
+        FIELD, FIRST_WAKE_GRACE, LIST, OPEN, Plan, _continuation_problems, _pointer_file, _read_pointer,
+        _write_pointer, close_problems, load)
+except Exception as exc:  # no runtime beside this copy, or one that fails as it loads
+    print(f"{__file__}: the synthesis runtime cannot be imported, so this did not run ({exc}). Run it from the installed "
+          "synthesis-skills plugin", file=sys.stderr)
+    sys.exit(2)
 
 SILENT_DEFAULT_MINUTES = 8 * 60
 DEFAULT_STANDING = (

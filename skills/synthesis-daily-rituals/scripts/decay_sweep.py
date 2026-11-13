@@ -29,7 +29,12 @@ for _root in (Path(__file__).resolve().parents[3], Path(os.environ.get("SYNTHESI
     if (_root / "synthesis" / "rituals.py").is_file():
         sys.path.insert(0, str(_root))
         break
-from synthesis import rituals  # noqa: E402
+try:
+    from synthesis import rituals  # noqa: E402
+except Exception as exc:  # no runtime beside this copy, or one that fails as it loads
+    print(f"{__file__}: the synthesis runtime cannot be imported, so this did not run ({exc}). Run it from the installed "
+          "synthesis-skills plugin", file=sys.stderr)
+    sys.exit(2)
 
 DATE = r"\d{4}-\d{2}-\d{2}"
 PLAN = re.compile(rf"^({DATE})\.md$")
