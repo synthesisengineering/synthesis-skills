@@ -92,10 +92,15 @@ def iso_day(value: str) -> date:
     return date.fromisoformat(value)
 
 
-def gap(report: dict, path, reason: str, line: int | None = None) -> None:
+def gap(report: dict, path, reason: str, line: int | None = None, identity: str = "") -> None:
+    """A thing the sweep did not take in full. A gap on a line of one item says whose it is (`identity`), so that
+    what reads the report can tell another item's bad date from a source that was not read (2026-11-13, a review:
+    one item's date that is on no calendar stopped every lapse of its seat)."""
     entry = {"path": str(path), "reason": reason}
     if line is not None:
         entry["line"] = line
+    if identity:
+        entry["identity"] = identity
     report["gaps"].append(entry)
 
 
@@ -131,7 +136,12 @@ def item_blocks(text: str, errors: list[str]):
     for number, line in operative_lines(text, errors):
         heading = HEADING.match(line)
         listed = LIST.match(line)
-        metadata = FIELD.match(line.strip().removeprefix("- "))
+        # A field written as a list entry, under any mark, is the field of the item it stands under: one directly
+        # under a heading with no entry open, or one deeper than the open entry. At the open entry's level or above
+        # it is an entry of its own, which closes nothing of its neighbour's (2026-11-13, two reviews: read under
+        # `- ` alone, a tag written `* **Decays:**` under its heading was an entry with no title; read under every
+        # mark at any level, a sibling `* **Resolved:**` closed the open item above it).
+        metadata = bool(listed and FIELD.match(listed[2]) and (list_indent is None or len(listed[1]) > list_indent))
         boundary = heading or (listed and not metadata and (list_indent is None or len(listed[1]) <= list_indent))
         if boundary and block:
             yield block
@@ -226,8 +236,12 @@ def parse_plan(path: Path, day: date, rank: int, as_of: date, report: dict) -> l
         if due is None and not closed:
             gap(report, path, "a Critical item needs a valid Decays date" if klass else
                 "identified item has no valid Decays date or resolution", source_line)
+        identity = f"id:{explicit_id}" if explicit_id else f"source:{path}:{source_line}"
+        if explicit_id or not fields.get("decay id"):  # what is wrong on this item's lines is this item's own;
+            for found in report["gaps"][prior_gaps:]:  # with an ID line that cannot be read, it may be any item's
+                found["identity"] = identity
         entries.append({
-            "identity": f"id:{explicit_id}" if explicit_id else f"source:{path}:{source_line}",
+            "identity": identity,
             "title": title, "due_date": due.isoformat() if due else None,
             "reason": reason, "closed": closed, "path": str(path), "line": source_line,
             "plan_date": day.isoformat(), "run_rank": rank, "invalid": len(report["gaps"]) > prior_gaps,
@@ -305,7 +319,7 @@ def commitments(path: Path) -> list[dict]:
                     # the row's status: the cell under a header that names one, or the last cell where none does
                     states = [cells[i] for i, name in enumerate(head) if STATUS_HEAD.search(name) and 0 < i < len(cells)] or cells[-1:]
                     row(named[0], at, raw[at - 1], False, _closing_line(raw[at - 1]) or any(STATUS_CELL.match(cell) for cell in states if cell is not named[0]))
-        elif LIST.match(first) and held():
+        elif LIST.match(first) and held() and not FIELD.match(LIST.match(first)[2]):  # a field's own entry is no commitment
             fields = {match[1].lower() for _, line in block for match in [FIELD.search(line)] if match}
             row(re.sub(r"^\s*(?:[-*+]\s+|\d+[.)]\s+)", "", raw[number - 1]).strip(), number, "\n".join(line for _, line in block),
                 "decays" in fields, any(_closing_line(line) for _, line in block))
@@ -428,7 +442,7 @@ def critical_row(identity: str, history: list, settled: bool, as_of: date, worki
         return "closed", {**row, "due_date": dates[-1] if dates else None, "evidence": latest["evidence"], "closed_in": latest["plan_date"]}
     if not dates:
         if not latest["invalid"]:
-            gap(report, latest["path"], "a Critical item needs a valid Decays date", latest["line"])
+            gap(report, latest["path"], "a Critical item needs a valid Decays date", latest["line"], identity)
         return "open", None
     due = date.fromisoformat(dates[-1] if settled else min(dates))  # an unsettled history keeps its earliest date
     calendar = next((e["calendar"] for e in reversed(history) if e["calendar"]), "")
@@ -452,7 +466,7 @@ def collect(roots: list[tuple[Path, str]], as_of: date, workspace: str | None = 
               "scope": "all available dated Markdown within explicitly declared roots; no lookback cutoff",
               "declared_roots": [{"path": str(p), "kind": k} for p, k in roots],
               "scanned": [], "excluded": [], "future_files": [], "gaps": [], "due": [],
-              "critical": {"open": [], "closed": [], "unclassified": []}, "untagged": [], "commitments": 0, "no_id": []}
+              "critical": {"open": [], "closed": [], "unclassified": []}, "untagged": [], "commitments": 0, "no_id": [], "ahead": []}
     conf, words, closed_words, unlisted = dict(rituals.DEFAULTS), WORDS, LEDGER_CLOSED, ""
     try:
         cfg = rituals.config()
@@ -469,6 +483,8 @@ def collect(roots: list[tuple[Path, str]], as_of: date, workspace: str | None = 
         unclassified = re.compile(r"\b(?:" + "|".join(WORDS) + r")\b", re.I)
     entries = []
     seen = set()
+    links, unread_in = [], {}  # links the sweep would read by their names, with their kind; each ledger's rows too short to read
+    read_as = defaultdict(set)  # each file the sweep reads, as it really lies, and the kinds of folder it is read from
     newest, owed, unread = defaultdict(list), [], 0  # the plans and the artifacts read, by kind; a ledger's open rows
     if not roots:
         gap(report, "", "no plan or artifact roots declared")
@@ -481,7 +497,7 @@ def collect(roots: list[tuple[Path, str]], as_of: date, workspace: str | None = 
             gap(report, root, "declared directory missing or not a directory")
             continue
         pattern = PLAN if kind == "plans" else ARTIFACT
-        selected = 0
+        selected = held = 0  # held: every Markdown file and linked folder the walk met, whether or not it is read
         for directory, dirs, files in os.walk(root, followlinks=False, onerror=lambda exc: gap(report, exc.filename or root, f"directory unreadable: {exc}")):
             dirs.sort()
             for name in list(dirs):
@@ -489,11 +505,12 @@ def collect(roots: list[tuple[Path, str]], as_of: date, workspace: str | None = 
                 if child.is_symlink():
                     gap(report, child, "symlink directory not scanned")
                     dirs.remove(name)
+                    held += 1
             for name in sorted(files):
                 path = Path(directory) / name
-                if path.is_symlink():
-                    gap(report, path, "symlink file not scanned")
-                    continue
+                # a file the sweep could read: Markdown, and not hidden (2026-11-13, a review: a folder kept in git holds
+                # a placeholder, and macOS writes `.DS_Store` into a folder it opens; counted, they stopped every lapse)
+                held += name.endswith(".md") and not name.startswith(".")
                 if kind == "records":  # any Markdown file: a draft, a ledger
                     match = RECORD.match(name) if name.endswith(".md") else None
                     if not name.endswith(".md"):
@@ -504,12 +521,16 @@ def collect(roots: list[tuple[Path, str]], as_of: date, workspace: str | None = 
                     if not match:
                         report["excluded"].append(str(path))
                         continue
+                if path.is_symlink():  # the sweep would read a file of this name: what the link hides is known once every folder is walked
+                    links.append((path, kind))
+                    continue
                 selected += 1
                 try:
                     day = iso_day(match[1]) if match else as_of
                 except ValueError:
                     gap(report, path, "invalid date in source filename")
                     continue
+                read_as[os.path.realpath(path)].add(kind)
                 if day > as_of:
                     report["future_files"].append(str(path))
                     continue
@@ -525,6 +546,7 @@ def collect(roots: list[tuple[Path, str]], as_of: date, workspace: str | None = 
                         gap(report, path, f"its tables could not be read: {type(exc).__name__}: {exc}")
                     else:
                         owed, unread = owed + rows, unread + missed
+                        unread_in.update({str(path): missed} if missed else {})
                     continue
                 if kind != "artifacts":
                     rank = 2
@@ -537,6 +559,16 @@ def collect(roots: list[tuple[Path, str]], as_of: date, workspace: str | None = 
                     newest[kind].append((day, rank, str(root), path))
         if selected == 0 and kind != "records":  # a folder of drafts may hold none today
             gap(report, root, "no dated source files; coverage is not established")
+            report["gaps"][-1]["files"] = held  # none at all: nothing in it is passed over
+    # A link is not followed. One that leads to a file the sweep reads, under that file's own name and as the same
+    # kind of record, hides nothing (2026-11-13, two reviews: a `latest.md` kept beside the plans left every sweep with
+    # a gap until it was deleted; a link named as a plan that leads to a draft would, read as a plan, outrank the
+    # plans that keep the item open).
+    for path, kind in links:
+        if kind in read_as.get(os.path.realpath(path), ()):
+            report["excluded"].append(str(path))
+        else:
+            gap(report, path, "symlink file not scanned")
     # The seat's commitments stand in its newest plan, today's or not: every plan of that day, or, where the seat
     # keeps no dated plan, the last run of that day in each folder that holds a rituals' artifact of that day (a
     # worker that has not run since an earlier day is not read: its newest is not the seat's).
@@ -560,6 +592,7 @@ def collect(roots: list[tuple[Path, str]], as_of: date, workspace: str | None = 
     owed.sort(key=lambda row: (row["owed_since"] is not None, row["owed_since"] or "", row["path"], row["line"]))
     dated = [row["owed_since"] for row in owed if row["owed_since"]]
     report["owed"] = {"open": len(owed), "oldest": min(dated) if dated else None, "undated": len(owed) - len(dated), "unread": unread,
+                      "unread_in": unread_in,
                       "over_14_days": sum(row["days"] > OWED_DAYS for row in owed if row["days"] is not None), "rows": owed,
                       **({"config": unlisted} if unlisted else {})}
     grouped = defaultdict(list)
@@ -580,11 +613,11 @@ def collect(roots: list[tuple[Path, str]], as_of: date, workspace: str | None = 
         states = {(e["due_date"], e["closed"], e["reason"]) for e in peers.values()}
         ambiguous = len(states) > 1
         if ambiguous:
-            gap(report, latest["path"], f"conflicting same-day states for {identity}", latest["line"])
+            gap(report, latest["path"], f"conflicting same-day states for {identity}", latest["line"], identity)
         earlier_dates = {e["due_date"] for e in history[:-1] if e["due_date"]}
         bad_redate = bool(latest["due_date"] and earlier_dates - {latest["due_date"]} and not latest["closed"] and not latest["reason"].strip(" ()"))
         if bad_redate:
-            gap(report, latest["path"], "changed Decays date requires a stated reason", latest["line"])
+            gap(report, latest["path"], "changed Decays date requires a stated reason", latest["line"], identity)
         choices = history if ambiguous or bad_redate or latest["invalid"] else [latest]
         if any(e["critical"] for e in history):  # once critical, always critical: a copy that drops the tag demotes nothing
             state, row = critical_row(identity, history, choices == [latest], as_of, lambda day: rituals.expected(day, conf), report)
@@ -605,8 +638,11 @@ def collect(roots: list[tuple[Path, str]], as_of: date, workspace: str | None = 
             result["unannounced"] = chosen["due_date"] < as_of.isoformat() and not any(
                 e["lapsed_on"] >= chosen["due_date"] for e in copies)  # a mark for an earlier date says nothing of this one
             report["due"].append(result)
+        elif latest["due_date"] and not latest["closed"]:  # open and not yet due: for a list of everything open
+            report["ahead"].append({k: latest[k] for k in ("identity", "title", "due_date", "path", "line", "plan_date")})
     report["due"].sort(key=lambda e: (e["due_date"], e["path"], e["line"]))
     report["no_id"].sort(key=lambda e: (e["due_date"], e["path"], e["line"]))
+    report["ahead"].sort(key=lambda e: (e["due_date"], e["path"], e["line"]))
     report["critical"]["open"].sort(key=lambda e: (e["due_date"], e["path"], e["line"]))
     report["total_obligations"] = len(grouped)
     review = (report["due"] or report["critical"]["unclassified"] or any(r["lead"] or r["problems"] for r in report["critical"]["open"])

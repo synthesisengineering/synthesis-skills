@@ -250,3 +250,96 @@ def test_a_fenced_example_that_begins_a_list_entry_is_closed_by_its_own_fence(tm
     code, report = run(tmp_path)
     assert not report["gaps"], report["gaps"]
     assert len(report["due"]) == 1, report["due"]                                               # the example is no item, the item after it is
+
+
+def test_a_link_that_hides_nothing_is_no_gap(tmp_path):
+    """A link beside the plans was a gap whatever it was named and wherever it led, so a `latest.md` kept for
+    convenience left every sweep blocked until it was deleted (2026-11-13, a review). A link the sweep would not
+    read as a file of that name, or one that leads to a file it reads under that file's own name, hides nothing."""
+    root = tmp_path / "plans"
+    today = plan(root, "2026-09-07", item("past-due", "2026-09-07"))
+    (root / "latest.md").symlink_to(today.name)                                  # no plan's name: passed over like any file of that name
+    (root / "2026-09-05.md").symlink_to(today.name)                              # a plan's name, and it leads to a plan that is read
+    code, report = run(root)
+    assert report["gaps"] == [] and len(report["due"]) == 1 and report["scanned"] == [str(today)]
+    assert {str(root / "latest.md"), str(root / "2026-09-05.md")} <= set(report["excluded"])
+    outside = tmp_path / "elsewhere.md"
+    outside.write_text(item("hidden", "2026-09-01"), encoding="utf-8")
+    (root / "2026-09-06.md").symlink_to(outside)                                 # a plan's name that leads to a file the sweep does not read
+    code, report = run(root)
+    assert code == 2 and [(gap["path"], gap["reason"]) for gap in report["gaps"]] == [(str(root / "2026-09-06.md"), "symlink file not scanned")]
+
+
+def test_a_gap_on_an_items_own_line_names_the_item(tmp_path):
+    """A gap said its file and line and not whose line it was, so nothing could tell another item's bad date from a
+    source that was not read (2026-11-13, a review: one stopped every lapse of the seat)."""
+    root = tmp_path / "plans"
+    path = plan(root, "2026-09-07", item("fine", "2026-09-07") + item("broken", "2026-09-31") + "### No id\n**Decays:** 2026-13-01 (x)\n"
+                + "### Two ids\n**Decay ID:** one\n**Decay ID:** other\n**Decays:** 2026-09-07 (x)\n")
+    code, report = run(root)
+    named = {(gap.get("identity"), gap["reason"]) for gap in report["gaps"]}
+    assert code == 2 and ("id:broken", "invalid Decays date") in named and (f"source:{path}:8", "invalid Decays date") in named, report["gaps"]
+    assert (None, "invalid or multiple Decay ID fields") in named, report["gaps"]            # an ID line that cannot be read may be any item's
+
+
+def test_a_declared_folder_with_no_dated_file_says_how_many_files_it_holds(tmp_path):
+    empty, other = tmp_path / "empty", tmp_path / "other"
+    empty.mkdir()
+    other.mkdir()
+    (other / "notes.md").write_text("# not a dated plan\n", encoding="utf-8")
+    code, report = run(empty, other)
+    assert code == 2 and {gap["path"]: gap.get("files") for gap in report["gaps"]} == {str(empty): 0, str(other): 1}, report["gaps"]
+
+
+# --- the third review of 5.16.0 ------------------------------------------------------------------------------------
+
+@pytest.mark.parametrize("mark", ["- ", "* ", "1. "])
+def test_a_field_written_as_a_sibling_entry_is_no_field_of_the_item_above_it(tmp_path, mark):
+    """A field written as a list entry at the open entry's own level is an entry of its own: a sibling `* **Resolved:**`
+    about something else closed the open item above it, which then could never lapse."""
+    root = tmp_path / "plans"
+    plan(root, "2026-09-07", f"# Plan\n\n## Tasks\n{mark}Send the deck\n   **Decay ID:** deck-1\n   **Decays:** 2026-09-07 (the board)\n"
+                             f"{mark}**Resolved:** 2026-09-06 the printer jam\n")
+    code, report = run(root)
+    assert report["gaps"] == [] and [row["identity"] for row in report["due"]] == ["id:deck-1"], report["due"]
+
+
+def test_a_field_entry_beside_a_task_neither_closes_it_nor_is_listed_as_one(tmp_path):
+    root = tmp_path / "plans"
+    plan(root, "2026-09-07", "# Plan\n\n## Tasks\n1. Send the deck to the board\n2. **Sent:** 2026-09-06 the budget, by hand\n"
+                             "- **Calendar:** the review at ten\n")
+    code, report = run(root)
+    assert [row["title"] for row in report["untagged"]] == ["Send the deck to the board"], report["untagged"]
+
+
+def test_fields_beneath_their_item_or_under_its_heading_are_still_its_own(tmp_path):
+    root = tmp_path / "plans"
+    plan(root, "2026-09-07", "# Plan\n\n## Tasks\n\n### Send the deck\n* **Decays:** 2026-09-07 (the board)\n* **Decay ID:** deck-2\n\n"
+                             "- Book the hall\n  1. **Decays:** 2026-09-07 (the lease)\n  2. **Decay ID:** hall\n")
+    code, report = run(root)
+    assert report["gaps"] == [] and sorted(row["identity"] for row in report["due"]) == ["id:deck-2", "id:hall"], report
+
+
+def test_a_folder_that_holds_only_files_the_sweep_never_reads_holds_none(tmp_path):
+    """A folder kept in git holds a placeholder, and macOS writes `.DS_Store` into a folder it opens: the gap for a
+    declared folder with no dated plan counted them, and so stopped every lapse of the seat."""
+    kept, other = tmp_path / "kept", tmp_path / "other"
+    for folder in (kept, other):
+        folder.mkdir()
+    (kept / ".gitkeep").write_text("", encoding="utf-8")
+    (kept / ".DS_Store").write_bytes(b"\x00\x00\x00\x01Bud1")
+    (kept / "readme.txt").write_text("not Markdown\n", encoding="utf-8")
+    (other / "notes.md").write_text("# a plan named as the sweep does not read it\n", encoding="utf-8")
+    code, report = run(kept, other)
+    assert {gap["path"]: gap.get("files") for gap in report["gaps"]} == {str(kept): 0, str(other): 1}, report["gaps"]
+
+
+def test_a_link_named_as_a_plan_that_leads_to_a_record_hides_what_a_plan_would_say(tmp_path):
+    """Read as a record it is outranked by the plans; read as the plan its name says, it could close an item."""
+    root, drafts = tmp_path / "plans", tmp_path / "drafts"
+    plan(root, "2026-09-07", item("kept", "2026-09-07"))
+    drafts.mkdir()
+    (drafts / "2026-09-05-note.md").write_text(item("kept", "2026-09-07") + "**Resolved:** 2026-09-06 (by hand)\n", encoding="utf-8")
+    (root / "2026-09-06.md").symlink_to(drafts / "2026-09-05-note.md")
+    code, report = run(root, extra=["--records-dir", str(drafts)])
+    assert (str(root / "2026-09-06.md"), "symlink file not scanned") in {(gap["path"], gap["reason"]) for gap in report["gaps"]}, report["gaps"]

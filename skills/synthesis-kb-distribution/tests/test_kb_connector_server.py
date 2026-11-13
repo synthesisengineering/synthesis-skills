@@ -165,6 +165,8 @@ async def sign_in(http, code_name, client=None):
     csrf = re.search(r'name="csrf_token" value="([^"]+)"', page.text).group(1)
     approved = await http.post("/consent", data={"txn_id": txn, "csrf_token": csrf, "action": "approve"})
     assert approved.status_code == 302 and approved.headers["location"].startswith("https://accounts.google.com/")
+    if client is not None:
+        client["google_url"] = approved.headers["location"]
     callback = await http.get("/auth/callback", params={"code": code_name, "state": txn})
     if callback.status_code != 302:
         return callback, None
@@ -383,6 +385,23 @@ def test_a_person_the_list_refuses_sees_why_and_gets_no_grant(published, code_na
     callback, token = run(go())
     assert callback.status_code == 403 and token is None and "location" not in callback.headers
     assert "Access denied" in callback.text and message in callback.text
+
+
+def test_google_shows_its_account_chooser_at_every_sign_in_and_still_returns_a_refresh_token(published):
+    """A browser that holds only a personal account must still be offered the work one: without select_account,
+    Google signs the personal account straight in and an Internal client refuses it (org_internal) with no switch."""
+    settings, google = settings_for(published), FakeGoogle()
+    policy, client = policy_for(settings), {}
+
+    async def go():
+        mcp = server.build_server(settings, loaded(published), policy, google_auth(settings, policy, google))
+        async with asgi_server(mcp, stateless_http=True) as srv, srv.http_client() as http:
+            return await sign_in(http, "code-lead", client)
+    callback, token = run(go())
+    query = parse_qs(urlparse(client["google_url"]).query)
+    assert callback.status_code == 302 and token
+    assert query["prompt"] == ["select_account consent"] and query["access_type"] == ["offline"]
+    assert query["client_id"] == [CLIENT_ID] and query["redirect_uri"] == ["http://127.0.0.1/auth/callback"]
 
 
 def test_hosted_domains_refuse_a_personal_account_at_sign_in(published):
