@@ -68,8 +68,11 @@ put in the prompt slot (heartbeats, scheduled-task prompts, recommended plugins,
 A sub-agent belongs to the workspace its parent session started in, even when it worked in another folder; `cwd` in
 `meta.json` keeps where it actually ran. After an adapter changes, `synthesis sessions export --rebuild` reads
 every transcript again from its start under today's reader and keeps what the archive does not hold: a record it
-holds already (the same kind, time and words) is passed over, and one it does not hold is appended with the next
-number. No line the archive holds is changed or moved, so a record's number is its name for good and a citation
+holds already (the same kind, time, words and source, read as today's reader would write it, so a secret pattern
+added since makes nothing new) is passed over, and one it does not hold is appended after the archive's last number.
+An ordinary export reads a session again the same way wherever the archive holds more than its state counts (a
+write cut short after its lines, a state lost) and where the harness rewrote its transcript smaller, so nothing is
+filed twice or dropped. No line the archive holds is changed or moved, so a record's number is its name for good and a citation
 written before the rebuild names the record it named; a session whose transcript the harness has since removed
 stays as it is. The order of a session is then its records' times, not their numbers: a record a later reading
 filed has a number after every other, so `synthesis sessions show` prints a session, and the records around a cited
@@ -78,14 +81,19 @@ and numbered every session anew; counted on one machine before the change, 157 o
 project records cite would have named another record.)
 
 A Mac whose archive holds nothing of a session (a new Mac, or one restored with the harnesses' transcripts and
-without the archive) begins it from the copy another Mac synced, where a sessions repo cloned here holds it: the
-session is filed where that Mac filed it, its records keep the numbers they were given there, and the transcript is
-then read as a rebuild reads it, so what the copy does not hold is appended after the copy's last number. `meta.json`
-says so (`numbers_from`: the workspace, how many records the copy held, its last number). The copy holds the
-conversation and the tool calls, not what a tool printed or a harness injected, so a number given on the first Mac
-to such a record names none on the second, and `show --seq` says why rather than showing nothing. Two Macs that each
-read the same session again, and each filed a record the other did not, give it different numbers, and their copies
-of that session disagree; that is counted when a second Mac is in use.
+without the archive) begins it from the copy another Mac synced, where a sessions repo cloned here holds it (the
+copy in the workspace and month this Mac places the session in, where there is one): the session is filed there,
+its records keep the numbers they were given, and the transcript is then read as a rebuild reads it. What the copy
+does not hold takes numbers past every number that Mac had given when it synced, never one it gave. `meta.json` says
+so (`numbers_from`: the workspace, how many records the copy held, its last number, and `own_from`, the first number
+this Mac gave). The copy holds the conversation and the tool calls, not what a tool printed or a harness injected,
+so a number given on the first Mac to such a record names none on the second, and `show --seq` says why rather than
+showing nothing; a number from `own_from` on is this Mac's own, and `show --seq` says that too, since the first Mac
+numbers for itself whatever it files after its last sync. **Clone a new Mac's sessions repos before its first
+export**: an export before then numbers each session afresh, and that Mac's sync then refuses to write over the
+shared copy, whose numbers are the ones citations written elsewhere use. A sync pulls before it writes; a session
+whose copy another Mac numbered or extended is refused alone, with why, while the workspace's other sessions sync,
+and a pull that fails is undone so the repo stays on its branch.
 
 ## Secrets and privacy
 
@@ -136,8 +144,8 @@ each harness writes its own transcript to disk as the session runs. The copy is 
   `synthesis sessions export --lost <session>` clears it. Run by an agent, it asks for the principal's approval
   code first; typed by the principal in a terminal of their own, it needs none. It refuses a transcript that is
   still there, that the harness only moved, or whose harness has a folder that cannot be listed, and it appends
-  each loss it clears to `<synthesis home>/sessions/.state/lost.jsonl`. `--rebuild` leaves the stamp and that
-  file as they are.
+  each loss it clears to `<synthesis home>/sessions/.state/lost.jsonl`. `--rebuild` moves neither: it writes the
+  stamp as a run of everything does, and leaves that file as it is.
 - `synthesis sessions export` says in its exit status whether everything it was asked for was copied:
 
   | Status | What happened |

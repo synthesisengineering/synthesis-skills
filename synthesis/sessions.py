@@ -372,9 +372,12 @@ class _Session:
     def held(self) -> int:
         """The number of the last record the archive holds for this session, -1 for none; the session goes on in the
         segment that record is in. A copy cut after it appended and before its state was saved left records the
-        state does not count, and the next run appended each again under the same number (2026-11-12, a review: a
-        prompt was then listed twice). Cut inside a line, it left part of a record: that part is taken off, so the
-        next record does not join it. A whole line no reader can parse stays, and the count goes on from before it."""
+        state does not count (2026-11-12, a review: the next run appended them again under the same numbers): where
+        this is more than the state counts, the export reads the session again (`read_again`), which passes over
+        what is held by what it is (the first review of 5.17.0: counted off instead, records were dropped). Cut
+        inside a line, it left part of a record: that part is taken off, so the next record does not join it. A
+        whole line no reader can parse, or whose number is no whole number, stays, and the count goes on from before
+        it."""
         for file in sorted(self.folder.glob("transcript-*.jsonl"), reverse=True):
             with file.open("rb+") as f:
                 size, step = f.seek(0, os.SEEK_END), 1 << 16
@@ -733,7 +736,8 @@ def _place(harness: str, native: Path, session: str) -> tuple:
 def export_file(harness: str, native: Path, project: str = "", again: bool = False) -> int:
     """Copy what the native transcript gained since the last export; returns how many records were kept. With
     `again`, a session the archive holds is read from its start under today's reader, and only what the archive
-    does not hold is kept, after the numbers it has given."""
+    does not hold is kept, after the numbers it has given. It reads the session again on its own wherever the
+    archive holds more than the state counts, and where the harness rewrote its transcript smaller."""
     native = Path(native)
     s = _Session(harness, native, _identity(harness, native))
     if again and s.folder:
