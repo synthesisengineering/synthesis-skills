@@ -150,10 +150,14 @@ def duration(seconds):
     return " ".join(parts) or "0 s"
 
 
+def slug(name, limit=100):
+    return re.sub(r"[^A-Za-z0-9._-]+", "-", name).strip("-.")[:limit] or "conversation"
+
+
 def safe(name):
     """An id as a file name: letters, digits, dot, dash and underscore; any other change adds six hex digits of the
     original's digest, so the name stays unique and the same on every run."""
-    cleaned = re.sub(r"[^A-Za-z0-9._-]+", "-", name).strip("-.")[:100] or "conversation"
+    cleaned = slug(name)
     if cleaned != name:
         cleaned += "-" + hashlib.sha256(name.encode("utf-8")).hexdigest()[:6]
     return cleaned
@@ -434,7 +438,7 @@ def secure_conversation(source, rel, extra):
         raise Unknown("timestamps in mixed units", rel)
     name = PurePosixPath(rel).name
     title = data.get("threadName")
-    return {"cid": "e2ee-" + safe(name[:-len(".json")]), "where": "secure storage", "from": [name],
+    return {"cid": None, "stem": name[:-len(".json")], "where": "secure storage", "from": [name],
             "title": repair(title) if isinstance(title, str) and title else None,
             "names": [repair(p) for p in data["participants"]], "pages": [checked_times(in_time_order(page), rel)],
             "check": True}
@@ -511,8 +515,12 @@ def read_export(source, extra):
     if not conversations and not any(messages_root(rel.split("/")) is not None for rel in source.sizes):
         raise Refused("no part of this export is in a layout this importer reads", {})  # a messages folder, or a conversation
     counts["repeated"] = sum(keyed(conversation) for conversation in conversations)
+    for conversation in conversations:  # a secure-storage chat is named by its display name and its first message,
+        if conversation["check"] and conversation["messages"]:  # never by the running index a later download may renumber
+            first = hashlib.sha256(conversation["messages"][0]["key"].encode("utf-8")).hexdigest()[:8]
+            conversation["cid"] = f"e2ee-{slug(re.sub(r'_[0-9]+$', '', conversation['stem']) or conversation['stem'], 60)}-{first}"
     by_name = {}
-    for conversation in conversations:  # a Mac's disk takes names that differ only in case for one file
+    for conversation in (each for each in conversations if each["cid"]):  # a Mac's disk takes two names that differ only in case for one file
         other = by_name.setdefault(conversation["cid"].casefold(), conversation)
         if other is not conversation:
             raise Refused(f"two conversations' file names are the same or differ only in case: {other['cid']} and "
@@ -551,15 +559,15 @@ def message_block(cid, message):
     return lines
 
 
-def render(conversation, old, new):
+def render(conversation, old, new, cid):
     """The whole transcript: the header from this export, the blocks already written exactly as they were, and the
     new ones in time order among them."""
     blocks = sorted([(ts, 0, n, lines) for n, (_, ts, lines) in enumerate(old)] +
-                    [(m["ts"], 1, n, message_block(conversation["cid"], m)) for n, m in enumerate(new)],
+                    [(m["ts"], 1, n, message_block(cid, m)) for n, m in enumerate(new)],
                     key=lambda block: block[:3])
     first, last = blocks[0][0], blocks[-1][0]
-    title = conversation["title"] or ", ".join(conversation["names"] or []) or conversation["cid"]
-    lines = [FORMAT_LINE, f"# Messenger — {inline(title)}", f"# Conversation: {conversation['cid']} ({conversation['where']})",
+    title = conversation["title"] or ", ".join(conversation["names"] or []) or cid
+    lines = [FORMAT_LINE, f"# Messenger — {inline(title)}", f"# Conversation: {cid} ({conversation['where']})",
              "", "From: " + ", ".join(code(place) for place in conversation["from"]), participants_line(conversation),
              f"Messages: {len(blocks)}, {stamp(first)}" + (f" to {stamp(last)}" if len(blocks) > 1 else ""),
              "", NOTICE, "", "---", ""]
@@ -623,26 +631,61 @@ def read_transcript(path, cid):
         raise Unreadable("a file of that name was not written by this importer")
 
 
+def holders(out):
+    """Each secure-storage transcript in --out that reads back, with its id, blocks and message keys, so a conversation
+    finds the transcript already holding its messages however the download numbered it; and why each other one does
+    not read back."""
+    held, unread = {}, {}
+    for name in sorted(os.listdir(out)) if os.path.isdir(out) else []:
+        if name.startswith("messenger-e2ee-") and name.endswith(".md"):
+            path = os.path.join(out, name)
+            try:
+                blocks, _ = read_transcript(path, name[len("messenger-"):-len(".md")])
+            except Unreadable as why:
+                unread[path] = str(why)
+                continue
+            held[path] = (blocks, {key for key, _, _ in blocks})
+    return held, unread
+
+
 def plan(conversations, out, since_ms):
-    """What each conversation needs, reading only the transcripts this export's conversations would write."""
+    """What each conversation needs, reading only transcripts in --out. A regular-export conversation's transcript is
+    the one named by its folder. A secure-storage conversation's is the one already holding any of its messages, since
+    the download's running index can pass to another chat; one holding none of them gets a new transcript, and one
+    whose messages sit in two transcripts, or that shares its transcript with another conversation, is skipped."""
     report = dict.fromkeys(("created", "extended", "unchanged", "empty", "new", "present", "before", "attachments"), 0)
-    report["skipped"], work = [], []
+    report["skipped"], work, targets = [], [], {}
+    held, unread = holders(out)
     for conversation in conversations:
-        name = f"messenger-{conversation['cid']}.md"
-        path = os.path.join(out, name)
         if not conversation["messages"]:
             report["empty"] += 1
             continue
-        old = []
-        if os.path.lexists(path):
+        path = os.path.join(out, f"messenger-{conversation['cid']}.md")
+        if conversation["check"]:
+            keys = {message["key"] for message in conversation["messages"]}
+            holding = [place for place, (_, have) in held.items() if have & keys]
+            if len(holding) > 1:
+                report["skipped"].append((os.path.basename(path), "its messages are in more than one transcript: " +
+                                          ", ".join(os.path.basename(place) for place in holding)))
+                continue
+            if not holding and os.path.lexists(path):
+                report["skipped"].append((os.path.basename(path), unread.get(path, "a transcript of that name holds another conversation")))
+                continue
+            path = holding[0] if holding else path
+        targets.setdefault(path, []).append(conversation)
+    for path, group in targets.items():
+        name = os.path.basename(path)
+        if len(group) > 1:
+            report["skipped"] += [(name, f"{len(group)} conversations of this export belong to it")] * len(group)
+            continue
+        conversation, cid, old = group[0], name[len("messenger-"):-len(".md")], []
+        if path in held:
+            old = held[path][0]
+        elif os.path.lexists(path):
             try:
-                old, recorded = read_transcript(path, conversation["cid"])
+                old, _ = read_transcript(path, cid)
             except Unreadable as why:
                 report["skipped"].append((name, str(why)))
-                continue
-            if conversation["check"] and recorded != participants_line(conversation):
-                report["skipped"].append((name, "it records other participants: the download may number its "
-                                                "conversations differently, so this one is not merged"))
                 continue
         have = {key for key, _, _ in old}
         new = []
@@ -659,7 +702,7 @@ def plan(conversations, out, since_ms):
         report["extended" if old else "created"] += 1
         report["new"] += len(new)
         report["attachments"] += sum(len(message["attachments"]) for message in new)
-        work.append((path, render(conversation, old, new)))
+        work.append((path, render(conversation, old, new, cid)))
     return work, report
 
 

@@ -98,8 +98,8 @@ def test_the_secure_storage_download_gives_one_transcript_per_conversation_file(
     code, printed = run(im, capsys, export, "--out", out)
     assert code == 0, printed
     written = transcripts(out)
-    assert len(written) == 2 and all(re.fullmatch(r"messenger-e2ee-Alex-Sample_[01]-[0-9a-f]{6}\.md", name) for name in written)
-    first, second = (written[name] for name in sorted(written))
+    assert len(written) == 2 and all(re.fullmatch(r"messenger-e2ee-Alex-Sample-[0-9a-f]{8}\.md", name) for name in written)
+    first, second = sorted(written.values(), key=lambda text: "another chat" in text)  # named by first message, not index
     assert first.splitlines()[2].endswith("(secure storage)") and "From: `Alex Sample_0.json`" in first.splitlines()
     assert split_fences(first)[1] == ["first encrypted note", f"photo: ./{photo}"]
     assert "Participants: Alex Sample, Blair Example" in first.splitlines()
@@ -120,7 +120,7 @@ def test_secure_storage_timestamps_read_the_same_in_milliseconds_or_seconds(im, 
     [text] = transcripts(out).values()
     assert "## Tuesday, March 5, 2024" in text.splitlines()
     assert "### Alex Sample — 14:02 UTC" in text.splitlines() and "### Blair Example — 14:03 UTC" in text.splitlines()
-    assert re.search(r"^\*\*Message ID:\*\* e2ee-Blair-Example_5-[0-9a-f]{6}:1709647320000-[0-9a-f]{10}$", text, re.M)
+    assert re.search(r"^\*\*Message ID:\*\* e2ee-Blair-Example-[0-9a-f]{8}:1709647320000-[0-9a-f]{10}$", text, re.M)
 
 
 @pytest.mark.parametrize("stamps, why", [([1709647320, 1709647320000], "mixed units"),
@@ -152,9 +152,8 @@ def test_repaired_text_reaches_the_transcript_from_both_downloads(im, capsys, tm
     written = transcripts(out)
     regular = written.pop("messenger-dyi-cafecrew_2002.md")
     assert regular.splitlines()[1] == "# Messenger — Café crew" and split_fences(regular)[1] == [words]
-    escaped, proper = (written[name] for name in sorted(written))
-    assert escaped.splitlines()[1] == "# Messenger — Café crew" and split_fences(escaped)[1] == [words]
-    assert split_fences(proper)[1] == [words + " Ã© kept"]
+    assert sorted((split_fences(text)[1], text.splitlines()[1]) for text in written.values()) == [
+        ([words], "# Messenger — Café crew"), ([words + " Ã© kept"], "# Messenger — Café crew")]
 
 
 def test_a_thread_split_across_message_files_reads_in_time_order(im, capsys, tmp_path):
@@ -503,11 +502,12 @@ def test_both_downloads_share_an_output_folder_and_each_reimports_unchanged(im, 
         code, printed = run(im, capsys, tmp_path / given, "--out", out)
         assert code == 0, printed
     names = sorted(transcripts(out))
-    assert names[0] == "messenger-dyi-alexsample_1501.md" and names[1].startswith("messenger-e2ee-Alex-Sample_0-")
+    assert names[0] == "messenger-dyi-alexsample_1501.md" and names[1].startswith("messenger-e2ee-Alex-Sample-")
     assert len(names) == 2 and "messages: 0 new; 1 already in transcripts" in printed
 
 
-def test_a_secure_storage_name_that_now_holds_other_people_is_not_merged(im, capsys, tmp_path):
+def test_a_secure_storage_name_that_now_holds_another_conversation_gets_a_transcript_of_its_own(im, capsys, tmp_path):
+    """The download's running index passed to another chat: no message in common, so nothing is merged."""
     out = tmp_path / "out"
     write_secure(tmp_path / "first", "Alex Sample_4", [ALEX, BLAIR], [secure_message(ALEX, T0, "with Blair")])
     assert run(im, capsys, tmp_path / "first", "--out", out)[0] == 0
@@ -515,7 +515,29 @@ def test_a_secure_storage_name_that_now_holds_other_people_is_not_merged(im, cap
     before = path.read_bytes()
     write_secure(tmp_path / "second", "Alex Sample_4", [ALEX, CASEY], [secure_message(CASEY, T0 + DAY, "with Casey")])
     code, printed = run(im, capsys, tmp_path / "second", "--out", out)
-    assert code == 1 and f"skipped conversation {path.name}: " in printed and path.read_bytes() == before
+    assert code == 0 and path.read_bytes() == before and "1 new transcripts" in printed
+    assert sorted(split_fences(text)[1] for text in transcripts(out).values()) == [["with Blair"], ["with Casey"]]
+
+
+@pytest.mark.parametrize("case", ["in two transcripts", "two conversations, one transcript"])
+def test_a_secure_storage_conversation_that_cannot_be_placed_alone_is_skipped_and_named(im, capsys, tmp_path, case):
+    out, people = tmp_path / "out", [ALEX, BLAIR]
+    one, two, three = (secure_message(ALEX, T0 + n * 1000, f"message {n}") for n in range(3))
+    if case == "in two transcripts":
+        write_secure(tmp_path / "first", "Pat Lee_1", people, [one])
+        write_secure(tmp_path / "first", "Pat Lee_2", people, [two])
+        write_secure(tmp_path / "second", "Pat Lee_1", people, [one, two, three])
+    else:
+        write_secure(tmp_path / "first", "Pat Lee_1", people, [one, two])
+        write_secure(tmp_path / "second", "Pat Lee_1", people, [one, three])
+        write_secure(tmp_path / "second", "Pat Lee_2", people, [two])
+    assert run(im, capsys, tmp_path / "first", "--out", out)[0] == 0
+    before = {path.name: path.read_bytes() for path in out.iterdir()}
+    code, printed = run(im, capsys, tmp_path / "second", "--out", out)
+    assert code == 1 and "skipped conversation messenger-e2ee-Pat-Lee-" in printed
+    assert {"in two transcripts": "its messages are in more than one transcript",
+            "two conversations, one transcript": "2 conversations of this export belong to it"}[case] in printed
+    assert {path.name: path.read_bytes() for path in out.iterdir()} == before
 
 
 def test_a_file_the_importer_did_not_write_or_one_edited_since_is_left_alone(im, capsys, tmp_path):
