@@ -2854,3 +2854,36 @@ def test_the_sync_carries_this_macs_ritual_history_to_the_workspaces_sessions_re
     head = _g(repo, "rev-parse", "HEAD")
     sessions.sync("alpha")
     assert _g(repo, "rev-parse", "HEAD") == head
+
+
+def test_a_refused_or_impossible_history_commit_never_holds_the_transcripts_back(tmp_path, write_config, monkeypatch):
+    """Round 2 of 5.20.0: N2 (a refused history commit stopped the push, so no transcript left the Mac and every
+    handoff said NOT READY), N10 (a refusal in bytes that are not UTF-8 raised before the undo), N11 (a write error
+    raised out of the sync) and N9 (a line of the wrong shape was copied for every Mac to read)."""
+    from synthesis import rituals
+    repo, _ = _cloned(tmp_path, "sessions-alpha")
+    write_config({"sessions_repos": {"alpha": str(repo)}})
+    monkeypatch.setenv("SYNTHESIS_HOST", "Mac A")
+    hook = repo / ".git" / "hooks" / "pre-commit"
+    hook.write_bytes(b'#!/bin/sh\ngit diff --cached --name-only | grep -q "^rituals/" && { printf "commit refus\\351\\n" >&2; exit 1; }\nexit 0\n')
+    hook.chmod(0o755)
+    (repo / "transcripts.md").write_text("what an earlier sync committed\n", encoding="utf-8")
+    _g(repo, "add", "transcripts.md")
+    _g(repo, "commit", "-q", "-m", "transcripts")
+    log = rituals.state_dir() / "history.jsonl"
+    log.parent.mkdir(parents=True, exist_ok=True)
+    good = json.dumps({"date": "2026-11-12", "direction": "day-end", "workspace": "alpha", "ts": "2026-11-12T18:00:00-05:00"},
+                      separators=(",", ":"), sort_keys=True)
+    log.write_text(good + "\n" + json.dumps({"date": 5, "direction": "day-end", "workspace": "alpha"}) + "\n", encoding="utf-8")
+    report = sessions.sync("alpha")
+    assert not any(line.startswith("FAILED") for line in report) and any("ritual history not carried" in line for line in report), report
+    assert _g(repo, "status", "--porcelain") == "" and _g(repo, "rev-parse", "HEAD") == _g(repo, "rev-parse", "origin/main")
+    hook.unlink()
+    sessions.sync("alpha")
+    assert (repo / "rituals" / f"{rituals.host()}.jsonl").read_text(encoding="utf-8") == good + "\n"  # the bad line not copied
+    for name in os.listdir(repo / "rituals"):
+        (repo / "rituals" / name).unlink()
+    (repo / "rituals").rmdir()
+    (repo / "rituals").write_text("a file where the folder belongs\n", encoding="utf-8")
+    report = sessions.sync("alpha")  # no exception: the line says what could not be done
+    assert any("ritual history not carried" in line for line in report), report
