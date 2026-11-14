@@ -99,10 +99,12 @@ def key(keys, said="Presses the key"):
 
 
 RETURN = key("Return", "Sends the reply")
+FOCUS = ("computer", {"action": "left_click", "ref": "ref_4", "action_summary": "Focuses the message box"})
+CLEAR = (key("cmd+a", "Selects everything in the message box"), key("Backspace", "Clears the message box"))
 
 
 def typed_and_sent(text=REPLY):
-    return steps(typed(text), RETURN)
+    return steps(*CLEAR, typed(text), RETURN)
 
 
 def held(reason) -> bool:
@@ -370,31 +372,45 @@ def test_a_browser_entry_goes_only_on_the_page_that_names_its_conversation(tmp_p
 def test_a_return_or_send_click_in_a_call_that_did_not_type_the_text_is_held(tmp_path, principal):
     opened([CHAT])
     session = page(principal.transcript, E2EE)
-    for send in (RETURN, ("computer", {"action": "left_click", "ref": "ref_5", "action_summary": "Clicks Send"})):
-        assert held(guards.check(CHROME, steps(send), CONFIG, session=session)), send
-    assert guards.check(CHROME, steps(typed(REPLY), ("computer", {"action": "left_click", "ref": "ref_5",
-                                                                    "action_summary": "Clicks Send"})), CONFIG, session=session) is None
+    send = ("computer", {"action": "left_click", "ref": "ref_5", "action_summary": "Clicks Send"})
+    for call in (steps(RETURN), steps(send), steps(*CLEAR, RETURN)):
+        assert held(guards.check(CHROME, call, CONFIG, session=session)), call
+    assert guards.check(CHROME, steps(*CLEAR, typed(REPLY), send), CONFIG, session=session) is None
 
 
-def test_only_a_call_that_types_the_whole_text_and_then_sends_it_once_goes(tmp_path):
-    two = "First line of the reply.\nSecond line."
+def test_a_call_clears_the_box_types_the_whole_text_and_sends_it_once_or_waits(tmp_path):
+    """The coordinator, 2026-11-14: on Messenger a plain Return sends, so paragraphs are typed with shift and Return
+    between them, and the text is rebuilt from the typed words and those line breaks. Typing appends to whatever
+    draft the box holds, so the call first selects everything and deletes it (one click that says it focuses the box
+    may come before); anything else between the clearing and the send leaves the code per call."""
+    two = "First paragraph of the reply.\nSecond paragraph."
     opened([{**CHAT, "text": two}])
     session = page(tmp_path / "record.jsonl", E2EE)
-    line = key("shift+Return", "Starts a new line")
-    for call in (steps(typed(two), RETURN),                                         # Return in the typed text sends its first line
-                 steps(typed("First line of the reply."), typed("Second line."), RETURN),
-                 steps(typed("First line of the reply."), line, typed("Second line."), RETURN, typed("More."), RETURN),
-                 steps(("computer", {"action": "left_click", "ref": "ref_2", "action_summary": "Opens the chat"}),
-                       typed("First line of the reply."), line, typed("Second line."), RETURN),
-                 steps(typed("First line of the reply."), line, typed("Second line."), key("Tab"), RETURN),
-                 steps(typed("First line of the reply."), line, typed("Second line."), key("cmd+Return", "Sends it")),
-                 steps(("javascript_tool", {"text": "1", "action_summary": "Reads the page"}), typed("First line of the reply."),
-                       line, typed("Second line."), RETURN),
+    one, line, rest = typed("First paragraph of the reply."), key("shift+Return", "Starts a new line"), typed("Second paragraph.")
+    elsewhere = ("computer", {"action": "left_click", "ref": "ref_8", "action_summary": "Clicks the conversation header"})
+    for call in (steps(*CLEAR, typed(two), RETURN),                           # a typed line break sends its line alone
+                 steps(one, line, rest, RETURN),                              # no clearing: a draft in the box would go too
+                 steps(CLEAR[1], one, line, rest, RETURN),                    # Backspace without select-all
+                 steps(*CLEAR, one, line, rest, key("Up", "Moves up"), RETURN),  # an arrow key before the send
+                 steps(*CLEAR, one, line, rest, elsewhere, RETURN),           # a click elsewhere
+                 steps(*CLEAR, one, ("computer", {"action": "scroll", "coordinate": [5, 5], "scroll_direction": "up"}),
+                       line, rest, RETURN),                                   # a scroll
+                 steps(*CLEAR, one, line, rest, ("javascript_tool", {"text": "document.title", "action_summary": "Reads it"}),
+                       RETURN),                                               # a script
+                 steps(*CLEAR, one, rest, RETURN),                            # no line between the paragraphs
+                 steps(*CLEAR, one, line, rest, RETURN, typed("More."), RETURN),  # a second send
+                 steps(*CLEAR, one, line, rest, key("cmd+Return", "Sends it")),
+                 steps(elsewhere, *CLEAR, one, line, rest, RETURN),           # a click that does not say it focuses the box
+                 steps(FOCUS, FOCUS, *CLEAR, one, line, rest, RETURN),
+                 steps(("form_input", {"ref": "ref_4", "value": two, "action_summary": "Fills the message box"}), RETURN),
                  steps(("computer", {"action": "left_click_drag", "start_coordinate": [1, 1], "coordinate": [9, 9]}),
-                       typed("First line of the reply."), line, typed("Second line."), RETURN)):
+                       *CLEAR, one, line, rest, RETURN)):
         assert guards.check(CHROME, call, CONFIG, session=session), call
-    assert guards.check(CHROME, steps(typed("First line of the reply."), line, typed("Second line."), RETURN), CONFIG,
-                        session=session) is None
+    assert guards.check(CHROME, steps(FOCUS, *CLEAR, one, line, rest, RETURN), CONFIG, session=session) is None
+    opened([{**CHAT, "text": two}], name="replies-2")
+    clear = key("ctrl+a Delete", "Clears the message box")  # the two keys in one action, and Enter for Return
+    assert guards.check(CHROME, steps(clear, one, key("shift+Enter", "Starts a new line"), rest, key("Enter", "Sends it")),
+                        CONFIG, session=session) is None
 
 
 def test_the_page_is_the_conversation_a_navigate_step_of_the_same_call_opens(tmp_path):
@@ -403,25 +419,32 @@ def test_the_page_is_the_conversation_a_navigate_step_of_the_same_call_opens(tmp
     there = ("navigate", {"url": E2EE, "tabId": 7})
     elsewhere = ("navigate", {"url": "https://www.facebook.com/messages/e2ee/t/1000000009/", "tabId": 7})
     on = lambda step: (step[0], {**step[1], "tabId": 7})  # noqa: E731
-    assert held(guards.check(CHROME, steps(there, on(typed(REPLY)), elsewhere, on(RETURN)), CONFIG, session=session))
-    assert held(guards.check(CHROME, steps(there, on(typed(REPLY)), ("navigate", {"url": "back", "tabId": 7}), on(RETURN)),
+    clear = [on(c) for c in CLEAR]
+    assert held(guards.check(CHROME, steps(there, *clear, on(typed(REPLY)), elsewhere, on(RETURN)), CONFIG, session=session))
+    assert held(guards.check(CHROME, steps(there, *clear, on(typed(REPLY)), ("navigate", {"url": "back", "tabId": 7}), on(RETURN)),
                              CONFIG, session=session))
     assert held(guards.check(CHROME, typed_and_sent(), CONFIG, session={**SESSION, "transcript_path": str(tmp_path / "none")}))
-    assert guards.check(CHROME, steps(there, on(typed(REPLY)), on(RETURN)), CONFIG, session=session) is None
+    assert guards.check(CHROME, steps(there, *clear, on(typed(REPLY)), on(RETURN)), CONFIG, session=session) is None
 
 
-def test_words_put_on_the_page_in_an_earlier_call_keep_its_entries_on_the_code(tmp_path, principal):
-    """A typed text split across calls: words typed earlier and not sent wait in the box and would go with the
-    entry's. The entry then waits for the code per call, and goes with it."""
-    opened([CHAT])
+def test_a_draft_is_cleared_but_a_paste_or_an_upload_keeps_the_page_on_the_code(tmp_path, principal):
+    """A typed text split across calls: the call's own clearing takes out a draft typed earlier. A paste, a file, a
+    drop or a script's work may stay beside the words (a pasted image is an attachment), so the page's entries wait
+    for the code per call until a send from it goes, and that code spends the entry with the send."""
+    opened([CHAT, {**CHAT, "text": "Second reply."}, {**CHAT, "text": "Third reply."}])
     session = page(principal.transcript, E2EE)
     assert guards.check(CHROME, steps(typed("P.S. ")), CONFIG, session=session) is None  # typing alone sends nothing
-    reason = guards.check(CHROME, typed_and_sent(), CONFIG, session=session)
+    assert guards.check(CHROME, typed_and_sent(), CONFIG, session=session) is None
+    assert guards.check(CHROME, steps(key("cmd+v", "Pastes the photo")), CONFIG, session=session) is None
+    reason = guards.check(CHROME, typed_and_sent("Second reply."), CONFIG, session=session)
     assert held(reason) and "earlier" in reason
     principal(reason)
-    assert guards.check(CHROME, typed_and_sent(), CONFIG, session=session) is None
+    assert guards.check(CHROME, typed_and_sent("Second reply."), CONFIG, session=session) is None
     assert today()[-1]["how"] == "approval"
-    assert held(guards.check(CHROME, typed_and_sent(), CONFIG, session=session))  # one message, one release
+    assert held(guards.check(CHROME, typed_and_sent("Second reply."), CONFIG, session=session))  # one message, one release
+    upload = {"imageId": "img-1", "ref": "ref_3", "tabId": 7}
+    assert guards.check("mcp__claude-in-chrome__upload_image", upload, CONFIG, session=session) is None
+    assert held(guards.check(CHROME, typed_and_sent("Third reply."), CONFIG, session=session))
 
 
 # --- every other check still runs first --------------------------------------------------------------------------
