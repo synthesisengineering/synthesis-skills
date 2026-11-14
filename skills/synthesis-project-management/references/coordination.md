@@ -278,14 +278,20 @@ display name at the moment of sending. The protocol removes that moment.
   use it for handoffs that must survive session turnover.
 - **A durable message travels with the project** (5.20.0). The board lives on one
   Mac, so `synthesis handoff` writes each durable message to a project that no
-  session on this Mac has been shown into `projects/<p>/inbox/<message id>.md`
-  (a header with the id, sender, address and time, then the words) and commits it
-  with the records, when the session's claims cover that folder; a project whose
-  folder they do not cover is named in the handoff's report. On another Mac the
-  session start and `synthesis inbox` copy each such file whose id that board does
-  not hold into the project's box under the same id, so each session there sees
-  it once, marked as carried in the project's records. A file in `inbox/` not
-  named as a message is not read; one that is and cannot be read as one is named.
+  session on this Mac other than its sender has been shown into
+  `projects/<p>/inbox/<message id>.md` (a header with the id, sender, address and
+  time, then the words) and commits it with the records, once from each Mac, when
+  the session's claims cover that folder. A project they do not cover, one found in
+  more than one knowledge root, and one whose messages could not be written are
+  named in the handoff's report; none of these stops the handoff.
+- **What a project's inbox holds is a record, read on request.** A file in a
+  repository says what its writer made it say, so it never becomes a board
+  message. A session that binds the project (its start, `synthesis resume`,
+  `synthesis use`) is told how many carried messages this Mac has not shown, and
+  the name of any file that could not be read as one, never their words.
+  `synthesis inbox` shows them, each marked as carried and as its file's own
+  header, once on each Mac. Only a regular file named as a message, of at most
+  64 KB, is read; a link is never followed.
 - **Never assign work to a guess.** An unresolvable peer means a message to
   `project:<id>`, which its sessions see at their next prompt; a dispatch to the
   wrong session starts work in a context with the wrong claims, and the
