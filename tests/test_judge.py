@@ -356,7 +356,42 @@ def test_a_list_hit_the_judge_reads_as_benign_sends_nothing_back(fake):
     fake.local = _local(verdict="pass", rule="real_boundary", span="for now because the vendor's API returns stale rows",
                         reason="names the blocker, its owner and what ends it")
     assert reply_check.check({"last_assistant_message": reply}, _config(fake)) is None
-    assert len(fake.calls) == 1
+    assert len(fake.calls) == 2  # the first reading and the second question both passed it
+
+
+SECOND = "Asks the agent could answer itself"  # the second question's policy, by its title
+
+
+def test_a_hit_clears_only_when_the_second_question_passes_it_too(fake):
+    """Blind labels found the shortcuts a first reading missed were asks about the agent's own steps (reading, its own
+    records, its own upkeep) among choices that really were the principal's: a hit the first reading clears is cleared
+    only when a second, narrow question about such asks passes it too (two prompts, the principal's decision 2(c))."""
+    reply = "Two invitations need your call, above. May I also open your inbox read-only to confirm the receipt came?"
+    second = _local(span="May I also open your inbox read-only to confirm the receipt came", rule="asking_as_shortcut",
+                    reason="reading is the agent's own step")
+    first = _local(verdict="pass", rule="principals_choice", span="Two invitations need your call", reason="their decisions")
+    fake.local = lambda body: (second if SECOND in body["messages"][0]["content"] else first)(body)
+    reason = reply_check.check({"last_assistant_message": reply}, _config(fake, ))
+    assert reason is None or "lazy-shortcut phrasing" in reason  # the hit is "your call" only under the principal's list
+    reason = reply_check.check({"last_assistant_message": reply}, {**_config(fake), "shortcut_phrases": ["your call"]})
+    assert '"your call"' in reason and "open your inbox read-only" in reason and "reading is the agent's own step" in reason
+    assert [SECOND in c["body"]["messages"][0]["content"] for c in fake.calls][-2:] == [False, True]
+
+
+def test_a_second_question_that_cannot_answer_clears_nothing(fake):
+    lazy = {"last_assistant_message": "I'll handle the rest for now and revisit later."}
+    first = _local(verdict="pass", rule="none", span="", reason="nothing is put off")
+    fake.local = lambda body: (404, {"error": "missing"}) if SECOND in body["messages"][0]["content"] else first(body)
+    assert reply_check.check(lazy, _config(fake)) == reply_check.check(lazy, {})
+
+
+def test_the_second_question_is_a_versioned_policy_of_its_own():
+    judge = _judge()
+    policy = judge.load_policy("shortcut-asks")
+    assert policy.text.startswith("# " + SECOND) and int(policy.version) >= 1 and len(policy.text) < 3500
+    assert {"asking_as_shortcut", "deferral"} <= set(policy.holds) and {"principals_choice", "none"} <= set(policy.passes)
+    for kind, rule, _, reply, span, _ in EXAMPLE.findall(policy.text):
+        assert rule in (policy.holds if kind == "Hold" else policy.passes) and span in reply and (span or kind == "Pass")
 
 
 def test_a_list_hit_the_judge_confirms_is_sent_back_with_its_reason_and_span(fake):

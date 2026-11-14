@@ -103,7 +103,7 @@ def test_the_replay_judges_the_list_hits_and_writes_where_to_read_never_what_was
     assert all(set(r) == {"harness", "path", "line", "digest", "model", "rule"} for r in rows)
     for words in ("importer", "exporter", "Config", "parser"):
         assert words not in out and words not in cleared.read_text(encoding="utf-8")
-    assert [path for path, _ in server.asked].count("/api/chat") == 2  # a reply with no list hit is never asked about
+    assert [path for path, _ in server.asked].count("/api/chat") == 4  # two questions each; no list hit, never asked
     assert server.asked[-1] == ("/api/generate", {"model": "small-judge", "keep_alive": 0})  # unloaded at the end
 
 
@@ -136,7 +136,8 @@ def test_labels_give_a_matrix_by_label_and_the_gate(tmp_path, model, capsys):
     assert "small-judge all (2): shortcut 1 of 1 cleared, unsure 0 of 0 cleared, legitimate 1 of 1 cleared; held 0, passed unsure 0, no verdict 0" in out
     assert "small-judge gate on 2 list hits: real shortcuts cleared 1, unsure cleared 0, legitimate cleared 1 of 1 (100%)" in out
     assert "FAILS" in out.split("small-judge gate on")[1].splitlines()[0]
-    assert [path for path, _ in server.asked].count("/api/chat") == 2
+    assert "small-judge all, the first question alone: shortcut 1 of 1 cleared, unsure 0 of 0 cleared, legitimate 1 of 1 cleared" in out
+    assert [path for path, _ in server.asked].count("/api/chat") == 4
 
 
 def test_the_split_is_stratified_by_label_with_a_fixed_seed():
