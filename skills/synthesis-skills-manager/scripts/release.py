@@ -196,10 +196,12 @@ def collections(repo: Path, dry_run: bool = False) -> tuple:
     return tree, branch
 
 
-def collections_head(repo: Path, remote: str, branch: str, tree: str, version: str) -> str:
+def collections_head(repo: Path, remote: str, branch: str, tree: str, version: str, made: dict) -> str:
     """The commit the collections branch moves to on this remote: its head there when that already holds these folders
     (a run again after a server error), else a commit on top of that head with these folders as its tree, so a release
-    never rewrites the branch a harness installs from."""
+    never rewrites the branch a harness installs from. The commit takes the release commit's identity and time and names
+    it, unsigned, so every remote that shares a head gets the one commit, made once (`made`, by head), on this run or
+    any other (R1-22 of 5.22.0's review: each remote got its own)."""
     listed = git(repo, "ls-remote", remote, f"refs/heads/{branch}", timeout=120)
     if listed.returncode:
         raise setup.SetupError(f"{remote}: cannot read its {branch} branch: {setup._tail(listed)}")
@@ -207,12 +209,18 @@ def collections_head(repo: Path, remote: str, branch: str, tree: str, version: s
     fetched = git(repo, "fetch", "--no-tags", "--quiet", remote, f"refs/heads/{branch}") if head else None
     if fetched and fetched.returncode:
         raise setup.SetupError(f"{remote}: cannot fetch its {branch} branch: {setup._tail(fetched)}")
-    if head and git(repo, "rev-parse", f"{head}^{{tree}}").stdout.strip() == tree:
-        return head
-    made = git(repo, "commit-tree", tree, *(["-p", head] if head else []), "-m", f"Collections of v{version}")
-    if made.returncode:
-        raise setup.SetupError(f"cannot commit the collections: {setup._tail(made)}")
-    return made.stdout.strip()
+    if head and git(repo, "rev-parse", f"{head}^{{tree}}").stdout.strip() == tree or head in made:
+        return made.get(head, head)
+    stamp = git(repo, "log", "-1", "--format=%H%x00%cn%x00%ce%x00%cI", "HEAD").stdout.strip().split("\0")
+    who = {f"GIT_{role}_{part}": value for role in ("AUTHOR", "COMMITTER")
+           for part, value in zip(("NAME", "EMAIL", "DATE"), stamp[1:])}
+    done = setup.run(["git", "-C", str(repo), "commit-tree", "--no-gpg-sign", tree, *(["-p", head] if head else []),
+                      "-m", f"Collections of v{version}", "-m", f"Built from {stamp[0]}, the commit v{version} tags."],
+                     600, env={**os.environ, **who})
+    if done.returncode:
+        raise setup.SetupError(f"cannot commit the collections: {setup._tail(done)}")
+    made[head] = done.stdout.strip()
+    return made[head]
 
 
 def publish(repo: Path, version: str, dry_run: bool = False) -> list:
@@ -230,19 +238,19 @@ def publish(repo: Path, version: str, dry_run: bool = False) -> list:
         made = git(repo, "tag", "-a", tag, "-m", f"Release {tag}")
         if made.returncode:
             raise setup.SetupError(f"cannot create {tag}: {setup._tail(made)}")
-    lines = []
+    lines, commits = [], {}  # the collections commit for each head the remotes hold: one for those that share one
     for remote in remotes:  # one atomic push per remote: main, stable, the tag and the collections move together or not
-        moved = collections_head(repo, remote, branch, tree, version)
+        moved = collections_head(repo, remote, branch, tree, version, commits)
         pushed = git(repo, "push", "--atomic", remote, *refspecs, f"{moved}:refs/heads/{branch}")
         seen = dict(reversed(line.split("\t")) for line in git(
             repo, "ls-remote", remote, "refs/heads/main", "refs/heads/stable", f"refs/heads/{branch}",
             f"refs/tags/{tag}*", timeout=120).stdout.splitlines() if "\t" in line)
         seen[f"refs/tags/{tag}"] = seen.get(f"refs/tags/{tag}^{{}}", seen.get(f"refs/tags/{tag}"))  # peeled
         wrong = [r for r in ("refs/heads/main", "refs/heads/stable", f"refs/tags/{tag}") if seen.get(r) != head]
-        wrong += [f"refs/heads/{branch}"] * (seen.get(f"refs/heads/{branch}") != moved)
-        if wrong:
-            raise setup.SetupError(f"{remote}: {', '.join(wrong)} do not point at {head[:12]} ({branch} at "
-                                   f"{moved[:12]}) after the push ({setup._tail(pushed)})")
+        said = [f"{', '.join(wrong)} do not point at {head[:12]}"] * bool(wrong) + [
+            f"refs/heads/{branch} does not point at {moved[:12]}"] * (seen.get(f"refs/heads/{branch}") != moved)
+        if said:
+            raise setup.SetupError(f"{remote}: {', and '.join(said)} after the push ({setup._tail(pushed)})")
         lines.append(f"{remote}: main, stable and {tag} at {head[:12]}, {branch} at {moved[:12]}")
     return lines
 
