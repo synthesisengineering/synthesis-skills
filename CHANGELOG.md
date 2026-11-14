@@ -20,10 +20,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   spelling: its path in any case; its path below the home folder however the program joins it (`Path.home() /
   ".claude" / "projects"`, `$ENV{HOME}/.claude/projects`, `~/...`); after a variable that holds it, a folder above it
   or a place inside it (`$ENV{CLAUDE_CONFIG_DIR}/projects`, `D=<folder> perl ...`); a path through `..` or a link; a
-  folder above it handed whole; the folder the program stands in; and the files `xargs` hands a program on a line that
-  names one. A Python script file is read when the hook has time for it (16 KB) and passes when the reader follows
+  folder above it handed whole; standing in the state folder, its board or the session archive (in a transcript
+  folder, the bare name of a file there); and the files `xargs` hands a program on a line that names one. A Python script file is read when the hook has time for it (16 KB) and passes when the reader follows
   every write to a place outside those folders. Python that reaches a call by a name it builds (`getattr` with a built
-  name or on a module, `vars()`, `__dict__`, `functools.partial`, `operator.methodcaller`, `ctypes`) is taken to write,
+  name or on a module, `vars()`, a module's `__dict__`, `functools.partial`, `operator.methodcaller`, `ctypes`) is taken to write,
   as `exec` and `eval` already were. A script file that calls synthesis's code to open a window or make a grant is
   refused; one that spends a principal's code, as the local-messaging gap review does, is not. Every refusal and
   message from before stands. One skill script now waits where it ran freely: the agent guardrails'

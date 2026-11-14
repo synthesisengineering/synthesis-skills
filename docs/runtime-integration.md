@@ -362,8 +362,9 @@ harness that gives no transcript cannot carry approved sends or deploys until it
      A program that runs code it builds (`exec`, `eval`, a module it names at run time)
      cannot be read: it is taken to write, and is refused while it names a protected path,
      is handed one or runs inside one; so is one that reaches a call by a name it builds
-     (`getattr` with a built name or on a module, `vars()`, `__dict__`, `functools.partial`,
-     `operator.methodcaller`, `ctypes`). A program with a syntax error is judged as below.
+     (`getattr` with a built name or on a module, `vars()`, a module's `__dict__`,
+     `functools.partial`, `operator.methodcaller`, `ctypes`). A program with a syntax error
+     is judged as below.
    - **A program the guard cannot read** (5.22.1). A list of the ways to write never ends (a
      one-line `perl -MFile::Copy` copy wrote a transcript and a grant), so this one passes
      only where it names no protected folder: an interpreter the guard does not read (Perl,
@@ -384,8 +385,9 @@ harness that gives no transcript cannot carry approved sends or deploys until it
      holds it, a folder above it or a place inside it, with the rest of the path after it
      (`$ENV{CLAUDE_CONFIG_DIR}/projects`, `D=<folder> perl ...`); by a path that leads into it
      through `..`, a link made beforehand or one the line makes; by a folder between it and
-     the home folder or such a variable, handed as an argument; by standing in it; and by
-     the files `xargs` hands the program on a line that names one. A script file the same
+     the home folder or such a variable, handed as an argument; by standing in the state
+     folder, its board or the session archive (in a transcript folder, by the bare name of a
+     file that is there); and by the files `xargs` hands the program on a line that names one. A script file the same
      line writes is read as the line. A script file may spend a principal's code; one that
      calls synthesis's code to open a window or make a grant is refused.
    - **Standing in a protected folder.** A program can write where it stands without naming
