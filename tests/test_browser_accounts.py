@@ -228,7 +228,8 @@ def test_a_batch_is_judged_by_its_steps_and_held_whole():
     assert unread(batch(("navigate", {"url": f"https://{SITE}/new"}), TYPE))
     assert unread(batch(("navigate", {"url": f"{SITE}/new"}), ("form_input", {"ref": "ref_2", "value": "x"})))
     shows(MINE)
-    assert batch(("navigate", {"url": f"https://{SITE}/new"}), TYPE, ("computer", {"action": "key", "text": "Return"})) is None
+    # a key that puts something into the page and submits nothing; Return after typed words is the send guard's (5.21.1)
+    assert batch(("navigate", {"url": f"https://{SITE}/new"}), TYPE, ("computer", {"action": "key", "text": "BackSpace"})) is None
 
 
 def test_a_key_may_name_the_page_by_its_fragment_or_its_query():
@@ -345,7 +346,7 @@ def test_a_batch_of_keys_reads_the_record_once_for_a_site(monkeypatch):
     shows(MINE)
     read, real = [], guards._account_shown
     monkeypatch.setattr(guards, "_account_shown", lambda *given: read.append(1) or real(*given))
-    assert batch(*[TYPE] * 10, ("computer", {"action": "key", "text": "Return"})) is None
+    assert batch(*[TYPE] * 10, ("computer", {"action": "key", "text": "BackSpace"})) is None  # Return would submit (5.21.1)
     assert len(read) == 1
     shows(OTHER)
     assert misrouted(batch(*[TYPE] * 10)) and len(read) == 2

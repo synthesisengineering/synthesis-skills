@@ -987,10 +987,19 @@ ROOT = Path(__file__).resolve().parents[1]
 # words of a call that only types on those pages, which go on the principal's code, and 1 for the pages read beside apps).
 # 5.21.1: guards.py 1, the comment's third line: a click on a control that publishes waits on every page, since a
 # public review went out on a site that is no messaging site through a click on Submit rating.
+# 5.21.1, after the second review of 5.21.0: guards.py 76 more. The summary rules 38: PUBLISHES with effect-first verbs,
+# any form of a click verb and a word or three before the label, and Tweet and Done (3, as before), OPENS 3, POSTS 1,
+# ROUTINE 2 and MESSAGE 1 (a click that only opens or closes a box, a sign-in or a search, passes), the page-script
+# patterns 8 (WRITES, SCRIPT_ACTS, SCRIPT_SENDS, SCRIPT_ROUTINE and their comment), the comment 5, _publishes 9 and
+# _submits 12 (Return, or Space or Return after Tab), less the 6 lines of 5.21.1's pattern. _released 15 (the words the
+# typed-words code released, shown in the next send's hold from that page). check_desktop 12 (the key rule, page scripts,
+# a register hit on a page that is no messaging site going on the send's code, typed words kept out of the record).
+# _browser_item 8 and _desktop_actions 2 fewer (a form fill and a page script alone reach the guard), BROWSER_STEPS 1,
+# WEB_MESSAGING 3 (Gmail, Outlook and Google Voice by the hosts typed), and _pages 1 (a local app's page).
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # consolidate first).
-CORE_BUDGET = 14925
-PLUGIN_BUDGET = 38172
+CORE_BUDGET = 15001
+PLUGIN_BUDGET = 38248
 
 
 def _lines(files):

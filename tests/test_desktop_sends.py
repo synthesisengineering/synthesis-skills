@@ -445,6 +445,7 @@ def test_a_click_that_only_opens_or_closes_a_box_passes(summary):
     [REVIEW, _key("Return", "Presses Return")], [("computer", {"action": "type", "text": "Five stars.\n", "action_summary": "Types the review"})],
     [REVIEW, _key("Tab space", "Moves to the button and presses it")], [REVIEW, _key("Tab"), _key("space")],
     [REVIEW, ("javascript_tool", {"action": "javascript_exec", "text": "document.forms[0].requestSubmit()"})],
+    [("computer", {"action": "type", "text": "Summarize the attached plan."}), _key("Return")],  # it says neither: held when unsure
 ])
 def test_other_ways_a_review_is_submitted_on_a_site_that_is_no_messaging_site_wait(steps):
     """The second review: on a page that is no messaging site, a word before the label, an -ing form, a later "shows",

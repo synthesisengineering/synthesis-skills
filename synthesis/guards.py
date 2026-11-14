@@ -4445,26 +4445,65 @@ APP_NAMES = {"whatsapp": "net.whatsapp.WhatsApp", "messages": "com.apple.MobileS
 CLICKS = {"click", "left_click", "double_click", "triple_click", "right_click", "middle_click", "left_mouse_down", "left_mouse_up"}
 DESKTOP_TOOLS = CLICKS | {"batch", "teach_step", "teach_batch", "app_batch", "app_click", "app_key", "app_type", "app_menu",
                           "key", "hold_key", "type", "request_access", "request_teach_access"}
+BROWSER_STEPS = {"computer": "browser", "browser_batch": "browser_batch", "form_input": "browser_form", "javascript_tool": "browser_script"}
 RETURNS = {"return", "enter", "kp_enter", "kp_return"}
 MODIFIERS = {"alt": "option", "opt": "option", "command": "cmd", "meta": "cmd", "super": "cmd", "control": "ctrl"}
 SAYS_SENT = re.compile(r"^\W*(?:(?:send|repl(?:y|ie)|forward|post|publish|share|invite|respond|comment|mention|announce"
                        r"|notif(?:y|ie)|remind|schedule|deliver|email|text)(?:s|es|d|ed|ing)?\b"
                        r"|(?:click|press|tap|hit|choose|select)(?:s|es)?\s+(?:on\s+)?(?:the\s+)?send\b)|\bto send\b", re.I)
-# A click on the control that publishes waits too, on every page, unless the summary says it only opens a box
-# (2026-11-14: Post, Comment and Reply post on facebook.com, LinkedIn and Instagram, which label few controls Send;
-# 2026-11-13: a public review went out on another site through a click on Submit rating)
-PUBLISHES = re.compile(r"\b(?:click|press|tap|hit|choose|select)(?:s|es)?\s+(?:on\s+)?(?:the\s+)?[\"'“‘]?(?:send"
-                       r"|post|comment|reply|repost|share|publish|submit)\b(?!\s+(?:box|field|input|area|composer|editor)\b)"
-                       r"(?!.*\b(?:opens|opening|expands|focuses|shows|reveals|starts|to (?:open|expand|focus|show|reveal|start))\b)", re.I)
+# A click whose summary says it publishes waits too, in every app and on every page: an effect-first verb that posts
+# ("Submits the five-star public review of ...", 2026-11-13's own clicks) or a click verb in any form with a control's
+# label a word or three after it ("Clicks the blue Post button"). It passes when what follows the label says it only
+# opens or closes a box, when it signs in or searches and names nothing that posts, and on the principal's own app on a
+# local host (2026-11-14: Post, Comment and Reply post on facebook.com, LinkedIn and Instagram; the second review).
+PUBLISHES = re.compile(r"^\W*(?:submit|repost|retweet|quote|rate)(?:s|d|ed|ted|ting|ing)?\b|\b(?:click|press|tap|hit|choose"
+                       r"|select)(?:s|es|ed|ing)?\s+(?:on\s+)?(?:the\s+)?(?:[\w'’-]+\s+){0,3}?[\"'“‘]?(?:send|post|comment"
+                       r"|reply|repost|share|publish|submit|tweet|done)\b", re.I)
+OPENS = re.compile(r"^\W*(?:box|field|input|area|composer|editor)\b|\b(?:to\s+(?:open|expand|focus|show|reveal|close)|opens"
+                   r"|opening|expands|focuses|shows|reveals|closes)\s+(?:[\w'’-]+\s+){0,3}?(?:box|field|input|area|composer"
+                   r"|editor|menu|dialog|options|panel|sheet|form|window|list|modal|pop-?up|drawer)s?\b", re.I)
+POSTS = re.compile(r"\bto\s+(?:post|publish|send|submit)\b|\b(?:posting|publishing|sending|submitting)\b", re.I)
+ROUTINE = re.compile(r"\b(?:sign(?:s|ing|ed)?[\s-]?in|log(?:s|ging|ged)?[\s-]?(?:in|on)|search\w*|quer(?:y|ies)|filter\w*"
+                     r"|look(?:s|ing)?\s?up|password|passcode|verification code)\b", re.I)
+MESSAGE = re.compile(r"\b(?:message|repl(?:y|ies)|comment|review|rating|post|tweet|feedback|answer)s?\b", re.I)
+# A page script that can send (the second review: one that clicked a comment's submit button went out): on a messaging
+# site's page one that clicks, submits, sends a key or an event, writes by fetch or sets a value; elsewhere one that
+# submits a form, sends a key or an event, writes by fetch or clicks a control that publishes, unless it searches or signs in.
+WRITES = r"method\s*:\s*['\"`](?:post|put|patch|delete)|\.open\s*\(\s*['\"`](?:post|put|patch|delete)|sendBeacon"
+SCRIPT_ACTS = re.compile(r"\.click\s*\(|\.submit\s*\(|requestSubmit|dispatchEvent|KeyboardEvent|\.value\s*=[^=]|execCommand|" + WRITES, re.I)
+SCRIPT_SENDS = re.compile(r"requestSubmit|\.submit\s*\(|dispatchEvent|KeyboardEvent|" + WRITES + r"|^(?=[\s\S]*\.click\s*\()[\s\S]*"
+                          r"(?:submit|\bpost|\bsend|publish|repl(?:y|ies)|comment|share|review|rating|tweet|\bdone\b)", re.I)
+SCRIPT_ROUTINE = re.compile(r"\b(?:search|log-?in|sign-?in|password|query|q)\b", re.I)  # whole words: querySelector is none
+
+
+def _publishes(said: str, local: bool) -> bool:
+    """A click summary that says it publishes (PUBLISHES), unless what follows the label says it only opens or closes a
+    box, it signs in or searches and names nothing that posts, or the page is the principal's own app on a local host."""
+    found = PUBLISHES.search(said)
+    rest = said[found.end():] if found else ""
+    return bool(found) and not local and not (OPENS.search(rest) and not POSTS.search(rest)) and not (
+        ROUTINE.search(said) and not MESSAGE.search(said))
+
+
+def _submits(actions: list) -> bool:
+    """A key that submits a form: Return or Enter without shift, or Space or Return after Tab (the second review)."""
+    tabbed = False
+    for kind, chords, _ in actions:
+        for chord in chords.lower().split() if kind == "key" else ():
+            *mods, key = chord.split("+")
+            if key in RETURNS and "shift" not in mods or tabbed and key in ("space", *RETURNS):
+                return True
+            tabbed = tabbed or key == "tab"
+    return False
 
 
 def desktop_tool(tool: str) -> str:
     """The computer-use action a tool performs ("batch", "app_click"...), or "" for any other tool: the desktop
-    app's computer-use server by any id, a linked device's computer_* tools, or a browser's computer and
-    browser_batch tools ("browser", "browser_batch")."""
+    app's computer-use server by any id, a linked device's computer_* tools, or a browser's computer, browser_batch,
+    form_input and javascript_tool tools ("browser", "browser_batch", "browser_form", "browser_script")."""
     server, _, name = tool.rpartition("__")
-    if tool.startswith("mcp__") and name in ("computer", "browser_batch") and re.search(r"browser|chrome", server, re.I):
-        return "browser" if name == "computer" else name
+    if tool.startswith("mcp__") and name in BROWSER_STEPS and re.search(r"browser|chrome", server, re.I):
+        return BROWSER_STEPS[name]
     bare = name[len("computer_"):] if name.startswith("computer_") else name
     linked = "computer" in server.lower() or name.startswith("computer_")
     return bare if tool.startswith("mcp__") and linked and bare in DESKTOP_TOOLS else ""
@@ -4477,13 +4516,11 @@ def _desktop_actions(name: str, tool_input: dict) -> list:
         items = [a for s in tool_input.get("steps") or [] if isinstance(s, dict) for a in s.get("actions") or []]
     elif name in ("batch", "app_batch", "teach_step"):
         items = list(tool_input.get("actions") or [])
-    elif name == "browser_batch":  # {name, input} steps; a form_input value is text typed into the page
-        steps = [(str(s.get("name", "")), s.get("input") if isinstance(s.get("input"), dict) else {})
-                 if isinstance(s, dict) else ("", s) for s in tool_input.get("actions") or []]
-        items = [{**i, "action": "type", "text": str(i.get("value", ""))} if n.endswith("form_input") and isinstance(i, dict)
-                 else i for n, i in steps]
-    elif name == "browser":
-        items = [tool_input]
+    elif name == "browser_batch":  # {name, input} steps; a form_input value is text typed into the page, a script a script
+        items = [_browser_item(str(s.get("name", "")), s.get("input") if isinstance(s.get("input"), dict) else {})
+                 if isinstance(s, dict) else s for s in tool_input.get("actions") or []]
+    elif name.startswith("browser"):
+        items = [_browser_item(name, tool_input)]
     else:
         items = [{**tool_input, "action": name[4:] if name.startswith("app_") else name}]
     found = []
@@ -4491,12 +4528,20 @@ def _desktop_actions(name: str, tool_input: dict) -> list:
         if not isinstance(item, dict):
             raise ValueError(f"a computer-use action is not an object ({str(item)[:40]})")
         act = str(item.get("action") or "")
-        kind = "click" if act in CLICKS else "key" if act in ("key", "hold_key") else act if act in ("type", "menu") else ""
+        kind = "click" if act in CLICKS else "key" if act in ("key", "hold_key") else act if act in ("type", "menu", "script") else ""
         value = (" > ".join(str(p) for p in item.get("path") or []) if kind == "menu" else
-                 str(item.get("combo") or item.get("text") or "") if kind in ("key", "type") else "")
+                 str(item.get("combo") or item.get("text") or "") if kind in ("key", "type", "script") else "")
         if kind and (value or kind == "click"):
             found.append((kind, value, str(item.get("action_summary") or "")))
     return found
+
+
+def _browser_item(step: str, given: dict) -> dict:
+    """A browser step as a computer-use action: a form's value is text typed into the page, and a page script is a
+    script, which reached no send rule until the second review."""
+    return ({**given, "action": "type", "text": str(given.get("value", ""))} if step.endswith(("form_input", "browser_form"))
+            else {**given, "action": "script", "text": str(given.get("text") or "")} if step.endswith(("javascript_tool", "browser_script"))
+            else given)
 
 
 def _messaging(config: dict) -> dict:
@@ -4515,6 +4560,9 @@ WEB_MESSAGING = (  # (site, and every host under it; path prefix, or * for every
     # search; channel, or several joined by +; line-break modifier, as above). A page is the first that fits.
     ("mail.google.com", "/chat", "google chat", "shift"), ("chat.google.com", "", "google chat", "shift"),
     ("mail.google.com", "", "email+google chat", "shift"),  # 2026-11-14: Chat pops up on every page of Gmail, and Return sends
+    ("gmail.com", "", "email+google chat", "shift"), ("google.com", "/gmail", "email+google chat", "shift"),  # the hosts typed
+    ("voice.google.com", "", "google voice", "shift"), ("outlook.com", "", "email", ""), ("hotmail.com", "", "email", ""),
+    ("live.com", "/mail", "email", ""),
     ("outlook.office.com", "", "email", ""), ("outlook.office365.com", "", "email", ""), ("outlook.live.com", "", "email", ""),
     ("outlook.cloud.microsoft", "", "email", ""), ("slack.com", "", "slack", "shift"),
     ("whatsapp.com", "", "whatsapp", "shift"), ("wa.me", "", "whatsapp", "shift"), ("teams.microsoft.com", "", "teams", "shift"),
@@ -4586,14 +4634,30 @@ def _steps(name: str, tool_input: dict, session: dict | None, keep: bool = False
 
 
 def _pages(name: str, tool_input: dict, session: dict | None) -> tuple:
-    """({page: (channel, line-break modifier)} for each messaging site this browser call acts on, and whether a box on
-    every one of them may be a search)."""
-    reached, search = {}, True
+    """({page: (channel, line-break modifier)} for each messaging site this browser call acts on, whether a box on every
+    one of them may be a search, and whether every page it acts on is the principal's own app on a local host."""
+    reached, search, local = {}, True, True
     for _, _, address in _steps("computer" if name == "browser" else name, tool_input, session, keep=True):
-        page = _web_app(address)
+        page, host = _web_app(address), _where(address)[0]
+        local = local and (host in ("localhost", "127.0.0.1", "::1") or host.endswith((".localhost", ".test")))
         if page:
             reached[page[0]], search = page[1], search and page[2]
-    return reached, search
+    return reached, search, local
+
+
+def _released(session: dict | None, pages: list, add: tuple = (), drop: bool = False) -> list:
+    """What the typed-words code released on any of these pages in the last 15 minutes: entries of the words and the
+    rules they broke (the second review: a Return after them named neither). `add` records (words, rules); `drop`
+    forgets the entries on these pages once a send from them is approved."""
+    record = _grants(session, "typed")
+    kept = [e for e in (paths.read_json(record).get("released", []) if record else [])
+            if time.time() - float(e.get("at", 0)) < approvals.TTL_SECONDS]
+    mine = [e for e in kept if set(e.get("pages", [])) & set(pages)]
+    if record and (add or drop):
+        kept = [e for e in kept if not (drop and e in mine)] + ([{"pages": sorted(pages), "words": add[0], "rules": add[1],
+                                                                 "at": time.time()}] if add else [])
+        paths.write_json(record, {"released": kept})
+    return mine
 
 
 def _bundle(app, apps: dict) -> str:
@@ -4601,9 +4665,9 @@ def _bundle(app, apps: dict) -> str:
     return APP_NAMES.get(text) or next((b for b in apps if b.lower() == text), "")
 
 
-def _grants(session: dict | None):
+def _grants(session: dict | None, folder: str = "desktop"):
     me = "".join(c if c.isalnum() or c in "-_." else "_" for c in paths.session_id(session))
-    return paths.state() / "desktop" / f"{me}.json" if me else None
+    return paths.state() / folder / f"{me}.json" if me else None
 
 
 def _sends_key(chords: str, apps: dict) -> bool:
@@ -4631,27 +4695,33 @@ def check_desktop(name: str, tool: str, tool_input: dict, config: dict, session:
         return None
     seen = paths.read_json(record) if record else {}
     unseen = not name.startswith(("app_", "browser")) and "apps" not in seen  # a browser page is no messaging app
-    pages, search = _pages(name, tool_input, session) if name.startswith("browser") else ({}, False)
+    pages, search, local = _pages(name, tool_input, session) if name.startswith("browser") else ({}, False, False)
     reached = ({b: apps[b] for b in [_bundle(tool_input.get("app"), apps)] if b in apps} if name.startswith("app_")
                else pages if name.startswith("browser") else apps if unseen else {b: apps[b] for b in seen["apps"] if b in apps})
     typed, subject = [v for kind, v, _ in actions if kind == "type" and v.strip()], {"tool": tool, "input": tool_input}
-    sending = [s or f"{kind} {v}".strip() for kind, v, s in actions if SAYS_SENT.search(s) or kind == "click" and PUBLISHES.search(s) or reached and (
-        kind == "click" and not s.strip()
-        or kind == "menu" and re.search(r"(?:^|> )send\b", v, re.I) or kind == "key" and _sends_key(v, reached)
-        or kind == "type" and re.search(r"[\r\n]", v) and _sends_key("return", reached))]
+    said = " ".join(s for _, _, s in actions)  # the second review: words, then Return, Tab and Space or a line break, submit a form
+    formed = bool(name.startswith("browser") and not reached and typed and not local and not (ROUTINE.search(said) and not MESSAGE.search(said))
+                  and (_submits(actions) or any(k == "type" and re.search(r"[\r\n]", v) for k, v, _ in actions)))
+    sending = [s or {"type": "a typed line break", "script": "a page script"}.get(kind, f"{kind} {v}".strip()) for kind, v, s in actions
+               if SAYS_SENT.search(s) or kind == "click" and _publishes(s, local) or kind == "script" and (
+                   SCRIPT_ACTS.search(v) if reached else SCRIPT_SENDS.search(v) and not SCRIPT_ROUTINE.search(v) and not local)
+               or reached and (kind == "click" and not s.strip() or kind == "menu" and re.search(r"(?:^|> )send\b", v, re.I)
+                               or kind == "key" and _sends_key(v, reached) or kind == "type" and re.search(r"[\r\n]", v) and _sends_key("return", reached))]
+    sending += ["a key that submits the form after the typed words"] * (formed and not sending)
     problems = message_problems("desktop_type", {"message_text": "\n\n".join(typed)}, config, {  # a page may be several channels'
         c for chan, _ in reached.values() for c in chan.split("+")}, session) if typed and (reached or sending) else []
     if problems and search and not sending and all(k == "type" for k, _, _ in actions) and not temporary_addresses(typed, config):
         # 2026-11-14: a box on these pages may be a search, and a call that only types delivers nothing, so the principal's
         # code releases its words; a call that sends or does more is refused as below, and an address keeps its own code
         if approvals.consume("typed", subject, session):
+            _released(session, sorted(reached), add=(typed, problems[:6]))  # a send from this page shows them
             return None
-        code = approvals.request("typed", subject, f"{tool}: words typed in the browser ({', '.join(sorted(reached))}), "
-                                 f"nothing sent: {' / '.join(typed)}"[:300])
+        code = approvals.request("typed", subject, f"{tool}: words typed in the browser ({', '.join(sorted(reached))}), nothing "
+                                 f"sent ({sum(map(len, typed))} characters, not stored)")
         return ("These words break the principal's rules for messages: " + "; ".join(problems[:6]) + ". This call only types "
                 "them and sends nothing, and a box on this page may be a search. If they are no message, show the principal the "
                 f"words and ask them to type {approvals.how(code)}, then make this identical call again. A message is rewritten.")
-    if problems:
+    if problems and (reached or temporary_addresses(typed, config)):  # elsewhere the hold names them, below (the second review)
         return "These words can't go out as written: " + "; ".join(problems[:6]) + "."
     if not sending:
         return None
@@ -4659,17 +4729,23 @@ def check_desktop(name: str, tool: str, tool_input: dict, config: dict, session:
     chan = "browser" if name.startswith("browser") else chans[0] if len(chans) == 1 else "desktop"
     where = ((f"the browser ({', '.join(sorted(reached))})" if reached else "the browser") if name.startswith("browser")
              else "any messaging app" if unseen else ", ".join(sorted(reached)) or "an app")
-    what = "; ".join(sending)[:200]
-    summary = f"{tool} in {where}: {what}" + (f"; words: {' / '.join(typed)}" if typed else "")
-    if sends.covered(chan, typed, _project(session), config):
+    what, earlier = "; ".join(sending)[:200], _released(session, list(reached)) if reached else []
+    words, rules = [w for e in earlier for w in e["words"]], problems[:6] + [r for e in earlier for r in e["rules"]]
+    subject = {**subject, "earlier": words} if earlier else subject
+    summary = f"{tool} in {where}: {what}" + (f"; typed words not stored ({sum(map(len, typed + words))} characters)" if typed or words else "")
+    if not rules and sends.covered(chan, typed, _project(session), config):  # a window never covers words a rule stopped
         sends.log(chan, tool, summary, "window", session)
         sends.settle()
         return None
     if approvals.consume("send", subject, session):
         sends.log(chan, tool, summary, "approval", session)
+        _released(session, list(reached), drop=True)
         return None
     code = approvals.request("send", subject, summary[:300])
-    return (f"This call sends in {where} ({what}). Sending needs the principal's approval of this exact call: show them "
+    return (f"This call sends in {where} ({what})."
+            + (f" Words typed on this page under the code for words that break a rule may go with it: {' / '.join(words)}." if words else "")
+            + (f" These words break the principal's rules for messages: {'; '.join(rules)}. The code below waives that for this exact"
+               " call only; a message is better rewritten." if rules else "") + " Sending needs the principal's approval of this exact call: show them "
             "the exact words and recipient as they will go out (a screenshot of the compose area) and ask them to type "
             f"{approvals.how(code)}. Then make this identical call again. Typing the words and sending in one call binds "
             "both to the approval. A Return or click here that does not send (a file picker, a search field): click the "
