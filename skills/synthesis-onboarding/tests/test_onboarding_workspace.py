@@ -2,6 +2,7 @@
 
 import argparse
 import hashlib
+import importlib.util
 import json
 import os
 import re
@@ -353,6 +354,25 @@ def test_a_new_workspace_gets_a_committed_knowledge_repository_and_links(tmp_pat
     git("-C", str(repo), "commit", "-qam", "mine")
     assert workspace.new_workspace("demo") [0] == "ai-knowledge-demo: already set up"
     assert (repo / "projects" / "index.yaml").read_text() == "projects: [mine]\n"
+
+
+def test_a_new_knowledge_repository_starts_with_the_sharing_policy_from_the_template(tmp_path):
+    """The policy is synthesis-kb-edit's template, committed with the other seeds, and the contract names it with an
+    empty phrase list: the plugin ships no phrases, so the phrase scan refuses to run until the person names theirs."""
+    lines = workspace.new_workspace("demo")
+    repo = (Path.home() / "workspaces" / "demo" / "ai-knowledge-demo").resolve()
+    kb_edit = Path(workspace.__file__).resolve().parents[2] / "synthesis-kb-edit"
+    template = (kb_edit / "assets" / "sharing-policy.template.md").read_text(encoding="utf-8")
+    assert (repo / ".agents" / "sharing-policy.md").read_text(encoding="utf-8") == template
+    assert git("-C", str(repo), "status", "--porcelain") == ""
+    spec = importlib.util.spec_from_file_location("kb_config_seen_by_onboarding", kb_edit / "scripts" / "kb_config.py")
+    kb_config = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(kb_config)
+    _, config = kb_config.load_config(repo, None)
+    assert kb_config.validate_config(config) == [] and kb_config.check_paths(repo, config) == []
+    assert config["confidentiality"]["sharing_policy"] == ".agents/sharing-policy.md"
+    assert config["confidentiality"]["backstop_phrases"] == []
+    assert any("confidentiality.backstop_phrases" in line for line in lines)  # the person is told what to name
 
 
 def test_a_new_workspace_without_a_git_identity_changes_nothing(tmp_path, monkeypatch):
