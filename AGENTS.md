@@ -72,7 +72,8 @@ That covers the v5 core (`synthesis/`), every skill's own tests wherever they li
 v5 skills (`tests/test_skill_format.py`), the budgets and hook latency
 (`tests/test_budgets.py`), and the source lint (`tests/test_source_lint.py`): the three
 plugin manifests agree, the CHANGELOG's newest entry is that version, skill names are
-unique, every `depends_on` resolves, every skill has an SPDX license and
+unique, every `depends_on` resolves, every skill is in exactly one collection and depends
+only on its own or the core, every skill has an SPDX license and
 `agents/openai.yaml`, Muse's manifest lists every skill, Codex's skill catalog fits its
 budget, no personal path appears anywhere, and every config a skill documents as
 fail-closed ships an example. The lint also fails if any `test_*.py` under `skills/`

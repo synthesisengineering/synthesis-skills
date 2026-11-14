@@ -498,7 +498,8 @@ python3 -m pytest -q tests/ skills/
 ```
 
 It covers the core, every skill's tests, the skill format, budgets and hook latency, and
-a source lint (manifests agree, licenses present, no personal paths). Code must run on
+a source lint (manifests agree, licenses present, every skill in one collection, no
+personal paths). Code must run on
 Python 3.9. On a machine with the plugin installed, `synthesis doctor` checks the
 installed side. [AGENTS.md](AGENTS.md) describes both, and the release process.
 

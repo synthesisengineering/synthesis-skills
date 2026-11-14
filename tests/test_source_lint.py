@@ -1,7 +1,8 @@
 """Source lint (R7.3, R7.4, R4.3): what must hold in the repository before anything ships.
 
 The plugin manifests agree; the CHANGELOG names the version; skill names are unique and match
-their folders; every `depends_on` resolves; every skill carries an SPDX license and
+their folders; every `depends_on` resolves; every skill is in exactly one collection and depends
+only on its own or the core; every skill carries an SPDX license and
 `agents/openai.yaml`; Muse's manifest lists every skill; Codex's skill catalog fits its
 budget; no personal path appears anywhere; nothing needs PyYAML (one standard-library YAML
 reader serves everything); and every config a skill documents as fail-closed ships an

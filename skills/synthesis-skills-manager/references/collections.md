@@ -53,9 +53,9 @@ the action sheet are in the core, because work in every collection brings the pr
 decisions and remaining actions; agent guardrails is in the core, because its guards span
 every collection's work; adversarial review is in project management, with autopilot,
 which runs its rounds and which it links into; the machines (Mac sync, machine sync,
-fleet secrets and the repo guard) are with the daily rituals in chief of staff, which
-runs them; executive communication is writing; concise messaging is with quick answers
-in chief of staff. Autopilot declares as dependencies only what it always uses: the
+fleet secrets and the repo guard) are in chief of staff, beside the daily rituals that
+Mac sync and machine sync depend on; executive communication is writing; concise
+messaging is with quick answers, which depends on it, in chief of staff. Autopilot declares as dependencies only what it always uses: the
 fact-checking and writing-craft skills apply when its task is writing, as its references
 say, so they are no longer in its `depends_on`.
 
