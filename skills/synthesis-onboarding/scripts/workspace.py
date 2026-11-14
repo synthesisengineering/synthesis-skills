@@ -229,8 +229,9 @@ def new_workspace(name: str, remote: str = "", dry_run: bool = False) -> list:
     if remote and not _git(["remote", "get-url", "origin"], repo).stdout.strip():
         _git(["remote", "add", "origin", remote], repo)
     lines = [f"{repo.name}: {'created ' + str(len(written)) + ' files' if written else 'already set up'}"]
-    lines += [f"{repo.name}: name your own phrases under confidentiality.backstop_phrases in .agents/knowledge-base.yaml;"
-              " the sharing scan refuses to run until it has one"] if ".agents/sharing-policy.md" in written else []
+    lines += [f"{repo.name}: .agents/sharing-policy.md is the sharing policy's template, not adopted, so edits ship as before;"
+              " to adopt it, fill in its parts marked Yours and run synthesis-kb-edit's kb_config.py adopt-sharing-policy"
+              " with a --phrase for each of your own phrases"] if ".agents/sharing-policy.md" in written else []
     return lines + link_workspace(repo.parent, repo, adopt=False)
 
 

@@ -168,8 +168,13 @@ def validate_config(config: Any) -> list[str]:
         visible = confidentiality.get("visible_to")
         if not isinstance(visible, str) or not visible.strip():
             add_error(errors, "confidentiality.visible_to", "expected a non-empty string")
-        if not string_list(confidentiality.get("backstop_phrases", [])):  # the organization's own; the plugin ships none
-            add_error(errors, "confidentiality.backstop_phrases", "expected a list of phrases, empty until named")
+        phrases = confidentiality.get("backstop_phrases", [])  # the organization's own; the plugin ships none
+        if not string_list(phrases):
+            add_error(errors, "confidentiality.backstop_phrases", "expected a list of phrases")
+        elif confidentiality.get("sharing_policy") and not phrases:  # the scan runs on every edit and needs them
+            add_error(errors, "confidentiality.backstop_phrases", "the contract names a sharing policy and no phrases, so "
+                      "every edit is held: list at least one of this organization's own phrases here, or remove "
+                      "confidentiality.sharing_policy")
 
     if not isinstance(config.get("notes"), str):
         add_error(errors, "notes", "expected a string")
@@ -253,56 +258,65 @@ def load_config(repo: Path, config_path: Path | None) -> tuple[Path, dict[str, A
     return path, data
 
 
-def adopt_sharing_policy(repo: Path) -> tuple[int, list[str]]:
-    """Write the policy template where the contract says, never over a file that exists, and add the sharing keys the
-    contract lacks, in place, keeping every line it has. Nothing is written unless both can be; nothing is committed."""
+def adopt_sharing_policy(repo: Path, phrases: list[str]) -> tuple[int, list[str]]:
+    """Name the sharing policy in the contract with the organization's own phrases, writing the template where the
+    contract says unless a file is there. The contract changes in place, keeping every line, and only when what it would
+    become is valid, so adopting never leaves a policy named with no phrases. Nothing is committed."""
     path, config = load_config(repo, None)
-    errors = validate_config(config)
-    if errors:
-        return 1, [f"ERROR {error}" for error in errors] + ["nothing adopted: the contract must be valid first"]
-    block, text = config["confidentiality"], path.read_text(encoding="utf-8")
-    relative = block.get("sharing_policy") or POLICY
+    block = config.get("confidentiality") if isinstance(config, dict) else None
+    if not isinstance(block, dict):
+        return 1, [f"ERROR {error}" for error in validate_config(config)] + ["nothing adopted: the contract must be valid first"]
+    relative, listed = block.get("sharing_policy") or POLICY, block.get("backstop_phrases") or []
+    if bool(phrases) == bool(listed):  # one list of phrases, given now or already in the contract
+        return 1, [f"nothing adopted: {CONFIG_RELATIVE} lists phrases already; change them there, and run this again without"
+                   " --phrase" if listed else "nothing adopted: a named policy runs the phrase scan on every edit, and the"
+                   " scan needs this organization's own phrases (the plugin ships none): run this again with --phrase"
+                   " PHRASE for each one"]
     target = resolve_inside(repo, relative)  # a path that escapes the repository raises before anything is written
-    lacking = {key: value for key, value in (("sharing_policy", json.dumps(relative)), ("backstop_phrases", "[]"))
-               if key not in block}
-    by_hand = [f"{CONFIG_RELATIVE}: its confidentiality mapping is not in block form, so nothing was adopted: add "
-               + " and ".join(f"{key}: {value}" for key, value in lacking.items()) + " to it by hand, then run this again"]
-    if lacking:
+    adding = ([f"sharing_policy: {json.dumps(relative)}"] if "sharing_policy" not in block else []) + (
+        ["backstop_phrases:"] + [f"  - {json.dumps(phrase, ensure_ascii=False)}" for phrase in phrases] if phrases else [])
+    text = path.read_text(encoding="utf-8")
+    if adding:
         header = re.search(r"^confidentiality:[ \t]*(?:#.*)?\n", text, flags=re.M)
         child = header and re.compile(r"^([ \t]+)[^\s#]", flags=re.M).search(text, header.end())  # its first key
         if not child:
-            return 1, by_hand
-        text = text[:header.end()] + "".join(f"{child.group(1)}{k}: {v}\n" for k, v in lacking.items()) + text[header.end():]
-        try:  # read back as the skills will read it, before anything is written
-            check = yamlish.load(text)["confidentiality"]
-        except (ValueError, KeyError, TypeError):
-            return 1, by_hand
-        if check.get("sharing_policy") != relative or "backstop_phrases" not in check:
-            return 1, by_hand
+            return 1, [f"nothing adopted: the confidentiality mapping in {CONFIG_RELATIVE} is not in block form; add these"
+                       " lines to it by hand:"] + [f"  {line}" for line in adding]
+        text = text[:header.end()] + "".join(f"{child.group(1)}{line}\n" for line in adding) + text[header.end():]
+    try:  # read back as the skills will read it, before anything is written
+        result = yamlish.load(text)
+    except ValueError as exc:
+        return 1, [f"nothing adopted: the contract it would write cannot be read ({exc})"]
+    errors = validate_config(result)
+    if errors or (result["confidentiality"].get("sharing_policy"), result["confidentiality"].get("backstop_phrases")) != (
+            relative, phrases or listed):
+        return 1, [f"ERROR {error}" for error in errors] + ["nothing adopted: the contract it would write is not valid"]
     if target.exists():
         lines = [f"{relative}: kept as it is (it exists)"]
     else:
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(TEMPLATE.read_text(encoding="utf-8"), encoding="utf-8")
         lines = [f"{relative}: written from the template"]
-    if lacking:
+    if adding:
         path.write_text(text, encoding="utf-8")
-    return 0, lines + [f"{CONFIG_RELATIVE}: " + ("added confidentiality." + " and confidentiality.".join(lacking) if lacking
-                                                  else "names the policy and the phrase list already"),
-                       "next: fill in the policy's parts marked Yours, and list this organization's own phrases under "
-                       "confidentiality.backstop_phrases: the plugin ships none, and the phrase scan refuses to run "
-                       "until the list holds one. Nothing was committed."]
+    count = len(phrases or listed)
+    return 0, lines + [f"{CONFIG_RELATIVE}: names the policy{'' if adding else ' already'}, with {count} phrase"
+                       f"{'' if count == 1 else 's'}; every edit runs the phrase scan",
+                       "next: fill in the policy's parts marked Yours, then review and ship this change; nothing was "
+                       "committed"]
 
 
 def main(argv: list[str] | None = None) -> int:
     argv = sys.argv[1:] if argv is None else argv
-    adopting = argv[:1] == ["adopt-sharing-policy"]  # kb_config.py adopt-sharing-policy <repo-root>
+    adopting = argv[:1] == ["adopt-sharing-policy"]  # kb_config.py adopt-sharing-policy <repo-root> --phrase PHRASE
     parser = argparse.ArgumentParser(
-        description="Validate and query .agents/knowledge-base.yaml; with adopt-sharing-policy first, write the sharing"
-                    " policy's template where the contract says and add the contract's two sharing keys."
+        description="Validate and query .agents/knowledge-base.yaml; with adopt-sharing-policy first, name the sharing"
+                    " policy in the contract with the phrases given, writing its template where the contract says."
     )
     parser.add_argument("repo", type=Path, help="repository root")
-    if not adopting:
+    if adopting:
+        parser.add_argument("--phrase", action="append", default=[], help="one of the organization's own phrases; repeat it")
+    else:
         parser.add_argument("--config", type=Path, help="alternate config path")
         parser.add_argument("--check-paths", action="store_true")
         parser.add_argument("--resolve", action="append", default=[], metavar="PATH")
@@ -315,7 +329,7 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     try:
         if adopting:
-            code, lines = adopt_sharing_policy(repo)
+            code, lines = adopt_sharing_policy(repo, list(dict.fromkeys(phrase.strip() for phrase in args.phrase)))
             print("\n".join(lines))
             return code
         path, config = load_config(repo, args.config)

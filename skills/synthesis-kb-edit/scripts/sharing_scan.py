@@ -56,7 +56,7 @@ def read_contract(repo: Path):
                       "kb_config.py adopt-sharing-policy <repo-root>")
     if not kb_config.resolve_inside(repo, policy).is_file():
         raise Refused(f"the sharing policy {policy} named in the contract is not there")
-    if not block.get("backstop_phrases"):
+    if not block.get("backstop_phrases"):  # the contract check holds this too: never a scan with nothing to look for
         raise Refused(f"{contract} names no backstop phrases (confidentiality.backstop_phrases): the plugin ships "
                       "none, so list this organization's own there; nothing was scanned")
     return PurePosixPath(config["bundle_path"]).as_posix(), PurePosixPath(policy).as_posix(), block["backstop_phrases"]
