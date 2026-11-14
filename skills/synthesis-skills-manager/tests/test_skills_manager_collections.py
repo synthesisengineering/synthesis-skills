@@ -155,10 +155,15 @@ def test_the_muse_manifest_lists_exactly_the_folders_skills(built):
 
 
 def test_each_description_names_the_whole_set_as_the_way_to_the_guards_board_and_rituals(built):
+    """In each manifest, and in the marketplace entry, which is what Claude Code shows of a plugin that is not
+    installed yet and in its details (the probe of 2026-11-14)."""
+    listed = {entry["name"]: entry["description"] for entry in json.loads(built[".claude-plugin/marketplace.json"])["plugins"]}
     for name in FIVE:
         said = manifest(built, name, ".claude-plugin/plugin.json")["description"]
         assert [word for word in ("guards", "board", "rituals", "synthesis-skills", WHOLE) if word not in said] == []
         assert ("core collection" in said) == (name != "core")  # the other four say they build on it
+        assert {manifest(built, name, path)["description"] for path in collections.MANIFESTS} == {said}
+        assert listed[SPEC["collections"][name]["name"]] == said
 
 
 def test_the_two_marketplaces_list_the_five_each_from_its_folder_the_core_first(built):

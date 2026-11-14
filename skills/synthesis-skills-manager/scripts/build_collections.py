@@ -115,12 +115,17 @@ def hooked(value) -> bool:
     return isinstance(value, list) and any(map(hooked, value))
 
 
+def described(spec: dict, name: str) -> str:
+    """A collection's description, in its manifests and its marketplace entry, where a harness shows it: what it holds,
+    then that it builds on the core (the core's own leaves that out), then what it lacks and where the whole set is."""
+    return " ".join(part for part in (spec["collections"][name]["description"],
+                                      spec.get("with_core") if name != spec["core"] else "", spec.get("without")) if part)
+
+
 def manifests(spec: dict, name: str, skills: list, whole: dict) -> dict:
-    """{path: manifest} of one collection, at the whole set's version: what it holds, then that it builds on the core
-    (the core's own leaves that out), then what it lacks and where the whole set is."""
+    """{path: manifest} of one collection, at the whole set's version."""
     entry, version, core = spec["collections"][name], whole.get("version"), spec["collections"][spec["core"]]["name"]
-    said = " ".join(part for part in (entry["description"], spec.get("with_core") if name != spec["core"] else "",
-                                      spec.get("without")) if part)
+    said = described(spec, name)
     shared = {key: whole[key] for key in SHARED if key in whole}
     head = {"name": entry["name"], "version": version, "description": said, **shared,
             "keywords": entry.get("keywords", []), "skills": "./skills/"}
@@ -143,7 +148,7 @@ def marketplaces(spec: dict, whole: dict) -> dict:
     return {MARKETPLACES[0]: {
         "$schema": "https://anthropic.com/claude-code/marketplace.schema.json", "name": market["name"],
         "description": market.get("description", ""), "owner": market.get("owner", {}),
-        "plugins": [{"name": entries[name]["name"], "description": entries[name]["description"], "source": f"./{name}",
+        "plugins": [{"name": entries[name]["name"], "description": described(spec, name), "source": f"./{name}",
                      "category": entries[name].get("category", "development"), **facts} for name in order(spec)]},
             MARKETPLACES[1]: {
         "name": market["name"], "interface": {"displayName": market.get("displayName", market["name"])},
