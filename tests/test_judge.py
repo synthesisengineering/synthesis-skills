@@ -5,7 +5,8 @@ cloud second opinion as a provider's messages endpoint does. No real model runs 
 the code to (2026-11-14): the local judge by default and a cloud model only where it is unsure; on this reversible
 check the model decides a list hit; when no judge can answer, the check behaves exactly as today; the list stays as
 trigger and backstop; cloud verdicts capped at $10 a month, after which the local judge decides alone and the
-principal is told once.
+principal is told once. This step reads list hits only (the coordinator's scope of 2026-11-14, after blind labels of
+the recorded hits): adding holds to replies the list passes comes later, with its own gate.
 """
 
 import hashlib
@@ -268,13 +269,13 @@ def test_past_the_monthly_cap_the_local_judge_decides_alone_and_the_principal_is
     spend = isolated_home / "state" / "judge" / "spend.json"
     spend.parent.mkdir(parents=True, exist_ok=True)
     spend.write_text(json.dumps({"month": time.strftime("%Y-%m"), "usd": 9.9999}), encoding="utf-8")
-    fake.cloud, fake.local = _cloud(verdict="pass", rule="none", span=""), _local(sure=False, span="circle back to the")
+    fake.cloud, fake.local = _cloud(verdict="pass", rule="none", span=""), _local(sure=False, span="for now")
     config = _config(fake, cloud=True)
-    payload = {"last_assistant_message": "The parser is fixed. I will circle back to the importer tomorrow."}
+    payload = {"last_assistant_message": "The parser is fixed. I will leave the importer for now."}
     told = reply_check.check(payload, config)
     assert [c["path"] for c in fake.calls] == ["/api/chat"]  # past the cap, no cloud request
     assert "lazy-shortcut phrasing" in told and "monthly cap" in told and "$10" in told and "tell the principal" in told.lower()
-    again = reply_check.check({"last_assistant_message": "Fixed the parser. I will circle back to the exporter later."}, config)
+    again = reply_check.check({"last_assistant_message": "Fixed the parser. The exporter waits, for now."}, config)
     assert "lazy-shortcut phrasing" in again and "monthly cap" not in again  # said once a month
     spend.write_text(json.dumps({"month": "2000-01", "usd": 50.0, "told": True}), encoding="utf-8")
     fake.local = _local(sure=False)
@@ -325,22 +326,26 @@ def test_a_policy_change_is_a_new_runtime(tmp_path):
 EXAMPLE = re.compile(r'^- (Hold|Pass), `([a-z_-]+)`(, unsure)?\. Reply: "(.+?)" Span: "(.*?)"\. Why: (.+)$', re.M)
 
 
-def test_the_shortcut_policy_is_versioned_and_holds_its_examples_to_its_own_rules():
+def test_the_shortcut_policy_turns_on_whose_the_held_back_action_is():
+    """Blind labels of 70 recorded list hits found 7 real shortcuts: what decides is whether the action a reply holds
+    back needs the principal's code or consent, or sits inside the agent's delegated authority. The policy says so,
+    with worked examples on both sides that are each a list hit, the only replies the judge reads, and stays short
+    enough for a mid-sized local model to answer inside the hook's time."""
     judge = _judge()
     policy = judge.load_policy("shortcut-phrasing")
-    assert re.fullmatch(r"\d+", policy.version)
-    categories = set(json.loads(CATALOG.read_text(encoding="utf-8"))["categories"])
-    assert categories <= set(policy.holds)  # every costume the catalog names is a rule the judge may hold under
+    catalog = json.loads(CATALOG.read_text(encoding="utf-8"))
+    assert int(policy.version) >= 3 and len(policy.text) < 6000
+    assert "consent" in policy.text and "code" in policy.text and "delegated" in policy.text
+    assert set(catalog["categories"]) <= set(policy.holds)  # every costume the catalog names is a rule the judge may hold under
     assert {"none", "discussion", "real_boundary", "principals_choice", "other_meaning"} <= set(policy.passes)
+    listed = [entry["phrase"] for entry in catalog["phrases"] if entry.get("match") == "literal"]
     examples = EXAMPLE.findall(policy.text)
-    assert len([e for e in examples if e[0] == "Hold"]) >= 8 and len([e for e in examples if e[0] == "Pass"]) >= 8
+    assert len([e for e in examples if e[0] == "Hold"]) >= 6 and len([e for e in examples if e[0] == "Pass"]) >= 6
     for kind, rule, _, reply, span, _ in examples:
         assert rule in (policy.holds if kind == "Hold" else policy.passes), rule
         assert span in reply and (span or kind == "Pass"), reply
-    held_without_a_listed_word = [e for e in examples if e[0] == "Hold" and not reply_check.shortcut_hits(e[3], [])]
-    passed_with_a_listed_word = [e for e in examples if e[0] == "Pass" and reply_check.shortcut_hits(e[3], [])]
-    assert len(held_without_a_listed_word) >= 3 and len(passed_with_a_listed_word) >= 3  # what a list cannot tell
-    assert all(reply_check.CANDIDATE.search(e[3].lower()) for e in held_without_a_listed_word)  # each reaches the judge
+        assert reply_check.shortcut_hits(reply, listed), reply
+    assert {e[1] for e in examples if e[0] == "Pass"} >= {"principals_choice", "other_meaning", "real_boundary", "discussion"}
 
 
 # ---- the shortcut check, wired ----------------------------------------------------------------------------------
@@ -361,21 +366,19 @@ def test_a_list_hit_the_judge_confirms_is_sent_back_with_its_reason_and_span(fak
     assert "leave the importer for now" in reason and "puts the importer off with no blocker named" in reason
 
 
-def test_a_courteous_deferral_with_no_list_hit_is_sent_back_when_it_reaches_the_judge(fake):
-    reply = "The parser is done. The importer is a good candidate for a later pass."
-    assert reply_check.shortcut_hits(reply, []) == [] and reply_check.check({"last_assistant_message": reply}, {}) is None
-    fake.local = _local(span="The importer is a good candidate for a later pass",
-                        reason="puts the importer off with nothing named that ends the wait")
-    reason = reply_check.check({"last_assistant_message": reply}, _config(fake))
-    assert reason and "lazy-shortcut phrasing" in reason and "a good candidate for a later pass" in reason
-    assert "nothing named that ends the wait" in reason
-
-
-def test_a_turn_end_with_no_candidate_text_never_calls_the_judge(fake):
-    fake.local = _local()
-    assert reply_check.check({"last_assistant_message": "Fixed the parser; all 412 tests pass and the commit is on "
-                                                       "the branch."}, _config(fake)) is None
+@pytest.mark.parametrize("reply", ["Fixed the parser; all 412 tests pass and the commit is on the branch.",
+                                   "The parser is done. The importer is a good candidate for a later pass."])
+def test_a_reply_with_no_list_hit_never_reaches_the_judge(fake, reply):
+    fake.local = _local(span="The importer is a good candidate for a later pass")
+    assert reply_check.check({"last_assistant_message": reply}, _config(fake)) is None
     assert fake.calls == []
+
+
+def test_a_pass_the_judge_is_not_sure_of_never_clears_a_list_hit(fake):
+    """An unsure pass is no reading to rely on: the hit holds as it does without a judge."""
+    lazy = {"last_assistant_message": "I'll handle the rest for now and revisit later."}
+    fake.local = _local(verdict="pass", rule="none", span="", sure=False)
+    assert reply_check.check(lazy, _config(fake)) == reply_check.check(lazy, {}) and len(fake.calls) == 1
 
 
 def test_when_no_judge_answers_the_list_decides_exactly_as_today(fake):
@@ -384,7 +387,7 @@ def test_when_no_judge_answers_the_list_decides_exactly_as_today(fake):
     lazy = {"last_assistant_message": "I'll handle the rest for now and revisit later."}
     assert reply_check.check(lazy, config) == reply_check.check(lazy, {})
     courteous = {"last_assistant_message": "The parser is done. The importer is a good candidate for a later pass."}
-    assert reply_check.check(courteous, config) is None and len(fake.calls) == 2
+    assert reply_check.check(courteous, config) is None and len(fake.calls) == 1  # no list hit: never asked
 
 
 def test_a_malformed_judge_section_is_said_and_the_list_still_decides():
