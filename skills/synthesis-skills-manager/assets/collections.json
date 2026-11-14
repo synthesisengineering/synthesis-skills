@@ -1,5 +1,5 @@
 {
-  "about": "The five collections that scripts/build_collections.py builds from the flat skills/ folder, each a plugin of its own without hooks, which the release publishes as the collections branch beside the whole set. A skill names its collection in its SKILL.md frontmatter as metadata.category; awaiting_room names it instead while that SKILL.md has no room for the line under 8,000 bytes. A collection carries the runtime's YAML reader where its scripts read it; needs_the_whole_set names each script that needs more of the runtime, and why, and each says so in one line. A collection's manifests say what it holds, then with_core (every collection but the core), then without. See references/collections.md.",
+  "about": "The five collections that scripts/build_collections.py builds from the flat skills/ folder, each a plugin of its own without hooks, which the release publishes as the collections branch beside the whole set. A skill names its collection in its SKILL.md frontmatter as metadata.category; awaiting_room names it instead while that SKILL.md has no room for the line under 8,000 bytes. A collection carries the runtime's YAML reader where its scripts read it; needs_the_whole_set names each script that needs more of the runtime, and why, and each says so in one line. optional_loads names each path a script takes into another collection's skill, and what it does without it. A collection's manifests say what it holds, then with_core (every collection but the core), then without. See references/collections.md.",
   "core": "core",
   "branch": "collections",
   "marketplace": {
@@ -66,6 +66,11 @@
     "skills/synthesis-onboarding/scripts/workspace.py": "it brings a workspace onto a Mac through setup.py",
     "skills/synthesis-project-management/scripts/codex_dispatch.py": "it finds Codex with the runtime's doctor",
     "skills/synthesis-skills-manager/scripts/release.py": "it releases the whole set, from a checkout of it"
+  },
+  "optional_loads": {
+    "skills/synthesis-daily-rituals/scripts/pr_queue_scan.py": {
+      "synthesis-bitbucket": "without it, each Bitbucket repository is reported unscanned, with the path it looked at"
+    }
   },
   "awaiting_room": {
     "synthesis-git-hooks": "engineering",

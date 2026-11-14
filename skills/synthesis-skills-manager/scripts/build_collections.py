@@ -210,6 +210,18 @@ def needs(files: dict) -> dict:
     return {path: (start(path, {path}), read[path][1]) for path in read}
 
 
+def reaches(path: str, data: bytes, names: set) -> set:
+    """The other skills whose folders a file names as a path in a string of its code (R1-20): a string that is a skill's
+    name, or holds it between slashes. A docstring says where something is and loads nothing."""
+    tree, found = ast.parse(data.decode("utf-8", "replace")), set()
+    docs = {id(node.body[0].value) for node in ast.walk(tree) if isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef,
+            ast.AsyncFunctionDef)) and node.body and isinstance(node.body[0], ast.Expr) and isinstance(node.body[0].value, ast.Constant)}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Constant) and isinstance(node.value, str) and id(node) not in docs:
+            found |= {name for name in names - {path.split("/")[1]} if f"/{name}/" in f"/{node.value}/"}
+    return found
+
+
 def carry(need: dict) -> set:
     """The runtime modules a collection carries: those of CARRIABLE that any of its Python files imports."""
     return {module for top, late in need.values() for module in top | {module for module, _ in late} if module in CARRIABLE}
@@ -260,6 +272,7 @@ def verify(repo: Path, files: dict, commit: bool = False) -> list:
     home, found = homes(spec, skills)
     found += bounds(spec, skills, home)
     core, whole_set, scripts = spec["collections"][spec["core"]]["name"], spec.get("needs_the_whole_set") or {}, set()
+    optional, taken = spec.get("optional_loads") or {}, set()
     found += [f"synthesis/{module}.py imports {other}, so no collection can carry it alone" for module in CARRIABLE
               if f"synthesis/{module}.py" in runtime for other in impure(runtime[f"synthesis/{module}.py"])]
     for name, entry in spec["collections"].items():
@@ -278,6 +291,12 @@ def verify(repo: Path, files: dict, commit: bool = False) -> list:
             found += [f"{name}/{path}: imports synthesis.{module} inside a function, with nothing to catch its absence, so "
                       f"in {name} that call ends in a traceback" for module, caught in sorted(late)
                       if not caught and module not in modules]
+        for path in sorted(need):  # a path into another skill's folder finds it beside the script, or is named (R1-20)
+            for other in sorted(reaches(path, skills[path], set(home))):
+                taken.add((path, other))
+                found += [f"{name}/{path}: reaches {other}'s folder, which is in {home[other]}, not beside it in {name}; name "
+                          "the load under optional_loads with what the script does without it, or keep the two in one "
+                          "collection"] if home[other] != name and path not in whole_set and other not in optional.get(path, {}) else []
         for path, data in sorted(held.items()):
             parts = path.split("/")
             found += [f"{name}/{path}: holds a hook"] * ("hooks" in parts or parts[-1] == "hooks.json")
@@ -315,6 +334,8 @@ def verify(repo: Path, files: dict, commit: bool = False) -> list:
             found.append(f"{name}/{MANIFESTS[2]}: does not list exactly the skills of {name}")
     found += [f"{LIST}: needs_the_whole_set names {path}, which is no script of any collection" for path in sorted(whole_set)
               if path not in scripts]
+    found += [f"{LIST}: optional_loads names {other} for {path}, which does not reach it" for path in sorted(optional)
+              for other in sorted(optional[path]) if (path, other) not in taken]
     found += [f"{path}: in no collection's folder" for path in sorted(files)
               if path.split("/")[0] not in spec["collections"] and path not in MARKETPLACES]
     wanted = [(spec["collections"][name]["name"], f"./{name}") for name in order(spec)]
