@@ -320,5 +320,5 @@ def test_two_macs_of_one_host_name_keep_two_files_and_a_wrong_shaped_or_linked_f
     elsewhere.write_text(json.dumps({"date": "2026-11-11", "direction": "day-end", "workspace": "alpha"}) + "\n", encoding="utf-8")
     (repo / "rituals" / "mac-c.jsonl").symlink_to(elsewhere)
     records, bad = rituals.read()
-    assert [r["date"] for r in records] == ["2026-11-12"] and bad == 1
+    assert [r["date"] for r in records] == ["2026-11-12"] and bad == 2  # the wrong-shaped line, and the link not read
     assert rituals.last(records, "alpha")["date"] == "2026-11-12"

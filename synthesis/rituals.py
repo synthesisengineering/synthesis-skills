@@ -25,15 +25,37 @@ def state_dir() -> Path:
     return Path(os.environ.get("RITUAL_STATE_DIR") or paths.home() / "rituals")
 
 
+def _machine() -> str:
+    """This machine's own id: the Mac's platform UUID, or Linux's machine-id; "" when neither can be read."""
+    import subprocess
+    try:
+        if sys.platform == "darwin":
+            out = subprocess.run(["ioreg", "-rd1", "-c", "IOPlatformExpertDevice"], capture_output=True, text=True,
+                                 timeout=10).stdout
+            return next((line.split('"')[-2] for line in out.splitlines() if "IOPlatformUUID" in line), "")
+        return Path("/etc/machine-id").read_text(encoding="utf-8").strip()
+    except (OSError, subprocess.SubprocessError, IndexError):
+        return ""
+
+
 def host() -> str:
     """This Mac's name for its file of ritual history: `SYNTHESIS_HOST`, or the host name, with what a file name cannot
-    hold folded to "-" and a short hash of the name as given, so two names that fold alike stay two files."""
+    hold folded to "-" and a short hash of the name and the machine's own id, so two Macs that share a name, or two
+    names that fold alike, keep two files (5.20.0's second review, N3)."""
     import hashlib
     import re
     import socket
-    name = os.environ.get("SYNTHESIS_HOST") or socket.gethostname()
+    given = os.environ.get("SYNTHESIS_HOST")
+    name = given or socket.gethostname()
     folded = re.sub(r"[^A-Za-z0-9._-]", "-", name[:-len(".local")] if name.endswith(".local") else name)[:60]
-    return f"{folded or 'unnamed'}-{hashlib.sha256(name.encode('utf-8')).hexdigest()[:8]}"
+    return f"{folded or 'unnamed'}-{hashlib.sha256((name + ('' if given else _machine())).encode('utf-8')).hexdigest()[:8]}"
+
+
+def is_record(row) -> bool:
+    """A ritual record of the shape every view reads: a day, a direction and, where given, text for its workspace and
+    time. A line of another shape is malformed and costs only itself (5.20.0's second review, N9)."""
+    return (isinstance(row, dict) and is_day(row.get("date")) and isinstance(row.get("direction"), str) and row["direction"]
+            and all(isinstance(row.get(k, ""), str) for k in ("workspace", "ts", "mode", "outcome")))
 
 
 def hosts_folders() -> list[Path]:
@@ -52,6 +74,8 @@ def read() -> tuple[list[dict], int]:  # (records, malformed lines): a bad line 
     rows, seen = [], set()
     for path in [state_dir() / "history.jsonl"] + [f for d in hosts_folders() for f in sorted(d.glob("*.jsonl"))]:
         try:
+            if path.is_symlink() or (path.is_file() and path.stat().st_size > 64 * 1024 * 1024):
+                raise OSError("a link, or over 64 MB: not read")
             lines = path.read_bytes().splitlines() if path.is_file() else []
         except OSError:
             rows.append(None)
@@ -64,7 +88,7 @@ def read() -> tuple[list[dict], int]:  # (records, malformed lines): a bad line 
                 rows.append(json.loads(line.decode("utf-8")))
             except ValueError:  # UnicodeDecodeError is one
                 rows.append(None)
-    good = [r for r in rows if isinstance(r, dict) and r.get("date") and r.get("direction")]
+    good = [r for r in rows if is_record(r)]
     return good, len(rows) - len(good)
 
 
