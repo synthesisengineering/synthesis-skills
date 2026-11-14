@@ -39,7 +39,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   today is refused and rule 16 that a `NOT CHECKED` line is said first, never read as all clear; waiting rule 9 says
   a message to a person is a wait; message guard rules 16 and 17 say that an address that can change never goes to a
   person and that a time in a message rests on a fresh calendar read.
-- **The browser guard holds Return on every page of facebook.com, instagram.com and www.linkedin.com.** It knew
+- **The browser guard holds Return on every page of facebook.com, instagram.com and linkedin.com.** It knew
   www.messenger.com and LinkedIn's `/messaging`, but Messenger also runs inside facebook.com, in its own page and in
   chat pop-ups on every other page, Return in a comment box posts in the person's name, and LinkedIn's messages open
   in an overlay on every page. A page cannot show which box has the focus. Measured first, over 30 days of recorded

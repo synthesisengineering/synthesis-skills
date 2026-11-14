@@ -448,10 +448,9 @@ opened `linkedin.com/...`, `uk.linkedin.com` or `m.me/...` pressed Return with n
   (with `instagr.am`; `instagram`), **linkedin.com** (`linkedin`) **and x.com** (with `twitter.com`; `x`) counts too,
   since 5.21.0: Messenger runs in chat pop-ups on every page of facebook.com, LinkedIn's messages open in an overlay
   on every page and X's can open in a drawer beside its other pages, and Return in a comment box posts in the
-  principal's name. A page cannot show which box has
-  the focus, so on any of these pages Return waits for a code, a search box's included, and so does a click with no
-  summary. A page of facebook.com outside `/messages` is both `facebook` and `messenger`, since a pop-up may hold the
-  focus: a rule that names either holds there.
+  principal's name. A page cannot show which box has the focus, so on any of these pages Return waits for a code, a
+  search box's included, and so does a click with no summary. A page of facebook.com outside `/messages` is both
+  `facebook` and `messenger`, since a pop-up may hold the focus: a rule that names either holds there.
 - **Email:** Gmail (`mail.google.com`) and Outlook on the web (`outlook.office.com`, `outlook.office365.com`,
   `outlook.live.com`, and `outlook.cloud.microsoft`, its new address), under the email rules.
 
@@ -485,8 +484,8 @@ In any app or browser page, an action whose summary starts with a sending verb (
 publishes, shares, invites, responds, comments, mentions, announces, notifies, reminds, schedules, delivers,
 emails, texts), clicks or presses (on) Send, or does something "to send" waits too. On the 45 days of summaries this
 held all 13 real sends and nothing else. Words typed in a messaging app or site, or in a call that sends, pass
-the register scan as they are typed (on the four sites' other pages a call that only types goes on a code, as
-above); typed text cannot carry a named link, so the signature-link rule does not apply to it.
+the register scan as they are typed (on the four sites' other pages, a hit in a call that only types waits for a
+code, as above); typed text cannot carry a named link, so the signature-link rule does not apply to it.
 
 **Which app.** An `app_*` call names its app. `computer_batch` and the teach tools act on whatever is in front, so
 the guard counts them as acting in every messaging app the session asked to control: it records the apps each
