@@ -209,7 +209,6 @@ def test_return_on_a_messaging_site_waits_for_the_code(tmp_path, url):
 @pytest.mark.parametrize("url, step", [
     ("https://docs.google.com/document/d/x", RETURN),                         # not a messaging site
     ("https://mail.google.com/mail/u/0/#inbox", RETURN),                      # Return writes a line in an email
-    ("https://www.linkedin.com/feed/", RETURN),                               # outside LinkedIn's messages
     ("https://chat.google.com/room/AAA", ("computer", {"action": "key", "text": "shift+Return",
                                                        "action_summary": "Starts a new line"})),
 ])
@@ -217,12 +216,14 @@ def test_return_that_writes_a_line_or_is_elsewhere_needs_no_code(tmp_path, url, 
     assert guards.check(CHROME, _steps(step), CONFIG, session=_on(tmp_path, 7, tab7=url)) is None
 
 
-@pytest.mark.parametrize("url", ["https://www.facebook.com/", "https://facebook.com/groups/1/",
+@pytest.mark.parametrize("url", ["https://www.facebook.com/", "https://facebook.com/groups/1/", "https://www.linkedin.com/feed/",
                                  "https://www.facebook.com/search/top?q=x", "https://www.instagram.com/p/x/"])
-def test_every_facebook_and_instagram_page_holds_return(tmp_path, url):
+def test_every_facebook_instagram_and_linkedin_page_holds_return(tmp_path, url):
     """2026-11-14: the guard knew www.messenger.com, but Messenger also runs inside facebook.com, in its own page and in
     chat pop-ups on every page, and Return in a comment box posts in the principal's name. A page cannot show which box
-    has the focus, so every page of the two sites holds Return, a search box's included."""
+    has the focus, so every page of the two sites holds Return, a search box's included. LinkedIn's messages open in
+    an overlay on every page too; over 30 days of recorded browser calls, none pressed Return on LinkedIn outside
+    `/messaging` (30 calls there) or anywhere on facebook.com (10), so holding them costs nothing measured."""
     reason = guards.check(CHROME, _steps(RETURN), CONFIG, session=_on(tmp_path, 7, tab7=url))
     assert "approve" in reason and "sends in the browser (" in reason
 
