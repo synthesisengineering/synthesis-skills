@@ -1077,10 +1077,12 @@ ROOT = Path(__file__).resolve().parents[1]
 # own declarations keep the runtime, nothing removed and exit 1, 6; a declaration made meanwhile, 5).
 # The coordinator's ruling on review round 2 (protective automation fails closed): a user-level guard covers only with
 # the fail-closed tail. _runs_as's condition and docstring change in place: no line more.
+# 5.22.0, the guard's time: guards.py 2 in _placed (the script's rebinding searched once, not for each character;
+# a 1,700-character heredoc of substitutions had taken the guard 13 s, past the hook's 5).
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # consolidate first).
-CORE_BUDGET = 15097
-PLUGIN_BUDGET = 39740
+CORE_BUDGET = 15099
+PLUGIN_BUDGET = 39742
 
 
 def _lines(files):

@@ -6,6 +6,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
 
 ## [5.22.0] - 2026-11-14
 
+- **The guard judges a long heredoc of substitutions in well under a second** (core). On 2026-11-14 three ordinary
+  commands of 10 to 13 lines, each a `bash` heredoc whose loop held nested `$(...)` substitutions, took the guard 7
+  to 13 seconds, past the hook's 5: Claude Code held them (`onFailure: block`, 5.21.0), and before 5.21.0 a timeout
+  had let such a call through unjudged. The cost was one search over the whole script repeated for each of its
+  characters; it now runs once, with the same result. The three recorded commands now take 0.13 to 0.71 seconds.
+  Tests first.
 - **A public standard for what goes into a shared knowledge base** (`synthesis-kb-edit` 2.1.0). An organization that
   names its knowledge repository gets the general rules by default and keeps only what is its own in its repository.
   `references/sharing-standard.md` sets out two audiences, extraction as the way information goes in, one test for
