@@ -4,6 +4,39 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [5.20.0] - 2026-11-13
+
+- **A durable message travels with the project** (`synthesis-project-management` 3.5.0; the audit of 2026-11-11, gap 6).
+  The board lives on one Mac, so a message no session there had read was lost to a session resuming the project on
+  another. `synthesis handoff` now writes each durable message that no session on this Mac other than its sender has
+  been shown into `projects/<p>/inbox/<message id>.md` and commits it with the records, when the session's claims cover
+  that folder; it counts as carried once its file is committed. A project it cannot carry, a linked `inbox/` and a
+  message over 64 KB are named in the report, and none stops the handoff.
+- **What a project's inbox holds is a record, read on request.** A file in a repository says what its writer made it
+  say, so it never becomes a board message. A session that binds the project (its start, `synthesis resume`,
+  `synthesis use`) is told how many carried messages this Mac has not shown, and a bound session is told at its next
+  prompt when a pull brings new ones; never their words. `synthesis inbox` shows them twenty at a time, each under a
+  line naming its file and its header's sender, its words quoted line by line so none can pass for a board message,
+  once on each Mac.
+- **Ritual history is kept for each host** (`synthesis-daily-rituals` 3.16.0, `synthesis-context-lifecycle` 2.8.0).
+  A record commits nothing. The hourly `synthesis sessions sync` writes this Mac's records of each workspace whole
+  into that workspace's sessions repo as `rituals/<host>.jsonl` (a name two Macs never share: the host name and a hash
+  of it with the machine's own id), commits that file alone and pushes it with the transcripts; a refusal is said and
+  undone and never holds the transcripts back. Every view reads this Mac's log and every host's file, each record
+  once; a link, an unreadable file or a line of another shape costs only itself; and the latest of two records on one
+  day is the later moment, whatever each Mac's time zone. `record` says where its history goes.
+- **The unsaved count names what can be acted on** (`synthesis-agent-conformance` 2.2.1, `synthesis-agent-guardrails`
+  2.9.1). Installed, 5.19.0's line named 54 repositories on one Mac: it read every session's claims, stale ones
+  included, and every local branch, which worktrees share. It now reads live seats' claims and each checkout's own
+  branch (2 of 48 on that Mac), with the repositories read side by side.
+- **How it was checked.** Tests first, and two review rounds by fresh reviewers given the code and no conclusion. The
+  first found four serious defects in the first design: a file in a repository could pose as a peer's message, an
+  arriving session never saw what was carried, a sender's own read hid its message, and a commit per ritual record
+  split two Macs' branches. Both parts were redesigned. The second found four more (carried words could still mimic a
+  board message, a refused history commit held back the transcripts' push, two Macs sharing a host name shared a file,
+  and a session bound before a pull was not told) and nine smaller ones. Every finding was fixed with a test that failed
+  before its fix.
+
 ## [5.19.0] - 2026-11-13
 
 - **A snapshot keeps untracked files, and every snapshot is one commit through a temporary index**
