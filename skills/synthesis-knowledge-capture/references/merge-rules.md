@@ -26,6 +26,12 @@ Contents:
 - **Default to the most private tier that fits.** When unsure whether a fact
   belongs in a shared corpus, it does not. Route it private and flag the
   question.
+- **A shared knowledge base with a sharing policy shares by default.** Where
+  the target's contract names a sharing policy (`confidentiality.sharing_policy`;
+  synthesis-kb-edit's `references/sharing-standard.md`), a fact goes in unless
+  the policy's harm test or one of its classes keeps it out. The default above
+  still holds there for a fact whose tier is unknown, and everywhere for a
+  repository with no sharing policy.
 - **Split neutral from candid.** Org-structure facts (title, reporting line,
   who owns a product) are usually fine for a shared internal KB. Candid framing
   (why someone left, a performance read, negotiation posture) is not — that is

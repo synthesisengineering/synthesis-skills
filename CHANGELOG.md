@@ -28,6 +28,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
 - **Extraction is a binding rule** in `synthesis-kb-edit` (rule 12) and `synthesis-knowledge-capture` 2.1.0 (rule 10):
   each fact goes into the concept that owns it, cited, and every import's review request lists what was left out, by
   class and count, never the facts. Validation runs the phrase scan when the contract names a sharing policy.
+- **Knowledge capture shares by default where a sharing policy decides** (`synthesis-knowledge-capture` rule 6). Where
+  the target's contract names a sharing policy, a fact goes in unless the policy's harm test or one of its classes keeps
+  it out; the most private tier stays the default for a fact whose tier is unknown and for a repository with no policy.
+  The routing reference keeps its earlier bullet word for word and adds this one after it.
 - **Adopting is deliberate, and a new knowledge base ships as before** (`synthesis-onboarding` 3.6.0).
   `setup.py workspace --new NAME` seeds the template at `.agents/sharing-policy.md`, but the new contract names no
   policy, so the phrase scan does not run and edits ship as they always have; the output names the step that adopts it.
