@@ -222,8 +222,9 @@ def test_every_facebook_instagram_and_linkedin_page_holds_return(tmp_path, url):
     """2026-11-14: the guard knew www.messenger.com, but Messenger also runs inside facebook.com, in its own page and in
     chat pop-ups on every page, and Return in a comment box posts in the principal's name. A page cannot show which box
     has the focus, so every page of the two sites holds Return, a search box's included. LinkedIn's messages open in
-    an overlay on every page too; over 30 days of recorded browser calls, none pressed Return on LinkedIn outside
-    `/messaging` (30 calls there) or anywhere on facebook.com (10), so holding them costs nothing measured."""
+    an overlay on every page too. Over 30 days of recorded browser calls, none of the 55 Return presses was on these
+    sites (43 were on other sites, 12 on pages the record does not place); the control counted 320 calls on LinkedIn in
+    all, 290 on its messages and 30 elsewhere, and 10 on facebook.com. Holding them costs nothing measured."""
     reason = guards.check(CHROME, _steps(RETURN), CONFIG, session=_on(tmp_path, 7, tab7=url))
     assert "approve" in reason and "sends in the browser (" in reason
 
