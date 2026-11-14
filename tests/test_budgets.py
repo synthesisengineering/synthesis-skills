@@ -1059,7 +1059,7 @@ ROOT = Path(__file__).resolve().parents[1]
 # context_doctor.py 6: repo_state 3 and cited_entries 3 (without the runtime's claims log or session archive, each says
 # what it cannot tell). local_messaging.py 4: _close 4 (without the runtime's approvals nothing is closed, in one line).
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
-# consolidate first).
+# than consolidate first).
 CORE_BUDGET = 14924
 PLUGIN_BUDGET = 39723
 
