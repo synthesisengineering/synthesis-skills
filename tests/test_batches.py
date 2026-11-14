@@ -79,10 +79,10 @@ def _record(*lines) -> None:
 
 
 def checked(url=E2EE, text=REPLY, tab=7, focused=True, staged=0, server="mcp__claude-in-chrome", script=None, age=1.0,
-            error=False, report=None) -> dict:
+            error=False, report=None, box="found") -> dict:
     """The shipped composer check run on a tab, and its result, in the session's record; the session."""
     ident, at = f"toolu_{time.time_ns()}", (datetime.now(timezone.utc) - timedelta(seconds=age)).isoformat()
-    found = report or json.dumps({"check": "synthesis-composer-1", "url": url, "text": text, "focused": focused,
+    found = report or json.dumps({"check": sends.COMPOSER_MARK, "url": url, "box": box, "text": text, "focused": focused,
                                   "staged": staged, "boxes": 1})
     tabs = f"\n\nTab Context:\n- Executed on tabId: {tab}\n- Available tabs:\n  • tabId {tab}: \"Messenger\" (\"{url}\")"
     _record({"type": "assistant", "timestamp": at, "message": {"role": "assistant", "content": [
@@ -504,12 +504,119 @@ def test_a_check_that_does_not_show_exactly_the_entry_ready_in_a_focused_box_lea
                checked(error=True) if what == "error" else checked(tab=8) if what == "tab" else
                checked(server="mcp__Claude_Browser") if what == "server" else
                checked(report="Done") if what == "unreported" else
-               checked(report=json.dumps({"check": "synthesis-composer-1", "url": E2EE, "text": REPLY, "focused": True,
-                                          "staged": 0}) * 2) if what == "two reports" else checked())
+               checked(report=json.dumps({"check": sends.COMPOSER_MARK, "url": E2EE, "box": "found", "text": REPLY,
+                                          "focused": True, "staged": 0}) * 2) if what == "two reports" else checked())
     if what == "between":
         other_call()
     assert held(send(session)), what
     assert send(checked()) is None  # the entry was not spent by it
+
+
+@pytest.mark.parametrize("text, entry_text, goes", [
+    (REPLY + "\n", REPLY, True),                                                   # the one trailing break Lexical adds
+    (REPLY, REPLY, True),
+    ("First paragraph.\n\nSecond.\n", "First paragraph.\n\nSecond.", True),        # shift+Enter breaks read as \n inside
+    ("\n", REPLY, False),                                                          # an empty box reads as one break
+    (REPLY + "\n\n", REPLY, False),                                                # only one trailing break is Lexical's
+    ("\n" + REPLY, REPLY, False),
+])
+def test_the_box_text_is_read_as_lexical_writes_it(text, entry_text, goes):
+    """The coordinator's live check, 2026-11-14: an empty Messenger box's innerText is a single line break."""
+    granted([{**CHAT, "text": entry_text}])
+    reason = send(checked(text=text))
+    assert (reason is None) is goes, reason
+
+
+@pytest.mark.parametrize("box, staged", [("ambiguous", 0), ("none", 0), ("found", "unknown"), ("found", None)])
+def test_a_check_that_found_no_single_box_or_no_composer_matches_nothing(box, staged):
+    granted([CHAT])
+    assert held(send(checked(box=box, staged=staged)))
+    assert send(checked()) is None
+
+
+# A page as small as the check needs, of the shape the coordinator read on a live Messenger chat (2026-11-14): one
+# contenteditable textbox labelled `Write to <Name>`, `aria-placeholder="Aa"`, a Lexical editor, in no form, whose
+# innerText is a single line break while empty, with the focus on the body after load.
+FAKE_DOM = r"""
+class El {
+  constructor(tag, attrs, kids, text) { this.tagName = tag.toUpperCase(); this.attrs = attrs || {}; this.kids = kids || [];
+    this.text = text || ''; this.parentElement = null; this.kids.forEach(k => { k.parentElement = this; }); }
+  getAttribute(n) { return n in this.attrs ? this.attrs[n] : null; }
+  hasAttribute(n) { return n in this.attrs; }
+  contains(o) { for (let e = o; e; e = e.parentElement) if (e === this) return true; return false; }
+  closest(s) { for (let e = this; e; e = e.parentElement) if (matches(e, s)) return e; return null; }
+  get innerText() { return this.text; }
+  querySelectorAll(s) { const out = []; const walk = e => e.kids.forEach(k => { if (matches(k, s)) out.push(k); walk(k); });
+    walk(this); return out; }
+}
+function matches(el, list) {
+  return list.split(',').some(one => {
+    const m = one.trim().match(/^([a-z0-9]*)((?:\[[^\]]+\])*)$/i);
+    if (!m) throw new Error('a selector this page cannot read: ' + one);
+    if (m[1] && el.tagName !== m[1].toUpperCase()) return false;
+    return [...m[2].matchAll(/\[([\w-]+)(?:(\*?=)"([^"]*)"(\s+i)?)?\]/g)].every(([, name, op, value, ci]) => {
+      const have = el.getAttribute(name);
+      if (have === null) return false;
+      const [a, b] = ci ? [have.toLowerCase(), value.toLowerCase()] : [have, value];
+      return !op || (op === '=' ? a === b : a.includes(b));
+    });
+  });
+}
+const el = (tag, attrs, kids, text) => new El(tag, attrs, kids, text);
+const LIVE = {contenteditable: 'true', role: 'textbox', 'aria-label': 'Write to Pat Example', 'aria-placeholder': 'Aa',
+              'data-lexical-editor': 'true'};
+"""
+
+
+def _composer_on(page: str) -> dict:
+    """The shipped check's report on a page built by `page` (JavaScript that sets `body`, `focus` and `href`)."""
+    import shutil
+    if not shutil.which("node"):
+        pytest.skip("node runs the composer check against a page here; this machine has none")
+    program = (FAKE_DOM + page + "\nconst document = {querySelectorAll: s => body.querySelectorAll(s), activeElement: focus};"
+               "\nconst location = {href};\nconsole.log(" + sends.COMPOSER_CHECK + ");")
+    done = subprocess.run(["node", "-"], input=program, capture_output=True, text=True, timeout=30)
+    assert done.returncode == 0, done.stderr
+    return json.loads(done.stdout)
+
+
+LIVE_ROW = ("const box = el('div', LIVE, [], {text});"
+            "const row = el('div', {{}}, [el('div', {{}}, [box]), el('div', {{role: 'button', 'aria-label': 'Press enter to send'}})"
+            "{more}]);"
+            "const body = el('body', {{}}, [el('div', {{role: 'main'}}, [el('img', {{src: 'photo-in-the-thread.jpg'}}), row])]);"
+            "const focus = {focus}; const href = 'https://www.facebook.com/messages/e2ee/t/1000000001/';")
+
+
+def test_the_composer_check_reads_the_live_messenger_box():
+    report = _composer_on(LIVE_ROW.format(text=json.dumps("\n"), more="", focus="body"))
+    assert report == {"check": sends.COMPOSER_MARK, "url": E2EE, "box": "found", "text": "\n", "focused": False,
+                      "staged": 0, "boxes": 1}
+    typed = _composer_on(LIVE_ROW.format(text=json.dumps(REPLY + "\n"), more="", focus="box"))
+    assert typed["text"] == REPLY + "\n" and typed["focused"] is True and typed["staged"] == 0
+    staged = _composer_on(LIVE_ROW.format(text=json.dumps(REPLY + "\n"), focus="box",
+                                          more=", el('img', {src: 'blob:preview'}), el('div', {'aria-label': 'Remove attachment'})"))
+    assert staged["staged"] == 2
+    attach = _composer_on(LIVE_ROW.format(text=json.dumps("\n"), focus="body", more="").replace(
+        "'aria-label': 'Press enter to send'", "'aria-label': 'Attach a file'"))
+    assert attach["staged"] == 0  # the attach control alone places the composer too
+
+
+def test_the_composer_check_matches_nothing_with_two_boxes_or_no_composer_around_one():
+    two = _composer_on(LIVE_ROW.format(text=json.dumps("\n"), focus="body", more="").replace(
+        "[el('img', {src: 'photo-in-the-thread.jpg'}), row]",
+        "[el('img', {src: 'photo-in-the-thread.jpg'}), row, el('div', {contenteditable: 'true', role: 'textbox', "
+        "'aria-placeholder': 'Aa'})]"))
+    assert two["box"] == "ambiguous" and two["text"] is None and two["staged"] is None
+    alone = _composer_on("const box = el('div', LIVE, [], '\\n'); const body = el('body', {}, [el('div', {}, [box])]);"
+                         "const focus = body; const href = 'https://www.facebook.com/messages/e2ee/t/1000000001/';")
+    assert alone["box"] == "found" and alone["staged"] == "unknown"
+    other = _composer_on("const box = el('div', {contenteditable: 'true', role: 'textbox', 'aria-label': 'Search'}, [], '');"
+                         "const body = el('body', {}, [box]); const focus = body; const href = 'https://www.facebook.com/';")
+    assert other["box"] == "none" and other["boxes"] == 1
+    for label in ("Message", "Write to Dana Example"):  # either label alone names the box
+        named = _composer_on(LIVE_ROW.format(text=json.dumps("\n"), focus="body", more="").replace(
+            "const box = el('div', LIVE,", f"const box = el('div', {{contenteditable: 'true', role: 'textbox', 'aria-label': '{label}'}},"))
+        assert named["box"] == "found", label
 
 
 @pytest.mark.parametrize("given", [
