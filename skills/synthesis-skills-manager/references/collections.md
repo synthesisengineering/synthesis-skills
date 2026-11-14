@@ -37,8 +37,8 @@ collections file, [assets/collections.json](../assets/collections.json), lists t
 collections, their plugin names and their words. A SKILL.md with no room left under
 8,000 bytes for that line keeps its words (a skill is never trimmed to fit): the file
 names its collection under `awaiting_room` until a reorganization makes room. A test then
-fails and says so, and the line moves into the frontmatter. At 5.22.0 four skills wait:
-git hooks, the knowledge-base distribution, Slack sync and waiting.
+fails and says so, and the line moves into the frontmatter. At 5.22.0 five skills wait:
+git hooks, the knowledge-base distribution, the message guard, Slack sync and waiting.
 
 The rules, which `tests/test_source_lint.py` and the build both hold:
 

@@ -74,8 +74,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
 - **Each skill names its collection.** `metadata.category` in every SKILL.md frontmatter, from the collections listed in
   the skills manager's `assets/collections.json`. A test holds that every skill is in exactly one, depends only on its
   own collection or the core, and has any dependency its scripts load in its own collection, since the core installs in
-  a folder of its own. Four SKILL.md files have no room for the line under 8,000 bytes (git hooks and Slack sync at
-  7,992, waiting at 7,993 and the knowledge-base distribution at 7,996); their words are kept, and the file names
+  a folder of its own. Five SKILL.md files have no room for the line under 8,000 bytes (the message guard at 7,990,
+  git hooks and Slack sync at 7,992, waiting at 7,993 and the knowledge-base distribution at 7,996); their words are kept, and the file names
   their collection under `awaiting_room` until a reorganization makes room, which a test then reports. The daily
   rituals, which 5.21.0 brought to 7,844 bytes, carry their line. Knowledge-base editing and the Open Knowledge Format
   are in the core, since onboarding seeds a new workspace's sharing policy from knowledge-base editing's template (the
