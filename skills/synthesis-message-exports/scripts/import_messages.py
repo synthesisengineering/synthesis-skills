@@ -279,6 +279,17 @@ class Zip:
         return data
 
 
+def within(path, folder):
+    """Whether path is the folder or lies inside it, judged by each existing ancestor's identity on its disk rather than
+    by its spelling, so another letter case (one folder on a Mac's disk) or another route to the folder is caught."""
+    target, probe = os.stat(folder), os.path.abspath(path)
+    while not (os.path.exists(probe) and os.path.samestat(os.stat(probe), target)):
+        if os.path.dirname(probe) == probe:
+            return False
+        probe = os.path.dirname(probe)
+    return True
+
+
 def open_export(path):
     if os.path.isdir(path):
         return Folder(path)
@@ -836,7 +847,7 @@ def main(argv=None):
         since_ms = since_of(args.since)
         export, out = os.path.realpath(args.export), os.path.realpath(args.out)
         source = open_export(export)
-        if source.kind == "folder" and (out == export or out.startswith(export + os.sep) or export.startswith(out + os.sep)):
+        if source.kind == "folder" and (within(out, export) or (os.path.isdir(out) and within(export, out))):
             raise Refused("the output folder and the export may not lie one inside the other")
         if os.path.lexists(out) and not os.path.isdir(out):
             raise Refused("--out names something that is not a folder")
