@@ -921,16 +921,17 @@ ROOT = Path(__file__).resolve().parents[1]
 # holding the push) and _sync_workspace 1. hook.py 24: _carried_since 19 (told once at a prompt) and the starts 5.
 # doctor.py 14: _unsaved_repo 32 and live_claims 7, with unsaved 25 fewer (read side by side). cli.py 12: inbox 12 (the
 # words quoted, twenty at a time). ritual_state.py 16: carried_by 12 and imports 4 (plugin only).
-# 5.20.1 (2026-11-13): core 59 more and plugin 59, so the deploy guard holds neither a syntax check nor too little (a
+# 5.20.1 (2026-11-13): core 59 more and plugin 67, so the deploy guard holds neither a syntax check nor too little (a
 # seat's report, and its fix's review). guards.py 59: _no_exec 21 (a shell's options read in order up to its script:
 # -n and -o noexec on, +n and +o noexec off, an unknown option reads the script), _alias_deploys 12 (an alias read for
 # what it runs), _script_file 9 (`.`, `source`, `builtin source` and `--` read; one too large to read said so), _bound
 # 8 (what an approval binds to, said in the hold), the option lists and the too-large mark 5, _script_deploys 3 and
-# check_deploy 1.
+# check_deploy 1. The repository's conftest 8 (no test reads this Mac's synthesis home, whose sessions repos hold its
+# ritual history since 5.20.0).
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # consolidate first).
 CORE_BUDGET = 14639
-PLUGIN_BUDGET = 37628
+PLUGIN_BUDGET = 37636
 
 
 def _lines(files):
