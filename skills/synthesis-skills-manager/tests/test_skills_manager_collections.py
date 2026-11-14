@@ -688,3 +688,62 @@ def test_the_two_paths_the_review_found_across_collections_are_each_accounted_fo
     found = collections.verify(ROOT, {path.relative_to(written).as_posix(): path.read_bytes()
                                       for path in written.rglob("*") if path.is_file()})
     assert [problem for problem in found if "reaches" in problem] == []
+
+
+# ---- a link that leaves the collection's folder (R1-21 of 5.22.0's review) -------------------------
+
+# 42 relative links resolved in the whole set and led nowhere inside a collection's folder: into the core or another
+# collection, or to a test the build leaves out. Each is now pointed at the repository's file at the release's tag, in
+# the built copy alone; a link that leads nowhere in the whole set too is no collection's to fix, and is left as it is.
+ANY_LINK = re.compile(r"\]\(([^)\s]+)\)")
+
+
+def leaves(md: Path, folder: Path, tracked: set) -> list:
+    """Each relative link of a built Markdown file that resolves in the whole set and not inside its folder."""
+    out = []
+    for target in ANY_LINK.findall(md.read_text(encoding="utf-8")):
+        path = target.partition("#")[0]
+        if not path or re.match(r"[A-Za-z][\w+.-]*:|/|.*[<{$]", path):
+            continue
+        whole = os.path.normpath(os.path.join(os.path.dirname(md.relative_to(folder).as_posix()), path)).replace(os.sep, "/")
+        inside = (folder / whole).exists() and (folder / whole).resolve().is_relative_to(folder.resolve())
+        if not inside and (whole in tracked or any(item.startswith(whole + "/") for item in tracked)):
+            out.append(f"{md.relative_to(folder)} -> {target}")
+    return out
+
+
+def test_no_link_in_a_collection_leads_out_of_its_folder(written):
+    tracked = set(git(ROOT, "ls-files").split("\n")) - {""}
+    found = [f"{name}/{line}" for name in FIVE for md in sorted((written / name).rglob("*.md"))
+             for line in leaves(md, written / name, tracked)]
+    assert found == []
+
+
+def test_a_link_into_another_collection_is_pointed_at_its_file_at_the_release_s_tag(written):
+    version = json.loads((ROOT / ".codex-plugin/plugin.json").read_text(encoding="utf-8"))["version"]
+    planning = (written / "engineering/skills/synthesis-code-planning/SKILL.md").read_text(encoding="utf-8")
+    assert (f"]({WHOLE}/blob/v{version}/skills/synthesis-thinking-framework/references/decision-ownership.md)" in planning)
+    assert "](../synthesis-thinking-framework/" not in planning
+
+
+LINKS = ("Read [the base](../base/SKILL.md), [its folder](../base/), [the method](references/method.md#steps), [the test]"
+         "(tests/test_pen.py), [the terms](../../LICENSE-CC0), [nothing](../ghost/x.md), [here](#top) and [a site](https://example.org).\n")
+
+
+def test_the_build_points_each_link_that_leaves_at_the_tag_and_leaves_every_other_byte(tmp_path):
+    pen = {**skill("pen", "writing", '["base"]', LINKS), "references/method.md": "Steps.\n", "tests/test_pen.py": "x = 1\n"}
+    repo = checkout(tmp_path, {**SOUND, "pen": pen})
+    files, _ = collections.build(repo)
+    assert problems(repo) == []
+    text = files["writing/skills/pen/SKILL.md"].decode("utf-8")
+    assert text == pen["SKILL.md"].replace("](../base/SKILL.md)", "](https://example.com/kit/blob/v5.8.0/skills/base/SKILL.md)") \
+        .replace("](../base/)", "](https://example.com/kit/tree/v5.8.0/skills/base)") \
+        .replace("](tests/test_pen.py)", "](https://example.com/kit/blob/v5.8.0/skills/pen/tests/test_pen.py)")
+
+
+def test_a_built_link_left_leading_out_of_its_folder_is_named(tmp_path):
+    pen = {**skill("pen", "writing", '["base"]', LINKS), "references/method.md": "Steps.\n"}
+    repo = checkout(tmp_path, {**SOUND, "pen": pen})
+    files, _ = collections.build(repo)
+    found = collections.verify(repo, rebuilt(files, {"writing/skills/pen/SKILL.md": pen["SKILL.md"].encode("utf-8")}))
+    assert "writing/skills/pen/SKILL.md: its link to ../base/SKILL.md leads out of writing" in found
