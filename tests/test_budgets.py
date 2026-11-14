@@ -945,17 +945,18 @@ ROOT = Path(__file__).resolve().parents[1]
 # Instagram in the browser's messaging sites: a comment line and three lines of five entries.
 # 5.21.0, the release's own count: doctor.py 8, waits_on_person 6 (signature, a docstring of three lines, the test)
 # and ASKS 1 with a blank line: an approval line that names a fault of setup no longer reads as waiting on the person.
-# 5.21.0, after the release's first review round: guards.py 25 more. PUBLISHES 5 with its two lines of comment (a click
+# 5.21.0, after the release's first review round: guards.py 26 more. PUBLISHES 5 with its two lines of comment (a click
 # on Post, Comment, Reply, Repost, Share, Publish or Submit on a messaging site waits, unless its summary says it only
 # opens a box); WEB_MESSAGING 6 (a site is its host and every host under it, the short hosts that land on one, the new
 # addresses of Teams and Outlook, X's chat and pages, Messenger's channel on every facebook.com host, and every other page
-# of the four sites marked); _web_app 1 (its docstring, the match now _on_site's); _steps 1 (a navigate that names no host
-# keeps a messaging site's page); _pages 1 (whether a box on every page may be a search); check_desktop 11 (10 for the
+# of the four sites marked); _web_app 1 (its docstring, the match now _on_site's); _steps 2 (with `keep`, which only the
+# send guard passes, a navigate that names no host keeps a messaging site's page; the account check still takes it as
+# unknown); _pages 1 (whether a box on every page may be a search); check_desktop 11 (10 for the
 # words of a call that only types on those pages, which go on the principal's code, and 1 for the pages read beside apps).
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # consolidate first).
-CORE_BUDGET = 14784
-PLUGIN_BUDGET = 37909
+CORE_BUDGET = 14785
+PLUGIN_BUDGET = 37910
 
 
 def _lines(files):

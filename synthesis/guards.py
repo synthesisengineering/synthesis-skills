@@ -4566,9 +4566,10 @@ def _tabs(transcript: str) -> tuple:
     return {}, ""
 
 
-def _steps(name: str, tool_input: dict, session: dict | None):
+def _steps(name: str, tool_input: dict, session: dict | None, keep: bool = False):
     """(step, its input, the address of the page it acts on) for a browser call, or for each step of a batch: its
-    tab's address in the newest list of tabs, or the one a navigate step earlier in the batch went to."""
+    tab's address in the newest list of tabs, or the one a navigate step earlier in the batch went to. With `keep`, a
+    navigate that names no host leaves a messaging site's page as it was, since the page it opens may be that site's."""
     tabs, front = _tabs(str((session or {}).get("transcript_path") or ""))
     steps = [(name, tool_input)] if name != "browser_batch" else [
         (str(s.get("name", "")), s["input"]) for s in tool_input.get("actions") or []
@@ -4576,9 +4577,9 @@ def _steps(name: str, tool_input: dict, session: dict | None):
     for step, given in steps:
         tab = str(given.get("tabId") or front)
         if step.endswith("navigate"):  # the steps after it act on the new page; `back`, a path or a script names no host, and that page is not known
-            url = str(given.get("url") or "").strip().replace("\\", "/")  # unless the tab was on a messaging site, whose it may be still
+            url = str(given.get("url") or "").strip().replace("\\", "/")
             tabs[tab] = url if re.match(r"(?i)(?:https?:|//|localhost\b|[\w-]+(?:\.[\w-]+)+(?:[:/?#]|$))", url) else (
-                tabs.get(tab, "") if _web_app(tabs.get(tab, "")) else "")
+                tabs.get(tab, "") if keep and _web_app(tabs.get(tab, "")) else "")
         yield step, given, tabs.get(tab, "")
 
 
@@ -4586,7 +4587,7 @@ def _pages(name: str, tool_input: dict, session: dict | None) -> tuple:
     """({page: (channel, line-break modifier)} for each messaging site this browser call acts on, and whether a box on
     every one of them may be a search)."""
     reached, search = {}, True
-    for _, _, address in _steps("computer" if name == "browser" else name, tool_input, session):
+    for _, _, address in _steps("computer" if name == "browser" else name, tool_input, session, keep=True):
         page = _web_app(address)
         if page:
             reached[page[0]], search = page[1], search and page[2]
