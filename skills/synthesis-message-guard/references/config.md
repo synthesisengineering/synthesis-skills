@@ -475,7 +475,9 @@ opens may be that site's still, so it is judged as that site's. A page whose add
 that prints no tab list) is judged by the summary rule alone. On 2026-10-22 a session found that Return in a Google
 Chat compose box went out with no code, because a browser page had counted as no app.
 
-**A click on the control that publishes** (5.21.0). On a messaging site's page, a click waits for a code when its
+**A click on the control that publishes** (5.21.0 on messaging sites, 5.21.1 on every page: on 2026-11-13 a public
+review typed and submitted through the browser on a site that is no messaging site went out with no code, its control
+labeled Submit rating). A click waits for a code when its
 summary names Send, Post, Comment, Reply, Repost, Share, Publish or Submit right after a click verb (clicks, presses,
 taps, hits, chooses or selects, with or without `on` and `the`, the label in quotes or not): "Clicks the Post button",
 "Taps on Share", "Clicks Comment". These sites label few controls Send: their Post, Comment and Reply post in the

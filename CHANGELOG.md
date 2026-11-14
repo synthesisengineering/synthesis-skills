@@ -4,6 +4,16 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [5.21.1] - 2026-11-14
+
+- **A click on a control that publishes waits for the code on every page, not only on messaging sites**
+  (`synthesis-message-guard`). On 2026-11-13 a public review typed and submitted through the browser on a site that
+  is no messaging site went out with no code: its control was labeled Submit rating, and outside messaging sites only
+  a click on Send counted. A click whose summary names Send, Post, Comment, Reply, Repost, Share, Publish or Submit
+  right after a click verb now waits on any page; one whose summary says it only opens a box still passes. Measured
+  first: over 30 days of records, no click named one of these controls on any site, so the hold costs nothing
+  measured. Tests first.
+
 ## [5.21.0] - 2026-11-14
 
 - **One approval in Codex lasts through releases, as a setup option** (`synthesis-onboarding`,

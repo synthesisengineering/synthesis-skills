@@ -985,10 +985,12 @@ ROOT = Path(__file__).resolve().parents[1]
 # send guard passes, a navigate that names no host keeps a messaging site's page; the account check still takes it as
 # unknown); _pages 1 (whether a box on every page may be a search); check_desktop 11 (10 for the
 # words of a call that only types on those pages, which go on the principal's code, and 1 for the pages read beside apps).
+# 5.21.1: guards.py 1, the comment's third line: a click on a control that publishes waits on every page, since a
+# public review went out on a site that is no messaging site through a click on Submit rating.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # consolidate first).
-CORE_BUDGET = 14924
-PLUGIN_BUDGET = 38171
+CORE_BUDGET = 14925
+PLUGIN_BUDGET = 38172
 
 
 def _lines(files):

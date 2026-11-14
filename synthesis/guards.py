@@ -4450,8 +4450,9 @@ MODIFIERS = {"alt": "option", "opt": "option", "command": "cmd", "meta": "cmd", 
 SAYS_SENT = re.compile(r"^\W*(?:(?:send|repl(?:y|ie)|forward|post|publish|share|invite|respond|comment|mention|announce"
                        r"|notif(?:y|ie)|remind|schedule|deliver|email|text)(?:s|es|d|ed|ing)?\b"
                        r"|(?:click|press|tap|hit|choose|select)(?:s|es)?\s+(?:on\s+)?(?:the\s+)?send\b)|\bto send\b", re.I)
-# On a messaging site a click on the control that publishes waits too, unless the summary says it only opens a box
-# (2026-11-14: Post, Comment and Reply post on facebook.com, LinkedIn and Instagram, which label few controls Send)
+# A click on the control that publishes waits too, on every page, unless the summary says it only opens a box
+# (2026-11-14: Post, Comment and Reply post on facebook.com, LinkedIn and Instagram, which label few controls Send;
+# 2026-11-13: a public review went out on another site through a click on Submit rating)
 PUBLISHES = re.compile(r"\b(?:click|press|tap|hit|choose|select)(?:s|es)?\s+(?:on\s+)?(?:the\s+)?[\"'“‘]?(?:send"
                        r"|post|comment|reply|repost|share|publish|submit)\b(?!\s+(?:box|field|input|area|composer|editor)\b)"
                        r"(?!.*\b(?:opens|opening|expands|focuses|shows|reveals|starts|to (?:open|expand|focus|show|reveal|start))\b)", re.I)
@@ -4634,8 +4635,8 @@ def check_desktop(name: str, tool: str, tool_input: dict, config: dict, session:
     reached = ({b: apps[b] for b in [_bundle(tool_input.get("app"), apps)] if b in apps} if name.startswith("app_")
                else pages if name.startswith("browser") else apps if unseen else {b: apps[b] for b in seen["apps"] if b in apps})
     typed, subject = [v for kind, v, _ in actions if kind == "type" and v.strip()], {"tool": tool, "input": tool_input}
-    sending = [s or f"{kind} {v}".strip() for kind, v, s in actions if SAYS_SENT.search(s) or reached and (
-        kind == "click" and (not s.strip() or pages and PUBLISHES.search(s))
+    sending = [s or f"{kind} {v}".strip() for kind, v, s in actions if SAYS_SENT.search(s) or kind == "click" and PUBLISHES.search(s) or reached and (
+        kind == "click" and not s.strip()
         or kind == "menu" and re.search(r"(?:^|> )send\b", v, re.I) or kind == "key" and _sends_key(v, reached)
         or kind == "type" and re.search(r"[\r\n]", v) and _sends_key("return", reached))]
     problems = message_problems("desktop_type", {"message_text": "\n\n".join(typed)}, config, {  # a page may be several channels'
