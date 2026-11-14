@@ -79,9 +79,10 @@ the meantime.
 - (none yet)
 
 **Yours:** the phrases the scan looks for. They live in `.agents/knowledge-base.yaml`, under
-`confidentiality.backstop_phrases`, not here, so the scan reads one list. The list is empty until this organization
-names its phrases, and the scan refuses to run until it holds one. Everyone who can read the repository can read the
-list, so it never holds the very thing it guards.
+`confidentiality.backstop_phrases`, not here, so the scan reads one list. They are named when this policy is adopted
+(synthesis-kb-edit's `kb_config.py adopt-sharing-policy`, one `--phrase` for each), since a contract that names this
+policy with no phrases holds every edit. Everyone who can read the repository can read the list, so it never holds the
+very thing it guards.
 
 ## Rulings
 

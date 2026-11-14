@@ -57,7 +57,8 @@ confidentiality:
   hook_path: ".githooks"                          # relative path or null
   visible_to: "People with repository access"
   sharing_policy: ".agents/sharing-policy.md"     # relative path or null
-  backstop_phrases: []                            # the organization's own phrases
+  backstop_phrases:                               # the organization's own; one at least when a policy is named
+    - "zephyr ledger"
 
 notes: >
   Repository-specific rules that do not fit a structured field.
@@ -85,8 +86,8 @@ notes: >
 | `confidentiality.forbidden_words_source` | Optional scanner/pattern source read at runtime. |
 | `confidentiality.hook_path` | Optional configured Git hook directory. |
 | `confidentiality.visible_to` | Plain-language audience used in editor explanations. |
-| `confidentiality.sharing_policy` | Optional path of the repository's sharing policy (`references/sharing-standard.md`), made from `assets/sharing-policy.template.md`; when set, the file must exist and every edit runs the phrase scan. |
-| `confidentiality.backstop_phrases` | Optional list of the organization's own phrases for the phrase scan. The plugin ships none; the list may be empty in the contract, but the scan refuses to run until it holds one. |
+| `confidentiality.sharing_policy` | Optional path of the repository's sharing policy (`references/sharing-standard.md`), made from `assets/sharing-policy.template.md` and named by `adopt-sharing-policy`; when set, the file must exist and every edit runs the phrase scan. |
+| `confidentiality.backstop_phrases` | The organization's own phrases for the phrase scan; the plugin ships none. Required, with at least one phrase, when `sharing_policy` is set: a contract that names a policy with none holds every edit, and the error says to list one or remove the policy. |
 | `notes` | Free text for remaining repository-specific policy. |
 
 All configured paths are repository-relative, may not contain `..`, and may
@@ -125,6 +126,17 @@ python3 <skill-root>/scripts/kb_config.py <repo-root> \
 
 Exit status is `0` when valid, `1` for an invalid contract, and `2` for usage
 or loading failures.
+
+Adopting the sharing standard names the policy in the contract together with
+the organization's own phrases, and writes the policy's template where the
+contract says unless a file is there (`sharing-standard.md`, "Adopting the
+standard"). It exits `0` when the contract names the policy, `1` when it wrote
+nothing (no phrases given or listed, or a contract it cannot change safely),
+and `2` for usage or loading failures:
+
+```bash
+python3 <skill-root>/scripts/kb_config.py adopt-sharing-policy <repo-root> --phrase "zephyr ledger"
+```
 
 When the contract names a sharing policy, the phrase scan reads it and the
 phrases; its commands, output and exit status are in

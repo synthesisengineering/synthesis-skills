@@ -28,13 +28,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
 - **Extraction is a binding rule** in `synthesis-kb-edit` (rule 12) and `synthesis-knowledge-capture` 2.1.0 (rule 10):
   each fact goes into the concept that owns it, cited, and every import's review request lists what was left out, by
   class and count, never the facts. Validation runs the phrase scan when the contract names a sharing policy.
-- **A new knowledge base starts with the policy, and an existing one adopts it** (`synthesis-onboarding` 3.6.0).
-  `setup.py workspace --new NAME` seeds `.agents/sharing-policy.md` from the template and a contract naming it with an
-  empty phrase list, and tells the person to name their own. `kb_config.py adopt-sharing-policy <repo-root>` writes the
-  template where the contract says, never over a file that exists, adds the keys the contract lacks in place, keeping
-  every line, and commits nothing.
+- **Adopting is deliberate, and a new knowledge base ships as before** (`synthesis-onboarding` 3.6.0).
+  `setup.py workspace --new NAME` seeds the template at `.agents/sharing-policy.md`, but the new contract names no
+  policy, so the phrase scan does not run and edits ship as they always have; the output names the step that adopts it.
+  `kb_config.py adopt-sharing-policy <repo-root> --phrase PHRASE` (one `--phrase` for each) is that step: it names the
+  policy and lists the phrases in the contract, in place, keeping every line; writes the template where the contract
+  says, never over a file that exists; writes the contract only when the result passes the configuration gate; and
+  commits nothing. Given no phrase while the contract lists none, it writes nothing. A contract that names a policy with
+  no phrases fails the configuration gate, holding every edit, and the error says to list one or remove the policy.
 - **How it was checked.** Tests first for the contract, the scan, adopting and the seed, each committed failing for
-  the reason its code then fixed; every phrase in them is made up.
+  the reason its code then fixed; every phrase in them is made up. The first pass named the policy in every new
+  knowledge base's contract, with no phrases, which would have held its edits; adoption was made deliberate before
+  review, its tests again committed first.
 
 ## [5.20.1] - 2026-11-13
 

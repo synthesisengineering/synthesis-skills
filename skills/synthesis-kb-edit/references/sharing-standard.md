@@ -133,7 +133,9 @@ rather than through an edit. The phrases live in the contract, not in the policy
 Choose phrases that are specific to what stays out in this organization: the terms its people use for material in
 each class, and the code names of its work. A phrase so common that most pages use it holds harmless lines until
 people stop reading what it holds. Everyone who can read the repository can read the list, so it never holds the very
-thing it guards. The list starts empty, and the scan refuses to run until it holds at least one phrase.
+thing it guards. A contract that names a policy lists at least one phrase: the configuration gate holds every edit
+while it names a policy with none, and the scan refuses to run without them, so adopting takes the phrases in
+the same step.
 
 ## The phrase scan
 
@@ -207,19 +209,25 @@ A held line fails the step, and so does a scan that cannot run: a backstop that 
 
 ## Adopting the standard
 
-- **A new knowledge base** made by synthesis-onboarding (`setup.py workspace --new NAME`) starts with the policy at
-  `.agents/sharing-policy.md`, made from the template, and a contract that names it, with an empty phrase list.
-- **An existing knowledge base** adopts it with:
+Adopting is deliberate, and it is one step. Until a knowledge base adopts the standard, its contract names no policy,
+the phrase scan does not run, and edits ship as they always have.
+
+- **A new knowledge base** made by synthesis-onboarding (`setup.py workspace --new NAME`) starts with the template at
+  `.agents/sharing-policy.md`, committed with its other seeds, and a contract that does not name it.
+- **Any knowledge base**, new or existing, adopts it with the organization's own phrases:
 
   ```bash
-  python3 <skill-root>/scripts/kb_config.py adopt-sharing-policy <repo-root>
+  python3 <skill-root>/scripts/kb_config.py adopt-sharing-policy <repo-root> --phrase "zephyr ledger" --phrase "violet harbor"
   ```
 
   It writes the template where `confidentiality.sharing_policy` says (`.agents/sharing-policy.md` when it names no
-  path) and adds whichever of the two keys the contract lacks, in place, keeping the contract's comments. It never
-  writes over a policy file that exists, refuses a contract that is invalid or whose `confidentiality` is not a block
-  mapping (add the two keys by hand there), and commits nothing: the person reviews and ships the change.
+  path), unless a file is there already, which it never writes over. It names the policy and lists the phrases in the
+  contract, in place, keeping every line the contract has, its comments included, and writes the contract only when the
+  result passes the configuration gate. Given no `--phrase` while the contract lists none, it writes nothing and says
+  so: a policy named with no phrases would hold every edit. A list the contract already has is changed in the contract
+  itself. It refuses a contract that is invalid, or whose `confidentiality` is not a block mapping (it prints the lines
+  to add by hand there), and commits nothing: the person reviews and ships the change.
 
-Then, either way: fill in the policy's parts marked as the organization's own, name the phrases, run the scan once
-over the whole bundle (`sharing_scan.py <repo-root> <bundle_path>`) and settle what it holds, and wire the hook and the
-pipeline.
+The order that works: fill in the policy's parts marked as the organization's own and choose the phrases, adopt, run
+the scan once over the whole bundle (`sharing_scan.py <repo-root> <bundle_path>`) and settle what it holds, then wire
+the hook and the pipeline.
