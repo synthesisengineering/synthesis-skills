@@ -1093,10 +1093,31 @@ ROOT = Path(__file__).resolve().parents[1]
 # a 1,700-character heredoc of substitutions had taken the guard 13 s, past the hook's 5).
 # each 5.22.0 paragraph above adds over 5.20.1's: plugin 248 for the sharing standard, 344 for the collections, 769
 # for the message exports and 157 for their review round 1.
+# 5.22.0's review round 1, the sharing standard's findings (2026-11-14): plugin 252 more, the core 1 of them.
+# kb_config.py 63:
+# adopt_sharing_policy 20 more (the template written first and the policy named only once it says who reads it, a
+# folder at the policy's path refused, a key left null or empty replaced in its place, the contract's own line ending
+# kept, the key the read-back found otherwise named, and the configuration gate run on the result), spelled 15 with its
+# two blank lines (each part of a path as the disk spells it), check_paths 11 (a path spelled otherwise on disk; a
+# named policy still the template as written), validate_config 5 (an unknown key's way out, with a close match; the
+# unread_allowed globs), UNFILLED 4 with its two-line note, unfilled 4 with its two blank lines, the three imports 3
+# and KEYS 1. sharing_scan.py 188 more (350 now): main 42 more (79: --message, the range read from the revisions
+# it names with its commit messages, the index and HEAD for staged scans, the configuration gate before a whole-file
+# scan, links listed, the phrases a change takes out named), rules 27 (the stricter of the contract under review and
+# the one before it: both phrase lists and bundles, only the exemptions both grant; read_contract's 17 gone), hits 23
+# (a phrase in a judged line or wrapped onto it, forms made only for the lines judged), judge 22 (a file's new name,
+# its lines, the contract's values, or a hold for a file that is not text), walked 20 (links never followed, .git
+# passed over; whole's 14 gone), changed 14 (each file a change adds or alters, read as it now is, with --text; added's
+# 19 gone), values 13 (the contract's keys and strings, the phrase list left out), ready 10 (a named policy there
+# and filled in), canon 9 (NFKC, no format characters, one apostrophe and hyphen, separators and CamelCase read as
+# words), text_of 8 (UTF-8, or UTF-16 with its mark), tracked 8 (a bundle git tracks files under), contract_at 7,
+# matchers 6 (matcher's 5 gone), message 5, blob 4, the constants 6, the docstring 3 more, three imports 3,
+# unjudged 2 fewer, count's 2 gone, and 18 more blank and comment lines between them. The core's 1, install.py:
+# STABLE_SKILL_SCRIPTS carries synthesis-kb-edit, so the hooks the standard prints find the scan in the stable runtime.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # consolidate first).
-CORE_BUDGET = 15099
-PLUGIN_BUDGET = 39899
+CORE_BUDGET = 15100
+PLUGIN_BUDGET = 40151
 
 
 def _lines(files):

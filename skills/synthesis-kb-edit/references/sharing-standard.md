@@ -103,8 +103,9 @@ No single layer is enough, so there are five, each catching what the one before 
 1. **The editor** applies the test and the classes to each fact while extracting it.
 2. **The review request** lists what was left out, by class and count.
 3. **The reviewer** reads the change against the policy, and the count against the source.
-4. **The phrase scan** is a backstop. It finds the organization's own phrases in the lines a change adds, so a name,
-   a code name or a term the editor missed is caught before it is published. It cannot see meaning: a fact told in
+4. **The phrase scan** is a backstop. It finds the organization's own phrases in what a change adds (its lines, its
+   file and folder names, its commit messages), so a name, a code name or a term the editor missed is caught before it
+   is published, and it holds for a person any file it cannot read. It cannot see meaning: a fact told in
    other words passes it, and a harmless line that holds a phrase is held for a person to read. A person reads each
    held line against the policy: a fact in a class comes out; a line that is right as it stands stays, and the
    phrase is narrowed or dropped in the contract, in the same review request, so the reviewer sees that too. Never
@@ -129,6 +130,13 @@ The policy file is the template with the organization's parts filled in: its aud
 their dates, its examples, the classes it adds or narrows, and where the material that stays out lives. Keep it under
 `.agents/`, which the editor workflow refuses, so a change to the policy goes through the repository's maintainers
 rather than through an edit. The phrases live in the contract, not in the policy file, so the scan reads one list.
+Everyone with access to the repository reads the policy, and the scan judges it: its examples and rulings describe
+what stays out by its class and shape, never the fact itself, as a review request counts what it left out. The
+contract is judged too, all of it but the phrase list, so a fact written into its `notes` is held like any other.
+
+Files only people read, such as images or signed PDFs the organization keeps in the bundle, may be listed by name in
+`confidentiality.unread_allowed` (repository-relative globs). The scan holds every other file it cannot read, and a
+change cannot exempt its own files: an exemption counts only when the contract before the change grants it too.
 
 Choose phrases that are specific to what stays out in this organization: the terms its people use for material in
 each class, and the code names of its work. A phrase so common that most pages use it holds harmless lines until
@@ -139,36 +147,55 @@ the same step.
 
 ## The phrase scan
 
-`scripts/sharing_scan.py` reads the policy path and the phrases from the contract. It judges lines under the bundle
-(`bundle_path`), never the policy file or the contract, which name what they keep out.
+`scripts/sharing_scan.py` judges what a change adds under the bundle (`bundle_path`): each added line, each added file's
+name and folders, and, for a range, each commit message. It judges the policy file too, and the contract's keys and
+values, all but the phrase list itself.
 
 ```bash
-# the lines a review request adds (BASE...HEAD: from where HEAD's branch left BASE)
+# what a review request adds, and its commit messages (BASE...HEAD: from where HEAD's branch left BASE)
 python3 <skill-root>/scripts/sharing_scan.py <repo-root> --range origin/main...HEAD
 
-# the lines this commit adds, as staged (a commit hook)
+# what this commit adds, as staged (a pre-commit hook), and its message (a commit-msg hook)
 python3 <skill-root>/scripts/sharing_scan.py <repo-root> --staged
+python3 <skill-root>/scripts/sharing_scan.py <repo-root> --message .git/COMMIT_EDITMSG
 
-# every line of these files, and of every file under these folders (a first pass over a knowledge base)
+# every line and name of these files, and of every file under these folders (a first pass over a knowledge base)
 python3 <skill-root>/scripts/sharing_scan.py <repo-root> source/reference/team.md source/projects
 ```
+
+**What governs a scan.** The contract under review must be valid, and the one before it governs too: a range is
+judged by its base's contract and its head's, a staged scan or a message by HEAD's and the index's, never by the working
+tree. The phrases of both are judged, and the bundles of both, so a change cannot take out the phrase that would hold
+it, or point the policy at the file that leaks; the scan names any phrase a change takes out of the list. A whole-file
+scan reads the working tree's contract and runs the configuration gate first.
 
 It prints one line for each phrase it finds, and a summary, and never more of a line than the phrase:
 
 ```
 source/reference/plans.md:12: "zephyr ledger"
-sharing scan: 1 line held in 3 files read; read each against .agents/sharing-policy.md
+source/projects/zephyr-ledger.md: name: "zephyr ledger"
+.agents/knowledge-base.yaml: notes: "zephyr ledger"
+commit 3f2a9c1e4b7d:3: "zephyr ledger"
+source/reference/terms.pdf: held, not text: a person must read it
+sharing scan: 5 lines held in 3 files read; read each against .agents/sharing-policy.md
 ```
 
-A named file outside the bundle, the policy file and the contract are listed as not judged, and so is a file that is
-not text (one git reads as binary), so the reviewer knows the scan did not read it. Exit status is `0` when nothing is
-held, `1` when a line is held, and `2` when it cannot run: no contract or an invalid one, no policy or one that is not
-there, no phrases, or a git error, whose own message it prints.
+A file it cannot read as text (neither UTF-8 nor UTF-16 with its byte-order mark: a PDF, an image, a file in another
+encoding) is held, unless `unread_allowed` lists it. A named file outside the bundle is listed as not judged. A link is
+listed and never followed: it is judged by where it points, as git stores it. Exit status is `0` when nothing is held,
+`1` when something is held, and `2` when it cannot run: no contract or an invalid one, a bundle git tracks no file
+under (renamed away, or spelled in another letter case, which a disk that ignores case accepts and git does not), no
+policy, one that is not there or is still the template as written, no phrases, or a git error, whose own message it
+prints.
 
-How a phrase matches: in any letter case, with any run of spaces between its words, starting where a word starts. A
-phrase of five characters or fewer must also end where a word ends ("opal" never holds "opalescent"); a longer one may
-run on ("zephyr ledger" holds "zephyr ledgers"), so list each form of a short phrase you mean. It reads one line at a
-time, so a phrase broken across two lines is not seen, and it reads text only.
+How a phrase matches: as words, starting where a word starts, in any letter case. Text and phrase are compared alike:
+composed (NFKC), with invisible format characters such as soft hyphens and zero-width spaces dropped, typographic
+apostrophes and hyphens read as plain ones, and `-`, `_`, `.`, `/` and `\` read as spaces, so a slug, a path or a
+snake_case identifier holds a phrase; a capital inside a word starts a new word, so CamelCase does too; and the words of
+a phrase may run together (`violetharbor`). A phrase of five characters or fewer must also end where a word ends
+("opal" never holds "opalescent"); a longer one may run on ("zephyr ledger" holds "zephyr ledgers"), so list each form
+of a short phrase you mean. A phrase wrapped across two lines is held at the line the change adds, also when the other
+line is one it leaves as it was.
 
 It needs the Python standard library and the checkout's own `synthesis/yamlish.py`, through `kb_config.py` beside it,
 and nothing installed: run it by path from a checkout of synthesis-skills pinned to a release tag.
@@ -178,26 +205,39 @@ and nothing installed: run it by path from a checkout of synthesis-skills pinned
 The plugin installs no hook in a knowledge base. The repository's own hook and its pipeline call the scan, so it runs
 the same way on every machine and in review.
 
-**Commit hook.** `.githooks/pre-commit` in the knowledge base, named in the contract as `confidentiality.hook_path:
-".githooks"`. Where synthesis's commit check is installed, it runs this hook after its own checks
-(`synthesis-git-hooks`); add `.githooks/required` so that a missing hook blocks the commit. Elsewhere, point git at the
-folder once in each clone: `git config core.hooksPath .githooks`.
+**Commit hooks.** Two files in the knowledge base's `.githooks/`, named in the contract as `confidentiality.hook_path:
+".githooks"`: `pre-commit` judges what the commit adds, and `commit-msg` judges its message. Where synthesis's commit
+check is installed, it runs both after its own checks (`synthesis-git-hooks`); add `.githooks/required` so that a
+missing `pre-commit` blocks the commit. Elsewhere, point git at the folder once in each clone:
+`git config core.hooksPath .githooks`. Both run the scan from the stable runtime synthesis installs
+(`~/.synthesis/v5/current`, or `$SYNTHESIS_HOME/current`), which carries kb-edit's scripts; `SYNTHESIS_SKILLS`, when
+set, names a checkout of synthesis-skills to run instead, as a machine without synthesis needs.
 
 ```sh
 #!/bin/sh
-# The sharing scan over the lines this commit adds. SYNTHESIS_SKILLS names a checkout of synthesis-skills;
-# without it, the runtime synthesis installs.
-scan="${SYNTHESIS_SKILLS:-$HOME/.synthesis/v5/current}/skills/synthesis-kb-edit/scripts/sharing_scan.py"
+# .githooks/pre-commit: the sharing scan over what this commit adds.
+scan="${SYNTHESIS_SKILLS:-${SYNTHESIS_HOME:-$HOME/.synthesis/v5}/current}/skills/synthesis-kb-edit/scripts/sharing_scan.py"
 if [ ! -f "$scan" ]; then
-  echo "pre-commit: no sharing scan at $scan; set SYNTHESIS_SKILLS to a checkout of synthesis-skills" >&2
+  echo "pre-commit: no sharing scan at $scan: install synthesis, or set SYNTHESIS_SKILLS to a checkout of synthesis-skills" >&2
   exit 1
 fi
 exec python3 "$scan" "$(git rev-parse --show-toplevel)" --staged
 ```
 
+```sh
+#!/bin/sh
+# .githooks/commit-msg: the sharing scan over this commit's message.
+scan="${SYNTHESIS_SKILLS:-${SYNTHESIS_HOME:-$HOME/.synthesis/v5}/current}/skills/synthesis-kb-edit/scripts/sharing_scan.py"
+if [ ! -f "$scan" ]; then
+  echo "commit-msg: no sharing scan at $scan: install synthesis, or set SYNTHESIS_SKILLS to a checkout of synthesis-skills" >&2
+  exit 1
+fi
+exec python3 "$scan" "$(git rev-parse --show-toplevel)" --message "$1"
+```
+
 **Pipeline.** On every review request, check out synthesis-skills at the release tag the organization adopted (one
-that has this scan), and scan the range the request adds. The knowledge base's own checkout needs the base branch's
-history, so the range can find where the two parted:
+that has this scan), and scan the range the request adds, its commit messages included. The knowledge base's own
+checkout needs the base branch's history, so the range can find where the two parted:
 
 ```sh
 git fetch --quiet origin main
@@ -209,8 +249,9 @@ A held line fails the step, and so does a scan that cannot run: a backstop that 
 
 ## Adopting the standard
 
-Adopting is deliberate, and it is one step. Until a knowledge base adopts the standard, its contract names no policy,
-the phrase scan does not run, and edits ship as they always have.
+Adopting is deliberate. Until a knowledge base adopts the standard, its contract names no policy, the phrase scan does
+not run, and edits ship as they always have. Naming the policy also switches knowledge capture to sharing by default
+(its rule 6), so the contract names a policy only once the policy says who reads the knowledge base.
 
 - **A new knowledge base** made by synthesis-onboarding (`setup.py workspace --new NAME`) starts with the template at
   `.agents/sharing-policy.md`, committed with its other seeds, and a contract that does not name it.
@@ -220,14 +261,17 @@ the phrase scan does not run, and edits ship as they always have.
   python3 <skill-root>/scripts/kb_config.py adopt-sharing-policy <repo-root> --phrase "zephyr ledger" --phrase "violet harbor"
   ```
 
-  It writes the template where `confidentiality.sharing_policy` says (`.agents/sharing-policy.md` when it names no
-  path), unless a file is there already, which it never writes over. It names the policy and lists the phrases in the
-  contract, in place, keeping every line the contract has, its comments included, and writes the contract only when the
-  result passes the configuration gate. Given no `--phrase` while the contract lists none, it writes nothing and says
-  so: a policy named with no phrases would hold every edit. A list the contract already has is changed in the contract
-  itself. It refuses a contract that is invalid, or whose `confidentiality` is not a block mapping (it prints the lines
-  to add by hand there), and commits nothing: the person reviews and ships the change.
+  With no policy file where `confidentiality.sharing_policy` says (`.agents/sharing-policy.md` when it names no path),
+  it writes the template there and stops: fill in the parts marked as the organization's own, at least who reads it,
+  and run it again. It never writes over a file that is there, and refuses one that is still the template as written,
+  or a folder in its place. It then names the policy and lists the phrases in the contract, in place, keeping every
+  line and line ending the contract has, replacing a key left null or empty rather than adding a second, and writes
+  the contract only when the result passes the configuration gate. Given no `--phrase` while the contract lists none,
+  it writes nothing: a policy named with no phrases would hold every edit. A list the contract already has is changed
+  in the contract itself. It refuses a contract that is invalid, or whose `confidentiality` is not a block mapping (it
+  prints the lines to add by hand there), and commits nothing: the person reviews and ships the change. It exits `0`
+  when the contract names the policy, and `1` otherwise, saying what it wrote, if anything, and what is next.
 
 The order that works: fill in the policy's parts marked as the organization's own and choose the phrases, adopt, run
 the scan once over the whole bundle (`sharing_scan.py <repo-root> <bundle_path>`) and settle what it holds, then wire
-the hook and the pipeline.
+the hooks and the pipeline.

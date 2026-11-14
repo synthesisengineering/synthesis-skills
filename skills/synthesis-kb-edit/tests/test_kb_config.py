@@ -209,6 +209,15 @@ def block_repo(tmp_path: Path, contract: str = BLOCK_CONTRACT) -> Path:
     return repo
 
 
+def filled(repo: Path, relative: str = ".agents/sharing-policy.md") -> str:
+    """The template with its audience parts filled in, as an organization leaves it before adopting."""
+    text = TEMPLATE.read_text(encoding="utf-8").replace("**Yours:** who they are.", "Everyone in the organization.")
+    text = text.replace("**Yours:** who they are, and what the copy is", "Our assistant's users; the copy is")
+    (repo / relative).parent.mkdir(parents=True, exist_ok=True)
+    (repo / relative).write_text(text, encoding="utf-8")
+    return text
+
+
 def adopt(repo: Path, *phrases: str):
     done = subprocess.run([sys.executable, str(MODULE_PATH), "adopt-sharing-policy", str(repo),
                            *(part for phrase in phrases for part in ("--phrase", phrase))], capture_output=True, text=True)
@@ -217,9 +226,10 @@ def adopt(repo: Path, *phrases: str):
 
 def test_adopting_names_the_policy_with_the_phrases_given_keeping_every_line(tmp_path: Path) -> None:
     repo = block_repo(tmp_path)
+    policy = filled(repo)
     code, out = adopt(repo, "zephyr ledger", "opal")
     assert code == 0, out
-    assert (repo / ".agents" / "sharing-policy.md").read_text(encoding="utf-8") == TEMPLATE.read_text(encoding="utf-8")
+    assert (repo / ".agents" / "sharing-policy.md").read_text(encoding="utf-8") == policy
     lines, before = (repo / ".agents" / "knowledge-base.yaml").read_text(encoding="utf-8").splitlines(), BLOCK_CONTRACT.splitlines()
     assert [line for line in lines if line not in before] == ['  sharing_policy: ".agents/sharing-policy.md"',
                                                               "  backstop_phrases:", '    - "zephyr ledger"', '    - "opal"']
@@ -258,10 +268,14 @@ def test_adopting_writes_where_the_contract_says_and_adds_only_what_it_lacks(tmp
                                       '  visible_to: "Everyone in the organization"\n'
                                       '  sharing_policy: "source/reference/sharing.md"\n')
     repo = block_repo(tmp_path, contract)
-    code, out = adopt(repo, "violet harbor")
-    assert code == 0, out
+    code, out = adopt(repo, "violet harbor")  # the template first, where the contract says
+    assert code == 1 and "fill in" in out, out
     assert (repo / "source" / "reference" / "sharing.md").read_text(encoding="utf-8") == TEMPLATE.read_text(encoding="utf-8")
     assert not (repo / ".agents" / "sharing-policy.md").exists()
+    assert (repo / ".agents" / "knowledge-base.yaml").read_text(encoding="utf-8") == contract
+    filled(repo, "source/reference/sharing.md")
+    code, out = adopt(repo, "violet harbor")
+    assert code == 0, out
     lines = (repo / ".agents" / "knowledge-base.yaml").read_text(encoding="utf-8").splitlines()
     assert [line for line in lines if line not in contract.splitlines()] == ["  backstop_phrases:", '    - "violet harbor"']
 
@@ -290,3 +304,95 @@ def test_the_template_carries_the_standards_classes_figures_and_test_word_for_wo
                 "contract or a negotiation, a legal position, the organization's own protected work, or a decision not "
                 "yet announced?")
     assert question in " ".join(standard.split()) and question in " ".join(template.split())
+
+
+# ---- review round 1: the contract's gate and adoption -----------------------------------------------------------
+
+def test_the_gate_reads_letter_case_as_git_does(tmp_path: Path) -> None:
+    """R1-1: a Mac's disk finds `Source` for `source`; git does not, and the scan reads nothing there."""
+    config = valid_config()
+    config["bundle_path"] = "Source"
+    repo = write_repo(tmp_path, config)
+    errors = MODULE.check_paths(repo.resolve(), config)
+    assert any(error.startswith("bundle_path: ") for error in errors), errors
+
+
+def test_an_unknown_key_says_how_to_fix_it() -> None:
+    """R1-17: a contract valid under 5.21.0 stops at the gate under 5.22.0, so the error names the way out."""
+    config = valid_config()
+    config["confidentiality"]["sharing_polcy"] = ".agents/sharing-policy.md"
+    config["version"] = 1
+    errors = MODULE.validate_config(config)
+    assert any(error.startswith("confidentiality.sharing_polcy: unknown key") and "did you mean sharing_policy" in error
+               for error in errors), errors
+    assert any(error.startswith("version: unknown key") and "move it into notes" in error for error in errors), errors
+
+
+def test_adopting_replaces_a_null_policy_or_an_empty_list_in_place(tmp_path: Path) -> None:
+    """R1-14: the documented schema allows both; a second key of the same name is a duplicate key."""
+    for number, line in enumerate(("  sharing_policy: null", "  backstop_phrases: []")):
+        contract = BLOCK_CONTRACT.replace('  visible_to: "Everyone in the organization"\n',
+                                          f'  visible_to: "Everyone in the organization"\n{line}\n')
+        repo = block_repo(tmp_path / str(number), contract)
+        filled(repo)
+        code, out = adopt(repo, "zephyr ledger")
+        assert code == 0, out
+        lines = (repo / ".agents" / "knowledge-base.yaml").read_text(encoding="utf-8").splitlines()
+        assert line not in lines and sum(entry.strip().startswith(line.strip().split(":")[0] + ":") for entry in lines) == 1
+        _, config = MODULE.load_config(repo, None)
+        assert MODULE.validate_config(config) == [] and config["confidentiality"]["backstop_phrases"] == ["zephyr ledger"]
+
+
+def test_adopting_a_crlf_contract_keeps_its_line_endings(tmp_path: Path) -> None:
+    """R1-15: "keeping every line" holds for the bytes too, so the review shows only the lines added."""
+    contract = BLOCK_CONTRACT.replace("\n", "\r\n")
+    repo = block_repo(tmp_path)
+    (repo / ".agents" / "knowledge-base.yaml").write_bytes(contract.encode("utf-8"))
+    filled(repo)
+    assert adopt(repo, "zephyr ledger")[0] == 0
+    data = (repo / ".agents" / "knowledge-base.yaml").read_bytes()
+    assert data.count(b"\r\n") == data.count(b"\n") == contract.count("\n") + 3, data[:200]
+
+
+def test_adopting_over_a_folder_at_the_policys_path_refuses_and_writes_nothing(tmp_path: Path) -> None:
+    """R1-16: a folder exists, but it is no policy, and naming it would hold every edit."""
+    repo = block_repo(tmp_path)
+    (repo / ".agents" / "sharing-policy.md").mkdir()
+    code, out = adopt(repo, "zephyr ledger")
+    assert code == 1 and "not a file" in out, out
+    assert (repo / ".agents" / "knowledge-base.yaml").read_text(encoding="utf-8") == BLOCK_CONTRACT
+
+
+def test_adopting_writes_the_template_first_and_names_it_once_it_says_who_reads_it(tmp_path: Path) -> None:
+    """R1-18: naming the policy switches knowledge capture to sharing by default, so a policy that names no audience
+    is never named; adoption writes the template, and names it on a later run, once its audiences are filled in."""
+    repo = block_repo(tmp_path)
+    code, out = adopt(repo, "zephyr ledger")
+    assert code == 1 and "fill in" in out, out
+    assert (repo / ".agents" / "sharing-policy.md").read_text(encoding="utf-8") == TEMPLATE.read_text(encoding="utf-8")
+    assert (repo / ".agents" / "knowledge-base.yaml").read_text(encoding="utf-8") == BLOCK_CONTRACT
+    code, out = adopt(repo, "zephyr ledger")  # still the template as written
+    assert code == 1 and "who reads it" in out, out
+    assert (repo / ".agents" / "knowledge-base.yaml").read_text(encoding="utf-8") == BLOCK_CONTRACT
+    filled(repo)
+    code, out = adopt(repo, "zephyr ledger")
+    assert code == 0, out
+    assert MODULE.load_config(repo, None)[1]["confidentiality"]["sharing_policy"] == ".agents/sharing-policy.md"
+
+
+def test_the_gate_refuses_a_named_policy_still_the_template_as_written(tmp_path: Path) -> None:
+    config = valid_config()
+    config["confidentiality"].update(sharing_policy=".agents/sharing-policy.md", backstop_phrases=["zephyr ledger"])
+    repo = write_repo(tmp_path, config)
+    (repo / ".agents" / "sharing-policy.md").write_text(TEMPLATE.read_text(encoding="utf-8"), encoding="utf-8")
+    errors = MODULE.check_paths(repo.resolve(), config)
+    assert any(error.startswith("confidentiality.sharing_policy: ") and "fill in who reads it" in error
+               for error in errors), errors
+    filled(repo)
+    assert MODULE.check_paths(repo.resolve(), config) == []
+
+
+def test_the_templates_examples_ask_for_the_shape_of_what_stayed_out_never_the_fact() -> None:
+    """R1-27: the policy file is read by everyone with access to the repository."""
+    text = " ".join(TEMPLATE.read_text(encoding="utf-8").split())
+    assert "never the fact itself" in text and "by its class and shape" in text
