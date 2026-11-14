@@ -619,3 +619,8 @@ def test_review_20_message_text_in_a_dialog_is_no_wall(cp, capsys, tmp_path):
     read = [dict(chat([item(*M1), item(*M4)]), dialogs=[dialog])]
     code, printed = save(cp, capsys, tmp_path, read, "--out", tmp_path / "out", "--since", "2024-03-06")
     assert code == 0, printed
+
+
+def test_review_20_a_dialog_with_no_label_or_heading_is_judged_by_its_first_line():
+    """A wall still stops the read when its dialog carries neither a label nor a heading element."""
+    assert '.trim().split("\\n")[0]' in extractor()

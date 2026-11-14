@@ -569,6 +569,7 @@ def test_review_20_message_text_in_a_dialog_is_no_wall_and_a_chat_in_a_pop_up_is
     assert got["coverage"]["opened"] == 1 and "pop-up" in got["line"], got
     script = extractor("chats")
     assert "popups" in script and '[role="log"]' in script and "innerText || \"\").slice(0, 300)" not in script
+    assert '.trim().split("\\n")[0]' in script  # a dialog with no label or heading is judged by its first line
 
 
 def test_review_21_the_reach_is_the_last_row_read_and_a_row_above_newer_ones_is_named(tmp_path):
