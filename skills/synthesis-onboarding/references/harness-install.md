@@ -11,6 +11,7 @@
 - [First config](#first-config)
 - [Hook trust stays with the person](#hook-trust-stays-with-the-person)
 - [Restart, verify, uninstall](#restart-verify-uninstall)
+- [One collection instead of the whole set](#one-collection-instead-of-the-whole-set)
 
 ## What setup does, in order
 
@@ -246,3 +247,48 @@ way Codex does.
   (`claude plugin uninstall … --yes`, `codex plugin remove …`, `muse plugins remove …`),
   restores `core.hooksPath`, removes only files the install wrote that are unedited, and
   keeps `config.json` and `state/` (settings, board, approvals), saying what it kept.
+
+## One collection instead of the whole set
+
+The whole set is what setup installs, and what to recommend: it alone has the hooks, the
+runtime, the guards, the board and the rituals' state. For a person who wants one
+discipline and no hooks, each release also publishes five collections, plugins of the
+same skills grouped by what they do, as the `collections` branch of this repository: core
+(`synthesis-skills-core`, which every other collection builds on), project management,
+engineering, writing and chief of staff (`synthesis-skills-<name>`). Each skill names its
+collection in its frontmatter (`metadata.category`); the README lists every collection's
+skills, and the skills manager's `references/collections.md` says how they are built.
+
+Setup does not install a collection; each harness's own commands do, with no approval
+step, since a collection registers no hook. For engineering:
+
+- **Claude Code:** `claude plugin marketplace add synthesisengineering/synthesis-skills@collections`,
+  then `claude plugin install synthesis-skills-engineering@synthesis-collections`, which
+  installs the core with it as its declared dependency.
+- **Codex:** `codex plugin marketplace add synthesisengineering/synthesis-skills --ref collections`,
+  then `codex plugin add synthesis-skills-core@synthesis-collections` and
+  `codex plugin add synthesis-skills-engineering@synthesis-collections`. Codex resolves
+  no dependency between plugins, so the core is its own line.
+- **Muse:** `muse plugins marketplace add synthesis-collections https://github.com/synthesisengineering/synthesis-skills.git#collections`
+  (Muse names a branch after `#`), then `muse plugins install synthesis-skills-core@synthesis-collections`
+  and `muse plugins install synthesis-skills-engineering@synthesis-collections`.
+
+To update after a release: in Claude Code, `claude plugin marketplace update synthesis-collections`,
+then `claude plugin update` for the core and for each collection (updating a collection
+leaves its dependency as it was); in Codex, `codex plugin marketplace upgrade synthesis-collections`,
+then `codex plugin add` for each again; in Muse 1.4.20, `muse plugins marketplace update synthesis-collections`,
+then `muse plugins remove <plugin>` and `muse plugins install <plugin>@synthesis-collections`
+for each, since `muse plugins update` refreshes from the snapshot it installed from. Each
+of these was run in isolated harness homes on 2026-11-14, from a local copy of the branch.
+
+What a collection does not have: no hook runs, so nothing checks a send, a deploy or a
+commit and no approval code exists; there is no `synthesis` command, so no board, claims,
+doctor or handoff, and a script that imports the runtime says in one line that it is not
+there. A skill's link into another skill's folder resolves only inside one plugin: a
+collection is installed in a folder of its own, apart from the core's, so a link from it
+into the core, or into another collection, leads nowhere, and the skill it names is found
+by its name. To move to the whole set, install it as above (its marketplace sits beside
+the collections' in every harness), then remove each collection and the core, so that no
+skill is installed twice: `claude plugin uninstall <plugin>@synthesis-collections --yes`
+(Claude Code keeps the core when the collection that brought it goes),
+`codex plugin remove <plugin>@synthesis-collections`, or `muse plugins remove <plugin>`.

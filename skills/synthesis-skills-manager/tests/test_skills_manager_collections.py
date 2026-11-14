@@ -475,3 +475,22 @@ def test_the_tree_a_release_commits_holds_exactly_the_built_files(tmp_path):
     assert all(git(repo, "show", f"{tree}:{path}") == data.decode() for path, data in files.items())
     assert collections.tree(repo, files, modes) == tree  # the same files give the same tree
     assert git(repo, "status", "--porcelain") == ""  # the checkout's own index is untouched
+
+
+def test_the_readme_lists_each_collection_with_its_plugin_its_skills_and_its_install_lines():
+    """The table is what someone choosing a collection reads, so it is held to the data: a skill that changes collection
+    changes the table in the same pull request. The install lines name the branch and the marketplace the data names."""
+    section = (ROOT / "README.md").read_text(encoding="utf-8").split("### One collection, without the hooks", 1)[1]
+    section = section.split("\n### ", 1)[0]
+    rows = {found.group(1): found.group(2).split(", ")
+            for found in re.finditer(r"^\| [^|]+ \| `([\w-]+)` \| ([^|]+?) \|$", section, re.M)}
+    home = homes()
+    assert rows == {entry["name"]: sorted(skill[len("synthesis-"):] for skill, collection in home.items()
+                                          if collection == name) for name, entry in SPEC["collections"].items()}
+    market, branch = SPEC["marketplace"]["name"], SPEC["branch"]
+    for line in (f"claude plugin marketplace add synthesisengineering/synthesis-skills@{branch}",
+                 f"codex plugin marketplace add synthesisengineering/synthesis-skills --ref {branch}",
+                 f"muse plugins marketplace add {market} {WHOLE}.git#{branch}",
+                 f"claude plugin install synthesis-skills-engineering@{market}",
+                 f"codex plugin add synthesis-skills-core@{market}", f"muse plugins install synthesis-skills-core@{market}"):
+        assert line in section, line

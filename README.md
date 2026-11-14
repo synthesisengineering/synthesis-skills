@@ -27,6 +27,10 @@ The methodology skills (writing, review, planning, reasoning) are plain instruct
 and work in any client that reads Agent Skills. The skills that coordinate sessions or
 guard actions need the runtime, which installs in Claude Code, Codex and Muse.
 
+The whole set is the way to install synthesis. Someone who wants one discipline can
+install one of five collections instead, each a plugin without hooks: see
+[One collection, without the hooks](#one-collection-without-the-hooks).
+
 ## What you get
 
 ### The skills
@@ -227,6 +231,71 @@ harness, restores your previous `core.hooksPath`, removes the unedited files the
 wrote, and keeps your config and the board.
 
 `install.sh` remains only so older links keep working; it runs `onboard.sh`.
+
+### One collection, without the hooks
+
+Someone who wants one discipline can install a collection instead of the whole set: a
+plugin that holds that discipline's skills and nothing else. A collection has no hooks and
+no runtime, so installing one changes nothing else on the Mac and asks for no approval. It
+also has no guards, no board, no approvals and none of the rituals' state; where one of
+its skills describes those, it describes the whole set. Each release publishes the five
+collections, built from its own files, as the `collections` branch of this repository.
+
+| Collection | Plugin | Its skills, each named without `synthesis-` |
+|---|---|---|
+| Core, which every other collection builds on | `synthesis-skills-core` | action-sheet, agent-guardrails, anti-shortcuts, checkpoint, context-lifecycle, decision-packet, grounding-discipline, implementation-integrity, model-tiers, onboarding, project-management, skill-router, skills-manager, thinking-framework, tree-of-thought |
+| Project management | `synthesis-skills-project-management` | adversarial-review, agent-conformance, autopilot, kb-distribution, kb-edit, knowledge-capture, okf, project-resume, waiting |
+| Engineering | `synthesis-skills-engineering` | bitbucket, code-audit, code-integration, code-planning, codebase-review, git-hooks, llm-setup, local-model-runtime, pr-review, preflight, preplan, review-triage, technical-advisor |
+| Writing | `synthesis-skills-writing` | article-refresh, article-writing, clean-text, content-distribution, content-framing, content-quality, creative-writer, disclosure-policy, executive-communication, fact-checking, link-research, promotion-gate, reader-briefing, response-merger, text-provenance, voice-profiler, writing-craft, writing-pitfalls |
+| Chief of staff | `synthesis-skills-chief-of-staff` | absence-coordination, agent-correspondence, catchup-ledger, chief-of-staff, concise-messaging, daily-rituals, fleet-secrets, inbox-cleanup, local-messaging, mac-sync, machine-sync, meeting-prep, meeting-transcripts, message-guard, quick-answers, repo-guard, slack-sync |
+
+Each harness installs a collection with its own commands; here, engineering. Put another
+collection's plugin name in its place, or install the core by itself with its own line.
+Claude Code installs the core with a collection, as its declared dependency. Codex and
+Muse resolve no dependencies between plugins, so their lines install the core too.
+
+```bash
+# Claude Code
+claude plugin marketplace add synthesisengineering/synthesis-skills@collections
+claude plugin install synthesis-skills-engineering@synthesis-collections
+
+# Codex
+codex plugin marketplace add synthesisengineering/synthesis-skills --ref collections
+codex plugin add synthesis-skills-core@synthesis-collections
+codex plugin add synthesis-skills-engineering@synthesis-collections
+
+# Muse
+muse plugins marketplace add synthesis-collections https://github.com/synthesisengineering/synthesis-skills.git#collections
+muse plugins install synthesis-skills-core@synthesis-collections
+muse plugins install synthesis-skills-engineering@synthesis-collections
+```
+
+Then restart the harness. To update after a release:
+
+```bash
+# Claude Code: the core too, since updating a collection leaves its dependency as it was
+claude plugin marketplace update synthesis-collections
+claude plugin update synthesis-skills-core@synthesis-collections
+claude plugin update synthesis-skills-engineering@synthesis-collections
+
+# Codex
+codex plugin marketplace upgrade synthesis-collections
+codex plugin add synthesis-skills-core@synthesis-collections
+codex plugin add synthesis-skills-engineering@synthesis-collections
+
+# Muse: a plugin installed from a marketplace is removed and installed again
+muse plugins marketplace update synthesis-collections
+muse plugins remove synthesis-skills-core
+muse plugins install synthesis-skills-core@synthesis-collections
+muse plugins remove synthesis-skills-engineering
+muse plugins install synthesis-skills-engineering@synthesis-collections
+```
+
+To move to the whole set, install it as above; its marketplace sits beside the
+collections' in every harness. Then remove each collection and the core, so that no skill
+is installed twice: `claude plugin uninstall <plugin>@synthesis-collections --yes`,
+`codex plugin remove <plugin>@synthesis-collections` or `muse plugins remove <plugin>`.
+Claude Code keeps the core when the collection that brought it is removed.
 
 ## Skill list
 
@@ -438,13 +507,14 @@ installed side. [AGENTS.md](AGENTS.md) describes both, and the release process.
 Each skill declares its license as an SPDX identifier in the `license` field of its
 `SKILL.md`, and that identifier selects the terms that apply to the skill's folder:
 
-- **[CC0 1.0](LICENSE-CC0)** (public domain dedication, no attribution required): 45
+- **[CC0 1.0](LICENSE-CC0)** (public domain dedication, no attribution required): 46
   skills, mostly methodology and writing.
-- **[Apache 2.0](LICENSE-APACHE)**: 25 skills, mostly those built around executable
+- **[Apache 2.0](LICENSE-APACHE)**: 26 skills, mostly those built around executable
   code.
 
 The core outside `skills/` (the `synthesis/` runtime, `hooks/`, `install.sh`, `onboard.sh`
-and the tests) is Apache 2.0. The plugin manifests declare the package as `Apache-2.0 AND CC0-1.0`.
+and the tests) is Apache 2.0. The plugin manifests declare the package as `Apache-2.0 AND CC0-1.0`,
+and so do each collection's; every collection carries both license files.
 
 ## Related
 

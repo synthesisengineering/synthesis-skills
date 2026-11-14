@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: ["synthesis-onboarding"]
 metadata:
   author: "Rajiv Pant"
-  version: "3.5.0"
+  version: "3.6.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
   format: v5
@@ -37,6 +37,7 @@ to its source, resolving drift by synthesis merge in source rather than by overw
 - [references/source-update-protocol.md](references/source-update-protocol.md): the non-negotiable edit-commit-push-install-verify sequence, the must-nots, and the 2026-04-29 incident. Read before editing any skill.
 - [references/skills-and-provenance.md](references/skills-and-provenance.md): the three repositories, deployment targets, `.source.json` provenance, dependency hierarchy, configuration separation, the install/update/status/drift/merge commands and worked examples. Read when installing private or shared skills or resolving drift.
 - [references/directory-package.md](references/directory-package.md): the hook-free package of method skills for OpenAI's plugin directory: what it holds, the build and check commands, what fails a skill, what a submission asks of the owner. Read before building or submitting it, or when its check fails.
+- [references/collections.md](references/collections.md): the five collections, plugins without hooks built from the flat folder and published by the release as the `collections` branch: what decides a skill's collection, what a folder holds, the build and check commands, what fails, installing one. Read before changing a skill's collection or when the build refuses.
 - [references/coverage-map.md](references/coverage-map.md): where every section of 2.9.3 went (ruling D8).
 - [references/preserved.md](references/preserved.md) and [references/preserved-release-protocol.md](references/preserved-release-protocol.md): the 2.9.3 SKILL.md and release protocol verbatim. Read only to review what was cut.
 
@@ -54,7 +55,8 @@ to its source, resolving drift by synthesis merge in source rather than by overw
    python3 skills/synthesis-skills-manager/scripts/release.py
    ```
 
-   It prints a line per stage: preflight, the push read back from each remote, then per
+   It prints a line per stage: preflight, the push read back from each remote (with the
+   five collections, built from the tag and checked, as the `collections` branch), then per
    harness `verified, the installed files at <folder> equal vX.Y.Z` or `NOT verified:`
    with each missing, differing or extra file, then `synthesis doctor`, and finally
    `release complete: vX.Y.Z` (exit 0) or `release NOT complete` (exit 1).

@@ -80,6 +80,16 @@ def test_every_skill_has_an_spdx_license_and_codex_metadata():
     assert [s.parent.name for s in SKILLS if not (s.parent / "agents" / "openai.yaml").is_file()] == []
 
 
+def test_the_readme_counts_the_skills_and_each_license_as_the_skills_declare_them():
+    """The README said 45 and 25 while the skills declared 46 and 26 (found 2026-11-14): nothing held the numbers."""
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    said = {"CC0-1.0": re.search(r"\*\*\[CC0 1\.0\]\(LICENSE-CC0\)\*\*[^:]*:\s*(\d+)\s+skills", readme),
+            "Apache-2.0": re.search(r"\*\*\[Apache 2\.0\]\(LICENSE-APACHE\)\*\*:\s*(\d+)\s+skills", readme)}
+    declared = {key: sum(f["license"] == key for f in FRONT.values()) for key in LICENSES}
+    assert {key: int(found.group(1)) if found else None for key, found in said.items()} == declared
+    assert re.search(r"\bIt carries (\d+) skills\b", readme).group(1) == str(len(FRONT))
+
+
 def test_muse_manifest_lists_every_skill():
     muse = json.loads((ROOT / ".muse-plugin" / "plugin.json").read_text(encoding="utf-8"))
     listed = {s["path"] for s in muse["capabilities"]["skills"]}

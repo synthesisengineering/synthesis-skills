@@ -18,6 +18,10 @@ Codex and Muse while remaining compatible with the Agent Skills standard.
 - `hooks/hooks.json` owns shared lifecycle-hook registration.
 - `skills/synthesis-onboarding/scripts/setup.py` installs the native plugin in
   each harness; native plugins are the only installation path.
+- `skills/synthesis-skills-manager/assets/collections.json` lists the five
+  collections, plugins without hooks that each release builds from `skills/` and
+  publishes as the `collections` branch; each skill names its own in its frontmatter
+  (`metadata.category`). That branch is a build output: never edit it by hand.
 
 Never edit installed plugin caches or user-level skill copies. Make the change
 here, verify it, merge it to `main`, then update the installed plugins.
@@ -97,10 +101,12 @@ Codex's settings and catalog, instruction adapters and durable storage.
   It refuses unless the tree is clean on the default branch, the manifests and
   CHANGELOG agree, and CI passed for HEAD. It holds the release train (a board claim
   on the main checkout's `CHANGELOG.md`; another live session holding it means
-  another release is under way, and the script names it), tags, pushes `main`,
-  `stable` and the tag atomically to every push remote and reads them back with
-  `git ls-remote`, creates the GitHub release for the tag (its CHANGELOG entry as the
-  notes, read back as latest), opens the Homebrew tap's pull request that points the
+  another release is under way, and the script names it), builds and checks the five
+  collections from the commit (`build_collections.py`), tags, pushes `main`, `stable`,
+  the tag and the collections, as the `collections` branch, atomically to every push
+  remote and reads them back with `git ls-remote`, creates the GitHub release for the
+  tag (its CHANGELOG entry as the notes, read back as latest), opens the Homebrew tap's
+  pull request that points the
   `synthesis` formula at the tag's archive (it merges itself when the tap's install tests
   pass), installs into Claude Code, Codex and Muse with each harness's
   own commands, verifies each harness's installed files equal the tag at the folder
