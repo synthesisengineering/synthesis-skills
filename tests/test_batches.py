@@ -625,12 +625,25 @@ def test_the_composer_check_matches_nothing_with_two_boxes_or_no_composer_around
     {"action": "double_click", "ref": "ref_5", "tabId": 7, "action_summary": "Clicks Send"},
     {"action": "left_click", "ref": "ref_5", "tabId": 7, "action_summary": "Clicks Send", "modifiers": "shift"},
     {"action": "key", "text": "Return", "action_summary": "Sends the reply"},  # no tab named
+    {"action": "left_click", "ref": "ref_5", "tabId": 7, "action_summary": "Clicks Send"},
+    {"action": "left_click", "ref": "ref_6", "tabId": 7, "action_summary": "Sends the reply with the Send button"},
 ])
-def test_the_send_is_one_plain_return_or_send_click_on_the_checked_tab(given):
-    """Review #3: Return with repeat 2 passed as the single send."""
+def test_the_send_is_one_plain_return_on_the_checked_tab(given):
+    """Review #3: Return with repeat 2 passed as the single send. The coordinator's live read, 2026-11-14: the composer's
+    neighbours are send controls themselves (`Send a like`, `Send a voice clip`), so no click can be tied to the one that
+    sends the box's text; one plain Return or Enter in the checked, focused box is the send."""
     granted([CHAT])
     assert held(send(checked(), given)), given
-    assert send(checked(), {"action": "left_click", "ref": "ref_5", "tabId": 7, "action_summary": "Clicks Send"}) is None
+    assert send(checked(), {**RETURN, "text": "Enter", "repeat": 1}) is None
+
+
+def test_the_hold_says_how_a_messenger_entry_is_sent():
+    file = batch_file([CALL, CHAT])
+    reason = guards.check("Bash", {"command": f"synthesis sends batch {file}"}, CONFIG, cwd=str(FOLDER))
+    assert "composer-check" in reason and "one plain Return" in reason and "click" in reason
+    alone = guards.check("Bash", {"command": f"synthesis sends batch {batch_file([CALL], name='mail-only')}"}, CONFIG,
+                         cwd=str(FOLDER))
+    assert "composer-check" not in alone
 
 
 def test_typing_and_sending_in_one_call_never_spends_an_entry():
