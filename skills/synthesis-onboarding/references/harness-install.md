@@ -248,11 +248,15 @@ as it is. Between a release and the approval the plugin's own hooks wait for, Co
 runs no send guard, deploy guard, reply check or session-start context (six times on
 2026-11-13).
 
-`setup.py plugin --codex-user-hooks` (or with no command) turns it on:
+`setup.py plugin --codex-user-hooks` (or with no command) turns it on, once the runtime
+those hooks run is in place: setup installs the runtime before any harness's plugin, and
+where `~/.synthesis/v5/bin/synthesis-hook` is still missing it declares nothing and says
+so, since a declaration that runs a missing hook holds every guarded call in Codex
+(5.21.1):
 
 - It declares the plugin's four events in `$CODEX_HOME/hooks.json` (`~/.codex/hooks.json`
-  when `CODEX_HOME` is unset), each group as the plugin's `hooks/hooks.json` writes it:
-  the same matcher and timeout, each command the stable hook with its event. The
+  when `CODEX_HOME` is unset), each group as the plugin's `hooks/hooks.json` writes it,
+  its matcher and timeout included, each command the stable hook with its event. The
   plugin's session start also names the plugin's folder, so a first run can install the
   runtime; the user-level one calls the stable hook alone, since setup has installed the
   runtime by then. The guard's command is the plugin's own, which ends so that a stable
@@ -265,9 +269,18 @@ runs no send guard, deploy guard, reply check or session-start context (six time
   2026-11-14). Setup's groups go after the person's own for the same event, and the
   person's hooks stay as they are. An event the person already declares with the stable
   hook (as the program its command runs, not a mention) is kept as written and not
-  declared twice; the plugin's copy of it goes off only when theirs holds the plugin's
-  declaration, the same matcher and timeout. A narrower one keeps the plugin's own on
-  beside it, and setup says to edit or remove theirs. Setup records the groups it wrote
+  declared twice; the plugin's copy of it goes off only when theirs runs as the plugin's
+  declaration: the same group and command, the hook's path spelled as `sh` finds it
+  (`$HOME` or `${HOME}`, bare or in double quotes, or a bare `~`), and the guard's
+  command with its fail-closed tail or nothing after its event (5.21.1). One narrower
+  than the plugin's, or one that does anything else with the guard's answer (sends it
+  to `/dev/null`, ends `|| true`, runs it in the background), keeps the plugin's own on
+  beside it, and setup says to edit or remove theirs. A path `sh` never finds
+  (`"~/…"`, `'$HOME/…'`) runs no hook, so setup declares its own beside it. Wherever
+  setup leaves an event running twice (one of the person's beside setup's own, or beside
+  the plugin's), it names the event and the cost: where the guard runs twice, a call
+  both copies judge is held even once approved, since one copy spends the approval and
+  the other asks again. Setup records the groups it wrote
   (`~/.synthesis/v5/state/codex-user-hooks.json`) and treats only those as its own.
 - It switches the plugin's own copy of each covered event off by its state key in
   `config.toml` (`[hooks.state."synthesis-skills@synthesis-engineering:hooks/hooks.json:<event>:0:0"]`,
@@ -289,7 +302,8 @@ while setup was editing it, say Codex recording an approval. Each file is copied
 first and off writes `config.toml` first, and a write that fails midway puts back what
 was written, so no stop between the two leaves an event with neither copy. A symlinked
 file is written through to its target, a file keeps its mode (a new one is 0600), no
-temporary file outlives a failure, and lines keep their endings. Once it is on, setup's
+temporary file outlives a failure, and both files keep their line endings (5.21.1:
+before, a CRLF `hooks.json` came back LF). Once it is on, setup's
 `plugin` command and the release script keep the declaration in step with the plugin
 Codex holds after each install or update: a release that changes the plugin's
 `hooks/hooks.json` (5.13.0 added `shell_command` to the shell hook's matcher) changes the
@@ -298,7 +312,13 @@ without the flag keeps the choice; the mark's words in a comment turn nothing on
 
 `setup.py plugin --no-codex-user-hooks` turns it off, whatever the install says, since it
 needs no network, and `setup.py uninstall` does too, before it removes the runtime those
-hooks run: if it cannot, uninstall removes nothing and exits 1. Each takes out the groups
+hooks run: if it cannot, uninstall removes nothing and exits 1. While a hook of the
+person's own in that file runs the stable hook, uninstall removes nothing at all, names
+those events and exits 1: without the runtime, Codex would hold every guarded call, and
+nothing inside Codex could put it back (5.21.1). `synthesis uninstall`, which does not
+read setup's record, refuses the same way while anything in that file runs the stable
+hook, and names `setup.py uninstall`. Turned off over the person's own declarations,
+setup names the ones that now run beside the plugin's copies. Each takes out the groups
 setup recorded, its marked lines (found by their table, key, value and mark, however a
 formatter spaced them), a header it added once no key is left under it, and a
 `hooks.json` it created; the person's own lines and comments stay. Approvals Codex
@@ -340,6 +360,7 @@ person's that Codex would not read is a `codex hooks file` warning of its own.
 - `setup.py uninstall [--dry-run]` removes the plugin with each harness's own command
   (`claude plugin uninstall … --yes`, `codex plugin remove …`, `muse plugins remove …`),
   takes out the plugin's hooks declared in Codex's own `hooks.json` and their switches
-  (above), restores `core.hooksPath`, removes only files the install wrote that are
+  (above; it refuses, removing nothing, while a hook of the person's there runs the
+  runtime), restores `core.hooksPath`, removes only files the install wrote that are
   unedited, and keeps `config.json` and `state/` (settings, board, approvals), saying
   what it kept.

@@ -571,7 +571,12 @@ def codex_user_hooks(want, plugin_root=None, dry_run: bool = False) -> list:
     wanted = doctor.codex_user_declaration(paths.read_json(Path(plugin_root) / "hooks" / "hooks.json")) if want else {}
     if want and not wanted:
         raise SetupError(f"codex user hooks: {plugin_root} has no hooks/hooks.json to declare, so nothing was changed")
+    hook = Path(doctor.STABLE_HOOK.replace("$HOME", str(Path.home())))  # the path the declaration runs, as sh finds it
+    if want and not dry_run and not (hook.is_file() and os.access(hook, os.X_OK)):  # R2-2 of 5.21.0: it would hold every call
+        raise SetupError(f"codex user hooks: the synthesis runtime is not installed yet ({hook} is missing), and a declaration "
+                         "that runs it would hold every guarded call in Codex; install it first: nothing was changed")
     recorded, done, kept, short, covered, wrote, same, changed = record.get("groups") or {}, [], [], [], [], {}, [], []
+    twice, beside = [], []  # the person's beside setup's own, and beside the plugin's once setup's switches are out
     for event in dict.fromkeys([*wanted, *recorded, *events]):
         current = events.get(event, [])
         mine = [i for i, group in enumerate(current) if group in recorded.get(event, [])]
@@ -581,6 +586,7 @@ def codex_user_hooks(want, plugin_root=None, dry_run: bool = False) -> list:
             kept.append(event)
             (covered if doctor.codex_covers(own, wanted[event]) else short).append(event)
             continue
+        (twice if want else beside).extend([event] if own and (not want or mine and event in wanted) else [])
         if [current[i] for i in mine] != wanted.get(event, []):
             rest = [group for i, group in enumerate(current) if i not in mine]
             at = mine[0] if mine else len(rest)  # where setup's own stood, so the keys of the person's after it hold
@@ -602,11 +608,18 @@ def codex_user_hooks(want, plugin_root=None, dry_run: bool = False) -> list:
     after = {**records, key: {"groups": wrote, "created": record.get("created", raw is None)}} if wrote else \
         {k: v for k, v in records.items() if k != key}
     would, owned = "would " if dry_run else "", [e for e in kept if e in covered]
+    held = ("where the guard runs twice, a call both copies judge is held even once approved, since one spends the approval "
+            "and the other asks again")  # R2-8 of 5.21.0: in Codex a hold from either stops the call
     notes = [f"codex user hooks: {would}" + (f"declare {', '.join(done)} in {file}; approve them once in Codex's /hooks, and "
              "a release asks again only when it changes one" if want else f"take {', '.join(done)} out of {file}")] if done else []
     notes += [f"codex user hooks: {', '.join(owned)} already declared in {file} by you, kept as written"] if owned else []
-    notes += [f"codex user hooks: your own {', '.join(short)} in {file} covers less than the plugin's, so the plugin's own stays "
-              "on beside it: edit yours to cover it or remove it, then run this again"] if short else []
+    notes += [f"codex user hooks: your own {', '.join(short)} in {file} does not run as the plugin's (the same group and "
+              f"command), so the plugin's own stays on beside it; {held}: edit yours to match it or remove it, then run this "
+              "again"] if short else []
+    notes += [f"codex user hooks: {', '.join(twice)} declared in {file} by setup and by you, so each runs twice once both are "
+              f"approved; {held}: remove one of the two, then run this again"] if twice else []
+    notes += [f"codex user hooks: your own {', '.join(beside)} in {file} {would}now run beside the plugin's own copies once "
+              f"approved; {held}: remove yours to leave the plugin's alone"] if beside else []
     notes += [f"codex user hooks: {would}bring {', '.join(changed)} in {file} in step with the plugin; Codex hashes the "
               "change, so approve them once again in its /hooks"] if changed else []  # 5.21.0: the guard's failure tail
     notes += [f"codex user hooks: {would}bring {', '.join(same)} in {file} in step with the plugin; Codex hashes them as "
@@ -617,7 +630,8 @@ def codex_user_hooks(want, plugin_root=None, dry_run: bool = False) -> list:
                      f"take setup's switches out of {config_file}; the plugin's own hooks run once approved"))
     notes = notes or [f"codex user hooks: already declared in {file}, the plugin's own switched off" if want
                       else "codex user hooks: none declared by setup"]
-    writes = [w for w, changed in (((file, None if gone else json.dumps(data, indent=2, ensure_ascii=False) + "\n",
+    out = json.dumps(data, indent=2, ensure_ascii=False) + "\n"  # a CRLF file stays CRLF (R2-9 of 5.21.0)
+    writes = [w for w, changed in (((file, None if gone else out.replace("\n", "\r\n") if "\r\n" in (raw or "") else out,
                                      "codex-hooks.json", raw), json.dumps(data) != before or bool(gone and raw is not None)),
                                    ((config_file, "\n".join(lines), "codex-config.toml.user-hooks", text),
                                     "\n".join(lines) != (text or ""))) if changed]
@@ -888,6 +902,11 @@ def main(argv=None) -> int:
             if not any(doctor.find_client(client) for client in clients):
                 say([f"stopped: {no_harness(clients)}"])
                 return 1
+            if not args.dry_run:  # the runtime first: Codex's user-level hooks run it once declared (R2-2 of 5.21.0)
+                git_hooks = args.git_hooks or (interactive and args.command == "all" and confirm(
+                    "Run the synthesis commit check (secrets, disclosures, other sessions' claims) in every repository?",
+                    "--git-hooks", default=True))
+                say(install_runtime(git_hooks))
             plugin_lines, failed = setup_plugins(clients, args.ref, args.dry_run, args.codex_user_hooks)
             say(plugin_lines)
             if args.dry_run:
@@ -895,10 +914,7 @@ def main(argv=None) -> int:
                      "repository" if args.git_hooks else "") + (f"; would link day-end ({args.day_end})" if args.day_end else "")
                      + ("; would schedule the hourly copy of session transcripts" if args.sessions_export else "")])
             else:
-                git_hooks = args.git_hooks or (interactive and args.command == "all" and confirm(
-                    "Run the synthesis commit check (secrets, disclosures, other sessions' claims) in every repository?",
-                    "--git-hooks", default=True))
-                say(install_runtime(git_hooks) + first_config(interactive and args.command == "all"))
+                say(first_config(interactive and args.command == "all"))
                 if args.day_end:
                     say(register_day_end(args.day_end, load=not args.no_launchctl))
                 if args.sessions_export:
@@ -934,7 +950,21 @@ def main(argv=None) -> int:
     return 1 if failed else 0
 
 
+def _persons_calls() -> list:
+    """The events Codex's own hooks.json runs the stable hook for in a group setup did not write: the person's own."""
+    codex = paths.codex_home()
+    found, recorded = doctor.codex_user_entries(codex)[0], (paths.read_json(paths.codex_hooks_record()).get(
+        doctor.codex_hooks_key(codex)) or {}).get("groups") or {}
+    return [event for event, hooks in found.items() if any(group not in recorded.get(event, []) for _, group, _ in hooks)]
+
+
 def _uninstall(clients: list, dry_run: bool) -> int:
+    theirs = _persons_calls()  # R2-2 of 5.21.0: gone from under them, the runtime's absence holds every guarded call
+    if theirs:
+        print(f"stopped: nothing was removed, and the runtime stays: your own {', '.join(theirs)} in "
+              f"{paths.codex_home() / 'hooks.json'} run it, and without it Codex would hold every guarded call; remove "
+              "them, then run uninstall again")
+        return 1
     try:  # the hooks declared in Codex's own hooks.json run the runtime that goes below: they go first, or nothing does
         lines = codex_user_hooks(False, dry_run=dry_run)
     except SetupError as exc:
@@ -957,7 +987,12 @@ def _uninstall(clients: list, dry_run: bool) -> int:
         proc = subprocess.CompletedProcess(step, 0, "", "") if dry_run else run(step)
         lines.append(f"{client}: {'would remove' if dry_run else 'removed'} {PLUGIN}" if not proc.returncode
                      else f"{client}: removal failed: {_tail(proc)}")
-    lines += unregister_day_end(dry_run) + unregister_sessions_export(dry_run) + install.uninstall(dry_run=dry_run)
+    lines += unregister_day_end(dry_run) + unregister_sessions_export(dry_run)
+    try:  # a dry run has left setup's own declarations in place, and checked the person's above
+        lines += install.uninstall(dry_run=dry_run, codex_cleared=dry_run)
+    except install.InUse as exc:  # one declared meanwhile
+        print("\n".join(lines + [f"stopped: {exc}"]))
+        return 1
     print("\n".join(lines))
     return 0
 

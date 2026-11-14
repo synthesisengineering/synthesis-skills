@@ -13,6 +13,38 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   right after a click verb now waits on any page; one whose summary says it only opens a box still passes. Measured
   first: over 30 days of records, no click named one of these controls on any site, so the hold costs nothing
   measured. Tests first.
+- **A declaration in Codex's own `hooks.json` covers the plugin's guard only as the guard's own invocation**
+  (`synthesis-onboarding`, `synthesis-agent-conformance`). Setup and the doctor judged a user-level command by its first
+  two words, and read `~` and `$HOME` as expanded even inside quotes. So a guard whose answer went to `/dev/null`, was
+  swallowed by `|| true` or ran in the background was taken as covering: setup switched the plugin's fail-closed copy
+  off and the doctor said ok. A path `sh` never finds (`"~/…"`, `'$HOME/…'`) passed for a call. Now a group covers only
+  with the plugin's settings and each command the stable hook as `sh` finds it (`$HOME` or `${HOME}`, bare or in double
+  quotes, or a bare `~`), followed by the plugin's own words: for the guard, its fail-closed tail or nothing after its
+  event. Anything else keeps the plugin's copy on, and a path `sh` never finds is no declaration. 5.21.0's notes said a
+  narrower declaration never leaves a tool unguarded; until now that held for the matcher alone. Tests first.
+- **The runtime stays while Codex's own hooks run it** (`synthesis-onboarding`, core). With the option on, the
+  plugin's own session start, the one that reinstalls a missing runtime, is switched off, and once the runtime is gone
+  the user-level guard holds every guarded call, setup's own command included. `synthesis uninstall` removed the runtime
+  under setup's declarations, `setup.py uninstall` removed it under declarations of the person's that run it, and on a
+  new Mac setup declared before installing the runtime, so a failed install left the declarations behind. Now
+  `synthesis uninstall` removes nothing and exits 1 while anything in Codex's `hooks.json` runs the stable hook, and
+  names `setup.py uninstall`; `setup.py uninstall` refuses the same way while a hook of the person's there runs it; and
+  setup installs the runtime before any harness's plugin and declares only where the stable hook is in place. Tests
+  first.
+- **The guard answers within 4 seconds, closed** (core). A guard slowed past a harness's 5-second limit by a cold
+  repository read or a lock was let through by Codex and Muse, and its own `git` calls were allowed 20 seconds. The
+  PreToolUse hook now sets a 4-second deadline before it loads the guards: past it the call is held with the reason,
+  and git or any other process the guard started is stopped. What still lets a call through in Codex and Muse is a hook
+  whose start uses up more than about a second before the deadline is set. Tests first.
+- **Setup names each event it leaves running twice** (`synthesis-onboarding`). A declaration of the person's beside
+  setup's own read as "already declared", and turning the option off over the person's own declarations said only that
+  the plugin's hooks run once approved, while each event then ran twice. Where two copies of the guard judge one call,
+  one spends the approval and the other holds the call with a new code, so an approved call never goes. Setup now
+  names those events, in its note on a narrower declaration too, with what two guards do to an approved call. A CRLF
+  `hooks.json` now keeps its line endings, as 5.21.0's notes said every write did; only `config.toml` had. Tests first.
+- **The doctor judges every Claude Code on the Mac** (`synthesis-agent-conformance`). `claude fail closed` checked the
+  first Claude Code it found, while the plugin loads in each, the desktop app's own copies included. It now judges the
+  oldest and names its path when there are several. Tests first.
 
 ## [5.21.0] - 2026-11-14
 

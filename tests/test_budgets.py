@@ -987,10 +987,26 @@ ROOT = Path(__file__).resolve().parents[1]
 # words of a call that only types on those pages, which go on the principal's code, and 1 for the pages read beside apps).
 # 5.21.1: guards.py 1, the comment's third line: a click on a control that publishes waits on every page, since a
 # public review went out on a site that is no messaging site through a click on Submit rating.
+# 5.21.1, review round 2 of 5.21.0, setup and core: core 94 more and plugin 129. doctor.py 48: stable_rest 14 and
+# STABLE_SPELLINGS 2 with their spacing 4 (the stable hook as the program a command runs, spelled as sh finds it: a
+# quoted ~ or a single-quoted $HOME names no hook), calls_stable_hook 6 fewer (it asks stable_rest), _runs_as 9 with
+# spacing 2 (a user-level group covers the plugin's only as its own invocation, the guard's tail or nothing after its
+# event), claude_installs 11 and oldest_claude 4 with their spacing 4 (every Claude Code on the Mac, the oldest judged),
+# check_claude_fail_closed 1 (the oldest one's path where there are several) and harness_checks 3. hook.py 29:
+# GUARD_SECONDS 1, _Late 2 and _late 2 with their spacing 6, and pre_tool_use 18: its docstring 4, the deadline set 4
+# (signal's import with its blank, the handler and the timer) before the guards load, the try 1, the held answer past
+# the deadline 3, the timer cancelled and the handler put back 3, and an unreadable config's answer 3 more (kept, not
+# returned, so it prints once the timer is cancelled). install.py 13: InUse 2 with spacing 2, and uninstall 9 (the
+# runtime stays while Codex's own hooks.json runs it: its docstring 3, the check 3 and the refusal 3). cli.py 4:
+# cmd_uninstall says the refusal and exits 1. setup.py 35: codex_user_hooks 14 (declares only where the stable hook is
+# in place 4; each event left running twice named, with what two guards do to an approved call: its lists 1, the event
+# filed 1, the words 2, the narrower declaration's note 1 longer and two notes of 2 each; a CRLF hooks.json kept CRLF 1),
+# main 2 (the runtime installed before any plugin), _persons_calls 6 with spacing 2, and _uninstall 11 (the person's
+# own declarations keep the runtime, nothing removed and exit 1, 6; a declaration made meanwhile, 5).
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # consolidate first).
-CORE_BUDGET = 14925
-PLUGIN_BUDGET = 38172
+CORE_BUDGET = 15019
+PLUGIN_BUDGET = 38301
 
 
 def _lines(files):

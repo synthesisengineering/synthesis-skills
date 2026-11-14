@@ -244,17 +244,31 @@ def hooks_json_entries(data: dict) -> list:
             for group in groups or [] for handler in group.get("hooks") or []]
 
 
+STABLE_SPELLINGS = tuple(f"{q}{home}/.synthesis/v5/bin/synthesis-hook{q}" for home in ("$HOME", "${HOME}") for q in ('"', "")) + (
+    "~/.synthesis/v5/bin/synthesis-hook",)  # the ways sh finds the stable hook: $HOME bare or in double quotes, ~ bare
+
+
+def stable_rest(command):
+    """The words after the stable hook when a command runs it as its program, else None: its path first, after `exec` or
+    not, spelled as sh finds it. sh expands neither ~ in quotes nor $HOME in single quotes, so those name no hook (review
+    round 2 of 5.21.0: both were taken for a call)."""
+    text = str(command or "").lstrip()
+    text = text[4:].lstrip() if text.startswith("exec") and text[4:5].isspace() else text
+    for spelled in STABLE_SPELLINGS:
+        after = text[len(spelled):len(spelled) + 1]
+        if text.startswith(spelled) and (not after or after.isspace()):
+            try:
+                return shlex.split(text[len(spelled):])
+            except ValueError:
+                return None
+    return None
+
+
 def calls_stable_hook(event: str, command) -> bool:
-    """Whether a hook's command runs the stable hook as its program, with this event's own argument: the hook's path
-    first, quoted or not, spelled with $HOME, ${HOME} or ~, after `exec` or not. A line that only names it is no
-    declaration (review round 1 of 5.21.0: a log line was taken for one, and a guard went off)."""
-    try:
-        words = shlex.split(str(command or ""))
-    except ValueError:
-        return False
-    words, home = words[1:] if words[:1] == ["exec"] else words, str(Path.home())
-    spelled = [os.path.expanduser(w.replace("${HOME}", home).replace("$HOME", home)) for w in words[:1] + [STABLE_HOOK]]
-    return len(words) > 1 and spelled[0] == spelled[1] and words[1] == EVENTS.get(event)
+    """Whether a hook's command runs the stable hook as its program, with this event's own argument (stable_rest). A
+    line that only names it is no declaration (review round 1 of 5.21.0), nor is a path sh never finds (round 2)."""
+    rest = stable_rest(command)
+    return rest is not None and rest[:1] == [EVENTS.get(event)]
 
 
 def check_hooks_wired(harness: str, commands: list) -> Check:
@@ -361,8 +375,19 @@ def codex_user_declaration(plugin_hooks: dict) -> dict:
 
 
 def _declared(group: dict) -> dict:
-    """A group apart from how its commands name the stable hook ($HOME or ${HOME}), which the person may write."""
+    """A group apart from its commands, which _runs_as compares on their own."""
     return {**group, "hooks": [{**hook, "command": ""} for hook in group.get("hooks") or []]}
+
+
+def _runs_as(group: dict, wanted: dict) -> bool:
+    """Whether a user-level group is the plugin's: the same settings, and each command the plugin's own invocation of the
+    stable hook, with the plugin's words after it (the guard's fail-closed tail) or nothing after it, however the hook's
+    path is spelled for sh. By its first words alone, a command that threw the guard's answer away or never reached it
+    passed for the guard, and the plugin's fail-closed copy went off (review round 2 of 5.21.0)."""
+    mine, theirs = group.get("hooks") or [], wanted.get("hooks") or []
+    rests = [(stable_rest(m.get("command")), stable_rest(t.get("command"))) for m, t in zip(mine, theirs)]
+    return _declared(group) == _declared(wanted) and len(mine) == len(theirs) and all(
+        own is not None and plugin is not None and own in (plugin, plugin[:1]) for own, plugin in rests)
 
 
 SETUP_MARK = "synthesis-setup: codex-user-hooks"  # the comment on each config.toml line setup's Codex option adds
@@ -390,7 +415,7 @@ def codex_covers(groups: list, wanted: list) -> bool:
     """Whether user-level groups hold every group of the plugin's declaration of an event, apart from how their commands
     name the stable hook: only then may the plugin's own copy be off (review round 1: a narrower one of the person's
     left connector sends unguarded)."""
-    return bool(wanted) and all(_declared(w) in [_declared(g) for g in groups] for w in wanted)
+    return bool(wanted) and all(any(_runs_as(g, w) for g in groups) for w in wanted)
 
 
 def codex_hooks_key(codex_home: Path) -> str:
@@ -524,7 +549,26 @@ def claude_version(binary: str) -> str:
     return found.group(1) if found else ""
 
 
-def check_claude_fail_closed(hooks: dict, version: str) -> Check:
+def claude_installs(which=shutil.which, locations=None) -> list:
+    """Every Claude Code on this Mac the plugin loads in: the one on PATH and each in its install folders (the desktop
+    app keeps one per version), once each by its real path (review round 2 of 5.21.0: only the first was judged)."""
+    found, seen = [], set()
+    for candidate in [which("claude")] + [p for c in (KNOWN_LOCATIONS["claude"] if locations is None else locations)
+                                          for p in _expand(c)]:
+        path = os.path.abspath(os.path.expanduser(candidate)) if candidate else ""
+        if path and os.path.realpath(path) not in seen and os.path.isfile(path) and os.access(path, os.X_OK):
+            seen.add(os.path.realpath(path))
+            found.append(path)
+    return found
+
+
+def oldest_claude(installs: list, version_of=None) -> tuple:
+    """(version, path) of the oldest of these Claude Codes; one whose version cannot be told counts as the oldest."""
+    return min((((version_of or claude_version)(path) or "", path) for path in installs),
+               key=lambda found: tuple(int(n) for n in found[0].split(".")) if found[0] else ())
+
+
+def check_claude_fail_closed(hooks: dict, version: str, where: str = "") -> Check:
     """Claude Code lets a call through when its PreToolUse hook times out, crashes or cannot start, unless the handler
     says "onFailure": "block", which it honors from 2.1.295 (5.21.0). Codex and Muse have no such setting; there the
     guard's own command holds a guard that cannot start or crashes, as exit 2 with a reason, and one that times out
@@ -533,12 +577,13 @@ def check_claude_fail_closed(hooks: dict, version: str) -> Check:
     if not handlers or any(handler.get("onFailure") != "block" for handler in handlers):
         return Check("fail", "claude fail closed", 'the installed plugin\'s PreToolUse hook lacks "onFailure": "block", so a '
                      "guard that times out or crashes lets the call through: update the plugin")
+    at = f" ({where})" if where else ""
     if not version:
-        return Check("warn", "claude fail closed", "cannot tell which Claude Code this is, so whether it holds a guarded "
-                     "call when the guard times out or crashes")
+        return Check("warn", "claude fail closed", f"cannot tell which Claude Code this is{at}, so whether it holds a "
+                     "guarded call when the guard times out or crashes")
     if tuple(int(n) for n in version.split(".")) < CLAUDE_ON_FAILURE:
-        return Check("warn", "claude fail closed", f"Claude Code {version} ignores onFailure (2.1.295 or later honors it), "
-                     "so a guard that times out or crashes lets the call through: update Claude Code")
+        return Check("warn", "claude fail closed", f"Claude Code {version}{at} ignores onFailure (2.1.295 or later honors "
+                     "it), so a guard that times out or crashes lets the call through: update Claude Code")
     return Check("ok", "claude fail closed", f"Claude Code {version} holds a guarded call when the guard times out, crashes "
                  "or cannot start")
 
@@ -1732,8 +1777,11 @@ def harness_checks(found: list, procs: dict, home: Path, runtime: str, catalog=N
         checks.append(check_plugin("claude", entry, error))
         if entry:
             versions["claude"], hooks = entry.get("version", ""), _hooks_file(entry["path"])
+            first = procs["claude"].args[0]  # the plugin loads in every Claude Code here: the oldest is judged
+            installs = [first] + [p for p in claude_installs() if os.path.realpath(p) != os.path.realpath(first)]
+            version, where = oldest_claude(installs)
             checks += [check_package("claude", entry["path"], runtime), check_hooks_wired("claude", _commands(hooks)),
-                       check_claude_fail_closed(hooks, claude_version(procs["claude"].args[0])),
+                       check_claude_fail_closed(hooks, version, where if len(installs) > 1 else ""),
                        check_claude_retention(paths.transcript_roots()["claude-code"].parent / "settings.json")]
     if "codex" in found:
         codex_home = paths.codex_home()
