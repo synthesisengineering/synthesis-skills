@@ -236,10 +236,15 @@ wrote, and keeps your config and the board.
 
 Someone who wants one discipline can install a collection instead of the whole set: a
 plugin that holds that discipline's skills and nothing else. A collection has no hooks and
-no runtime, so installing one changes nothing else on the Mac and asks for no approval. It
-also has no guards, no board, no approvals and none of the rituals' state; where one of
-its skills describes those, it describes the whole set. Each release publishes the five
-collections, built from its own files, as the `collections` branch of this repository.
+runs no synthesis runtime, so installing one changes nothing else on the Mac and asks for
+no approval. It also has no guards, no board, no approvals and none of the rituals' state;
+where one of its skills describes those, it describes the whole set. Its scripts run from
+its folder: a collection whose scripts read settings carries the runtime's YAML reader for
+them, and the eleven scripts that need the runtime itself (its board, approvals, the
+rituals' records, installing synthesis) say so in one line. A link that would lead out of
+a collection's folder points at the file on GitHub at the release's tag. Each release
+publishes the five collections, built from its own files, as the `collections` branch of
+this repository.
 
 | Collection | Plugin | Its skills, each named without `synthesis-` |
 |---|---|---|

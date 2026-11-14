@@ -7,6 +7,7 @@ the build, and when the build or the release's collections stage refuses.
 Contents:
 - What they are, and what they are not
 - What decides a skill's collection
+- A collection's scripts, paths and links (review round 1)
 - What a collection's folder holds
 - Build it, check it
 - What fails the check
@@ -22,7 +23,7 @@ default and is listed first. A collection is for someone who wants one disciplin
 hooks: core, project management, engineering, writing and chief of staff, each a plugin
 of its own (`synthesis-skills-<name>`). The core is what the other four build on.
 
-A collection registers no hook and carries no runtime, so installing one asks for no
+A collection registers no hook and runs no synthesis runtime, so installing one asks for no
 approval and changes nothing else on a Mac. It has no guards, no board, no approval codes
 and none of the rituals' state; a skill in it that describes those describes the whole
 set, and each collection's description says so and names the whole set. The source stays
@@ -65,9 +66,39 @@ declares as dependencies only what it always uses: the fact-checking and writing
 skills apply when its task is writing, as its references say, so they are no longer in
 its `depends_on`.
 
+## A collection's scripts, paths and links (review round 1)
+
+5.22.0's first review found three ways a collection's files failed where it is installed,
+and the build now holds each:
+
+- **Scripts that import the runtime (R1-3).** Of 34 collected scripts that imported the
+  synthesis runtime, 23 read only its YAML reader, which uses the standard library alone
+  and keeps no state. A collection whose scripts read it carries `synthesis/__init__.py`
+  and `synthesis/yamlish.py`, byte for byte, where the whole set holds them, so those
+  scripts find them as they do there. The other eleven need the runtime itself (its board,
+  approvals, the rituals' records, installing or releasing the whole set): the collections
+  file names each under `needs_the_whole_set` with why, and each says so in one line. The
+  build reads every collected script's imports from its syntax, through the modules beside
+  it, and refuses one that cannot start in its collection unless it is named, one that
+  imports the runtime inside a function with nothing to catch the absence, a name that no
+  longer fits, and a carried module that imports the rest of the runtime. A test runs every
+  collected entry point with `--help` from a built folder on a Mac with no runtime.
+- **A path into another skill's folder (R1-20).** Every string of a collected script's
+  code, docstrings aside, that names another skill's folder is read: that skill must be in
+  the script's collection, or the script must need the whole set, or `optional_loads` must
+  name the load with what the script does without it. The rituals' pull-request scan reaches
+  the Bitbucket skill's helper, and reports a Bitbucket repository unscanned without it.
+- **Links (R1-21).** In the built copy alone, a relative link that resolves in the whole set
+  and would lead out of the folder points at the repository's file, or folder, at the
+  release's tag; every other byte stays the source's, and a link that leads nowhere in the
+  whole set too is left as it is. The build names any link that still leads out.
+
 ## What a collection's folder holds
 
-- Every tracked file of its skills that is not a test, byte for byte.
+- Every tracked file of its skills that is not a test, byte for byte, but for links that
+  would lead out of the folder (above).
+- Where its scripts read settings, the runtime's `synthesis/__init__.py` and
+  `synthesis/yamlish.py`, and nothing else of the runtime.
 - The repository's `LICENSE-APACHE` and `LICENSE-CC0`, the terms its skills' SPDX
   identifiers name.
 - Its own `.claude-plugin/plugin.json`, `.codex-plugin/plugin.json` and
@@ -122,8 +153,10 @@ the release with nothing published, a dry run included. It writes the folders in
 a tree (`build_collections.tree`) and, for each push remote, commits that tree on top of
 the remote's `collections` head, so no release rewrites the branch a harness installs
 from; a run again after a server error finds the head already holding the tree and
-reuses it. The commit goes in the same atomic push as `main`, `stable` and the tag, and
-each ref is read back with `git ls-remote`. The commit is made with git's own plumbing
+reuses it. The commit takes the release commit's identity and time, unsigned, and names
+the commit it was built from, so every remote that shares a head gets the same commit, on
+this run or a run again (R1-22: each remote had got its own). The commit goes in the same
+atomic push as `main`, `stable` and the tag, and each ref is read back with `git ls-remote`. The commit is made with git's own plumbing
 from files the release's commit already holds, so no commit hook runs on it. The branch
 must stay writable by the release: a protection rule that requires pull requests on
 `collections` would stop every release at its push.
@@ -147,8 +180,5 @@ same form of each line read this repository's `stable` branch from GitHub.
   no sign-in. Each harness's own listing showed only the collection's skills, under the
   plugin's name (`synthesis-skills-engineering:synthesis-code-planning` in Codex).
 - The branch on GitHub itself: the first release with the collections stage creates it.
-- A link from one skill's files into another skill's folder (`../synthesis-<name>/...`)
-  resolves only inside one plugin; from a collection into the core or another collection
-  it leads nowhere, and the skill it names is found by its name.
 - In Muse 1.4.20, `muse plugins update` did not move a plugin installed from a marketplace
   to the marketplace's newer snapshot; removing it and installing it again did.
