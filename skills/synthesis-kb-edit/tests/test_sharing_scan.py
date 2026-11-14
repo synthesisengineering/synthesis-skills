@@ -160,6 +160,17 @@ def test_a_named_file_outside_the_bundle_is_said_and_not_judged(kb):
     assert code == 0 and "docs/guide.md: not judged, outside the bundle (source)" in out
 
 
+def test_a_file_that_is_not_text_is_said_and_never_counted_as_read(kb):
+    """The scan reads text only: a file it cannot read as text is named for the reviewer, never passed as clean."""
+    (kb / "source" / "reference" / "chart.png").write_bytes(b"\x89PNG\r\n\x1a\n\0\0zephyr ledger\0")
+    said = "source/reference/chart.png: not judged, not text (the scan reads text only)"
+    code, out, _ = scan(kb, "source/reference/chart.png")
+    assert code == 0 and out.splitlines() == [said, "sharing scan: clean, 0 files read for 3 phrases"]
+    git(kb, "add", "-A")
+    code, out, _ = scan(kb, "--staged")
+    assert code == 0 and out.splitlines()[0] == said
+
+
 def test_with_no_phrases_named_it_refuses_to_run(kb):
     """The plugin ships none, and a scan with nothing to look for would pass everything."""
     for phrases in ([], ABSENT):
