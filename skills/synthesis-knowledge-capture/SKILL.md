@@ -7,7 +7,7 @@ depends_on:
   - synthesis-kb-edit
 metadata:
   author: Rajiv Pant
-  version: "2.0.0"
+  version: "2.1.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
   format: v5
@@ -29,10 +29,11 @@ Rules 1 to 4 are the skill's four hard merge rules, in their original order.
 3. **Reconcile, never blind-flip.** Classify a contradiction as staleness, a second axis, or ambiguity in the new fact before editing.
 4. **No fact without a source.** Every merged claim cites who said it or which tool surfaced it in this session.
 5. **If the config is missing, STOP and say so.** Also stop if the target repo lacks `.agents/knowledge-base.yaml` or the two disagree on the bundle path.
-6. **Default to the most private tier that fits.** Split neutral from candid; a public repo takes no confidential term (reroute or drop, never sanitize and ship).
+6. **Default to the most private tier that fits, except where the target's contract names a sharing policy:** there a fact goes in unless the policy's harm test or one of its classes keeps it out, and a fact whose tier is unknown still takes the most private tier. Split neutral from candid; a public repo takes no confidential term (reroute or drop, never sanitize and ship).
 7. **Where a fact was learned does not set where it may be stored.** The fact's tier governs.
 8. **Validate and log before shipping:** both `synthesis-okf` layers clean, a `log.md` entry naming the change and its source.
 9. **Ship through `synthesis-kb-edit`** with the exact touched files. Stage only those, name the area (never the specifics) in the commit message, check `git remote -v`, push per posture.
+10. **Facts go in by extraction, and what was left out is counted.** Write each fact into the concept that owns it, never a pasted or converted source unless its full text is the reference; the review request synthesis-kb-edit opens lists what was left out, by class and count (the sharing policy's classes where the contract names one), never the facts.
 
 ## Contents
 

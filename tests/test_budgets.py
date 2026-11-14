@@ -985,10 +985,34 @@ ROOT = Path(__file__).resolve().parents[1]
 # send guard passes, a navigate that names no host keeps a messaging site's page; the account check still takes it as
 # unknown); _pages 1 (whether a box on every page may be a search); check_desktop 11 (10 for the
 # words of a call that only types on those pages, which go on the principal's code, and 1 for the pages read beside apps).
+# 5.22.0 (unreleased): plugin 248 more and the core as it was, for the sharing standard (plan item 14.1), which ships
+# no phrase list (the principal's ruling of 2026-11-14). sharing_scan.py 162, new (the policy's backstop scan): main 37
+# (one way of choosing lines, a refusal with its reason and exit 2, a held line named by file, line and phrase only,
+# the summary), its opening words 17 (the shebang and the docstring with its three commands), read_contract 17 (the
+# contract checked whole, then no policy, a policy that is not there and no phrases, each refused with what to do),
+# added 19 (the lines a range or the index adds under the bundle, by their new numbers; a move read as a deletion and an
+# addition, so a file moved in is judged whole; a binary file marked), whole 14 (every line of the named files and of
+# the files in the named folders, a file holding a NUL byte marked, .git passed over), unjudged 7 (the policy, the
+# contract, a path outside the bundle and a file that is not text), imports 6, matcher 5 (a phrase where a word starts,
+# in any case, with any run of spaces between its words; one of five characters or fewer a whole word), git 5 (git's
+# own message when it fails), the bytecode guard, the path beside it and kb_config 3, SHORT and HUNK 2, Refused 2,
+# count 2, the entry point 2, and 24 blank lines between them. kb_config.py 81: adopt_sharing_policy 46 and the two
+# blank lines after it (the policy named with the phrases given or with those the contract lists, never with neither;
+# the template written where the contract says and never over a file that exists; the keys the contract lacks added
+# after its confidentiality line at its first key's indent, every other line kept; the result read back and validated
+# before anything is written, so no policy is left named with no phrases; a contract it cannot change safely refused,
+# with the lines to add by hand), validate_config 11 (any other key refused at every level 4; the phrase list a list of
+# phrases, and at least one while a policy is named, the error naming both ways out, 7; the policy's path read in the
+# loop that reads the other two paths), main 10 (adopt-sharing-policy read first, with its repeatable --phrase, its
+# lines and its exit), KEYS 7 with its two-line note (every key the contract names, by the mapping that holds it),
+# POLICY and TEMPLATE 2, check_paths 2 (a named policy must be there) and the re import 1. workspace.py 5: the policy's
+# template seeded from synthesis-kb-edit's, not a copy, 2, and the line saying it is not adopted and how to adopt it 3.
+# Merged into release 5.22.0 on 5.21.0 (2026-11-14): the ceilings are 5.21.0's (core 14924, plugin 38171) and what
+# each 5.22.0 paragraph above adds over 5.20.1's: plugin 248 for the sharing standard.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # consolidate first).
 CORE_BUDGET = 14924
-PLUGIN_BUDGET = 38171
+PLUGIN_BUDGET = 38419
 
 
 def _lines(files):

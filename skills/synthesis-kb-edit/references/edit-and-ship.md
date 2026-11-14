@@ -33,6 +33,13 @@ For durable facts learned during the current session, compose with
 `synthesis-knowledge-capture`: scan every mention, reconcile conflicts, and
 preserve provenance before entering this ship workflow.
 
+To import a document, extract: take its information, not its text; put each
+fact in the concept that owns it, updated in place, and cite the document.
+Convert the whole document only when its full text is the reference. When the
+contract names a sharing policy, judge each fact by the policy's test and
+classes ([sharing-standard.md](sharing-standard.md)) and count what you leave
+out, by class, for the review request.
+
 Classify every candidate path before writing:
 
 ```bash
@@ -87,6 +94,20 @@ lines. Read its pattern source at runtime; never copy its terms into this
 public skill. If the scanner or hook cannot run, stop. Never bypass a match or
 use `--no-verify`.
 
+When the contract names a sharing policy (`confidentiality.sharing_policy`),
+run its phrase scan over the same staged lines:
+
+```bash
+python3 <skill-root>/scripts/sharing_scan.py <repo-root> --staged
+```
+
+It prints each held line as its file, line and phrase, and nothing else of
+the line. Read each held line against the policy: a fact in a class comes
+out; a line that is right as it stands goes to the reviewer, with the phrase
+narrowed or dropped in the contract in the same request. Never reword a line
+only to get past the scan. A scan that cannot run (exit 2: no phrases, no
+policy, an invalid contract) blocks shipping like any protective control.
+
 ### 6. Review and save exactly the intended files
 
 Show:
@@ -94,6 +115,7 @@ Show:
 - what changed, concept by concept;
 - which configured schema and taxonomy were applied;
 - the conformance, consistency, link, and confidentiality results;
+- for an import, what was left out, by class and count, never the facts;
 - any reviewer notes for requests outside editable scope.
 
 Stage only the listed editable files. Before committing, inspect both
@@ -109,6 +131,10 @@ requires it.
   publisher from `review.who_merges`, and what automation runs after merge.
 - **`ship: direct`:** push only when current authority and repository rules
   permit it. Verify the remote branch afterward.
+- **An import's review request** says in its description what was left out,
+  by class and count ("Left out: 4 facts (personal and customer data 3,
+  negotiated terms 1)"), and never the facts themselves or enough to infer
+  them. With `ship: direct`, the same list goes in the report to the user.
 
 Use repository-relative paths in outward-facing text. Do not expose local
 absolute paths, secrets, scanner patterns, or AI attribution unless

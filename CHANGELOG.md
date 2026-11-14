@@ -4,6 +4,47 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [5.22.0] - 2026-11-14
+
+- **A public standard for what goes into a shared knowledge base** (`synthesis-kb-edit` 2.1.0). An organization that
+  names its knowledge repository gets the general rules by default and keeps only what is its own in its repository.
+  `references/sharing-standard.md` sets out two audiences, extraction as the way information goes in, one test for
+  each fact (could it cause real harm if it left the organization?), nine default classes that stay out, each with what
+  still goes in, figures by the level at which they were shared, a project recorded without the element that stays
+  out, and enforcement in layers. `assets/sharing-policy.template.md` is the policy an organization fills in; its own
+  parts (its audiences, rulings, examples, added classes, where excluded material lives, and its phrases) are marked
+  and empty.
+- **No phrase list ships.** The contract gains `confidentiality.sharing_policy` and `confidentiality.backstop_phrases`,
+  the organization's own phrases. `scripts/sharing_scan.py` reads both and holds any line a change adds under the
+  bundle that contains one: `--range BASE...HEAD` for a review request or a pipeline, `--staged` for a commit hook, or
+  whole files and folders. It prints the file, the line and the phrase, never the rest of the line; never judges the
+  policy or the contract; names a file it cannot read as text; and refuses to run (exit 2) with no phrases, no policy
+  or no valid contract. It needs only the standard library and the checkout's own YAML reader, so a pipeline runs it by
+  path from a checkout pinned to a tag. The standard shows the hook and the pipeline step that call it; the plugin
+  installs no hook in a knowledge base.
+- **The contract refuses a key it does not name,** at the top level and inside `review`, `frontmatter` and
+  `confidentiality`. A misspelled optional key had switched off what it configured while the configuration gate said
+  VALID. A contract that carries a key of its own fails the gate until that key moves into `notes`.
+- **Extraction is a binding rule** in `synthesis-kb-edit` (rule 12) and `synthesis-knowledge-capture` 2.1.0 (rule 10):
+  each fact goes into the concept that owns it, cited, and every import's review request lists what was left out, by
+  class and count, never the facts. Validation runs the phrase scan when the contract names a sharing policy.
+- **Knowledge capture shares by default where a sharing policy decides** (`synthesis-knowledge-capture` rule 6). Where
+  the target's contract names a sharing policy, a fact goes in unless the policy's harm test or one of its classes keeps
+  it out; the most private tier stays the default for a fact whose tier is unknown and for a repository with no policy.
+  The routing reference keeps its earlier bullet word for word and adds this one after it.
+- **Adopting is deliberate, and a new knowledge base ships as before** (`synthesis-onboarding` 3.6.0).
+  `setup.py workspace --new NAME` seeds the template at `.agents/sharing-policy.md`, but the new contract names no
+  policy, so the phrase scan does not run and edits ship as they always have; the output names the step that adopts it.
+  `kb_config.py adopt-sharing-policy <repo-root> --phrase PHRASE` (one `--phrase` for each) is that step: it names the
+  policy and lists the phrases in the contract, in place, keeping every line; writes the template where the contract
+  says, never over a file that exists; writes the contract only when the result passes the configuration gate; and
+  commits nothing. Given no phrase while the contract lists none, it writes nothing. A contract that names a policy with
+  no phrases fails the configuration gate, holding every edit, and the error says to list one or remove the policy.
+- **How it was checked.** Tests first for the contract, the scan, adopting and the seed, each committed failing for
+  the reason its code then fixed; every phrase in them is made up. The first pass named the policy in every new
+  knowledge base's contract, with no phrases, which would have held its edits; adoption was made deliberate before
+  review, its tests again committed first.
+
 ## [5.21.0] - 2026-11-14
 
 - **One approval in Codex lasts through releases, as a setup option** (`synthesis-onboarding`,

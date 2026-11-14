@@ -38,6 +38,9 @@ frontmatter:
     - "index.md"
     - "log.md"
 
+# The sharing policy's template is at .agents/sharing-policy.md. Adopting it
+# (synthesis-kb-edit's kb_config.py adopt-sharing-policy) names it below with
+# your own phrases; until then, edits ship without the phrase scan.
 confidentiality:
   forbidden_words_source: null
   hook_path: null
