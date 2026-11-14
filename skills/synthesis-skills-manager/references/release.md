@@ -59,12 +59,18 @@ Before anything is pushed it refuses when:
 - the CHANGELOG's newest entry is not that version;
 - the version's tag already names another commit;
 - CI has not passed for HEAD (read with `gh run list --commit`; unknown is not passed);
-- another live session holds the release train.
+- another live session holds the release train;
+- the five collections, built from HEAD's commit, fail a check, or the collections file
+  cannot be read ([collections.md](collections.md)); a dry run builds and checks them too.
 
-Publication pushes `main`, `stable` and the tag to every push remote, one atomic push
-per remote, so a channel or pin never moves without the others. Success is read back
-with `git ls-remote`, never from an exit status: a piped push once reported success
-while nothing moved (lesson 2026-09-21, release train quiet tree and exit codes).
+Publication pushes `main`, `stable`, the tag and the collections to every push remote,
+one atomic push per remote, so a channel or pin never moves without the others. The
+collections go as the `collections` branch: a commit whose tree is the five built
+folders and their two marketplace files, on top of that remote's head of the branch, so
+no release rewrites it; a run again reuses a head that already holds the same tree.
+Success is read back with `git ls-remote`, never from an exit status: a piped push once
+reported success while nothing moved (lesson 2026-09-21, release train quiet tree and
+exit codes).
 
 Then the GitHub release: for each GitHub remote, the script creates the release for the
 tag (`gh release create --verify-tag --latest`, titled "Synthesis X.Y.Z", its notes the

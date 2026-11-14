@@ -13,6 +13,7 @@ metadata:
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
   format: v5
+  category: chief-of-staff
 ---
 
 # Daily Rituals

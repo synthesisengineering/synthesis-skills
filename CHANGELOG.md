@@ -45,6 +45,47 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   knowledge base's contract, with no phrases, which would have held its edits; adoption was made deliberate before
   review, its tests again committed first.
 
+- **Five collections beside the whole set** (`synthesis-skills-manager` 3.6.0, `synthesis-onboarding` 3.6.0; plan item
+  12.1, ruled 2026-11-14). Someone who wants one discipline can now install a collection instead of every skill: core
+  (17 skills, which the other four build on), project management (7), engineering (13), writing (18) and chief of staff
+  (17), each a plugin of its own (`synthesis-skills-<name>`). The whole set stays the way to install synthesis, and the
+  README lists it first. A collection registers no hook and carries no runtime, so installing one asks for no approval
+  and changes nothing else on a Mac; each collection's description names the whole set as the way to the guards, the
+  board and the rituals.
+- **Each skill names its collection.** `metadata.category` in every SKILL.md frontmatter, from the collections listed in
+  the skills manager's `assets/collections.json`. A test holds that every skill is in exactly one, depends only on its
+  own collection or the core, and has any dependency its scripts load in its own collection, since the core installs in
+  a folder of its own. Four SKILL.md files have no room for the line under 8,000 bytes (git hooks and Slack sync at
+  7,992, waiting at 7,993 and the knowledge-base distribution at 7,996); their words are kept, and the file names
+  their collection under `awaiting_room` until a reorganization makes room, which a test then reports. The daily
+  rituals, which 5.21.0 brought to 7,844 bytes, carry their line. Knowledge-base editing and the Open Knowledge Format
+  are in the core, since onboarding seeds a new workspace's sharing policy from knowledge-base editing's template (the
+  sharing standard, above). Autopilot declares as dependencies only what it always uses (4.1.1): fact-checking and
+  writing craft apply when its task is writing, as its references say.
+- **`build_collections.py` builds them** from the flat folder, each into a folder of its own: its skills whole but for
+  their tests, byte for byte, the two license files, and its own manifests for Claude Code, Codex and Muse at the
+  repository's version, none registering a hook. Every collection but the core declares the core as its Claude Code
+  dependency; Codex and Muse resolve none, so their install lines name both. `--check` builds and checks and writes
+  nothing; a build into a folder is cut from the last commit and written whole or not at all. It reads files with the
+  directory package's code, now one function both builders share.
+- **The release publishes them as the `collections` branch.** Before it tags anything, `release.py` builds the
+  collections from the commit it releases and checks them; any failure stops it with nothing published. The branch's
+  commit holds the built folders and two marketplace files as its tree, on top of each remote's head of the branch, and
+  goes in the same atomic push as `main`, `stable` and the tag, read back from each remote. A run again reuses the head
+  that already holds the folders.
+- **How to install one** is in the README, after the whole set, and in onboarding's harness reference: Claude Code adds
+  the repository at `@collections` and installs a collection, which brings the core; Codex adds it with
+  `--ref collections` and adds both; Muse adds its URL with `#collections` and installs both. Updating, removing one, and
+  moving to the whole set are there too.
+- **The README counts what the skills declare.** It said 45 skills under CC0 and 25 under Apache 2.0, where they declare
+  46 and 26; a test now holds the counts.
+- **How it was checked.** Tests first, for the collection rules, the builder and the release's new stage. The route was
+  probed in isolated harness homes (Claude Code 2.1.316, Codex 0.167.0-alpha.4.1, Muse 1.4.20) against a local copy of
+  the branch served over HTTP, with the real installs unchanged before and after: each harness added the branch by its
+  ref, installed a collection and the core, listed only their skills, registered no hook and asked for no approval, and
+  each install held exactly its folder's files. The probe also found that Claude Code shows a plugin's marketplace entry,
+  not its manifest, before an install; the entry now carries the whole description.
+
 ## [5.21.0] - 2026-11-14
 
 - **One approval in Codex lasts through releases, as a setup option** (`synthesis-onboarding`,

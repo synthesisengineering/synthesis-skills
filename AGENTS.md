@@ -18,6 +18,10 @@ Codex and Muse while remaining compatible with the Agent Skills standard.
 - `hooks/hooks.json` owns shared lifecycle-hook registration.
 - `skills/synthesis-onboarding/scripts/setup.py` installs the native plugin in
   each harness; native plugins are the only installation path.
+- `skills/synthesis-skills-manager/assets/collections.json` lists the five
+  collections, plugins without hooks that each release builds from `skills/` and
+  publishes as the `collections` branch; each skill names its own in its frontmatter
+  (`metadata.category`). That branch is a build output: never edit it by hand.
 
 Never edit installed plugin caches or user-level skill copies. Make the change
 here, verify it, merge it to `main`, then update the installed plugins.
@@ -68,7 +72,8 @@ That covers the v5 core (`synthesis/`), every skill's own tests wherever they li
 v5 skills (`tests/test_skill_format.py`), the budgets and hook latency
 (`tests/test_budgets.py`), and the source lint (`tests/test_source_lint.py`): the three
 plugin manifests agree, the CHANGELOG's newest entry is that version, skill names are
-unique, every `depends_on` resolves, every skill has an SPDX license and
+unique, every `depends_on` resolves, every skill is in exactly one collection and depends
+only on its own or the core, every skill has an SPDX license and
 `agents/openai.yaml`, Muse's manifest lists every skill, Codex's skill catalog fits its
 budget, no personal path appears anywhere, and every config a skill documents as
 fail-closed ships an example. The lint also fails if any `test_*.py` under `skills/`
@@ -97,10 +102,12 @@ Codex's settings and catalog, instruction adapters and durable storage.
   It refuses unless the tree is clean on the default branch, the manifests and
   CHANGELOG agree, and CI passed for HEAD. It holds the release train (a board claim
   on the main checkout's `CHANGELOG.md`; another live session holding it means
-  another release is under way, and the script names it), tags, pushes `main`,
-  `stable` and the tag atomically to every push remote and reads them back with
-  `git ls-remote`, creates the GitHub release for the tag (its CHANGELOG entry as the
-  notes, read back as latest), opens the Homebrew tap's pull request that points the
+  another release is under way, and the script names it), builds and checks the five
+  collections from the commit (`build_collections.py`), tags, pushes `main`, `stable`,
+  the tag and the collections, as the `collections` branch, atomically to every push
+  remote and reads them back with `git ls-remote`, creates the GitHub release for the
+  tag (its CHANGELOG entry as the notes, read back as latest), opens the Homebrew tap's
+  pull request that points the
   `synthesis` formula at the tag's archive (it merges itself when the tap's install tests
   pass), installs into Claude Code, Codex and Muse with each harness's
   own commands, verifies each harness's installed files equal the tag at the folder

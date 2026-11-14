@@ -10,6 +10,7 @@ metadata:
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
   format: v5
+  category: core
 ---
 
 # Synthesis Onboarding
@@ -34,7 +35,7 @@ proves each part.
 ## Contents
 
 - **Procedure** (below): new install, new Mac, organization member, update, uninstall.
-- [references/harness-install.md](references/harness-install.md): each harness's commands and edge cases, Codex settings, runtime, commit check, first config, hook trust, uninstall. Read before installing or when a harness line fails.
+- [references/harness-install.md](references/harness-install.md): each harness's commands and edge cases, Codex settings, runtime, commit check, first config, hook trust, uninstall, and one collection without hooks instead of the whole set. Read before installing or when a harness line fails.
 - [references/new-mac.md](references/new-mac.md): cloning a workspace from `repos.yaml`, what is skipped and why, workspace instructions, the 2026-09-20 lesson. Read when bringing a workspace onto a Mac.
 - [references/org-manifest.md](references/org-manifest.md): the schema-2 manifest, migration from schema 1, checking a manifest, enrollment, repository and instruction rules. Read for any organization.
 - [references/kernel.example.md](references/kernel.example.md): the public instruction baseline setup writes first into an organization workspace's `AGENTS.md`. Read when changing it.

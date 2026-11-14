@@ -1007,12 +1007,28 @@ ROOT = Path(__file__).resolve().parents[1]
 # lines and its exit), KEYS 7 with its two-line note (every key the contract names, by the mapping that holds it),
 # POLICY and TEMPLATE 2, check_paths 2 (a named policy must be there) and the re import 1. workspace.py 5: the policy's
 # template seeded from synthesis-kb-edit's, not a copy, 2, and the line saying it is not adopted and how to adopt it 3.
+# 5.22.0 (unreleased): plugin 344 more, the core as it was (plan item 12.1, ruled 2026-11-14: five collections, each a
+# plugin without hooks, beside the whole set). build_collections.py 299, new (each collection built from the flat folder
+# into a folder of its own, and the branch the release publishes them on): verify 51 (what fails a built folder: a skill
+# in no collection or in several, a dependency out of bounds, a file that is no manifest, license or file of the
+# collection's skills, one that differs from its source, a hook, a skill or license missing, a manifest's name, version
+# or dependency, the Muse list, a file in no folder, the two marketplaces), its header and imports 41 (the docstring 30;
+# the imports 11, with the bytecode guard, its own folder on the path and the directory package's code), main 39
+# (--check, a folder written whole from the commit or not at all, its one line), manifests 17, bounds 15 (a dependency
+# outside a skill's own collection and the core, or outside its own folder where its scripts load it), marketplaces 15,
+# tree 15 (the folders as a git tree, through an index of its own), build 14, homes 13 (each skill's one collection, from
+# its frontmatter or awaiting_room), read_spec 11, category 6, the constants 6, hooked 5, described 5 (one description
+# for the manifests and the marketplace entry), sources 4, order 3, text 2, the entry point 2, and spacing 35. release.py
+# 41: collections_head 17 (the commit the branch moves to on a remote: its head when that holds the folders, else a
+# commit on top), collections 14 (built and checked before the tag), publish 4 (the branch in the atomic push and its
+# read-back), the import 1, the docstring 1, spacing 4. build_directory_package.py 4: tracked 14 (a package's files,
+# now read for the collections too), with carried 12 fewer, and spacing 2.
 # Merged into release 5.22.0 on 5.21.0 (2026-11-14): the ceilings are 5.21.0's (core 14924, plugin 38171) and what
-# each 5.22.0 paragraph above adds over 5.20.1's: plugin 248 for the sharing standard.
+# each 5.22.0 paragraph above adds over 5.20.1's: plugin 248 for the sharing standard and 344 for the collections.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # consolidate first).
 CORE_BUDGET = 14924
-PLUGIN_BUDGET = 38419
+PLUGIN_BUDGET = 38763
 
 
 def _lines(files):
