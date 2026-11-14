@@ -945,10 +945,19 @@ ROOT = Path(__file__).resolve().parents[1]
 # Instagram in the browser's messaging sites: a comment line and three lines of five entries.
 # 5.21.0, the release's own count: doctor.py 8, waits_on_person 6 (signature, a docstring of three lines, the test)
 # and ASKS 1 with a blank line: an approval line that names a fault of setup no longer reads as waiting on the person.
+# 5.21.0, review round 1 (2026-11-14), the doctor: core 104 more and plugin 104. doctor.py 98: check_codex_trust 23 (hook
+# state held inline named; an event covered in part judged as the plugin's, with advice by setup's record; an event
+# declared twice; setup's switch with nothing covering its event, and an unreadable hooks.json while the option is on,
+# as faults), codex_switch_lines 16 (setup's switch found by its table, key, value and mark, however spaced), _assign 9
+# and read_toml 5 (the strict reading refuses a key set twice and any table or key inside a value or another header's
+# table; lines end at line feeds alone), check_codex_hooks_file 7 (the person's own unreadable file, a warning of its
+# own), calls_stable_hook 7 (the stable hook as the program a command runs, never a mention), _text 5, codex_covers 5,
+# codex_hooks_key 4, check_hooks_wired 2 (its own looser test of the plugin's files, back), the shlex import 1,
+# SETUP_MARK 1 and harness_checks 1, and spacing 12. paths.py 6: codex_hooks_record 4 and spacing 2.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # consolidate first).
-CORE_BUDGET = 14759
-PLUGIN_BUDGET = 37884
+CORE_BUDGET = 14863
+PLUGIN_BUDGET = 37988
 
 
 def _lines(files):

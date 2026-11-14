@@ -174,6 +174,12 @@ def codex_home() -> Path:
     return Path(os.environ.get("CODEX_HOME") or Path.home() / ".codex")
 
 
+def codex_hooks_record() -> Path:
+    """What `setup.py plugin --codex-user-hooks` declared in each Codex home's hooks.json, by the path Codex keys it by:
+    setup takes out only its own, and the doctor knows whose a declaration is (review round 1 of 5.21.0)."""
+    return state() / "codex-user-hooks.json"
+
+
 def transcript_roots() -> dict:
     """Where each harness writes its record of every session, as the M5 sandbox found them."""
     env, user = os.environ, Path.home()
