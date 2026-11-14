@@ -208,9 +208,11 @@ def test_return_on_a_messaging_site_waits_for_the_code(tmp_path, url):
 
 @pytest.mark.parametrize("url, step", [
     ("https://docs.google.com/document/d/x", RETURN),                         # not a messaging site
-    ("https://mail.google.com/mail/u/0/#inbox", RETURN),                      # Return writes a line in an email
+    ("https://outlook.office.com/mail/inbox", RETURN),                        # Return writes a line in an email
     ("https://chat.google.com/room/AAA", ("computer", {"action": "key", "text": "shift+Return",
                                                        "action_summary": "Starts a new line"})),
+    ("https://mail.google.com/mail/u/0/#inbox", ("computer", {"action": "key", "text": "shift+Return",
+                                                              "action_summary": "Starts a new line"})),
 ])
 def test_return_that_writes_a_line_or_is_elsewhere_needs_no_code(tmp_path, url, step):
     assert guards.check(CHROME, _steps(step), CONFIG, session=_on(tmp_path, 7, tab7=url)) is None
@@ -337,6 +339,7 @@ def test_words_typed_with_nothing_sent_on_these_sites_can_go_on_a_code(principal
     ("https://www.linkedin.com/messaging/thread/2-x/", [SEARCH]),  # a page of messages, where typing is writing one
     ("https://chat.google.com/room/AAA", [SEARCH]),
     ("https://www.facebook.com/messages/t/1", [SEARCH]),
+    ("https://mail.google.com/mail/u/0/#inbox", [SEARCH]),  # Gmail's pages only get stricter
 ])
 def test_words_that_break_a_rule_in_a_call_that_sends_or_on_a_page_of_messages_are_refused_outright(url, steps):
     reason = check(CHROME, _opened(url, *steps))
@@ -350,6 +353,39 @@ def test_an_email_sites_send_shortcut_and_a_typed_line_break_in_chat_wait(tmp_pa
     typed = ("computer", {"action": "type", "text": "On my way\n", "action_summary": "Types the reply"})
     assert "approve" in guards.check(CHROME, _steps(typed), CONFIG,
                                      session=_on(tmp_path, 7, tab7="https://chat.google.com/room/AAA"))
+
+
+GMAIL = ["https://mail.google.com/mail/u/0/#inbox", "https://mail.google.com/mail/u/0/#inbox/FMfcgzQ",
+         "https://mail.google.com/mail/u/1/?compose=new", "https://mail.google.com/mail/u/0/#search/plan",
+         "https://mail.google.com/mail/u/0/#chat/dm/x"]
+
+
+@pytest.mark.parametrize("url", GMAIL)
+@pytest.mark.parametrize("step", [
+    RETURN, ("computer", {"action": "type", "text": "On my way\n", "action_summary": "Types the reply"}),
+    ("form_input", {"ref": "ref_3", "value": "See you then\n", "action_summary": "Fills the reply"}),
+    ("computer", {"action": "key", "text": "cmd+Return", "action_summary": "Presses the shortcut"}),
+    ("computer", {"action": "key", "text": "ctrl+Enter", "action_summary": "Presses the shortcut"}),
+    ("computer", {"action": "left_click", "ref": "ref_9", "action_summary": "Clicks the Send button"}),
+])
+def test_every_gmail_page_holds_return_a_typed_line_break_a_send_click_and_the_send_shortcut(tmp_path, url, step):
+    """Google Chat runs in pop-ups on Gmail's own pages too, where Return sends. Those pages counted as email, where
+    Return writes a line, so Return in a pop-up went out with no code. A page cannot show which box has the focus, and
+    over 30 days of recorded browser calls none pressed Return or typed a line break on Gmail's pages (2026-11-14)."""
+    assert "approve" in (check(CHROME, _opened(url, step)) or "")  # a page a navigate step opened
+    assert "approve" in (guards.check(CHROME, _steps(step), CONFIG, session=_on(tmp_path, 7, tab7=url)) or "")  # the tab list's
+
+
+def test_a_rule_for_google_chat_holds_on_gmails_pages_and_one_for_email_still_does():
+    rules = [{"name": "chat-only", "pattern": "ttyl", "channels": ["google chat"], "why": "not in Chat"},
+             {"name": "email-only", "pattern": "fwiw", "channels": ["email"], "why": "not in email"}]
+    for url, held in (("https://mail.google.com/mail/u/0/#inbox", {"chat-only", "email-only"}),  # a pop-up, or a draft
+                      ("https://mail.google.com/chat/u/0/#chat/dm/x", {"chat-only"}),
+                      ("https://outlook.office.com/mail/inbox", {"email-only"})):
+        for rule in rules:
+            words = ("form_input", {"ref": "ref_3", "value": f"ok {rule['pattern']}", "action_summary": "Fills the reply"})
+            reason = check(CHROME, _opened(url, words), {**CONFIG, "forbidden_phrases": rules}) or ""
+            assert (rule["name"] in reason) is (rule["name"] in held), (url, rule["name"])
 
 
 def test_the_page_is_the_tab_each_step_names_or_the_one_a_navigate_step_opened(tmp_path):
