@@ -43,7 +43,7 @@ EARLIEST_MS = 1072915200000  # 2004-01-01T00:00:00Z: no Facebook message is olde
 SECONDS_BELOW = 10 ** 11  # a timestamp under this counts seconds: 10^11 ms is 1973, 10^11 s the year 5138
 DAY_MS = 86_400_000
 DYI_KNOWN = frozenset("sender_name timestamp_ms content photos videos audio_files files gifs sticker share reactions "
-                      "call_duration missed is_unsent type is_geoblocked_for_viewer".split())
+                      "call_duration missed is_unsent type".split())
 SECURE_KNOWN = frozenset("senderName timestamp text media reactions isUnsent type".split())
 ATTACHMENTS = (("photos", "photo"), ("videos", "video"), ("audio_files", "audio file"), ("files", "file"), ("gifs", "gif"))
 KINDS = {"photo": "jpg jpeg png webp heic heif bmp", "gif": "gif", "video": "mp4 mov m4v webm 3gp",

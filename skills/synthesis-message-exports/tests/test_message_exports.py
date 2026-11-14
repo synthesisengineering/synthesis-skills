@@ -180,7 +180,7 @@ def test_a_group_chat_names_every_participant_and_each_sender(im, capsys, tmp_pa
     assert "Participants: Alex Sample, Blair Example, Casey Fixture" in lines
     assert [line for line in lines if line.startswith("### ")] == [
         "### Alex Sample — 14:02 UTC", "### Blair Example — 14:03 UTC", "### Casey Fixture — 14:04 UTC"]
-    assert "fields not shown: users 1" in printed
+    assert "fields not shown: is_geoblocked_for_viewer 1, users 1" in printed  # counted, not shown
 
 
 def test_attachments_are_named_by_their_place_in_the_export_and_never_copied(im, capsys, tmp_path):

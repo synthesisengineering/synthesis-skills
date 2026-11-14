@@ -4,6 +4,40 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## 5.22.0 (unreleased)
+
+- **New skill: synthesis-message-exports 1.0.0, a message export the principal authorized, imported into private
+  transcripts.** `synthesis-local-messaging` keeps each conversation in its app and records pointers only; this is
+  the other mode, for an owner who has authorized a copy of a whole export, to clear a backlog for example.
+  `scripts/import_messages.py EXPORT --out FOLDER [--since YYYY-MM-DD] [--dry-run]` reads Facebook Messenger's two
+  downloads: Meta's "Download your information" export of Messages in JSON, in each folder layout it has used
+  (`messages/`, `your_activity_across_facebook/messages/`, `your_facebook_activity/messages/`) and from every section
+  (inbox, archived, filtered, message requests and `e2ee_cutover`); and Messenger's secure-storage download of
+  end-to-end encrypted chats, one JSON file per conversation at its top, its timestamp unit decided per file. Each
+  conversation becomes one markdown transcript laid out like a Slack sync's, named by its id and its source
+  (`messenger-dyi-<id>.md`, `messenger-e2ee-<id>.md`). Its text sits in fences marked `untrusted` that no line of a
+  message can close, hidden characters are shown as `[U+XXXX]`, and attachments are named by their place in the
+  export, never copied. The regular export's text quirk (UTF-8 bytes written as Latin-1 escapes) is repaired only
+  where it round-trips. A re-import keeps every message written before, byte for byte, and adds only new ones; with
+  nothing new it writes nothing. Standard library only, no network: it reads only the export and its own earlier
+  transcripts, and writes only in `--out`. The README (73 skills), the Muse manifest and the skill router list it.
+- **What it will not do.** It never sends and never copies media. An export in a shape it does not know is refused
+  with a listing of file names and sizes and no message text, so that a reader can be added; so are a ZIP entry
+  whose name could lead outside the archive, a link entry, a name given twice, a message file over 256 MiB, a link
+  inside an export folder, an output folder inside the export, and two conversations that would share a file name.
+  A file in `--out` the importer did not write, a transcript edited since, and a secure-storage file that now lists
+  other participants are left alone and named.
+- **The formats are written down with their sources** (`references/formats.md`): what Meta's own pages confirm, what
+  a real secure-storage download showed, what independent open-source importers agree on, and what is still
+  inferred, with how the importer handles each open question.
+- **How it was checked.** Tests first, with invented fixtures only: each layout and section, both timestamp units,
+  the repair and the text it must leave alone, threads split across files, group chats, attachments, reactions,
+  unsent messages and calls, untrusted text that tries to leave its fence, unsafe and oversized ZIP entries, unknown
+  shapes, re-import, dry runs, `--since`, and Python's audit events showing nothing read outside the export or
+  written outside `--out`. Review of the first version found three defects, each fixed with a test that failed
+  before its fix: an archive whose only JSON held no conversation was taken for an export, one id reached twice
+  wrote one file twice, and names that differ only in case could be listed in another order on another run.
+
 ## [5.20.1] - 2026-11-13
 
 - **The deploy guard holds neither a syntax check nor too little** (`synthesis-agent-guardrails` 2.9.2). A seat's local

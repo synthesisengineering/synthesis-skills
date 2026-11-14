@@ -195,6 +195,10 @@
         "path": "skills/synthesis-meeting-transcripts/SKILL.md"
       },
       {
+        "id": "synthesis-message-exports",
+        "path": "skills/synthesis-message-exports/SKILL.md"
+      },
+      {
         "id": "synthesis-message-guard",
         "path": "skills/synthesis-message-guard/SKILL.md"
       },

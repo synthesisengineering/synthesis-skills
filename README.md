@@ -1,6 +1,6 @@
 # Synthesis Skills
 
-Synthesis Skills is one plugin for Claude Code, Codex and Muse. It carries 72 skills
+Synthesis Skills is one plugin for Claude Code, Codex and Muse. It carries 73 skills
 for software engineering, writing, project management, correspondence and daily
 operations, plus a small runtime: a `synthesis` command and four lifecycle hooks. The
 skills follow the [Agent Skills](https://agentskills.io) standard. The runtime keeps
@@ -295,6 +295,7 @@ keeps Codex's skill catalog within its budget.
 | [synthesis-slack-sync](skills/synthesis-slack-sync/SKILL.md) | Sync Slack channels, DMs and threads to local transcripts and update the daily plan. |
 | [synthesis-inbox-cleanup](skills/synthesis-inbox-cleanup/SKILL.md) | Manifest-driven cleanup for iCloud and IMAP, Microsoft 365 and outlook.com, and Gmail, with prompt-injection defenses. |
 | [synthesis-local-messaging](skills/synthesis-local-messaging/SKILL.md) | Read an authorized window of local iMessage or WhatsApp data into pointer-only notes, and send one approved iMessage. |
+| [synthesis-message-exports](skills/synthesis-message-exports/SKILL.md) | Import a message export the principal authorized (Facebook Messenger's downloads) into private transcripts, one per conversation, text fenced as untrusted data. |
 
 ### Daily operations
 
