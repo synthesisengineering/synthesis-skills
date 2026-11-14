@@ -252,22 +252,51 @@ def user_prompt_submit(payload):
     return _emit("UserPromptSubmit", context="\n\n".join(notes))
 
 
-def pre_tool_use(payload):
-    from synthesis import approvals, guards, paths
+GUARD_SECONDS = 4.0  # the guard's own deadline, under the 5 seconds each harness gives the hook
 
-    tool = str(payload.get("tool_name", ""))
-    tool_input = payload.get("tool_input") or {}
+
+class _Late(BaseException):  # past every `except Exception` in the guard's own work, so its deadline holds
+    pass
+
+
+def _late(signum, frame):
+    raise _Late()
+
+
+def pre_tool_use(payload):
+    """Guard one call, within GUARD_SECONDS of starting to: past it the call is held, so a guard slowed by a cold
+    repository read or a lock answers, closed, before a harness gives up on it (Codex and Muse let a call through on
+    their timeout). The deadline stops git and any other process the guard started, and the answer is printed once it
+    is cancelled (review round 2 of 5.21.0)."""
+    import signal
+
+    before = signal.signal(signal.SIGALRM, _late)
+    signal.setitimer(signal.ITIMER_REAL, GUARD_SECONDS)
     try:
-        config = paths.config()
-    except (OSError, ValueError) as exc:
-        return (_emit("PreToolUse", deny=f"synthesis guard config is unreadable ({exc}); fix {paths.config_file()}")
-                if guards.guarded(tool, tool_input) else 0)
-    try:
-        reason = guards.check(tool, tool_input, config, cwd=str(payload.get("cwd") or "") or None, session=payload)
-    except approvals.Unverified as exc:
-        reason = str(exc)
-    except Exception as exc:  # a guard that can't decide must not wave the call through
-        reason = f"synthesis guard failed ({type(exc).__name__}: {exc}); blocked rather than allowed"
+        from synthesis import approvals, guards, paths  # the guard's own module loads inside its deadline too
+
+        tool = str(payload.get("tool_name", ""))
+        tool_input = payload.get("tool_input") or {}
+        try:
+            config, unreadable = paths.config(), None
+        except (OSError, ValueError) as exc:
+            config, unreadable = {}, exc
+        if unreadable is not None:
+            reason = (f"synthesis guard config is unreadable ({unreadable}); fix {paths.config_file()}"
+                      if guards.guarded(tool, tool_input) else "")
+        else:
+            try:
+                reason = guards.check(tool, tool_input, config, cwd=str(payload.get("cwd") or "") or None, session=payload)
+            except approvals.Unverified as exc:
+                reason = str(exc)
+            except Exception as exc:  # a guard that can't decide must not wave the call through
+                reason = f"synthesis guard failed ({type(exc).__name__}: {exc}); blocked rather than allowed"
+    except _Late:
+        reason = (f"synthesis guard did not answer within {GUARD_SECONDS:g} seconds, so the call is held: try it again, and "
+                  "run synthesis doctor if it keeps happening")
+    finally:
+        signal.setitimer(signal.ITIMER_REAL, 0)
+        signal.signal(signal.SIGALRM, before)
     return _emit("PreToolUse", deny=reason) if reason else 0
 
 

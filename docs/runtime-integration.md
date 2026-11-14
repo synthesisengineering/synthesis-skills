@@ -541,8 +541,15 @@ What the M5 sandbox showed for Muse 1.4.3, and what it could not test:
   user-level declaration, turns a stable hook that cannot start or crashes into
   exit 2 with one line of reason; a deny exits 0 with its own. Muse's `plugins
   hook test` then gave `should_block: true` for a missing hook and an exit code
-  of 1 (2026-11-14); a hook that times out there still lets the call through.
-  Muse reads only its
+  of 1 (2026-11-14). The guard keeps a deadline of its own, `GUARD_SECONDS` (4)
+  from when `pre_tool_use` starts, before it loads the guards (5.21.1): a timer
+  raises past every handler in the guard's work, `subprocess.run` kills the git
+  or other child it waits on, and the call is held with the reason, printed once
+  the timer is cancelled. So a slow repository read or a lock answers closed in
+  every harness inside its 5-second limit. What still lets a call through in
+  Codex and Muse is a hook that uses up their 5 seconds before the timer is set:
+  Python slow to start by more than about a second, under heavy load or on a
+  stalled disk. Muse reads only its
   own manifest, which refuses the field, so it is set in `hooks/hooks.json`
   alone, where Codex reads it and hashes the hook without it. UserPromptSubmit and
   SessionStart keep the default: holding a person's prompt or a session's start

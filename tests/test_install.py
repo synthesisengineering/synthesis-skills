@@ -5,6 +5,7 @@ import os
 import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -424,3 +425,47 @@ def test_an_interpreter_with_nowhere_to_keep_compiled_code_still_gets_a_whole_in
     monkeypatch.setattr(sys.implementation, "cache_tag", None)
     install.install(_plugin_copy(tmp_path))
     assert (isolated_home / "bin" / "synthesis-hook").is_file() and install.current_hash()
+
+
+# ---- review round 2 of 5.21.0, R2-2: the runtime never goes while Codex's own hooks file runs it -------------------
+
+def _codex_declares(command):
+    codex = Path(os.environ["CODEX_HOME"])
+    codex.mkdir(parents=True, exist_ok=True)
+    (codex / "hooks.json").write_text(json.dumps({"hooks": {"PreToolUse": [{"hooks": [{"type": "command", "command": command}]}]}}))
+    return codex
+
+
+def test_uninstall_refuses_while_codexs_own_hooks_file_runs_the_stable_hook(tmp_path, isolated_home, capsys):
+    """`synthesis uninstall` took the runtime and left Codex's user-level hooks calling it, and the guard's then held every
+    call in Codex, with nothing left there to put the runtime back (q07)."""
+    from synthesis import cli
+    install.install(_plugin_copy(tmp_path))
+    _codex_declares('"$HOME/.synthesis/v5/bin/synthesis-hook" pre-tool-use')
+    with pytest.raises(install.InUse, match="PreToolUse"):
+        install.uninstall()
+    assert (isolated_home / "bin" / "synthesis-hook").is_file()
+    assert cli.main(["uninstall"]) == 1 and "setup.py uninstall" in capsys.readouterr().out
+    assert (isolated_home / "bin" / "synthesis-hook").is_file()
+    _codex_declares("echo mine")                                                   # a hook that never runs it
+    assert any(line.startswith("removed") for line in install.uninstall())
+
+
+# ---- review round 2 of 5.21.0, R2-7: the guard answers, closed, before a harness gives up on it --------------------
+
+def test_a_guard_slower_than_its_deadline_answers_closed_inside_the_hooks_limit(tmp_path):
+    """A slow guard (a cold repository read, a lock) ran past the 5 seconds a harness gives the hook, and Codex and Muse
+    let the call through. The guard keeps a deadline of its own under that, and its work, git and every other process
+    it starts, stops there with a deny."""
+    from synthesis import hook
+    assert hook.GUARD_SECONDS <= 4
+    code = (f"import sys, time; sys.path.insert(0, {str(ROOT)!r}); from synthesis import hook, guards; "
+            "hook.GUARD_SECONDS = 0.5; guards.check = lambda *a, **k: time.sleep(10); "
+            "sys.exit(hook.main(['synthesis-hook', 'pre-tool-use']))")
+    began = time.monotonic()
+    done = subprocess.run([sys.executable, "-c", code], input=json.dumps({"tool_name": "Bash", "tool_input": {"command": "ls"}}),
+                          capture_output=True, text=True, timeout=30, env={**os.environ, "SYNTHESIS_HOME": str(tmp_path / "home")})
+    decision = json.loads(done.stdout)["hookSpecificOutput"]
+    assert done.returncode == 0 and decision["permissionDecision"] == "deny" and time.monotonic() - began < 5
+    assert "did not answer within 0.5 seconds" in decision["permissionDecisionReason"]
+

@@ -101,9 +101,10 @@ there with no item here fails:
   (`cleanupPeriodDays` is set, and to a year or more);
 - `claude fail closed`: the installed plugin's PreToolUse hook sets `"onFailure": "block"`,
   so Claude Code holds a guarded call when the guard times out, crashes or cannot start
-  (a hook without it fails the line), and the installed Claude Code is 2.1.295 or later,
-  the first that honors it (an older one, or a `claude --version` that names no version,
-  warns; 5.21.0);
+  (a hook without it fails the line), and every Claude Code on the Mac (the one on PATH
+  and each the desktop app keeps) is 2.1.295 or later, the first that honors it: the
+  oldest is judged, and an older one, or a `claude --version` that names no version,
+  warns and names its path (5.21.0; every install since 5.21.1);
 - `codex hooks feature`, `codex instruction bytes`, `codex board access`,
   `codex instruction chain`, `codex hook trust`, `codex skill catalog`: for Codex,
   `[features] hooks = true`, `project_doc_max_bytes` at least 98,304, the board and the
