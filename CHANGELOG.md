@@ -46,8 +46,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   browser calls: none of the 55 Return presses in all was on these sites (43 were on other sites, 12 on pages the
   record does not place), and the control counted 320 browser calls on LinkedIn in all, 290 of them on its messages
   and 30 elsewhere, and 10 on facebook.com, so the hold costs nothing measured. Tests first.
-- **After the release's review: every host of these sites, the controls that publish, Messenger's channel and
-  searches** (message guard 2.11.0).
+- **After the release's review: every host of these sites, the controls that publish, Gmail's chat pop-ups,
+  Messenger's channel and searches** (message guard 2.11.0).
   - A site is its host and every host under it, as the browser lands on them: a batch that opened `linkedin.com/...`,
     `uk.linkedin.com`, `messenger.com`, `m.me` or `fb.com` and pressed Return had gone out with no code. The short
     hosts that land on a messaging site count too (`fb.me`, `instagr.am`, `ig.me`, `wa.me`, `t.me`, `discord.gg`,
@@ -60,6 +60,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
     Submit right after a click verb waits for a code, unless the summary says the click only opens a box; a click "on
     Send" waits on any page. Measured first: over 30 days, 1,506 recorded browser clicks and 37 computer-use clicks
     held no summary of that form, on any site.
+  - Every page of Gmail holds Return and a typed line break, as a chat page does: Google Chat runs in pop-ups on
+    Gmail's own pages, which counted as email, where Return writes a line, so Return in a pop-up went out with no
+    code. The send shortcut and a click on Send waited already, and words typed there that a rule stops stay refused
+    outright; Gmail's pages take both `email` and `google chat` rules. Measured first: over 30 days no browser call
+    pressed Return or typed a line break on Gmail's pages. Outlook on the web keeps the email rule.
   - Messenger is `messenger` on every facebook.com host's `/messages`, on `fb.com`'s, on `messenger.com` and `m.me`;
     Business Suite's inbox is `facebook`, `messenger` and `instagram`; facebook.com's other pages are both `facebook`
     and `messenger`, since a pop-up may hold the focus.

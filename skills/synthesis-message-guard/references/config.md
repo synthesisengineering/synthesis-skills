@@ -437,7 +437,9 @@ opened `linkedin.com/...`, `uk.linkedin.com` or `m.me/...` pressed Return with n
 `www.linkedin.com` or `www.messenger.com`. Each site's channel is the name a register rule's `channels` uses.
 
 - **Return sends and shift with Return writes a line:** Google Chat (`chat.google.com`, and `/chat` on
-  `mail.google.com`; `google chat`), Slack (`slack.com`; `slack`), WhatsApp (`whatsapp.com`, `wa.me`; `whatsapp`),
+  `mail.google.com`; `google chat`), Gmail (every other page of `mail.google.com`; `email` and `google chat`, since
+  5.21.0: Chat runs in pop-ups on Gmail's own pages, and a page cannot show which box has the focus, so Return and a
+  typed line break wait there as the send shortcut, cmd or ctrl with Return, did already), Slack (`slack.com`; `slack`), WhatsApp (`whatsapp.com`, `wa.me`; `whatsapp`),
   Teams (`teams.microsoft.com`, `teams.live.com`, and `teams.cloud.microsoft`, where its web app moved in 2026;
   `teams`), Discord (`discord.com`, `discordapp.com`, `discord.gg`; `discord`), Telegram (`telegram.org`, `t.me`;
   `telegram`), Messenger (`messenger.com`, `m.me`, and `/messages` on `facebook.com` and `fb.com`; `messenger`),
@@ -451,8 +453,9 @@ opened `linkedin.com/...`, `uk.linkedin.com` or `m.me/...` pressed Return with n
   principal's name. A page cannot show which box has the focus, so on any of these pages Return waits for a code, a
   search box's included, and so does a click with no summary. A page of facebook.com outside `/messages` is both
   `facebook` and `messenger`, since a pop-up may hold the focus: a rule that names either holds there.
-- **Email:** Gmail (`mail.google.com`) and Outlook on the web (`outlook.office.com`, `outlook.office365.com`,
-  `outlook.live.com`, and `outlook.cloud.microsoft`, its new address), under the email rules.
+- **Email:** Outlook on the web (`outlook.office.com`, `outlook.office365.com`, `outlook.live.com`, and
+  `outlook.cloud.microsoft`, its new address), under the email rules: Return writes a line, and cmd or ctrl with Return
+  sends.
 
 The page is the tab a step names, else the one the last browser call ran on, read from the tab list Claude in Chrome
 prints after every call, or the page a `navigate` step earlier in the same batch opened. A `navigate` that names no
@@ -476,8 +479,8 @@ held no summary of that form on any site, so the hold costs nothing measured.
 their messages a box may be a search, so a call that only types there (no click, no key, nothing it says sends) and
 breaks a register or format rule is not refused outright: it waits for the principal's code, and the hold names the
 rule, so they decide with the words in front of them. One code releases one identical call. A call that sends, or
-does anything besides typing, is refused outright, as on a page of messages, where typing writes a message; an
-address that can change keeps its own code. Holding these words unscanned until a call sends instead would let a
+does anything besides typing, is refused outright, as on a page of messages, where typing writes a message, and as
+on every page of Gmail; an address that can change keeps its own code. Holding these words unscanned until a call sends instead would let a
 comment typed in one call and posted by Return in the next reach people with no scan at all.
 
 In any app or browser page, an action whose summary starts with a sending verb (sends, replies, forwards, posts,
