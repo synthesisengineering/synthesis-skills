@@ -311,10 +311,20 @@ def test_a_click_that_only_opens_a_box_passes_on_these_sites(summary):
     assert check(CHROME, _opened("https://www.linkedin.com/feed/", click)) is None
 
 
-def test_a_click_on_post_elsewhere_is_judged_by_the_summary_rule_as_before():
-    click = ("computer", {"action": "left_click", "ref": "ref_9", "action_summary": "Clicks the Post button"})
+@pytest.mark.parametrize("summary", PUBLISHERS + ["Clicks the Submit rating button", "Presses the Post review button"])
+def test_a_click_on_a_control_that_publishes_waits_on_every_page(summary):
+    """2026-11-13: a public review typed and submitted through the browser on a site that is no messaging site went out
+    with no code, since there only a click on Send counted. Over 30 days of records no click named one of these
+    controls on any site, so holding them everywhere costs nothing measured."""
+    fill = ("form_input", {"ref": "ref_2", "value": "Great work, thank you", "action_summary": "Fills the review box"})
+    click = ("computer", {"action": "left_click", "ref": "ref_9", "action_summary": summary})
+    assert "approve" in check(CHROME, _opened("https://www.example.com/tasks/1/review", fill, click))
+
+
+def test_a_click_that_only_opens_a_box_passes_on_any_page():
+    click = ("computer", {"action": "left_click", "ref": "ref_9", "action_summary": "Clicks Comment to open the comment box"})
     assert check(CHROME, _opened("https://example.com/forum/", click)) is None
-    assert "approve" in check(CHROME, _opened("https://example.com/forum/", ("computer", {**click[1], "action_summary": "Clicks on Send"})))
+    assert check(CHROME, _opened("https://example.com/forum/", ("computer", {**click[1], "action_summary": "Clicks the Like button"}))) is None
 
 
 SEARCH = ("form_input", {"ref": "ref_3", "value": "I'm sorry for the delay.", "action_summary": "Fills the search box"})
