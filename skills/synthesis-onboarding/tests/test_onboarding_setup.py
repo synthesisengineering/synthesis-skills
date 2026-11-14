@@ -1111,7 +1111,7 @@ def test_uninstall_takes_out_exactly_what_the_option_added(tmp_path, monkeypatch
 
 
 def test_an_update_brings_the_declaration_up_to_date_in_its_place(tmp_path, monkeypatch):
-    """A release that widens the shell hook's matcher (5.20.1 added shell_command) reaches the user-level copy at the
+    """A release that widens the shell hook's matcher (5.13.0 added shell_command) reaches the user-level copy at the
     next install, where the old one was, so the keys of the person's own hooks after it do not move."""
     earlier = json.loads(json.dumps(PLUGIN_HOOKS))
     earlier["hooks"]["PreToolUse"][0]["matcher"] = "Bash|exec_command"

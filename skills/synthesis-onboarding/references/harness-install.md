@@ -272,7 +272,7 @@ other than `hooks` and `description`, a hook of a type Codex does not know) or a
 copied to `~/.synthesis/v5/backups/` before a change. Once it is on, every install or
 update of the Codex plugin, by setup or by the release script, keeps the declaration in
 step with the plugin Codex now holds: a release that changes the plugin's
-`hooks/hooks.json` (5.20.1 widened the shell hook's matcher) changes the user-level copy
+`hooks/hooks.json` (5.13.0 added `shell_command` to the shell hook's matcher) changes the user-level copy
 in its place, and Codex asks once for the changed declaration. A run without the flag
 keeps the choice.
 
@@ -290,7 +290,7 @@ path. On a publisher's own machines that second look guards only against their o
 releases, so the option is recommended there; everyone else keeps it off unless they ask
 for it.
 
-Two things stay as they were. Codex's startup review still lists the plugin's
+Two things to expect. Codex's startup review still lists the plugin's
 switched-off copies as new or changed after a release, since it counts a hook's trust
 and not whether it is on; whatever the answer there, the user-level hooks run. And a
 Codex session's start no longer moves the stable runtime forward to a newer plugin, since
