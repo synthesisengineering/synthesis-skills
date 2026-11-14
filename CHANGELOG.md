@@ -4,7 +4,7 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
-## 5.21.0 (unreleased)
+## [5.21.0] - 2026-11-14
 
 - **One approval in Codex lasts through releases, as a setup option** (`synthesis-onboarding`,
   `synthesis-agent-conformance`; plan item 13.7, part 2). Codex ties its approval of a plugin's hooks to the plugin's
@@ -52,7 +52,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   today is refused and rule 16 that a `NOT CHECKED` line is said first, never read as all clear; waiting rule 9 says
   a message to a person is a wait; message guard rules 16 and 17 say that an address that can change never goes to a
   person and that a time in a message rests on a fresh calendar read.
-- **The browser guard holds Return on every page of facebook.com, instagram.com and www.linkedin.com.** It knew
+- **The browser guard holds Return on every page of facebook.com, instagram.com and linkedin.com.** It knew
   www.messenger.com and LinkedIn's `/messaging`, but Messenger also runs inside facebook.com, in its own page and in
   chat pop-ups on every other page, Return in a comment box posts in the person's name, and LinkedIn's messages open
   in an overlay on every page. A page cannot show which box has the focus. Measured first: over 30 days of recorded
@@ -98,6 +98,39 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   and sleeping past its limit, beside a stub that denies as the control. What Codex does with a failed hook was read in
   its source at 0.167.2 (its runner marks the hook failed and blocks nothing). Two assertions in the onboarding tests that
   passed on the path `.../hooks.json` alone now read the note's own words.
+  in an overlay on every page. A page cannot show which box has the focus. Measured first, over 30 days of recorded
+  browser calls: none of the 55 Return presses in all was on these sites (43 were on other sites, 12 on pages the
+  record does not place), and the control counted 320 browser calls on LinkedIn in all, 290 of them on its messages
+  and 30 elsewhere, and 10 on facebook.com, so the hold costs nothing measured. Tests first.
+- **After the release's review: every host of these sites, the controls that publish, Gmail's chat pop-ups,
+  Messenger's channel and searches** (message guard 2.11.0).
+  - A site is its host and every host under it, as the browser lands on them: a batch that opened `linkedin.com/...`,
+    `uk.linkedin.com`, `messenger.com`, `m.me` or `fb.com` and pressed Return had gone out with no code. The short
+    hosts that land on a messaging site count too (`fb.me`, `instagr.am`, `ig.me`, `wa.me`, `t.me`, `discord.gg`,
+    `discordapp.com`), as do the new addresses of Teams and Outlook on the web (`teams.cloud.microsoft`,
+    `outlook.cloud.microsoft`), X's chat (`chat.x.com`, `/i/chat`) and every page of x.com and twitter.com, since
+    X's messages can open in a drawer beside its other pages, as LinkedIn's open in an overlay. For the send guard, a
+    `navigate` that names no host (`back`, a path) keeps a messaging site's page; the account check still takes that
+    page as unknown.
+  - On a messaging site's page, a click whose summary names Send, Post, Comment, Reply, Repost, Share, Publish or
+    Submit right after a click verb waits for a code, unless the summary says the click only opens a box; a click "on
+    Send" waits on any page. Measured first: over 30 days, 1,506 recorded browser clicks and 37 computer-use clicks
+    held no summary of that form, on any site.
+  - Every page of Gmail holds Return and a typed line break, as a chat page does: Google Chat runs in pop-ups on
+    Gmail's own pages, which counted as email, where Return writes a line, so Return in a pop-up went out with no
+    code. The send shortcut and a click on Send waited already, and words typed there that a rule stops stay refused
+    outright; Gmail's pages take both `email` and `google chat` rules. Measured first: over 30 days no browser call
+    pressed Return or typed a line break on Gmail's pages. Outlook on the web keeps the email rule.
+  - Messenger is `messenger` on every facebook.com host's `/messages`, on `fb.com`'s, on `messenger.com` and `m.me`;
+    Business Suite's inbox is `facebook`, `messenger` and `instagram`; facebook.com's other pages are both `facebook`
+    and `messenger`, since a pop-up may hold the focus.
+  - On these sites' pages outside their messages, a box may be a search: words that break a register rule in a call
+    that only types wait for the principal's code instead of being refused, and the hold names the rule. A call that
+    sends or does more is still refused outright, so a comment's words are scanned before any of them is typed.
+  - Message guard rules 12, 16 and 17 say what the code does: the labels that hold; an address that can change is
+    released only by the principal's code for it, after which the message needs its own; the calendar read counts
+    within `fresh_calendar.minutes`, and in Codex, Muse and a sub-agent only the hold's own code releases the message.
+    The procedure's reference to `composing.md` links from its own folder. Tests first.
 
 ## [5.20.1] - 2026-11-13
 

@@ -443,25 +443,63 @@ Discord (`com.hnc.Discord`), Zoom (`us.zoom.xos`), Mail (`com.apple.mail`) and O
 - a menu item that starts with Send (Mail's Message > Send).
 
 **Messaging sites in the browser** (5.1.9). A browser page on a messaging site counts as that app, under the same
-rules: Google Chat (`chat.google.com`, and `/chat` in Gmail), Slack (any `*.slack.com`), WhatsApp Web, LinkedIn
-(every page of `www.linkedin.com` since 5.21.0, since its messages open in an overlay on every page; before, only
-`/messaging`), Teams, Discord, Telegram Web, Messenger and X's messages, where Return
-sends and shift with Return writes a line; Gmail and Outlook on the web count as email. Since 5.21.0 every page of
-facebook.com and of instagram.com counts too: Messenger runs inside facebook.com, in its own page
-(`/messages`, the channel `messenger`) and in chat pop-ups on every other page, and Return in a comment box posts
-in the principal's name. A page cannot show which box has the focus, so Return on any page of either site waits
-for a code, a search box's included. The page is the tab a step
-names, else the one the last browser call ran on, read from the tab list Claude in Chrome prints after every call,
-or the page a `navigate` step earlier in the same batch opened. A page whose address the guard cannot read (a
-browser that prints no tab list) is judged by the summary rule alone. On 2026-10-22 a session found that Return
-in a Google Chat compose box went out with no code, because a browser page had counted as no app.
+rules. A site is its host and every host under it, as the browser lands on them: since 5.21.0, after a batch that
+opened `linkedin.com/...`, `uk.linkedin.com` or `m.me/...` pressed Return with no code while the browser landed on
+`www.linkedin.com` or `www.messenger.com`. Each site's channel is the name a register rule's `channels` uses.
+
+- **Return sends and shift with Return writes a line:** Google Chat (`chat.google.com`, and `/chat` on
+  `mail.google.com`; `google chat`), Gmail (every other page of `mail.google.com`; `email` and `google chat`, since
+  5.21.0: Chat runs in pop-ups on Gmail's own pages, and a page cannot show which box has the focus, so Return and a
+  typed line break wait there as the send shortcut, cmd or ctrl with Return, did already), Slack (`slack.com`; `slack`), WhatsApp (`whatsapp.com`, `wa.me`; `whatsapp`),
+  Teams (`teams.microsoft.com`, `teams.live.com`, and `teams.cloud.microsoft`, where its web app moved in 2026;
+  `teams`), Discord (`discord.com`, `discordapp.com`, `discord.gg`; `discord`), Telegram (`telegram.org`, `t.me`;
+  `telegram`), Messenger (`messenger.com`, `m.me`, and `/messages` on `facebook.com` and `fb.com`; `messenger`),
+  Instagram's messages (`/direct` on `instagram.com`, and `ig.me`; `instagram`), LinkedIn's (`/messaging` on
+  `linkedin.com`; `linkedin`), X's (`chat.x.com`, and `/messages` and `/i/chat` on `x.com` and `twitter.com`; `x`),
+  and Business Suite's inbox (`/latest/inbox` on `business.facebook.com`; `facebook`, `messenger` and `instagram`).
+- **Every other page of facebook.com** (with `fb.com` and `fb.me`; `facebook` and `messenger`), **instagram.com**
+  (with `instagr.am`; `instagram`), **linkedin.com** (`linkedin`) **and x.com** (with `twitter.com`; `x`) counts too,
+  since 5.21.0: Messenger runs in chat pop-ups on every page of facebook.com, LinkedIn's messages open in an overlay
+  on every page and X's can open in a drawer beside its other pages, and Return in a comment box posts in the
+  principal's name. A page cannot show which box has the focus, so on any of these pages Return waits for a code, a
+  search box's included, and so does a click with no summary. A page of facebook.com outside `/messages` is both
+  `facebook` and `messenger`, since a pop-up may hold the focus: a rule that names either holds there.
+- **Email:** Outlook on the web (`outlook.office.com`, `outlook.office365.com`, `outlook.live.com`, and
+  `outlook.cloud.microsoft`, its new address), under the email rules: Return writes a line, and cmd or ctrl with Return
+  sends.
+
+The page is the tab a step names, else the one the last browser call ran on, read from the tab list Claude in Chrome
+prints after every call, or the page a `navigate` step earlier in the same batch opened. A `navigate` that names no
+host (`back`, `forward`, a path, a script) leaves the page unknown, unless the tab was on a messaging site: the page it
+opens may be that site's still, so it is judged as that site's. A page whose address the guard cannot read (a browser
+that prints no tab list) is judged by the summary rule alone. On 2026-10-22 a session found that Return in a Google
+Chat compose box went out with no code, because a browser page had counted as no app.
+
+**A click on the control that publishes** (5.21.0). On a messaging site's page, a click waits for a code when its
+summary names Send, Post, Comment, Reply, Repost, Share, Publish or Submit right after a click verb (clicks, presses,
+taps, hits, chooses or selects, with or without `on` and `the`, the label in quotes or not): "Clicks the Post button",
+"Taps on Share", "Clicks Comment". These sites label few controls Send: their Post, Comment and Reply post in the
+principal's name, and one label can both open a box and post what is in it, so the label alone holds. It passes when
+the summary says the click only opens something: the label followed by box, field, input, area, composer or editor
+("Clicks the comment box"), or the words opens, opening, expands, focuses, shows, reveals or starts, or to open,
+expand, focus, show, reveal or start ("Clicks Comment to open the comment box"). Best, write what the click does
+("Opens the comment box"). Over the 30 days before 5.21.0, 1,506 recorded browser clicks and 37 computer-use clicks
+held no summary of that form on any site, so the hold costs nothing measured.
+
+**Words typed on these pages** (5.21.0). On the pages of facebook.com, instagram.com, linkedin.com and x.com outside
+their messages a box may be a search, so a call that only types there (no click, no key, nothing it says sends) and
+breaks a register or format rule is not refused outright: it waits for the principal's code, and the hold names the
+rule, so they decide with the words in front of them. One code releases one identical call. A call that sends, or
+does anything besides typing, is refused outright, as on a page of messages, where typing writes a message, and as
+on every page of Gmail; an address that can change keeps its own code. Holding these words unscanned until a call
+sends instead would let a comment typed in one call and posted by Return in the next reach people with no scan at all.
 
 In any app or browser page, an action whose summary starts with a sending verb (sends, replies, forwards, posts,
 publishes, shares, invites, responds, comments, mentions, announces, notifies, reminds, schedules, delivers,
-emails, texts), clicks or presses Send, or does something "to send" waits too. On the 45 days of summaries this
-held all 13 real sends and nothing else. Words typed in a messaging app, or in a call that sends, pass the
-register scan as they are typed; typed text cannot carry a named link, so the signature-link rule does not apply
-to it.
+emails, texts), clicks or presses (on) Send, or does something "to send" waits too. On the 45 days of summaries this
+held all 13 real sends and nothing else. Words typed in a messaging app or site, or in a call that sends, pass
+the register scan as they are typed (on the four sites' other pages, a hit in a call that only types waits for a
+code, as above); typed text cannot carry a named link, so the signature-link rule does not apply to it.
 
 **Which app.** An `app_*` call names its app. `computer_batch` and the teach tools act on whatever is in front, so
 the guard counts them as acting in every messaging app the session asked to control: it records the apps each

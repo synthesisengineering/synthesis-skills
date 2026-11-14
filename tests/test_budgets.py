@@ -977,10 +977,18 @@ ROOT = Path(__file__).resolve().parents[1]
 # codex_user_declaration 2 (the plugin's own command kept where it runs the stable hook, so the user-level guard carries
 # the failure tail; its docstring one line longer) and check_claude_fail_closed's docstring 2 (what holds in Codex and
 # Muse now). setup.py 2: the note that asks once again for the approval of a declaration whose hash changed.
+# 5.21.0, after the release's first review round: guards.py 27 more. PUBLISHES 5 with its two lines of comment (a click
+# on Post, Comment, Reply, Repost, Share, Publish or Submit on a messaging site waits, unless its summary says it only
+# opens a box); WEB_MESSAGING 7 (a site is its host and every host under it, the short hosts that land on one, the new
+# addresses of Teams and Outlook, X's chat and pages, Messenger's channel on every facebook.com host, every other page of
+# the four sites marked, and every Gmail page holding Return as Google Chat's pop-ups do, on a line of its own); _web_app 1 (its docstring, the match now _on_site's); _steps 2 (with `keep`, which only the
+# send guard passes, a navigate that names no host keeps a messaging site's page; the account check still takes it as
+# unknown); _pages 1 (whether a box on every page may be a search); check_desktop 11 (10 for the
+# words of a call that only types on those pages, which go on the principal's code, and 1 for the pages read beside apps).
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # consolidate first).
-CORE_BUDGET = 14897
-PLUGIN_BUDGET = 38144
+CORE_BUDGET = 14924
+PLUGIN_BUDGET = 38171
 
 
 def _lines(files):

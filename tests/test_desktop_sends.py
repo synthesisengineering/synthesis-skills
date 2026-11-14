@@ -208,9 +208,11 @@ def test_return_on_a_messaging_site_waits_for_the_code(tmp_path, url):
 
 @pytest.mark.parametrize("url, step", [
     ("https://docs.google.com/document/d/x", RETURN),                         # not a messaging site
-    ("https://mail.google.com/mail/u/0/#inbox", RETURN),                      # Return writes a line in an email
+    ("https://outlook.office.com/mail/inbox", RETURN),                        # Return writes a line in an email
     ("https://chat.google.com/room/AAA", ("computer", {"action": "key", "text": "shift+Return",
                                                        "action_summary": "Starts a new line"})),
+    ("https://mail.google.com/mail/u/0/#inbox", ("computer", {"action": "key", "text": "shift+Return",
+                                                              "action_summary": "Starts a new line"})),
 ])
 def test_return_that_writes_a_line_or_is_elsewhere_needs_no_code(tmp_path, url, step):
     assert guards.check(CHROME, _steps(step), CONFIG, session=_on(tmp_path, 7, tab7=url)) is None
@@ -222,10 +224,126 @@ def test_every_facebook_instagram_and_linkedin_page_holds_return(tmp_path, url):
     """2026-11-14: the guard knew www.messenger.com, but Messenger also runs inside facebook.com, in its own page and in
     chat pop-ups on every page, and Return in a comment box posts in the principal's name. A page cannot show which box
     has the focus, so every page of the two sites holds Return, a search box's included. LinkedIn's messages open in
-    an overlay on every page too; over 30 days of recorded browser calls, none pressed Return on LinkedIn outside
-    `/messaging` (30 calls there) or anywhere on facebook.com (10), so holding them costs nothing measured."""
+    an overlay on every page too. Over 30 days of recorded browser calls, none of the 55 Return presses was on these
+    sites (43 were on other sites, 12 on pages the record does not place); the control counted 320 calls on LinkedIn in
+    all, 290 on its messages and 30 elsewhere, and 10 on facebook.com. Holding them costs nothing measured."""
     reason = guards.check(CHROME, _steps(RETURN), CONFIG, session=_on(tmp_path, 7, tab7=url))
     assert "approve" in reason and "sends in the browser (" in reason
+
+
+def _opened(url, *steps):
+    """The steps on tab 7, after a navigate step to url earlier in the same batch."""
+    return _steps(("navigate", {"url": url, "tabId": 7}), *[(n, {**i, "tabId": 7}) for n, i in steps])
+
+
+@pytest.mark.parametrize("url", [
+    "linkedin.com/messaging/thread/2-x/", "https://linkedin.com/feed/", "http://linkedin.com/in/pat",
+    "https://uk.linkedin.com/in/pat", "messenger.com/t/123", "https://m.me/pat", "https://fb.com/messages/t/1",
+    "https://fb.me/pat", "https://instagr.am/p/x/", "https://ig.me/m/pat", "https://wa.me/15550100199",
+    "whatsapp.com/send?phone=15550100199", "https://api.whatsapp.com/send?phone=15550100199", "https://twitter.com/messages",
+    "https://mobile.twitter.com/messages", "https://chat.x.com/", "https://x.com/i/chat/1", "https://x.com/home",
+    "https://canary.discord.com/channels/1/2", "https://discordapp.com/channels/1/2", "https://discord.gg/abc",
+    "https://t.me/pat", "https://telegram.org/", "https://slack.com/", "https://teams.cloud.microsoft/v2/",
+])
+def test_every_host_the_browser_lands_on_a_messaging_site_from_holds_return(url):
+    """The review of 5.21.0: the guard matched the host as typed, so a batch that navigated to `linkedin.com/...`,
+    `uk.linkedin.com`, `messenger.com`, `m.me` or `fb.com` and pressed Return went out with no code, while the browser
+    landed on www.linkedin.com or www.messenger.com. A site is its host and every host under it, with the short hosts
+    that land on one, and Teams' web app, which moved to teams.cloud.microsoft in 2026."""
+    assert "approve" in check(CHROME, _opened(url, RETURN))
+
+
+@pytest.mark.parametrize("url", ["https://notlinkedin.com/feed/", "https://linkedin.com.example.org/feed/",
+                                 "https://www.google.com/search?q=chat", "https://outlook.cloud.microsoft/mail/"])
+def test_a_look_alike_host_and_an_email_page_still_take_return(url):
+    assert check(CHROME, _opened(url, RETURN)) is None  # Return writes a line in an email
+
+
+def test_outlooks_new_address_holds_its_send_shortcut():
+    send = ("computer", {"action": "key", "text": "cmd+Return", "action_summary": "Presses the shortcut"})
+    assert "approve" in check(CHROME, _opened("https://outlook.cloud.microsoft/mail/", send))
+
+
+ONLY = [{"name": "messenger-only", "pattern": "ttyl", "channels": ["messenger"], "why": "not in Messenger"},
+        {"name": "facebook-only", "pattern": "fwiw", "channels": ["facebook"], "why": "not on Facebook"},
+        {"name": "instagram-only", "pattern": "dm me", "channels": ["instagram"], "why": "not on Instagram"}]
+
+
+@pytest.mark.parametrize("url, rules", [
+    ("https://m.facebook.com/messages/t/1", ["messenger-only"]), ("https://web.facebook.com/messages/", ["messenger-only"]),
+    ("https://facebook.com/messages/t/1", ["messenger-only"]), ("https://fb.com/messages/t/1", ["messenger-only"]),
+    ("https://www.messenger.com/t/1", ["messenger-only"]), ("https://m.me/pat", ["messenger-only"]),
+    ("https://business.facebook.com/latest/inbox/all", ["messenger-only", "facebook-only", "instagram-only"]),
+    ("https://www.facebook.com/groups/1/", ["messenger-only", "facebook-only"]),  # a Messenger pop-up, or a comment
+])
+def test_messengers_channel_reaches_its_other_hosts_its_inbox_and_its_pop_ups(url, rules):
+    """The review of 5.21.0: only www.facebook.com/messages was `messenger`, so a register rule for Messenger missed it
+    on m.facebook.com, in Business Suite's inbox and in the pop-ups on every other page of facebook.com."""
+    config = {**CONFIG, "forbidden_phrases": ONLY}
+    for rule in ONLY:
+        words = ("form_input", {"ref": "ref_3", "value": f"ok {rule['pattern']}", "action_summary": "Fills the reply"})
+        reason = check(CHROME, _opened(url, words, RETURN), config) or ""
+        assert (rule["name"] in reason) is (rule["name"] in rules), (url, rule["name"])
+
+
+PUBLISHERS = ["Clicks the Post button", "Clicks Comment", "Presses the Reply button", "Taps Share",
+              "Clicks on the Repost option", "Clicks “Publish”", "Clicks Submit", "Clicks on Send",
+              "Fills nothing, then clicks the Post button"]
+
+
+@pytest.mark.parametrize("url", ["https://www.facebook.com/groups/1/", "https://www.linkedin.com/feed/",
+                                 "https://www.instagram.com/p/x/", "https://x.com/home"])
+@pytest.mark.parametrize("summary", PUBLISHERS)
+def test_a_click_on_a_control_that_publishes_waits_on_these_sites(url, summary):
+    """The review of 5.21.0: Return was held on these sites, but a click on Post, Comment, Reply or Share went out with no
+    code, since the summary rule took a click verb for a send only with Send as its object."""
+    fill = ("form_input", {"ref": "ref_2", "value": "Congratulations, Pat", "action_summary": "Fills the comment box"})
+    click = ("computer", {"action": "left_click", "ref": "ref_9", "action_summary": summary})
+    assert "approve" in check(CHROME, _opened(url, fill, click))
+
+
+@pytest.mark.parametrize("summary", ["Clicks Comment to open the comment box", "Clicks the comment box",
+                                     "Clicks the Reply link, which opens a reply box", "Clicks Share to show the share options",
+                                     "Clicks the Repost button to open its menu", "Opens the comment box under the post",
+                                     "Clicks the Like button"])
+def test_a_click_that_only_opens_a_box_passes_on_these_sites(summary):
+    click = ("computer", {"action": "left_click", "ref": "ref_9", "action_summary": summary})
+    assert check(CHROME, _opened("https://www.linkedin.com/feed/", click)) is None
+
+
+def test_a_click_on_post_elsewhere_is_judged_by_the_summary_rule_as_before():
+    click = ("computer", {"action": "left_click", "ref": "ref_9", "action_summary": "Clicks the Post button"})
+    assert check(CHROME, _opened("https://example.com/forum/", click)) is None
+    assert "approve" in check(CHROME, _opened("https://example.com/forum/", ("computer", {**click[1], "action_summary": "Clicks on Send"})))
+
+
+SEARCH = ("form_input", {"ref": "ref_3", "value": "I'm sorry for the delay.", "action_summary": "Fills the search box"})
+
+
+def test_words_typed_with_nothing_sent_on_these_sites_can_go_on_a_code(principal):
+    """The review of 5.21.0: on every page of these sites typed words faced the register scan with nothing sent, so a
+    search word that hit a rule was refused and no code could release it. A call that only types, on a page where a box
+    may be a search, is still scanned; it goes on the principal's code, which names the rule it broke."""
+    search = _opened("https://www.linkedin.com/feed/", SEARCH)
+    reason = check(CHROME, search)
+    assert "delay-apology" in reason and "approve followed by the code" in reason and "sends nothing" in reason
+    principal(reason)
+    assert check(CHROME, search) is None
+    assert "approve" in check(CHROME, search)  # one code, one call
+
+
+@pytest.mark.parametrize("url, steps", [
+    ("https://www.linkedin.com/feed/", [SEARCH, RETURN]),  # a call that sends
+    ("https://www.linkedin.com/feed/", [SEARCH, ("computer", {"action": "left_click", "ref": "ref_4",
+                                                            "action_summary": "Clicks the blue button"})]),  # it does more
+    ("https://www.linkedin.com/messaging/thread/2-x/", [SEARCH]),  # a page of messages, where typing is writing one
+    ("https://chat.google.com/room/AAA", [SEARCH]),
+    ("https://www.facebook.com/messages/t/1", [SEARCH]),
+    ("https://mail.google.com/mail/u/0/#inbox", [SEARCH]),  # Gmail's pages only get stricter
+])
+def test_words_that_break_a_rule_in_a_call_that_sends_or_on_a_page_of_messages_are_refused_outright(url, steps):
+    reason = check(CHROME, _opened(url, *steps))
+    assert reason.startswith("These words can't go out as written") and "approve" not in reason
 
 
 def test_an_email_sites_send_shortcut_and_a_typed_line_break_in_chat_wait(tmp_path):
@@ -237,6 +355,39 @@ def test_an_email_sites_send_shortcut_and_a_typed_line_break_in_chat_wait(tmp_pa
                                      session=_on(tmp_path, 7, tab7="https://chat.google.com/room/AAA"))
 
 
+GMAIL = ["https://mail.google.com/mail/u/0/#inbox", "https://mail.google.com/mail/u/0/#inbox/FMfcgzQ",
+         "https://mail.google.com/mail/u/1/?compose=new", "https://mail.google.com/mail/u/0/#search/plan",
+         "https://mail.google.com/mail/u/0/#chat/dm/x"]
+
+
+@pytest.mark.parametrize("url", GMAIL)
+@pytest.mark.parametrize("step", [
+    RETURN, ("computer", {"action": "type", "text": "On my way\n", "action_summary": "Types the reply"}),
+    ("form_input", {"ref": "ref_3", "value": "See you then\n", "action_summary": "Fills the reply"}),
+    ("computer", {"action": "key", "text": "cmd+Return", "action_summary": "Presses the shortcut"}),
+    ("computer", {"action": "key", "text": "ctrl+Enter", "action_summary": "Presses the shortcut"}),
+    ("computer", {"action": "left_click", "ref": "ref_9", "action_summary": "Clicks the Send button"}),
+])
+def test_every_gmail_page_holds_return_a_typed_line_break_a_send_click_and_the_send_shortcut(tmp_path, url, step):
+    """Google Chat runs in pop-ups on Gmail's own pages too, where Return sends. Those pages counted as email, where
+    Return writes a line, so Return in a pop-up went out with no code. A page cannot show which box has the focus, and
+    over 30 days of recorded browser calls none pressed Return or typed a line break on Gmail's pages (2026-11-14)."""
+    assert "approve" in (check(CHROME, _opened(url, step)) or "")  # a page a navigate step opened
+    assert "approve" in (guards.check(CHROME, _steps(step), CONFIG, session=_on(tmp_path, 7, tab7=url)) or "")  # the tab list's
+
+
+def test_a_rule_for_google_chat_holds_on_gmails_pages_and_one_for_email_still_does():
+    rules = [{"name": "chat-only", "pattern": "ttyl", "channels": ["google chat"], "why": "not in Chat"},
+             {"name": "email-only", "pattern": "fwiw", "channels": ["email"], "why": "not in email"}]
+    for url, held in (("https://mail.google.com/mail/u/0/#inbox", {"chat-only", "email-only"}),  # a pop-up, or a draft
+                      ("https://mail.google.com/chat/u/0/#chat/dm/x", {"chat-only"}),
+                      ("https://outlook.office.com/mail/inbox", {"email-only"})):
+        for rule in rules:
+            words = ("form_input", {"ref": "ref_3", "value": f"ok {rule['pattern']}", "action_summary": "Fills the reply"})
+            reason = check(CHROME, _opened(url, words), {**CONFIG, "forbidden_phrases": rules}) or ""
+            assert (rule["name"] in reason) is (rule["name"] in held), (url, rule["name"])
+
+
 def test_the_page_is_the_tab_each_step_names_or_the_one_a_navigate_step_opened(tmp_path):
     session = _on(tmp_path, 7, tab7="https://docs.google.com/document/d/x", tab8="https://chat.google.com/room/AAA")
     assert guards.check(CHROME, _steps(RETURN), CONFIG, session=session) is None
@@ -245,6 +396,16 @@ def test_the_page_is_the_tab_each_step_names_or_the_one_a_navigate_step_opened(t
     assert "approve" in guards.check("mcp__claude-in-chrome__computer", {**RETURN[1], "tabId": 8}, CONFIG, session=session)
     opened = ("navigate", {"url": "app.slack.com/client/T1/C2", "tabId": 7})
     assert "approve" in guards.check(CHROME, _steps(opened, RETURN), CONFIG, session=session)
+
+
+def test_a_navigate_that_names_no_host_keeps_a_messaging_sites_page(tmp_path):
+    """Hold when unsure: `back`, `forward`, a path or a script names no page, and from a messaging site's page the page
+    it opens may be that site's still, so it is judged as that site's; from any other page it is unknown, as before."""
+    for where, held in (("https://www.facebook.com/groups/1/", True), ("https://docs.google.com/document/d/x", False)):
+        session = _on(tmp_path, 7, tab7=where)
+        for url in ("back", "forward", "/messages/t/1", "javascript:void(0)"):
+            reason = guards.check(CHROME, _steps(("navigate", {"url": url, "tabId": 7}), RETURN), CONFIG, session=session)
+            assert bool(reason and "approve" in reason) is held, (where, url)
 
 
 def test_a_tab_list_printed_by_another_tool_is_not_the_browsers(tmp_path):

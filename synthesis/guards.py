@@ -4449,7 +4449,12 @@ RETURNS = {"return", "enter", "kp_enter", "kp_return"}
 MODIFIERS = {"alt": "option", "opt": "option", "command": "cmd", "meta": "cmd", "super": "cmd", "control": "ctrl"}
 SAYS_SENT = re.compile(r"^\W*(?:(?:send|repl(?:y|ie)|forward|post|publish|share|invite|respond|comment|mention|announce"
                        r"|notif(?:y|ie)|remind|schedule|deliver|email|text)(?:s|es|d|ed|ing)?\b"
-                       r"|(?:click|press|tap|hit|choose|select)(?:s|es)?\s+(?:the\s+)?send\b)|\bto send\b", re.I)
+                       r"|(?:click|press|tap|hit|choose|select)(?:s|es)?\s+(?:on\s+)?(?:the\s+)?send\b)|\bto send\b", re.I)
+# On a messaging site a click on the control that publishes waits too, unless the summary says it only opens a box
+# (2026-11-14: Post, Comment and Reply post on facebook.com, LinkedIn and Instagram, which label few controls Send)
+PUBLISHES = re.compile(r"\b(?:click|press|tap|hit|choose|select)(?:s|es)?\s+(?:on\s+)?(?:the\s+)?[\"'“‘]?(?:send"
+                       r"|post|comment|reply|repost|share|publish|submit)\b(?!\s+(?:box|field|input|area|composer|editor)\b)"
+                       r"(?!.*\b(?:opens|opening|expands|focuses|shows|reveals|starts|to (?:open|expand|focus|show|reveal|start))\b)", re.I)
 
 
 def desktop_tool(tool: str) -> str:
@@ -4505,28 +4510,36 @@ def _messaging(config: dict) -> dict:
 # A browser page on a messaging site counts as that messaging app (2026-10-22: Return in a Google Chat compose box
 # went out with no code, since a page was no app). Its address comes from the tab list Claude in Chrome prints after
 # each call, or from a navigate step earlier in the same batch; a page whose address is unknown is judged as before.
-WEB_MESSAGING = (  # (host, or .suffix for every host under it; path prefix; channel; line-break modifier, as above)
+WEB_MESSAGING = (  # (site, and every host under it; path prefix, or * for every other page of a site where a box may be a
+    # search; channel, or several joined by +; line-break modifier, as above). A page is the first that fits.
     ("mail.google.com", "/chat", "google chat", "shift"), ("chat.google.com", "", "google chat", "shift"),
-    ("mail.google.com", "", "email", ""), ("outlook.office.com", "", "email", ""),
-    ("outlook.office365.com", "", "email", ""), ("outlook.live.com", "", "email", ""), (".slack.com", "", "slack", "shift"),
-    ("web.whatsapp.com", "", "whatsapp", "shift"), ("www.linkedin.com", "", "linkedin", "shift"),  # its messages open on every page
-    ("teams.microsoft.com", "", "teams", "shift"), ("teams.live.com", "", "teams", "shift"),
-    ("discord.com", "", "discord", "shift"), ("web.telegram.org", "", "telegram", "shift"),
-    ("www.messenger.com", "", "messenger", "shift"), ("x.com", "/messages", "x", "shift"),
-    # 2026-11-14: Messenger runs inside facebook.com too, in pop-ups on every page, and Return in a comment posts
-    ("www.facebook.com", "/messages", "messenger", "shift"), ("facebook.com", "", "facebook", "shift"),
-    (".facebook.com", "", "facebook", "shift"), ("instagram.com", "", "instagram", "shift"),
-    (".instagram.com", "", "instagram", "shift"),
+    ("mail.google.com", "", "email+google chat", "shift"),  # 2026-11-14: Chat pops up on every page of Gmail, and Return sends
+    ("outlook.office.com", "", "email", ""), ("outlook.office365.com", "", "email", ""), ("outlook.live.com", "", "email", ""),
+    ("outlook.cloud.microsoft", "", "email", ""), ("slack.com", "", "slack", "shift"),
+    ("whatsapp.com", "", "whatsapp", "shift"), ("wa.me", "", "whatsapp", "shift"), ("teams.microsoft.com", "", "teams", "shift"),
+    ("teams.live.com", "", "teams", "shift"), ("teams.cloud.microsoft", "", "teams", "shift"), ("discord.com", "", "discord", "shift"),
+    ("discordapp.com", "", "discord", "shift"), ("discord.gg", "", "discord", "shift"), ("telegram.org", "", "telegram", "shift"),
+    ("t.me", "", "telegram", "shift"), ("messenger.com", "", "messenger", "shift"), ("m.me", "", "messenger", "shift"),
+    ("ig.me", "", "instagram", "shift"), ("chat.x.com", "", "x", "shift"), ("x.com", "/messages", "x", "shift"),
+    ("x.com", "/i/chat", "x", "shift"), ("twitter.com", "/messages", "x", "shift"), ("linkedin.com", "/messaging", "linkedin", "shift"),
+    ("instagram.com", "/direct", "instagram", "shift"), ("facebook.com", "/messages", "messenger", "shift"),
+    ("fb.com", "/messages", "messenger", "shift"), ("business.facebook.com", "/latest/inbox", "facebook+messenger+instagram", "shift"),
+    # 2026-11-14: every other page of these holds a message box or a comment box too (Messenger's pop-ups, LinkedIn's
+    # overlay, X's drawer, a comment where Return posts in the principal's name)
+    ("facebook.com", "*", "facebook+messenger", "shift"), ("fb.com", "*", "facebook+messenger", "shift"),
+    ("fb.me", "*", "facebook+messenger", "shift"), ("instagram.com", "*", "instagram", "shift"), ("instagr.am", "*", "instagram", "shift"),
+    ("linkedin.com", "*", "linkedin", "shift"), ("x.com", "*", "x", "shift"), ("twitter.com", "*", "x", "shift"),
 )
 TAB_LINE = re.compile(r'tabId (\d+): .*\("?([^"\s]*?)"?\)\s*$', re.M)  # the address in quotes, or without them as the extension wrote it until August 2026
 
 
 def _web_app(url: str):
-    """(page, (channel, line-break modifier)) when url is a messaging site's page, else None."""
-    host, path = _where(url)
+    """(page, (channel, line-break modifier), whether a box there may be a search) when url is a messaging site's page,
+    else None. A site is its host and every host under it, as the browser lands on them (2026-11-14: `linkedin.com/...`,
+    `uk.linkedin.com`, `messenger.com` and `m.me` passed while only www.linkedin.com and www.messenger.com were named)."""
     for site, prefix, chan, brk in WEB_MESSAGING:
-        if (host == site or site[0] == "." and host.endswith(site)) and path.startswith(prefix):
-            return host + prefix, (chan, brk)
+        if _on_site(url, site, prefix.strip("*")):
+            return _where(url)[0] + prefix.strip("*"), (chan, brk), prefix == "*"
     return None
 
 
@@ -4554,9 +4567,10 @@ def _tabs(transcript: str) -> tuple:
     return {}, ""
 
 
-def _steps(name: str, tool_input: dict, session: dict | None):
+def _steps(name: str, tool_input: dict, session: dict | None, keep: bool = False):
     """(step, its input, the address of the page it acts on) for a browser call, or for each step of a batch: its
-    tab's address in the newest list of tabs, or the one a navigate step earlier in the batch went to."""
+    tab's address in the newest list of tabs, or the one a navigate step earlier in the batch went to. With `keep`, a
+    navigate that names no host leaves a messaging site's page as it was, since the page it opens may be that site's."""
     tabs, front = _tabs(str((session or {}).get("transcript_path") or ""))
     steps = [(name, tool_input)] if name != "browser_batch" else [
         (str(s.get("name", "")), s["input"]) for s in tool_input.get("actions") or []
@@ -4565,18 +4579,20 @@ def _steps(name: str, tool_input: dict, session: dict | None):
         tab = str(given.get("tabId") or front)
         if step.endswith("navigate"):  # the steps after it act on the new page; `back`, a path or a script names no host, and that page is not known
             url = str(given.get("url") or "").strip().replace("\\", "/")
-            tabs[tab] = url if re.match(r"(?i)(?:https?:|//|localhost\b|[\w-]+(?:\.[\w-]+)+(?:[:/?#]|$))", url) else ""
+            tabs[tab] = url if re.match(r"(?i)(?:https?:|//|localhost\b|[\w-]+(?:\.[\w-]+)+(?:[:/?#]|$))", url) else (
+                tabs.get(tab, "") if keep and _web_app(tabs.get(tab, "")) else "")
         yield step, given, tabs.get(tab, "")
 
 
-def _pages(name: str, tool_input: dict, session: dict | None) -> dict:
-    """page: (channel, line-break modifier) for each messaging site this browser call acts on."""
-    reached = {}
-    for _, _, address in _steps("computer" if name == "browser" else name, tool_input, session):
+def _pages(name: str, tool_input: dict, session: dict | None) -> tuple:
+    """({page: (channel, line-break modifier)} for each messaging site this browser call acts on, and whether a box on
+    every one of them may be a search)."""
+    reached, search = {}, True
+    for _, _, address in _steps("computer" if name == "browser" else name, tool_input, session, keep=True):
         page = _web_app(address)
         if page:
-            reached[page[0]] = page[1]
-    return reached
+            reached[page[0]], search = page[1], search and page[2]
+    return reached, search
 
 
 def _bundle(app, apps: dict) -> str:
@@ -4614,15 +4630,26 @@ def check_desktop(name: str, tool: str, tool_input: dict, config: dict, session:
         return None
     seen = paths.read_json(record) if record else {}
     unseen = not name.startswith(("app_", "browser")) and "apps" not in seen  # a browser page is no messaging app
+    pages, search = _pages(name, tool_input, session) if name.startswith("browser") else ({}, False)
     reached = ({b: apps[b] for b in [_bundle(tool_input.get("app"), apps)] if b in apps} if name.startswith("app_")
-               else _pages(name, tool_input, session) if name.startswith("browser")
-               else apps if unseen else {b: apps[b] for b in seen["apps"] if b in apps})
-    typed = [v for kind, v, _ in actions if kind == "type" and v.strip()]
+               else pages if name.startswith("browser") else apps if unseen else {b: apps[b] for b in seen["apps"] if b in apps})
+    typed, subject = [v for kind, v, _ in actions if kind == "type" and v.strip()], {"tool": tool, "input": tool_input}
     sending = [s or f"{kind} {v}".strip() for kind, v, s in actions if SAYS_SENT.search(s) or reached and (
-        kind == "click" and not s.strip() or kind == "menu" and re.search(r"(?:^|> )send\b", v, re.I)
-        or kind == "key" and _sends_key(v, reached) or kind == "type" and re.search(r"[\r\n]", v) and _sends_key("return", reached))]
-    problems = message_problems("desktop_type", {"message_text": "\n\n".join(typed)}, config,
-                                {c for c, _ in reached.values()}, session) if typed and (reached or sending) else []
+        kind == "click" and (not s.strip() or pages and PUBLISHES.search(s))
+        or kind == "menu" and re.search(r"(?:^|> )send\b", v, re.I) or kind == "key" and _sends_key(v, reached)
+        or kind == "type" and re.search(r"[\r\n]", v) and _sends_key("return", reached))]
+    problems = message_problems("desktop_type", {"message_text": "\n\n".join(typed)}, config, {  # a page may be several channels'
+        c for chan, _ in reached.values() for c in chan.split("+")}, session) if typed and (reached or sending) else []
+    if problems and search and not sending and all(k == "type" for k, _, _ in actions) and not temporary_addresses(typed, config):
+        # 2026-11-14: a box on these pages may be a search, and a call that only types delivers nothing, so the principal's
+        # code releases its words; a call that sends or does more is refused as below, and an address keeps its own code
+        if approvals.consume("typed", subject, session):
+            return None
+        code = approvals.request("typed", subject, f"{tool}: words typed in the browser ({', '.join(sorted(reached))}), "
+                                 f"nothing sent: {' / '.join(typed)}"[:300])
+        return ("These words break the principal's rules for messages: " + "; ".join(problems[:6]) + ". This call only types "
+                "them and sends nothing, and a box on this page may be a search. If they are no message, show the principal the "
+                f"words and ask them to type {approvals.how(code)}, then make this identical call again. A message is rewritten.")
     if problems:
         return "These words can't go out as written: " + "; ".join(problems[:6]) + "."
     if not sending:
@@ -4631,7 +4658,7 @@ def check_desktop(name: str, tool: str, tool_input: dict, config: dict, session:
     chan = "browser" if name.startswith("browser") else chans[0] if len(chans) == 1 else "desktop"
     where = ((f"the browser ({', '.join(sorted(reached))})" if reached else "the browser") if name.startswith("browser")
              else "any messaging app" if unseen else ", ".join(sorted(reached)) or "an app")
-    what, subject = "; ".join(sending)[:200], {"tool": tool, "input": tool_input}
+    what = "; ".join(sending)[:200]
     summary = f"{tool} in {where}: {what}" + (f"; words: {' / '.join(typed)}" if typed else "")
     if sends.covered(chan, typed, _project(session), config):
         sends.log(chan, tool, summary, "window", session)
