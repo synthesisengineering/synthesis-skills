@@ -105,7 +105,10 @@ there with no item here fails:
   outbox writable from the sandbox (by the permissions profile in use, or the older
   writable roots while `sandbox_mode` is set) and nothing over the state folder, the
   instruction chain for the current folder under the limit minus 4 KiB, every hook
-  trusted, and the skill catalog (asked of `codex app-server`) within budget with every
+  trusted (with `setup.py plugin --codex-user-hooks`, the four declared in Codex's own
+  `hooks.json`, keyed by that file's path under the home's real path, trusted and like
+  the installed plugin's, and the plugin's own copies switched off, as intended; a copy
+  left on beside them fails, since both would run), and the skill catalog (asked of `codex app-server`) within budget with every
   shipped skill discoverable. The budget follows the configured model's context window,
   from Codex's own cache of its models, read by its first whole value (its clients share
   that file, and one copy written over another can leave a tail after it); a cache with

@@ -93,7 +93,22 @@ Codex hook definitions outside managed policy require human hash review; Codex r
 changed hook only after the person approves it in `/hooks`. Doctor reproduces Codex's
 trust hash for each synthesis hook (pinned to hashes Codex itself stored) and reports
 untrusted, modified or disabled hooks; it never writes Codex's trust state. Muse holds
-the same decision behind `muse plugins approve`. A simulated hook event verifies a
+the same decision behind `muse plugins approve`.
+
+Because Codex ties that approval to the plugin's files, every release leaves Codex with
+none of synthesis's hooks running until the person approves again. A hook declared in
+Codex's own `hooks.json` is trusted by its declaration alone, and all four synthesis
+hooks run one stable path, so `setup.py plugin --codex-user-hooks` declares them there
+and switches the plugin's own four off by their state keys (`enabled = false`, each line
+marked as setup's; setup writes no approval); the person approves the four once in
+`/hooks`, and a release asks again only when it changes a declaration. Every later
+install or update keeps the declaration in step with the plugin, and
+`--no-codex-user-hooks` or `setup.py uninstall` takes out exactly what it added. What it
+gives up is Codex's second look at a hook whose code changed, which protects anyone
+installing someone else's plugin: the option is meant for a publisher's own machines and
+is off unless asked for. With it on, doctor judges the user-level hooks' trust and treats
+the plugin's switched-off copies as intended. Setup and its edge cases:
+`synthesis-onboarding`'s `references/harness-install.md`. A simulated hook event verifies a
 script contract, not client delivery: doctor's self-test runs the real stable hook, and
 a fresh session in each harness shows that SessionStart actually fired.
 

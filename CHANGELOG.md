@@ -4,6 +4,31 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## 5.21.0 (unreleased)
+
+- **One approval in Codex lasts through releases, as a setup option** (`synthesis-onboarding`,
+  `synthesis-agent-conformance`; plan item 13.7, part 2). Codex ties its approval of a plugin's hooks to the plugin's
+  files, so after each release it ran none of synthesis's four hooks until the person approved them again in `/hooks`
+  (six times on 2026-11-13). `setup.py plugin --codex-user-hooks` declares the four in Codex's own `hooks.json`, each
+  calling the stable hook, which Codex trusts by its declaration alone, and switches the plugin's own four off by their
+  state keys with lines marked as setup's, so no event runs twice; the person approves the four once. It keeps the
+  person's hooks, changes nothing on a rerun, refuses a `hooks.json` Codex would not read or a `config.toml` that does
+  not parse before writing anything, and every later install or update of the Codex plugin, the release script's
+  included, keeps the declaration in step with the plugin. `--no-codex-user-hooks` and `setup.py uninstall` take out
+  exactly what it added. It gives up Codex's second look at a hook whose code changed, which protects anyone installing
+  someone else's plugin: recommended for a publisher's own machines, off unless asked for. Codex's startup review still
+  lists the plugin's switched-off copies after a release; the user-level hooks run whatever the answer there.
+- **The doctor reads that declaration.** With it present, `codex hook trust` judges the user-level hooks, keyed by
+  `hooks.json`'s path under Codex's home's real path, and treats the plugin's switched-off copies as intended; it fails
+  a copy left on beside them, a declaration unlike the installed plugin's, and a `hooks.json` Codex would not read.
+  Without it, the line is as before. `read_toml` gains a strict reading that names the first line it cannot place.
+- **How it was checked.** Tests first. Codex's source at the installed build (0.167.0-alpha.4.1) and probes in homes
+  of their own: approving in `/hooks` writes `trusted_hash` alone for a user-level hook, the state written by hand
+  before, and the doctor's hash equals what Codex lists for all four; a plugin hook switched off by its key stays off
+  across a change of the plugin's files and version, and through the startup review's "Trust all". Then end to end:
+  the plugin installed with Codex's own commands, the option turned on, the four approved as `/hooks` approves them,
+  and a release that changed the plugin's files and version, with the user-level hooks trusted throughout.
+
 ## [5.20.1] - 2026-11-13
 
 - **The deploy guard holds neither a syntax check nor too little** (`synthesis-agent-guardrails` 2.9.2). A seat's local
