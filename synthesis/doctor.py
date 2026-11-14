@@ -449,6 +449,36 @@ def check_claude_retention(settings: Path) -> Check:
     return Check("ok", "claude transcripts", f"kept {days:,} days")
 
 
+CLAUDE_ON_FAILURE = (2, 1, 295)  # the first Claude Code that honors a hook's onFailure (its hooks reference)
+
+
+def claude_version(binary: str) -> str:
+    """The version `claude --version` prints first, or '' when it prints none in time."""
+    try:
+        out = subprocess.run([binary, "--version"], capture_output=True, text=True, timeout=10, stdin=subprocess.DEVNULL).stdout
+    except (OSError, subprocess.SubprocessError):
+        return ""
+    found = re.match(r"\s*(\d+(?:\.\d+)+)", out)
+    return found.group(1) if found else ""
+
+
+def check_claude_fail_closed(hooks: dict, version: str) -> Check:
+    """Claude Code lets a call through when its PreToolUse hook times out, crashes or cannot start, unless the handler
+    says "onFailure": "block", which it honors from 2.1.295 (5.21.0). Codex and Muse have no such setting."""
+    handlers = [handler for event, _, handler in hooks_json_entries(hooks or {}) if event == "PreToolUse"]
+    if not handlers or any(handler.get("onFailure") != "block" for handler in handlers):
+        return Check("fail", "claude fail closed", 'the installed plugin\'s PreToolUse hook lacks "onFailure": "block", so a '
+                     "guard that times out or crashes lets the call through: update the plugin")
+    if not version:
+        return Check("warn", "claude fail closed", "cannot tell which Claude Code this is, so whether it holds a guarded "
+                     "call when the guard times out or crashes")
+    if tuple(int(n) for n in version.split(".")) < CLAUDE_ON_FAILURE:
+        return Check("warn", "claude fail closed", f"Claude Code {version} ignores onFailure (2.1.295 or later honors it), "
+                     "so a guard that times out or crashes lets the call through: update Claude Code")
+    return Check("ok", "claude fail closed", f"Claude Code {version} holds a guarded call when the guard times out, crashes "
+                 "or cannot start")
+
+
 def check_sessions_repos(repos: dict, state: Path, now: float = 0) -> list:
     """Each workspace's sessions repo (R10.2): cloned where config `sessions_repos` says, synced within two days,
     and small enough to clone (GitHub advises under 5 GB; this warns at 3 GB)."""
@@ -1600,9 +1630,9 @@ def harness_checks(found: list, procs: dict, home: Path, runtime: str, catalog=N
         entry = claude_entry(listing)
         checks.append(check_plugin("claude", entry, error))
         if entry:
-            versions["claude"] = entry.get("version", "")
-            checks += [check_package("claude", entry["path"], runtime),
-                       check_hooks_wired("claude", _commands(_hooks_file(entry["path"]))),
+            versions["claude"], hooks = entry.get("version", ""), _hooks_file(entry["path"])
+            checks += [check_package("claude", entry["path"], runtime), check_hooks_wired("claude", _commands(hooks)),
+                       check_claude_fail_closed(hooks, claude_version(procs["claude"].args[0])),
                        check_claude_retention(paths.transcript_roots()["claude-code"].parent / "settings.json")]
     if "codex" in found:
         codex_home = paths.codex_home()

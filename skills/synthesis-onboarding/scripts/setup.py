@@ -422,6 +422,11 @@ def _setup_wrote(event: str, group) -> bool:
         isinstance(h, dict) and h.get("command") == f'"{doctor.STABLE_HOOK}" {doctor.EVENTS[event]}' for h in hooks)
 
 
+def _hashes(event: str, groups: list) -> list:
+    """Codex's trust hash of each hook in these groups: a change that keeps every one keeps Codex's approval."""
+    return [doctor.codex_hook_hash(event, group.get("matcher"), hook) for group in groups for hook in group.get("hooks") or []]
+
+
 def _state_tables(lines: list) -> dict:
     """{key: the index of its `[hooks.state."<key>"]` header} among config.toml's lines."""
     found = {}
@@ -481,7 +486,7 @@ def codex_user_hooks(want, plugin_root=None, dry_run: bool = False) -> list:
         held = (doctor.read_toml(text, strict=True).get("hooks") or {}).get("state") or {}
     except ValueError as exc:
         raise SetupError(f"codex user hooks: {config_file} does not parse ({exc}), so nothing was changed") from None
-    want, events, before, done, kept = want is not False, data.setdefault("hooks", {}), json.dumps(data), [], []
+    want, events, before, done, kept, same = want is not False, data.setdefault("hooks", {}), json.dumps(data), [], [], []
     wanted = doctor.codex_user_declaration(paths.read_json(Path(plugin_root) / "hooks" / "hooks.json")) if want else {}
     if want and not wanted:
         raise SetupError(f"codex user hooks: {plugin_root} has no hooks/hooks.json to declare, so nothing was changed")
@@ -496,7 +501,7 @@ def codex_user_hooks(want, plugin_root=None, dry_run: bool = False) -> list:
         rest = [group for i, group in enumerate(current) if i not in mine]
         at = mine[0] if mine else len(rest)  # where setup's own stood, so the keys of the person's after it hold
         events[event] = rest[:at] + wanted.get(event, []) + rest[at:]
-        done.append(event)
+        (same if mine and _hashes(event, [current[i] for i in mine]) == _hashes(event, wanted.get(event, [])) else done).append(event)
         if not events[event]:
             del events[event]
     keys = [f"{PLUGIN}@{MARKETPLACE}:hooks/hooks.json:{doctor._snake(e)}:{gi}:{hi}"
@@ -508,6 +513,9 @@ def codex_user_hooks(want, plugin_root=None, dry_run: bool = False) -> list:
         notes.insert(0, f"codex user hooks: {'would ' if dry_run else ''}" + (
             f"declare {', '.join(done)} in {file}; approve them once in Codex's /hooks, and a release asks again only "
             "when it changes one" if want else f"take {', '.join(done)} out of {file}"))
+    if same:  # 5.21.0 added a field Codex does not hash: the approval a person gave stays
+        notes.append(f"codex user hooks: {'would ' if dry_run else ''}bring {', '.join(same)} in {file} in step with the "
+                     "plugin; Codex hashes them as before, so an approval it holds for them stays")
     if lines != text.splitlines():
         notes.append(f"codex user hooks: {'would ' if dry_run else ''}" + (
             f"switch the plugin's own hooks off in {config_file} ({switches} lines marked as setup's), so no event runs "

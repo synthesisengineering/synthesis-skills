@@ -99,6 +99,11 @@ there with no item here fails:
   plugin whose folder is not there fails its package line;
 - `claude transcripts`: Claude Code keeps transcripts past its 30-day default
   (`cleanupPeriodDays` is set, and to a year or more);
+- `claude fail closed`: the installed plugin's PreToolUse hook sets `"onFailure": "block"`,
+  so Claude Code holds a guarded call when the guard times out, crashes or cannot start
+  (a hook without it fails the line), and the installed Claude Code is 2.1.295 or later,
+  the first that honors it (an older one, or a `claude --version` that names no version,
+  warns; 5.21.0);
 - `codex hooks feature`, `codex instruction bytes`, `codex board access`,
   `codex instruction chain`, `codex hook trust`, `codex skill catalog`: for Codex,
   `[features] hooks = true`, `project_doc_max_bytes` at least 98,304, the board and the

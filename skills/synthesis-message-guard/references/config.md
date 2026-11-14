@@ -6,6 +6,16 @@ below. The public starting point is
 [config.example.json](../config.example.json), which the tests load in CI, where there is
 no `~/.synthesis`.
 
+**When the guard cannot answer** (5.21.0). In Claude Code the plugin's PreToolUse hook sets
+`"onFailure": "block"`, so from Claude Code 2.1.295 a send is held when the guard times out (its
+limit is 5 seconds), crashes, prints output Claude Code cannot read, or cannot start because the
+stable hook is missing; Claude Code names the hook and says `failed` or `timed out`. An older
+Claude Code ignores the setting and lets the send through, and `synthesis doctor` warns. Codex
+(0.167) and Muse (1.4.20) have no such setting: a guard that times out or crashes there lets the
+call through (Muse's hook runner, run on 2026-11-14; Codex's, read in its source at 0.167.2), so
+in them a send is held only when the guard answers. An unreadable config and an error inside a
+guard still block in all three, since the guard catches those itself.
+
 ## Keys
 
 | Key | Meaning |

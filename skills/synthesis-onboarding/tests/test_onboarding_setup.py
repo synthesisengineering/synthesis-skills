@@ -1007,7 +1007,7 @@ def test_the_option_declares_the_plugins_four_hooks_in_codexs_own_file_and_switc
             assert ours == groups    # exactly as the plugin declares it: the same command, matcher and timeout
     assert {key: value.get("enabled") for key, value in hook_state(home).items()} == {key: False for key in plugin_keys()}
     assert (home / "config.toml").read_text().startswith('model = "gpt-5"\n\n[features]\nhooks = true\n')
-    assert any("/hooks" in line for line in lines)                                    # approved once, there, by the person
+    assert any("Codex's /hooks" in line for line in lines)                           # approved once, there, by the person
 
 
 def test_a_second_run_changes_nothing(tmp_path, monkeypatch):
@@ -1069,7 +1069,7 @@ def test_the_plugin_command_turns_it_on_keeps_it_and_turns_it_off(tmp_path, monk
     home = codex_home(tmp_path, monkeypatch, config="[features]\nhooks = true\n")
     _codex_cli(tmp_path, monkeypatch)
     assert setup.main(["plugin", "--no-input", "--clients", "codex", "--codex-user-hooks"]) == 0
-    assert set(declared(home)) == set(PLUGIN_HOOKS["hooks"]) and "/hooks" in capsys.readouterr().out
+    assert set(declared(home)) == set(PLUGIN_HOOKS["hooks"]) and "Codex's /hooks" in capsys.readouterr().out
     assert setup.main(["plugin", "--no-input", "--clients", "codex"]) == 0                   # a run without the flag keeps it
     assert set(declared(home)) == set(PLUGIN_HOOKS["hooks"]) and SWITCH in (home / "config.toml").read_text()
     assert setup.main(["plugin", "--no-input", "--clients", "codex", "--no-codex-user-hooks"]) == 0
@@ -1127,6 +1127,31 @@ def test_an_update_brings_the_declaration_up_to_date_in_its_place(tmp_path, monk
     (home / "hooks.json").write_text(json.dumps(data))
     assert setup.codex_user_hooks(None, setup.REPO)                                   # what an install of the next release runs
     assert declared(home)["PreToolUse"] == [first, PLUGIN_HOOKS["hooks"]["PreToolUse"][0], later]
+
+
+def test_a_release_that_adds_the_guards_setting_keeps_the_declaration_codex_reads_and_its_approval(tmp_path, monkeypatch):
+    """5.21.0 adds "onFailure": "block" to the guard for Claude Code. Its install brings the user-level copy in step;
+    Codex reads it and hashes the guard as before, so the approval given earlier holds and setup does not ask for it
+    again (Codex 0.167.0-alpha.4.1, 2026-11-14: the four trusted before that release and after it)."""
+    earlier = json.loads(json.dumps(PLUGIN_HOOKS))
+    for handler in earlier["hooks"]["PreToolUse"][0]["hooks"]:
+        handler.pop("onFailure", None)
+    older = tmp_path / "older"
+    (older / "hooks").mkdir(parents=True)
+    (older / "hooks" / "hooks.json").write_text(json.dumps(earlier))
+    home = codex_home(tmp_path, monkeypatch, config="[features]\nhooks = true\n")
+    setup.codex_user_hooks(True, older)
+    before = declared(home)["PreToolUse"][0]
+    lines = setup.codex_user_hooks(None, setup.REPO)                                   # what an install of the release runs
+    after = declared(home)["PreToolUse"][0]
+    assert after == PLUGIN_HOOKS["hooks"]["PreToolUse"][0] and after["hooks"][0]["onFailure"] == "block"
+    assert setup.doctor.codex_hooks_problem({"hooks": declared(home)}) == ""
+
+    def hashed(group):
+        return setup.doctor.codex_hook_hash("PreToolUse", group.get("matcher"), group["hooks"][0])
+    assert hashed(after) == hashed(before)
+    assert lines and not any("approve" in line for line in lines)                    # nothing to approve again,
+    assert any("in step" in line and "approval" in line and "stays" in line for line in lines)  # and it says so
 
 
 def test_a_declaration_the_person_wrote_is_kept_and_not_doubled(tmp_path, monkeypatch):
