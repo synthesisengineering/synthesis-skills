@@ -400,6 +400,9 @@ def user_level(tmp_path, declared=None, trusted=True, plugin_off=True, home=None
                 for hi, handler in enumerate(group["hooks"]):
                     key = f"{os.path.realpath(home)}{os.sep}hooks.json:{doctor._snake(event)}:{gi}:{hi}"
                     state[key] = {"trusted_hash": doctor.codex_hook_hash(event, group.get("matcher"), handler)}
+    mark = "  # synthesis-setup: codex-user-hooks"  # the switches as setup writes them, which tell the doctor the option is on
+    (home / "config.toml").write_text("".join(f'[hooks.state."{key}"]{mark}\nenabled = false{mark}\n'
+                                              for key in trusted_state()) if plugin_off else "")
     return home, {"hooks": {"state": state}}
 
 
@@ -479,9 +482,10 @@ def test_a_user_level_declaration_unlike_the_plugins_is_named(tmp_path):
     declared = doctor.codex_user_declaration(REPO_HOOKS)
     declared["PreToolUse"][0]["matcher"] = "Bash"
     home, config = user_level(tmp_path, declared=declared)
+    paths.write_json(paths.codex_hooks_record(), {str(Path(os.path.realpath(home)) / "hooks.json"): {"groups": declared}})
     check = doctor.check_codex_trust(REPO_HOOKS, config, PLUGIN_ID, None, home)
     assert check.status == "fail" and "differs from the plugin's PreToolUse" in check.detail
-    assert "setup.py plugin --codex-user-hooks" in check.detail
+    assert "run setup.py plugin --codex-user-hooks again" in check.detail                 # setup's own, by its record
 
 
 
@@ -507,6 +511,98 @@ def test_the_strict_toml_reader_reads_a_whole_config_as_the_lenient_one_does():
             'enabled = false  # synthesis-setup: x\n[[mcp]]\nname = "a"\n[[mcp]]\nname = "b"\n'
             "[projects.'/Users/x/work']\ntrust_level = \"trusted\"\n")
     assert doctor.read_toml(text, strict=True) == doctor.read_toml(text)
+
+
+# ---- review round 1 of 5.21.0: the doctor's codex hook trust line, each finding's case from its probe -------------
+
+def test_calls_stable_hook_takes_the_stable_hook_as_the_program_the_command_runs():
+    """R1-2 (p03 K2): a substring test took a log line that only names the hook for a declaration."""
+    for command in ('"$HOME/.synthesis/v5/bin/synthesis-hook" pre-tool-use', '"${HOME}/.synthesis/v5/bin/synthesis-hook" pre-tool-use',
+                    'exec "$HOME/.synthesis/v5/bin/synthesis-hook" pre-tool-use', "~/.synthesis/v5/bin/synthesis-hook pre-tool-use"):
+        assert doctor.calls_stable_hook("PreToolUse", command), command
+    for command in ('echo "skipped $HOME/.synthesis/v5/bin/synthesis-hook pre-tool-use" >> /tmp/log',
+                    '"$HOME/.synthesis/v5/bin/synthesis-hook" stop', '"$HOME/.synthesis/v5/bin/synthesis-hook pre-tool-use'):
+        assert not doctor.calls_stable_hook("PreToolUse", command), command
+    commands = [(e, h["command"]) for e, _, h in doctor.hooks_json_entries(REPO_HOOKS)]
+    assert doctor.check_hooks_wired("codex", commands).status == "ok"  # the plugin's own start runs it through a wrapper
+
+
+def test_a_narrower_declaration_of_the_persons_is_named_with_what_mends_it(tmp_path):
+    """R1-2 (p03 K1): the advice said to run setup again, which keeps the person's declaration as written."""
+    declared = doctor.codex_user_declaration(REPO_HOOKS)
+    declared["PreToolUse"] = [{"matcher": "Bash|Write|Edit", "hooks": [
+        {"type": "command", "timeout": 5, "command": '"${HOME}/.synthesis/v5/bin/synthesis-hook" pre-tool-use'}]}]
+    home, config = user_level(tmp_path, declared=declared)
+    detail = doctor.check_codex_trust(REPO_HOOKS, config, PLUGIN_ID, None, home).detail
+    assert "edit your own" in detail and "--codex-user-hooks again" not in detail
+
+
+def test_plugin_copies_setup_switched_off_with_nothing_declared_in_their_place_are_a_fault_of_setup(tmp_path):
+    """R1-3 (p05 D2): with hooks.json gone and setup's switches left, no synthesis hook ran, and the doctor called it
+    an approval waiting on the person."""
+    home = tmp_path / "codex"
+    home.mkdir()
+    mark = "  # synthesis-setup: codex-user-hooks"
+    text = "".join(f'[hooks.state."{key}"]{mark}\nenabled = false{mark}\n' for key in trusted_state())
+    (home / "config.toml").write_text(text)
+    check = doctor.check_codex_trust(REPO_HOOKS, doctor.read_toml(text), PLUGIN_ID, None, home)
+    assert check.status == "fail" and not doctor.waits_on_person(check)
+    assert "switched off by setup" in check.detail and "disabled" not in check.detail
+
+
+@pytest.mark.parametrize("text", ['{"hooks": {"PostToolUse": [{"hooks": [{"type": "http", "url": "https://x"}]}]}}',
+                                  '{"hooks": {}, "version": 1}', '{"hooks": {}'])
+def test_the_persons_own_unreadable_hooks_file_is_a_warning_of_its_own_while_the_option_is_off(tmp_path, isolated_home, text):
+    """R1-8 (p05 D1, p13): the trust line failed over the person's own file, held the release, and the note for session
+    starts called all four running hooks not running."""
+    home = tmp_path / "codex"
+    home.mkdir()
+    (home / "hooks.json").write_text(text)
+    check = doctor.check_codex_trust(REPO_HOOKS, {"hooks": {"state": trusted_state()}}, PLUGIN_ID, None, home)
+    assert check.status == "ok"
+    warning = doctor.check_codex_hooks_file(home)
+    assert warning.status == "warn" and "hooks.json" in warning.detail
+    doctor._note_waits(isolated_home, [check, doctor.Check("ok", "codex plugin", "installed")], time.time())
+    assert paths.waits(isolated_home)["codex hook trust"]["waiting"] == []
+
+
+def test_a_user_level_hook_declared_twice_fails_since_it_runs_twice(tmp_path):
+    """R1-9 (p03 K3): setup's Stop and a second of the person's, both approved, read as ok, five hooks for four."""
+    declared = doctor.codex_user_declaration(REPO_HOOKS)
+    declared["Stop"].append({"hooks": [{"type": "command", "timeout": 5, "command": '"${HOME}/.synthesis/v5/bin/synthesis-hook" stop'}]})
+    home, config = user_level(tmp_path, declared=declared)
+    check = doctor.check_codex_trust(REPO_HOOKS, config, PLUGIN_ID, None, home)
+    assert check.status == "fail" and "Stop runs 2 times" in check.detail and not doctor.waits_on_person(check)
+
+
+def test_the_toml_reader_splits_lines_at_line_feeds_alone():
+    """R1-10 (p04 L3, L3b): splitlines() broke a value at U+2029 and refused a U+2028 in a comment."""
+    assert doctor.read_toml('x = """\nfirst second\n"""\n', strict=True)["x"] == "first second\n"
+    assert doctor.read_toml('# note more\nmodel = "a b"\r\n', strict=True) == {"model": "a b"}
+
+
+@pytest.mark.parametrize("text", ['[t]\n"enabled" = true\nenabled = false\n', "[t]\nx = 1\n'x' = 2\n", "a = 1\na.b = 2\n",
+                                  '[hooks]\nstate = {}\n[hooks.state."k"]\n', "a = { b = 1 }\na.c = 2\n", "a.b = 1\n[a]\n",
+                                  "[a]\nb.c = 1\n[a.b]\n", "[a.b]\nx = 1\n[a]\nb.y = 2\n"])
+def test_the_strict_reader_refuses_a_key_set_twice_and_any_table_inside_a_value(text):
+    """R1-1: the strict reading setup checks its edit with must refuse what Codex refuses (tomllib agrees on each)."""
+    with pytest.raises(ValueError):
+        doctor.read_toml(text, strict=True)
+
+
+def test_the_strict_reader_reads_what_toml_allows_beside_those():
+    for text in ('hooks.state."other".enabled = false\n[hooks.state."synth"]\nenabled = false\n',
+                 '[hooks.state]\n"other" = { enabled = false }\n[hooks.state."synth"]\nenabled = false\n',
+                 "[a.b.c]\n[a]\nb.x = 1\n", "[a]\nb.c = 1\n[a.d]\nx = 1\n", "[a.b]\nx = 1\n[a]\ny = 2\n", "[[m]]\nx = 1\n[[m]]\nx = 2\n"):
+        doctor.read_toml(text, strict=True)
+
+
+@pytest.mark.parametrize("text", ['[hooks]\nstate = { "other@x:hooks/hooks.json:stop:0:0" = { enabled = false } }\n',
+                                  "hooks = { state = {} }\n"])
+def test_hook_state_held_as_an_inline_table_is_named_not_a_crash(tmp_path, text):
+    """R1-16 (p09): the doctor's Codex checks stopped with a traceback on valid TOML."""
+    check = doctor.check_codex_trust(REPO_HOOKS, doctor.read_toml(text), PLUGIN_ID, None, tmp_path)
+    assert check.status == "fail" and "inline table" in check.detail and not doctor.waits_on_person(check)
 
 def test_codex_hooks_feature():
     assert doctor.check_codex_features({"features": {"hooks": True}}).status == "ok"

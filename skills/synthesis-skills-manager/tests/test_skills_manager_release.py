@@ -544,6 +544,24 @@ def test_verification_reads_the_folder_the_harness_reports(tmp_path, monkeypatch
     assert any(line.startswith("codex: NOT verified") and "differs skills/demo/SKILL.md" in line for line in lines)
 
 
+
+def test_a_release_keeps_codexs_user_level_declaration_in_step_with_the_plugin_it_verified(tmp_path, monkeypatch):
+    """Review round 1 of 5.21.0, R1-19: the option's step moved out of install_plugin, so a refusal there no longer hides
+    the install's line; the release runs it itself against the folder it verified."""
+    repo = source_repo(tmp_path)
+    git(repo, "tag", "v5.1.0")
+    good = tmp_path / "good"
+    setup.export_tree(repo, good, "v5.1.0")
+    monkeypatch.setattr(release.doctor, "find_client", lambda name: name if name == "codex" else None)
+    monkeypatch.setattr(setup, "install_plugin", lambda client, binary, **k: f"{client}: updated")
+    monkeypatch.setattr(release, "installed_root", lambda client, binary: (good, "5.1.0"))
+    monkeypatch.setattr(setup, "codex_user_hooks_on", lambda: True)
+    asked = []
+    monkeypatch.setattr(setup, "codex_user_hooks", lambda want, root=None, dry_run=False: asked.append((want, root))
+                        or ["codex user hooks: already declared"])
+    lines, verified, _ = release.install_and_verify(repo, "5.1.0", ["codex"])
+    assert asked == [(None, good)] and "codex user hooks: already declared" in lines and set(verified) == {"codex"}
+
 def test_a_wrong_reported_version_fails_even_with_matching_bytes(tmp_path, monkeypatch):
     repo = source_repo(tmp_path)
     git(repo, "tag", "v5.1.0")
