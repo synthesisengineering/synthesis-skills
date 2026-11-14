@@ -521,9 +521,10 @@ is a message and a search is not, and the guard cannot tell them apart. The send
 code waives it for that exact call; a send window never covers it. On a messaging site or in a messaging app the hit
 is refused outright, as before.
 
-**What the records keep** (5.21.1). Typed words never go into a stored request or the send log, which keep only how
-many characters were typed: a test form's password, typed by an agent, had landed there in plain text. The hold asks
-for a screenshot of the compose area instead.
+**What the records keep** (5.21.1). The text a call types, and the values it fills in, never go into a stored request
+or the send log, which keep only how many characters were typed: a test form's password, typed by an agent, had
+landed there in plain text. The hold asks for a screenshot of the compose area instead. An action's own summary is
+kept as the agent wrote it, so a summary does not quote what it types.
 
 **Words typed on these pages** (5.21.0). On the pages of facebook.com, instagram.com, linkedin.com and x.com outside
 their messages a box may be a search, so a call that only types there (no click, no key, nothing it says sends) and

@@ -29,8 +29,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
     sends a key or an event, writes by fetch or sets a value waits (5 of 118 in 30 days); elsewhere one that submits a
     form, sends a key or an event, writes by fetch, or clicks a control that publishes waits, unless it searches or
     signs in (24 of 459).
-  - Typed words never go into a stored request or the send log, where a test form's password had landed in plain
-    text. A register hit in a send on a page that is no messaging site goes on the send's own code, which names it,
+  - The text a call types and the values it fills in never go into a stored request or the send log, where a test
+    form's password had landed in plain text. A register hit in a send on a page that is no messaging site goes on the send's own code, which names it,
     instead of an outright refusal, since the guard cannot tell a review from a search there.
   - Words released by the typed-words code are shown, with the rules they broke, in the hold of the next send from
     the same page, and bound to its approval.
