@@ -432,8 +432,9 @@ Discord (`com.hnc.Discord`), Zoom (`us.zoom.xos`), Mail (`com.apple.mail`) and O
 - a menu item that starts with Send (Mail's Message > Send).
 
 **Messaging sites in the browser** (5.1.9). A browser page on a messaging site counts as that app, under the same
-rules: Google Chat (`chat.google.com`, and `/chat` in Gmail), Slack (any `*.slack.com`), WhatsApp Web, LinkedIn's
-messages (`www.linkedin.com/messaging`), Teams, Discord, Telegram Web, Messenger and X's messages, where Return
+rules: Google Chat (`chat.google.com`, and `/chat` in Gmail), Slack (any `*.slack.com`), WhatsApp Web, LinkedIn
+(every page of `www.linkedin.com` since 5.21.0, since its messages open in an overlay on every page; before, only
+`/messaging`), Teams, Discord, Telegram Web, Messenger and X's messages, where Return
 sends and shift with Return writes a line; Gmail and Outlook on the web count as email. Since 5.21.0 every page of
 facebook.com and of instagram.com counts too: Messenger runs inside facebook.com, in its own page
 (`/messages`, the channel `messenger`) and in chat pop-ups on every other page, and Return in a comment box posts
