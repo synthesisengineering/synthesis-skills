@@ -55,7 +55,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   set to temporary ones): `claude plugin validate` and install with 2.1.316 and 2.1.293; Codex's own `hooks/list` for
   the plugin with and without the field, the user-level declaration, and a home approved before the field through the
   release that adds it; `muse plugins validate`, install and `plugins hook test` with the stable hook missing, exiting 1
-  and sleeping past its limit, beside a stub that denies as the control. Two assertions in the onboarding tests that
+  and sleeping past its limit, beside a stub that denies as the control. What Codex does with a failed hook was read in
+  its source at 0.167.2 (its runner marks the hook failed and blocks nothing). Two assertions in the onboarding tests that
   passed on the path `.../hooks.json` alone now read the note's own words.
 
 ## [5.20.1] - 2026-11-13

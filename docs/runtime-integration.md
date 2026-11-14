@@ -536,8 +536,9 @@ What the M5 sandbox showed for Muse 1.4.3, and what it could not test:
   hook and says `failed` or `timed out`, and an older one ignores the setting.
   Codex (0.167) and Muse (1.4.20) have no such setting: there a hook that times
   out or crashes lets the call through (Codex's runner marks it failed without
-  blocking; Muse's `plugins hook test` gave `should_block: false` for a missing
-  hook, an exit code of 1 and a timeout; probed 2026-11-14). Muse reads only its
+  blocking, in its source at 0.167.2; Muse's `plugins hook test` gave
+  `should_block: false` for a missing hook, an exit code of 1 and a timeout, run
+  on 2026-11-14). Muse reads only its
   own manifest, which refuses the field, so it is set in `hooks/hooks.json`
   alone, where Codex reads it and hashes the hook without it. UserPromptSubmit and
   SessionStart keep the default: holding a person's prompt or a session's start
