@@ -4190,6 +4190,11 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
             first = ast.List(elts=n.args) if label == "create_subprocess_exec" else (n.args[:1] or [kw.get("args")])[0]
             first = given_once.get(getattr(first, "id", ""), first)  # a command kept under a name given it once
             parts = [spelled(e) for e in first.elts] if isinstance(first, (ast.List, ast.Tuple)) else None
+            git, gi = [said(e) for e in first.elts] if parts and said(first.elts[0]) == "git" and not getattr(kw.get("shell"), "value", False) else [], 1
+            while gi < len(git) and (git[gi] or "")[:1] == "-" and git[gi] != "-c":  # git's own options, and the value -C or --git-dir takes
+                gi += 2 if git[gi] in ("-C", "--git-dir", "--work-tree", "--namespace") else 1
+            if gi < len(git) and git[gi] in GIT_READS and not any(w and (w in ("-c", "-O") or w.startswith(("--output", "--open-files"))) for w in git):
+                continue  # a git read spelled whole changes nothing wherever it runs, whatever folder it is pointed at (5.22.1)
             if parts:  # one word of a list is one file: what it found in a protected folder stands for a file there, any other unread part for a name
                 reads = os.path.basename(parts[0]) in SHELLS or bool(SCRIPT.match(os.path.basename(parts[0])))
                 kind, code, _ = _program([w.replace("\0", "x") for w in parts]) if reads else ("", 0, "")
@@ -4303,6 +4308,9 @@ UNREAD = re.compile(r"(?:pypy[\d.]*|node(?:js)?|bun|deno|tsx|ts-node|perl[\d.]*|
                     r"|tclsh[\d.]*|wish[\d.]*|expect|osascript|Rscript|julia|swift|groovy|scala|elixir|pwsh|jshell|java|fish|csh|tcsh)$")
 EDITORS = frozenset({"ed", "ex", "vi", "vim", "nvim", "emacs", "sqlite3"})  # their scripts come on their input or in their words
 AWK_SAFE = re.compile(r"-[Fv].*|--(?:field-separator|assign)(?:=.*)?|-[bcNOPrsSt]+|--(?:sandbox|posix|traditional|re-interval)|--?")
+EXTRACTS = {**dict.fromkeys(("tar", "bsdtar", "gtar"), r"-?[A-Za-z]*x[A-Za-z]*|--extract|--get"), "pax": r"-[A-Za-z]*r[A-Za-z]*",
+            "cpio": r"-[A-Za-z]*[ip][A-Za-z]*|--extract|--pass-through", **dict.fromkeys(("unzip", "unar"), r"[^-].*"),
+            **dict.fromkeys(("7z", "7za", "ar"), r"-?[a-z]*[xe][a-z]*")}  # the word that says it unpacks where it stands
 CANDIDATE = re.compile(r"\"([^\"\n]{1,400})\"|'([^'\n]{1,400})'|(?<![\w$])((?:~|\.{0,2}/)[^\s'\"`;|&()<>]{0,400})")  # a path in code
 SPELLINGS: dict = {}  # (home, roots, anchors): the pattern of every way a program's text spells a protected folder
 
@@ -4416,12 +4424,9 @@ def _proven(code: str, words: list, where: str, names: list, raw: list, env: dic
         return False
 
 
-def _spells(texts: list, words: list, where: str, env: dict, raw: list, linked: list) -> str:
-    """The protected folder a program names in any spelling, else '': in its words, its program text or the script it
-    runs; spelled out in any case, by its path below the home folder (`Path.home() / ".claude" / "projects"`,
-    `$ENV{HOME}/.claude/projects`, `~/.claude/projects`), after a variable that holds it or a folder above it, or as
-    a path that leads into it (or, handed as an argument, to a folder between it and the home folder or such a
-    variable), through `..`, a link made beforehand or one the same command makes."""
+def _spellings(raw: list, env: dict) -> tuple:
+    """(the pattern of each way a program's text spells a protected folder, the folder each part names, the folders
+    between each protected one and the home folder or a variable's folder that holds it, the protected folders)."""
     home = os.path.realpath(os.path.expanduser("~"))
     roots = sorted({form for r in raw for form in (os.path.normpath(r), os.path.realpath(r))})
     low_roots = [paths.spelled(r).rstrip(os.sep) for r in roots]
@@ -4447,7 +4452,16 @@ def _spells(texts: list, words: list, where: str, env: dict, raw: list, linked: 
                 gates, at = gates | {paths.spelled(at)}, os.path.dirname(at)
         SPELLINGS[key] = (re.compile("|".join(f"({p})" for p, _ in found), re.I), [r for _, r in found], gates,
                           [paths.spelled(r) for r in roots])
-    pattern, named, gates, spelled = SPELLINGS[key]
+    return SPELLINGS[key]
+
+
+def _spells(texts: list, words: list, where: str, env: dict, raw: list, linked: list) -> str:
+    """The protected folder a program names in any spelling, else '': in its words, its program text or the script it
+    runs; spelled out in any case, by its path below the home folder (`Path.home() / ".claude" / "projects"`,
+    `$ENV{HOME}/.claude/projects`, `~/.claude/projects`), after a variable that holds it or a folder above it, or as
+    a path that leads into it (or, handed as an argument, to a folder between it and the home folder or such a
+    variable), through `..`, a link made beforehand or one the same command makes."""
+    pattern, named, gates, spelled = _spellings(raw, env)
     text = "\n".join(t for t in texts if t)
     hit = pattern.search(text)
     if hit:
@@ -4583,6 +4597,9 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None) -> str |
                           "(spell each file's path inside the program, or run the script alone)")
         if named and not waits and (not head.startswith("python") or (hit is None and not _proven(code, words, where, names, raw, env, config))):
             waits = Unproven(f"runs `{label}`, a program whose writes this guard cannot read, and names {named}")
+        if head in EXTRACTS and not waits and any(re.fullmatch(EXTRACTS[head], w) for w in words[1:]) and (
+                within or paths.spelled(os.path.realpath(where)) in _spellings(raw, env)[2]):  # it unpacks into the folder it stands in
+            waits = Unproven(f"runs `{head}`, which unpacks where it stands, in {where}, a folder that holds or lies in a protected one")
         sub, acts = _git(words, where)  # git acts where -C sends it; sent somewhere this cannot read, it is not shown to act here
         reads = sub is None or sub in GIT_READS or (sub == "remote" and words[words.index(sub) + 1:words.index(sub) + 2] in (
             [], ["-v"], ["get-url"], ["show"])) or any(w.startswith(("$", "`")) for w in words[1:words.index(sub)])
@@ -4623,6 +4640,10 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None) -> str |
                f"approved commit lines, or files it takes from there through xargs, and `{given}` is not a program this "
                "guard knows to only read what it is given (read the file with cat, head, tail, grep or jq and pipe that in, or "
                "copy it out with cp and work on the copy)")
+    gates = _spellings(raw, env)[2] if handed and not (why or waits) else set()  # a folder that holds a protected one, handed over
+    above = next((head for head, word, path in handed if paths.spelled(path) in gates), "")
+    waits = waits or (Unproven(f"gives `{above}` a folder that holds a protected one, and `{above}` is not a program this guard "
+                               "knows to only read what it is given") if above else None)
     return (f"Refused: this command {why}. Approvals come only from the principal's own prompt; show them "
             "what needs approving and ask them to answer in their own message.") if why else waits
 

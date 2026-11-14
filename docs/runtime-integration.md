@@ -366,7 +366,7 @@ harness that gives no transcript cannot carry approved sends or deploys until it
      `functools.partial`, `operator.methodcaller`, `ctypes`). A program with a syntax error
      is judged as below.
    - **A program the guard cannot read** (5.22.1). A list of the ways to write never ends (a
-     one-line `perl -MFile::Copy` copy wrote a transcript and a grant), so this one passes
+     one-line copy in a language the guard does not read wrote a transcript and a grant), so this one passes
      only where it names no protected folder: an interpreter the guard does not read (Perl,
      Ruby, Node, Bun, Deno, PHP, Lua, Tcl, `osascript`, an editor or `sqlite3` fed a script,
      and their like), a shell running a script file or `source`, a program run by its path,
@@ -389,7 +389,13 @@ harness that gives no transcript cannot carry approved sends or deploys until it
      folder, its board or the session archive (in a transcript folder, by the bare name of a
      file that is there); and by the files `xargs` hands the program on a line that names one. A script file the same
      line writes is read as the line. A script file may spend a principal's code; one that
-     calls synthesis's code to open a window or make a grant is refused.
+     calls synthesis's code to open a window or make a grant is refused. A git command a Python
+     program spells whole (a list that starts with `git`, a read subcommand, no `-c`,
+     `--output` or pager option, no shell) is a read wherever it is pointed. A program the
+     guard does not know to only read, handed a folder between the home folder (or such a
+     variable's folder) and a protected one, and an archive tool (`tar`, `bsdtar`, `unzip`,
+     `pax`, `cpio`, `7z`, `ar`) that unpacks where it stands in such a folder or inside a
+     protected one, wait the same way; a copy into such a folder stays refused.
    - **Standing in a protected folder.** A program can write where it stands without naming
      a file (an archive unpacked, a script file). Inside the state folder, the board or the
      sessions archive, where no session has reason to stand, only a command the guard can
@@ -466,9 +472,8 @@ stay open, and no hook running as that same user can close them:
   `items()` that writes only under one key (`if k == "out":`) is read as writing every
   value, what a method stores under a key it is handed (`cfg.set("out", path)`) is read
   as stored under any key, and a thing given a protected path through a name the reader
-  cannot follow is taken to hold it wherever that thing is read. A program the guard does not know may be handed
-  a folder that holds a protected one (an archive unpacked over it), and a program may
-  list such a folder one level at a time and remove what it finds by a name it builds.
+  cannot follow is taken to hold it wherever that thing is read. A program may list a folder
+  that holds a protected one, one level at a time, and remove what it finds by a name it builds.
   A word handed to a program the guard does not know is read only where it starts as a
   command the guard knows: a script for that program's own language, or a line that
   starts with a program of the agent's, is not. A `cd` into a folder only a substitution

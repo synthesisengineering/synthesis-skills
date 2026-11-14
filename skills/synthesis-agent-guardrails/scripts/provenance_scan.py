@@ -74,12 +74,13 @@ def records(roots: list, since: float, declared: tuple = (), lost=None):
 
 
 def before(path: str, day: str) -> str:
-    """The record as it stood in its last commit before the day ("" when it did not exist)."""
-    def git(*args):
-        out = subprocess.run(["git", "-C", os.path.dirname(path), *args], capture_output=True, text=True)
-        return out.stdout if out.returncode == 0 else ""
-    rev = git("rev-list", "-1", f"--before={day} 00:00", "HEAD").strip()
-    return git("show", f"{rev}:./{os.path.basename(path)}") if rev else ""
+    """The record as it stood in its last commit before the day ("" when it did not exist). Each git call is spelled
+    whole, a read the shell guard can prove, since this reader runs beside the records approvals rest on (5.22.1)."""
+    folder = os.path.dirname(path)
+    log = subprocess.run(["git", "-C", folder, "log", "-1", "--format=%H", f"--before={day} 00:00", "HEAD"], capture_output=True, text=True)
+    rev = log.stdout.strip() if log.returncode == 0 else ""
+    out = subprocess.run(["git", "-C", folder, "show", f"{rev}:./{os.path.basename(path)}"], capture_output=True, text=True) if rev else None
+    return out.stdout if out is not None and out.returncode == 0 else ""
 
 
 def _source_text(event, writes: set) -> str:

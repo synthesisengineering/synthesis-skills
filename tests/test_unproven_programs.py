@@ -285,11 +285,12 @@ GIT_READS_SPELLED = {
     "run": "print(subprocess.run(['git', 'log', '-1'], capture_output=True, text=True, cwd=sys.argv[1]).stdout)",
     "check_output": "print(subprocess.check_output(['git', '-C', sys.argv[1], 'show', 'HEAD:a']))",
     "Popen": "subprocess.Popen(['git', 'status', '--short'], cwd=sys.argv[1]).wait()",
+    "a string the shell runs": "subprocess.run('git log -1', shell=True, cwd=sys.argv[1])",  # spelled whole, judged as the shell guard does
 }
 GIT_NOT_READS = {
     "a commit": "subprocess.run(['git', 'commit', '-qm', 'x'], cwd=sys.argv[1])",
-    "the shell": "subprocess.run('git log', shell=True, cwd=sys.argv[1])",
-    "a program in a variable": "program = sys.argv[2]; subprocess.run([program, 'log'], cwd=sys.argv[1])",
+    "a commit the shell runs": "subprocess.run('git commit -qm x', shell=True, cwd=sys.argv[1])",
+    "a program read from a file": "program = open(sys.argv[2]).read().strip(); subprocess.run([program, 'log'], cwd=sys.argv[1])",
 }
 
 

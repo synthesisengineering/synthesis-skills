@@ -414,7 +414,7 @@ terminal, `synthesis sends open` opens only on the principal's granted code for 
 session's own transcript (`--session <id>` names it from a terminal of the principal's own), and otherwise refuses
 with a code to show them (2026-10-13: a global option before `sends` slipped past the guard alone; 5.22.1: a
 harness-free environment and a terminal on the command's input, which it once took for the principal's own
-terminal, are both an agent's to fake with `env -i ... script`). The guard also asks for the code before the command
+terminal, are both an agent's to fake). The guard also asks for the code before the command
 runs, wherever its options sit, for every window request in a command line, each with its own code, and `--help`
 never needs one. A script that imports the approval or window code to open a window or make a grant is refused. A window names its hours (at most 12), its channels (or `all`) and optionally a project; it ends by
 itself, and `synthesis sends close` ends it at once with no code. Every session sees it at each prompt. Each

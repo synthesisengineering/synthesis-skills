@@ -1613,11 +1613,10 @@ def test_a_day_is_not_listed_while_a_transcript_that_may_hold_its_prompts_is_not
 
 
 @closed_to_us
-def test_a_transcript_that_cannot_hold_the_days_prompts_does_not_stop_the_listing(harness, tmp_path, monkeypatch, capsys):
+def test_a_transcript_that_cannot_hold_the_days_prompts_does_not_stop_the_listing(principal, harness, tmp_path, monkeypatch, capsys):
     """What is not copied is weighed for the workspace and the day asked about. A transcript filed under another
     workspace holds nothing of this one's. One that is gone may have held anything written until a run found it
     gone, so it stops the listing of those days until the principal accepts the loss."""
-    import types
     from datetime import date, timedelta
     beta = tmp_path / "workspaces" / "beta" / "repo"
     beta.mkdir(parents=True)
@@ -1642,8 +1641,9 @@ def test_a_transcript_that_cannot_hold_the_days_prompts_does_not_stop_the_listin
     assert cli.main(here) == 0
     tomorrow = (date.today() + timedelta(days=1)).isoformat()         # and nothing typed after that can have been in it
     assert cli.main(there[:-1] + [tomorrow]) == 0 and f"0 prompts on {tomorrow} in beta" in capsys.readouterr().out
-    monkeypatch.setattr("sys.stdin", types.SimpleNamespace(isatty=lambda: True))
-    assert cli.main(["sessions", "export", "--lost", "b1"]) == 0      # the principal accepts the loss,
+    assert cli.main(["sessions", "export", "--lost", "b1"]) == 2      # the principal accepts the loss, on their code,
+    principal(capsys.readouterr().err)
+    assert cli.main(["sessions", "export", "--lost", "b1"]) == 0
     capsys.readouterr()
     assert cli.main(there) == 0                                        # and the day lists what the archive holds of it
     listed = capsys.readouterr().out

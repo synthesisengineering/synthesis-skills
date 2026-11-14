@@ -1147,10 +1147,19 @@ ROOT = Path(__file__).resolve().parents[1]
 # table or `__dict__`, handed on, or into C; an object's own `__dict__` is read as before), and check_outgoing 3
 # (every window request in a line collected 1, a code asked for each that waits 2). cli.py 1 fewer: the own-terminal
 # shortcut's condition is gone and its comment says why in as many lines.
+# 5.22.1's review, round 2 (2026-11-14): core 20 more and plugin 21. guards.py 21: a git read a Python program spells
+# whole is a read wherever it is pointed 5 (its words, git's own options and the value -C takes 2, the read subcommand
+# with no option that writes or runs 2, the pass 1); EXTRACTS 3, the archive tools and the word that says each unpacks;
+# _spellings 6 (the spellings and the folders above each protected one, kept apart from _spells so the handed-path
+# rule reads the same folders: its signature and docstring 3, the return 1, 2 blank lines); an archive tool unpacking
+# where it stands in such a folder or a protected one 3; a folder above a protected one handed to a program the guard
+# does not know 4. sessions.py 1 fewer: the lost-transcript gate's own-terminal shortcut is gone, its docstring
+# rewritten in as many lines. provenance_scan.py 1: its git helper's five lines become five that spell each read whole,
+# and the docstring gains a line saying why.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 15309
-PLUGIN_BUDGET = 40551
+CORE_BUDGET = 15329
+PLUGIN_BUDGET = 40572
 
 
 def _lines(files):
