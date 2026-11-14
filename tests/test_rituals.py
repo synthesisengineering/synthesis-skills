@@ -270,3 +270,30 @@ def test_a_rituals_folder_named_in_the_shell_reaches_no_test():
     folder, and a skill's test read the config in it. The run takes the name out before each test, core and skills
     alike (the repository's `conftest.py`)."""
     assert os.environ.get("RITUAL_STATE_DIR") is None  # asked by name: a failure must not print the environment
+
+
+def test_every_hosts_history_is_read_once_and_a_bad_file_costs_only_its_lines(tmp_path, write_config, monkeypatch):
+    """5.20.0's first review: F11 (one bad byte in a host's file cost every view), F13 (host names folded together)
+    and F18 (the later of two records across time zones lost to the earlier one's clock text)."""
+    from synthesis import rituals
+    repo = tmp_path / "sessions-alpha"
+    (repo / "rituals").mkdir(parents=True)
+    write_config({"sessions_repos": {"alpha": str(repo)}})
+    line = lambda r: json.dumps(r, separators=(",", ":"), sort_keys=True)  # noqa: E731
+    mine = {"date": "2026-11-12", "direction": "day-end", "workspace": "alpha", "ts": "2026-11-12T09:00:00+01:00", "outcome": "clean"}
+    theirs = {"date": "2026-11-12", "direction": "day-end", "workspace": "alpha", "ts": "2026-11-12T01:30:00-08:00",
+              "outcome": "blocked"}  # 09:30 UTC: an hour and a half after this Mac's 08:00 UTC
+    log = rituals.state_dir() / "history.jsonl"
+    log.parent.mkdir(parents=True, exist_ok=True)
+    log.write_text(line(mine) + "\n", encoding="utf-8")
+    (repo / "rituals" / "mac-a.jsonl").write_text(line(mine) + "\n", encoding="utf-8")  # this Mac's own, as synced
+    (repo / "rituals" / "mac-b.jsonl").write_bytes(line(theirs).encode() + b"\n" + b'{"date": "caf\xe9"\n')
+    records, bad = rituals.read()
+    assert sorted(r["outcome"] for r in records) == ["blocked", "clean"] and bad == 1
+    assert rituals.last(records, "alpha")["outcome"] == "blocked"
+    (rituals.state_dir() / "config.json").write_text(json.dumps({"workspaces": {"alpha": {"plans_dirs": 5}}}), encoding="utf-8")
+    assert len(rituals.read()[0]) == 2  # a ritual config of another shape costs no view
+    monkeypatch.setenv("SYNTHESIS_HOST", "Mac A")
+    folded = rituals.host()
+    monkeypatch.setenv("SYNTHESIS_HOST", "Mac-A")
+    assert rituals.host() != folded and folded.startswith("Mac-A-")

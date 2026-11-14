@@ -2831,3 +2831,26 @@ def test_the_hourly_fetch_says_when_it_is_off_or_has_nothing_to_fetch(tmp_path, 
     assert "nothing to fetch" in capsys.readouterr().out
     line = doctor.check_fetch(sessions.root() / ".state" / "fetch.json", {})
     assert line.status == "ok" and "nothing to fetch" in line.detail
+
+
+def test_the_sync_carries_this_macs_ritual_history_to_the_workspaces_sessions_repo(tmp_path, write_config, monkeypatch):
+    """Plan item 13.5, part 5 (5.20.0), as its first review left it (F4): a record commits nothing; the sync writes
+    this Mac's records for the workspace whole into rituals/<host>.jsonl in its sessions repo, so no line is ever cut,
+    commits that file alone and pushes it with the transcripts; with nothing new it commits nothing."""
+    from synthesis import rituals
+    repo, _ = _cloned(tmp_path, "sessions-alpha")
+    write_config({"sessions_repos": {"alpha": str(repo)}})
+    monkeypatch.setenv("SYNTHESIS_HOST", "Mac A")
+    log = rituals.state_dir() / "history.jsonl"
+    log.parent.mkdir(parents=True, exist_ok=True)
+    rows = [{"date": "2026-11-12", "direction": "day-end", "workspace": "alpha", "ts": "2026-11-12T18:00:00-05:00"},
+            {"date": "2026-11-12", "direction": "day-end", "workspace": "beta", "ts": "2026-11-12T18:05:00-05:00"}]
+    log.write_text("".join(json.dumps(r, separators=(",", ":"), sort_keys=True) + "\n" for r in rows), encoding="utf-8")
+    report = sessions.sync("alpha")
+    assert any("ritual history" in line for line in report), report
+    kept = repo / "rituals" / f"{rituals.host()}.jsonl"
+    assert kept.read_text(encoding="utf-8").splitlines() == log.read_text(encoding="utf-8").splitlines()[:1]  # alpha's alone
+    assert _g(repo, "status", "--porcelain") == "" and _g(repo, "rev-parse", "HEAD") == _g(repo, "rev-parse", "origin/main")
+    head = _g(repo, "rev-parse", "HEAD")
+    sessions.sync("alpha")
+    assert _g(repo, "rev-parse", "HEAD") == head
