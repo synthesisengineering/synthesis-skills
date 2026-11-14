@@ -13,9 +13,8 @@ stable hook is missing; Claude Code names the hook and says `failed` or `timed o
 Claude Code ignores the setting and lets the send through, and `synthesis doctor` warns. Codex
 (0.167) and Muse (1.4.20) have no such setting: a guard that times out or crashes there lets the
 call through (Muse's hook runner, run on 2026-11-14; Codex's, read in its source at 0.167.2), so
-in them a send is held only when the guard answers. An
-unreadable config and an error inside a guard still block in all three, since the guard catches
-those itself.
+in them a send is held only when the guard answers. An unreadable config and an error inside a
+guard still block in all three, since the guard catches those itself.
 
 ## Keys
 

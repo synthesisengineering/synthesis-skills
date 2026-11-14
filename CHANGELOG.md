@@ -31,8 +31,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
 - **A guard that cannot answer holds the call in Claude Code** (`synthesis-agent-guardrails`, `synthesis-message-guard`,
   `synthesis-onboarding`, `synthesis-agent-conformance`). On PreToolUse, Claude Code let a call through when the hook
   timed out (its limit is 5 seconds), crashed, printed output it could not read, or could not start because the stable
-  hook was missing: a send, a deploy or a write went ahead unguarded, against the rule that protective checks fail
-  closed. The plugin's PreToolUse handler now sets `"onFailure": "block"`, which Claude Code honors from 2.1.295: the
+  hook was missing, so a send, a deploy or a write could go ahead unguarded, against the rule that protective checks
+  fail closed. The plugin's PreToolUse handler now sets `"onFailure": "block"`, which Claude Code honors from 2.1.295: the
   call is held, and Claude Code names the hook and says `failed` or `timed out`. UserPromptSubmit, SessionStart and
   Stop keep the default: holding a person's prompt or a session's start on a hook failure costs more than it protects,
   and Claude Code ignores the setting on Stop.

@@ -12,8 +12,8 @@ hook is missing. Before 2.1.295 the setting is ignored and the call goes through
 doctor` warns then, and fails a plugin whose hook lacks the setting. Codex (0.167) and Muse
 (1.4.20) have no such setting, and a guard that times out or crashes there lets the call
 through (Muse's hook runner, run on 2026-11-14; Codex's, read in its source at 0.167.2). In
-every harness an unreadable config and an error inside a guard
-still block, since the guard catches those itself.
+every harness an unreadable config and an error inside a guard still block, since the guard
+catches those itself.
 
 ## Contents
 
