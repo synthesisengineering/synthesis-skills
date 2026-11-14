@@ -228,6 +228,120 @@ def test_every_facebook_instagram_and_linkedin_page_holds_return(tmp_path, url):
     assert "approve" in reason and "sends in the browser (" in reason
 
 
+def _opened(url, *steps):
+    """The steps on tab 7, after a navigate step to url earlier in the same batch."""
+    return _steps(("navigate", {"url": url, "tabId": 7}), *[(n, {**i, "tabId": 7}) for n, i in steps])
+
+
+@pytest.mark.parametrize("url", [
+    "linkedin.com/messaging/thread/2-x/", "https://linkedin.com/feed/", "http://linkedin.com/in/pat",
+    "https://uk.linkedin.com/in/pat", "messenger.com/t/123", "https://m.me/pat", "https://fb.com/messages/t/1",
+    "https://fb.me/pat", "https://instagr.am/p/x/", "https://ig.me/m/pat", "https://wa.me/15550100199",
+    "whatsapp.com/send?phone=15550100199", "https://api.whatsapp.com/send?phone=15550100199", "https://twitter.com/messages",
+    "https://mobile.twitter.com/messages", "https://chat.x.com/", "https://x.com/i/chat/1", "https://x.com/home",
+    "https://canary.discord.com/channels/1/2", "https://discordapp.com/channels/1/2", "https://discord.gg/abc",
+    "https://t.me/pat", "https://telegram.org/", "https://slack.com/", "https://teams.cloud.microsoft/v2/",
+])
+def test_every_host_the_browser_lands_on_a_messaging_site_from_holds_return(url):
+    """The review of 5.21.0: the guard matched the host as typed, so a batch that navigated to `linkedin.com/...`,
+    `uk.linkedin.com`, `messenger.com`, `m.me` or `fb.com` and pressed Return went out with no code, while the browser
+    landed on www.linkedin.com or www.messenger.com. A site is its host and every host under it, with the short hosts
+    that land on one, and Teams' web app, which moved to teams.cloud.microsoft in 2026."""
+    assert "approve" in check(CHROME, _opened(url, RETURN))
+
+
+@pytest.mark.parametrize("url", ["https://notlinkedin.com/feed/", "https://linkedin.com.example.org/feed/",
+                                 "https://www.google.com/search?q=chat", "https://outlook.cloud.microsoft/mail/"])
+def test_a_look_alike_host_and_an_email_page_still_take_return(url):
+    assert check(CHROME, _opened(url, RETURN)) is None  # Return writes a line in an email
+
+
+def test_outlooks_new_address_holds_its_send_shortcut():
+    send = ("computer", {"action": "key", "text": "cmd+Return", "action_summary": "Presses the shortcut"})
+    assert "approve" in check(CHROME, _opened("https://outlook.cloud.microsoft/mail/", send))
+
+
+ONLY = [{"name": "messenger-only", "pattern": "ttyl", "channels": ["messenger"], "why": "not in Messenger"},
+        {"name": "facebook-only", "pattern": "fwiw", "channels": ["facebook"], "why": "not on Facebook"},
+        {"name": "instagram-only", "pattern": "dm me", "channels": ["instagram"], "why": "not on Instagram"}]
+
+
+@pytest.mark.parametrize("url, rules", [
+    ("https://m.facebook.com/messages/t/1", ["messenger-only"]), ("https://web.facebook.com/messages/", ["messenger-only"]),
+    ("https://facebook.com/messages/t/1", ["messenger-only"]), ("https://fb.com/messages/t/1", ["messenger-only"]),
+    ("https://www.messenger.com/t/1", ["messenger-only"]), ("https://m.me/pat", ["messenger-only"]),
+    ("https://business.facebook.com/latest/inbox/all", ["messenger-only", "facebook-only", "instagram-only"]),
+    ("https://www.facebook.com/groups/1/", ["messenger-only", "facebook-only"]),  # a Messenger pop-up, or a comment
+])
+def test_messengers_channel_reaches_its_other_hosts_its_inbox_and_its_pop_ups(url, rules):
+    """The review of 5.21.0: only www.facebook.com/messages was `messenger`, so a register rule for Messenger missed it
+    on m.facebook.com, in Business Suite's inbox and in the pop-ups on every other page of facebook.com."""
+    config = {**CONFIG, "forbidden_phrases": ONLY}
+    for rule in ONLY:
+        words = ("form_input", {"ref": "ref_3", "value": f"ok {rule['pattern']}", "action_summary": "Fills the reply"})
+        reason = check(CHROME, _opened(url, words, RETURN), config) or ""
+        assert (rule["name"] in reason) is (rule["name"] in rules), (url, rule["name"])
+
+
+PUBLISHERS = ["Clicks the Post button", "Clicks Comment", "Presses the Reply button", "Taps Share",
+              "Clicks on the Repost option", "Clicks “Publish”", "Clicks Submit", "Clicks on Send",
+              "Fills nothing, then clicks the Post button"]
+
+
+@pytest.mark.parametrize("url", ["https://www.facebook.com/groups/1/", "https://www.linkedin.com/feed/",
+                                 "https://www.instagram.com/p/x/", "https://x.com/home"])
+@pytest.mark.parametrize("summary", PUBLISHERS)
+def test_a_click_on_a_control_that_publishes_waits_on_these_sites(url, summary):
+    """The review of 5.21.0: Return was held on these sites, but a click on Post, Comment, Reply or Share went out with no
+    code, since the summary rule took a click verb for a send only with Send as its object."""
+    fill = ("form_input", {"ref": "ref_2", "value": "Congratulations, Pat", "action_summary": "Fills the comment box"})
+    click = ("computer", {"action": "left_click", "ref": "ref_9", "action_summary": summary})
+    assert "approve" in check(CHROME, _opened(url, fill, click))
+
+
+@pytest.mark.parametrize("summary", ["Clicks Comment to open the comment box", "Clicks the comment box",
+                                     "Clicks the Reply link, which opens a reply box", "Clicks Share to show the share options",
+                                     "Clicks the Repost button to open its menu", "Opens the comment box under the post",
+                                     "Clicks the Like button"])
+def test_a_click_that_only_opens_a_box_passes_on_these_sites(summary):
+    click = ("computer", {"action": "left_click", "ref": "ref_9", "action_summary": summary})
+    assert check(CHROME, _opened("https://www.linkedin.com/feed/", click)) is None
+
+
+def test_a_click_on_post_elsewhere_is_judged_by_the_summary_rule_as_before():
+    click = ("computer", {"action": "left_click", "ref": "ref_9", "action_summary": "Clicks the Post button"})
+    assert check(CHROME, _opened("https://example.com/forum/", click)) is None
+    assert "approve" in check(CHROME, _opened("https://example.com/forum/", ("computer", {**click[1], "action_summary": "Clicks on Send"})))
+
+
+SEARCH = ("form_input", {"ref": "ref_3", "value": "I'm sorry for the delay.", "action_summary": "Fills the search box"})
+
+
+def test_words_typed_with_nothing_sent_on_these_sites_can_go_on_a_code(principal):
+    """The review of 5.21.0: on every page of these sites typed words faced the register scan with nothing sent, so a
+    search word that hit a rule was refused and no code could release it. A call that only types, on a page where a box
+    may be a search, is still scanned; it goes on the principal's code, which names the rule it broke."""
+    search = _opened("https://www.linkedin.com/feed/", SEARCH)
+    reason = check(CHROME, search)
+    assert "delay-apology" in reason and "approve followed by the code" in reason and "sends nothing" in reason
+    principal(reason)
+    assert check(CHROME, search) is None
+    assert "approve" in check(CHROME, search)  # one code, one call
+
+
+@pytest.mark.parametrize("url, steps", [
+    ("https://www.linkedin.com/feed/", [SEARCH, RETURN]),  # a call that sends
+    ("https://www.linkedin.com/feed/", [SEARCH, ("computer", {"action": "left_click", "ref": "ref_4",
+                                                            "action_summary": "Clicks the blue button"})]),  # it does more
+    ("https://www.linkedin.com/messaging/thread/2-x/", [SEARCH]),  # a page of messages, where typing is writing one
+    ("https://chat.google.com/room/AAA", [SEARCH]),
+    ("https://www.facebook.com/messages/t/1", [SEARCH]),
+])
+def test_words_that_break_a_rule_in_a_call_that_sends_or_on_a_page_of_messages_are_refused_outright(url, steps):
+    reason = check(CHROME, _opened(url, *steps))
+    assert reason.startswith("These words can't go out as written") and "approve" not in reason
+
+
 def test_an_email_sites_send_shortcut_and_a_typed_line_break_in_chat_wait(tmp_path):
     send = ("computer", {"action": "key", "text": "cmd+Return", "action_summary": "Presses the shortcut"})
     assert "approve" in guards.check(CHROME, _steps(send), CONFIG,
