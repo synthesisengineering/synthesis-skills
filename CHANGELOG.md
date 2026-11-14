@@ -53,8 +53,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
     hosts that land on a messaging site count too (`fb.me`, `instagr.am`, `ig.me`, `wa.me`, `t.me`, `discord.gg`,
     `discordapp.com`), as do the new addresses of Teams and Outlook on the web (`teams.cloud.microsoft`,
     `outlook.cloud.microsoft`), X's chat (`chat.x.com`, `/i/chat`) and every page of x.com and twitter.com, since
-    X's messages can open in a drawer beside its other pages, as LinkedIn's open in an overlay. A `navigate` that names no host (`back`, a path)
-    keeps a messaging site's page.
+    X's messages can open in a drawer beside its other pages, as LinkedIn's open in an overlay. For the send guard, a
+    `navigate` that names no host (`back`, a path) keeps a messaging site's page; the account check still takes that
+    page as unknown.
   - On a messaging site's page, a click whose summary names Send, Post, Comment, Reply, Repost, Share, Publish or
     Submit right after a click verb waits for a code, unless the summary says the click only opens a box; a click "on
     Send" waits on any page. Measured first: over 30 days, 1,506 recorded browser clicks and 37 computer-use clicks
