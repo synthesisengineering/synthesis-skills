@@ -134,7 +134,9 @@ def test_teach_steps_and_a_linked_device_are_held_the_same_way():
 @pytest.mark.parametrize("tool,name", [(BATCH, "batch"), (CLICK, "app_click"), ("mcp__remote-devices__computer_batch", "batch"),
                                        ("mcp__computer-use__app_screenshot", ""), ("mcp__claude-in-chrome__computer", "browser"),
                                        ("mcp__Claude_Browser__browser_batch", "browser_batch"), ("mcp__notes__type", ""),
-                                       ("mcp__plugin_playwright_playwright__browser_click", ""), ("mcp__computer-use__key", "key")])
+                                       ("mcp__plugin_playwright_playwright__browser_click", ""), ("mcp__computer-use__key", "key"),
+                                       ("mcp__claude-in-chrome__javascript_tool", "browser_script"),
+                                       ("mcp__Claude_Browser__form_input", "browser_form")])
 def test_computer_use_tools_are_recognized_by_name_on_any_server(tool, name):
     assert guards.desktop_tool(tool) == name
     assert guards.guarded(tool, {}) is bool(name)
@@ -396,6 +398,147 @@ def test_a_rule_for_google_chat_holds_on_gmails_pages_and_one_for_email_still_do
             words = ("form_input", {"ref": "ref_3", "value": f"ok {rule['pattern']}", "action_summary": "Fills the reply"})
             reason = check(CHROME, _opened(url, words), {**CONFIG, "forbidden_phrases": rules}) or ""
             assert (rule["name"] in reason) is (rule["name"] in held), (url, rule["name"])
+
+
+# The second review of 5.21.0 (with 5.21.1): what still went out, and what was held for nothing.
+REVIEWS = "https://www.example-reviews.com/business/acme/review"
+REVIEW = ("form_input", {"ref": "ref_2", "value": "Prompt, careful work. Five stars.", "action_summary": "Fills the review box"})
+
+
+def _click(summary):
+    return ("computer", {"action": "left_click", "ref": "ref_9", "action_summary": summary})
+
+
+def _key(keys, summary="Presses the key"):
+    return ("computer", {"action": "key", "text": keys, "action_summary": summary})
+
+
+@pytest.mark.parametrize("call", [_opened(REVIEWS, REVIEW, _click("Submits the five-star public review of Pat")),
+                                  _steps(REVIEW, _click("Submits the five-star public review of Pat"))])
+def test_the_incidents_own_effect_first_summary_waits(call):
+    """2026-11-13: the review went out through two clicks on its Submit rating control (12:56 and 12:57 EST). The record
+    holds each one's summary in the form the tools ask for, effect first, "Submits the five-star public review of" a
+    person, and 5.21.1's rule wanted a click verb before the label. Here with a placeholder for the person."""
+    assert "approve" in (check(CHROME, call) or "")
+
+
+@pytest.mark.parametrize("summary", [
+    "Reposts the update to the principal's feed", "Submits the comment", "Clicks the blue Post button",
+    "Clicks LinkedIn's Post button", "Clicking Post", "Clicked the Post button", "Clicks Post; the comment then shows under Pat's update",
+    "Clicks Reply, posting the reply that starts with 'Congratulations'", "Clicks Comment to publish it, which shows it under the post",
+    "Retweets the post", "Quotes the post with a comment"])
+def test_accurate_summaries_of_a_click_that_posts_wait(summary):
+    fill = ("form_input", {"ref": "ref_2", "value": "Congratulations, Pat", "action_summary": "Fills the comment box"})
+    assert "approve" in (check(CHROME, _opened("https://www.linkedin.com/feed/", fill, _click(summary))) or "")
+
+
+@pytest.mark.parametrize("summary", ["Clicks Comment to open the comment box", "Opens the photo", "Clicks the Like button",
+                                     "Clicks the comment box", "Clicks Done to close the dialog", "Clicks Share to open the share menu"])
+def test_a_click_that_only_opens_or_closes_a_box_passes(summary):
+    assert check(CHROME, _opened("https://www.linkedin.com/feed/", _click(summary))) is None
+
+
+@pytest.mark.parametrize("steps", [
+    [REVIEW, _click("Clicks the blue Submit rating button")], [REVIEW, _click("Clicking Submit rating")],
+    [REVIEW, _click("Clicks Submit rating, which shows the review on the page")], [REVIEW, _click("Clicks the Add comment button")],
+    [REVIEW, _click("Clicks the Tweet button")], [REVIEW, _click("Clicks Done to finish the review")],
+    [REVIEW, _key("Return", "Presses Return")], [("computer", {"action": "type", "text": "Five stars.\n", "action_summary": "Types the review"})],
+    [REVIEW, _key("Tab space", "Moves to the button and presses it")], [REVIEW, _key("Tab"), _key("space")],
+    [REVIEW, ("javascript_tool", {"action": "javascript_exec", "text": "document.forms[0].requestSubmit()"})],
+])
+def test_other_ways_a_review_is_submitted_on_a_site_that_is_no_messaging_site_wait(steps):
+    """The second review: on a page that is no messaging site, a word before the label, an -ing form, a later "shows",
+    a label outside the list, Return or Tab then Space after the words, a typed line break and a page script went out."""
+    assert "approve" in (check(CHROME, _opened(REVIEWS, *steps)) or "")
+
+
+@pytest.mark.parametrize("url, steps", [
+    ("https://www.example.com/login", [("form_input", {"ref": "ref_1", "value": "test-user", "action_summary": "Fills the username"}),
+                                       _click("Clicks the Submit button to sign in")]),
+    ("http://localhost:3000/login", [("form_input", {"ref": "ref_1", "value": "test-user"}), _click("Clicks the Submit button")]),
+    ("https://www.example.com/search", [("form_input", {"ref": "ref_1", "value": "garden hose", "action_summary": "Fills the search box"}),
+                                        _click("Clicks Submit to run the search")]),
+    ("https://www.example.com/", [("form_input", {"ref": "ref_1", "value": "garden hose", "action_summary": "Fills the search box"}),
+                                  _key("Return", "Submits the search")]),
+    ("http://127.0.0.1:8080/form", [("computer", {"action": "type", "text": "hello\n", "action_summary": "Types the text"})]),
+    ("https://www.example.com/login", [("form_input", {"ref": "ref_2", "value": "s3cret-test-pass", "action_summary": "Fills the password"}),
+                                       _key("Return", "Presses Return")]),
+])
+def test_a_sign_in_a_search_and_the_principals_own_local_app_pass(url, steps):
+    """The second review: 5.21.1 held a sign-in, a site search and the principal's own app on localhost, which post
+    nothing. A summary that signs in or searches and names nothing that posts passes, as does a local app's page."""
+    assert check(CHROME, _opened(url, *steps)) is None
+
+
+def test_typed_words_never_land_in_an_approval_record_in_plain_text():
+    from synthesis import paths
+    call = _opened("https://www.example.com/account", ("form_input", {"ref": "ref_2", "value": "s3cret-test-pass"}),
+                   _click("Clicks the Submit button"))
+    assert "approve" in (check(CHROME, call) or "")
+    stored = [f.read_text(encoding="utf-8") for f in (paths.state() / "approval-requests").glob("*.json")]
+    assert stored and not any("s3cret-test-pass" in text for text in stored)
+
+
+def test_a_register_hit_in_a_send_on_a_site_that_is_no_messaging_site_goes_on_a_code_that_names_it(principal):
+    words = ("form_input", {"ref": "ref_2", "value": "Sorry for the delay in reviewing; great work", "action_summary": "Fills the review box"})
+    call = _opened(REVIEWS, words, _click("Clicks the Submit rating button"))
+    reason = check(CHROME, call) or ""
+    assert "delay-apology" in reason and "approve followed by the code" in reason
+    principal(reason)
+    assert check(CHROME, call) is None
+
+
+@pytest.mark.parametrize("script", [
+    "document.querySelector('button.comments-comment-box__submit-button').click()",
+    "document.activeElement.dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter', bubbles: true}))",
+    "fetch('/voyager/api/messaging/conversations', {method: 'POST', body: '{}'})"])
+def test_a_page_script_that_can_send_on_a_messaging_site_waits(tmp_path, script):
+    """The second review: a page script never reached the send guard, so one that clicks a comment's submit button or
+    presses Enter in LinkedIn's message overlay went out with no code."""
+    session = _on(tmp_path, 7, tab7="https://www.linkedin.com/feed/")
+    alone = {"action": "javascript_exec", "text": script, "tabId": 7}
+    assert "approve" in (guards.check("mcp__claude-in-chrome__javascript_tool", alone, CONFIG, session=session) or "")
+    fill = ("form_input", {"ref": "ref_2", "value": "Congratulations, Pat", "action_summary": "Fills the comment box"})
+    assert "approve" in (check(CHROME, _opened("https://www.linkedin.com/feed/", fill, ("javascript_tool", alone))) or "")
+
+
+@pytest.mark.parametrize("url, script", [
+    ("https://www.linkedin.com/feed/", "[...document.querySelectorAll('h2')].map(h => h.innerText).join(', ')"),
+    ("https://www.example.com/list", "document.querySelector('.load-more').click()"),
+    ("https://www.example.com/", "document.querySelector('form#search').requestSubmit()"),
+])
+def test_a_page_script_that_reads_expands_a_list_or_searches_passes(tmp_path, url, script):
+    alone = {"action": "javascript_exec", "text": script, "tabId": 7}
+    assert guards.check("mcp__claude-in-chrome__javascript_tool", alone, CONFIG, session=_on(tmp_path, 7, tab7=url)) is None
+
+
+def test_a_form_fill_alone_passes_the_register_scan(tmp_path):
+    fill = {"ref": "ref_3", "value": "I'm sorry for the delay.", "action_summary": "Fills the reply", "tabId": 7}
+    reason = guards.check("mcp__claude-in-chrome__form_input", fill, CONFIG, session=_on(tmp_path, 7, tab7="https://chat.google.com/room/AAA"))
+    assert reason and "delay-apology" in reason
+
+
+def test_a_send_after_words_the_typed_code_released_shows_them_and_their_rule(principal):
+    """The second review: words released by the typed-words code ("nothing sent, may be a search"), then a Return in the
+    next call, waited for a code whose hold named neither the words nor the rule they broke."""
+    search = _opened("https://www.linkedin.com/feed/", SEARCH)
+    principal(check(CHROME, search))
+    assert check(CHROME, search) is None
+    reason = check(CHROME, _opened("https://www.linkedin.com/feed/", RETURN)) or ""
+    assert "approve" in reason and "I'm sorry for the delay." in reason and "delay-apology" in reason
+
+
+@pytest.mark.parametrize("url, keys", [
+    ("https://gmail.com/", "Return"), ("https://www.google.com/gmail/", "Return"), ("https://gmail.com/", "cmd+Return"),
+    ("https://outlook.com/", "ctrl+Return"), ("https://www.hotmail.com/", "ctrl+Return"), ("https://live.com/mail/0/", "ctrl+Return"),
+    ("https://voice.google.com/u/0/messages", "Return")])
+def test_gmail_outlook_and_google_voice_reached_by_the_host_typed_hold_their_send_keys(url, keys):
+    """The second review: R1-5's class. Gmail and Outlook by the host a person types, and Google Voice's texts."""
+    assert "approve" in (check(CHROME, _opened(url, _key(keys))) or "")
+
+
+def test_return_on_outlook_by_its_short_host_writes_a_line():
+    assert check(CHROME, _opened("https://outlook.com/mail/", RETURN)) is None
 
 
 def test_the_page_is_the_tab_each_step_names_or_the_one_a_navigate_step_opened(tmp_path):
