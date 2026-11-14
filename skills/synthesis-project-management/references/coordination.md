@@ -228,7 +228,7 @@ uncommitted edit in that file, covered by no claim, was lost. Five protections n
   snapshots holding a file or naming it as not kept, and `synthesis journal --show <sha> <path>` writes it back
   byte for byte.
 - **Records do not stay on one Mac unnoticed.** `synthesis doctor` warns when a file under a claim has stayed
-  uncommitted, or in a commit on any local branch that no remote holds, past the config's `unsaved_hours`
+  uncommitted, or in a commit on the checkout's own branch that no remote holds, past the config's `unsaved_hours`
   (24 by default), counted per repository, and when git cannot read a claimed checkout at all; the weekday
   evening job shows a banner that names nothing. The hourly job that copies transcripts also fetches each
   knowledge root and sessions repo (never merging, writing no `FETCH_HEAD`, asking for nothing), so `git status`
