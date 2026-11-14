@@ -269,33 +269,42 @@ def test_a_variable_that_names_no_protected_root_changes_nothing(tmp_path, comma
 def test_a_shell_that_only_reads_a_script_publishes_nothing_and_a_sourced_script_is_read(tmp_path):
     """A seat's report, 2026-11-13 20:24-20:36: a local test that ran `sh -n` on two scripts was held as a deploy and,
     once approved, armed the rapid-redeploy brake for the real publish after it; `-n` reads a script and runs none of
-    it. The other way round, `.` and `source` were not read at all, so a sourced script's deploy, or a deploy in a
-    function it defined that the command then called, went through unasked."""
+    it. The other way round, `.` and `source` were not read at all, so a sourced script's deploy went through unasked.
+    The first fix's review (5.20.1) showed options read after `-n` that make the shell run (`+n`, `+o noexec`, zsh's
+    `-o exec`) and an `-n` that is another option's value (`--rcfile -n`): each runs, so each is held; an option this
+    reader does not know reads the script. A sourced script is read whole, as a run one is, so a deploy anywhere in it
+    is held, a function it only defines included: what a function's text runs cannot be told for sure."""
     scripts = tmp_path / "scripts"
     scripts.mkdir()
     deploy = "npx wrangler pages deploy dist --project-name=site"
     (scripts / "publish.sh").write_text(f"#!/bin/sh\n{deploy}\n")
-    (scripts / "env.sh").write_text(f'publish() {{\n  {deploy}\n}}\nexport OUT="${{TMPDIR}}/out"\n')
+    (scripts / "env.sh").write_text('export OUT="${TMPDIR}/out"\nexport SITE=site\n')
     (scripts / "now.sh").write_text(f"{deploy}\n")
-    (scripts / "oneline.sh").write_text(f"publish() {{ {deploy}; }}\n")
-    (scripts / "unclosed.sh").write_text(f"publish() {{\n  {deploy}\n")
+    (scripts / "lib.sh").write_text(f"publish() {{\n  {deploy}\n}}\n")
     for command in ("sh -n scripts/publish.sh", "bash -n scripts/publish.sh", "zsh -n scripts/publish.sh",
-                    "bash -en scripts/publish.sh", "source scripts/env.sh && echo ready",
+                    "bash -en scripts/publish.sh", "bash -o noexec scripts/publish.sh", "bash --norc -n scripts/publish.sh",
+                    "source scripts/env.sh && echo ready",
                     ". scripts/env.sh && python3 build_plugin.py --out /tmp/x && diff -rq /tmp/x /tmp/y && sh -n scripts/publish.sh"):
         assert guards.check("Bash", {"command": command}, {}, cwd=str(tmp_path)) is None, command
-    for command in ("source scripts/now.sh", ". scripts/now.sh", ". scripts/env.sh && publish",
-                    "source scripts/oneline.sh; publish", ". scripts/unclosed.sh"):  # a function never closed: read whole
+    for command in ("bash -n +n scripts/publish.sh", "sh -n +n scripts/publish.sh", "bash -n +o noexec scripts/publish.sh",
+                    "zsh -n -o exec scripts/publish.sh", "bash -o noexec +o noexec scripts/publish.sh",
+                    "bash --rcfile -n scripts/publish.sh", "bash --init-file -n scripts/publish.sh",
+                    "bash --frobnicate -n scripts/publish.sh", "source scripts/now.sh", ". scripts/now.sh",
+                    ". -- scripts/now.sh", "builtin source scripts/now.sh", ". scripts/lib.sh && publish", ". scripts/lib.sh"):
         assert "production" in (guards.check("Bash", {"command": command}, {}, cwd=str(tmp_path)) or ""), command
 
 
-def test_a_deploys_hold_says_the_approval_binds_to_its_folder_and_head(tmp_path):
-    """The same report's third point: an approval binds to the folder the command runs from and to that checkout's
-    HEAD, so the same command from another folder, or after a commit, meets a new code; the hold says so."""
+def test_a_deploys_hold_says_the_approval_binds_to_its_command_and_head(tmp_path):
+    """The same report's third point: an approval binds to the command and to the HEAD of each checkout it deploys, so
+    the same command after a commit meets a new code; the hold says so. The first fix said it bound to the folder too,
+    which the approval's digest never held (its review, F9), and in a checkout with no commit it named HEAD as HEAD."""
     site = tmp_path / "site"
     subprocess.run(["git", "init", "-q", str(site)], check=True)
+    fresh = guards.check("Bash", {"command": "git push origin main"}, {"push_deploys": [str(site)]}, cwd=str(site))
+    assert "HEAD HEAD" not in fresh and "run from" not in fresh, fresh
     (site / "index.html").write_text("hello\n")
     subprocess.run(["git", "-C", str(site), "add", "-A"], check=True)
     subprocess.run(["git", "-C", str(site), "commit", "-qm", "first"], check=True)
     head = subprocess.run(["git", "-C", str(site), "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
     said = guards.check("Bash", {"command": "git push origin main"}, {"push_deploys": [str(site)]}, cwd=str(site))
-    assert f"run from {site}" in said and f"HEAD {head[:10]}" in said, said
+    assert f"site at HEAD {head[:10]}" in said and "run from" not in said, said
