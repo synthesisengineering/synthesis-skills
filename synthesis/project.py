@@ -285,7 +285,7 @@ def resume(name: str, session_id: str = "", *, switch: bool = False) -> str:
             warnings += _upstream(project_dir, repo, rel, dirty) + _copies(repo, rel, bool(dirty))
         except (RuntimeError, OSError, subprocess.TimeoutExpired) as exc:
             warnings.append(f"could not compare these records with other copies: {exc}")
-    warnings += _peers(pid, project_dir, session_id)
+    warnings += _peers(pid, project_dir, session_id) + carried_note(pid, project_dir)
     if warnings:
         lines += ["", "Before working:"] + [f"- {w}" if not w.startswith("  ") else w for w in warnings]
     lines += _recent_conversation(pid, session_id)
@@ -390,29 +390,48 @@ def _handoff_repo(repo: Path, specs: list[str], message: str, claims: list[str])
 
 
 def _carry_out(session) -> list[str]:
-    """Plan item 13.5, part 4: the durable messages to the session's projects that no session here has read are
-    written into each project's `inbox/`, where the handoff commits them, when the session's claims cover it."""
+    """Plan item 13.5, part 4: the durable messages to the session's projects that no other session here has read are
+    written into each project's `inbox/`, where the handoff commits them, when the session's claims cover it; each
+    once from this Mac, so one cleared on another Mac is not written back. A project it cannot carry is named, and
+    nothing here stops the handoff (5.20.0's first review, F6, F14, F15)."""
     names = {session.project} if session.project else set()
     for claim in session.claims:
         parts = Path(claim).parts
         names |= {parts[i + 1] for i, part in enumerate(parts[:-1]) if part == "projects"}
     lines = []
     for name in sorted(n for n in names if not board.GLOB & set(n)):
-        folder = find(name)
-        waiting = board.undelivered(name) if folder else []
-        if not waiting:
-            continue
-        inbox = folder / "inbox"
-        if not any(board.overlaps(claim, str(inbox / "message.md")) for claim in session.claims):
-            lines.append(f"project {name}: {len(waiting)} durable message(s) no session here has read are not carried, since "
-                         f"this session does not claim {inbox}/; claim it and run handoff again to carry them")
-            continue
-        new = [m for m in waiting if not (inbox / f"{m['id']}.md").exists()]
-        for m in new:
-            inbox.mkdir(exist_ok=True)
-            (inbox / f"{m['id']}.md").write_text(board.carried_text(m), encoding="utf-8")
-        lines += [f"project {name}: carried {len(new)} durable message(s) no session here has read into {inbox}/"] if new else []
+        try:
+            waiting, found = board.undelivered(name), locate(name)
+            if not waiting or not found:
+                continue
+            if len(found) > 1:
+                lines.append(f"project {name}: in more than one knowledge root, so its {len(waiting)} durable message(s) "
+                             "no other session here has read are not carried")
+                continue
+            inbox = found[0] / "inbox"
+            if not any(board.overlaps(claim, str(inbox / "message.md")) for claim in session.claims):
+                lines.append(f"project {name}: {len(waiting)} durable message(s) no other session here has read are not "
+                             f"carried, since this session does not claim {inbox}/; claim it and run handoff again to carry them")
+                continue
+            for m in waiting:
+                inbox.mkdir(exist_ok=True)
+                if not (inbox / f"{m['id']}.md").exists():
+                    (inbox / f"{m['id']}.md").write_text(board.carried_text(m), encoding="utf-8")
+                (paths.board() / "carried-out").mkdir(parents=True, exist_ok=True)
+                (paths.board() / "carried-out" / m["id"]).touch()
+            lines.append(f"project {name}: carried {len(waiting)} durable message(s) no other session here has read into {inbox}/")
+        except (OSError, ValueError) as exc:
+            lines.append(f"project {name}: its durable messages could not be carried ({exc}); the records are handed off")
     return lines
+
+
+def carried_note(pid: str, project_dir: Path) -> list[str]:
+    """What a session binding this project is told of messages its records carry from another Mac: a count and where
+    to read them, and the files that could not be read, by name alone (plan item 13.5, part 4)."""
+    messages, unreadable = board.carried(pid, project_dir)
+    lines = [f"{len(messages)} message(s) carried in this project's records that this Mac has not shown: `synthesis inbox` "
+             "shows them, each as the file's own words"] if messages else []
+    return lines + [f"{len(unreadable)} file(s) in its inbox/ could not be read as messages: " + ", ".join(unreadable[:5])] * bool(unreadable)
 
 
 def handoff(session_id: str, message: str = "Update project records") -> list[str]:

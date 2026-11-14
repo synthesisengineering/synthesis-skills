@@ -95,11 +95,10 @@ def session_start(payload):
                           untracked=False)  # inside the hook's budget: tracked changes alone
     except Exception:
         pass  # a snapshot must never cost a session its start
-    try:  # messages another Mac's handoff carried in the project's records (plan item 13.5, part 4)
-        unreadable = board.carry(session.project, project_dir) if project_dir else []
-    except OSError as exc:
-        unreadable = [f"{project_dir}/inbox ({exc})"]
-    notes += [f"{len(unreadable)} file(s) in the project's inbox/ could not be read as messages: {unreadable[0]}"] if unreadable else []
+    try:  # messages another Mac's handoff carried in the project's records: a count and a pointer, never their words
+        notes += project.carried_note(session.project, project_dir) if project_dir else []
+    except OSError:
+        pass  # a project's inbox must never cost a session its start
     unread = board.inbox(session_id, session.project)
     notes += [f"{len(unread)} unread board message(s): run `synthesis inbox`."] if unread else []
     kept = [] if session.project else board.waiting(session_id)

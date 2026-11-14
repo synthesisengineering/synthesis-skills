@@ -35,10 +35,11 @@ if an agent remembered). Only a missing key or `false` turns it off: any other v
 setting is refused, and so is a first day that is not a day.
 
 The log is `<synthesis home>/rituals/history.jsonl` (`RITUAL_STATE_DIR` or
-`--state-dir` points elsewhere, to exercise a copy). `record` also keeps its line
-in the workspace's history folder, in this host's own file (5.20.0), and every view
-reads both. Derivations live in the plugin's `synthesis/rituals.py`, which the
-SessionStart line and the nudge share.
+`--state-dir` points elsewhere, to exercise a copy). A record commits nothing; the
+hourly `synthesis sessions sync` carries this Mac's records of a workspace to its
+sessions repo, and every view reads every host's records there (5.20.0).
+Derivations live in the plugin's `synthesis/rituals.py`, which the SessionStart
+line and the nudge share.
 """
 
 from __future__ import annotations
@@ -62,7 +63,7 @@ for _root in (_PLUGIN, Path(os.environ.get("SYNTHESIS_HOME") or Path.home() / ".
         sys.path.insert(0, str(_root))
         break
 try:
-    from synthesis import rituals  # noqa: E402
+    from synthesis import paths, rituals  # noqa: E402
 except ImportError as exc:  # no runtime beside this copy; one that fails otherwise as it loads keeps its traceback
     print(f"{__file__} needs the synthesis runtime, which cannot be imported ({exc}), so nothing ran. Run it from the "
           "installed synthesis-skills plugin or a checkout of it", file=sys.stderr)
@@ -92,8 +93,8 @@ def check_workspace(value: str | None, form: str) -> None:
                f"neither a workspace nor an omission, so it is refused. Accepted form: {form}")
 
 
-def append(record: dict) -> bytes:
-    """Append one bounded line under an exclusive lock; refuse an unsafe or interrupted log. Returns the line."""
+def append(record: dict) -> None:
+    """Append one bounded line under an exclusive lock; refuse an unsafe or interrupted log."""
     line = (json.dumps(record, separators=(",", ":"), sort_keys=True) + "\n").encode("utf-8")
     if len(line) > MAX_RECORD_BYTES:
         refuse(f"record is {len(line)} bytes, over {MAX_RECORD_BYTES}; put prose in the session log "
@@ -112,42 +113,18 @@ def append(record: dict) -> bytes:
             refuse(f"the append to {path} did not read back whole; inspect the tail before retrying")
     finally:
         os.close(fd)
-    return line
 
 
-def keep_for_host(workspace: str, line: bytes) -> str:
-    """Plan item 13.5, part 5 (5.20.0): the record's line also goes into the workspace's history folder, in this host's
-    own file, committed alone (the repository's hooks run; what others staged stays staged) and pushed by the next
-    handoff, so another Mac reads it. What happens is said; it never fails the record."""
+def carried_by(workspace: str) -> str:
+    """Where this record goes beyond this Mac (plan item 13.5, part 5; 5.20.0). A record commits nothing: the hourly
+    `synthesis sessions sync` keeps this Mac's records of a workspace in its sessions repo, which another Mac reads."""
     try:
-        folder = rituals.history_dir(rituals.config(), workspace)
-    except (OSError, ValueError) as exc:
-        return f"ritual history: kept on this Mac only (the ritual config cannot be read: {exc})"
-    if folder is None:
-        return (f"ritual history: kept on this Mac only ({workspace} names no history_dir, and no plans folder in a "
-                "repository to keep it beside)")
-    kept = folder / f"{rituals.host()}.jsonl"
-    try:
-        folder.mkdir(parents=True, exist_ok=True)
-        with kept.open("ab") as handle:
-            fcntl.flock(handle, fcntl.LOCK_EX)
-            handle.write(line)
-            handle.flush()
-            os.fsync(handle.fileno())
-    except OSError as exc:
-        return f"ritual history: kept on this Mac only ({kept} could not be written: {exc})"
-    top = subprocess.run(["git", "-C", str(folder), "rev-parse", "--show-toplevel"], capture_output=True, text=True)
-    if top.returncode:
-        return f"ritual history: kept in {kept}, which is in no git checkout, so it is not committed"
-    root, rel = top.stdout.strip(), os.path.relpath(os.path.realpath(kept), os.path.realpath(top.stdout.strip()))
-    done = subprocess.run(["git", "-C", root, "add", "--", rel], capture_output=True, text=True)
-    if done.returncode == 0:
-        done = subprocess.run(["git", "-C", root, "commit", "--only", "-q", "-m", "Update ritual history", "--", rel],
-                              capture_output=True, text=True)
-    if done.returncode:
-        said = " ".join((done.stderr or done.stdout).split())[-300:]
-        return f"ritual history: appended to {kept}, not committed ({said}); the next commit of that repository carries it"
-    return f"ritual history: kept in {kept} and committed; the next push carries it to the other Macs"
+        repo = (paths.config().get("sessions_repos") or {}).get(workspace)
+    except (OSError, ValueError, AttributeError):
+        repo = None
+    if not isinstance(repo, str):
+        return f"ritual history: kept on this Mac only ({workspace} has no sessions repo in the synthesis config)"
+    return f"ritual history: `synthesis sessions sync` carries it to {os.path.expanduser(repo)}, where another Mac reads it"
 
 
 def critical_deadlines(workspace: str, outcome: str, sweep=None) -> str:
@@ -545,9 +522,8 @@ def cmd_record(args) -> int:
         counts[key] = int(value) if value.lstrip("-").isdigit() else value
     if counts:
         record["counts"] = counts
-    line = append(record)
-    print(f"recorded {args.direction} {args.workspace} {args.date} ({args.outcome})\n{critical}\n"
-          f"{keep_for_host(args.workspace, line)}")
+    append(record)
+    print(f"recorded {args.direction} {args.workspace} {args.date} ({args.outcome})\n{critical}\n{carried_by(args.workspace)}")
     return 0
 
 

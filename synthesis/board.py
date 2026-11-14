@@ -354,21 +354,28 @@ def waiting(session_id: str) -> list[str]:
     return sorted((name for name in names if newest[name] is not None), key=lambda name: -newest[name])
 
 
-MESSAGE_ID = "[0-9]+-[0-9]+"  # a message's file name before .json: its time in nanoseconds and its writer's process
+MESSAGE_ID = "[0-9]{1,20}-[0-9]{1,10}"  # a message's file name before .json: its time in nanoseconds and its writer's process
+CARRIED_MAX = 64 * 1024  # a carried message larger than this is named, never read
 
 
 def undelivered(project: str) -> list[dict]:
-    """The durable messages to project:<project> that no session on this Mac has been shown, each with its `id`
-    (plan item 13.5, part 4: a handoff carries these in the project's records)."""
+    """The durable messages to project:<project> that no session on this Mac other than its sender has been shown, and
+    that this Mac has not carried before, each with its `id` (plan item 13.5, part 4: a handoff carries these). A
+    sender shown its own message has delivered it to no one (5.20.0's first review, F3)."""
     import re
-    shown = {p.name for p in (paths.board() / "read").glob("*/*")}
+    readers: dict = {}
+    for marker in (paths.board() / "read").glob("*/*"):
+        readers.setdefault(marker.name, set()).add(marker.parent.name)
     found = []
     for file in sorted(_box(f"project:{project}").glob("*.json")):
+        if not re.fullmatch(MESSAGE_ID, file.stem) or (paths.board() / "carried-out" / file.stem).exists():
+            continue
         try:
-            data = json.loads(file.read_text(encoding="utf-8")) if file.name not in shown else {}
+            data = json.loads(file.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             continue
-        if isinstance(data, dict) and data.get("durable") and re.fullmatch(MESSAGE_ID, file.stem):
+        sender = _session_file(str(data.get("from", ""))).stem if isinstance(data, dict) and data.get("from") else ""
+        if isinstance(data, dict) and data.get("durable") and not readers.get(file.name, set()) - {sender}:
             found.append({**data, "id": file.stem})
     return found
 
@@ -378,34 +385,51 @@ def carried_text(message: dict) -> str:
     from datetime import datetime
     at = datetime.fromtimestamp(float(message.get("at", 0))).astimezone().isoformat(timespec="seconds")
     head = {"id": message["id"], "from": message.get("from", ""), "to": message.get("to", ""), "at": at}
-    return ("---\n" + "".join(f"{k}: {' '.join(str(v).split())}\n" for k, v in head.items()) + "---\n\n"
+    return ("---\n" + "".join(f"{k}: {' '.join(str(v).split())[:200]}\n" for k, v in head.items()) + "---\n\n"
             + str(message.get("text", "")).rstrip("\n") + "\n")
 
 
-def carry(project: str, folder) -> list[str]:
-    """Copy into this Mac's board each message the project's records carry (`<folder>/inbox/<id>.md`, which a handoff
-    on another Mac wrote) whose id the board does not hold, as a durable message to the project under that id, so
-    each session that works on the project here sees it once. Returns the files named as messages that could not be
-    read as one, with why; a file not named as a message is not read."""
+def carried(project: str, folder) -> tuple[list[dict], list[str]]:
+    """The messages a project's records carry (`<folder>/inbox/<id>.md`, a handoff on another Mac wrote them) that this
+    Mac has not shown and does not hold itself, oldest first, and the names of files named as messages that could not
+    be read as one, each with a fixed reason. What such a file says is the file's own word: it is shown only on request,
+    marked as carried, and never delivered as a session's message (5.20.0's first review, F1). Only a regular file,
+    never a link, of at most CARRIED_MAX bytes is read."""
     import re
+    import stat
     from datetime import datetime
-    box, unread = _box(f"project:{project}"), []
-    for file in sorted(Path(folder, "inbox").glob("*.md")):
-        if not re.fullmatch(MESSAGE_ID, file.stem) or (box / f"{file.stem}.json").exists():
+    found, unreadable, shown = [], [], paths.board() / "carried-shown" / _session_file(project).stem
+    for file in sorted(Path(folder, "inbox").glob("*.md")) if folder else []:
+        if not re.fullmatch(MESSAGE_ID, file.stem) or (shown / file.stem).exists() or (
+                _box(f"project:{project}") / f"{file.stem}.json").exists():
             continue
         try:
-            head, _, body = file.read_text(encoding="utf-8").partition("\n---\n")
+            info = os.lstat(file)
+            if not stat.S_ISREG(info.st_mode) or info.st_size > CARRIED_MAX:
+                raise ValueError("not a regular file of at most 64 KB")
+            head, _, body = file.read_bytes().decode("utf-8").partition("\n---\n")
             fields = dict(line.split(": ", 1) for line in head.splitlines()[1:] if ": " in line) if head.startswith("---\n") else {}
             if fields.get("id") != file.stem or fields.get("to") != f"project:{project}" or not fields.get("from"):
                 raise ValueError("its header does not give its own id, a sender and this project")
-            at = datetime.fromisoformat(fields.get("at", "")).timestamp()
-        except (OSError, ValueError) as exc:
-            unread.append(f"{file} ({exc})")
+        except (OSError, ValueError) as exc:  # a file's words are never quoted here, only the reason
+            unreadable.append(f"inbox/{file.name} ({exc if isinstance(exc, ValueError) and not isinstance(exc, UnicodeDecodeError) else 'unreadable'})")
             continue
-        paths.write_json(box / f"{file.stem}.json", {"to": fields["to"], "from": fields["from"], "durable": True, "at": at,
-                                                     "text": body[1:].rstrip("\n") if body.startswith("\n") else body.rstrip("\n"),
-                                                     "carried": str(file)})
-    return unread
+        try:
+            at = datetime.fromisoformat(fields.get("at", "")).timestamp()
+            at = at if 1577836800 <= at <= time.time() + 86400 else None  # from 2020 to tomorrow, or no time
+        except (ValueError, OverflowError):
+            at = None
+        found.append({"id": file.stem, "file": f"inbox/{file.name}", "from": " ".join(fields["from"].split())[:120],
+                      "at": at, "text": body[1:].rstrip("\n") if body.startswith("\n") else body.rstrip("\n")})
+    return sorted(found, key=lambda m: (m["at"] is None, m["at"] or 0)), unreadable
+
+
+def mark_carried(project: str, ids) -> None:
+    """These carried messages have been shown on this Mac: none is shown again here."""
+    shown = paths.board() / "carried-shown" / _session_file(project).stem
+    shown.mkdir(parents=True, exist_ok=True)
+    for message_id in ids:
+        (shown / message_id).touch()
 
 
 def _read_marker(session_id: str, name: str) -> Path:

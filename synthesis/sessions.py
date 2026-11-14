@@ -1366,6 +1366,10 @@ def _sync_workspace(ws: str, repo: Path, push: bool) -> list:
             _git(repo, "reset", "-q", "--", month)
             return lines + [f"FAILED {ws}: commit for {month} refused: {(made.stdout + made.stderr).strip()[-600:]}"]
         lines.append(f"{ws}: {month}: {count} session(s) committed")
+    carried = _ritual_history(ws, repo)
+    if carried.startswith("FAILED"):
+        return lines + [carried]
+    lines += [carried] if carried else []
     if push:
         if _git(repo, "rev-parse", "--abbrev-ref", "@{u}").returncode:
             pushed = _git(repo, "push", "-q", "-u", "origin", "HEAD")
@@ -1378,6 +1382,42 @@ def _sync_workspace(ws: str, repo: Path, push: bool) -> list:
             return lines + [f"FAILED {ws}: push: {pushed.stderr.strip()[-300:]}"]
     paths.write_json(state_file, {"sessions": done, "synced": _iso(time.time()), "pushed": push})
     return lines + [f"{ws}: {repo.name} up to date" + ("" if push else " (not pushed)")]
+
+
+def _ritual_history(ws: str, repo: Path) -> str:
+    """Plan item 13.5, part 5 (5.20.0): this Mac's ritual records of the workspace, in its sessions repo as
+    `rituals/<host>.jsonl`, written whole from this Mac's log (so no line is ever cut, and a host writes only its own
+    file), committed alone and pushed with the sync; another Mac reads it once its own sync has pulled. "" when there
+    is nothing new; a refused commit is undone in the working tree, so the next pull is not held up."""
+    from synthesis import rituals
+    log = rituals.state_dir() / "history.jsonl"
+    try:
+        lines = log.read_bytes().splitlines() if log.is_file() else []
+    except OSError as exc:
+        return f"FAILED {ws}: ritual history: {exc}"
+    mine = []
+    for line in (raw.strip() for raw in lines):
+        try:
+            record = json.loads(line.decode("utf-8")) if line else None
+        except ValueError:
+            continue
+        if isinstance(record, dict) and record.get("workspace") == ws:
+            mine.append(line)
+    rel = f"rituals/{rituals.host()}.jsonl"
+    data = b"".join(line + b"\n" for line in mine)
+    if not mine or ((repo / rel).is_file() and (repo / rel).read_bytes() == data):
+        return ""
+    (repo / "rituals").mkdir(exist_ok=True)
+    (repo / f"{rel}.tmp").write_bytes(data)
+    os.replace(repo / f"{rel}.tmp", repo / rel)
+    made = _git(repo, "add", "--", rel)
+    made = made if made.returncode else _git(repo, "commit", "-q", "-m", "Rituals: history", "--", rel)
+    if made.returncode:
+        _git(repo, "reset", "-q", "--", rel)
+        if _git(repo, "checkout", "-q", "HEAD", "--", rel).returncode:
+            (repo / rel).unlink()
+        return f"FAILED {ws}: ritual history commit refused: {(made.stdout + made.stderr).strip()[-300:]}"
+    return f"{ws}: ritual history: {len(mine)} record(s) of this Mac committed"
 
 
 def _pulled(ws: str, repo: Path) -> str:

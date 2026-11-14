@@ -160,12 +160,17 @@ def cmd_worktree(args) -> int:
 def cmd_inbox(args) -> int:
     session_id = _session(args)
     me = board.load(session_id)
-    folder = project.find(me.project) if me and me.project else None
-    for line in board.carry(me.project, folder) if folder else []:  # messages another Mac's handoff carried here
-        print(f"not read as a message: {line}", file=sys.stderr)
     for m in board.inbox(session_id, me.project if me else "", mark_read=not args.peek, recent_hours=args.recent):
-        print(f"--- {time.strftime('%Y-%m-%d %H:%M', time.localtime(m['at']))} from {m['from']} to {m['to']}"
-              + (" (carried in the project's records)" if m.get("carried") else "") + f"\n{m['text']}")
+        print(f"--- {time.strftime('%Y-%m-%d %H:%M', time.localtime(m['at']))} from {m['from']} to {m['to']}\n{m['text']}")
+    folder = project.find(me.project) if me and me.project else None
+    messages, unreadable = board.carried(me.project, folder) if folder else ([], [])
+    for m in messages:  # another Mac's handoff carried these in the project's records: the file's own words, labeled so
+        when = time.strftime("%Y-%m-%d %H:%M", time.localtime(m["at"])) if m["at"] else "at a time it does not give"
+        print(f"--- carried in {me.project}'s records ({m['file']}), from {m['from']} by its own header, {when}\n{m['text']}")
+    for line in unreadable:
+        print(f"not read as a message: {line}", file=sys.stderr)
+    if messages and not args.peek:
+        board.mark_carried(me.project, [m["id"] for m in messages])
     return 0
 
 
@@ -208,7 +213,7 @@ def cmd_use(args) -> int:
         print(f"no single project named {args.project} under {[str(r) for r in project.roots()]}", file=sys.stderr)
         return 1
     board.touch(_session(args), project=args.project, harness=paths.harness())
-    print(f"active project: {args.project}")
+    print("\n".join([f"active project: {args.project}"] + project.carried_note(args.project, project.find(args.project))))
     return 0
 
 
