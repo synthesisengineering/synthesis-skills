@@ -7,6 +7,7 @@ import json
 import os
 import re
 import subprocess
+from datetime import datetime
 from pathlib import Path
 
 import pytest
@@ -2719,3 +2720,114 @@ def test_a_desktop_folder_that_cannot_be_listed_is_said_and_nothing_behind_it_is
     assert any("cannot be listed" in line and str(folder) in line for line in report), report
     assert not any("removed" in line for line in report), report
     assert "complete" not in json.loads((sessions.root() / ".state" / "export.json").read_text(encoding="utf-8"))
+
+
+# Records that leave this Mac, part 3 (plan item 13.5, 5.19.0). The audit of 2026-11-11 (§3.2): nothing fetched the
+# knowledge and sessions repos unless an agent did, so no one could say how far a checkout was behind its remote.
+
+def _g(repo, *args):
+    return subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True, check=True).stdout.strip()
+
+
+def _cloned(tmp_path: Path, name: str) -> tuple:
+    """A checkout of a remote, and a commit pushed to that remote from elsewhere since: (checkout, the new commit)."""
+    remote, here, there = tmp_path / f"{name}.git", tmp_path / "workspaces" / name, tmp_path / f"{name}-elsewhere"
+    subprocess.run(["git", "init", "-q", "--bare", "-b", "main", str(remote)], check=True)
+    for checkout in (here, there):
+        subprocess.run(["git", "clone", "-q", str(remote), str(checkout)], check=True, capture_output=True)
+    (here / "a.md").write_text("a\n", encoding="utf-8")
+    _g(here, "add", ".")
+    _g(here, "commit", "-q", "-m", "first")
+    _g(here, "push", "-q", "-u", "origin", "main")
+    _g(there, "pull", "-q", "origin", "main")
+    (there / "b.md").write_text("b\n", encoding="utf-8")
+    _g(there, "add", ".")
+    _g(there, "commit", "-q", "-m", "second")
+    _g(there, "push", "-q", "origin", "main")
+    return here, _g(there, "rev-parse", "HEAD")
+
+
+def test_the_hourly_job_fetches_each_knowledge_and_sessions_repo_and_never_merges(tmp_path, write_config, capsys):
+    knowledge, new_k = _cloned(tmp_path, "ai-knowledge-test")
+    archive, new_s = _cloned(tmp_path, "sessions-test")
+    broken = tmp_path / "workspaces" / "ai-knowledge-broken"
+    _g(tmp_path, "init", "-q", str(broken))
+    _g(broken, "remote", "add", "origin", str(tmp_path / "no-such-remote.git"))
+    write_config({"knowledge_roots": [str(knowledge), str(broken), str(tmp_path / "not-a-repo")],
+                  "sessions_repos": {"test": str(archive)}})
+    heads = {repo: _g(repo, "rev-parse", "HEAD") for repo in (knowledge, archive)}
+    assert cli.main(["sessions", "export", "--all"]) == 0  # a session's own export does not fetch
+    assert _g(knowledge, "rev-parse", "origin/main") != new_k and not (sessions.root() / ".state" / "fetch.json").exists()
+    assert cli.main(["sessions", "export", "--all", "--scheduled"]) == 0  # a fetch that fails does not fail the copy
+    assert f"{broken}: not fetched" in capsys.readouterr().out
+    for repo, new in ((knowledge, new_k), (archive, new_s)):
+        assert _g(repo, "rev-parse", "origin/main") == new and _g(repo, "rev-parse", "HEAD") == heads[repo]  # fetched, not merged
+        assert _g(repo, "status", "--porcelain") == ""
+    kept = json.loads((sessions.root() / ".state" / "fetch.json").read_text(encoding="utf-8"))["repos"]
+    assert sorted(kept) == sorted(map(str, (knowledge, archive, broken)))
+    assert kept[str(knowledge)]["fetched"] == kept[str(knowledge)]["tried"] and "failed" not in kept[str(knowledge)]
+    assert kept[str(broken)]["failed"] and "fetched" not in kept[str(broken)]
+
+
+def test_the_doctor_says_when_each_repo_was_last_fetched_and_which_could_not_be(tmp_path, write_config):
+    from synthesis import doctor
+    stamp = tmp_path / "fetch.json"
+    assert doctor.check_fetch(stamp, {}).status == "warn"  # never run
+    assert doctor.check_fetch(stamp, {"scheduled_fetch": False}) == doctor.Check("ok", "scheduled fetch", "off (scheduled_fetch is false)")
+    now = 1_800_000_000.0
+    at = lambda hours: datetime.fromtimestamp(now - hours * 3600).astimezone().isoformat(timespec="seconds")  # noqa: E731
+    stamp.write_text(json.dumps({"at": at(0.5), "repos": {"/r/one": {"tried": at(0.5), "fetched": at(0.5)},
+                                                            "/r/two": {"tried": at(0.5), "fetched": at(0.5)}}}), encoding="utf-8")
+    line = doctor.check_fetch(stamp, {}, now)
+    assert line.status == "ok" and line.detail == "2 of 2 repositories fetched by the hourly job, 30 min ago"
+    stamp.write_text(json.dumps({"at": at(0.5), "repos": {
+        "/r/one": {"tried": at(0.5), "fetched": at(0.5)},
+        "/r/two": {"tried": at(0.5), "fetched": at(30), "failed": "could not read from remote repository"},
+        "/r/three": {"tried": at(0.5), "failed": "repository not found"}}}), encoding="utf-8")
+    line = doctor.check_fetch(stamp, {}, now)
+    assert line.status == "warn" and line.detail.startswith("1 of 3 repositories fetched by the hourly job, 30 min ago; not fetched: ")
+    assert "/r/three (repository not found; never fetched)" in line.detail
+    assert "/r/two (could not read from remote repository; last fetched 30 h ago)" in line.detail
+    stamp.write_text(json.dumps({"at": at(30), "repos": {"/r/one": {"tried": at(30), "fetched": at(30)}}}), encoding="utf-8")
+    line = doctor.check_fetch(stamp, {}, now)
+    assert line.status == "warn" and "the hourly job last fetched 30 h ago" in line.detail
+
+
+def test_the_hourly_fetch_leaves_fetch_head_alone_says_why_and_never_asks(tmp_path, write_config, monkeypatch):
+    """5.19.0's first review: M8 (the job rewrote FETCH_HEAD, which a pull reads), m3 (the reason kept was git's last
+    line), m4 (stderr that is not UTF-8 raised) and m5 (ssh could ask; credential helpers were left to)."""
+    knowledge, _ = _cloned(tmp_path, "ai-knowledge-test")
+    _g(knowledge, "fetch", "-q", "origin")  # the person's own fetch, which their next pull reads
+    head = (knowledge / ".git" / "FETCH_HEAD").read_bytes()
+    gone, odd = tmp_path / "workspaces" / "ai-knowledge-gone", tmp_path / "workspaces" / "ai-knowledge-odd"
+    for repo in (gone, odd):
+        _g(tmp_path, "init", "-q", str(repo))
+    _g(gone, "remote", "add", "origin", str(tmp_path / "no-such-remote.git"))
+    subprocess.run([b"git", b"-C", bytes(odd), b"remote", b"add", b"origin", b"/no/such/caf\xe9.git"], check=True)
+    write_config({"knowledge_roots": [str(knowledge), str(gone), str(odd)]})
+    monkeypatch.delenv("GIT_SSH_COMMAND", raising=False)
+    sessions.fetch()
+    assert (knowledge / ".git" / "FETCH_HEAD").read_bytes() == head
+    kept = json.loads((sessions.root() / ".state" / "fetch.json").read_text(encoding="utf-8"))["repos"]
+    assert "does not appear to be a git repository" in kept[str(gone)]["failed"] and kept[str(odd)]["failed"]
+    seen, run = [], subprocess.run
+    monkeypatch.setattr(subprocess, "run", lambda args, **kw: seen.append((args, kw.get("env") or {})) or run(args, **kw))
+    _g(odd, "config", "core.sshCommand", "ssh -i /a/key/of/their/own")
+    sessions.fetch()
+    fetches = {a[2]: e for a, e in seen if "fetch" in a}
+    assert all("--no-write-fetch-head" in a for a, _ in seen if "fetch" in a) and sorted(fetches) == sorted(map(str, (knowledge, gone, odd)))
+    assert all(e["GIT_TERMINAL_PROMPT"] == "0" and e["GCM_INTERACTIVE"] == "never" for e in fetches.values())
+    assert "BatchMode=yes" in fetches[str(knowledge)]["GIT_SSH_COMMAND"] and "GIT_SSH_COMMAND" not in fetches[str(odd)]
+
+
+def test_the_hourly_fetch_says_when_it_is_off_or_has_nothing_to_fetch(tmp_path, write_config, capsys):
+    """m6 and m7: the job's log said every repo was fetched when none was, and the doctor warned for ever."""
+    from synthesis import doctor
+    write_config({"scheduled_fetch": False})
+    assert cli.main(["sessions", "export", "--all", "--scheduled"]) == 0
+    assert "scheduled fetch: off" in capsys.readouterr().out
+    write_config({"knowledge_roots": [str(tmp_path / "not-a-repo")]})
+    assert cli.main(["sessions", "export", "--all", "--scheduled"]) == 0
+    assert "nothing to fetch" in capsys.readouterr().out
+    line = doctor.check_fetch(sessions.root() / ".state" / "fetch.json", {})
+    assert line.status == "ok" and "nothing to fetch" in line.detail

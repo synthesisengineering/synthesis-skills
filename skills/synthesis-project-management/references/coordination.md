@@ -205,19 +205,35 @@ synthesis index set <project> last_session 2026-10-20
 ## Uncommitted work in a shared checkout (2026-10-20)
 
 On 2026-10-20 a session's script emptied the index by opening it for writing before reading it. Another session's
-uncommitted edit in that file, covered by no claim, was lost. Four protections now hold:
+uncommitted edit in that file, covered by no claim, was lost. Five protections now hold:
 
 - **Claims hold when a file is written.** The guard refuses a write (file tools, shell redirects, copiers,
   `sed -i`, `apply_patch`) into a path another live session has claimed, not first at commit.
 - **Release leaves nothing unowned.** `synthesis release` refuses while the released paths hold uncommitted
-  changes. Commit them, or `synthesis release --hand-to <session|project:id>`, which tells the receiver.
-- **Claim names what is already there.** A claim over files with uncommitted changes lists them, with the
-  session that last claimed them from the claims log.
-- **A journal keeps it recoverable.** At every claim, release, session start and commit, synthesis snapshots the
-  checkout's uncommitted tracked changes with `git stash create`. The files, index and stash list are untouched,
-  and the snapshot is kept under `refs/synthesis/journal/` for 14 days. `synthesis journal <path>` lists the
-  snapshots holding a file, and `synthesis journal --show <sha> <path>` prints it as kept. Untracked files are
-  not kept.
+  changes, a new file no commit holds among them (since 5.19.0). Commit them, or
+  `synthesis release --hand-to <session|project:id>`, which tells the receiver.
+- **Claim names what is already there.** A claim over files with uncommitted changes, untracked files among them,
+  lists them, with the session that last claimed them from the claims log.
+- **A journal keeps it recoverable.** At every claim, release, commit and session start, synthesis snapshots the
+  checkout's uncommitted changes as one commit of the working tree, written through a temporary index, so the
+  files, the index and the stash list are untouched. At a claim, a release and a commit it also keeps the untracked
+  files `.gitignore` does not exclude, each up to 2 MB and 20 MB or 1,000 files in all, the claim's own first;
+  the session start, inside the hook's time budget, keeps tracked changes alone, and its journal line says so.
+  A file past a limit, one git cannot read, and one holding a credential (the commit check's built-in patterns:
+  the snapshot's ref is local, but a mirror push would publish it) are named in the journal and not kept; a
+  tracked one is kept as HEAD has it. Every such file under the claim is named, and up to 50 others. When
+  something is staged, what the index held is the snapshot's second parent (`git show <sha>^2:<path>`), as
+  `git stash create` kept it. What Finder writes (`.DS_Store`, `._*`, `Icon\r`) is not a record. A snapshot is kept
+  under `refs/synthesis/journal/` for 14 days, and its journal line as long. `synthesis journal <path>` lists the
+  snapshots holding a file or naming it as not kept, and `synthesis journal --show <sha> <path>` writes it back
+  byte for byte.
+- **Records do not stay on one Mac unnoticed.** `synthesis doctor` warns when a file under a claim has stayed
+  uncommitted, or in a commit on any local branch that no remote holds, past the config's `unsaved_hours`
+  (24 by default), counted per repository, and when git cannot read a claimed checkout at all; the weekday
+  evening job shows a banner that names nothing. The hourly job that copies transcripts also fetches each
+  knowledge root and sessions repo (never merging, writing no `FETCH_HEAD`, asking for nothing), so `git status`
+  says how far a checkout is behind its remote, and the doctor says when each was last fetched and why one
+  could not be.
 
 ## Priority, stale claims and takeover
 

@@ -453,6 +453,109 @@ def check_sessions_export(plist: Path, stamp: Path, now: float = 0, run=subproce
     return Check("ok", "sessions export", f"every hour; the last one finished {age * 60:.0f} min ago")
 
 
+def unsaved(claims: list, hours: float, now: float = 0) -> dict:
+    """Records that leave this Mac (plan item 13.5, part 2): per repository, the files under these claims that are
+    uncommitted, or in a commit no remote holds, for longer than `hours`. {repo: (files, the oldest in hours,
+    uncommitted, in unpushed commits)}, or the reason git could not read the repository, which is said, never read
+    as nothing. A deleted file is as old as the last change to the nearest folder still there; commits on every local
+    branch are read; in a repository with no remote, what is pushed cannot be told, so its commits are not counted.
+    Finder's files are not records. Reads git and writes nothing."""
+    from synthesis import board, checkout
+    now, held, found = now or time.time(), {}, {}
+    for claim in claims:
+        base = checkout._literal(board.normalize(claim))
+        repo = checkout.repo_of(base)
+        if repo:
+            held.setdefault(repo, []).append((claim, base))
+    for repo, under in sorted(held.items()):
+        def claimed(rel, repo=repo, under=under):
+            full = os.path.join(repo, rel)
+            return any(full == base or board.overlaps(claim, full) for claim, base in under)
+        spec = ["--", *sorted({os.path.relpath(base, repo) for _, base in under})]
+        changed, committed, rows = {}, {}, checkout._changes(repo, True, *spec)
+        if rows is None:
+            found[repo] = "git could not read its status"
+            continue
+        for rel in (row[3:].rstrip("/") for row in rows):
+            where = os.path.join(repo, rel)
+            while where != repo and not os.path.lexists(where):  # deleted: as old as the nearest folder still there
+                where = os.path.dirname(where)
+            changed[rel] = (now - os.lstat(where).st_mtime) / 3600
+        if checkout._git(repo, "remote")[1].strip():  # every local branch, with names as written (-z: never quoted)
+            code, out = checkout._git(repo, "log", "-z", "--format=%x00%ct", "--name-only", "--branches", "--not", "--remotes", *spec)
+            when, fresh = 0, True
+            for token in out.split("\0") if code == 0 else []:
+                if not token:
+                    fresh = True
+                elif fresh and token.isdigit():
+                    when, fresh = int(token), False
+                else:
+                    rel = token.lstrip("\n")
+                    committed[rel] = max(committed.get(rel, 0.0), (now - when) / 3600)
+        late = {r: a for r, a in changed.items() if a > hours and claimed(r)}
+        gone = {r: a for r, a in committed.items() if a > hours and claimed(r)}
+        if late or gone:
+            found[repo] = (len(set(late) | set(gone)), max([*late.values(), *gone.values()]), len(late), len(gone))
+    return found
+
+
+def unsaved_hours(config: dict) -> tuple:
+    """The config's `unsaved_hours` (24 when absent) and a note when it cannot be read; hours None when it is false."""
+    hours = config.get("unsaved_hours", 24)
+    if hours is False:
+        return None, ""
+    if isinstance(hours, bool) or not isinstance(hours, (int, float)) or hours <= 0:
+        return 24, f" ({json.dumps(hours)} in unsaved_hours is not a number of hours above 0, so 24 is used)"
+    return hours, ""
+
+
+def check_unsaved(config: dict, claims: list, now: float = 0) -> Check:
+    """A warning, never a failure: the seat may mean to keep working."""
+    hours, note = unsaved_hours(config)
+    if hours is None:
+        return Check("ok", "unsaved records", "off (unsaved_hours is false)")
+    found = unsaved(claims, hours, now)
+    if not found:
+        return Check("warn" if note else "ok", "unsaved records", f"nothing under a claim unsaved past {hours:g} h{note}")
+    return Check("warn", "unsaved records", f"{len(found)} {'repository holds' if len(found) == 1 else 'repositories hold'} "
+                 f"claimed records unsaved past {hours:g} h, or could not be read{note}: " + "; ".join(
+                     f"{_short(Path(repo))}: could not read it ({counts})" if isinstance(counts, str) else
+                     f"{_short(Path(repo))}: {counts[0]} file(s), the oldest {counts[1]:.0f} h ({counts[2]} uncommitted, "
+                     f"{counts[3]} in commits no remote holds)" for repo, counts in found.items())
+                 + ". Commit and push them, or ask the seat that holds the claim (`synthesis who`)")
+
+
+def check_fetch(stamp: Path, config: dict, now: float = 0) -> Check:
+    """When the hourly job last fetched each knowledge root and sessions repo (plan item 13.5, part 3), and which it
+    could not, each with its last fetch."""
+    if config.get("scheduled_fetch", True) is False:
+        return Check("ok", "scheduled fetch", "off (scheduled_fetch is false)")
+    last, now = paths.read_json(stamp), now or time.time()
+    repos = last.get("repos") if isinstance(last.get("repos"), dict) else {}
+
+    def ago(iso) -> float | None:
+        try:
+            return (now - datetime.fromisoformat(str(iso)).timestamp()) / 3600
+        except ValueError:
+            return None
+    ran = ago(last.get("at"))
+    if ran is None:
+        return Check("warn", "scheduled fetch", "no run of the hourly job has fetched yet (it fetches each knowledge root and "
+                     "sessions repo, and never merges)")
+    if not repos:
+        return Check("ok", "scheduled fetch", "nothing to fetch: no knowledge root or sessions repo is a git checkout")
+    failed = sorted((r, e) for r, e in repos.items() if e.get("failed"))
+    detail = f"{len(repos) - len(failed)} of {len(repos)} repositories fetched by the hourly job, " + (
+        f"{ran * 60:.0f} min ago" if ran < 1 else f"{ran:.0f} h ago")
+    if failed:
+        return Check("warn", "scheduled fetch", detail + "; not fetched: " + "; ".join(
+            f"{_short(Path(r))} ({e['failed']}; " + (f"last fetched {ago(e['fetched']):.0f} h ago)" if ago(e.get("fetched")) is not None
+                                                    else "never fetched)") for r, e in failed))
+    if ran > 24:
+        return Check("warn", "scheduled fetch", f"the hourly job last fetched {ran:.0f} h ago: read the sessions export line")
+    return Check("ok", "scheduled fetch", detail)
+
+
 def check_board(home: Path) -> Check:
     """The board moved to board/ in 5.1.18; whatever is left under state/ is read by no session."""
     old = [n for n in paths.BOARD_FILES if os.path.lexists(home / "state" / n)]
@@ -1451,6 +1554,11 @@ def run_checks(home: Path | None = None, find=find_client, latest_ref: str = "",
     if sys.platform == "darwin":
         checks.append(check_sessions_export(Path.home() / "Library" / "LaunchAgents" / "com.synthesis.sessions-export.plist",
                                             home / "sessions" / ".state" / "export.json", command=home / "bin" / "synthesis"))
+        try:
+            fetching = paths.config()
+        except (OSError, ValueError):
+            fetching = {}
+        checks.append(check_fetch(home / "sessions" / ".state" / "fetch.json", fetching))
     runtime = runtime_hash(home) if checks[0].status == "ok" else ""
     if (home / "bin" / "synthesis-hook").is_file():  # when it is missing, the runtime line already says so
         checks += [check_hook_script(home), check_self_test(home), check_wait_check()]  # before the CLIs start, so they don't skew timing
@@ -1472,6 +1580,7 @@ def run_checks(home: Path | None = None, find=find_client, latest_ref: str = "",
     repos = workspace_repos(config)
     from synthesis import board, project
     sessions = board.sessions()
+    checks.append(check_unsaved(config, [c for s in sessions for c in (s.claims or [])]))
     checks += [check_versions(versions, sessions), check_instruction_adapters(repos),
                check_temporary_work(repos, [s.cwd for s in sessions if not s.stale]),
                check_home_paths([home / "config.json"]), check_packets(project.roots()),
@@ -1567,7 +1676,17 @@ def main(argv=None) -> int:
     parser.add_argument("--waiting", action="store_true", help="print, from what the doctor wrote down within a day and the hooks that "
                         "have run since: how many harnesses' guards have not been seen to run and which; or `unchecked` and "
                         "which, where nothing looked since this release was installed; or `unknown`. Runs no check, writes nothing")
+    parser.add_argument("--unsaved", action="store_true", help="print how many repositories hold records a claim left "
+                        "uncommitted or unpushed past the config's unsaved_hours, or `unknown`. Runs no other check, writes nothing")
     args = parser.parse_args(list(argv or []))
+    if args.unsaved:
+        try:
+            from synthesis import board
+            hours, _ = unsaved_hours(paths.config())
+            print(len(unsaved([c for s in board.sessions() for c in (s.claims or [])], hours)) if hours else 0)
+        except Exception:  # the evening job reads anything else as nothing to say
+            print("unknown")
+        return 0
     if args.waiting:
         from synthesis import __version__
         seen = paths.waits()

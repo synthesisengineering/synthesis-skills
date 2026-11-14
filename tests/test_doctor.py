@@ -2307,3 +2307,115 @@ def test_the_doctor_reads_a_teardown_list_whatever_it_holds(tmp_path):
     listed.unlink()
     listed.symlink_to(tmp_path / "gone")
     assert doctor.check_teardown(listed, now).status == "warn" and "cannot be read" in doctor.check_teardown(listed, now).detail
+
+
+# Records that leave this Mac, part 2 (plan item 13.5, 5.19.0). The audit of 2026-11-11 (gap 4): nothing counted
+# the records a seat claimed and left uncommitted, or committed and never pushed, so they left the Mac with nothing.
+
+def _git(repo, *args, env=None):
+    return subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True, check=True,
+                          env={**os.environ, **(env or {})}).stdout
+
+
+def _aged(path: Path, hours: float) -> None:
+    when = time.time() - hours * 3600
+    os.utime(path, (when, when))
+
+
+def _records(tmp_path: Path) -> Path:
+    """A knowledge repo pushed to a remote, then: a commit two days old no remote holds, an edit and a new file 30
+    hours old, a new file of this hour, all in notes/; and a 30-hour-old file in other/, under no claim."""
+    remote, repo = tmp_path / "remote.git", tmp_path / "records"
+    subprocess.run(["git", "init", "-q", "--bare", "-b", "main", str(remote)], check=True)
+    (repo / "notes").mkdir(parents=True)
+    (repo / "other").mkdir()
+    _git(tmp_path, "init", "-q", "-b", "main", str(repo))
+    (repo / "notes" / "a.md").write_text("a\n", encoding="utf-8")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-q", "-m", "first")
+    _git(repo, "remote", "add", "origin", str(remote))
+    _git(repo, "push", "-q", "-u", "origin", "main")
+    (repo / "notes" / "b.md").write_text("b\n", encoding="utf-8")
+    _git(repo, "add", ".")
+    two_days = datetime.fromtimestamp(time.time() - 48 * 3600).astimezone().isoformat()
+    _git(repo, "commit", "-q", "-m", "second", env={"GIT_AUTHOR_DATE": two_days, "GIT_COMMITTER_DATE": two_days})
+    _aged(repo / "notes" / "b.md", 48)
+    for rel, text in (("notes/a.md", "a, edited\n"), ("notes/new.md", "new\n"), ("other/old.md", "old\n")):
+        (repo / rel).write_text(text, encoding="utf-8")
+        _aged(repo / rel, 30)
+    (repo / "notes" / "fresh.md").write_text("fresh\n", encoding="utf-8")
+    return repo
+
+
+def test_records_a_claim_left_unsaved_past_the_hours_are_counted_per_repository(tmp_path):
+    from synthesis import board
+    repo = _records(tmp_path)
+    board.claim("S1", [str(repo / "notes")], project="alpha")
+    claims = [c for s in board.sessions() for c in s.claims]
+    found = doctor.unsaved(claims, 24)
+    files, oldest, uncommitted, unpushed = found[os.path.realpath(repo)]
+    assert (files, round(oldest), uncommitted, unpushed) == (3, 48, 2, 1) and len(found) == 1  # a.md, new.md; b.md
+    assert doctor.unsaved(claims, 72) == {}
+    _git(repo, "remote", "remove", "origin")  # with no remote, what is pushed cannot be told: commits are not counted
+    assert doctor.unsaved(claims, 24)[os.path.realpath(repo)][2:] == (2, 0)
+    (repo / "notes" / "a.md").unlink()  # a deleted file is as old as the last change to its folder
+    _aged(repo / "notes", 30)
+    assert doctor.unsaved(claims, 24)[os.path.realpath(repo)][2] == 2
+
+
+def test_the_doctor_warns_of_unsaved_records_never_fails_and_reads_its_hours_from_the_config(tmp_path, capsys):
+    from synthesis import board
+    repo = _records(tmp_path)
+    board.claim("S1", [str(repo / "notes")], project="alpha")
+    claims = [c for s in board.sessions() for c in s.claims]
+    line = doctor.check_unsaved({}, claims)
+    assert line.status == "warn" and "1 repository holds claimed records unsaved past 24 h" in line.detail
+    assert "3 file(s), the oldest 48 h (2 uncommitted, 1 in commits no remote holds)" in line.detail
+    assert doctor.check_unsaved({"unsaved_hours": 72}, claims).status == "ok"
+    assert doctor.check_unsaved({"unsaved_hours": False}, claims) == doctor.Check("ok", "unsaved records", "off (unsaved_hours is false)")
+    for bad in ("24", 0, -1, True, None):
+        line = doctor.check_unsaved({"unsaved_hours": bad}, claims)
+        assert line.status == "warn" and "is not a number of hours above 0, so 24 is used" in line.detail, bad
+    assert doctor.check_unsaved({}, []).status == "ok"
+    assert doctor.main(["--unsaved"]) == 0 and capsys.readouterr().out == "1\n"
+    assert [c.status for c in doctor.run_checks(find=lambda h: None) if c.name == "unsaved records"] == ["warn"]
+    paths.config_file().parent.mkdir(parents=True, exist_ok=True)
+    paths.config_file().write_text(json.dumps({"unsaved_hours": False}), encoding="utf-8")
+    assert doctor.main(["--unsaved"]) == 0 and capsys.readouterr().out == "0\n"
+    paths.config_file().write_text("{not json", encoding="utf-8")
+    assert doctor.main(["--unsaved"]) == 0 and capsys.readouterr().out == "unknown\n"
+
+
+def test_unsaved_reads_every_name_every_branch_a_folder_removed_whole_and_fails_closed(tmp_path):
+    """5.19.0's first review: M5 (a quoted name), m1 (another branch), m2 (a folder deleted whole), M9 (Finder's
+    files are not records) and M6 (git that cannot read the checkout is said, never read as nothing)."""
+    from synthesis import board
+    remote, repo = tmp_path / "r.git", tmp_path / "repo"
+    subprocess.run(["git", "init", "-q", "--bare", "-b", "main", str(remote)], check=True)
+    subprocess.run(["git", "clone", "-q", str(remote), str(repo)], check=True, capture_output=True)
+    (repo / "notes" / "sub").mkdir(parents=True)
+    (repo / "notes" / "sub" / "x.md").write_text("x\n", encoding="utf-8")
+    (repo / "notes" / "keep.md").write_text("keep\n", encoding="utf-8")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-q", "-m", "first")
+    _git(repo, "push", "-q", "-u", "origin", "main")
+    two_days = datetime.fromtimestamp(time.time() - 48 * 3600).astimezone().isoformat()
+    dated = {"GIT_AUTHOR_DATE": two_days, "GIT_COMMITTER_DATE": two_days}
+    (repo / "notes" / "café.md").write_text("accented\n", encoding="utf-8")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-q", "-m", "accented", env=dated)
+    _git(repo, "checkout", "-q", "-b", "feature")
+    (repo / "notes" / "f.md").write_text("on a branch\n", encoding="utf-8")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-q", "-m", "branch", env=dated)
+    _git(repo, "checkout", "-q", "main")
+    shutil.rmtree(repo / "notes" / "sub")  # a tracked file deleted with its folder
+    (repo / "notes" / ".DS_Store").write_bytes(b"\x00")
+    for path in (repo / "notes" / ".DS_Store", repo / "notes"):
+        _aged(path, 30)
+    board.claim("S1", [str(repo / "notes")], project="alpha")
+    claims = [c for s in board.sessions() for c in s.claims]
+    assert doctor.unsaved(claims, 24)[os.path.realpath(repo)][2:] == (1, 2)  # sub/x.md; café.md and f.md
+    (repo / ".git" / "index").write_bytes(b"not an index")
+    line = doctor.check_unsaved({}, claims)
+    assert line.status == "warn" and "could not read" in line.detail

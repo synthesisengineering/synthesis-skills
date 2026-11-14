@@ -66,6 +66,17 @@ there with no item here fails:
   defaults, and one that does not parse makes the send and deploy guards block everything;
 - `board`: no board file is left under `state/`, where no session has read one since
   5.1.18;
+- `scheduled fetch`: on macOS, the hourly job fetched each knowledge root and sessions repo
+  within the last day, never merging; each it could not fetch is named with git's reason and
+  when it was last fetched, and a Mac with no such checkout is ok, with nothing to fetch
+  (config `scheduled_fetch`, false turns it off and the line says so; 5.19.0);
+- `unsaved records`: no file under a claim on the board has stayed uncommitted, or in a
+  commit on any local branch that no remote holds, longer than the config's `unsaved_hours`
+  (24 when absent; false turns the count off, and the line says so), counted per repository
+  with the oldest age, and a claimed checkout git cannot read is named; a warning, never a
+  failure (5.19.0). The weekday evening job shows a fixed banner for one such repository,
+  or for more than one, naming none; `synthesis doctor --unsaved` prints that count, or
+  `unknown`, running no other check and writing nothing;
 - `sessions repo <ws>`: each workspace's sessions repository is cloned where the config
   says, was synced within two days, and is under 3 GB;
 - `sessions export`: the last copy of session transcripts left none it could not copy;

@@ -16,6 +16,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import time
 from datetime import date
 from pathlib import Path
@@ -117,7 +118,7 @@ def test_the_nudge_fires_when_its_state_tool_cannot_answer(tmp_path: Path, break
 
 def test_the_banner_texts_are_fixed_and_name_nothing() -> None:
     text = (SCRIPTS / "day-end-nudge.sh").read_text(encoding="utf-8")
-    assert text.count("display notification") == 5
+    assert text.count("display notification") == 7
     assert all("$" not in part.splitlines()[0] for part in text.split("display notification")[1:])
 
 
@@ -153,6 +154,41 @@ def test_the_nudge_says_when_a_harness_has_not_shown_its_guard_running(tmp_path:
     assert nudge(home, tmp_path) == [SEVERAL]
     state(home, [{"date": TODAY, "direction": "day-end", "workspace": "alpha", "ts": "x"}], EVERY_DAY)
     assert nudge(home, tmp_path) == [SEVERAL, BANNER]                           # and the evening banner beside it
+
+
+UNSAVED_ONE = '-e display notification "One repository has claimed records left unsaved — details in your synthesis console" with title "Synthesis"'
+UNSAVED_SEVERAL = ('-e display notification "More than one repository has claimed records left unsaved — details in your synthesis '
+                   'console" with title "Synthesis"')
+
+
+def _claimed_and_unsaved(home: Path, tmp_path: Path, name: str) -> None:
+    """A repository with a file 30 hours old that no commit holds, in a folder a session claimed on home's board."""
+    repo = tmp_path / name
+    subprocess.run(["git", "init", "-q", str(repo)], check=True, capture_output=True)
+    (repo / "notes").mkdir()
+    (repo / "notes" / "draft.md").write_text("not committed\n", encoding="utf-8")
+    when = time.time() - 30 * 3600
+    os.utime(repo / "notes" / "draft.md", (when, when))
+    claim = "import sys; sys.path.insert(0, sys.argv[1]); from synthesis import board; board.claim('S-' + sys.argv[3], [sys.argv[2]])"
+    subprocess.run([sys.executable, "-S", "-B", "-c", claim, str(home / "current"), str(repo / "notes"), name], check=True,
+                   env={**os.environ, "SYNTHESIS_HOME": str(home)})
+
+
+def test_the_nudge_says_when_claimed_records_stay_unsaved(tmp_path: Path) -> None:
+    """Plan item 13.5, part 2 (5.19.0): a record a seat claimed and left unsaved past the config's hours. The doctor
+    counts the repositories that hold one, reading the board and git and writing nothing; a fixed banner says one,
+    or more than one, and names nothing."""
+    home = runtime(tmp_path)
+    _all_closed(home, codex=[])
+    assert nudge(home, tmp_path) == []
+    _claimed_and_unsaved(home, tmp_path, "first")
+    before = snapshot(home)
+    assert nudge(home, tmp_path) == [UNSAVED_ONE]
+    assert snapshot(home) == before, "the nudge must never write state"
+    _claimed_and_unsaved(home, tmp_path, "second")
+    assert nudge(home, tmp_path) == [UNSAVED_SEVERAL]
+    (home / "config.json").write_text(json.dumps({"unsaved_hours": 72}), encoding="utf-8")
+    assert nudge(home, tmp_path) == []
 
 
 def test_the_nudge_says_when_no_look_was_taken_since_synthesis_changed(tmp_path: Path) -> None:

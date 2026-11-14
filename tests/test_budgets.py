@@ -897,10 +897,23 @@ ROOT = Path(__file__).resolve().parents[1]
 # _identity 5 (a desktop session named with its own folder). guards.py 11: _claude_parts 12 (a path's parts below the
 # CLI's projects folder or a desktop session's, by its words alone) and _protected_roots 1, with _own and _material one
 # fewer each. The repository's conftest 7 (no test reads this Mac's desktop sessions).
+# 5.19.0 (2026-11-13): core 356 more and plugin 356 (plan item 13.5, parts 1 to 3, with the 23 findings of its first
+# review round), so a record no commit holds yet leaves this Mac with something. checkout.py 150: snapshot 38 (the
+# claim's own untracked files first, every one of them not kept named, a file holding a credential left out),
+# _tree_commit 28 (one commit through a temporary index for every snapshot; a file git refuses is left out and the rest
+# kept), _staged_commit 17 (what the index held, as the snapshot's last parent), _holds 12, the module's constants 10,
+# _changes 9 (git that cannot read is said; Finder's files are no record), _append 9 (a lock, and the journal's lines go
+# with their snapshots), _stamp 8 and _commit 6 (no identity needed, the present time), _run 8 with _git 3 fewer (bytes,
+# no newline translation), Unreadable 4, snapshot_paths 3 and dirty_under 1 (a repository inside a claim). doctor.py
+# 119: unsaved 46 (every branch, names as written, a folder removed whole), check_fetch 31, check_unsaved 16,
+# unsaved_hours 10, main 10 (--unsaved) and run_checks 6. sessions.py 46: fetch 26 and _fetch_one 20 (no FETCH_HEAD,
+# git's own reason, nothing asked). credentials.py 37: the commit check's patterns moved word for word (commit_check.py
+# 15 fewer) and held 9. cli.py 18: release 6 (refused when git cannot read), journal 6 (byte for byte; what was not
+# kept), claim 4 and sessions 2. hook.py 1.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # consolidate first).
-CORE_BUDGET = 13913
-PLUGIN_BUDGET = 36886
+CORE_BUDGET = 14269
+PLUGIN_BUDGET = 37242
 
 
 def _lines(files):

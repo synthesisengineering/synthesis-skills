@@ -1275,6 +1275,52 @@ def _git(repo: Path, *args: str) -> subprocess.CompletedProcess:
     return subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True, timeout=900)
 
 
+def _fetch_one(repo: str) -> str:
+    """`git fetch` in one checkout: "" or why it failed. It writes no FETCH_HEAD (a person's `git pull` reads theirs),
+    runs no maintenance after, and asks nothing: no terminal prompt, no credential window, ssh in batch mode unless
+    the person set an ssh command of their own."""
+    env = {**os.environ, "GIT_TERMINAL_PROMPT": "0", "GCM_INTERACTIVE": "never", "SSH_ASKPASS_REQUIRE": "never"}
+    try:
+        own = "GIT_SSH_COMMAND" in os.environ or subprocess.run(["git", "-C", repo, "config", "--get", "core.sshCommand"],
+                                                                capture_output=True, timeout=30).stdout.strip()
+        env.update({} if own else {"GIT_SSH_COMMAND": "ssh -o BatchMode=yes"})
+        done = subprocess.run(["git", "-C", repo, "-c", "gc.auto=0", "-c", "maintenance.auto=false", "-c", "credential.interactive=false",
+                               "fetch", "--quiet", "--no-write-fetch-head"], capture_output=True, timeout=120,
+                              stdin=subprocess.DEVNULL, env=env)
+        said = [line.strip() for line in done.stderr.decode("utf-8", "replace").splitlines() if line.strip()]
+        why = "" if done.returncode == 0 else next((line for line in said if line.startswith(("fatal:", "error:"))),
+                                                   said[-1] if said else f"exit {done.returncode}")
+    except (OSError, subprocess.SubprocessError) as exc:
+        why = str(exc)
+    return re.sub(r"//[^/@\s]+@", "//", why)[:200]  # a remote's address can carry a credential
+
+
+def fetch() -> list:
+    """The hourly job also fetches (plan item 13.5, part 3; 5.19.0): each knowledge root and each sessions repo, so
+    `git status` in a checkout says how far it is behind its remote without an agent fetching first. It fetches
+    only, never merging or pulling, and keeps when each was last fetched, and why one could not be, in
+    `.state/fetch.json` for the doctor. Config `scheduled_fetch: false` turns it off, for a remote that asks for a
+    passphrase or an approval. Returns the lines the job's log shows."""
+    from concurrent.futures import ThreadPoolExecutor
+    from synthesis import project
+    if paths.config().get("scheduled_fetch", True) is False:
+        return ["scheduled fetch: off (scheduled_fetch is false)"]
+    targets = sorted({str(r) for r in [*project.roots(), *repos().values()] if (Path(r) / ".git").exists()})
+    stamp, now = root() / ".state" / "fetch.json", datetime.now().astimezone().isoformat(timespec="seconds")
+    last = paths.read_json(stamp).get("repos") or {}
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        results = dict(zip(targets, pool.map(_fetch_one, targets)))
+    kept = {}
+    for repo, why in results.items():
+        entry = {k: v for k, v in (last.get(repo) or {}).items() if k == "fetched"}
+        kept[repo] = {**entry, "tried": now, **({"failed": why} if why else {"fetched": now})}
+    paths.write_json(stamp, {"at": now, "repos": kept})
+    if not targets:
+        return ["scheduled fetch: nothing to fetch (no knowledge root or sessions repo is a git checkout)"]
+    return [f"scheduled fetch: {sum(not why for why in results.values())} of {len(targets)} repositories fetched"] + [
+        f"{repo}: not fetched ({why})" for repo, why in results.items() if why]
+
+
 def sync(workspace: str = "", push: bool = True) -> list:
     """Export what is new, then copy each workspace's conversation and tool calls into its sessions repo, one
     commit per month touched, and push. A line starting FAILED means that workspace's copy is not on its upstream."""
