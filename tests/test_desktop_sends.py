@@ -198,7 +198,8 @@ RETURN = ("computer", {"action": "key", "text": "Return", "action_summary": "Pre
 @pytest.mark.parametrize("url", ["https://chat.google.com/room/AAA", "https://mail.google.com/chat/u/0/#chat/dm/x",
                                  "https://app.slack.com/client/T1/C2", "https://example.slack.com/archives/C2",
                                  "https://web.whatsapp.com/", "https://www.linkedin.com/messaging/thread/2-x/",
-                                 "https://teams.microsoft.com/v2/"])
+                                 "https://teams.microsoft.com/v2/", "https://www.facebook.com/messages/t/1234567890/",
+                                 "https://web.facebook.com/messages/", "https://www.instagram.com/direct/t/1234/"])
 def test_return_on_a_messaging_site_waits_for_the_code(tmp_path, url):
     """2026-10-22: Return in a Google Chat compose box went out with no code, since a page counted as no app."""
     reason = guards.check(CHROME, _steps(RETURN), CONFIG, session=_on(tmp_path, 7, tab7=url))
@@ -214,6 +215,16 @@ def test_return_on_a_messaging_site_waits_for_the_code(tmp_path, url):
 ])
 def test_return_that_writes_a_line_or_is_elsewhere_needs_no_code(tmp_path, url, step):
     assert guards.check(CHROME, _steps(step), CONFIG, session=_on(tmp_path, 7, tab7=url)) is None
+
+
+@pytest.mark.parametrize("url", ["https://www.facebook.com/", "https://facebook.com/groups/1/",
+                                 "https://www.facebook.com/search/top?q=x", "https://www.instagram.com/p/x/"])
+def test_every_facebook_and_instagram_page_holds_return(tmp_path, url):
+    """2026-11-14: the guard knew www.messenger.com, but Messenger also runs inside facebook.com, in its own page and in
+    chat pop-ups on every page, and Return in a comment box posts in the principal's name. A page cannot show which box
+    has the focus, so every page of the two sites holds Return, a search box's included."""
+    reason = guards.check(CHROME, _steps(RETURN), CONFIG, session=_on(tmp_path, 7, tab7=url))
+    assert "approve" in reason and "sends in the browser (" in reason
 
 
 def test_an_email_sites_send_shortcut_and_a_typed_line_break_in_chat_wait(tmp_path):
