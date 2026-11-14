@@ -480,8 +480,8 @@ their messages a box may be a search, so a call that only types there (no click,
 breaks a register or format rule is not refused outright: it waits for the principal's code, and the hold names the
 rule, so they decide with the words in front of them. One code releases one identical call. A call that sends, or
 does anything besides typing, is refused outright, as on a page of messages, where typing writes a message, and as
-on every page of Gmail; an address that can change keeps its own code. Holding these words unscanned until a call sends instead would let a
-comment typed in one call and posted by Return in the next reach people with no scan at all.
+on every page of Gmail; an address that can change keeps its own code. Holding these words unscanned until a call
+sends instead would let a comment typed in one call and posted by Return in the next reach people with no scan at all.
 
 In any app or browser page, an action whose summary starts with a sending verb (sends, replies, forwards, posts,
 publishes, shares, invites, responds, comments, mentions, announces, notifies, reminds, schedules, delivers,
