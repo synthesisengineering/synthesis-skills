@@ -234,6 +234,33 @@ def test_a_read_that_does_not_reach_the_day_asked_for_saves_what_it_read_and_say
     assert "back to 2024-03-05 09:02 America/New_York" in printed and len(transcripts(out)) == 1
 
 
+CRYPT = item(0, "a participant", "New messages and calls are secured with end-to-end encryption. Invented words follow.")
+
+
+def test_the_encryption_notice_mid_log_is_neither_a_message_nor_a_day(cp, capsys, tmp_path):
+    """Live, 2026-11-14: the notice where a chat became end-to-end encrypted carries a message's label, sent at time zero
+    in the browser's zone (December 31, 1969, 7:00 PM in New York) by `a participant`, and sits between the messages
+    from before the switch and after it, not at the chat's start."""
+    after = (T0 + 400 * DAY, ALEX, "Back on this chat after the switch")  # 2025-04-09
+    log, out = [item(*M1), item(*M4), CRYPT, item(*after)], tmp_path / "out"
+    code, printed = save(cp, capsys, tmp_path, [chat(log)], "--out", out, "--since", "2024-03-05")
+    assert code == 0, printed
+    text = next(iter(transcripts(out).values()))
+    assert split_fences(text)[1] == [M1[2], M4[2], after[2]] and "a participant" not in text and "1970" not in text
+    assert "back to 2024-03-05 09:02 America/New_York" in printed and "1 notice not written" in printed
+    assert "1969" not in printed and "start" not in printed and "held" not in printed
+    code, printed = save(cp, capsys, tmp_path, [chat(log)], "--out", tmp_path / "other", "--since", "2024-03-01")
+    assert code == 1 and "it stops short of 2024-03-01" in printed  # the notice's false date reaches no day
+
+
+def test_a_label_dated_before_2004_02_04_carries_no_date_and_is_held_for_a_person(cp, capsys, tmp_path):
+    early = int(datetime(2003, 6, 1, 16, 0, tzinfo=timezone.utc).timestamp() * 1000)
+    out = tmp_path / "out"
+    code, printed = save(cp, capsys, tmp_path, [chat([item(early, ALEX, "Dated before Facebook began"), item(*M4)])],
+                         "--out", out, "--since", "2024-03-07")
+    assert code == 1 and "1 held for a person" in printed and "before 2004-02-04" in printed and "2003" not in printed
+    assert split_fences(next(iter(transcripts(out).values())))[1] == [M4[2]]
+
 @pytest.mark.parametrize("read, says", [
     (dict(chat([]), log=None, url="https://www.facebook.com/login/?next=%2Fmessages%2F",
           page="Log in to Facebook\nEmail address or phone number\nPassword\n"), "stop and tell the principal"),

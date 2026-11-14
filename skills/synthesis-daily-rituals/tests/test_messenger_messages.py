@@ -396,16 +396,22 @@ def row_html(r) -> str:
             f"<div role=\"button\" aria-label=\"{html.escape(r['options'])}\"></div></div>")
 
 
-def in_chromium(script: str, rows: list, hidden: list) -> dict:
+def in_chromium(script: str, rows: list, hidden: list, scroller: str = "") -> dict:
     """The extractor run in a headless Chromium on a page shaped like the list: the Chats grid in its tab panel, a
-    hidden Archived chats panel behind it and "No chats selected" beside it. Nothing touches the network."""
+    hidden Archived chats panel behind it and "No chats selected" beside it. With `scroller` the rows sit in a scroll
+    container inside the grid, as on facebook.com, scrolled to its top or its bottom. Nothing touches the network."""
+    listed = "".join(map(row_html, rows))
+    if scroller:
+        listed = f"<div id=\"scroller\" style=\"height: 120px; overflow-y: auto\">{listed}</div>"
     page = ("<!doctype html><html><head><meta charset=\"utf-8\"><title>Messenger | Facebook</title></head><body>"
             "<div role=\"navigation\" aria-label=\"Thread list\"><div role=\"button\" aria-label=\"Settings, help and more\">"
             "</div></div><div role=\"tablist\"><div role=\"tab\">All</div><div role=\"tab\">Unread</div></div>"
             "<div role=\"tabpanel\" aria-label=\"All chats\"><div role=\"grid\" aria-label=\"Chats\">"
-            + "".join(map(row_html, rows)) + "</div></div><div hidden><div role=\"grid\" aria-label=\"Archived chats\">"
+            + listed + "</div></div><div hidden><div role=\"grid\" aria-label=\"Archived chats\">"
             + "".join(map(row_html, hidden)) + "</div></div><div role=\"main\"><span>No chats selected</span></div>"
-            "<script>var found = " + script + ";\nvar out = document.createElement('pre'); out.id = 'messenger-result';"
+            "<script>var box = document.getElementById('scroller');"
+            + (" box.scrollTop = box.scrollHeight;" if scroller == "bottom" else "")
+            + "\nvar found = " + script + ";\nvar out = document.createElement('pre'); out.id = 'messenger-result';"
             " out.textContent = found; document.body.appendChild(out);</script></body></html>")
     work = Path(tempfile.mkdtemp(prefix="messenger-list-", dir="/tmp"))  # Chromium's socket path limit is short
     try:
@@ -433,3 +439,20 @@ def test_the_extractor_on_a_page_shaped_like_the_list_saves_what_parse_reads(tmp
     behind = in_chromium(extractor("archived"), CHATS, [row("Zed Zane", "You: ok", "3w", "9001")])
     late = mm.parse(behind, datetime.fromisoformat(READ_AT), "", 0, "archived", False)  # a hidden panel's rows read empty
     assert late["threads"] == [] and late["coverage"]["unreadable"] == 1
+
+
+@pytest.mark.skipif(CHROMIUM is None, reason="no Chromium: set SYNTHESIS_TEST_CHROMIUM or put one on PATH")
+@pytest.mark.parametrize("scroller, bottom", [("top", False), ("bottom", True), ("", False)],
+                         ids=["scroller-in-the-grid-not-at-its-end", "scroller-in-the-grid-at-its-end", "no-scroller"])
+def test_end_is_granted_only_where_the_extractor_sees_the_lists_scroll_container_at_its_end(mm, scroller, bottom):
+    """Live, 2026-11-14: facebook.com's scroll container sits inside the grid (grid > ... > scroller > rows), so a walk
+    up from the grid found none and reported the list at its bottom; one wheel scroll then loaded 38 rows where 25 had
+    been. The extractor looks up from the first row, and with no scroll container found the list is not at its end."""
+    read = in_chromium(extractor("chats"), CHATS, [], scroller)
+    assert read["bottom"] is bottom and len(read["rows"]) == 6
+    moment = datetime.fromisoformat(READ_AT)
+    if bottom:
+        assert mm.parse(read, moment, "2026-10-01", 0, "chats", False, True)["coverage"]["complete"] is True
+    else:
+        with pytest.raises(SystemExit):
+            mm.parse(read, moment, "2026-10-01", 0, "chats", False, True)
