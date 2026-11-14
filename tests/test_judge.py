@@ -395,6 +395,17 @@ def test_a_malformed_judge_section_is_said_and_the_list_still_decides():
     assert "judge" in reason[len(today) - 1:] and "tell the principal" in reason.lower()
 
 
+def test_the_judge_answers_inside_the_stop_hooks_room_or_the_list_decides(fake, monkeypatch):
+    """The judge runs after the reply check's other work, inside a room counted from the check's start, so a slow
+    model or machine never pushes the Stop hook past its limit, where the harness would drop the list's sendback too."""
+    monkeypatch.setattr(reply_check, "ROOM", 0.5)
+    fake.local, fake.delay = _local(verdict="pass", rule="none", span=""), 2.0
+    lazy = {"last_assistant_message": "I'll handle the rest for now and revisit later."}
+    began = time.monotonic()
+    assert reply_check.check(lazy, _config(fake)) == reply_check.check(lazy, {})
+    assert time.monotonic() - began < 1.2
+
+
 def test_the_judge_is_not_loaded_on_a_turn_end_it_does_not_read(isolated_home):
     program = ("import json, sys; from synthesis import reply_check; "
                "reply_check.check({'last_assistant_message': 'Fixed the parser; all tests pass.'}, "

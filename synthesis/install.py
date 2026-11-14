@@ -60,8 +60,8 @@ def _home() -> Path:
 
 def package_hash(plugin_root: Path) -> str:
     digest = hashlib.sha256()
-    for path in sorted((plugin_root / "synthesis").glob("*.py")):
-        digest.update(path.name.encode() + b"\0" + path.read_bytes())
+    for path in sorted((plugin_root / "synthesis").glob("*.py")) + sorted((plugin_root / "synthesis" / "policies").glob("*.md")):
+        digest.update(path.name.encode() + b"\0" + path.read_bytes())  # a judge's policy (judge.py) is the runtime's too
     for rel, path in _stable_skill_files(plugin_root):
         digest.update(rel.encode() + b"\0" + path.read_bytes())
     return digest.hexdigest()[:16]

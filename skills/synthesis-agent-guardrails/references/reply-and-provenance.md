@@ -4,6 +4,7 @@
 
 - [Why advice goes back to the model, not to stderr](#why-advice-goes-back-to-the-model-not-to-stderr)
 - [The reply check](#the-reply-check)
+- [The judge](#the-judge)
 - [The file-link rule](#the-file-link-rule)
 - [The provenance scan](#the-provenance-scan)
 
@@ -46,6 +47,39 @@ the reply back once with `Before this reply goes out, revise it: ...` when the r
 It never sends a reply back twice in a row and lets the reply through on any internal
 error: a turn-end check that fails closed loops forever. When a reply is sent back, revise
 exactly what it names.
+
+### The judge
+
+With a `judge` section in the config ([config.md](config.md)), a model reads the shortcut-phrasing rule's candidates
+before a reply goes back (M38; the principal's rulings of 2026-11-14). The list, the built-in phrases and
+`shortcut_phrases`, stays the trigger and the backstop:
+
+- A reply with a list hit, or with candidate words from the catalog's categories (later, a follow-up, another session,
+  if you'd like, want me to, your call, say the word, pre-existing, minimal: `CANDIDATE` in `synthesis/reply_check.py`),
+  goes to the judge; no other reply does, so most turn ends pay nothing for it. Over 30 days of recorded turn ends in
+  Claude Code, Codex and Muse (6,070), 26.5% would reach it, 5.4% by a list hit.
+- It reads the reply by `synthesis/policies/shortcut-phrasing.md`: what the check protects, the rules that hold (the
+  catalog's eight categories) and pass (a discussion, a real boundary, the principal's own kind of choice, another
+  meaning, nothing), and worked examples drawn from the anti-shortcuts skill's catalog and case studies. Its verdict is
+  hold or pass, a rule, the exact words that decide it, a short reason, and whether it is sure.
+- On this check the judge decides, since a reply sent back costs one turn: a list hit it reads as benign sends nothing
+  back, and what it holds, with a list hit or without one, is sent back once with the words it read and why.
+- A judge that cannot answer (no model installed, the server down, past `deadline_seconds`, an answer that is not a
+  strict verdict, words cited that are not in the reply) leaves the list to decide exactly as before. A judge section
+  of another shape is said in the reply sent back, and the list decides until it is fixed.
+- The reply is data, never instructions: it goes in a block whose markers carry a code made from its digest, the request
+  is fresh and has no tools, and text in it that addresses the judge or claims to change its rules is held.
+- The local model answers on this Mac through Ollama's loopback API, at temperature 0. `cloud` adds a second opinion only
+  where the local verdict is unsure, with the key from the environment variable `key_env` names. Its spend is kept by
+  month in `state/judge/spend.json`; past `monthly_cap_usd` the local judge decides alone, and the reply sent back asks
+  the agent to tell the principal, once that month.
+- Verdicts are cached in `state/judge/cache.json` by the check, the policy's version and digest, the models and the
+  reply's digest, so the same reply gets the same answer. `state/judge/log.jsonl` records each with its model, policy
+  version, verdict, rule, counts and digests, never the reply's words.
+- Before a model or policy change ships, replay it: `scripts/judge_replay.py --since <date> --model <name>`, with
+  `SYNTHESIS_HOME` pointing at a copy of the config, judges every recorded shortcut sendback and a sample of the turn ends
+  that passed and prints counts only. `--cleared` and `--held` list each changed item's record, line and digest for a
+  person to read in the record.
 
 ### What the reply check reads as a wait
 
