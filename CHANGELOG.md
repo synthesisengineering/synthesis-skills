@@ -28,6 +28,23 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   across a change of the plugin's files and version, and through the startup review's "Trust all". Then end to end:
   the plugin installed with Codex's own commands, the option turned on, the four approved as `/hooks` approves them,
   and a release that changed the plugin's files and version, with the user-level hooks trusted throughout.
+- **A fault of setup on an approval line no longer reads as waiting on the person.** The release counted any failing
+  Codex or Muse approval line as waiting on the person. With the user-level option the same line can name a fault (a
+  plugin copy left on, a declaration unlike the plugin's, a plugin Codex cannot fingerprint), which no approval fixes;
+  `doctor.waits_on_person` tells the two apart, and the release now holds on a fault. Tests first.
+- **Room for rules in three skill files, by whole passages moved word for word** (daily rituals 3.17.0, waiting
+  1.2.0, message guard 2.11.0). The daily rituals' contents entry for the rewrite moves to the head of its coverage
+  map; the waiting skill's last two sentences move to its watchers reference; the message guard's procedure moves to
+  `references/procedure.md`. Then the rules whose mechanisms had shipped: daily rituals rule 6 says a date after
+  today is refused and rule 16 that a `NOT CHECKED` line is said first, never read as all clear; waiting rule 9 says
+  a message to a person is a wait; message guard rules 16 and 17 say that an address that can change never goes to a
+  person and that a time in a message rests on a fresh calendar read.
+- **The browser guard holds Return on every page of facebook.com, instagram.com and www.linkedin.com.** It knew
+  www.messenger.com and LinkedIn's `/messaging`, but Messenger also runs inside facebook.com, in its own page and in
+  chat pop-ups on every other page, Return in a comment box posts in the person's name, and LinkedIn's messages open
+  in an overlay on every page. A page cannot show which box has the focus. Measured first: over 30 days of recorded
+  browser calls, none pressed Return on these sites outside their messages (the control counts 320 calls on LinkedIn
+  and 10 on facebook.com), so the hold costs nothing measured. Tests first.
 
 ## [5.20.1] - 2026-11-13
 
