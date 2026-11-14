@@ -24,13 +24,14 @@ specifics live only in `.agents/knowledge-base.yaml`.
 2. **Editable/refused/generated path rules are mechanical gates.** Write only where `kb_config.py --resolve` says `editable`; `generated` and `refused` are hard stops, and a request outside editable scope becomes a reviewer note.
 3. **One owning concept per fact.** Search every existing mention before writing and never create a second concept for a fact an existing one owns.
 4. **One configured date field; no aliases.** Frontmatter and taxonomy are single sources of truth: use only declared fields and controlled values, and remove conflicting body copies.
-5. **Validate before saving:** the config check, the OKF validator, the consistency check and the configured confidentiality scanner. A protective control that cannot run blocks shipping.
+5. **Validate before saving:** the config check, the OKF validator, the consistency check, the configured confidentiality scanner and, when the contract names a sharing policy, its phrase scan. A protective control that cannot run blocks shipping.
 6. **Never bypass hooks, scanners, reviews, or branch protections,** and never use `--no-verify`. A bypassed control protects nothing.
 7. **The index holds exactly this change.** Never stage sibling-session work, and never discard or silently absorb unrelated edits.
 8. **Never merge a `ship: pr` edit from the editor workflow,** and never commit it on the default branch; publishing belongs to the reviewer named in `review.who_merges`.
 9. **Claim the repository area on the synthesis coordination board before writing** when concurrent root sessions are active.
 10. **Never force-push or rewrite shared history.** A failed fast-forward stops and is surfaced.
 11. **This skill does not widen authority.** Follow the current session's authorization rules for every commit, push and merge.
+12. **Information goes in by extraction.** Put each fact a source holds in the concept that owns it, citing the source; convert a whole document only when its full text is the reference. Every import's review request lists what was left out, by class and count, never the facts, so the reviewer sees what was held back.
 
 ## Contents
 

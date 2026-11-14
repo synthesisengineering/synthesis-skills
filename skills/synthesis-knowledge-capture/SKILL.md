@@ -33,6 +33,7 @@ Rules 1 to 4 are the skill's four hard merge rules, in their original order.
 7. **Where a fact was learned does not set where it may be stored.** The fact's tier governs.
 8. **Validate and log before shipping:** both `synthesis-okf` layers clean, a `log.md` entry naming the change and its source.
 9. **Ship through `synthesis-kb-edit`** with the exact touched files. Stage only those, name the area (never the specifics) in the commit message, check `git remote -v`, push per posture.
+10. **Facts go in by extraction, and what was left out is counted.** Write each fact into the concept that owns it, never a pasted or converted source unless its full text is the reference; the review request synthesis-kb-edit opens lists what was left out, by class and count (the sharing policy's classes where the contract names one), never the facts.
 
 ## Contents
 
