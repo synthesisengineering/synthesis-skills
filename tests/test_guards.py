@@ -308,3 +308,17 @@ def test_a_deploys_hold_says_the_approval_binds_to_its_command_and_head(tmp_path
     head = subprocess.run(["git", "-C", str(site), "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
     said = guards.check("Bash", {"command": "git push origin main"}, {"push_deploys": [str(site)]}, cwd=str(site))
     assert f"site at HEAD {head[:10]}" in said and "run from" not in said, said
+
+
+def test_an_alias_that_deploys_and_a_script_too_large_to_read_are_held(tmp_path):
+    """5.20.1's review, F11: an alias whose value deploys, defined in a sourced script and used there, ran unasked; and
+    a script past the 256 KB this guard reads passed whatever it held. Both are held: what cannot be read is not let
+    through, and an alias is read for what it runs."""
+    scripts = tmp_path / "scripts"
+    scripts.mkdir()
+    (scripts / "alias.sh").write_text("alias pub='npx wrangler pages deploy dist --project-name=site'\npub\n")
+    (scripts / "huge.sh").write_text("#!/bin/sh\n" + "# filler\n" * 40000 + "echo done\n")
+    for command in (". scripts/alias.sh", "source scripts/huge.sh", "bash scripts/huge.sh",
+                    "alias pub='npx wrangler pages deploy dist'; pub"):
+        assert "production" in (guards.check("Bash", {"command": command}, {}, cwd=str(tmp_path)) or ""), command
+    assert guards.check("Bash", {"command": "alias ll='ls -la'; ll"}, {}, cwd=str(tmp_path)) is None
