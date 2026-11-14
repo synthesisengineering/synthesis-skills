@@ -985,6 +985,78 @@ ROOT = Path(__file__).resolve().parents[1]
 # send guard passes, a navigate that names no host keeps a messaging site's page; the account check still takes it as
 # unknown); _pages 1 (whether a box on every page may be a search); check_desktop 11 (10 for the
 # words of a call that only types on those pages, which go on the principal's code, and 1 for the pages read beside apps).
+# 5.22.0 (unreleased): plugin 248 more and the core as it was, for the sharing standard (plan item 14.1), which ships
+# no phrase list (the principal's ruling of 2026-11-14). sharing_scan.py 162, new (the policy's backstop scan): main 37
+# (one way of choosing lines, a refusal with its reason and exit 2, a held line named by file, line and phrase only,
+# the summary), its opening words 17 (the shebang and the docstring with its three commands), read_contract 17 (the
+# contract checked whole, then no policy, a policy that is not there and no phrases, each refused with what to do),
+# added 19 (the lines a range or the index adds under the bundle, by their new numbers; a move read as a deletion and an
+# addition, so a file moved in is judged whole; a binary file marked), whole 14 (every line of the named files and of
+# the files in the named folders, a file holding a NUL byte marked, .git passed over), unjudged 7 (the policy, the
+# contract, a path outside the bundle and a file that is not text), imports 6, matcher 5 (a phrase where a word starts,
+# in any case, with any run of spaces between its words; one of five characters or fewer a whole word), git 5 (git's
+# own message when it fails), the bytecode guard, the path beside it and kb_config 3, SHORT and HUNK 2, Refused 2,
+# count 2, the entry point 2, and 24 blank lines between them. kb_config.py 81: adopt_sharing_policy 46 and the two
+# blank lines after it (the policy named with the phrases given or with those the contract lists, never with neither;
+# the template written where the contract says and never over a file that exists; the keys the contract lacks added
+# after its confidentiality line at its first key's indent, every other line kept; the result read back and validated
+# before anything is written, so no policy is left named with no phrases; a contract it cannot change safely refused,
+# with the lines to add by hand), validate_config 11 (any other key refused at every level 4; the phrase list a list of
+# phrases, and at least one while a policy is named, the error naming both ways out, 7; the policy's path read in the
+# loop that reads the other two paths), main 10 (adopt-sharing-policy read first, with its repeatable --phrase, its
+# lines and its exit), KEYS 7 with its two-line note (every key the contract names, by the mapping that holds it),
+# POLICY and TEMPLATE 2, check_paths 2 (a named policy must be there) and the re import 1. workspace.py 5: the policy's
+# template seeded from synthesis-kb-edit's, not a copy, 2, and the line saying it is not adopted and how to adopt it 3.
+# 5.22.0 (unreleased): plugin 344 more, the core as it was (plan item 12.1, ruled 2026-11-14: five collections, each a
+# plugin without hooks, beside the whole set). build_collections.py 299, new (each collection built from the flat folder
+# into a folder of its own, and the branch the release publishes them on): verify 51 (what fails a built folder: a skill
+# in no collection or in several, a dependency out of bounds, a file that is no manifest, license or file of the
+# collection's skills, one that differs from its source, a hook, a skill or license missing, a manifest's name, version
+# or dependency, the Muse list, a file in no folder, the two marketplaces), its header and imports 41 (the docstring 30;
+# the imports 11, with the bytecode guard, its own folder on the path and the directory package's code), main 39
+# (--check, a folder written whole from the commit or not at all, its one line), manifests 17, bounds 15 (a dependency
+# outside a skill's own collection and the core, or outside its own folder where its scripts load it), marketplaces 15,
+# tree 15 (the folders as a git tree, through an index of its own), build 14, homes 13 (each skill's one collection, from
+# its frontmatter or awaiting_room), read_spec 11, category 6, the constants 6, hooked 5, described 5 (one description
+# for the manifests and the marketplace entry), sources 4, order 3, text 2, the entry point 2, and spacing 35. release.py
+# 41: collections_head 17 (the commit the branch moves to on a remote: its head when that holds the folders, else a
+# commit on top), collections 14 (built and checked before the tag), publish 4 (the branch in the atomic push and its
+# read-back), the import 1, the docstring 1, spacing 4. build_directory_package.py 4: tracked 14 (a package's files,
+# now read for the collections too), with carried 12 fewer, and spacing 2.
+# 5.22.0 (unreleased; 2026-11-14): plugin 769 more, all in the new skill synthesis-message-exports; the core is as it
+# was. import_messages.py 769, new (a message export the principal authorized, read whole and checked before anything
+# is written, into one private transcript per conversation; standard library only): main 57 (the arguments, the
+# refusals made before anything is read, the writes and the report); read_export 57 (each file's kind, every
+# conversation read before any write, what is unknown kept for the listing, two ids that would share a file name
+# refused); Zip 43 (read in place: an entry that could lead outside, a link entry, a name given twice or a member over
+# the limit refuses the archive); plan 40 (new, extended or unchanged, reading only the transcripts this export would
+# write; a secure-storage id that now names other people is not merged); parse_transcript 37 (an earlier transcript
+# read back by its fences, an edited one left alone); Folder 35 (walked without following links, refused if it holds
+# one); classify 35 (a file's kind by its place in each layout); its constants 35 (the sections, layouts, media kinds,
+# limits, known fields and the characters that hide themselves); secure_conversation 26 (the secure-storage shape,
+# its timestamp unit decided per file); message_block 24; keyed 23 (a message named by its time and a digest of what
+# it says, so a re-import adds only new messages); dyi_message 21; render 21; dyi_conversation 19; listing 19 (file
+# names and sizes, never text); write 18 (whole or not at all); its docstring 15 and imports 14; read_transcript,
+# secure_message, since_of and uris 12 each; messages_root and safe 11 each; open_export 10; inline, reactions_of and
+# repair 9 each (repair: the Latin-1 escape quirk undone only where it round-trips); Refused and Unknown 8 each;
+# checked_times, code, duration, fence (more backticks than the text holds), in_time_order, load, text_of and visible
+# (hidden characters shown) 7 each; Unreadable 6; day_heading, kind_of, participants_line, shown and tally 5 each;
+# moment, stamp, too_large and whole 4 each; the __main__ guard 2 and the opening two lines 2.
+# 5.22.0 review round 1 (2026-11-14): plugin 157 more, all in the message exports' import_messages.py; the core is as
+# it was. R1-10 4: keyed 2 (the key leaves out the sender's name and an attachment's folders) and parse_transcript 2 (a
+# transcript of an earlier format left alone). R1-11 43: plan 18 (a secure-storage conversation goes to the transcript
+# holding its messages; one in two transcripts, or two for one transcript, skipped), holders 17 (each secure-storage
+# transcript in --out read back), read_export 4 (named by display name and first message, never by index) and slug 4.
+# R1-12 27: fixer 11 (the repair decided once for a whole file), strings_of 9, as_written 4, and the repair passed to
+# the readers 3 (dyi_message, dyi_conversation and secure_conversation 1 each). R1-13 25: Zip 10 (vet: method and
+# ratio from the archive's directory), read_export 9 (count, total and each file's size before the first read), Folder
+# 3 and the three bounds 3. R1-23 16: the hidden and kept characters 6, visible 5, hidden 4 and unicodedata 1. R1-24
+# 11: within (each existing ancestor compared by its identity on disk). R1-26 31: redacted 15 (each name replaced by a
+# token keyed for one run), listing 6 (the caution), main 3 (--listing-redacted), the redaction key and the names a
+# listing keeps 4, hmac and secrets 2, shown 1.
+# Merged into release 5.22.0 on 5.21.0 (2026-11-14): the ceilings are 5.21.0's (core 14924, plugin 38171) and what
+# each 5.22.0 paragraph above adds over 5.20.1's: plugin 248 for the sharing standard, 344 for the collections and 769
+# for the message exports.
 # 5.21.1: guards.py 1, the comment's third line: a click on a control that publishes waits on every page, since a
 # public review went out on a site that is no messaging site through a click on Submit rating.
 # 5.21.1, after the second review of 5.21.0: guards.py 76 more. The summary rules 38: PUBLISHES with effect-first verbs,
@@ -1017,10 +1089,48 @@ ROOT = Path(__file__).resolve().parents[1]
 # own declarations keep the runtime, nothing removed and exit 1, 6; a declaration made meanwhile, 5).
 # The coordinator's ruling on review round 2 (protective automation fails closed): a user-level guard covers only with
 # the fail-closed tail. _runs_as's condition and docstring change in place: no line more.
+# 5.22.0, the guard's time: guards.py 2 in _placed (the script's rebinding searched once, not for each character;
+# a 1,700-character heredoc of substitutions had taken the guard 13 s, past the hook's 5).
+# each 5.22.0 paragraph above adds over 5.20.1's: plugin 248 for the sharing standard, 344 for the collections, 769
+# for the message exports and 157 for their review round 1.
+# 5.22.0's review round 1, the sharing standard's findings (2026-11-14): plugin 252 more, the core 1 of them.
+# kb_config.py 63:
+# adopt_sharing_policy 20 more (the template written first and the policy named only once it says who reads it, a
+# folder at the policy's path refused, a key left null or empty replaced in its place, the contract's own line ending
+# kept, the key the read-back found otherwise named, and the configuration gate run on the result), spelled 15 with its
+# two blank lines (each part of a path as the disk spells it), check_paths 11 (a path spelled otherwise on disk; a
+# named policy still the template as written), validate_config 5 (an unknown key's way out, with a close match; the
+# unread_allowed globs), UNFILLED 4 with its two-line note, unfilled 4 with its two blank lines, the three imports 3
+# and KEYS 1. sharing_scan.py 188 more (350 now): main 42 more (79: --message, the range read from the revisions
+# it names with its commit messages, the index and HEAD for staged scans, the configuration gate before a whole-file
+# scan, links listed, the phrases a change takes out named), rules 27 (the stricter of the contract under review and
+# the one before it: both phrase lists and bundles, only the exemptions both grant; read_contract's 17 gone), hits 23
+# (a phrase in a judged line or wrapped onto it, forms made only for the lines judged), judge 22 (a file's new name,
+# its lines, the contract's values, or a hold for a file that is not text), walked 20 (links never followed, .git
+# passed over; whole's 14 gone), changed 14 (each file a change adds or alters, read as it now is, with --text; added's
+# 19 gone), values 13 (the contract's keys and strings, the phrase list left out), ready 10 (a named policy there
+# and filled in), canon 9 (NFKC, no format characters, one apostrophe and hyphen, separators and CamelCase read as
+# words), text_of 8 (UTF-8, or UTF-16 with its mark), tracked 8 (a bundle git tracks files under), contract_at 7,
+# matchers 6 (matcher's 5 gone), message 5, blob 4, the constants 6, the docstring 3 more, three imports 3,
+# unjudged 2 fewer, count's 2 gone, and 18 more blank and comment lines between them. The core's 1, install.py:
+# STABLE_SKILL_SCRIPTS carries synthesis-kb-edit, so the hooks the standard prints find the scan in the stable runtime.
+# 5.22.0's review, round 1 (2026-11-14): plugin 191 more, the core as it was (findings R1-3, R1-20, R1-21 and R1-22, the
+# collections). build_collections.py 173: verify 37 (a script that cannot start in its collection unless named, an import
+# inside a function with nothing to catch its absence, a stale name, a carried module that imports the rest of the
+# runtime, a carried file missing, out of place or changed, a path into another collection's skill unless named, and a
+# link left leading out of the folder), runtime_imports 21 (the runtime modules a file imports as it starts and inside a
+# function, read from its syntax), needs 12 (through the modules beside it), impure 11, relink 10 (a link that would
+# leave the folder pointed at the file at the tag), reaches 9 (a path into another skill's folder in a string of the
+# code), leaving 8, guards 6, build 5 (the carried runtime files and the links), docstrings 5, imported 5, sources 4 (the
+# runtime's files and every tracked path), ancestors 3, carry 3, catches 3, the constants CARRIABLE, CAUGHT, PRESENT and
+# LINK 4, the imports of ast and posixpath 2, and spacing and a comment line 25. release.py 8: collections_head 8 (the
+# commit takes the release commit's identity and time, unsigned, names it, and is made once for each head).
+# context_doctor.py 6: repo_state 3 and cited_entries 3 (without the runtime's claims log or session archive, each says
+# what it cannot tell). local_messaging.py 4: _close 4 (without the runtime's approvals nothing is closed, in one line).
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
-# consolidate first).
-CORE_BUDGET = 15097
-PLUGIN_BUDGET = 38379
+# than consolidate first).
+CORE_BUDGET = 15100
+PLUGIN_BUDGET = 40342
 
 
 def _lines(files):

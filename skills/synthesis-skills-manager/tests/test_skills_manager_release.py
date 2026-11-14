@@ -3,6 +3,7 @@ and verification of installed bytes against the tag."""
 
 import base64
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -13,6 +14,7 @@ ROOT = Path(__file__).resolve().parents[3]
 for path in (ROOT, ROOT / "skills" / "synthesis-onboarding" / "scripts", Path(__file__).resolve().parents[1] / "scripts"):
     sys.path.insert(0, str(path))
 
+import build_collections  # noqa: E402
 import release  # noqa: E402
 import setup  # noqa: E402
 from synthesis import board  # noqa: E402
@@ -34,13 +36,22 @@ def git(repo, *args):
     return subprocess.run(["git", "-C", str(repo), *args], check=True, capture_output=True, text=True).stdout.strip()
 
 
+# The collections a release publishes beside the whole set: here one, the core, holding the one skill.
+COLLECTIONS = {"core": "core", "branch": "collections", "marketplace": {"name": "demo-collections"},
+               "collections": {"core": {"name": "demo-core", "description": "The core."}}}
+
+
 def source_repo(tmp_path, version="5.1.0", changelog=None, remotes=1):
     repo = tmp_path / "synthesis-skills"
     for name in release.MANIFESTS:
         (repo / name).parent.mkdir(parents=True, exist_ok=True)
         (repo / name).write_text(json.dumps({"name": "synthesis-skills", "version": version}))
     (repo / "skills" / "demo").mkdir(parents=True)
-    (repo / "skills" / "demo" / "SKILL.md").write_text("---\nname: demo\n---\n")
+    (repo / "skills" / "demo" / "SKILL.md").write_text("---\nname: demo\nmetadata:\n  category: core\n---\n")
+    (repo / build_collections.LIST).parent.mkdir(parents=True)
+    (repo / build_collections.LIST).write_text(json.dumps(COLLECTIONS))
+    for name in build_collections.LICENSES:
+        (repo / name).write_text(f"{name} terms.\n")
     (repo / "CHANGELOG.md").write_text(changelog or f"# Changelog\n\n## [{version}] - 2026-10-05\n\n- x\n")
     subprocess.run(["git", "init", "-q", str(repo)], check=True)
     git(repo, "add", ".")
@@ -158,12 +169,72 @@ def test_a_rejected_push_is_caught_by_reading_the_remote(tmp_path):
     with pytest.raises(setup.SetupError, match="do not point at"):
         release.publish(repo, "5.1.0")
     assert "v5.1.0" not in git(tmp_path / "remote0.git", "tag")  # atomic: the tag did not go either
+    assert git(tmp_path / "remote0.git", "for-each-ref", "refs/heads/collections") == ""  # nor the collections
 
 
 def test_dry_run_publishes_nothing(tmp_path):
     repo = source_repo(tmp_path)
-    assert release.publish(repo, "5.1.0", dry_run=True)[0].startswith("would tag v5.1.0")
-    assert git(repo, "tag") == ""
+    line = release.publish(repo, "5.1.0", dry_run=True)[0]
+    assert line.startswith("would tag v5.1.0") and line.endswith(", with the collections built from it as collections")
+    assert git(repo, "tag") == "" and git(tmp_path / "remote0.git", "for-each-ref", "refs/heads/collections") == ""
+
+
+# ---- the collections, published as a branch of built folders ---------------------------
+
+def collections_tree(repo):
+    """The git tree of the collections built from HEAD's commit, as the release builds them."""
+    files, modes = build_collections.build(repo, commit=True)
+    return build_collections.tree(repo, files, modes)
+
+
+def test_publish_pushes_the_collections_beside_main_stable_and_the_tag(tmp_path):
+    """Each harness installs a collection from a folder of its own, with its own manifests: on a branch of this
+    repository each one can name, by ref (the probe of 2026-11-14)."""
+    repo = source_repo(tmp_path, remotes=2)
+    lines = release.publish(repo, "5.1.0")
+    tree = collections_tree(repo)
+    for bare in (tmp_path / "remote0.git", tmp_path / "remote1.git"):
+        assert git(bare, "rev-parse", "collections^{tree}") == tree
+        assert git(bare, "rev-list", "--count", "collections") == "1"
+        made = json.loads(git(bare, "show", "collections:core/.claude-plugin/plugin.json"))
+        assert (made["name"], made["version"]) == ("demo-core", "5.1.0")
+        assert git(bare, "show", "collections:core/skills/demo/SKILL.md") == git(repo, "show", "HEAD:skills/demo/SKILL.md")
+    head = git(repo, "rev-parse", "HEAD")
+    moved = {"origin": git(tmp_path / "remote0.git", "rev-parse", "collections"),
+             "mirror1": git(tmp_path / "remote1.git", "rev-parse", "collections")}
+    assert sorted(lines) == sorted(f"{remote}: main, stable and v5.1.0 at {head[:12]}, collections at {commit[:12]}"
+                                   for remote, commit in moved.items())
+
+
+def test_a_run_again_moves_nothing_and_the_next_release_adds_a_commit_on_top(tmp_path):
+    repo, bare = source_repo(tmp_path), tmp_path / "remote0.git"
+    release.publish(repo, "5.1.0")
+    first = git(bare, "rev-parse", "collections")
+    release.publish(repo, "5.1.0")  # a run again, as after a server error: the folders on the branch are this release's
+    assert git(bare, "rev-parse", "collections") == first
+    for name in release.MANIFESTS:
+        (repo / name).write_text(json.dumps({"name": "synthesis-skills", "version": "5.1.1"}))
+    (repo / "CHANGELOG.md").write_text("# Changelog\n\n## [5.1.1] - 2026-10-06\n\n- y\n")
+    git(repo, "commit", "-qam", "5.1.1")
+    release.publish(repo, "5.1.1")
+    assert git(bare, "rev-parse", "collections^") == first  # a fast-forward: no release rewrites the branch
+    assert git(bare, "rev-parse", "collections^{tree}") == collections_tree(repo)
+    assert json.loads(git(bare, "show", "collections:core/.codex-plugin/plugin.json"))["version"] == "5.1.1"
+
+
+@pytest.mark.parametrize("dry_run", [False, True])
+def test_collections_that_fail_their_checks_stop_the_release_before_anything_is_published(tmp_path, dry_run):
+    repo = source_repo(tmp_path)
+    (repo / "skills" / "demo" / "SKILL.md").write_text("---\nname: demo\n---\n")  # in no collection
+    git(repo, "commit", "-qam", "no collection")
+    with pytest.raises(setup.SetupError, match=r"the collections fail 1 check, so nothing was published: "
+                                               r"skills/demo/SKILL.md: in no collection"):
+        release.publish(repo, "5.1.0", dry_run=dry_run)
+    assert git(repo, "tag") == "" and git(tmp_path / "remote0.git", "for-each-ref", "refs/heads/collections") == ""
+    (repo / build_collections.LIST).write_text("{")
+    git(repo, "commit", "-qam", "a collections file that cannot be read")
+    with pytest.raises(setup.SetupError, match="cannot build the collections: "):
+        release.publish(repo, "5.1.0", dry_run=dry_run)
 
 
 # ---- the GitHub release -------------------------------------------------------
@@ -572,3 +643,55 @@ def test_a_wrong_reported_version_fails_even_with_matching_bytes(tmp_path, monke
     monkeypatch.setattr(release, "installed_root", lambda client, binary: (good, "5.0.9"))
     lines, verified, _ = release.install_and_verify(repo, "5.1.0", ["claude"])
     assert not verified and "reports 5.0.9, not 5.1.0" in lines[-1]
+
+
+def test_the_script_runs_with_no_folder_of_the_callers_on_its_path():
+    """Python's isolated mode (-I) leaves even the script's own folder off its path; the release loads the collections
+    builder beside it, which a check under Apple's Python 3.9 found it could not do (5.22.0, before merging)."""
+    script = Path(release.__file__).resolve()
+    ran = subprocess.run([sys.executable, "-I", str(script), "--help"], capture_output=True, text=True)
+    assert ran.returncode == 0 and ran.stdout.startswith("usage: release.py"), ran.stderr[-500:]
+
+
+# ---- one collections commit for one release, on every remote (R1-22 of 5.22.0's review) -------------
+
+def test_every_remote_gets_one_collections_commit_for_one_release_even_after_a_refusal(tmp_path, monkeypatch):
+    """The commit was made for each remote and stamped with the time of the call, so two remotes, or a run again after
+    one refused, ended with different commits for one release: a mirror could not serve a commit the other named."""
+    repo, late = source_repo(tmp_path), tmp_path / "late.git"
+    git(repo, "remote", "add", "zeta", str(late))  # after origin, and not there yet: this remote refuses
+    for moment, refused in (("2026-11-14T09:00:00+00:00", True), ("2026-11-14T10:30:00+00:00", False)):
+        monkeypatch.setenv("GIT_AUTHOR_DATE", moment)
+        monkeypatch.setenv("GIT_COMMITTER_DATE", moment)
+        if refused:
+            with pytest.raises(setup.SetupError, match="zeta"):
+                release.publish(repo, "5.1.0")
+            subprocess.run(["git", "init", "-q", "--bare", str(late)], check=True)
+        else:
+            release.publish(repo, "5.1.0")  # the run again, an hour and a half later
+    assert git(tmp_path / "remote0.git", "rev-parse", "collections") == git(late, "rev-parse", "collections")
+
+
+def test_the_collections_commit_takes_the_release_commit_s_identity_and_time_and_names_it(tmp_path):
+    repo = source_repo(tmp_path, remotes=2)
+    release.publish(repo, "5.1.0")
+    stamp, head = git(repo, "log", "-1", "--format=%cn|%ce|%cI", "HEAD"), git(repo, "rev-parse", "HEAD")
+    for bare in (tmp_path / "remote0.git", tmp_path / "remote1.git"):
+        made = git(bare, "log", "-1", "--format=%an|%ae|%aI%n%cn|%ce|%cI%n%B", "collections").splitlines()
+        assert made[0] == made[1] == stamp and f"Built from {head}" in "\n".join(made[2:])
+    assert git(tmp_path / "remote0.git", "rev-parse", "collections") == git(tmp_path / "remote1.git", "rev-parse", "collections")
+
+
+def test_a_refused_push_says_where_the_collections_branch_should_have_pointed(tmp_path):
+    repo = source_repo(tmp_path)
+    other = tmp_path / "other"
+    subprocess.run(["git", "clone", "-q", str(tmp_path / "remote0.git"), str(other)], check=True)
+    (other / "x").write_text("x")
+    git(other, "add", ".")
+    git(other, "commit", "-qm", "ahead")
+    git(other, "push", "-q", "origin", "main")  # the remote moved, so the atomic push refuses every ref
+    with pytest.raises(setup.SetupError) as refused:
+        release.publish(repo, "5.1.0")
+    said = str(refused.value)
+    assert re.search(r"refs/heads/main, refs/heads/stable, refs/tags/v5\.1\.0 do not point at [0-9a-f]{12}", said), said
+    assert re.search(r"refs/heads/collections does not point at [0-9a-f]{12}", said), said

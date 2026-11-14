@@ -9,6 +9,7 @@ metadata:
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
   format: v5
+  category: core
 ---
 
 # Synthesis Skill Router
@@ -78,6 +79,7 @@ Pick the synthesis skill that owns a request and load it. Most synthesis skills 
 - Author or validate Open Knowledge Format: `../synthesis-okf/SKILL.md`
 - Sync or derive meeting records: `../synthesis-meeting-transcripts/SKILL.md`
 - Sync Slack records: `../synthesis-slack-sync/SKILL.md`
+- Import a message export the principal authorized into private transcripts: `../synthesis-message-exports/SKILL.md`. Loading this route grants no discovery, request, or send authority.
 - Clean inboxes: `../synthesis-inbox-cleanup/SKILL.md`
 - Merge several model responses: `../synthesis-response-merger/SKILL.md`
 

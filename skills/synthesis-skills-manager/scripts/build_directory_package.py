@@ -114,8 +114,8 @@ def depends_on(skill_md: str) -> list:
     return re.findall(r"[A-Za-z][\w.-]*", found.group(1)) if found else []
 
 
-def git(repo: Path, *args: str, text: bool = True):
-    done = subprocess.run(["git", "-C", str(repo), *args], capture_output=True)
+def git(repo: Path, *args: str, text: bool = True, stdin: bytes = b"", env=None):
+    done = subprocess.run(["git", "-C", str(repo), *args], capture_output=True, input=stdin, env=env)
     if done.returncode:
         raise Unreadable(f"git {args[0]}: {done.stderr.decode('utf-8', 'replace').strip() or 'failed'}")
     return done.stdout.decode("utf-8", "replace") if text else done.stdout
@@ -143,27 +143,31 @@ def read_list(repo: Path, commit: bool = False) -> dict:
     return spec
 
 
+def tracked(repo: Path, roots: list, commit: bool = False) -> tuple:
+    """({path: bytes}, {path: git's mode}) of every file git tracks under roots that is not a test, from the last commit
+    itself (`commit`) or from the checkout's files. The collections are read with it too (build_collections.py)."""
+    if commit:  # `<mode> blob <object>\t<path>`
+        listing = git(repo, "ls-tree", "-r", "-z", "HEAD", "--", *roots)
+    else:  # `<mode> <object> <stage>\t<path>`
+        listing = git(repo, "ls-files", "-s", "-z", "--", *roots)
+    found = {path: meta.split() for meta, path in (entry.split("\t", 1) for entry in listing.split("\0") if entry)}
+    links = [path for path, meta in found.items() if meta[0] == "120000"]
+    if links:  # followed, one could carry a file from outside its skill, or from the machine that builds
+        raise Unreadable(f"{links[0]} is a symbolic link, and a package follows none")
+    files = {path: git(repo, "cat-file", "blob", meta[2], text=False) if commit else (repo / path).read_bytes()
+             for path, meta in found.items() if not is_test(path)}
+    return files, {path: meta[0] for path, meta in found.items()}
+
+
 def carried(repo: Path, spec: dict, commit: bool = False) -> tuple:
     """({path in the ZIP: bytes}, {path in the ZIP: git's mode}, the repository's version) of what a package carries.
     A ZIP that is written is read from the last commit itself (`commit`): read from the checkout's files it carried a
     version not yet committed, a file git had been told to assume unchanged, and line ends a checkout had converted.
     A check reads the checkout's files, so that an edit can be checked before it is committed."""
-    roots = [IMAGES, *[f"skills/{name}" for name in spec["skills"]]]
-    if commit:  # `<mode> blob <object>\t<path>`
-        found = {path: meta.split() for meta, path in (
-            entry.split("\t", 1) for entry in git(repo, "ls-tree", "-r", "-z", "HEAD", "--", *roots).split("\0") if entry)}
-        version = committed(repo, MANIFEST).get("version")
-    else:  # `<mode> <object> <stage>\t<path>`
-        found = {path: meta.split() for meta, path in (
-            entry.split("\t", 1) for entry in git(repo, "ls-files", "-s", "-z", "--", *roots).split("\0") if entry)}
-        version = read_json(repo / MANIFEST).get("version")
-    links = [path for path, meta in found.items() if meta[0] == "120000"]
-    if links:  # followed, one could carry a file from outside its skill, or from the machine that builds
-        raise Unreadable(f"{links[0]} is a symbolic link, and a package follows none")
+    files, modes = tracked(repo, [IMAGES, *[f"skills/{name}" for name in spec["skills"]]], commit)
+    version = (committed(repo, MANIFEST) if commit else read_json(repo / MANIFEST)).get("version")
     name = lambda path: "assets" + path[len(IMAGES):] if path.startswith(IMAGES + "/") else path  # noqa: E731
-    files = {name(path): git(repo, "cat-file", "blob", meta[2], text=False) if commit else (repo / path).read_bytes()
-             for path, meta in found.items() if not is_test(path)}
-    return files, {name(path): meta[0] for path, meta in found.items()}, version
+    return {name(path): data for path, data in files.items()}, {name(path): mode for path, mode in modes.items()}, version
 
 
 def build(repo: Path, spec: dict, commit: bool = False) -> bytes:

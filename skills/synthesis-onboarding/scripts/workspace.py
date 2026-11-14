@@ -207,7 +207,9 @@ def new_workspace(name: str, remote: str = "", dry_run: bool = False) -> list:
     seeds = {(".agents/" + r[7:] if r.startswith("agents/") else r): src.read_text(encoding="utf-8")
              for src in assets.rglob("*") if src.is_file() for r in [src.relative_to(assets).as_posix()]}
     seeds.update({"CLAUDE.md": "@AGENTS.md\n", ".gitignore": ".DS_Store\n",
-                  ".agents/workspace-AGENTS.md": with_brief(seeds[".agents/workspace-AGENTS.md"])})
+                  ".agents/workspace-AGENTS.md": with_brief(seeds[".agents/workspace-AGENTS.md"]),
+                  ".agents/sharing-policy.md": (assets.parents[2] / "synthesis-kb-edit" / "assets"  # the template, not a copy
+                                                / "sharing-policy.template.md").read_text(encoding="utf-8")})
     if dry_run:  # counts the seeds it would write, and writes nothing
         missing, origin = sum(not (repo / rel).exists() for rel in seeds), _git(["remote", "get-url", "origin"], repo)
         return [f"{repo.name}: would {f'write and commit {missing} files' if missing else 'leave its files as they are'}"
@@ -227,6 +229,9 @@ def new_workspace(name: str, remote: str = "", dry_run: bool = False) -> list:
     if remote and not _git(["remote", "get-url", "origin"], repo).stdout.strip():
         _git(["remote", "add", "origin", remote], repo)
     lines = [f"{repo.name}: {'created ' + str(len(written)) + ' files' if written else 'already set up'}"]
+    lines += [f"{repo.name}: .agents/sharing-policy.md is the sharing policy's template, not adopted, so edits ship as before;"
+              " to adopt it, fill in its parts marked Yours and run synthesis-kb-edit's kb_config.py adopt-sharing-policy"
+              " with a --phrase for each of your own phrases"] if ".agents/sharing-policy.md" in written else []
     return lines + link_workspace(repo.parent, repo, adopt=False)
 
 

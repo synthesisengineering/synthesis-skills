@@ -5,10 +5,11 @@ license: "Apache-2.0"
 depends_on: ["synthesis-project-management", "synthesis-message-guard"]
 metadata:
   author: "Synthesis Engineering"
-  version: "1.5.1"
+  version: "1.5.2"
   format: v5
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
+  category: chief-of-staff
 ---
 
 # Local messaging

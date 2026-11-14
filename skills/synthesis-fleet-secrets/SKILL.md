@@ -9,6 +9,7 @@ metadata:
   format: v5
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
+  category: chief-of-staff
 ---
 
 # Fleet Secrets

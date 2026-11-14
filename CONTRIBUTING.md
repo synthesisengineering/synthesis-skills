@@ -70,9 +70,12 @@ skills/skill-name/
 ### SKILL.md requirements
 
 - Frontmatter has `name`, `description`, `license`, `depends_on` and
-  `metadata`, with `metadata.format: v5` and the skill's own
-  `metadata.version`. The SPDX license identifier selects the
-  repository-level `LICENSE-CC0` or `LICENSE-APACHE` terms.
+  `metadata`, with `metadata.format: v5`, the skill's own
+  `metadata.version`, and `metadata.category`: the one collection it belongs
+  to, of those that `skills/synthesis-skills-manager/assets/collections.json`
+  lists. A skill depends only on its own collection or the core. The SPDX
+  license identifier selects the repository-level `LICENSE-CC0` or
+  `LICENSE-APACHE` terms.
 - The description says when to use the skill, in at most 300 characters.
 - `SKILL.md` stays under 8,000 bytes. It opens with one short paragraph, then
   `## Binding rules`, then `## Contents`, then the procedure.

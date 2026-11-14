@@ -66,8 +66,12 @@ counts the seed files it would write.
 `setup.py workspace --new NAME [--kb URL]` creates `~/workspaces/NAME/ai-knowledge-NAME`
 from `assets/workspace/`: `AGENTS.md` with `CLAUDE.md` importing it, `projects/index.yaml`,
 `lessons/`, a `source/` bundle declared in `.agents/knowledge-base.yaml` (which the
-knowledge-base skills read before editing), `.agents/workspace-AGENTS.md` and a
-`.agents/repos.yaml` listing the repository itself. Every seed is the person's from the
+knowledge-base skills read before editing), `.agents/workspace-AGENTS.md`, a
+`.agents/repos.yaml` listing the repository itself, and `.agents/sharing-policy.md`, the
+sharing policy's template from synthesis-kb-edit. The contract does not name it, so the
+phrase scan does not run and edits ship as before; adopting it is a deliberate step the
+person takes when ready, with their own phrases (`kb_config.py adopt-sharing-policy`,
+one `--phrase` for each; the output says so). Every seed is the person's from the
 moment it exists and is never rewritten. It checks for a git identity before creating
 anything, commits exactly the files it wrote (a refused commit is reported with git's own
 reason), adds `origin` when `--kb` names one, and links the workspace as below.

@@ -2,13 +2,15 @@
 name: synthesis-onboarding
 description: "Install synthesis on a Mac for Claude Code, Codex and Muse, bring a workspace's repositories onto a new Mac from repos.yaml, enroll an organization's config, update or uninstall, then verify with synthesis doctor. Use to onboard, install, set up, update, repair or diagnose synthesis."
 license: "CC0-1.0"
-depends_on: []
+depends_on:
+  - synthesis-kb-edit
 metadata:
   author: "Rajiv Pant"
-  version: "3.5.4"
+  version: "3.6.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
   format: v5
+  category: core
 ---
 
 # Synthesis Onboarding
@@ -33,7 +35,7 @@ proves each part.
 ## Contents
 
 - **Procedure** (below): new install, new Mac, organization member, update, uninstall.
-- [references/harness-install.md](references/harness-install.md): each harness's commands and edge cases, Codex settings, runtime, commit check, first config, hook trust, uninstall. Read before installing or when a harness line fails.
+- [references/harness-install.md](references/harness-install.md): each harness's commands and edge cases, Codex settings, runtime, commit check, first config, hook trust, uninstall, and one collection without hooks instead of the whole set. Read before installing or when a harness line fails.
 - [references/new-mac.md](references/new-mac.md): cloning a workspace from `repos.yaml`, what is skipped and why, workspace instructions, the 2026-09-20 lesson. Read when bringing a workspace onto a Mac.
 - [references/org-manifest.md](references/org-manifest.md): the schema-2 manifest, migration from schema 1, checking a manifest, enrollment, repository and instruction rules. Read for any organization.
 - [references/kernel.example.md](references/kernel.example.md): the public instruction baseline setup writes first into an organization workspace's `AGENTS.md`. Read when changing it.

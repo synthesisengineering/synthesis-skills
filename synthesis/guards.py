@@ -1570,7 +1570,9 @@ def _placed(script: str, given: list[str]) -> str:
     them. A script that gives them other values is left as written (2026-11-11, the seventh review: a list handed
     to the shell lost the words after its script, and `sh -s <state folder>` read its script with no $1)."""
     out, i, single, double, outer = [], 0, False, False, []  # outer: for each open substitution, how it opened and the quoting around it
-    while i < len(script) and not REBOUND.search(script):
+    if REBOUND.search(script):  # once: searched for each character, a 1,700-character script took the guard 13 s (2026-11-14)
+        return script
+    while i < len(script):
         use = POSITIONAL.match(script, i) if script[i] == "$" and not single else None
         if use or (script[i] == "\\" and not single):
             key = (use[1] or use[2]) if use else ""

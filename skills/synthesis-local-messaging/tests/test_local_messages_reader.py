@@ -626,3 +626,18 @@ def test_a_quit_whatsapp_is_stale_however_recently_its_store_was_written(tmp_pat
     coverage = lm.scan(window, tmp_path / "quit")["coverage"]
     assert not coverage["complete"] and coverage["through"] == "2001-01-03T07:26:00+00:00"
     assert coverage["stale"].startswith("WhatsApp is not running") and "07:26" in coverage["stale"]
+
+
+def test_without_the_runtime_a_review_closes_no_gap_and_says_why_in_one_line(tmp_path, need_sandbox, principal, monkeypatch):
+    """R1-3 of 5.22.0's review: a collection carries the runtime's YAML reader and not its approvals, and the import
+    of approvals ended in a traceback. Nothing can grant the review there, so nothing is closed."""
+    import synthesis
+    monkeypatch.setitem(sys.modules, "synthesis.approvals", None)
+    monkeypatch.delattr(synthesis, "approvals", raising=False)
+    path, db = imessage(tmp_path / "source")
+    held = add(db, None, TYPEDSTREAM)
+    db.close()
+    with pytest.raises(lm.Refused, match="only the synthesis runtime can record that approval; nothing was closed"):
+        lm.scan(request(path), tmp_path / "state", {"rows": [{"row": held, "reason": UNDECODED}]})
+    assert not (tmp_path / "state" / "cursor.json").exists()
+

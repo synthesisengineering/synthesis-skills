@@ -485,3 +485,32 @@ def test_a_root_with_no_entry_in_the_window_prints_no_citation_line(kb, capsys):
     publish(kb)
     code, out = run("--root", str(kb), capsys=capsys)
     assert "citations  " not in out
+
+
+# R1-3 of 5.22.0's review: the core collection carries the runtime's YAML reader and none of the rest, so the doctor runs
+# there; its two checks that read the runtime's own records ended in a traceback at the import.
+
+def without(monkeypatch, module):
+    """The runtime as a collection holds it: this module cannot be imported."""
+    import synthesis
+    monkeypatch.setitem(sys.modules, f"synthesis.{module}", None)
+    monkeypatch.delattr(synthesis, module, raising=False)
+
+
+def test_without_the_runtime_s_claims_log_an_uncommitted_index_is_found_and_its_claimant_not_guessed(kb, capsys, monkeypatch):
+    without(monkeypatch, "checkout")
+    index = kb / "projects" / "index.yaml"
+    index.write_text(index.read_text(encoding="utf-8") + "\n", encoding="utf-8")
+    _, found, data = findings(kb, capsys)
+    assert ("(ai-knowledge-test)", "uncommitted-context", "warning") in found
+    assert any("who last claimed it cannot be told here: the claims log is the synthesis runtime's" in f["message"]
+               for f in data["findings"])
+
+
+def test_without_the_runtime_s_session_archive_the_citation_count_says_it_cannot_tell(kb, capsys, monkeypatch):
+    _entries(kb)
+    without(monkeypatch, "sessions")
+    code, out = run("--root", str(kb), capsys=capsys)
+    assert code == 0
+    assert "citations  ai-knowledge-test: cannot tell how many of 4 session entries dated in the last 14 days cite a " \
+           "session record: this machine has no session archive" in out.splitlines()

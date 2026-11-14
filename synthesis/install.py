@@ -47,7 +47,8 @@ GIT_HOOKS = ("pre-commit", "pre-merge-commit", "commit-msg")
 DAY_END = ("day-end", "day-end-nudge.sh")  # the rituals' launcher and nudge ride every release into bin/
 # Scripts run outside a session (scheduled sweeps, autopilot wakes and backstops) need a stable path too.
 STABLE_SKILL_SCRIPTS = ("synthesis-inbox-cleanup", "synthesis-autopilot", "synthesis-promotion-gate", "synthesis-daily-rituals",
-                        "synthesis-chief-of-staff")  # the last holds the holds ledger's reader, which the same-day guard asks
+                        "synthesis-chief-of-staff",  # the holds ledger's reader, which the same-day guard asks
+                        "synthesis-kb-edit")  # the phrase scan a knowledge base's own git hooks run (sharing-standard.md)
 CLI_SCRIPT = """#!/bin/sh
 exec python3 -c 'import os, sys; sys.path[0] = os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(sys.argv.pop(1)))), "current"); from synthesis.cli import main; sys.exit(main())' "$0" "$@"
 """  # through a link (~/.local/bin/synthesis) and from any folder: the runtime, not a checkout in the working directory

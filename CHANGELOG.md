@@ -4,6 +4,179 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [5.22.0] - 2026-11-14
+
+- **The guard judges a long heredoc of substitutions in well under a second** (core). On 2026-11-14 three ordinary
+  commands of 10 to 13 lines, each a `bash` heredoc whose loop held nested `$(...)` substitutions, took the guard 7
+  to 13 seconds, past the hook's 5: Claude Code held them (`onFailure: block`, 5.21.0), and before 5.21.0 a timeout
+  had let such a call through unjudged. The cost was one search over the whole script repeated for each of its
+  characters; it now runs once, with the same result. The three recorded commands now take 0.13 to 0.71 seconds.
+  Tests first.
+- **A public standard for what goes into a shared knowledge base** (`synthesis-kb-edit` 2.1.0). An organization that
+  names its knowledge repository gets the general rules by default and keeps only what is its own in its repository.
+  `references/sharing-standard.md` sets out two audiences, extraction as the way information goes in, one test for
+  each fact (could it cause real harm if it left the organization?), nine default classes that stay out, each with what
+  still goes in, figures by the level at which they were shared, a project recorded without the element that stays
+  out, and enforcement in layers. `assets/sharing-policy.template.md` is the policy an organization fills in; its own
+  parts (its audiences, rulings, examples, added classes, where excluded material lives, and its phrases) are marked
+  and empty.
+- **No phrase list ships.** The contract gains `confidentiality.sharing_policy` and `confidentiality.backstop_phrases`,
+  the organization's own phrases, and `confidentiality.unread_allowed`, the files only people read.
+  `scripts/sharing_scan.py` holds every line, file or folder name and commit message a change adds under the bundle
+  that contains one: `--range BASE...HEAD` for a review request or a pipeline, `--staged` and `--message` for a
+  commit's hooks, or whole files and folders. It reads a phrase as words, in any letter case, through Unicode variants
+  (decomposed accents, typographic apostrophes, soft hyphens, zero-width characters), in slugs, paths, snake_case and
+  CamelCase, and wrapped across two lines. It prints where and the phrase, never the rest of the line; judges the policy
+  and the contract's values, all but the phrase list itself; holds for a person a file it cannot read as text, unless
+  the contract exempts it; never follows a link; and is governed by the stricter of the contract before a change and
+  after it, so a change cannot loosen what judges it. It refuses to run (exit 2) with no phrases, no policy or one still
+  the template as written, a bundle git tracks no file under, or no valid contract. It needs only the standard library
+  and the checkout's own YAML reader, so a pipeline runs it by path from a checkout pinned to a tag. The standard shows
+  the two hooks and the pipeline step that call it; the plugin installs no hook in a knowledge base, and the stable
+  runtime now carries kb-edit's scripts, so the hooks run as printed.
+- **The contract refuses a key it does not name,** at the top level and inside `review`, `frontmatter` and
+  `confidentiality`. A misspelled optional key had switched off what it configured while the configuration gate said
+  VALID. A contract that carries a key of its own fails the gate until that key moves into `notes`, and the error says
+  so, offering a near spelling where there is one. The gate also reads each configured path as the disk spells it, as
+  git does, and refuses a named policy that is still the template as written.
+- **Extraction is a binding rule** in `synthesis-kb-edit` (rule 12) and `synthesis-knowledge-capture` 2.1.0 (rule 10):
+  each fact goes into the concept that owns it, cited, and every import's review request lists what was left out, by
+  class and count, never the facts. Validation runs the phrase scan when the contract names a sharing policy.
+- **Knowledge capture shares by default where a sharing policy decides** (`synthesis-knowledge-capture` rule 6). Where
+  the target's contract names a sharing policy, a fact goes in unless the policy's harm test or one of its classes keeps
+  it out; the most private tier stays the default for a fact whose tier is unknown and for a repository with no policy.
+  The routing reference keeps its earlier bullet word for word and adds this one after it.
+- **Adopting is deliberate, and a new knowledge base ships as before** (`synthesis-onboarding` 3.6.0).
+  `setup.py workspace --new NAME` seeds the template at `.agents/sharing-policy.md`, but the new contract names no
+  policy, so the phrase scan does not run and edits ship as they always have; the output names the step that adopts it.
+  `kb_config.py adopt-sharing-policy <repo-root> --phrase PHRASE` (one `--phrase` for each) is that step. With no policy
+  file yet, it writes the template where the contract says and stops, since naming the policy switches knowledge capture
+  to sharing by default; once the policy says who reads it, it names the policy and lists the phrases in the contract,
+  in place, keeping every line and line ending and replacing a key left null or empty; never writes over a file that is
+  there, or names a folder; writes the contract only when the result passes the configuration gate; and commits
+  nothing. Given no phrase while the contract lists none, it writes nothing. A contract that names a policy with
+  no phrases fails the configuration gate, holding every edit, and the error says to list one or remove the policy.
+- **How it was checked.** Tests first for the contract, the scan, adopting and the seed, each committed failing for
+  the reason its code then fixed; every phrase in them is made up. The first pass named the policy in every new
+  knowledge base's contract, with no phrases, which would have held its edits; adoption was made deliberate before
+  review, its tests again committed first. The review round's sixteen findings on the scan, the contract and adoption
+  (three of them blocking: a bundle the scan could not see, files it could not read passing as clean, and the change
+  under review controlling its own judge) were each fixed behind a test committed first, failing for its reason, and
+  the reviewer's probes now find each case held or refused, on Apple's Python 3.9 too.
+
+- **Five collections beside the whole set** (`synthesis-skills-manager` 3.6.0, `synthesis-onboarding` 3.6.0; plan item
+  12.1, ruled 2026-11-14). Someone who wants one discipline can now install a collection instead of every skill: core
+  (17 skills, which the other four build on), project management (7), engineering (13), writing (18) and chief of staff
+  (18), each a plugin of its own (`synthesis-skills-<name>`). The whole set stays the way to install synthesis, and the
+  README lists it first. A collection registers no hook and runs no synthesis runtime, so installing one asks for no
+  approval and changes nothing else on a Mac; each collection's description names the whole set as the way to the
+  guards, the board and the rituals.
+- **Each skill names its collection.** `metadata.category` in every SKILL.md frontmatter, from the collections listed in
+  the skills manager's `assets/collections.json`. A test holds that every skill is in exactly one, depends only on its
+  own collection or the core, and has any dependency its scripts load in its own collection, since the core installs in
+  a folder of its own. Five SKILL.md files have no room for the line under 8,000 bytes (the message guard at 7,990,
+  git hooks and Slack sync at 7,992, waiting at 7,993 and the knowledge-base distribution at 7,996); their words are kept, and the file names
+  their collection under `awaiting_room` until a reorganization makes room, which a test then reports. The daily
+  rituals, which 5.21.0 brought to 7,844 bytes, carry their line. Knowledge-base editing and the Open Knowledge Format
+  are in the core, since onboarding seeds a new workspace's sharing policy from knowledge-base editing's template (the
+  sharing standard, above). Autopilot declares as dependencies only what it always uses (4.1.1): fact-checking and
+  writing craft apply when its task is writing, as its references say.
+- **`build_collections.py` builds them** from the flat folder, each into a folder of its own: its skills whole but for
+  their tests, byte for byte, the two license files, and its own manifests for Claude Code, Codex and Muse at the
+  repository's version, none registering a hook. Every collection but the core declares the core as its Claude Code
+  dependency; Codex and Muse resolve none, so their install lines name both. `--check` builds and checks and writes
+  nothing; a build into a folder is cut from the last commit and written whole or not at all. It reads files with the
+  directory package's code, now one function both builders share.
+- **The release publishes them as the `collections` branch.** Before it tags anything, `release.py` builds the
+  collections from the commit it releases and checks them; any failure stops it with nothing published. The branch's
+  commit holds the built folders and two marketplace files as its tree, on top of each remote's head of the branch, and
+  goes in the same atomic push as `main`, `stable` and the tag, read back from each remote. A run again reuses the head
+  that already holds the folders.
+- **A collection's scripts run where it is installed** (`synthesis-context-lifecycle` 2.8.1,
+  `synthesis-local-messaging` 1.5.2; the first review's R1-3). 34 collected scripts imported the synthesis runtime, which
+  no collection carried, so each exited 2 in every collection install, the core's knowledge-base gate among them. 23 of
+  them read only the runtime's YAML reader, which uses the standard library alone and keeps no state: a collection whose
+  scripts read it now carries it, byte for byte, where the whole set holds it, and they run from its folder. The eleven
+  that need the runtime itself (its board, approvals, the rituals' records, installing or releasing the whole set) are
+  named in the collections file with why, and each says so in one line. The build reads every collected script's imports
+  from its syntax, through the modules beside it, and refuses one that cannot start in its collection unless it is
+  named, or that imports the runtime inside a function with nothing to catch the absence. The context doctor's claims
+  and citations checks and the message reader's review step now say what they cannot do without the runtime, where they
+  ended in a traceback.
+- **A path into another collection's skill is named** (R1-20). The build's rule saw only declared dependencies; it now
+  reads every string of a collected script's code for a path into another skill's folder, and refuses one that leads out
+  of its collection unless the load is named as optional, with what the script does without it, or the script needs the
+  whole set. The rituals' pull-request scan reaches the Bitbucket skill's helper: without it, a Bitbucket repository is
+  reported unscanned.
+- **No link leads out of a collection's folder** (R1-21). 42 relative links led nowhere inside a collection; in the built
+  copy alone, each now points at the repository's file at the release's tag, every other byte unchanged, and the build
+  names any link left leading out.
+- **One collections commit for one release** (R1-22). Each remote got its own commit, stamped with the time of the call;
+  the commit now takes the release commit's identity and time, unsigned, and names that commit, so every remote that
+  shares a head gets the same one, on this run or a run again. A refused push says where the branch should point.
+- **How to install one** is in the README, after the whole set, and in onboarding's harness reference: Claude Code adds
+  the repository at `@collections` and installs a collection, which brings the core; Codex adds it with
+  `--ref collections` and adds both; Muse adds its URL with `#collections` and installs both. Updating, removing one, and
+  moving to the whole set are there too.
+- **The README counts what the skills declare.** It said 45 skills under CC0 and 25 under Apache 2.0, where they declared
+  46 and 26 (Apache 2.0's 27 with synthesis-message-exports, below); a test now holds the counts.
+- **How it was checked.** Tests first, for the collection rules, the builder and the release's new stage. The route was
+  probed in isolated harness homes (Claude Code 2.1.316, Codex 0.167.0-alpha.4.1, Muse 1.4.20) against a local copy of
+  the branch served over HTTP, with the real installs unchanged before and after: each harness added the branch by its
+  ref, installed a collection and the core, listed only their skills, registered no hook and asked for no approval, and
+  each install held exactly its folder's files. The probe also found that Claude Code shows a plugin's marketplace entry,
+  not its manifest, before an install; the entry now carries the whole description. The first review round found four
+  more defects, R1-3 blocking; each was fixed with a test committed failing before it. A test now runs every collected
+  entry point with `--help` from a built folder on a Mac with no runtime, and the rebuilt branch was installed again in
+  isolated Claude Code and Muse homes, where the core's knowledge-base gate validated a configuration from its installed
+  folder and one script of each collection ran from its own.
+
+- **New skill: synthesis-message-exports 1.0.0, a message export the principal authorized, imported into private
+  transcripts.** `synthesis-local-messaging` keeps each conversation in its app and records pointers only; this is
+  the other mode, for an owner who has authorized a copy of a whole export, to clear a backlog for example.
+  `scripts/import_messages.py EXPORT --out FOLDER [--since YYYY-MM-DD] [--dry-run]` reads Facebook Messenger's two
+  downloads: Meta's "Download your information" export of Messages in JSON, in each folder layout it has used
+  (`messages/`, `your_activity_across_facebook/messages/`, `your_facebook_activity/messages/`) and from every section
+  (inbox, archived, filtered, message requests and `e2ee_cutover`); and Messenger's secure-storage download of
+  end-to-end encrypted chats, one JSON file per conversation at its top, its timestamp unit decided per file. Each
+  conversation becomes one markdown transcript laid out like a Slack sync's, named by its id and its source
+  (`messenger-dyi-<id>.md`, `messenger-e2ee-<id>.md`). Its text sits in fences marked `untrusted` that no line of a
+  message can close, hidden characters are shown as `[U+XXXX]`, and attachments are named by their place in the
+  export, never copied. The regular export's text quirk (UTF-8 bytes written as Latin-1 escapes) is repaired once per
+  file, only in a file whose text shows it. A re-import keeps every message written before, byte for byte, and adds only new ones; with
+  nothing new it writes nothing. Standard library only, no network: it reads only the export and its own earlier
+  transcripts, and writes only in `--out`. The README (73 skills), the Muse manifest and the skill router list it, and
+  it is in the chief-of-staff collection, beside `synthesis-local-messaging`.
+- **What it will not do.** It never sends and never copies media. An export in a shape it does not know is refused
+  with a listing of file names and sizes and no message text, so that a reader can be added; so are a ZIP entry
+  whose name could lead outside the archive, a link entry, a name given twice, a message file over 256 MiB, a link
+  inside an export folder, an output folder inside the export, and two conversations that would share a file name.
+  A file in `--out` the importer did not write, a transcript edited since, and a secure-storage conversation whose
+  messages sit in two transcripts are left alone and named.
+- **The formats are written down with their sources** (`references/formats.md`): what Meta's own pages confirm, what
+  a real secure-storage download showed, what independent open-source importers agree on, and what is still
+  inferred, with how the importer handles each open question.
+- **How it was checked.** Tests first, with invented fixtures only: each layout and section, both timestamp units,
+  the repair and the text it must leave alone, threads split across files, group chats, attachments, reactions,
+  unsent messages and calls, untrusted text that tries to leave its fence, unsafe and oversized ZIP entries, unknown
+  shapes, re-import, dry runs, `--since`, and Python's audit events showing nothing read outside the export or
+  written outside `--out`. Review of the first version found three defects, each fixed with a test that failed
+  before its fix: an archive whose only JSON held no conversation was taken for an export, one id reached twice
+  wrote one file twice, and names that differ only in case could be listed in another order on another run.
+- **The importer after review round 1** (`synthesis-message-exports`; seven findings, each fixed after a test that
+  failed first). A re-import no longer adds a message again when a sender's name, the export's layout or the
+  thread's section has changed: a message is known by its time, text, link, call and unsent facts and its
+  attachments' file names, never by the sender's name or an attachment's folders (R1-10; transcripts move to format
+  2). Two secure-storage chats with one display name and the same people never mix: a conversation goes to the
+  transcript already holding its messages, and a new one is named by its display name and first message, never by
+  the download's running index (R1-11). The encoding repair is decided once per file, so correct text such as `CAFÉ
+  !` with a no-break space stays as written (R1-12). A ZIP's message files are bounded before any is read (100,000
+  files, 2 GiB inflated in all, stored or deflate only, none over 1 MiB inflating past 200 times its compressed
+  size), so a few kilobytes no longer inflate hundreds of gigabytes (R1-13). Every character that shows nothing is
+  shown as `[U+XXXX]`, from Python's own Unicode tables, in text and in names (R1-23). `--out` inside the export is
+  caught in any letter case (R1-24). A refusal says its listing holds the names of the people in these
+  conversations, and `--listing-redacted` lists the same files with every name replaced by a token (R1-26).
+
 ## [5.21.1] - 2026-11-14
 
 - **A click whose summary says it publishes waits for the code in every app and on every page, not only on messaging

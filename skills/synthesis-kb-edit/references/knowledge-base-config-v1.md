@@ -56,6 +56,10 @@ confidentiality:
   forbidden_words_source: ".githooks/pre-commit"  # relative path or null
   hook_path: ".githooks"                          # relative path or null
   visible_to: "People with repository access"
+  sharing_policy: ".agents/sharing-policy.md"     # relative path or null
+  backstop_phrases:                               # the organization's own; one at least when a policy is named
+    - "zephyr ledger"
+  unread_allowed: []                              # globs of files only people read
 
 notes: >
   Repository-specific rules that do not fit a structured field.
@@ -83,10 +87,24 @@ notes: >
 | `confidentiality.forbidden_words_source` | Optional scanner/pattern source read at runtime. |
 | `confidentiality.hook_path` | Optional configured Git hook directory. |
 | `confidentiality.visible_to` | Plain-language audience used in editor explanations. |
+| `confidentiality.sharing_policy` | Optional path of the repository's sharing policy (`references/sharing-standard.md`), made from `assets/sharing-policy.template.md` and named by `adopt-sharing-policy`; when set, the file must exist and every edit runs the phrase scan. |
+| `confidentiality.backstop_phrases` | The organization's own phrases for the phrase scan; the plugin ships none. Required, with at least one phrase, when `sharing_policy` is set: a contract that names a policy with none holds every edit, and the error says to list one or remove the policy. |
+| `confidentiality.unread_allowed` | Optional globs of the files only people read (images, signed PDFs), which the phrase scan lists rather than holds; it holds every other file it cannot read as text, and an exemption counts only when the contract before a change grants it too. |
 | `notes` | Free text for remaining repository-specific policy. |
 
 All configured paths are repository-relative, may not contain `..`, and may
 not escape through symlinks when path checks are enabled.
+
+The schema names every key. A key it does not name, at the top level or inside
+`review`, `frontmatter` or `confidentiality`, makes the contract invalid: a
+misspelled optional key would otherwise switch off what it configures, in
+silence. Put repository-specific policy that has no key in `notes`; the error says so, and offers a near spelling of
+a key the schema names where there is one.
+
+With path checks, each configured path must also be spelled as the disk spells
+it: a disk that ignores letter case finds `Source` for `source`, git does not,
+and the phrase scan would read nothing there. A named sharing policy that is
+still the template as written fails too: fill in who reads it first.
 
 ## Classification precedence
 
@@ -116,3 +134,24 @@ python3 <skill-root>/scripts/kb_config.py <repo-root> \
 
 Exit status is `0` when valid, `1` for an invalid contract, and `2` for usage
 or loading failures.
+
+Adopting the sharing standard names the policy in the contract together with
+the organization's own phrases, and writes the policy's template where the
+contract says unless a file is there (`sharing-standard.md`, "Adopting the
+standard"). With no policy file yet, it writes the template and stops, naming
+the policy on a later run, once it says who reads it. It exits `0` when the
+contract names the policy, `1` otherwise (the template written, the policy not
+yet filled in, no phrases given or listed, or a contract it cannot change
+safely), and `2` for usage or loading failures:
+
+```bash
+python3 <skill-root>/scripts/kb_config.py adopt-sharing-policy <repo-root> --phrase "zephyr ledger"
+```
+
+When the contract names a sharing policy, the phrase scan reads it and the
+phrases; its commands, output and exit status are in
+[`sharing-standard.md`](sharing-standard.md), "The phrase scan":
+
+```bash
+python3 <skill-root>/scripts/sharing_scan.py <repo-root> --range origin/main...HEAD
+```
