@@ -4,6 +4,38 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## 5.22.0 (unreleased)
+
+- **A public standard for what goes into a shared knowledge base** (`synthesis-kb-edit` 2.1.0). An organization that
+  names its knowledge repository gets the general rules by default and keeps only what is its own in its repository.
+  `references/sharing-standard.md` sets out two audiences, extraction as the way information goes in, one test for
+  each fact (could it cause real harm if it left the organization?), nine default classes that stay out, each with what
+  still goes in, figures by the level at which they were shared, a project recorded without the element that stays
+  out, and enforcement in layers. `assets/sharing-policy.template.md` is the policy an organization fills in; its own
+  parts (its audiences, rulings, examples, added classes, where excluded material lives, and its phrases) are marked
+  and empty.
+- **No phrase list ships.** The contract gains `confidentiality.sharing_policy` and `confidentiality.backstop_phrases`,
+  the organization's own phrases. `scripts/sharing_scan.py` reads both and holds any line a change adds under the
+  bundle that contains one: `--range BASE...HEAD` for a review request or a pipeline, `--staged` for a commit hook, or
+  whole files and folders. It prints the file, the line and the phrase, never the rest of the line; never judges the
+  policy or the contract; names a file it cannot read as text; and refuses to run (exit 2) with no phrases, no policy
+  or no valid contract. It needs only the standard library and the checkout's own YAML reader, so a pipeline runs it by
+  path from a checkout pinned to a tag. The standard shows the hook and the pipeline step that call it; the plugin
+  installs no hook in a knowledge base.
+- **The contract refuses a key it does not name,** at the top level and inside `review`, `frontmatter` and
+  `confidentiality`. A misspelled optional key had switched off what it configured while the configuration gate said
+  VALID. A contract that carries a key of its own fails the gate until that key moves into `notes`.
+- **Extraction is a binding rule** in `synthesis-kb-edit` (rule 12) and `synthesis-knowledge-capture` 2.1.0 (rule 10):
+  each fact goes into the concept that owns it, cited, and every import's review request lists what was left out, by
+  class and count, never the facts. Validation runs the phrase scan when the contract names a sharing policy.
+- **A new knowledge base starts with the policy, and an existing one adopts it** (`synthesis-onboarding` 3.6.0).
+  `setup.py workspace --new NAME` seeds `.agents/sharing-policy.md` from the template and a contract naming it with an
+  empty phrase list, and tells the person to name their own. `kb_config.py adopt-sharing-policy <repo-root>` writes the
+  template where the contract says, never over a file that exists, adds the keys the contract lacks in place, keeping
+  every line, and commits nothing.
+- **How it was checked.** Tests first for the contract, the scan, adopting and the seed, each committed failing for
+  the reason its code then fixed; every phrase in them is made up.
+
 ## [5.20.1] - 2026-11-13
 
 - **The deploy guard holds neither a syntax check nor too little** (`synthesis-agent-guardrails` 2.9.2). A seat's local

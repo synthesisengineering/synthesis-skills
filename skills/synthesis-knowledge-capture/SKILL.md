@@ -7,7 +7,7 @@ depends_on:
   - synthesis-kb-edit
 metadata:
   author: Rajiv Pant
-  version: "2.0.0"
+  version: "2.1.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
   format: v5

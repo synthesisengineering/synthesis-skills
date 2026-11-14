@@ -2,10 +2,11 @@
 name: synthesis-onboarding
 description: "Install synthesis on a Mac for Claude Code, Codex and Muse, bring a workspace's repositories onto a new Mac from repos.yaml, enroll an organization's config, update or uninstall, then verify with synthesis doctor. Use to onboard, install, set up, update, repair or diagnose synthesis."
 license: "CC0-1.0"
-depends_on: []
+depends_on:
+  - synthesis-kb-edit
 metadata:
   author: "Rajiv Pant"
-  version: "3.5.4"
+  version: "3.6.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
   format: v5
