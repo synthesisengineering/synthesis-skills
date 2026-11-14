@@ -19,7 +19,11 @@ enforces the checkable parts on every skill marked `format: v5`.
 ## Rules
 
 1. **Frontmatter:** `name`, `description` (at most 300 characters, saying when
-   to use the skill), `license`, and `metadata.format: v5`.
+   to use the skill), `license`, `metadata.format: v5`, and `metadata.category`,
+   the one collection the skill belongs to, of those the skills manager's
+   `assets/collections.json` lists (`tests/test_source_lint.py` holds it). A
+   SKILL.md with no room left for that line keeps its words: the collections file
+   names its collection under `awaiting_room` until a reorganization makes room.
 2. **Order of SKILL.md:**
    1. One short paragraph: what the skill is for.
    2. `## Binding rules`: numbered, one or two lines each, with the reason.

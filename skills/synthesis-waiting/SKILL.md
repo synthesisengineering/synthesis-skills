@@ -8,6 +8,7 @@ metadata:
   author: "Rajiv Pant"
   version: "1.1.1"
   format: v5
+  category: project-management
 ---
 
 # Synthesis Waiting

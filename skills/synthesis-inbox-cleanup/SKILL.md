@@ -10,6 +10,7 @@ metadata:
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
   platform: "macOS (Apple Silicon and Intel)"
+  category: chief-of-staff
 ---
 
 # Synthesis Inbox Cleanup

@@ -2,13 +2,14 @@
 name: synthesis-autopilot
 description: "Run an explicitly delegated whole task to the end from a plan file in the project, unattended when needed. Use only on clear end-to-end delegation ('autopilot this', 'handle this end to end', 'run overnight'), never on a single-step approval or a talk about autonomy."
 license: "Apache-2.0"
-depends_on: ["synthesis-thinking-framework", "synthesis-context-lifecycle", "synthesis-checkpoint", "synthesis-anti-shortcuts", "synthesis-grounding-discipline", "synthesis-implementation-integrity", "synthesis-project-management", "synthesis-adversarial-review", "synthesis-decision-packet", "synthesis-fact-checking", "synthesis-writing-craft", "synthesis-agent-conformance"]
+depends_on: ["synthesis-thinking-framework", "synthesis-context-lifecycle", "synthesis-checkpoint", "synthesis-anti-shortcuts", "synthesis-grounding-discipline", "synthesis-implementation-integrity", "synthesis-project-management", "synthesis-adversarial-review", "synthesis-decision-packet", "synthesis-agent-conformance"]
 metadata:
   author: "Rajiv Pant"
-  version: "4.1.0"
+  version: "4.1.1"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
   format: v5
+  category: project-management
 ---
 
 # Synthesis Autopilot
