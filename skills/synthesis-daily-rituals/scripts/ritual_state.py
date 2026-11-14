@@ -35,9 +35,10 @@ if an agent remembered). Only a missing key or `false` turns it off: any other v
 setting is refused, and so is a first day that is not a day.
 
 The log is `<synthesis home>/rituals/history.jsonl` (`RITUAL_STATE_DIR` or
-`--state-dir` points elsewhere, to exercise a copy). A record commits nothing; the
-hourly `synthesis sessions sync` carries this Mac's records of a workspace to its
-sessions repo, and every view reads every host's records there (5.20.0).
+`--state-dir` points elsewhere, to exercise a copy, whose views still read every
+host's synced records). A record commits nothing; the hourly `synthesis sessions
+sync` carries this Mac's records of a workspace to its sessions repo, and every
+view reads every host's records there (5.20.0).
 Derivations live in the plugin's `synthesis/rituals.py`, which the SessionStart
 line and the nudge share.
 """
