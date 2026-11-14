@@ -4465,7 +4465,7 @@ OPENS = re.compile(r"^\W*(?:box|field|input|area|composer|editor)\b|\b(?:to\s+(?
 POSTS = re.compile(r"\bto\s+(?:post|publish|send|submit)\b|\b(?:posting|publishing|sending|submitting)\b", re.I)
 ROUTINE = re.compile(r"\b(?:sign(?:s|ing|ed)?[\s-]?in|log(?:s|ging|ged)?[\s-]?(?:in|on)|search\w*|quer(?:y|ies)|filter\w*"
                      r"|look(?:s|ing)?\s?up|password|passcode|verification code)\b", re.I)
-MESSAGE = re.compile(r"\b(?:message|repl(?:y|ies)|comment|review|rating|post|tweet|feedback|answer)s?\b", re.I)
+MESSAGE_WORDS = re.compile(r"\b(?:message|repl(?:y|ies)|comment|review|rating|post|tweet|feedback|answer)s?\b", re.I)
 # A page script that can send (the second review: one that clicked a comment's submit button went out): on a messaging
 # site's page one that clicks, submits, sends a key or an event, writes by fetch or sets a value; elsewhere one that
 # submits a form, sends a key or an event, writes by fetch or clicks a control that publishes, unless it searches or signs in.
@@ -4482,7 +4482,7 @@ def _publishes(said: str, local: bool) -> bool:
     found = PUBLISHES.search(said)
     rest = said[found.end():] if found else ""
     return bool(found) and not local and not (OPENS.search(rest) and not POSTS.search(rest)) and not (
-        ROUTINE.search(said) and not MESSAGE.search(said))
+        ROUTINE.search(said) and not MESSAGE_WORDS.search(said))
 
 
 def _submits(actions: list) -> bool:
@@ -4700,7 +4700,7 @@ def check_desktop(name: str, tool: str, tool_input: dict, config: dict, session:
                else pages if name.startswith("browser") else apps if unseen else {b: apps[b] for b in seen["apps"] if b in apps})
     typed, subject = [v for kind, v, _ in actions if kind == "type" and v.strip()], {"tool": tool, "input": tool_input}
     said = " ".join(s for _, _, s in actions)  # the second review: words, then Return, Tab and Space or a line break, submit a form
-    formed = bool(name.startswith("browser") and not reached and typed and not local and not (ROUTINE.search(said) and not MESSAGE.search(said))
+    formed = bool(name.startswith("browser") and not reached and typed and not local and not (ROUTINE.search(said) and not MESSAGE_WORDS.search(said))
                   and (_submits(actions) or any(k == "type" and re.search(r"[\r\n]", v) for k, v, _ in actions)))
     sending = [s or {"type": "a typed line break", "script": "a page script"}.get(kind, f"{kind} {v}".strip()) for kind, v, s in actions
                if SAYS_SENT.search(s) or kind == "click" and _publishes(s, local) or kind == "script" and (
