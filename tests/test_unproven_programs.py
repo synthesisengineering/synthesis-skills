@@ -245,6 +245,82 @@ def test_a_program_that_proves_it_writes_a_record_stays_refused_with_no_code(wor
     assert reason.startswith("Refused") and HELD not in reason
 
 
+# --- a folder that holds a protected one, handed to a program the guard does not know (5.22.1, review round 2) -------
+
+ABOVE = {
+    "tar -C": "tar -xf {work}/e.tar -C {home}/.claude",
+    "tar -C first": "tar -C {home}/.synthesis/v5 -xf {work}/e.tar",
+    "bsdtar -C": "bsdtar -xf {work}/e.tar -C {home}/.claude",
+    "scp -r": "scp -r {work}/e/. {home}/.claude/",
+    "unzip -d": "unzip -o {work}/e.zip -d {home}/.claude",
+    "pax -rw": "pax -rw {work}/e {home}/.claude",
+    "pax -r where it stands": "cd {home}/.claude && pax -r -f {work}/e.pax",
+    "cpio -i where it stands": "cd {home}/.claude && cpio -idm < {work}/e.cpio",
+    "cpio -p": "cpio -pdm {home}/.claude < {work}/list",
+    "tar -x in the home folder": "cd {home} && tar -xf {work}/e.tar",
+}
+REFUSED_ALREADY = {"rsync": "rsync -a {work}/e/ {home}/.claude/", "cp -R": "cp -R {work}/e/. {home}/.claude/",
+                   "ditto": "ditto {work}/e {home}/.claude"}
+
+
+@pytest.mark.parametrize("name", sorted(ABOVE))
+def test_a_folder_above_a_protected_one_handed_to_an_unknown_program_waits_for_the_code(world, name):
+    reason = _verdict(world, _lines(world, ABOVE[name]))
+    assert reason and HELD in reason, name
+
+
+@pytest.mark.parametrize("name", sorted(REFUSED_ALREADY))
+def test_a_copy_into_a_folder_above_a_protected_one_stays_refused(world, name):
+    assert (_verdict(world, _lines(world, REFUSED_ALREADY[name])) or "").startswith("Refused"), name
+
+
+@pytest.mark.parametrize("line", ["du -sh {home}/.claude", "ls -la {home}/.claude", "tar -tf {work}/e.tar", "cd {home} && ls"])
+def test_reading_a_folder_above_still_passes(world, line):
+    assert _verdict(world, _lines(world, line)) is None
+
+
+# --- a git command a Python program spells whole is a read when its subcommand is one --------------------------------
+
+GIT_READS_SPELLED = {
+    "run": "print(subprocess.run(['git', 'log', '-1'], capture_output=True, text=True, cwd=sys.argv[1]).stdout)",
+    "check_output": "print(subprocess.check_output(['git', '-C', sys.argv[1], 'show', 'HEAD:a']))",
+    "Popen": "subprocess.Popen(['git', 'status', '--short'], cwd=sys.argv[1]).wait()",
+}
+GIT_NOT_READS = {
+    "a commit": "subprocess.run(['git', 'commit', '-qm', 'x'], cwd=sys.argv[1])",
+    "the shell": "subprocess.run('git log', shell=True, cwd=sys.argv[1])",
+    "a program in a variable": "program = sys.argv[2]; subprocess.run([program, 'log'], cwd=sys.argv[1])",
+}
+
+
+@pytest.mark.parametrize("name", sorted(GIT_READS_SPELLED))
+def test_a_spelled_git_read_in_the_archive_is_a_read(world, name):
+    program = "import subprocess, sys; " + GIT_READS_SPELLED[name]
+    assert _verdict(world, f"python3 -c {shlex.quote(program)} {shlex.quote(str(paths.sessions()))}") is None
+
+
+@pytest.mark.parametrize("name", sorted(GIT_NOT_READS))
+def test_a_git_command_that_may_write_in_the_archive_is_not(world, name):
+    program = "import subprocess, sys; " + GIT_NOT_READS[name]
+    assert _verdict(world, f"python3 -c {shlex.quote(program)} {shlex.quote(str(paths.sessions()))} git") is not None
+
+
+SKILLS = ROOT / "skills"
+SHIPPED_READERS = [
+    "synthesis-agent-guardrails/scripts/provenance_scan.py", "synthesis-agent-guardrails/scripts/provenance_scan.py --since 2026-11-01",
+    "synthesis-daily-rituals/scripts/relied_on.py --json", "synthesis-daily-rituals/scripts/lapse_review.py --json",
+    "synthesis-daily-rituals/scripts/ritual_state.py --direction start", "synthesis-daily-rituals/scripts/stop_reprompts.py",
+    "synthesis-autopilot/scripts/autopilot_cli.py status", "synthesis-local-messaging/scripts/messages_send.py --help",
+    "synthesis-onboarding/scripts/setup.py --dry-run",
+]
+
+
+@pytest.mark.parametrize("call", SHIPPED_READERS)
+def test_the_shipped_scripts_that_read_the_records_run_without_a_code(world, call):
+    script, _, rest = call.partition(" ")
+    assert _verdict(world, f"python3 {shlex.quote(str(SKILLS / script))} {rest}".strip()) is None, call
+
+
 # --- the send window: the principal's setting, from any terminal ------------------------------------------------------
 
 WINDOW = ("sends", "open", "--hours", "2", "--sends", "3", "--channels", "jira")

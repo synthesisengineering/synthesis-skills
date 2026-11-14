@@ -1870,9 +1870,10 @@ def test_only_a_transcript_that_is_gone_is_lost(principal, harness, tmp_path, mo
 
 
 @closed_to_us
-def test_in_a_terminal_of_their_own_the_principal_clears_a_loss_without_a_code(harness, tmp_path, monkeypatch, capsys):
-    """Run by an agent, `--lost` waits for the principal's code. Typed by the principal in their own terminal, outside
-    any harness, it needs none: nobody else is at that keyboard."""
+def test_from_any_terminal_a_loss_is_cleared_only_on_the_principals_code(principal, harness, tmp_path, monkeypatch, capsys):
+    """`--lost` waits for the principal's code whoever runs it (5.22.1): a terminal on the command's input and no harness
+    in its environment are both an agent's to fake, so from a terminal of their own the principal clears a loss on their
+    code too. What it clears is the archive's record of a transcript it could not copy, which the day's checks report."""
     import types
     gone = _jsonl(harness["claude"], _claude_rows(harness["work"]))
     gone.chmod(0o000)
@@ -1882,11 +1883,10 @@ def test_in_a_terminal_of_their_own_the_principal_clears_a_loss_without_a_code(h
         gone.chmod(0o644)
     gone.unlink()
     monkeypatch.setattr("sys.stdin", types.SimpleNamespace(isatty=lambda: True))
-    monkeypatch.setenv("SYNTHESIS_SESSION", "S1")
-    monkeypatch.setenv("CLAUDECODE", "1")                                      # a terminal inside a harness is an agent's
-    assert cli.main(["sessions", "export", "--lost", "c1"]) == 2 and "type approve" in capsys.readouterr().err
-    assert _checked(tmp_path)[0] == "fail"
-    monkeypatch.delenv("CLAUDECODE")
+    assert cli.main(["sessions", "export", "--lost", "c1"]) == 2
+    reason = capsys.readouterr().err
+    assert "type approve" in reason and _checked(tmp_path)[0] == "fail"
+    principal(reason)
     assert cli.main(["sessions", "export", "--lost", "c1"]) == 0 and "cleared: claude-code c1" in capsys.readouterr().out
     assert _checked(tmp_path)[0] == "ok"
 
