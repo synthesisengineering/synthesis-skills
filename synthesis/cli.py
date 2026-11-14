@@ -135,6 +135,7 @@ def cmd_msg(args) -> int:
     """Send, and say what will deliver it (2026-11-11: mail to a project no session was bound to sat unseen)."""
     from synthesis import wait
     me = _session(args)
+    before = wait.live()  # who watches, read before sending: a watcher may take the message and go before we ask
     try:
         sent = board.message(args.to, me, args.text, durable=args.durable)
     except board.AddressError as exc:
@@ -142,11 +143,11 @@ def cmd_msg(args) -> int:
         return 1
     reached, name = str(paths.read_json(sent).get("session") or ""), args.to.strip()[len("project:"):]
     target = board.load(reached) if reached else None
-    how = (wait.watching(reached, me) or "it reads it at its next prompt" + (f"; {wait.wake(target)}" if args.wake else "") if target
+    how = (wait.watching(reached, me, before) or "it reads it at its next prompt" + (f"; {wait.wake(target)}" if args.wake else "") if target
            else f"it is kept for every session that works on {name}" if args.durable
            else f"no session is bound to {name} now: it is kept for the next one that runs `synthesis resume {name}`")
     if args.wake and not reached:  # a kept message names no one session: each live session on the project is nudged, once
-        how += "".join(f"; {s.short}: {wait.watching(s.session, me) or wait.wake(s)}" for s in board.sessions()
+        how += "".join(f"; {s.short}: {wait.watching(s.session, me, before) or wait.wake(s)}" for s in board.sessions()
                        if s.project == name and s.reachable and s.session != me)
     print(f"sent to {args.to}: {how}")
     return 0

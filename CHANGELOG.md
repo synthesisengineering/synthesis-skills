@@ -16,6 +16,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   large for the guard to read (over 256 KB), run or sourced, is held rather than let through.
 - **A deploy's hold says what its approval binds to:** the command and the HEAD of each checkout it deploys, so the
   same command after a commit meets a new code with the reason in front of it.
+- **The sender is told of a watcher that takes its message at once.** `synthesis msg` posted first and asked who
+  watched after, so a watcher that read the message and left in between was missed and the sender was told it waits
+  for the next prompt; who watches is now read before the message is posted.
 - **No test reads this Mac's synthesis home.** Once 5.20.0's hourly sync had written this Mac's ritual history into
   its sessions repos, seven ritual tests read it through the person's own config and failed on this Mac alone; every
   test, a skill's included, now has a synthesis home of its own.
