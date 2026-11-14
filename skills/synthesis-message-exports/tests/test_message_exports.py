@@ -682,7 +682,7 @@ def test_r1_13_message_files_past_the_bounds_are_refused_before_any_is_read(im, 
     assert "SECRET-TEXT" not in printed and time.monotonic() - started < 5
 
 
-FILLERS = "‎‏؜­͏ᅟᅠㅤﾠ឴⠀"  # the eleven the review found left in
+FILLERS = "\u200e\u200f\u061c\u00ad\u034f\u115f\u1160\u3164\uffa0\u17b4\u2800"  # the eleven the review found left in
 
 
 def test_r1_23_every_invisible_character_is_shown_in_text_and_in_names(im, capsys, tmp_path):
@@ -690,9 +690,9 @@ def test_r1_23_every_invisible_character_is_shown_in_text_and_in_names(im, capsy
     fenced text and in a sender's name, which sits outside any fence. A joiner shows too, unless it sits between two
     visible characters that are not ASCII (an emoji sequence, a script that needs it): a run of joiners never hides."""
     hidden = sorted(set(FILLERS) | {chr(c) for c in [*range(0x20000), *range(0xE0000, 0xE1000)]
-                                    if unicodedata.category(chr(c)) == "Cf" and chr(c) not in "‌‍"})
-    joins = {"a‍b": "a[U+200D]b", "é‌‍‌é": "é[U+200C][U+200D][U+200C]é",
-             "‍z": "[U+200D]z", "می‌خواهم": "می‌خواهم"}
+                                    if unicodedata.category(chr(c)) == "Cf" and chr(c) not in "\u200c\u200d"})
+    joins = {"a\u200db": "a[U+200D]b", "é\u200c\u200d\u200cé": "é[U+200C][U+200D][U+200C]é",
+             "\u200dz": "[U+200D]z", "می\u200cخواهم": "می\u200cخواهم"}
     messages = [secure_message(f"Lee{c}Roe", T0 + n * 1000, f"a{c}b") for n, c in enumerate(hidden)]
     messages += [secure_message(BLAIR, T0 + (len(hidden) + n) * 1000, text) for n, text in enumerate(joins)]
     write_secure(tmp_path / "secure", "Lee Roe_1", [BLAIR, "Lee Roe"], messages)
