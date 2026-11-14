@@ -24,6 +24,13 @@ CONFIG_RELATIVE = Path(".agents/knowledge-base.yaml")
 HOSTS = {"github", "bitbucket"}
 SHIP_MODES = {"pr", "direct"}
 RESERVED = {"index.md", "log.md"}
+# Every key the contract names, by the mapping that holds it. Any other is refused: a misspelled optional key would
+# otherwise switch off what it configures, in silence.
+KEYS = {"": {"bundle_path", "git_host", "default_branch", "branch_prefix", "ship", "review", "editable", "refuse",
+             "generated_artifacts", "topic_routing", "taxonomy_path", "frontmatter", "confidentiality", "notes"},
+        "review": {"who_merges", "default_reviewers", "setup_guide"},
+        "frontmatter": {"required", "house", "date_field", "reserved_files"},
+        "confidentiality": {"forbidden_words_source", "hook_path", "visible_to", "sharing_policy", "backstop_phrases"}}
 
 
 def is_relative_text(value: Any, *, allow_glob: bool = False) -> bool:
@@ -52,6 +59,10 @@ def validate_config(config: Any) -> list[str]:
     errors: list[str] = []
     if not isinstance(config, dict):
         return ["root: expected a YAML mapping"]
+    for section, known in KEYS.items():
+        mapping = config.get(section) if section else config
+        for key in sorted(set(mapping) - known) if isinstance(mapping, dict) else ():
+            add_error(errors, f"{section}.{key}" if section else key, "unknown key; the contract names every key it reads")
 
     for field in ("bundle_path", "default_branch", "branch_prefix"):
         if not isinstance(config.get(field), str) or not config[field].strip():
@@ -143,7 +154,7 @@ def validate_config(config: Any) -> list[str]:
     if not isinstance(confidentiality, dict):
         add_error(errors, "confidentiality", "expected a mapping")
     else:
-        for field in ("forbidden_words_source", "hook_path"):
+        for field in ("forbidden_words_source", "hook_path", "sharing_policy"):
             value = confidentiality.get(field)
             if value is not None and not is_relative_text(value):
                 add_error(
@@ -154,6 +165,8 @@ def validate_config(config: Any) -> list[str]:
         visible = confidentiality.get("visible_to")
         if not isinstance(visible, str) or not visible.strip():
             add_error(errors, "confidentiality.visible_to", "expected a non-empty string")
+        if not string_list(confidentiality.get("backstop_phrases", [])):  # the organization's own; the plugin ships none
+            add_error(errors, "confidentiality.backstop_phrases", "expected a list of phrases, empty until named")
 
     if not isinstance(config.get("notes"), str):
         add_error(errors, "notes", "expected a string")
@@ -192,6 +205,8 @@ def check_paths(repo: Path, config: dict[str, Any]) -> list[str]:
         required_paths.append(
             ("confidentiality.hook_path", confidentiality["hook_path"], "directory")
         )
+    if confidentiality.get("sharing_policy"):
+        required_paths.append(("confidentiality.sharing_policy", confidentiality["sharing_policy"], "file"))
     for topic, relative in config["topic_routing"].items():
         required_paths.append((f"topic_routing.{topic}", relative, "directory"))
 

@@ -158,9 +158,10 @@ source/reference/plans.md:12: "zephyr ledger"
 sharing scan: 1 line held in 3 files read; read each against .agents/sharing-policy.md
 ```
 
-A named file outside the bundle, the policy file or the contract is listed as not judged. Exit status is `0` when
-nothing is held, `1` when a line is held, and `2` when it cannot run: no contract or an invalid one, no policy or one
-that is not there, no phrases, or a git error, whose own message it prints.
+A named file outside the bundle, the policy file and the contract are listed as not judged, and so is a file that is
+not text (one git reads as binary), so the reviewer knows the scan did not read it. Exit status is `0` when nothing is
+held, `1` when a line is held, and `2` when it cannot run: no contract or an invalid one, no policy or one that is not
+there, no phrases, or a git error, whose own message it prints.
 
 How a phrase matches: in any letter case, with any run of spaces between its words, starting where a word starts. A
 phrase of five characters or fewer must also end where a word ends ("opal" never holds "opalescent"); a longer one may

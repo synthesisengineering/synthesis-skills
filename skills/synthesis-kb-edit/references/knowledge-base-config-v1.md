@@ -56,6 +56,8 @@ confidentiality:
   forbidden_words_source: ".githooks/pre-commit"  # relative path or null
   hook_path: ".githooks"                          # relative path or null
   visible_to: "People with repository access"
+  sharing_policy: ".agents/sharing-policy.md"     # relative path or null
+  backstop_phrases: []                            # the organization's own phrases
 
 notes: >
   Repository-specific rules that do not fit a structured field.
@@ -83,10 +85,17 @@ notes: >
 | `confidentiality.forbidden_words_source` | Optional scanner/pattern source read at runtime. |
 | `confidentiality.hook_path` | Optional configured Git hook directory. |
 | `confidentiality.visible_to` | Plain-language audience used in editor explanations. |
+| `confidentiality.sharing_policy` | Optional path of the repository's sharing policy (`references/sharing-standard.md`), made from `assets/sharing-policy.template.md`; when set, the file must exist and every edit runs the phrase scan. |
+| `confidentiality.backstop_phrases` | Optional list of the organization's own phrases for the phrase scan. The plugin ships none; the list may be empty in the contract, but the scan refuses to run until it holds one. |
 | `notes` | Free text for remaining repository-specific policy. |
 
 All configured paths are repository-relative, may not contain `..`, and may
 not escape through symlinks when path checks are enabled.
+
+The schema names every key. A key it does not name, at the top level or inside
+`review`, `frontmatter` or `confidentiality`, makes the contract invalid: a
+misspelled optional key would otherwise switch off what it configures, in
+silence. Put repository-specific policy that has no key in `notes`.
 
 ## Classification precedence
 
@@ -116,3 +125,11 @@ python3 <skill-root>/scripts/kb_config.py <repo-root> \
 
 Exit status is `0` when valid, `1` for an invalid contract, and `2` for usage
 or loading failures.
+
+When the contract names a sharing policy, the phrase scan reads it and the
+phrases; its commands, output and exit status are in
+[`sharing-standard.md`](sharing-standard.md), "The phrase scan":
+
+```bash
+python3 <skill-root>/scripts/sharing_scan.py <repo-root> --range origin/main...HEAD
+```
