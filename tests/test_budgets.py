@@ -1023,12 +1023,32 @@ ROOT = Path(__file__).resolve().parents[1]
 # commit on top), collections 14 (built and checked before the tag), publish 4 (the branch in the atomic push and its
 # read-back), the import 1, the docstring 1, spacing 4. build_directory_package.py 4: tracked 14 (a package's files,
 # now read for the collections too), with carried 12 fewer, and spacing 2.
+# 5.22.0 (unreleased; 2026-11-14): plugin 769 more, all in the new skill synthesis-message-exports; the core is as it
+# was. import_messages.py 769, new (a message export the principal authorized, read whole and checked before anything
+# is written, into one private transcript per conversation; standard library only): main 57 (the arguments, the
+# refusals made before anything is read, the writes and the report); read_export 57 (each file's kind, every
+# conversation read before any write, what is unknown kept for the listing, two ids that would share a file name
+# refused); Zip 43 (read in place: an entry that could lead outside, a link entry, a name given twice or a member over
+# the limit refuses the archive); plan 40 (new, extended or unchanged, reading only the transcripts this export would
+# write; a secure-storage id that now names other people is not merged); parse_transcript 37 (an earlier transcript
+# read back by its fences, an edited one left alone); Folder 35 (walked without following links, refused if it holds
+# one); classify 35 (a file's kind by its place in each layout); its constants 35 (the sections, layouts, media kinds,
+# limits, known fields and the characters that hide themselves); secure_conversation 26 (the secure-storage shape,
+# its timestamp unit decided per file); message_block 24; keyed 23 (a message named by its time and a digest of what
+# it says, so a re-import adds only new messages); dyi_message 21; render 21; dyi_conversation 19; listing 19 (file
+# names and sizes, never text); write 18 (whole or not at all); its docstring 15 and imports 14; read_transcript,
+# secure_message, since_of and uris 12 each; messages_root and safe 11 each; open_export 10; inline, reactions_of and
+# repair 9 each (repair: the Latin-1 escape quirk undone only where it round-trips); Refused and Unknown 8 each;
+# checked_times, code, duration, fence (more backticks than the text holds), in_time_order, load, text_of and visible
+# (hidden characters shown) 7 each; Unreadable 6; day_heading, kind_of, participants_line, shown and tally 5 each;
+# moment, stamp, too_large and whole 4 each; the __main__ guard 2 and the opening two lines 2.
 # Merged into release 5.22.0 on 5.21.0 (2026-11-14): the ceilings are 5.21.0's (core 14924, plugin 38171) and what
-# each 5.22.0 paragraph above adds over 5.20.1's: plugin 248 for the sharing standard and 344 for the collections.
+# each 5.22.0 paragraph above adds over 5.20.1's: plugin 248 for the sharing standard, 344 for the collections and 769
+# for the message exports.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # consolidate first).
 CORE_BUDGET = 14924
-PLUGIN_BUDGET = 38763
+PLUGIN_BUDGET = 39532
 
 
 def _lines(files):

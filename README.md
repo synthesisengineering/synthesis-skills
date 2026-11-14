@@ -1,6 +1,6 @@
 # Synthesis Skills
 
-Synthesis Skills is one plugin for Claude Code, Codex and Muse. It carries 72 skills
+Synthesis Skills is one plugin for Claude Code, Codex and Muse. It carries 73 skills
 for software engineering, writing, project management, correspondence and daily
 operations, plus a small runtime: a `synthesis` command and four lifecycle hooks. The
 skills follow the [Agent Skills](https://agentskills.io) standard. The runtime keeps
@@ -247,7 +247,7 @@ collections, built from its own files, as the `collections` branch of this repos
 | Project management | `synthesis-skills-project-management` | adversarial-review, agent-conformance, autopilot, kb-distribution, knowledge-capture, project-resume, waiting |
 | Engineering | `synthesis-skills-engineering` | bitbucket, code-audit, code-integration, code-planning, codebase-review, git-hooks, llm-setup, local-model-runtime, pr-review, preflight, preplan, review-triage, technical-advisor |
 | Writing | `synthesis-skills-writing` | article-refresh, article-writing, clean-text, content-distribution, content-framing, content-quality, creative-writer, disclosure-policy, executive-communication, fact-checking, link-research, promotion-gate, reader-briefing, response-merger, text-provenance, voice-profiler, writing-craft, writing-pitfalls |
-| Chief of staff | `synthesis-skills-chief-of-staff` | absence-coordination, agent-correspondence, catchup-ledger, chief-of-staff, concise-messaging, daily-rituals, fleet-secrets, inbox-cleanup, local-messaging, mac-sync, machine-sync, meeting-prep, meeting-transcripts, message-guard, quick-answers, repo-guard, slack-sync |
+| Chief of staff | `synthesis-skills-chief-of-staff` | absence-coordination, agent-correspondence, catchup-ledger, chief-of-staff, concise-messaging, daily-rituals, fleet-secrets, inbox-cleanup, local-messaging, mac-sync, machine-sync, meeting-prep, meeting-transcripts, message-exports, message-guard, quick-answers, repo-guard, slack-sync |
 
 Each harness installs a collection with its own commands; here, engineering. Put another
 collection's plugin name in its place, or install the core by itself with its own line.
@@ -364,6 +364,7 @@ keeps Codex's skill catalog within its budget.
 | [synthesis-slack-sync](skills/synthesis-slack-sync/SKILL.md) | Sync Slack channels, DMs and threads to local transcripts and update the daily plan. |
 | [synthesis-inbox-cleanup](skills/synthesis-inbox-cleanup/SKILL.md) | Manifest-driven cleanup for iCloud and IMAP, Microsoft 365 and outlook.com, and Gmail, with prompt-injection defenses. |
 | [synthesis-local-messaging](skills/synthesis-local-messaging/SKILL.md) | Read an authorized window of local iMessage or WhatsApp data into pointer-only notes, and send one approved iMessage. |
+| [synthesis-message-exports](skills/synthesis-message-exports/SKILL.md) | Import a message export the principal authorized (Facebook Messenger's downloads) into private transcripts, one per conversation, text fenced as untrusted data. |
 
 ### Daily operations
 
@@ -510,7 +511,7 @@ Each skill declares its license as an SPDX identifier in the `license` field of 
 
 - **[CC0 1.0](LICENSE-CC0)** (public domain dedication, no attribution required): 46
   skills, mostly methodology and writing.
-- **[Apache 2.0](LICENSE-APACHE)**: 26 skills, mostly those built around executable
+- **[Apache 2.0](LICENSE-APACHE)**: 27 skills, mostly those built around executable
   code.
 
 The core outside `skills/` (the `synthesis/` runtime, `hooks/`, `install.sh`, `onboard.sh`

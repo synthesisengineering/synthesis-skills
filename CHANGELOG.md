@@ -48,7 +48,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
 - **Five collections beside the whole set** (`synthesis-skills-manager` 3.6.0, `synthesis-onboarding` 3.6.0; plan item
   12.1, ruled 2026-11-14). Someone who wants one discipline can now install a collection instead of every skill: core
   (17 skills, which the other four build on), project management (7), engineering (13), writing (18) and chief of staff
-  (17), each a plugin of its own (`synthesis-skills-<name>`). The whole set stays the way to install synthesis, and the
+  (18), each a plugin of its own (`synthesis-skills-<name>`). The whole set stays the way to install synthesis, and the
   README lists it first. A collection registers no hook and carries no runtime, so installing one asks for no approval
   and changes nothing else on a Mac; each collection's description names the whole set as the way to the guards, the
   board and the rituals.
@@ -77,14 +77,47 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   the repository at `@collections` and installs a collection, which brings the core; Codex adds it with
   `--ref collections` and adds both; Muse adds its URL with `#collections` and installs both. Updating, removing one, and
   moving to the whole set are there too.
-- **The README counts what the skills declare.** It said 45 skills under CC0 and 25 under Apache 2.0, where they declare
-  46 and 26; a test now holds the counts.
+- **The README counts what the skills declare.** It said 45 skills under CC0 and 25 under Apache 2.0, where they declared
+  46 and 26 (Apache 2.0's 27 with synthesis-message-exports, below); a test now holds the counts.
 - **How it was checked.** Tests first, for the collection rules, the builder and the release's new stage. The route was
   probed in isolated harness homes (Claude Code 2.1.316, Codex 0.167.0-alpha.4.1, Muse 1.4.20) against a local copy of
   the branch served over HTTP, with the real installs unchanged before and after: each harness added the branch by its
   ref, installed a collection and the core, listed only their skills, registered no hook and asked for no approval, and
   each install held exactly its folder's files. The probe also found that Claude Code shows a plugin's marketplace entry,
   not its manifest, before an install; the entry now carries the whole description.
+
+- **New skill: synthesis-message-exports 1.0.0, a message export the principal authorized, imported into private
+  transcripts.** `synthesis-local-messaging` keeps each conversation in its app and records pointers only; this is
+  the other mode, for an owner who has authorized a copy of a whole export, to clear a backlog for example.
+  `scripts/import_messages.py EXPORT --out FOLDER [--since YYYY-MM-DD] [--dry-run]` reads Facebook Messenger's two
+  downloads: Meta's "Download your information" export of Messages in JSON, in each folder layout it has used
+  (`messages/`, `your_activity_across_facebook/messages/`, `your_facebook_activity/messages/`) and from every section
+  (inbox, archived, filtered, message requests and `e2ee_cutover`); and Messenger's secure-storage download of
+  end-to-end encrypted chats, one JSON file per conversation at its top, its timestamp unit decided per file. Each
+  conversation becomes one markdown transcript laid out like a Slack sync's, named by its id and its source
+  (`messenger-dyi-<id>.md`, `messenger-e2ee-<id>.md`). Its text sits in fences marked `untrusted` that no line of a
+  message can close, hidden characters are shown as `[U+XXXX]`, and attachments are named by their place in the
+  export, never copied. The regular export's text quirk (UTF-8 bytes written as Latin-1 escapes) is repaired only
+  where it round-trips. A re-import keeps every message written before, byte for byte, and adds only new ones; with
+  nothing new it writes nothing. Standard library only, no network: it reads only the export and its own earlier
+  transcripts, and writes only in `--out`. The README (73 skills), the Muse manifest and the skill router list it, and
+  it is in the chief-of-staff collection, beside `synthesis-local-messaging`.
+- **What it will not do.** It never sends and never copies media. An export in a shape it does not know is refused
+  with a listing of file names and sizes and no message text, so that a reader can be added; so are a ZIP entry
+  whose name could lead outside the archive, a link entry, a name given twice, a message file over 256 MiB, a link
+  inside an export folder, an output folder inside the export, and two conversations that would share a file name.
+  A file in `--out` the importer did not write, a transcript edited since, and a secure-storage file that now lists
+  other participants are left alone and named.
+- **The formats are written down with their sources** (`references/formats.md`): what Meta's own pages confirm, what
+  a real secure-storage download showed, what independent open-source importers agree on, and what is still
+  inferred, with how the importer handles each open question.
+- **How it was checked.** Tests first, with invented fixtures only: each layout and section, both timestamp units,
+  the repair and the text it must leave alone, threads split across files, group chats, attachments, reactions,
+  unsent messages and calls, untrusted text that tries to leave its fence, unsafe and oversized ZIP entries, unknown
+  shapes, re-import, dry runs, `--since`, and Python's audit events showing nothing read outside the export or
+  written outside `--out`. Review of the first version found three defects, each fixed with a test that failed
+  before its fix: an archive whose only JSON held no conversation was taken for an export, one id reached twice
+  wrote one file twice, and names that differ only in case could be listed in another order on another run.
 
 ## [5.21.0] - 2026-11-14
 

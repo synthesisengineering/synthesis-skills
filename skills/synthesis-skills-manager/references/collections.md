@@ -92,8 +92,8 @@ python3 skills/synthesis-skills-manager/scripts/build_collections.py --check
 python3 skills/synthesis-skills-manager/scripts/build_collections.py OUT_DIR
 ```
 
-`--check` builds from the checkout's files and writes nothing: `ok: 5 collections, 72
-skills, 744 files, version 5.22.0; nothing written` (exit 0). With a folder that does not
+`--check` builds from the checkout's files and writes nothing: `ok: 5 collections, 73
+skills, 753 files, version 5.22.0; nothing written` (exit 0). With a folder that does not
 exist yet, it builds from the last commit and writes the branch's tree there, whole or
 not at all: `built OUT_DIR: ...` (exit 0); it refuses while a file it reads differs from
 that commit. A defect prints `refused: N problems; nothing written`, then each problem,
