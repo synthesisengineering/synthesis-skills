@@ -545,9 +545,10 @@ def test_a_user_level_declaration_unlike_the_plugins_is_named(tmp_path):
 
 
 def test_a_declaration_the_person_wrote_with_the_plugins_matcher_is_judged_not_named_unlike(tmp_path):
-    """Setup keeps a declaration the person wrote as written, so how its command names the stable hook is theirs."""
+    """Setup keeps a declaration the person wrote as written, so how its command names the stable hook is theirs; the
+    guard's fail-closed tail it must carry (review round 2 of 5.21.0)."""
     declared = doctor.codex_user_declaration(REPO_HOOKS)
-    declared["PreToolUse"][0]["hooks"][0]["command"] = '"${HOME}/.synthesis/v5/bin/synthesis-hook" pre-tool-use'
+    declared["PreToolUse"][0]["hooks"][0]["command"] = declared["PreToolUse"][0]["hooks"][0]["command"].replace("$HOME", "${HOME}", 1)
     home, config = user_level(tmp_path, declared=declared)
     assert doctor.check_codex_trust(REPO_HOOKS, config, PLUGIN_ID, None, home).status == "ok"
 
@@ -665,7 +666,7 @@ def test_hook_state_held_as_an_inline_table_is_named_not_a_crash(tmp_path, text)
 
 GUARD = REPO_HOOKS["hooks"]["PreToolUse"][0]["hooks"][0]["command"]
 HOOK_CALL = '"$HOME/.synthesis/v5/bin/synthesis-hook" pre-tool-use'
-NOT_AS_THE_PLUGINS = {"output discarded": HOOK_CALL + " >/dev/null 2>&1", "failure swallowed": HOOK_CALL + " || true",
+NOT_AS_THE_PLUGINS = {"no tail": HOOK_CALL, "output discarded": HOOK_CALL + " >/dev/null 2>&1", "failure swallowed": HOOK_CALL + " || true",
                       "in the background": HOOK_CALL + " &", "quoted tilde": '"~/.synthesis/v5/bin/synthesis-hook" pre-tool-use',
                       "single-quoted $HOME": "'$HOME/.synthesis/v5/bin/synthesis-hook' pre-tool-use"}
 
@@ -680,12 +681,13 @@ def test_calls_stable_hook_reads_the_hooks_path_as_sh_does(command, calls):
     assert doctor.calls_stable_hook("PreToolUse", command) is calls
 
 
-@pytest.mark.parametrize("command,covers", [(GUARD, True), (GUARD.replace("$HOME", "${HOME}", 1), True), (HOOK_CALL, True),
+@pytest.mark.parametrize("command,covers", [(GUARD, True), (GUARD.replace("$HOME", "${HOME}", 1), True),
                                             *((c, False) for c in NOT_AS_THE_PLUGINS.values())])
 def test_a_user_level_guard_covers_the_plugins_only_as_its_own_invocation(command, covers):
     # Judged by its first words, a command that threw the guard's answer away, or never reached the guard, switched the
     # plugin's fail-closed copy off and read as ok (q02). It covers only as the guard's own invocation, with the
-    # fail-closed tail or nothing after it.
+    # fail-closed tail: without it a missing runtime exits 127 and Codex lets the call through (the coordinator's ruling
+    # on review round 2, by the owner's rule that protective automation fails closed).
     wanted = doctor.codex_user_declaration(REPO_HOOKS)["PreToolUse"]
     mine = [{**wanted[0], "hooks": [{**wanted[0]["hooks"][0], "command": command}]}]
     assert doctor.codex_covers(mine, wanted) is covers
@@ -697,6 +699,17 @@ def test_a_user_level_guard_that_does_not_run_as_the_plugins_never_reads_as_ok(t
     declared["PreToolUse"][0]["hooks"][0]["command"] = command
     home, config = user_level(tmp_path, declared=declared)
     assert doctor.check_codex_trust(REPO_HOOKS, config, PLUGIN_ID, None, home).status == "fail"
+
+
+def test_a_user_level_guard_without_the_fail_closed_tail_is_named_as_a_fault(tmp_path):
+    # The 5.20 command, with nothing after its event: q02 showed it exit 127 with the stable hook gone, which Codex lets
+    # through. The doctor names it, as a fault of the declaration's, not an approval waiting.
+    declared = doctor.codex_user_declaration(REPO_HOOKS)
+    declared["PreToolUse"][0]["hooks"][0]["command"] = HOOK_CALL
+    home, config = user_level(tmp_path, declared=declared)
+    check = doctor.check_codex_trust(REPO_HOOKS, config, PLUGIN_ID, None, home)
+    assert check.status == "fail" and not doctor.waits_on_person(check)
+    assert "pre_tool_use:0:0 differs from the plugin's PreToolUse: edit your own" in check.detail
 
 
 def test_claude_fail_closed_judges_the_oldest_claude_code_on_the_mac(tmp_path):

@@ -1180,8 +1180,8 @@ def test_a_narrower_declaration_the_person_wrote_is_kept_and_the_plugins_copy_st
 
 
 def test_a_declaration_the_person_wrote_that_covers_the_plugins_is_kept_and_not_doubled(tmp_path, monkeypatch):
-    own = {**PLUGIN_HOOKS["hooks"]["PreToolUse"][0], "hooks": [{**PLUGIN_HOOKS["hooks"]["PreToolUse"][0]["hooks"][0],
-                                                               "command": '"${HOME}/.synthesis/v5/bin/synthesis-hook" pre-tool-use'}]}
+    guard = PLUGIN_HOOKS["hooks"]["PreToolUse"][0]["hooks"][0]  # the person's spelling of $HOME, the guard's own tail
+    own = {**PLUGIN_HOOKS["hooks"]["PreToolUse"][0], "hooks": [{**guard, "command": guard["command"].replace("$HOME", "${HOME}", 1)}]}
     home = codex_home(tmp_path, monkeypatch, hooks={"hooks": {"PreToolUse": [own]}})
     lines = setup.codex_user_hooks(True, setup.REPO)
     assert declared(home)["PreToolUse"] == [own] and any("PreToolUse" in line and "kept" in line for line in lines)
@@ -1477,7 +1477,7 @@ def test_a_declaration_from_before_the_guards_failure_tail_is_brought_in_step_an
 # ---- review round 2 of 5.21.0: each finding's case, from its probe ---------------------------------------------
 
 HOOK_CALL = '"$HOME/.synthesis/v5/bin/synthesis-hook" pre-tool-use'
-CALLS_NOT_AS_THE_PLUGINS = {"output discarded": HOOK_CALL + " >/dev/null 2>&1", "failure swallowed": HOOK_CALL + " || true",
+CALLS_NOT_AS_THE_PLUGINS = {"no tail": HOOK_CALL, "output discarded": HOOK_CALL + " >/dev/null 2>&1", "failure swallowed": HOOK_CALL + " || true",
                             "in the background": HOOK_CALL + " &"}
 NO_CALL = {"quoted tilde": '"~/.synthesis/v5/bin/synthesis-hook" pre-tool-use',
            "single-quoted $HOME": "'$HOME/.synthesis/v5/bin/synthesis-hook' pre-tool-use"}
