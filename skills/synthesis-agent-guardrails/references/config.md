@@ -14,9 +14,13 @@ doctor` warns then, and fails a plugin whose hook lacks the setting. Codex (0.16
 block on exit 2 with a reason, so the guard's own command (in `hooks/hooks.json`, Muse's
 `pre-tool-use.sh` and the user-level declaration) turns a stable hook that cannot start or
 crashes into exit 2 with one line of reason, and a deny keeps its own (Muse's hook test and
-Codex's reading of all four, run on 2026-11-14). A guard that times out there still lets the
-call through. In every harness an unreadable config and an error inside a guard still block,
-since the guard catches those itself.
+Codex's reading of all four, run on 2026-11-14). The guard also keeps a deadline of its own, 4
+seconds from when the hook starts judging the call (5.21.1): past it the call is held with the
+reason, and git or any other process the guard started is stopped, so a slow repository read or a
+lock answers closed in every harness inside its 5-second limit. What still lets a call through in
+Codex and Muse is a hook that uses up their 5 seconds before its deadline is set: Python itself
+slow to start by more than about a second, under heavy load or on a stalled disk. In every harness
+an unreadable config and an error inside a guard still block, since the guard catches those itself.
 
 ## Contents
 

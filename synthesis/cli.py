@@ -369,7 +369,11 @@ def cmd_install(args) -> int:
 
 def cmd_uninstall(args) -> int:
     from synthesis import install
-    print("\n".join(install.uninstall(dry_run=args.dry_run)))
+    try:
+        print("\n".join(install.uninstall(dry_run=args.dry_run)))
+    except install.InUse as exc:  # Codex's own hooks still run it (review round 2 of 5.21.0)
+        print(f"stopped: {exc}")
+        return 1
     return 0
 
 

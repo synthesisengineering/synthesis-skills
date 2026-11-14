@@ -957,10 +957,16 @@ SWITCH = "# synthesis-setup: codex-user-hooks"
 
 
 def codex_home(tmp_path, monkeypatch, config="", hooks=None):
-    """A Codex home of the test's own: its config.toml, and its hooks.json when given (text as it is, else JSON)."""
+    """A Codex home of the test's own: its config.toml, and its hooks.json when given (text as it is, else JSON). The
+    stable hook the declaration runs is in place, as setup requires before it declares (review round 2, R2-2)."""
     home = tmp_path / "codex-home"
     home.mkdir()
     monkeypatch.setenv("CODEX_HOME", str(home))
+    hook = Path.home() / ".synthesis" / "v5" / "bin" / "synthesis-hook"
+    if not hook.exists():
+        hook.parent.mkdir(parents=True, exist_ok=True)
+        hook.write_text("#!/bin/sh\nexit 0\n")
+        hook.chmod(0o755)
     if config is not None:
         (home / "config.toml").write_text(config)
     if hooks is not None:
@@ -1168,13 +1174,14 @@ def test_a_narrower_declaration_the_person_wrote_is_kept_and_the_plugins_copy_st
     assert hook_state(home).get(pre, {}).get("enabled") is not False                  # the plugin's guards what yours does not
     assert all(hook_state(home)[key]["enabled"] is False for key in plugin_keys() if key != pre)
     assert any("PreToolUse" in line and "stays on" in line and "edit" in line for line in lines)
+    assert any("PreToolUse" in line and "held" in line and "approved" in line for line in lines)  # R2-8: what two copies do
     setup.codex_user_hooks(False)
     assert declared(home)["PreToolUse"] == [own]                                      # never setup's to take out
 
 
 def test_a_declaration_the_person_wrote_that_covers_the_plugins_is_kept_and_not_doubled(tmp_path, monkeypatch):
-    own = {**PLUGIN_HOOKS["hooks"]["PreToolUse"][0], "hooks": [{**PLUGIN_HOOKS["hooks"]["PreToolUse"][0]["hooks"][0],
-                                                               "command": '"${HOME}/.synthesis/v5/bin/synthesis-hook" pre-tool-use'}]}
+    guard = PLUGIN_HOOKS["hooks"]["PreToolUse"][0]["hooks"][0]  # the person's spelling of $HOME, the guard's own tail
+    own = {**PLUGIN_HOOKS["hooks"]["PreToolUse"][0], "hooks": [{**guard, "command": guard["command"].replace("$HOME", "${HOME}", 1)}]}
     home = codex_home(tmp_path, monkeypatch, hooks={"hooks": {"PreToolUse": [own]}})
     lines = setup.codex_user_hooks(True, setup.REPO)
     assert declared(home)["PreToolUse"] == [own] and any("PreToolUse" in line and "kept" in line for line in lines)
@@ -1311,7 +1318,7 @@ def test_uninstall_takes_codexs_user_level_declaration_out_with_the_runtime_what
     home = codex_home(tmp_path, monkeypatch, config="")
     setup.codex_user_hooks(True, setup.REPO)
     gone = []
-    monkeypatch.setattr(setup.install, "uninstall", lambda dry_run=False: gone.append("runtime") or ["removed the runtime"])
+    monkeypatch.setattr(setup.install, "uninstall", lambda dry_run=False, codex_cleared=False: gone.append("runtime") or ["removed the runtime"])
     monkeypatch.setattr(setup.doctor, "find_client", lambda name: None)
     assert setup.main(["uninstall", "--clients", "claude"]) == 0
     assert gone and not (home / "hooks.json").exists() and SWITCH not in (home / "config.toml").read_text()
@@ -1323,7 +1330,7 @@ def test_uninstall_keeps_the_runtime_and_fails_when_it_cannot_take_the_declarati
     setup.codex_user_hooks(True, setup.REPO)
     (home / "config.toml").write_text((home / "config.toml").read_text() + "this is not toml\n")
     gone, before = [], files(home)
-    monkeypatch.setattr(setup.install, "uninstall", lambda dry_run=False: gone.append("runtime") or ["removed the runtime"])
+    monkeypatch.setattr(setup.install, "uninstall", lambda dry_run=False, codex_cleared=False: gone.append("runtime") or ["removed the runtime"])
     monkeypatch.setattr(setup.doctor, "find_client", lambda name: None)
     assert setup.main(["uninstall", "--clients", "claude,codex,muse"]) == 1
     assert gone == [] and files(home) == before and "runtime stays" in capsys.readouterr().out
@@ -1465,4 +1472,122 @@ def test_a_declaration_from_before_the_guards_failure_tail_is_brought_in_step_an
     assert guard == setup.doctor.codex_user_declaration(PLUGIN_HOOKS)["PreToolUse"] and "exit 2" in guard[0]["hooks"][0]["command"]
     assert any("PreToolUse" in line and "approve" in line and "again" in line for line in lines)
     assert not any("stays" in line for line in lines)
+
+
+# ---- review round 2 of 5.21.0: each finding's case, from its probe ---------------------------------------------
+
+HOOK_CALL = '"$HOME/.synthesis/v5/bin/synthesis-hook" pre-tool-use'
+CALLS_NOT_AS_THE_PLUGINS = {"no tail": HOOK_CALL, "output discarded": HOOK_CALL + " >/dev/null 2>&1", "failure swallowed": HOOK_CALL + " || true",
+                            "in the background": HOOK_CALL + " &"}
+NO_CALL = {"quoted tilde": '"~/.synthesis/v5/bin/synthesis-hook" pre-tool-use',
+           "single-quoted $HOME": "'$HOME/.synthesis/v5/bin/synthesis-hook' pre-tool-use"}
+
+
+def persons_copy(pre_tool_use=None):
+    """The plugin's declaration as a person wrote it into hooks.json by hand (not setup's: no record of it), its guard's
+    command replaced where given."""
+    own = json.loads(json.dumps(setup.doctor.codex_user_declaration(PLUGIN_HOOKS)))
+    if pre_tool_use is not None:
+        own["PreToolUse"][0]["hooks"][0]["command"] = pre_tool_use
+    return own
+
+
+def pre_key():
+    return next(key for key in plugin_keys() if ":pre_tool_use:" in key)
+
+
+@pytest.mark.parametrize("command", CALLS_NOT_AS_THE_PLUGINS.values())
+def test_a_guard_of_the_persons_that_does_not_run_as_the_plugins_keeps_the_plugins_copy_on_and_says_so(tmp_path, monkeypatch, command):
+    """R2-1 (q02): equal to the plugin's group but for what follows `synthesis-hook pre-tool-use`, it was taken as
+    covering, the plugin's fail-closed copy went off, and its deny never reached Codex, or a crash let the call
+    through. R2-8: the two copies it leaves are named, with what they do to an approved call."""
+    home = codex_home(tmp_path, monkeypatch, hooks={"hooks": persons_copy(command)})
+    lines = setup.codex_user_hooks(True, setup.REPO)
+    assert declared(home)["PreToolUse"][0]["hooks"][0]["command"] == command          # kept as written
+    assert hook_state(home).get(pre_key(), {}).get("enabled") is not False
+    assert any("PreToolUse" in line and "stays on" in line and "held" in line for line in lines)
+
+
+@pytest.mark.parametrize("command", NO_CALL.values())
+def test_a_guard_of_the_persons_that_sh_never_finds_is_no_declaration_and_setup_declares_its_own(tmp_path, monkeypatch, command):
+    """R2-1 (q02): `"~/..."` and `'$HOME/...'` were taken for a call, though sh expands neither and finds no hook."""
+    home = codex_home(tmp_path, monkeypatch, hooks={"hooks": persons_copy(command)})
+    setup.codex_user_hooks(True, setup.REPO)
+    guard = declared(home)["PreToolUse"]
+    assert guard[0]["hooks"][0]["command"] == command and guard[1:] == setup.doctor.codex_user_declaration(PLUGIN_HOOKS)["PreToolUse"]
+
+
+def test_the_option_is_declared_only_once_the_runtime_it_runs_is_in_place(tmp_path, monkeypatch):
+    """R2-2 (q13): declared before the runtime, a declaration that runs a missing hook holds every guarded Codex call."""
+    home = codex_home(tmp_path, monkeypatch, config="")
+    (Path.home() / ".synthesis" / "v5" / "bin" / "synthesis-hook").unlink()
+    with pytest.raises(setup.SetupError, match="runtime.*nothing was changed"):
+        setup.codex_user_hooks(True, setup.REPO)
+    assert not (home / "hooks.json").exists() and SWITCH not in (home / "config.toml").read_text()
+
+
+def test_a_runtime_install_that_fails_leaves_no_declaration_behind(tmp_path, monkeypatch, capsys):
+    """R2-2 (q13): on a new Mac the plugin command declared first, then the runtime's install failed, and every guarded
+    call in Codex was held, its plugin's own session start, which installs a missing runtime, switched off."""
+    home = codex_home(tmp_path, monkeypatch, config="[features]\nhooks = true\n")
+    (Path.home() / ".synthesis" / "v5" / "bin" / "synthesis-hook").unlink()
+    _codex_cli(tmp_path, monkeypatch)
+
+    def failing(git_hooks):
+        raise OSError("[Errno 28] No space left on device")
+    monkeypatch.setattr(setup, "install_runtime", failing)
+    assert setup.main(["plugin", "--no-input", "--clients", "codex", "--codex-user-hooks"]) == 1
+    assert not (home / "hooks.json").exists() and SWITCH not in (home / "config.toml").read_text()
+
+
+def test_uninstall_keeps_the_runtime_while_a_declaration_of_the_persons_still_runs_it(tmp_path, monkeypatch, capsys):
+    """R2-2 (q10): setup kept the person's declarations, which call the stable hook, and the runtime went under them."""
+    own = persons_copy()
+    home = codex_home(tmp_path, monkeypatch, hooks={"hooks": own})
+    setup.codex_user_hooks(True, setup.REPO)
+    gone, before = [], files(home)
+    monkeypatch.setattr(setup.install, "uninstall", lambda dry_run=False, codex_cleared=False: gone.append("runtime") or ["removed the runtime"])
+    monkeypatch.setattr(setup.doctor, "find_client", lambda name: None)
+    assert setup.main(["uninstall", "--clients", "claude,codex,muse"]) == 1
+    assert gone == [] and files(home) == before and "runtime stays" in capsys.readouterr().out
+
+
+def test_setup_names_a_declaration_of_the_persons_beside_its_own_and_what_it_does_to_approvals(tmp_path, monkeypatch):
+    """R2-8 (q01 D1): setup's Stop and a covering one of the person's; the next run said "already declared" while Stop ran
+    twice, each copy spending or asking a code of its own."""
+    home = codex_home(tmp_path, monkeypatch, config="")
+    setup.codex_user_hooks(True, setup.REPO)
+    data = json.loads((home / "hooks.json").read_text())
+    data["hooks"]["Stop"].append({"hooks": [{"type": "command", "command": '"${HOME}/.synthesis/v5/bin/synthesis-hook" stop', "timeout": 5}]})
+    (home / "hooks.json").write_text(json.dumps(data, indent=2))
+    lines = setup.codex_user_hooks(None, setup.REPO)
+    assert any("Stop" in line and "twice" in line and "held" in line for line in lines)
+
+
+def test_turning_the_option_off_names_the_persons_declarations_that_now_run_beside_the_plugins(tmp_path, monkeypatch):
+    """R2-8 (q01 K1): turned off over the person's own declarations, the plugin's copies ran beside them, and setup said
+    only that the plugin's own run once approved."""
+    home = codex_home(tmp_path, monkeypatch, hooks={"hooks": persons_copy()})
+    setup.codex_user_hooks(True, setup.REPO)
+    lines = setup.codex_user_hooks(False)
+    assert any(all(event in line for event in setup.doctor.EVENTS) and "beside" in line and "held" in line for line in lines)
+
+
+def test_a_crlf_hooks_file_keeps_its_line_endings(tmp_path, monkeypatch):
+    """R2-9 (q01 C1): hooks.json came back with LF line endings, against the notes' word that writes keep them."""
+    text = json.dumps({"description": "mine", "hooks": {"PostToolUse": [{"hooks": [{"type": "command", "command": "echo mine"}]}]}},
+                      indent=2).replace("\n", "\r\n") + "\r\n"
+    home = codex_home(tmp_path, monkeypatch)
+    (home / "hooks.json").write_bytes(text.encode())
+    setup.codex_user_hooks(True, setup.REPO)
+    raw = (home / "hooks.json").read_bytes()
+    assert raw.count(b"\n") == raw.count(b"\r\n")
+    setup.codex_user_hooks(False)
+    assert (home / "hooks.json").read_bytes() == text.encode()
+
+
+def test_the_setup_reference_says_what_covers_the_plugins_guard():
+    """R2-9: it said "the same matcher and timeout", which R2-1 showed is not enough."""
+    text = " ".join((Path(setup.__file__).resolve().parents[1] / "references" / "harness-install.md").read_text(encoding="utf-8").split())
+    assert "the same group and command" in text and "the same matcher and timeout" not in text
 

@@ -13,9 +13,13 @@ stable hook is missing; Claude Code names the hook and says `failed` or `timed o
 Claude Code ignores the setting and lets the send through, and `synthesis doctor` warns. Codex
 (0.167) and Muse (1.4.20) have no such setting, but block on exit 2 with a reason, so the guard's
 own command turns a stable hook that cannot start or crashes into exit 2 with one line of reason,
-and a send is held there too (Muse's hook test, run on 2026-11-14); a guard that times out there
-still lets the call through. An unreadable config and an error inside a guard still block in all
-three, since the guard catches those itself.
+and a send is held there too (Muse's hook test, run on 2026-11-14). The guard keeps a deadline of
+its own, 4 seconds from when the hook starts judging the send (5.21.1): past it the send is held,
+and any process the guard started is stopped, so a slow guard answers closed in every harness
+inside its 5-second limit. What still lets a send through in Codex and Muse is a hook that uses up
+their 5 seconds before its deadline is set: Python itself slow to start by more than about a second.
+An unreadable config and an error inside a guard still block in all three, since the guard catches
+those itself.
 
 ## Keys
 
