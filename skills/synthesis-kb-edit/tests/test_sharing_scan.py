@@ -171,13 +171,15 @@ def test_a_file_that_is_not_text_is_said_and_never_counted_as_read(kb):
     assert code == 0 and out.splitlines()[0] == said
 
 
-def test_with_no_phrases_named_it_refuses_to_run(kb):
-    """The plugin ships none, and a scan with nothing to look for would pass everything."""
+def test_with_no_phrases_named_it_refuses_to_run_and_says_how_to_fix_it(kb):
+    """The plugin ships none, and a scan with nothing to look for would pass everything; a contract that names a policy
+    with no phrases holds every edit, and the refusal says both ways out."""
     for phrases in ([], ABSENT):
         write_contract(kb, backstop_phrases=phrases)
         code, out, err = scan(kb, "source/reference/team.md")
         assert code == 2 and out == ""
-        assert "confidentiality.backstop_phrases" in err and "nothing was scanned" in err
+        assert "confidentiality.backstop_phrases" in err and "every edit is held" in err
+        assert "list at least one" in err and "remove confidentiality.sharing_policy" in err
 
 
 def test_with_no_policy_or_one_that_is_not_there_it_refuses_to_run(kb):

@@ -2,11 +2,11 @@
 
 import argparse
 import hashlib
-import importlib.util
 import json
 import os
 import re
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 
@@ -356,23 +356,23 @@ def test_a_new_workspace_gets_a_committed_knowledge_repository_and_links(tmp_pat
     assert (repo / "projects" / "index.yaml").read_text() == "projects: [mine]\n"
 
 
-def test_a_new_knowledge_repository_starts_with_the_sharing_policy_from_the_template(tmp_path):
-    """The policy is synthesis-kb-edit's template, committed with the other seeds, and the contract names it with an
-    empty phrase list: the plugin ships no phrases, so the phrase scan refuses to run until the person names theirs."""
+def test_a_new_knowledge_base_from_the_seed_validates_and_ships_with_no_phrase_list(tmp_path):
+    """The seed carries the sharing policy's template at the policy's path, committed with the other seeds, but the
+    contract does not name it: adopting is a deliberate step (synthesis-kb-edit's adopt-sharing-policy, which takes the
+    phrases), so the phrase scan does not run and a new knowledge base ships edits as before."""
     lines = workspace.new_workspace("demo")
     repo = (Path.home() / "workspaces" / "demo" / "ai-knowledge-demo").resolve()
     kb_edit = Path(workspace.__file__).resolve().parents[2] / "synthesis-kb-edit"
     template = (kb_edit / "assets" / "sharing-policy.template.md").read_text(encoding="utf-8")
     assert (repo / ".agents" / "sharing-policy.md").read_text(encoding="utf-8") == template
     assert git("-C", str(repo), "status", "--porcelain") == ""
-    spec = importlib.util.spec_from_file_location("kb_config_seen_by_onboarding", kb_edit / "scripts" / "kb_config.py")
-    kb_config = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(kb_config)
-    _, config = kb_config.load_config(repo, None)
-    assert kb_config.validate_config(config) == [] and kb_config.check_paths(repo, config) == []
-    assert config["confidentiality"]["sharing_policy"] == ".agents/sharing-policy.md"
-    assert config["confidentiality"]["backstop_phrases"] == []
-    assert any("confidentiality.backstop_phrases" in line for line in lines)  # the person is told what to name
+    gate = subprocess.run([sys.executable, str(kb_edit / "scripts" / "kb_config.py"), str(repo), "--check-paths"],
+                          capture_output=True, text=True)
+    assert gate.returncode == 0 and gate.stdout.startswith("VALID"), gate.stdout + gate.stderr
+    from synthesis.yamlish import load
+    block = load((repo / ".agents" / "knowledge-base.yaml").read_text(encoding="utf-8"))["confidentiality"]
+    assert "sharing_policy" not in block and "backstop_phrases" not in block  # so kb-edit's rule 5 runs no scan
+    assert any("adopt-sharing-policy" in line for line in lines)  # the deliberate step is named
 
 
 def test_a_new_workspace_without_a_git_identity_changes_nothing(tmp_path, monkeypatch):

@@ -118,8 +118,8 @@ def test_a_key_the_contract_does_not_name_is_refused_at_every_level() -> None:
 
 
 def test_the_sharing_policy_and_its_phrases_validate_and_a_named_policy_must_be_there(tmp_path: Path) -> None:
-    """The organization's own phrases: the plugin ships none, so an empty list is a valid contract (the scan, not the
-    contract, refuses to run on it), and anything but a list of phrases is refused."""
+    """The organization's own phrases (the plugin ships none) are a list of phrases, and a named policy's file must be
+    there. With no policy named, an empty list holds nothing."""
     config = valid_config()
     config["confidentiality"].update(sharing_policy=".agents/sharing-policy.md", backstop_phrases=["zephyr ledger", "opal"])
     assert MODULE.validate_config(config) == []
@@ -128,6 +128,7 @@ def test_the_sharing_policy_and_its_phrases_validate_and_a_named_policy_must_be_
                for error in MODULE.check_paths(repo.resolve(), config))
     (repo / ".agents" / "sharing-policy.md").write_text("# Sharing policy\n", encoding="utf-8")
     assert MODULE.check_paths(repo.resolve(), config) == []
+    del config["confidentiality"]["sharing_policy"]
     config["confidentiality"]["backstop_phrases"] = []
     assert MODULE.validate_config(config) == []
     for broken in ({"sharing_policy": "../outside.md"}, {"sharing_policy": "/srv/policy.md"},
@@ -137,6 +138,19 @@ def test_the_sharing_policy_and_its_phrases_validate_and_a_named_policy_must_be_
         changed["confidentiality"].update(broken)
         field = next(iter(broken))
         assert any(error.startswith(f"confidentiality.{field}: ") for error in MODULE.validate_config(changed)), broken
+
+
+def test_a_contract_that_names_a_policy_with_no_phrases_is_held_and_says_how_to_fix_it() -> None:
+    """A named policy runs the phrase scan on every edit, and the scan refuses to run without phrases, so such a contract
+    fails the configuration gate at once, naming both ways out, instead of when an edit is ready to ship."""
+    for listed in (True, False):  # an empty list, and no list at all
+        config = valid_config()
+        config["confidentiality"]["sharing_policy"] = ".agents/sharing-policy.md"
+        if listed:
+            config["confidentiality"]["backstop_phrases"] = []
+        held = [error for error in MODULE.validate_config(config) if error.startswith("confidentiality.backstop_phrases: ")]
+        assert len(held) == 1 and "every edit is held" in held[0], held
+        assert "list at least one" in held[0] and "remove confidentiality.sharing_policy" in held[0]
 
 
 # ---- adopting the sharing standard in an existing knowledge base ------------------
@@ -195,62 +209,74 @@ def block_repo(tmp_path: Path, contract: str = BLOCK_CONTRACT) -> Path:
     return repo
 
 
-def adopt(repo: Path):
-    done = subprocess.run([sys.executable, str(MODULE_PATH), "adopt-sharing-policy", str(repo)],
-                          capture_output=True, text=True)
+def adopt(repo: Path, *phrases: str):
+    done = subprocess.run([sys.executable, str(MODULE_PATH), "adopt-sharing-policy", str(repo),
+                           *(part for phrase in phrases for part in ("--phrase", phrase))], capture_output=True, text=True)
     return done.returncode, done.stdout + done.stderr
 
 
-def test_adopting_writes_the_template_and_adds_the_two_keys_keeping_every_line(tmp_path: Path) -> None:
+def test_adopting_names_the_policy_with_the_phrases_given_keeping_every_line(tmp_path: Path) -> None:
     repo = block_repo(tmp_path)
-    code, out = adopt(repo)
+    code, out = adopt(repo, "zephyr ledger", "opal")
     assert code == 0, out
     assert (repo / ".agents" / "sharing-policy.md").read_text(encoding="utf-8") == TEMPLATE.read_text(encoding="utf-8")
     lines, before = (repo / ".agents" / "knowledge-base.yaml").read_text(encoding="utf-8").splitlines(), BLOCK_CONTRACT.splitlines()
     assert [line for line in lines if line not in before] == ['  sharing_policy: ".agents/sharing-policy.md"',
-                                                              "  backstop_phrases: []"]
+                                                              "  backstop_phrases:", '    - "zephyr ledger"', '    - "opal"']
     assert [line for line in lines if line in before] == before  # every line kept, comments included, in order
     _, config = MODULE.load_config(repo, None)
     assert MODULE.validate_config(config) == [] and MODULE.check_paths(repo.resolve(), config) == []
     assert config["confidentiality"]["sharing_policy"] == ".agents/sharing-policy.md"
-    assert config["confidentiality"]["backstop_phrases"] == []
-    assert "confidentiality.backstop_phrases" in out  # the next step: the scan refuses to run until a phrase is named
+    assert config["confidentiality"]["backstop_phrases"] == ["zephyr ledger", "opal"]
+
+
+def test_adopting_with_no_phrases_refuses_and_writes_nothing(tmp_path: Path) -> None:
+    """A policy named with no phrases would hold every edit, so adopting takes the phrases in the same step."""
+    repo = block_repo(tmp_path)
+    code, out = adopt(repo)
+    assert code == 1 and "--phrase" in out, out
+    assert not (repo / ".agents" / "sharing-policy.md").exists()
+    assert (repo / ".agents" / "knowledge-base.yaml").read_text(encoding="utf-8") == BLOCK_CONTRACT
 
 
 def test_adopting_never_writes_over_a_policy_that_exists_and_a_second_run_changes_nothing(tmp_path: Path) -> None:
     repo = block_repo(tmp_path)
     (repo / ".agents" / "sharing-policy.md").write_text("# Our policy, as we wrote it\n", encoding="utf-8")
-    assert adopt(repo)[0] == 0
+    assert adopt(repo, "zephyr ledger")[0] == 0
     assert (repo / ".agents" / "sharing-policy.md").read_text(encoding="utf-8") == "# Our policy, as we wrote it\n"
     contract = (repo / ".agents" / "knowledge-base.yaml").read_text(encoding="utf-8")
     code, out = adopt(repo)
     assert code == 0 and "kept as it is" in out
     assert (repo / ".agents" / "knowledge-base.yaml").read_text(encoding="utf-8") == contract
+    code, out = adopt(repo, "violet harbor")  # a list that exists is changed in the contract, not by adopting again
+    assert code == 1 and "lists phrases already" in out, out
+    assert (repo / ".agents" / "knowledge-base.yaml").read_text(encoding="utf-8") == contract
 
 
-def test_adopting_writes_where_the_contract_says_and_adds_only_the_key_it_lacks(tmp_path: Path) -> None:
+def test_adopting_writes_where_the_contract_says_and_adds_only_what_it_lacks(tmp_path: Path) -> None:
     contract = BLOCK_CONTRACT.replace('  visible_to: "Everyone in the organization"\n',
                                       '  visible_to: "Everyone in the organization"\n'
                                       '  sharing_policy: "source/reference/sharing.md"\n')
     repo = block_repo(tmp_path, contract)
-    assert adopt(repo)[0] == 0
+    code, out = adopt(repo, "violet harbor")
+    assert code == 0, out
     assert (repo / "source" / "reference" / "sharing.md").read_text(encoding="utf-8") == TEMPLATE.read_text(encoding="utf-8")
     assert not (repo / ".agents" / "sharing-policy.md").exists()
     lines = (repo / ".agents" / "knowledge-base.yaml").read_text(encoding="utf-8").splitlines()
-    assert [line for line in lines if line not in contract.splitlines()] == ["  backstop_phrases: []"]
+    assert [line for line in lines if line not in contract.splitlines()] == ["  backstop_phrases:", '    - "violet harbor"']
 
 
 def test_adopting_refuses_a_contract_it_cannot_safely_change_and_writes_nothing(tmp_path: Path) -> None:
     for number, (contract, said) in enumerate(((BLOCK_CONTRACT.replace("notes: >", "note: >"), "unknown key"),
                                                (json.dumps(valid_config()), "by hand"))):  # a flow mapping
         repo = block_repo(tmp_path / str(number), contract)
-        code, out = adopt(repo)
+        code, out = adopt(repo, "zephyr ledger")
         assert code == 1 and said in out, out
         assert not (repo / ".agents" / "sharing-policy.md").exists()
         assert (repo / ".agents" / "knowledge-base.yaml").read_text(encoding="utf-8") == contract
     bare = tmp_path / "bare"
     (bare / ".git").mkdir(parents=True)
-    assert adopt(bare)[0] == 2  # no contract at all
+    assert adopt(bare, "zephyr ledger")[0] == 2  # no contract at all
 
 
 def test_the_template_carries_the_standards_classes_figures_and_test_word_for_word() -> None:
