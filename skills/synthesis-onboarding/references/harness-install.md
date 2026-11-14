@@ -255,10 +255,14 @@ runs no send guard, deploy guard, reply check or session-start context (six time
   the same matcher and timeout, each command the stable hook with its event. The
   plugin's session start also names the plugin's folder, so a first run can install the
   runtime; the user-level one calls the stable hook alone, since setup has installed the
-  runtime by then. The guard's `"onFailure": "block"` (5.21.0, for Claude Code) is carried
-  too: Codex ignores it and hashes the hook without it, so an install that adds it keeps
-  the approval, and setup says the approval stays instead of asking again (probed on
-  Codex 0.167, 2026-11-14). Setup's groups go after the person's own for the same event, and the
+  runtime by then. The guard's command is the plugin's own, which ends so that a stable
+  hook that cannot start or crashes is exit 2 with one line of reason, which Codex blocks
+  on (5.21.0); its `"onFailure": "block"`, for Claude Code, is carried too, and Codex hashes
+  the hook without it. Codex hashes the command, so 5.21.0 asks for the guard's approval
+  once again; for anyone switching to this option in this release that is the one
+  approval they give when switching. A later change only in a field Codex does not hash
+  keeps an approval, and setup says it stays instead of asking (probed on Codex 0.167,
+  2026-11-14). Setup's groups go after the person's own for the same event, and the
   person's hooks stay as they are. An event the person already declares with the stable
   hook (as the program its command runs, not a mention) is kept as written and not
   declared twice; the plugin's copy of it goes off only when theirs holds the plugin's

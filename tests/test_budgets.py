@@ -973,10 +973,14 @@ ROOT = Path(__file__).resolve().parents[1]
 # spacing 12. release.py 2: install_and_verify keeps the option in step with the folder it verified.
 # The two merged (2026-11-14): the fail-closed work's 8 setup.py lines sit in round 1's rewrite of codex_user_hooks as
 # _hashes 3 with spacing 2, its note 2 and the event filed under it 1; the ceilings are the sum of both counts.
+# 5.21.0, a guard that cannot start or crashes holds the call in Codex and Muse too: core 4 more and plugin 6. doctor.py 4:
+# codex_user_declaration 2 (the plugin's own command kept where it runs the stable hook, so the user-level guard carries
+# the failure tail; its docstring one line longer) and check_claude_fail_closed's docstring 2 (what holds in Codex and
+# Muse now). setup.py 2: the note that asks once again for the approval of a declaration whose hash changed.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # consolidate first).
-CORE_BUDGET = 14893
-PLUGIN_BUDGET = 38138
+CORE_BUDGET = 14897
+PLUGIN_BUDGET = 38144
 
 
 def _lines(files):

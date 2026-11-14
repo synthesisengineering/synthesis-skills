@@ -401,6 +401,13 @@ USER_VECTORS = [
                                 "timeout": 5}, "sha256:5ae284fc312782e3a758ee842940df7893033cba5c1c0aa3b81f447113a164fc"),
     ("Stop", None, {"type": "command", "command": '"$HOME/.synthesis/v5/bin/synthesis-hook" stop', "timeout": 5},
      "sha256:016cfe12ed31f67f845ff0187b6aef11dcf03d304592bf0671a193d1dcfd1538"),
+    # The guard from 5.21.0, which ends so that a stable hook that cannot start or crashes is exit 2 with a reason, and
+    # carries Claude Code's onFailure (not hashed): Codex 0.167.0-alpha.4.1 listed it so on 2026-11-14, user-level.
+    ("PreToolUse", "Bash|bash|exec_command|exec|shell|shell_command|local_shell|run_shell_command|Write|Edit|MultiEdit|"
+                   "NotebookEdit|write_file|edit_file|apply_patch|mcp__.*",
+     {"type": "command", "timeout": 5, "onFailure": "block", "command": '"$HOME/.synthesis/v5/bin/synthesis-hook" pre-tool-use || '
+      '{ echo "synthesis guard could not run, so the call is held: run synthesis doctor" >&2; exit 2; }'},
+     "sha256:96a1e0d0690049ab4509e533f6a5437bfa1a6567c00444ba803501e34211107a"),
 ]
 
 
@@ -417,18 +424,21 @@ def test_the_user_level_declaration_is_the_plugins_with_the_stable_hook_for_each
         assert [{k: v for k, v in g.items() if k != "hooks"} for g in groups] == [{k: v for k, v in g.items() if k != "hooks"} for g in plugin]
         for mine, theirs in zip(groups, plugin):
             assert [{**h, "command": ""} for h in mine["hooks"]] == [{**h, "command": ""} for h in theirs["hooks"]]
-            assert all(h["command"] == f'"{doctor.STABLE_HOOK}" {doctor.EVENTS[event]}' for h in mine["hooks"])
+            assert all(h["command"] == (t["command"] if doctor.calls_stable_hook(event, t["command"]) else
+                                        f'"{doctor.STABLE_HOOK}" {doctor.EVENTS[event]}') for h, t in zip(mine["hooks"], theirs["hooks"]))
     assert doctor.codex_hooks_problem({"hooks": declared}) == "" and doctor.codex_hooks_problem(REPO_HOOKS) == ""
 
 
-def test_the_user_level_declaration_carries_the_guards_setting_and_codex_reads_and_trusts_it_as_before():
-    """5.21.0: the plugin's guard carries "onFailure": "block" for Claude Code, and the user-level copy carries it too,
-    as the plugin writes it. Codex 0.167.0-alpha.4.1 read all four with it and listed the guard's currentHash as it
-    was without it (2026-11-14), so the approval a person gave before still holds."""
+def test_the_user_level_guard_carries_the_plugins_setting_and_failure_tail_and_codex_hashes_it_as_it_lists_it():
+    """5.21.0: the plugin's guard carries "onFailure": "block" for Claude Code, which Codex does not hash, and ends so
+    that a stable hook that cannot start or crashes is exit 2 with a reason, which it does: the user-level copy carries
+    both, as the plugin writes them. Codex 0.167.0-alpha.4.1 read all four and listed the guard's currentHash as pinned
+    here (2026-11-14), not as before the tail, so its approval is asked once again: the one approval a person gives
+    when switching to the user-level option in this release."""
     declared = doctor.codex_user_declaration(REPO_HOOKS)
     guard = declared["PreToolUse"][0]
     assert guard["hooks"][0]["onFailure"] == "block" and doctor.codex_hooks_problem({"hooks": declared}) == ""
-    assert doctor.codex_hook_hash("PreToolUse", guard["matcher"], guard["hooks"][0]) == USER_VECTORS[0][3]
+    assert doctor.codex_hook_hash("PreToolUse", guard["matcher"], guard["hooks"][0]) == USER_VECTORS[-1][3] != USER_VECTORS[0][3]
 
 
 def user_level(tmp_path, declared=None, trusted=True, plugin_off=True, home=None):

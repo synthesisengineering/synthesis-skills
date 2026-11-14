@@ -351,10 +351,12 @@ def codex_hooks_problem(data) -> str:
 
 def codex_user_declaration(plugin_hooks: dict) -> dict:
     """{event: groups}: the plugin's hooks as `setup.py plugin --codex-user-hooks` declares them in Codex's own
-    hooks.json, every group as the plugin writes it and each command the stable hook with its event. The plugin's
-    session start also names its own folder, so a first run can install the runtime; a user-level hook has no folder
-    to name, and setup has installed the runtime by then."""
-    return {event: [{**group, "hooks": [{**hook, "command": f'"{STABLE_HOOK}" {EVENTS[event]}'} for hook in group.get("hooks") or []]}
+    hooks.json, every group as the plugin writes it, and each command as the plugin writes it where it runs the stable
+    hook as its program (the guard's ends so that one that cannot start or crashes is exit 2 with a reason, 5.21.0). The
+    plugin's session start also names its own folder, so a first run can install the runtime; a user-level hook has no
+    folder to name, and setup has installed the runtime by then, so that one is the stable hook alone."""
+    return {event: [{**group, "hooks": [{**hook, "command": hook.get("command") if calls_stable_hook(event, hook.get("command"))
+                                         else f'"{STABLE_HOOK}" {EVENTS[event]}'} for hook in group.get("hooks") or []]}
                     for group in groups or []] for event, groups in (plugin_hooks.get("hooks") or {}).items() if event in EVENTS}
 
 
@@ -524,7 +526,9 @@ def claude_version(binary: str) -> str:
 
 def check_claude_fail_closed(hooks: dict, version: str) -> Check:
     """Claude Code lets a call through when its PreToolUse hook times out, crashes or cannot start, unless the handler
-    says "onFailure": "block", which it honors from 2.1.295 (5.21.0). Codex and Muse have no such setting."""
+    says "onFailure": "block", which it honors from 2.1.295 (5.21.0). Codex and Muse have no such setting; there the
+    guard's own command holds a guard that cannot start or crashes, as exit 2 with a reason, and one that times out
+    still lets the call through."""
     handlers = [handler for event, _, handler in hooks_json_entries(hooks or {}) if event == "PreToolUse"]
     if not handlers or any(handler.get("onFailure") != "block" for handler in handlers):
         return Check("fail", "claude fail closed", 'the installed plugin\'s PreToolUse hook lacks "onFailure": "block", so a '

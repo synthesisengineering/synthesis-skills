@@ -81,7 +81,8 @@ def test_codex_reads_every_hook_of_the_shared_file_and_hashes_the_guard_as_befor
 def test_muse_reads_its_own_manifest_whose_hooks_carry_only_fields_it_accepts():
     """Muse reads .muse-plugin/plugin.json alone (it ignores the other manifests and hooks/hooks.json), and refuses the
     whole plugin for a hook field it does not support: `onFailure` there left it no hooks at all. It has no such
-    setting; a hook that is missing, crashes or times out lets the call through there."""
+    setting; its pre-tool-use.sh turns a stable hook that cannot start or crashes into exit 2 with a reason, which it
+    blocks on, and only a hook that times out lets the call through there."""
     assert len(MUSE_HOOKS) == 4 and all(set(hook) <= {"id", "event", "command", "timeoutMs", "statusMessage"} for hook in MUSE_HOOKS)
 
 

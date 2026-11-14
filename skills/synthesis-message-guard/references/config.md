@@ -11,10 +11,11 @@ no `~/.synthesis`.
 limit is 5 seconds), crashes, prints output Claude Code cannot read, or cannot start because the
 stable hook is missing; Claude Code names the hook and says `failed` or `timed out`. An older
 Claude Code ignores the setting and lets the send through, and `synthesis doctor` warns. Codex
-(0.167) and Muse (1.4.20) have no such setting: a guard that times out or crashes there lets the
-call through (Muse's hook runner, run on 2026-11-14; Codex's, read in its source at 0.167.2), so
-in them a send is held only when the guard answers. An unreadable config and an error inside a
-guard still block in all three, since the guard catches those itself.
+(0.167) and Muse (1.4.20) have no such setting, but block on exit 2 with a reason, so the guard's
+own command turns a stable hook that cannot start or crashes into exit 2 with one line of reason,
+and a send is held there too (Muse's hook test, run on 2026-11-14); a guard that times out there
+still lets the call through. An unreadable config and an error inside a guard still block in all
+three, since the guard catches those itself.
 
 ## Keys
 

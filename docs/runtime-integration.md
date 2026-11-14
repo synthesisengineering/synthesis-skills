@@ -534,11 +534,15 @@ What the M5 sandbox showed for Muse 1.4.3, and what it could not test:
   is missing), Claude Code 2.1.295 or later blocks the call too, since the
   plugin's handler sets `"onFailure": "block"` (5.21.0); Claude Code names the
   hook and says `failed` or `timed out`, and an older one ignores the setting.
-  Codex (0.167) and Muse (1.4.20) have no such setting: there a hook that times
-  out or crashes lets the call through (Codex's runner marks it failed without
-  blocking, in its source at 0.167.2; Muse's `plugins hook test` gave
-  `should_block: false` for a missing hook, an exit code of 1 and a timeout, run
-  on 2026-11-14). Muse reads only its
+  Codex (0.167) and Muse (1.4.20) have no such setting and let a call through
+  when a hook exits with an error (Codex's runner marks it failed without
+  blocking, in its source at 0.167.2), but block on exit 2 with a reason, so the
+  guard's own command, in `hooks/hooks.json`, Muse's `pre-tool-use.sh` and the
+  user-level declaration, turns a stable hook that cannot start or crashes into
+  exit 2 with one line of reason; a deny exits 0 with its own. Muse's `plugins
+  hook test` then gave `should_block: true` for a missing hook and an exit code
+  of 1 (2026-11-14); a hook that times out there still lets the call through.
+  Muse reads only its
   own manifest, which refuses the field, so it is set in `hooks/hooks.json`
   alone, where Codex reads it and hashes the hook without it. UserPromptSubmit and
   SessionStart keep the default: holding a person's prompt or a session's start

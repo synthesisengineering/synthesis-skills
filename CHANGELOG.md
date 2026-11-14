@@ -68,12 +68,22 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   and Claude Code ignores the setting on Stop.
 - **What each harness reads stays readable.** Claude Code 2.1.316 validates and installs the plugin with the field and
   refuses a value it does not allow; 2.1.293, from before the field, ignores it and keeps all four hooks. Codex
-  0.167.0-alpha.4.1 reads all four hooks with it and hashes the guard as before, so an approval holds. The user-level
-  declaration from `setup.py plugin --codex-user-hooks` carries it too: an install brings it in step under the approval
-  given before, and setup now says that approval stays instead of asking for it again. Muse 1.4.20 reads only its own
-  manifest, which refuses the whole plugin for the field, so it is not there. Codex and Muse have no such setting: in
-  them a guard that times out or crashes still lets the call through, and the message guard's and the guardrails'
-  references and the runtime contract say so.
+  0.167.0-alpha.4.1 reads all four hooks with it, and the field itself leaves the guard's hash as it was. The user-level
+  declaration from `setup.py plugin --codex-user-hooks` carries it too, and setup says an approval stays when a
+  declaration changes only in such a field. Muse 1.4.20 reads only its own manifest, which refuses the whole plugin for
+  the field, so it is not there. Codex and Muse have no such setting; the next entry says what holds a guard that
+  cannot answer there.
+- **A guard that cannot start or crashes holds the call in Codex and Muse too** (`synthesis-agent-guardrails`,
+  `synthesis-message-guard`, `synthesis-onboarding`). Both let a call through when a hook exits with an error, but block
+  on exit 2 with a reason. The guard's command, in `hooks/hooks.json`, Muse's `pre-tool-use.sh` and the user-level
+  declaration setup writes, now ends so that a stable hook that is missing or crashes is exit 2 with one line of
+  reason; a deny the guard gives exits 0 with its own reason, as before. Codex hashes the command, so 5.21.0 asks for
+  the guard's approval once again there: the one approval a person gives when switching to the user-level option in
+  this release, and setup says so for a declaration it brings in step. A guard that times out in Codex or Muse still
+  lets the call through. Probed in homes of their own on 2026-11-14: Claude Code 2.1.316 validates the plugin; Codex
+  0.167.0-alpha.4.1 reads all four hooks of the plugin and of the user-level declaration, listing the guard's new hash
+  as the doctor computes it; Muse 1.4.20 validates and installs it, and its hook test blocks for a missing stable hook
+  and for one that exits 1, with the reason. Tests first.
 - **The doctor checks it.** A new `claude fail closed` line fails when the installed plugin's PreToolUse hook lacks the
   setting, and warns when the installed Claude Code (by `claude --version`) is older than 2.1.295 or names no version.
 - **Measured before it shipped.** Over the 30 days to 2026-11-14, the Claude Code transcripts on the Mac it was measured

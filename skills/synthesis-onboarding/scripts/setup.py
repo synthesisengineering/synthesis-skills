@@ -571,7 +571,7 @@ def codex_user_hooks(want, plugin_root=None, dry_run: bool = False) -> list:
     wanted = doctor.codex_user_declaration(paths.read_json(Path(plugin_root) / "hooks" / "hooks.json")) if want else {}
     if want and not wanted:
         raise SetupError(f"codex user hooks: {plugin_root} has no hooks/hooks.json to declare, so nothing was changed")
-    recorded, done, kept, short, covered, wrote, same = record.get("groups") or {}, [], [], [], [], {}, []
+    recorded, done, kept, short, covered, wrote, same, changed = record.get("groups") or {}, [], [], [], [], {}, [], []
     for event in dict.fromkeys([*wanted, *recorded, *events]):
         current = events.get(event, [])
         mine = [i for i, group in enumerate(current) if group in recorded.get(event, [])]
@@ -586,7 +586,7 @@ def codex_user_hooks(want, plugin_root=None, dry_run: bool = False) -> list:
             at = mine[0] if mine else len(rest)  # where setup's own stood, so the keys of the person's after it hold
             events[event] = rest[:at] + wanted.get(event, []) + rest[at:]
             (same if mine and _hashes(event, [current[i] for i in mine]) == _hashes(event, wanted.get(event, []))
-             else done).append(event)
+             else changed if mine and wanted.get(event) else done).append(event)
             if not events[event]:
                 del events[event]
         if event in wanted:
@@ -607,6 +607,8 @@ def codex_user_hooks(want, plugin_root=None, dry_run: bool = False) -> list:
     notes += [f"codex user hooks: {', '.join(owned)} already declared in {file} by you, kept as written"] if owned else []
     notes += [f"codex user hooks: your own {', '.join(short)} in {file} covers less than the plugin's, so the plugin's own stays "
               "on beside it: edit yours to cover it or remove it, then run this again"] if short else []
+    notes += [f"codex user hooks: {would}bring {', '.join(changed)} in {file} in step with the plugin; Codex hashes the "
+              "change, so approve them once again in its /hooks"] if changed else []  # 5.21.0: the guard's failure tail
     notes += [f"codex user hooks: {would}bring {', '.join(same)} in {file} in step with the plugin; Codex hashes them as "
               "before, so an approval it holds for them stays"] if same else []  # a field Codex does not hash changed
     if "\n".join(lines) != (text or ""):
