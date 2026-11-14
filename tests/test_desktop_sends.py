@@ -446,7 +446,11 @@ def test_a_click_that_only_opens_or_closes_a_box_passes(summary):
     [REVIEW, _key("Return", "Presses Return")], [("computer", {"action": "type", "text": "Five stars.\n", "action_summary": "Types the review"})],
     [REVIEW, _key("Tab space", "Moves to the button and presses it")], [REVIEW, _key("Tab"), _key("space")],
     [REVIEW, ("javascript_tool", {"action": "javascript_exec", "text": "document.forms[0].requestSubmit()"})],
-    [("computer", {"action": "type", "text": "Summarize the attached plan."}), _key("Return")],  # it says neither: held when unsure
+    [("computer", {"action": "type", "text": "Thanks for the quick fix.", "action_summary": "Types the reply"}), _key("Return")],
+    [("form_input", {"ref": "ref_2", "value": "Glad to help", "action_summary": "Fills the message box"}), _key("Tab space")],
+    [("computer", {"action": "type", "text": "Agreed.\n", "action_summary": "Types a comment"})],
+    [("computer", {"action": "type", "text": "Shipping today", "action_summary": "Types the post"}), _key("Return", "Posts it")],
+    [("computer", {"action": "type", "text": "On it", "action_summary": "Types the tweet"}), _key("Enter")],
 ])
 def test_other_ways_a_review_is_submitted_on_a_site_that_is_no_messaging_site_wait(steps):
     """The second review: on a page that is no messaging site, a word before the label, an -ing form, a later "shows",
@@ -470,6 +474,20 @@ def test_a_sign_in_a_search_and_the_principals_own_local_app_pass(url, steps):
     """The second review: 5.21.1 held a sign-in, a site search and the principal's own app on localhost, which post
     nothing. A summary that signs in or searches and names nothing that posts passes, as does a local app's page."""
     assert check(CHROME, _opened(url, *steps)) is None
+
+
+@pytest.mark.parametrize("steps", [
+    [("computer", {"action": "type", "text": "Summarize the attached plan."}), _key("Return")],
+    [("computer", {"action": "type", "text": "Summarize the attached plan.", "action_summary": "Types the prompt"}),
+     _key("Return", "Presses Return")],
+    [("form_input", {"ref": "ref_4", "value": "42 Main Street", "action_summary": "Fills the address"}), _key("Tab space")],
+    [("computer", {"action": "type", "text": "Line one\n", "action_summary": "Types the text"})],
+])
+def test_typed_words_then_a_key_that_name_no_post_pass_off_a_messaging_site(steps):
+    """The principal's ruling of 2026-11-14 ("Skip typed text that names no post"): off a messaging site, typed words
+    then Return, Tab and Space or a line break wait only when the call names a message, comment, review, post, reply or
+    tweet. A call that names none passes, as before 5.21.1 (20 calls in 30 days named none)."""
+    assert check(CHROME, _opened("https://assistant.example.com/chat", *steps)) is None
 
 
 def test_typed_words_never_land_in_an_approval_record_in_plain_text():
