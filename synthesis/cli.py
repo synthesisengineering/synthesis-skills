@@ -182,8 +182,14 @@ def cmd_sends(args) -> int:
     """The send window, batches and the day's send ledger. Opening either needs the principal: the guard asks for their
     code when an agent runs it; run in their own terminal, it opens directly."""
     from synthesis import approvals, sends
+    if args.file and args.action != "batch":  # the review of 5.23.0: `sends open -- -h` took -h as a file and opened
+        print("a file goes only with `synthesis sends batch`", file=sys.stderr)
+        return 2
     if args.action == "batch":
-        return _batch(args, paths.harness() != "unknown" or not sys.stdin.isatty())
+        return _batch(args)
+    if args.action == "composer-check":  # what a browser entry's send waits on, run on the send's own tab
+        print(sends.COMPOSER_CHECK)
+        return 0
     if args.action == "open":
         window = sends.asked(args.hours, args.channels, args.project, args.sends)
         try:
@@ -217,10 +223,11 @@ def cmd_sends(args) -> int:
     return 0
 
 
-def _batch(args, agent: bool) -> int:
+def _batch(args) -> int:
     """`synthesis sends batch <file>` prints what the principal approves (with --show every text too, and nothing
-    opens). Run by an agent it opens only on their code for exactly the digest of the file as it reads it, and spends
-    that code itself, whatever the guard matched; the entries are then copied into the state, so the file no longer matters."""
+    opens). It opens only on their code for exactly the digest of the file as it reads it, typed in this session, from
+    any terminal (the review of 5.23.0: a terminal of the principal's own was one an agent could fake), and spends that
+    code itself; the entries are copied into the state with this session and the code, so the file no longer matters."""
     from synthesis import approvals, sends
     try:
         batch = sends.read_batch(args.file)
@@ -230,18 +237,14 @@ def _batch(args, agent: bool) -> int:
     print(sends.batch_listing(batch, show=args.show))
     if args.show:
         return 0
-    if agent:
-        try:  # a shell acts only as its own session, so its own transcript must show the code
-            granted = approvals.consume("send-batch", sends.batch_digest(batch), {"session_id": _session(args)})
-        except approvals.Unverified as exc:
-            print(exc, file=sys.stderr)
-            return 2
-        if not granted:
+    me, digest = _session(args), sends.batch_digest(batch)
+    grant = approvals.grant("send-batch", digest)
+    try:  # a shell acts only as its own session, so its own transcript must show the code
+        if not approvals.consume("send-batch", digest, {"session_id": me}):
             print(sends.batch_refusal(batch, args.file), file=sys.stderr)
             return 2
-    try:
-        print(sends.describe_batch(sends.open_batch(batch)))
-    except ValueError as exc:  # an earlier grant of it left state that cannot be read
+        print(sends.describe_batch(sends.open_batch(batch, grant, me)))
+    except (approvals.Unverified, ValueError) as exc:  # no prompt of theirs backs it, or an earlier grant's state is unreadable
         print(exc, file=sys.stderr)
         return 2
     return 0
@@ -466,7 +469,7 @@ def parser() -> argparse.ArgumentParser:
     sub.add_parser("wait", help="wait for a message, a file or a command, holding a record on the board", add_help=False)
     s.set_defaults(fn=cmd_inbox)
     s = sub.add_parser("sends", help="open, close or show the send window and batches; list the day's sends")
-    s.add_argument("action", choices=["open", "batch", "close", "status", "log"])
+    s.add_argument("action", choices=["open", "batch", "close", "status", "log", "composer-check"])
     s.add_argument("file", nargs="?", default="", help="batch: the batch file to show (--show) or open")
     s.set_defaults(late="file")
     s.add_argument("--show", action="store_true", help="batch: also print every text in full, and open nothing")
@@ -551,6 +554,17 @@ def _main(argv: list[str] | None = None) -> int:
         args = parser().parse_args(argv[:split] + [name])
         args.rest = argv[split + 1:]
         return {"worktree": cmd_worktree, "doctor": cmd_doctor}[name](args)
+    args = parsed(argv)
+    return args.fn(args)
+
+
+def parsed(argv: list):
+    """The words as the CLI reads them, argparse's own exit on an error or for help included; None for `wait`, `worktree`
+    and `doctor`, whose words their own parsers read. The guard reads `synthesis sends ...` with this, so the two never
+    read one command two ways (the review of 5.23.0)."""
+    split = next((i for i, w in enumerate(argv) if not w.startswith("-") and argv[i - 1:i] != ["--session"]), len(argv))
+    if "".join(argv[split:split + 1]) in ("wait", "worktree", "doctor"):
+        return None
     made = parser()
     args, rest = made.parse_known_args(argv)
     late = getattr(args, "late", "")  # the one name a command may leave out: after an option, argparse has already taken it as left out
@@ -558,7 +572,7 @@ def _main(argv: list[str] | None = None) -> int:
         setattr(args, late, rest.pop())
     if rest:
         made.error("unrecognized arguments: " + " ".join(rest))
-    return args.fn(args)
+    return args
 
 
 if __name__ == "__main__":

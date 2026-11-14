@@ -449,7 +449,8 @@ def test_a_call_the_connector_fetches_or_reads_a_file_for_is_never_covered(attac
     mail = {"to": "pat@example.com", "subject": "Plan", "body": "<p>The plan is attached.</p>", "body_format": "html",
             "attachments": [attachment]}
     granted([{"tool": MAIL, "input": mail}])
-    assert held(guards.check_send(MAIL, mail, CONFIG, SESSION))
+    assert guards.check_send(MAIL, mail, CONFIG, SESSION)  # its own code, or refused outright as no full path
+    assert not any(e["how"].startswith("batch") for e in today())
 
 
 # --- the browser: the box is checked, then one Return or Send click on that tab ---------------------------------
@@ -643,6 +644,8 @@ def test_tampered_or_unreadable_batch_state_falls_back_to_the_code(damage):
         file.write_text(json.dumps(state), encoding="utf-8")
     for given in (SAID, {**SAID, "message": "Edited after the grant."}):
         assert held(guards.check(SLACK, given, CONFIG, session=SESSION)), given
+    if damage == "unspent":  # and the status view counts the ledger's spend
+        assert "1 of 2 entries left" in _cli("sends", "status").stdout
     if damage == "session":
         board.touch("S-other", project=PROJECT)
         assert held(guards.check(SLACK, SAID, CONFIG, session={"session_id": "S-other"}))

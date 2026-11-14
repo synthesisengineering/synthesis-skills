@@ -563,18 +563,19 @@ def _judged_send(tool: str, tool_input: dict, config: dict, session: dict | None
     timed = _time_without_calendar([t for _, t in _strings(tool_input)], config, session) if to_a_person(tool, tool_input, config) else None
     if timed and timed.startswith("fresh_calendar"):
         return timed
-    entry = None if files or others else (lambda e: sends.call_entry(e, tool, tool_input))  # what a batch may cover: no
-    # file's bytes (a batch binds the path alone) and no meeting on today
+    entry = None if files or others or _fetches(tool_input) else (lambda e: sends.call_entry(e, tool, tool_input))  # what
+    # a batch may cover: nothing the connector fetches or reads when the call runs (a batch binds words, not what a path
+    # or a url holds then), and no meeting on today
     if timed is not None and approvals.consume("send-time", subject, session):  # released as it is, by the code that says so
         approvals.void("send", subject)  # one message, one release: a second copy asks again
         if entry:  # and a batch's entry for it is spent with it
-            sends.batch_spend(entry, _project(session), session)
+            sends.batch_spend(entry, session)
         sends.log(chan, tool, summary, "approval", session)
         return None
     if timed:  # asked before any other code, and again when the approved call comes
         code = approvals.request("send-time", subject, f"{tool}, a time in its words and no calendar read: {summary[len(tool) + 2:][:100]}")
         return timed.replace("{code}", approvals.how(code))
-    how = sends.batch_spend(entry, _project(session), session) if entry else ""  # after every check above, before the window
+    how = sends.batch_spend(entry, session) if entry else ""  # after every check above, before the window
     if how:
         sends.log(chan, tool, summary, how, session)
         approvals.void("send", subject)
@@ -605,6 +606,17 @@ def _judged_send(tool: str, tool_input: dict, config: dict, session: dict | None
             f"recipient and ask them to type {approvals.how(code)}. Then make this identical call again." + reshape
             + (" The approval covers each file the call has the connector read as it is now, so name those files to the "
                "principal too: one changed before the call needs a new code." if files else ""))
+
+
+FETCHES = re.compile(r"(?i)url|uri|link|path|file|attach|upload|download|media|image")  # a key naming what a call fetches
+
+
+def _fetches(value) -> bool:
+    """Whether a call's input names, at any depth, something its connector fetches or reads when the call runs: a url,
+    a path, an attachment (the review of 5.23.0: a mail's attachment fetched from a url hours after the batch was read)."""
+    if isinstance(value, dict):
+        return any(FETCHES.search(str(k)) or _fetches(v) for k, v in value.items())
+    return isinstance(value, list) and any(_fetches(v) for v in value)
 
 
 # 2026-10-27: a series moved to a new hour brought back an occurrence canceled at the old hour, double-booked.
@@ -4697,75 +4709,56 @@ def _sends_key(chords: str, apps: dict) -> bool:
     return False
 
 
-# A batch's browser entry goes on one call that does only this, on its conversation's page (2026-11-14): at most one
-# click that says it focuses the message box; select-all, then Delete or Backspace, since typing adds to whatever draft
-# the box holds; the entry's words, shift and Return for each line break, since a plain Return sends (a typed line
-# break sends its line alone); then one Return, or one click that says it sends, last. Anything else: the code per call.
-LOOKS, LOOKING = ("find", "read_page", "get_page_text"), ("screenshot", "wait", "zoom", "hover")  # put nothing on a page
-CLEARS = [[("key", a), ("key", b)] for a in ("cmd+a", "ctrl+a") for b in ("backspace", "delete")]
-LINE_BREAK = ("shift+return", "shift+enter")
-PASTES = {"cmd+v", "ctrl+v", "cmd+shift+v", "ctrl+shift+v", "shift+insert"}
-FOCUSES = re.compile(r"\bfocus(?:es|ed|ing)?\b.*\b(?:box|field|input|composer|area)\b", re.I)
-UNSENT = ("This call types and sends the words of an open batch's entry, but an earlier call left something on this page "
-          "that clearing the box does not take out (a file, a drop or a paste), which may go with these words. Show the "
-          "principal a screenshot of the compose area and the exact words, and ask them to type {code}; then make this "
-          "identical call again.")
+# A batch's browser entry is sent in two calls on one tab (the review of 5.23.0: a call that cleared, typed and sent
+# made the guard trust which tab, the focus, an emptied box and an earlier paste, none of which it can see). Typing
+# happens in earlier calls, which send nothing; then the shipped composer check (sends.COMPOSER_CHECK) reads the box;
+# then the send is one plain Return or Enter, or one left click that says it sends, on that tab of that browser, within
+# 60 seconds, with no other browser call between. The guard reads the check's result from the session's own record.
+CHECK_SECONDS = 60
 
 
-def _chord(chord: str) -> str:
-    *mods, last = chord.lower().split("+")
-    return "+".join([MODIFIERS.get(m, m) for m in mods] + [last])
-
-
-def _talks(name: str, tool_input: dict, session: dict | None) -> tuple:
-    """For a browser call: (the batch send it is, as (channel, conversation, words), or None; the conversations whose
-    pages it acts on; those it leaves something on that clearing the box does not take out: a file, a drop or a paste).
-    A conversation is its page's, as sends.conversation reads it."""
+def _checked_box(tool: str, tool_input: dict, session: dict | None) -> tuple | None:
+    """(channel, conversation, words) when this browser call is the send of a box just checked: it holds one plain Return
+    or Enter (repeat 1) or one left click that says it sends, on a tab it names; and the session's newest browser call
+    before it is the composer check on that tab of the same browser, with a result in the last 60 seconds that names one
+    conversation, with the focus in its box and nothing staged. None for any other call."""
     from synthesis import sends
-    tokens, places, talks, staged = [], set(), set(), set()
-    for step, given, address in _steps("computer" if name == "browser" else name, tool_input, session):
-        act, said = str(given.get("action") or ""), str(given.get("action_summary") or "")
-        if step in LOOKS or step == "navigate" and not tokens or step == "computer" and act in LOOKING:
-            continue
-        place = sends.conversation(address)
-        keys = [_chord(c) for c in str(given.get("text") or given.get("combo") or "").split()] if act == "key" else []
-        places, talks = places | {place}, talks | ({place[1]} if place else set())
-        if place and (step in ("file_upload", "upload_image") or act == "left_click_drag" or PASTES & set(keys)):
-            staged.add(place[1])
-        tokens += ([("type", str(given.get("text") or ""))] if step == "computer" and act == "type" else
-                   [("key", k) for k in keys] if step == "computer" and act == "key" else
-                   [("click", said)] if step == "computer" and act in CLICKS else [("other", "")])
-    first = int(tokens[:1] != [] and tokens[0][0] == "click" and bool(FOCUSES.search(tokens[0][1]))
-                and not SAYS_SENT.search(tokens[0][1]) and not _publishes(tokens[0][1], False))
-    body, (kind, last) = tokens[first + 2:-1], (tokens[-1] if len(tokens) > first + 2 else ("", ""))
-    words = ["\n" if k == "key" else v for k, v in body if k == "type" and not re.search(r"[\r\n]", v) or k == "key" and v in LINE_BREAK]
-    sent = kind == "key" and last in RETURNS or kind == "click" and bool(SAYS_SENT.search(last) or _publishes(last, False))
-    batched = (len(places) == 1 and None not in places and tokens[first:first + 2] in CLEARS and sent
-               and len(words) == len(body) and any(k == "type" for k, _ in body))
-    return ((*next(iter(places)), "".join(words)) if batched else None), talks, staged
-
-
-def _unsent(keys: set, add: bool = False, drop: bool = False) -> bool:
-    """Whether what clearing a box does not take out may wait in one of these conversations' boxes: an earlier call left
-    a file, a drop or a paste on its page, and no send from it has gone since. `add` and `drop` record or forget these
-    pages, in one record for every session, since sessions share one browser. The caller holds approvals.alone()."""
-    record = paths.state() / "sends" / "unsent.json"
-    marked = paths.read_json(record)
-    if (add or drop) and keys:
-        marked = {k: v for k, v in marked.items() if not (drop and k in keys)}
-        marked.update({k: time.time() for k in keys} if add else {})
-        paths.write_json(record, marked)
-    return bool(set(marked) & set(keys))
-
-
-def _box(talks: set, staged: set, sent: bool = False) -> None:
-    """Record a file, a drop or a paste a call left on conversations' pages; a send from one page empties its box (from
-    a call on several pages, which one sent cannot be told, so none is forgotten)."""
-    gone = talks if sent and len(talks) == 1 else set()
-    if gone or staged:
-        with approvals.alone():
-            _unsent(gone, drop=True)
-            _unsent(staged - gone, add=True)
+    server, _, short = tool.rpartition("__")
+    steps = tool_input.get("actions") if short == "browser_batch" else [{"name": "computer", "input": tool_input}]
+    act = steps[0].get("input") if isinstance(steps, list) and len(steps) == 1 and isinstance(steps[0], dict) and (
+        steps[0].get("name") == "computer") and isinstance(steps[0].get("input"), dict) else {}
+    kind, said, tab, repeat = (str(act.get("action") or ""), str(act.get("action_summary") or ""), str(act.get("tabId") or ""),
+                               act.get("repeat", 1))
+    if not tab or not (kind == "key" and str(act.get("text") or "").strip().lower() in ("return", "enter")
+                       and type(repeat) is int and repeat == 1 or kind == "left_click" and not act.get("modifiers")
+                       and bool(SAYS_SENT.search(said) or _publishes(said, False))):
+        return None
+    results, check = {}, None
+    for line in reversed(_tail(str((session or {}).get("transcript_path") or ""))):  # its record, newest first
+        for block in reversed(_blocks(line)) if '"tool_' in line else ():
+            if block.get("type") == "tool_result":
+                results.setdefault(block.get("tool_use_id"), (block, line))
+            elif block.get("type") == "tool_use" and re.search(r"browser|chrome", str(block.get("name", "")).rpartition("__")[0], re.I):
+                if block.get("name") == tool and block.get("input") == tool_input and block.get("id") not in results:
+                    continue  # this call itself, recorded before its guard ran
+                check = block
+                break
+        if check:
+            break
+    given = (check or {}).get("input") if isinstance((check or {}).get("input"), dict) else {}
+    found = results.get((check or {}).get("id"))
+    if not (found and check.get("name") == f"{server}__javascript_tool" and given.get("text") == sends.COMPOSER_CHECK
+            and str(given.get("tabId") or "") == tab and not found[0].get("is_error")):
+        return None
+    try:
+        stamp = datetime.fromisoformat(str(json.loads(found[1]).get("timestamp")).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    age = time.time() - (stamp if stamp.tzinfo else stamp.replace(tzinfo=timezone.utc)).timestamp()
+    box = sends.composer(_said(found[0]))
+    place = sends.conversation(str(box.get("url") or "")) if -5 <= age <= CHECK_SECONDS else None
+    return (*place, box["text"]) if place and box.get("focused") is True and type(box.get("staged")) is int and (
+        box["staged"] == 0) and isinstance(box.get("text"), str) else None
 
 
 def check_desktop(name: str, tool: str, tool_input: dict, config: dict, session: dict | None = None) -> str | None:
@@ -4779,7 +4772,6 @@ def check_desktop(name: str, tool: str, tool_input: dict, config: dict, session:
     actions = _desktop_actions(name, tool_input)
     if not actions:
         return None
-    found, talks, staged = _talks(name, tool_input, session) if name.startswith("browser") else (None, set(), set())
     seen = paths.read_json(record) if record else {}
     unseen = not name.startswith(("app_", "browser")) and "apps" not in seen  # a browser page is no messaging app
     pages, search, local = _pages(name, tool_input, session) if name.startswith("browser") else ({}, False, False)
@@ -4802,7 +4794,6 @@ def check_desktop(name: str, tool: str, tool_input: dict, config: dict, session:
         # code releases its words; a call that sends or does more is refused as below, and an address keeps its own code
         if approvals.consume("typed", subject, session):
             _released(session, sorted(reached), add=(typed, problems[:6]))  # a send from this page shows them
-            _box(talks, staged)
             return None
         code = approvals.request("typed", subject, f"{tool}: words typed in the browser ({', '.join(sorted(reached))}), nothing "
                                  f"sent ({sum(map(len, typed))} characters, not stored)")
@@ -4812,7 +4803,6 @@ def check_desktop(name: str, tool: str, tool_input: dict, config: dict, session:
     if problems and (reached or temporary_addresses(typed, config)):  # elsewhere the hold names them, below (the second review)
         return "These words can't go out as written: " + "; ".join(problems[:6]) + "."
     if not sending:
-        _box(talks, staged)  # a file, a drop or a paste left in a conversation's box goes with its next send
         return None
     chans = sorted({c for c, _ in reached.values()})
     chan = "browser" if name.startswith("browser") else chans[0] if len(chans) == 1 else "desktop"
@@ -4822,21 +4812,22 @@ def check_desktop(name: str, tool: str, tool_input: dict, config: dict, session:
     words, rules = [w for e in earlier for w in e["words"]], problems[:6] + [r for e in earlier for r in e["rules"]]
     subject = {**subject, "earlier": words} if earlier else subject
     summary = f"{tool} in {where}: {what}" + (f"; typed words not stored ({sum(map(len, typed + words))} characters)" if typed or words else "")
-    found = found if not rules and not earlier else None  # a batch's browser entry, after every check
+    found = _checked_box(tool, tool_input, session) if name.startswith("browser") and not rules and not earlier else None
+    scanned = message_problems("desktop_type", {"message_text": found[2]}, config, {found[0]}, session) if found else []
+    if scanned:  # the box's words, however they got there, pass the register scan before any batch is looked at
+        return "These words can't go out as written: " + "; ".join(scanned[:6]) + "."
     timed = _time_without_calendar([found[2]], config, session) if found else None  # a time in its words, as in any message
     if timed and timed.startswith("fresh_calendar"):
         return timed
     how, waits = "", ""
     if found:
-        match, project = (lambda e: sends.browser_entry(e, *found)), _project(session)
-        with approvals.alone():  # each entry goes once, whichever session asks first
-            waits = timed or (UNSENT if _unsent(talks) else "")
-            how = sends.batch_spend(match, project, session, spend=not waits)
+        match = lambda e: sends.browser_entry(e, *found)  # noqa: E731
+        with approvals.alone():  # each entry goes once, whichever call asks first
+            waits = timed or ""
+            how = sends.batch_spend(match, session, spend=not waits)
             if how and waits and approvals.consume("send", subject, session):  # its own code released it: the entry goes too
-                sends.batch_spend(match, project, session)
+                sends.batch_spend(match, session)
                 how, waits = "approval", ""
-            if how and not waits:
-                _unsent(talks, drop=True)
     if how and waits:
         return waits.replace("{code}", approvals.how(approvals.request("send", subject, summary[:300])))
     if how:
@@ -4846,12 +4837,10 @@ def check_desktop(name: str, tool: str, tool_input: dict, config: dict, session:
     if not rules and sends.covered(chan, typed, _project(session), config):  # a window never covers words a rule stopped
         sends.log(chan, tool, summary, "window", session)
         sends.settle()
-        _box(talks, staged, sent=True)
         return None
     if approvals.consume("send", subject, session):
         sends.log(chan, tool, summary, "approval", session)
         _released(session, list(reached), drop=True)
-        _box(talks, staged, sent=True)
         return None
     code = approvals.request("send", subject, summary[:300])
     return (f"This call sends in {where} ({what})."
@@ -4919,7 +4908,7 @@ def check_outgoing(command: str, config: dict, cwd: str, session: dict | None = 
     principal's code for its digest; no shell post is a batch's entry (the local messages sender asks check_send itself)."""
     import hashlib
     from synthesis import sends
-    posts, window, batch, writes = [], None, None, []
+    posts, calls, writes = [], [], []
     try:  # files this command writes, so a body file it rewrites before posting is not read stale (2026-10-13)
         _commands(command, cwd, writes=writes)
     except (Unreadable, StopIteration, IndexError):
@@ -4929,28 +4918,38 @@ def check_outgoing(command: str, config: dict, cwd: str, session: dict | None = 
         os.path.realpath(os.path.join(where, t)) for words, where in commands if os.path.basename(words[0]) in COPIERS | {"tee"}
         for t in (words[-1:] if os.path.basename(words[0]) in COPIERS else words[1:])}
     for words, where in commands:
-        window = window or sends.window_asked(words)
-        batch = sends.batch_asked(words, where) if batch is None else batch
+        calls += [(args, argv, where) for args, argv in sends.cli_calls(words)]
         chan = sends.command_send(words, where, config)
         if chan:
             text, problem = sends.message_text(words, where, written)
             if problem:
                 return f"This command posts to {chan}, but {problem}. Put the text in the command or a readable file."
             posts.append((chan, text, where))
-    if window:  # the command spends the grant itself (`synthesis sends open` refuses without one)
-        try:  # never ask the principal to approve a window the command would refuse
-            sends.check_window(window["hours"], window["channels"], window["sends"])
-        except ValueError as exc:
-            return f"This send window can't open: {exc}."
-        if not approvals.held("send-window", window):  # held, the rest of the line is still judged below
-            return sends.window_refusal(window)
-    if batch is not None:  # so does `synthesis sends batch`, for exactly the digest of the file it reads
-        try:
-            asked = sends.read_batch(batch)
-        except (OSError, ValueError) as exc:
-            return f"This batch can't open: {exc}."
-        if not approvals.held("send-batch", sends.batch_digest(asked)):
-            return sends.batch_refusal(asked, batch)
+    for args, argv, where in calls:  # every `synthesis sends` of the line, read as the CLI reads it (the review of 5.23.0)
+        if args is None:
+            if not approvals.held("sends-command", argv):
+                code = approvals.request("sends-command", argv, "a sends command the guard cannot read: " + " ".join(argv)[:120])
+                return (f"This command runs `synthesis {' '.join(argv)}`, which the guard cannot read as the CLI reads it (a word "
+                        "the shell changes first, or one the CLI refuses). Write it out in full, or show the principal the exact "
+                        f"command and ask them to type {approvals.how(code)}; then run the identical command again.")
+        elif args.file and args.action != "batch":
+            return "This command can't run as written: a file goes only with `synthesis sends batch`."
+        elif args.action == "open":  # the command spends the grant itself (`synthesis sends open` refuses without one)
+            window = sends.asked(args.hours, args.channels, args.project, args.sends)
+            try:  # never ask the principal to approve a window the command would refuse
+                sends.check_window(window["hours"], window["channels"], window["sends"])
+            except ValueError as exc:
+                return f"This send window can't open: {exc}."
+            if not approvals.held("send-window", window):  # held, the rest of the line is still judged below
+                return sends.window_refusal(window)
+        elif args.action == "batch" and not args.show:  # so does `sends batch`, for exactly the digest of the file it reads
+            file = os.path.join(where, os.path.expanduser(args.file))
+            try:
+                asked = sends.read_batch(file)
+            except (OSError, ValueError) as exc:
+                return f"This batch can't open: {exc}."
+            if not approvals.held("send-batch", sends.batch_digest(asked)):
+                return sends.batch_refusal(asked, file)
     if not posts:
         return None
     text, chans = "\n\n".join(t for _, t, _ in posts), sorted({c for c, _, _ in posts})
@@ -5018,11 +5017,8 @@ def check(tool: str, tool_input: dict, config: dict, cwd: str | None = None, ses
     if tool in FILE_TOOLS:
         return check_file_write(tool, tool_input, cwd, config) or check_claimed(_file_targets(tool, tool_input), cwd, session)
     if tool.startswith(BROWSER):
-        reason = check_browser(tool, tool_input, config, cwd, session) or (
+        return check_browser(tool, tool_input, config, cwd, session) or (
             check_desktop(desktop_tool(tool), tool, tool_input, config, session) if desktop_tool(tool) else None)
-        if reason is None and tool.rsplit("__", 1)[-1] in ("file_upload", "upload_image"):  # a file staged in a box goes with its next send
-            _box(*_talks(tool.rsplit("__", 1)[-1], tool_input, session)[1:])
-        return reason
     if desktop_tool(tool):
         return check_desktop(desktop_tool(tool), tool, tool_input, config, session)
     # The account is checked before the send approval, so no approval is spent on the wrong account.

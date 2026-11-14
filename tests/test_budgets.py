@@ -1150,10 +1150,29 @@ ROOT = Path(__file__).resolve().parents[1]
 # check_outgoing 10 (`synthesis sends batch` held for exactly its digest; a held window or batch code no longer lets the
 # rest of the line through unjudged), check 3 (an upload into a conversation's box recorded) and SELF_GRANT_CALLS 1
 # (open_batch, batch_spend and _batch_file).
+# The batch's review round 1 (2026-11-14), 18 findings: core 110 more, plugin 110. sends.py 94: cli_calls 27 (every
+# `synthesis sends` of a command's words read with the CLI's own parser) in place of window_asked 13, batch_asked 11,
+# _cli_words 11 and VALUED 3; composer 21 (the composer check's own report in a result, quoted or not, exactly one),
+# COMPOSER_CHECK 7 and COMPOSER_MARK 1 with their note 2, KINDS 1 more (the members kind); checked 8 more (a control
+# character other than a newline refused, one entry for each conversation), _controls 9, _escaped 4 and _shown 6 (every
+# listing quotes each text, each hidden character as its code), _entry_problem 5 more (canonical addresses only; the
+# members kind with its service and chat), batch_listing 2 more; the grant and the spend: _whole 1 and open_batch 2
+# more (the granting session, the code and when it was asked), batch_spend 8 more (the granting session alone, the
+# spends ledger, the principal's code in the session's record each time), _spends 12, _spends_file 4 and _backed 12;
+# call_entry 2 fewer (the sender's own approval, whole); describe_batch 1 (the ledger's spends in its count); the
+# unicodedata import 1. guards.py 4 fewer: _checked_box 44
+# with CHECK_SECONDS 3 and its note 1 longer (the box read by the composer check, then one plain Return or Send click
+# on that tab of that browser within 60 seconds), _fetches 8 and FETCHES 3 (nothing a connector fetches or reads is
+# covered), check_outgoing 10 more (each sends command of a line, the unreadable one's code, a file only with `sends
+# batch`), _judged_send 1; less the one-call matcher, _talks 28, _unsent 13, _box 10, _chord 5, UNSENT 6 and LOOKS,
+# CLEARS, LINE_BREAK, PASTES and FOCUSES 5, with check_desktop 4 fewer and check 3 fewer (the record of earlier pastes
+# and uploads). cli.py 14: parsed 17 (the parser the guard reads with), _main 6 fewer, _batch 3 fewer (no own-terminal
+# shortcut: the code from any terminal), cmd_sends 6 more (a file only with `sends batch`; composer-check). approvals.py
+# 6: grant (a live grant's code and when it was asked, which the batch keeps).
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 15510
-PLUGIN_BUDGET = 40752
+CORE_BUDGET = 15620
+PLUGIN_BUDGET = 40862
 
 
 def _lines(files):

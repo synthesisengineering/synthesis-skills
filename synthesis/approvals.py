@@ -205,6 +205,12 @@ def held(kind: str, subject) -> bool:
     return data.get("kind") == kind and time.time() - float(data.get("at", 0)) <= TTL_SECONDS
 
 
+def grant(kind: str, subject) -> dict:
+    """The live grant of exactly this subject as recorded (its code, and when it was asked for); {} for none. Spends
+    nothing: a batch keeps its code, so each of its sends can find the principal typing it again."""
+    return paths.read_json(_dir("approvals") / f"{digest(kind, subject)}.json")
+
+
 def backed(kind: str, subject, session: dict | None = None) -> bool:
     """A live grant of exactly this subject that the principal's own prompt backs. Spends nothing: it holds until it
     expires, for an approval of a thing (an address) that each call it lets through still waits on its own."""
