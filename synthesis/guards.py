@@ -4509,7 +4509,7 @@ WEB_MESSAGING = (  # (host, or .suffix for every host under it; path prefix; cha
     ("mail.google.com", "/chat", "google chat", "shift"), ("chat.google.com", "", "google chat", "shift"),
     ("mail.google.com", "", "email", ""), ("outlook.office.com", "", "email", ""),
     ("outlook.office365.com", "", "email", ""), ("outlook.live.com", "", "email", ""), (".slack.com", "", "slack", "shift"),
-    ("web.whatsapp.com", "", "whatsapp", "shift"), ("www.linkedin.com", "/messaging", "linkedin", "shift"),
+    ("web.whatsapp.com", "", "whatsapp", "shift"), ("www.linkedin.com", "", "linkedin", "shift"),  # its messages open on every page
     ("teams.microsoft.com", "", "teams", "shift"), ("teams.live.com", "", "teams", "shift"),
     ("discord.com", "", "discord", "shift"), ("web.telegram.org", "", "telegram", "shift"),
     ("www.messenger.com", "", "messenger", "shift"), ("x.com", "/messages", "x", "shift"),
