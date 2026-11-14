@@ -944,3 +944,213 @@ def test_the_doctor_fails_once_another_installs_setup_has_replaced_this_schedule
 def test_the_export_schedule_before_install_says_what_to_run_first():
     with pytest.raises(setup.SetupError, match="not installed"):
         setup.register_sessions_export()
+
+
+# ---- the plugin's hooks declared in Codex's own hooks file (--codex-user-hooks) ---------------------------------
+# Codex trusts a plugin's hook only while the plugin's files match what was approved, so it runs none of synthesis's
+# hooks after a release until they are approved again; a hook declared in its own hooks.json is trusted by its
+# declaration alone (codex-rs hooks discovery, probed on 0.167 on 2026-11-13 and 11-14).
+
+STABLE = '"$HOME/.synthesis/v5/bin/synthesis-hook"'
+PLUGIN_HOOKS = json.loads((setup.REPO / "hooks" / "hooks.json").read_text())
+SWITCH = "# synthesis-setup: codex-user-hooks"
+
+
+def codex_home(tmp_path, monkeypatch, config="", hooks=None):
+    """A Codex home of the test's own: its config.toml, and its hooks.json when given (text as it is, else JSON)."""
+    home = tmp_path / "codex-home"
+    home.mkdir()
+    monkeypatch.setenv("CODEX_HOME", str(home))
+    if config is not None:
+        (home / "config.toml").write_text(config)
+    if hooks is not None:
+        (home / "hooks.json").write_text(hooks if isinstance(hooks, str) else json.dumps(hooks, indent=2) + "\n")
+    return home
+
+
+def plugin_keys(hooks=PLUGIN_HOOKS):
+    """Codex's state key for each of the plugin's own hooks: its id, the file, the event, the group and the hook."""
+    return [f"{PLUGIN_ID}:hooks/hooks.json:{setup.doctor._snake(event)}:{gi}:{hi}"
+            for event, groups in hooks["hooks"].items() for gi, group in enumerate(groups) for hi, _ in enumerate(group["hooks"])]
+
+
+def hook_state(home):
+    return (setup.doctor.read_toml((home / "config.toml").read_text()).get("hooks") or {}).get("state") or {}
+
+
+def declared(home):
+    return json.loads((home / "hooks.json").read_text())["hooks"]
+
+
+def files(home):
+    return {p.name: p.read_bytes() for p in home.iterdir()}
+
+
+def backups():
+    folder = setup.install._home() / "backups"
+    return sorted(p.name for p in folder.iterdir()) if folder.exists() else []
+
+
+def test_the_option_declares_the_plugins_four_hooks_in_codexs_own_file_and_switches_the_plugins_off(tmp_path, monkeypatch):
+    mine = {"type": "command", "command": "/usr/local/bin/notify", "timeout": 3}
+    home = codex_home(tmp_path, monkeypatch, config='model = "gpt-5"\n\n[features]\nhooks = true\n',
+                      hooks={"hooks": {"PreToolUse": [{"matcher": "Bash", "hooks": [mine]}], "Notification": [{"hooks": [mine]}]}})
+    lines = setup.codex_user_hooks(True, setup.REPO)
+    found = declared(home)
+    assert found["PreToolUse"][0] == {"matcher": "Bash", "hooks": [mine]}            # the person's own, kept where they were
+    assert found["Notification"] == [{"hooks": [mine]}]
+    for event, groups in PLUGIN_HOOKS["hooks"].items():
+        ours = found[event][-len(groups):]
+        if event == "SessionStart":  # the plugin's names its own folder so a first run can install the runtime; setup has
+            assert ours == [{**g, "hooks": [{**h, "command": f"{STABLE} session-start"} for h in g["hooks"]]} for g in groups]
+        else:                        # installed it, so the user-level one calls the stable path alone
+            assert ours == groups    # exactly as the plugin declares it: the same command, matcher and timeout
+    assert {key: value.get("enabled") for key, value in hook_state(home).items()} == {key: False for key in plugin_keys()}
+    assert (home / "config.toml").read_text().startswith('model = "gpt-5"\n\n[features]\nhooks = true\n')
+    assert any("/hooks" in line for line in lines)                                    # approved once, there, by the person
+
+
+def test_a_second_run_changes_nothing(tmp_path, monkeypatch):
+    home = codex_home(tmp_path, monkeypatch, config="[features]\nhooks = true\n")
+    setup.codex_user_hooks(True, setup.REPO)
+    before, kept = files(home), backups()
+    lines = setup.codex_user_hooks(True, setup.REPO)
+    assert files(home) == before and backups() == kept
+    assert lines and all("already" in line for line in lines)
+
+
+def test_a_plugin_hook_codex_holds_an_approval_for_gains_a_line_in_that_table_and_no_second_table(tmp_path, monkeypatch):
+    key = plugin_keys()[0]
+    home = codex_home(tmp_path, monkeypatch, config=f'[hooks.state."{key}"]\ntrusted_hash = "sha256:aa"\n'
+                                                    'trusted_content_hash = "sha256:bb"\n')
+    setup.codex_user_hooks(True, setup.REPO)
+    text = (home / "config.toml").read_text()
+    setup.doctor.read_toml(text, strict=True)                                         # Codex refuses a table defined twice
+    assert text.count(f'[hooks.state."{key}"]') == 1
+    assert hook_state(home)[key] == {"enabled": False, "trusted_hash": "sha256:aa", "trusted_content_hash": "sha256:bb"}
+
+
+@pytest.mark.parametrize("hooks,config", [
+    ("{not json", "[features]\nhooks = true\n"),
+    ('{"hooks": {}, "version": 1}', ""),                                     # Codex reads only hooks and description there
+    ('{"hooks": {"Stop": {"hooks": []}}}', ""),                              # an event holds a list of groups
+    ('{"hooks": {"Stop": [{"hooks": [{"type": "http", "url": "x"}]}]}}', ""),  # a type Codex does not know: it reads none
+    ('{"hooks": {"Stop": [{"hooks": [{"type": "command", "command": "x", "timeout": "5"}]}]}}', ""),
+    (None, "[hooks.state\nenabled = false\n"),                               # a table header that never closes
+    (None, 'model = "gpt-5"\nthis is not toml\n'),
+    (None, "[a]\nx = 1\n[a]\ny = 2\n"),                                      # a table defined twice
+    (None, 'x = ["never closed",\n'),
+])
+def test_a_file_that_cannot_be_parsed_is_refused_and_nothing_changes(tmp_path, monkeypatch, hooks, config):
+    home = codex_home(tmp_path, monkeypatch, config=config, hooks=hooks)
+    before = files(home)
+    with pytest.raises(setup.SetupError, match="nothing was changed"):
+        setup.codex_user_hooks(True, setup.REPO)
+    assert files(home) == before and backups() == []
+
+
+def _codex_cli(tmp_path, monkeypatch):
+    binary, log = fake_cli(tmp_path, "codex", {LIMITED: (0, {"installed": [CODEX_ENTRY], "available": []}), "plugin": (0, "{}")})
+    monkeypatch.setattr(setup.doctor, "find_client", lambda name: binary if name == "codex" else None)
+    monkeypatch.setattr(setup, "configured_ref", lambda client: "stable")
+    return binary
+
+
+def test_the_option_is_off_unless_asked_for(tmp_path, monkeypatch, capsys):
+    home = codex_home(tmp_path, monkeypatch, config="[features]\nhooks = true\n")
+    binary = _codex_cli(tmp_path, monkeypatch)
+    assert setup.main(["plugin", "--no-input", "--clients", "codex"]) == 0
+    assert not (home / "hooks.json").exists() and SWITCH not in (home / "config.toml").read_text()
+    assert setup.install_plugin("codex", binary) == "codex: updated synthesis-skills 5.0.0"   # the release script's update
+    assert not (home / "hooks.json").exists()
+
+
+def test_the_plugin_command_turns_it_on_keeps_it_and_turns_it_off(tmp_path, monkeypatch, capsys):
+    home = codex_home(tmp_path, monkeypatch, config="[features]\nhooks = true\n")
+    _codex_cli(tmp_path, monkeypatch)
+    assert setup.main(["plugin", "--no-input", "--clients", "codex", "--codex-user-hooks"]) == 0
+    assert set(declared(home)) == set(PLUGIN_HOOKS["hooks"]) and "/hooks" in capsys.readouterr().out
+    assert setup.main(["plugin", "--no-input", "--clients", "codex"]) == 0                   # a run without the flag keeps it
+    assert set(declared(home)) == set(PLUGIN_HOOKS["hooks"]) and SWITCH in (home / "config.toml").read_text()
+    assert setup.main(["plugin", "--no-input", "--clients", "codex", "--no-codex-user-hooks"]) == 0
+    assert not (home / "hooks.json").exists() and SWITCH not in (home / "config.toml").read_text()
+
+
+def test_a_file_the_command_cannot_parse_stops_it_and_leaves_both_files_as_they_were(tmp_path, monkeypatch, capsys):
+    home = codex_home(tmp_path, monkeypatch, config="[features]\nhooks = true\n", hooks="{not json")
+    _codex_cli(tmp_path, monkeypatch)
+    before = files(home)
+    assert setup.main(["plugin", "--no-input", "--clients", "codex", "--codex-user-hooks"]) == 1
+    assert "nothing was changed" in capsys.readouterr().out and files(home) == before
+
+
+def test_uninstall_takes_out_exactly_what_the_option_added(tmp_path, monkeypatch, capsys):
+    """The declarations and switches setup added go; the person's own hooks and settings stay byte for byte, and an
+    approval Codex recorded under a table setup added keeps that table."""
+    held = plugin_keys()[2]
+    config = (f'model = "gpt-5"\n\n[features]\nhooks = true\n\n[hooks.state."{held}"]\ntrusted_hash = "sha256:aa"\n\n'
+              '[projects."/x"]\ntrust_level = "trusted"\n')
+    hooks = json.dumps({"description": "mine", "hooks": {"Stop": [{"hooks": [{"type": "command", "command": "/bin/echo bye"}]}]}},
+                       indent=2) + "\n"
+    home = codex_home(tmp_path, monkeypatch, config=config, hooks=hooks)
+    setup.codex_user_hooks(True, setup.REPO)
+    assert setup.codex_user_hooks(False) and files(home) == {"config.toml": config.encode(), "hooks.json": hooks.encode()}
+    setup.codex_user_hooks(True, setup.REPO)
+    approved = plugin_keys()[0]                       # Codex then records an approval beside a switch setup added a table for
+    lines = (home / "config.toml").read_text().splitlines()
+    at = next(i for i, line in enumerate(lines) if line.startswith(f'[hooks.state."{approved}"]'))
+    lines.insert(at + 2, 'trusted_hash = "sha256:cc"')
+    (home / "config.toml").write_text("\n".join(lines) + "\n")
+    monkeypatch.setattr(setup.doctor, "find_client", lambda name: None)
+    assert setup.main(["uninstall", "--clients", "codex"]) == 0
+    assert json.loads((home / "hooks.json").read_text()) == json.loads(hooks)
+    expected = setup.doctor.read_toml(config)
+    expected["hooks"]["state"][approved] = {"trusted_hash": "sha256:cc"}
+    assert setup.doctor.read_toml((home / "config.toml").read_text(), strict=True) == expected
+    assert "enabled" not in (home / "config.toml").read_text()
+
+
+def test_an_update_brings_the_declaration_up_to_date_in_its_place(tmp_path, monkeypatch):
+    """A release that widens the shell hook's matcher (5.20.1 added shell_command) reaches the user-level copy at the
+    next install, where the old one was, so the keys of the person's own hooks after it do not move."""
+    earlier = json.loads(json.dumps(PLUGIN_HOOKS))
+    earlier["hooks"]["PreToolUse"][0]["matcher"] = "Bash|exec_command"
+    older = tmp_path / "older"
+    (older / "hooks").mkdir(parents=True)
+    (older / "hooks" / "hooks.json").write_text(json.dumps(earlier))
+    first = {"matcher": "Bash", "hooks": [{"type": "command", "command": "/usr/local/bin/notify"}]}
+    home = codex_home(tmp_path, monkeypatch, hooks={"hooks": {"PreToolUse": [first]}})
+    setup.codex_user_hooks(True, older)
+    later = {"hooks": [{"type": "command", "command": "/usr/local/bin/audit"}]}
+    data = json.loads((home / "hooks.json").read_text())
+    data["hooks"]["PreToolUse"].append(later)                                         # one of the person's own after it
+    (home / "hooks.json").write_text(json.dumps(data))
+    assert setup.codex_user_hooks(None, setup.REPO)                                   # what an install of the next release runs
+    assert declared(home)["PreToolUse"] == [first, PLUGIN_HOOKS["hooks"]["PreToolUse"][0], later]
+
+
+def test_a_declaration_the_person_wrote_is_kept_and_not_doubled(tmp_path, monkeypatch):
+    own = {"matcher": "Bash", "hooks": [{"type": "command", "command": '"${HOME}/.synthesis/v5/bin/synthesis-hook" pre-tool-use'}]}
+    home = codex_home(tmp_path, monkeypatch, hooks={"hooks": {"PreToolUse": [own]}})
+    lines = setup.codex_user_hooks(True, setup.REPO)
+    assert declared(home)["PreToolUse"] == [own] and any("PreToolUse" in line and "kept" in line for line in lines)
+    pre = next(key for key in plugin_keys() if ":pre_tool_use:" in key)
+    assert hook_state(home)[pre]["enabled"] is False                                  # its plugin copy is off all the same
+    setup.codex_user_hooks(False)
+    assert declared(home)["PreToolUse"] == [own]                                      # never setup's to take out
+
+
+def test_a_dry_run_says_what_it_would_do_and_writes_nothing(tmp_path, monkeypatch):
+    home = codex_home(tmp_path, monkeypatch, config="[features]\nhooks = true\n")
+    before = files(home)
+    lines = setup.codex_user_hooks(True, setup.REPO, dry_run=True)
+    assert lines and all("would" in line for line in lines)
+    assert files(home) == before and backups() == []
+
+
+def test_the_references_say_what_the_option_does_how_to_turn_it_off_and_what_it_gives_up():
+    for reference in (Path(setup.__file__).resolve().parents[1] / "references" / "harness-install.md",
+                      setup.REPO / "skills" / "synthesis-agent-conformance" / "references" / "architecture.md"):
+        text = " ".join(reference.read_text(encoding="utf-8").split())
+        for said in ("--codex-user-hooks", "--no-codex-user-hooks", "/hooks", "someone else's plugin"):
+            assert said in text, (reference.name, said)

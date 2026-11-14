@@ -347,6 +347,143 @@ def test_a_plugin_codex_cannot_fingerprint_runs_none_of_its_hooks(tmp_path):
     assert check.status == "fail" and "Codex cannot fingerprint the plugin" in check.detail
 
 
+
+# ---- the plugin's hooks declared in Codex's own hooks.json (setup.py plugin --codex-user-hooks) ----------------
+# A hook declared there is trusted by its declaration's hash alone (codex-rs hooks discovery); Codex keys its state by
+# the file's path under the home's real path, then the event, group and hook. The plugin's own copies are switched
+# off by their keys, so no event runs twice.
+
+# Hashes Codex 0.167.0-alpha.4.1 itself listed (`hooks/list`, currentHash) on 2026-11-14 for the declaration setup
+# writes in its hooks.json.
+USER_VECTORS = [
+    ("PreToolUse", "Bash|bash|exec_command|exec|shell|shell_command|local_shell|run_shell_command|Write|Edit|MultiEdit|"
+                   "NotebookEdit|write_file|edit_file|apply_patch|mcp__.*",
+     {"type": "command", "command": '"$HOME/.synthesis/v5/bin/synthesis-hook" pre-tool-use', "timeout": 5},
+     "sha256:6c8d97c7c6a55e53583887c9bff851062afa0277b33ca516fb67699622541168"),
+    ("SessionStart", None, {"type": "command", "command": '"$HOME/.synthesis/v5/bin/synthesis-hook" session-start', "timeout": 10},
+     "sha256:de4a793387c7da5d3a3a124a8e0c47e38ecab0fde1d87c7ba6ea08133fcce2e5"),
+    ("UserPromptSubmit", None, {"type": "command", "command": '"$HOME/.synthesis/v5/bin/synthesis-hook" user-prompt-submit',
+                                "timeout": 5}, "sha256:5ae284fc312782e3a758ee842940df7893033cba5c1c0aa3b81f447113a164fc"),
+    ("Stop", None, {"type": "command", "command": '"$HOME/.synthesis/v5/bin/synthesis-hook" stop', "timeout": 5},
+     "sha256:016cfe12ed31f67f845ff0187b6aef11dcf03d304592bf0671a193d1dcfd1538"),
+]
+
+
+@pytest.mark.parametrize("event,matcher,handler,expected", USER_VECTORS)
+def test_codex_trust_hash_reproduces_codex_for_a_user_level_declaration(event, matcher, handler, expected):
+    assert doctor.codex_hook_hash(event, matcher, handler) == expected
+
+
+def test_the_user_level_declaration_is_the_plugins_with_the_stable_hook_for_each_event():
+    declared = doctor.codex_user_declaration(REPO_HOOKS)
+    assert set(declared) == set(REPO_HOOKS["hooks"]) == set(doctor.EVENTS)
+    for event, groups in declared.items():
+        plugin = REPO_HOOKS["hooks"][event]
+        assert [{k: v for k, v in g.items() if k != "hooks"} for g in groups] == [{k: v for k, v in g.items() if k != "hooks"} for g in plugin]
+        for mine, theirs in zip(groups, plugin):
+            assert [{**h, "command": ""} for h in mine["hooks"]] == [{**h, "command": ""} for h in theirs["hooks"]]
+            assert all(h["command"] == f'"{doctor.STABLE_HOOK}" {doctor.EVENTS[event]}' for h in mine["hooks"])
+    assert doctor.codex_hooks_problem({"hooks": declared}) == "" and doctor.codex_hooks_problem(REPO_HOOKS) == ""
+
+
+def user_level(tmp_path, declared=None, trusted=True, plugin_off=True, home=None):
+    """A Codex home whose hooks.json declares the plugin's hooks as setup writes them, and the config state: the
+    user-level hooks approved (or not), the plugin's own switched off (or left as approved)."""
+    home = home or tmp_path / "codex"
+    home.mkdir(exist_ok=True)
+    declared = declared or doctor.codex_user_declaration(REPO_HOOKS)
+    (home / "hooks.json").write_text(json.dumps({"hooks": declared}))
+    state = {key: {"enabled": False} for key in trusted_state()} if plugin_off else trusted_state()
+    if trusted:
+        for event, groups in declared.items():
+            for gi, group in enumerate(groups):
+                for hi, handler in enumerate(group["hooks"]):
+                    key = f"{os.path.realpath(home)}{os.sep}hooks.json:{doctor._snake(event)}:{gi}:{hi}"
+                    state[key] = {"trusted_hash": doctor.codex_hook_hash(event, group.get("matcher"), handler)}
+    return home, {"hooks": {"state": state}}
+
+
+def test_with_a_user_level_declaration_its_trust_is_judged_and_the_plugins_switched_off_copies_are_intended(tmp_path):
+    home, config = user_level(tmp_path)
+    check = doctor.check_codex_trust(REPO_HOOKS, config, PLUGIN_ID, _plugin(tmp_path), home)
+    assert check.status == "ok" and "all 4 synthesis hooks trusted" in check.detail and "hooks.json" in check.detail
+    assert "disabled" not in check.detail and "approved before" not in check.detail
+
+
+def test_user_level_hooks_waiting_for_approval_are_named_by_their_own_keys(tmp_path):
+    home, config = user_level(tmp_path, trusted=False)
+    check = doctor.check_codex_trust(REPO_HOOKS, config, PLUGIN_ID, _plugin(tmp_path), home)
+    assert check.status == "fail" and "needs /hooks approval" in check.detail
+    assert "hooks.json:pre_tool_use:0:0 untrusted" in check.detail and "hooks.json:stop:0:0 untrusted" in check.detail
+    assert "disabled" not in check.detail                                             # the plugin's copies are off on purpose
+    home, config = user_level(tmp_path)
+    states = config["hooks"]["state"]
+    states[f"{os.path.realpath(home)}{os.sep}hooks.json:stop:0:0"]["trusted_hash"] = USER_VECTORS[0][3]  # approved otherwise
+    states[f"{os.path.realpath(home)}{os.sep}hooks.json:session_start:0:0"]["enabled"] = False
+    detail = doctor.check_codex_trust(REPO_HOOKS, config, PLUGIN_ID, None, home).detail
+    assert "hooks.json:stop:0:0 modified" in detail and "hooks.json:session_start:0:0 disabled" in detail
+
+
+def test_a_plugin_copy_left_on_beside_the_user_level_declaration_fails(tmp_path):
+    """Both copies would run once approved: the guard twice on every call."""
+    home, config = user_level(tmp_path, plugin_off=False)
+    check = doctor.check_codex_trust(REPO_HOOKS, config, PLUGIN_ID, None, home)
+    assert check.status == "fail" and "pre_tool_use:0:0 is not switched off" in check.detail
+
+
+def test_the_user_level_key_names_the_codex_home_by_its_real_path(tmp_path):
+    real, link = tmp_path / "real-codex", tmp_path / "linked-codex"
+    real.mkdir()
+    link.symlink_to(real)
+    home, config = user_level(tmp_path, home=real)
+    assert doctor.check_codex_trust(REPO_HOOKS, config, PLUGIN_ID, None, link).status == "ok"
+
+
+def test_without_a_user_level_declaration_the_line_is_as_before(tmp_path):
+    home = tmp_path / "codex"
+    home.mkdir()
+    (home / "hooks.json").write_text(json.dumps({"hooks": {"Stop": [{"hooks": [{"type": "command", "command": "/bin/echo bye"}]}]}}))
+    for state in (trusted_state(), {key: {"enabled": False} for key in trusted_state()}):
+        config = {"hooks": {"state": state}}
+        assert doctor.check_codex_trust(REPO_HOOKS, config, PLUGIN_ID, None, home) == doctor.check_codex_trust(REPO_HOOKS, config, PLUGIN_ID)
+    assert "pre_tool_use:0:0 disabled" in doctor.check_codex_trust(REPO_HOOKS, config, PLUGIN_ID, None, home).detail
+
+
+def test_a_user_hooks_file_codex_cannot_read_is_named(tmp_path):
+    home, config = user_level(tmp_path)
+    (home / "hooks.json").write_text('{"hooks": {"Stop": [{"hooks": [{"type": "http", "url": "x"}]}]}}')
+    check = doctor.check_codex_trust(REPO_HOOKS, config, PLUGIN_ID, None, home)
+    assert check.status == "fail" and "Codex reads none of" in check.detail and "hooks.json" in check.detail
+    (home / "hooks.json").write_text("{not json")
+    assert "Codex cannot read" in doctor.check_codex_trust(REPO_HOOKS, config, PLUGIN_ID, None, home).detail
+
+
+def test_a_user_level_declaration_unlike_the_plugins_is_named(tmp_path):
+    """After a release that changed the plugin's declaration, the user-level copy runs the old one until setup runs."""
+    declared = doctor.codex_user_declaration(REPO_HOOKS)
+    declared["PreToolUse"][0]["matcher"] = "Bash"
+    home, config = user_level(tmp_path, declared=declared)
+    check = doctor.check_codex_trust(REPO_HOOKS, config, PLUGIN_ID, None, home)
+    assert check.status == "fail" and "differs from the plugin's PreToolUse" in check.detail
+    assert "setup.py plugin --codex-user-hooks" in check.detail
+
+
+@pytest.mark.parametrize("text", ["[a\nx = 1\n", "x = 1\nnot a key\n", 'x = [1,\n2\n', "[a]\nx = 1\n[a]\ny = 2\n", "x =\n",
+                                  "[a] y = 1\n"])
+def test_the_strict_toml_reader_refuses_a_line_it_cannot_place(text):
+    with pytest.raises(ValueError):
+        doctor.read_toml(text, strict=True)
+    doctor.read_toml(text)                                                            # the doctor's own reading still reads past it
+
+
+def test_the_strict_toml_reader_reads_a_whole_config_as_the_lenient_one_does():
+    text = ('model = "gpt-5" # a comment\nproject_doc_fallback_filenames = ["CLAUDE.md",\n  "AGENTS.md"]\n'
+            'notice = { hide = true }\ninstructions = """\n[not a table]\nx = 1\n"""\n\n[features]\nhooks = true\n\n'
+            '[hooks.state."synthesis-skills@synthesis-engineering:hooks/hooks.json:stop:0:0"]  # synthesis-setup: x\n'
+            'enabled = false  # synthesis-setup: x\n[[mcp]]\nname = "a"\n[[mcp]]\nname = "b"\n'
+            "[projects.'/Users/x/work']\ntrust_level = \"trusted\"\n")
+    assert doctor.read_toml(text, strict=True) == doctor.read_toml(text)
+
 def test_codex_hooks_feature():
     assert doctor.check_codex_features({"features": {"hooks": True}}).status == "ok"
     missing = doctor.check_codex_features({"features": {"memories": True}})
