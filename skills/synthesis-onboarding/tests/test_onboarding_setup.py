@@ -1140,6 +1140,17 @@ def test_a_declaration_the_person_wrote_is_kept_and_not_doubled(tmp_path, monkey
     assert declared(home)["PreToolUse"] == [own]                                      # never setup's to take out
 
 
+
+def test_the_persons_own_text_in_codexs_hooks_file_comes_back_byte_for_byte(tmp_path, monkeypatch):
+    hooks = json.dumps({"hooks": {"Stop": [{"hooks": [{"type": "command", "command": "/bin/echo 'caf\u00e9 \u2615'"}]}]}},
+                       indent=2, ensure_ascii=False) + "\n"
+    home = codex_home(tmp_path, monkeypatch)
+    (home / "hooks.json").write_text(hooks, encoding="utf-8")
+    setup.codex_user_hooks(True, setup.REPO)
+    assert "caf\u00e9 \u2615" in (home / "hooks.json").read_text(encoding="utf-8")   # as written, not as escapes
+    setup.codex_user_hooks(False)
+    assert (home / "hooks.json").read_text(encoding="utf-8") == hooks
+
 def test_a_dry_run_says_what_it_would_do_and_writes_nothing(tmp_path, monkeypatch):
     home = codex_home(tmp_path, monkeypatch, config="[features]\nhooks = true\n")
     before = files(home)

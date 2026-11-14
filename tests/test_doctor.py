@@ -468,6 +468,14 @@ def test_a_user_level_declaration_unlike_the_plugins_is_named(tmp_path):
     assert "setup.py plugin --codex-user-hooks" in check.detail
 
 
+
+def test_a_declaration_the_person_wrote_with_the_plugins_matcher_is_judged_not_named_unlike(tmp_path):
+    """Setup keeps a declaration the person wrote as written, so how its command names the stable hook is theirs."""
+    declared = doctor.codex_user_declaration(REPO_HOOKS)
+    declared["PreToolUse"][0]["hooks"][0]["command"] = '"${HOME}/.synthesis/v5/bin/synthesis-hook" pre-tool-use'
+    home, config = user_level(tmp_path, declared=declared)
+    assert doctor.check_codex_trust(REPO_HOOKS, config, PLUGIN_ID, None, home).status == "ok"
+
 @pytest.mark.parametrize("text", ["[a\nx = 1\n", "x = 1\nnot a key\n", 'x = [1,\n2\n', "[a]\nx = 1\n[a]\ny = 2\n", "x =\n",
                                   "[a] y = 1\n"])
 def test_the_strict_toml_reader_refuses_a_line_it_cannot_place(text):
