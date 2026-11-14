@@ -910,10 +910,21 @@ ROOT = Path(__file__).resolve().parents[1]
 # git's own reason, nothing asked). credentials.py 37: the commit check's patterns moved word for word (commit_check.py
 # 15 fewer) and held 9. cli.py 18: release 6 (refused when git cannot read), journal 6 (byte for byte; what was not
 # kept), claim 4 and sessions 2. hook.py 1.
+# 5.20.0 (2026-11-13): core 311 more and plugin 327 (plan item 13.5, parts 4 and 5, through two review rounds, and the
+# unsaved count narrowed to what is actionable). board.py 94: carried 37 (a project's inbox read as records: a regular
+# file of at most 64 KB named as a message, never through a link, its header checked), undelivered 22 (no other session
+# here has read it, not carried before), carried_text 12, carried_ids 11 (names alone, for each prompt), mark_carried 8
+# and constants 4. project.py 64: _carry_out 46 (each project named when it cannot be carried; never stops a handoff),
+# carried_note 9, _mark_carried_out 8 (counted once its file is committed) and handoff 1. rituals.py 64: _machine 13,
+# host 13 (a name two Macs never share), read 13 (every host's file, safely), hosts_folders 10, _moment 8 (a real moment
+# across time zones) and is_record 7. sessions.py 39: _ritual_history 38 (a host's file, whole, committed alone; never
+# holding the push) and _sync_workspace 1. hook.py 24: _carried_since 19 (told once at a prompt) and the starts 5.
+# doctor.py 14: _unsaved_repo 32 and live_claims 7, with unsaved 25 fewer (read side by side). cli.py 12: inbox 12 (the
+# words quoted, twenty at a time). ritual_state.py 16: carried_by 12 and imports 4 (plugin only).
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # consolidate first).
-CORE_BUDGET = 14269
-PLUGIN_BUDGET = 37242
+CORE_BUDGET = 14580
+PLUGIN_BUDGET = 37569
 
 
 def _lines(files):

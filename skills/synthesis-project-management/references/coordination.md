@@ -227,8 +227,8 @@ uncommitted edit in that file, covered by no claim, was lost. Five protections n
   under `refs/synthesis/journal/` for 14 days, and its journal line as long. `synthesis journal <path>` lists the
   snapshots holding a file or naming it as not kept, and `synthesis journal --show <sha> <path>` writes it back
   byte for byte.
-- **Records do not stay on one Mac unnoticed.** `synthesis doctor` warns when a file under a claim has stayed
-  uncommitted, or in a commit on any local branch that no remote holds, past the config's `unsaved_hours`
+- **Records do not stay on one Mac unnoticed.** `synthesis doctor` warns when a file under a live seat's claim has stayed
+  uncommitted, or in a commit on the checkout's own branch that no remote holds, past the config's `unsaved_hours`
   (24 by default), counted per repository, and when git cannot read a claimed checkout at all; the weekday
   evening job shows a banner that names nothing. The hourly job that copies transcripts also fetches each
   knowledge root and sessions repo (never merging, writing no `FETCH_HEAD`, asking for nothing), so `git status`
@@ -274,8 +274,29 @@ display name at the moment of sending. The protocol removes that moment.
   broadcast.
 - A plain project message reaches the sessions working the project now; a
   session that joins later does not see it. `--durable` (project addresses only)
-  reaches every session that works on the project, now or later, once each:
-  use it for handoffs that must survive session turnover.
+  reaches every session on this Mac that works on the project, now or later, once
+  each: use it for handoffs that must survive session turnover. On another Mac it
+  is read as a carried record, once on that Mac (below).
+- **A durable message travels with the project** (5.20.0). The board lives on one
+  Mac, so `synthesis handoff` writes each durable message to a project that no
+  session on this Mac other than its sender has been shown (`synthesis inbox --peek`
+  marks nothing) into `projects/<p>/inbox/<message id>.md` (a header with the id,
+  sender, address and time, then the words) and commits it with the records, when
+  the session's claims cover that folder. It counts as carried from this Mac once
+  its file is committed, and is not written again. A project they do not cover, one
+  found in more than one knowledge root, a linked `inbox/`, a message over 64 KB
+  and one whose file could not be written are named in the handoff's report; none
+  of these stops the handoff.
+- **What a project's inbox holds is a record, read on request.** A file in a
+  repository says what its writer made it say, so it never becomes a board
+  message. A session that binds the project (its start, `synthesis resume`, bound
+  already or not, `synthesis use`) is told how many carried messages this Mac has
+  not shown, and the name of any file that could not be read as one, never their
+  words; so is a bound session at its next prompt when a pull brings new ones.
+  `synthesis inbox` shows them, twenty at a time: a line naming the file and its
+  header's sender, then the words quoted line by line, so no line of them passes
+  for a message of the board's; once on each Mac. Only a regular file named as a
+  message, of at most 64 KB, in an `inbox/` that is not a link, is read.
 - **Never assign work to a guess.** An unresolvable peer means a message to
   `project:<id>`, which its sessions see at their next prompt; a dispatch to the
   wrong session starts work in a context with the wrong claims, and the

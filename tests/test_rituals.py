@@ -270,3 +270,55 @@ def test_a_rituals_folder_named_in_the_shell_reaches_no_test():
     folder, and a skill's test read the config in it. The run takes the name out before each test, core and skills
     alike (the repository's `conftest.py`)."""
     assert os.environ.get("RITUAL_STATE_DIR") is None  # asked by name: a failure must not print the environment
+
+
+def test_every_hosts_history_is_read_once_and_a_bad_file_costs_only_its_lines(tmp_path, write_config, monkeypatch):
+    """5.20.0's first review: F11 (one bad byte in a host's file cost every view), F13 (host names folded together)
+    and F18 (the later of two records across time zones lost to the earlier one's clock text)."""
+    from synthesis import rituals
+    repo = tmp_path / "sessions-alpha"
+    (repo / "rituals").mkdir(parents=True)
+    write_config({"sessions_repos": {"alpha": str(repo)}})
+    line = lambda r: json.dumps(r, separators=(",", ":"), sort_keys=True)  # noqa: E731
+    mine = {"date": "2026-11-12", "direction": "day-end", "workspace": "alpha", "ts": "2026-11-12T09:00:00+01:00", "outcome": "clean"}
+    theirs = {"date": "2026-11-12", "direction": "day-end", "workspace": "alpha", "ts": "2026-11-12T01:30:00-08:00",
+              "outcome": "blocked"}  # 09:30 UTC: an hour and a half after this Mac's 08:00 UTC
+    log = rituals.state_dir() / "history.jsonl"
+    log.parent.mkdir(parents=True, exist_ok=True)
+    log.write_text(line(mine) + "\n", encoding="utf-8")
+    (repo / "rituals" / "mac-a.jsonl").write_text(line(mine) + "\n", encoding="utf-8")  # this Mac's own, as synced
+    (repo / "rituals" / "mac-b.jsonl").write_bytes(line(theirs).encode() + b"\n" + b'{"date": "caf\xe9"\n')
+    records, bad = rituals.read()
+    assert sorted(r["outcome"] for r in records) == ["blocked", "clean"] and bad == 1
+    assert rituals.last(records, "alpha")["outcome"] == "blocked"
+    (rituals.state_dir() / "config.json").write_text(json.dumps({"workspaces": {"alpha": {"plans_dirs": 5}}}), encoding="utf-8")
+    assert len(rituals.read()[0]) == 2  # a ritual config of another shape costs no view
+    monkeypatch.setenv("SYNTHESIS_HOST", "Mac A")
+    folded = rituals.host()
+    monkeypatch.setenv("SYNTHESIS_HOST", "Mac-A")
+    assert rituals.host() != folded and folded.startswith("Mac-A-")
+
+
+def test_two_macs_of_one_host_name_keep_two_files_and_a_wrong_shaped_or_linked_file_costs_nothing(tmp_path, write_config, monkeypatch):
+    """Round 2 of 5.20.0: N3 (two Macs that share a host name wrote one file, erasing each other), N9 (a line of the
+    wrong shape broke every view) and N13 (a host file was read through a link)."""
+    import socket
+    from synthesis import rituals
+    monkeypatch.delenv("SYNTHESIS_HOST", raising=False)
+    monkeypatch.setattr(socket, "gethostname", lambda: "MacBook-Pro")
+    monkeypatch.setattr(rituals, "_machine", lambda: "uuid-of-mac-a")
+    first = rituals.host()
+    monkeypatch.setattr(rituals, "_machine", lambda: "uuid-of-mac-b")
+    assert rituals.host() != first and first.startswith("MacBook-Pro-")
+    repo = tmp_path / "sessions-alpha"
+    (repo / "rituals").mkdir(parents=True)
+    write_config({"sessions_repos": {"alpha": str(repo)}})
+    (repo / "rituals" / "mac-b.jsonl").write_text(json.dumps({"date": 5, "direction": "day-end", "workspace": "alpha"}) + "\n"
+                                                  + json.dumps({"date": "2026-11-12", "direction": "day-end", "workspace": "alpha",
+                                                                "ts": "2026-11-12T18:00:00-05:00"}) + "\n", encoding="utf-8")
+    elsewhere = tmp_path / "elsewhere.jsonl"
+    elsewhere.write_text(json.dumps({"date": "2026-11-11", "direction": "day-end", "workspace": "alpha"}) + "\n", encoding="utf-8")
+    (repo / "rituals" / "mac-c.jsonl").symlink_to(elsewhere)
+    records, bad = rituals.read()
+    assert [r["date"] for r in records] == ["2026-11-12"] and bad == 2  # the wrong-shaped line, and the link not read
+    assert rituals.last(records, "alpha")["date"] == "2026-11-12"

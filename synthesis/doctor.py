@@ -453,50 +453,64 @@ def check_sessions_export(plist: Path, stamp: Path, now: float = 0, run=subproce
     return Check("ok", "sessions export", f"every hour; the last one finished {age * 60:.0f} min ago")
 
 
+def live_claims(sessions: list) -> list:
+    """The claims of the seats still at work. A seat gone quiet past the board's stale mark leaves its claims to the
+    stale-claim review (`synthesis who --all`), not to the unsaved count (5.20.0: on the principal's Mac they made the
+    line name 54 repositories)."""
+    return [c for s in sessions if not s.stale for c in (s.claims or [])]
+
+
+def _unsaved_repo(repo: str, under: list, hours: float, now: float):
+    """One repository's count for `unsaved`: the tuple, the reason git could not read it, or None."""
+    from synthesis import board, checkout
+
+    def claimed(rel):
+        full = os.path.join(repo, rel)
+        return any(full == base or board.overlaps(claim, full) for claim, base in under)
+    spec = ["--", *sorted({os.path.relpath(base, repo) for _, base in under})]
+    changed, committed, rows = {}, {}, checkout._changes(repo, True, *spec)
+    if rows is None:
+        return "git could not read its status"
+    for rel in (row[3:].rstrip("/") for row in rows):
+        where = os.path.join(repo, rel)
+        while where != repo and not os.path.lexists(where):  # deleted: as old as the nearest folder still there
+            where = os.path.dirname(where)
+        changed[rel] = (now - os.lstat(where).st_mtime) / 3600
+    if checkout._git(repo, "remote")[1].strip():  # the checkout's own branch, names as written (-z: never quoted)
+        code, out = checkout._git(repo, "log", "-z", "--format=%x00%ct", "--name-only", "HEAD", "--not", "--remotes", *spec)
+        when, fresh = 0, True
+        for token in out.split("\0") if code == 0 else []:
+            if not token:
+                fresh = True
+            elif fresh and token.isdigit():
+                when, fresh = int(token), False
+            else:
+                rel = token.lstrip("\n")
+                committed[rel] = max(committed.get(rel, 0.0), (now - when) / 3600)
+    late = {r: a for r, a in changed.items() if a > hours and claimed(r)}
+    gone = {r: a for r, a in committed.items() if a > hours and claimed(r)}
+    return (len(set(late) | set(gone)), max([*late.values(), *gone.values()]), len(late), len(gone)) if late or gone else None
+
+
 def unsaved(claims: list, hours: float, now: float = 0) -> dict:
     """Records that leave this Mac (plan item 13.5, part 2): per repository, the files under these claims that are
     uncommitted, or in a commit no remote holds, for longer than `hours`. {repo: (files, the oldest in hours,
     uncommitted, in unpushed commits)}, or the reason git could not read the repository, which is said, never read
-    as nothing. A deleted file is as old as the last change to the nearest folder still there; commits on every local
-    branch are read; in a repository with no remote, what is pushed cannot be told, so its commits are not counted.
-    Finder's files are not records. Reads git and writes nothing."""
+    as nothing. A deleted file is as old as the last change to the nearest folder still there. Commits are read on
+    the checkout's own branch: worktrees share one set of branches, so reading every branch charged each claimed
+    worktree with all of them (5.20.0). In a repository with no remote, what is pushed cannot be told, so its commits
+    are not counted. Finder's files are not records. Repositories are read side by side; nothing is written."""
+    from concurrent.futures import ThreadPoolExecutor
     from synthesis import board, checkout
-    now, held, found = now or time.time(), {}, {}
+    now, held = now or time.time(), {}
     for claim in claims:
         base = checkout._literal(board.normalize(claim))
         repo = checkout.repo_of(base)
         if repo:
             held.setdefault(repo, []).append((claim, base))
-    for repo, under in sorted(held.items()):
-        def claimed(rel, repo=repo, under=under):
-            full = os.path.join(repo, rel)
-            return any(full == base or board.overlaps(claim, full) for claim, base in under)
-        spec = ["--", *sorted({os.path.relpath(base, repo) for _, base in under})]
-        changed, committed, rows = {}, {}, checkout._changes(repo, True, *spec)
-        if rows is None:
-            found[repo] = "git could not read its status"
-            continue
-        for rel in (row[3:].rstrip("/") for row in rows):
-            where = os.path.join(repo, rel)
-            while where != repo and not os.path.lexists(where):  # deleted: as old as the nearest folder still there
-                where = os.path.dirname(where)
-            changed[rel] = (now - os.lstat(where).st_mtime) / 3600
-        if checkout._git(repo, "remote")[1].strip():  # every local branch, with names as written (-z: never quoted)
-            code, out = checkout._git(repo, "log", "-z", "--format=%x00%ct", "--name-only", "--branches", "--not", "--remotes", *spec)
-            when, fresh = 0, True
-            for token in out.split("\0") if code == 0 else []:
-                if not token:
-                    fresh = True
-                elif fresh and token.isdigit():
-                    when, fresh = int(token), False
-                else:
-                    rel = token.lstrip("\n")
-                    committed[rel] = max(committed.get(rel, 0.0), (now - when) / 3600)
-        late = {r: a for r, a in changed.items() if a > hours and claimed(r)}
-        gone = {r: a for r, a in committed.items() if a > hours and claimed(r)}
-        if late or gone:
-            found[repo] = (len(set(late) | set(gone)), max([*late.values(), *gone.values()]), len(late), len(gone))
-    return found
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        counts = dict(zip(sorted(held), pool.map(lambda r: _unsaved_repo(r, held[r], hours, now), sorted(held))))
+    return {repo: found for repo, found in counts.items() if found is not None}
 
 
 def unsaved_hours(config: dict) -> tuple:
@@ -1580,7 +1594,7 @@ def run_checks(home: Path | None = None, find=find_client, latest_ref: str = "",
     repos = workspace_repos(config)
     from synthesis import board, project
     sessions = board.sessions()
-    checks.append(check_unsaved(config, [c for s in sessions for c in (s.claims or [])]))
+    checks.append(check_unsaved(config, live_claims(sessions)))
     checks += [check_versions(versions, sessions), check_instruction_adapters(repos),
                check_temporary_work(repos, [s.cwd for s in sessions if not s.stale]),
                check_home_paths([home / "config.json"]), check_packets(project.roots()),
@@ -1683,7 +1697,7 @@ def main(argv=None) -> int:
         try:
             from synthesis import board
             hours, _ = unsaved_hours(paths.config())
-            print(len(unsaved([c for s in board.sessions() for c in (s.claims or [])], hours)) if hours else 0)
+            print(len(unsaved(live_claims(board.sessions()), hours)) if hours else 0)
         except Exception:  # the evening job reads anything else as nothing to say
             print("unknown")
         return 0

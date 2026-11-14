@@ -95,6 +95,10 @@ def session_start(payload):
                           untracked=False)  # inside the hook's budget: tracked changes alone
     except Exception:
         pass  # a snapshot must never cost a session its start
+    try:  # messages another Mac's handoff carried in the project's records: a count and a pointer, never their words
+        notes += project.carried_note(session.project, project_dir) if project_dir else []
+    except OSError:
+        pass  # a project's inbox must never cost a session its start
     unread = board.inbox(session_id, session.project)
     notes += [f"{len(unread)} unread board message(s): run `synthesis inbox`."] if unread else []
     kept = [] if session.project else board.waiting(session_id)
@@ -192,6 +196,25 @@ def _away_note(me, now=None) -> str:
             "of then: check each before relying on it or reporting it.")
 
 
+def _carried_since(session_id: str, me) -> list:
+    """Messages another Mac's handoff carried in the bound project's records that arrived since this session was last
+    told (a pull after it bound): a count and a pointer, once for each new message, never their words (5.20.0)."""
+    try:
+        from synthesis import board, paths, project
+        folder = project.find(me.project) if me and me.project else None
+        ids = board.carried_ids(me.project, folder) if folder else []
+        told = paths.board() / "carried-told" / board._session_file(session_id).stem
+        known = set(told.read_text(encoding="utf-8").split()) if told.is_file() else set()
+        if not set(ids) - known:
+            return []
+        told.parent.mkdir(parents=True, exist_ok=True)
+        told.write_text("\n".join(sorted(known | set(ids))) + "\n", encoding="utf-8")
+        return [f"{len(ids)} message(s) carried in this project's records that this Mac has not shown: `synthesis inbox` "
+                "shows them, each as the file's own words"]
+    except (OSError, ValueError):
+        return []  # a project's inbox must never cost a prompt
+
+
 def user_prompt_submit(payload):
     """Grant approvals the principal typed, brief a session whose project changed, deliver board messages."""
     from synthesis import approvals, board, paths
@@ -224,6 +247,7 @@ def user_prompt_submit(payload):
                   + (cut.format(len(m["text"]) - 1500) if len(m["text"]) > 1500 else "") for m in unread[:5]]
         if len(unread) > 5:
             notes.append(f"{len(unread) - 5} more unread: run `synthesis inbox`.")
+        notes += _carried_since(session_id, me)
     notes += [n for n in [_window_note()] if n]  # every session sees an open window (Rajiv, 2026-10-13)
     return _emit("UserPromptSubmit", context="\n\n".join(notes))
 

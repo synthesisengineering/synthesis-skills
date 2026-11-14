@@ -1272,7 +1272,7 @@ def repos() -> dict:
 
 
 def _git(repo: Path, *args: str) -> subprocess.CompletedProcess:
-    return subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True, timeout=900)
+    return subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True, errors="replace", timeout=900)
 
 
 def _fetch_one(repo: str) -> str:
@@ -1366,6 +1366,7 @@ def _sync_workspace(ws: str, repo: Path, push: bool) -> list:
             _git(repo, "reset", "-q", "--", month)
             return lines + [f"FAILED {ws}: commit for {month} refused: {(made.stdout + made.stderr).strip()[-600:]}"]
         lines.append(f"{ws}: {month}: {count} session(s) committed")
+    lines += [line for line in [_ritual_history(ws, repo)] if line]  # whatever it says, the transcripts are pushed
     if push:
         if _git(repo, "rev-parse", "--abbrev-ref", "@{u}").returncode:
             pushed = _git(repo, "push", "-q", "-u", "origin", "HEAD")
@@ -1378,6 +1379,44 @@ def _sync_workspace(ws: str, repo: Path, push: bool) -> list:
             return lines + [f"FAILED {ws}: push: {pushed.stderr.strip()[-300:]}"]
     paths.write_json(state_file, {"sessions": done, "synced": _iso(time.time()), "pushed": push})
     return lines + [f"{ws}: {repo.name} up to date" + ("" if push else " (not pushed)")]
+
+
+def _ritual_history(ws: str, repo: Path) -> str:
+    """Plan item 13.5, part 5 (5.20.0): this Mac's ritual records of the workspace, in its sessions repo as
+    `rituals/<host>.jsonl`, written whole from this Mac's log (so no line is ever cut, and a host writes only its own
+    file), committed alone and pushed with the sync; another Mac reads it once its own sync has pulled. "" when there
+    is nothing new. What could not be carried is said and undone in the working tree; it never holds back the
+    transcripts' push or the sync (5.20.0's second review, N2, N10, N11), and only records of the shape every view
+    reads are copied (N9)."""
+    from synthesis import rituals
+    rel = f"rituals/{rituals.host()}.jsonl"
+    try:
+        log = rituals.state_dir() / "history.jsonl"
+        mine = []
+        for line in (raw.strip() for raw in (log.read_bytes().splitlines() if log.is_file() else [])):
+            try:
+                record = json.loads(line.decode("utf-8")) if line else None
+            except ValueError:
+                continue
+            if rituals.is_record(record) and record.get("workspace") == ws:
+                mine.append(line)
+        data = b"".join(line + b"\n" for line in mine)
+        if not mine or ((repo / rel).is_file() and (repo / rel).read_bytes() == data):
+            return ""
+        (repo / "rituals").mkdir(exist_ok=True)
+        (repo / f"{rel}.tmp").write_bytes(data)
+        os.replace(repo / f"{rel}.tmp", repo / rel)
+    except OSError as exc:
+        return f"{ws}: ritual history not carried ({exc}); the transcripts are synced"
+    made = _git(repo, "add", "--", rel)
+    made = made if made.returncode else _git(repo, "commit", "-q", "-m", "Rituals: history", "--", rel)
+    if not made.returncode:
+        return f"{ws}: ritual history: {len(mine)} record(s) of this Mac committed"
+    _git(repo, "reset", "-q", "--", rel)
+    if _git(repo, "checkout", "-q", "HEAD", "--", rel).returncode:
+        (repo / rel).unlink(missing_ok=True)
+    return (f"{ws}: ritual history not carried, its commit refused ({(made.stdout + made.stderr).strip()[-300:]}); "
+            "the transcripts are synced")
 
 
 def _pulled(ws: str, repo: Path) -> str:

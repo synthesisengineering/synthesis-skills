@@ -37,6 +37,17 @@ than half-reading it.
 
 ## Files the scripts keep
 
+- Each host's ritual history (5.20.0). A record commits nothing. The hourly `synthesis sessions sync`
+  writes this Mac's records of each workspace whole into that workspace's sessions repo as
+  `rituals/<host>.jsonl`, commits that file alone and pushes it with the transcripts; another Mac
+  reads it once its own sync has pulled. A history commit that is refused, or a file that cannot be
+  written, is said in the sync's lines and undone, and never holds back the transcripts. The host is
+  `SYNTHESIS_HOST`, or the host name with what a file name cannot hold folded to `-`, then a short hash
+  of the name and the machine's own id, so two Macs that share a name keep two files. Every view
+  reads this Mac's log and every host's file, each record once; a link, a file that cannot be read
+  and a line of another shape are counted as malformed and cost nothing else. A copy exercised with
+  `--state-dir` still reads every host's synced records. `record` says where its history goes, or
+  that it stays on this Mac when the workspace has no sessions repo.
 - The ritual log, `<synthesis home>/rituals/history.jsonl`, and its `config.json`
   (`{"defaults": {...}, "workspaces": {"<W>": {"streak": "expected-days", "weekdays": [0,1,2,3,4],
   "non_working_dates": ["YYYY-MM-DD"], "plans_dirs": ["<folder of dated plans>"],

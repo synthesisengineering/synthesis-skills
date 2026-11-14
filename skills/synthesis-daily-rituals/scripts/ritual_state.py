@@ -35,8 +35,12 @@ if an agent remembered). Only a missing key or `false` turns it off: any other v
 setting is refused, and so is a first day that is not a day.
 
 The log is `<synthesis home>/rituals/history.jsonl` (`RITUAL_STATE_DIR` or
-`--state-dir` points elsewhere, to exercise a copy). Derivations live in the
-plugin's `synthesis/rituals.py`, which the SessionStart line and the nudge share.
+`--state-dir` points elsewhere, to exercise a copy, whose views still read every
+host's synced records). A record commits nothing; the hourly `synthesis sessions
+sync` carries this Mac's records of a workspace to its sessions repo, and every
+view reads every host's records there (5.20.0).
+Derivations live in the plugin's `synthesis/rituals.py`, which the SessionStart
+line and the nudge share.
 """
 
 from __future__ import annotations
@@ -60,7 +64,7 @@ for _root in (_PLUGIN, Path(os.environ.get("SYNTHESIS_HOME") or Path.home() / ".
         sys.path.insert(0, str(_root))
         break
 try:
-    from synthesis import rituals  # noqa: E402
+    from synthesis import paths, rituals  # noqa: E402
 except ImportError as exc:  # no runtime beside this copy; one that fails otherwise as it loads keeps its traceback
     print(f"{__file__} needs the synthesis runtime, which cannot be imported ({exc}), so nothing ran. Run it from the "
           "installed synthesis-skills plugin or a checkout of it", file=sys.stderr)
@@ -110,6 +114,18 @@ def append(record: dict) -> None:
             refuse(f"the append to {path} did not read back whole; inspect the tail before retrying")
     finally:
         os.close(fd)
+
+
+def carried_by(workspace: str) -> str:
+    """Where this record goes beyond this Mac (plan item 13.5, part 5; 5.20.0). A record commits nothing: the hourly
+    `synthesis sessions sync` keeps this Mac's records of a workspace in its sessions repo, which another Mac reads."""
+    try:
+        repo = (paths.config().get("sessions_repos") or {}).get(workspace)
+    except (OSError, ValueError, AttributeError):
+        repo = None
+    if not isinstance(repo, str):
+        return f"ritual history: kept on this Mac only ({workspace} has no sessions repo in the synthesis config)"
+    return f"ritual history: `synthesis sessions sync` carries it to {os.path.expanduser(repo)}, where another Mac reads it"
 
 
 def critical_deadlines(workspace: str, outcome: str, sweep=None) -> str:
@@ -508,7 +524,7 @@ def cmd_record(args) -> int:
     if counts:
         record["counts"] = counts
     append(record)
-    print(f"recorded {args.direction} {args.workspace} {args.date} ({args.outcome})\n{critical}")
+    print(f"recorded {args.direction} {args.workspace} {args.date} ({args.outcome})\n{critical}\n{carried_by(args.workspace)}")
     return 0
 
 

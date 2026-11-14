@@ -354,6 +354,100 @@ def waiting(session_id: str) -> list[str]:
     return sorted((name for name in names if newest[name] is not None), key=lambda name: -newest[name])
 
 
+MESSAGE_ID = "[0-9]{1,20}-[0-9]{1,10}"  # a message's file name before .json: its time in nanoseconds and its writer's process
+CARRIED_MAX = 64 * 1024  # a carried message larger than this is named, never read
+
+
+def undelivered(project: str) -> list[dict]:
+    """The durable messages to project:<project> that no session on this Mac other than its sender has been shown, and
+    that this Mac has not carried before, each with its `id` (plan item 13.5, part 4: a handoff carries these). A
+    sender shown its own message has delivered it to no one (5.20.0's first review, F3)."""
+    import re
+    readers: dict = {}
+    for marker in (paths.board() / "read").glob("*/*"):
+        readers.setdefault(marker.name, set()).add(marker.parent.name)
+    found = []
+    for file in sorted(_box(f"project:{project}").glob("*.json")):
+        if not re.fullmatch(MESSAGE_ID, file.stem) or (paths.board() / "carried-out" / file.stem).exists():
+            continue
+        try:
+            data = json.loads(file.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        sender = _session_file(str(data.get("from", ""))).stem if isinstance(data, dict) and data.get("from") else ""
+        if isinstance(data, dict) and data.get("durable") and not readers.get(file.name, set()) - {sender}:
+            found.append({**data, "id": file.stem})
+    return found
+
+
+def carried_text(message: dict) -> str:
+    """A message as a project's records carry it: `inbox/<id>.md`, a header and the words."""
+    from datetime import datetime
+    try:
+        at = datetime.fromtimestamp(float(message.get("at", 0))).astimezone().isoformat(timespec="seconds")
+    except (TypeError, ValueError, OverflowError, OSError):
+        at = ""  # a board file's time out of range: the carried file gives none
+    head = {"id": message["id"], "from": message.get("from", ""), "to": message.get("to", ""), "at": at}
+    return ("---\n" + "".join(f"{k}: {' '.join(str(v).split())[:200]}\n" for k, v in head.items()) + "---\n\n"
+            + str(message.get("text", "")).rstrip("\n") + "\n")
+
+
+def carried(project: str, folder) -> tuple[list[dict], list[str]]:
+    """The messages a project's records carry (`<folder>/inbox/<id>.md`, a handoff on another Mac wrote them) that this
+    Mac has not shown and does not hold itself, oldest first, and the names of files named as messages that could not
+    be read as one, each with a fixed reason. What such a file says is the file's own word: it is shown only on request,
+    marked as carried, and never delivered as a session's message (5.20.0's first review, F1). Only a regular file,
+    never a link, of at most CARRIED_MAX bytes is read."""
+    import re
+    import stat
+    from datetime import datetime
+    found, unreadable, shown = [], [], paths.board() / "carried-shown" / _session_file(project).stem
+    if folder and os.path.islink(Path(folder, "inbox")):
+        return [], ["inbox/ is a link, so nothing is read through it"]
+    for file in sorted(Path(folder, "inbox").glob("*.md")) if folder else []:
+        if not re.fullmatch(MESSAGE_ID, file.stem) or (shown / file.stem).exists() or (
+                _box(f"project:{project}") / f"{file.stem}.json").exists():
+            continue
+        try:
+            info = os.lstat(file)
+            if not stat.S_ISREG(info.st_mode) or info.st_size > CARRIED_MAX:
+                raise ValueError("not a regular file of at most 64 KB")
+            head, _, body = file.read_bytes().decode("utf-8").partition("\n---\n")
+            fields = dict(line.split(": ", 1) for line in head.splitlines()[1:] if ": " in line) if head.startswith("---\n") else {}
+            if fields.get("id") != file.stem or fields.get("to") != f"project:{project}" or not fields.get("from"):
+                raise ValueError("its header does not give its own id, a sender and this project")
+        except (OSError, ValueError) as exc:  # a file's words are never quoted here, only the reason
+            unreadable.append(f"inbox/{file.name} ({exc if isinstance(exc, ValueError) and not isinstance(exc, UnicodeDecodeError) else 'unreadable'})")
+            continue
+        try:
+            at = datetime.fromisoformat(fields.get("at", "")).timestamp()
+            at = at if 1577836800 <= at <= time.time() + 86400 else None  # from 2020 to tomorrow, or no time
+        except (ValueError, OverflowError):
+            at = None
+        found.append({"id": file.stem, "file": f"inbox/{file.name}", "from": " ".join(fields["from"].split())[:120],
+                      "at": at, "text": body[1:].rstrip("\n") if body.startswith("\n") else body.rstrip("\n")})
+    return sorted(found, key=lambda m: (m["at"] is None, m["at"] or 0)), unreadable
+
+
+def carried_ids(project: str, folder) -> list:
+    """The ids of files in the project's inbox named as messages that this Mac has not shown and does not hold, by
+    their names alone (nothing is read): cheap enough for every prompt."""
+    import re
+    inbox, shown = Path(folder, "inbox"), paths.board() / "carried-shown" / _session_file(project).stem
+    if os.path.islink(inbox) or not inbox.is_dir():
+        return []
+    return sorted(f.stem for f in inbox.glob("*.md") if re.fullmatch(MESSAGE_ID, f.stem) and not (shown / f.stem).exists()
+                  and not (_box(f"project:{project}") / f"{f.stem}.json").exists())
+
+
+def mark_carried(project: str, ids) -> None:
+    """These carried messages have been shown on this Mac: none is shown again here."""
+    shown = paths.board() / "carried-shown" / _session_file(project).stem
+    shown.mkdir(parents=True, exist_ok=True)
+    for message_id in ids:
+        (shown / message_id).touch()
+
+
 def _read_marker(session_id: str, name: str) -> Path:
     return paths.board() / "read" / _session_file(session_id).stem / name
 

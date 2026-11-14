@@ -70,8 +70,8 @@ there with no item here fails:
   within the last day, never merging; each it could not fetch is named with git's reason and
   when it was last fetched, and a Mac with no such checkout is ok, with nothing to fetch
   (config `scheduled_fetch`, false turns it off and the line says so; 5.19.0);
-- `unsaved records`: no file under a claim on the board has stayed uncommitted, or in a
-  commit on any local branch that no remote holds, longer than the config's `unsaved_hours`
+- `unsaved records`: no file under a live seat's claim has stayed uncommitted, or in a
+  commit on the checkout's own branch that no remote holds, longer than the config's `unsaved_hours`
   (24 when absent; false turns the count off, and the line says so), counted per repository
   with the oldest age, and a claimed checkout git cannot read is named; a warning, never a
   failure (5.19.0). The weekday evening job shows a fixed banner for one such repository,
