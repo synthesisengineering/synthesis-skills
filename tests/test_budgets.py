@@ -989,7 +989,7 @@ ROOT = Path(__file__).resolve().parents[1]
 # public review went out on a site that is no messaging site through a click on Submit rating.
 # 5.21.1, after the second review of 5.21.0: guards.py 76 more. The summary rules 38: PUBLISHES with effect-first verbs,
 # any form of a click verb and a word or three before the label, and Tweet and Done (3, as before), OPENS 3, POSTS 1,
-# ROUTINE 2 and MESSAGE 1 (a click that only opens or closes a box, a sign-in or a search, passes), the page-script
+# ROUTINE 2 and MESSAGE_WORDS 1 (a click that only opens or closes a box, a sign-in or a search, passes), the page-script
 # patterns 8 (WRITES, SCRIPT_ACTS, SCRIPT_SENDS, SCRIPT_ROUTINE and their comment), the comment 5, _publishes 9 and
 # _submits 12 (Return, or Space or Return after Tab), less the 6 lines of 5.21.1's pattern. _released 15 (the words the
 # typed-words code released, shown in the next send's hold from that page). check_desktop 12 (the key rule, page scripts,

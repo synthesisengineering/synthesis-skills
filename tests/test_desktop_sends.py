@@ -316,8 +316,9 @@ def test_a_click_that_only_opens_a_box_passes_on_these_sites(summary):
 @pytest.mark.parametrize("summary", PUBLISHERS + ["Clicks the Submit rating button", "Presses the Post review button"])
 def test_a_click_on_a_control_that_publishes_waits_on_every_page(summary):
     """2026-11-13: a public review typed and submitted through the browser on a site that is no messaging site went out
-    with no code, since there only a click on Send counted. Over 30 days of records no click named one of these
-    controls on any site, so holding them everywhere costs nothing measured."""
+    with no code, since there only a click on Send counted. These click-verb summaries held nothing in 30 days of
+    records; the incident's own clicks were summarized effect first, and the rule holds them since the second review
+    (12 clicks in 30 days that no rule held before, in 3 transcripts)."""
     fill = ("form_input", {"ref": "ref_2", "value": "Great work, thank you", "action_summary": "Fills the review box"})
     click = ("computer", {"action": "left_click", "ref": "ref_9", "action_summary": summary})
     assert "approve" in check(CHROME, _opened("https://www.example.com/tasks/1/review", fill, click))
