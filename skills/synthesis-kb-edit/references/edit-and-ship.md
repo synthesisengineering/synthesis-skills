@@ -101,12 +101,14 @@ run its phrase scan over the same staged lines:
 python3 <skill-root>/scripts/sharing_scan.py <repo-root> --staged
 ```
 
-It prints each held line as its file, line and phrase, and nothing else of
-the line. Read each held line against the policy: a fact in a class comes
+It prints each hit as where it is (a file and line, a file's name) and the
+phrase, and nothing else of the line, and holds any file it cannot read as
+text. Read each held line against the policy: a fact in a class comes
 out; a line that is right as it stands goes to the reviewer, with the phrase
 narrowed or dropped in the contract in the same request. Never reword a line
 only to get past the scan. A scan that cannot run (exit 2: no phrases, no
-policy, an invalid contract) blocks shipping like any protective control.
+policy or one still the template as written, a bundle git tracks no file
+under, an invalid contract) blocks shipping like any protective control.
 
 ### 6. Review and save exactly the intended files
 
