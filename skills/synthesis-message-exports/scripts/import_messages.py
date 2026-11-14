@@ -21,9 +21,11 @@ import argparse
 import contextlib
 import datetime
 import hashlib
+import hmac
 import json
 import os
 import re
+import secrets
 import stat
 import time
 import unicodedata
@@ -37,6 +39,7 @@ MEDIA_FOLDERS = ("media", "photos", "videos", "audio", "gifs", "files", "sticker
 MEDIA = frozenset("jpg jpeg png gif webp heic heif bmp tif tiff mp4 mov m4v webm 3gp avi mkv m4a aac mp3 wav ogg oga "
                   "opus amr flac pdf".split())
 MESSAGE_FILE, HTML_FILE = re.compile(r"message_(\d+)\.json"), re.compile(r"message_\d+\.html?")
+STRUCTURE = frozenset(("messages", *PARENTS, *SECTIONS, *MEDIA_FOLDERS))  # names a listing keeps when it hides the rest
 MAX_MEMBER_BYTES = 256 * 1024 * 1024  # the largest message file read; one holds at most 10,000 messages
 MAX_ENTRIES = 500_000
 MAX_READS = 100_000  # message files read from one export; a large real one holds a few thousand
@@ -144,9 +147,28 @@ def fence(text):
     return [tick + "untrusted", *text.split("\n"), tick]
 
 
+REDACTION = {"key": None}  # set for a run with --listing-redacted: a key for this run alone
+
+
+def redacted(rel):
+    """A path with every name in it replaced by a token keyed for this run alone: a conversation's folder or file, the
+    folder an export was extracted into, any name this layout does not fix. Its structure and extensions stay, so a
+    reader can still be built from it, and no name can be guessed back from a digest of it."""
+    parts = []
+    for part in rel.split("/"):
+        if part in STRUCTURE or MESSAGE_FILE.fullmatch(part) or HTML_FILE.fullmatch(part):
+            parts.append(part)
+            continue
+        stem, dot, extension = part.rpartition(".")
+        token = hmac.new(REDACTION["key"], part.encode("utf-8"), "sha256").hexdigest()[:8]
+        parts.append(f"name-{token}" + (f".{extension}" if stem and re.fullmatch(r"[A-Za-z0-9]{1,8}", extension) else ""))
+    return "/".join(parts)
+
+
 def shown(name):
-    """A file name as printed: one line, hidden characters shown, at most 200 characters."""
-    return " ".join(visible(name).split())[:200]
+    """A file name as printed: its names replaced on --listing-redacted, one line, hidden characters shown, at most 200
+    characters."""
+    return " ".join(visible(redacted(name) if REDACTION["key"] else name).split())[:200]
 
 
 def moment(ts):
@@ -817,7 +839,14 @@ def since_of(value):
 
 def listing(source, unknown):
     """The export's files by name and size, never their contents: what a reader for a new shape is built from."""
-    print("the export's files, name and size in bytes (no message text; media counted, not listed):")
+    if REDACTION["key"]:
+        print("Every name below is a token keyed for this run alone; structure, extensions and sizes are the export's. "
+              "The principal decides what, if anything, to send, and to whom.")
+        print("the export's files, size in bytes (no message text; media counted, not listed):")
+    else:
+        print("The file names below carry the names of the people in these conversations: the principal decides what, if "
+              "anything, to send, and to whom. --listing-redacted lists the same files with every name replaced.")
+        print("the export's files, name and size in bytes (no message text; media counted, not listed):")
     media, listed = {}, 0
     for rel in sorted(source.sizes):
         if classify(rel)[0] == "media" and rel not in unknown:
@@ -831,7 +860,6 @@ def listing(source, unknown):
         print(f"... and {listed - LISTED} more files not listed")
     if media:
         print(f"media files not listed: {sum(media.values())} (" + ", ".join(f"{e} {n}" for e, n in sorted(media.items())) + ")")
-    print("Send this listing to have a reader added; it holds file names and sizes, never message text.")
 
 
 def main(argv=None):
@@ -841,8 +869,11 @@ def main(argv=None):
     parser.add_argument("--out", required=True, help="the private folder the principal named for the transcripts")
     parser.add_argument("--since", help="only messages from this day on (YYYY-MM-DD, UTC)")
     parser.add_argument("--dry-run", action="store_true", help="read and count; write nothing")
+    parser.add_argument("--listing-redacted", action="store_true",
+                        help="on a refusal, list the export's files with every name replaced by a token")
     args = parser.parse_args(argv)
     source, extra = None, {}
+    REDACTION["key"] = secrets.token_bytes(16) if args.listing_redacted else None
     try:
         since_ms = since_of(args.since)
         export, out = os.path.realpath(args.export), os.path.realpath(args.out)

@@ -730,4 +730,4 @@ def test_r1_26_a_refusal_says_its_listing_names_people_and_lists_without_names_o
     assert re.search(r"^ +\d+  name-[0-9a-f]{8}\.json  <- ", redacted, re.M)
     archive = zip_tree(export, tmp_path / "export.zip", extra={"messages/inbox/alexsample_2002/../../x.json": "{}"})
     code, redacted = run(im, capsys, archive, "--out", tmp_path / "out", "--listing-redacted")
-    assert code == 2 and printed.startswith("refused: ") and "alexsample" not in redacted
+    assert code == 2 and redacted.startswith("refused: ") and "alexsample" not in redacted
