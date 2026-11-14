@@ -29,7 +29,8 @@
           {
             "type": "command",
             "command": "\"$HOME/.synthesis/v5/bin/synthesis-hook\" pre-tool-use",
-            "timeout": 5
+            "timeout": 5,
+            "onFailure": "block"
           }
         ]
       }

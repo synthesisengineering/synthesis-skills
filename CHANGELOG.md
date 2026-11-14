@@ -28,6 +28,35 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   across a change of the plugin's files and version, and through the startup review's "Trust all". Then end to end:
   the plugin installed with Codex's own commands, the option turned on, the four approved as `/hooks` approves them,
   and a release that changed the plugin's files and version, with the user-level hooks trusted throughout.
+- **A guard that cannot answer holds the call in Claude Code** (`synthesis-agent-guardrails`, `synthesis-message-guard`,
+  `synthesis-onboarding`, `synthesis-agent-conformance`). On PreToolUse, Claude Code let a call through when the hook
+  timed out (its limit is 5 seconds), crashed, printed output it could not read, or could not start because the stable
+  hook was missing: a send, a deploy or a write went ahead unguarded, against the rule that protective checks fail
+  closed. The plugin's PreToolUse handler now sets `"onFailure": "block"`, which Claude Code honors from 2.1.295: the
+  call is held, and Claude Code names the hook and says `failed` or `timed out`. UserPromptSubmit, SessionStart and
+  Stop keep the default: holding a person's prompt or a session's start on a hook failure costs more than it protects,
+  and Claude Code ignores the setting on Stop.
+- **What each harness reads stays readable.** Claude Code 2.1.316 validates and installs the plugin with the field and
+  refuses a value it does not allow; 2.1.293, from before the field, ignores it and keeps all four hooks. Codex
+  0.167.0-alpha.4.1 reads all four hooks with it and hashes the guard as before, so an approval holds. The user-level
+  declaration from `setup.py plugin --codex-user-hooks` carries it too: an install brings it in step under the approval
+  given before, and setup now says that approval stays instead of asking for it again. Muse 1.4.20 reads only its own
+  manifest, which refuses the whole plugin for the field, so it is not there. Codex and Muse have no such setting: in
+  them a guard that times out or crashes still lets the call through, and the message guard's and the guardrails'
+  references and the runtime contract say so.
+- **The doctor checks it.** A new `claude fail closed` line fails when the installed plugin's PreToolUse hook lacks the
+  setting, and warns when the installed Claude Code (by `claude --version`) is older than 2.1.295 or names no version.
+- **Measured before it shipped.** Over the 30 days to 2026-11-14, the Claude Code transcripts on the Mac it was measured
+  on (1,113 files) hold no PreToolUse hook call that failed or timed out, of 140,417 tool calls the guard's matcher
+  takes: the change would have held none in that window. Claude Code writes those failures into its transcripts (544
+  Stop and 53 SessionStart hook errors and 131 PostToolUse cancellations in that Mac's history), so none is a count,
+  not a gap in the record.
+- **How it was checked.** Tests first. Probes in homes of their own (each harness's config, data and synthesis folders
+  set to temporary ones): `claude plugin validate` and install with 2.1.316 and 2.1.293; Codex's own `hooks/list` for
+  the plugin with and without the field, the user-level declaration, and a home approved before the field through the
+  release that adds it; `muse plugins validate`, install and `plugins hook test` with the stable hook missing, exiting 1
+  and sleeping past its limit, beside a stub that denies as the control. Two assertions in the onboarding tests that
+  passed on the path `.../hooks.json` alone now read the note's own words.
 
 ## [5.20.1] - 2026-11-13
 

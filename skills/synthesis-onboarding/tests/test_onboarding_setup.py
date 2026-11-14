@@ -1007,7 +1007,7 @@ def test_the_option_declares_the_plugins_four_hooks_in_codexs_own_file_and_switc
             assert ours == groups    # exactly as the plugin declares it: the same command, matcher and timeout
     assert {key: value.get("enabled") for key, value in hook_state(home).items()} == {key: False for key in plugin_keys()}
     assert (home / "config.toml").read_text().startswith('model = "gpt-5"\n\n[features]\nhooks = true\n')
-    assert any("/hooks" in line for line in lines)                                    # approved once, there, by the person
+    assert any("Codex's /hooks" in line for line in lines)                           # approved once, there, by the person
 
 
 def test_a_second_run_changes_nothing(tmp_path, monkeypatch):
@@ -1069,7 +1069,7 @@ def test_the_plugin_command_turns_it_on_keeps_it_and_turns_it_off(tmp_path, monk
     home = codex_home(tmp_path, monkeypatch, config="[features]\nhooks = true\n")
     _codex_cli(tmp_path, monkeypatch)
     assert setup.main(["plugin", "--no-input", "--clients", "codex", "--codex-user-hooks"]) == 0
-    assert set(declared(home)) == set(PLUGIN_HOOKS["hooks"]) and "/hooks" in capsys.readouterr().out
+    assert set(declared(home)) == set(PLUGIN_HOOKS["hooks"]) and "Codex's /hooks" in capsys.readouterr().out
     assert setup.main(["plugin", "--no-input", "--clients", "codex"]) == 0                   # a run without the flag keeps it
     assert set(declared(home)) == set(PLUGIN_HOOKS["hooks"]) and SWITCH in (home / "config.toml").read_text()
     assert setup.main(["plugin", "--no-input", "--clients", "codex", "--no-codex-user-hooks"]) == 0
@@ -1150,7 +1150,7 @@ def test_a_release_that_adds_the_guards_setting_keeps_the_declaration_codex_read
     def hashed(group):
         return setup.doctor.codex_hook_hash("PreToolUse", group.get("matcher"), group["hooks"][0])
     assert hashed(after) == hashed(before)
-    assert lines and not any("/hooks" in line for line in lines)                     # nothing to approve again,
+    assert lines and not any("approve" in line for line in lines)                    # nothing to approve again,
     assert any("in step" in line and "approval" in line and "stays" in line for line in lines)  # and it says so
 
 
