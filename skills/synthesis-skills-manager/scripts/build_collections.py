@@ -30,8 +30,10 @@ runs on Python 3.9.
 """
 
 import argparse
+import ast
 import json
 import os
+import posixpath
 import re
 import sys
 import tempfile
@@ -48,6 +50,11 @@ MANIFESTS = (".claude-plugin/plugin.json", MANIFEST, ".muse-plugin/plugin.json")
 MARKETPLACES = (".claude-plugin/marketplace.json", ".agents/plugins/marketplace.json")  # at the top of the branch
 LICENSES = ("LICENSE-APACHE", "LICENSE-CC0")  # the terms its skills' SPDX identifiers name travel with each folder
 SHARED = ("author", "homepage", "repository", "license")  # what each collection's manifests take from the whole set's
+LINK = re.compile(r"(\]\()([^)\s]+)(\))")  # an inline Markdown link: its target between `](` and `)`
+CARRIABLE = ("yamlish",)  # runtime modules a collection may carry beside its scripts: the standard library alone, no
+#                           state, no hook (R1-3 of 5.22.0's review: of 34 scripts that imported the runtime, 23 read it)
+CAUGHT = ("ImportError", "ModuleNotFoundError", "Exception")  # an `except` that takes a module's absence
+PRESENT = ("is_file", "exists", "is_dir")  # an `if` that asks first whether a file is there
 
 
 def read_spec(repo: Path, commit: bool = False) -> dict:
@@ -162,23 +169,152 @@ def text(value: dict) -> bytes:
     return (json.dumps(value, indent=2, ensure_ascii=False) + "\n").encode("utf-8")
 
 
+def catches(handler) -> bool:
+    kinds = handler.type.elts if isinstance(handler.type, ast.Tuple) else [handler.type]
+    return any(kind is None or isinstance(kind, ast.Name) and kind.id in CAUGHT for kind in kinds)
+
+
+def guards(node) -> bool:
+    """Whether a node catches the absence of a module imported inside it."""
+    if isinstance(node, ast.Try):
+        return any(map(catches, node.handlers))
+    return isinstance(node, ast.If) and any(isinstance(part, ast.Attribute) and part.attr in PRESENT
+                                            for part in ast.walk(node.test))
+
+
+def imported(node) -> list:
+    """The modules an import statement names: `synthesis.<module>` for each it takes from the runtime's package."""
+    if isinstance(node, ast.Import):
+        return [alias.name for alias in node.names]
+    return [f"synthesis.{alias.name}" for alias in node.names] if node.module == "synthesis" else [node.module or ""]
+
+
+def runtime_imports(path: str, data: bytes) -> tuple:
+    """({runtime module a file imports as it starts}, {(runtime module it imports inside a function, caught)}, {other
+    module it imports as it starts}), read from its syntax and never by running it. An import is caught inside a `try`
+    that takes ImportError, or an `if` that first asks whether a file is there."""
+    top, late, plain = set(), set(), set()
+
+    def walk(node, inside: bool, caught: bool):
+        for child in ast.iter_child_nodes(node):
+            if isinstance(child, (ast.Import, ast.ImportFrom)) and not getattr(child, "level", 0):
+                for head, _, rest in (module.partition(".") for module in imported(child)):
+                    if head == "synthesis" and rest:
+                        late.add((rest.split(".")[0], caught)) if inside else top.add(rest.split(".")[0])
+                    elif not inside:
+                        plain.add(head)
+            walk(child, inside or isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)),
+                 caught or guards(child))
+    try:
+        walk(ast.parse(data.decode("utf-8", "replace")), False, False)
+    except SyntaxError as error:
+        raise Unreadable(f"{path} cannot be read as Python: {error}")
+    return top, late, plain
+
+
+def needs(files: dict) -> dict:
+    """{path: ({runtime module it needs as it starts, through the modules beside it that it imports too}, {(runtime
+    module it imports inside a function, caught)})} for each Python file of `files` ({path: bytes}) that is no test."""
+    read = {path: runtime_imports(path, data) for path, data in files.items()
+            if path.endswith(".py") and not is_test(path)}
+
+    def start(path: str, seen: set) -> set:
+        found = set(read[path][0])
+        for sibling in (f"{path.rsplit('/', 1)[0]}/{name}.py" for name in read[path][2]):
+            found |= start(sibling, seen | {sibling}) if sibling in read and sibling not in seen else set()
+        return found
+    return {path: (start(path, {path}), read[path][1]) for path in read}
+
+
+def docstrings(tree) -> set:
+    """The ids of a module's docstrings: the first string of a module, class or function, which loads nothing."""
+    kinds = (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)
+    return {id(node.body[0].value) for node in ast.walk(tree) if isinstance(node, kinds) and node.body
+            and isinstance(node.body[0], ast.Expr) and isinstance(node.body[0].value, ast.Constant)}
+
+
+def reaches(path: str, data: bytes, names: set) -> set:
+    """The other skills whose folders a file names as a path in a string of its code (R1-20): a string that is a skill's
+    name, or holds it between slashes. A docstring says where something is and loads nothing."""
+    tree, found, others = ast.parse(data.decode("utf-8", "replace")), set(), names - {path.split("/")[1]}
+    said = docstrings(tree)
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Constant) and isinstance(node.value, str) and id(node) not in said:
+            found |= {name for name in others if f"/{name}/" in f"/{node.value}/"}
+    return found
+
+
+def ancestors(paths: set) -> set:
+    """Each folder above a path of `paths`, as a path."""
+    return {path.rsplit("/", depth)[0] for path in paths for depth in range(1, path.count("/") + 1)}
+
+
+def leaving(path: str, target: str, held: set, tracked: set) -> str:
+    """Where a relative link of the file at `path` leads, when that is a file or folder of the repository (`tracked`,
+    with its folders) and not one the collection's folder holds (`held`, with its folders); else ""."""
+    target = target.partition("#")[0]
+    if not target or re.match(r"[A-Za-z][\w+.-]*:|/|.*[<{$]", target):
+        return ""
+    whole = posixpath.normpath(posixpath.join(posixpath.dirname(path), target))
+    return whole if whole in tracked and whole not in held else ""
+
+
+def relink(path: str, data: bytes, held: set, tracked: set, files: set, at: str) -> bytes:
+    """A collected Markdown file with each link that leaves its folder pointed at the repository's file at the release's
+    tag, `at` (R1-21: 42 such links led nowhere in a collection); every other byte is the source's."""
+    def point(match):
+        whole, anchor = leaving(path, match.group(2), held, tracked), match.group(2).partition("#")[2]
+        kind, mark = "blob" if whole in files else "tree", f"#{anchor}" if anchor else ""
+        return f"{match.group(1)}{at.format(kind)}/{whole}{mark}{match.group(3)}" if whole else match.group(0)
+    if not path.endswith(".md"):
+        return data
+    return LINK.sub(point, data.decode("utf-8", "surrogateescape")).encode("utf-8", "surrogateescape")
+
+
+def carry(need: dict) -> set:
+    """The runtime modules a collection carries: those of CARRIABLE that any of its Python files imports."""
+    return {module for top, late in need.values() for module in top | {name for name, _ in late}} & set(CARRIABLE)
+
+
+def impure(text: bytes) -> list:
+    """The runtime's own modules a module imports, relative imports among them: one that imports any cannot travel
+    alone."""
+    found = set()
+    for node in ast.walk(ast.parse(text.decode("utf-8", "replace"))):
+        if isinstance(node, ast.Import):
+            found |= {alias.name for alias in node.names if alias.name.split(".")[0] == "synthesis"}
+        elif isinstance(node, ast.ImportFrom) and (node.level or (node.module or "").split(".")[0] == "synthesis"):
+            inner = node.module.split(".")[-1] if node.module not in (None, "synthesis") else None
+            found |= {f"synthesis.{inner or alias.name}" for alias in node.names}
+    return sorted(found)
+
+
 def sources(repo: Path, commit: bool = False) -> tuple:
-    """(the collections file, the whole set's Codex manifest, (skill files, their modes), (licenses, their modes))."""
+    """(the collections file, the whole set's Codex manifest, (skill files, their modes), (licenses, their modes), (the
+    runtime's files a collection may carry, their modes), every path the repository tracks)."""
     spec, whole = read_spec(repo, commit), committed(repo, MANIFEST) if commit else read_json(repo / MANIFEST)
-    return spec, whole, tracked(repo, ["skills"], commit), tracked(repo, list(LICENSES), commit)
+    runtime = ["synthesis/__init__.py", *(f"synthesis/{module}.py" for module in CARRIABLE)]
+    listed = git(repo, "ls-tree", "-r", "--name-only", "-z", "HEAD") if commit else git(repo, "ls-files", "-z")
+    return (spec, whole, tracked(repo, ["skills"], commit), tracked(repo, list(LICENSES), commit),
+            tracked(repo, runtime, commit), set(listed.split("\0")) - {""})
 
 
 def build(repo: Path, commit: bool = False) -> tuple:
     """({path: bytes}, {path: git's mode}) of the folders and the two marketplace files, from the checkout's files or
     the last commit's (`commit`). The same commit gives the same bytes. A skill in no collection, or in several, is in
     no folder, and `verify` names it."""
-    spec, whole, (skills, modes), (licenses, license_modes) = sources(repo, commit)
+    spec, whole, (skills, modes), (licenses, license_modes), (runtime, _), paths = sources(repo, commit)
     home, files, kept, every = homes(spec, skills)[0], {}, {}, {**modes, **license_modes}
+    everywhere, at = paths | ancestors(paths), f"{whole.get('repository', '')}/{{}}/v{whole.get('version')}"
     for name in order(spec):
         mine = sorted(skill for skill, collection in home.items() if collection == name)
-        carried = {**{path: data for path, data in skills.items() if path.split("/")[1] in mine}, **licenses}
-        files.update({f"{name}/{path}": data for path, data in carried.items()})
-        kept.update({f"{name}/{path}": every[path] for path in carried})
+        ours = {path: data for path, data in skills.items() if path.split("/")[1] in mine}
+        modules = carry(needs(ours))  # the runtime's YAML reader where its scripts read it, where the whole set holds it
+        carried = {**ours, **licenses, **{path: data for path, data in runtime.items()
+                                          if modules and (path == "synthesis/__init__.py" or path[10:-3] in modules)}}
+        held = set(carried) | ancestors(set(carried))
+        files.update({f"{name}/{path}": relink(path, data, held, everywhere, paths, at) for path, data in carried.items()})
+        kept.update({f"{name}/{path}": every.get(path, "100644") for path in carried})
         files.update({f"{name}/{path}": text(made) for path, made in manifests(spec, name, mine, whole).items()})
     files.update({path: text(made) for path, made in marketplaces(spec, whole).items()})
     return files, kept
@@ -186,24 +322,57 @@ def build(repo: Path, commit: bool = False) -> tuple:
 
 def verify(repo: Path, files: dict, commit: bool = False) -> list:
     """Each reason these folders may not be published, read from the built files themselves; empty when they may."""
-    spec, whole, (skills, _), (licenses, _) = sources(repo, commit)
+    spec, whole, (skills, _), (licenses, _), (runtime, _), paths = sources(repo, commit)
+    everywhere, at = paths | ancestors(paths), f"{whole.get('repository', '')}/{{}}/v{whole.get('version')}"
     home, found = homes(spec, skills)
     found += bounds(spec, skills, home)
-    core = spec["collections"][spec["core"]]["name"]
+    core, whole_set, scripts = spec["collections"][spec["core"]]["name"], spec.get("needs_the_whole_set") or {}, set()
+    optional, taken = spec.get("optional_loads") or {}, set()
+    found += [f"synthesis/{module}.py imports {other}, so no collection can carry it alone" for module in CARRIABLE
+              if f"synthesis/{module}.py" in runtime for other in impure(runtime[f"synthesis/{module}.py"])]
     for name, entry in spec["collections"].items():
         mine = sorted(skill for skill, collection in home.items() if collection == name)
         held = {path[len(name) + 1:]: data for path, data in files.items() if path.startswith(name + "/")}
+        need = needs({path: data for path, data in skills.items() if path.split("/")[1] in mine})
+        modules, scripts = carry(need), scripts | set(need)
+        expected = {"synthesis/__init__.py", *(f"synthesis/{module}.py" for module in modules)} if modules else set()
+        should = {path for path in skills if path.split("/")[1] in mine} | set(licenses) | expected
+        should |= ancestors(should)  # what the folder holds, which a link from inside it may lead to
+        for path, (top, late) in sorted(need.items()):  # a script runs where it is installed, or is named as needing more
+            gone = sorted(top - modules)
+            if path in whole_set:
+                found += [f"{LIST}: needs_the_whole_set names {path}, which runs in its collection now"] * (not gone)
+                continue
+            found += [f"{name}/{path}: imports synthesis.{gone[0]} as it starts, which {name} does not carry, so it "
+                      "cannot run there; make it run without it, or name it under needs_the_whole_set"] if gone else []
+            found += [f"{name}/{path}: imports synthesis.{module} inside a function, with nothing to catch its absence, "
+                      f"so in {name} that call ends in a traceback" for module, caught in sorted(late)
+                      if not caught and module not in modules]
+        for path in sorted(need):  # a path into another skill's folder finds it beside the script, or is named (R1-20)
+            for other in sorted(reaches(path, skills[path], set(home))):
+                taken.add((path, other))
+                exempt = home[other] == name or path in whole_set or other in optional.get(path, {})
+                found += [] if exempt else [f"{name}/{path}: reaches {other}'s folder, which is in {home[other]}, not "
+                                            f"beside it in {name}; name the load under optional_loads with what the "
+                                            "script does without it, or keep the two in one collection"]
         for path, data in sorted(held.items()):
             parts = path.split("/")
             found += [f"{name}/{path}: holds a hook"] * ("hooks" in parts or parts[-1] == "hooks.json")
             if path in MANIFESTS:
                 continue
+            if parts[0] == "synthesis":  # a runtime module its scripts read, carried byte for byte
+                found += [f"{name}/{path}: a runtime module {name} does not carry"] if path not in expected else \
+                    [f"{name}/{path}: differs from its source"] * (runtime.get(path) != data)
+                continue
             ours = parts[0] == "skills" and len(parts) > 2 and parts[1] in mine  # no test is a source: tracked skips it
             source = licenses.get(path) if path in LICENSES else skills.get(path) if ours else None
+            source = relink(path, source, should, everywhere, paths, at) if source is not None else None
+            found += [f"{name}/{path}: its link to {target} leads out of {name}" for _, target, _ in LINK.findall(
+                data.decode("utf-8", "replace")) if path.endswith(".md") and leaving(path, target, should, everywhere)]
             found += [f"{name}/{path}: not a manifest, a license or a file of a skill in {name}"] if source is None else \
                 [f"{name}/{path}: differs from its source"] * (source != data)
-        found += [f"{name}/{path}: missing" for path in [*(f"skills/{skill}/SKILL.md" for skill in mine), *licenses]
-                  if path not in held]
+        found += [f"{name}/{path}: missing" for path in [*(f"skills/{skill}/SKILL.md" for skill in mine), *licenses,
+                                                         *sorted(expected)] if path not in held]
         made = {}
         for path in MANIFESTS:
             try:
@@ -217,13 +386,17 @@ def verify(repo: Path, files: dict, commit: bool = False) -> list:
                 found.append(f"{name}/{path}: names {made[path].get('name')} {made[path].get('version')}, not "
                              f"{entry['name']} {whole.get('version')}")
             found += [f"{name}/{path}: registers a hook"] * hooked(made[path])
-        needs, wanted = made[MANIFESTS[0]].get("dependencies", []), [] if name == spec["core"] else [core]
-        found += [f"{name}/{MANIFESTS[0]}: depends on {needs}, not on {wanted}"] * (needs != wanted)
+        declared, wanted = made[MANIFESTS[0]].get("dependencies", []), [] if name == spec["core"] else [core]
+        found += [f"{name}/{MANIFESTS[0]}: depends on {declared}, not on {wanted}"] * (declared != wanted)
         listed = (made[MANIFESTS[2]].get("capabilities") or {}).get("skills")
         pairs = sorted((str(item.get("id")), str(item.get("path"))) if isinstance(item, dict) else ("", "")
                        for item in listed) if isinstance(listed, list) else None
         if pairs != [(skill, f"skills/{skill}/SKILL.md") for skill in mine]:
             found.append(f"{name}/{MANIFESTS[2]}: does not list exactly the skills of {name}")
+    found += [f"{LIST}: needs_the_whole_set names {path}, which is no script of any collection"
+              for path in sorted(whole_set) if path not in scripts]
+    found += [f"{LIST}: optional_loads names {other} for {path}, which does not reach it" for path in sorted(optional)
+              for other in sorted(optional[path]) if (path, other) not in taken]
     found += [f"{path}: in no collection's folder" for path in sorted(files)
               if path.split("/")[0] not in spec["collections"] and path not in MARKETPLACES]
     wanted = [(spec["collections"][name]["name"], f"./{name}") for name in order(spec)]

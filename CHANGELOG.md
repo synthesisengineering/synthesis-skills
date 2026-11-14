@@ -68,9 +68,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   12.1, ruled 2026-11-14). Someone who wants one discipline can now install a collection instead of every skill: core
   (17 skills, which the other four build on), project management (7), engineering (13), writing (18) and chief of staff
   (18), each a plugin of its own (`synthesis-skills-<name>`). The whole set stays the way to install synthesis, and the
-  README lists it first. A collection registers no hook and carries no runtime, so installing one asks for no approval
-  and changes nothing else on a Mac; each collection's description names the whole set as the way to the guards, the
-  board and the rituals.
+  README lists it first. A collection registers no hook and runs no synthesis runtime, so installing one asks for no
+  approval and changes nothing else on a Mac; each collection's description names the whole set as the way to the
+  guards, the board and the rituals.
 - **Each skill names its collection.** `metadata.category` in every SKILL.md frontmatter, from the collections listed in
   the skills manager's `assets/collections.json`. A test holds that every skill is in exactly one, depends only on its
   own collection or the core, and has any dependency its scripts load in its own collection, since the core installs in
@@ -92,6 +92,28 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   commit holds the built folders and two marketplace files as its tree, on top of each remote's head of the branch, and
   goes in the same atomic push as `main`, `stable` and the tag, read back from each remote. A run again reuses the head
   that already holds the folders.
+- **A collection's scripts run where it is installed** (`synthesis-context-lifecycle` 2.8.1,
+  `synthesis-local-messaging` 1.5.2; the first review's R1-3). 34 collected scripts imported the synthesis runtime, which
+  no collection carried, so each exited 2 in every collection install, the core's knowledge-base gate among them. 23 of
+  them read only the runtime's YAML reader, which uses the standard library alone and keeps no state: a collection whose
+  scripts read it now carries it, byte for byte, where the whole set holds it, and they run from its folder. The eleven
+  that need the runtime itself (its board, approvals, the rituals' records, installing or releasing the whole set) are
+  named in the collections file with why, and each says so in one line. The build reads every collected script's imports
+  from its syntax, through the modules beside it, and refuses one that cannot start in its collection unless it is
+  named, or that imports the runtime inside a function with nothing to catch the absence. The context doctor's claims
+  and citations checks and the message reader's review step now say what they cannot do without the runtime, where they
+  ended in a traceback.
+- **A path into another collection's skill is named** (R1-20). The build's rule saw only declared dependencies; it now
+  reads every string of a collected script's code for a path into another skill's folder, and refuses one that leads out
+  of its collection unless the load is named as optional, with what the script does without it, or the script needs the
+  whole set. The rituals' pull-request scan reaches the Bitbucket skill's helper: without it, a Bitbucket repository is
+  reported unscanned.
+- **No link leads out of a collection's folder** (R1-21). 42 relative links led nowhere inside a collection; in the built
+  copy alone, each now points at the repository's file at the release's tag, every other byte unchanged, and the build
+  names any link left leading out.
+- **One collections commit for one release** (R1-22). Each remote got its own commit, stamped with the time of the call;
+  the commit now takes the release commit's identity and time, unsigned, and names that commit, so every remote that
+  shares a head gets the same one, on this run or a run again. A refused push says where the branch should point.
 - **How to install one** is in the README, after the whole set, and in onboarding's harness reference: Claude Code adds
   the repository at `@collections` and installs a collection, which brings the core; Codex adds it with
   `--ref collections` and adds both; Muse adds its URL with `#collections` and installs both. Updating, removing one, and
@@ -103,7 +125,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   the branch served over HTTP, with the real installs unchanged before and after: each harness added the branch by its
   ref, installed a collection and the core, listed only their skills, registered no hook and asked for no approval, and
   each install held exactly its folder's files. The probe also found that Claude Code shows a plugin's marketplace entry,
-  not its manifest, before an install; the entry now carries the whole description.
+  not its manifest, before an install; the entry now carries the whole description. The first review round found four
+  more defects, R1-3 blocking; each was fixed with a test committed failing before it. A test now runs every collected
+  entry point with `--help` from a built folder on a Mac with no runtime, and the rebuilt branch was installed again in
+  isolated Claude Code and Muse homes, where the core's knowledge-base gate validated a configuration from its installed
+  folder and one script of each collection ran from its own.
 
 - **New skill: synthesis-message-exports 1.0.0, a message export the principal authorized, imported into private
   transcripts.** `synthesis-local-messaging` keeps each conversation in its app and records pointers only; this is

@@ -1,5 +1,5 @@
 {
-  "about": "The five collections that scripts/build_collections.py builds from the flat skills/ folder, each a plugin of its own without hooks, which the release publishes as the collections branch beside the whole set. A skill names its collection in its SKILL.md frontmatter as metadata.category; awaiting_room names it instead while that SKILL.md has no room for the line under 8,000 bytes. A collection's manifests say what it holds, then with_core (every collection but the core), then without. See references/collections.md.",
+  "about": "The five collections that scripts/build_collections.py builds from the flat skills/ folder, each a plugin of its own without hooks, which the release publishes as the collections branch beside the whole set. A skill names its collection in its SKILL.md frontmatter as metadata.category; awaiting_room names it instead while that SKILL.md has no room for the line under 8,000 bytes. A collection carries the runtime's YAML reader where its scripts read it; needs_the_whole_set names each script that needs more of the runtime, and why, and each says so in one line. optional_loads names each path a script takes into another collection's skill, and what it does without it. A collection's manifests say what it holds, then with_core (every collection but the core), then without. See references/collections.md.",
   "core": "core",
   "branch": "collections",
   "marketplace": {
@@ -11,7 +11,7 @@
     }
   },
   "with_core": "It builds on the core collection: Claude Code installs the core with it, and in Codex and Muse you install both.",
-  "without": "It has no hooks and no runtime, so no guards, no board and none of the rituals' state: nothing in it checks a send, a deploy or a commit, or coordinates sessions. Where one of its skills describes those, it describes the whole set. The whole set, synthesis-skills, has all of them and every skill: https://github.com/synthesisengineering/synthesis-skills",
+  "without": "It has no hooks and runs no synthesis runtime, so no guards, no board and none of the rituals' state: nothing in it checks a send, a deploy or a commit, or coordinates sessions, and a script that needs the runtime says so in one line. Where one of its skills describes those, it describes the whole set. The whole set, synthesis-skills, has all of them and every skill: https://github.com/synthesisengineering/synthesis-skills",
   "collections": {
     "core": {
       "name": "synthesis-skills-core",
@@ -52,6 +52,24 @@
       "category": "productivity",
       "keywords": ["agent-skills", "chief-of-staff", "calendar", "correspondence"],
       "description": "The work of a chief of staff and an executive assistant: calendar and meetings, correspondence and its send rules, Slack, inbox, local messages and message exports, the daily rituals, absences and catching up after them, quick answers, and keeping your Macs and their repositories in step."
+    }
+  },
+  "needs_the_whole_set": {
+    "skills/synthesis-autopilot/scripts/autopilot_cli.py": "an autopilot run lives on the runtime's board",
+    "skills/synthesis-daily-rituals/scripts/decay_sweep.py": "the rituals' records are the runtime's",
+    "skills/synthesis-daily-rituals/scripts/lapse.py": "the rituals' records are the runtime's",
+    "skills/synthesis-daily-rituals/scripts/lapse_review.py": "the rituals' records are the runtime's",
+    "skills/synthesis-daily-rituals/scripts/plate.py": "the rituals' records are the runtime's",
+    "skills/synthesis-daily-rituals/scripts/relied_on.py": "it checks the guards the runtime runs",
+    "skills/synthesis-daily-rituals/scripts/ritual_state.py": "the rituals' records are the runtime's",
+    "skills/synthesis-onboarding/scripts/setup.py": "it installs the whole set in each harness, from a checkout of it",
+    "skills/synthesis-onboarding/scripts/workspace.py": "it brings a workspace onto a Mac through setup.py",
+    "skills/synthesis-project-management/scripts/codex_dispatch.py": "it finds Codex with the runtime's doctor",
+    "skills/synthesis-skills-manager/scripts/release.py": "it releases the whole set, from a checkout of it"
+  },
+  "optional_loads": {
+    "skills/synthesis-daily-rituals/scripts/pr_queue_scan.py": {
+      "synthesis-bitbucket": "without it, each Bitbucket repository is reported unscanned, with the path it looked at"
     }
   },
   "awaiting_room": {

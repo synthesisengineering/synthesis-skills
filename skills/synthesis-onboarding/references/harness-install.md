@@ -402,11 +402,12 @@ of these was run in isolated harness homes on 2026-11-14, from a local copy of t
 
 What a collection does not have: no hook runs, so nothing checks a send, a deploy or a
 commit and no approval code exists; there is no `synthesis` command, so no board, claims,
-doctor or handoff, and a script that imports the runtime says in one line that it is not
-there. A skill's link into another skill's folder resolves only inside one plugin: a
-collection is installed in a folder of its own, apart from the core's, so a link from it
-into the core, or into another collection, leads nowhere, and the skill it names is found
-by its name. To move to the whole set, install it as above (its marketplace sits beside
+doctor or handoff. A collection whose scripts read settings carries the runtime's YAML
+reader for them, so they run from its folder; the eleven scripts the collections file names
+as needing the whole set (the rituals' record tools, autopilot's, setup, workspace, release
+and Codex dispatch) say so in one line. A collection is installed in a folder of its own,
+apart from the core's, so a link that would lead from it into another skill's folder points
+instead at that file on GitHub at the release's tag. To move to the whole set, install it as above (its marketplace sits beside
 the collections' in every harness), then remove each collection and the core, so that no
 skill is installed twice: `claude plugin uninstall <plugin>@synthesis-collections --yes`
 (Claude Code keeps the core when the collection that brought it goes),

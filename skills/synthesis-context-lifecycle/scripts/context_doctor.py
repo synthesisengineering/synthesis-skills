@@ -399,11 +399,14 @@ def repo_state(repo: Path, projects: Path) -> tuple[dict, list]:
     state = {"dirty": {r[3:] for r in out.split("\0") if len(r) > 3}, "tracked": set(tracked.split("\0"))}
     findings = []
     if f"{rel}/index.yaml" in state["dirty"]:  # named and escalated: it once sat uncommitted for days (2026-10-20)
-        from synthesis import checkout
         index = projects / "index.yaml"
         hours = (time.time() - index.stat().st_mtime) / 3600 if index.exists() else 0
-        last = checkout.last_claimant(os.path.realpath(index))
-        who = f"; last claimed by {last['session']} (project {last.get('project') or '-'})" if last else "; no claim recorded"
+        try:  # a collection carries the runtime's YAML reader and not its claims log: the finding stands, unclaimed
+            from synthesis import checkout
+            last = checkout.last_claimant(os.path.realpath(index))
+            who = f"; last claimed by {last['session']} (project {last.get('project') or '-'})" if last else "; no claim recorded"
+        except ImportError:
+            who = "; who last claimed it cannot be told here: the claims log is the synthesis runtime's"
         findings.append(("uncommitted-context", "defect" if hours > 24 else "warning",
                          f"projects/index.yaml has uncommitted changes, last written {hours:.0f} h ago{who}",
                          "commit it under a claim on the index, or set fields with `synthesis index set`"))
@@ -497,13 +500,16 @@ def cited_entries(projects: list, today: date) -> tuple:
     number once counted, a commit and an order number among them. A config that cannot be read names no sessions
     repo, and the archive here is still counted by. Counted, never a finding: measured on 2026-11-13, 8 of 267
     entries cited one, and the day's prompt check is what asks."""
-    from synthesis import sessions
+    try:  # a collection carries the runtime's YAML reader and not its session archive: none is held, so cannot tell
+        from synthesis import sessions
+    except ImportError:
+        sessions = None
     try:
-        repos = list(sessions.repos().values())
+        repos = list(sessions.repos().values()) if sessions else []
     except (OSError, ValueError):
         repos = []
     held = set()  # the ids of the sessions held here: a folder named for one is none without its `meta.json`
-    for folder in [*sessions.root().glob("*/*/*-*"), *(f for repo in repos for f in repo.glob("*/*-*"))]:
+    for folder in [*sessions.root().glob("*/*/*-*"), *(f for repo in repos for f in repo.glob("*/*-*"))] if sessions else []:
         for harness in sessions.ADAPTERS:
             if folder.name.startswith(harness + "-") and (folder / "meta.json").is_file():
                 held.add(folder.name[len(harness) + 1:])
@@ -526,7 +532,7 @@ def cited_entries(projects: list, today: date) -> tuple:
                 if 0 <= age < CITE_DAYS:
                     body = text[head.start():heads[i + 1].start() if i + 1 < len(heads) else len(text)]
                     total += 1
-                    cited += any(names(found[0]) for found in sessions.CITED.findall(body))
+                    cited += bool(held) and any(names(found[0]) for found in sessions.CITED.findall(body))
     return (cited if held else None), total
 
 

@@ -471,7 +471,11 @@ def _close(coverage, review, subject) -> None:
         raise Refused('a review names exactly this page\'s gaps, as {"rows": [{"row": N, "reason": "..."}]}; '
                       "this page holds " + json.dumps(coverage["gaps"])[:2000])
     sys.path.insert(0, str(Path(__file__).resolve().parents[3]))  # the plugin root or the installed runtime: holds synthesis/
-    from synthesis import approvals
+    try:  # a collection carries the runtime's YAML reader and not its approvals: nothing there can grant the review
+        from synthesis import approvals
+    except ImportError:
+        raise Refused("Closing these gaps needs the principal's approval of this review, and only the synthesis runtime "
+                      "can record that approval; nothing was closed. The whole set, synthesis-skills, has it") from None
     if not approvals.consume("message-gap-review", subject):
         code = approvals.request("message-gap-review", subject, "close message-reader gaps reviewed by hand, rows "
                                  + ", ".join(str(g["row"]) for g in coverage["gaps"])[:160])

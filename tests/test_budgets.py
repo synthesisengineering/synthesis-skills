@@ -1114,10 +1114,23 @@ ROOT = Path(__file__).resolve().parents[1]
 # matchers 6 (matcher's 5 gone), message 5, blob 4, the constants 6, the docstring 3 more, three imports 3,
 # unjudged 2 fewer, count's 2 gone, and 18 more blank and comment lines between them. The core's 1, install.py:
 # STABLE_SKILL_SCRIPTS carries synthesis-kb-edit, so the hooks the standard prints find the scan in the stable runtime.
+# 5.22.0's review, round 1 (2026-11-14): plugin 191 more, the core as it was (findings R1-3, R1-20, R1-21 and R1-22, the
+# collections). build_collections.py 173: verify 37 (a script that cannot start in its collection unless named, an import
+# inside a function with nothing to catch its absence, a stale name, a carried module that imports the rest of the
+# runtime, a carried file missing, out of place or changed, a path into another collection's skill unless named, and a
+# link left leading out of the folder), runtime_imports 21 (the runtime modules a file imports as it starts and inside a
+# function, read from its syntax), needs 12 (through the modules beside it), impure 11, relink 10 (a link that would
+# leave the folder pointed at the file at the tag), reaches 9 (a path into another skill's folder in a string of the
+# code), leaving 8, guards 6, build 5 (the carried runtime files and the links), docstrings 5, imported 5, sources 4 (the
+# runtime's files and every tracked path), ancestors 3, carry 3, catches 3, the constants CARRIABLE, CAUGHT, PRESENT and
+# LINK 4, the imports of ast and posixpath 2, and spacing and a comment line 25. release.py 8: collections_head 8 (the
+# commit takes the release commit's identity and time, unsigned, names it, and is made once for each head).
+# context_doctor.py 6: repo_state 3 and cited_entries 3 (without the runtime's claims log or session archive, each says
+# what it cannot tell). local_messaging.py 4: _close 4 (without the runtime's approvals nothing is closed, in one line).
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
-# consolidate first).
+# than consolidate first).
 CORE_BUDGET = 15100
-PLUGIN_BUDGET = 40151
+PLUGIN_BUDGET = 40342
 
 
 def _lines(files):

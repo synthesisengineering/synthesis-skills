@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -95,7 +96,9 @@ def test_each_folder_holds_its_skills_its_three_manifests_and_the_two_licenses(b
         mine = folder(built, name)
         assert {path.split("/")[1] for path in mine if path.startswith("skills/")} == {
             skill for skill, collection in home.items() if collection == name}, name
-        assert {path for path in mine if not path.startswith("skills/")} == {*collections.MANIFESTS, *collections.LICENSES}
+        carried = {"synthesis/__init__.py", "synthesis/yamlish.py"} if name in ("core", "project-management", "chief-of-staff") else set()
+        assert {path for path in mine if not path.startswith("skills/")} == {*collections.MANIFESTS, *collections.LICENSES,
+                                                                              *carried}
     assert {path for path in built if path.split("/")[0] not in FIVE} == set(collections.MARKETPLACES)
 
 
@@ -105,10 +108,15 @@ def test_every_skill_is_carried_once_whole_but_for_its_tests(built):
     assert carried == tracked
 
 
-def test_every_carried_file_is_byte_identical_to_its_source(built):
+def test_every_carried_file_is_its_source_byte_for_byte_but_for_links_that_leave_its_folder(built):
+    """A link that would lead out of a collection's folder points at the repository's file at the tag (R1-21); every
+    other byte of every carried file is its source's."""
     carried = {path.split("/", 1)[1]: data for path, data in built.items()
                if path.split("/")[0] in FIVE and path.split("/", 1)[1] not in collections.MANIFESTS}
-    assert carried and [path for path, data in carried.items() if (ROOT / path).read_bytes() != data] == []
+    unlinked = lambda data: re.sub(rb"\]\([^)\s]+\)", b"]()", data)  # noqa: E731
+    differ = [path for path, data in carried.items() if (ROOT / path).read_bytes() != data]
+    assert carried and differ and [path for path in differ if not path.endswith(".md")] == []
+    assert [path for path in differ if unlinked((ROOT / path).read_bytes()) != unlinked(carried[path])] == []
 
 
 def test_no_folder_holds_or_registers_a_hook(built):
@@ -222,12 +230,16 @@ def skill(name, category="core", depends="[]", body="Prose only.\n"):
 SOUND = {"base": skill("base"), "pen": skill("pen", "writing", '["base"]'), "gear": skill("gear", "engineering")}
 
 
-def checkout(tmp_path, skills=None, spec=None):
-    """A committed checkout holding these skills ({name: {part: text}}), the collections file and the whole set's
-    Codex manifest and licenses."""
+RUNTIME = {"synthesis/__init__.py": '__version__ = "5.8.0"\n', "synthesis/yamlish.py": "import json\nimport re\n",
+           "synthesis/board.py": "from synthesis import paths\n", "synthesis/paths.py": "import os\n"}
+
+
+def checkout(tmp_path, skills=None, spec=None, runtime=None):
+    """A committed checkout holding these skills ({name: {part: text}}), the collections file, the whole set's
+    Codex manifest and licenses, and the runtime's package (`RUNTIME`, or these files in its place)."""
     repo = tmp_path / "checkout"
     files = {collections.MANIFEST: json.dumps(WHOLE_MANIFEST), collections.LIST: json.dumps(spec or FIXTURE),
-             "LICENSE-APACHE": "Apache terms.\n", "LICENSE-CC0": "CC0 terms.\n"}
+             "LICENSE-APACHE": "Apache terms.\n", "LICENSE-CC0": "CC0 terms.\n", **(RUNTIME if runtime is None else runtime)}
     for name, parts in (SOUND if skills is None else skills).items():
         files.update({f"skills/{name}/{part}": text for part, text in parts.items()})
     for name, text in files.items():
@@ -494,3 +506,249 @@ def test_the_readme_lists_each_collection_with_its_plugin_its_skills_and_its_ins
                  f"claude plugin install synthesis-skills-engineering@{market}",
                  f"codex plugin add synthesis-skills-core@{market}", f"muse plugins install synthesis-skills-core@{market}"):
         assert line in section, line
+
+
+# ---- a collection's scripts run where it is installed (R1-3 of 5.22.0's review) -----------------
+
+# R1-3: 34 collected scripts imported a runtime no collection carried, so each exited 2 in every collection install,
+# kb-edit's configuration gate among them. 23 of them need only the runtime's YAML reader, which reads with the standard
+# library alone and keeps no state; a collection whose scripts read it carries it, at the same place as in the whole set.
+# A script that needs more (the board, approvals, the rituals' records, installing synthesis) is named in the
+# collections file, and says so in one line.
+RUNTIME_MISSING = re.compile(r"synthesis runtime(?:, which)? cannot be imported")
+
+
+@pytest.fixture(scope="module")
+def written(tmp_path_factory, this_checkout):
+    """One build of this checkout written to disk as a harness installs each collection: a folder apiece."""
+    folder = tmp_path_factory.mktemp("collections")
+    files, modes = collections.build(ROOT)
+    for path, data in files.items():
+        (folder / path).parent.mkdir(parents=True, exist_ok=True)
+        (folder / path).write_bytes(data)
+        (folder / path).chmod(0o755 if modes.get(path) == "100755" else 0o644)
+    return folder
+
+
+def alone(tmp_path) -> dict:
+    """The environment of a Mac with no synthesis runtime installed."""
+    return {"PATH": "/usr/bin:/bin", "HOME": str(tmp_path), "SYNTHESIS_HOME": str(tmp_path / "no-runtime")}
+
+
+def test_every_collected_script_runs_from_its_folder_or_says_in_a_line_that_it_needs_the_whole_set(written, tmp_path):
+    """Each entry point (a file with a `__main__` guard) is run as a person runs it, with --help, from the folder the
+    build wrote. It runs, or it is one the collections file names as needing the whole set and says so in one line;
+    none ends in a traceback. A script that refuses for its own reasons (a config to fill in, an installer of its own)
+    passes: it ran."""
+    declared, wrong, seen = set(SPEC.get("needs_the_whole_set", {})), [], set()
+    for script in sorted(written.glob("*/skills/*/**/*.py")):
+        source = script.relative_to(written).as_posix().split("/", 1)[1]
+        if is_test(source) or "__main__" not in script.read_text(encoding="utf-8"):
+            continue
+        done = subprocess.run([sys.executable, "-E", "-s", str(script), "--help"], capture_output=True, text=True,
+                              env=alone(tmp_path), cwd=tmp_path, stdin=subprocess.DEVNULL, timeout=120)
+        said = (done.stdout + done.stderr).strip()
+        needs = bool(RUNTIME_MISSING.search(said))
+        if "Traceback" in done.stderr or needs != (source in declared) or needs and (
+                done.returncode == 0 or len(said.splitlines()) != 1):
+            wrong.append(f"{script.relative_to(written)}: exit {done.returncode}: {said.splitlines()[-1:]}")
+        seen.add(script.relative_to(written).parts[0])
+    assert wrong == [] and seen == set(FIVE)
+
+
+def test_the_core_s_knowledge_base_gate_runs_from_the_core_s_folder(written, tmp_path):
+    """kb-edit's rule 5: a protective control that cannot run blocks shipping. Its gate exited 2 in the core, so every
+    knowledge-base edit in a collection install stopped there."""
+    kb = tmp_path / "kb"
+    (kb / ".agents").mkdir(parents=True)
+    (kb / "source").mkdir()
+    shutil.copy(ROOT / "skills/synthesis-onboarding/assets/workspace/agents/knowledge-base.yaml", kb / ".agents")
+    git(kb, "init", "-q")
+    done = subprocess.run([sys.executable, "-E", "-s", str(written / "core/skills/synthesis-kb-edit/scripts/kb_config.py"),
+                           str(kb)], capture_output=True, text=True, env=alone(tmp_path), cwd=tmp_path)
+    assert done.returncode == 0 and done.stdout.startswith("VALID"), (done.stdout + done.stderr)[-400:]
+
+
+def test_a_collection_carries_the_runtime_s_yaml_reader_only_where_its_scripts_read_it(written):
+    for name in FIVE:
+        held = sorted(path.name for path in (written / name / "synthesis").glob("*"))
+        reads = any("yamlish" in path.read_text(encoding="utf-8")
+                    for path in (written / name / "skills").rglob("*.py") if not is_test(path.as_posix()))
+        assert held == (["__init__.py", "yamlish.py"] if reads else []), name
+        assert all((written / name / "synthesis" / file).read_bytes() == (ROOT / "synthesis" / file).read_bytes()
+                   for file in held)
+
+
+GUARDED = ("import sys\nsys.dont_write_bytecode = True\ntry:\n    from synthesis import {module}\nexcept ImportError as exc:\n"
+           "    print(f'needs the synthesis runtime, which cannot be imported ({{exc}})', file=sys.stderr)\n"
+           "    sys.exit(2)\nif __name__ == '__main__':\n    pass\n")
+
+
+def scripted(**files) -> dict:
+    """SOUND with these files in pen (writing): {name under scripts/: text}."""
+    return {**SOUND, "pen": {**skill("pen", "writing", '["base"]'), **{f"scripts/{name}": text for name, text in files.items()}}}
+
+
+def test_the_yaml_reader_is_carried_byte_for_byte_into_the_collection_whose_script_reads_it(tmp_path):
+    repo = checkout(tmp_path, scripted(**{"run.py": GUARDED.format(module="yamlish")}))
+    files, _ = collections.build(repo)
+    assert problems(repo) == []
+    assert {path for path in files if "/synthesis/" in path} == {"writing/synthesis/__init__.py", "writing/synthesis/yamlish.py"}
+    assert files["writing/synthesis/yamlish.py"] == (repo / "synthesis" / "yamlish.py").read_bytes()
+
+
+@pytest.mark.parametrize("files, extra, expected", [
+    ({"run.py": GUARDED.format(module="board")}, {},
+     "writing/skills/pen/scripts/run.py: imports synthesis.board as it starts, which writing does not carry, so it "
+     "cannot run there"),
+    ({"run.py": "import helper\nif __name__ == '__main__':\n    pass\n", "helper.py": GUARDED.format(module="board")}, {},
+     "writing/skills/pen/scripts/run.py: imports synthesis.board as it starts"),  # through a module beside it
+    ({"run.py": "def main():\n    from synthesis import board\n    return board\n"}, {},
+     "writing/skills/pen/scripts/run.py: imports synthesis.board inside a function, with nothing to catch its absence"),
+    ({"run.py": GUARDED.format(module="yamlish")}, {"needs_the_whole_set": {"skills/pen/scripts/run.py": "the board"}},
+     f"{collections.LIST}: needs_the_whole_set names skills/pen/scripts/run.py, which runs in its collection now"),
+    ({"run.py": GUARDED.format(module="yamlish")}, {"needs_the_whole_set": {"skills/pen/scripts/gone.py": "the board"}},
+     f"{collections.LIST}: needs_the_whole_set names skills/pen/scripts/gone.py, which is no script of any collection"),
+])
+def test_a_script_that_cannot_run_in_its_collection_fails_the_build(tmp_path, files, extra, expected):
+    found = problems(checkout(tmp_path, scripted(**files), {**FIXTURE, **extra}))
+    assert any(problem.startswith(expected) for problem in found), found
+
+
+@pytest.mark.parametrize("files", [
+    {"run.py": GUARDED.format(module="board")},  # named as needing the whole set: it says so in one line
+    {"run.py": "def main():\n    try:\n        from synthesis import board\n    except ImportError:\n        return None\n"},
+    {"run.py": "def main(root):\n    if (root / 'synthesis' / 'board.py').is_file():\n        from synthesis import board\n"},
+])
+def test_a_script_named_as_needing_the_whole_set_or_one_that_catches_the_absence_passes(tmp_path, files):
+    declared = {"needs_the_whole_set": {"skills/pen/scripts/run.py": "the board"}} if "sys.exit" in files["run.py"] else {}
+    repo = checkout(tmp_path, scripted(**files), {**FIXTURE, **declared})
+    files_built, _ = collections.build(repo)
+    assert problems(repo) == [] and not any("/synthesis/" in path for path in files_built)
+
+
+def test_a_yaml_reader_that_imports_the_rest_of_the_runtime_is_carried_by_no_collection(tmp_path):
+    repo = checkout(tmp_path, scripted(**{"run.py": GUARDED.format(module="yamlish")}),
+                    runtime={**RUNTIME, "synthesis/yamlish.py": "from synthesis import paths\n"})
+    assert "synthesis/yamlish.py imports synthesis.paths, so no collection can carry it alone" in problems(repo)
+
+
+@pytest.mark.parametrize("change, expected", [
+    (lambda f: {"writing/synthesis/yamlish.py": None}, "writing/synthesis/yamlish.py: missing"),
+    (lambda f: {"writing/synthesis/yamlish.py": b"import os\n"}, "writing/synthesis/yamlish.py: differs from its source"),
+    (lambda f: {"core/synthesis/board.py": b"from synthesis import paths\n"},
+     "core/synthesis/board.py: a runtime module core does not carry"),
+])
+def test_carried_runtime_files_that_are_not_the_checkout_are_refused(tmp_path, change, expected):
+    repo = checkout(tmp_path, scripted(**{"run.py": GUARDED.format(module="yamlish")}))
+    files, _ = collections.build(repo)
+    found = collections.verify(repo, rebuilt(files, change(files)))
+    assert any(problem.startswith(expected) for problem in found), found
+
+
+
+# ---- a path into another skill's folder (R1-20 of 5.22.0's review) -------------------------------
+
+# The build's rule 3 saw only declared dependencies: two scripts reached into another collection's skill by a path,
+# undeclared. Every string of a collected script's code that names another skill's folder is now read, and the skill
+# must be beside it, or the script must need the whole set, or the collections file must name the load as optional,
+# with what the script does without it.
+REACH = "import pathlib\nHELPER = pathlib.Path(__file__).resolve().parents[2] / 'toolbox' / 'scripts' / 'tool.py'\n"
+
+
+def reaching(script=REACH, **extra):
+    return ({**SOUND, "toolbox": skill("toolbox", "engineering"),
+             "pen": {**skill("pen", "writing", '["base"]'), "scripts/run.py": script}}, {**FIXTURE, **extra})
+
+
+def test_a_script_that_reaches_another_collection_s_skill_by_a_path_fails_the_build(tmp_path):
+    found = problems(checkout(tmp_path, *reaching()))
+    assert any(problem.startswith("writing/skills/pen/scripts/run.py: reaches toolbox's folder, which is in engineering, "
+                                  "not beside it in writing") for problem in found), found
+
+
+@pytest.mark.parametrize("script, extra", [
+    (REACH, {"optional_loads": {"skills/pen/scripts/run.py": {"toolbox": "it says the tool is not there"}}}),
+    (GUARDED.format(module="board") + REACH, {"needs_the_whole_set": {"skills/pen/scripts/run.py": "the board"}}),
+    ('"""It loads ../../toolbox/scripts/tool.py by path, in another skill."""\nimport sys\n', {}),  # a docstring loads nothing
+])
+def test_a_reach_named_as_optional_or_from_a_script_that_needs_the_whole_set_passes(tmp_path, script, extra):
+    found = problems(checkout(tmp_path, *reaching(script, **extra)))
+    assert [problem for problem in found if "reaches" in problem or "optional_loads" in problem] == [], found
+
+
+def test_an_optional_load_the_script_does_not_take_fails_the_build(tmp_path):
+    found = problems(checkout(tmp_path, *reaching("import sys\n", optional_loads={
+        "skills/pen/scripts/run.py": {"toolbox": "it says the tool is not there"}})))
+    assert f"{collections.LIST}: optional_loads names toolbox for skills/pen/scripts/run.py, which does not reach it" in found
+
+
+def test_the_two_paths_the_review_found_across_collections_are_each_accounted_for(written):
+    """The rituals' pull-request scan reaches the Bitbucket skill's helper (engineering) from chief of staff, and says a
+    Bitbucket repository is unscanned without it; onboarding's setup reaches the rituals' launch file from the core,
+    and needs the whole set in any case."""
+    assert SPEC["optional_loads"] == {"skills/synthesis-daily-rituals/scripts/pr_queue_scan.py": {
+        "synthesis-bitbucket": SPEC["optional_loads"]["skills/synthesis-daily-rituals/scripts/pr_queue_scan.py"]["synthesis-bitbucket"]}}
+    assert "skills/synthesis-onboarding/scripts/setup.py" in SPEC["needs_the_whole_set"]
+    found = collections.verify(ROOT, {path.relative_to(written).as_posix(): path.read_bytes()
+                                      for path in written.rglob("*") if path.is_file()})
+    assert [problem for problem in found if "reaches" in problem] == []
+
+
+# ---- a link that leaves the collection's folder (R1-21 of 5.22.0's review) -------------------------
+
+# 42 relative links resolved in the whole set and led nowhere inside a collection's folder: into the core or another
+# collection, or to a test the build leaves out. Each is now pointed at the repository's file at the release's tag, in
+# the built copy alone; a link that leads nowhere in the whole set too is no collection's to fix, and is left as it is.
+ANY_LINK = re.compile(r"\]\(([^)\s]+)\)")
+
+
+def leaves(md: Path, folder: Path, tracked: set) -> list:
+    """Each relative link of a built Markdown file that resolves in the whole set and not inside its folder."""
+    out = []
+    for target in ANY_LINK.findall(md.read_text(encoding="utf-8")):
+        path = target.partition("#")[0]
+        if not path or re.match(r"[A-Za-z][\w+.-]*:|/|.*[<{$]", path):
+            continue
+        whole = os.path.normpath(os.path.join(os.path.dirname(md.relative_to(folder).as_posix()), path)).replace(os.sep, "/")
+        inside = (folder / whole).exists() and (folder / whole).resolve().is_relative_to(folder.resolve())
+        if not inside and (whole in tracked or any(item.startswith(whole + "/") for item in tracked)):
+            out.append(f"{md.relative_to(folder)} -> {target}")
+    return out
+
+
+def test_no_link_in_a_collection_leads_out_of_its_folder(written):
+    tracked = set(git(ROOT, "ls-files").split("\n")) - {""}
+    found = [f"{name}/{line}" for name in FIVE for md in sorted((written / name).rglob("*.md"))
+             for line in leaves(md, written / name, tracked)]
+    assert found == []
+
+
+def test_a_link_into_another_collection_is_pointed_at_its_file_at_the_release_s_tag(written):
+    version = json.loads((ROOT / ".codex-plugin/plugin.json").read_text(encoding="utf-8"))["version"]
+    planning = (written / "engineering/skills/synthesis-code-planning/SKILL.md").read_text(encoding="utf-8")
+    assert (f"]({WHOLE}/blob/v{version}/skills/synthesis-thinking-framework/references/decision-ownership.md)" in planning)
+    assert "](../synthesis-thinking-framework/" not in planning
+
+
+LINKS = ("Read [the base](../base/SKILL.md), [its folder](../base/), [the method](references/method.md#steps), [the test]"
+         "(tests/test_pen.py), [the terms](../../LICENSE-CC0), [nothing](../ghost/x.md), [here](#top) and [a site](https://example.org).\n")
+
+
+def test_the_build_points_each_link_that_leaves_at_the_tag_and_leaves_every_other_byte(tmp_path):
+    pen = {**skill("pen", "writing", '["base"]', LINKS), "references/method.md": "Steps.\n", "tests/test_pen.py": "x = 1\n"}
+    repo = checkout(tmp_path, {**SOUND, "pen": pen})
+    files, _ = collections.build(repo)
+    assert problems(repo) == []
+    text = files["writing/skills/pen/SKILL.md"].decode("utf-8")
+    assert text == pen["SKILL.md"].replace("](../base/SKILL.md)", "](https://example.com/kit/blob/v5.8.0/skills/base/SKILL.md)") \
+        .replace("](../base/)", "](https://example.com/kit/tree/v5.8.0/skills/base)") \
+        .replace("](tests/test_pen.py)", "](https://example.com/kit/blob/v5.8.0/skills/pen/tests/test_pen.py)")
+
+
+def test_a_built_link_left_leading_out_of_its_folder_is_named(tmp_path):
+    pen = {**skill("pen", "writing", '["base"]', LINKS), "references/method.md": "Steps.\n"}
+    repo = checkout(tmp_path, {**SOUND, "pen": pen})
+    files, _ = collections.build(repo)
+    found = collections.verify(repo, rebuilt(files, {"writing/skills/pen/SKILL.md": pen["SKILL.md"].encode("utf-8")}))
+    assert "writing/skills/pen/SKILL.md: its link to ../base/SKILL.md leads out of writing" in found

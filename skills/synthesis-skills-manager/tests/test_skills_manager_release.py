@@ -3,6 +3,7 @@ and verification of installed bytes against the tag."""
 
 import base64
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -650,3 +651,47 @@ def test_the_script_runs_with_no_folder_of_the_callers_on_its_path():
     script = Path(release.__file__).resolve()
     ran = subprocess.run([sys.executable, "-I", str(script), "--help"], capture_output=True, text=True)
     assert ran.returncode == 0 and ran.stdout.startswith("usage: release.py"), ran.stderr[-500:]
+
+
+# ---- one collections commit for one release, on every remote (R1-22 of 5.22.0's review) -------------
+
+def test_every_remote_gets_one_collections_commit_for_one_release_even_after_a_refusal(tmp_path, monkeypatch):
+    """The commit was made for each remote and stamped with the time of the call, so two remotes, or a run again after
+    one refused, ended with different commits for one release: a mirror could not serve a commit the other named."""
+    repo, late = source_repo(tmp_path), tmp_path / "late.git"
+    git(repo, "remote", "add", "zeta", str(late))  # after origin, and not there yet: this remote refuses
+    for moment, refused in (("2026-11-14T09:00:00+00:00", True), ("2026-11-14T10:30:00+00:00", False)):
+        monkeypatch.setenv("GIT_AUTHOR_DATE", moment)
+        monkeypatch.setenv("GIT_COMMITTER_DATE", moment)
+        if refused:
+            with pytest.raises(setup.SetupError, match="zeta"):
+                release.publish(repo, "5.1.0")
+            subprocess.run(["git", "init", "-q", "--bare", str(late)], check=True)
+        else:
+            release.publish(repo, "5.1.0")  # the run again, an hour and a half later
+    assert git(tmp_path / "remote0.git", "rev-parse", "collections") == git(late, "rev-parse", "collections")
+
+
+def test_the_collections_commit_takes_the_release_commit_s_identity_and_time_and_names_it(tmp_path):
+    repo = source_repo(tmp_path, remotes=2)
+    release.publish(repo, "5.1.0")
+    stamp, head = git(repo, "log", "-1", "--format=%cn|%ce|%cI", "HEAD"), git(repo, "rev-parse", "HEAD")
+    for bare in (tmp_path / "remote0.git", tmp_path / "remote1.git"):
+        made = git(bare, "log", "-1", "--format=%an|%ae|%aI%n%cn|%ce|%cI%n%B", "collections").splitlines()
+        assert made[0] == made[1] == stamp and f"Built from {head}" in "\n".join(made[2:])
+    assert git(tmp_path / "remote0.git", "rev-parse", "collections") == git(tmp_path / "remote1.git", "rev-parse", "collections")
+
+
+def test_a_refused_push_says_where_the_collections_branch_should_have_pointed(tmp_path):
+    repo = source_repo(tmp_path)
+    other = tmp_path / "other"
+    subprocess.run(["git", "clone", "-q", str(tmp_path / "remote0.git"), str(other)], check=True)
+    (other / "x").write_text("x")
+    git(other, "add", ".")
+    git(other, "commit", "-qm", "ahead")
+    git(other, "push", "-q", "origin", "main")  # the remote moved, so the atomic push refuses every ref
+    with pytest.raises(setup.SetupError) as refused:
+        release.publish(repo, "5.1.0")
+    said = str(refused.value)
+    assert re.search(r"refs/heads/main, refs/heads/stable, refs/tags/v5\.1\.0 do not point at [0-9a-f]{12}", said), said
+    assert re.search(r"refs/heads/collections does not point at [0-9a-f]{12}", said), said
