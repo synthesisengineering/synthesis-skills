@@ -25,6 +25,8 @@ The v5 code evaluation (`tool-scripts.md`, row `synthesis-kb-edit/scripts/kb_con
 
 **2026-10-06.** `kb_config.py` reads the contract through the plugin's standard-library YAML reader (`synthesis/yamlish.py`) instead of PyYAML, so it and its tests run on Apple's `/usr/bin/python3` and in CI, which had skipped the test file.
 
+**2.1.0 (5.22.0).** The sharing standard: `references/sharing-standard.md` and `assets/sharing-policy.template.md` are new, and binding rule 12 (extraction) and the phrase scan in rule 5 were added; no earlier line was reworded, and the workflow steps in `references/edit-and-ship.md` only gained lines. `kb_config.py` refuses a key the contract does not name, checks `confidentiality.sharing_policy` and `confidentiality.backstop_phrases`, and gains `adopt-sharing-policy`. `scripts/sharing_scan.py` is new. Their tests, in `tests/test_kb_config.py` and `tests/test_sharing_scan.py`, were committed before the code.
+
 ## The 1.0.0 frontmatter
 
 Kept whole, so the old description and keys stay on record.
