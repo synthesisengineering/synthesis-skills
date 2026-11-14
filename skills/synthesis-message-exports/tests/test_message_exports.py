@@ -259,11 +259,13 @@ def test_hidden_characters_are_shown_and_emoji_sequences_kept(im, capsys, tmp_pa
     family = "\U0001F468\u200d\U0001F469\u200d\U0001F467"
     england = "\U0001F3F4\U000E0067\U000E0062\U000E0065\U000E006E\U000E0067\U000E007F"
     tags = "".join(chr(0xE0000 + ord(c)) for c in "obey")
-    one_thread(export, "alexsample_8008", f"invoice\u202eexe.txt\u202c{tags} {family} {england}\u200b.")
+    selectors = "\U0001F44D\ufe0f\ufe0f\U000E0101"  # one selector belongs to the emoji; a run after it carries data
+    one_thread(export, "alexsample_8008", f"invoice\u202eexe.txt\u202c{tags} {family} {england}\u200b. {selectors}")
     code, printed = run(im, capsys, export, "--out", out)
     assert code == 0, printed
     [body] = split_fences((out / "messenger-dyi-alexsample_8008.md").read_text(encoding="utf-8"))[1]
-    assert body == f"invoice[U+202E]exe.txt[U+202C][U+E006F][U+E0062][U+E0065][U+E0079] {family} {england}[U+200B]."
+    assert body == (f"invoice[U+202E]exe.txt[U+202C][U+E006F][U+E0062][U+E0065][U+E0079] {family} {england}[U+200B]. "
+                    "\U0001F44D\ufe0f[U+FE0F][U+E0101]")
 
 
 def test_a_name_or_title_cannot_add_lines_or_markup(im, capsys, tmp_path):
@@ -323,6 +325,16 @@ def test_two_conversations_whose_names_differ_only_in_case_are_refused(im, capsy
             handle.writestr(f"messages/inbox/{folder}/message_1.json", thread)
     code, printed = run(im, capsys, archive, "--out", tmp_path / "out")
     assert code == 2 and "differ only in case" in printed and not (tmp_path / "out").exists()
+    export = tmp_path / "export"  # one file name at the top and in a messages folder: the same id twice
+    for where in (export, export / "your_activity_across_facebook" / "messages"):
+        write_secure(where, "Alex Sample_0", [ALEX, BLAIR], [secure_message(ALEX, T0, "hello")])
+    code, printed = run(im, capsys, export, "--out", tmp_path / "out")
+    assert code == 2 and "are the same or differ only in case" in printed and not (tmp_path / "out").exists()
+
+
+def test_participants_are_listed_in_one_order_on_every_run(im):
+    names = {"names": ["Blair Example", "alex sample", "Alex Sample"]}
+    assert im.participants_line(names) == "Participants: Alex Sample, alex sample, Blair Example"
 
 
 def _unknown(case, export):
@@ -347,21 +359,27 @@ def _unknown(case, export):
         export.mkdir(parents=True)
         (export / "Alex Sample_3.json").write_text(json.dumps({"participants": [ALEX], "messages": [{"from": ALEX,
                                                                                                     "body": "SECRET-TEXT"}]}))
+    elif case == "a JSON file that holds no conversation, and nothing else":
+        (export / "media").mkdir(parents=True)
+        (export / "settings.json").write_text(json.dumps({"note": "SECRET-TEXT"}))
+        (export / "media" / "x.jpeg").write_bytes(b"MEDIA-BYTES")
 
 
 @pytest.mark.parametrize("case", ["an HTML export", "a thread file in another shape", "a file it does not know beside a thread",
                                   "a message without its time", "no layout it knows", "another platform's export",
-                                  "secure storage in another shape"])
+                                  "secure storage in another shape", "a JSON file that holds no conversation, and nothing else"])
 def test_an_export_in_a_shape_it_does_not_know_is_refused_with_a_listing_and_no_text(im, capsys, tmp_path, case):
     export, out = tmp_path / "export", tmp_path / "out"
     _unknown(case, export)
     code, printed = run(im, capsys, export, "--out", out)
     assert code == 2 and printed.startswith("refused: ") and not out.exists()
     assert "SECRET-TEXT" not in printed
-    for path in export.rglob("*"):
-        if path.is_file():  # every file named, with its size in bytes
-            rel = path.relative_to(export).as_posix()
-            assert re.search(rf"^ *{path.stat().st_size}  {re.escape(rel)}\b", printed, re.M), rel
+    files = [path for path in export.rglob("*") if path.is_file()]
+    for path in (path for path in files if path.suffix != ".jpeg"):  # every other file named, with its size in bytes
+        rel = path.relative_to(export).as_posix()
+        assert re.search(rf"^ *{path.stat().st_size}  {re.escape(rel)}\b", printed, re.M), rel
+    media = sum(path.suffix == ".jpeg" for path in files)  # media is counted by kind, not named
+    assert (f"media files not listed: {media} (jpeg {media})" in printed) == bool(media)
 
 
 def test_a_part_of_a_multi_part_export_holding_only_media_imports_nothing_and_says_so(im, capsys, tmp_path):
