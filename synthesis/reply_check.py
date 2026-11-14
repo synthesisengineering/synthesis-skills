@@ -273,14 +273,6 @@ def shortcut_hits(reply: str, extra: list[str]) -> list[str]:
     return sorted({p for p in DEFAULT_PHRASES + [e.lower() for e in extra] if re.search(rf"\b{re.escape(p)}\b", plain)})
 
 
-# What the judge reads beside the list's hits (M38): words that may put work off, wave a concern away or hand a decided
-# choice back in a form no list holds, from the catalog's categories (synthesis/policies/shortcut-phrasing.md).
-CANDIDATE = re.compile(
-    r"(?i)\b(?:later|another (?:day|time|session|pass|round)|next (?:session|pass|round|phase|time)|follow[- ]?ups?|circle back"
-    r"|come back to|eventually|at some point|down the (?:road|line)|if you(?:['’]d| would)? (?:like|want|prefer)|would you like"
-    r"|(?:want|like) me to|shall i|should i|your call|up to you|say the word|give the word|happy to|hold off|defer\w*|postpone\w*"
-    r"|theoretical|pain point|not urgent|pre-existing|out of scope|not introduced|minimal|light touch|smallest|shim"
-    r"|backward[- ]compat\w*|fraction of|cheaper|archive value|standing down|not acted on)\b")
 FENCED = re.compile(r"(?:(`{3,})|^[ \t]*(~{3,})).*?(?:\1|\2)", re.S | re.M)
 JUDGED = 6000  # characters of a reply the judge reads: its prompt stays inside the model's window and the deadline
 ROOM = 4.0  # seconds from the check's start by which the judge has answered: the Stop hook has 5, Python's start before it
@@ -288,25 +280,25 @@ ROOM = 4.0  # seconds from the check's start by which the judge has answered: th
 
 def _judged(reply: str, hits: list) -> str:
     """The reply as the judge reads it: fenced code set aside, and a long reply cut to its paragraphs that hold a list
-    hit or a candidate, and its last."""
+    hit and its last three, where its next steps and its asks usually stand."""
     text = FENCED.sub("[code]", reply).strip()
     if len(text) <= JUDGED:
         return text
     parts = re.split(r"\n\s*\n", text)
-    kept = [p for at, p in enumerate(parts) if at == len(parts) - 1 or CANDIDATE.search(p) or any(h in p.lower() for h in hits)]
+    kept = [p for at, p in enumerate(parts) if at >= len(parts) - 3 or any(h in p.lower() for h in hits)]
     return "\n\n[...]\n\n".join(kept)[-JUDGED:]
 
 
 def shortcut_problem(reply: str, config: dict, until: float | None = None) -> str:
     """What the shortcut check says of a reply, or "". The list's hits stand as they always have unless a judge is
-    configured and answers (M38): a reply with a hit or candidate words goes to it, and the rest never do. On this
-    check the judge decides (the principal's ruling of 2026-11-14: a sendback costs one turn): a hit it reads as
-    benign is cleared, and what it holds, with or without a hit, is sent back with what it read. A judge that cannot
-    answer leaves the list to decide; a judge section that cannot be used is said, and the list decides."""
+    configured and answers (M38): only a reply the list flags goes to it. On this check the judge decides (the
+    principal's ruling of 2026-11-14: a sendback costs one turn): a hit it is sure is benign is cleared, and a hit it
+    holds is sent back with what it read; a pass it is not sure of clears nothing. A judge that cannot answer leaves
+    the list to decide; a judge section that cannot be used is said, and the list decides."""
     hits = shortcut_hits(reply, list(config.get("shortcut_phrases", [])))
     listed = ("lazy-shortcut phrasing: " + ", ".join(f'"{h}"' for h in hits)
               + ". Do the work or name the real blocker instead of deferring it.") if hits else ""
-    if config.get("judge") in (None, False) or not hits and not CANDIDATE.search(QUOTED.sub(" ", CODE.sub(" ", reply))):
+    if not hits or config.get("judge") in (None, False):
         return listed
     from synthesis import judge
     try:
@@ -321,10 +313,10 @@ def shortcut_problem(reply: str, config: dict, until: float | None = None) -> st
         return listed
     told = f"Tell the principal in this reply: {found.notice}." if found.notice else ""
     if found.verdict == "pass":
-        return told
-    return (f"lazy-shortcut phrasing{': ' + ', '.join(chr(34) + h + chr(34) for h in hits) if hits else ' in words no list holds'} "
-            f'(the judge read "{found.span}" as {found.rule.replace("_", " ")}: {found.reason}). Do the work, name the real '
-            f"blocker, or bring the principal only a choice that is theirs, with your recommendation. {told}").strip()
+        return told if found.sure else " ".join(filter(None, [listed, told]))
+    return (listed.split(". Do the work")[0] + f' (the judge read "{found.span}" as {found.rule.replace("_", " ")}: '
+            f"{found.reason}). Do the work, name the real blocker, or bring the principal only a choice that is theirs, "
+            f"with your recommendation. {told}").strip()
 
 
 def _explains(text: str, m: re.Match, opens: bool = True) -> bool:

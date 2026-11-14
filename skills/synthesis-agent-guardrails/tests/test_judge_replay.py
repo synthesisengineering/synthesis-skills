@@ -21,9 +21,9 @@ SENT = "Before this reply goes out, revise it: lazy-shortcut phrasing: \"for now
 
 
 class _Handler(BaseHTTPRequestHandler):
-    def _answer(self, body):
+    def _answer(self, body, status=200):
         data = json.dumps(body).encode()
-        self.send_response(200)
+        self.send_response(status)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(data)))
         self.end_headers()
@@ -35,6 +35,8 @@ class _Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         body = json.loads(self.rfile.read(int(self.headers.get("Content-Length") or 0)) or b"{}")
         self.server.asked.append((self.path, body))
+        if self.path == "/api/chat" and getattr(self.server, "missing", False):
+            return self._answer({"error": "model not found"}, 404)
         verdict = {"verdict": "pass", "rule": "none", "span": "", "reason": "nothing is put off", "sure": True}
         self._answer({"message": {"role": "assistant", "content": json.dumps(verdict)}, "done": True}
                      if self.path == "/api/chat" else {"done": True})
@@ -145,3 +147,11 @@ def test_the_split_is_stratified_by_label_with_a_fixed_seed():
     assert [count(dev, k) for k in ("shortcut", "unsure", "legitimate")] == [4, 2, 30]
     assert [count(test, k) for k in ("shortcut", "unsure", "legitimate")] == [3, 1, 30]
     assert not {r["line"] for r in dev} & {r["line"] for r in test} and replay.split(rows, 20261114) == (dev, test)
+
+
+def test_an_item_with_no_verdict_is_counted_and_never_cleared(tmp_path, model, capsys):
+    server, url = model
+    server.missing, cleared = True, tmp_path / "cleared.jsonl"  # the model is not installed: no verdict
+    assert _run(_records(tmp_path), url, "--model", "small-judge", "--cleared", str(cleared)) == 0
+    assert "small-judge: sendbacks 2: confirmed 0, cleared 0, passed unsure 0, no verdict 2" in capsys.readouterr().out
+    assert not cleared.exists() or cleared.read_text(encoding="utf-8") == ""

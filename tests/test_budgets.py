@@ -1127,41 +1127,42 @@ ROOT = Path(__file__).resolve().parents[1]
 # commit takes the release commit's identity and time, unsigned, names it, and is made once for each head).
 # context_doctor.py 6: repo_state 3 and cited_entries 3 (without the runtime's claims log or session archive, each says
 # what it cannot tell). local_messaging.py 4: _close 4 (without the runtime's approvals nothing is closed, in one line).
-# The judge (M38, plan item 21.3; the principal's rulings of 2026-11-14) adds 419 to the core and 672 to the plugin: a
-# model that reads content before a check decides, wired first to the reply check's shortcut phrasing, after 44 of 54
-# replies revised after a shortcut sendback were found at least 85% the same with only the phrase gone. judge.py 367: the docstring
-# 14; the imports and their blank lines 19; the constants 31 (the policies' folder, the rule for content that addresses
-# the judge, the two addresses, the deadline with its limit and the cloud's least time, the cap and the cache, log and
-# token limits, the loopback names, the config's keys, the verdict's fields and the quote marks 10; the pattern for
-# content that addresses the judge, with its comment, 8; the instruction to the model 13); _second 34 (the cloud's
-# second opinion: its key and the time left, the month's cap reserved at its most before the request and settled from
-# the answer's usage, the notice once a month); settings 33 (every key checked, so a section that cannot be used is
-# said); _post 23 (a request given up at its deadline whatever the server does, never through a proxy on loopback);
-# _judged 23 (the cache, the local verdict, the second opinion only where it is unsure, content that addresses the
-# judge held, and nothing asked once no time is left); _verdict 18 (one object of exactly five fields, a rule the policy names on the side it decides, a span
-# that is in the content); ask 19 (never raises; logs each verdict asked for; the caller's limit beside the config's
-# deadline); _ask_local 16 (the first installed model answers, at temperature 0 and in the verdict's schema, its token
-# counts logged); _log 12 (fixed words, counts and digests, kept to about 4 MB);
-# Policy 11 with its digest; Verdict 10; parse_policy 10; _spend 9; _url 8 (loopback for the local judge, https for the
-# cloud); _locked 6; _recall 6; _remember 6 (the newest 2,000 verdicts); _prompt 5 (the block whose markers carry the
-# content's digest); ConfigError, load_policy, _sha, _plain and _folder 2 each; and 44 blank lines between them.
-# reply_check.py 52: shortcut_problem 28 (the list's hits read by the judge where one is configured, a hit it clears
-# sending nothing back, what it holds sent back with what it read, the list deciding when no judge answers, a section
-# that cannot be used said), CANDIDATE 6 with its comment 2 (the words that bring a reply with no hit to the judge,
-# measured on 6,070 recorded turn ends), _judged 9 (fenced code set aside, a long reply cut to the paragraphs that hold
-# a hit or a candidate), FENCED, JUDGED and ROOM 3 (the judge's room inside the Stop hook), blank lines 6, and 2 fewer
-# in check(), which now runs the shortcut check last so the judge's time never pushes the hook past its limit. install.py 0: the runtime's hash
-# covers the judge's policies, in the line that hashed its modules. The plugin's 253 more are judge_replay.py, the
-# replay each model and policy runs on recorded turn ends before it ships: the shebang and docstring 21; imports, the
-# runtime's path and its one line when the runtime is missing 23; the hook's two marks 2; _text 4; the three harnesses'
-# readers 62 (Claude Code's 29, each entry once across records; Codex's 15; Muse's 17; their table 1); turn_ends 14;
-# alternatives 8; _ollama 5; percentile 3; main 87 (the records and their turn ends, the reach and the words that bring
-# it, the seeded sample, each model's verdicts, latency, the files of cleared and newly held items, the unload); the
-# entry point 2; and 22 blank lines between them.
+# The judge (M38, plan item 21.3; the principal's rulings of 2026-11-14) adds 411 to the core and 689 to the plugin: a
+# model that reads each reply the shortcut list flags before it goes back, after 44 of 54 replies revised after a
+# shortcut sendback were found at least 85% the same with only the phrase gone, and blind labels of 70 recorded list
+# hits found 7 real shortcuts. judge.py 367: the docstring 14; the imports and their blank lines 19; the constants 31
+# (the policies' folder, the rule for content that addresses the judge, the two addresses, the deadline with its limit
+# and the cloud's least time, the cap and the cache, log and token limits, the loopback names, the config's keys, the
+# verdict's fields and the quote marks 10; the pattern for content that addresses the judge, with its comment, 8; the
+# instruction to the model 13); _second 34 (the cloud's second opinion: its key and the time left, the month's cap
+# reserved at its most before the request and settled from the answer's usage, the notice once a month); settings 33
+# (every key checked, so a section that cannot be used is said); _post 23 (a request given up at its deadline whatever
+# the server does, never through a proxy on loopback); _judged 23 (the cache, the local verdict, the second opinion
+# only where it is unsure, content that addresses the judge held, and nothing asked once no time is left); ask 19
+# (never raises; logs each verdict asked for; the caller's limit beside the config's deadline); _verdict 18 (one object
+# of exactly five fields, a rule the policy names on the side it decides, a span that is in the content); _ask_local 16
+# (the first installed model answers, at temperature 0 and in the verdict's schema, its token counts logged); _log 12
+# (fixed words, counts and digests, kept to about 4 MB); Policy 11 with its digest; Verdict 10; parse_policy 10;
+# _spend 9; _url 8 (loopback for the local judge, https for the cloud); _locked 6; _recall 6; _remember 6 (the newest
+# 2,000 verdicts); _prompt 5 (the block whose markers carry the content's digest); ConfigError, load_policy, _sha,
+# _plain and _folder 2 each; and 44 blank lines between them. reply_check.py 44: shortcut_problem 28 (only a reply the
+# list flags is asked about; a sure pass clears the hit, a pass the judge is not sure of clears nothing, a hold is sent
+# back with what it read, the list decides when no judge answers, a section that cannot be used is said), _judged 9
+# (fenced code set aside, a long reply cut to the paragraphs that hold a hit), FENCED, JUDGED and ROOM 3 (the judge's
+# room inside the Stop hook), blank lines 6, and 2 fewer in check(), which now runs the shortcut check last so the
+# judge's time never pushes the hook past its limit. install.py 0: the runtime's hash covers the judge's policies, in
+# the line that hashed its modules. The plugin's 278 more are judge_replay.py, the replay each model and policy runs on
+# recorded list hits before it ships: the shebang and docstring 26; imports, the runtime's path and its one line when
+# the runtime is missing 21; the hook's two marks 2; _text 4; the three harnesses' readers 62 (Claude Code's 29,
+# each entry once across records; Codex's 15; Muse's 17; their table 1); turn_ends 14; split 8 (each label's larger half
+# to dev, with the seed); labeled 15 (each labeled list hit found by its record's path and line, judged only while its
+# digest matches); _ollama 5; percentile 3; main 70 (the records and their turn ends, the list hits, each model's
+# verdicts, latency, the cleared items' file, the unload); report 20 (the matrix by label for each half, and the gate);
+# the entry point 2; and 26 blank lines between them.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 15519
-PLUGIN_BUDGET = 41014
+CORE_BUDGET = 15511
+PLUGIN_BUDGET = 41031
 
 
 def _lines(files):

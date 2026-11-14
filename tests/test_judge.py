@@ -330,11 +330,12 @@ def test_the_shortcut_policy_turns_on_whose_the_held_back_action_is():
     """Blind labels of 70 recorded list hits found 7 real shortcuts: what decides is whether the action a reply holds
     back needs the principal's code or consent, or sits inside the agent's delegated authority. The policy says so,
     with worked examples on both sides that are each a list hit, the only replies the judge reads, and stays short
-    enough for a mid-sized local model to answer inside the hook's time."""
+    enough for a mid-sized local model to answer inside the hook's time (the replay measures that time directly; this
+    bound keeps the policy from regrowing toward the 10 KB of the version the replay found too slow)."""
     judge = _judge()
     policy = judge.load_policy("shortcut-phrasing")
     catalog = json.loads(CATALOG.read_text(encoding="utf-8"))
-    assert int(policy.version) >= 3 and len(policy.text) < 6000
+    assert int(policy.version) >= 3 and len(policy.text) < 6500
     assert "consent" in policy.text and "code" in policy.text and "delegated" in policy.text
     assert set(catalog["categories"]) <= set(policy.holds)  # every costume the catalog names is a rule the judge may hold under
     assert {"none", "discussion", "real_boundary", "principals_choice", "other_meaning"} <= set(policy.passes)

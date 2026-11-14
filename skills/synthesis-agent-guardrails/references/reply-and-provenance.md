@@ -50,20 +50,22 @@ exactly what it names.
 
 ### The judge
 
-With a `judge` section in the config ([config.md](config.md)), a model reads the shortcut-phrasing rule's candidates
-before a reply goes back (M38; the principal's rulings of 2026-11-14). The list, the built-in phrases and
+With a `judge` section in the config ([config.md](config.md)), a model reads each reply the shortcut list flags
+before it goes back (M38; the principal's rulings of 2026-11-14). The list, the built-in phrases and
 `shortcut_phrases`, stays the trigger and the backstop:
 
-- A reply with a list hit, or with candidate words from the catalog's categories (later, a follow-up, another session,
-  if you'd like, want me to, your call, say the word, pre-existing, minimal: `CANDIDATE` in `synthesis/reply_check.py`),
-  goes to the judge; no other reply does, so most turn ends pay nothing for it. Over 30 days of recorded turn ends in
-  Claude Code, Codex and Muse (6,070), 26.5% would reach it, 5.4% by a list hit.
-- It reads the reply by `synthesis/policies/shortcut-phrasing.md`: what the check protects, the rules that hold (the
-  catalog's eight categories) and pass (a discussion, a real boundary, the principal's own kind of choice, another
-  meaning, nothing), and worked examples drawn from the anti-shortcuts skill's catalog and case studies. Its verdict is
-  hold or pass, a rule, the exact words that decide it, a short reason, and whether it is sure.
-- On this check the judge decides, since a reply sent back costs one turn: a list hit it reads as benign sends nothing
-  back, and what it holds, with a list hit or without one, is sent back once with the words it read and why.
+- Only a reply with a list hit goes to the judge, so most turn ends pay nothing for it: of 6,081 recorded turn ends in
+  Claude Code, Codex and Muse over 30 days, 330 (5.4%) had one. Reading replies the list passes, to add holds, comes
+  later with its own gate.
+- It reads the reply by `synthesis/policies/shortcut-phrasing.md`, which turns on one question: does what the reply
+  holds back need the principal's code or consent (a gated send, spending, sharing their files, their calendar, a fact
+  only they hold), or does it sit inside the agent's delegated authority (its own records, the rest of delegated work,
+  a technical option, another route after one is blocked)? A reply that holds back several things holds if any one is
+  the agent's. Blind labels of 70 recorded hits found 7 real shortcuts and 3 unsure; 43 of the 49 hits of `your call`
+  were legitimate, 12 of them a phone call. The verdict is hold or pass, a rule, the exact words that decide it, a short
+  reason, and whether the judge is sure.
+- On this check the judge decides, since a reply sent back costs one turn: a hit it is sure is benign sends nothing
+  back, a pass it is not sure of clears nothing, and a hit it holds is sent back once with the words it read and why.
 - A judge that cannot answer (no model installed, the server down, past `deadline_seconds`, an answer that is not a
   strict verdict, words cited that are not in the reply) leaves the list to decide exactly as before. A judge section
   of another shape is said in the reply sent back, and the list decides until it is fixed.
@@ -77,9 +79,11 @@ before a reply goes back (M38; the principal's rulings of 2026-11-14). The list,
   reply's digest, so the same reply gets the same answer. `state/judge/log.jsonl` records each with its model, policy
   version, verdict, rule, counts and digests, never the reply's words.
 - Before a model or policy change ships, replay it: `scripts/judge_replay.py --since <date> --model <name>`, with
-  `SYNTHESIS_HOME` pointing at a copy of the config, judges every recorded shortcut sendback and a sample of the turn ends
-  that passed and prints counts only. `--cleared` and `--held` list each changed item's record, line and digest for a
-  person to read in the record.
+  `SYNTHESIS_HOME` pointing at a copy of the config, judges the recorded list hits and prints counts only. With
+  `--labels` (rows of path, line, digest, source and label) it splits the labeled list hits by label with a fixed seed,
+  tunes on `--split dev`, and prints for each half how many real shortcuts, unsure and legitimate hits the judge
+  cleared, and the gate: no real shortcut or unsure item cleared, and the warm 95th percentile inside the deadline.
+  `--cleared` lists each cleared item's record, line and digest for a person to read in the record.
 
 ### What the reply check reads as a wait
 
