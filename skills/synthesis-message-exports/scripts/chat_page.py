@@ -48,8 +48,8 @@ EXTRACTOR = r"""(() => {
                items: [], dialogs: [], page: ""};
   for (const box of document.querySelectorAll('[role="dialog"], [role="alertdialog"]')) {
     if (!shown(box) || (log && box.contains(log))) continue;
-    const heading = box.querySelector('h1, h2, h3, [role="heading"]');  // a dialog is judged by its heading, never its text
-    out.dialogs.push((box.getAttribute("aria-label") || (heading ? heading.innerText : "") || "").slice(0, 120));
+    const heading = box.querySelector('h1, h2, h3, [role="heading"]') || {innerText: (box.innerText || "").trim().split("\n")[0]};
+    out.dialogs.push((box.getAttribute("aria-label") || heading.innerText || "").slice(0, 120));  // its heading, never its text
   }
   for (const item of log ? log.querySelectorAll('[role="article"]') : []) {
     const labels = [...item.querySelectorAll("[aria-label]")].filter((e) => e.closest('[role="article"]') === item)

@@ -81,8 +81,8 @@ EXTRACTOR = r"""(() => {
   for (const box of document.querySelectorAll('[role="dialog"], [role="alertdialog"]')) {
     if (!shown(box) || (grid && box.contains(grid))) continue;
     if (box.querySelector('[role="log"]')) { out.popups += 1; continue; }  // a chat open over the list: opened, so read
-    const heading = box.querySelector('h1, h2, h3, [role="heading"]');  // a dialog is judged by its heading, never its text
-    out.dialogs.push((box.getAttribute("aria-label") || (heading ? heading.innerText : "") || "").slice(0, 120));
+    const heading = box.querySelector('h1, h2, h3, [role="heading"]') || {innerText: (box.innerText || "").trim().split("\n")[0]};
+    out.dialogs.push((box.getAttribute("aria-label") || heading.innerText || "").slice(0, 120));  // its heading, never its text
   }
   const rows = grid ? [...grid.querySelectorAll('[role="row"]')] : [];
   for (const row of rows) {
