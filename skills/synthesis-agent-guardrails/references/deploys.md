@@ -39,7 +39,11 @@ loaded. This guard gates the act.
 - A shell script a command runs from a file (`bash publish-site.sh`, `./publish-site.sh`, `sh -e wrapper.sh`),
   read up to 256 KB and three scripts deep, when anything in it is a deploy (2026-10-30: `bash
   scripts/publish-site.sh` published a site, because the `wrangler` call inside the script never reached the
-  guard). A command named by its path is read only when its first line is a shell's `#!`.
+  guard). A command named by its path is read only when its first line is a shell's `#!`. A shell given `-n` reads
+  its script and runs none of it, so it deploys nothing (5.20.1: a syntax check of two scripts was held, and its
+  approval armed the rapid-redeploy brake). A script sourced with `.` or `source` is read as a shell reads it: a
+  deploy at its top level is held, and so is a later call in the command of a function it defines whose body
+  deploys; a function that never closes is read whole.
 - A push to, or a `gh pr merge` on, a GitHub repository listed in `deploy_remotes`, matched against the
   checkout's remotes or `-R owner/repo` (2026-10-30: a merge on the Homebrew tap published a formula before
   its release archive existed).
@@ -58,8 +62,9 @@ commands passed every shell guard until 2026-10-30.
 
 A blocked deploy files a request under a random code, which the principal types as
 `approve <code>`; the block message says "approve followed by the code", never the two
-together. The approval binds the exact command text and, for pushes, the commit each
-target's HEAD is at: HEAD moving before the run voids it. A build deploy's target is what it
+together. The approval binds the exact command text, the folder it runs from and, for pushes, the commit each
+target's HEAD is at: HEAD moving before the run voids it. Since 5.20.1 the hold says so, naming the folder and each
+HEAD, so a command run again from another folder or after a commit is not a surprise. A build deploy's target is what it
 publishes: `gh release create -R owner/repo` that repository, `npm publish <path>` that package, anything
 else the folder it runs in. Until 2026-10-30 it was always the folder, so a release run from an unrelated
 checkout bound that checkout's HEAD and set off its rapid-redeploy brake. It lets one run through within

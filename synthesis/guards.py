@@ -1929,15 +1929,21 @@ SHEBANG = re.compile(rb"#![^\n]*\b(?:ba|z|da|k)?sh\b")
 
 
 def _script_file(words: list[str], cwd: str) -> str | None:
-    """The text of the shell script a command runs from a file (`bash publish.sh`, `./publish.sh`), or None."""
+    """The text of the shell script a command runs from a file (`bash publish.sh`, `./publish.sh`) or sources
+    (`. env.sh`, `source env.sh`), or None. A shell given -n reads its script and runs none of it (5.20.1: a local test
+    that checked two scripts' syntax was held as a deploy, and its approval armed the rapid-redeploy brake)."""
     head, path = os.path.basename(words[0]), None
     if head in SHELLS:
         i = 1
         while i < len(words) and words[i].startswith(("-", "+")):
             if re.fullmatch(r"[-+][A-Za-z]*c[A-Za-z]*", words[i]):
                 return None  # -c: the script is on the command line, which the parser already reads
+            if re.fullmatch(r"-[A-Za-z]*n[A-Za-z]*", words[i]) or words[i:i + 2] == ["-o", "noexec"]:
+                return None  # -n: nothing runs
             i += 2 if words[i] in ("-o", "+o", "-O", "+O") else 1
         path = words[i] if i < len(words) else None
+    elif head in (".", "source"):
+        path, head = (words[1] if len(words) > 1 else None), "sh"  # read as a shell reads it, with or without a #!
     elif "/" in words[0]:
         path = words[0]
     if not path:
@@ -1955,12 +1961,48 @@ def _script_file(words: list[str], cwd: str) -> str | None:
     return text.decode("utf-8", "replace")
 
 
+FUNCTION = re.compile(r"^\s*(?:function\s+)?([A-Za-z_][\w:.-]*)\s*(?:\(\s*\))?\s*\{(.*)$")
+
+
+def _functions(text: str) -> tuple[str, dict]:
+    """A sourced script's top level, and each function's body set apart: a body runs when the function is called, not
+    when the script is sourced. A function that never closes is not set apart, so what cannot be read is read whole."""
+    lines, top, bodies, i = text.split("\n"), [], {}, 0
+    while i < len(lines):
+        found = FUNCTION.match(lines[i])
+        if not found or not ("(" in lines[i] or lines[i].lstrip().startswith("function")):
+            top.append(lines[i])
+            i += 1
+            continue
+        depth, body, j = lines[i].count("{") - lines[i].count("}"), [found.group(2)], i + 1
+        while depth > 0 and j < len(lines):
+            depth, j = depth + lines[j].count("{") - lines[j].count("}"), j + 1
+            body.append(lines[j - 1])
+        if depth > 0:
+            return text, {}
+        bodies[found.group(1)] = "\n".join(body).rsplit("}", 1)[0]
+        i = j
+    return "\n".join(top), bodies
+
+
+def _sourced(words: list[str], cwd: str, patterns: list[str], config: dict, depth: int = 0) -> set:
+    """The functions a sourced script defines whose bodies deploy: a command that calls one deploys (5.20.1)."""
+    text = _script_file(words, cwd) if depth < 3 and os.path.basename(words[0]) in (".", "source") else None
+    bodies = _functions(text)[1] if text is not None else {}
+    return {name for name, body in bodies.items() if any((_deploys(w, patterns) and not _sheet_host(w, d, config))
+                                                         or _script_deploys(w, d, patterns, config, depth + 1)
+                                                         for w, d in _parse(body, cwd)[0])}
+
+
 def _script_deploys(words: list[str], cwd: str, patterns: list[str], config: dict, depth: int = 0) -> bool:
-    """Whether a shell script this command runs deploys, three scripts deep. A deploy inside a script was
-    invisible here (2026-10-30: `bash scripts/publish-site.sh` published a site with no approval)."""
+    """Whether a shell script this command runs or sources deploys, three scripts deep. A deploy inside a script was
+    invisible here (2026-10-30: `bash scripts/publish-site.sh` published a site with no approval), and until 5.20.1 so
+    was one in a sourced script. A sourced script's functions run only when called, which `_sourced` follows."""
     text = _script_file(words, cwd) if depth < 3 else None
     if text is None:
         return False
+    if os.path.basename(words[0]) in (".", "source"):
+        text = _functions(text)[0]
     commands, readable = _parse(text, cwd)
     if not readable and any(re.search(p, text) for p in patterns):
         return True
@@ -2008,6 +2050,11 @@ def _targets(command: str, config: dict, cwd: str) -> list[tuple[str, str | None
     targets: list[tuple[str, str | None]] = [(_publish_target(words, d), None) for words, d in commands
                                              if (_deploys(words, patterns) and not _sheet_host(words, d, config))
                                              or _script_deploys(words, d, patterns, config)]
+    defined: set = set()
+    for words, directory in commands:  # a function a sourced script defined, called later in the command, deploys
+        if words[0] in defined:
+            targets.append((directory, None))
+        defined |= _sourced(words, directory, patterns, config)
     remotes = [str(r) for r in config.get("deploy_remotes") or []]
     for words, directory in commands if remotes else []:
         if [os.path.basename(words[0])] + words[1:3] == ["gh", "pr", "merge"]:  # a merge to a repository that publishes
@@ -2083,13 +2130,21 @@ def check_deploy(command: str, config: dict, cwd: str | None = None, session: di
         return (f"This is a second deploy of {name} within {REDEPLOY_WINDOW // 60} minutes of the last one "
                 f"({time.strftime('%H:%M', time.localtime(last))}). A rushed follow-up fix is the riskiest publish: "
                 "put the options to the principal first. Only if they want it now, show them this exact command "
-                f"and ask them to type {approvals.how(code)} for this rapid redeploy. Then run the identical command again.")
+                f"and ask them to type {approvals.how(code)} for this rapid redeploy. Then run the identical command again."
+                + _bound(cwd, heads))
     code = approvals.request(kind, subject, f"deploy: {command[:160]}")
     unknown = [d for d, _ in targets if re.search(r"[$`]", d)]
     why = (f"This push names its repository through a variable ({unknown[0]}), so it may publish a site that "
            "deploys on push." if unknown else "This publishes to production.")
     return (f"{why} Show the principal this exact command and ask them to type {approvals.how(code)}. "
-            "Then run the identical command again.")
+            "Then run the identical command again." + _bound(cwd, heads))
+
+
+def _bound(cwd: str, heads: dict) -> str:
+    """What a deploy's approval binds to, said where it is asked for (5.20.1: run again from another folder, or after a
+    commit, the same command met a new code twice in one evening, with no word of why)."""
+    return (f" The approval binds to this command run from {cwd}" + "".join(f", and to {os.path.basename(k)} at HEAD {v[:10]}"
+            for k, v in heads.items() if v) + ": from another folder, or after a commit there, it needs a new code.")
 
 
 TUNNEL_SSH = ("serveo.net", "localhost.run", "pinggy.io")
