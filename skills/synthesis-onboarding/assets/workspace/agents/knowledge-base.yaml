@@ -42,6 +42,11 @@ confidentiality:
   forbidden_words_source: null
   hook_path: null
   visible_to: "The workspace owner"
+  # The sharing policy (synthesis-kb-edit, references/sharing-standard.md) and the
+  # phrases its scan looks for: your own, since the plugin ships none. The scan
+  # refuses to run until this list holds one.
+  sharing_policy: ".agents/sharing-policy.md"
+  backstop_phrases: []
 
 notes: >
   Scaffolded by synthesis-onboarding. Projects and lessons live beside this

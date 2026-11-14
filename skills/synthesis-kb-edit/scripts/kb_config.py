@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import fnmatch
 import json
+import re
 import sys
 from pathlib import Path, PurePosixPath
 from typing import Any
@@ -31,6 +32,8 @@ KEYS = {"": {"bundle_path", "git_host", "default_branch", "branch_prefix", "ship
         "review": {"who_merges", "default_reviewers", "setup_guide"},
         "frontmatter": {"required", "house", "date_field", "reserved_files"},
         "confidentiality": {"forbidden_words_source", "hook_path", "visible_to", "sharing_policy", "backstop_phrases"}}
+POLICY = ".agents/sharing-policy.md"  # where adopting writes the policy when the contract names no path
+TEMPLATE = Path(__file__).resolve().parents[1] / "assets" / "sharing-policy.template.md"
 
 
 def is_relative_text(value: Any, *, allow_glob: bool = False) -> bool:
@@ -250,22 +253,71 @@ def load_config(repo: Path, config_path: Path | None) -> tuple[Path, dict[str, A
     return path, data
 
 
+def adopt_sharing_policy(repo: Path) -> tuple[int, list[str]]:
+    """Write the policy template where the contract says, never over a file that exists, and add the sharing keys the
+    contract lacks, in place, keeping every line it has. Nothing is written unless both can be; nothing is committed."""
+    path, config = load_config(repo, None)
+    errors = validate_config(config)
+    if errors:
+        return 1, [f"ERROR {error}" for error in errors] + ["nothing adopted: the contract must be valid first"]
+    block, text = config["confidentiality"], path.read_text(encoding="utf-8")
+    relative = block.get("sharing_policy") or POLICY
+    target = resolve_inside(repo, relative)  # a path that escapes the repository raises before anything is written
+    lacking = {key: value for key, value in (("sharing_policy", json.dumps(relative)), ("backstop_phrases", "[]"))
+               if key not in block}
+    by_hand = [f"{CONFIG_RELATIVE}: its confidentiality mapping is not in block form, so nothing was adopted: add "
+               + " and ".join(f"{key}: {value}" for key, value in lacking.items()) + " to it by hand, then run this again"]
+    if lacking:
+        header = re.search(r"^confidentiality:[ \t]*(?:#.*)?\n", text, flags=re.M)
+        child = header and re.compile(r"^([ \t]+)[^\s#]", flags=re.M).search(text, header.end())  # its first key
+        if not child:
+            return 1, by_hand
+        text = text[:header.end()] + "".join(f"{child.group(1)}{k}: {v}\n" for k, v in lacking.items()) + text[header.end():]
+        try:  # read back as the skills will read it, before anything is written
+            check = yamlish.load(text)["confidentiality"]
+        except (ValueError, KeyError, TypeError):
+            return 1, by_hand
+        if check.get("sharing_policy") != relative or "backstop_phrases" not in check:
+            return 1, by_hand
+    if target.exists():
+        lines = [f"{relative}: kept as it is (it exists)"]
+    else:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(TEMPLATE.read_text(encoding="utf-8"), encoding="utf-8")
+        lines = [f"{relative}: written from the template"]
+    if lacking:
+        path.write_text(text, encoding="utf-8")
+    return 0, lines + [f"{CONFIG_RELATIVE}: " + ("added confidentiality." + " and confidentiality.".join(lacking) if lacking
+                                                  else "names the policy and the phrase list already"),
+                       "next: fill in the policy's parts marked Yours, and list this organization's own phrases under "
+                       "confidentiality.backstop_phrases: the plugin ships none, and the phrase scan refuses to run "
+                       "until the list holds one. Nothing was committed."]
+
+
 def main(argv: list[str] | None = None) -> int:
+    argv = sys.argv[1:] if argv is None else argv
+    adopting = argv[:1] == ["adopt-sharing-policy"]  # kb_config.py adopt-sharing-policy <repo-root>
     parser = argparse.ArgumentParser(
-        description="Validate and query .agents/knowledge-base.yaml."
+        description="Validate and query .agents/knowledge-base.yaml; with adopt-sharing-policy first, write the sharing"
+                    " policy's template where the contract says and add the contract's two sharing keys."
     )
     parser.add_argument("repo", type=Path, help="repository root")
-    parser.add_argument("--config", type=Path, help="alternate config path")
-    parser.add_argument("--check-paths", action="store_true")
-    parser.add_argument("--resolve", action="append", default=[], metavar="PATH")
-    parser.add_argument("--json", action="store_true")
-    args = parser.parse_args(argv)
+    if not adopting:
+        parser.add_argument("--config", type=Path, help="alternate config path")
+        parser.add_argument("--check-paths", action="store_true")
+        parser.add_argument("--resolve", action="append", default=[], metavar="PATH")
+        parser.add_argument("--json", action="store_true")
+    args = parser.parse_args(argv[1:] if adopting else argv)
 
     repo = args.repo.resolve()
     if not (repo / ".git").exists():
         print(f"error: not a Git repository root: {repo}", file=sys.stderr)
         return 2
     try:
+        if adopting:
+            code, lines = adopt_sharing_policy(repo)
+            print("\n".join(lines))
+            return code
         path, config = load_config(repo, args.config)
     except ValueError as exc:
         print(f"error: {exc}", file=sys.stderr)
