@@ -179,9 +179,11 @@ def cmd_inbox(args) -> int:
 
 
 def cmd_sends(args) -> int:
-    """The send window and the day's send ledger. Opening needs the principal: the guard asks for their code
-    when an agent runs it; run in their own terminal, it opens directly."""
+    """The send window, batches and the day's send ledger. Opening either needs the principal: the guard asks for their
+    code when an agent runs it; run in their own terminal, it opens directly."""
     from synthesis import approvals, sends
+    if args.action == "batch":
+        return _batch(args, paths.harness() != "unknown" or not sys.stdin.isatty())
     if args.action == "open":
         window = sends.asked(args.hours, args.channels, args.project, args.sends)
         try:
@@ -202,13 +204,46 @@ def cmd_sends(args) -> int:
                 print(sends.window_refusal(window), file=sys.stderr)
                 return 2
         print(sends.describe(sends.open_window(window["hours"], window["channels"], window["project"], window["sends"])))
-    elif args.action == "close":
+    elif args.action == "close":  # the principal's stop: the window and every open batch
         print("send window closed" if sends.close_window() else "no send window was open")
+        ended = sends.close_batches()
+        print(f"{ended} batch{'es' if ended != 1 else ''} ended" if ended else "no batch was open")
     elif args.action == "status":
         print(sends.describe(sends.window()) if sends.window() else "no send window is open")
+        print("\n".join(sends.describe_batch(b) for b in sends.batches()) or "no batch is open")
     else:
         for e in sends.ledger(args.date or time.strftime("%Y-%m-%d")):
             print(f"{time.strftime('%H:%M', time.localtime(e['at']))}  {e['channel']:<10} {e['how']:<8} {e['summary']}")
+    return 0
+
+
+def _batch(args, agent: bool) -> int:
+    """`synthesis sends batch <file>` prints what the principal approves (with --show every text too, and nothing
+    opens). Run by an agent it opens only on their code for exactly the digest of the file as it reads it, and spends
+    that code itself, whatever the guard matched; the entries are then copied into the state, so the file no longer matters."""
+    from synthesis import approvals, sends
+    try:
+        batch = sends.read_batch(args.file)
+    except (OSError, ValueError) as exc:
+        print(f"This batch can't open: {exc}", file=sys.stderr)
+        return 2
+    print(sends.batch_listing(batch, show=args.show))
+    if args.show:
+        return 0
+    if agent:
+        try:  # a shell acts only as its own session, so its own transcript must show the code
+            granted = approvals.consume("send-batch", sends.batch_digest(batch), {"session_id": _session(args)})
+        except approvals.Unverified as exc:
+            print(exc, file=sys.stderr)
+            return 2
+        if not granted:
+            print(sends.batch_refusal(batch, args.file), file=sys.stderr)
+            return 2
+    try:
+        print(sends.describe_batch(sends.open_batch(batch)))
+    except ValueError as exc:  # an earlier grant of it left state that cannot be read
+        print(exc, file=sys.stderr)
+        return 2
     return 0
 
 
@@ -430,8 +465,11 @@ def parser() -> argparse.ArgumentParser:
     s.add_argument("--peek", action="store_true", help="show unread messages and mark none")
     sub.add_parser("wait", help="wait for a message, a file or a command, holding a record on the board", add_help=False)
     s.set_defaults(fn=cmd_inbox)
-    s = sub.add_parser("sends", help="open, close or show the send window; list the day's sends")
-    s.add_argument("action", choices=["open", "close", "status", "log"])
+    s = sub.add_parser("sends", help="open, close or show the send window and batches; list the day's sends")
+    s.add_argument("action", choices=["open", "batch", "close", "status", "log"])
+    s.add_argument("file", nargs="?", default="", help="batch: the batch file to show (--show) or open")
+    s.set_defaults(late="file")
+    s.add_argument("--show", action="store_true", help="batch: also print every text in full, and open nothing")
     s.add_argument("--hours", type=float, default=0, help="how long the window stays open, at most 12")
     s.add_argument("--channels", default="", help="comma-separated: slack,email,chat,calendar,jira,confluence,"
                    "bitbucket,github,docs,notion,web, or all")

@@ -1,6 +1,6 @@
 # Message guard: the procedure
 
-The six steps from composing a message to recording its send. Moved here word for word from SKILL.md in 2.11.0, to make room for binding rules 16 and 17; "binding rule" means a rule of SKILL.md, and a file it names is linked from this folder.
+The six steps from composing a message to recording its send. Moved here word for word from SKILL.md in 2.11.0, to make room for binding rules 16 and 17; "binding rule" means a rule of SKILL.md, and a file it names is linked from this folder. Step 7, a reviewed batch, was added in 2.12.0.
 
 1. **Research, then compose** (binding rule 2). Write email as HTML paragraphs: `htmlBody` on the Gmail connector (its `body` is the plain-text alternative, also whole paragraphs), `body` with `body_format: "html"` on the workspace connector.
 2. **Freeze the complete call:** recipients, subject, thread fields, every body part, attachments. Then make the call once. If the text breaks a rule, the guard answers `This message can't go out as written: <reasons>.` and files nothing; fix it and call again.
@@ -8,3 +8,4 @@ The six steps from composing a message to recording its send. Moved here word fo
 4. **When they type `approve <code>`** (several codes may follow the word on its line), make each identical call again. A changed call needs a new code; an approval unused after 15 minutes is gone, and so is one the harness declined after the guard let it through ([references/composing.md](composing.md)).
 5. **Verify** (binding rule 8): fetch the draft or sent message and compare recipients, subject and paragraphs with what was approved.
 6. **Record** the send where the correspondence skills say (transcript, plan), with its message id.
+7. **A reviewed batch** (2026-11-14) takes one code for many sends: write the batch file (1 to 50 entries, each a connector call's tool and exact input, a Messenger send's conversation and text, or a messages send's handle and text), run `synthesis sends batch <file>`, show the principal every entry in full (`--show`, or the packet built from the same file, with the digest prefix the hold names) and ask for the hold's code, then run the command again. Make each send exactly as its entry says; in the browser, one call on the conversation's page clears the box (select-all, then Delete or Backspace), types the words with shift and Return for each line break, and sends them with one Return. A send that differs in any way waits for its own code; verify and record each as in steps 5 and 6 ([references/config.md](config.md), "Batches").

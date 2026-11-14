@@ -7,6 +7,7 @@ sends for the daily plan's "On your behalf"."""
 from __future__ import annotations
 
 import fnmatch
+import hashlib
 import json
 import os
 import re
@@ -146,21 +147,42 @@ def command_send(words: list, cwd: str, config: dict) -> str | None:
     return found
 
 
-def window_asked(words: list) -> dict | None:
-    """The window `synthesis sends open` asks for, however the CLI is spelled and wherever its options sit
-    (`synthesis --session S sends open` opened one with no code on 2026-10-13); None for help or another command."""
+def _cli_words(words: list, action: str) -> list | None:
+    """The words after the synthesis CLI when they run `sends <action>`, however the CLI is spelled and wherever its
+    options sit (`synthesis --session S sends open` opened one with no code on 2026-10-13); None for help or another command."""
     for i, w in enumerate(words):
         if os.path.basename(w) == "synthesis" or w in ("synthesis.cli", "synthesis/cli.py") or w.endswith("synthesis/cli.py"):
             rest = words[i + 1:]
-            if "sends" in rest and "open" in rest[rest.index("sends") + 1:] and not {"-h", "--help"} & set(rest):
-                given = {}
-                for j, token in enumerate(rest):
-                    key, eq, value = token.partition("=")
-                    if key in ("--hours", "--channels", "--project", "--sends"):
-                        given[key[2:]] = value if eq else (rest[j + 1] if j + 1 < len(rest) else "")
-                return asked(given.get("hours", 0), given.get("channels", ""), given.get("project", ""),
-                             given.get("sends", 0))
+            if "sends" in rest and action in rest[rest.index("sends") + 1:] and not {"-h", "--help"} & set(rest):
+                return rest
     return None
+
+
+def window_asked(words: list) -> dict | None:
+    """The window `synthesis sends open` asks for; None for help or another command."""
+    rest = _cli_words(words, "open")
+    if rest is None:
+        return None
+    given = {}
+    for j, token in enumerate(rest):
+        key, eq, value = token.partition("=")
+        if key in ("--hours", "--channels", "--project", "--sends"):
+            given[key[2:]] = value if eq else (rest[j + 1] if j + 1 < len(rest) else "")
+    return asked(given.get("hours", 0), given.get("channels", ""), given.get("project", ""), given.get("sends", 0))
+
+
+VALUED = ("--hours", "--channels", "--project", "--sends", "--date", "--session")  # the options of `sends` that take a value
+
+
+def batch_asked(words: list, cwd: str) -> str | None:
+    """The file `synthesis sends batch <file>` opens a batch from, as a path from cwd ("" when it names none); None for
+    `--show`, which only prints, for help and for another command."""
+    rest = _cli_words(words, "batch")
+    if rest is None or "--show" in rest:
+        return None
+    after = rest[rest.index("batch", rest.index("sends") + 1) + 1:]
+    named = [w for i, w in enumerate(after) if not w.startswith("-") and (i == 0 or after[i - 1] not in VALUED)]
+    return os.path.join(cwd, os.path.expanduser(named[0])) if named else ""
 
 
 def window_refusal(window: dict) -> str:
@@ -330,6 +352,235 @@ def describe(w: dict) -> str:
     return (f"Send window open until {time.strftime('%H:%M', time.localtime(w['until']))} ({scope}), {left} of "
             f"{w.get('sends', 0)} sends left: signed Ragbot sends go without a per-message code and are logged; the "
             "last planned send closes it, and `synthesis sends close` ends it sooner.")
+
+
+# --- batches ------------------------------------------------------------------------------------
+# 2026-11-14: drafts in the principal's own words, read and approved in one sitting. One code for a batch's digest lets
+# each entry go once, exactly as written, within 12 hours, from a session on its project. Binding each text and
+# recipient is stronger than a window, so a batch may carry what a window must not: the principal's own words.
+
+# A page whose address names one conversation: (site, and every host under it; the path that names it; channel, as the
+# guard names the site's pages). An encrypted chat's path and a plain one's are two conversations (2026-11-14: every
+# chat facebook.com lists links to /messages/e2ee/t/<id>/), and so are the two sites'.
+CONVERSATIONS = (("facebook.com", r"/messages/(?:e2ee/)?t/[\w.-]+", "messenger"),
+                 ("messenger.com", r"/(?:e2ee/)?t/[\w.-]+", "messenger"))
+HANDLE = re.compile(r"\+[1-9][0-9]{6,14}|[^\s@,]+@[^\s@,]+\.[^\s@,]+")  # what messages_send.py takes: +<country code><number>, or an address
+KINDS = ('none of the three kinds: a connector call {"tool", "input"}, a browser send {"channel", "to", "text"} or a '
+         'messages send {"channel": "messages", "to", "text"}, each with nothing else')
+ADDRESS_KEYS = ("to", "cc", "bcc", "channel", "channel_id", "chat_id", "space_id", "space_name", "thread_id", "thread_ts",
+                "user_id", "recipient", "recipients", "issueIdOrKey", "owner", "repo", "pull_number", "issue_number")
+
+
+def conversation(address: str) -> tuple | None:
+    """(channel, site and path) of an address that names one conversation, its trailing slash, query and fragment left
+    off; None for any other."""
+    try:
+        url = urllib.parse.urlsplit(address.strip() if "://" in address else "//" + address.strip())
+        host, path = (url.hostname or "").rstrip("."), url.path.rstrip("/")
+    except ValueError:
+        return None
+    return next(((chan, site + path) for site, pattern, chan in CONVERSATIONS
+                 if (host == site or host.endswith("." + site)) and re.fullmatch(pattern, path, re.ASCII)), None)
+
+
+def _unique(pairs: list) -> dict:
+    keys = [k for k, _ in pairs]
+    twice = next((k for k in keys if keys.count(k) > 1), None)
+    if twice is not None:
+        raise ValueError(f"the key {twice!r} is given twice")
+    return dict(pairs)
+
+
+def _no_number(name: str):
+    raise ValueError(f"{name} is no number JSON has")
+
+
+def read_batch(file: str) -> dict:
+    """The batch a file holds, after every check a batch passes; ValueError says what is wrong. A key given twice and a
+    number JSON does not have are refused: what the principal reads must be what the digest binds."""
+    with open(file, encoding="utf-8") as handle:
+        text = handle.read(1_048_577)
+    try:
+        if len(text) > 1_048_576:
+            raise ValueError("it is larger than 1 MB")
+        return checked(json.loads(text, object_pairs_hook=_unique, parse_constant=_no_number))
+    except ValueError as exc:
+        raise ValueError(f"{file} is no batch: {exc}") from None
+
+
+def checked(batch) -> dict:
+    """The batch itself when it has the one shape a batch takes; else ValueError, naming what is wrong."""
+    if not isinstance(batch, dict) or set(batch) != {"batch", "project", "entries"}:
+        raise ValueError('a batch is {"batch": <name>, "project": <project>, "entries": [...]}, with nothing else')
+    if not all(isinstance(batch[k], str) and batch[k].strip() for k in ("batch", "project")):
+        raise ValueError("a batch names itself and the project whose sessions send it")
+    entries = batch["entries"]
+    if not isinstance(entries, list) or not 0 < len(entries) <= MAX_SENDS:
+        raise ValueError(f"a batch holds 1 to {MAX_SENDS} entries")
+    for n, entry in enumerate(entries, 1):
+        problem = _entry_problem(entry)
+        if problem or entries.index(entry) < n - 1:
+            raise ValueError(f"entry {n} {problem or f'repeats entry {entries.index(entry) + 1}'}")
+    return batch
+
+
+def _entry_problem(entry) -> str:
+    keys = set(entry) if isinstance(entry, dict) else set()
+    if keys == {"tool", "input"} and isinstance(entry["tool"], str) and entry["tool"] and isinstance(entry["input"], dict):
+        from synthesis import guards
+        tool = entry["tool"]
+        return (f"names {tool}, whose sends a batch binds as a browser entry or not at all" if guards.desktop_tool(tool)
+                or guards.shell_tool(tool) or tool in guards.FILE_TOOLS else "")
+    if keys != {"channel", "to", "text"} or not all(isinstance(entry[k], str) and entry[k].strip() for k in keys):
+        return f"is {KINDS}"
+    if entry["channel"] == "messages":
+        return "" if all(HANDLE.fullmatch(h.strip()) for h in entry["to"].split(",")) else (
+            "names no handle messages_send.py takes: +<country code><number> or an address, or for --members several, "
+            "comma-separated")
+    found = conversation(entry["to"])
+    return "" if found and found[0] == entry["channel"] else (
+        "names no conversation the guard can place on its page, for its channel: a Messenger chat's address "
+        "(facebook.com/messages/t/<id> or /messages/e2ee/t/<id>, messenger.com/t/<id> or /e2ee/t/<id>), channel messenger")
+
+
+def batch_digest(batch: dict) -> str:
+    """SHA-256 of the batch's canonical JSON: every field, in a form its layout in the file does not change."""
+    return hashlib.sha256(json.dumps(batch, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")).hexdigest()
+
+
+def batch_refusal(batch: dict, file: str) -> str:
+    from synthesis import approvals
+    digest, count = batch_digest(batch), len(batch["entries"])
+    code = approvals.request("send-batch", digest, f"open batch {batch['batch']}: {count} sends, digest {digest[:12]}, "
+                             f"project {batch['project']}")
+    return (f"Opening batch {digest[:12]} ({count} send{'s' if count != 1 else ''} from {file}, project {batch['project']}) "
+            f"lets each entry go once, exactly as written, within {MAX_HOURS} hours. Show the principal every entry in full "
+            f"(`synthesis sends batch {file} --show`, or the packet built from the same file, with digest {digest[:12]}) and "
+            f"ask them to type {approvals.how(code)}. Then run the identical command again.")
+
+
+def batch_listing(batch: dict, show: bool = False) -> str:
+    """What the principal approves: the digest, the count and each entry's channel and recipient; with `show`, each
+    entry's text in full (a connector call's whole input), to read before the code is typed."""
+    lines = [f"Batch {batch['batch']} for project {batch['project']}: {len(batch['entries'])} sends, digest {batch_digest(batch)}"]
+    for n, e in enumerate(batch["entries"], 1):
+        if "tool" in e:
+            to = ", ".join(f"{k} {e['input'][k]}" for k in ADDRESS_KEYS if k in e["input"]) or "recipients in its input"
+            lines += [f"{n:>3}. {channel(e['tool'], e['input'])} by {e['tool']}: {to}"]
+        else:
+            lines += [f"{n:>3}. {e['channel']} to {e['to']}"]
+        shown = json.dumps(e["input"], ensure_ascii=False, indent=2) if "tool" in e else e["text"]
+        lines += ["\n".join("       " + line for line in shown.split("\n"))] if show else []
+    return "\n".join(lines)
+
+
+def _batch_file(digest: str):
+    return paths.state() / "sends" / "batches" / f"{digest}.json"
+
+
+def _whole(data: dict, file) -> bool:
+    """Batch state as its grant wrote it: its digest is its file's name and the hash of the batch it holds, its spent
+    marks name its own entries, and it lasts at most 12 hours from its grant. Anything else (edited, extended, another
+    shape, unreadable) is no batch, and its sends fall back to the code per call."""
+    try:
+        batch = checked({k: data[k] for k in ("batch", "project", "entries")})
+        return (batch_digest(batch) == data["digest"] == file.stem and isinstance(data["spent"], dict)
+                and set(data["spent"]) <= {str(i) for i in range(len(batch["entries"]))}
+                and 0 <= float(data["until"]) - float(data["granted"]) <= MAX_HOURS * 3600)
+    except (KeyError, TypeError, ValueError):
+        return False
+
+
+def batches() -> list:
+    """The open batches: whole, granted, and neither past their 12 hours nor closed."""
+    found = []
+    for file in sorted(_batch_file("").parent.glob("*.json")):
+        data = paths.read_json(file)
+        if _whole(data, file) and float(data["granted"]) <= time.time() < float(data["until"]):
+            found.append(data)
+    return found
+
+
+def open_batch(batch: dict) -> dict:
+    """Copy a granted batch into the synthesis state with its digest, project, the grant's time and each entry's spent
+    mark, so its file no longer matters. A batch granted again keeps what it already sent; one whose earlier state
+    cannot be read is refused, since which of its entries went can no longer be told."""
+    from synthesis import approvals
+    digest, now = batch_digest(checked(batch)), time.time()
+    file = _batch_file(digest)
+    with approvals.alone():
+        earlier = paths.read_json(file) if file.exists() else {"spent": {}}
+        if file.exists() and not _whole(earlier, file):
+            raise ValueError(f"an earlier grant of batch {digest[:12]} left state that cannot be read ({file}), so which of "
+                             "its entries went cannot be told: it is not opened again")
+        data = {**batch, "digest": digest, "granted": now, "until": now + MAX_HOURS * 3600, "spent": earlier["spent"]}
+        paths.write_json(file, data)
+        for old in file.parent.glob("*.json"):  # bounded: a batch's record outlives its 12 hours by a month
+            if old != file and now - old.stat().st_mtime > 30 * 86400:
+                old.unlink()
+    return data
+
+
+def close_batches() -> int:
+    """End every open batch now: the principal's stop. What each sent stays recorded, for a grant of it again."""
+    from synthesis import approvals
+    with approvals.alone():
+        ended = batches()
+        for data in ended:
+            paths.write_json(_batch_file(data["digest"]), {**data, "until": time.time()})
+    return len(ended)
+
+
+def describe_batch(data: dict) -> str:
+    return (f"Batch {data['digest'][:12]} ({data['batch']}, project {data['project']}) open until "
+            f"{time.strftime('%H:%M', time.localtime(data['until']))}: {len(data['entries']) - len(data['spent'])} of "
+            f"{len(data['entries'])} entries left, each sent once as written; `synthesis sends close` ends it sooner.")
+
+
+def batch_spend(match, project: str, session: dict | None = None, spend: bool = True) -> str:
+    """The first unspent entry `match` accepts in an open batch of this project, as the ledger names it
+    (batch:<digest prefix>:<index>), marked spent unless `spend` is false; "" for none. The caller holds
+    approvals.alone(), so two sessions never spend one entry."""
+    for data in batches() if project else []:
+        for i, entry in enumerate(data["entries"] if data["project"] == project else []):
+            if str(i) not in data["spent"] and match(entry):
+                if spend:
+                    data["spent"][str(i)] = {"at": time.time(), "session": paths.session_id(session)}
+                    paths.write_json(_batch_file(data["digest"]), data)
+                return f"batch:{data['digest'][:12]}:{i}"
+    return ""
+
+
+def _plain(value):
+    """A value with each string's line endings written one way: the one difference an entry overlooks."""
+    if isinstance(value, dict):
+        return {k: _plain(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_plain(v) for v in value]
+    return value.replace("\r\n", "\n").replace("\r", "\n") if isinstance(value, str) else value
+
+
+def _same(one, other) -> bool:
+    """Equal as JSON after _plain: true is not 1, and 1 is not 1.0."""
+    return json.dumps(_plain(one), sort_keys=True, ensure_ascii=False) == json.dumps(_plain(other), sort_keys=True, ensure_ascii=False)
+
+
+def call_entry(entry: dict, tool: str, tool_input: dict) -> bool:
+    """Whether a call is exactly this entry: a connector call by its tool and whole input; the messages sender's
+    (messages_send.py asks the guard itself) by the handle `--to` names (imessage_send) or the members `--members` names
+    (messages_send), and its text, with no photo."""
+    if "tool" in entry:
+        return entry["tool"] == tool and _same(entry["input"], tool_input)
+    named = [h.strip() for h in entry["to"].split(",")]
+    to = named[0] if tool == "imessage_send" and len(named) == 1 else sorted(set(named)) if len(named) > 1 else None
+    shape = {"imessage_send": {"to", "text"}, "messages_send": {"to", "service", "text", "chat"}}.get(tool)
+    return (entry["channel"] == "messages" and set(tool_input) == shape and to is not None and _same(tool_input["to"], to)
+            and _same(tool_input["text"], entry["text"]))
+
+
+def browser_entry(entry: dict, chan: str, where: str, text: str) -> bool:
+    """Whether a browser call that types `text` and sends it on the page of conversation (chan, where) is this entry."""
+    return "to" in entry and conversation(entry["to"]) == (chan, where) and _plain(entry["text"]) == text
 
 
 # --- the ledger ---------------------------------------------------------------------------------

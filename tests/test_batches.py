@@ -64,10 +64,11 @@ def _cli(*args):
                           stdin=subprocess.DEVNULL)
 
 
-def page(record: Path, url: str, tab: int = 7) -> dict:
-    """The session, its record holding Claude in Chrome's newest result: the call ran on this page."""
+def page(record: Path, url: str, tab: int = 7, others: dict = None) -> dict:
+    """The session, its record holding Claude in Chrome's newest result: the call ran on this page (others: more tabs)."""
     ident = f"toolu_{time.time_ns()}"
-    text = f"Typed\n\nTab Context:\n- Executed on tabId: {tab}\n- Available tabs:\n  • tabId {tab}: \"Messenger\" (\"{url}\")"
+    listing = "\n".join(f"  • tabId {t}: \"Messenger\" (\"{u}\")" for t, u in {tab: url, **(others or {})}.items())
+    text = f"Typed\n\nTab Context:\n- Executed on tabId: {tab}\n- Available tabs:\n{listing}"
     with record.open("a", encoding="utf-8") as handle:
         handle.write(json.dumps({"type": "assistant", "message": {"role": "assistant", "content": [
             {"type": "tool_use", "id": ident, "name": CHROME, "input": {}}]}}) + "\n")
@@ -184,6 +185,7 @@ def test_a_key_given_twice_or_a_number_json_lacks_is_refused(tmp_path):
     ("https://www.facebook.com/messages/", None), ("https://www.facebook.com/messages/t/", None),
     ("https://www.facebook.com/messages/t/1/photos", None), ("https://www.facebook.com/Messages/t/1", None),
     ("https://www.facebook.com/messages/t/%31", None), ("+15550100", None),
+    ("https://www.facebook.com/messages/t/١٢٣", None),  # digits of another script are no id
 ])
 def test_a_conversation_is_its_site_and_path_with_its_slash_and_query_left_off(address, place):
     """The coordinator, 2026-11-14: facebook.com's chat list links every chat to `/messages/e2ee/t/<digits>/`. An
@@ -445,6 +447,28 @@ def test_a_draft_is_cleared_but_a_paste_or_an_upload_keeps_the_page_on_the_code(
     upload = {"imageId": "img-1", "ref": "ref_3", "tabId": 7}
     assert guards.check("mcp__claude-in-chrome__upload_image", upload, CONFIG, session=session) is None
     assert held(guards.check(CHROME, typed_and_sent("Third reply."), CONFIG, session=session))
+
+
+def test_a_paste_on_another_page_of_a_call_its_code_released_keeps_that_page_on_the_code(principal):
+    """A send empties the box it went from; from a call on two pages, which one sent cannot be told, and a paste it
+    left on the other stays."""
+    elsewhere = "https://www.facebook.com/messages/e2ee/t/1000000005/"
+    opened([{**CHAT, "to": "facebook.com/messages/e2ee/t/1000000005"}])
+    session = page(principal.transcript, E2EE, others={8: elsewhere})
+    on8 = lambda step: (step[0], {**step[1], "tabId": 8})  # noqa: E731
+    call = steps(on8(key("cmd+v", "Pastes the photo")), typed("Hello."), RETURN)
+    principal(guards.check(CHROME, call, CONFIG, session=session))
+    assert guards.check(CHROME, call, CONFIG, session=session) is None
+    reason = guards.check(CHROME, steps(*map(on8, CLEAR), on8(typed(REPLY)), on8(RETURN)), CONFIG, session=session)
+    assert held(reason) and "earlier" in reason
+
+
+def test_an_entry_covers_only_its_own_kind_of_send(tmp_path):
+    opened([CHAT])
+    assert held(guards.check(SLACK, SAID, CONFIG, session=SESSION))                  # the browser entry's words by a connector
+    assert held(guards.check_send("imessage_send", {"to": "+15550100", "text": REPLY}, CONFIG))  # by the messages sender
+    assert held(guards.check(CHROME, typed_and_sent(), CONFIG, session=page(tmp_path / "r.jsonl", PLAIN)))  # on another page
+    assert guards.check(CHROME, typed_and_sent(), CONFIG, session=page(tmp_path / "r.jsonl", E2EE)) is None
 
 
 # --- every other check still runs first --------------------------------------------------------------------------

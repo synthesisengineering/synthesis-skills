@@ -1127,10 +1127,33 @@ ROOT = Path(__file__).resolve().parents[1]
 # commit takes the release commit's identity and time, unsigned, names it, and is made once for each head).
 # context_doctor.py 6: repo_state 3 and cited_entries 3 (without the runtime's claims log or session archive, each says
 # what it cannot tell). local_messaging.py 4: _close 4 (without the runtime's approvals nothing is closed, in one line).
+# M37 part 4, one approval for a reviewed batch of sends (2026-11-14): core 410 more, plugin 410, each function counted
+# with the two blank lines before it. sends.py 251. The file's checks: read_batch 13 (a key given twice, a number JSON
+# does not have and a file over 1 MB refused), _unique 8, _no_number 4, checked 16 (one shape, 1 to 50 entries, none
+# repeated) and _entry_problem 19 (the three kinds, each with nothing else). conversation 12 with CONVERSATIONS 2 (a
+# Messenger chat's page: its encrypted and plain forms and the two sites four conversations). batch_digest 5. The
+# state: _batch_file 4, _whole 13 (its digest its name and its hash, its spent marks its own, at most 12 hours), batches
+# 10, open_batch 20 (a batch granted again keeps what it sent, an earlier state that cannot be read is refused, records
+# a month past their grant pruned), close_batches 10 and batch_spend 14 (under the guard's lock, each entry once). The
+# matching: _plain 9, _same 5, call_entry 13 (a connector call whole; the messages sender's handle or members and text)
+# and browser_entry 5. Asking: batch_asked 11 with VALUED 3, _cli_words 11 with window_asked 4 fewer (one reader of the
+# CLI's words for both), batch_refusal 11, batch_listing 15 with ADDRESS_KEYS 2, and describe_batch 6. HANDLE 1, KINDS 2,
+# the section's notes 10 and the hashlib import 1. cli.py 38: _batch 30 (prints; --show opens nothing; the command spends
+# the grant itself), cmd_sends 5 (close ends every batch, status lists them) and parser 3 (the file, its late name and
+# --show). guards.py 121: check_desktop 26 (the batch looked at after every check and before the window, a time in its
+# words held as in any message, the code that releases a matched call spending its entry, the box's record kept),
+# _talks 28 (a browser call's steps read in order: one focus click, the clearing, the words with their line breaks, one
+# send last, and any scroll, script or navigation between), _unsent 13 and _box 10 (a file, a drop or a paste a call left
+# on a conversation's page, forgotten when a send goes from that one page), _chord 5, the constants LOOKS, CLEARS,
+# LINE_BREAK, PASTES and FOCUSES 5 with UNSENT 6 and their note 4, _judged_send 10 (the batch after every check and
+# before the window, never for a file's bytes or a meeting on today, its entry spent with the code for a time),
+# check_outgoing 10 (`synthesis sends batch` held for exactly its digest; a held window or batch code no longer lets the
+# rest of the line through unjudged), check 3 (an upload into a conversation's box recorded) and SELF_GRANT_CALLS 1
+# (open_batch, batch_spend and _batch_file).
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 15100
-PLUGIN_BUDGET = 40342
+CORE_BUDGET = 15510
+PLUGIN_BUDGET = 40752
 
 
 def _lines(files):

@@ -421,6 +421,86 @@ signature, and is written to the day's ledger with the sends approved by code; `
 [--date]` prints it for the daily plan's "On your behalf". Exact-text sends (the principal's own words) are
 outside every window: list only the signatures of lanes the principal allows.
 
+## Batches (2026-11-14)
+
+A seat that drafts replies in the principal's own words sends them in batches of about twenty: the principal reads
+every text and recipient in one sitting and types one code, and fifty replies no longer need fifty codes. Over the 26
+days to 2026-11-14 the guard let through 442 sends, 358 on a code per call, as many as 16 of those within one hour.
+A batch binds each exact text and recipient, so it is stronger than a window and may carry what a window must not.
+
+**The file,** written by the seat that drafted it, in its own project, with 1 to 50 entries of three kinds, each
+with nothing else:
+
+```json
+{"batch": "replies-2026-11-14", "project": "inbox-backlog", "entries": [
+  {"tool": "mcp__slack__slack_send_message", "input": {"channel_id": "D0123", "message": "Thanks, Tuesday works."}},
+  {"channel": "messenger", "to": "facebook.com/messages/e2ee/t/1000000001", "text": "Thanks, Tuesday works."},
+  {"channel": "messages", "to": "+15550100", "text": "On my way."}]}
+```
+
+A connector call is the tool's exact name and its exact input. A browser send on Messenger is the conversation's
+address and the exact text. A send by the local messages sender (`messages_send.py`) is the handle `--to` takes, or
+the handles `--members` takes, comma-separated, and the exact text. Anything else is refused with what is wrong, and
+so are a key given twice, a number JSON does not have, a repeated entry and a file over 1 MB.
+
+**Asking.** `synthesis sends batch <file>` prints the digest (SHA-256 of the batch's canonical JSON: sorted keys, no
+spaces, UTF-8), the count and each entry's channel and recipient; `--show` also prints every text in full (a
+connector call's whole input) and opens nothing, so it needs no code. Run by an agent, the command opens a batch only
+on the principal's code for exactly that digest, which it spends itself: the guard holds it with a code and names
+the count, the digest's first 12 characters and the file, and a file changed after the hold has another digest and
+does not get the grant. Show the principal every entry in full (`--show`, or the packet built from the same file,
+with that digest prefix) and ask for the code. Run in their own terminal, it opens directly. At the grant the entries
+are copied into the synthesis state with the digest, the project, the grant's time and a spent mark for each, so
+editing the file afterwards changes nothing.
+
+**What an entry covers.** Exactly that entry, compared after each string's line endings are written as `\n`, and
+nothing else is overlooked: a trailing space, a lookalike letter, another case or one more character is another
+send. A connector entry binds the whole call, every field of its input (a subject, a thread, an attachment's
+content), compared as JSON (`true` is not `1`). A messages entry binds the sender's recipient and text; a photo
+beside them is outside every batch. A browser entry binds one call that, on the page whose address names the
+conversation, does only this, in this order (the coordinator's rules of 2026-11-14):
+
+1. At most one click whose summary says it focuses the message box ("Focuses the message box").
+2. Clears the box: select-all, then Delete or Backspace (`cmd+a` or `ctrl+a`, then `Backspace` or `Delete`, as two
+   key actions or one). Typing adds to whatever draft the box already holds, so without the clearing a matched call
+   could send words nobody approved.
+3. Types the entry's text: each `type` action's words in order, with `shift+Return` (or `shift+Enter`) for each line
+   break, since a plain Return sends on Messenger. The text rebuilt from them must equal the entry's. A line break
+   inside a `type` action's words is itself a send there, the guard holds it, and it never counts as a line break.
+4. Sends it once, by one plain Return or Enter, or one click whose summary says it sends, as its last action.
+
+Any other click, key, scroll, script, form fill, upload, drag or navigation after the clearing, or a second send,
+leaves the call to the code per call. The page is the one Claude in Chrome's newest tab list gives the tab, or the
+one a navigate step before the clearing, in the same call, opened. A conversation is its site and path, its trailing slash and query left off:
+`facebook.com/messages/t/<id>`, `facebook.com/messages/e2ee/t/<id>` (every chat facebook.com lists links to this
+form), `messenger.com/t/<id>` and `messenger.com/e2ee/t/<id>` are four distinct conversations, and a call on one
+never spends an entry for another. Each entry sends once, decided under the send guard's lock, so two sessions
+racing for one entry send it once; only within 12 hours of the grant; and only from a session whose board project
+is the batch's. Each is written to the day's ledger as `batch:<digest prefix>:<index>`, so `synthesis sends log`
+shows it for "On your behalf".
+
+**Every other check runs first.** The register scan, the format rules, an address that can change
+(`temporary_addresses`) and a time in the words (`fresh_calendar`) hold an entry as they hold any message: an entry
+that names a clock time still needs a fresh calendar read when it goes, or the hold's own code, which spends the
+entry with the send. A meeting placed on today is never covered (`same_day_meetings`), and neither is a connector
+call that has the connector read a file, since a batch binds the file's path and not its bytes. A draft typed by an
+earlier call goes with the clearing, but a file, a drop or a paste an earlier call left on a conversation's page (a
+pasted image is an attachment) may stay beside the words, so that page's entries wait for the code per call until a
+send from it goes; that code releases the call and spends the entry. No shell post is a batch's entry: the messages
+sender asks the guard itself.
+
+**The window and the batch never combine.** The batch is looked at after every check and before the window; a send
+it covers is not counted against a window's planned sends, and a call is covered whole or not at all.
+
+**Fail closed.** Batch state that cannot be read, or was edited, renamed, given more than 12 hours or spent marks
+for entries it does not have, is no batch: its sends fall back to the code per call, and the same batch granted
+again is refused rather than guessing which entries went. A batch granted again with readable state keeps the spent
+marks of its earlier grant. The file tools and shell writes cannot write the state, which lies in the synthesis state
+folder, and a script that names a batch's opening or spending code is refused as the window's is.
+
+**Ending.** `synthesis sends close` ends the window and every open batch at once, with no code, and `synthesis sends
+status` shows each open batch with its entries left and when it ends.
+
 ## Computer use and the browser (2026-10-22)
 
 On 2026-10-22 a photo with a caption went out on WhatsApp through `computer_batch`, a click on the app's Send
