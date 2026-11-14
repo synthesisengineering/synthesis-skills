@@ -941,10 +941,12 @@ ROOT = Path(__file__).resolve().parents[1]
 # configure_codex 8 and configure_claude 7 fewer), _state_tables 10, _setup_wrote 5 (setup's own groups by their text),
 # install_plugin 5 (every Codex install keeps the declaration in step), _uninstall 4, main 3 (the flag), the two marks
 # 2, configured_ref one fewer (paths.codex_home), and spacing with the section's comment 18.
+# 5.21.0 (2026-11-14): guards.py 4, Messenger inside facebook.com (its page and the pop-ups on every page) and
+# Instagram in the browser's messaging sites: a comment line and three lines of five entries.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # consolidate first).
-CORE_BUDGET = 14747
-PLUGIN_BUDGET = 37872
+CORE_BUDGET = 14751
+PLUGIN_BUDGET = 37876
 
 
 def _lines(files):

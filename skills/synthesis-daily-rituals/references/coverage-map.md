@@ -1,5 +1,7 @@
 # Coverage map: synthesis-daily-rituals 2.45.1 to 3.0.0 (v5)
 
+From SKILL.md's contents, moved here word for word in 3.17.0 (the links now point from this folder): [references/coverage-map.md](coverage-map.md): where every 2.45.1 rule lives now. [references/preserved.md](preserved.md) (what was retired and why), [references/preserved-skill-v2-part1.md](preserved-skill-v2-part1.md), [references/preserved-skill-v2-part2.md](preserved-skill-v2-part2.md) and [references/preserved-retired-references.md](preserved-retired-references.md) keep the old text verbatim. Read only to review the rewrite.
+
 Ruling D8: every rule of the old text has a new home, or sits in a preserved file with the
 reason. "Verbatim" means the old lines appear unchanged in the named file; "reworded" means the
 rule is kept in plain words there with v5 commands, and the original wording is in
