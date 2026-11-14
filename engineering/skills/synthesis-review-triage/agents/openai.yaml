@@ -1,0 +1,7 @@
+interface:
+  display_name: "Synthesis Review Triage"
+  short_description: "Apply the review triage synthesis workflow"
+  default_prompt: "Use $synthesis-review-triage to apply this workflow to the current task."
+
+policy:
+  allow_implicit_invocation: false

@@ -1,0 +1,7 @@
+interface:
+  display_name: "Synthesis Catchup Ledger"
+  short_description: "Apply the catchup ledger synthesis workflow"
+  default_prompt: "Use $synthesis-catchup-ledger to apply this workflow to the current task."
+
+policy:
+  allow_implicit_invocation: false

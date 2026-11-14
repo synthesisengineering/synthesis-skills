@@ -1,0 +1,7 @@
+interface:
+  display_name: "Synthesis Preflight"
+  short_description: "Apply the preflight synthesis workflow"
+  default_prompt: "Use $synthesis-preflight to apply this workflow to the current task."
+
+policy:
+  allow_implicit_invocation: false

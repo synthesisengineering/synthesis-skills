@@ -1,0 +1,7 @@
+interface:
+  display_name: "Synthesis Codebase Review"
+  short_description: "Apply the codebase review synthesis workflow"
+  default_prompt: "Use $synthesis-codebase-review to apply this workflow to the current task."
+
+policy:
+  allow_implicit_invocation: false

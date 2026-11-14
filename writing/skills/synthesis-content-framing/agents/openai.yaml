@@ -1,0 +1,7 @@
+interface:
+  display_name: "Synthesis Content Framing"
+  short_description: "Apply the content framing synthesis workflow"
+  default_prompt: "Use $synthesis-content-framing to apply this workflow to the current task."
+
+policy:
+  allow_implicit_invocation: false

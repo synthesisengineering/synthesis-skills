@@ -1,0 +1,7 @@
+interface:
+  display_name: "Synthesis PR Review"
+  short_description: "Apply the pr review synthesis workflow"
+  default_prompt: "Use $synthesis-pr-review to apply this workflow to the current task."
+
+policy:
+  allow_implicit_invocation: false

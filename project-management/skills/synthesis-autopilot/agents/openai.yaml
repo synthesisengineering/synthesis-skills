@@ -1,0 +1,4 @@
+interface:
+  display_name: "Synthesis Autopilot"
+  short_description: "Apply the autopilot synthesis workflow"
+  default_prompt: "Use $synthesis-autopilot to apply this workflow to the current task."

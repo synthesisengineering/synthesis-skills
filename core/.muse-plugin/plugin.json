@@ -1,0 +1,87 @@
+{
+  "schemaVersion": 1,
+  "name": "synthesis-skills-core",
+  "displayName": "Synthesis: core",
+  "version": "5.22.0",
+  "description": "The ground every synthesis collection stands on: thinking and grounding discipline, verification before done, project records that survive compaction and restarts, decision packets and action sheets, the skill router, the skills that install synthesis and keep skill copies true to their source, and editing a knowledge base in the Open Knowledge Format, which each new workspace starts with. It has no hooks and runs no synthesis runtime, so no guards, no board and none of the rituals' state: nothing in it checks a send, a deploy or a commit, or coordinates sessions, and a script that needs the runtime says so in one line. Where one of its skills describes those, it describes the whole set. The whole set, synthesis-skills, has all of them and every skill: https://github.com/synthesisengineering/synthesis-skills",
+  "compat": {
+    "source": "native",
+    "manifestDir": ".muse-plugin"
+  },
+  "capabilities": {
+    "skills": [
+      {
+        "id": "synthesis-action-sheet",
+        "path": "skills/synthesis-action-sheet/SKILL.md"
+      },
+      {
+        "id": "synthesis-agent-guardrails",
+        "path": "skills/synthesis-agent-guardrails/SKILL.md"
+      },
+      {
+        "id": "synthesis-anti-shortcuts",
+        "path": "skills/synthesis-anti-shortcuts/SKILL.md"
+      },
+      {
+        "id": "synthesis-checkpoint",
+        "path": "skills/synthesis-checkpoint/SKILL.md"
+      },
+      {
+        "id": "synthesis-context-lifecycle",
+        "path": "skills/synthesis-context-lifecycle/SKILL.md"
+      },
+      {
+        "id": "synthesis-decision-packet",
+        "path": "skills/synthesis-decision-packet/SKILL.md"
+      },
+      {
+        "id": "synthesis-grounding-discipline",
+        "path": "skills/synthesis-grounding-discipline/SKILL.md"
+      },
+      {
+        "id": "synthesis-implementation-integrity",
+        "path": "skills/synthesis-implementation-integrity/SKILL.md"
+      },
+      {
+        "id": "synthesis-kb-edit",
+        "path": "skills/synthesis-kb-edit/SKILL.md"
+      },
+      {
+        "id": "synthesis-model-tiers",
+        "path": "skills/synthesis-model-tiers/SKILL.md"
+      },
+      {
+        "id": "synthesis-okf",
+        "path": "skills/synthesis-okf/SKILL.md"
+      },
+      {
+        "id": "synthesis-onboarding",
+        "path": "skills/synthesis-onboarding/SKILL.md"
+      },
+      {
+        "id": "synthesis-project-management",
+        "path": "skills/synthesis-project-management/SKILL.md"
+      },
+      {
+        "id": "synthesis-skill-router",
+        "path": "skills/synthesis-skill-router/SKILL.md"
+      },
+      {
+        "id": "synthesis-skills-manager",
+        "path": "skills/synthesis-skills-manager/SKILL.md"
+      },
+      {
+        "id": "synthesis-thinking-framework",
+        "path": "skills/synthesis-thinking-framework/SKILL.md"
+      },
+      {
+        "id": "synthesis-tree-of-thought",
+        "path": "skills/synthesis-tree-of-thought/SKILL.md"
+      }
+    ],
+    "commands": [],
+    "hooks": [],
+    "mcpServers": [],
+    "reminders": []
+  }
+}

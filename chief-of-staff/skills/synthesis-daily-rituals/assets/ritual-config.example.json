@@ -1,0 +1,28 @@
+{
+  "_comment": "Copy to <synthesis home>/rituals/config.json (~/.synthesis/v5/rituals/config.json) and replace the placeholders. Every key under a workspace may also sit under defaults.",
+  "defaults": {
+    "streak": "none",
+    "weekdays": [0, 1, 2, 3, 4],
+    "non_working_dates": []
+  },
+  "workspaces": {
+    "work": {
+      "streak": "expected-days",
+      "non_working_dates": ["2026-12-25"],
+      "plans_dirs": ["~/workspaces/work/knowledge/daily-plans"],
+      "artifacts_dirs": ["~/workspaces/work/knowledge/ritual-workers"],
+      "records_dirs": ["~/workspaces/work/knowledge/drafts"],
+      "travel_check": true,
+      "commitment_check": {"from": "2026-12-01"},
+      "lapse_register": "~/workspaces/work/knowledge/records/lapse-register.md",
+      "relied_on": [
+        {"what": "the intake form on the shared address", "by": "the sales team",
+         "check": ["curl", "-fsS", "--max-time", "10", "https://intake.example.com/health"]}
+      ]
+    },
+    "advisory": {
+      "quiet_after_days": 21,
+      "plans_dirs": []
+    }
+  }
+}

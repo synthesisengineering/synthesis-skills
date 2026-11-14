@@ -1,0 +1,7 @@
+interface:
+  display_name: "Synthesis Article Refresh"
+  short_description: "Apply the article refresh synthesis workflow"
+  default_prompt: "Use $synthesis-article-refresh to apply this workflow to the current task."
+
+policy:
+  allow_implicit_invocation: false

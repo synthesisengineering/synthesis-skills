@@ -1,0 +1,6 @@
+interface:
+  display_name: "Synthesis Local Model Runtime"
+  short_description: "Fit, install, verify, and update local models"
+  default_prompt: "Use $synthesis-local-model-runtime to profile this computer without exposing hardware identifiers, compare Ollama, LM Studio, llama.cpp, and MLX-LM by their actual capabilities, recommend artifacts that fit its memory and storage, and produce a dry-run installation or update plan with exact model ids and tradeoffs."
+policy:
+  allow_implicit_invocation: false

@@ -1,0 +1,88 @@
+{
+  "config_version": 1,
+  "timezone": "America/New_York",
+  "working_hours": {
+    "start": "09:00",
+    "end": "17:00"
+  },
+  "protected_hours": [],
+  "principal_addresses": [],
+  "tiers": {
+    "priority": [],
+    "peer": [],
+    "vendor": []
+  },
+  "assistants": [],
+  "aliases": {},
+  "meeting_defaults": {
+    "short_minutes": 25,
+    "long_minutes": 50,
+    "minimum_notice_hours": 24,
+    "same_day_meetings": false,
+    "prep_lead_hours": 24
+  },
+  "calendar_guardian": {
+    "thresholds": {
+      "max_meeting_hours_per_day": 5,
+      "min_maker_blocks_per_day": 1,
+      "max_consecutive_meetings": 3,
+      "maker_block_minutes": 120,
+      "touchpoint_days": 7
+    },
+    "holds": {
+      "title": "Hold",
+      "ledger": "~/.synthesis/chief-of-staff/holds/events.jsonl",
+      "expire": "end-of-day",
+      "engine": "scripts/holds_state.py — append-only; never hand-edit"
+    },
+    "personal_markers": [],
+    "same_day_exceptions": "reuse the tiers section",
+    "weekly_review_day": "Friday"
+  },
+  "travel": {
+    "notification_tiers": [],
+    "itinerary_recipients": []
+  },
+  "critical_deadlines": {
+    "classes": "Any deadline whose miss causes harm that cannot be undone or fixed until the next cycle: benefits and insurance enrollment, taxes, legal and patent filings, immigration and identity documents, pay, time-off and award actions for reports, account-security checks.",
+    "calendar": "The same day it is first seen: an all-day marker on the closing date and a working block early in the window, on the primary calendar.",
+    "standing_reminders": []
+  },
+  "travel_policy": {
+    "home": {
+      "label": "Home",
+      "address": "",
+      "area": ""
+    },
+    "places": [],
+    "car": true,
+    "modes": [
+      "walk",
+      "subway",
+      "bus",
+      "commuter rail",
+      "ferry",
+      "bike share",
+      "car"
+    ],
+    "local_minutes": 15,
+    "arrive_early_minutes": 15,
+    "latest_return": "23:30",
+    "sleep_hours": 8,
+    "morning_starts": "07:00",
+    "cost": {
+      "personal": "the cheapest reliable option, bought ahead where that is cheaper; a car only on the principal's decision",
+      "business": "an expensable car where policy allows and it saves real time"
+    },
+    "block_title": "Travel",
+    "online": [
+      "zoom",
+      "microsoft teams",
+      "google meet",
+      "video call",
+      "phone",
+      "online",
+      "virtual"
+    ]
+  }
+}

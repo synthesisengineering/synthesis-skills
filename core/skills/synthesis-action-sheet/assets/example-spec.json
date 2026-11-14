@@ -1,0 +1,63 @@
+{
+  "title": "Your actions, Monday October 19",
+  "date": "2026-10-19",
+  "intro": "Yesterday's rulings are carried out where an agent could do it. Two sends wait for your code, and six things are yours.",
+  "done": [
+    {"kind": "emails sent", "label": "Confirmed the panel slot with the conference", "href": "https://mail.example.test/sent/1001"},
+    {"kind": "emails sent", "label": "Sent the board deck to Casey Example", "href": "https://mail.example.test/sent/1002"},
+    {"kind": "emails sent", "label": "Declined the Thursday vendor demo"},
+    {"kind": "calendar holds", "label": "Held Tuesday 4:00 PM for coffee with Alex Example", "href": "https://calendar.example.test/event/2001"},
+    {"kind": "calendar holds", "label": "Held Thursday lunch for the team review"},
+    {"kind": "records filed", "label": "Filed yesterday's rulings", "href": "2026-10-18-catch-up-rulings.json"},
+    {"kind": "records filed", "label": "Updated the project's open items"}
+  ],
+  "approve": [
+    {
+      "id": "A-1", "channel": "email", "who": "Jordan Example", "address": "jordan@example.test",
+      "subject": "Friday at the venue",
+      "why": "She holds the room until noon tomorrow; this confirms it.",
+      "text": "Hi Jordan,\n\nFriday works. Please hold the east room from 6 to 9 PM for twelve people. The deposit goes out today.\n\nThanks!"
+    },
+    {
+      "id": "A-2", "channel": "slack", "who": "Operations channel", "address": "#ops-example",
+      "why": "The team asked this morning who covers Friday's release.",
+      "text": "I'll cover Friday's release window, with Casey as backup."
+    }
+  ],
+  "do": [
+    {
+      "id": "D-1", "channel": "linkedin", "who": "Alex Example",
+      "why": "First: he leaves town tomorrow.",
+      "text": "Hi Alex, good to hear from you. Coffee would be great. Does Tuesday the 20th at 4:00 PM work?",
+      "agent": "can"
+    },
+    {
+      "id": "D-2", "channel": "whatsapp", "who": "Sam Placeholder", "address": "+15555550123",
+      "why": "Dinner on Wednesday; he needs a headcount tonight.",
+      "text": "Sam, Wednesday the 21st works for dinner. What time suits everyone, and how many of you will there be?",
+      "agent": "can"
+    },
+    {
+      "id": "D-3", "channel": "imessage", "who": "Pat Example", "address": "+15555550142",
+      "why": "The birthday tea you promised last week.",
+      "text": "Pat, I'm back. How about tea on Sunday the 25th at 3:00 PM?",
+      "agent": "can"
+    },
+    {
+      "id": "D-4", "channel": "call", "who": "Riley Sample", "address": "+15555550167",
+      "why": "The contractor wants a yes or no on the window quote before Thursday.",
+      "text": "Accept the second quote. Ask for a start date after the 30th.",
+      "agent": "never"
+    },
+    {
+      "id": "D-5", "channel": "web", "label": "Pay the venue deposit", "href": "https://bank.example.test/payments",
+      "why": "The venue releases the room at noon tomorrow without it.",
+      "agent": "never", "risk": "money"
+    },
+    {
+      "id": "D-6", "channel": "task", "label": "Sign and return the lease renewal",
+      "why": "Due Friday, and only you can sign it.",
+      "agent": "never", "risk": "identity"
+    }
+  ]
+}

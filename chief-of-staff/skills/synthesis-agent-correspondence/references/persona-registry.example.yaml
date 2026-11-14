@@ -1,0 +1,47 @@
+# Agent persona registry — template.
+#
+# Copy to a private, source-controlled location of your own (a private
+# skill collection, a dotfiles repo, or your control-plane config) and
+# fill in your real persona names, emoji, and URLs. Nothing here is a
+# secret — it's branding and routing metadata — but it belongs in your
+# PRIVATE layer because the names and scope rules are yours, not generic.
+#
+# The archetype is BINDING, not cosmetic: it assigns the persona to a
+# lane. An `assistant` persona signs only words the principal genuinely
+# owns (composed, dictated, or edited to ownership) — one signature, one
+# meaning. A `bot` persona signs words the agent produced under the
+# principal's direction — its signature may vary with review depth.
+# See the synthesis-agent-correspondence skill for the lanes model.
+
+registry_version: 2
+
+personas:
+  - id: acme-bot
+    display_name: "Acme-Bot"       # exact prose spelling — branding is absolute, never vary it
+    archetype: bot                  # binding: bot-lane semantics — the agent's words, the principal's direction
+    emoji: "🤖"
+    url: "https://acme-bot.example/"
+    scope: >
+      All bot-lane sends: routing, scheduling, status relays,
+      acknowledgments, and directed replies where the agent writes the
+      words. Standing-direction floor limits always apply: never opinions,
+      never commitments, never sensitive relationships, never criticism.
+
+  - id: acme-assistant
+    display_name: "Acme-Assistant"
+    archetype: assistant            # binding: assistant-lane semantics — the principal's words, the agent's hands
+    emoji: "🧞"
+    url: "https://acme-assistant.example/"
+    scope: >
+      Assistant-lane sends only: the principal composed, dictated, or
+      edited these words to genuine ownership; the agent refined and
+      transmitted them. Exact-text ownership required — a message the
+      principal has not made their own routes to the bot persona instead.
+
+# Add one entry per persona you actually use. Define as many as you want —
+# one per venture, separate work and personal identities, multiple bot
+# brands for different audiences — but every persona maps to exactly one
+# lane via its archetype. Don't share an emoji across personas: the emoji
+# IS the recipient-facing legend (no marker = all the principal; assistant
+# marker = the principal's words; bot marker = the principal's direction),
+# and a persona's emoji never appears on another persona's message.

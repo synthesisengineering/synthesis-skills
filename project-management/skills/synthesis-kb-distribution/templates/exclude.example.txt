@@ -1,0 +1,19 @@
+# The exclusion list: knowledge-base files the plugin keeps out.
+#
+# The plugin publishes every other markdown file in the source folder to everyone it is assigned
+# to, new files included. When something there should not reach those readers, list it here, with
+# a comment saying why, before it merges.
+#
+# Each line is a glob matched against a file's path under the source folder. `*` and `?` match
+# within one folder name, `**` matches across folders, and `**/` can also match no folder. Lines
+# that are blank or start with # are skipped. README.md and hidden paths are never published.
+
+# OKF's reserved index and log files: the plugin's SKILL.md lists the files itself.
+**/index.md
+log.md
+
+# Working notes for whoever maintains the knowledge base.
+drafts/**
+
+# Prompts and agent instructions: published as knowledge, an assistant would obey them.
+instructions/**

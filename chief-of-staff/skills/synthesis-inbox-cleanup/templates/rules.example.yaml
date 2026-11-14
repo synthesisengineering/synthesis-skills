@@ -1,0 +1,86 @@
+# ~/.synthesis/inbox-cleanup/rules.yaml — sender rules manifest
+#
+# This file is per-user, never in version control. The schema is documented
+# in references/manifest-schema.md.
+#
+# Resolution precedence (most specific wins):
+#   never_touch.addresses  >  never_touch.domains  >  subject_rules  >
+#   senders(address > domain > name)  >  class_defaults  >  unmatched(keep)
+#
+# Start with never_touch — that's the safety net. Add senders incrementally as
+# unmatched senders show up in `icloud_tail.py` output.
+
+# ─────────────────────────────────────────────────────────────────────────
+# Default disposition per class name. Sender rules can use `class: <name>`
+# instead of `disposition:` to inherit from this table.
+# ─────────────────────────────────────────────────────────────────────────
+class_defaults:
+  promo: trash             # deals, offers, marketing blasts
+  newsletter: newsletter   # subscribed newsletters (worth keeping, not inbox)
+  notification: archive    # low-value notifications worth keeping
+  transactional: keep      # receipts, statements (stays in inbox)
+  social: archive          # social-network activity notifications
+
+# ─────────────────────────────────────────────────────────────────────────
+# NEVER_TOUCH — the load-bearing safety net.
+# Any message matching here resolves to `keep` and skips all subsequent
+# rules. Banks, payroll, healthcare, employer, government, family.
+# ─────────────────────────────────────────────────────────────────────────
+never_touch:
+  domains:
+    # Examples — replace with YOUR providers:
+    # - chase.com           # banking
+    # - vanguard.com        # investments
+    # - justworks.com       # payroll
+    # - kaiserpermanente.org # healthcare
+    # - your-employer.com   # current employer
+
+  addresses:
+    # Examples — replace with YOUR addresses:
+    # - mom@example.com
+    # - dad@example.com
+    # - boss@your-employer.com
+
+# ─────────────────────────────────────────────────────────────────────────
+# FRIENDS_PROTECT — humans whose mail stays in inbox.
+# Semantically separate from never_touch (these are people, not institutions)
+# but the effect is the same: resolve to keep.
+# ─────────────────────────────────────────────────────────────────────────
+friends_protect: []
+  # - match: {address: friend@example.com}
+  # - match: {domain: family-domain.example}
+
+# ─────────────────────────────────────────────────────────────────────────
+# SUBJECT_RULES — conditional rules (sender + subject).
+# Useful when one sender is mixed (legitimate transactional + promo) and
+# only some subjects should be moved.
+# ─────────────────────────────────────────────────────────────────────────
+subject_rules: []
+  # - if: {domain: bigretailer.example, subject_contains: "% off"}
+  #   disposition: trash
+  # - if: {domain: airline.example, subject_contains: "shipped"}
+  #   disposition: archive
+
+# ─────────────────────────────────────────────────────────────────────────
+# SENDERS — the main rules table.
+# Match precedence: address > domain > name (most specific wins).
+# Use `class:` for default disposition or `disposition:` to override.
+# ─────────────────────────────────────────────────────────────────────────
+senders: []
+  # Promotional / marketing senders:
+  # - match: {domain: marketing.example.com}
+  #   class: promo
+  # - match: {address: deals@store.example}
+  #   class: promo
+  #
+  # Newsletters you want kept but out of inbox:
+  # - match: {domain: substack.com}
+  #   class: newsletter
+  #
+  # Notifications worth archiving:
+  # - match: {address: notifications@calendar-service.example}
+  #   class: notification
+  #
+  # Display-name fallback (use sparingly — name spoofing is easy):
+  # - match: {name: "Marketing Team"}
+  #   class: promo

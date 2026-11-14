@@ -1,0 +1,178 @@
+# Preserved: the retired fleet machinery, and the 1.0.0 SKILL.md verbatim
+
+Read only to review what the v5 rewrite did not carry, and why. The verdicts come from the v5
+code evaluation (`project-state.md`, section B, multi-Mac "fleet").
+
+Contents: What was retired and why · The 1.0.0 SKILL.md, verbatim.
+
+## What was retired and why
+
+| 1.0.0 rule or engine | Verdict | Why | v5 |
+|---|---|---|---|
+| Each Mac mints a machine-id; `machines.json` names one primary; enrollment receipts (`fleet_identity.py`) | CUT | Two Macs were enrolled once and `last_seen` never advanced; the hostname is enough | `scutil --get LocalHostName` in the machine inventory (`synthesis-mac-sync`) |
+| Board rows keyed by `(machine_id, session_uuid, client_ref)`; heartbeat liveness across Macs; the leased board mirror (`coordination.py status`) | REPLACE | v5 claims are per Mac (R2); git carries cross-Mac work | Each Mac's own board; Binding rule 1 |
+| Secrets ride the `synthesis-fleet-secrets` provider | CUT (never used) | `op` is not installed and no manifest exists outside test fixtures (tool-scripts evaluation); mac-sync's credentials folder is the path in use | Binding rule 5: the sync folder's sensitive files |
+| One-command enrollment (`onboard.sh`, `fleet_bootstrap.py`, `synthesis fleet join`): founds or joins a fleet, per-step receipts, label and role handling | SLIM | The real need is a no-flags new-Mac path that clones from a manifest, installs, runs the doctor, narrates progress and resumes on interrupt (2026-09-20 lesson: enrolling the second Mac by terminal paste failed four ways in an hour) | `python3 <synthesis-onboarding>/scripts/setup.py` |
+| Handoff offers, sealed artifacts with ticket ids, parked source rows, `overlaps-parked` claims, resume receipts (`fleet_handoff.py`) | SLIM | The checks are R1.4's acceptance (FLEET-AC-09 to 11); offers, seals, parking and receipts can go | `synthesis handoff`, the strand scan, arrive without overwriting, `synthesis brief` |
+| Destination verifies every repo by remote URL and that the offered commits are reachable | REPLACE | Git does this when it fetches and fast-forwards; a missing commit is a refusal, not a guess | `repo_state.py --discover --fetch --ff` |
+| Workspace subscriptions and the commit gate's subscription check (`fleet_subscriptions.py`) | CUT | Never enabled; with no registry file the gate always passed | None |
+| `fleet-doctor`: lease reachability and freshness, parked coherence, sealed artifacts, divergence (`fleet_doctor.py`) | REPLACE | The lease, park and seal checks have nothing to check once the lease is gone | `synthesis doctor`; divergence through the strand scan |
+| `~`-normalization of synced paths; durable versus temporary storage (`fleet_paths.py`) | SLIM | Real: synced config with literal home paths breaks on another Mac; work under a temporary directory dies at reboot | Binding rule 6; the doctor's checks |
+| Repo-qualified overlap across checkout paths (`fleet_logical.py`) | CUT | v5 claims are per Mac | None |
+| Retire: mark `retired_at`, re-pin automations and runner tokens, rotate secrets, wipe `~/.synthesis/fleet/`; retired identities never re-enroll | Kept, minus identities | There are no machine identities left to re-enroll | Procedure "Retire a Mac" |
+
+## The 1.0.0 SKILL.md, verbatim
+
+
+# Machine Sync
+
+Keep a personal fleet of Macs (N=2 first) working as one system. Git remotes
+plus the leased coordination board are the only transports: every shared
+write goes through compare-and-swap, every Mac keeps its own machine
+identity, and no file-replication transport sits in any write path.
+
+This skill is the **protocol** — enroll/sync/leave/handoff plus the engines
+that enforce them. Your personal stores (fleet registry copy, repos
+manifest, subscriptions) travel in the personal knowledge repo and
+materialize to each Mac.
+
+## Non-negotiables
+
+- Each Mac mints its own stable machine-id once
+  (`~/.synthesis/fleet/machine-id`, mode 0600). The file never moves to
+  another Mac; only the enrollment receipt names it.
+- The fleet registry (`machines.json`) names exactly one primary. A
+  secondary enrolls against the synced copy, never by founding a second
+  fleet.
+- Shared board rows identify sessions by `(machine_id, session_uuid,
+  client_ref)`. Liveness is heartbeat age on the board, never a pid from
+  another Mac.
+- Secrets ride the `synthesis-fleet-secrets` provider, never synced files.
+  No secret value appears in any synced store, board message, or receipt.
+- Resume is harness-neutral: plan file + git + board only. No step in the
+  handoff path branches on the destination client lane.
+
+## Enroll a new Mac
+
+Clean-install path only — never copy one Mac's state onto another. One
+command, the same for every scenario, downloads and installs
+everything, then onboards by asking questions: it detects what the Mac
+holds, recommends the best path, finds the knowledge repo over GitHub
+sign-in (running it when needed) or asks for it, derives home, label,
+skill source, workspace, and manifest, founds a new fleet when the
+repo holds none and otherwise joins as a secondary, narrates every
+repo as it lands, and publishes the enrollment back on success:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/stable/onboard.sh | sh
+```
+
+The join mints identity, clones subscribed repos, installs the hooks
+runtime plus the skill set, enrolls the machine, verifies the doctor, and
+publishes the enrollment to the shared registry. Every step writes a
+receipt under `~/.synthesis/fleet/receipts/`; a rerun after any failure
+or interrupt resumes safely and reports `noop` for finished steps. The
+flags `--kb`, `--label`, `--role`, and `--workspace` override the
+interactive answers for scripted runs. The underlying
+`fleet_bootstrap.py` script is an agent-and-test entry point; humans use
+the one-command installer above (or `synthesis fleet join` once set up).
+
+Robustness: taken labels offer the first free variant; renamed Macs
+are offered a relabel (explicit labels are never touched);
+concurrent enrollments merge instead of conflicting; interrupted
+clones land atomically and reruns resume; mint races adopt the
+winner; role contradictions and foreign unpushed work fail closed
+with the remedy named.
+
+## Sync (fetch shared state)
+
+Syncing means pulling authority through git, on each Mac, independently:
+
+1. Refresh the board mirror: `coordination.py status` (authority reads
+   always fence through the lease; display reads label their lease SHA).
+2. Pull subscribed repos; the divergence scan refuses split checkouts
+   before they become push races.
+3. Keep synced configs `~`-rooted: the doctor fails closed on literal
+   home paths in synced files, and every consumer expands on load.
+
+Never copy `~/.synthesis` subtrees, seats, spools, or transcript caches
+between Macs. Per-machine state stays per-machine; shared state arrives
+only through its remote.
+
+## Handoff (move work across Macs)
+
+Work moves; processes do not. The unit is a repo plus its flushed
+manifests, sealed under a ticket id.
+
+Source Mac — the gate refuses `BLOCKED` before posting anything:
+
+1. Quiesce: commit or manifest everything; nothing dirty, unpushed, or
+   unpulled in the handing-off scope.
+2. `fleet_handoff.create_handoff_offer`: readiness `REMOTE_READY` (or
+   `CLEAN` when nothing moves) posts a `handoff-offer` addressed to the
+   destination machine-id, parks the source row (claims frozen, not
+   freed), and seals the artifact.
+3. The sealed artifact (`<ticket>.sealed.json`) carries the ticket id and
+   the per-repo `(remote, branch, sha)` triples.
+
+Destination Mac — pull, verify, claim, accept, resume:
+
+1. Pull the board; find the offer addressed to this machine-id.
+2. `fleet_handoff.verify_destination`: every repo resolves by remote URL,
+   the offered SHAs are reachable from the remote, and the destination
+   tree is clean. Dirty state refuses with the file list; the source row
+   stays parked so the work is recoverable.
+3. Claim the scope through the normal claim verb (overlap with the parked
+   source annotates `overlaps-parked`, with provenance), post
+   `handoff-accept`, then complete the resume checklist: board truth,
+   code truth, context truth (re-read from synced stores), claim truth,
+   and the written resume receipt. A resume without a receipt is
+   incomplete; the doctor flags it.
+4. The loop runs identically for every destination lane — no step reads
+   the seat's client.
+
+## Leave (retire a Mac)
+
+1. Hand off or release every active row the Mac owns; park rows it may
+   resume before the retirement date.
+2. Mark `retired_at` on its `machines.json` entry and push the registry.
+3. Re-pin its automations and runner tokens to a live Mac.
+4. Rotate every secret the retired Mac could read (see
+   `synthesis-fleet-secrets`), then wipe its `~/.synthesis/fleet/`
+   identity. Retired identities never re-enroll; a returning Mac mints
+   fresh.
+
+## Workspace subscriptions
+
+`~/.synthesis/fleet/subscriptions.json` maps each machine-id to the areas
+it may commit. The commit gate refuses unsubscribed staged paths, naming
+the machine and the needed subscription. Escape once per commit with an
+explicit reason, logged on the board:
+
+```bash
+coordination.py check-staged --repository . --json \
+  --override-subscription 'hotfix outside subscribed areas'
+```
+
+No registry means subscriptions are unenrolled and the gate passes; a
+present registry with an unlisted machine, or paths outside every
+subscribed area, fails closed.
+
+## Doctor
+
+`coordination.py fleet-doctor` runs the whole gate: synced-path
+normalization, lease reachability, lease freshness, workset consistency,
+parked coherence, sealed-artifact verification, and the workset
+divergence scan. Any failure names its check and blocks with exit 1.
+
+## Engine map
+
+| Engine | Owns |
+|---|---|
+| `fleet_identity.py` | Machine-id minting, registry enrollment |
+| `fleet_handoff.py` | Source gate, sealed offers, destination resume |
+| `fleet_doctor.py` | Reachability, freshness, coherence, divergence |
+| `fleet_subscriptions.py` | Workspace-subscription gate decisions |
+| `fleet_bootstrap.py` | Idempotent new-Mac provisioning |
+| `fleet_logical.py` | Repo-qualified overlap across checkout paths |
+| `fleet_paths.py` | `~`-normalization primitives and the paths gate |

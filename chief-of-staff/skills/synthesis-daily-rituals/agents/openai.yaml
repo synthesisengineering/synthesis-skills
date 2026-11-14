@@ -1,0 +1,7 @@
+interface:
+  display_name: "Synthesis Daily Rituals"
+  short_description: "Apply the daily rituals synthesis workflow"
+  default_prompt: "Use $synthesis-daily-rituals to apply this workflow to the current task."
+
+policy:
+  allow_implicit_invocation: false

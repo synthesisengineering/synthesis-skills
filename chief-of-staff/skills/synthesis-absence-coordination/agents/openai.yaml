@@ -1,0 +1,7 @@
+interface:
+  display_name: "Synthesis Absence Coordination"
+  short_description: "Coordinate an absence end to end — notify, cover, travel, return"
+  default_prompt: "Use $synthesis-absence-coordination to plan and announce this absence."
+
+policy:
+  allow_implicit_invocation: false

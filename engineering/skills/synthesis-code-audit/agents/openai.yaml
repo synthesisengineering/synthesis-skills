@@ -1,0 +1,7 @@
+interface:
+  display_name: "Synthesis Code Audit"
+  short_description: "Apply the code audit synthesis workflow"
+  default_prompt: "Use $synthesis-code-audit to apply this workflow to the current task."
+
+policy:
+  allow_implicit_invocation: false

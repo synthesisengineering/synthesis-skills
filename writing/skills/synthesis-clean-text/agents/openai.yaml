@@ -1,0 +1,7 @@
+interface:
+  display_name: "Synthesis Clean Text"
+  short_description: "Apply the clean text synthesis workflow"
+  default_prompt: "Use $synthesis-clean-text to apply this workflow to the current task."
+
+policy:
+  allow_implicit_invocation: false

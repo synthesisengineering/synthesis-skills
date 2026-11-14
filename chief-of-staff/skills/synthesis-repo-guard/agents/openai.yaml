@@ -1,0 +1,7 @@
+interface:
+  display_name: "Synthesis Repo Guard"
+  short_description: "Apply the repo guard synthesis workflow"
+  default_prompt: "Use $synthesis-repo-guard to apply this workflow to the current task."
+
+policy:
+  allow_implicit_invocation: false

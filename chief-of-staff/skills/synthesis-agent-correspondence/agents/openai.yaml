@@ -1,0 +1,7 @@
+interface:
+  display_name: "Synthesis Agent Correspondence"
+  short_description: "Apply the agent correspondence synthesis workflow"
+  default_prompt: "Use $synthesis-agent-correspondence to apply this workflow to the current task."
+
+policy:
+  allow_implicit_invocation: false

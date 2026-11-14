@@ -1,0 +1,91 @@
+{
+  "schemaVersion": 1,
+  "name": "synthesis-skills-chief-of-staff",
+  "displayName": "Synthesis: chief of staff",
+  "version": "5.22.0",
+  "description": "The work of a chief of staff and an executive assistant: calendar and meetings, correspondence and its send rules, Slack, inbox, local messages and message exports, the daily rituals, absences and catching up after them, quick answers, and keeping your Macs and their repositories in step. It builds on the core collection: Claude Code installs the core with it, and in Codex and Muse you install both. It has no hooks and runs no synthesis runtime, so no guards, no board and none of the rituals' state: nothing in it checks a send, a deploy or a commit, or coordinates sessions, and a script that needs the runtime says so in one line. Where one of its skills describes those, it describes the whole set. The whole set, synthesis-skills, has all of them and every skill: https://github.com/synthesisengineering/synthesis-skills",
+  "compat": {
+    "source": "native",
+    "manifestDir": ".muse-plugin"
+  },
+  "capabilities": {
+    "skills": [
+      {
+        "id": "synthesis-absence-coordination",
+        "path": "skills/synthesis-absence-coordination/SKILL.md"
+      },
+      {
+        "id": "synthesis-agent-correspondence",
+        "path": "skills/synthesis-agent-correspondence/SKILL.md"
+      },
+      {
+        "id": "synthesis-catchup-ledger",
+        "path": "skills/synthesis-catchup-ledger/SKILL.md"
+      },
+      {
+        "id": "synthesis-chief-of-staff",
+        "path": "skills/synthesis-chief-of-staff/SKILL.md"
+      },
+      {
+        "id": "synthesis-concise-messaging",
+        "path": "skills/synthesis-concise-messaging/SKILL.md"
+      },
+      {
+        "id": "synthesis-daily-rituals",
+        "path": "skills/synthesis-daily-rituals/SKILL.md"
+      },
+      {
+        "id": "synthesis-fleet-secrets",
+        "path": "skills/synthesis-fleet-secrets/SKILL.md"
+      },
+      {
+        "id": "synthesis-inbox-cleanup",
+        "path": "skills/synthesis-inbox-cleanup/SKILL.md"
+      },
+      {
+        "id": "synthesis-local-messaging",
+        "path": "skills/synthesis-local-messaging/SKILL.md"
+      },
+      {
+        "id": "synthesis-mac-sync",
+        "path": "skills/synthesis-mac-sync/SKILL.md"
+      },
+      {
+        "id": "synthesis-machine-sync",
+        "path": "skills/synthesis-machine-sync/SKILL.md"
+      },
+      {
+        "id": "synthesis-meeting-prep",
+        "path": "skills/synthesis-meeting-prep/SKILL.md"
+      },
+      {
+        "id": "synthesis-meeting-transcripts",
+        "path": "skills/synthesis-meeting-transcripts/SKILL.md"
+      },
+      {
+        "id": "synthesis-message-exports",
+        "path": "skills/synthesis-message-exports/SKILL.md"
+      },
+      {
+        "id": "synthesis-message-guard",
+        "path": "skills/synthesis-message-guard/SKILL.md"
+      },
+      {
+        "id": "synthesis-quick-answers",
+        "path": "skills/synthesis-quick-answers/SKILL.md"
+      },
+      {
+        "id": "synthesis-repo-guard",
+        "path": "skills/synthesis-repo-guard/SKILL.md"
+      },
+      {
+        "id": "synthesis-slack-sync",
+        "path": "skills/synthesis-slack-sync/SKILL.md"
+      }
+    ],
+    "commands": [],
+    "hooks": [],
+    "mcpServers": [],
+    "reminders": []
+  }
+}

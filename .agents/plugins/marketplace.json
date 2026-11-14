@@ -1,0 +1,68 @@
+{
+  "name": "synthesis-collections",
+  "interface": {
+    "displayName": "Synthesis Collections"
+  },
+  "plugins": [
+    {
+      "name": "synthesis-skills-core",
+      "source": {
+        "source": "local",
+        "path": "./core"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_USE"
+      },
+      "category": "Developer Tools"
+    },
+    {
+      "name": "synthesis-skills-project-management",
+      "source": {
+        "source": "local",
+        "path": "./project-management"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_USE"
+      },
+      "category": "Developer Tools"
+    },
+    {
+      "name": "synthesis-skills-engineering",
+      "source": {
+        "source": "local",
+        "path": "./engineering"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_USE"
+      },
+      "category": "Developer Tools"
+    },
+    {
+      "name": "synthesis-skills-writing",
+      "source": {
+        "source": "local",
+        "path": "./writing"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_USE"
+      },
+      "category": "Developer Tools"
+    },
+    {
+      "name": "synthesis-skills-chief-of-staff",
+      "source": {
+        "source": "local",
+        "path": "./chief-of-staff"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_USE"
+      },
+      "category": "Developer Tools"
+    }
+  ]
+}

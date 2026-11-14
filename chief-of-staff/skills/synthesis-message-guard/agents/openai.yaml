@@ -1,0 +1,7 @@
+interface:
+  display_name: "Synthesis Message Guard"
+  short_description: "Apply the message guard synthesis workflow"
+  default_prompt: "Use $synthesis-message-guard to apply this workflow to the current task."
+
+policy:
+  allow_implicit_invocation: false

@@ -1,0 +1,7 @@
+interface:
+  display_name: "Synthesis Quick Answers"
+  short_description: "Apply the quick answers synthesis workflow"
+  default_prompt: "Use $synthesis-quick-answers to apply this workflow to the current task."
+
+policy:
+  allow_implicit_invocation: false

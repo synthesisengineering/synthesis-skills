@@ -1,0 +1,7 @@
+interface:
+  display_name: "Synthesis Disclosure Policy"
+  short_description: "Govern name disclosure by precedent and approval"
+  default_prompt: "Use $synthesis-disclosure-policy to decide whether this disclosure is published precedent, needs approval, or is protected."
+
+policy:
+  allow_implicit_invocation: false

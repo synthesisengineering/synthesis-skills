@@ -1,0 +1,4 @@
+interface:
+  display_name: "Synthesis Agent Conformance"
+  short_description: "Audit cross-agent synthesis parity and handoffs"
+  default_prompt: "Use $synthesis-agent-conformance to audit and repair cross-agent synthesis parity."

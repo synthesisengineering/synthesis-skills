@@ -1,0 +1,19 @@
+{
+  "name": "synthesis-skills-core",
+  "version": "5.22.0",
+  "description": "The ground every synthesis collection stands on: thinking and grounding discipline, verification before done, project records that survive compaction and restarts, decision packets and action sheets, the skill router, the skills that install synthesis and keep skill copies true to their source, and editing a knowledge base in the Open Knowledge Format, which each new workspace starts with. It has no hooks and runs no synthesis runtime, so no guards, no board and none of the rituals' state: nothing in it checks a send, a deploy or a commit, or coordinates sessions, and a script that needs the runtime says so in one line. Where one of its skills describes those, it describes the whole set. The whole set, synthesis-skills, has all of them and every skill: https://github.com/synthesisengineering/synthesis-skills",
+  "author": {
+    "name": "Rajiv Pant",
+    "url": "https://rajiv.com"
+  },
+  "homepage": "https://synthesisengineering.org",
+  "repository": "https://github.com/synthesisengineering/synthesis-skills",
+  "license": "Apache-2.0 AND CC0-1.0",
+  "keywords": [
+    "agent-skills",
+    "project-management",
+    "decision-making",
+    "cross-agent"
+  ],
+  "skills": "./skills/"
+}

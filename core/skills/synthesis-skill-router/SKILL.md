@@ -1,0 +1,102 @@
+---
+name: synthesis-skill-router
+description: "Route a request to the right synthesis engineering, coding, writing, project-management, knowledge, operations or agent-governance skill while keeping specialist metadata out of Codex's bounded prompt. Use when a task appears to match a synthesis workflow but the user did not name the exact skill."
+license: "CC0-1.0"
+depends_on: []
+metadata:
+  author: "Rajiv Pant"
+  version: "2.0.1"
+  source_repo: "github.com/synthesisengineering/synthesis-skills"
+  source_type: "public"
+  format: v5
+  category: core
+---
+
+# Synthesis Skill Router
+
+Pick the synthesis skill that owns a request and load it. Most synthesis skills keep their metadata out of Codex's bounded prompt, so this routing table is how an agent finds them.
+
+## Binding rules
+
+1. Choose the narrowest matching workflow, then read its sibling `SKILL.md` completely before acting.
+2. Resolve every path relative to this skill's directory.
+3. Load multiple skills when the request crosses categories; their `depends_on` declarations remain authoritative.
+4. Route by the requested outcome and the current stage.
+5. Load operative references when their task shape applies, without copying entire catalogs into each run.
+6. Preserve mandatory evidence, authority, coordination and domain checks.
+7. Loading a skill does not reopen a settled decision or turn delegated implementation choices into user approval gates; use the [decision-ownership contract](../synthesis-thinking-framework/references/decision-ownership.md) when instructions appear to disagree.
+8. Do not substitute this routing summary for the selected skill's instructions.
+
+## Contents
+
+- [references/coverage-map.md](references/coverage-map.md): where each part of the 1.5.0 text now lives.
+- [references/preserved.md](references/preserved.md): a route replaced in 2.0.1 because it named machinery v5 removed, verbatim. Read only to review the change.
+- Route by outcome: below, in six groups: projects, context and agent ecosystems; software engineering and review; writing, research and publishing; knowledge and information operations; workload, coordination and communication; reasoning and execution quality.
+
+## Route by outcome
+
+### Projects, context, and agent ecosystems
+
+- Create, find, resume, or manage a project: `../synthesis-project-management/SKILL.md`
+- Compact, archive, or repair project context: `../synthesis-context-lifecycle/SKILL.md`
+- Refresh state during a long session: `../synthesis-checkpoint/SKILL.md`
+- Execute explicit end-to-end delegation: `../synthesis-autopilot/SKILL.md`. Engage for a whole task or explicit invocation, not a single-step approval, an autonomy keyword or a discussion about the skill. Retain normal supervised work when delegation is ambiguous.
+- Install or upgrade the ecosystem: `../synthesis-onboarding/SKILL.md`, `../synthesis-skills-manager/SKILL.md`
+- Audit Claude, Codex, hooks, plugins, catalogs, or capability parity: `../synthesis-agent-conformance/SKILL.md`
+- Configure an LLM workspace or agent: `../synthesis-llm-setup/SKILL.md`, `../synthesis-technical-advisor/SKILL.md`
+- Sync machines or protect repository state: `../synthesis-mac-sync/SKILL.md`, `../synthesis-repo-guard/SKILL.md`
+- Select model roles: `../synthesis-model-tiers/SKILL.md`
+
+### Software engineering and review
+
+- AGENT HEURISTIC — Conduct a bounded adversarial review, rotate differently shaped
+  reviewers, or maintain a finding ledger: `../synthesis-adversarial-review/SKILL.md`
+- Plan implementation: `../synthesis-code-planning/SKILL.md`; for material unresolved architecture choices also load `../synthesis-preplan/SKILL.md`. Determine the decision owner before requesting review; delegated technical choices can be evaluated and executed by the agent.
+- Audit code or a codebase: `../synthesis-code-audit/SKILL.md`, `../synthesis-codebase-review/SKILL.md`
+- Integrate multi-contributor work: `../synthesis-code-integration/SKILL.md`
+- Review, prioritize, or merge a change request: `../synthesis-pr-review/SKILL.md`, `../synthesis-review-triage/SKILL.md`, `../synthesis-bitbucket/SKILL.md` as applicable
+- Run merge-readiness gates: `../synthesis-preflight/SKILL.md`, `../synthesis-implementation-integrity/SKILL.md`
+- Install or diagnose repository policy hooks: `../synthesis-git-hooks/SKILL.md`
+
+### Writing, research, and publishing
+
+- AGENT HEURISTIC — Scan a built site for configured internal markers before an approved
+  deploy: `../synthesis-promotion-gate/SKILL.md`
+- Write or refresh an article: `../synthesis-article-writing/SKILL.md`, `../synthesis-article-refresh/SKILL.md`
+- Frame a topic or brief its readers: `../synthesis-content-framing/SKILL.md`, `../synthesis-reader-briefing/SKILL.md`
+- Check quality and revise prose: `../synthesis-content-quality/SKILL.md`, `../synthesis-writing-pitfalls/SKILL.md`, `../synthesis-writing-craft/SKILL.md`
+- Fact-check or research links: `../synthesis-fact-checking/SKILL.md`, `../synthesis-link-research/SKILL.md`
+- Distribute content: `../synthesis-content-distribution/SKILL.md`
+- Write executive or very concise communication: `../synthesis-executive-communication/SKILL.md`, `../synthesis-concise-messaging/SKILL.md`
+- Profile a voice or coach creative writing: `../synthesis-voice-profiler/SKILL.md`, `../synthesis-creative-writer/SKILL.md`
+- Remove text artifacts: `../synthesis-clean-text/SKILL.md`
+- Record text integrity, lineage, generation receipts, or provenance without making authorship or watermark-absence claims: `../synthesis-text-provenance/SKILL.md`
+
+### Knowledge and information operations
+
+- Edit and ship a configured knowledge base: `../synthesis-kb-edit/SKILL.md`
+- Preserve session facts: `../synthesis-knowledge-capture/SKILL.md`
+- Author or validate Open Knowledge Format: `../synthesis-okf/SKILL.md`
+- Sync or derive meeting records: `../synthesis-meeting-transcripts/SKILL.md`
+- Sync Slack records: `../synthesis-slack-sync/SKILL.md`
+- Import a message export the principal authorized into private transcripts: `../synthesis-message-exports/SKILL.md`. Loading this route grants no discovery, request, or send authority.
+- Clean inboxes: `../synthesis-inbox-cleanup/SKILL.md`
+- Merge several model responses: `../synthesis-response-merger/SKILL.md`
+
+### Workload, coordination, and communication
+
+- Run day-start, day-end, or gap recovery: `../synthesis-daily-rituals/SKILL.md`, `../synthesis-catchup-ledger/SKILL.md`
+- Coordinate an absence: `../synthesis-absence-coordination/SKILL.md`
+- Act as chief of staff: `../synthesis-chief-of-staff/SKILL.md`
+- Hand the principal what is left to approve, send and do after agents act: `../synthesis-action-sheet/SKILL.md`
+- Review an explicitly authorized local Messages or WhatsApp window: `../synthesis-local-messaging/SKILL.md`. Loading this route grants no discovery, collection, or send authority.
+- Compose or send agent correspondence: `../synthesis-agent-correspondence/SKILL.md`
+- Enforce outbound-message safety: `../synthesis-message-guard/SKILL.md`
+- Govern disclosure: `../synthesis-disclosure-policy/SKILL.md`
+
+### Reasoning and execution quality
+
+- Structure a non-trivial decision: `../synthesis-thinking-framework/SKILL.md`
+- Explore independent expert branches: `../synthesis-tree-of-thought/SKILL.md`
+- Detect shortcut reasoning: `../synthesis-anti-shortcuts/SKILL.md`; the effort side, where output does less than the work requires
+- Verify a claim, check quote provenance, or prove an absence: `../synthesis-grounding-discipline/SKILL.md`; the truth side, where output claims more than the evidence supports

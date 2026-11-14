@@ -1,0 +1,22 @@
+{
+  "name": "synthesis-skills-chief-of-staff",
+  "version": "5.22.0",
+  "description": "The work of a chief of staff and an executive assistant: calendar and meetings, correspondence and its send rules, Slack, inbox, local messages and message exports, the daily rituals, absences and catching up after them, quick answers, and keeping your Macs and their repositories in step. It builds on the core collection: Claude Code installs the core with it, and in Codex and Muse you install both. It has no hooks and runs no synthesis runtime, so no guards, no board and none of the rituals' state: nothing in it checks a send, a deploy or a commit, or coordinates sessions, and a script that needs the runtime says so in one line. Where one of its skills describes those, it describes the whole set. The whole set, synthesis-skills, has all of them and every skill: https://github.com/synthesisengineering/synthesis-skills",
+  "author": {
+    "name": "Rajiv Pant",
+    "url": "https://rajiv.com"
+  },
+  "homepage": "https://synthesisengineering.org",
+  "repository": "https://github.com/synthesisengineering/synthesis-skills",
+  "license": "Apache-2.0 AND CC0-1.0",
+  "keywords": [
+    "agent-skills",
+    "chief-of-staff",
+    "calendar",
+    "correspondence"
+  ],
+  "skills": "./skills/",
+  "dependencies": [
+    "synthesis-skills-core"
+  ]
+}

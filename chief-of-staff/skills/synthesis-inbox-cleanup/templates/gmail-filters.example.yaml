@@ -1,0 +1,79 @@
+# Gmail server-side filters — working format for proposing filters before
+# calling workspace-mcp's manage_gmail_filter tool.
+#
+# This file is a STAGING format. The agent reads the YAML, proposes filters,
+# the user approves, the agent then calls manage_gmail_filter for each. The
+# created filters are visible in Gmail Settings → Filters and Blocked Addresses.
+#
+# See references/gmail-filters-patterns.md for the five proven category shapes.
+#
+# Label IDs: custom labels need their internal ID (Label_5, Label_12, etc.).
+# Get IDs from `list_gmail_labels` or `manage_gmail_label` responses. Built-in
+# labels (INBOX, SPAM, TRASH, STARRED, IMPORTANT) are referenced by name.
+
+# ─────────────────────────────────────────────────────────────────────────
+# Custom labels — must be CREATED (via manage_gmail_label) before any
+# filter that references them, otherwise filter creation fails.
+# ─────────────────────────────────────────────────────────────────────────
+labels:
+  - name: Newsletters
+    # After creation, the API returns an internal ID like "Label_5". Record
+    # it here so subsequent filter entries can reference it by name.
+  - name: Notifications
+  - name: Sent-Archive
+
+# ─────────────────────────────────────────────────────────────────────────
+# Filters — one entry per server-side filter to create.
+# ─────────────────────────────────────────────────────────────────────────
+filters:
+
+  # 1. Newsletter routing (label + skip inbox)
+  - description: "Route subscribed newsletters to Newsletters label"
+    criteria:
+      from: "newsletter1@example.com OR newsletter2@example.com"
+    action:
+      addLabelIds:
+        - "Newsletters"
+      removeLabelIds:
+        - "INBOX"
+
+  # 2. Promo / marketing trash
+  - description: "Trash pure promotional senders"
+    criteria:
+      from: "deals@store.example OR marketing@brand.example"
+    action:
+      addLabelIds:
+        - "TRASH"
+      removeLabelIds:
+        - "INBOX"
+
+  # 3. Notification routing
+  - description: "Route calendar / social notifications to Notifications"
+    criteria:
+      from: "noreply@calendar-service.example OR notifications@social-site.example"
+    action:
+      addLabelIds:
+        - "Notifications"
+      removeLabelIds:
+        - "INBOX"
+
+  # 4. Important sender protection
+  - description: "Never spam-classify high-priority senders"
+    criteria:
+      from: "bank@example.com OR employer@example.com"
+    action:
+      addLabelIds:
+        - "IMPORTANT"
+        - "STARRED"
+      removeLabelIds:
+        - "SPAM"
+
+  # 5. Self-CC routing
+  - description: "Route BCC-self copies to Sent-Archive"
+    criteria:
+      from: "your.address@example.com"
+    action:
+      addLabelIds:
+        - "Sent-Archive"
+      removeLabelIds:
+        - "INBOX"

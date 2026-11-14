@@ -1,0 +1,7 @@
+interface:
+  display_name: "Synthesis Knowledge Base Editing"
+  short_description: "Edit and ship configured knowledge-base changes safely"
+  default_prompt: "Use $synthesis-kb-edit to update this knowledge base from its .agents/knowledge-base.yaml contract and ship it through the configured review flow."
+
+policy:
+  allow_implicit_invocation: false

@@ -1,0 +1,7 @@
+interface:
+  display_name: "Synthesis OKF"
+  short_description: "Validate and normalize portable knowledge bundles"
+  default_prompt: "Use $synthesis-okf to validate this knowledge bundle for OKF conformance and configured metadata consistency."
+
+policy:
+  allow_implicit_invocation: false

@@ -1,0 +1,7 @@
+interface:
+  display_name: "Synthesis Fact Checking"
+  short_description: "Apply the fact checking synthesis workflow"
+  default_prompt: "Use $synthesis-fact-checking to apply this workflow to the current task."
+
+policy:
+  allow_implicit_invocation: false

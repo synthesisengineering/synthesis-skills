@@ -1,0 +1,91 @@
+{
+  "schemaVersion": 1,
+  "name": "synthesis-skills-writing",
+  "displayName": "Synthesis: writing",
+  "version": "5.22.0",
+  "description": "Writing, editing and publishing: reader briefings, articles and their refreshes, framing, checks for slop and bad-writing patterns, craft, fact-checking, link research, distribution, voice profiles, clean text and provenance, executive communication, disclosure decisions and a pre-deploy content gate. It builds on the core collection: Claude Code installs the core with it, and in Codex and Muse you install both. It has no hooks and runs no synthesis runtime, so no guards, no board and none of the rituals' state: nothing in it checks a send, a deploy or a commit, or coordinates sessions, and a script that needs the runtime says so in one line. Where one of its skills describes those, it describes the whole set. The whole set, synthesis-skills, has all of them and every skill: https://github.com/synthesisengineering/synthesis-skills",
+  "compat": {
+    "source": "native",
+    "manifestDir": ".muse-plugin"
+  },
+  "capabilities": {
+    "skills": [
+      {
+        "id": "synthesis-article-refresh",
+        "path": "skills/synthesis-article-refresh/SKILL.md"
+      },
+      {
+        "id": "synthesis-article-writing",
+        "path": "skills/synthesis-article-writing/SKILL.md"
+      },
+      {
+        "id": "synthesis-clean-text",
+        "path": "skills/synthesis-clean-text/SKILL.md"
+      },
+      {
+        "id": "synthesis-content-distribution",
+        "path": "skills/synthesis-content-distribution/SKILL.md"
+      },
+      {
+        "id": "synthesis-content-framing",
+        "path": "skills/synthesis-content-framing/SKILL.md"
+      },
+      {
+        "id": "synthesis-content-quality",
+        "path": "skills/synthesis-content-quality/SKILL.md"
+      },
+      {
+        "id": "synthesis-creative-writer",
+        "path": "skills/synthesis-creative-writer/SKILL.md"
+      },
+      {
+        "id": "synthesis-disclosure-policy",
+        "path": "skills/synthesis-disclosure-policy/SKILL.md"
+      },
+      {
+        "id": "synthesis-executive-communication",
+        "path": "skills/synthesis-executive-communication/SKILL.md"
+      },
+      {
+        "id": "synthesis-fact-checking",
+        "path": "skills/synthesis-fact-checking/SKILL.md"
+      },
+      {
+        "id": "synthesis-link-research",
+        "path": "skills/synthesis-link-research/SKILL.md"
+      },
+      {
+        "id": "synthesis-promotion-gate",
+        "path": "skills/synthesis-promotion-gate/SKILL.md"
+      },
+      {
+        "id": "synthesis-reader-briefing",
+        "path": "skills/synthesis-reader-briefing/SKILL.md"
+      },
+      {
+        "id": "synthesis-response-merger",
+        "path": "skills/synthesis-response-merger/SKILL.md"
+      },
+      {
+        "id": "synthesis-text-provenance",
+        "path": "skills/synthesis-text-provenance/SKILL.md"
+      },
+      {
+        "id": "synthesis-voice-profiler",
+        "path": "skills/synthesis-voice-profiler/SKILL.md"
+      },
+      {
+        "id": "synthesis-writing-craft",
+        "path": "skills/synthesis-writing-craft/SKILL.md"
+      },
+      {
+        "id": "synthesis-writing-pitfalls",
+        "path": "skills/synthesis-writing-pitfalls/SKILL.md"
+      }
+    ],
+    "commands": [],
+    "hooks": [],
+    "mcpServers": [],
+    "reminders": []
+  }
+}

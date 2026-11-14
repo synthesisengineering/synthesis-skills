@@ -1,0 +1,171 @@
+# Daily plan format — structure, vocabulary, and revert protection
+
+The producer side of the daily-plan contract. The consumer side is
+synthesis-console's `docs/cockpit-design.md`; the two change together.
+Cockpit Mode, the `## 📅 Calendar` section, and meeting-prep packs are
+specified in [version-history.md](version-history.md) (v2.10.0–v2.12.0);
+the draft fence and numbering conventions in v2.5.0 and v2.6.0 there.
+
+## Daily Plan Structure: Preserve and Reorganize
+
+The daily action plan is both a **live dashboard** (scannable current state) and a **historical record** (what happened today). These goals conflict if the file is treated as append-only — by evening, sections are scattered and duplicated, making the file unreadable.
+
+### The Rule: Preserve All Information, Reorganize for Clarity
+
+**Never delete information.** Completed tasks, sent messages, timestamps, decisions, and resolved items must always be preserved somewhere in the file.
+
+**Reorganize freely.** Consolidate scattered sections, merge duplicate lists, reorder for readability. The file should have ONE section for each concern, not multiple sections that accumulated through the day. After every sync or major update, the file should read cleanly from top to bottom.
+
+### Required File Structure (v2.4.0+)
+
+The daily plan follows this canonical structure. On each update, consolidate into these sections rather than appending new ones. The synthesis-console v0.8+ cockpit parses these section names to typed regions; staying within the canonical vocabulary maximizes the typed UI surface.
+
+```markdown
+# Daily Action Plan — [Day], [Date]
+
+**[Status line: version, key people, blockers]**
+[Critical ahead: 2, the next closes 2026-12-15   ← only while a critical deadline is more than seven days out]
+
+---
+
+## Down: needs your attention      ← ABOVE EVERYTHING, while something another person relies on is down or its check did not run; cockpit: NEEDS YOU region
+### [What is down, and who relies on it]
+[The `DOWN` line from `relied_on.py`, word for word. Who is affected, and what the fix is.]
+
+## Critical deadlines: needs your attention   ← FIRST, whenever one is inside seven days; cockpit: NEEDS YOU region
+### [What closes, its date and exact time with zone]
+[The direct link and what the principal has to do.]
+**Critical:** [class]
+**Decays:** YYYY-MM-DD (what closes)
+**Decay ID:** [stable-id]
+**Calendar:** [the calendar entries that mark the closing date and the working block]
+
+## Decisions needed from Rajiv     ← cockpit: NEEDS YOU region
+[H3 question per decision. Each H3 has **Option A:** / **Option B:** lines,
+ a **Consequences:** line when it commits the principal's time, and a **Recommendation:** line. The cockpit renders option buttons that record
+ a `**Decided:** Option X — <ISO>` marker back to the file on click.]
+
+## Priority Tasks                  ← cockpit: TODAY region
+### Do today — not negotiable      ← collapsible bucket (P0, expanded by default)
+1. **Task title** — description    ← cockpit renders as checkbox; click writes
+                                       `~~**Title**~~ ✅ **DONE HH:MM TZ**` in place
+
+### Do today — should make it      ← P1 bucket (collapsed by default)
+### Do today — can slip            ← P2 bucket
+### Watch / waiting                ← muted styling
+### Stale targets                  ← muted styling
+
+## Drafts — Ready to Send          ← cockpit: DRAFTS region
+> **Review before sending.** [Standard reviewer notice — keep verbatim.]
+
+### Draft A — [Description]
+**Send to:** `#channel-name` — [thread locator]
+```
+[message body in fenced code block — use 3 backticks if the body has no internal code blocks; use 4 backticks (````) if the body contains any internal ``` blocks. See v2.5.0 — Draft Fence Convention in version-history.md.]
+```
+**Grounding:**
+- [bullet]
+- [bullet]
+
+## Standup Highlights              ← cockpit: lower-row collapsible (context tone)
+## What Happened Yesterday         ← cockpit: lower-row collapsible (briefing)
+## Things to Know                  ← cockpit: lower-row collapsible (briefing)
+## Mid-day Sync                    ← cockpit: lower-row collapsible (briefing)
+## Waiting On Others               ← cockpit: lower-row collapsible (waiting tone)
+## Open PR Queue                   ← cockpit: lower-row collapsible
+## Sent Messages                   ← cockpit: lower-row collapsible (done tone)
+## Completed Today                 ← cockpit: lower-row collapsible (done tone)
+## Sync state                      ← cockpit: lower-row collapsible
+## Bugs (Open)                     ← cockpit: lower-row collapsible (briefing)
+## Carried Items                   ← cockpit: lower-row collapsible (briefing)
+```
+
+### Canonical Section Vocabulary (Authoritative)
+
+The synthesis-console v0.8+ parser classifies each H2 heading into one of these kinds. Use the canonical name where possible. The "synonyms" column lists variants the parser also recognizes via substring + case-insensitive match — these exist for backward compatibility but new plans should prefer the canonical name.
+
+| Cockpit region / kind | Canonical H2 name | Recognized synonyms |
+|----------------------|-------------------|---------------------|
+| **decisions** (NEEDS YOU) | `Decisions needed` | "Decisions to make", "Open ask", "Asks for Rajiv", "Open Items", "Needs your attention", "Open Quality Concerns" |
+| **decisions** (NEEDS YOU), above everything in the plan | `Down: needs your attention` | The words "needs your attention" place it |
+| **decisions** (NEEDS YOU), first in the plan | `Critical deadlines: needs your attention` | The words "needs your attention" place it; a heading that only starts with "Critical" is read as briefing and folds into the lower row |
+| **priority-tasks** (TODAY) | `Priority Tasks` | "Tasks", "Tasks for Rajiv", "Tasks Today", "Today's Tasks", "Today's Priorities", "Still To Do", "This Week", "Remaining Tasks", "Pending This Session", "Pending from Before Vacation" |
+| **drafts** (DRAFTS) | `Drafts — Ready to Send` | "Drafts", "Unsent — Ready to Send", "Unsent Drafts", "DM Reply Drafts", "Draft Messages", "Messages", "Next Steps", "Pending Emails", "Scheduled for Tomorrow / Later" |
+| **standup** | `Standup Highlights` | "Standup Transcript", any heading with "standup", "Newsroom Training" |
+| **sent-messages** | `Sent Messages` | "Messages Sent" |
+| **waiting** | `Waiting On Others` | "Waiting on", "Delegated to Team" |
+| **pr-queue** | `Open PR Queue` | "PR Queue", "Open PRs", "New PRs", "PRs Ready for Review", "PR Reviews Completed" |
+| **sync-state** | `Sync state` | "Staging/Deployment Status", "Deployment Status", "Pre-Migration Status", "Post-Release Status", "Files Created/Modified", "Test Results", "Staging:" |
+| **completed** | `Completed Today` | "Completed This Morning" |
+| **briefing** | `Things to Know` | "What Happened", "What Changed", "Big Things", "Things Rajiv Should Know", "Carried From / Items / Forward", "Carry Forward", "Mid-day Sync", "Morning Sync", "From Slack Sync", "State Catch-Up", "Day Summary", "End of Day Summary", "Bugs (Open)", "QA Findings", "QA Results", "CRITICAL:", "Context", "What to Watch", "Future Work", "Post-Release Issues", "Feature Requests (Carryover)", "Release Process Sync" |
+| **other** (fallback) | (any unrecognized H2) | Renders as plain markdown in the lower-row collapsibles. Nothing is lost; the section just isn't specially typed. |
+
+### Internal Structure Conventions
+
+Within each section, the parser also recognizes structural patterns. Adhering to these makes the UI work correctly:
+
+**Down section** (`## Down: needs your attention`), while something another person relies on is down or its check did not run:
+- The first H2 of the plan, above the critical deadlines section, and the first thing in the reply to the principal. One H3 per `DOWN` line that `relied_on.py` printed, with the line word for word, who is affected and what the fix is.
+- It closes in place when the check prints `ok` for it again: write the time under its H3. The people affected are told only on the principal's approval of the exact text.
+- A run of the check that exited 2, never started or printed none of the lines [scripts.md](scripts.md) documents gets one H3 here, `Not checked`, with what it printed or that it printed nothing: it is reported first, as not checked, and never read as healthy. It closes when the check runs and prints its lines again.
+
+**Travel section** (`## Travel: needs your attention`), in a workspace that checks travel:
+- One H3 per in-person event the travel check flagged, in date order, with what it lacks, word for word from `travel_check.py`. It leaves the plan when the event's address, travel line and both blocks are in place, or the principal has decided not to go.
+- **A leaving or returning time anywhere in a plan or a draft is taken from a travel block and says which block.** "You leave about 6" and "back around 11" are estimates; on 2026-11-11 both went out with no source, and the real train reached home at 11:48.
+
+**Critical deadlines section** (`## Critical deadlines: needs your attention`):
+- The first H2 of the plan from seven days before the earliest critical deadline until every one is closed, and the first thing in every brief. One H3 per deadline, in date order.
+- Each H3 carries `**Critical:**`, `**Decays:**`, `**Decay ID:**` and `**Calendar:**` directly under it. A critical deadline never appears in the Priority Tasks buckets, in Carried Items or as a decision-packet row.
+- It closes in place: a closing mark plus `**Evidence:**`. The full rules are in [critical-deadlines.md](critical-deadlines.md).
+
+**Decisions section** (`## Decisions needed`):
+- One H3 per decision (`### 1. Force-push origin/develop?`)
+- Options as bold paragraphs: `**Option A:** description`, `**Option B:** description`
+- A plan that lists several choices as entries under one heading (`1. Dinner on Thursday`, then its options) is read the same way: each entry with its options is one choice; the list's next entry, or options whose letter starts again, begin the next, and a bullet under an option does not. The record check reads both shapes, and a recommendation written on the choice's title line (`### Dinner — Recommendation: B`) as well. Options indented under their entry, however deep the list, are that entry's own. A sentence of explanation may stand between an entry and its options. A choice under a deeper heading (`#### 2. Dinner`) or under a line all in bold is read by that title, also when a sentence stands between the title and its options; each such title begins its own choice, whatever its options are lettered (C and D after A and B); a heading that only says `Options` is no title. An example is not read: a fenced block, also one whose fence opens on the line of a list mark (`- ```md`), or a block Markdown shows as code (indented four or more past the text of the entry it stands in, after an empty line).
+- Required: `**Recommendation:** **A**, with the reason`. A choice put with no view defaults to yes. "TBD", "your call", "either" and a line that only puts the answer off ("pending", "undecided", "not yet", "to be decided", "awaiting ...") are no recommendation, and the same words close no decision. A pin, a pointing hand or a tick before the label does not hide it. Also read as one: `**Recommended:**`, `**My recommendation:**`, the label followed by a dash, and an option marked `(recommended)`.
+- Required when the choice would commit the principal's time (an accept or decline, or an item with a `**Commits:**` line saying what it takes): `**Consequences:**`, what each answer costs them: the time with its trip door to door, the money and who pays, when they are home, the night it leaves, and what it collides with that day and the next morning. The trip is worked out before the ask (synthesis-chief-of-staff, `references/asks-and-decisions.md`).
+- `ritual_state.py record` refuses the day's record while an open item that offers options lacks either line. It reads each line plain, bold or italic (asterisks or underscores), quoted, or as a list item (`- `, `+ `, `1. `, a task-list box), a heading or a row of a table, at any depth of a list and with a quote inside a list entry; an example (a fenced block, closed or not, or a block Markdown shows as code, also inside a quote) and an HTML comment are not read, and a fence closes at a line of its own mark alone, at least as long as the one that opened it. An option's label ends at the mark that closes its emphasis, or at a colon, a dash, a bracket or a full stop: a sentence that begins `Option A was fine` is no option. An item with `**Decided:**`, `**Decision:**`, `**Resolved:**`, `**Released:**`, `**Lapsed:**` or `**Withdrawn:**` under it that says what was decided (not left empty, `TBD` or `pending`), or a struck, ticked (`[x]`) or check-marked title (also inside bold), is closed and not checked.
+- After click: skill / human appends `**Decided:** Option X — <ISO>` directly under the H3
+- **Synthetic asks**: an H2 like `## Open ask for Rajiv` with prose body and NO H3s also surfaces in NEEDS YOU as a single card with the prose verbatim. Use this for one-off requests that don't fit the A/B/C structure.
+
+**Priority Tasks section** (`## Priority Tasks`):
+- One H3 per bucket (`### Do today — not negotiable`)
+- Tasks as numbered list items (`1. **Title** — description`) OR checkbox items (`- [ ] **Title** — description`). Both formats supported.
+- Already-done tasks may be marked any of these ways (parser detects all): `~~Title~~ ✅ DONE HH:MM`, `[x]`, leading `✅`, leading `DONE` or `SENT`.
+- The cockpit's TODAY region surfaces tasks as live checkboxes that write the canonical done marker back to the file on click.
+
+**Drafts section** (`## Drafts — Ready to Send`):
+- One H3 per draft (`### Draft A — Description`)
+- A `**Send to:** target — locator` paragraph identifying the recipient. `**Channel:**` is also accepted.
+- A fenced code block OR blockquote with the message body. **Fence convention (v2.5.0+):** default is 3 backticks; if the body contains any internal triple-backtick code blocks (install commands, log excerpts), use a 4-backtick outer fence (or any length strictly greater than the longest internal fence). The 4-backtick outer fence renders correctly in synthesis-console AND survives the Copy button intact (outer fence stripped, inner ` ``` ` preserved for Slack to re-interpret).
+- Optional: a `**Grounding:**` paragraph or bullet list with research backing.
+- After send: skill / cockpit appends `**Sent:** <ISO> (TS=...) <permalink>` directly under the body.
+- **Drafts may also appear under non-drafts H2s.** When a draft is added to a topical context (e.g., a draft DM written into "Things to Know" alongside the situation that prompted it), the cockpit's DRAFTS region aggregates it from wherever it lives in the document. The canonical placement is still under `## Drafts`, but topical inline drafts work too.
+
+**Pre-Send Review Notice**: every drafts H2 SHOULD include this verbatim blockquote before the first H3 draft (the cockpit doesn't currently re-display it in the DRAFTS region but it remains in the file for archival and Full-Markdown view):
+
+```
+> **Review before sending.** These drafts are grounded in real data — code commits, test results, deployment logs, Slack threads, and project context — but they are starting points, not final messages. Read each one, edit it in your own voice, and add the personal touch only you can. Human-to-human communication deserves human effort.
+```
+
+### What This Means in Practice
+
+- When a draft is sent: move it from "Unsent" to "Sent Messages" with a timestamp. Don't create a new "More Sent Messages" section.
+- When a bug is resolved: update the entry in "Bugs" to show it's resolved. Don't leave the old entry and add a new one elsewhere.
+- When a sync finds new info: update the relevant existing section. Don't append a new section for each sync.
+- When the file gets messy: do a full rewrite that preserves all information in the canonical structure. This is expected and encouraged — it's maintenance, not data loss.
+
+### Why This Replaced "Append-Only"
+
+The original "append-only" rule was designed to prevent accidental deletion of sent message records. The intent was correct — losing records causes duplicate sends and confusion. But in practice, append-only caused the file to balloon with scattered duplicate sections ("More Sent Messages (afternoon)", "More Sent Messages (afternoon, continued)", "Unsent — Ready to Send", "Unsent — Evening"), becoming unreadable by end of day.
+
+The preserve-and-reorganize approach achieves the same safety goal (no information loss) while maintaining readability. The transcript files (`{workspace}/channels/YYYY-MM-DD.md`, `{workspace}/dms/YYYY-MM-DD.md`, `{workspace}/group-dms/YYYY-MM-DD.md`) are the authoritative append-only historical records. The daily plan is the dashboard.
+
+### File Revert Protection
+
+If a file revert is detected (system reminder says "file was externally modified"):
+1. Re-read the ENTIRE file from disk before making any edits.
+2. Compare the on-disk content against your in-memory understanding of the file.
+3. If content is missing (items you know were written earlier are gone), reconstruct the missing content from Slack sync data, session memory, and transcript files.
+4. Never silently accept a reverted file — always verify and restore.
+

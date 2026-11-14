@@ -1,0 +1,451 @@
+{
+  "schema_version": 2,
+  "catalog_version": "2026-08-23",
+  "verified_on": "2026-08-23",
+  "artifacts": [
+    {
+      "id": "qwen3-8b-q8-0",
+      "family": "qwen",
+      "organization": "Qwen",
+      "upstream_model": "Qwen/Qwen3-8B",
+      "base_family": "qwen",
+      "runtime": "ollama",
+      "runtime_model": "qwen3:8b-q8_0",
+      "distribution_channel": "ollama-curated",
+      "artifact_publisher": "Ollama",
+      "upstream_source_url": "https://huggingface.co/Qwen/Qwen3-8B",
+      "artifact_source_url": "https://ollama.com/library/qwen3:8b-q8_0",
+      "license": "Apache-2.0",
+      "quantization": "Q8_0",
+      "total_parameters_billion": 8.2,
+      "active_parameters_billion": 8.2,
+      "disk_gib": 8.9,
+      "minimum_memory_gib": 16,
+      "recommended_memory_gib": 24,
+      "planning_context_tokens": 32768,
+      "minimum_runtime_version": "0.5.0",
+      "quality_rank": 20,
+      "roles": ["routine", "development", "lightweight-writing"],
+      "expected_digest_prefix": "d87f4a5a2f1a",
+      "status": "verified"
+    },
+    {
+      "id": "qwen3.8-27b-q4-k-m",
+      "family": "qwen",
+      "organization": "Qwen",
+      "upstream_model": "Qwen/Qwen3.8-27B",
+      "base_family": "qwen",
+      "runtime": "ollama",
+      "runtime_model": "hf.co/bartowski/Qwen3.8-27B-GGUF:Q4_K_M",
+      "runtime_targets": {
+        "lm_studio": {
+          "model": "https://huggingface.co/bartowski/Qwen3.8-27B-GGUF@Q4_K_M",
+          "format": "gguf",
+          "match_terms": ["qwen3.8-27b-gguf", "q4_k_m"],
+          "artifact_publisher": "bartowski",
+          "artifact_source_url": "https://huggingface.co/bartowski/Qwen3.8-27B-GGUF"
+        }
+      },
+      "distribution_channel": "huggingface-gguf",
+      "artifact_publisher": "bartowski",
+      "upstream_source_url": "https://huggingface.co/Qwen/Qwen3.8-27B",
+      "artifact_source_url": "https://huggingface.co/bartowski/Qwen3.8-27B-GGUF",
+      "license": "Apache-2.0",
+      "quantization": "Q4_K_M",
+      "total_parameters_billion": 27.0,
+      "active_parameters_billion": 27.0,
+      "disk_gib": 17.77,
+      "minimum_memory_gib": 32,
+      "recommended_memory_gib": 48,
+      "planning_context_tokens": 32768,
+      "minimum_runtime_version": "0.30.0",
+      "quality_rank": 40,
+      "roles": ["writing", "coding", "professional-work"],
+      "expected_digest_prefix": null,
+      "local_import_fallback": {
+        "registry_manifest_url": "https://huggingface.co/v2/bartowski/Qwen3.8-27B-GGUF/manifests/Q4_K_M",
+        "gguf_layers": [
+          {
+            "digest": "sha256:e103abf9d914d1d7b2f2592f055f2759a71195c350a01c135f71aaae86bca52b",
+            "media_type": "application/vnd.ollama.image.model",
+            "size_bytes": 17772537440
+          },
+          {
+            "digest": "sha256:cb0a71fe9b84af2552fc6260acf8e9773a29d115c683aba01c72a7ac537b212b",
+            "media_type": "application/vnd.ollama.image.projector",
+            "size_bytes": 927607008
+          }
+        ]
+      },
+      "status": "verified"
+    },
+    {
+      "id": "qwen3.8-27b-q8-0",
+      "family": "qwen",
+      "organization": "Qwen",
+      "upstream_model": "Qwen/Qwen3.8-27B",
+      "base_family": "qwen",
+      "runtime": "ollama",
+      "runtime_model": "hf.co/bartowski/Qwen3.8-27B-GGUF:Q8_0",
+      "runtime_targets": {
+        "lm_studio": {
+          "model": "https://huggingface.co/bartowski/Qwen3.8-27B-GGUF@Q8_0",
+          "format": "gguf",
+          "match_terms": ["qwen3.8-27b-gguf", "q8_0"],
+          "artifact_publisher": "bartowski",
+          "artifact_source_url": "https://huggingface.co/bartowski/Qwen3.8-27B-GGUF"
+        }
+      },
+      "distribution_channel": "huggingface-gguf",
+      "artifact_publisher": "bartowski",
+      "upstream_source_url": "https://huggingface.co/Qwen/Qwen3.8-27B",
+      "artifact_source_url": "https://huggingface.co/bartowski/Qwen3.8-27B-GGUF",
+      "license": "Apache-2.0",
+      "quantization": "Q8_0",
+      "total_parameters_billion": 27.0,
+      "active_parameters_billion": 27.0,
+      "disk_gib": 29.12,
+      "minimum_memory_gib": 48,
+      "recommended_memory_gib": 64,
+      "planning_context_tokens": 32768,
+      "minimum_runtime_version": "0.30.0",
+      "quality_rank": 50,
+      "roles": ["high-quality-writing", "coding", "professional-work"],
+      "expected_digest_prefix": null,
+      "local_import_fallback": {
+        "registry_manifest_url": "https://huggingface.co/v2/bartowski/Qwen3.8-27B-GGUF/manifests/Q8_0",
+        "gguf_layers": [
+          {
+            "digest": "sha256:a830e736efa71ce29589ff20b8713333a427e0d46ab774723be23800ad54362d",
+            "media_type": "application/vnd.ollama.image.model",
+            "size_bytes": 29116388960
+          },
+          {
+            "digest": "sha256:cb0a71fe9b84af2552fc6260acf8e9773a29d115c683aba01c72a7ac537b212b",
+            "media_type": "application/vnd.ollama.image.projector",
+            "size_bytes": 927607008
+          }
+        ]
+      },
+      "status": "verified"
+    },
+    {
+      "id": "glm-4.7-flash-q4-k-m",
+      "family": "glm",
+      "organization": "Z.ai",
+      "upstream_model": "zai-org/GLM-4.7-Flash",
+      "base_family": "glm",
+      "runtime": "ollama",
+      "runtime_model": "glm-4.7-flash:q4_K_M",
+      "runtime_targets": {
+        "lm_studio": {
+          "model": "https://huggingface.co/lm-kit/glm-4.7-flash-gguf@Q4_K_M",
+          "format": "gguf",
+          "match_terms": ["glm-4.7-flash-gguf", "q4_k_m"],
+          "artifact_publisher": "lm-kit",
+          "artifact_source_url": "https://huggingface.co/lm-kit/glm-4.7-flash-gguf"
+        }
+      },
+      "distribution_channel": "ollama-curated",
+      "artifact_publisher": "Ollama",
+      "upstream_source_url": "https://huggingface.co/zai-org/GLM-4.7-Flash",
+      "artifact_source_url": "https://ollama.com/library/glm-4.7-flash:q4_K_M",
+      "license": "MIT",
+      "quantization": "Q4_K_M",
+      "total_parameters_billion": 29.9,
+      "active_parameters_billion": 3.0,
+      "disk_gib": 19.0,
+      "minimum_memory_gib": 32,
+      "recommended_memory_gib": 48,
+      "planning_context_tokens": 32768,
+      "minimum_runtime_version": "0.14.3",
+      "quality_rank": 40,
+      "roles": ["fast-reasoning", "coding", "agentic-work"],
+      "expected_digest_prefix": "4475827791a2",
+      "status": "verified"
+    },
+    {
+      "id": "glm-4.7-flash-q8-0",
+      "family": "glm",
+      "organization": "Z.ai",
+      "upstream_model": "zai-org/GLM-4.7-Flash",
+      "base_family": "glm",
+      "runtime": "ollama",
+      "runtime_model": "glm-4.7-flash:q8_0",
+      "runtime_targets": {
+        "lm_studio": {
+          "model": "https://huggingface.co/ggml-org/GLM-4.7-Flash-GGUF@Q8_0",
+          "format": "gguf",
+          "match_terms": ["glm-4.7-flash-gguf", "q8_0"],
+          "artifact_publisher": "ggml-org",
+          "artifact_source_url": "https://huggingface.co/ggml-org/GLM-4.7-Flash-GGUF"
+        }
+      },
+      "distribution_channel": "ollama-curated",
+      "artifact_publisher": "Ollama",
+      "upstream_source_url": "https://huggingface.co/zai-org/GLM-4.7-Flash",
+      "artifact_source_url": "https://ollama.com/library/glm-4.7-flash:q8_0",
+      "license": "MIT",
+      "quantization": "Q8_0",
+      "total_parameters_billion": 29.9,
+      "active_parameters_billion": 3.0,
+      "disk_gib": 32.0,
+      "minimum_memory_gib": 48,
+      "recommended_memory_gib": 64,
+      "planning_context_tokens": 32768,
+      "minimum_runtime_version": "0.14.3",
+      "quality_rank": 50,
+      "roles": ["high-quality-reasoning", "coding", "agentic-work"],
+      "expected_digest_prefix": "4420340fd319",
+      "status": "verified"
+    },
+    {
+      "id": "kimi-linear-48b-a3b-q4-k-m",
+      "family": "kimi",
+      "organization": "Moonshot AI",
+      "upstream_model": "moonshotai/Kimi-Linear-48B-A3B-Instruct",
+      "base_family": "kimi-linear",
+      "runtime": "ollama",
+      "runtime_model": "hf.co/bartowski/moonshotai_Kimi-Linear-48B-A3B-Instruct-GGUF:Q4_K_M",
+      "runtime_targets": {
+        "lm_studio": {
+          "model": "https://huggingface.co/bartowski/moonshotai_Kimi-Linear-48B-A3B-Instruct-GGUF@Q4_K_M",
+          "format": "gguf",
+          "match_terms": ["kimi-linear-48b-a3b-instruct-gguf", "q4_k_m"],
+          "artifact_publisher": "bartowski",
+          "artifact_source_url": "https://huggingface.co/bartowski/moonshotai_Kimi-Linear-48B-A3B-Instruct-GGUF"
+        }
+      },
+      "distribution_channel": "huggingface-gguf",
+      "artifact_publisher": "bartowski",
+      "upstream_source_url": "https://huggingface.co/moonshotai/Kimi-Linear-48B-A3B-Instruct",
+      "artifact_source_url": "https://huggingface.co/bartowski/moonshotai_Kimi-Linear-48B-A3B-Instruct-GGUF",
+      "license": "MIT",
+      "quantization": "Q4_K_M",
+      "total_parameters_billion": 48.0,
+      "active_parameters_billion": 3.0,
+      "disk_gib": 30.06,
+      "minimum_memory_gib": 48,
+      "recommended_memory_gib": 64,
+      "planning_context_tokens": 32768,
+      "minimum_runtime_version": "0.30.0",
+      "runtime_requirements": {
+        "ollama_kv_cache_types": [
+          "f16"
+        ]
+      },
+      "quality_rank": 40,
+      "roles": ["long-context", "writing", "reasoning"],
+      "expected_digest_prefix": null,
+      "local_import_fallback": {
+        "registry_manifest_url": "https://huggingface.co/v2/bartowski/moonshotai_Kimi-Linear-48B-A3B-Instruct-GGUF/manifests/Q4_K_M",
+        "gguf_layers": [
+          {
+            "digest": "sha256:a1a7d865370652221f937163f7e94c99e1f114861335ba4f8666606843f1620f",
+            "media_type": "application/vnd.ollama.image.model",
+            "size_bytes": 30061058720
+          }
+        ]
+      },
+      "status": "verified"
+    },
+    {
+      "id": "kimi-linear-48b-a3b-q6-k",
+      "family": "kimi",
+      "organization": "Moonshot AI",
+      "upstream_model": "moonshotai/Kimi-Linear-48B-A3B-Instruct",
+      "base_family": "kimi-linear",
+      "runtime": "ollama",
+      "runtime_model": "hf.co/bartowski/moonshotai_Kimi-Linear-48B-A3B-Instruct-GGUF:Q6_K",
+      "runtime_targets": {
+        "lm_studio": {
+          "model": "https://huggingface.co/bartowski/moonshotai_Kimi-Linear-48B-A3B-Instruct-GGUF@Q6_K",
+          "format": "gguf",
+          "match_terms": ["kimi-linear-48b-a3b-instruct-gguf", "q6_k"],
+          "artifact_publisher": "bartowski",
+          "artifact_source_url": "https://huggingface.co/bartowski/moonshotai_Kimi-Linear-48B-A3B-Instruct-GGUF"
+        }
+      },
+      "distribution_channel": "huggingface-gguf",
+      "artifact_publisher": "bartowski",
+      "upstream_source_url": "https://huggingface.co/moonshotai/Kimi-Linear-48B-A3B-Instruct",
+      "artifact_source_url": "https://huggingface.co/bartowski/moonshotai_Kimi-Linear-48B-A3B-Instruct-GGUF",
+      "license": "MIT",
+      "quantization": "Q6_K",
+      "total_parameters_billion": 48.0,
+      "active_parameters_billion": 3.0,
+      "disk_gib": 40.46,
+      "minimum_memory_gib": 64,
+      "recommended_memory_gib": 80,
+      "planning_context_tokens": 32768,
+      "minimum_runtime_version": "0.30.0",
+      "runtime_requirements": {
+        "ollama_kv_cache_types": [
+          "f16"
+        ]
+      },
+      "quality_rank": 50,
+      "roles": ["high-quality-long-context", "writing", "reasoning"],
+      "expected_digest_prefix": null,
+      "local_import_fallback": {
+        "registry_manifest_url": "https://huggingface.co/v2/bartowski/moonshotai_Kimi-Linear-48B-A3B-Instruct-GGUF/manifests/Q6_K",
+        "gguf_layers": [
+          {
+            "digest": "sha256:d44b7f92fe57bca9e034456a576a530b57f036c85f9ce615f90bc3e6827fae9a",
+            "media_type": "application/vnd.ollama.image.model",
+            "size_bytes": 40460212128
+          }
+        ]
+      },
+      "status": "verified"
+    },
+    {
+      "id": "deepseek-r1-8b-q8-0",
+      "family": "deepseek",
+      "organization": "DeepSeek",
+      "upstream_model": "deepseek-ai/DeepSeek-R1-0528-Qwen3-8B",
+      "base_family": "qwen",
+      "runtime": "ollama",
+      "runtime_model": "deepseek-r1:8b-0528-qwen3-q8_0",
+      "distribution_channel": "ollama-curated",
+      "artifact_publisher": "Ollama",
+      "upstream_source_url": "https://huggingface.co/deepseek-ai/DeepSeek-R1-0528-Qwen3-8B",
+      "artifact_source_url": "https://ollama.com/library/deepseek-r1:8b-0528-qwen3-q8_0",
+      "license": "MIT",
+      "quantization": "Q8_0",
+      "total_parameters_billion": 8.0,
+      "active_parameters_billion": 8.0,
+      "disk_gib": 8.9,
+      "minimum_memory_gib": 16,
+      "recommended_memory_gib": 24,
+      "planning_context_tokens": 32768,
+      "minimum_runtime_version": "0.5.0",
+      "quality_rank": 20,
+      "roles": ["lightweight-reasoning", "development"],
+      "expected_digest_prefix": "cade62fd2850",
+      "status": "verified"
+    },
+    {
+      "id": "deepseek-r1-14b-q8-0",
+      "family": "deepseek",
+      "organization": "DeepSeek",
+      "upstream_model": "deepseek-ai/DeepSeek-R1-Distill-Qwen-14B",
+      "base_family": "qwen",
+      "runtime": "ollama",
+      "runtime_model": "deepseek-r1:14b-qwen-distill-q8_0",
+      "distribution_channel": "ollama-curated",
+      "artifact_publisher": "Ollama",
+      "upstream_source_url": "https://huggingface.co/deepseek-ai/DeepSeek-R1-Distill-Qwen-14B",
+      "artifact_source_url": "https://ollama.com/library/deepseek-r1:14b-qwen-distill-q8_0",
+      "license": "MIT",
+      "quantization": "Q8_0",
+      "total_parameters_billion": 14.0,
+      "active_parameters_billion": 14.0,
+      "disk_gib": 16.0,
+      "minimum_memory_gib": 32,
+      "recommended_memory_gib": 40,
+      "planning_context_tokens": 32768,
+      "minimum_runtime_version": "0.5.0",
+      "quality_rank": 30,
+      "roles": ["reasoning", "development", "writing"],
+      "expected_digest_prefix": "b3c61716272d",
+      "status": "verified"
+    },
+    {
+      "id": "deepseek-r1-32b-q4-k-m",
+      "family": "deepseek",
+      "organization": "DeepSeek",
+      "upstream_model": "deepseek-ai/DeepSeek-R1-Distill-Qwen-32B",
+      "base_family": "qwen",
+      "runtime": "ollama",
+      "runtime_model": "deepseek-r1:32b-qwen-distill-q4_K_M",
+      "runtime_targets": {
+        "lm_studio": {
+          "model": "https://huggingface.co/bartowski/DeepSeek-R1-Distill-Qwen-32B-GGUF@Q4_K_M",
+          "format": "gguf",
+          "match_terms": ["deepseek-r1-distill-qwen-32b-gguf", "q4_k_m"],
+          "artifact_publisher": "bartowski",
+          "artifact_source_url": "https://huggingface.co/bartowski/DeepSeek-R1-Distill-Qwen-32B-GGUF"
+        }
+      },
+      "distribution_channel": "ollama-curated",
+      "artifact_publisher": "Ollama",
+      "upstream_source_url": "https://huggingface.co/deepseek-ai/DeepSeek-R1-Distill-Qwen-32B",
+      "artifact_source_url": "https://ollama.com/library/deepseek-r1:32b-qwen-distill-q4_K_M",
+      "license": "MIT",
+      "quantization": "Q4_K_M",
+      "total_parameters_billion": 32.0,
+      "active_parameters_billion": 32.0,
+      "disk_gib": 20.0,
+      "minimum_memory_gib": 32,
+      "recommended_memory_gib": 48,
+      "planning_context_tokens": 32768,
+      "minimum_runtime_version": "0.5.0",
+      "quality_rank": 40,
+      "roles": ["reasoning", "writing", "coding"],
+      "expected_digest_prefix": "edba8017331d",
+      "status": "verified"
+    },
+    {
+      "id": "deepseek-r1-32b-q8-0",
+      "family": "deepseek",
+      "organization": "DeepSeek",
+      "upstream_model": "deepseek-ai/DeepSeek-R1-Distill-Qwen-32B",
+      "base_family": "qwen",
+      "runtime": "ollama",
+      "runtime_model": "deepseek-r1:32b-qwen-distill-q8_0",
+      "runtime_targets": {
+        "lm_studio": {
+          "model": "https://huggingface.co/bartowski/DeepSeek-R1-Distill-Qwen-32B-GGUF@Q8_0",
+          "format": "gguf",
+          "match_terms": ["deepseek-r1-distill-qwen-32b-gguf", "q8_0"],
+          "artifact_publisher": "bartowski",
+          "artifact_source_url": "https://huggingface.co/bartowski/DeepSeek-R1-Distill-Qwen-32B-GGUF"
+        }
+      },
+      "distribution_channel": "ollama-curated",
+      "artifact_publisher": "Ollama",
+      "upstream_source_url": "https://huggingface.co/deepseek-ai/DeepSeek-R1-Distill-Qwen-32B",
+      "artifact_source_url": "https://ollama.com/library/deepseek-r1:32b-qwen-distill-q8_0",
+      "license": "MIT",
+      "quantization": "Q8_0",
+      "total_parameters_billion": 32.0,
+      "active_parameters_billion": 32.0,
+      "disk_gib": 35.0,
+      "minimum_memory_gib": 56,
+      "recommended_memory_gib": 72,
+      "planning_context_tokens": 32768,
+      "minimum_runtime_version": "0.5.0",
+      "quality_rank": 50,
+      "roles": ["high-quality-reasoning", "writing", "coding"],
+      "expected_digest_prefix": "b177522350a4",
+      "status": "verified"
+    },
+    {
+      "id": "deepseek-r1-70b-q4-k-m",
+      "family": "deepseek",
+      "organization": "DeepSeek",
+      "upstream_model": "deepseek-ai/DeepSeek-R1-Distill-Llama-70B",
+      "base_family": "llama",
+      "runtime": "ollama",
+      "runtime_model": "deepseek-r1:70b-llama-distill-q4_K_M",
+      "distribution_channel": "ollama-curated",
+      "artifact_publisher": "Ollama",
+      "upstream_source_url": "https://huggingface.co/deepseek-ai/DeepSeek-R1-Distill-Llama-70B",
+      "artifact_source_url": "https://ollama.com/library/deepseek-r1:70b-llama-distill-q4_K_M",
+      "license": "MIT",
+      "quantization": "Q4_K_M",
+      "total_parameters_billion": 70.0,
+      "active_parameters_billion": 70.0,
+      "disk_gib": 43.0,
+      "minimum_memory_gib": 64,
+      "recommended_memory_gib": 96,
+      "planning_context_tokens": 32768,
+      "minimum_runtime_version": "0.5.0",
+      "quality_rank": 55,
+      "roles": ["large-reasoning", "writing", "coding"],
+      "expected_digest_prefix": "d37b54d01a76",
+      "status": "verified"
+    }
+  ]
+}

@@ -1,0 +1,7 @@
+interface:
+  display_name: "Synthesis Knowledge Capture"
+  short_description: "Merge durable facts into configured knowledge bases"
+  default_prompt: "Use $synthesis-knowledge-capture to reconcile the durable facts from this session into the correct configured knowledge base."
+
+policy:
+  allow_implicit_invocation: false

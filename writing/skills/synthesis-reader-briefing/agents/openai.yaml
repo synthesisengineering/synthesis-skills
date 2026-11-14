@@ -1,0 +1,7 @@
+interface:
+  display_name: "Synthesis Reader Briefing"
+  short_description: "Apply the reader briefing synthesis workflow"
+  default_prompt: "Use $synthesis-reader-briefing to apply this workflow to the current task."
+
+policy:
+  allow_implicit_invocation: false

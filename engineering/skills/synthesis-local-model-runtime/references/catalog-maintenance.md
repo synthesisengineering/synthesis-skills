@@ -1,0 +1,62 @@
+# Catalog Maintenance
+
+## Evidence required for every artifact
+
+1. Official upstream model card and license.
+2. Artifact publisher page naming the exact quantization and file or runtime
+   id.
+3. Current size and minimum runtime compatibility.
+4. Total and active parameter counts kept separate for MoE models.
+5. A bounded planning context assumption.
+6. Verification date and status.
+7. For each additional managed runtime, the exact acquisition target,
+   quantization publisher, artifact source URL, format, and at least two
+   unambiguous inventory match terms.
+
+Prefer official runtime artifacts. A reputable community quantization is
+acceptable only when the catalog names the publisher separately and the local
+inventory captures the digest resolved after installation.
+
+## Update procedure
+
+1. Re-open all source URLs; a prior model card is cached evidence, not current
+   truth.
+2. Confirm the runtime id exists without pulling it.
+3. Reconcile size and quantization across the artifact page and runtime
+   metadata.
+4. Add or update the record. Never repoint an existing catalog id to a different
+   quantization.
+5. Run `local_model_runtime.py catalog` and the unit tests.
+6. Run each managed runtime planner against 16, 24, 32, 64, 96, and 128 GiB
+   fixtures. Missing runtime targets must block or select a separately verified
+   candidate; they must never be inferred.
+7. Test each acquisition command as an argument array and verify the runtime's
+   non-mutating inventory response independently.
+8. Record the user-visible catalog change in the plugin release notes.
+
+LM Studio targets use credential-free `https://huggingface.co/` repository
+URLs with an explicit `@quantization` suffix. The `match_terms` must identify
+both the repository and quantization in `lms ls --json --variants` output. A
+single generic term such as `q8_0` is invalid because it can match unrelated
+models.
+
+Some entries carry `local_import_fallback`: the GGUF model and projector layers
+pinned from the public registry manifest, each with its full digest, media type
+and byte size. Since v5 nothing imports from them (cached-layer recovery was
+cut; see preserved.md). They remain evidence for checking a cached layer by
+hand with `shasum -a 256`; new entries need not add them.
+
+## Catalog age (the three-month rule)
+
+The catalog is dated evidence. `catalog` reports `verified_on`, `stale_after`
+(three calendar months later) and `age_days`, and exits 1 once the catalog is
+stale; `recommend` and `install` then carry a warning. Refresh it by running
+the update procedure above for every entry still `verified`, then set
+`verified_on` (and `catalog_version`) to the date of that review. Never move
+the date without re-opening the sources.
+
+## Retirement
+
+Mark a removed or superseded artifact `retired`; do not delete its record while
+an inventory may reference it. The planner excludes retired records. Inventory
+verification can still explain an installed historical artifact.

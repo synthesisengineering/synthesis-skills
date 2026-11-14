@@ -1,0 +1,35 @@
+{
+  "source_repository": "example/knowledge-base",
+  "version": "1.{date}.{time}",
+  "exclude_file": "exclude.txt",
+  "corrections_contact": "the knowledge-base team (knowledge@example.com)",
+  "marketplace": {
+    "name": "example",
+    "display_name": "Example Co.",
+    "description": "Example Co.'s own plugins, built from its knowledge-base repository.",
+    "owner": "Example Co."
+  },
+  "plugin": {
+    "name": "example-knowledge",
+    "display_name": "Example Knowledge",
+    "description": "Example Co.'s knowledge base: strategy, products, decisions, people and the terms the company uses.",
+    "skill_description": "Example Co.'s knowledge base, rebuilt after every approved change. Use it for any question about Example Co.: its strategy and priorities, products, customers, decisions, projects, people and teams, or the terms it uses.",
+    "author": "Example Co.",
+    "developer": "Example Co.",
+    "category": "Productivity",
+    "policy": {"installation": "AVAILABLE", "authentication": "ON_INSTALL"}
+  },
+  "templates": {},
+  "index": {
+    "sections": [
+      {"prefix": "decisions/", "heading": "Decisions"},
+      {"prefix": "products/", "heading": "Products"},
+      {"prefix": "people/", "heading": "People and teams"}
+    ],
+    "other_heading": "Everything else",
+    "date_field": "timestamp"
+  },
+  "template_values": {},
+  "lint": {"extra_patterns": []},
+  "limits": {"max_files": 5000, "max_bytes": 209715200, "max_skill_description": 1024}
+}

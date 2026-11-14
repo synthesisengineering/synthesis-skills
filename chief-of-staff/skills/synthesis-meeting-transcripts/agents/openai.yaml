@@ -1,0 +1,7 @@
+interface:
+  display_name: "Synthesis Meeting Transcripts"
+  short_description: "Fetch and verify primary meeting transcripts"
+  default_prompt: "Use $synthesis-meeting-transcripts to apply this workflow to the current task."
+
+policy:
+  allow_implicit_invocation: false

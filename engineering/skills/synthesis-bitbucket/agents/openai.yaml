@@ -1,0 +1,7 @@
+interface:
+  display_name: "Synthesis Bitbucket"
+  short_description: "Apply the bitbucket synthesis workflow"
+  default_prompt: "Use $synthesis-bitbucket to apply this workflow to the current task."
+
+policy:
+  allow_implicit_invocation: false

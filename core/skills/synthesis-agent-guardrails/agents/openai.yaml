@@ -1,0 +1,7 @@
+interface:
+  display_name: "Synthesis Agent Guardrails"
+  short_description: "Apply the agent guardrails synthesis workflow"
+  default_prompt: "Use $synthesis-agent-guardrails to apply this workflow to the current task."
+
+policy:
+  allow_implicit_invocation: false

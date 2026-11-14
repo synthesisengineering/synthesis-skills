@@ -1,0 +1,7 @@
+interface:
+  display_name: "Synthesis Response Merger"
+  short_description: "Apply the response merger synthesis workflow"
+  default_prompt: "Use $synthesis-response-merger to apply this workflow to the current task."
+
+policy:
+  allow_implicit_invocation: false

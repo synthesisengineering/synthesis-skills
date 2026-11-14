@@ -1,0 +1,6 @@
+interface:
+  display_name: "Synthesis Text Provenance"
+  short_description: "Audit and record text provenance across model workflows"
+  default_prompt: "Use $synthesis-text-provenance to build a reproducible, provenance-aware text workflow and report what each signal can and cannot prove."
+policy:
+  allow_implicit_invocation: false

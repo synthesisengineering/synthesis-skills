@@ -1,0 +1,449 @@
+# Costume Vocabulary
+
+Contents:
+- How to Read This Catalog
+- Categories 1 to 7: `backward_compat`, `minimal_diff`, `asking_as_shortcut`, `deferral`, `archive_value`, `dismissal`, `scope_excuse`
+- How the Catalog Maintains Itself
+- Category 8: `capability_surrender`
+- Category 9: `effort_rationale`
+
+The full human-readable catalog of phrases that signal the lazy-shortcut antipattern. Each entry includes the phrase, its category, the kind of incident that produced it, and the replacement framing that executes on the actual goal.
+
+This file is the reference companion to the scanner at [`../scripts/scan_output.py`](../scripts/scan_output.py). The scanner detects the phrases; this file explains why each one matters and what to write instead.
+
+## How to Read This Catalog
+
+Each entry follows the same shape:
+
+- **Phrase:** the literal or regex pattern to recognize
+- **Category:** one of the seven categories below
+- **Why it is a shortcut:** the underlying behavior the phrase covers
+- **Replacement framing:** what to write instead
+- **Discussion exemption:** when the same phrase appears as a teaching example or quoted reference, the scan should not fire
+
+The seven categories: `backward_compat`, `minimal_diff`, `asking_as_shortcut`, `deferral`, `archive_value`, `dismissal`, `scope_excuse`.
+
+The rule across all categories: if the user has explicitly removed the consideration the phrase optimizes for, the phrase is a costume and the draft needs to be rewritten.
+
+---
+
+## Category 1: `backward_compat`
+
+**The pattern:** preserving old APIs, paths, imports, or behaviors when the user has stated breaking changes are fine. The shortcut is avoiding the work of updating all consumers and instead landing a shim layer.
+
+**The constraint that makes it a costume:** "Breaking changes are acceptable" or "best solution, no shortcuts" or "no one else uses this yet."
+
+### `backward compatible`
+
+Why it is a shortcut: preserves the old API surface. When the user has stated they want the clean refactor, "backward compatible" is an unrequested constraint imposed by the agent.
+
+Replacement framing: name the clean refactor that updates all consumers. State the count of files touched as evidence of completeness, not as a deterrent.
+
+### `preserves existing imports` / `preserves existing API`
+
+Why it is a shortcut: justifies a shim or partial migration by what it preserves rather than what it accomplishes.
+
+Replacement framing: name what the change accomplishes for the new architecture. The old imports are exactly what is being replaced — preserving them defeats the migration.
+
+### `shim layer` / `compatibility layer`
+
+Why it is a shortcut: a shim is a structural choice to avoid the work of updating consumers. It also leaves a permanent maintenance cost in the codebase.
+
+Replacement framing: update the consumers. If there are many, batch them; the work is mechanical and bounded.
+
+### `easier rollback` / `lower risk of breaking`
+
+Why it is a shortcut: optimizes for the failure scenario instead of the success one. When the user has accepted breaking changes, the rollback path is not the relevant axis.
+
+Replacement framing: name the architectural improvement the change delivers. Rollback is a deployment concern, not a design constraint.
+
+### `no breaking changes`
+
+Why it is a shortcut: imposes a constraint the user did not state and explicitly rejected.
+
+Replacement framing: list the specific breaking changes and what each consumer needs to update to.
+
+---
+
+## Category 2: `minimal_diff`
+
+**The pattern:** leaving half-applied work after a partial pass because "the rest can be a follow-up." Surfaces as residual styling, residual stale references, half-migrated code. Especially common in sub-agent self-reports where the sub-agent's brief licensed the partial pass.
+
+**The constraint that makes it a costume:** "best, most flexible, robust, maintainable solution" or any framing where completeness is the goal.
+
+### `minimal diff` / `keep changes minimal`
+
+Why it is a shortcut: license to leave half-applied work as a follow-up. Reads as scope discipline; behaves as avoidance.
+
+Replacement framing: name the full scope of the semantic change ("apply the accent everywhere it semantically belongs"). The diff size is a consequence of the scope, not a constraint on it.
+
+### `tinting not redesigning` / `light touch` / `surgical change`
+
+Why it is a shortcut: vocabulary that pre-licenses a partial pass.
+
+Replacement framing: state the job's actual size. If the job is "re-theme the chrome," do the chrome — all of it. If the job is one specific element, name that element explicitly.
+
+### `smallest change` / `smallest fix` (2026-10-30)
+
+Why it is a shortcut: the fix is chosen by its size when the user asked for the right fix ("smallest change that
+closes the hole", Case 8).
+
+Replacement framing: choose the fix that removes the cause; state its size as information, never as the reason.
+
+### `low risk change` / `low-risk pass`
+
+Why it is a shortcut: optimizing for risk minimization when the user has stated completeness matters more than risk.
+
+Replacement framing: name the completeness criterion. The risk discussion belongs in the deployment plan, not the design.
+
+### `preserve existing layout` / `don't break the existing layout`
+
+Why it is a shortcut: in sub-agent dispatch briefs, this phrase licenses the sub-agent to leave design problems untouched.
+
+Replacement framing: "the existing layout is the canvas; the new layer is X; apply X everywhere it semantically belongs."
+
+---
+
+## Category 3: `asking_as_shortcut`
+
+**The pattern:** surfacing decisions to the user as questions when the user's stated constraints already determine the answer. Polite-feeling consultation that is actually an offload.
+
+**The constraint that makes it a costume:** any standing constraint that determines the answer. The user has paid the cognitive cost of stating the constraint once; asking them to re-state it for every decision is offloading the work back.
+
+### `Recommendation: X. Your call?`
+
+Why it is a shortcut: the format mimics junior-engineer consultation but applies in the wrong direction when X is constraint-determined.
+
+Replacement framing: execute on the constraint-determined answer. State what was done in the response. If the constraint genuinely does not determine the answer, drop the recommendation framing and ask a precise question.
+
+### `your call` / `up to you` / `let me know your preference`
+
+Why it is a shortcut: offloads constraint-determined decisions.
+
+Replacement framing: execute. Tell the user what was done.
+
+### `should I (do|use|build|pick|choose|select)` patterns
+
+Why it is a shortcut: should-I questions are legitimate only when constraints leave a real open. Often they don't — the agent simply forgot to scan for constraints first.
+
+Replacement framing: scan constraints. If determined, execute. If not determined, the question is fine — keep it brief and specific.
+
+### `would you like me to...?`
+
+Why it is a shortcut: same offloading pattern in a softer register.
+
+Replacement framing: same — scan constraints, execute if determined.
+
+
+### `say the word` / `give the word` / `leave you the judgment calls` (2026-10-30)
+
+Why it is a shortcut: the work waits for a go-ahead the user's direction already gave. Found in replies the
+principal corrected when four months of sessions were mined (Case 8): a finished change parked behind "say the
+word", an overnight run "ready to resume whenever you give the word", decisions the constraints settled handed back.
+
+Replacement framing: do the work and report it. Bring the user only the choices that are theirs, with a
+recommendation.
+
+### `any message from you` / `ping me when` (2026-11-02)
+
+Why it is a shortcut: the next step waits on something external (CI before a release, a registry, a deploy going
+live), and the reply asks the principal to restart the work when it is ready, which the agent can watch for itself
+(Case 9).
+
+Replacement framing: start a watcher that checks on an interval, carries the work forward and stops at the first
+failure, so a problem wakes the agent rather than the principal; say what it will do and when.
+
+---
+
+## Category 4: `deferral`
+
+**The pattern:** pushing real work to "later" / "follow-up" / "next phase" when the user has explicitly said "complete this, no shortcuts." Includes the classic "for now" and a long tail of synonyms.
+
+**The constraint that makes it a costume:** "don't defer," "complete this today," "no shortcuts," or the absence of any signal that work should be split.
+
+### `for now` (with comma or period)
+
+Why it is a shortcut: classic deferral. The phrase implies a follow-up that often never happens, and the deferred item becomes the user's mental load.
+
+Replacement framing: do the work. If the work is genuinely too large for the session, name a concrete scope split rather than a vague "for now."
+
+### `as a first pass` / `as a starting point`
+
+Why it is a shortcut: implies a follow-up pass. Again, the follow-up often never happens.
+
+Replacement framing: name the complete version. If the complete version is too large, propose the split with concrete cuts.
+
+### `can revisit later` / `revisit in a future session`
+
+Why it is a shortcut: the revisit is not on anyone's calendar.
+
+Replacement framing: do it now or name the specific trigger that would cause the revisit.
+
+### `follow-up the orchestrator can request`
+
+Why it is a shortcut: specific costume from sub-agent reports. The phrase licenses the sub-agent to stop short and asks the orchestrator to choose whether to finish the job.
+
+Replacement framing: the orchestrator catches this and finishes the work in-session. Do not propagate the deferral up the chain.
+
+### `leave for (a |the )?follow-up` / `tackle in a follow-up`
+
+Why it is a shortcut: same pattern, different phrasing.
+
+Replacement framing: same — finish the work in-session.
+
+### `future session` / `next phase` / `in the interim`
+
+Why it is a shortcut: vocabulary that distances the work from the current session.
+
+Replacement framing: name the work and do it.
+
+### `audit later` / `handle later` / `we can defer`
+
+Why it is a shortcut: explicit deferral.
+
+Replacement framing: audit now or handle now. If a real reason to defer exists, name it concretely (specific blocker, specific dependency).
+
+### `document-and-defer` / `execute or defer` / `defer this` / `deferred to` / `future fix needed`
+
+Why it is a shortcut: each names the deferral outright, often dressed as a plan ("document-and-defer") or as an even-handed choice ("execute or defer") after the user asked for completion. These five are also in the v5 Stop hook's built-in list, so a reply using them bare is sent back once.
+
+Replacement framing: do the work. If a real blocker stops it, name the blocker, who removes it and what triggers the return.
+
+### `we'll tackle` / `we'll handle` (future tense, vague)
+
+Why it is a shortcut: future-tense vagueness covering present-tense avoidance.
+
+Replacement framing: present-tense action or concrete scheduling.
+
+
+### `in the next session` / `not acted on` / `standing down` (2026-10-30)
+
+Why it is a shortcut: the finding is recorded and the work stops: "the first thing I'd do in the next session",
+"noted in the files themselves, not acted on", "standing down" while independent work was ready (Case 8).
+
+Replacement framing: act now on what can move; for what cannot, name the external event and who clears it.
+
+---
+
+## Category 5: `archive_value`
+
+**The pattern:** leaving stale content (old model names, deprecated examples, outdated tables) under labels like "archive," "historical reference," "legacy" when the user wants clean public-facing artifacts. Git history serves the archival purpose better than stale content in a live README.
+
+**The constraint that makes it a costume:** "clean public artifact," "professional positioning," "current state of the world," or any signal that the artifact represents the present rather than the past.
+
+### `archive value` / `historical archive`
+
+Why it is a shortcut: excuse for leaving stale content. The genuine archive is git history.
+
+Replacement framing: delete the stale content. If a historical reference is genuinely useful, write a new section explicitly framed as "historical context" with current commentary, not a frozen artifact of the old state.
+
+### `historical reference`
+
+Why it is a shortcut: same pattern. Often a costume for "I left it because deleting was work."
+
+Discussion exemption: the phrase "historical reference frame" or "historical reference article" or "as a historical reference piece" is a legitimate usage referring to scholarly framing.
+
+Replacement framing: delete and rely on git history, or rewrite as current-context commentary.
+
+### `as-is for legacy` / `legacy reasons`
+
+Why it is a shortcut: invokes legacy as a permission to leave alone.
+
+Replacement framing: identify the actual constraint (specific consumers, specific dependencies). If no concrete constraint exists, the artifact gets updated.
+
+---
+
+## Category 6: `dismissal`
+
+**The pattern:** dismissing user-raised concerns as "not a real issue," "theoretical," "not a pain point today" instead of solving them. The user raised it; that is the data point that determines whether it matters.
+
+**The constraint that makes it a costume:** any user-raised concern, even an oblique one phrased as a question.
+
+### `not a pain point today` / `not a pain point yet`
+
+Why it is a shortcut: predicts away a user-raised concern by guessing about the future.
+
+Replacement framing: solve the concern. If it is genuinely speculative, name the conditions under which it would matter and the cost of preparing now.
+
+### `doesn't bite hard` / `doesn't bite at current volume`
+
+Why it is a shortcut: dismissal via predicted impact.
+
+Replacement framing: same — solve, or name conditions.
+
+### `not a real concern` / `not a real issue`
+
+Why it is a shortcut: directly contradicts the user's own framing.
+
+Replacement framing: take the concern at face value. Propose the implementation that addresses it.
+
+### `the only real con is`
+
+Why it is a shortcut: pre-dismisses other listed concerns to elevate the chosen approach.
+
+Replacement framing: list the real cons honestly. If they don't sink the approach, say why each is acceptable in the specific situation.
+
+### `that's a theoretical concern` / `theoretical concern`
+
+Why it is a shortcut: invokes "theoretical" to avoid building defenses.
+
+Replacement framing: name when the theoretical becomes practical, and what would change at that point.
+
+### `still unused` / `won't matter until`
+
+Why it is a shortcut: deferral and dismissal merged.
+
+Replacement framing: solve now or name the specific trigger.
+
+### `not urgent`
+
+Why it is a shortcut: triage vocabulary used to deprioritize a user-raised concern.
+
+Discussion exemption: legitimate triage discussion ("we are marking this not urgent because X") is fine. The costume is using it to wave away a concern.
+
+Replacement framing: if genuinely lower priority, name the higher priorities concretely. Don't strand the concern with a label.
+
+### `mitigated by`
+
+Why it is a shortcut: implies a mitigation without naming one.
+
+Discussion exemption: concrete mitigations ("mitigated by the fix in PR #123," "mitigated by alerting") are legitimate. The costume is the bare phrase.
+
+Replacement framing: name the specific mitigation, where it lives, and what it covers.
+
+---
+
+## Category 7: `scope_excuse`
+
+**The pattern:** using "pre-existing," "out of scope," "not introduced by this change" to avoid fixing problems in code being actively modified. The right approach is fix-while-touching unless the work is genuinely outside the scope the user defined.
+
+**The constraint that makes it a costume:** "zero accepted code-health debt," "leave it greener than you found it," or simply the fact that the code is being actively modified in the same session.
+
+### `pre-existing so` / `pre-existing issue`
+
+Why it is a shortcut: invokes the issue's age to avoid fixing it.
+
+Replacement framing: fix it. The mental model is loaded; the marginal cost is low.
+
+### `out of scope`
+
+Why it is a shortcut: often a costume for "I don't feel like doing this."
+
+Discussion exemption: legitimate scoping ("this is the scope of this PR / this commit / this task") is fine. The costume is the bare phrase.
+
+Replacement framing: name the scope boundary explicitly and why the item falls outside it. If you cannot name the boundary, the item is in scope.
+
+**Sub-agent dispatch note (confirmed 2026-07-17):** in a sub-agent brief specifically, the automated dispatch-time scanner appears to match on the bare phrase regardless of whether a boundary reason follows it in the same sentence — a brief that wrote "leave X untouched, don't merge it, don't delete it — it's a separate, already-curated artifact" was blocked even though it satisfies the discussion exemption above by any reasonable read. Rather than relitigate the block, the reliable fix is to skip the phrase entirely in dispatch briefs: state the concrete instruction ("leave X untouched: don't do Y to it, don't do Z to it, because [reason]") without ever writing "out of scope" as a label. This produces a brief that is also better on its own terms (a concrete instruction is less ambiguous to a sub-agent than an abstract scope label), so the workaround is not a compromise.
+
+### `not introduced by this change`
+
+Why it is a shortcut: same pattern, slightly different wording.
+
+Replacement framing: same — fix while touching.
+
+### `that's a larger task`
+
+Why it is a shortcut: invokes size to defer.
+
+Replacement framing: if it is genuinely larger, propose the split. If it is the same size, do it.
+
+
+### `follow-on work` (2026-10-30)
+
+Why it is a shortcut: part of the requested work is relabeled as someone's next task ("separate follow-on work I
+didn't touch", Case 8).
+
+Replacement framing: do it in this change, since it is part of what was asked.
+
+### `YAGNI` (as dismissal)
+
+Why it is a shortcut: invokes a legitimate engineering principle to dismiss a user-raised concern.
+
+Discussion exemption: "the YAGNI principle" or quoted "YAGNI" references the principle, not applying it.
+
+Replacement framing: real YAGNI is about not building speculative features. Applying it to user-raised concerns is misuse. Solve the concern.
+
+---
+
+## How the Catalog Maintains Itself
+
+When a new costume appears in production output, three steps:
+
+1. Document the incident with enough detail that the failure mode is clear. The anonymized case studies in [`case-studies.md`](case-studies.md) follow a consistent shape — situation, costume, why it counted as a costume, what should have happened.
+2. Add the phrase to this catalog. Pick the right category. Write the rationale and replacement framing.
+3. Add the phrase to the scanner's catalog, [`../costume-catalog.json`](../costume-catalog.json), if it should fire automatically. If the v5 Stop hook should also catch it on every reply, its short built-in list (`synthesis/reply_check.py`) gains the phrase too; `tests/test_shortcut_catalog.py` fails if that list names a phrase the catalog lacks.
+
+The methodology is durable. The catalog grows.
+
+---
+
+## Category 8: `capability_surrender`
+
+A tool call fails for a fixable reason - an unconfigured app, an ungranted scope, a transport that
+does not expose the feature - and the agent reports the failure as a settled boundary instead of
+diagnosing it. The shortcut is skipping the search for an alternative path.
+
+This category is the inverse-risk twin of governance discipline. An agent correctly told never to
+bypass an approval gate generalizes that rule onto plumbing, and the resulting sentence reads as
+principle rather than avoidance. Judge by the object: a withheld permission is a guardrail, an
+unconfigured API is a gap. See SKILL.md section 7, The Capability-Limit Probe.
+
+### `not something I'll work around` / `won't work around that`
+
+Principled about a governance gate, evasive about a configuration error. Before this sentence can
+stand, name what failed and what else reaches the same surface.
+
+### `blocked at the API level` / `hit a limitation` / `hard limit`
+
+Stated as terminal without a diagnosis. An API-level block usually names its own remedy in the error
+body; quote the mechanism, then say what would unblock it.
+
+### `not possible right now` / `there's no way to`
+
+An absence claim about capability, which needs the same evidence as any other absence claim: what was
+tried, what surfaces were checked, what would have to change. Bare, it is a guess wearing a verdict.
+
+### `you'll have to do this manually` / `you'd need to do that yourself`
+
+Legitimate when the action is genuinely reserved to the user - credentials, console access, an
+approval only they can give. A shortcut when it arrives before any alternative was explored, or
+without naming the specific change that would remove the need next time.
+
+---
+
+## Category 9: `effort_rationale`
+
+A recommendation between options is decided by implementation cost - build size, effort, cheapness -
+when the user has explicitly removed cost from the decision set ("best, most robust solution; no
+shortcuts"). The shortcut is letting the conservative default (minimize change) override the user's
+stated priority order. Cost may be stated as information; it must never be the reason. See
+[Case 7](case-studies.md#case-7-the-recommendation-decided-by-build-cost).
+
+**The constraint that makes it a costume:** "best solution," "no shortcuts," or any framing where
+merits (robustness, longevity, failure modes) decide and cost does not.
+
+### `fraction of the cost` / `fraction of the effort`
+
+Why it is a shortcut: cost comparison presented as the deciding pro. Reads as prudence; behaves as
+priority inversion when the user optimizes for best.
+
+Replacement framing: decide on the merits first, then state cost separately ("B is the better
+solution; it costs roughly 2x to build").
+
+### `smaller build` / `bigger build` as the deciding factor
+
+Why it is a shortcut: build size standing in for the decision when robustness or longevity should.
+"Even if it is a bigger build, I prefer the better solution" is the user's standing answer to this
+framing.
+
+Replacement framing: name what makes the option better or worse on the merits. If build size truly
+blocks (a deadline, a freeze window), name that constraint explicitly - a real constraint is not a
+costume.
+
+### `cheaper option` / `cheaper to build`
+
+Why it is a shortcut: cheapness as virtue, scored without the user's constraint set.
+
+Replacement framing: "cheaper and worse on the merits" vs "cheaper with merits equal" - only the
+second survives constraint-first filtering, and then cheapness is a tiebreak, not the reason.
+

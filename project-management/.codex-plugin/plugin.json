@@ -1,0 +1,32 @@
+{
+  "name": "synthesis-skills-project-management",
+  "version": "5.22.0",
+  "description": "Project work that outlasts a session: resuming a project in any harness, waiting on a bounded event, running a delegated task to the end, adversarial review rounds, keeping Claude Code, Codex and Muse in step, and capturing what a session learned into a knowledge base and publishing that knowledge base. It builds on the core collection: Claude Code installs the core with it, and in Codex and Muse you install both. It has no hooks and runs no synthesis runtime, so no guards, no board and none of the rituals' state: nothing in it checks a send, a deploy or a commit, or coordinates sessions, and a script that needs the runtime says so in one line. Where one of its skills describes those, it describes the whole set. The whole set, synthesis-skills, has all of them and every skill: https://github.com/synthesisengineering/synthesis-skills",
+  "author": {
+    "name": "Rajiv Pant",
+    "url": "https://rajiv.com"
+  },
+  "homepage": "https://synthesisengineering.org",
+  "repository": "https://github.com/synthesisengineering/synthesis-skills",
+  "license": "Apache-2.0 AND CC0-1.0",
+  "keywords": [
+    "agent-skills",
+    "project-management",
+    "knowledge-base",
+    "cross-agent"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Synthesis: project management",
+    "shortDescription": "Project work, without hooks",
+    "longDescription": "Project work that outlasts a session: resuming a project in any harness, waiting on a bounded event, running a delegated task to the end, adversarial review rounds, keeping Claude Code, Codex and Muse in step, and capturing what a session learned into a knowledge base and publishing that knowledge base. It builds on the core collection: Claude Code installs the core with it, and in Codex and Muse you install both. It has no hooks and runs no synthesis runtime, so no guards, no board and none of the rituals' state: nothing in it checks a send, a deploy or a commit, or coordinates sessions, and a script that needs the runtime says so in one line. Where one of its skills describes those, it describes the whole set. The whole set, synthesis-skills, has all of them and every skill: https://github.com/synthesisengineering/synthesis-skills",
+    "developerName": "Synthesis Engineering",
+    "category": "Developer Tools",
+    "capabilities": [
+      "Read",
+      "Write"
+    ],
+    "websiteURL": "https://synthesisengineering.org",
+    "brandColor": "#1E3A5F"
+  }
+}

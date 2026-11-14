@@ -1,0 +1,6 @@
+interface:
+  display_name: "Synthesis Adversarial Review"
+  short_description: "Run bounded, evidence-led cross-agent review"
+  default_prompt: "Use $synthesis-adversarial-review to adversarially review the current work against the principal's outcome."
+policy:
+  allow_implicit_invocation: false

@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 1,
+  "name": "synthesis-skills-project-management",
+  "displayName": "Synthesis: project management",
+  "version": "5.22.0",
+  "description": "Project work that outlasts a session: resuming a project in any harness, waiting on a bounded event, running a delegated task to the end, adversarial review rounds, keeping Claude Code, Codex and Muse in step, and capturing what a session learned into a knowledge base and publishing that knowledge base. It builds on the core collection: Claude Code installs the core with it, and in Codex and Muse you install both. It has no hooks and runs no synthesis runtime, so no guards, no board and none of the rituals' state: nothing in it checks a send, a deploy or a commit, or coordinates sessions, and a script that needs the runtime says so in one line. Where one of its skills describes those, it describes the whole set. The whole set, synthesis-skills, has all of them and every skill: https://github.com/synthesisengineering/synthesis-skills",
+  "compat": {
+    "source": "native",
+    "manifestDir": ".muse-plugin"
+  },
+  "capabilities": {
+    "skills": [
+      {
+        "id": "synthesis-adversarial-review",
+        "path": "skills/synthesis-adversarial-review/SKILL.md"
+      },
+      {
+        "id": "synthesis-agent-conformance",
+        "path": "skills/synthesis-agent-conformance/SKILL.md"
+      },
+      {
+        "id": "synthesis-autopilot",
+        "path": "skills/synthesis-autopilot/SKILL.md"
+      },
+      {
+        "id": "synthesis-kb-distribution",
+        "path": "skills/synthesis-kb-distribution/SKILL.md"
+      },
+      {
+        "id": "synthesis-knowledge-capture",
+        "path": "skills/synthesis-knowledge-capture/SKILL.md"
+      },
+      {
+        "id": "synthesis-project-resume",
+        "path": "skills/synthesis-project-resume/SKILL.md"
+      },
+      {
+        "id": "synthesis-waiting",
+        "path": "skills/synthesis-waiting/SKILL.md"
+      }
+    ],
+    "commands": [],
+    "hooks": [],
+    "mcpServers": [],
+    "reminders": []
+  }
+}

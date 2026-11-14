@@ -1,0 +1,129 @@
+#!/usr/bin/env bash
+# day-end — launcher for the synthesis-daily-rituals Day-End ritual.
+#
+# The ritual is an Agent Skill and always runs INSIDE an agentic coding
+# session. This script is a launcher, not a runner: it only removes
+# cold-start friction by opening Codex or Claude Code with the ritual
+# invocation as the first prompt. Inside an already-open session, invoke
+# the skill directly and ignore this launcher.
+#
+# Usage: day-end [-f|-q|-o]
+#   -f full · -q quick close · -o observer · default: the session asks.
+# Selection order:
+#   1. DAY_END_AGENT_CMD
+#   2. <runtime-root>/agent-cli (auto|codex|claude)
+#   3. auto (Codex first, then Claude Code)
+set -euo pipefail
+
+SOURCE="${BASH_SOURCE[0]}"
+while [ -L "$SOURCE" ]; do
+  SOURCE_DIR="$(cd -P "$(dirname "$SOURCE")" >/dev/null 2>&1 && pwd)"
+  SOURCE="$(readlink "$SOURCE")"
+  [[ "$SOURCE" != /* ]] && SOURCE="$SOURCE_DIR/$SOURCE"
+done
+SCRIPT_DIR="$(cd -P "$(dirname "$SOURCE")" >/dev/null 2>&1 && pwd)"
+RUNTIME_ROOT="$(cd -P "$SCRIPT_DIR/.." >/dev/null 2>&1 && pwd)"
+
+configured_agent() {
+  if [ -n "${DAY_END_AGENT_CMD:-}" ]; then
+    printf '%s\n' "$DAY_END_AGENT_CMD"
+    return
+  fi
+  if [ -f "$RUNTIME_ROOT/agent-cli" ]; then
+    IFS= read -r selection < "$RUNTIME_ROOT/agent-cli"
+    printf '%s\n' "${selection:-auto}"
+    return
+  fi
+  printf '%s\n' "auto"
+}
+
+# Resolve a client CLI the way synthesis-agent-conformance does: an explicit
+# SYNTHESIS_CODEX_BIN / SYNTHESIS_CLAUDE_BIN override (set but empty means
+# "treat as absent"), then PATH, then documented stable install locations. A
+# plain terminal has neither agent shell's PATH additions — the Codex CLI
+# ships inside the ChatGPT desktop app on macOS — and without the fallbacks
+# "auto" silently degrades to whichever client happens to be on PATH.
+find_agent_cli() {
+  case "$1" in
+    codex) override="${SYNTHESIS_CODEX_BIN-__unset__}" ;;
+    claude) override="${SYNTHESIS_CLAUDE_BIN-__unset__}" ;;
+    *) override="__unset__" ;;
+  esac
+  if [ "$override" != "__unset__" ]; then
+    if [ -n "$override" ] && [ -x "$override" ]; then
+      printf '%s\n' "$override"
+      return 0
+    fi
+    return 1
+  fi
+  if command -v "$1" >/dev/null 2>&1; then
+    command -v "$1"
+    return 0
+  fi
+  case "$1" in
+    codex)
+      set -- codex \
+        "$HOME/.local/bin/codex" \
+        /opt/homebrew/bin/codex \
+        /usr/local/bin/codex \
+        "/Applications/ChatGPT.app/Contents/Resources/codex"
+      ;;
+    claude)
+      set -- claude \
+        "$HOME/.local/bin/claude" \
+        /opt/homebrew/bin/claude \
+        /usr/local/bin/claude
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+  shift
+  for candidate in "$@"; do
+    if [ -x "$candidate" ]; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+  done
+  return 1
+}
+
+AGENT="$(configured_agent)"
+AGENT_CLI=""
+case "$AGENT" in
+  auto)
+    if AGENT_CLI="$(find_agent_cli codex)"; then
+      :
+    elif AGENT_CLI="$(find_agent_cli claude)"; then
+      :
+    else
+      echo "day-end: neither codex nor claude is available on PATH or in known install locations" >&2
+      exit 127
+    fi
+    ;;
+  codex|claude)
+    if ! AGENT_CLI="$(find_agent_cli "$AGENT")"; then
+      echo "day-end: configured agent CLI is unavailable: $AGENT" >&2
+      exit 127
+    fi
+    ;;
+  *)
+    if [ -x "$AGENT" ]; then
+      AGENT_CLI="$AGENT"
+    else
+      echo "day-end: agent-cli must be auto, codex, claude, or an executable path (got: $AGENT)" >&2
+      exit 2
+    fi
+    ;;
+esac
+
+MODE_LINE="Ask me the one-letter mode question (f = full, q = quick close, o = observer) before starting."
+case "${1:-}" in
+  -f) MODE_LINE="Mode: full." ;;
+  -q) MODE_LINE="Mode: Quick Close." ;;
+  -o) MODE_LINE="Mode: observer." ;;
+  "") ;;
+  *) echo "usage: day-end [-f|-q|-o]" >&2; exit 2 ;;
+esac
+PROMPT="Please name this session day-end-$(date +%Y-%m-%d). Run the synthesis-daily-rituals Day-End ritual now. ${MODE_LINE}"
+exec "$AGENT_CLI" "$PROMPT"

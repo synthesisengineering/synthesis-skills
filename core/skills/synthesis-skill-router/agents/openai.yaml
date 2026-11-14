@@ -1,0 +1,4 @@
+interface:
+  display_name: "Synthesis Skill Router"
+  short_description: "Route work to the right synthesis workflow"
+  default_prompt: "Use $synthesis-skill-router to choose and load the right synthesis workflow for this task."

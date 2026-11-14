@@ -1,0 +1,6 @@
+interface:
+  display_name: "Message exports"
+  short_description: "Import an authorized message export privately"
+  default_prompt: "Use $synthesis-message-exports to import a message export the principal authorized into private transcripts in the folder they name."
+policy:
+  allow_implicit_invocation: false

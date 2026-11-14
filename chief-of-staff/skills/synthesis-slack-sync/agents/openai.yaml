@@ -1,0 +1,7 @@
+interface:
+  display_name: "Synthesis Slack Sync"
+  short_description: "Apply the slack sync synthesis workflow"
+  default_prompt: "Use $synthesis-slack-sync to apply this workflow to the current task."
+
+policy:
+  allow_implicit_invocation: false

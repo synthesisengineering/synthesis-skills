@@ -1,0 +1,7 @@
+interface:
+  display_name: "Synthesis Content Quality"
+  short_description: "Apply the content quality synthesis workflow"
+  default_prompt: "Use $synthesis-content-quality to apply this workflow to the current task."
+
+policy:
+  allow_implicit_invocation: false

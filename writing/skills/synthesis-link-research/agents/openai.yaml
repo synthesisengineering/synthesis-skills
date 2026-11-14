@@ -1,0 +1,7 @@
+interface:
+  display_name: "Synthesis Link Research"
+  short_description: "Apply the link research synthesis workflow"
+  default_prompt: "Use $synthesis-link-research to apply this workflow to the current task."
+
+policy:
+  allow_implicit_invocation: false

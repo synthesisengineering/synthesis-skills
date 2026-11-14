@@ -1,0 +1,22 @@
+{
+  "name": "synthesis-skills-engineering",
+  "version": "5.22.0",
+  "description": "Planning, reviewing and shipping code: code planning and architecture decisions, pre-merge gates, code audits, pull request review and triage, codebase reviews, integrating contributions, Bitbucket, the commit check, and setting up local and hosted models as technical help. It builds on the core collection: Claude Code installs the core with it, and in Codex and Muse you install both. It has no hooks and runs no synthesis runtime, so no guards, no board and none of the rituals' state: nothing in it checks a send, a deploy or a commit, or coordinates sessions, and a script that needs the runtime says so in one line. Where one of its skills describes those, it describes the whole set. The whole set, synthesis-skills, has all of them and every skill: https://github.com/synthesisengineering/synthesis-skills",
+  "author": {
+    "name": "Rajiv Pant",
+    "url": "https://rajiv.com"
+  },
+  "homepage": "https://synthesisengineering.org",
+  "repository": "https://github.com/synthesisengineering/synthesis-skills",
+  "license": "Apache-2.0 AND CC0-1.0",
+  "keywords": [
+    "agent-skills",
+    "software-engineering",
+    "code-review",
+    "planning"
+  ],
+  "skills": "./skills/",
+  "dependencies": [
+    "synthesis-skills-core"
+  ]
+}

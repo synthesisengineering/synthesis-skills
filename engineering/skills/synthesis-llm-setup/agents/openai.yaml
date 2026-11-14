@@ -1,0 +1,7 @@
+interface:
+  display_name: "Synthesis LLM Setup"
+  short_description: "Apply the llm setup synthesis workflow"
+  default_prompt: "Use $synthesis-llm-setup to apply this workflow to the current task."
+
+policy:
+  allow_implicit_invocation: false

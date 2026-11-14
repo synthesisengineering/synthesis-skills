@@ -1,0 +1,7 @@
+interface:
+  display_name: "Synthesis Waiting"
+  short_description: "Arm a watcher before a turn ends"
+  default_prompt: "Use $synthesis-waiting to arm a bounded watcher for the event this task is waiting on."
+
+policy:
+  allow_implicit_invocation: false

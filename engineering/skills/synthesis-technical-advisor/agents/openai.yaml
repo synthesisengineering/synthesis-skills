@@ -1,0 +1,7 @@
+interface:
+  display_name: "Synthesis Technical Advisor"
+  short_description: "Apply the technical advisor synthesis workflow"
+  default_prompt: "Use $synthesis-technical-advisor to apply this workflow to the current task."
+
+policy:
+  allow_implicit_invocation: false

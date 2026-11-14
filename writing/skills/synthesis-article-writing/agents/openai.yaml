@@ -1,0 +1,7 @@
+interface:
+  display_name: "Synthesis Article Writing"
+  short_description: "Apply the article writing synthesis workflow"
+  default_prompt: "Use $synthesis-article-writing to apply this workflow to the current task."
+
+policy:
+  allow_implicit_invocation: false

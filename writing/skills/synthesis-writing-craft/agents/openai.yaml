@@ -1,0 +1,7 @@
+interface:
+  display_name: "Synthesis Writing Craft"
+  short_description: "Apply the writing craft synthesis workflow"
+  default_prompt: "Use $synthesis-writing-craft to apply this workflow to the current task."
+
+policy:
+  allow_implicit_invocation: false

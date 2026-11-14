@@ -1,0 +1,7 @@
+interface:
+  display_name: "Synthesis Inbox Cleanup"
+  short_description: "Apply the inbox cleanup synthesis workflow"
+  default_prompt: "Use $synthesis-inbox-cleanup to apply this workflow to the current task."
+
+policy:
+  allow_implicit_invocation: false

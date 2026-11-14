@@ -1,0 +1,4 @@
+interface:
+  display_name: "Synthesis Thinking Framework"
+  short_description: "Apply the thinking framework synthesis workflow"
+  default_prompt: "Use $synthesis-thinking-framework to apply this workflow to the current task."

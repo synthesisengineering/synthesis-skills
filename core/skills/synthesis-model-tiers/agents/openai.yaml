@@ -1,0 +1,7 @@
+interface:
+  display_name: "Synthesis Model Tiers"
+  short_description: "Apply the model tiers synthesis workflow"
+  default_prompt: "Use $synthesis-model-tiers to apply this workflow to the current task."
+
+policy:
+  allow_implicit_invocation: false

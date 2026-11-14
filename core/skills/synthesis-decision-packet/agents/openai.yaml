@@ -1,0 +1,7 @@
+interface:
+  display_name: "Synthesis Decision Packet"
+  short_description: "Collect many parallel decisions in one sitting, not one per turn"
+  default_prompt: "Use $synthesis-decision-packet to turn these findings into a decision packet I can work through in one pass and paste back in one message."
+
+policy:
+  allow_implicit_invocation: false
