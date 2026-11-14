@@ -9,7 +9,7 @@ depends_on:
   - synthesis-checkpoint
 metadata:
   author: "Rajiv Pant"
-  version: "3.16.0"
+  version: "3.17.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
   format: v5
@@ -28,7 +28,7 @@ slips silently. Each workspace runs its own; a project supplement may add repos 
 3. **A run proves its own coverage:** open with `sync_watermark.py begin`, take every window from `window`, gate with `status --since run`. A read from this morning is not current now (2026-09-01: a 09:15 read hid a 09:27 answer).
 4. **Every repo, mailbox and target lands in one named state with a denominator;** unscanned never reads as empty, and any surface not swept is named.
 5. **Nothing decay-tagged passes its date silently:** send (on the principal's approval), re-date with a reason, or release. An item that passed its date with no decision is marked Lapsed and gets an append-only lapse-register row.
-6. **Record every ritual,** in every mode, with `ritual_state.py record` and the logical workday as `--date`. A weekly review done early is recorded with the Friday it satisfies.
+6. **Record every ritual,** in every mode, with `ritual_state.py record` and the logical workday as `--date`; a date after today is refused. A weekly review done early is recorded with the Friday it satisfies.
 7. **Nothing sends without the principal's approval of the exact text.** Every draft is grounded in primary sources and re-checked against the live thread at send time.
 8. **Workspace content stays in that workspace's records,** so deleting the workspace erases it; the person-side plan is a shell with pointers.
 9. **Banners and spoken alerts carry counts and a pointer only,** never a client, repo, workspace or person name, and honor `~/.synthesis/quiet-audio`. Speakers are overheard and banners are screen-shared.
@@ -38,7 +38,7 @@ slips silently. Each workspace runs its own; a project supplement may add repos 
 13. **LinkedIn's conversation list is read from the new-message view, never the bare messaging page,** which opens the newest conversation and marks it read. Scroll back to the day the plan names and stop there. Open a thread only when its preview cannot show whether something is owed, and name each one opened.
 14. **An in-person event is not planned until its travel is.** Where the workspace checks travel, each ritual runs `travel_check.py` over the days ahead, no ritual is recorded while an event lacks its travel, and a leaving or returning time in a plan or draft is taken from a travel block, never estimated (2026-11-11).
 15. **A choice in the plan is put with a recommendation, and with what it costs when it would commit the principal's time.** `ritual_state.py record` refuses while an open item that offers options lacks either (2026-11-11).
-16. **What another person relies on is checked first, at every ritual:** run `relied_on.py`. A `DOWN` line opens the plan and the reply before anything else. It is an incident: the principal is told first, the people affected only on the principal's approval. A test two colleagues relied on once stopped, unseen through two check-ins.
+16. **What another person relies on is checked first, at every ritual:** run `relied_on.py`. A `DOWN` line opens the plan and the reply before anything else. It is an incident: the principal is told first, the people affected only on the principal's approval. A `NOT CHECKED` line is said first too, never read as all clear. A test two colleagues relied on once stopped, unseen through two check-ins.
 
 ## Contents
 
@@ -58,7 +58,7 @@ slips silently. Each workspace runs its own; a project supplement may add repos 
 - [references/ownership-routing.md](references/ownership-routing.md): which workspace owns an item, and which side of a conflict moves. Read at the catch-up read.
 - [references/ritual-worker-contract.md](references/ritual-worker-contract.md): desk and workers, artifacts, plan storage separation. Read when a workers registry exists.
 - [references/version-history.md](references/version-history.md), [references/version-history-2.27-to-2.45.md](references/version-history-2.27-to-2.45.md), [references/version-history-2.3-to-2.26.md](references/version-history-2.3-to-2.26.md): why each rule exists. Read when a reason matters.
-- [references/coverage-map.md](references/coverage-map.md): where every 2.45.1 rule lives now. [references/preserved.md](references/preserved.md) (what was retired and why), [references/preserved-skill-v2-part1.md](references/preserved-skill-v2-part1.md), [references/preserved-skill-v2-part2.md](references/preserved-skill-v2-part2.md) and [references/preserved-retired-references.md](references/preserved-retired-references.md) keep the old text verbatim. Read only to review the rewrite.
+- [references/coverage-map.md](references/coverage-map.md): the rewrite's record, with `references/preserved.md`, `references/preserved-skill-v2-part1.md`, `references/preserved-skill-v2-part2.md` and `references/preserved-retired-references.md`.
 
 ## Procedure
 
