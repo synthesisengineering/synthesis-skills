@@ -16,6 +16,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   large for the guard to read (over 256 KB), run or sourced, is held rather than let through.
 - **A deploy's hold says what its approval binds to:** the command and the HEAD of each checkout it deploys, so the
   same command after a commit meets a new code with the reason in front of it.
+- **No test reads this Mac's synthesis home.** Once 5.20.0's hourly sync had written this Mac's ritual history into
+  its sessions repos, seven ritual tests read it through the person's own config and failed on this Mac alone; every
+  test, a skill's included, now has a synthesis home of its own.
 - **How it was checked.** Tests first, and one review round. The first fix set a sourced script's function bodies
   apart and stopped at the first `-n`; the review showed both opened real holes (`bash -n +n`, `--rcfile -n`, deploys
   at a sourced script's top level missed in several forms, and a pattern that could run past the hook's time limit),

@@ -22,6 +22,14 @@ def no_rituals_folder_from_the_shell(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def no_synthesis_home_of_this_mac(tmp_path, monkeypatch):
+    """No test, a skill's included, reads this Mac's synthesis home: its config names the person's sessions repos, which
+    hold every Mac's ritual history since 5.20.0, and seven ritual tests read it there once the hourly sync had written
+    it (5.20.1). The core's tests set the same folder; a skill's own test may set another."""
+    monkeypatch.setenv("SYNTHESIS_HOME", str(tmp_path / "synthesis-home"))
+
+
+@pytest.fixture(autouse=True)
 def no_desktop_sessions_of_this_mac(tmp_path, monkeypatch):
     """No test, a skill's included, reads the desktop app's agent-mode sessions of the Mac it runs on (the review of
     5.18.0: only the core's tests named a folder of their own)."""
