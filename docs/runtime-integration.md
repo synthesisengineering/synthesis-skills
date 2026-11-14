@@ -529,7 +529,20 @@ What the M5 sandbox showed for Muse 1.4.3, and what it could not test:
 
 - **PreToolUse fails closed** for the calls it guards: an unreadable
   `~/.synthesis/v5/config.json` or an exception inside a guard blocks the call
-  with the reason.
+  with the reason. When the hook itself cannot answer (it times out, crashes,
+  prints output the harness cannot read, or cannot start because the stable hook
+  is missing), Claude Code 2.1.295 or later blocks the call too, since the
+  plugin's handler sets `"onFailure": "block"` (5.21.0); Claude Code names the
+  hook and says `failed` or `timed out`, and an older one ignores the setting.
+  Codex (0.167) and Muse (1.4.20) have no such setting: there a hook that times
+  out or crashes lets the call through (Codex's runner marks it failed without
+  blocking, in its source at 0.167.2; Muse's `plugins hook test` gave
+  `should_block: false` for a missing hook, an exit code of 1 and a timeout, run
+  on 2026-11-14). Muse reads only its
+  own manifest, which refuses the field, so it is set in `hooks/hooks.json`
+  alone, where Codex reads it and hashes the hook without it. UserPromptSubmit and
+  SessionStart keep the default: holding a person's prompt or a session's start
+  on a hook failure costs more than it protects.
 - **Stop fails open**, because a turn-end check that fails closed loops
   forever. The reply check sends a reply back at most once in a row, and an
   autopilot run is asked to continue at most `autopilot.max_continuations`

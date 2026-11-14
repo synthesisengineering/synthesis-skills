@@ -4,6 +4,17 @@ Everything lives in the principal's private `~/.synthesis/v5/config.json`. A mis
 means the defaults below. A file that can't be read or parsed blocks every shell call,
 send and account-routed call until it is fixed (R3.5); other tools are unaffected.
 
+**When a guard cannot answer** (5.21.0). In Claude Code the plugin's PreToolUse hook sets
+`"onFailure": "block"`, so from Claude Code 2.1.295 a guarded call (a shell command, a file
+write, a send, an account-routed or browser call) is held when the guard times out (5
+seconds), crashes, prints output Claude Code cannot read, or cannot start because the stable
+hook is missing. Before 2.1.295 the setting is ignored and the call goes through; `synthesis
+doctor` warns then, and fails a plugin whose hook lacks the setting. Codex (0.167) and Muse
+(1.4.20) have no such setting, and a guard that times out or crashes there lets the call
+through (Muse's hook runner, run on 2026-11-14; Codex's, read in its source at 0.167.2). In
+every harness an unreadable config and an error inside a guard still block, since the guard
+catches those itself.
+
 ## Contents
 
 - [Keys](#keys)

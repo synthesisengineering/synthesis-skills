@@ -469,6 +469,11 @@ USER_HOOKS = f"# {doctor.SETUP_MARK}"  # marks each config.toml line the option 
 SWITCH = f"enabled = false  {USER_HOOKS}"
 
 
+def _hashes(event: str, groups: list) -> list:
+    """Codex's trust hash of each hook in these groups: a change that keeps every one keeps Codex's approval."""
+    return [doctor.codex_hook_hash(event, group.get("matcher"), hook) for group in groups for hook in group.get("hooks") or []]
+
+
 def _state_tables(lines: list) -> dict:
     """{key: the index of its `[hooks.state."<key>"]` header} among config.toml's lines."""
     found = {}
@@ -566,7 +571,7 @@ def codex_user_hooks(want, plugin_root=None, dry_run: bool = False) -> list:
     wanted = doctor.codex_user_declaration(paths.read_json(Path(plugin_root) / "hooks" / "hooks.json")) if want else {}
     if want and not wanted:
         raise SetupError(f"codex user hooks: {plugin_root} has no hooks/hooks.json to declare, so nothing was changed")
-    recorded, done, kept, short, covered, wrote = record.get("groups") or {}, [], [], [], [], {}
+    recorded, done, kept, short, covered, wrote, same = record.get("groups") or {}, [], [], [], [], {}, []
     for event in dict.fromkeys([*wanted, *recorded, *events]):
         current = events.get(event, [])
         mine = [i for i, group in enumerate(current) if group in recorded.get(event, [])]
@@ -580,7 +585,8 @@ def codex_user_hooks(want, plugin_root=None, dry_run: bool = False) -> list:
             rest = [group for i, group in enumerate(current) if i not in mine]
             at = mine[0] if mine else len(rest)  # where setup's own stood, so the keys of the person's after it hold
             events[event] = rest[:at] + wanted.get(event, []) + rest[at:]
-            done.append(event)
+            (same if mine and _hashes(event, [current[i] for i in mine]) == _hashes(event, wanted.get(event, []))
+             else done).append(event)
             if not events[event]:
                 del events[event]
         if event in wanted:
@@ -601,6 +607,8 @@ def codex_user_hooks(want, plugin_root=None, dry_run: bool = False) -> list:
     notes += [f"codex user hooks: {', '.join(owned)} already declared in {file} by you, kept as written"] if owned else []
     notes += [f"codex user hooks: your own {', '.join(short)} in {file} covers less than the plugin's, so the plugin's own stays "
               "on beside it: edit yours to cover it or remove it, then run this again"] if short else []
+    notes += [f"codex user hooks: {would}bring {', '.join(same)} in {file} in step with the plugin; Codex hashes them as "
+              "before, so an approval it holds for them stays"] if same else []  # a field Codex does not hash changed
     if "\n".join(lines) != (text or ""):
         notes.append(f"codex user hooks: {would}" + (f"switch the plugin's own hooks off in {config_file} where the user level "
                      f"covers them ({len(keys)} lines marked as setup's), so none runs twice" if want else

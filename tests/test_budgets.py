@@ -945,6 +945,12 @@ ROOT = Path(__file__).resolve().parents[1]
 # Instagram in the browser's messaging sites: a comment line and three lines of five entries.
 # 5.21.0, the release's own count: doctor.py 8, waits_on_person 6 (signature, a docstring of three lines, the test)
 # and ASKS 1 with a blank line: an approval line that names a fault of setup no longer reads as waiting on the person.
+# 5.21.0, a guard that cannot answer holds the call in Claude Code (the PreToolUse handler's "onFailure": "block"): core
+# 30 more and plugin 38. doctor.py 30: check_claude_fail_closed 15 (the plugin's guard without the setting fails, a
+# Claude Code older than 2.1.295 or one that names no version warns), claude_version 8 (`claude --version`, bounded),
+# CLAUDE_ON_FAILURE 1, harness_checks 0 (the hooks file read once for both lines, one line fewer, and the new line) and
+# spacing 6. setup.py 8: _hashes 3 and spacing 2 (Codex's hashes of setup's own groups, before and after), the note that
+# an approval stays 3, and the event filed under it 0 (one line changed).
 # 5.21.0, review round 1 (2026-11-14), the doctor: core 104 more and plugin 104. doctor.py 98: check_codex_trust 23 (hook
 # state held inline named; an event covered in part judged as the plugin's, with advice by setup's record; an event
 # declared twice; setup's switch with nothing covering its event, and an unreadable hooks.json while the option is on,
@@ -965,10 +971,12 @@ ROOT = Path(__file__).resolve().parents[1]
 # configure_codex 3 (nothing written into a file that does not parse), _uninstall 1 (the declaration out first, or
 # nothing removed and exit 1), the stat import 1 and _UNREAD 1, with _setup_wrote 5 and install_plugin 5 fewer, and
 # spacing 12. release.py 2: install_and_verify keeps the option in step with the folder it verified.
+# The two merged (2026-11-14): the fail-closed work's 8 setup.py lines sit in round 1's rewrite of codex_user_hooks as
+# _hashes 3 with spacing 2, its note 2 and the event filed under it 1; the ceilings are the sum of both counts.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # consolidate first).
-CORE_BUDGET = 14863
-PLUGIN_BUDGET = 38100
+CORE_BUDGET = 14893
+PLUGIN_BUDGET = 38138
 
 
 def _lines(files):

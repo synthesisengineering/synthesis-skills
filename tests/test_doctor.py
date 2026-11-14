@@ -222,6 +222,41 @@ def test_hooks_that_bypass_the_stable_path_fail():
     assert check.detail.endswith("SessionStart, UserPromptSubmit, Stop")
 
 
+# ---- Claude Code holds a guarded call when the guard cannot answer (5.21.0) ----------------------------------------
+# A PreToolUse hook that times out, crashes or cannot start lets the call through in Claude Code unless its handler sets
+# "onFailure": "block", which Claude Code honors from 2.1.295 (its hooks reference); Codex and Muse have no such setting.
+
+def test_the_doctor_fails_a_plugin_whose_guard_lets_a_call_through_when_it_cannot_answer():
+    assert doctor.check_claude_fail_closed(REPO_HOOKS, "2.1.316").status == "ok"
+    lacking = json.loads(json.dumps(REPO_HOOKS))
+    del lacking["hooks"]["PreToolUse"][0]["hooks"][0]["onFailure"]
+    check = doctor.check_claude_fail_closed(lacking, "2.1.316")
+    assert check.status == "fail" and check.name == "claude fail closed" and '"onFailure": "block"' in check.detail
+    lacking["hooks"]["PreToolUse"][0]["hooks"][0]["onFailure"] = "continue"
+    assert doctor.check_claude_fail_closed(lacking, "2.1.316").status == "fail"
+    assert doctor.check_claude_fail_closed({}, "2.1.316").status == "fail"           # no PreToolUse hook at all
+
+
+@pytest.mark.parametrize("version,status", [("2.1.294", "warn"), ("2.1.30", "warn"), ("2.0.999", "warn"), ("2.1.295", "ok"),
+                                            ("2.1.1000", "ok"), ("3.0", "ok"), ("", "warn")])
+def test_the_doctor_warns_when_claude_code_cannot_honor_the_setting(version, status):
+    check = doctor.check_claude_fail_closed(REPO_HOOKS, version)
+    assert check.status == status
+    assert ("2.1.295" in check.detail and version in check.detail) if version and status == "warn" else True
+    assert "cannot tell" in check.detail if not version else True
+
+
+def test_claude_version_is_the_number_claude_prints_first(tmp_path):
+    def cli(name, line):
+        path = tmp_path / name
+        path.write_text(f"#!/bin/sh\necho '{line}'\n")
+        path.chmod(0o755)
+        return str(path)
+    assert doctor.claude_version(cli("claude", "2.1.316 (Claude Code)")) == "2.1.316"
+    assert doctor.claude_version(cli("other", "Claude Code")) == ""
+    assert doctor.claude_version(str(tmp_path / "missing")) == ""
+
+
 # ---- Codex --------------------------------------------------------------------
 
 # Hashes Codex 0.160.0 itself stored in config.toml for the 4.154.12 plugin's hooks.
@@ -384,6 +419,16 @@ def test_the_user_level_declaration_is_the_plugins_with_the_stable_hook_for_each
             assert [{**h, "command": ""} for h in mine["hooks"]] == [{**h, "command": ""} for h in theirs["hooks"]]
             assert all(h["command"] == f'"{doctor.STABLE_HOOK}" {doctor.EVENTS[event]}' for h in mine["hooks"])
     assert doctor.codex_hooks_problem({"hooks": declared}) == "" and doctor.codex_hooks_problem(REPO_HOOKS) == ""
+
+
+def test_the_user_level_declaration_carries_the_guards_setting_and_codex_reads_and_trusts_it_as_before():
+    """5.21.0: the plugin's guard carries "onFailure": "block" for Claude Code, and the user-level copy carries it too,
+    as the plugin writes it. Codex 0.167.0-alpha.4.1 read all four with it and listed the guard's currentHash as it
+    was without it (2026-11-14), so the approval a person gave before still holds."""
+    declared = doctor.codex_user_declaration(REPO_HOOKS)
+    guard = declared["PreToolUse"][0]
+    assert guard["hooks"][0]["onFailure"] == "block" and doctor.codex_hooks_problem({"hooks": declared}) == ""
+    assert doctor.codex_hook_hash("PreToolUse", guard["matcher"], guard["hooks"][0]) == USER_VECTORS[0][3]
 
 
 def user_level(tmp_path, declared=None, trusted=True, plugin_off=True, home=None):
@@ -819,8 +864,9 @@ def test_git_hooks_path_is_report_only(tmp_path):
 
 # ---- end to end, with fake harness CLIs ---------------------------------------
 
-def fake_cli(bin_dir: Path, name: str, payload, skills=None) -> None:
-    """A harness CLI that prints its listing; with `skills`, it also answers app-server skills/list."""
+def fake_cli(bin_dir: Path, name: str, payload, skills=None, version="2.1.316 (Claude Code)") -> None:
+    """A harness CLI that prints its listing and, asked with --version, its version; with `skills`, it also answers
+    app-server skills/list."""
     data = bin_dir / f"{name}.json"
     data.write_text(json.dumps(payload))
     script = bin_dir / name
@@ -835,6 +881,8 @@ if sys.argv[1:2] == ["app-server"]:
         elif message.get("id") == 1:
             print(json.dumps({{"id": 1, "result": json.loads({answer!r})}}), flush=True)
             break
+elif sys.argv[1:2] == ["--version"]:
+    print({version!r})
 else:
     sys.stdout.write(open({str(data)!r}).read())
 """)
@@ -917,6 +965,7 @@ def test_doctor_reports_a_healthy_machine_and_writes_no_harness_state(machine, c
     assert {"runtime", "claude", "codex", "muse", "git"} <= names
     assert not any(line.split()[0] == "fail" for line in lines[1:])
     assert any(line.split()[:4] == ["ok", "codex", "skill", "catalog"] for line in lines[1:])
+    assert any(line.split()[:4] == ["ok", "claude", "fail", "closed"] for line in lines[1:])
     assert snapshot(home) == before
 
 
