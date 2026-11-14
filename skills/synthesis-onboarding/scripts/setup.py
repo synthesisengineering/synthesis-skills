@@ -2,7 +2,7 @@
 and optionally a workspace's repositories or an organization's configuration.
 
     python3 setup.py                     # interactive: everything, asking what it cannot detect
-    python3 setup.py plugin [--clients claude,codex,muse] [--ref stable|main|vX.Y.Z]
+    python3 setup.py plugin [--clients claude,codex,muse] [--ref stable|main|vX.Y.Z] [--[no-]codex-user-hooks]
     python3 setup.py workspace [--kb URL|PATH] [--workspace NAME]   # new Mac: clone repos.yaml
     python3 setup.py org --org-repo URL [--personal-source PATH]
     python3 setup.py uninstall [--dry-run]
@@ -135,7 +135,7 @@ def plugin_entry(client: str, binary: str):
     # its copy is old (52 s on 2026-11-13), and an update, which is every release, need not wait on that. What the
     # marketplace does not show, and a build that does not know the option, are asked of the whole listing, with
     # time for the fetch: absent is said only from there, and a copy installed from another marketplace is found.
-    codex_home = Path(os.environ.get("CODEX_HOME") or Path.home() / ".codex")
+    codex_home = paths.codex_home()
     asks = [(doctor.LISTINGS[client], LIST_TIMEOUT)] + ([(doctor.CODEX_WHOLE, 5 * LIST_TIMEOUT)] if client == "codex" else [])
     for ask, limit in asks:
         proc = run([binary, *ask], limit)
@@ -157,8 +157,7 @@ def configured_ref(client: str):
             known = json.loads((Path.home() / ".claude" / "plugins" / "known_marketplaces.json").read_text())
             source = (known.get(MARKETPLACE) or {}).get("source") or {}
             return source.get("ref") if source.get("repo") == SOURCE else None
-        codex_home = Path(os.environ.get("CODEX_HOME") or Path.home() / ".codex")
-        config = doctor.read_toml((codex_home / "config.toml").read_text(encoding="utf-8"))
+        config = doctor.read_toml((paths.codex_home() / "config.toml").read_text(encoding="utf-8"))
         return ((config.get("marketplaces") or {}).get(MARKETPLACE) or {}).get("ref")
     except (OSError, ValueError, AttributeError):
         return None
@@ -170,9 +169,12 @@ def _add_marketplace(client: str, binary: str, ref: str) -> list:
     return [binary, "plugin", "marketplace", "add", SOURCE, "--ref", ref, "--json"]
 
 
-def install_plugin(client: str, binary: str, ref: str = "", source: Path = REPO, dry_run: bool = False) -> str:
+def install_plugin(client: str, binary: str, ref: str = "", source: Path = REPO, dry_run: bool = False,
+                   user_hooks=None) -> str:
     """Install or update the plugin. Without an explicit ref an existing marketplace keeps its
-    ref, so an update never downgrades an install that follows a newer channel."""
+    ref, so an update never downgrades an install that follows a newer channel. In Codex, the plugin's hooks
+    declared in its own hooks.json follow the plugin it now holds (`codex_user_hooks`; `user_hooks` turns that on
+    or off), so a release that changes one reaches them however it was installed."""
     if client == "muse":
         return install_muse(binary, source, dry_run=dry_run)
     entry, current = plugin_entry(client, binary), configured_ref(client)
@@ -194,7 +196,8 @@ def install_plugin(client: str, binary: str, ref: str = "", source: Path = REPO,
             steps.insert(0, [binary, "plugin", "marketplace", "remove", MARKETPLACE])
         action = "installed" if not entry else f"moved to {ref}"
     if dry_run:
-        return f"{client}: would run " + "; ".join(" ".join(s[1:]) for s in steps)
+        return "\n".join([f"{client}: would run " + "; ".join(" ".join(s[1:]) for s in steps)] + (
+            codex_user_hooks(user_hooks, source, dry_run=True) if client == "codex" else []))
     for step in steps:
         proc = run(step)
         if proc.returncode and "already" in (proc.stdout + proc.stderr).lower() and "marketplace" in step:
@@ -206,7 +209,8 @@ def install_plugin(client: str, binary: str, ref: str = "", source: Path = REPO,
     if not entry:
         raise SetupError(f"{client}: the plugin list does not show {PLUGIN} after install")
     state = "" if entry.get("enabled") else " but disabled: enable it in the harness's plugin settings"
-    return f"{client}: {action} {PLUGIN} {entry.get('version', '')}{state}"
+    return "\n".join([f"{client}: {action} {PLUGIN} {entry.get('version', '')}{state}"] + (
+        codex_user_hooks(user_hooks, entry.get("path") or source) if client == "codex" else []))
 
 
 def export_tree(source: Path, dest: Path, ref: str = "HEAD") -> None:
@@ -372,24 +376,148 @@ def _legacy_grant(lines: list, config: dict, folder: str) -> bool:
     return True
 
 
+def _replace(path: Path, text, backup: str):
+    """Write a harness's file whole, or remove it for None, after copying the old one to the synthesis backups as
+    `backup`.<time>; returns that copy, None for a new file."""
+    copy = install._home() / "backups" / f"{backup}.{time.strftime('%Y%m%dT%H%M%S')}" if path.exists() else None
+    if copy:
+        copy.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(path, copy)
+    if text is None:
+        path.unlink()
+        return copy
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(f".{path.name}.{os.getpid()}")
+    tmp.write_text(text, encoding="utf-8")
+    os.replace(tmp, path)
+    return copy
+
+
 def configure_codex(dry_run: bool = False) -> list:
-    path = Path(os.environ.get("CODEX_HOME") or Path.home() / ".codex") / "config.toml"
+    path = paths.codex_home() / "config.toml"
     text = path.read_text(encoding="utf-8") if path.exists() else ""
     new, notes = codex_overlay(text)
     for folder in (paths.board(), paths.outbox()) if not dry_run else ():
         folder.mkdir(parents=True, exist_ok=True)  # Codex's sandbox may write inside it, never create it
     if new == (text if text.endswith("\n") else text + "\n") or dry_run:
         return [f"codex config: {'would ' if dry_run else ''}{n}" for n in notes] or ["codex config: already set"]
-    if path.exists():
-        backup = install._home() / "backups" / f"codex-config.toml.{time.strftime('%Y%m%dT%H%M%S')}"
-        backup.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(path, backup)
-        notes.append(f"backed up the previous file to {backup}")
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(f".{path.name}.{os.getpid()}")
-    tmp.write_text(new, encoding="utf-8")
-    os.replace(tmp, path)
-    return [f"codex config: {n}" for n in notes]
+    backup = _replace(path, new, "codex-config.toml")
+    return [f"codex config: {n}" for n in notes + ([f"backed up the previous file to {backup}"] if backup else [])]
+
+
+# ---- the plugin's hooks declared in Codex's own hooks file (--codex-user-hooks) ---------------------------
+# Codex ties its approval of a plugin's hooks to the plugin's files, so after every update it runs none of them until
+# the person approves again in /hooks. A hook declared in its own hooks.json, beside config.toml, is trusted by its
+# declaration alone, and these all run one stable path: one approval lasts through every release. What that gives up
+# is Codex's second look at a hook whose code changed, so it is the person's choice, off unless asked for.
+
+USER_HOOKS = "# synthesis-setup: codex-user-hooks"  # marks each config.toml line the option adds
+SWITCH = f"enabled = false  {USER_HOOKS}"
+
+
+def _setup_wrote(event: str, group) -> bool:
+    """A group as `codex_user_hooks` writes one: every command the stable hook's for its event, in setup's words."""
+    hooks = group.get("hooks") if isinstance(group, dict) else None
+    return event in doctor.EVENTS and bool(hooks) and all(
+        isinstance(h, dict) and h.get("command") == f'"{doctor.STABLE_HOOK}" {doctor.EVENTS[event]}' for h in hooks)
+
+
+def _state_tables(lines: list) -> dict:
+    """{key: the index of its `[hooks.state."<key>"]` header} among config.toml's lines."""
+    found = {}
+    for i, line in enumerate(lines):
+        body = line.strip()[1:] if line.lstrip().startswith("[") and not line.lstrip().startswith("[[") else ""
+        end = doctor._find(body, "]")
+        parts = doctor._key_parts(body[:end]) if end > 0 else []
+        if len(parts) == 3 and parts[:2] == ["hooks", "state"]:
+            found[parts[2]] = i
+    return found
+
+
+def _switches(lines: list, keys: list, held: dict) -> list:
+    """config.toml's lines with each key's hook switched off by a marked line in its table, and no marked line for
+    another key; a marked table left with nothing in it goes too. `held` is the hook state as read: a key held there
+    in a form setup does not edit (an inline table, dotted keys) stops it, since a second table would break the file."""
+    def end(at):
+        return next((i for i in range(at + 1, len(lines)) if lines[i].lstrip().startswith("[")), len(lines))
+    for key, at in sorted(_state_tables(lines).items(), key=lambda item: -item[1]):  # from the bottom, so places hold
+        rest = [line for line in lines[at + 1:end(at)] if line.strip() != SWITCH or key in keys]
+        alone = lines[at].rstrip().endswith(USER_HOOKS) and not any(r.strip() and not r.lstrip().startswith("#") for r in rest)
+        lines[at + (0 if alone else 1):end(at)] = [] if alone else rest
+    tables, added = _state_tables(lines), []
+    for key in keys:
+        if key not in tables and key in held:
+            raise SetupError(f"codex user hooks: config.toml holds {key} in a form setup does not edit, so nothing was changed")
+        added += [] if key in tables else [f"[hooks.state.{json.dumps(key)}]  {USER_HOOKS}", SWITCH]
+    for at in sorted((tables[k] for k in keys if k in tables), reverse=True):
+        on = next((i for i in range(at + 1, end(at)) if re.match(r"\s*enabled\s*=", lines[i])), None)
+        if on is None:
+            lines.insert(at + 1, SWITCH)
+        elif not re.match(r"\s*enabled\s*=\s*false\b", lines[on]):
+            lines[on] = SWITCH  # the person had turned it back on; taking the switch out leaves it on again
+    return lines + added
+
+
+def codex_user_hooks(want, plugin_root=None, dry_run: bool = False) -> list:
+    """Declare the plugin's hooks in Codex's own hooks.json and switch the plugin's own off by their state keys (want
+    True), take out what that added (False), or keep a declaration made earlier in step with the plugin at
+    `plugin_root` (None: nothing where none was made). Setup knows its own by their text: a group whose every command
+    is the stable hook's in setup's words, a config.toml line marked USER_HOOKS. A hook the person declared stays as
+    written, and a file Codex would not read, or that cannot be parsed, stops it before anything is written."""
+    codex = paths.codex_home()
+    file, config_file = codex / "hooks.json", codex / "config.toml"
+    text = config_file.read_text(encoding="utf-8") if config_file.exists() else ""
+    try:
+        data = json.loads(file.read_text(encoding="utf-8")) if file.exists() else {"hooks": {}}
+        problem = doctor.codex_hooks_problem(data)
+    except (OSError, ValueError) as exc:
+        data, problem = None, str(exc)
+    if want is None and USER_HOOKS not in text and (problem or not any(
+            _setup_wrote(e, g) for e, groups in data["hooks"].items() for g in groups)):
+        return []
+    if problem:
+        raise SetupError(f"codex user hooks: Codex would not read {file} ({problem}), so nothing was changed")
+    try:
+        held = (doctor.read_toml(text, strict=True).get("hooks") or {}).get("state") or {}
+    except ValueError as exc:
+        raise SetupError(f"codex user hooks: {config_file} does not parse ({exc}), so nothing was changed") from None
+    want, events, before, done, kept = want is not False, data.setdefault("hooks", {}), json.dumps(data), [], []
+    wanted = doctor.codex_user_declaration(paths.read_json(Path(plugin_root) / "hooks" / "hooks.json")) if want else {}
+    if want and not wanted:
+        raise SetupError(f"codex user hooks: {plugin_root} has no hooks/hooks.json to declare, so nothing was changed")
+    for event in list(dict.fromkeys([*wanted, *events])):  # the plugin's events, then any setup declared earlier
+        current = events.get(event, [])
+        mine = [i for i, group in enumerate(current) if _setup_wrote(event, group)]
+        if [current[i] for i in mine] == wanted.get(event, []):
+            continue
+        if not mine and any(doctor.calls_stable_hook(event, h.get("command")) for g in current for h in g.get("hooks", [])):
+            kept.append(event)  # the person's own declaration: theirs to keep, and the plugin's copy still goes off
+            continue
+        rest = [group for i, group in enumerate(current) if i not in mine]
+        at = mine[0] if mine else len(rest)  # where setup's own stood, so the keys of the person's after it hold
+        events[event] = rest[:at] + wanted.get(event, []) + rest[at:]
+        done.append(event)
+        if not events[event]:
+            del events[event]
+    keys = [f"{PLUGIN}@{MARKETPLACE}:hooks/hooks.json:{doctor._snake(e)}:{gi}:{hi}"
+            for e, groups in wanted.items() for gi, group in enumerate(groups) for hi, _ in enumerate(group["hooks"])]
+    lines = _switches(text.splitlines(), keys, held)
+    switches = sum(line.strip() == SWITCH for line in lines)
+    notes = [f"codex user hooks: {', '.join(kept)} already declared in {file} by you, kept as written"] if kept else []
+    if done:
+        notes.insert(0, f"codex user hooks: {'would ' if dry_run else ''}" + (
+            f"declare {', '.join(done)} in {file}; approve them once in Codex's /hooks, and a release asks again only "
+            "when it changes one" if want else f"take {', '.join(done)} out of {file}"))
+    if lines != text.splitlines():
+        notes.append(f"codex user hooks: {'would ' if dry_run else ''}" + (
+            f"switch the plugin's own hooks off in {config_file} ({switches} lines marked as setup's), so no event runs "
+            "twice" if want else f"take setup's switches out of {config_file}; the plugin's own hooks run once approved"))
+    if not dry_run and json.dumps(data) != before:
+        _replace(file, None if data == {"hooks": {}} and not want else json.dumps(data, indent=2, ensure_ascii=False) + "\n", "codex-hooks.json")
+    if not dry_run and lines != text.splitlines():
+        _replace(config_file, "\n".join(lines) + "\n" if lines else "", "codex-config.toml.user-hooks")
+    return notes or [f"codex user hooks: already declared in {file}, the plugin's own switched off" if want
+                     else "codex user hooks: none declared by setup"]
 
 
 def configure_claude(dry_run: bool = False) -> list:
@@ -403,14 +531,7 @@ def configure_claude(dry_run: bool = False) -> list:
     if "cleanupPeriodDays" in data or dry_run:
         return [f"claude settings: transcripts kept {data['cleanupPeriodDays']} days, as set" if "cleanupPeriodDays" in data
                 else "claude settings: would keep transcripts 3,650 days instead of Claude Code's 30"]
-    if path.exists():
-        backup = install._home() / "backups" / f"claude-settings.json.{time.strftime('%Y%m%dT%H%M%S')}"
-        backup.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(path, backup)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(f".{path.name}.{os.getpid()}")
-    tmp.write_text(json.dumps({**data, "cleanupPeriodDays": 3650}, indent=2) + "\n", encoding="utf-8")
-    os.replace(tmp, path)
+    _replace(path, json.dumps({**data, "cleanupPeriodDays": 3650}, indent=2) + "\n", "claude-settings.json")
     return ["claude settings: transcripts kept 3,650 days instead of Claude Code's 30"]
 
 
@@ -584,7 +705,7 @@ def no_harness(clients: list) -> str:
             "https://claude.com/download, includes Claude Code), then run this command again.")
 
 
-def setup_plugins(clients: list, ref: str, dry_run: bool) -> tuple:
+def setup_plugins(clients: list, ref: str, dry_run: bool, user_hooks=None) -> tuple:
     lines, failed = [], False
     for client in clients:
         binary = doctor.find_client(client)
@@ -594,7 +715,7 @@ def setup_plugins(clients: list, ref: str, dry_run: bool) -> tuple:
         if not dry_run:  # the harness's own commands fetch the plugin: up to a minute with nothing printed
             print(f"{client}: installing {PLUGIN} with {binary} ...", flush=True)
         try:
-            lines.append(install_plugin(client, binary, ref, dry_run=dry_run))
+            lines.append(install_plugin(client, binary, ref, dry_run=dry_run, user_hooks=user_hooks))
             if client == "codex":
                 lines += configure_codex(dry_run)
             if client == "claude":
@@ -622,6 +743,9 @@ def main(argv=None) -> int:
                         help="link ~/.local/bin/day-end and schedule the weekday 16:55 nudge")
     parser.add_argument("--sessions-export", action="store_true",
                         help="copy every harness's session transcripts into the archive and the sessions repos every hour")
+    parser.add_argument("--codex-user-hooks", action=argparse.BooleanOptionalAction, default=None,
+                        help="declare the plugin's hooks in Codex's own hooks.json, so one approval in /hooks lasts "
+                             "through releases; --no-codex-user-hooks takes that out")
     parser.add_argument("--no-launchctl", action="store_true", help="--day-end, --sessions-export: write the schedule without loading it")
     parser.add_argument("--no-input", action="store_true", help="never ask; fail naming the flag instead")
     parser.add_argument("--compact-brief", action="store_true",
@@ -645,7 +769,7 @@ def main(argv=None) -> int:
             if not any(doctor.find_client(client) for client in clients):
                 say([f"stopped: {no_harness(clients)}"])
                 return 1
-            plugin_lines, failed = setup_plugins(clients, args.ref, args.dry_run)
+            plugin_lines, failed = setup_plugins(clients, args.ref, args.dry_run, args.codex_user_hooks)
             say(plugin_lines)
             if args.dry_run:
                 say([f"runtime: would install it from {REPO} into {install._home()}" + (", with the commit check in every "
@@ -709,6 +833,10 @@ def _uninstall(clients: list, dry_run: bool) -> int:
         proc = subprocess.CompletedProcess(step, 0, "", "") if dry_run else run(step)
         lines.append(f"{client}: {'would remove' if dry_run else 'removed'} {PLUGIN}" if not proc.returncode
                      else f"{client}: removal failed: {_tail(proc)}")
+    try:  # the plugin's hooks declared in Codex's own file call the runtime, which goes next
+        lines += codex_user_hooks(False, dry_run=dry_run) if "codex" in clients else []
+    except SetupError as exc:
+        lines.append(str(exc))
     lines += unregister_day_end(dry_run) + unregister_sessions_export(dry_run) + install.uninstall(dry_run=dry_run)
     print("\n".join(lines))
     return 0

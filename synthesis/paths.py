@@ -169,11 +169,16 @@ def session_id(payload: dict | None = None) -> str:
     return ""
 
 
+def codex_home() -> Path:
+    """Codex's own folder: `CODEX_HOME` where it is set, else ~/.codex."""
+    return Path(os.environ.get("CODEX_HOME") or Path.home() / ".codex")
+
+
 def transcript_roots() -> dict:
     """Where each harness writes its record of every session, as the M5 sandbox found them."""
     env, user = os.environ, Path.home()
     return {"claude-code": Path(env.get("CLAUDE_CONFIG_DIR") or user / ".claude") / "projects",
-            "codex": Path(env.get("CODEX_HOME") or user / ".codex") / "sessions",
+            "codex": codex_home() / "sessions",
             "muse": Path(env.get("XDG_DATA_HOME") or user / ".local" / "share") / "muse" / "sessions"}
 
 

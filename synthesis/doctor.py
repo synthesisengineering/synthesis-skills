@@ -243,10 +243,15 @@ def hooks_json_entries(data: dict) -> list:
             for group in groups or [] for handler in group.get("hooks") or []]
 
 
+def calls_stable_hook(event: str, command) -> bool:
+    """Whether a hook's command runs the stable hook with this event's own argument."""
+    text = str(command or "").replace("${HOME}", "$HOME")
+    return STABLE_HOOK in text and EVENTS.get(event, "\0") in text
+
+
 def check_hooks_wired(harness: str, commands: list) -> Check:
     """commands: (event, command text) pairs; each needed event must call the stable hook with its own event."""
-    missing = [event for event, arg in EVENTS.items() if not any(
-        STABLE_HOOK in t and arg in t for t in [c.replace("${HOME}", "$HOME") for e, c in commands if e == event])]
+    missing = [event for event in EVENTS if not any(calls_stable_hook(event, c) for e, c in commands if e == event)]
     if missing:
         return Check("fail", f"{harness} hooks", f"not wired to the stable hook: {', '.join(missing)}")
     return Check("ok", f"{harness} hooks", "all four events call the stable hook")
@@ -308,6 +313,66 @@ def codex_trust_baseline(codex_home: Path, plugin_id: str) -> Path:
     key = b"".join(struct.pack("<Q", len(part)) + part
                    for part in (os.fsencode(str(Path(codex_home) / "config.toml")), plugin_id.encode()))
     return Path(codex_home) / ".hook-trust" / hashlib.sha256(key).hexdigest()
+
+
+CODEX_HANDLERS = {"command": ("command",), "mcp_tool": ("server", "tool"), "prompt": (), "agent": ()}  # the text each needs
+
+
+def codex_hooks_problem(data) -> str:
+    """Why Codex would read none of a hooks.json, or '': codex-rs reads the whole file or nothing (HooksFile): only
+    `hooks` and a `description` at its top, each event a list of groups, a group's matcher text, each of its hooks
+    of a type Codex knows with the text that type needs and a whole number of seconds as its timeout."""
+    events = data.get("hooks", {}) if isinstance(data, dict) else None
+    if not isinstance(events, dict) or set(data) - {"hooks", "description"} or not isinstance(data.get("description") or "", str):
+        return "its top level must be an object holding `hooks` and at most a `description`"
+    for event, groups in events.items():
+        for group in groups if isinstance(groups, list) else [None]:
+            hooks, matcher = (group.get("hooks", []), group.get("matcher")) if isinstance(group, dict) else (None, None)
+            if not isinstance(hooks, list) or not (matcher is None or isinstance(matcher, str)):
+                return f"{event} must be a list of groups, each with a text matcher and a list of hooks"
+            for hook in hooks:
+                kind, timeout = (hook.get("type"), hook.get("timeout")) if isinstance(hook, dict) else (None, None)
+                need = CODEX_HANDLERS.get(kind) if isinstance(kind, str) else None
+                if need is None or not all(isinstance(hook.get(k), str) for k in need) or not (
+                        timeout is None or type(timeout) is int and timeout >= 0):
+                    return f"a {event} hook is not one Codex reads (a known type, the text it needs, a whole-number timeout)"
+    return ""
+
+
+def codex_user_declaration(plugin_hooks: dict) -> dict:
+    """{event: groups}: the plugin's hooks as `setup.py plugin --codex-user-hooks` declares them in Codex's own
+    hooks.json, every group as the plugin writes it and each command the stable hook with its event. The plugin's
+    session start also names its own folder, so a first run can install the runtime; a user-level hook has no folder
+    to name, and setup has installed the runtime by then."""
+    return {event: [{**group, "hooks": [{**hook, "command": f'"{STABLE_HOOK}" {EVENTS[event]}'} for hook in group.get("hooks") or []]}
+                    for group in groups or []] for event, groups in (plugin_hooks.get("hooks") or {}).items() if event in EVENTS}
+
+
+def _declared(group: dict) -> dict:
+    """A group apart from how its commands name the stable hook ($HOME or ${HOME}), which the person may write."""
+    return {**group, "hooks": [{**hook, "command": ""} for hook in group.get("hooks") or []]}
+
+
+def codex_user_entries(codex_home: Path) -> tuple:
+    """({event: [(event:group:place, group, hook)]} for each hook in Codex's own hooks.json that runs the stable hook
+    with its event, why Codex reads none of that file or '')."""
+    file = Path(codex_home) / "hooks.json"
+    try:
+        data = json.loads(file.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return {}, ""
+    except (OSError, ValueError) as exc:
+        return {}, f"Codex cannot read {_short(file)} ({exc}), so it runs none of the hooks declared there"
+    problem = codex_hooks_problem(data)
+    if problem:
+        return {}, f"Codex reads none of {_short(file)}: {problem}"
+    found = {}
+    for event, groups in data.get("hooks", {}).items():
+        for gi, group in enumerate(groups):
+            for hi, hook in enumerate(group.get("hooks", [])):
+                if calls_stable_hook(event, hook.get("command")):
+                    found.setdefault(event, []).append((f"{_snake(event)}:{gi}:{hi}", group, hook))
+    return found, ""
 
 
 def _snake(event: str) -> str:
@@ -592,12 +657,17 @@ def check_codex_doc_bytes(config: dict) -> Check:
 def check_codex_trust(hooks_data: dict | None, config: dict, plugin_id: str, root: Path | None = None,
                       codex_home: Path | None = None) -> Check:
     """Codex runs a plugin hook only once its exact definition is trusted in /hooks, and (0.166) only while the
-    plugin's files match the fingerprint stored with that approval, so every release needs the approval again."""
+    plugin's files match the fingerprint stored with that approval, so every release needs the approval again. A hook
+    declared in Codex's own hooks.json (`setup.py plugin --codex-user-hooks`) is trusted by its definition alone: for
+    an event declared there, that hook is judged, and the plugin's own copy is switched off on purpose (one left on
+    would run beside it). Codex keys a user-level hook by that file's path in its home's real path (the path as named
+    with `allow_symlinked_codex_home`), then its event, group and place."""
     if not hooks_data:
         return Check("fail", "codex hook trust", "the installed plugin has no hooks/hooks.json")
     states = (config.get("hooks") or {}).get("state") or {}
-    problems, stale, total, content, baseline = [], [], 0, "", ""
-    if root is not None:
+    user, unread = codex_user_entries(codex_home) if codex_home is not None else ({}, "")
+    problems, stale, total, content, baseline, others = [], [], 0, "", "", [unread] if unread else []
+    if root is not None and set(hooks_data.get("hooks") or {}) - set(user):  # a hook that runs as the plugin's
         try:
             content = codex_plugin_hash(root)
         except (OSError, ValueError) as exc:
@@ -615,7 +685,10 @@ def check_codex_trust(hooks_data: dict | None, config: dict, plugin_id: str, roo
                 total += 1
                 where = f"{_snake(event)}:{gi}:{hi}"  # Codex keys trust by event, group and handler position
                 state = states.get(f"{plugin_id}:hooks/hooks.json:{where}") or {}
-                if state.get("enabled") is False:
+                if event in user:
+                    if state.get("enabled") is not False:
+                        others.append(f"{where} is not switched off, so it runs beside the user-level {event} once approved")
+                elif state.get("enabled") is False:
                     problems.append(f"{where} disabled")
                 elif not state.get("trusted_hash"):
                     problems.append(f"{where} untrusted")
@@ -626,9 +699,26 @@ def check_codex_trust(hooks_data: dict | None, config: dict, plugin_id: str, roo
     if stale:
         problems.append(f"{', '.join(stale)} approved before the plugin last changed (Codex ties an approval to the "
                         "plugin's files), so Codex runs none of them")
-    if problems:
-        return Check("fail", "codex hook trust", "needs /hooks approval: " + ", ".join(problems))
-    return Check("ok", "codex hook trust", f"all {total} synthesis hooks trusted")
+    file, wanted = Path(codex_home or "") / "hooks.json", codex_user_declaration(hooks_data)
+    keys = [str(Path(os.path.realpath(codex_home)) / "hooks.json"), str(Path(os.path.abspath(codex_home)) / "hooks.json")] if user else []
+    for event, found in user.items():
+        if not wanted.get(event) or any(_declared(g) not in [_declared(x) for _, x, _ in found] for g in wanted[event]):
+            others.append(f"{_short(file)}:{found[0][0]} differs from the plugin's {event}: run setup.py plugin "
+                          "--codex-user-hooks again (a hook you declared yourself stays as you wrote it)")
+            continue
+        for where, group, hook in found:
+            state, name = next((states[f"{k}:{where}"] for k in keys if f"{k}:{where}" in states), {}), f"{_short(file)}:{where}"
+            if state.get("enabled") is False:
+                problems.append(f"{name} disabled")
+            elif not state.get("trusted_hash"):
+                problems.append(f"{name} untrusted")
+            elif state["trusted_hash"] != codex_hook_hash(event, group.get("matcher"), hook):
+                problems.append(f"{name} modified")
+    if problems or others:
+        return Check("fail", "codex hook trust", "; ".join(others + (["needs /hooks approval: " + ", ".join(problems)] if problems else [])))
+    declared = sum(len(found) for found in user.values())
+    return Check("ok", "codex hook trust", f"all {total} synthesis hooks trusted" + (
+        f", {declared} of them declared in {_short(file)} with the plugin's own copies switched off" if declared else ""))
 
 
 # ---- Muse ---------------------------------------------------------------------
@@ -1262,13 +1352,15 @@ def check_pr_gate(gated, repos: list, run=subprocess.run) -> Check:
 
 # ---- reading harness state ----------------------------------------------------
 
-def read_toml(text: str) -> dict:
+def read_toml(text: str, strict: bool = False) -> dict:
     """The TOML subset Codex's config needs: tables, dotted and quoted keys, strings, integers and
     booleans. Arrays, inline tables, floats and dates are kept as raw text. Standard library only,
-    because Apple's Python 3.9 has no tomllib."""
+    because Apple's Python 3.9 has no tomllib. `strict` raises ValueError naming the first line it cannot place (a
+    table header left open or followed by more, a line with no key, a key with no value, a table defined twice, a
+    value never closed): Codex refuses such a file whole, and setup writes nothing into it."""
     root: dict = {}
-    table, pending, buffer = root, None, ""
-    for line in text.splitlines():
+    table, pending, buffer, seen = root, None, "", set()
+    for number, line in enumerate(text.splitlines(), 1):
         if pending is not None:  # inside a multi-line array or string, kept as raw text
             buffer += "\n" + line
             if _closed(buffer):
@@ -1282,8 +1374,12 @@ def read_toml(text: str) -> dict:
             double = stripped.startswith("[[")
             body = stripped[2 if double else 1:]
             end = _find(body, "]")
+            parts, tail = _key_parts(body[:end] if end >= 0 else body), body[end + 1:].lstrip("]" if double else "").strip()
+            if strict and (end < 0 or tail[:1] not in ("", "#") or not double and tuple(parts) in seen):
+                raise ValueError(f"line {number} is a table header Codex cannot read")
+            seen.add(tuple(parts))
             table = root
-            for part in _key_parts(body[:end] if end >= 0 else body):
+            for part in parts:
                 table = table.setdefault(part, {})
                 if not isinstance(table, dict):
                     table = {}
@@ -1291,12 +1387,16 @@ def read_toml(text: str) -> dict:
                 table = {}  # array-of-tables entries are not needed; keep them out of the result
             continue
         eq = _find(stripped, "=")
+        if strict and (eq <= 0 or stripped[eq + 1:].strip()[:1] in ("", "#")):
+            raise ValueError(f"line {number} holds no key with a value")
         if eq > 0:
             key, raw = _key_parts(stripped[:eq]), stripped[eq + 1:].strip()
             if _closed(raw):
                 _assign(table, key, raw)
             else:
                 pending, buffer = key, raw
+    if strict and pending is not None:
+        raise ValueError("a value is never closed")
     return root
 
 
@@ -1505,7 +1605,7 @@ def harness_checks(found: list, procs: dict, home: Path, runtime: str, catalog=N
                        check_hooks_wired("claude", _commands(_hooks_file(entry["path"]))),
                        check_claude_retention(paths.transcript_roots()["claude-code"].parent / "settings.json")]
     if "codex" in found:
-        codex_home = Path(os.environ.get("CODEX_HOME") or Path.home() / ".codex")
+        codex_home = paths.codex_home()
         listing, error = _finish(procs["codex"])
         entry = codex_entry(listing, codex_home)
         if entry is None and not error.startswith(("cannot tell", "could not run")):

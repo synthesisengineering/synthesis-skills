@@ -928,10 +928,23 @@ ROOT = Path(__file__).resolve().parents[1]
 # 8 (what an approval binds to, said in the hold), the option lists and the too-large mark 5, _script_deploys 3 and
 # check_deploy 1. The repository's conftest 8 (no test reads this Mac's synthesis home, whose sessions repos hold its
 # ritual history since 5.20.0). wait.py 3 and cli.py 1: who watches is read before a message is sent (a race CI met).
+# 5.21.0 (unreleased): core 105 more and plugin 233, so one approval in Codex lasts through releases where the person
+# chooses that (plan item 13.7, part 2: setup.py plugin --codex-user-hooks). doctor.py 100: check_codex_trust 25 (the
+# user-level hooks judged by their own keys, the plugin's switched-off copies taken as intended; a copy left on, a
+# declaration unlike the plugin's and a hooks.json Codex would not read named), codex_user_entries 20 (the hooks of
+# Codex's own hooks.json that run the stable hook, by Codex's key), codex_hooks_problem 19 and CODEX_HANDLERS 1 (what
+# Codex reads of a hooks.json, which is all of it or none), read_toml 10 (a strict reading that names the first line it
+# cannot place), codex_user_declaration 7, calls_stable_hook 4 (shared with check_hooks_wired, one fewer) and _declared
+# 3, and spacing 12. paths.py 5: codex_home 3 and spacing 2. The plugin's 128 more (setup.py): codex_user_hooks 60
+# (declare, keep in step, take out; a file that cannot be parsed refused before anything is written), _switches 22 (a
+# marked line per key in that key's own table), _replace 15 (a harness file written whole after its backup, with
+# configure_codex 8 and configure_claude 7 fewer), _state_tables 10, _setup_wrote 5 (setup's own groups by their text),
+# install_plugin 5 (every Codex install keeps the declaration in step), _uninstall 4, main 3 (the flag), the two marks
+# 2, configured_ref one fewer (paths.codex_home), and spacing with the section's comment 18.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # consolidate first).
-CORE_BUDGET = 14642
-PLUGIN_BUDGET = 37639
+CORE_BUDGET = 14747
+PLUGIN_BUDGET = 37872
 
 
 def _lines(files):
