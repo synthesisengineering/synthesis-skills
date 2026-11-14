@@ -77,7 +77,7 @@ def validate_config(config: Any) -> list[str]:
     for section, known in KEYS.items():
         mapping = config.get(section) if section else config
         for key in sorted(set(mapping) - known) if isinstance(mapping, dict) else ():
-            close = difflib.get_close_matches(str(key), sorted(known), n=1)
+            close = difflib.get_close_matches(str(key), sorted(known), n=1, cutoff=0.8)  # a near spelling, not a guess
             add_error(errors, f"{section}.{key}" if section else key, "unknown key: " + (f"did you mean {close[0]}? " if close
                       else "") + "correct its spelling, or move it into notes; the contract names every key it reads")
 

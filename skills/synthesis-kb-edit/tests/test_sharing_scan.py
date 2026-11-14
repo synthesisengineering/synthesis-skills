@@ -172,7 +172,7 @@ def test_a_file_the_scan_cannot_read_is_held_for_a_person_never_passed(kb):
     """R1-2 and R1-7: a PDF, an image, or text in another encoding (Windows-1252) is held for a person to read, with
     its reason, in every mode; a file is never passed for being unreadable."""
     held = {"source/reference/chart.png": b"\x89PNG\r\n\x1a\n\0\0zephyr ledger\0",
-            "source/reference/terms.pdf": b"%PDF-1.4\n\x00\x01 zephyr ledger \x00\n%%EOF\n",
+            "source/reference/terms.pdf": b"%PDF-1.4\n%\xe2\xe3\xcf\xd3\n1 0 obj (zephyr ledger) endobj\n%%EOF\n",
             "source/reference/memo.txt": "Call Ren\u00e9e about the violet harbor.\n".encode("cp1252")}
     for relative, data in held.items():
         (kb / relative).write_bytes(data)

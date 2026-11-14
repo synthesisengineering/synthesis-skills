@@ -178,26 +178,39 @@ and nothing installed: run it by path from a checkout of synthesis-skills pinned
 The plugin installs no hook in a knowledge base. The repository's own hook and its pipeline call the scan, so it runs
 the same way on every machine and in review.
 
-**Commit hook.** `.githooks/pre-commit` in the knowledge base, named in the contract as `confidentiality.hook_path:
-".githooks"`. Where synthesis's commit check is installed, it runs this hook after its own checks
-(`synthesis-git-hooks`); add `.githooks/required` so that a missing hook blocks the commit. Elsewhere, point git at the
-folder once in each clone: `git config core.hooksPath .githooks`.
+**Commit hooks.** Two files in the knowledge base's `.githooks/`, named in the contract as `confidentiality.hook_path:
+".githooks"`: `pre-commit` judges what the commit adds, and `commit-msg` judges its message. Where synthesis's commit
+check is installed, it runs both after its own checks (`synthesis-git-hooks`); add `.githooks/required` so that a
+missing `pre-commit` blocks the commit. Elsewhere, point git at the folder once in each clone:
+`git config core.hooksPath .githooks`. Both run the scan from the stable runtime synthesis installs
+(`~/.synthesis/v5/current`, or `$SYNTHESIS_HOME/current`), which carries kb-edit's scripts; `SYNTHESIS_SKILLS`, when
+set, names a checkout of synthesis-skills to run instead, as a machine without synthesis needs.
 
 ```sh
 #!/bin/sh
-# The sharing scan over the lines this commit adds. SYNTHESIS_SKILLS names a checkout of synthesis-skills;
-# without it, the runtime synthesis installs.
-scan="${SYNTHESIS_SKILLS:-$HOME/.synthesis/v5/current}/skills/synthesis-kb-edit/scripts/sharing_scan.py"
+# .githooks/pre-commit: the sharing scan over what this commit adds.
+scan="${SYNTHESIS_SKILLS:-${SYNTHESIS_HOME:-$HOME/.synthesis/v5}/current}/skills/synthesis-kb-edit/scripts/sharing_scan.py"
 if [ ! -f "$scan" ]; then
-  echo "pre-commit: no sharing scan at $scan; set SYNTHESIS_SKILLS to a checkout of synthesis-skills" >&2
+  echo "pre-commit: no sharing scan at $scan: install synthesis, or set SYNTHESIS_SKILLS to a checkout of synthesis-skills" >&2
   exit 1
 fi
 exec python3 "$scan" "$(git rev-parse --show-toplevel)" --staged
 ```
 
+```sh
+#!/bin/sh
+# .githooks/commit-msg: the sharing scan over this commit's message.
+scan="${SYNTHESIS_SKILLS:-${SYNTHESIS_HOME:-$HOME/.synthesis/v5}/current}/skills/synthesis-kb-edit/scripts/sharing_scan.py"
+if [ ! -f "$scan" ]; then
+  echo "commit-msg: no sharing scan at $scan: install synthesis, or set SYNTHESIS_SKILLS to a checkout of synthesis-skills" >&2
+  exit 1
+fi
+exec python3 "$scan" "$(git rev-parse --show-toplevel)" --message "$1"
+```
+
 **Pipeline.** On every review request, check out synthesis-skills at the release tag the organization adopted (one
-that has this scan), and scan the range the request adds. The knowledge base's own checkout needs the base branch's
-history, so the range can find where the two parted:
+that has this scan), and scan the range the request adds, its commit messages included. The knowledge base's own
+checkout needs the base branch's history, so the range can find where the two parted:
 
 ```sh
 git fetch --quiet origin main
