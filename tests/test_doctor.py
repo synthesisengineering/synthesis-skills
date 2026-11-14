@@ -660,6 +660,62 @@ def test_hook_state_held_as_an_inline_table_is_named_not_a_crash(tmp_path, text)
     check = doctor.check_codex_trust(REPO_HOOKS, doctor.read_toml(text), PLUGIN_ID, None, tmp_path)
     assert check.status == "fail" and "inline table" in check.detail and not doctor.waits_on_person(check)
 
+
+# ---- review round 2 of 5.21.0: a user-level guard covers only as the plugin's own invocation (R2-1) --------------
+
+GUARD = REPO_HOOKS["hooks"]["PreToolUse"][0]["hooks"][0]["command"]
+HOOK_CALL = '"$HOME/.synthesis/v5/bin/synthesis-hook" pre-tool-use'
+NOT_AS_THE_PLUGINS = {"output discarded": HOOK_CALL + " >/dev/null 2>&1", "failure swallowed": HOOK_CALL + " || true",
+                      "in the background": HOOK_CALL + " &", "quoted tilde": '"~/.synthesis/v5/bin/synthesis-hook" pre-tool-use',
+                      "single-quoted $HOME": "'$HOME/.synthesis/v5/bin/synthesis-hook' pre-tool-use"}
+
+
+@pytest.mark.parametrize("command,calls", [
+    (HOOK_CALL, True), ('"${HOME}/.synthesis/v5/bin/synthesis-hook" pre-tool-use', True),
+    ("$HOME/.synthesis/v5/bin/synthesis-hook pre-tool-use", True), ("~/.synthesis/v5/bin/synthesis-hook pre-tool-use", True),
+    ('"~/.synthesis/v5/bin/synthesis-hook" pre-tool-use', False), ("'$HOME/.synthesis/v5/bin/synthesis-hook' pre-tool-use", False),
+    ("'~/.synthesis/v5/bin/synthesis-hook' pre-tool-use", False)])
+def test_calls_stable_hook_reads_the_hooks_path_as_sh_does(command, calls):
+    # sh expands neither ~ in quotes nor $HOME in single quotes, so finds no hook: those are no call (q02)
+    assert doctor.calls_stable_hook("PreToolUse", command) is calls
+
+
+@pytest.mark.parametrize("command,covers", [(GUARD, True), (GUARD.replace("$HOME", "${HOME}", 1), True), (HOOK_CALL, True),
+                                            *((c, False) for c in NOT_AS_THE_PLUGINS.values())])
+def test_a_user_level_guard_covers_the_plugins_only_as_its_own_invocation(command, covers):
+    # Judged by its first words, a command that threw the guard's answer away, or never reached the guard, switched the
+    # plugin's fail-closed copy off and read as ok (q02). It covers only as the guard's own invocation, with the
+    # fail-closed tail or nothing after it.
+    wanted = doctor.codex_user_declaration(REPO_HOOKS)["PreToolUse"]
+    mine = [{**wanted[0], "hooks": [{**wanted[0]["hooks"][0], "command": command}]}]
+    assert doctor.codex_covers(mine, wanted) is covers
+
+
+@pytest.mark.parametrize("command", NOT_AS_THE_PLUGINS.values())
+def test_a_user_level_guard_that_does_not_run_as_the_plugins_never_reads_as_ok(tmp_path, command):
+    declared = doctor.codex_user_declaration(REPO_HOOKS)
+    declared["PreToolUse"][0]["hooks"][0]["command"] = command
+    home, config = user_level(tmp_path, declared=declared)
+    assert doctor.check_codex_trust(REPO_HOOKS, config, PLUGIN_ID, None, home).status == "fail"
+
+
+def test_claude_fail_closed_judges_the_oldest_claude_code_on_the_mac(tmp_path):
+    # R2-9: the line judged the first Claude Code found, while the plugin loads in every one; an older one among several
+    # went unreported. A version none can tell counts as the oldest.
+    versions = {"/a/claude": "2.1.316", "/b/claude": "2.1.293", "/c/claude": "2.1.325"}
+    assert doctor.oldest_claude(list(versions), versions.get) == ("2.1.293", "/b/claude")
+    assert doctor.oldest_claude(["/a/claude", "/d/claude"], versions.get) == ("", "/d/claude")
+    check = doctor.check_claude_fail_closed(REPO_HOOKS, "2.1.293", "/b/claude")
+    assert check.status == "warn" and "/b/claude" in check.detail
+    bins = []
+    for name in ("one", "two"):
+        path = tmp_path / name / "claude"
+        path.parent.mkdir()
+        path.write_text("#!/bin/sh\necho 2.1.316\n")
+        path.chmod(0o755)
+        bins.append(str(path))
+    assert doctor.claude_installs(which=lambda name: bins[0], locations=[str(tmp_path / "*" / "claude")]) == bins
+
 def test_codex_hooks_feature():
     assert doctor.check_codex_features({"features": {"hooks": True}}).status == "ok"
     missing = doctor.check_codex_features({"features": {"memories": True}})

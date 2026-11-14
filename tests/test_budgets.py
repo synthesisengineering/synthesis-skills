@@ -1007,7 +1007,7 @@ def test_whole_plugin_stays_within_its_budget():
 
 
 # What the modules a pre-tool-use call for a shell command loads import as they load, by the module that asks.
-HOOK_NEEDS = ("json", "os", "re", "sys", "time",                                  # hook.py
+HOOK_NEEDS = ("json", "os", "re", "signal", "sys", "time",                        # hook.py (signal: its deadline)
               "__future__", "datetime", "fnmatch", "itertools", "math", "shlex",  # guards.py
               "hashlib", "pathlib", "unicodedata",                                # approvals.py and paths.py
               "base64", "contextlib", "dataclasses",                              # board.py
