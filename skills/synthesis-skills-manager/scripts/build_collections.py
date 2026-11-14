@@ -51,8 +51,10 @@ MARKETPLACES = (".claude-plugin/marketplace.json", ".agents/plugins/marketplace.
 LICENSES = ("LICENSE-APACHE", "LICENSE-CC0")  # the terms its skills' SPDX identifiers name travel with each folder
 SHARED = ("author", "homepage", "repository", "license")  # what each collection's manifests take from the whole set's
 LINK = re.compile(r"(\]\()([^)\s]+)(\))")  # an inline Markdown link: its target between `](` and `)`
-CARRIABLE = ("yamlish",)  # runtime modules a collection may carry, beside its scripts: the standard library alone, no
-#                           state, no hook (R1-3 of 5.22.0's review: 23 of the 34 scripts that imported the runtime read it)
+CARRIABLE = ("yamlish",)  # runtime modules a collection may carry beside its scripts: the standard library alone, no
+#                           state, no hook (R1-3 of 5.22.0's review: of 34 scripts that imported the runtime, 23 read it)
+CAUGHT = ("ImportError", "ModuleNotFoundError", "Exception")  # an `except` that takes a module's absence
+PRESENT = ("is_file", "exists", "is_dir")  # an `if` that asks first whether a file is there
 
 
 def read_spec(repo: Path, commit: bool = False) -> dict:
@@ -169,8 +171,22 @@ def text(value: dict) -> bytes:
 
 def catches(handler) -> bool:
     kinds = handler.type.elts if isinstance(handler.type, ast.Tuple) else [handler.type]
-    return any(kind is None or isinstance(kind, ast.Name) and kind.id in ("ImportError", "ModuleNotFoundError", "Exception")
-               for kind in kinds)
+    return any(kind is None or isinstance(kind, ast.Name) and kind.id in CAUGHT for kind in kinds)
+
+
+def guards(node) -> bool:
+    """Whether a node catches the absence of a module imported inside it."""
+    if isinstance(node, ast.Try):
+        return any(map(catches, node.handlers))
+    return isinstance(node, ast.If) and any(isinstance(part, ast.Attribute) and part.attr in PRESENT
+                                            for part in ast.walk(node.test))
+
+
+def imported(node) -> list:
+    """The modules an import statement names: `synthesis.<module>` for each it takes from the runtime's package."""
+    if isinstance(node, ast.Import):
+        return [alias.name for alias in node.names]
+    return [f"synthesis.{alias.name}" for alias in node.names] if node.module == "synthesis" else [node.module or ""]
 
 
 def runtime_imports(path: str, data: bytes) -> tuple:
@@ -182,16 +198,13 @@ def runtime_imports(path: str, data: bytes) -> tuple:
     def walk(node, inside: bool, caught: bool):
         for child in ast.iter_child_nodes(node):
             if isinstance(child, (ast.Import, ast.ImportFrom)) and not getattr(child, "level", 0):
-                for module in ([alias.name for alias in child.names] if isinstance(child, ast.Import) else [
-                        f"synthesis.{alias.name}" if child.module == "synthesis" else child.module or "" for alias in child.names]):
-                    head, _, rest = module.partition(".")
+                for head, _, rest in (module.partition(".") for module in imported(child)):
                     if head == "synthesis" and rest:
                         late.add((rest.split(".")[0], caught)) if inside else top.add(rest.split(".")[0])
                     elif not inside:
                         plain.add(head)
-            walk(child, inside or isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)), caught
-                 or isinstance(child, ast.Try) and any(map(catches, child.handlers)) or isinstance(child, ast.If) and any(
-                     isinstance(part, ast.Attribute) and part.attr in ("is_file", "exists", "is_dir") for part in ast.walk(child.test)))
+            walk(child, inside or isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)),
+                 caught or guards(child))
     try:
         walk(ast.parse(data.decode("utf-8", "replace")), False, False)
     except SyntaxError as error:
@@ -202,7 +215,8 @@ def runtime_imports(path: str, data: bytes) -> tuple:
 def needs(files: dict) -> dict:
     """{path: ({runtime module it needs as it starts, through the modules beside it that it imports too}, {(runtime
     module it imports inside a function, caught)})} for each Python file of `files` ({path: bytes}) that is no test."""
-    read = {path: runtime_imports(path, data) for path, data in files.items() if path.endswith(".py") and not is_test(path)}
+    read = {path: runtime_imports(path, data) for path, data in files.items()
+            if path.endswith(".py") and not is_test(path)}
 
     def start(path: str, seen: set) -> set:
         found = set(read[path][0])
@@ -212,15 +226,21 @@ def needs(files: dict) -> dict:
     return {path: (start(path, {path}), read[path][1]) for path in read}
 
 
+def docstrings(tree) -> set:
+    """The ids of a module's docstrings: the first string of a module, class or function, which loads nothing."""
+    kinds = (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)
+    return {id(node.body[0].value) for node in ast.walk(tree) if isinstance(node, kinds) and node.body
+            and isinstance(node.body[0], ast.Expr) and isinstance(node.body[0].value, ast.Constant)}
+
+
 def reaches(path: str, data: bytes, names: set) -> set:
     """The other skills whose folders a file names as a path in a string of its code (R1-20): a string that is a skill's
     name, or holds it between slashes. A docstring says where something is and loads nothing."""
-    tree, found = ast.parse(data.decode("utf-8", "replace")), set()
-    docs = {id(node.body[0].value) for node in ast.walk(tree) if isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef,
-            ast.AsyncFunctionDef)) and node.body and isinstance(node.body[0], ast.Expr) and isinstance(node.body[0].value, ast.Constant)}
+    tree, found, others = ast.parse(data.decode("utf-8", "replace")), set(), names - {path.split("/")[1]}
+    said = docstrings(tree)
     for node in ast.walk(tree):
-        if isinstance(node, ast.Constant) and isinstance(node.value, str) and id(node) not in docs:
-            found |= {name for name in names - {path.split("/")[1]} if f"/{name}/" in f"/{node.value}/"}
+        if isinstance(node, ast.Constant) and isinstance(node.value, str) and id(node) not in said:
+            found |= {name for name in others if f"/{name}/" in f"/{node.value}/"}
     return found
 
 
@@ -244,26 +264,28 @@ def relink(path: str, data: bytes, held: set, tracked: set, files: set, at: str)
     tag, `at` (R1-21: 42 such links led nowhere in a collection); every other byte is the source's."""
     def point(match):
         whole, anchor = leaving(path, match.group(2), held, tracked), match.group(2).partition("#")[2]
-        return (f"{match.group(1)}{at.format('blob' if whole in files else 'tree')}/{whole}{'#' * bool(anchor)}{anchor}"
-                f"{match.group(3)}" if whole else match.group(0))
-    return LINK.sub(point, data.decode("utf-8", "surrogateescape")).encode("utf-8", "surrogateescape") \
-        if path.endswith(".md") else data
+        kind, mark = "blob" if whole in files else "tree", f"#{anchor}" if anchor else ""
+        return f"{match.group(1)}{at.format(kind)}/{whole}{mark}{match.group(3)}" if whole else match.group(0)
+    if not path.endswith(".md"):
+        return data
+    return LINK.sub(point, data.decode("utf-8", "surrogateescape")).encode("utf-8", "surrogateescape")
 
 
 def carry(need: dict) -> set:
     """The runtime modules a collection carries: those of CARRIABLE that any of its Python files imports."""
-    return {module for top, late in need.values() for module in top | {module for module, _ in late} if module in CARRIABLE}
+    return {module for top, late in need.values() for module in top | {name for name, _ in late}} & set(CARRIABLE)
 
 
 def impure(text: bytes) -> list:
-    """The runtime's own modules a module imports, relative imports among them: one that imports any cannot travel alone."""
+    """The runtime's own modules a module imports, relative imports among them: one that imports any cannot travel
+    alone."""
     found = set()
     for node in ast.walk(ast.parse(text.decode("utf-8", "replace"))):
         if isinstance(node, ast.Import):
             found |= {alias.name for alias in node.names if alias.name.split(".")[0] == "synthesis"}
         elif isinstance(node, ast.ImportFrom) and (node.level or (node.module or "").split(".")[0] == "synthesis"):
-            found |= {f"synthesis.{alias.name}" if node.module in (None, "synthesis") else f"synthesis.{node.module.split('.')[-1]}"
-                      for alias in node.names}
+            inner = node.module.split(".")[-1] if node.module not in (None, "synthesis") else None
+            found |= {f"synthesis.{inner or alias.name}" for alias in node.names}
     return sorted(found)
 
 
@@ -321,17 +343,18 @@ def verify(repo: Path, files: dict, commit: bool = False) -> list:
             if path in whole_set:
                 found += [f"{LIST}: needs_the_whole_set names {path}, which runs in its collection now"] * (not gone)
                 continue
-            found += [f"{name}/{path}: imports synthesis.{gone[0]} as it starts, which {name} does not carry, so it cannot "
-                      "run there; make it run without it, or name it under needs_the_whole_set"] if gone else []
-            found += [f"{name}/{path}: imports synthesis.{module} inside a function, with nothing to catch its absence, so "
-                      f"in {name} that call ends in a traceback" for module, caught in sorted(late)
+            found += [f"{name}/{path}: imports synthesis.{gone[0]} as it starts, which {name} does not carry, so it "
+                      "cannot run there; make it run without it, or name it under needs_the_whole_set"] if gone else []
+            found += [f"{name}/{path}: imports synthesis.{module} inside a function, with nothing to catch its absence, "
+                      f"so in {name} that call ends in a traceback" for module, caught in sorted(late)
                       if not caught and module not in modules]
         for path in sorted(need):  # a path into another skill's folder finds it beside the script, or is named (R1-20)
             for other in sorted(reaches(path, skills[path], set(home))):
                 taken.add((path, other))
-                found += [f"{name}/{path}: reaches {other}'s folder, which is in {home[other]}, not beside it in {name}; name "
-                          "the load under optional_loads with what the script does without it, or keep the two in one "
-                          "collection"] if home[other] != name and path not in whole_set and other not in optional.get(path, {}) else []
+                exempt = home[other] == name or path in whole_set or other in optional.get(path, {})
+                found += [] if exempt else [f"{name}/{path}: reaches {other}'s folder, which is in {home[other]}, not "
+                                            f"beside it in {name}; name the load under optional_loads with what the "
+                                            "script does without it, or keep the two in one collection"]
         for path, data in sorted(held.items()):
             parts = path.split("/")
             found += [f"{name}/{path}: holds a hook"] * ("hooks" in parts or parts[-1] == "hooks.json")
@@ -370,8 +393,8 @@ def verify(repo: Path, files: dict, commit: bool = False) -> list:
                        for item in listed) if isinstance(listed, list) else None
         if pairs != [(skill, f"skills/{skill}/SKILL.md") for skill in mine]:
             found.append(f"{name}/{MANIFESTS[2]}: does not list exactly the skills of {name}")
-    found += [f"{LIST}: needs_the_whole_set names {path}, which is no script of any collection" for path in sorted(whole_set)
-              if path not in scripts]
+    found += [f"{LIST}: needs_the_whole_set names {path}, which is no script of any collection"
+              for path in sorted(whole_set) if path not in scripts]
     found += [f"{LIST}: optional_loads names {other} for {path}, which does not reach it" for path in sorted(optional)
               for other in sorted(optional[path]) if (path, other) not in taken]
     found += [f"{path}: in no collection's folder" for path in sorted(files)
