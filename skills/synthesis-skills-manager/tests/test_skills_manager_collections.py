@@ -96,7 +96,9 @@ def test_each_folder_holds_its_skills_its_three_manifests_and_the_two_licenses(b
         mine = folder(built, name)
         assert {path.split("/")[1] for path in mine if path.startswith("skills/")} == {
             skill for skill, collection in home.items() if collection == name}, name
-        assert {path for path in mine if not path.startswith("skills/")} == {*collections.MANIFESTS, *collections.LICENSES}
+        carried = {"synthesis/__init__.py", "synthesis/yamlish.py"} if name in ("core", "project-management", "chief-of-staff") else set()
+        assert {path for path in mine if not path.startswith("skills/")} == {*collections.MANIFESTS, *collections.LICENSES,
+                                                                              *carried}
     assert {path for path in built if path.split("/")[0] not in FIVE} == set(collections.MARKETPLACES)
 
 
@@ -564,7 +566,7 @@ def test_the_core_s_knowledge_base_gate_runs_from_the_core_s_folder(written, tmp
 
 def test_a_collection_carries_the_runtime_s_yaml_reader_only_where_its_scripts_read_it(written):
     for name in FIVE:
-        held = sorted(path.relative_to(written / name).as_posix() for path in (written / name / "synthesis").glob("*"))
+        held = sorted(path.name for path in (written / name / "synthesis").glob("*"))
         reads = any("yamlish" in path.read_text(encoding="utf-8")
                     for path in (written / name / "skills").rglob("*.py") if not is_test(path.as_posix()))
         assert held == (["__init__.py", "yamlish.py"] if reads else []), name
