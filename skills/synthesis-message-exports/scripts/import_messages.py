@@ -314,14 +314,38 @@ def load(source, rel):
         raise Unknown("not JSON that can be read", rel)
 
 
-def text_of(message, key):
+def strings_of(value):
+    """Every string of a parsed file, keys aside."""
+    if isinstance(value, str):
+        yield value
+    elif isinstance(value, (list, dict)):
+        for item in value.values() if isinstance(value, dict) else value:
+            yield from strings_of(item)
+
+
+def as_written(text):
+    return text
+
+
+def fixer(data, established):
+    """The repair for one file, decided once for all its text, since a string alone cannot tell: `CAFÉ` with a
+    no-break space reads as UTF-8 too. A file carries the quirk when no character in it is above U+00FF (text written
+    right holds one as soon as it holds an emoji or a curly quote) and it is the regular export, which writes every file
+    that way, or holds a C1 control character (U+0080 to U+009F), which the quirk leaves in almost any text and text
+    written right never holds. The secure-storage download, where the quirk is not established, needs the latter."""
+    text = "".join(strings_of(data))
+    carries = not re.search(r"[^\x00-\xff]", text) and (established or re.search(r"[\x80-\x9f]", text) is not None)
+    return repair if carries else as_written
+
+
+def text_of(message, key, fix):
     value = message.get(key)
     if value is not None and not isinstance(value, str):
         raise Unknown(f"{key} that is not text")
-    return repair(value) if value else None
+    return fix(value) if value else None
 
 
-def uris(value, key, plain=False):
+def uris(value, key, fix, plain=False):
     """A list of attachments: objects with a text `uri`, or (in the secure-storage download, whose element shape is
     not established) the text itself."""
     if value is None:
@@ -330,16 +354,16 @@ def uris(value, key, plain=False):
              for item in value] if isinstance(value, list) else [None]
     if not all(isinstance(uri, str) for uri in found):
         raise Unknown(f"{key} in another shape")
-    return [repair(uri) for uri in found]
+    return [fix(uri) for uri in found]
 
 
-def reactions_of(value):
+def reactions_of(value, fix):
     if value is None:
         return []
     if not isinstance(value, list) or not all(isinstance(item, dict) and isinstance(item.get("reaction"), str)
                                               and isinstance(item.get("actor"), str) for item in value):
         raise Unknown("reactions in another shape")
-    return [(repair(item["reaction"]), repair(item["actor"])) for item in value]
+    return [(fix(item["reaction"]), fix(item["actor"])) for item in value]
 
 
 def tally(extra, message, known):
@@ -347,12 +371,12 @@ def tally(extra, message, known):
         extra[key] = extra.get(key, 0) + 1
 
 
-def dyi_message(message, extra):
+def dyi_message(message, extra, fix):
     if not isinstance(message, dict) or not whole(message.get("timestamp_ms")):
         raise Unknown("a message without a whole-number timestamp_ms")
-    attachments = [(kind, uri) for key, kind in ATTACHMENTS for uri in uris(message.get(key), key)]
+    attachments = [(kind, uri) for key, kind in ATTACHMENTS for uri in uris(message.get(key), key, fix)]
     if message.get("sticker") is not None:
-        attachments += [("sticker", uri) for uri in uris([message["sticker"]], "sticker")]
+        attachments += [("sticker", uri) for uri in uris([message["sticker"]], "sticker", fix)]
     share = message.get("share")
     if share is not None and not (isinstance(share, dict) and all(isinstance(share.get(k), (str, type(None)))
                                                                   for k in ("link", "share_text"))):
@@ -361,10 +385,11 @@ def dyi_message(message, extra):
     if call is not None and not whole(call):
         raise Unknown("call_duration that is not a whole number")
     tally(extra, message, DYI_KNOWN)
-    link, words = (text_of(share, "link"), text_of(share, "share_text")) if share else (None, None)
-    return {"ts": message["timestamp_ms"], "sender": text_of(message, "sender_name"), "text": text_of(message, "content"),
+    link, words = (text_of(share, "link", fix), text_of(share, "share_text", fix)) if share else (None, None)
+    return {"ts": message["timestamp_ms"], "sender": text_of(message, "sender_name", fix),
+            "text": text_of(message, "content", fix),
             "attachments": attachments, "share": (link, words) if link or words else None,
-            "reactions": reactions_of(message.get("reactions")), "unsent": message.get("is_unsent") is True,
+            "reactions": reactions_of(message.get("reactions"), fix), "unsent": message.get("is_unsent") is True,
             "call": None if call is None else (call, message.get("missed") is True)}
 
 
@@ -373,15 +398,15 @@ def kind_of(uri):
     return next((kind for kind, extensions in KINDS.items() if extension in extensions.split()), "file")
 
 
-def secure_message(message, extra):
+def secure_message(message, extra, fix):
     if not isinstance(message, dict) or not whole(message.get("timestamp")):
         raise Unknown("a message without a whole-number timestamp")
     if "isUnsent" in message and not isinstance(message["isUnsent"], bool):
         raise Unknown("isUnsent that is not true or false")
     tally(extra, message, SECURE_KNOWN)
-    return {"ts": message["timestamp"], "sender": text_of(message, "senderName"), "text": text_of(message, "text"),
-            "attachments": [(kind_of(uri), uri) for uri in uris(message.get("media"), "media", plain=True)],
-            "share": None, "reactions": reactions_of(message.get("reactions")),
+    return {"ts": message["timestamp"], "sender": text_of(message, "senderName", fix), "text": text_of(message, "text", fix),
+            "attachments": [(kind_of(uri), uri) for uri in uris(message.get("media"), "media", fix, plain=True)],
+            "share": None, "reactions": reactions_of(message.get("reactions"), fix),
             "unsent": message.get("isUnsent") is True, "call": None}
 
 
@@ -407,13 +432,14 @@ def dyi_conversation(source, folder, entry, extra):
             if not (isinstance(data, dict) and isinstance(data.get("participants"), list)
                     and isinstance(data.get("messages"), list) and all(isinstance(p, dict) for p in data["participants"])):
                 raise Unknown("not the shape of a thread file")
-            page = [dyi_message(message, extra) for message in data["messages"]]
+            fix = fixer(data, established=True)
+            page = [dyi_message(message, extra, fix) for message in data["messages"]]
         except Unknown as error:
             raise Unknown(error.why, rel)
         pages.append(checked_times(in_time_order(page), rel))
-        title = title or (repair(data["title"]) if isinstance(data.get("title"), str) else None)
+        title = title or (fix(data["title"]) if isinstance(data.get("title"), str) else None)
         if names is None:
-            names = [repair(p["name"]) for p in data["participants"] if isinstance(p.get("name"), str)]
+            names = [fix(p["name"]) for p in data["participants"] if isinstance(p.get("name"), str)]
     return {"cid": "dyi-" + safe(folder), "where": ", ".join(entry["sections"]), "title": title, "names": names,
             "from": [f"{section}/{folder}" for section in entry["sections"]], "pages": pages, "check": False}
 
@@ -428,7 +454,8 @@ def secure_conversation(source, rel, extra):
         if not (isinstance(data.get("participants"), list) and all(isinstance(p, str) for p in data["participants"])
                 and isinstance(data.get("messages"), list)):
             raise Unknown("not the shape of a secure-storage conversation")
-        page = [secure_message(message, extra) for message in data["messages"]]
+        fix = fixer(data, established=False)
+        page = [secure_message(message, extra, fix) for message in data["messages"]]
     except Unknown as error:
         raise Unknown(error.why, rel)
     if all(message["ts"] < SECONDS_BELOW for message in page):
@@ -439,8 +466,8 @@ def secure_conversation(source, rel, extra):
     name = PurePosixPath(rel).name
     title = data.get("threadName")
     return {"cid": None, "stem": name[:-len(".json")], "where": "secure storage", "from": [name],
-            "title": repair(title) if isinstance(title, str) and title else None,
-            "names": [repair(p) for p in data["participants"]], "pages": [checked_times(in_time_order(page), rel)],
+            "title": fix(title) if isinstance(title, str) and title else None,
+            "names": [fix(p) for p in data["participants"]], "pages": [checked_times(in_time_order(page), rel)],
             "check": True}
 
 
