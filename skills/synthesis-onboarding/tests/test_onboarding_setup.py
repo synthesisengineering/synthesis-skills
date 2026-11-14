@@ -1445,3 +1445,24 @@ def test_a_refusal_of_the_options_step_keeps_the_install_line_and_codexs_setting
     monkeypatch.setattr(setup, "configure_codex", lambda dry_run=False: ran.append("configure_codex") or ["codex config: set"])
     lines, failed = setup.setup_plugins(["codex"], "", False)
     assert failed and any(line.startswith("codex: updated") for line in lines) and ran
+
+
+def test_a_declaration_from_before_the_guards_failure_tail_is_brought_in_step_and_its_approval_asked_once_again(tmp_path, monkeypatch):
+    """5.21.0's guard command ends so that a guard that cannot start or crashes is exit 2 with a reason, which Codex
+    hashes: a user-level PreToolUse written before it is brought in step, and setup asks for its approval once again,
+    the one a person gives when switching to the option in this release."""
+    earlier = json.loads(json.dumps(PLUGIN_HOOKS))
+    for handler in earlier["hooks"]["PreToolUse"][0]["hooks"]:
+        handler.pop("onFailure", None)
+        handler["command"] = f"{STABLE} pre-tool-use"
+    older = tmp_path / "older"
+    (older / "hooks").mkdir(parents=True)
+    (older / "hooks" / "hooks.json").write_text(json.dumps(earlier))
+    home = codex_home(tmp_path, monkeypatch, config="[features]\nhooks = true\n")
+    setup.codex_user_hooks(True, older)
+    lines = setup.codex_user_hooks(None, setup.REPO)
+    guard = declared(home)["PreToolUse"]
+    assert guard == setup.doctor.codex_user_declaration(PLUGIN_HOOKS)["PreToolUse"] and "exit 2" in guard[0]["hooks"][0]["command"]
+    assert any("PreToolUse" in line and "approve" in line and "again" in line for line in lines)
+    assert not any("stays" in line for line in lines)
+

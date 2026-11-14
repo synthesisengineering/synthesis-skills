@@ -563,7 +563,8 @@ def test_the_strict_toml_reader_reads_a_whole_config_as_the_lenient_one_does():
 def test_calls_stable_hook_takes_the_stable_hook_as_the_program_the_command_runs():
     """R1-2 (p03 K2): a substring test took a log line that only names the hook for a declaration."""
     for command in ('"$HOME/.synthesis/v5/bin/synthesis-hook" pre-tool-use', '"${HOME}/.synthesis/v5/bin/synthesis-hook" pre-tool-use',
-                    'exec "$HOME/.synthesis/v5/bin/synthesis-hook" pre-tool-use', "~/.synthesis/v5/bin/synthesis-hook pre-tool-use"):
+                    'exec "$HOME/.synthesis/v5/bin/synthesis-hook" pre-tool-use', "~/.synthesis/v5/bin/synthesis-hook pre-tool-use",
+                    '"$HOME/.synthesis/v5/bin/synthesis-hook" pre-tool-use || { echo "synthesis guard could not run" >&2; exit 2; }'):
         assert doctor.calls_stable_hook("PreToolUse", command), command
     for command in ('echo "skipped $HOME/.synthesis/v5/bin/synthesis-hook pre-tool-use" >> /tmp/log',
                     '"$HOME/.synthesis/v5/bin/synthesis-hook" stop', '"$HOME/.synthesis/v5/bin/synthesis-hook pre-tool-use'):

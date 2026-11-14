@@ -5,7 +5,9 @@ recognizes by what it does never reached it, and Edit and Write (which could wri
 never checked. Every connector tool and every file-edit tool now reaches the guard; built-in reads do not."""
 
 import json
+import os
 import re
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -88,3 +90,56 @@ def test_muse_reads_its_own_manifest_whose_hooks_carry_only_fields_it_accepts():
 def test_the_references_say_what_holds_when_the_guard_cannot_answer_in_each_harness(reference):
     text = " ".join((ROOT / reference).read_text(encoding="utf-8").split())
     assert all(said in text for said in ('"onFailure": "block"', "2.1.295", "times out", "Codex", "Muse")), reference
+
+
+# ---- a guard that cannot start or crashes, in Codex and Muse too (5.21.0) ------------------------------------------
+# Codex and Muse have no "onFailure", and let a call through when the hook's command exits with an error; both block
+# on exit 2 with a reason (Muse's hook test, Codex's source). So the guard's own command turns any failure of the
+# stable hook into exit 2 with one line of reason, and a deny the hook gives, which exits 0 with its JSON, keeps its own.
+
+STAND_INS = {"missing": None,
+             "crashes": "#!/bin/sh\necho 'Traceback (most recent call last): a stand-in that crashes' >&2\nexit 1\n",
+             "denies": "#!/bin/sh\ncat >/dev/null\nprintf '%s' '{\"hookSpecificOutput\": {\"hookEventName\": \"PreToolUse\", "
+                       "\"permissionDecision\": \"deny\", \"permissionDecisionReason\": \"held by the guard\"}}'\n",
+             "allows": "#!/bin/sh\ncat >/dev/null\nexit 0\n"}
+GUARDS = {"the plugin's hooks.json": ["/bin/sh", "-c", HOOKS["PreToolUse"][0]["hooks"][0]["command"]],
+          "Muse's pre-tool-use.sh": ["/bin/sh", str(ROOT / ".muse-plugin" / "hooks" / "pre-tool-use.sh")],
+          "the user-level declaration": ["/bin/sh", "-c", doctor.codex_user_declaration({"hooks": HOOKS})["PreToolUse"][0]["hooks"][0]["command"]]}
+
+
+def run_guard(home, argv, stand_in):
+    """The guard's command as a harness runs it, the call's JSON on its stdin, with a stand-in stable hook under a HOME
+    of its own (None: no hook at all)."""
+    hook = home / ".synthesis" / "v5" / "bin" / "synthesis-hook"
+    if stand_in is not None:
+        hook.parent.mkdir(parents=True, exist_ok=True)
+        hook.write_text(stand_in)
+        hook.chmod(0o755)
+    return subprocess.run(argv, input=json.dumps({"tool_name": "Bash", "tool_input": {"command": "echo hi"}}),
+                          capture_output=True, text=True, timeout=20, env={**os.environ, "HOME": str(home)})
+
+
+@pytest.mark.parametrize("where", GUARDS)
+def test_a_guard_that_cannot_start_or_crashes_holds_the_call_with_one_line_of_reason(tmp_path, where):
+    for kind in ("missing", "crashes"):
+        done = run_guard(tmp_path / kind, GUARDS[where], STAND_INS[kind])
+        assert done.returncode == 2 and done.stdout == "", (where, kind, done.returncode)
+        assert done.stderr.strip().splitlines()[-1].startswith("synthesis guard could not run"), (where, kind)
+
+
+@pytest.mark.parametrize("where", GUARDS)
+def test_a_deny_the_guard_gives_keeps_its_own_reason_and_exit_code_and_an_allow_stays_one(tmp_path, where):
+    denied = run_guard(tmp_path / "denies", GUARDS[where], STAND_INS["denies"])
+    assert denied.returncode == 0 and denied.stderr == ""
+    assert json.loads(denied.stdout)["hookSpecificOutput"]["permissionDecisionReason"] == "held by the guard"
+    allowed = run_guard(tmp_path / "allows", GUARDS[where], STAND_INS["allows"])
+    assert (allowed.returncode, allowed.stdout, allowed.stderr) == (0, "", "")
+
+
+def test_only_the_guard_holds_on_a_failure_and_every_hook_still_calls_the_stable_hook():
+    commands = [(e, h["command"]) for e, _, h in doctor.hooks_json_entries({"hooks": HOOKS})]
+    assert [e for e, c in commands if "exit 2" in c] == ["PreToolUse"]
+    assert doctor.check_hooks_wired("codex", commands).status == "ok"
+    declared = doctor.codex_user_declaration({"hooks": HOOKS})
+    assert all(doctor.calls_stable_hook(e, h["command"]) for e, groups in declared.items() for g in groups for h in g["hooks"])
+
