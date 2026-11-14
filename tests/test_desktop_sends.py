@@ -361,6 +361,16 @@ def test_the_page_is_the_tab_each_step_names_or_the_one_a_navigate_step_opened(t
     assert "approve" in guards.check(CHROME, _steps(opened, RETURN), CONFIG, session=session)
 
 
+def test_a_navigate_that_names_no_host_keeps_a_messaging_sites_page(tmp_path):
+    """Hold when unsure: `back`, `forward`, a path or a script names no page, and from a messaging site's page the page
+    it opens may be that site's still, so it is judged as that site's; from any other page it is unknown, as before."""
+    for where, held in (("https://www.facebook.com/groups/1/", True), ("https://docs.google.com/document/d/x", False)):
+        session = _on(tmp_path, 7, tab7=where)
+        for url in ("back", "forward", "/messages/t/1", "javascript:void(0)"):
+            reason = guards.check(CHROME, _steps(("navigate", {"url": url, "tabId": 7}), RETURN), CONFIG, session=session)
+            assert bool(reason and "approve" in reason) is held, (where, url)
+
+
 def test_a_tab_list_printed_by_another_tool_is_not_the_browsers(tmp_path):
     """A shell that prints a transcript (or anything shaped like a tab list) does not move the browser's page."""
     session = _on(tmp_path, 7, tab7="https://chat.google.com/room/AAA")
