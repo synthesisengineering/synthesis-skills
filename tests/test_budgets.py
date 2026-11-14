@@ -943,10 +943,12 @@ ROOT = Path(__file__).resolve().parents[1]
 # 2, configured_ref one fewer (paths.codex_home), and spacing with the section's comment 18.
 # 5.21.0 (2026-11-14): guards.py 4, Messenger inside facebook.com (its page and the pop-ups on every page) and
 # Instagram in the browser's messaging sites: a comment line and three lines of five entries.
+# 5.21.0, the release's own count: doctor.py 8, waits_on_person 6 (signature, a docstring of three lines, the test)
+# and ASKS 1 with a blank line: an approval line that names a fault of setup no longer reads as waiting on the person.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # consolidate first).
-CORE_BUDGET = 14751
-PLUGIN_BUDGET = 37876
+CORE_BUDGET = 14759
+PLUGIN_BUDGET = 37884
 
 
 def _lines(files):

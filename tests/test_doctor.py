@@ -428,10 +428,10 @@ def test_only_an_approval_the_person_gives_is_a_wait_and_a_fault_of_setup_is_not
     """5.21.0: the release counts a failing approval line as waiting on the person, so a fault the same line can name
     (a plugin copy left on, a declaration unlike the plugin's, a plugin Codex cannot fingerprint) must not read as one."""
     home, config = user_level(tmp_path, trusted=False)
-    assert doctor.waits_on_person(doctor.check_codex_trust(REPO_HOOKS, config, PLUGIN_ID, _plugin(tmp_path), home))
+    root = _plugin(tmp_path)
+    assert doctor.waits_on_person(doctor.check_codex_trust(REPO_HOOKS, config, PLUGIN_ID, root, home))
     home, config = user_level(tmp_path, plugin_off=False)
     assert not doctor.waits_on_person(doctor.check_codex_trust(REPO_HOOKS, config, PLUGIN_ID, None, home))
-    root = _plugin(tmp_path)
     (root / "link").symlink_to(root / "synthesis" / "hook.py")
     check = doctor.check_codex_trust(REPO_HOOKS, {"hooks": {"state": trusted_state()}}, PLUGIN_ID, root)
     assert check.status == "fail" and not doctor.waits_on_person(check)

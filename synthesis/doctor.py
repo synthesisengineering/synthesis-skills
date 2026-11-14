@@ -670,8 +670,8 @@ def check_codex_trust(hooks_data: dict | None, config: dict, plugin_id: str, roo
     if root is not None and set(hooks_data.get("hooks") or {}) - set(user):  # a hook that runs as the plugin's
         try:
             content = codex_plugin_hash(root)
-        except (OSError, ValueError) as exc:
-            problems.append(f"Codex cannot fingerprint the plugin ({exc}), so it runs none of its hooks")
+        except (OSError, ValueError) as exc:  # a fault, not an approval: none the person gives would make it run
+            others.append(f"Codex cannot fingerprint the plugin ({exc}), so it runs none of its hooks")
     if content and codex_home is not None:
         try:
             baseline = codex_trust_baseline(codex_home, plugin_id).read_text(encoding="utf-8").strip()
@@ -1730,6 +1730,14 @@ def summary(checks: list, ms: float) -> str:
 
 
 APPROVALS = tuple(paths.HOOK_APPROVALS)  # the person gives these in the harness; no release can
+ASKS = {"codex hook trust": "needs /hooks approval: ", "muse hook approval": "run `muse plugins approve "}
+
+
+def waits_on_person(check: Check) -> bool:
+    """A failing approval line that asks only for what the person gives in the harness. The same line can name a fault
+    of setup (a plugin copy left on, a plugin with no hooks), which no approval fixes, so a release must not count it
+    as waiting (5.21.0)."""
+    return check.status == "fail" and check.detail.startswith(ASKS.get(check.name, "\0"))
 
 
 def _note_waits(home: Path, checks: list, began: float) -> None:

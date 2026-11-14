@@ -456,7 +456,7 @@ def main(argv=None) -> int:
         start = time.perf_counter()
         checks = doctor.run_checks()
         print(doctor.report(checks, (time.perf_counter() - start) * 1000), flush=True)
-        waiting = [c for c in checks if c.status == "fail" and c.name in doctor.APPROVALS]
+        waiting = [c for c in checks if doctor.waits_on_person(c)]
         healthy = not any(c.status == "fail" and c not in waiting for c in checks)
         for c in waiting:  # given in the harness by the person, never by a release, so none waits on it
             print(f"waiting on your approval ({c.name}): {c.detail}", flush=True)
