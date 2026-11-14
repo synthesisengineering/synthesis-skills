@@ -731,3 +731,18 @@ def test_r1_26_a_refusal_says_its_listing_names_people_and_lists_without_names_o
     archive = zip_tree(export, tmp_path / "export.zip", extra={"messages/inbox/alexsample_2002/../../x.json": "{}"})
     code, redacted = run(im, capsys, archive, "--out", tmp_path / "out", "--listing-redacted")
     assert code == 2 and redacted.startswith("refused: ") and "alexsample" not in redacted
+
+
+def test_a_download_shaped_like_a_real_one_keeps_its_counts(im, capsys, tmp_path):
+    """The shape of a real secure-storage download (invented numbers here): most conversations empty, display names
+    repeated, a few attachments. Every count the dry run prints survives the round-1 changes to keys and names."""
+    export, sizes = tmp_path / "secure", [0] * 33 + [1, 2, 2, 3, 4, 5, 6]
+    for n, size in enumerate(sizes):
+        write_secure(export, f"{('Facebook user', ALEX, BLAIR)[n % 3]}_{n}", [ALEX, BLAIR], [
+            secure_message(BLAIR if k % 2 else ALEX, T0 + n * DAY + k * 1000, f"chat {n} line {k}",
+                           media=[{"uri": f"./media/{n}-{k}.jpeg"}] if k == 0 and n % 3 == 0 else [])
+            for k in range(size)])
+    code, printed = run(im, capsys, export, "--out", tmp_path / "out", "--dry-run")
+    assert code == 0, printed
+    assert "conversations: 40 found; 7 new transcripts, 0 extended, 0 with nothing new, 33 with no messages, 0 skipped" in printed
+    assert "messages: 23 new; 0 already in transcripts" in printed and "attachments referenced: 3 (none copied)" in printed

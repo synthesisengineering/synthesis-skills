@@ -106,22 +106,35 @@ A message must have a whole-number `timestamp_ms`; a field the table lists must 
 the export is refused. Any other message field is counted by name under "fields not shown", so a field Meta adds
 is reported rather than passed over.
 
-Messages carry no id of their own [S7]. The importer names each by its time and a digest of what it says (sender,
-text, attachments, link, call, unsent), so a later export of the same conversation names each message the same
-way whatever it gained since, such as a reaction. A message repeated within one file keeps each copy; one repeated
+Messages carry no id of their own [S7]. The importer names each by its time and a digest of what it says: its
+text, link, call and unsent facts and each attachment's file name. Left out are what differs between two exports of
+one conversation: the folders an attachment sits in (the three layouts, a thread moved from `inbox` to
+`archived_threads`) and the sender's display name (an account renamed or deactivated may show under another name;
+not established by these sources, and cheap to guard against), and what a message gains since, such as a reaction.
+So a later export names each message the same way. A message repeated within one file keeps each copy; one repeated
 across files of a conversation is one message.
 
 ## The encoding quirk and its repair
 
 The regular export writes non-ASCII text one UTF-8 byte at a time, each byte as its own `\u00XX` escape, so a
-standard JSON reader returns each byte as a Latin-1 character: `CafÃ©` reads as "CafÃ©", and an emoji
+standard JSON reader returns each byte as a Latin-1 character: `Caf\u00c3\u00a9` reads as "CafÃ©", and an emoji
 as four odd characters. Corroborated [S6, S7, S11].
 
-The repair encodes the text as Latin-1 and decodes the bytes as UTF-8 [S7, S11]. The importer applies it to every
-string it shows (text, names, titles, links, attachment names, reactions) only where it round-trips: every
-character fits Latin-1 and the bytes then form valid UTF-8. Text that is already right is left as it is, because it
-fails one test or the other: "Café" written correctly is the byte E9 alone, which is no UTF-8, and "Přeji" holds a
-character beyond Latin-1. The repair is applied once, never twice, so text whose author typed "Ã©" keeps it.
+The repair encodes the text as Latin-1 and decodes the bytes as UTF-8 [S7, S11]. A string alone cannot show
+whether it needs it: an accented capital before a no-break space (`CAFÉ !`, U+00A0 before the `!`), "Ã©" typed as
+such and "Â£5" are all valid UTF-8 once taken as Latin-1. So the importer decides once for each file, from all of
+its text (names, titles, links, attachment names and reactions with the messages):
+
+- A file holding any character above U+00FF was written right (correct text holds one as soon as it holds an emoji
+  or a curly quote): nothing in it is repaired.
+- Otherwise a file of the regular export is repaired, since Meta writes every such file the quirk's way.
+- Otherwise a secure-storage file is repaired only when it holds a C1 control character (U+0080 to U+009F): the
+  quirk leaves one in almost any text (curly quotes, dashes, emoji, `É`, `ř`), and correct text never holds one.
+
+In a file that is repaired, each string is repaired where it round-trips (every character fits Latin-1 and the
+bytes form valid UTF-8), once and never twice, so text whose author typed "Ã©" keeps it. The cost of leaving correct
+text alone: a secure-storage file carrying the quirk whose only non-ASCII letters are ones such as é, ü or ñ (which
+leave no C1 character) stays as written, in its escaped form.
 
 ## The secure-storage download of end-to-end encrypted chats
 
@@ -151,21 +164,29 @@ What is not established, and how the importer handles it:
   10^11 seconds the year 5138), every one at or above it milliseconds, and a file with both is refused. A
   converted time before 2004 or after the present is refused too.
 - **The encoding quirk.** Whether this download carries it is unknown. Both importers repair its text [S6, S7];
-  the importer applies the same repair, only where it round-trips.
+  the importer repairs a file of it only when its text shows the quirk (see "The encoding quirk and its repair").
 - **An attachment's shape.** The real download showed the key, not its elements. One importer reads objects with a
   `uri` such as `./media/<uuid>.jpeg` [S6]. The importer takes an object with a text `uri`, or the text itself, and
   names its kind by extension (photo, gif, video, audio file, otherwise file); anything else is refused.
-- **Whether `n` stays with its conversation** from one download to the next. So a secure-storage transcript is
-  extended only when the export lists exactly the participants the transcript recorded; otherwise that
-  conversation is skipped and named, and two conversations are never mixed.
+- **Whether `n` stays with its conversation** from one download to the next; and two chats can share a display
+  name and participants (namesakes, groups with the same members, accounts shown generically once deactivated). So
+  a secure-storage transcript is not found by its name. A conversation goes to the transcript that already holds any
+  of its messages; one holding none gets a new transcript, named by its display name (its file name without `_<n>`)
+  and a digest of its first message, never by `n`. A conversation whose messages sit in two transcripts, or two
+  conversations of one download that belong to one transcript, are skipped and named. Two conversations are never
+  mixed, and a chat a later download renumbers still finds its transcript.
 
-Transcripts from the two downloads never collide: regular-export transcripts are named `messenger-dyi-<id>.md`,
-secure-storage transcripts `messenger-e2ee-<id>.md`, and each records its source.
+Transcripts from the two downloads never collide: regular-export transcripts are named `messenger-dyi-<folder>.md`,
+secure-storage transcripts `messenger-e2ee-<display name>-<8 hex>.md`; each records its source, and a
+secure-storage conversation is matched only against secure-storage transcripts.
 
 ## What the importer refuses, and why
 
 Every refusal exits 2 and writes nothing. A refusal for a shape it does not know lists the export's files by name
-and size (media counted by extension, not listed), never their contents.
+and size (media counted by extension, not listed), never their contents. Those names carry the names of the people
+in these conversations, and the listing says so: the principal decides what, if anything, to send, and to whom.
+`--listing-redacted` lists the same files with every name replaced by a token keyed for that run alone, keeping
+structure, extensions and sizes.
 
 | It refuses | Why |
 |---|---|
@@ -173,8 +194,10 @@ and size (media counted by extension, not listed), never their contents.
 | an export with no messages folder and no conversation file | it is not an export this importer knows |
 | a ZIP entry whose name could lead outside the archive (`..`, a leading `/`, a drive letter, a backslash, a control character), a link entry, or a name given twice | an archive that could write or hide outside itself is not Meta's |
 | a message file over 256 MiB (one holds at most 10,000 messages); media is never opened, whatever its size | a bound on what one read takes |
+| more than 100,000 message files, or message files that would inflate to more than 2 GiB in all, judged before any is read | a ZIP of a few kilobytes could otherwise make the importer inflate hundreds of gigabytes, one file at a time |
+| a message file in a ZIP compressed other than stored or deflate, or over 1 MiB and inflating past 200 times its compressed size, judged from the archive's directory | the same bomb in one file; real exports use deflate, and text compresses a few to a few dozen times |
 | a link inside an export folder, or something that is not a file | a link could lead the reader outside the export |
-| `--out` inside the export, or the export inside `--out` | reads and writes stay apart |
+| `--out` inside the export, or the export inside `--out`, judged by each folder's identity on disk, so another letter case on a Mac's disk is caught | reads and writes stay apart |
 | two conversations whose file names are the same or differ only in case | a Mac's disk would give them one file |
 
 ## Not established
