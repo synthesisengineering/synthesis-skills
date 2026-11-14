@@ -5,7 +5,7 @@ license: "Apache-2.0"
 depends_on: ["synthesis-agent-correspondence"]
 metadata:
   author: "Rajiv Pant"
-  version: "2.10.0"
+  version: "2.11.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
   format: v5
@@ -33,14 +33,16 @@ format rules, and then the principal must approve that exact call.
 9. **Fail closed, narrowly.** An unreadable config blocks every send; session-to-session messages are never treated as correspondence.
 10. **Call people by the name they go by.** When the call carries an identifier the principal lists under `preferred_names` (an address, a Slack user or DM id), that person's official first name in the text is refused; mention syntax and address fields stay as the platform needs them (2026-10-13).
 11. **Every channel is guarded, by what a call does** (2026-10-13). A connector tool whose name delivers words (send, reply, comment, post, share, or creating or editing an issue, page, message or review) and a shell command that posts (`gh` and `bkt` comments and PR writes, their `api` writes, `curl`/`wget`/HTTPie writes to another host) wait for the code; work in the principal's `own_repos` does not. A program that sends some other way is still a send the guard cannot see: ask first.
-12. **Computer use and the browser are guarded too** (2026-10-22). In a messaging app (WhatsApp, Messages, Slack, Mail, Signal, Telegram, Teams and more), and on a messaging site in the browser (Google Chat, Gmail, Slack, WhatsApp Web, LinkedIn messages and more), a click on Send, a Return in the compose field, a typed line break, the Send menu item or shortcut, and a click with no `action_summary` wait for the code; in any app or browser page, so does an action whose summary says it sends. Words typed in a messaging app or site pass the register scan as they are typed. Write each summary as what the action does, type the words and send in one call where you can (the approval then binds both), and show the principal a screenshot of the compose area with the code.
+12. **Computer use and the browser are guarded too** (2026-10-22). In a messaging app (WhatsApp, Messages, Slack, Mail, Signal, Telegram, Teams and more), and on a messaging site in the browser (Google Chat, Gmail, Slack, WhatsApp Web, Messenger, every page of facebook.com, Instagram, LinkedIn and X, and more), a click on Send, a Return in the compose field, a typed line break, the Send menu item or shortcut, and a click with no `action_summary` wait for the code; on such a site, so does a click on Post, Comment, Reply, Repost, Share, Publish or Submit unless its summary says it only opens a box; in any app or browser page, so does an action whose summary says it sends. Words typed in a messaging app or site pass the register scan as they are typed. Write each summary as what the action does, type the words and send in one call where you can (the approval then binds both), and show the principal a screenshot of the compose area with the code.
 13. **A send window is the principal's setting, never yours.** `synthesis sends open --hours N --sends M --channels ...` (at most 12 hours and 50 planned sends; the last one closes it) needs their code; inside it, a send in a covered channel that carries a `send_window_signatures` signature goes without a per-message code, after the same register scan and format rules, and is logged. `synthesis sends close` ends it; `synthesis sends log` lists the day's sends for "On your behalf".
 14. **A meeting placed on today has an approval of its own** (2026-11-09). With `same_day_meetings` in the config, a calendar write that starts today and invites anyone but the principal waits for a code typed for that same-day meeting; the ordinary invitation approval and a send window do not cover it. An exempt attendee keeps the ordinary approval, and a hold with no attendees is untouched. Propose another day unless the principal asked for today.
 15. **A calendar write that puts the principal at a place carries its travel line** (2026-11-11). With `in_person_travel` in the config, such a write is refused until the event's description says how they get there. It asks for no approval (references/config.md).
+16. **An address that can change never goes to a person** (2026-11-12). With `temporary_addresses` in the config, a send, draft, shell post or typed words holding a quick tunnel's host, or an address only this machine or its network answers, are held before the message's approval is asked: only the principal's code for those addresses releases them, and the message then still needs its own; starting a quick tunnel waits for a code of its own.
+17. **A time in a message rests on a fresh calendar read** (2026-11-12). With `fresh_calendar` in the config, a message to a person whose words name a clock time is held unless this session read a calendar, successfully, within its `minutes` (10 unless set, 1 to 60), or the principal types the hold's own code, which stands for the ordinary one. In Codex, Muse and a sub-agent the guard sees no calendar read, so only that code releases it (references/config.md).
 
 ## Contents
 
-- **Procedure** (below): compose, check, approve, send, verify.
+- [references/procedure.md](references/procedure.md): compose, check, approve, send, verify. Read every time.
 - [references/composing.md](references/composing.md): why the guard exists, the honest workflow, every check with the words it blocks with, the email transports' fields, and known limits. Read before composing a message the guard will see, and when a send is blocked.
 - [references/config.md](references/config.md): the config keys, the example config, calibration and the positive controls. Read when setting up or changing the guard's config.
 - [references/coverage-map.md](references/coverage-map.md): where every part of 1.8.0 lives now (ruling D8).
@@ -48,9 +50,4 @@ format rules, and then the principal must approve that exact call.
 
 ## Procedure
 
-1. **Research, then compose** (binding rule 2). Write email as HTML paragraphs: `htmlBody` on the Gmail connector (its `body` is the plain-text alternative, also whole paragraphs), `body` with `body_format: "html"` on the workspace connector.
-2. **Freeze the complete call:** recipients, subject, thread fields, every body part, attachments. Then make the call once. If the text breaks a rule, the guard answers `This message can't go out as written: <reasons>.` and files nothing; fix it and call again.
-3. **Ask for approval.** A clean message is blocked with `Sending needs the principal's approval of this exact message ... type approve followed by the code <code>`. Show the principal the exact text and recipients, in full, and the code. `synthesis approvals` lists what is waiting.
-4. **When they type `approve <code>`** (several codes may follow the word on its line), make each identical call again. A changed call needs a new code; an approval unused after 15 minutes is gone, and so is one the harness declined after the guard let it through (references/composing.md).
-5. **Verify** (binding rule 8): fetch the draft or sent message and compare recipients, subject and paragraphs with what was approved.
-6. **Record** the send where the correspondence skills say (transcript, plan), with its message id.
+Compose, check, approve, send, verify and record, step by step: [references/procedure.md](references/procedure.md). Read it every time.

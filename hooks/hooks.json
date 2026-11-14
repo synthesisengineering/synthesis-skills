@@ -28,8 +28,9 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"$HOME/.synthesis/v5/bin/synthesis-hook\" pre-tool-use",
-            "timeout": 5
+            "command": "\"$HOME/.synthesis/v5/bin/synthesis-hook\" pre-tool-use || { echo \"synthesis guard could not run, so the call is held: run synthesis doctor\" >&2; exit 2; }",
+            "timeout": 5,
+            "onFailure": "block"
           }
         ]
       }

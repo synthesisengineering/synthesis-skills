@@ -123,6 +123,8 @@ ticket, a comment, a reaction, a share, a document, a file for the principal or 
 
 ## When a wake did not arrive
 
+A session bound to no project receives no mail addressed to a project. `wait message` says so when it starts, and `synthesis resume <project>` binds the session. (Moved here word for word from SKILL.md in 1.2.0.)
+
 1. `synthesis wait list`: is the wait still on the board? A wait whose process died or whose bound passed is gone,
    and so is a note its seat took down with `synthesis wait clear`.
 2. `synthesis inbox --peek`: did the mail arrive unseen? A session bound to no project receives nothing addressed

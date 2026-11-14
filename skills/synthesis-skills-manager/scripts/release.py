@@ -403,6 +403,8 @@ def install_and_verify(repo: Path, version: str, clients: list, dry_run: bool = 
             root, reported = installed_root(client, binary)
             problems = [f"reports {reported or 'nothing'}, not {version}"] if reported != version else []
             problems += tree_differences(repo, f"v{version}", root) if root else ["reports no installed folder"]
+            if client == "codex" and not problems and setup.codex_user_hooks_on():  # its user-level option, in step with
+                lines += setup.codex_user_hooks(None, root)                         # the folder just verified (5.21.0)
         except setup.SetupError as exc:
             problems = [str(exc)]
         if problems:
@@ -456,7 +458,7 @@ def main(argv=None) -> int:
         start = time.perf_counter()
         checks = doctor.run_checks()
         print(doctor.report(checks, (time.perf_counter() - start) * 1000), flush=True)
-        waiting = [c for c in checks if c.status == "fail" and c.name in doctor.APPROVALS]
+        waiting = [c for c in checks if doctor.waits_on_person(c)]
         healthy = not any(c.status == "fail" and c not in waiting for c in checks)
         for c in waiting:  # given in the harness by the person, never by a release, so none waits on it
             print(f"waiting on your approval ({c.name}): {c.detail}", flush=True)

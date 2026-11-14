@@ -31,11 +31,11 @@ synthesis-message-guard: 367 old lines, 0 not found verbatim
 | "Prose rules do not survive ..." paragraph | SKILL.md purpose paragraph | Verbatim |
 | Grounding-envelope pointer | preserved.md | Cut with the ledger |
 | Why it exists | [composing.md](composing.md#why-it-exists) | Verbatim, plus what replaced the ledger |
-| Architecture | SKILL.md purpose and procedure | Replaced: approval instead of ledger |
+| Architecture | SKILL.md purpose; references/procedure.md (moved from SKILL.md in 2.11.0) | Replaced: approval instead of ledger |
 | Peer-session sends | preserved.md; composing.md (session messages are not correspondence) | Replaced by board messages |
 | Currency claims carry read freshness | Binding rule 2; [composing.md](composing.md#why-it-exists) | Reworded: a rule for the agent |
 | The ledger contract | [composing.md checklist](composing.md#before-you-ask-for-approval-the-checklist) | Each attestation kept as a check before approval |
-| Modes | Procedure; preserved.md | Replaced by the hook and `synthesis approvals` |
+| Modes | references/procedure.md; preserved.md | Replaced by the hook and `synthesis approvals` |
 | Guarantee 1, fail closed | Binding rule 9; config.md | Reworded |
 | Guarantee 2, positive controls (2026-08-03) | [config.md calibration](config.md#calibration); tests | Reworded: the controls are tests |
 | Guarantee 3, calibration | [config.md calibration](config.md#calibration) | Verbatim |

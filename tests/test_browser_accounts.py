@@ -392,6 +392,15 @@ def test_a_batch_step_that_goes_nowhere_the_guard_can_name_leaves_the_tabs_page_
     assert batch(("navigate", {"url": url}), ("get_page_text", {})) is None
 
 
+@pytest.mark.parametrize("url", ["back", "forward", "/new", "javascript:void(0)"])
+def test_such_a_step_from_a_messaging_sites_page_leaves_the_page_unknown_here_too(url):
+    """The send guard judges the page such a step opens from a messaging site's page as that site's, since it may be
+    that site's still (5.21.0). For the account it stays unknown: the step may have left for a site named here."""
+    ran("navigate", tabs={1: "https://www.linkedin.com/feed/"})
+    reason = batch(("navigate", {"url": url}), TYPE)
+    assert reason and "which page" in reason
+
+
 @pytest.mark.parametrize("address", [f"https:{SITE}/x", f"https://{SITE}\\@mail.example/", f"HTTPS://{SITE}./x", "https://assistant%2Eexample/x",
                                      f"https://user:secret@{SITE}:8443/x", f"//{SITE}/x"])
 def test_an_address_a_browser_reads_as_the_sites_is_the_sites(address):

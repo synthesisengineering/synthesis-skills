@@ -4,6 +4,134 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [5.21.0] - 2026-11-14
+
+- **One approval in Codex lasts through releases, as a setup option** (`synthesis-onboarding`,
+  `synthesis-agent-conformance`; plan item 13.7, part 2). Codex ties its approval of a plugin's hooks to the plugin's
+  files, so after each release it ran none of synthesis's four hooks until the person approved them again in `/hooks`
+  (six times on 2026-11-13). `setup.py plugin --codex-user-hooks` declares the four in Codex's own `hooks.json`, each
+  calling the stable hook, which Codex trusts by its declaration alone, and switches the plugin's own copy of each
+  covered event off by its state key with a line marked as setup's, so no event runs twice; the person approves the
+  four once. A declaration of the person's stays as written, and the plugin's copy of its event goes off only when it
+  holds the plugin's declaration, so a narrower one never leaves a tool unguarded. Setup records the groups it wrote and
+  treats only those as its own. A rerun changes nothing. Before writing anything it refuses a `hooks.json` Codex would
+  not read, a `config.toml` that does not parse, hook state held as an inline table, an edit that would not parse once
+  composed, and a file changed meanwhile; turning the option on writes `hooks.json` first and off `config.toml` first, a
+  write that fails midway puts back what was written, and writes keep each file's mode, symlink and line endings.
+  Setup's `plugin` command and the release script keep the declaration in step with the plugin after each install or
+  update. `--no-codex-user-hooks` works offline, and it and `setup.py uninstall` take out the groups setup recorded and
+  the lines it marked, nothing of the person's; uninstall does so before it removes the runtime, or removes nothing and
+  exits 1. It gives up Codex's second look at a hook whose code changed, which protects anyone installing someone else's
+  plugin: recommended for a publisher's own machines, off unless asked for. Codex's startup review still lists the
+  plugin's switched-off copies after a release; the user-level hooks run whatever the answer there.
+- **The doctor reads that declaration.** With it present, `codex hook trust` judges the user-level hooks, keyed by
+  `hooks.json`'s path under Codex's home's real path, and treats the plugin's switched-off copies of covered events as
+  intended. It fails, as faults rather than approvals, a copy left on beside a covering declaration, an event declared
+  twice, a declaration that does not hold the installed plugin's (advising setup for setup's own and an edit for the
+  person's), setup's switch with nothing covering its event, a `hooks.json` Codex would not read while the option is
+  on, and hook state held as an inline table. Without the option the line is as before, and the person's own unreadable
+  `hooks.json` is a `codex hooks file` warning. `read_toml` reads lines at line feeds alone, and gains a strict reading
+  that refuses what Codex refuses: a line it cannot place, a key set twice, a table defined twice, and any table or key
+  inside a value.
+- **How it was checked.** Tests first. Codex's source at the installed build (0.167.0-alpha.4.1) and probes in homes
+  of their own: approving in `/hooks` writes `trusted_hash` alone for a user-level hook, the state written by hand
+  before, and the doctor's hash equals what Codex lists for all four; a plugin hook switched off by its key stays off
+  across a change of the plugin's files and version, and through the startup review's "Trust all". Then end to end:
+  the plugin installed with Codex's own commands, the option turned on, the four approved as `/hooks` approves them,
+  and a release that changed the plugin's files and version, with the user-level hooks trusted throughout. Review
+  round 1 found fourteen faults in the option and the doctor's line, each fixed after a test that failed for it, and
+  each reviewer's probe run again against the fix.
+- **A fault of setup on an approval line no longer reads as waiting on the person.** The release counted any failing
+  Codex or Muse approval line as waiting on the person. With the user-level option the same line can name a fault (a
+  plugin copy left on, a declaration unlike the plugin's, a plugin Codex cannot fingerprint), which no approval fixes;
+  `doctor.waits_on_person` tells the two apart, and the release now holds on a fault. Tests first.
+- **Room for rules in three skill files, by whole passages moved word for word** (daily rituals 3.17.0, waiting
+  1.2.0, message guard 2.11.0). The daily rituals' contents entry for the rewrite moves to the head of its coverage
+  map; the waiting skill's last two sentences move to its watchers reference; the message guard's procedure moves to
+  `references/procedure.md`. Then the rules whose mechanisms had shipped: daily rituals rule 6 says a date after
+  today is refused and rule 16 that a `NOT CHECKED` line is said first, never read as all clear; waiting rule 9 says
+  a message to a person is a wait; message guard rules 16 and 17 say that an address that can change never goes to a
+  person and that a time in a message rests on a fresh calendar read.
+- **The browser guard holds Return on every page of facebook.com, instagram.com and linkedin.com.** It knew
+  www.messenger.com and LinkedIn's `/messaging`, but Messenger also runs inside facebook.com, in its own page and in
+  chat pop-ups on every other page, Return in a comment box posts in the person's name, and LinkedIn's messages open
+  in an overlay on every page. A page cannot show which box has the focus. Measured first: over 30 days of recorded
+  browser calls, none pressed Return on these sites outside their messages (the control counts 320 calls on LinkedIn
+  and 10 on facebook.com), so the hold costs nothing measured. Tests first.
+- **A guard that cannot answer holds the call in Claude Code** (`synthesis-agent-guardrails`, `synthesis-message-guard`,
+  `synthesis-onboarding`, `synthesis-agent-conformance`). On PreToolUse, Claude Code let a call through when the hook
+  timed out (its limit is 5 seconds), crashed, printed output it could not read, or could not start because the stable
+  hook was missing, so a send, a deploy or a write could go ahead unguarded, against the rule that protective checks
+  fail closed. The plugin's PreToolUse handler now sets `"onFailure": "block"`, which Claude Code honors from 2.1.295: the
+  call is held, and Claude Code names the hook and says `failed` or `timed out`. UserPromptSubmit, SessionStart and
+  Stop keep the default: holding a person's prompt or a session's start on a hook failure costs more than it protects,
+  and Claude Code ignores the setting on Stop.
+- **What each harness reads stays readable.** Claude Code 2.1.316 validates and installs the plugin with the field and
+  refuses a value it does not allow; 2.1.293, from before the field, ignores it and keeps all four hooks. Codex
+  0.167.0-alpha.4.1 reads all four hooks with it, and the field itself leaves the guard's hash as it was. The user-level
+  declaration from `setup.py plugin --codex-user-hooks` carries it too, and setup says an approval stays when a
+  declaration changes only in such a field. Muse 1.4.20 reads only its own manifest, which refuses the whole plugin for
+  the field, so it is not there. Codex and Muse have no such setting; the next entry says what holds a guard that
+  cannot answer there.
+- **A guard that cannot start or crashes holds the call in Codex and Muse too** (`synthesis-agent-guardrails`,
+  `synthesis-message-guard`, `synthesis-onboarding`). Both let a call through when a hook exits with an error, but block
+  on exit 2 with a reason. The guard's command, in `hooks/hooks.json`, Muse's `pre-tool-use.sh` and the user-level
+  declaration setup writes, now ends so that a stable hook that is missing or crashes is exit 2 with one line of
+  reason; a deny the guard gives exits 0 with its own reason, as before. Codex hashes the command, so 5.21.0 asks for
+  the guard's approval once again there: the one approval a person gives when switching to the user-level option in
+  this release, and setup says so for a declaration it brings in step. A guard that times out in Codex or Muse still
+  lets the call through. Probed in homes of their own on 2026-11-14: Claude Code 2.1.316 validates the plugin; Codex
+  0.167.0-alpha.4.1 reads all four hooks of the plugin and of the user-level declaration, listing the guard's new hash
+  as the doctor computes it; Muse 1.4.20 validates and installs it, and its hook test blocks for a missing stable hook
+  and for one that exits 1, with the reason. Tests first.
+- **The doctor checks it.** A new `claude fail closed` line fails when the installed plugin's PreToolUse hook lacks the
+  setting, and warns when the installed Claude Code (by `claude --version`) is older than 2.1.295 or names no version.
+- **Measured before it shipped.** Over the 30 days to 2026-11-14, the Claude Code transcripts on the Mac it was measured
+  on (1,113 files) hold no PreToolUse hook call that failed or timed out, of 140,417 tool calls the guard's matcher
+  takes: the change would have held none in that window. Claude Code writes those failures into its transcripts (544
+  Stop and 53 SessionStart hook errors and 131 PostToolUse cancellations in that Mac's history), so none is a count,
+  not a gap in the record.
+- **How it was checked.** Tests first. Probes in homes of their own (each harness's config, data and synthesis folders
+  set to temporary ones): `claude plugin validate` and install with 2.1.316 and 2.1.293; Codex's own `hooks/list` for
+  the plugin with and without the field, the user-level declaration, and a home approved before the field through the
+  release that adds it; `muse plugins validate`, install and `plugins hook test` with the stable hook missing, exiting 1
+  and sleeping past its limit, beside a stub that denies as the control. What Codex does with a failed hook was read in
+  its source at 0.167.2 (its runner marks the hook failed and blocks nothing). Two assertions in the onboarding tests that
+  passed on the path `.../hooks.json` alone now read the note's own words.
+  in an overlay on every page. A page cannot show which box has the focus. Measured first, over 30 days of recorded
+  browser calls: none of the 55 Return presses in all was on these sites (43 were on other sites, 12 on pages the
+  record does not place), and the control counted 320 browser calls on LinkedIn in all, 290 of them on its messages
+  and 30 elsewhere, and 10 on facebook.com, so the hold costs nothing measured. Tests first.
+- **After the release's review: every host of these sites, the controls that publish, Gmail's chat pop-ups,
+  Messenger's channel and searches** (message guard 2.11.0).
+  - A site is its host and every host under it, as the browser lands on them: a batch that opened `linkedin.com/...`,
+    `uk.linkedin.com`, `messenger.com`, `m.me` or `fb.com` and pressed Return had gone out with no code. The short
+    hosts that land on a messaging site count too (`fb.me`, `instagr.am`, `ig.me`, `wa.me`, `t.me`, `discord.gg`,
+    `discordapp.com`), as do the new addresses of Teams and Outlook on the web (`teams.cloud.microsoft`,
+    `outlook.cloud.microsoft`), X's chat (`chat.x.com`, `/i/chat`) and every page of x.com and twitter.com, since
+    X's messages can open in a drawer beside its other pages, as LinkedIn's open in an overlay. For the send guard, a
+    `navigate` that names no host (`back`, a path) keeps a messaging site's page; the account check still takes that
+    page as unknown.
+  - On a messaging site's page, a click whose summary names Send, Post, Comment, Reply, Repost, Share, Publish or
+    Submit right after a click verb waits for a code, unless the summary says the click only opens a box; a click "on
+    Send" waits on any page. Measured first: over 30 days, 1,506 recorded browser clicks and 37 computer-use clicks
+    held no summary of that form, on any site.
+  - Every page of Gmail holds Return and a typed line break, as a chat page does: Google Chat runs in pop-ups on
+    Gmail's own pages, which counted as email, where Return writes a line, so Return in a pop-up went out with no
+    code. The send shortcut and a click on Send waited already, and words typed there that a rule stops stay refused
+    outright; Gmail's pages take both `email` and `google chat` rules. Measured first: over 30 days no browser call
+    pressed Return or typed a line break on Gmail's pages. Outlook on the web keeps the email rule.
+  - Messenger is `messenger` on every facebook.com host's `/messages`, on `fb.com`'s, on `messenger.com` and `m.me`;
+    Business Suite's inbox is `facebook`, `messenger` and `instagram`; facebook.com's other pages are both `facebook`
+    and `messenger`, since a pop-up may hold the focus.
+  - On these sites' pages outside their messages, a box may be a search: words that break a register rule in a call
+    that only types wait for the principal's code instead of being refused, and the hold names the rule. A call that
+    sends or does more is still refused outright, so a comment's words are scanned before any of them is typed.
+  - Message guard rules 12, 16 and 17 say what the code does: the labels that hold; an address that can change is
+    released only by the principal's code for it, after which the message needs its own; the calendar read counts
+    within `fresh_calendar.minutes`, and in Codex, Muse and a sub-agent only the hold's own code releases the message.
+    The procedure's reference to `composing.md` links from its own folder. Tests first.
+
 ## [5.20.1] - 2026-11-13
 
 - **The deploy guard holds neither a syntax check nor too little** (`synthesis-agent-guardrails` 2.9.2). A seat's local

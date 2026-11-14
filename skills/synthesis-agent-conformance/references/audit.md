@@ -99,17 +99,35 @@ there with no item here fails:
   plugin whose folder is not there fails its package line;
 - `claude transcripts`: Claude Code keeps transcripts past its 30-day default
   (`cleanupPeriodDays` is set, and to a year or more);
+- `claude fail closed`: the installed plugin's PreToolUse hook sets `"onFailure": "block"`,
+  so Claude Code holds a guarded call when the guard times out, crashes or cannot start
+  (a hook without it fails the line), and the installed Claude Code is 2.1.295 or later,
+  the first that honors it (an older one, or a `claude --version` that names no version,
+  warns; 5.21.0);
 - `codex hooks feature`, `codex instruction bytes`, `codex board access`,
   `codex instruction chain`, `codex hook trust`, `codex skill catalog`: for Codex,
   `[features] hooks = true`, `project_doc_max_bytes` at least 98,304, the board and the
   outbox writable from the sandbox (by the permissions profile in use, or the older
   writable roots while `sandbox_mode` is set) and nothing over the state folder, the
   instruction chain for the current folder under the limit minus 4 KiB, every hook
-  trusted, and the skill catalog (asked of `codex app-server`) within budget with every
-  shipped skill discoverable. The budget follows the configured model's context window,
-  from Codex's own cache of its models, read by its first whole value (its clients share
-  that file, and one copy written over another can leave a tail after it); a cache with
-  nothing to read is a warning that the budget cannot be told, never a failure;
+  trusted (with `setup.py plugin --codex-user-hooks`, the user-level hooks in Codex's own
+  `hooks.json`, keyed by that file's path under the home's real path, trusted and holding
+  the installed plugin's declaration, and the plugin's own copies switched off, as
+  intended. An event declared there only in part keeps the plugin's copy judged as the
+  plugin's, and the advice says whose declaration it is, by setup's record: setup's is
+  mended by running setup again, the person's by editing or removing it. A copy left on
+  beside a covering declaration, an event declared twice, setup's switch with nothing
+  covering its event, a `hooks.json` Codex reads none of while the option is on, and
+  hook state held as an inline table are faults, not approvals), and the skill catalog
+  (asked of `codex app-server`) within budget with every shipped skill discoverable. The
+  budget follows the configured model's context window, from Codex's own cache of its
+  models, read by its first whole value (its clients share that file, and one copy
+  written over another can leave a tail after it); a cache with nothing to read is a
+  warning that the budget cannot be told, never a failure;
+- `codex hooks file`: Codex's own `hooks.json` when Codex would read none of it (not JSON,
+  a top-level key it does not know, a hook of a type it does not know) and setup's option
+  is off: a warning, since the person's own hooks there do not run and no synthesis hook
+  depends on the file;
 - `muse hook approval`, `<harness> shell guard`: for Muse, hooks approved, and its shell
   tool name treated as a shell by the guard. A hook that waits for the person's approval
   (Codex's hook trust, Muse's hook approval) does not run, and neither does one a harness

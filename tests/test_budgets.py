@@ -928,10 +928,67 @@ ROOT = Path(__file__).resolve().parents[1]
 # 8 (what an approval binds to, said in the hold), the option lists and the too-large mark 5, _script_deploys 3 and
 # check_deploy 1. The repository's conftest 8 (no test reads this Mac's synthesis home, whose sessions repos hold its
 # ritual history since 5.20.0). wait.py 3 and cli.py 1: who watches is read before a message is sent (a race CI met).
+# 5.21.0 (unreleased): core 105 more and plugin 233, so one approval in Codex lasts through releases where the person
+# chooses that (plan item 13.7, part 2: setup.py plugin --codex-user-hooks). doctor.py 100: check_codex_trust 25 (the
+# user-level hooks judged by their own keys, the plugin's switched-off copies taken as intended; a copy left on, a
+# declaration unlike the plugin's and a hooks.json Codex would not read named), codex_user_entries 20 (the hooks of
+# Codex's own hooks.json that run the stable hook, by Codex's key), codex_hooks_problem 19 and CODEX_HANDLERS 1 (what
+# Codex reads of a hooks.json, which is all of it or none), read_toml 10 (a strict reading that names the first line it
+# cannot place), codex_user_declaration 7, calls_stable_hook 4 (shared with check_hooks_wired, one fewer) and _declared
+# 3, and spacing 12. paths.py 5: codex_home 3 and spacing 2. The plugin's 128 more (setup.py): codex_user_hooks 60
+# (declare, keep in step, take out; a file that cannot be parsed refused before anything is written), _switches 22 (a
+# marked line per key in that key's own table), _replace 15 (a harness file written whole after its backup, with
+# configure_codex 8 and configure_claude 7 fewer), _state_tables 10, _setup_wrote 5 (setup's own groups by their text),
+# install_plugin 5 (every Codex install keeps the declaration in step), _uninstall 4, main 3 (the flag), the two marks
+# 2, configured_ref one fewer (paths.codex_home), and spacing with the section's comment 18.
+# 5.21.0 (2026-11-14): guards.py 4, Messenger inside facebook.com (its page and the pop-ups on every page) and
+# Instagram in the browser's messaging sites: a comment line and three lines of five entries.
+# 5.21.0, the release's own count: doctor.py 8, waits_on_person 6 (signature, a docstring of three lines, the test)
+# and ASKS 1 with a blank line: an approval line that names a fault of setup no longer reads as waiting on the person.
+# 5.21.0, a guard that cannot answer holds the call in Claude Code (the PreToolUse handler's "onFailure": "block"): core
+# 30 more and plugin 38. doctor.py 30: check_claude_fail_closed 15 (the plugin's guard without the setting fails, a
+# Claude Code older than 2.1.295 or one that names no version warns), claude_version 8 (`claude --version`, bounded),
+# CLAUDE_ON_FAILURE 1, harness_checks 0 (the hooks file read once for both lines, one line fewer, and the new line) and
+# spacing 6. setup.py 8: _hashes 3 and spacing 2 (Codex's hashes of setup's own groups, before and after), the note that
+# an approval stays 3, and the event filed under it 0 (one line changed).
+# 5.21.0, review round 1 (2026-11-14), the doctor: core 104 more and plugin 104. doctor.py 98: check_codex_trust 23 (hook
+# state held inline named; an event covered in part judged as the plugin's, with advice by setup's record; an event
+# declared twice; setup's switch with nothing covering its event, and an unreadable hooks.json while the option is on,
+# as faults), codex_switch_lines 16 (setup's switch found by its table, key, value and mark, however spaced), _assign 9
+# and read_toml 5 (the strict reading refuses a key set twice and any table or key inside a value or another header's
+# table; lines end at line feeds alone), check_codex_hooks_file 7 (the person's own unreadable file, a warning of its
+# own), calls_stable_hook 7 (the stable hook as the program a command runs, never a mention), _text 5, codex_covers 5,
+# codex_hooks_key 4, check_hooks_wired 2 (its own looser test of the plugin's files, back), the shlex import 1,
+# SETUP_MARK 1 and harness_checks 1, and spacing 12. paths.py 6: codex_hooks_record 4 and spacing 2.
+# 5.21.0, review round 1, setup: plugin 112 more. setup.py 110: codex_user_hooks 16 (setup's own known by its record;
+# a narrower declaration of the person's keeps the plugin's copy on; the edit read back before it is written; on,
+# hooks.json first and off, config.toml first), _write_all 14 (a write that fails midway puts back what was written),
+# _replace 13 (through a symlink to its target, the file's mode kept, no temporary file left, a file changed meanwhile
+# refused), _codex_state 12 (hook state held inline refused), _switches 12 (setup's own lines alone go, found however
+# spaced; a quoted `enabled` found), _toml_problem 12 (the strict reader, and tomllib where Python has it), _step 8 and
+# setup_plugins 2 (the option's step apart from the install: off needs no network, a refusal hides nothing),
+# _restore 7, codex_user_hooks_on 6 (the option on by a switch or the record, never by the mark's words),
+# configure_codex 3 (nothing written into a file that does not parse), _uninstall 1 (the declaration out first, or
+# nothing removed and exit 1), the stat import 1 and _UNREAD 1, with _setup_wrote 5 and install_plugin 5 fewer, and
+# spacing 12. release.py 2: install_and_verify keeps the option in step with the folder it verified.
+# The two merged (2026-11-14): the fail-closed work's 8 setup.py lines sit in round 1's rewrite of codex_user_hooks as
+# _hashes 3 with spacing 2, its note 2 and the event filed under it 1; the ceilings are the sum of both counts.
+# 5.21.0, a guard that cannot start or crashes holds the call in Codex and Muse too: core 4 more and plugin 6. doctor.py 4:
+# codex_user_declaration 2 (the plugin's own command kept where it runs the stable hook, so the user-level guard carries
+# the failure tail; its docstring one line longer) and check_claude_fail_closed's docstring 2 (what holds in Codex and
+# Muse now). setup.py 2: the note that asks once again for the approval of a declaration whose hash changed.
+# 5.21.0, after the release's first review round: guards.py 27 more. PUBLISHES 5 with its two lines of comment (a click
+# on Post, Comment, Reply, Repost, Share, Publish or Submit on a messaging site waits, unless its summary says it only
+# opens a box); WEB_MESSAGING 7 (a site is its host and every host under it, the short hosts that land on one, the new
+# addresses of Teams and Outlook, X's chat and pages, Messenger's channel on every facebook.com host, every other page of
+# the four sites marked, and every Gmail page holding Return as Google Chat's pop-ups do, on a line of its own); _web_app 1 (its docstring, the match now _on_site's); _steps 2 (with `keep`, which only the
+# send guard passes, a navigate that names no host keeps a messaging site's page; the account check still takes it as
+# unknown); _pages 1 (whether a box on every page may be a search); check_desktop 11 (10 for the
+# words of a call that only types on those pages, which go on the principal's code, and 1 for the pages read beside apps).
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # consolidate first).
-CORE_BUDGET = 14642
-PLUGIN_BUDGET = 37639
+CORE_BUDGET = 14924
+PLUGIN_BUDGET = 38171
 
 
 def _lines(files):
