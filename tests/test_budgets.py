@@ -1145,10 +1145,15 @@ ROOT = Path(__file__).resolve().parents[1]
 # page-read messages, each such message counts as present, and its docstring 2), the page mark and the minute 5, and
 # message_block 3 (the page line). sync_watermark.py 1: messenger joins the stores that move only with their reader's
 # coverage, and its help line wraps.
+# 5.22.0, after the Messenger extractors' first live reads (2026-11-14): plugin 9 more. messenger_messages.py 1: the
+# extractor looks for the list's scroll containers from its first row up, inside the grid or around it, and says the
+# list is at its end only when it finds one and each is at its end. chat_page.py 8: read_chat 6 (the encryption notice,
+# known by its sender and words before any time is read, and a label dated before 2004-02-04 held for a person),
+# EARLIEST 1 and the held count in the coverage line 1.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
 CORE_BUDGET = 15100
-PLUGIN_BUDGET = 40944
+PLUGIN_BUDGET = 40953
 
 
 def _lines(files):

@@ -204,7 +204,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   walls, a short read, both label forms, the narrow no-break space, the principal's own messages, emoji, the
   encryption notice, a read short of its day, the hour the clocks went back, and an export of the same chat adding
   nothing in either order. Each extractor runs on an invented page in a headless Chromium where one is installed, as CI
-  installs it. Neither has yet run on the live page.
+  installs it. Both then ran on the live pages, their output masked: the list read parsed whole, and two defects
+  were fixed, tests first. The list's scroll container sits inside its grid, where the extractor did not look, so it
+  reported the list at its bottom when it could not see it; it now looks from the first row up and, finding no
+  scroll container, reports the list not at its end. The notice where a chat became end-to-end encrypted carries a
+  message's label dated at time zero, by `a participant`, in the middle of the log, and was taken for a message of
+  1969; it is now a notice, and any label dated before 2004-02-04 is held for a person, never written.
 
 ## [5.21.1] - 2026-11-14
 

@@ -68,18 +68,19 @@ EXTRACTOR = r"""(() => {
   for (const box of document.querySelectorAll('[role="dialog"], [role="alertdialog"]')) {
     if (shown(box) && !(grid && box.contains(grid))) out.dialogs.push((box.innerText || "").slice(0, 300));
   }
-  for (const row of grid ? grid.querySelectorAll('[role="row"]') : []) {
+  const rows = grid ? [...grid.querySelectorAll('[role="row"]')] : [];
+  for (const row of rows) {
     const link = row.querySelector('a[href*="/t/"]');
     const more = row.querySelector('[aria-label^="More options for "]');
     out.rows.push({text: (row.innerText || "").split("\n"), href: link ? link.getAttribute("href") : null,
                    options: more ? more.getAttribute("aria-label") : null,
                    ages: [...row.querySelectorAll('[aria-label$=" ago"]')].map((e) => e.getAttribute("aria-label"))});
   }
-  let box = grid;  // the list's scroll container: the reader's --end holds only when it is at its bottom
-  while (box && !(box.scrollHeight > box.clientHeight + 1 && /auto|scroll/.test(getComputedStyle(box).overflowY))) {
-    box = box.parentElement;
+  const scrollers = [];  // every scroll container from the first row up, in the grid or around it: --end holds only
+  for (let box = rows[0] || null; box; box = box.parentElement) {  // when one is found and each is at its end
+    if (/auto|scroll|overlay/.test(getComputedStyle(box).overflowY)) scrollers.push(box);
   }
-  out.bottom = !box || box.scrollTop + box.clientHeight >= box.scrollHeight - 4;
+  out.bottom = scrollers.length > 0 && scrollers.every((box) => box.scrollTop + box.clientHeight >= box.scrollHeight - 4);
   if (!out.rows.length) out.page = (document.body ? document.body.innerText : "").slice(0, 2000);
   return JSON.stringify(out);
 })()"""

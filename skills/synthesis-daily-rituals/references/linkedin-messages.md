@@ -193,7 +193,9 @@ only the grid named for the inbox being read, and a row with no text is never co
    principal.** An empty inbox is a complete read only with `--empty`, and only where the grid is on the page or the
    panel says it is empty (`No archived chats`). A short list whose oldest row is newer than `--since` (two message
    requests, say) is a complete read only with `--end`: scroll to its bottom, wait, see that nothing more loads, read,
-   and pass the flag; it is refused unless the extractor saw the list at its bottom. `--json` gives every chat (`who`,
+   and pass the flag; it is refused unless the extractor saw the list at its bottom. The extractor looks for the list's
+   scroll containers from its first row up (on facebook.com one sits inside the grid) and reports the list at its
+   bottom only when it finds one and each is at its end. `--json` gives every chat (`who`,
    `chat`, `age`, `last`, `from_me`, `kind`, `unread`, `nudge`, `active`, `open`, `preview`), the owed and nudged chats
    and the coverage (`threads`, `oldest`, `since`, `opened`, `unreadable`, `complete`, `through`).
 5. Record the read: `python3 <rituals>/scripts/sync_watermark.py advance --workspace <W> --surface messenger --target

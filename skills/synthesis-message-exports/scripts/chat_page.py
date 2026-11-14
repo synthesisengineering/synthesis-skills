@@ -15,8 +15,8 @@ blocks the same way. The messages go to the transcript holding this chat's earli
 of them with the same people, else to the one --into names, else to a new one. `You` is written as --principal, the
 principal's name as the export writes it. Text is fenced as untrusted data. Standard library only; no network.
 
-Exit 0: saved, reaching the day asked for. 1: saved, short of that day or with messages it could not read. 2: refused,
-nothing written. Reference: ../references/chat-page.md.
+Exit 0: saved, reaching the day asked for. 1: saved, short of that day, or with messages it could not read or held
+for a person. 2: refused, nothing written. Reference: ../references/chat-page.md.
 """
 
 from __future__ import annotations
@@ -63,6 +63,7 @@ TITLE = re.compile(r"Messages in conversation with (.+)", re.S)
 WALL = re.compile(r"log in|log into|sign in|security check|checkpoint|confirm (?:it'?s|that it'?s) you|captcha|unusual activity"
                   r"|verification code|two-factor|enter (?:your )?pin|restore your chat|temporarily blocked", re.I)
 WALL_PATH = re.compile(r"https://[^/]+/(?:login|checkpoint|two_step_verification|recover)\b")
+EARLIEST = "2004-02-04"  # Facebook began: a label dated before it carries no date
 
 
 class Refused(Exception):
@@ -112,7 +113,7 @@ def instant(said, zone):
 def read_chat(reads, principal):
     """The chat these reads show: its address, its name, its messages as the importer's message records (each read's
     repeats kept, a message in two reads once), the oldest local time, and what was not written."""
-    chat, pages, counts, oldest = None, [], dict.fromkeys(("notices", "textless", "unreadable"), 0), None
+    chat, pages, counts, oldest = None, [], dict.fromkeys(("notices", "textless", "unreadable", "held"), 0), None
     for data in reads:
         url = str(data.get("url") or "")
         seen = [str(d) for d in data.get("dialogs") or []] + ([] if data.get("log") else [str(data.get("page") or "")])
@@ -141,11 +142,17 @@ def read_chat(reads, principal):
                 counts["notices"] += 1  # the encryption notice and the like: no message label
                 continue
             said = {label_of(label) for label in labels}
-            when = instant(next(iter(said)), zone) if len(said) == 1 and None not in said else None
+            sender, text = next(iter(said))[6:] if len(said) == 1 and None not in said else (None, "")
+            if sender == "a participant" and "end-to-end encryption" in text.lower():
+                counts["notices"] += 1  # where the chat became encrypted, labeled as sent at time zero: no message, no day
+                continue
+            when = instant(next(iter(said)), zone) if sender is not None else None
             if when is None:
                 counts["unreadable"] += 1  # a label in no known shape, labels that disagree, or a time never shown
                 continue
-            sender, text = next(iter(said))[6:]
+            if when[2] < EARLIEST:
+                counts["held"] += 1  # a label dated before Facebook began carries no date: a person looks at it
+                continue
             if not text.strip():
                 counts["textless"] += 1
                 continue
@@ -239,12 +246,13 @@ def save(args):
           + (f"it reaches {args.since}, the day asked for" if reached else
              f"it stops short of {args.since}, the day asked for: scroll the log further up and read again")
           + (f"; {counts['unreadable']} could not be read" if counts["unreadable"] else "")
+          + (f"; {counts['held']} held for a person (dated before {EARLIEST}, so with no date)" if counts["held"] else "")
           + (f"; {' and '.join(left)} not written" if left else ""))
     state = "new" if kept is None and not old else "extended" if new else "unchanged"
     print(f"transcript: {os.path.basename(path)} ({state}): {len(new)} new, {len(messages) - len(new)} already in it")
     if args.dry_run:
         print("dry run: nothing written")
-    return 0 if reached and not counts["unreadable"] else 1
+    return 0 if reached and not counts["unreadable"] and not counts["held"] else 1
 
 
 def main(argv=None):

@@ -30,8 +30,7 @@ rituals never open a chat; this fallback does, once, on the principal's word.
    the tool returns, as it returns it, to a file in the private folder or the session's scratch folder, never in a
    repository: it holds whole messages. The script reads the log labeled `Messages in conversation with <Name>`; for
    each message, the labels of its article (`Enter, Message sent <date>, <time> by <Sender>: <text>` and
-   `At <date>, <time>, <Sender>: <text>`), and for any other item, such as the notice about end-to-end encryption, its
-   text; the page's address; the browser's time zone; and any dialog. It clicks, types, scrolls and sends nothing, so
+   `At <date>, <time>, <Sender>: <text>`), and for any other item its text; the page's address; the browser's time zone; and any dialog. It clicks, types, scrolls and sends nothing, so
    the browser guard lets it through as a read.
 4. If the log drops what it scrolled past, run the extractor at each screen and save each read; pass them all to one
    `save`, which keeps each message once.
@@ -42,7 +41,7 @@ rituals never open a chat; this fallback does, once, on the principal's word.
    this chat yet (below).
 
 Exit 0: saved, and the read reaches the day asked for. Exit 1: saved, but short of that day, or with messages it could
-not read; scroll further up, read again and save again, which adds only what is new. Exit 2: refused, nothing
+not read or held for a person; scroll further up, read again and save again, which adds only what is new. Exit 2: refused, nothing
 written: the file is not the extractor's, the page is a sign-in page, a security check or a PIN prompt (**stop and
 tell the principal**), the page is no chat's own address, the read names no time zone this Python knows, the reads
 are of two chats, two transcripts hold this chat, or `--into` names a transcript of other people.
@@ -58,7 +57,10 @@ The first line is the coverage: how many messages the reads held, the oldest one
 the day asked for (`it stops short of <day>, the day asked for: scroll the log further up and read again` when not). It
 adds `N could not be read` for a message whose labels are in no known shape or disagree, and `N notices and N without
 text not written` for items that are no message (the encryption notice) and messages with no text on the page (a
-photo, a sticker). The second line names the transcript, `new`, `extended` or `unchanged`, and the counts. No line
+photo, a sticker), and `N held for a person` for a message whose label is dated before 2004-02-04, which carries no
+date and is never written. The notice where a chat became end-to-end encrypted is one of the notices: it carries a
+message's label, sent at time zero in the browser's zone (in New York, December 31, 1969, 7:00 PM) by `a participant`,
+and stands where the chat became encrypted, so it is never written and reaches no day. The second line names the transcript, `new`, `extended` or `unchanged`, and the counts. No line
 carries message text.
 
 ## How its messages merge with an export
@@ -104,5 +106,6 @@ participants as they were.
 - **The second, or the time of a message with no text.** Photos, stickers and other media are counted, not written.
 - **The other person's view.** Reactions, edits and replies show as the page labels them, and only the label's text is
   written.
-- **Proof of the chat's beginning.** Whether the encryption notice stands only at the very start of a chat is not
-  established, so the coverage relies on the oldest message's day.
+- **The chat's beginning.** The encryption notice stands where the chat became encrypted, not at its start (in the
+  first live read, between messages of 2024 and 2025), so the coverage rests on the oldest message's day and never
+  claims the start.
