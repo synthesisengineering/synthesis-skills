@@ -108,10 +108,15 @@ def test_every_skill_is_carried_once_whole_but_for_its_tests(built):
     assert carried == tracked
 
 
-def test_every_carried_file_is_byte_identical_to_its_source(built):
+def test_every_carried_file_is_its_source_byte_for_byte_but_for_links_that_leave_its_folder(built):
+    """A link that would lead out of a collection's folder points at the repository's file at the tag (R1-21); every
+    other byte of every carried file is its source's."""
     carried = {path.split("/", 1)[1]: data for path, data in built.items()
                if path.split("/")[0] in FIVE and path.split("/", 1)[1] not in collections.MANIFESTS}
-    assert carried and [path for path, data in carried.items() if (ROOT / path).read_bytes() != data] == []
+    unlinked = lambda data: re.sub(rb"\]\([^)\s]+\)", b"]()", data)  # noqa: E731
+    differ = [path for path, data in carried.items() if (ROOT / path).read_bytes() != data]
+    assert carried and differ and [path for path in differ if not path.endswith(".md")] == []
+    assert [path for path in differ if unlinked((ROOT / path).read_bytes()) != unlinked(carried[path])] == []
 
 
 def test_no_folder_holds_or_registers_a_hook(built):

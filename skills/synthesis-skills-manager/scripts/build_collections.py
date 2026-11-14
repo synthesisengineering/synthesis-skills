@@ -33,6 +33,7 @@ import argparse
 import ast
 import json
 import os
+import posixpath
 import re
 import sys
 import tempfile
@@ -49,6 +50,7 @@ MANIFESTS = (".claude-plugin/plugin.json", MANIFEST, ".muse-plugin/plugin.json")
 MARKETPLACES = (".claude-plugin/marketplace.json", ".agents/plugins/marketplace.json")  # at the top of the branch
 LICENSES = ("LICENSE-APACHE", "LICENSE-CC0")  # the terms its skills' SPDX identifiers name travel with each folder
 SHARED = ("author", "homepage", "repository", "license")  # what each collection's manifests take from the whole set's
+LINK = re.compile(r"(\]\()([^)\s]+)(\))")  # an inline Markdown link: its target between `](` and `)`
 CARRIABLE = ("yamlish",)  # runtime modules a collection may carry, beside its scripts: the standard library alone, no
 #                           state, no hook (R1-3 of 5.22.0's review: 23 of the 34 scripts that imported the runtime read it)
 
@@ -222,6 +224,32 @@ def reaches(path: str, data: bytes, names: set) -> set:
     return found
 
 
+def ancestors(paths: set) -> set:
+    """Each folder above a path of `paths`, as a path."""
+    return {path.rsplit("/", depth)[0] for path in paths for depth in range(1, path.count("/") + 1)}
+
+
+def leaving(path: str, target: str, held: set, tracked: set) -> str:
+    """Where a relative link of the file at `path` leads, when that is a file or folder of the repository (`tracked`,
+    with its folders) and not one the collection's folder holds (`held`, with its folders); else ""."""
+    target = target.partition("#")[0]
+    if not target or re.match(r"[A-Za-z][\w+.-]*:|/|.*[<{$]", target):
+        return ""
+    whole = posixpath.normpath(posixpath.join(posixpath.dirname(path), target))
+    return whole if whole in tracked and whole not in held else ""
+
+
+def relink(path: str, data: bytes, held: set, tracked: set, files: set, at: str) -> bytes:
+    """A collected Markdown file with each link that leaves its folder pointed at the repository's file at the release's
+    tag, `at` (R1-21: 42 such links led nowhere in a collection); every other byte is the source's."""
+    def point(match):
+        whole, anchor = leaving(path, match.group(2), held, tracked), match.group(2).partition("#")[2]
+        return (f"{match.group(1)}{at.format('blob' if whole in files else 'tree')}/{whole}{'#' * bool(anchor)}{anchor}"
+                f"{match.group(3)}" if whole else match.group(0))
+    return LINK.sub(point, data.decode("utf-8", "surrogateescape")).encode("utf-8", "surrogateescape") \
+        if path.endswith(".md") else data
+
+
 def carry(need: dict) -> set:
     """The runtime modules a collection carries: those of CARRIABLE that any of its Python files imports."""
     return {module for top, late in need.values() for module in top | {module for module, _ in late} if module in CARRIABLE}
@@ -241,25 +269,29 @@ def impure(text: bytes) -> list:
 
 def sources(repo: Path, commit: bool = False) -> tuple:
     """(the collections file, the whole set's Codex manifest, (skill files, their modes), (licenses, their modes), (the
-    runtime's files a collection may carry, their modes))."""
+    runtime's files a collection may carry, their modes), every path the repository tracks)."""
     spec, whole = read_spec(repo, commit), committed(repo, MANIFEST) if commit else read_json(repo / MANIFEST)
     runtime = ["synthesis/__init__.py", *(f"synthesis/{module}.py" for module in CARRIABLE)]
-    return spec, whole, tracked(repo, ["skills"], commit), tracked(repo, list(LICENSES), commit), tracked(repo, runtime, commit)
+    listed = git(repo, "ls-tree", "-r", "--name-only", "-z", "HEAD") if commit else git(repo, "ls-files", "-z")
+    return (spec, whole, tracked(repo, ["skills"], commit), tracked(repo, list(LICENSES), commit),
+            tracked(repo, runtime, commit), set(listed.split("\0")) - {""})
 
 
 def build(repo: Path, commit: bool = False) -> tuple:
     """({path: bytes}, {path: git's mode}) of the folders and the two marketplace files, from the checkout's files or
     the last commit's (`commit`). The same commit gives the same bytes. A skill in no collection, or in several, is in
     no folder, and `verify` names it."""
-    spec, whole, (skills, modes), (licenses, license_modes), (runtime, _) = sources(repo, commit)
+    spec, whole, (skills, modes), (licenses, license_modes), (runtime, _), paths = sources(repo, commit)
     home, files, kept, every = homes(spec, skills)[0], {}, {}, {**modes, **license_modes}
+    everywhere, at = paths | ancestors(paths), f"{whole.get('repository', '')}/{{}}/v{whole.get('version')}"
     for name in order(spec):
         mine = sorted(skill for skill, collection in home.items() if collection == name)
         ours = {path: data for path, data in skills.items() if path.split("/")[1] in mine}
         modules = carry(needs(ours))  # the runtime's YAML reader where its scripts read it, where the whole set holds it
         carried = {**ours, **licenses, **{path: data for path, data in runtime.items()
                                           if modules and (path == "synthesis/__init__.py" or path[10:-3] in modules)}}
-        files.update({f"{name}/{path}": data for path, data in carried.items()})
+        held = set(carried) | ancestors(set(carried))
+        files.update({f"{name}/{path}": relink(path, data, held, everywhere, paths, at) for path, data in carried.items()})
         kept.update({f"{name}/{path}": every.get(path, "100644") for path in carried})
         files.update({f"{name}/{path}": text(made) for path, made in manifests(spec, name, mine, whole).items()})
     files.update({path: text(made) for path, made in marketplaces(spec, whole).items()})
@@ -268,7 +300,8 @@ def build(repo: Path, commit: bool = False) -> tuple:
 
 def verify(repo: Path, files: dict, commit: bool = False) -> list:
     """Each reason these folders may not be published, read from the built files themselves; empty when they may."""
-    spec, whole, (skills, _), (licenses, _), (runtime, _) = sources(repo, commit)
+    spec, whole, (skills, _), (licenses, _), (runtime, _), paths = sources(repo, commit)
+    everywhere, at = paths | ancestors(paths), f"{whole.get('repository', '')}/{{}}/v{whole.get('version')}"
     home, found = homes(spec, skills)
     found += bounds(spec, skills, home)
     core, whole_set, scripts = spec["collections"][spec["core"]]["name"], spec.get("needs_the_whole_set") or {}, set()
@@ -281,6 +314,8 @@ def verify(repo: Path, files: dict, commit: bool = False) -> list:
         need = needs({path: data for path, data in skills.items() if path.split("/")[1] in mine})
         modules, scripts = carry(need), scripts | set(need)
         expected = {"synthesis/__init__.py", *(f"synthesis/{module}.py" for module in modules)} if modules else set()
+        should = {path for path in skills if path.split("/")[1] in mine} | set(licenses) | expected
+        should |= ancestors(should)  # what the folder holds, which a link from inside it may lead to
         for path, (top, late) in sorted(need.items()):  # a script runs where it is installed, or is named as needing more
             gone = sorted(top - modules)
             if path in whole_set:
@@ -308,6 +343,9 @@ def verify(repo: Path, files: dict, commit: bool = False) -> list:
                 continue
             ours = parts[0] == "skills" and len(parts) > 2 and parts[1] in mine  # no test is a source: tracked skips it
             source = licenses.get(path) if path in LICENSES else skills.get(path) if ours else None
+            source = relink(path, source, should, everywhere, paths, at) if source is not None else None
+            found += [f"{name}/{path}: its link to {target} leads out of {name}" for _, target, _ in LINK.findall(
+                data.decode("utf-8", "replace")) if path.endswith(".md") and leaving(path, target, should, everywhere)]
             found += [f"{name}/{path}: not a manifest, a license or a file of a skill in {name}"] if source is None else \
                 [f"{name}/{path}: differs from its source"] * (source != data)
         found += [f"{name}/{path}: missing" for path in [*(f"skills/{skill}/SKILL.md" for skill in mine), *licenses,
