@@ -4699,10 +4699,13 @@ MESSAGE_WORDS = re.compile(r"\b(?:message|repl(?:y|ies)|comment|review|rating|po
 # Off a messaging site, typed words then a key that submits wait only when the call names one of these (the principal, 2026-11-14)
 NAMES_POST = re.compile(r"\b(?:messag\w*|comment\w*|review\w*|post(?:s|ed|ing)?|repl(?:y|ies|ied|ying)|tweet\w*)\b", re.I)
 # A page script that can send (the second review: one that clicked a comment's submit button went out): on a messaging
-# site's page one that clicks, submits, sends a key or an event, writes by fetch or sets a value; elsewhere one that
-# submits a form, sends a key or an event, writes by fetch or clicks a control that publishes, unless it searches or signs in.
+# site's page one that clicks, submits, sends a key or an event, writes by fetch, sets a value or moves the tab (a chat's
+# address opens it and marks it read, 2026-11-14); elsewhere one that submits a form, sends a key or an event, writes by
+# fetch or clicks a control that publishes, unless it searches or signs in.
 WRITES = r"method\s*:\s*['\"`](?:post|put|patch|delete)|\.open\s*\(\s*['\"`](?:post|put|patch|delete)|sendBeacon"
-SCRIPT_ACTS = re.compile(r"\.click\s*\(|\.submit\s*\(|requestSubmit|dispatchEvent|KeyboardEvent|\.value\s*=[^=]|execCommand|" + WRITES, re.I)
+MOVES = r"\blocation\s*\.\s*(?:assign|replace)\s*\(|\blocation(?:\s*\.\s*href)?\s*=(?!=)|\bwindow\s*\.\s*open\s*\("
+SCRIPT_ACTS = re.compile(r"\.click\s*\(|\.submit\s*\(|requestSubmit|dispatchEvent|KeyboardEvent|\.value\s*=[^=]|execCommand|"
+                         + WRITES + "|" + MOVES, re.I)
 SCRIPT_SENDS = re.compile(r"requestSubmit|\.submit\s*\(|dispatchEvent|KeyboardEvent|" + WRITES + r"|^(?=[\s\S]*\.click\s*\()[\s\S]*"
                           r"(?:submit|\bpost|\bsend|publish|repl(?:y|ies)|comment|share|review|rating|tweet|\bdone\b)", re.I)
 SCRIPT_ROUTINE = re.compile(r"\b(?:search|log-?in|sign-?in|password|query|q)\b", re.I)  # whole words: querySelector is none
