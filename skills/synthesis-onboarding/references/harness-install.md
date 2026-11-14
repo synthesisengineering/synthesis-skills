@@ -272,10 +272,11 @@ so, since a declaration that runs a missing hook holds every guarded call in Cod
   declared twice; the plugin's copy of it goes off only when theirs runs as the plugin's
   declaration: the same group and command, the hook's path spelled as `sh` finds it
   (`$HOME` or `${HOME}`, bare or in double quotes, or a bare `~`), and the guard's
-  command with its fail-closed tail or nothing after its event (5.21.1). One narrower
-  than the plugin's, or one that does anything else with the guard's answer (sends it
-  to `/dev/null`, ends `|| true`, runs it in the background), keeps the plugin's own on
-  beside it, and setup says to edit or remove theirs. A path `sh` never finds
+  command with its fail-closed tail (5.21.1): without it, a missing runtime exits 127,
+  which Codex lets through. One without the tail, one narrower than the plugin's, or
+  one that does anything else with the guard's answer (sends it to `/dev/null`, ends
+  `|| true`, runs it in the background), keeps the plugin's own on beside it; setup says
+  to edit or remove theirs, and the doctor names it as a fault. A path `sh` never finds
   (`"~/…"`, `'$HOME/…'`) runs no hook, so setup declares its own beside it. Wherever
   setup leaves an event running twice (one of the person's beside setup's own, or beside
   the plugin's), it names the event and the cost: where the guard runs twice, a call

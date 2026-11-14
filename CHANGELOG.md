@@ -19,8 +19,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   swallowed by `|| true` or ran in the background was taken as covering: setup switched the plugin's fail-closed copy
   off and the doctor said ok. A path `sh` never finds (`"~/…"`, `'$HOME/…'`) passed for a call. Now a group covers only
   with the plugin's settings and each command the stable hook as `sh` finds it (`$HOME` or `${HOME}`, bare or in double
-  quotes, or a bare `~`), followed by the plugin's own words: for the guard, its fail-closed tail or nothing after its
-  event. Anything else keeps the plugin's copy on, and a path `sh` never finds is no declaration. 5.21.0's notes said a
+  quotes, or a bare `~`), followed by the plugin's own words, for the guard its fail-closed tail: without the tail a
+  missing runtime exits 127, which Codex lets through. Anything else keeps the plugin's copy on, and the doctor names it
+  as a fault; a path `sh` never finds is no declaration. 5.21.0's notes said a
   narrower declaration never leaves a tool unguarded; until now that held for the matcher alone. Tests first.
 - **The runtime stays while Codex's own hooks run it** (`synthesis-onboarding`, core). With the option on, the
   plugin's own session start, the one that reinstalls a missing runtime, is switched off, and once the runtime is gone

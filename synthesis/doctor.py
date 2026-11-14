@@ -381,13 +381,13 @@ def _declared(group: dict) -> dict:
 
 def _runs_as(group: dict, wanted: dict) -> bool:
     """Whether a user-level group is the plugin's: the same settings, and each command the plugin's own invocation of the
-    stable hook, with the plugin's words after it (the guard's fail-closed tail) or nothing after it, however the hook's
-    path is spelled for sh. By its first words alone, a command that threw the guard's answer away or never reached it
-    passed for the guard, and the plugin's fail-closed copy went off (review round 2 of 5.21.0)."""
+    stable hook with the plugin's words after it, the guard's fail-closed tail included, however the hook's path is
+    spelled for sh. By its first words alone, a command that threw the guard's answer away, never reached it or lacked
+    the tail (exit 127, which Codex lets through) passed for the guard, and the plugin's copy went off (5.21.0 round 2)."""
     mine, theirs = group.get("hooks") or [], wanted.get("hooks") or []
     rests = [(stable_rest(m.get("command")), stable_rest(t.get("command"))) for m, t in zip(mine, theirs)]
     return _declared(group) == _declared(wanted) and len(mine) == len(theirs) and all(
-        own is not None and plugin is not None and own in (plugin, plugin[:1]) for own, plugin in rests)
+        own is not None and own == plugin for own, plugin in rests)
 
 
 SETUP_MARK = "synthesis-setup: codex-user-hooks"  # the comment on each config.toml line setup's Codex option adds
