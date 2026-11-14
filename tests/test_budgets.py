@@ -996,10 +996,13 @@ ROOT = Path(__file__).resolve().parents[1]
 # a register hit on a page that is no messaging site going on the send's code, typed words kept out of the record).
 # _browser_item 8 and _desktop_actions 2 fewer (a form fill and a page script alone reach the guard), BROWSER_STEPS 1,
 # WEB_MESSAGING 3 (Gmail, Outlook and Google Voice by the hosts typed), and _pages 1 (a local app's page).
+# Then 2 more, NAMES_POST and its comment, for Rajiv's ruling of 2026-11-14 ("Skip typed text that names no post"): off a
+# messaging site, typed words then a key that submits wait only when the call names a message, comment, review, post,
+# reply or tweet.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # consolidate first).
-CORE_BUDGET = 15001
-PLUGIN_BUDGET = 38248
+CORE_BUDGET = 15003
+PLUGIN_BUDGET = 38250
 
 
 def _lines(files):
