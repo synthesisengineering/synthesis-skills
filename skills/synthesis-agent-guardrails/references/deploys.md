@@ -39,7 +39,14 @@ loaded. This guard gates the act.
 - A shell script a command runs from a file (`bash publish-site.sh`, `./publish-site.sh`, `sh -e wrapper.sh`),
   read up to 256 KB and three scripts deep, when anything in it is a deploy (2026-10-30: `bash
   scripts/publish-site.sh` published a site, because the `wrangler` call inside the script never reached the
-  guard). A command named by its path is read only when its first line is a shell's `#!`.
+  guard). A command named by its path is read only when its first line is a shell's `#!`. A shell whose options,
+  read in order up to its script, leave it running nothing (`-n`, `-o noexec`, not undone by a later `+n`,
+  `+o noexec` or zsh's `-o exec`) deploys nothing (5.20.1: a syntax check of two scripts was held, and its approval
+  armed the rapid-redeploy brake); an option the guard does not know, or an `-n` that is another option's value
+  (`--rcfile -n`), reads the script. A script sourced with `.`, `source` or `builtin source` is read whole, as a run
+  one is, so a deploy anywhere in it is held, in a function it only defines too: what runs when cannot be told for
+  sure from the text. An alias is read for what its value runs, and a script past the 256 KB the guard reads is held,
+  since what it runs cannot be told.
 - A push to, or a `gh pr merge` on, a GitHub repository listed in `deploy_remotes`, matched against the
   checkout's remotes or `-R owner/repo` (2026-10-30: a merge on the Homebrew tap published a formula before
   its release archive existed).
@@ -58,8 +65,9 @@ commands passed every shell guard until 2026-10-30.
 
 A blocked deploy files a request under a random code, which the principal types as
 `approve <code>`; the block message says "approve followed by the code", never the two
-together. The approval binds the exact command text and, for pushes, the commit each
-target's HEAD is at: HEAD moving before the run voids it. A build deploy's target is what it
+together. The approval binds the exact command text and the commit the HEAD of each checkout it deploys is at: HEAD
+moving before the run voids it. Since 5.20.1 the hold says so, naming each checkout and its HEAD, so the same command
+after a commit, or from a checkout at another commit, meeting a new code is not a surprise. A build deploy's target is what it
 publishes: `gh release create -R owner/repo` that repository, `npm publish <path>` that package, anything
 else the folder it runs in. Until 2026-10-30 it was always the folder, so a release run from an unrelated
 checkout bound that checkout's HEAD and set off its rapid-redeploy brake. It lets one run through within

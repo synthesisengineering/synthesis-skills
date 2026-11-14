@@ -264,3 +264,61 @@ def test_a_variable_that_names_no_protected_root_changes_nothing(tmp_path, comma
     root.mkdir()
     command = command.format(scratch=tmp_path / "scratch")
     assert guards.check("Bash", {"command": command}, {"protected_roots": [str(root)]}, cwd=str(tmp_path)) is None
+
+
+def test_a_shell_that_only_reads_a_script_publishes_nothing_and_a_sourced_script_is_read(tmp_path):
+    """A seat's report, 2026-11-13 20:24-20:36: a local test that ran `sh -n` on two scripts was held as a deploy and,
+    once approved, armed the rapid-redeploy brake for the real publish after it; `-n` reads a script and runs none of
+    it. The other way round, `.` and `source` were not read at all, so a sourced script's deploy went through unasked.
+    The first fix's review (5.20.1) showed options read after `-n` that make the shell run (`+n`, `+o noexec`, zsh's
+    `-o exec`) and an `-n` that is another option's value (`--rcfile -n`): each runs, so each is held; an option this
+    reader does not know reads the script. A sourced script is read whole, as a run one is, so a deploy anywhere in it
+    is held, a function it only defines included: what a function's text runs cannot be told for sure."""
+    scripts = tmp_path / "scripts"
+    scripts.mkdir()
+    deploy = "npx wrangler pages deploy dist --project-name=site"
+    (scripts / "publish.sh").write_text(f"#!/bin/sh\n{deploy}\n")
+    (scripts / "env.sh").write_text('export OUT="${TMPDIR}/out"\nexport SITE=site\n')
+    (scripts / "now.sh").write_text(f"{deploy}\n")
+    (scripts / "lib.sh").write_text(f"publish() {{\n  {deploy}\n}}\n")
+    for command in ("sh -n scripts/publish.sh", "bash -n scripts/publish.sh", "zsh -n scripts/publish.sh",
+                    "bash -en scripts/publish.sh", "bash -o noexec scripts/publish.sh", "bash --norc -n scripts/publish.sh",
+                    "source scripts/env.sh && echo ready",
+                    ". scripts/env.sh && python3 build_plugin.py --out /tmp/x && diff -rq /tmp/x /tmp/y && sh -n scripts/publish.sh"):
+        assert guards.check("Bash", {"command": command}, {}, cwd=str(tmp_path)) is None, command
+    for command in ("bash -n +n scripts/publish.sh", "sh -n +n scripts/publish.sh", "bash -n +o noexec scripts/publish.sh",
+                    "zsh -n -o exec scripts/publish.sh", "bash -o noexec +o noexec scripts/publish.sh",
+                    "bash --rcfile -n scripts/publish.sh", "bash --init-file -n scripts/publish.sh",
+                    "bash --frobnicate -n scripts/publish.sh", "source scripts/now.sh", ". scripts/now.sh",
+                    ". -- scripts/now.sh", "builtin source scripts/now.sh", ". scripts/lib.sh && publish", ". scripts/lib.sh"):
+        assert "production" in (guards.check("Bash", {"command": command}, {}, cwd=str(tmp_path)) or ""), command
+
+
+def test_a_deploys_hold_says_the_approval_binds_to_its_command_and_head(tmp_path):
+    """The same report's third point: an approval binds to the command and to the HEAD of each checkout it deploys, so
+    the same command after a commit meets a new code; the hold says so. The first fix said it bound to the folder too,
+    which the approval's digest never held (its review, F9), and in a checkout with no commit it named HEAD as HEAD."""
+    site = tmp_path / "site"
+    subprocess.run(["git", "init", "-q", str(site)], check=True)
+    fresh = guards.check("Bash", {"command": "git push origin main"}, {"push_deploys": [str(site)]}, cwd=str(site))
+    assert "HEAD HEAD" not in fresh and "run from" not in fresh, fresh
+    (site / "index.html").write_text("hello\n")
+    subprocess.run(["git", "-C", str(site), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(site), "commit", "-qm", "first"], check=True)
+    head = subprocess.run(["git", "-C", str(site), "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
+    said = guards.check("Bash", {"command": "git push origin main"}, {"push_deploys": [str(site)]}, cwd=str(site))
+    assert f"site at HEAD {head[:10]}" in said and "run from" not in said, said
+
+
+def test_an_alias_that_deploys_and_a_script_too_large_to_read_are_held(tmp_path):
+    """5.20.1's review, F11: an alias whose value deploys, defined in a sourced script and used there, ran unasked; and
+    a script past the 256 KB this guard reads passed whatever it held. Both are held: what cannot be read is not let
+    through, and an alias is read for what it runs."""
+    scripts = tmp_path / "scripts"
+    scripts.mkdir()
+    (scripts / "alias.sh").write_text("alias pub='npx wrangler pages deploy dist --project-name=site'\npub\n")
+    (scripts / "huge.sh").write_text("#!/bin/sh\n" + "# filler\n" * 40000 + "echo done\n")
+    for command in (". scripts/alias.sh", "source scripts/huge.sh", "bash scripts/huge.sh",
+                    "alias pub='npx wrangler pages deploy dist'; pub"):
+        assert "production" in (guards.check("Bash", {"command": command}, {}, cwd=str(tmp_path)) or ""), command
+    assert guards.check("Bash", {"command": "alias ll='ls -la'; ll"}, {}, cwd=str(tmp_path)) is None

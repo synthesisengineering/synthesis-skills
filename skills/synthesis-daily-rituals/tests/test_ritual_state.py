@@ -406,3 +406,11 @@ def test_concurrent_writers_keep_whole_records(tmp_path: Path) -> None:
     assert all(p.returncode == 0 for p in procs), said
     lines = (tmp_path / "history.jsonl").read_text(encoding="utf-8").splitlines()
     assert sorted(json.loads(line)["workspace"] for line in lines) == sorted(f"ws{i}" for i in range(12))
+
+
+def test_no_test_reads_the_ritual_history_this_mac_has_synced() -> None:
+    """5.20.1: once this Mac's hourly sync had written its ritual history into its sessions repos (5.20.0), these tests
+    read it through the person's own synthesis config, and seven of them failed on this Mac alone. No test reads this
+    Mac's own state: every test's synthesis home is a folder of its own."""
+    from synthesis import rituals
+    assert rituals.hosts_folders() == []

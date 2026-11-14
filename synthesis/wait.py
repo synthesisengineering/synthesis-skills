@@ -105,10 +105,12 @@ def unread(session_id: str, sender: str = "") -> list[dict]:
     return [m for m in board.inbox(session_id, me.project if me else "") if sent_by(m, sender)]
 
 
-def watching(session_id: str, sender: str) -> str:
+def watching(session_id: str, sender: str, held: list | None = None) -> str:
     """What a live watcher of that session does with a message this sender's would end, said with how often it looks
-    (2026-11-12: "within seconds" was printed for one that looked every five minutes); "" when it has none."""
-    every = min((w["every"] for w in live(session_id) if w.get("every") and w["what"].startswith("a message")
+    (2026-11-12: "within seconds" was printed for one that looked every five minutes); "" when it has none. `held` is
+    the waits as they stood before the message was sent: a watcher that has taken it since is still the one that will."""
+    waits = [w for w in held if w.get("session", session_id) == session_id] if held is not None else live(session_id)
+    every = min((w["every"] for w in waits if w.get("every") and w["what"].startswith("a message")
                  and sent_by({"from": sender}, w.get("from", ""))), default=0)
     return "it is watching and " + ("wakes within seconds" if every < 10 else f"checks every {said(every)}") if every else ""
 

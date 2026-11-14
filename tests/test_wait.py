@@ -1133,3 +1133,21 @@ def test_the_file_of_statements_does_not_grow_without_end(two):
     assert json.loads(rows[-1])["why"] == "a notice: no answer is awaited"
     small = file.stat().st_size
     assert cli("wait", "none", "another").returncode == 0 and file.stat().st_size > small  # under the bound nothing is cut
+
+
+def test_the_sender_is_told_of_a_watcher_that_takes_the_message_before_the_send_returns(two, monkeypatch, capsys):
+    """5.20.1, from CI: `synthesis msg` posted first and asked who watched after, so a watcher that read the message and
+    left in between was missed, and the sender was told it waits for the next prompt (a slow runner showed it). The
+    watchers are read before the message is posted."""
+    from synthesis import cli as synthesis_cli, wait
+    wait.record("S1", "a message", time.time() + 30, every=0.2)
+    send = board.message
+
+    def taken_at_once(*args, **kwargs):  # the watcher sees the message and its wait ends before the sender asks
+        posted = send(*args, **kwargs)
+        for held in wait.live("S1"):
+            held["record"].unlink()
+        return posted
+    monkeypatch.setattr(board, "message", taken_at_once)
+    assert synthesis_cli.main(["--session", "S2", "msg", "S1", "are you there"]) == 0
+    assert "it is watching and wakes within seconds" in capsys.readouterr().out

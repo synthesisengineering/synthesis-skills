@@ -4,6 +4,29 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [5.20.1] - 2026-11-13
+
+- **The deploy guard holds neither a syntax check nor too little** (`synthesis-agent-guardrails` 2.9.2). A seat's local
+  test that ran `sh -n` on two scripts was held as a deploy, and once approved it recorded a deploy that set off the
+  rapid-redeploy brake for the real publish after it. A shell's options are now read in order up to its script:
+  `-n` or `-o noexec`, not undone by a later `+n`, `+o noexec` or zsh's `-o exec`, runs nothing and is no deploy; an
+  `-n` that is another option's value (`--rcfile -n`), or an option the guard does not know, reads the script. The
+  other way round, a script sourced with `.`, `source` or `builtin source` was not read at all; it is now read whole,
+  as a run script is, so a deploy anywhere in it is held. An alias is read for what its value runs, and a script too
+  large for the guard to read (over 256 KB), run or sourced, is held rather than let through.
+- **A deploy's hold says what its approval binds to:** the command and the HEAD of each checkout it deploys, so the
+  same command after a commit meets a new code with the reason in front of it.
+- **The sender is told of a watcher that takes its message at once.** `synthesis msg` posted first and asked who
+  watched after, so a watcher that read the message and left in between was missed and the sender was told it waits
+  for the next prompt; who watches is now read before the message is posted.
+- **No test reads this Mac's synthesis home.** Once 5.20.0's hourly sync had written this Mac's ritual history into
+  its sessions repos, seven ritual tests read it through the person's own config and failed on this Mac alone; every
+  test, a skill's included, now has a synthesis home of its own.
+- **How it was checked.** Tests first, and one review round. The first fix set a sourced script's function bodies
+  apart and stopped at the first `-n`; the review showed both opened real holes (`bash -n +n`, `--rcfile -n`, deploys
+  at a sourced script's top level missed in several forms, and a pattern that could run past the hook's time limit),
+  so the reading was made whole and the options read in order, each case with a test that failed before its fix.
+
 ## [5.20.0] - 2026-11-13
 
 - **A durable message travels with the project** (`synthesis-project-management` 3.5.0; the audit of 2026-11-11, gap 6).
