@@ -264,3 +264,38 @@ def test_a_variable_that_names_no_protected_root_changes_nothing(tmp_path, comma
     root.mkdir()
     command = command.format(scratch=tmp_path / "scratch")
     assert guards.check("Bash", {"command": command}, {"protected_roots": [str(root)]}, cwd=str(tmp_path)) is None
+
+
+def test_a_shell_that_only_reads_a_script_publishes_nothing_and_a_sourced_script_is_read(tmp_path):
+    """A seat's report, 2026-11-13 20:24-20:36: a local test that ran `sh -n` on two scripts was held as a deploy and,
+    once approved, armed the rapid-redeploy brake for the real publish after it; `-n` reads a script and runs none of
+    it. The other way round, `.` and `source` were not read at all, so a sourced script's deploy, or a deploy in a
+    function it defined that the command then called, went through unasked."""
+    scripts = tmp_path / "scripts"
+    scripts.mkdir()
+    deploy = "npx wrangler pages deploy dist --project-name=site"
+    (scripts / "publish.sh").write_text(f"#!/bin/sh\n{deploy}\n")
+    (scripts / "env.sh").write_text(f'publish() {{\n  {deploy}\n}}\nexport OUT="${{TMPDIR}}/out"\n')
+    (scripts / "now.sh").write_text(f"{deploy}\n")
+    (scripts / "oneline.sh").write_text(f"publish() {{ {deploy}; }}\n")
+    (scripts / "unclosed.sh").write_text(f"publish() {{\n  {deploy}\n")
+    for command in ("sh -n scripts/publish.sh", "bash -n scripts/publish.sh", "zsh -n scripts/publish.sh",
+                    "bash -en scripts/publish.sh", "source scripts/env.sh && echo ready",
+                    ". scripts/env.sh && python3 build_plugin.py --out /tmp/x && diff -rq /tmp/x /tmp/y && sh -n scripts/publish.sh"):
+        assert guards.check("Bash", {"command": command}, {}, cwd=str(tmp_path)) is None, command
+    for command in ("source scripts/now.sh", ". scripts/now.sh", ". scripts/env.sh && publish",
+                    "source scripts/oneline.sh; publish", ". scripts/unclosed.sh"):  # a function never closed: read whole
+        assert "production" in (guards.check("Bash", {"command": command}, {}, cwd=str(tmp_path)) or ""), command
+
+
+def test_a_deploys_hold_says_the_approval_binds_to_its_folder_and_head(tmp_path):
+    """The same report's third point: an approval binds to the folder the command runs from and to that checkout's
+    HEAD, so the same command from another folder, or after a commit, meets a new code; the hold says so."""
+    site = tmp_path / "site"
+    subprocess.run(["git", "init", "-q", str(site)], check=True)
+    (site / "index.html").write_text("hello\n")
+    subprocess.run(["git", "-C", str(site), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(site), "commit", "-qm", "first"], check=True)
+    head = subprocess.run(["git", "-C", str(site), "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
+    said = guards.check("Bash", {"command": "git push origin main"}, {"push_deploys": [str(site)]}, cwd=str(site))
+    assert f"run from {site}" in said and f"HEAD {head[:10]}" in said, said
