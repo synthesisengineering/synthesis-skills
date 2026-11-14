@@ -86,13 +86,15 @@ very thing it guards.
 
 ## Rulings
 
-**Yours:** this organization's rulings on this policy, newest first, each with its date and who made it.
+**Yours:** this organization's rulings on this policy, newest first, each with its date and who made it. A ruling
+names a class or a kind of fact, never a fact that stays out.
 
 - (none yet)
 
 ## Examples
 
-**Yours:** examples from this organization's own work: a fact that went in, a fact that stayed out and why, a project
-recorded without its element.
+**Yours:** examples from this organization's own work: a fact that went in; a fact that stayed out, described by its
+class and shape, never the fact itself (as a review request counts what it left out), with why; and a project recorded
+without its element. Everyone with access to the repository reads this file, and the phrase scan judges it.
 
 - (none yet)

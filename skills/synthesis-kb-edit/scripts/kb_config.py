@@ -4,10 +4,13 @@
 from __future__ import annotations
 
 import argparse
+import difflib
 import fnmatch
 import json
+import os
 import re
 import sys
+import unicodedata
 from pathlib import Path, PurePosixPath
 from typing import Any
 
@@ -31,9 +34,18 @@ KEYS = {"": {"bundle_path", "git_host", "default_branch", "branch_prefix", "ship
              "generated_artifacts", "topic_routing", "taxonomy_path", "frontmatter", "confidentiality", "notes"},
         "review": {"who_merges", "default_reviewers", "setup_guide"},
         "frontmatter": {"required", "house", "date_field", "reserved_files"},
-        "confidentiality": {"forbidden_words_source", "hook_path", "visible_to", "sharing_policy", "backstop_phrases"}}
+        "confidentiality": {"forbidden_words_source", "hook_path", "visible_to", "sharing_policy", "backstop_phrases",
+                            "unread_allowed"}}
 POLICY = ".agents/sharing-policy.md"  # where adopting writes the policy when the contract names no path
 TEMPLATE = Path(__file__).resolve().parents[1] / "assets" / "sharing-policy.template.md"
+# The template's audience lines as it leaves them: a policy that still holds one has not said who reads it, and naming
+# it would switch knowledge capture to sharing by default under a policy with no audience.
+UNFILLED = ("- **The repository's readers.** **Yours:** who they are.",
+            "- **The readers of the copy it publishes.** **Yours:** who they are, and what the copy is (an assistant that answers")
+
+
+def unfilled(text: str) -> bool:
+    return any(line.strip() in UNFILLED for line in text.splitlines())
 
 
 def is_relative_text(value: Any, *, allow_glob: bool = False) -> bool:
@@ -65,7 +77,9 @@ def validate_config(config: Any) -> list[str]:
     for section, known in KEYS.items():
         mapping = config.get(section) if section else config
         for key in sorted(set(mapping) - known) if isinstance(mapping, dict) else ():
-            add_error(errors, f"{section}.{key}" if section else key, "unknown key; the contract names every key it reads")
+            close = difflib.get_close_matches(str(key), sorted(known), n=1)
+            add_error(errors, f"{section}.{key}" if section else key, "unknown key: " + (f"did you mean {close[0]}? " if close
+                      else "") + "correct its spelling, or move it into notes; the contract names every key it reads")
 
     for field in ("bundle_path", "default_branch", "branch_prefix"):
         if not isinstance(config.get(field), str) or not config[field].strip():
@@ -175,6 +189,9 @@ def validate_config(config: Any) -> list[str]:
             add_error(errors, "confidentiality.backstop_phrases", "the contract names a sharing policy and no phrases, so "
                       "every edit is held: list at least one of this organization's own phrases here, or remove "
                       "confidentiality.sharing_policy")
+        allowed = confidentiality.get("unread_allowed", [])  # files only people read; the scan holds every other it cannot
+        if not string_list(allowed) or any(not is_relative_text(item, allow_glob=True) for item in allowed):
+            add_error(errors, "confidentiality.unread_allowed", "expected a list of safe repository-relative globs")
 
     if not isinstance(config.get("notes"), str):
         add_error(errors, "notes", "expected a string")
@@ -188,6 +205,21 @@ def resolve_inside(repo: Path, relative: str) -> Path:
     except ValueError as exc:
         raise ValueError(f"path escapes repository: {relative}") from exc
     return candidate
+
+
+def spelled(repo: Path, relative: str) -> bool:
+    """Whether each part of the path is spelled as the disk spells it. A disk that ignores letter case finds `Source`
+    for `source`; git does not, so the phrase scan would read nothing there."""
+    folder = repo
+    for part in PurePosixPath(relative.replace("\\", "/")).parts:
+        try:
+            names = {unicodedata.normalize("NFC", name) for name in os.listdir(folder)}
+        except OSError:
+            return False
+        if unicodedata.normalize("NFC", part) not in names:
+            return False
+        folder = folder / part
+    return True
 
 
 def check_paths(repo: Path, config: dict[str, Any]) -> list[str]:
@@ -227,6 +259,17 @@ def check_paths(repo: Path, config: dict[str, Any]) -> list[str]:
         exists = path.is_dir() if kind == "directory" else path.is_file()
         if not exists:
             add_error(errors, field, f"configured {kind} does not exist: {relative}")
+        elif not spelled(repo, relative):
+            add_error(errors, field, f"configured {kind} is spelled otherwise on disk: {relative} (git reads letter case exactly)")
+    policy = confidentiality.get("sharing_policy")
+    try:
+        unready = bool(policy) and resolve_inside(repo, policy).is_file() and unfilled(
+            resolve_inside(repo, policy).read_text(encoding="utf-8", errors="replace"))
+    except (ValueError, OSError):  # the loop above names a path that escapes or is not there
+        unready = False
+    if unready:
+        add_error(errors, "confidentiality.sharing_policy", f"{policy} is still the template as written: fill in who reads "
+                  "it before the contract names it")
     return errors
 
 
@@ -259,9 +302,10 @@ def load_config(repo: Path, config_path: Path | None) -> tuple[Path, dict[str, A
 
 
 def adopt_sharing_policy(repo: Path, phrases: list[str]) -> tuple[int, list[str]]:
-    """Name the sharing policy in the contract with the organization's own phrases, writing the template where the
-    contract says unless a file is there. The contract changes in place, keeping every line, and only when what it would
-    become is valid, so adopting never leaves a policy named with no phrases. Nothing is committed."""
+    """Name the sharing policy in the contract with the organization's own phrases. With no policy file yet, write the
+    template where the contract says and stop: naming the policy switches knowledge capture to sharing by default, so
+    it is named only once it says who reads it. The contract changes in place, keeping every line and its line ending,
+    and only when what it would become passes the configuration gate. Nothing is committed."""
     path, config = load_config(repo, None)
     block = config.get("confidentiality") if isinstance(config, dict) else None
     if not isinstance(block, dict):
@@ -273,37 +317,56 @@ def adopt_sharing_policy(repo: Path, phrases: list[str]) -> tuple[int, list[str]
                    " scan needs this organization's own phrases (the plugin ships none): run this again with --phrase"
                    " PHRASE for each one"]
     target = resolve_inside(repo, relative)  # a path that escapes the repository raises before anything is written
-    adding = ([f"sharing_policy: {json.dumps(relative)}"] if "sharing_policy" not in block else []) + (
+    if target.exists() and not target.is_file():
+        return 1, [f"nothing adopted: {relative} is there but is not a file, so it can be no policy"]
+    raw = path.read_bytes().decode("utf-8")  # as written: its line endings are kept
+    eol = "\r\n" if "\r\n" in raw else "\n"
+    keys = [key for key, empty in (("sharing_policy", not block.get("sharing_policy")), ("backstop_phrases", bool(phrases)))
+            if empty]  # absent, or present and null or empty: written once, never twice
+    adding = ([f"sharing_policy: {json.dumps(relative)}"] if "sharing_policy" in keys else []) + (
         ["backstop_phrases:"] + [f"  - {json.dumps(phrase, ensure_ascii=False)}" for phrase in phrases] if phrases else [])
-    text = path.read_text(encoding="utf-8")
     if adding:
-        header = re.search(r"^confidentiality:[ \t]*(?:#.*)?\n", text, flags=re.M)
-        child = header and re.compile(r"^([ \t]+)[^\s#]", flags=re.M).search(text, header.end())  # its first key
+        header = re.search(r"^confidentiality:[ \t]*(?:#.*)?\r?\n", raw, flags=re.M)
+        child = header and re.compile(r"^([ \t]+)[^\s#]", flags=re.M).search(raw, header.end())  # its first key
         if not child:
             return 1, [f"nothing adopted: the confidentiality mapping in {CONFIG_RELATIVE} is not in block form; add these"
                        " lines to it by hand:"] + [f"  {line}" for line in adding]
-        text = text[:header.end()] + "".join(f"{child.group(1)}{line}\n" for line in adding) + text[header.end():]
+        after = re.compile(r"^[^\s#]", flags=re.M).search(raw, header.end())  # the next top-level key ends the mapping
+        stop = after.start() if after else len(raw)
+        body = re.sub(r"^[ \t]+(?:" + "|".join(keys) + r"):[ \t]*(?:null|~|\[[ \t]*\])?[ \t]*(?:#.*)?\r?\n", "",
+                      raw[header.end():stop], flags=re.M)
+        raw = raw[:header.end()] + "".join(f"{child.group(1)}{line}{eol}" for line in adding) + body + raw[stop:]
     try:  # read back as the skills will read it, before anything is written
-        result = yamlish.load(text)
+        result = yamlish.load(raw)
     except ValueError as exc:
         return 1, [f"nothing adopted: the contract it would write cannot be read ({exc})"]
     errors = validate_config(result)
-    if errors or (result["confidentiality"].get("sharing_policy"), result["confidentiality"].get("backstop_phrases")) != (
-            relative, phrases or listed):
+    if errors:
         return 1, [f"ERROR {error}" for error in errors] + ["nothing adopted: the contract it would write is not valid"]
-    if target.exists():
-        lines = [f"{relative}: kept as it is (it exists)"]
-    else:
+    for key, wanted in (("sharing_policy", relative), ("backstop_phrases", phrases or listed)):
+        if result["confidentiality"].get(key) != wanted:
+            return 1, [f"nothing adopted: the contract it would write reads confidentiality.{key} as "
+                       f"{result['confidentiality'].get(key)!r}, not {wanted!r}"]
+    if not target.exists():
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(TEMPLATE.read_text(encoding="utf-8"), encoding="utf-8")
-        lines = [f"{relative}: written from the template"]
+        return 1, [f"{relative}: written from the template; the contract does not name it yet",
+                   "next: fill in its parts marked Yours, at least who reads it, then run this again with your phrases; "
+                   "naming it is what switches the knowledge base to sharing by default"]
+    if unfilled(target.read_text(encoding="utf-8", errors="replace")):
+        return 1, [f"nothing adopted: {relative} is still the template as written: fill in who reads it, then run this "
+                   "again"]
+    errors = check_paths(repo, result)
+    if errors:
+        return 1, [f"ERROR {error}" for error in errors] + ["nothing adopted: the contract it would write does not pass "
+                                                             "the configuration gate"]
     if adding:
-        path.write_text(text, encoding="utf-8")
+        path.write_bytes(raw.encode("utf-8"))
     count = len(phrases or listed)
-    return 0, lines + [f"{CONFIG_RELATIVE}: names the policy{'' if adding else ' already'}, with {count} phrase"
-                       f"{'' if count == 1 else 's'}; every edit runs the phrase scan",
-                       "next: fill in the policy's parts marked Yours, then review and ship this change; nothing was "
-                       "committed"]
+    return 0, [f"{relative}: kept as it is",
+               f"{CONFIG_RELATIVE}: names the policy{'' if adding else ' already'}, with {count} phrase"
+               f"{'' if count == 1 else 's'}; every edit runs the phrase scan",
+               "next: review and ship this change; nothing was committed"]
 
 
 def main(argv: list[str] | None = None) -> int:

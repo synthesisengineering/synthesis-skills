@@ -1045,10 +1045,18 @@ ROOT = Path(__file__).resolve().parents[1]
 # Merged into release 5.22.0 on 5.21.0 (2026-11-14): the ceilings are 5.21.0's (core 14924, plugin 38171) and what
 # each 5.22.0 paragraph above adds over 5.20.1's: plugin 248 for the sharing standard, 344 for the collections and 769
 # for the message exports.
+# 5.22.0's review round 1, the sharing standard's findings (2026-11-14): plugin 63 more. kb_config.py 63:
+# adopt_sharing_policy 20 more (the template written first and the policy named only once it says who reads it, a
+# folder at the policy's path refused, a key left null or empty replaced in its place, the contract's own line ending
+# kept, the key the read-back found otherwise named, and the configuration gate run on the result), spelled 15 with its
+# two blank lines (each part of a path as the disk spells it), check_paths 11 (a path spelled otherwise on disk; a
+# named policy still the template as written), validate_config 5 (an unknown key's way out, with a close match; the
+# unread_allowed globs), UNFILLED 4 with its two-line note, unfilled 4 with its two blank lines, the three imports 3
+# and KEYS 1.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # consolidate first).
 CORE_BUDGET = 14924
-PLUGIN_BUDGET = 39532
+PLUGIN_BUDGET = 39595
 
 
 def _lines(files):
