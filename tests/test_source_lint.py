@@ -522,3 +522,84 @@ def test_no_python_file_defines_a_function_or_a_class_twice_at_its_top():
     files = [p for p in sorted(ROOT.rglob("*.py")) if not any(part.startswith(".") for part in p.relative_to(ROOT).parts)]
     assert len(files) > 200
     assert {str(p.relative_to(ROOT)): found for p in files if (found := twice_bound(p.read_text(encoding="utf-8"), defs_only=True))} == {}
+
+
+# ---- every skill is in exactly one collection ------------------------------------------------
+
+# A release publishes five collections beside the whole set, each a plugin without hooks (plan item 12.1, ruled
+# 2026-11-14). A skill names its own in its frontmatter, as `metadata.category`; the skills manager's collections file
+# lists the collections, and names under `awaiting_room` the collection of a skill whose SKILL.md has no room for that
+# line under 8,000 bytes. A skill depends only on its own collection or the core. The core is a plugin of its own,
+# installed in a folder of its own, so a dependency that a skill's scripts load from beside it is in its own collection.
+COLLECTIONS = ROOT / "skills" / "synthesis-skills-manager" / "assets" / "collections.json"
+
+
+def categories(skill_md: Path) -> list:
+    """Every collection the frontmatter's `metadata` names as `category`; a list, or the key twice, names several."""
+    match = re.match(r"---\n(.*?)\n---\n", skill_md.read_text(encoding="utf-8"), re.S)
+    meta = re.search(r"^metadata:[ \t]*\n((?:[ \t]+\S.*(?:\n|$))*)", match.group(1) if match else "", re.M)
+    return [name.strip().strip("\"'") for value in re.findall(r"^[ \t]+category:(.*)$", meta.group(1) if meta else "", re.M)
+            for name in value.strip().strip("[]").split(",") if name.strip()]
+
+
+def collection_problems(root: Path, spec: dict) -> list:
+    """Each skill under root that names no collection, more than one, or one the file does not list; and each
+    dependency outside the skill's own collection and the core, or outside its own when its scripts load it."""
+    skills, waiting = sorted(root.glob("skills/*/SKILL.md")), spec.get("awaiting_room", {})
+    named = {s.parent.name: categories(s) + ([waiting[s.parent.name]] if s.parent.name in waiting else []) for s in skills}
+    problems = [f"{name}: in {' and '.join(found) or 'no collection'}" for name, found in named.items()
+                if len(found) != 1 or found[0] not in spec["collections"]]
+    home = {name: found[0] for name, found in named.items() if len(found) == 1}
+    for skill in skills:
+        name = skill.parent.name
+        code = "\n".join(p.read_text(encoding="utf-8", errors="replace") for p in sorted(skill.parent.rglob("*"))
+                         if p.suffix in (".py", ".sh") and "tests" not in p.relative_to(skill.parent).parts
+                         and not p.name.startswith("test_"))
+        for need in frontmatter(skill)["depends_on"]:
+            loaded = bool(re.search(rf"(?<![\w-]){re.escape(need)}(?![\w-])", code))
+            if home.get(need) not in {home.get(name)} | (set() if loaded else {spec["core"]}):
+                problems.append(f"{name} ({home.get(name)}) depends on {need} ({home.get(need)})"
+                                + (", which its scripts load from beside it" if loaded else ""))
+    return problems
+
+
+def test_every_skill_is_in_exactly_one_collection_and_depends_only_on_its_own_or_the_core():
+    assert collection_problems(ROOT, json.loads(COLLECTIONS.read_text(encoding="utf-8"))) == []
+
+
+def test_a_skill_waits_for_room_only_while_its_skill_md_has_none():
+    """Never trimmed to fit (docs/skill-format.md, rule 3): a SKILL.md that cannot take its line keeps its words, and
+    the collections file names its collection until a reorganization makes room; then this fails, and the line moves."""
+    waiting = json.loads(COLLECTIONS.read_text(encoding="utf-8")).get("awaiting_room", {})
+    sizes = {name: len((ROOT / "skills" / name / "SKILL.md").read_bytes()) for name in waiting}
+    assert {name: size for name, size in sizes.items() if size + len(f"  category: {waiting[name]}\n") <= 8000} == {}, (
+        "these SKILL.md files have room for their category line now: write it in their metadata and take them off "
+        "awaiting_room")
+
+
+def test_the_collection_rules_find_none_two_unknown_and_a_dependency_out_of_bounds(tmp_path):
+    spec = {"core": "core", "collections": {"core": {}, "writing": {}, "engineering": {}},
+            "awaiting_room": {"waits": "writing", "doubled": "writing"}}
+
+    def skill(name, meta="", depends="[]", script=""):
+        folder = tmp_path / "skills" / name
+        (folder / "scripts").mkdir(parents=True)
+        (folder / "SKILL.md").write_text(f"---\nname: {name}\ndepends_on: {depends}\nmetadata:\n  format: v5\n{meta}---\n")
+        (folder / "scripts" / "run.py").write_text(script)
+    skill("base", "  category: core\n")
+    skill("plain", "  category: writing\n", '["base"]')  # on the core: allowed
+    skill("quoted", '  category: "writing"\n')
+    skill("waits")  # its collection is in awaiting_room: allowed
+    skill("none")
+    skill("both", "  category: [writing, engineering]\n")
+    skill("twice", "  category: writing\n  category: writing\n")
+    skill("unknown", "  category: design\n")
+    skill("doubled", "  category: writing\n")  # named in its metadata and in awaiting_room
+    skill("crossing", "  category: engineering\n", '["plain"]')
+    skill("loader", "  category: writing\n", '["base"]', 'ENGINE = Path(__file__).parents[2] / "base"\n')
+    skill("tested", "  category: writing\n", '["base"]')
+    (tmp_path / "skills" / "tested" / "scripts" / "test_run.py").write_text('import base  # a test loads nothing\n')
+    assert collection_problems(tmp_path, spec) == [
+        "both: in writing and engineering", "doubled: in writing and writing", "none: in no collection",
+        "twice: in writing and writing", "unknown: in design", "crossing (engineering) depends on plain (writing)",
+        "loader (writing) depends on base (core), which its scripts load from beside it"]
