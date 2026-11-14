@@ -44,7 +44,7 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[3]
 sys.dont_write_bytecode = True  # an installed plugin must stay byte-identical; Muse verifies its bundle
-for path in (REPO, REPO / "skills" / "synthesis-onboarding" / "scripts"):
+for path in (REPO, REPO / "skills" / "synthesis-onboarding" / "scripts", Path(__file__).resolve().parent):
     if str(path) not in sys.path:
         sys.path.insert(0, str(path))
 import setup  # noqa: E402  (each harness's install commands)

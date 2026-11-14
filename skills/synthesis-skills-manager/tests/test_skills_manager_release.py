@@ -619,3 +619,11 @@ def test_a_wrong_reported_version_fails_even_with_matching_bytes(tmp_path, monke
     monkeypatch.setattr(release, "installed_root", lambda client, binary: (good, "5.0.9"))
     lines, verified, _ = release.install_and_verify(repo, "5.1.0", ["claude"])
     assert not verified and "reports 5.0.9, not 5.1.0" in lines[-1]
+
+
+def test_the_script_runs_with_no_folder_of_the_callers_on_its_path():
+    """Python's isolated mode (-I) leaves even the script's own folder off its path; the release loads the collections
+    builder beside it, which a check under Apple's Python 3.9 found it could not do (5.22.0, before merging)."""
+    script = Path(release.__file__).resolve()
+    ran = subprocess.run([sys.executable, "-I", str(script), "--help"], capture_output=True, text=True)
+    assert ran.returncode == 0 and ran.stdout.startswith("usage: release.py"), ran.stderr[-500:]
