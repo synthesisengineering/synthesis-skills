@@ -4757,8 +4757,9 @@ def _checked_box(tool: str, tool_input: dict, session: dict | None) -> tuple | N
     age = time.time() - (stamp if stamp.tzinfo else stamp.replace(tzinfo=timezone.utc)).timestamp()
     box = sends.composer(_said(found[0]))
     place = sends.conversation(str(box.get("url") or "")) if -5 <= age <= CHECK_SECONDS else None
-    return (*place, box["text"]) if place and box.get("focused") is True and type(box.get("staged")) is int and (
-        box["staged"] == 0) and isinstance(box.get("text"), str) else None
+    text = box.get("text") if isinstance(box.get("text"), str) else None  # Lexical ends the box's text with one line break
+    return (*place, text[:-1] if text.endswith("\n") else text) if place and text is not None and box.get("box") == "found" and (
+        box.get("focused") is True and type(box.get("staged")) is int and box["staged"] == 0) else None
 
 
 def check_desktop(name: str, tool: str, tool_input: dict, config: dict, session: dict | None = None) -> str | None:

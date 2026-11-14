@@ -360,14 +360,20 @@ KINDS = ('none of the four kinds: a connector call {"tool", "input"}, a browser 
          '"service", "chat", "text"}, each with nothing else')
 # The read-only check of a messaging page's message box that a browser entry's send waits on (the review of 5.23.0):
 # printed by `synthesis sends composer-check`, run as it is through the browser's JavaScript tool on the send's own tab.
-COMPOSER_MARK = "synthesis-composer-1"
+# The box is the one contenteditable textbox labelled `Write to ...` or for a message, with the placeholder `Aa`, or a
+# Lexical editor (the coordinator's live read of 2026-11-14: `Write to <Name>`, `Aa`, Lexical, in no form); the composer
+# around it is its nearest ancestor that holds a control labelled for sending or for a file or attachment.
+COMPOSER_MARK = "synthesis-composer-2"
 COMPOSER_CHECK = ("(() => { const boxes = [...document.querySelectorAll('[contenteditable=\"true\"][role=\"textbox\"]')]; "
-                  "const box = boxes.find(b => /message/i.test(b.getAttribute('aria-label') || '')) || null; "
-                  "const area = box && (box.closest('form') || box.parentElement); "
-                  "return JSON.stringify({check: 'synthesis-composer-1', url: location.href, text: box ? box.innerText : null, "
-                  "focused: !!box && box.contains(document.activeElement), staged: area ? [...area.querySelectorAll('img, video, "
-                  "audio, canvas, object, embed, iframe, [aria-label*=\"ttachment\"], [aria-label*=\"emove\"]')]"
-                  ".filter(e => !box.contains(e)).length : null, boxes: boxes.length}); })()")
+                  "const fits = b => /^write to|message/i.test(b.getAttribute('aria-label') || '') || "
+                  "b.getAttribute('aria-placeholder') === 'Aa' || b.hasAttribute('data-lexical-editor'); "
+                  "const found = boxes.filter(fits); const box = found.length === 1 ? found[0] : null; let area = box && "
+                  "box.parentElement; while (area && ![...area.querySelectorAll('[aria-label*=\"send\" i], [aria-label*=\"file\" i], "
+                  "[aria-label*=\"attach\" i]')].some(e => !box.contains(e))) area = area.parentElement; "
+                  "return JSON.stringify({check: 'synthesis-composer-2', url: location.href, box: found.length > 1 ? 'ambiguous' : "
+                  "box ? 'found' : 'none', text: box ? box.innerText : null, focused: !!box && box.contains(document.activeElement), "
+                  "staged: !box ? null : area ? [...area.querySelectorAll('img, video, audio, canvas, object, embed, iframe, "
+                  "[aria-label*=\"remove\" i]')].filter(e => !box.contains(e)).length : 'unknown', boxes: boxes.length}); })()")
 ADDRESS_KEYS = ("to", "cc", "bcc", "channel", "channel_id", "chat_id", "space_id", "space_name", "thread_id", "thread_ts",
                 "user_id", "recipient", "recipients", "issueIdOrKey", "owner", "repo", "pull_number", "issue_number")
 

@@ -1169,10 +1169,13 @@ ROOT = Path(__file__).resolve().parents[1]
 # and uploads). cli.py 14: parsed 17 (the parser the guard reads with), _main 6 fewer, _batch 3 fewer (no own-terminal
 # shortcut: the code from any terminal), cmd_sends 6 more (a file only with `sends batch`; composer-check). approvals.py
 # 6: grant (a live grant's code and when it was asked, which the batch keeps).
+# The composer check on Messenger's live box (2026-11-14): core 7 more, plugin 7. sends.py 6: COMPOSER_CHECK 3 longer (the
+# one box by its label, placeholder or Lexical editor, `ambiguous` for two; the composer placed by its send or attach
+# control, `unknown` without one) and its note 3. guards.py 1: _checked_box reads the box's text as Lexical writes it.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 15620
-PLUGIN_BUDGET = 40862
+CORE_BUDGET = 15627
+PLUGIN_BUDGET = 40869
 
 
 def _lines(files):

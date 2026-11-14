@@ -473,8 +473,20 @@ and send nothing (the review of 5.23.0: one call that cleared, typed and sent ma
 focus, an emptied box and an earlier paste, none of which it can see):
 
 1. **The check.** The browser's JavaScript tool runs, on the tab, exactly the expression `synthesis sends
-   composer-check` prints. It returns the page's address, the message box's text, whether the focus is in the box, and
-   how many attachments or pastes wait beside it.
+   composer-check` prints, and it reads the page so (from a live Messenger chat, 2026-11-14):
+   - **The box** is the one contenteditable textbox whose `aria-label` starts with `Write to` or names a message, whose
+     `aria-placeholder` is `Aa`, or that is a Lexical editor (`data-lexical-editor`). Two such boxes on the page read as
+     `box: ambiguous`, and no box as `none`; either matches nothing.
+   - **Its text** is the box's `innerText`. Lexical ends it with one line break, which the guard leaves off, so an empty
+     box (a single line break) reads as empty; a shift+Enter line break reads as one line break inside the text. Past
+     that one break the comparison is exact.
+   - **The focus** is whether the page's focused element is the box or inside it.
+   - **The composer** is the box's nearest ancestor that also holds a control whose `aria-label` names sending (`Press
+     enter to send`, `Send`) or a file or attachment (`Attach a file`). What is staged is the count of images, video,
+     audio, canvases, objects, frames and `Remove` controls inside it and outside the box; with no such ancestor it is
+     `unknown`, which matches nothing.
+
+   It returns the page's address with those four, as one JSON report the guard finds in the call's result.
 2. **The send.** A call on the same tab, which it names, of the same browser server, holding one action: a plain
    Return or Enter (repeat 1), or one left click whose summary says it sends; made within 60 seconds of the check, with
    no other browser call between them.
