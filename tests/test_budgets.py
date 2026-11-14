@@ -954,10 +954,21 @@ ROOT = Path(__file__).resolve().parents[1]
 # own), calls_stable_hook 7 (the stable hook as the program a command runs, never a mention), _text 5, codex_covers 5,
 # codex_hooks_key 4, check_hooks_wired 2 (its own looser test of the plugin's files, back), the shlex import 1,
 # SETUP_MARK 1 and harness_checks 1, and spacing 12. paths.py 6: codex_hooks_record 4 and spacing 2.
+# 5.21.0, review round 1, setup: plugin 112 more. setup.py 110: codex_user_hooks 16 (setup's own known by its record;
+# a narrower declaration of the person's keeps the plugin's copy on; the edit read back before it is written; on,
+# hooks.json first and off, config.toml first), _write_all 14 (a write that fails midway puts back what was written),
+# _replace 13 (through a symlink to its target, the file's mode kept, no temporary file left, a file changed meanwhile
+# refused), _codex_state 12 (hook state held inline refused), _switches 12 (setup's own lines alone go, found however
+# spaced; a quoted `enabled` found), _toml_problem 12 (the strict reader, and tomllib where Python has it), _step 8 and
+# setup_plugins 2 (the option's step apart from the install: off needs no network, a refusal hides nothing),
+# _restore 7, codex_user_hooks_on 6 (the option on by a switch or the record, never by the mark's words),
+# configure_codex 3 (nothing written into a file that does not parse), _uninstall 1 (the declaration out first, or
+# nothing removed and exit 1), the stat import 1 and _UNREAD 1, with _setup_wrote 5 and install_plugin 5 fewer, and
+# spacing 12. release.py 2: install_and_verify keeps the option in step with the folder it verified.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # consolidate first).
 CORE_BUDGET = 14863
-PLUGIN_BUDGET = 37988
+PLUGIN_BUDGET = 38100
 
 
 def _lines(files):

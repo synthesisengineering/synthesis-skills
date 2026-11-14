@@ -403,6 +403,8 @@ def install_and_verify(repo: Path, version: str, clients: list, dry_run: bool = 
             root, reported = installed_root(client, binary)
             problems = [f"reports {reported or 'nothing'}, not {version}"] if reported != version else []
             problems += tree_differences(repo, f"v{version}", root) if root else ["reports no installed folder"]
+            if client == "codex" and not problems and setup.codex_user_hooks_on():  # its user-level option, in step with
+                lines += setup.codex_user_hooks(None, root)                         # the folder just verified (5.21.0)
         except setup.SetupError as exc:
             problems = [str(exc)]
         if problems:

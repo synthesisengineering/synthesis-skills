@@ -1076,12 +1076,14 @@ def test_the_plugin_command_turns_it_on_keeps_it_and_turns_it_off(tmp_path, monk
     assert not (home / "hooks.json").exists() and SWITCH not in (home / "config.toml").read_text()
 
 
-def test_a_file_the_command_cannot_parse_stops_it_and_leaves_both_files_as_they_were(tmp_path, monkeypatch, capsys):
+def test_a_file_the_command_cannot_parse_stops_the_option_and_the_option_changes_nothing(tmp_path, monkeypatch, capsys):
+    """The option's step leaves both files as it found them; Codex's own settings still run beside it (review round 1 of
+    5.21.0, R1-19: a refusal there had skipped them)."""
     home = codex_home(tmp_path, monkeypatch, config="[features]\nhooks = true\n", hooks="{not json")
     _codex_cli(tmp_path, monkeypatch)
-    before = files(home)
     assert setup.main(["plugin", "--no-input", "--clients", "codex", "--codex-user-hooks"]) == 1
-    assert "nothing was changed" in capsys.readouterr().out and files(home) == before
+    assert "nothing was changed" in capsys.readouterr().out
+    assert (home / "hooks.json").read_text() == "{not json" and SWITCH not in (home / "config.toml").read_text()
 
 
 def test_uninstall_takes_out_exactly_what_the_option_added(tmp_path, monkeypatch, capsys):
