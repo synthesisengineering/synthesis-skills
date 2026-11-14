@@ -322,3 +322,26 @@ def test_an_alias_that_deploys_and_a_script_too_large_to_read_are_held(tmp_path)
                     "alias pub='npx wrangler pages deploy dist'; pub"):
         assert "production" in (guards.check("Bash", {"command": command}, {}, cwd=str(tmp_path)) or ""), command
     assert guards.check("Bash", {"command": "alias ll='ls -la'; ll"}, {}, cwd=str(tmp_path)) is None
+
+
+
+RECORDED_SHAPE = """bash <<'EOF'
+B="/tmp/a folder/sync"
+N="$B/README.md"; O="$B/retired/2026-11-14/README.md.before"
+echo "README: $(wc -l < "$O" | tr -d ' ')->$(wc -l < "$N" | tr -d ' ') lines, $(stat -f %z "$O")->$(stat -f %z "$N") bytes, sha $(shasum -a 256 < "$N" | cut -c1-12); diff +$(diff "$O" "$N" | grep -c '^>') -$(diff "$O" "$N" | grep -c '^<')"
+for ws in a b c d e f g h i j; do
+  r="$B/retired/2026-11-14/workspaces/$ws"
+  echo "$ws: retired=$([ -f "$r/CLAUDE.md" ] && shasum -a 256 < "$r/CLAUDE.md" | cut -c1-12 || echo MISSING)$([ -e "$r/CLAUDE 2.md" ] && echo ' +CLAUDE-2!') live=$(cmp -s "$B/workspaces/$ws/CLAUDE.md" "$HOME/workspaces/$ws/CLAUDE.md" && echo ok || echo DIFF)"
+done
+date +%H:%M:%S
+EOF"""
+
+
+def test_a_heredoc_of_substitutions_in_a_loop_is_judged_within_the_hook_s_time(tmp_path):
+    """2026-11-14: three commands of this shape took the guard 7 to 13 seconds, past the hook's 5, so Claude Code held
+    them (onFailure: block) and, before 5.21.0, had let them through unjudged. The cost was a search over the whole
+    script repeated for each of its characters."""
+    import time
+    start = time.perf_counter()
+    guards.check("Bash", {"command": RECORDED_SHAPE}, {}, session={"session_id": "s", "cwd": str(tmp_path)})
+    assert time.perf_counter() - start < 1.0
