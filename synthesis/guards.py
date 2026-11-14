@@ -4513,6 +4513,10 @@ WEB_MESSAGING = (  # (host, or .suffix for every host under it; path prefix; cha
     ("teams.microsoft.com", "", "teams", "shift"), ("teams.live.com", "", "teams", "shift"),
     ("discord.com", "", "discord", "shift"), ("web.telegram.org", "", "telegram", "shift"),
     ("www.messenger.com", "", "messenger", "shift"), ("x.com", "/messages", "x", "shift"),
+    # 2026-11-14: Messenger runs inside facebook.com too, in pop-ups on every page, and Return in a comment posts
+    ("www.facebook.com", "/messages", "messenger", "shift"), ("facebook.com", "", "facebook", "shift"),
+    (".facebook.com", "", "facebook", "shift"), ("instagram.com", "", "instagram", "shift"),
+    (".instagram.com", "", "instagram", "shift"),
 )
 TAB_LINE = re.compile(r'tabId (\d+): .*\("?([^"\s]*?)"?\)\s*$', re.M)  # the address in quotes, or without them as the extension wrote it until August 2026
 

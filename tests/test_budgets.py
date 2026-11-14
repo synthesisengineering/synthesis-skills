@@ -928,10 +928,12 @@ ROOT = Path(__file__).resolve().parents[1]
 # 8 (what an approval binds to, said in the hold), the option lists and the too-large mark 5, _script_deploys 3 and
 # check_deploy 1. The repository's conftest 8 (no test reads this Mac's synthesis home, whose sessions repos hold its
 # ritual history since 5.20.0). wait.py 3 and cli.py 1: who watches is read before a message is sent (a race CI met).
+# 5.21.0 (2026-11-14): guards.py 4, Messenger inside facebook.com (its page and the pop-ups on every page) and
+# Instagram in the browser's messaging sites: a comment line and three lines of five entries.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # consolidate first).
-CORE_BUDGET = 14642
-PLUGIN_BUDGET = 37639
+CORE_BUDGET = 14646
+PLUGIN_BUDGET = 37643
 
 
 def _lines(files):
