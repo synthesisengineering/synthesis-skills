@@ -2386,9 +2386,11 @@ def test_the_doctor_warns_of_unsaved_records_never_fails_and_reads_its_hours_fro
     assert doctor.main(["--unsaved"]) == 0 and capsys.readouterr().out == "unknown\n"
 
 
-def test_unsaved_reads_every_name_every_branch_a_folder_removed_whole_and_fails_closed(tmp_path):
-    """5.19.0's first review: M5 (a quoted name), m1 (another branch), m2 (a folder deleted whole), M9 (Finder's
-    files are not records) and M6 (git that cannot read the checkout is said, never read as nothing)."""
+def test_unsaved_reads_every_name_the_checkouts_branch_a_folder_removed_whole_and_fails_closed(tmp_path):
+    """5.19.0's first review: M5 (a quoted name), m2 (a folder deleted whole), M9 (Finder's files are not records) and
+    M6 (git that cannot read the checkout is said, never read as nothing). Its m1 (commits on every local branch) was
+    taken back in 5.20.0: worktrees share one set of branches, so every claimed worktree was charged with every
+    branch's commits, and on the principal's Mac the line named 54 repositories; a checkout's own branch is read."""
     from synthesis import board
     remote, repo = tmp_path / "r.git", tmp_path / "repo"
     subprocess.run(["git", "init", "-q", "--bare", "-b", "main", str(remote)], check=True)
@@ -2415,7 +2417,22 @@ def test_unsaved_reads_every_name_every_branch_a_folder_removed_whole_and_fails_
         _aged(path, 30)
     board.claim("S1", [str(repo / "notes")], project="alpha")
     claims = [c for s in board.sessions() for c in s.claims]
-    assert doctor.unsaved(claims, 24)[os.path.realpath(repo)][2:] == (1, 2)  # sub/x.md; café.md and f.md
+    assert doctor.unsaved(claims, 24)[os.path.realpath(repo)][2:] == (1, 1)  # sub/x.md; café.md (f.md is on another branch)
     (repo / ".git" / "index").write_bytes(b"not an index")
     line = doctor.check_unsaved({}, claims)
     assert line.status == "warn" and "could not read" in line.detail
+
+
+def test_unsaved_counts_live_seats_claims_alone(tmp_path, capsys):
+    """5.20.0: on the principal's Mac the line named 54 repositories, most of them held by sessions gone quiet for
+    days; their claims are the stale-claim review's (`synthesis who --all`). A live seat's unsaved record is counted."""
+    from synthesis import board
+    repo = _records(tmp_path)
+    board.claim("S1", [str(repo / "notes")], project="alpha")
+    quiet = board.load("S1")
+    quiet.seen = time.time() - board.STALE_SECONDS - 1
+    board.save(quiet)
+    assert doctor.main(["--unsaved"]) == 0 and capsys.readouterr().out == "0\n"
+    assert [c.status for c in doctor.run_checks(find=lambda h: None) if c.name == "unsaved records"] == ["ok"]
+    board.touch("S1")
+    assert doctor.main(["--unsaved"]) == 0 and capsys.readouterr().out == "1\n"
