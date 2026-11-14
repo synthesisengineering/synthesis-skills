@@ -424,6 +424,22 @@ def test_user_level_hooks_waiting_for_approval_are_named_by_their_own_keys(tmp_p
     assert "hooks.json:stop:0:0 modified" in detail and "hooks.json:session_start:0:0 disabled" in detail
 
 
+def test_only_an_approval_the_person_gives_is_a_wait_and_a_fault_of_setup_is_not(tmp_path):
+    """5.21.0: the release counts a failing approval line as waiting on the person, so a fault the same line can name
+    (a plugin copy left on, a declaration unlike the plugin's, a plugin Codex cannot fingerprint) must not read as one."""
+    home, config = user_level(tmp_path, trusted=False)
+    assert doctor.waits_on_person(doctor.check_codex_trust(REPO_HOOKS, config, PLUGIN_ID, _plugin(tmp_path), home))
+    home, config = user_level(tmp_path, plugin_off=False)
+    assert not doctor.waits_on_person(doctor.check_codex_trust(REPO_HOOKS, config, PLUGIN_ID, None, home))
+    root = _plugin(tmp_path)
+    (root / "link").symlink_to(root / "synthesis" / "hook.py")
+    check = doctor.check_codex_trust(REPO_HOOKS, {"hooks": {"state": trusted_state()}}, PLUGIN_ID, root)
+    assert check.status == "fail" and not doctor.waits_on_person(check)
+    assert not doctor.waits_on_person(doctor.Check("fail", "muse hook approval", "the installed plugin registers no hooks"))
+    assert doctor.waits_on_person(doctor.Check("fail", "muse hook approval", "run `muse plugins approve synthesis-skills`: x"))
+    assert not doctor.waits_on_person(doctor.Check("fail", "runtime", "needs /hooks approval: x"))
+
+
 def test_a_plugin_copy_left_on_beside_the_user_level_declaration_fails(tmp_path):
     """Both copies would run once approved: the guard twice on every call."""
     home, config = user_level(tmp_path, plugin_off=False)

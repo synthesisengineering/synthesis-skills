@@ -403,13 +403,18 @@ def test_the_release_is_complete_only_once_homebrew_serves_the_tag(tmp_path, mon
     assert "tap pull request" in out and ("Homebrew serves" in out if merged else f"Homebrew: {PR} did not merge" in out)
 
 
-@pytest.mark.parametrize("failing, complete", [
-    ("codex hook trust", True),  # the person approves hooks in the harness; no release can
-    ("muse hook approval", True),
-    ("runtime", False),
+@pytest.mark.parametrize("failing, detail, complete", [
+    ("codex hook trust", "needs /hooks approval: pre_tool_use:0:0 untrusted", True),  # the person approves in the harness
+    ("muse hook approval", "run `muse plugins approve synthesis-skills`: synthesis-pre-tool-use", True),
+    ("runtime", "needs approval", False),
+    # 5.21.0: the same line can name a fault of setup, which is no approval the person can give
+    ("codex hook trust", "hooks.json:pre_tool_use:0:0 is not switched off, so it runs beside the user-level PreToolUse",
+     False),
+    ("codex hook trust", "the installed plugin has no hooks/hooks.json", False),
+    ("muse hook approval", "the installed plugin registers no hooks", False),
 ])
 def test_an_approval_only_the_person_can_give_does_not_hold_the_release(tmp_path, monkeypatch, capsys, failing,
-                                                                          complete):
+                                                                          detail, complete):
     """2026-11-05: Codex ties a hook approval to the plugin's files, so every release leaves it to be given again."""
     monkeypatch.setattr(release, "preflight", lambda repo, install_only: ("5.1.0", []))
     monkeypatch.setattr(release, "hold_train", lambda repo, session, version: "train")
@@ -419,11 +424,11 @@ def test_an_approval_only_the_person_can_give_does_not_hold_the_release(tmp_path
     monkeypatch.setattr(release, "homebrew_formula", lambda repo, version, dry_run: (["tap: nothing to move"], None))
     monkeypatch.setattr(release, "install_and_verify", lambda *a: (["installed"], {"codex": tmp_path}, ["codex"]))
     monkeypatch.setattr(release.install, "install", lambda source: "runtime")
-    monkeypatch.setattr(release.doctor, "run_checks", lambda: [release.doctor.Check("fail", failing, "needs approval")])
+    monkeypatch.setattr(release.doctor, "run_checks", lambda: [release.doctor.Check("fail", failing, detail)])
     assert release.main(["--session", "s1"]) == (0 if complete else 1)
     out = capsys.readouterr().out
     assert ("release complete: v5.1.0" if complete else "release NOT complete: v5.1.0") in out
-    assert (f"waiting on your approval ({failing}): needs approval" in out) == complete
+    assert (f"waiting on your approval ({failing}): {detail}" in out) == complete
 
 
 # ---- GitHub server errors ------------------------------------------------------
