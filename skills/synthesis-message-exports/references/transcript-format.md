@@ -147,11 +147,12 @@ A re-import reads each transcript back before deciding anything:
 - A secure-storage conversation goes to the transcript already holding any of its messages, whatever its name; one
   holding none gets a new transcript; one whose messages sit in two transcripts, or that shares one transcript with
   another conversation of the same download, is skipped and named (references/formats.md).
-- A message read from the page counts as present when an export's message has its digest and a time inside its
-  minute; each such block pairs with one message. A transcript holding page reads takes a conversation of either
-  download whose messages pair with them and whose people include every sender of those blocks, whatever the
-  transcript is named; a regular-export conversation found there and in the transcript of its folder's name is
-  skipped and named (references/chat-page.md).
+- A message read from the page counts as present when an export's message has its sender, the digest of its text
+  alone and a time inside its minute; each such block pairs with one message, and one that pairs only in part is held
+  for a person, neither written nor dropped. A transcript holding page reads takes a conversation of either download
+  on evidence about the chat: its title is among the conversation's people, and every page-read block inside the
+  conversation's span pairs. Beside the conversation's own transcript it keeps the messages it holds, and the import
+  says so; a transcript a page read started keeps its header (references/chat-page.md).
 
 ## Reading and citing a transcript
 

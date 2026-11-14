@@ -91,6 +91,21 @@ def parse_moment(text: str, now: datetime) -> datetime:
     return (moment if moment.tzinfo else moment.replace(tzinfo=now.tzinfo)).replace(microsecond=0)
 
 
+def since_moment(text: str, zone) -> datetime:
+    """The first moment a reader's --since names: a day (YYYY-MM-DD) is its midnight in `zone`, any other value ISO-8601
+    with its offset. A value that names no real day or moment raises ValueError (2026-11-14: `2026-11-41`, compared as
+    text, made any read complete)."""
+    raw = str(text).strip()
+    try:
+        moment = (datetime.combine(date.fromisoformat(raw), datetime.min.time()).replace(tzinfo=zone)
+                  if re.fullmatch(r"\d{4}-\d{2}-\d{2}", raw) else datetime.fromisoformat(raw.replace("Z", "+00:00")))
+    except ValueError:
+        moment = None
+    if moment is None or moment.tzinfo is None:
+        raise ValueError(f"--since is a day (YYYY-MM-DD) or a moment with its offset (ISO-8601), got {text!r}")
+    return moment
+
+
 def parse_duration(text: str) -> timedelta:
     compact = re.sub(r"\s+", "", str(text).lower())
     parts = re.findall(r"(\d+)([dhm])", compact)
@@ -206,6 +221,9 @@ def _store_reach(surface: str, targets: list, coverage, moment: datetime) -> dat
     """How far a local message store's watermark may move: its reader's coverage.through. None for other surfaces
     advanced without coverage."""
     local = surface in LOCAL_STORES or any(t in LOCAL_STORES for t in targets)
+    if isinstance(coverage, dict) and "inbox" in coverage and list(targets) != [coverage["inbox"]]:
+        raise ValueError(f"this coverage is the read of {coverage['inbox'] or 'an inbox it does not name'}: advance it with "
+                         f"--target {coverage['inbox'] or '<the inbox read>'} alone; an inbox moves only on its own read")
     if coverage is None:
         if local:
             raise ValueError(f"{_key(surface, ','.join(targets) or None)} is a local message store: it moves only as far "

@@ -222,10 +222,10 @@ def test_the_watermark_moves_only_with_the_readers_coverage(tmp_path):
     now = datetime.fromisoformat("2026-11-11T10:00:00-05:00")
     with pytest.raises(ValueError, match="--coverage"):
         marks.advance("desk", "linkedin", READ_AT, ("focused",), now=now, home=tmp_path)
-    _, complete = run(tmp_path, LIST, "--since", "2026-11-06")
+    _, complete = run(tmp_path, LIST, "--since", "2026-11-06", "--inbox", "focused")
     got = marks.advance("desk", "linkedin", "2026-11-11T09:59:00-05:00", ("focused",), now=now, home=tmp_path, coverage=complete)
     assert got["entries"][0]["moved"] and got["entries"][0]["through"].startswith("2026-11-11T09:45")  # capped at the read
-    _, short = run(tmp_path, LIST, "--since", "2026-11-01")
+    _, short = run(tmp_path, LIST, "--since", "2026-11-01", "--inbox", "focused")
     with pytest.raises(ValueError, match="no `through`"):
         marks.advance("desk", "linkedin", READ_AT, ("focused",), now=now, home=tmp_path, coverage=short)
 
@@ -290,7 +290,7 @@ def test_a_declaration_it_cannot_use_is_refused(tmp_path, declaration, says):
 
 def test_the_plan_names_the_day_the_last_read_reached(tmp_path):
     import os
-    _, complete = run(tmp_path, LIST, "--since", "2026-11-06")
+    _, complete = run(tmp_path, LIST, "--since", "2026-11-06", "--inbox", "focused")
     spec = importlib.util.spec_from_file_location("sync_watermark", SCRIPTS / "sync_watermark.py")
     marks = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(marks)

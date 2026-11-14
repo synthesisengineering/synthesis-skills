@@ -193,11 +193,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   extractor` prints a read-only script for one open chat's message log, and `save` writes what it saved into the
   importer's transcripts, in its format and identity scheme: each message keyed by the minute the page shows, in the
   browser's time zone as the script records it, and the importer's digest of its text, its block marked as read from
-  the page. A later import of the same chat pairs each of its messages with such a block by digest and minute and adds
-  nothing the transcript holds, and a page read after an export pairs with the export's blocks the same way. A
-  transcript holding page reads takes a conversation of either download whose messages pair with them and whose people
-  include every sender of those blocks, whatever it is named, so the principal's `ok` to two people in one minute never
-  merges two chats. The coverage line says how far back the read reached and whether it reached the day asked for.
+  the page. A later import of the same chat pairs each of its messages with such a block by sender, minute and the
+  digest of its text alone and adds nothing the transcript holds, and a page read after an export pairs with the export's blocks the same way. A
+  page read joins another chat's transcript only on evidence about that chat: the person or title its log names is
+  among the transcript's people, and every message of it inside the read's span pairs; an import takes a
+  conversation into a page-read transcript on the same evidence. The coverage line says how far back the read reached and whether it reached the day asked for.
   Opening a chat marks it read, so the fallback runs on the principal's word for that chat (rule 9).
 - **How the two were checked.** Tests first, committed alone (31 failed and 20 errored at setup while both scripts
   were missing), with invented fixtures only: every row shape, the three inboxes, an empty archive, a hidden panel,
@@ -210,6 +210,22 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   scroll container, reports the list not at its end. The notice where a chat became end-to-end encrypted carries a
   message's label dated at time zero, by `a participant`, in the middle of the log, and was taken for a message of
   1969; it is now a notice, and any label dated before 2004-02-04 is held for a person, never written.
+- **Review round 1 of the two, 21 findings, each fixed after a test that failed first.** Coverage compares moments,
+  not days, on Messenger's list and LinkedIn's: `plan` names the moment the inbox's own last read reached, a day given
+  as `--since` stands for its first moment, a read with no `--since` moves no watermark, and a `--since` that names no
+  day is refused. A read's coverage names its inbox and moves that inbox's watermark alone. Messenger's list: the read
+  reaches back to the last row read in the list's order (a pinned row above newer ones is named); the read's own clock
+  is its time; `--empty` needs the page's own words for that inbox's empty list; `You` marks the principal only in the
+  page's forms; names and previews are shown on one line and marked as untrusted, and `--json` escapes line
+  separators; a dialog is judged by its heading, never by message text, and a chat open in a pop-up counts as opened.
+  A chat saved from its page: messages pair on sender, minute and text alone, so a link takes no part and two people's
+  `ok` in one minute stay two; what pairs only in part, an item whose labels match no message and a possible twin where
+  two reads meet are held for a person, never written twice and never dropped; reads that share fewer than two
+  messages are not one read; a day is reached only when a message from before it was read; a sender's name may hold
+  `: `. The importer joins a page-read transcript only on evidence about the chat, keeps the header a page read wrote,
+  and imports a conversation split between a page read and its own transcript instead of skipping it on every run.
+  The browser guard holds a page script that moves the tab on a messaging site (a location assignment, `assign`,
+  `replace` or `window.open`), since a chat's address opens it; both extractors still pass as reads.
 
 ## [5.21.1] - 2026-11-14
 

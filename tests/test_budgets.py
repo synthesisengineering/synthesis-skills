@@ -1150,10 +1150,28 @@ ROOT = Path(__file__).resolve().parents[1]
 # list is at its end only when it finds one and each is at its end. chat_page.py 8: read_chat 6 (the encryption notice,
 # known by its sender and words before any time is read, and a label dated before 2004-02-04 held for a person),
 # EARLIEST 1 and the held count in the coverage line 1.
+# 5.22.0, review round 1 of the Messenger surface (2026-11-14, 21 findings): plugin 221 more, the core 3 of them.
+# guards.py 3: MOVES 1 (a location assignment, assign, replace or window.open held on a messaging site), SCRIPT_ACTS 1
+# (now on two lines to take it) and its comment 1. messenger_messages.py 66: read_time 22 (the read's own clock and zone,
+# --read-at held to within five minutes of it), parse 21 (the --since moment, the reach from the last row in the list's
+# order, rows above newer ones, pop-ups, the empty-list words, dialogs by their heading, no watermark without --since),
+# the docstring and imports 10, shown 5 (names and previews on one line, separators shown), the extractor 4 (its clock,
+# zone, pop-ups and dialog headings), entry 2 (`You` only in the page's forms, each row's span), CLOCK_SLACK 1, UNTRUSTED
+# 1 and plan 1 (each inbox's own watermark), less main 1. linkedin_messages.py 17: reach_of 7 (an entry's latest moment),
+# parse 7 (moments, and no watermark without --since), the docstring and import 4 and plan 1, less main 2.
+# sync_watermark.py 18: since_moment 15 (the first moment a --since names; a day that is no day refused) and _store_reach
+# 3 (a coverage moves only the inbox it names). chat_page.py 42: read_chat 13 (the labeled notice only, held items, reads
+# joined only where they share two messages, twins), save 12 (pairing with what is held, the day reached only from before
+# it, the held and passed-over lines), label_of 6 (the sender by the name the log gives), the docstring 5, HELD 5, paged
+# 5, place 4 (evidence about the chat) and the extractor 2, less people 6, EARLIEST 2, LABELS 1 and FIELDS 1.
+# import_messages.py 75: block_text 16, transcript_text 13, loose 11, page_holds 11 (evidence about the chat), plan 7 (a
+# conversation split with a page read imported, partial pairs held, a page read's header kept), mine 6, text_digest 6,
+# exact_blocks 6, main 5 (the held and split lines), holders 5, near 4 and page_blocks 2, less read_from_page 9 and
+# read_transcript 8.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 15100
-PLUGIN_BUDGET = 40953
+CORE_BUDGET = 15103
+PLUGIN_BUDGET = 41174
 
 
 def _lines(files):
