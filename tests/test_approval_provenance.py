@@ -724,8 +724,7 @@ def test_the_shells_other_ways_to_name_and_write_a_protected_folder_are_refused(
     "OUT=/tmp/a; echo x > \"$OUT\"; OUT=/tmp/b; cat {state}/c > \"$OUT\"",   # several values, none of them protected
     "cp -t /tmp/out {state}/config.json",                                    # -t names where it lands
     "dd if={state}/a of=/tmp/copy",
-    "perl -ne 'print if /x/' {state}/a",
-    "sed -n 's/a/b/p' {state}/a",
+    "sed -n 's/a/b/p' {state}/a",                                           # (Perl, which the guard cannot read, waits: 5.22.1)
     "N=$(wc -l < {state}/a); echo \"$N\" > /tmp/count",
 ])
 def test_reading_a_protected_folder_beside_a_write_elsewhere_is_not_refused(roots, command, tmp_path):
@@ -810,6 +809,8 @@ def test_a_protected_folder_reached_another_way_is_refused(spots, command, where
     "git log --oneline -3 && ls {state}",
 ])
 def test_reading_a_protected_folder_with_a_program_the_guard_knows_is_not_refused(spots, command, tmp_path):
+    (tmp_path / "tools").mkdir()  # a script that names a protected folder passes once the guard has read that it only reads (5.22.1)
+    (tmp_path / "tools" / "read.py").write_text("import sys\nprint(open(sys.argv[1], encoding='utf-8').read()[:40])\n", encoding="utf-8")
     assert guards.check("Bash", {"command": command.format(**spots)}, {}, cwd=str(tmp_path)) is None
 
 
@@ -850,7 +851,6 @@ def work(roots):
     "cd {work} && grep -o x s.jsonl | sort | uniq -c | sort -rn | head -5",          # filters after a cd into the folder
     "cd {work} && grep -c x s.jsonl; sleep 1; kill 123; echo done",                  # and commands that touch no file anywhere
     "P=$(pgrep -f probe); ls {work}; [ -n \"$P\" ] && kill $P",                      # a value the guard cannot read is no path
-    "/tmp/tools/tab.sh {work}/s.jsonl",                                               # a script run by its path, like one run by its shell
     "fold -w 100 {work}/s.jsonl | head -3",
     "M=/tmp/notes.md; ls {work}; sed -i '' '$d' \"$M\"",                             # a sed script is not a file
     "M={work}/memory/MEMORY.md; [ -f \"$M\" ] || printf '# Memory\\n' > \"$M\"; echo '- a note' >> \"$M\"",

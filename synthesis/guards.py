@@ -2943,6 +2943,8 @@ PATH_KEYS = ("path", "filepath", "file_path", "filename", "file", "fname", "fp",
              "outfile", "path_or_buf", "buf", "excel_writer", "uri", "save_path", "output_path")
 STARTS = ("system", "popen", "create_subprocess_exec", "create_subprocess_shell", "spawn")  # os's, asyncio's and pty's ways to start a command
 PLACED = ("args", "shell", "cwd", "env", "input", "executable", "stdin", "stdout", "stderr")  # what a started command is given that the reader places or judges
+BUILT_CALLS = ("vars", "globals", "locals", "__builtins__", "__getattribute__", "partial", "partialmethod", "methodcaller",
+               "attrgetter", "ctypes", "cffi", "CDLL", "cdll")  # a call the reader cannot follow to the function it reaches
 
 
 def _python_writes(source: str, names: list, roots: list | tuple = (), where: str = "", argv: list | tuple = (),
@@ -3049,6 +3051,10 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
     if any((isinstance(n, ast.Name) and n.id in ("exec", "eval", "compile")) or getattr(n, "id", getattr(n, "attr", "")) in ("run_path", "run_module")
            or (getattr(n, "id", getattr(n, "attr", "")) in ("__import__", "import_module") and id(n) not in spelt) for n in nodes):
         return None, True  # it runs code it builds, or imports a module it names at run time
+    if any(getattr(n, "id", getattr(n, "attr", "")) in BUILT_CALLS or (isinstance(n, ast.Call) and getattr(n.func, "id", "") in (
+            "getattr", "setattr", "delattr") and len(n.args) > 1 and (said(n.args[1]) is None or getattr(n.args[0], "id", "") in modules))
+           or (getattr(n, "attr", "") == "__dict__" and getattr(n.value, "id", "") in modules) for n in nodes):  # an object's own is read
+        return None, True  # a call it reaches by a name it builds, through a module's own table, handed on, or into C (5.22.1)
     for target, value in pairs:  # a function kept under another name is still that function
         if isinstance(target, ast.Name) and isinstance(value, ast.Attribute) and isinstance(value.value, ast.Name) and value.value.id in modules:
             direct[target.id] = (modules[value.value.id], value.attr)
@@ -4218,7 +4224,7 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
             if "\0" not in ran:  # a command it spells whole is judged as the shell guard judges one, wherever it may run
                 for text in [t for t in texts if "\0" not in t] or [""]:
                     line = f"{ran} <<'INPUT_OF_THE_COMMAND'\n{text}\nINPUT_OF_THE_COMMAND" if text else ran
-                    hit = hit or next(filter(None, (check_self_grant(line, f, config) for f in known)), False)  # the refusal itself
+                    hit = hit or next(filter(None, (check_self_grant(line, f, config, hold=False) for f in known)), False)  # the refusal itself
                 hit = hit or (bool(dark) and any(map(named, dark))) or (stored and any(USED.search(text) for text in _resolved(ran)))
                 if not dark and not unplaced:  # everything it is given was placed: nothing is left for the older rule,
                     continue                   # which holds a command handed anything built from a protected path
@@ -4286,13 +4292,205 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
     return hit or (wrote and loose), wrote
 
 
-def check_self_grant(command: str, cwd: str, config: dict | None = None) -> str | None:
+# --- a program the guard cannot read, near the records approvals rest on (5.22.1) ----------------------------------
+# A review (2026-11-14) wrote the principal's prompt into a transcript and the grant into the state with one line of
+# Perl's File::Copy: interpreters were judged by a list of the calls that write, and a list of the ways to write never
+# ends. So an interpreter, a shell running a script file, or a program run by its path that names a protected folder
+# in any spelling passes only when its program is proven to read only: Python whose writes the reader follows, an awk
+# or sed program that writes no file and runs no command, a shell's script on the line (each command is judged).
+# Anything else waits for the principal's code for exactly that command, as a send does.
+UNREAD = re.compile(r"(?:pypy[\d.]*|node(?:js)?|bun|deno|tsx|ts-node|perl[\d.]*|ruby[\d.]*|irb|jruby|php[\d.]*|lua(?:jit)?[\d.]*"
+                    r"|tclsh[\d.]*|wish[\d.]*|expect|osascript|Rscript|julia|swift|groovy|scala|elixir|pwsh|jshell|java|fish|csh|tcsh)$")
+EDITORS = frozenset({"ed", "ex", "vi", "vim", "nvim", "emacs", "sqlite3"})  # their scripts come on their input or in their words
+AWK_SAFE = re.compile(r"-[Fv].*|--(?:field-separator|assign)(?:=.*)?|-[bcNOPrsSt]+|--(?:sandbox|posix|traditional|re-interval)|--?")
+CANDIDATE = re.compile(r"\"([^\"\n]{1,400})\"|'([^'\n]{1,400})'|(?<![\w$])((?:~|\.{0,2}/)[^\s'\"`;|&()<>]{0,400})")  # a path in code
+SPELLINGS: dict = {}  # (home, roots, anchors): the pattern of every way a program's text spells a protected folder
+
+
+class Unproven(str):
+    """Why one reading of a command waits for the principal: a program the guard cannot prove only reads names a
+    protected folder. Any reading that is refused outright is refused first."""
+
+
+def _code_of(path: str) -> str:
+    """The text of a script file a command runs (its first SCRIPT_LIMIT bytes), or '' for one that cannot be read
+    or is no text."""
+    try:
+        with open(path, "rb") as handle:
+            data = handle.read(SCRIPT_LIMIT)
+    except OSError:
+        return ""
+    return "" if b"\0" in data[:8192] else data.decode("utf-8", "replace")
+
+
+def _sed_scripts(words: list) -> list | None:
+    """The scripts a sed command runs (each -e, else its first operand), or None for one read from a file (-f)."""
+    scripts, i, given = [], 1, False
+    while i < len(words):
+        word, i = words[i], i + 1
+        key, eq, value = word.partition("=")
+        if key in ("--file", "-f") or re.fullmatch(r"-[^-e]*f.*", word):
+            return None
+        if key in ("--expression", "-e") or re.match(r"-[^-e]*e", word):
+            short = word[word.index("e") + 1:] if not word.startswith("--") else value
+            scripts, given, i = scripts + [short or "".join(words[i:i + 1])], True, i + (not short)
+        elif word in ("-l", "--line-length"):
+            i += 1  # its value is a number
+        elif not word.startswith("-") and not given:
+            scripts, given = scripts + [word], True
+    return scripts
+
+
+def _sed_writes(script: str) -> bool:
+    """Whether a sed script may write a file or run a command: `w`, `W` or `e`, or an `s` whose flags hold `w` or `e`.
+    Addresses, the parts of `s` and `y`, text, labels and file names are passed over (`/user/p` writes nothing)."""
+    i = 0
+    while i < len(script):
+        c = script[i]
+        if c in "/\\":  # an address: /re/ or \cREc
+            mark, i = (script[i + 1:i + 2] or "/", i + 2) if c == "\\" else ("/", i + 1)
+            while i < len(script) and script[i] != mark:
+                i += 2 if script[i] == "\\" else 1
+        elif c in "sy" and i + 1 < len(script):
+            mark, i, seen = script[i + 1], i + 2, 0
+            while i < len(script) and seen < 2:
+                seen, i = seen + (script[i] == mark), i + (2 if script[i] == "\\" else 1)
+            flags = re.match(r"[^;\n}]*", script[i:])[0]
+            if c == "s" and re.search(r"[we]", flags):
+                return True
+            i += len(flags) - 1
+        elif c in "wWe":
+            return True
+        elif c in "aicrR:btT":  # text, a file read, a label: the rest of the command
+            i = min([j for j in (script.find("\n", i), script.find(";", i) if c in ":btT" else -1) if j >= 0] or [len(script)])
+        i += 1
+    return False
+
+
+def _unread(words: list, where: str, written: set, line: str) -> tuple:
+    """(the program a command runs that the guard cannot prove only reads, the text of the script file it runs), or
+    ("", "") for one it can read or that runs no program text: a shell's script on the line or its input, an awk or sed
+    program that writes no file and runs no command, a reader or a file utility. Python is named whatever its program:
+    the reader proves it, or not, where it is read. A script file the same line writes is read as the line."""
+    head = os.path.basename(words[0])
+
+    def code(name: str) -> str:
+        path = os.path.realpath(os.path.join(where, os.path.expanduser(name)))
+        return "" if not name else line if path in written else _code_of(path)
+
+    def files() -> str:  # the program files awk and sed are given with -f
+        return "\n".join(code(w.split("=", 1)[1] if w.startswith("--") else after) for w, after in zip(words, words[1:] + [""])
+                         if w in ("-f", "--file") or w.startswith("--file="))
+    kind, at, name = _program(words) if SCRIPT.match(head) or UNREAD.match(head) or head in SHELLS or head in (".", "source") else ("", 0, "")
+    if SCRIPT.match(head) and head.startswith("python"):
+        module, operands = words[at:at + 1] == ["-m"], [w for w in words[at + 2:] if w[:1] != "-"]  # json.tool's second is its output
+        return ("", "") if module and (name.split(".")[0] == "synthesis" or (name == "json.tool" and len(operands) <= 1)) else (
+            head, code(name) if kind == "file" and not module else "")
+    if head in SHELLS or head in (".", "source"):
+        inline, reads, _ = _shell_input(words)
+        return ("", "") if inline is not None or reads or (head in SHELLS and _no_exec(words[1:at])) else (head, code(name))
+    if head in AWKS:
+        safe = all(AWK_SAFE.fullmatch(w) for w in words[1:] if w[:1] == "-") and not re.search(r"@(?:load|include)", " ".join(words))
+        return ("", "") if safe else (head, files())
+    if head in ("sed", "gsed"):
+        scripts = _sed_scripts(words)
+        return ("", "") if scripts is not None and not any(map(_sed_writes, scripts)) else (head, files())
+    if UNREAD.match(head) or head in EDITORS:
+        return head, code(name) if kind == "file" else ""
+    if "/" in words[0] and not (head in READERS or head in WRITERS or head in OWN_RULES):
+        return head, code(words[0])  # a program run by its path: a script, or a program the guard cannot read
+    return "", ""
+
+
+PROOF_LIMIT = 16 * 1024  # a script file the Python reader proves inside the hook's time (about 5 ms a kilobyte, 2026-11-14)
+
+
+def _proven(code: str, words: list, where: str, names: list, raw: list, env: dict, config: dict | None) -> bool:
+    """A Python script file short enough to read in the hook's time whose every write the reader follows to a place
+    outside the protected folders. A longer one, or one it cannot follow, waits; none is refused on this reading."""
+    if not code or len(code) > PROOF_LIMIT:
+        return False
+    try:
+        return _python_writes(code, names, [os.path.realpath(r) for r in raw], where, words[_program(words)[1]:], dict(env, PWD=where), config)[0] is False
+    except RecursionError:
+        return False
+
+
+def _spells(texts: list, words: list, where: str, env: dict, raw: list, linked: list) -> str:
+    """The protected folder a program names in any spelling, else '': in its words, its program text or the script it
+    runs; spelled out in any case, by its path below the home folder (`Path.home() / ".claude" / "projects"`,
+    `$ENV{HOME}/.claude/projects`, `~/.claude/projects`), after a variable that holds it or a folder above it, or as
+    a path that leads into it (or, handed as an argument, to a folder between it and the home folder or such a
+    variable), through `..`, a link made beforehand or one the same command makes."""
+    home = os.path.realpath(os.path.expanduser("~"))
+    roots = sorted({form for r in raw for form in (os.path.normpath(r), os.path.realpath(r))})
+    low_roots = [paths.spelled(r).rstrip(os.sep) for r in roots]
+    anchors = tuple(sorted((name, os.path.normpath(os.path.expanduser(value))) for name, value in env.items() if name not in (
+        "HOME", "PWD", "OLDPWD", "_") and isinstance(value, str) and value[:1] in "/~" and len(value) > 1 and ":" not in value
+        and any(v == r or r.startswith(v + os.sep) or v.startswith(r + os.sep) for r in low_roots
+                for v in [paths.spelled(os.path.normpath(os.path.expanduser(value))).rstrip(os.sep)])))
+    key = (home, tuple(roots), anchors)
+    if key not in SPELLINGS:
+        def steps(parts: list) -> str:  # a path's parts, apart by anything but a letter or a digit: "/", '" / "', '", "'
+            return r"[^\w]{0,10}".join(map(re.escape, parts)) + r"(?![\w-])"
+        found = []
+        for root in roots:
+            below = os.path.relpath(root, home).split(os.sep) if paths.inside(root, home) and root != home else []
+            found += [(re.escape(root), root)] + [(r"(?<![\w.-])" + steps(below), root)] * bool(below) + [
+                (rf"\b{re.escape(name)}\b" + (r"[^\w]{0,12}" + steps(os.path.relpath(root, value).split(os.sep)) if root != value else ""), root)
+                for name, value in anchors if paths.inside(root, value)] + [(rf"\b{re.escape(name)}\b", root) for name, value in anchors
+                                                                            if paths.inside(value, root) and value != root]
+        gates = set()
+        for root in roots:  # the folders above each one, up to the home folder or a variable's folder
+            at = os.path.dirname(root)
+            while at != os.path.dirname(at) and (paths.inside(at, home) or any(paths.inside(at, v) for _, v in anchors)):
+                gates, at = gates | {paths.spelled(at)}, os.path.dirname(at)
+        SPELLINGS[key] = (re.compile("|".join(f"({p})" for p, _ in found), re.I), [r for _, r in found], gates,
+                          [paths.spelled(r) for r in roots])
+    pattern, named, gates, spelled = SPELLINGS[key]
+    text = "\n".join(t for t in texts if t)
+    hit = pattern.search(text)
+    if hit:
+        return named[hit.lastindex - 1]
+    picks = [(part, True) for w in words[1:] for part in {w, w.split("=", 1)[-1], "".join(re.findall(r"^-[^~/]*([~/].*)", w))} if part]
+    for pick, handed in (picks + [(a or b or c, False) for a, b, c in CANDIDATE.findall(text)][:100])[:200]:
+        if "/" in pick or pick[:1] == "~" or (handed and os.path.lexists(os.path.join(where, pick))):  # a bare name: a file that is there
+            full = os.path.join(where, os.path.expanduser(pick))
+            forms = {os.path.normpath(full), os.path.realpath(full)}
+            for form in forms | {aim + f[len(link):] for f in forms for link, aim in linked if paths.inside(f, link)}:
+                low = paths.spelled(form)
+                if (handed and low in gates) or any(low == r or low.startswith(r + os.sep) for r in spelled):
+                    return form
+    return ""
+
+
+def check_self_grant(command: str, cwd: str, config: dict | None = None, session: dict | None = None, hold: bool = True) -> str | None:
+    """The reason a shell command is refused, or waits for the principal's code because a program the guard cannot prove
+    only reads names a protected folder (`hold`: file the code and spend it; else the reason, as a refusal)."""
     home = os.path.expanduser("~")
     if re.search(r"(?:^|[\s;&|(])(?:export\s+)?HOME=", command):  # a command that gives HOME its own value: `~` is that value too
         readings = _resolved(re.sub(r"(?<![\w$~./-])~(?=/|\s|$)", "$HOME", command))
     else:
         readings = _resolved(command.replace("${HOME}", home).replace("$HOME", home))
-    return next(filter(None, (_self_grant(command, text, cwd, config) for text in readings)), None)
+    waits = None
+    for text in readings:
+        reason = _self_grant(command, text, cwd, config)
+        if reason and not isinstance(reason, Unproven):
+            return reason
+        waits = waits or reason
+    if not waits:
+        return None
+    if not hold:
+        return f"Refused: this command {waits}. Approvals come only from the principal's own prompt; show them the command."
+    subject = {"command": command, "runs_in": os.path.realpath(cwd)}
+    if approvals.consume("protected-read", subject, session):
+        return None
+    code = approvals.request("protected-read", subject, f"a program near the approval records: {command[:140]}")
+    return (f"This command {waits}. The protected folders hold what every approval rests on (the synthesis state, its "
+            "board, the session archive, a harness's transcripts, the approved commit lines), and a program the guard cannot "
+            "prove only reads may write there. If it only reads, show the principal this exact command and ask them to type "
+            f"{approvals.how(code)}; then run the identical command again from {cwd}. To read with no code, use cat, head, "
+            "tail, grep or jq, or a Python program whose writes the guard can read.")
 
 
 def _self_grant(command: str, text: str, cwd: str, config: dict | None) -> str | None:
@@ -4316,7 +4514,7 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None) -> str |
         return [top] + [r for r in held if paths.inside(r, os.path.realpath(top))] if where.endswith(DEEP) else [where]
     asked = [(_led(os.path.expanduser(os.path.expandvars(t)), spot), spot) for t, w in redirects for spot in spots(w)]  # each write's target, and where it runs
     asked += [(t.strip("'\""), cwd) for t in re.findall(r">{1,2}\|?\s*([^\s;&|<>()]+)", text)] if names and not readable else []
-    why, wheres, handed, links, made, linked = "", {cwd}, [], [], [], []
+    why, wheres, handed, links, made, linked, waits = "", {cwd}, [], [], [], [], None
     if codes and re.search(r"(?i)\b(?:%s)\b" % "|".join(map(re.escape, codes)), command):
         why = "carries a pending approval code (to see pending requests, run `synthesis approvals`)"
     feeds, env = [], dict(os.environ)
@@ -4324,6 +4522,8 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None) -> str |
     for m in ASSIGNED.finditer(_own_text(text)):  # the value the command gives a variable; given two, the one that names a protected path
         if not m[2] and (env.get(m[1]) is None or m[1] in os.environ or any(n in m[3] for n in names)):
             env[m[1]] = m[3].strip("'\"")
+    written = {os.path.realpath(os.path.join(w, os.path.expanduser(t))) for t, w in redirects} | {  # a script the line writes
+        os.path.realpath(os.path.join(where, os.path.expanduser(t))) for words, where in found for t in _landing(words)}
     for (words, where), fed in [((words, spot), fed) for (words, where), fed in zip(found, feeds + [""] * len(found))
                                 for spot in spots(where)]:  # each command, where it runs, with what it reads on its own stdin
         head, own = os.path.basename(words[0]), " ".join(words[1:])
@@ -4353,7 +4553,12 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None) -> str |
             if not within or word[:1] in ("~", "/") or word == HANDED or os.path.lexists(led):  # inside the folder, a file that is there
                 handed.append((head, word, led))
         script = (fed or text) if _program(words)[0] == "stdin" else own  # read from stdin: its own heredoc, else whatever the line pipes in
-        if SCRIPT.match(head) and re.search(r"\bsynthesis\b", script) and SELF_GRANT_CALLS.search(script):
+        label, code = _unread(words, where, written, text)  # a program the guard may not be able to read, and its script file
+        named = (_spells([own, fed, code, script], words, where, env, raw, linked) or (where if any(  # standing where no session works
+            paths.inside(os.path.realpath(where), os.path.realpath(str(r))) for r in (paths.state(), paths.board(), paths.sessions())) else "")
+                 or ("the files xargs hands it" if HANDED in words and names else "")) if label else ""
+        if SCRIPT.match(head) and re.search(r"\bsynthesis\b", script + code) and (SELF_GRANT_CALLS.search(script) or re.search(
+                r"\b(?:open_window|grant_from_prompt|_window_file)\b", code)):  # a script file may spend a code, never make one
             why = why or "runs synthesis's approval or send-window code, which only the guard and the principal's prompt use"
         source, argv = _python_source(words, fed) if head.startswith("python") else ("", [])
         # A Python program given inline or on stdin is judged by its own text: what its code writes. A protected
@@ -4376,6 +4581,8 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None) -> str |
                           "runs a script that writes where the synthesis state, its board or a harness's transcripts live, or that "
                           "writes while such a path reaches it through an argument, the environment or the folder it runs in "
                           "(spell each file's path inside the program, or run the script alone)")
+        if named and not waits and (not head.startswith("python") or (hit is None and not _proven(code, words, where, names, raw, env, config))):
+            waits = Unproven(f"runs `{label}`, a program whose writes this guard cannot read, and names {named}")
         sub, acts = _git(words, where)  # git acts where -C sends it; sent somewhere this cannot read, it is not shown to act here
         reads = sub is None or sub in GIT_READS or (sub == "remote" and words[words.index(sub) + 1:words.index(sub) + 2] in (
             [], ["-v"], ["get-url"], ["show"])) or any(w.startswith(("$", "`")) for w in words[1:words.index(sub)])
@@ -4417,7 +4624,7 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None) -> str |
                "guard knows to only read what it is given (read the file with cat, head, tail, grep or jq and pipe that in, or "
                "copy it out with cp and work on the copy)")
     return (f"Refused: this command {why}. Approvals come only from the principal's own prompt; show them "
-            "what needs approving and ask them to answer in their own message.") if why else None
+            "what needs approving and ask them to answer in their own message.") if why else waits
 
 
 # --- sends by computer use (R3.1) ---------------------------------------------------------------
@@ -4810,7 +5017,7 @@ def check_outgoing(command: str, config: dict, cwd: str, session: dict | None = 
     any body file), not file names or URLs (2026-10-13: a scratch file's name tripped a rule)."""
     import hashlib
     from synthesis import sends
-    posts, window, writes = [], None, []
+    posts, windows, writes = [], [], []
     try:  # files this command writes, so a body file it rewrites before posting is not read stale (2026-10-13)
         _commands(command, cwd, writes=writes)
     except (Unreadable, StopIteration, IndexError):
@@ -4820,19 +5027,22 @@ def check_outgoing(command: str, config: dict, cwd: str, session: dict | None = 
         os.path.realpath(os.path.join(where, t)) for words, where in commands if os.path.basename(words[0]) in COPIERS | {"tee"}
         for t in (words[-1:] if os.path.basename(words[0]) in COPIERS else words[1:])}
     for words, where in commands:
-        window = window or sends.window_asked(words)
+        window = sends.window_asked(words)
+        windows += [window] if window and window not in windows else []  # every request in the line, each with its own code
         chan = sends.command_send(words, where, config)
         if chan:
             text, problem = sends.message_text(words, where, written)
             if problem:
                 return f"This command posts to {chan}, but {problem}. Put the text in the command or a readable file."
             posts.append((chan, text, where))
-    if window:  # the command spends the grant itself (`synthesis sends open` refuses without one)
+    for window in windows:  # each command spends its own grant (`synthesis sends open` refuses without one)
         try:  # never ask the principal to approve a window the command would refuse
             sends.check_window(window["hours"], window["channels"], window["sends"])
         except ValueError as exc:
             return f"This send window can't open: {exc}."
-        return None if approvals.held("send-window", window) else sends.window_refusal(window)
+    waiting = [sends.window_refusal(w) for w in windows if not approvals.held("send-window", w)]
+    if waiting:
+        return " ".join(waiting)
     if not posts:
         return None
     text, chans = "\n\n".join(t for _, t, _ in posts), sorted({c for c, _, _ in posts})
@@ -4892,7 +5102,7 @@ def check(tool: str, tool_input: dict, config: dict, cwd: str | None = None, ses
         cwd = os.path.normpath(os.path.join(cwd, os.path.expanduser(str(tool_input["cwd"]))))
     if shell_tool(tool):
         command = shell_command(tool_input)
-        return (check_destructive(command, config, cwd) or check_self_grant(command, cwd, config)  # a recursive delete is named as one
+        return (check_destructive(command, config, cwd) or check_self_grant(command, cwd, config, session)  # a recursive delete is named as one
                 or check_pr_gate(command, config, cwd, session)
                 or check_deploy(command, config, cwd, session) or check_tunnel(command, config, cwd, session)
                 or check_outgoing(command, config, cwd, session)

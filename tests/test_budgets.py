@@ -1127,10 +1127,30 @@ ROOT = Path(__file__).resolve().parents[1]
 # commit takes the release commit's identity and time, unsigned, names it, and is made once for each head).
 # context_doctor.py 6: repo_state 3 and cited_entries 3 (without the runtime's claims log or session archive, each says
 # what it cannot tell). local_messaging.py 4: _close 4 (without the runtime's approvals nothing is closed, in one line).
+# 5.22.1 (2026-11-14): core 209 more and plugin 209, after a review wrote the principal's prompt into a transcript and
+# the grant into the state with one line of Perl's File::Copy, which the guard's list of writing calls did not know, and
+# opened a send window from a faked terminal. guards.py 210: the section's comment 7 and its constants 8 (UNREAD 2, the
+# interpreters the guard does not read; EDITORS 1; AWK_SAFE 1, the awk options that write nothing; CANDIDATE 1, a path
+# in code; SPELLINGS 1, each folder's spellings compiled once; 2 blank lines), Unproven 5, _code_of 11 (a script file's
+# text, never a program's bytes), _sed_scripts 18 (each -e, else the first operand; none read from -f), _sed_writes 26
+# (w, W, e and an s flag that writes or runs, past addresses, the parts of s and y, text, labels and file names),
+# _unread 35 (which programs run text the guard cannot read, and the script file each runs: Python left to its reader,
+# synthesis's own module and json.tool given one file passed, a shell's script on the line passed, awk and sed by their
+# options and scripts, an interpreter, an editor, a program run by its path), PROOF_LIMIT 3 and _proven 11 (a Python script file of 16 KB or less, proven by the reader and never
+# refused on that reading), _spells 48 (a folder named in any spelling: its path in any case, its path below the home
+# folder however joined, a variable that holds it, a folder above it or a place inside it, a path through `..` or a
+# link, a folder above it handed whole), check_self_grant 20 more (every reading's refusal first, then the hold: the
+# code filed and spent for exactly that command and folder, or the reason as a refusal for a command a Python program
+# starts), _self_grant 9 (the files the line writes 2, the program, its script and what it names, standing in the state,
+# the board or the archive included, 4, a script file that makes a grant or opens a window 1, the hold's reason 2),
+# BUILT_CALLS 2 and its check in _python_writes 4 (a call reached by a name the program builds, through a module's own
+# table or `__dict__`, handed on, or into C; an object's own `__dict__` is read as before), and check_outgoing 3
+# (every window request in a line collected 1, a code asked for each that waits 2). cli.py 1 fewer: the own-terminal
+# shortcut's condition is gone and its comment says why in as many lines.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 15100
-PLUGIN_BUDGET = 40342
+CORE_BUDGET = 15309
+PLUGIN_BUDGET = 40551
 
 
 def _lines(files):

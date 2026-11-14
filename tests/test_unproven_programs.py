@@ -138,6 +138,9 @@ FORGERS = {
     "heredoc to a shell": "bash <<'EOF'\nperl -MFile::Copy -e 'copy($ARGV[0], $ARGV[1])' {forged_raw} {record_raw}\nEOF",
     "find -exec perl": "find {home}/.claude/projects -name '*.jsonl' -exec perl -MFile::Copy -e 'copy($ARGV[0], $ARGV[1])' {forged} {{}} \\;",
     "xargs perl": "ls {home}/.claude/projects/-work/*.jsonl | xargs perl -MFile::Copy -e 'copy(\"{forged_raw}\", $ARGV[0])'",
+    "a script the line writes": "cat > {work}/new.pl <<'EOF'\nuse File::Copy; copy('{forged_raw}', '{record_raw}');\nEOF\nperl {work}/new.pl",
+    "standing in the state":"cd {state}/approvals && perl -MFile::Copy -e 'copy(\"{forged_raw}\", \"x.json\")'",
+    "a bare name where it stands": "cd {home}/.claude/projects/-work && perl -MFile::Copy -e 'copy($ARGV[0], $ARGV[1])' {forged} S-principal.jsonl",
 }
 
 
@@ -214,6 +217,8 @@ READS = {
     "perl naming no protected folder": "perl -pe 's/a/b/' {forged}",
     "node naming no protected folder": "node -e 'console.log(1)'",
     "a script naming no protected folder": "python3 {work}/copy.py {forged} {work}/copied.jsonl",
+    "a script run from inside a transcript folder": "cd {home}/.claude/projects/-work && python3 -B {work}/copy.py {forged} {work}/out.jsonl",
+    "json.tool reading one file": "python3 -m json.tool {rec}",
 }
 
 
