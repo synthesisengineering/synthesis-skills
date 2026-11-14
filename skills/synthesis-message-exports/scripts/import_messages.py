@@ -29,7 +29,7 @@ import time
 import zipfile
 from pathlib import PurePosixPath
 
-FORMAT_LINE = "<!-- synthesis-message-exports: transcript, format 1 -->"
+FORMAT_LINE = "<!-- synthesis-message-exports: transcript, format 2 -->"  # 2: keys no longer hold a sender or a folder
 SECTIONS = ("inbox", "archived_threads", "filtered_threads", "message_requests", "e2ee_cutover")
 PARENTS = ("your_activity_across_facebook", "your_facebook_activity")  # the messages folder's parent from 2024, from 2025
 MEDIA_FOLDERS = ("media", "photos", "videos", "audio", "gifs", "files", "stickers_used")
@@ -441,15 +441,17 @@ def secure_conversation(source, rel, extra):
 
 
 def keyed(conversation):
-    """The conversation's messages in time order, each keyed by its time and a digest of what it says, so a later
-    export names each message the same way whatever it gained since (a reaction). A message repeated in one file
-    keeps each copy; one repeated across files is one message. Returns how many repeats were dropped."""
+    """The conversation's messages in time order, each keyed by its time and a digest of what it says: its text, link,
+    call and unsent facts and each attachment's file name. Never the sender's name or the folders an attachment sits
+    in, which differ between exports (an account renamed, a thread archived, a new layout), nor what a message gains
+    since (a reaction). A message repeated in one file keeps each copy; one repeated across files is one message.
+    Returns how many repeats were dropped."""
     found, taken, repeated = [], set(), 0
     for page in sorted(conversation["pages"], key=lambda page: min((m["ts"] for m in page), default=0)):
         seen = {}
         for message in page:
-            said = [message["sender"], message["text"], message["attachments"], message["share"], message["call"],
-                    message["unsent"]]
+            said = [message["text"], [PurePosixPath(uri).name for _, uri in message["attachments"]], message["share"],
+                    message["call"], message["unsent"]]
             base = f"{message['ts']}-{hashlib.sha256(json.dumps(said, ensure_ascii=False).encode('utf-8')).hexdigest()[:10]}"
             seen[base] = seen.get(base, 0) + 1
             message["key"] = base if seen[base] == 1 else f"{base}-{seen[base] - 1}"
@@ -575,6 +577,8 @@ def parse_transcript(text, cid):
     line inside an untrusted fence is never read as structure; anything this importer would not have written makes
     the file Unreadable, so an edited transcript is left alone."""
     lines = text.split("\n")
+    if lines[:1] != [FORMAT_LINE] and lines[0].startswith(FORMAT_LINE.split(", format")[0]):
+        raise Unreadable("an earlier format of this importer wrote it, keyed otherwise: import into another folder")
     if lines[:1] != [FORMAT_LINE] or "---" not in lines:
         raise Unreadable("a file of that name was not written by this importer")
     if len(lines) < 3 or not lines[2].startswith(f"# Conversation: {cid} ("):
