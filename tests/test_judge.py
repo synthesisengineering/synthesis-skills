@@ -353,8 +353,10 @@ def test_the_shortcut_policy_turns_on_whose_the_held_back_action_is():
 
 def test_a_list_hit_the_judge_reads_as_benign_sends_nothing_back(fake):
     reply = "The cache stays off for now because the vendor's API returns stale rows; their fix ships Tuesday under ticket 4411."
-    fake.local = _local(verdict="pass", rule="real_boundary", span="for now because the vendor's API returns stale rows",
-                        reason="names the blocker, its owner and what ends it")
+    first = _local(verdict="pass", rule="real_boundary", span="for now because the vendor's API returns stale rows",
+                   reason="names the blocker, its owner and what ends it")
+    second = _local(verdict="pass", rule="none", span="", reason="it asks nothing of the principal")
+    fake.local = lambda body: (second if "Asks the agent could answer itself" in body["messages"][0]["content"] else first)(body)
     assert reply_check.check({"last_assistant_message": reply}, _config(fake)) is None
     assert len(fake.calls) == 2  # the first reading and the second question both passed it
 

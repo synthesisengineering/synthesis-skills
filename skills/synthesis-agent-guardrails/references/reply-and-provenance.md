@@ -64,8 +64,13 @@ before it goes back (M38; the principal's rulings of 2026-11-14). The list, the 
   the agent's. Blind labels of 70 recorded hits found 7 real shortcuts and 3 unsure; 43 of the 49 hits of `your call`
   were legitimate, 12 of them a phone call. The verdict is hold or pass, a rule, the exact words that decide it, a short
   reason, and whether the judge is sure.
-- On this check the judge decides, since a reply sent back costs one turn: a hit it is sure is benign sends nothing
-  back, a pass it is not sure of clears nothing, and a hit it holds is sent back once with the words it read and why.
+- On this check the judge decides, since a reply sent back costs one turn: a hit it holds is sent back once with the
+  words it read and why, and a pass it is not sure of clears nothing. A hit the first reading is sure is benign is
+  asked a second, narrow question (`synthesis/policies/shortcut-asks.md`): does the reply ask leave for, wait on or
+  offer back a step the agent could take itself, one that sends, spends, shares and changes nothing others see? It
+  clears only when both pass surely (two prompts, the principal's decision 2(c)); the labeled hits the first reading
+  wrongly cleared were all such asks, set among choices that really were the principal's. A second question with no
+  answer, from a slow model or the hook's own time running out, clears nothing.
 - A judge that cannot answer (no model installed, the server down, past `deadline_seconds`, an answer that is not a
   strict verdict, words cited that are not in the reply) leaves the list to decide exactly as before. A judge section
   of another shape is said in the reply sent back, and the list decides until it is fixed.

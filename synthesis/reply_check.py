@@ -276,6 +276,7 @@ def shortcut_hits(reply: str, extra: list[str]) -> list[str]:
 FENCED = re.compile(r"(?:(`{3,})|^[ \t]*(~{3,})).*?(?:\1|\2)", re.S | re.M)
 JUDGED = 6000  # characters of a reply the judge reads: its prompt stays inside the model's window and the deadline
 ROOM = 4.0  # seconds from the check's start by which the judge has answered: the Stop hook has 5, Python's start before it
+WHERE, SECOND = "the final reply an AI agent gives its principal at the end of a turn", "shortcut-asks"
 
 
 def _judged(reply: str, hits: list) -> str:
@@ -287,6 +288,24 @@ def _judged(reply: str, hits: list) -> str:
     parts = re.split(r"\n\s*\n", text)
     kept = [p for at, p in enumerate(parts) if at >= len(parts) - 3 or any(h in p.lower() for h in hits)]
     return "\n\n[...]\n\n".join(kept)[-JUDGED:]
+
+
+def shortcut_verdict(reply: str, hits: list, config: dict, until: float | None = None):
+    """The judge's last word on a reply the list flagged, or None where it gave none. A sure pass of the first reading
+    clears the hit only when a second, narrow question (does the reply ask leave for, wait on or offer back a step the
+    agent could take itself?) passes it surely too: blind labels of the recorded hits found the shortcuts a first
+    reading missed were such asks among choices that were the principal's. A second question with no answer clears
+    nothing."""
+    from dataclasses import replace
+    from synthesis import judge
+    content, context = _judged(reply, hits), {"where": WHERE, "list_hits": hits}
+    first = judge.ask("shortcut-phrasing", judge.load_policy("shortcut-phrasing"), content, context, config, until)
+    if first is None or first.verdict == "hold" or not first.sure:
+        return first
+    second = judge.ask(SECOND, judge.load_policy(SECOND), content, context, config, until)
+    if second is None or second.verdict == "pass" and not second.sure:
+        return replace(first, sure=False)
+    return first if second.verdict == "pass" else replace(second, notice=first.notice or second.notice)
 
 
 def shortcut_problem(reply: str, config: dict, until: float | None = None) -> str:
@@ -306,9 +325,7 @@ def shortcut_problem(reply: str, config: dict, until: float | None = None) -> st
     except judge.ConfigError as exc:
         return " ".join(filter(None, [listed, f"Also, {exc}; until it is fixed no judge reads replies and the list alone "
                                                 "decides: tell the principal."]))
-    found = judge.ask("shortcut-phrasing", judge.load_policy("shortcut-phrasing"), _judged(reply, hits),
-                      {"where": "the final reply an AI agent gives its principal at the end of a turn", "list_hits": hits},
-                      config, until) if on else None
+    found = shortcut_verdict(reply, hits, config, until) if on else None
     if found is None:
         return listed
     told = f"Tell the principal in this reply: {found.notice}." if found.notice else ""

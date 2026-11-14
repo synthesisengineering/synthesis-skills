@@ -1127,7 +1127,7 @@ ROOT = Path(__file__).resolve().parents[1]
 # commit takes the release commit's identity and time, unsigned, names it, and is made once for each head).
 # context_doctor.py 6: repo_state 3 and cited_entries 3 (without the runtime's claims log or session archive, each says
 # what it cannot tell). local_messaging.py 4: _close 4 (without the runtime's approvals nothing is closed, in one line).
-# The judge (M38, plan item 21.3; the principal's rulings of 2026-11-14) adds 411 to the core and 689 to the plugin: a
+# The judge (M38, plan item 21.3; the principal's rulings of 2026-11-14) adds 428 to the core and 709 to the plugin: a
 # model that reads each reply the shortcut list flags before it goes back, after 44 of 54 replies revised after a
 # shortcut sendback were found at least 85% the same with only the phrase gone, and blind labels of 70 recorded list
 # hits found 7 real shortcuts. judge.py 367: the docstring 14; the imports and their blank lines 19; the constants 31
@@ -1145,24 +1145,27 @@ ROOT = Path(__file__).resolve().parents[1]
 # (fixed words, counts and digests, kept to about 4 MB); Policy 11 with its digest; Verdict 10; parse_policy 10;
 # _spend 9; _url 8 (loopback for the local judge, https for the cloud); _locked 6; _recall 6; _remember 6 (the newest
 # 2,000 verdicts); _prompt 5 (the block whose markers carry the content's digest); ConfigError, load_policy, _sha,
-# _plain and _folder 2 each; and 44 blank lines between them. reply_check.py 44: shortcut_problem 28 (only a reply the
+# _plain and _folder 2 each; and 44 blank lines between them. reply_check.py 61: shortcut_problem 26 (only a reply the
 # list flags is asked about; a sure pass clears the hit, a pass the judge is not sure of clears nothing, a hold is sent
-# back with what it read, the list decides when no judge answers, a section that cannot be used is said), _judged 9
-# (fenced code set aside, a long reply cut to the paragraphs that hold a hit), FENCED, JUDGED and ROOM 3 (the judge's
-# room inside the Stop hook), blank lines 6, and 2 fewer in check(), which now runs the shortcut check last so the
+# back with what it read, the list decides when no judge answers, a section that cannot be used is said),
+# shortcut_verdict 16 (a hit the first reading clears is asked a second, narrow question, and cleared only when both
+# pass surely; a second question with no answer clears nothing), _judged 9 (fenced code set aside, a long reply cut to
+# the paragraphs that hold a hit and its last three), FENCED, JUDGED and ROOM 3 (the judge's room inside the Stop hook),
+# WHERE and SECOND 1, blank lines 8, and 2 fewer in check(), which now runs the shortcut check last so the
 # judge's time never pushes the hook past its limit. install.py 0: the runtime's hash covers the judge's policies, in
-# the line that hashed its modules. The plugin's 278 more are judge_replay.py, the replay each model and policy runs on
+# the line that hashed its modules. The plugin's 281 more are judge_replay.py, the replay each model and policy runs on
 # recorded list hits before it ships: the shebang and docstring 26; imports, the runtime's path and its one line when
 # the runtime is missing 21; the hook's two marks 2; _text 4; the three harnesses' readers 62 (Claude Code's 29,
 # each entry once across records; Codex's 15; Muse's 17; their table 1); turn_ends 14; split 8 (each label's larger half
 # to dev, with the seed); labeled 15 (each labeled list hit found by its record's path and line, judged only while its
-# digest matches); _ollama 5; percentile 3; main 70 (the records and their turn ends, the list hits, each model's
-# verdicts, latency, the cleared items' file, the unload); report 20 (the matrix by label for each half, and the gate);
-# the entry point 2; and 26 blank lines between them.
+# digest matches); _ollama 5; percentile 3; main 71 (the records and their turn ends, the list hits, each model's
+# verdicts asked as the hook asks them, the first reading alone, latency, the cleared items' file, the unload); report
+# 22 (the matrix by label for each half, the first question alone, and the gate); the entry point 2; and 26 blank
+# lines between them.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 15511
-PLUGIN_BUDGET = 41031
+CORE_BUDGET = 15528
+PLUGIN_BUDGET = 41051
 
 
 def _lines(files):
