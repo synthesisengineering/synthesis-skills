@@ -19,8 +19,8 @@ missing, a manifest with another name, version or dependency, a Muse manifest th
 collection's skills, or a marketplace that does not list exactly the collections, each from its folder.
 
 One line on stdout, and the exit code:
-  OUT_DIR              built OUT_DIR: 5 collections, 72 skills, 790 files, version 5.22.0             0
-  --check              ok: 5 collections, 72 skills, 790 files, version 5.22.0; nothing written        0
+  OUT_DIR              built OUT_DIR: 5 collections, 72 skills, 744 files, version 5.22.0             0
+  --check              ok: 5 collections, 72 skills, 744 files, version 5.22.0; nothing written        0
   either, on a defect  refused: 2 problems; nothing written      (then each problem on its own line)    1
   any                  cannot continue: <why>    (the file, a manifest, a file or git cannot be read, a
                        skill holds a symbolic link, or OUT_DIR exists or cannot be written)            2

@@ -928,10 +928,26 @@ ROOT = Path(__file__).resolve().parents[1]
 # 8 (what an approval binds to, said in the hold), the option lists and the too-large mark 5, _script_deploys 3 and
 # check_deploy 1. The repository's conftest 8 (no test reads this Mac's synthesis home, whose sessions repos hold its
 # ritual history since 5.20.0). wait.py 3 and cli.py 1: who watches is read before a message is sent (a race CI met).
+# 5.22.0 (unreleased): plugin 344 more, the core as it was (plan item 12.1, ruled 2026-11-14: five collections, each a
+# plugin without hooks, beside the whole set). build_collections.py 299, new (each collection built from the flat folder
+# into a folder of its own, and the branch the release publishes them on): verify 51 (what fails a built folder: a skill
+# in no collection or in several, a dependency out of bounds, a file that is no manifest, license or file of the
+# collection's skills, one that differs from its source, a hook, a skill or license missing, a manifest's name, version
+# or dependency, the Muse list, a file in no folder, the two marketplaces), its header and imports 41 (the docstring 30;
+# the imports 11, with the bytecode guard, its own folder on the path and the directory package's code), main 39
+# (--check, a folder written whole from the commit or not at all, its one line), manifests 17, bounds 15 (a dependency
+# outside a skill's own collection and the core, or outside its own folder where its scripts load it), marketplaces 15,
+# tree 15 (the folders as a git tree, through an index of its own), build 14, homes 13 (each skill's one collection, from
+# its frontmatter or awaiting_room), read_spec 11, category 6, the constants 6, hooked 5, described 5 (one description
+# for the manifests and the marketplace entry), sources 4, order 3, text 2, the entry point 2, and spacing 35. release.py
+# 41: collections_head 17 (the commit the branch moves to on a remote: its head when that holds the folders, else a
+# commit on top), collections 14 (built and checked before the tag), publish 4 (the branch in the atomic push and its
+# read-back), the import 1, the docstring 1, spacing 4. build_directory_package.py 4: tracked 14 (a package's files,
+# now read for the collections too), with carried 12 fewer, and spacing 2.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # consolidate first).
 CORE_BUDGET = 14642
-PLUGIN_BUDGET = 37639
+PLUGIN_BUDGET = 37983
 
 
 def _lines(files):
