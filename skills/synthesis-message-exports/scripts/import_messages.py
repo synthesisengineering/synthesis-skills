@@ -38,6 +38,9 @@ MEDIA = frozenset("jpg jpeg png gif webp heic heif bmp tif tiff mp4 mov m4v webm
 MESSAGE_FILE, HTML_FILE = re.compile(r"message_(\d+)\.json"), re.compile(r"message_\d+\.html?")
 MAX_MEMBER_BYTES = 256 * 1024 * 1024  # the largest message file read; one holds at most 10,000 messages
 MAX_ENTRIES = 500_000
+MAX_READS = 100_000  # message files read from one export; a large real one holds a few thousand
+MAX_READ_BYTES = 2 * 1024 ** 3  # all of them together, inflated: far above a real export's message files
+MAX_RATIO = 200  # a message file over 1 MiB that inflates past this many times its compressed size is a bomb
 LISTED = 1000  # files a refusal lists by name before it counts the rest
 EARLIEST_MS = 1072915200000  # 2004-01-01T00:00:00Z: no Facebook message is older
 SECONDS_BELOW = 10 ** 11  # a timestamp under this counts seconds: 10^11 ms is 1973, 10^11 s the year 5138
@@ -193,6 +196,9 @@ class Folder:
                         raise Refused(f"the export holds something that is not a file: {shown(rel)}")
                     self.sizes[rel] = info.st_size
 
+    def vet(self, rel):
+        return None  # a folder's files are not compressed
+
     def read(self, rel):
         if self.sizes[rel] > MAX_MEMBER_BYTES:
             raise too_large(rel)
@@ -232,6 +238,16 @@ class Zip:
             if rel in self.sizes:
                 raise Refused(f"the ZIP names a file twice: {shown(rel)}")
             self.sizes[rel], self.entries[rel] = entry.file_size, entry
+
+    def vet(self, rel):
+        """Judged from the archive's directory, before anything is read: stored or deflate only, and a file over 1 MiB
+        inflating to no more than MAX_RATIO times its compressed size, so a few kilobytes cannot make it inflate
+        gigabytes (a ZIP bomb by member count: each file under its own cap, the total without bound)."""
+        entry = self.entries[rel]
+        if entry.compress_type not in (zipfile.ZIP_STORED, zipfile.ZIP_DEFLATED):
+            raise Refused(f"{shown(rel)} is compressed with a method other than stored or deflate")
+        if entry.file_size > 1 << 20 and entry.file_size > MAX_RATIO * max(entry.compress_size, 1):
+            raise Refused(f"{shown(rel)} would inflate more than {MAX_RATIO} times its compressed size")
 
     def read(self, rel):
         entry = self.entries[rel]
@@ -521,6 +537,15 @@ def read_export(source, extra):
             counts["html"] += len(files)
         else:
             unknown.update((rel, "HTML: only the JSON format is read") for rel in files)
+    reads = [rel for entry in threads.values() for _, _, rel in entry["files"]] + secure
+    if len(reads) > MAX_READS:  # every bound below is checked before the first read
+        raise Refused(f"the export holds more than {MAX_READS} message files")
+    if sum(source.sizes[rel] for rel in reads) > MAX_READ_BYTES:
+        raise Refused(f"the message files would inflate to more than {MAX_READ_BYTES} bytes")
+    for rel in reads:
+        if source.sizes[rel] > MAX_MEMBER_BYTES:
+            raise too_large(rel)
+        source.vet(rel)
     conversations = []
     for folder, entry in sorted(threads.items()):
         try:
