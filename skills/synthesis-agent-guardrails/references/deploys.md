@@ -45,7 +45,8 @@ loaded. This guard gates the act.
   armed the rapid-redeploy brake); an option the guard does not know, or an `-n` that is another option's value
   (`--rcfile -n`), reads the script. A script sourced with `.`, `source` or `builtin source` is read whole, as a run
   one is, so a deploy anywhere in it is held, in a function it only defines too: what runs when cannot be told for
-  sure from the text.
+  sure from the text. An alias is read for what its value runs, and a script past the 256 KB the guard reads is held,
+  since what it runs cannot be told.
 - A push to, or a `gh pr merge` on, a GitHub repository listed in `deploy_remotes`, matched against the
   checkout's remotes or `-R owner/repo` (2026-10-30: a merge on the Homebrew tap published a formula before
   its release archive existed).

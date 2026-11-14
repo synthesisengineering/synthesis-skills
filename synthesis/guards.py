@@ -1925,6 +1925,7 @@ def _sheet_host(words: list[str], cwd: str, config: dict) -> bool:
 
 
 SCRIPT_LIMIT = 256 * 1024
+TOO_LARGE = "\0 a script too large to read"  # what such a script runs cannot be told, so it is held (5.20.1's review)
 SHEBANG = re.compile(rb"#![^\n]*\b(?:ba|z|da|k)?sh\b")
 
 
@@ -1959,9 +1960,9 @@ def _script_file(words: list[str], cwd: str) -> str | None:
             text = handle.read(SCRIPT_LIMIT + 1)
     except OSError:
         return None
-    if len(text) > SCRIPT_LIMIT or (head not in SHELLS and not SHEBANG.match(text)):
+    if head not in SHELLS and not SHEBANG.match(text):
         return None
-    return text.decode("utf-8", "replace")
+    return TOO_LARGE if len(text) > SCRIPT_LIMIT else text.decode("utf-8", "replace")
 
 
 VALUE_OPTIONS = ("-o", "+o", "-O", "+O", "--rcfile", "--init-file")  # a shell option that takes the next word as its value
@@ -1995,13 +1996,26 @@ def _script_deploys(words: list[str], cwd: str, patterns: list[str], config: dic
     was one in a sourced script. A sourced script is read whole, functions it only defines included: what runs when
     cannot be told for sure from its text, so the guard holds rather than guesses (5.20.1's review)."""
     text = _script_file(words, cwd) if depth < 3 else None
-    if text is None:
-        return False
+    if text is None or text is TOO_LARGE:
+        return text is TOO_LARGE
     commands, readable = _parse(text, cwd)
     if not readable and any(re.search(p, text) for p in patterns):
         return True
-    return any((_deploys(w, patterns) and not _sheet_host(w, d, config)) or _script_deploys(w, d, patterns, config, depth + 1)
+    return any((_deploys(w, patterns) and not _sheet_host(w, d, config)) or _alias_deploys(w, patterns, d)
+               or _script_deploys(w, d, patterns, config, depth + 1)
                for w, d in commands)
+
+
+def _alias_deploys(words: list[str], patterns: list[str], cwd: str) -> bool:
+    """An alias whose value deploys: what it runs is parsed and read as if run (5.20.1's review: one defined and used in
+    a sourced script ran unasked); one that cannot be parsed is judged on its raw words."""
+    if os.path.basename(words[0]) != "alias":
+        return False
+    for value in (w.split("=", 1)[1] for w in words[1:] if "=" in w):
+        commands, readable = _parse(value, cwd)
+        if any(_deploys(w, patterns) for w, _ in commands) or (not readable and any(re.search(p, value) for p in patterns)):
+            return True
+    return False
 
 
 def _publishes_to(directory: str, remotes: list[str]) -> bool:
@@ -2043,7 +2057,7 @@ def _targets(command: str, config: dict, cwd: str) -> list[tuple[str, str | None
     commands, readable = _parse(command, cwd)
     targets: list[tuple[str, str | None]] = [(_publish_target(words, d), None) for words, d in commands
                                              if (_deploys(words, patterns) and not _sheet_host(words, d, config))
-                                             or _script_deploys(words, d, patterns, config)]
+                                             or _alias_deploys(words, patterns, d) or _script_deploys(words, d, patterns, config)]
     remotes = [str(r) for r in config.get("deploy_remotes") or []]
     for words, directory in commands if remotes else []:
         if [os.path.basename(words[0])] + words[1:3] == ["gh", "pr", "merge"]:  # a merge to a repository that publishes

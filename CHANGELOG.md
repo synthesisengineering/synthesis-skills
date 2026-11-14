@@ -12,7 +12,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   `-n` or `-o noexec`, not undone by a later `+n`, `+o noexec` or zsh's `-o exec`, runs nothing and is no deploy; an
   `-n` that is another option's value (`--rcfile -n`), or an option the guard does not know, reads the script. The
   other way round, a script sourced with `.`, `source` or `builtin source` was not read at all; it is now read whole,
-  as a run script is, so a deploy anywhere in it is held.
+  as a run script is, so a deploy anywhere in it is held. An alias is read for what its value runs, and a script too
+  large for the guard to read (over 256 KB), run or sourced, is held rather than let through.
 - **A deploy's hold says what its approval binds to:** the command and the HEAD of each checkout it deploys, so the
   same command after a commit meets a new code with the reason in front of it.
 - **How it was checked.** Tests first, and one review round. The first fix set a sourced script's function bodies
