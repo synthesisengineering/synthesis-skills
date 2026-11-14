@@ -15,7 +15,8 @@ Stages, each gating the next:
      manifests agree; the CHANGELOG's newest entry is this version; CI passed for HEAD.
   2. Release train: a board claim on the main checkout's CHANGELOG.md. Another live session
      holding it means another release is under way: refuse and name it.
-  3. Publish: create the tag, push main, stable and the tag to every push remote in one
+  3. Publish: build the five collections from HEAD's commit and check them (build_collections.py), then create the
+     tag, push main, stable, the tag and the collections, as the `collections` branch, to every push remote in one
      atomic push each; success is read back with `git ls-remote`, never from an exit status.
      Then the GitHub release for the tag, its notes the CHANGELOG entry, read back as latest,
      and a pull request on the Homebrew tap pointing the synthesis formula at the tag's
@@ -47,6 +48,7 @@ for path in (REPO, REPO / "skills" / "synthesis-onboarding" / "scripts"):
     if str(path) not in sys.path:
         sys.path.insert(0, str(path))
 import setup  # noqa: E402  (each harness's install commands)
+import build_collections  # noqa: E402  (the collections, published beside the whole set as a branch of built folders)
 try:
     from synthesis import board, doctor, install, paths  # noqa: E402
 except ImportError as exc:  # no runtime beside this copy; one that fails otherwise as it loads keeps its traceback
@@ -178,6 +180,41 @@ def hold_train(repo: Path, session: str, version: str) -> str:
     return train_path(repo)
 
 
+def collections(repo: Path, dry_run: bool = False) -> tuple:
+    """(the git tree of the collections built from HEAD's commit, the branch that publishes them), built and checked
+    before anything is tagged or pushed, so collections that fail a check publish nothing. A dry run writes no tree."""
+    try:
+        branch = build_collections.read_spec(repo, commit=True).get("branch", "collections")
+        files, modes = build_collections.build(repo, commit=True)
+        found = build_collections.verify(repo, files, commit=True)
+        tree = "" if dry_run or found else build_collections.tree(repo, files, modes)
+    except build_collections.Unreadable as exc:
+        raise setup.SetupError(f"cannot build the collections: {exc}") from exc
+    if found:
+        raise setup.SetupError(f"the collections fail {len(found)} check{'s' * (len(found) > 1)}, so nothing was "
+                               f"published: {'; '.join(found[:3])}")
+    return tree, branch
+
+
+def collections_head(repo: Path, remote: str, branch: str, tree: str, version: str) -> str:
+    """The commit the collections branch moves to on this remote: its head there when that already holds these folders
+    (a run again after a server error), else a commit on top of that head with these folders as its tree, so a release
+    never rewrites the branch a harness installs from."""
+    listed = git(repo, "ls-remote", remote, f"refs/heads/{branch}", timeout=120)
+    if listed.returncode:
+        raise setup.SetupError(f"{remote}: cannot read its {branch} branch: {setup._tail(listed)}")
+    head = listed.stdout.split()[0] if listed.stdout.strip() else ""
+    fetched = git(repo, "fetch", "--no-tags", "--quiet", remote, f"refs/heads/{branch}") if head else None
+    if fetched and fetched.returncode:
+        raise setup.SetupError(f"{remote}: cannot fetch its {branch} branch: {setup._tail(fetched)}")
+    if head and git(repo, "rev-parse", f"{head}^{{tree}}").stdout.strip() == tree:
+        return head
+    made = git(repo, "commit-tree", tree, *(["-p", head] if head else []), "-m", f"Collections of v{version}")
+    if made.returncode:
+        raise setup.SetupError(f"cannot commit the collections: {setup._tail(made)}")
+    return made.stdout.strip()
+
+
 def publish(repo: Path, version: str, dry_run: bool = False) -> list:
     head, tag = git(repo, "rev-parse", "HEAD").stdout.strip(), f"v{version}"
     refspecs = ["HEAD:refs/heads/main", "HEAD:refs/heads/stable", f"refs/tags/{tag}:refs/tags/{tag}"]
@@ -185,24 +222,28 @@ def publish(repo: Path, version: str, dry_run: bool = False) -> list:
                       if line.endswith("(push)")})
     if not remotes:
         raise setup.SetupError("no push remote is configured")
+    tree, branch = collections(repo, dry_run)
     if dry_run:
-        return [f"would tag {tag} at {head[:12]} and push {' '.join(refspecs)} to {', '.join(remotes)}"]
+        return [f"would tag {tag} at {head[:12]} and push {' '.join(refspecs)} to {', '.join(remotes)}, with the "
+                f"collections built from it as {branch}"]
     if not git(repo, "rev-parse", "--verify", "--quiet", f"refs/tags/{tag}").stdout.strip():
         made = git(repo, "tag", "-a", tag, "-m", f"Release {tag}")
         if made.returncode:
             raise setup.SetupError(f"cannot create {tag}: {setup._tail(made)}")
     lines = []
-    for remote in remotes:  # one atomic push per remote: main, stable and the tag move together or not at all
-        pushed = git(repo, "push", "--atomic", remote, *refspecs)
+    for remote in remotes:  # one atomic push per remote: main, stable, the tag and the collections move together or not
+        moved = collections_head(repo, remote, branch, tree, version)
+        pushed = git(repo, "push", "--atomic", remote, *refspecs, f"{moved}:refs/heads/{branch}")
         seen = dict(reversed(line.split("\t")) for line in git(
-            repo, "ls-remote", remote, "refs/heads/main", "refs/heads/stable", f"refs/tags/{tag}*",
-            timeout=120).stdout.splitlines() if "\t" in line)
+            repo, "ls-remote", remote, "refs/heads/main", "refs/heads/stable", f"refs/heads/{branch}",
+            f"refs/tags/{tag}*", timeout=120).stdout.splitlines() if "\t" in line)
         seen[f"refs/tags/{tag}"] = seen.get(f"refs/tags/{tag}^{{}}", seen.get(f"refs/tags/{tag}"))  # peeled
         wrong = [r for r in ("refs/heads/main", "refs/heads/stable", f"refs/tags/{tag}") if seen.get(r) != head]
+        wrong += [f"refs/heads/{branch}"] * (seen.get(f"refs/heads/{branch}") != moved)
         if wrong:
-            raise setup.SetupError(f"{remote}: {', '.join(wrong)} do not point at {head[:12]} after the push "
-                                   f"({setup._tail(pushed)})")
-        lines.append(f"{remote}: main, stable and {tag} at {head[:12]}")
+            raise setup.SetupError(f"{remote}: {', '.join(wrong)} do not point at {head[:12]} ({branch} at "
+                                   f"{moved[:12]}) after the push ({setup._tail(pushed)})")
+        lines.append(f"{remote}: main, stable and {tag} at {head[:12]}, {branch} at {moved[:12]}")
     return lines
 
 
