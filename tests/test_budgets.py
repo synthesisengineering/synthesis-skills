@@ -1127,10 +1127,28 @@ ROOT = Path(__file__).resolve().parents[1]
 # commit takes the release commit's identity and time, unsigned, names it, and is made once for each head).
 # context_doctor.py 6: repo_state 3 and cited_entries 3 (without the runtime's claims log or session archive, each says
 # what it cannot tell). local_messaging.py 4: _close 4 (without the runtime's approvals nothing is closed, in one line).
+# 5.22.0, the Messenger surface and a chat saved from its page (2026-11-14): plugin 602 more, the core as it was.
+# messenger_messages.py 274 (synthesis-daily-rituals): parse 56 (rows to chats, the owed and nudged ones, unread marks
+# and the coverage line; a wall, another inbox's grid, an empty list without --empty and --end off the list's bottom
+# refused), main 50 (plan, extractor and parse, and the text report), the docstring and imports 41, entry 32 (one row's
+# lines; its age dated the latest it allows, its words checked against it), the extractor 27 (the named grid's rows,
+# the address, dialogs and whether the list is at its bottom, as JSON; it only reads), plan 26 (the declaration, each
+# inbox's way in and its day from the watermark), loaded 12, address 6, stop 5 and the constants 19, each with the
+# blank lines after it. chat_page.py 273 (synthesis-message-exports): read_chat 54 (walls, the chat's address, name
+# and zone, each message from its two labels; notices, messages without text and labels that disagree counted, not
+# written), place 42 (the transcript holding the chat's page reads, else its messages with the same people, else
+# --into, else a new name), the docstring and imports 37, save 36 (pairing with an export's blocks, the write and the
+# coverage line), main 24, instant 18 (the minute in UTC, the hour the clocks went back, a time never shown), the
+# extractor 17, loaded 13, label_of 9, people 6, Refused 4 and the patterns 13. import_messages.py 54: page_blocks,
+# sender_of, pairs and read_from_page 37 (a block read from the page pairs with a message of its digest inside its
+# minute, and draws a conversation only with the same people), plan 9 (both downloads find a transcript holding their
+# page-read messages, each such message counts as present, and its docstring 2), the page mark and the minute 5, and
+# message_block 3 (the page line). sync_watermark.py 1: messenger joins the stores that move only with their reader's
+# coverage, and its help line wraps.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
 CORE_BUDGET = 15100
-PLUGIN_BUDGET = 40342
+PLUGIN_BUDGET = 40944
 
 
 def _lines(files):

@@ -176,6 +176,35 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   shown as `[U+XXXX]`, from Python's own Unicode tables, in text and in names (R1-23). `--out` inside the export is
   caught in any letter case (R1-24). A refusal says its listing holds the names of the people in these
   conversations, and `--listing-redacted` lists the same files with every name replaced by a token (R1-26).
+- **Messenger's chat list is a ritual surface** (`synthesis-daily-rituals` 3.18.0). A workspace declares
+  `.agents/messenger-sync.yaml` (`workspace`, and `inboxes` from `chats`, `requests` and `archived`, all three when left
+  out). `messenger_messages.py plan` prints what to open and how far back to scroll: every inbox at the list's own
+  address, beside "No chats selected", with Message requests and Archived chats opened from the menu over it, since a
+  chat's own address opens the chat and marks it read; the daily read opens none. `extractor` prints a read-only
+  script for the browser's JavaScript tool that saves the grid named for the inbox (a hidden panel's rows have empty
+  text), and the browser guard lets it through as a read. `parse` lists the chats that end with someone else, the
+  unread marks and Messenger's `Follow up?` nudges, and prints one coverage line. A row shows an age, never a date, so
+  each is dated the latest its age allows and a row with no age moves nothing. A sign-in page, a security check or a
+  PIN prompt stops the read; `--empty` and `--end` (a short list read to its bottom) are the reader's word, each
+  checked against what the page showed. The `messenger` watermark moves only with a complete read's coverage. The
+  surface's reference is the closing section of `references/linkedin-messages.md` until a move of whole passages gives
+  SKILL.md room for its rule and its own file; the move is proposed, not made.
+- **One chat saved from its page when an export lacks it** (`synthesis-message-exports`). `scripts/chat_page.py
+  extractor` prints a read-only script for one open chat's message log, and `save` writes what it saved into the
+  importer's transcripts, in its format and identity scheme: each message keyed by the minute the page shows, in the
+  browser's time zone as the script records it, and the importer's digest of its text, its block marked as read from
+  the page. A later import of the same chat pairs each of its messages with such a block by digest and minute and adds
+  nothing the transcript holds, and a page read after an export pairs with the export's blocks the same way. A
+  transcript holding page reads takes a conversation of either download whose messages pair with them and whose people
+  include every sender of those blocks, whatever it is named, so the principal's `ok` to two people in one minute never
+  merges two chats. The coverage line says how far back the read reached and whether it reached the day asked for.
+  Opening a chat marks it read, so the fallback runs on the principal's word for that chat (rule 9).
+- **How the two were checked.** Tests first, committed alone (31 failed and 20 errored at setup while both scripts
+  were missing), with invented fixtures only: every row shape, the three inboxes, an empty archive, a hidden panel,
+  walls, a short read, both label forms, the narrow no-break space, the principal's own messages, emoji, the
+  encryption notice, a read short of its day, the hour the clocks went back, and an export of the same chat adding
+  nothing in either order. Each extractor runs on an invented page in a headless Chromium where one is installed, as CI
+  installs it. Neither has yet run on the live page.
 
 ## [5.21.1] - 2026-11-14
 

@@ -149,7 +149,7 @@ def test_a_preview_and_its_age_on_one_line_read_as_on_three(tmp_path):
 
 def test_message_requests_and_archived_chats_are_read_from_their_own_grids(tmp_path):
     requests = saved([row("Quinn Quill", "Hi! We met at the conference.", "3d", "3001", unread=True)], grid="Requests")
-    code, got = run(tmp_path, requests, "--inbox", "requests", "--since", "2026-11-01")
+    code, got = run(tmp_path, requests, "--inbox", "requests", "--since", "2026-11-11")
     assert code == 0, got
     assert got["line"].startswith("Messenger, requests: 1 conversation read from the list, back to 2026-11-11; 1 ends")
     archived = saved([row("Ray Reed", "You: Congratulations!", "6w", "3002")], grid="Archived chats")
@@ -174,6 +174,19 @@ def test_an_empty_list_is_a_complete_read_only_when_the_reader_says_so_and_the_p
     never = saved([], grid="Archived chats", found=False, page="Chats\nNo chats selected\n")  # the panel never opened
     code, got = run(tmp_path, never, "--inbox", "archived", "--empty")
     assert code == 2 and "Archived chats" in got
+
+
+def test_a_short_list_read_to_its_end_reaches_every_day_only_on_the_readers_word_and_at_its_bottom(tmp_path):
+    """Message requests may hold one request, three days old: no scrolling reaches a day two weeks back. The reader who
+    scrolled to the list's end and saw nothing more load says so with --end; the extractor saw the list at its bottom."""
+    one = saved([row("Quinn Quill", "Hi! We met at the conference.", "3d", "3001")], grid="Requests")
+    code, got = run(tmp_path, one, "--inbox", "requests", "--since", "2026-10-31")
+    assert code == 1 and "stops short of 2026-10-31" in got["line"]
+    code, got = run(tmp_path, dict(one, bottom=True), "--inbox", "requests", "--since", "2026-10-31", "--end")
+    assert code == 0 and got["coverage"]["complete"] is True, got
+    assert got["line"].startswith("Messenger, requests: 1 conversation read from the list, back to 2026-11-11 (the end of the list);")
+    code, got = run(tmp_path, dict(one, bottom=False), "--inbox", "requests", "--since", "2026-10-31", "--end")
+    assert code == 2 and "not at the bottom of the list" in got
 
 
 def test_a_hidden_panels_rows_read_empty_and_never_count_as_read(tmp_path):
@@ -314,7 +327,8 @@ def test_the_plan_names_the_day_the_last_read_reached(tmp_path):
 
 ACTS = (".click(", "dispatchEvent", "KeyboardEvent", "MouseEvent", ".focus(", ".submit(", "requestSubmit", "execCommand",
         ".value =", ".value=", "innerHTML", "setAttribute", "removeAttribute", "fetch(", "XMLHttpRequest", "sendBeacon",
-        "scroll", "localStorage", "location.assign", "location.href =", "window.open", ".remove(", "appendChild")
+        "scrollTo(", "scrollBy(", "scrollIntoView(", "scrollTop =", "scrollTop=", "localStorage", "location.assign",
+        "location.href =", "window.open", ".remove(", "appendChild")
 
 
 def extractor(inbox: str) -> str:

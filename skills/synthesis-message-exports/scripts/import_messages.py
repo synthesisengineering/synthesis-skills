@@ -72,6 +72,11 @@ SEEN = ("[^\x00-\x7f\\s\u00ad\u034f\u061c\u115f\u1160\u17b4\u17b5\u180b-\u180f\u
 KEPT = re.compile("\U0001f3f4[\U000e0020-\U000e007e]+\U000e007f"
                   f"|(?<={SEEN})[\u200c\u200d](?={SEEN})|(?<=[^\ufe00-\ufe0f\U000e0100-\U000e01ef])[\ufe00-\ufe0f\U000e0100-\U000e01ef]")
 KEY = re.compile(r"\*\*Message ID:\*\* (\S+):((\d+)-[0-9a-f]{10}(?:-\d+)?)")
+MINUTE_MS = 60_000
+# A message read from a chat's page by chat_page.py: its time is the minute the page shows, and a time in the hour the
+# clocks went back may be the second one, the given minutes later. The line stands third in its block, before any fence.
+PAGE_MARK = re.compile(r"\*\*Read from the page:\*\* `(https://www\.facebook\.com/messages/(?:e2ee/)?t/[A-Za-z0-9._-]+/)`, to "
+                       r"the minute(?:; the clocks went back that hour, so it may be (\d{1,4}) minutes later)?")
 WEEKDAYS = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
 MONTHS = ("January", "February", "March", "April", "May", "June", "July", "August", "September", "October",
           "November", "December")
@@ -639,6 +644,9 @@ def participants_line(conversation):
 def message_block(cid, message):
     sender = inline(message["sender"]) if message["sender"] else "(no sender in the export)"
     lines = [f"### {sender} — {moment(message['ts']):%H:%M} UTC", f"**Message ID:** {cid}:{message['key']}"]
+    if message.get("page"):  # (the chat's address, minutes a second reading lies later)
+        lines.append(f"**Read from the page:** `{message['page'][0]}`, to the minute" + (
+            f"; the clocks went back that hour, so it may be {message['page'][1]} minutes later" if message["page"][1] else ""))
     if message["unsent"]:
         lines.append("**Unsent by its sender.**")
     if message["text"]:
@@ -660,16 +668,16 @@ def message_block(cid, message):
     return lines
 
 
-def render(conversation, old, new, cid):
-    """The whole transcript: the header from this export, the blocks already written exactly as they were, and the
-    new ones in time order among them."""
+def render(conversation, old, new, cid, kept=None):
+    """The whole transcript: the header from this export (or `kept`, its five lines from title to participants, as
+    they were), the blocks already written exactly as they were, and the new ones in time order among them."""
     blocks = sorted([(ts, 0, n, lines) for n, (_, ts, lines) in enumerate(old)] +
                     [(m["ts"], 1, n, message_block(cid, m)) for n, m in enumerate(new)],
                     key=lambda block: block[:3])
     first, last = blocks[0][0], blocks[-1][0]
     title = conversation["title"] or ", ".join(conversation["names"] or []) or cid
-    lines = [FORMAT_LINE, f"# Messenger — {inline(title)}", f"# Conversation: {cid} ({conversation['where']})",
-             "", "From: " + ", ".join(code(place) for place in conversation["from"]), participants_line(conversation),
+    lines = [FORMAT_LINE, *(kept or [f"# Messenger — {inline(title)}", f"# Conversation: {cid} ({conversation['where']})",
+             "", "From: " + ", ".join(code(place) for place in conversation["from"]), participants_line(conversation)]),
              f"Messages: {len(blocks)}, {stamp(first)}" + (f" to {stamp(last)}" if len(blocks) > 1 else ""),
              "", NOTICE, "", "---", ""]
     heading = None
@@ -733,27 +741,66 @@ def read_transcript(path, cid):
 
 
 def holders(out):
-    """Each secure-storage transcript in --out that reads back, with its id, blocks and message keys, so a conversation
-    finds the transcript already holding its messages however the download numbered it; and why each other one does
+    """Each transcript in --out that reads back, with its blocks, message keys and blocks read from a chat's page, so a
+    conversation finds the transcript already holding its messages however it is named; and why each other one does
     not read back."""
     held, unread = {}, {}
     for name in sorted(os.listdir(out)) if os.path.isdir(out) else []:
-        if name.startswith("messenger-e2ee-") and name.endswith(".md"):
+        if name.startswith("messenger-") and name.endswith(".md"):
             path = os.path.join(out, name)
             try:
                 blocks, _ = read_transcript(path, name[len("messenger-"):-len(".md")])
             except Unreadable as why:
                 unread[path] = str(why)
                 continue
-            held[path] = (blocks, {key for key, _, _ in blocks})
+            held[path] = (blocks, {key for key, _, _ in blocks}, page_blocks(blocks))
     return held, unread
+
+
+def page_blocks(blocks):
+    """The blocks read from a chat's page: (digest, the minutes it may lie in, its sender as written, the chat's address)."""
+    found = []
+    for key, ts, lines in blocks:
+        mark = PAGE_MARK.fullmatch(lines[2]) if len(lines) > 2 else None
+        if mark:
+            found.append((key.split("-")[1], {ts, ts + int(mark.group(2) or 0) * MINUTE_MS}, sender_of(lines[0]), mark.group(1)))
+    return found
+
+
+def sender_of(heading):
+    return heading[len("### "):].rsplit(" — ", 1)[0]
+
+
+def pairs(exact, paged):
+    """{key: index}: each message known to the millisecond, (key, time), paired with a message read from the page,
+    (digest, minutes), of the same digest whose minute holds its time. Each is one message, so each pairs at most once."""
+    free, found = {}, {}
+    for index, (digest, minutes) in enumerate(paged):
+        free.setdefault(digest, []).append((index, minutes))
+    for key, ts in exact:
+        options = free.get(key.split("-")[1], [])
+        hit = next((n for n, (_, minutes) in enumerate(options) if ts // MINUTE_MS * MINUTE_MS in minutes), None)
+        if hit is not None:
+            found[key] = options.pop(hit)[0]
+    return found
+
+
+def read_from_page(conversation, pages):
+    """Whether a transcript's blocks read from a chat's page hold any of this conversation's messages, every one of their
+    senders among its people: a digest and a minute alone can be the principal's `ok` to two people in one minute."""
+    people = {inline(name) for name in conversation["names"] or []} | {
+        inline(message["sender"]) for message in conversation["messages"] if message["sender"]}
+    return bool(pages) and {sender for _, _, sender, _ in pages} <= people and bool(pairs(
+        [(message["key"], message["ts"]) for message in conversation["messages"]], [page[:2] for page in pages]))
 
 
 def plan(conversations, out, since_ms):
     """What each conversation needs, reading only transcripts in --out. A regular-export conversation's transcript is
     the one named by its folder. A secure-storage conversation's is the one already holding any of its messages, since
     the download's running index can pass to another chat; one holding none of them gets a new transcript, and one
-    whose messages sit in two transcripts, or that shares its transcript with another conversation, is skipped."""
+    whose messages sit in two transcripts, or that shares its transcript with another conversation, is skipped. A
+    transcript holding messages read from the chat's page holds a conversation of either download whose messages pair
+    with them, with the same people (read_from_page), whatever it is named."""
     report = dict.fromkeys(("created", "extended", "unchanged", "empty", "new", "present", "before", "attachments"), 0)
     report["skipped"], work, targets = [], [], {}
     held, unread = holders(out)
@@ -762,17 +809,22 @@ def plan(conversations, out, since_ms):
             report["empty"] += 1
             continue
         path = os.path.join(out, f"messenger-{conversation['cid']}.md")
+        keys = {message["key"] for message in conversation["messages"]}
+        paged = [place for place, (_, _, pages) in held.items() if read_from_page(conversation, pages)]
         if conversation["check"]:
-            keys = {message["key"] for message in conversation["messages"]}
-            holding = [place for place, (_, have) in held.items() if have & keys]
-            if len(holding) > 1:
-                report["skipped"].append((os.path.basename(path), "its messages are in more than one transcript: " +
-                                          ", ".join(os.path.basename(place) for place in holding)))
-                continue
-            if not holding and os.path.lexists(path):
-                report["skipped"].append((os.path.basename(path), unread.get(path, "a transcript of that name holds another conversation")))
-                continue
-            path = holding[0] if holding else path
+            holding = sorted({place for place, (_, have, _) in held.items()
+                              if os.path.basename(place).startswith("messenger-e2ee-") and have & keys} | set(paged))
+        else:  # by its folder's name, unless a page read holds it under another
+            holding = [place for place in paged if place != path]
+            holding += [path] * bool(holding and os.path.lexists(path))
+        if len(holding) > 1:
+            report["skipped"].append((os.path.basename(path), "its messages are in more than one transcript: " +
+                                      ", ".join(os.path.basename(place) for place in holding)))
+            continue
+        if conversation["check"] and not holding and os.path.lexists(path):
+            report["skipped"].append((os.path.basename(path), unread.get(path, "a transcript of that name holds another conversation")))
+            continue
+        path = holding[0] if holding else path
         targets.setdefault(path, []).append(conversation)
     for path, group in targets.items():
         name = os.path.basename(path)
@@ -789,6 +841,8 @@ def plan(conversations, out, since_ms):
                 report["skipped"].append((name, str(why)))
                 continue
         have = {key for key, _, _ in old}
+        have |= set(pairs([(m["key"], m["ts"]) for m in conversation["messages"] if m["key"] not in have],
+                          [page[:2] for page in page_blocks(old)]))  # each read from the page, to the minute
         new = []
         for message in conversation["messages"]:
             if message["key"] in have:
