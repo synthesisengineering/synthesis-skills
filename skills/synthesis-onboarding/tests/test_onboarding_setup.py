@@ -1129,6 +1129,31 @@ def test_an_update_brings_the_declaration_up_to_date_in_its_place(tmp_path, monk
     assert declared(home)["PreToolUse"] == [first, PLUGIN_HOOKS["hooks"]["PreToolUse"][0], later]
 
 
+def test_a_release_that_adds_the_guards_setting_keeps_the_declaration_codex_reads_and_its_approval(tmp_path, monkeypatch):
+    """5.21.0 adds "onFailure": "block" to the guard for Claude Code. Its install brings the user-level copy in step;
+    Codex reads it and hashes the guard as before, so the approval given earlier holds and setup does not ask for it
+    again (Codex 0.167.0-alpha.4.1, 2026-11-14: the four trusted before that release and after it)."""
+    earlier = json.loads(json.dumps(PLUGIN_HOOKS))
+    for handler in earlier["hooks"]["PreToolUse"][0]["hooks"]:
+        handler.pop("onFailure", None)
+    older = tmp_path / "older"
+    (older / "hooks").mkdir(parents=True)
+    (older / "hooks" / "hooks.json").write_text(json.dumps(earlier))
+    home = codex_home(tmp_path, monkeypatch, config="[features]\nhooks = true\n")
+    setup.codex_user_hooks(True, older)
+    before = declared(home)["PreToolUse"][0]
+    lines = setup.codex_user_hooks(None, setup.REPO)                                   # what an install of the release runs
+    after = declared(home)["PreToolUse"][0]
+    assert after == PLUGIN_HOOKS["hooks"]["PreToolUse"][0] and after["hooks"][0]["onFailure"] == "block"
+    assert setup.doctor.codex_hooks_problem({"hooks": declared(home)}) == ""
+
+    def hashed(group):
+        return setup.doctor.codex_hook_hash("PreToolUse", group.get("matcher"), group["hooks"][0])
+    assert hashed(after) == hashed(before)
+    assert lines and not any("/hooks" in line for line in lines)                     # nothing to approve again,
+    assert any("in step" in line and "approval" in line and "stays" in line for line in lines)  # and it says so
+
+
 def test_a_declaration_the_person_wrote_is_kept_and_not_doubled(tmp_path, monkeypatch):
     own = {"matcher": "Bash", "hooks": [{"type": "command", "command": '"${HOME}/.synthesis/v5/bin/synthesis-hook" pre-tool-use'}]}
     home = codex_home(tmp_path, monkeypatch, hooks={"hooks": {"PreToolUse": [own]}})
