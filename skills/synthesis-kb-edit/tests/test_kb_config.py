@@ -102,3 +102,36 @@ def test_symlinked_contract_path_that_leaves_the_repo_is_refused(tmp_path: Path)
     except ValueError as exc:
         errors = [str(exc)]
     assert any("escapes" in error for error in errors), errors
+
+
+def test_a_key_the_contract_does_not_name_is_refused_at_every_level() -> None:
+    """A misspelled optional key would otherwise switch off what it configures in silence: `sharing_polcy` would leave
+    a knowledge base with no sharing policy while the configuration gate said VALID."""
+    for section in ("", "review", "frontmatter", "confidentiality"):
+        config = valid_config()
+        (config[section] if section else config)["sharing_polcy"] = ".agents/sharing-policy.md"
+        field = f"{section}.sharing_polcy" if section else "sharing_polcy"
+        errors = MODULE.validate_config(config)
+        assert any(error.startswith(f"{field}: unknown key") for error in errors), (section, errors)
+
+
+def test_the_sharing_policy_and_its_phrases_validate_and_a_named_policy_must_be_there(tmp_path: Path) -> None:
+    """The organization's own phrases: the plugin ships none, so an empty list is a valid contract (the scan, not the
+    contract, refuses to run on it), and anything but a list of phrases is refused."""
+    config = valid_config()
+    config["confidentiality"].update(sharing_policy=".agents/sharing-policy.md", backstop_phrases=["zephyr ledger", "opal"])
+    assert MODULE.validate_config(config) == []
+    repo = write_repo(tmp_path, config)
+    assert any(error.startswith("confidentiality.sharing_policy: configured file does not exist")
+               for error in MODULE.check_paths(repo.resolve(), config))
+    (repo / ".agents" / "sharing-policy.md").write_text("# Sharing policy\n", encoding="utf-8")
+    assert MODULE.check_paths(repo.resolve(), config) == []
+    config["confidentiality"]["backstop_phrases"] = []
+    assert MODULE.validate_config(config) == []
+    for broken in ({"sharing_policy": "../outside.md"}, {"sharing_policy": "/srv/policy.md"},
+                   {"backstop_phrases": "zephyr ledger"}, {"backstop_phrases": ["zephyr ledger", " "]},
+                   {"backstop_phrases": {"add": ["zephyr ledger"]}}, {"backstop_phrases": None}):
+        changed = valid_config()
+        changed["confidentiality"].update(broken)
+        field = next(iter(broken))
+        assert any(error.startswith(f"confidentiality.{field}: ") for error in MODULE.validate_config(changed)), broken
