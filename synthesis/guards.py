@@ -4513,8 +4513,9 @@ def _messaging(config: dict) -> dict:
 WEB_MESSAGING = (  # (site, and every host under it; path prefix, or * for every other page of a site where a box may be a
     # search; channel, or several joined by +; line-break modifier, as above). A page is the first that fits.
     ("mail.google.com", "/chat", "google chat", "shift"), ("chat.google.com", "", "google chat", "shift"),
-    ("mail.google.com", "", "email", ""), ("outlook.office.com", "", "email", ""), ("outlook.office365.com", "", "email", ""),
-    ("outlook.live.com", "", "email", ""), ("outlook.cloud.microsoft", "", "email", ""), ("slack.com", "", "slack", "shift"),
+    ("mail.google.com", "", "email+google chat", "shift"),  # 2026-11-14: Chat pops up on every page of Gmail, and Return sends
+    ("outlook.office.com", "", "email", ""), ("outlook.office365.com", "", "email", ""), ("outlook.live.com", "", "email", ""),
+    ("outlook.cloud.microsoft", "", "email", ""), ("slack.com", "", "slack", "shift"),
     ("whatsapp.com", "", "whatsapp", "shift"), ("wa.me", "", "whatsapp", "shift"), ("teams.microsoft.com", "", "teams", "shift"),
     ("teams.live.com", "", "teams", "shift"), ("teams.cloud.microsoft", "", "teams", "shift"), ("discord.com", "", "discord", "shift"),
     ("discordapp.com", "", "discord", "shift"), ("discord.gg", "", "discord", "shift"), ("telegram.org", "", "telegram", "shift"),
