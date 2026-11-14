@@ -1045,10 +1045,42 @@ ROOT = Path(__file__).resolve().parents[1]
 # Merged into release 5.22.0 on 5.21.0 (2026-11-14): the ceilings are 5.21.0's (core 14924, plugin 38171) and what
 # each 5.22.0 paragraph above adds over 5.20.1's: plugin 248 for the sharing standard, 344 for the collections and 769
 # for the message exports.
+# 5.21.1: guards.py 1, the comment's third line: a click on a control that publishes waits on every page, since a
+# public review went out on a site that is no messaging site through a click on Submit rating.
+# 5.21.1, after the second review of 5.21.0: guards.py 76 more. The summary rules 38: PUBLISHES with effect-first verbs,
+# any form of a click verb and a word or three before the label, and Tweet and Done (3, as before), OPENS 3, POSTS 1,
+# ROUTINE 2 and MESSAGE_WORDS 1 (a click that only opens or closes a box, a sign-in or a search, passes), the page-script
+# patterns 8 (WRITES, SCRIPT_ACTS, SCRIPT_SENDS, SCRIPT_ROUTINE and their comment), the comment 5, _publishes 9 and
+# _submits 12 (Return, or Space or Return after Tab), less the 6 lines of 5.21.1's pattern. _released 15 (the words the
+# typed-words code released, shown in the next send's hold from that page). check_desktop 12 (the key rule, page scripts,
+# a register hit on a page that is no messaging site going on the send's code, typed words kept out of the record).
+# _browser_item 8 and _desktop_actions 2 fewer (a form fill and a page script alone reach the guard), BROWSER_STEPS 1,
+# WEB_MESSAGING 3 (Gmail, Outlook and Google Voice by the hosts typed), and _pages 1 (a local app's page).
+# Then 2 more, NAMES_POST and its comment, for Rajiv's ruling of 2026-11-14 ("Skip typed text that names no post"): off a
+# messaging site, typed words then a key that submits wait only when the call names a message, comment, review, post,
+# reply or tweet.
+# 5.21.1, review round 2 of 5.21.0, setup and core: core 94 more and plugin 129. doctor.py 48: stable_rest 14 and
+# STABLE_SPELLINGS 2 with their spacing 4 (the stable hook as the program a command runs, spelled as sh finds it: a
+# quoted ~ or a single-quoted $HOME names no hook), calls_stable_hook 6 fewer (it asks stable_rest), _runs_as 9 with
+# spacing 2 (a user-level group covers the plugin's only as its own invocation, the guard's with its fail-closed
+# tail), claude_installs 11 and oldest_claude 4 with their spacing 4 (every Claude Code on the Mac, the oldest judged),
+# check_claude_fail_closed 1 (the oldest one's path where there are several) and harness_checks 3. hook.py 29:
+# GUARD_SECONDS 1, _Late 2 and _late 2 with their spacing 6, and pre_tool_use 18: its docstring 4, the deadline set 4
+# (signal's import with its blank, the handler and the timer) before the guards load, the try 1, the held answer past
+# the deadline 3, the timer cancelled and the handler put back 3, and an unreadable config's answer 3 more (kept, not
+# returned, so it prints once the timer is cancelled). install.py 13: InUse 2 with spacing 2, and uninstall 9 (the
+# runtime stays while Codex's own hooks.json runs it: its docstring 3, the check 3 and the refusal 3). cli.py 4:
+# cmd_uninstall says the refusal and exits 1. setup.py 35: codex_user_hooks 14 (declares only where the stable hook is
+# in place 4; each event left running twice named, with what two guards do to an approved call: its lists 1, the event
+# filed 1, the words 2, the narrower declaration's note 1 longer and two notes of 2 each; a CRLF hooks.json kept CRLF 1),
+# main 2 (the runtime installed before any plugin), _persons_calls 6 with spacing 2, and _uninstall 11 (the person's
+# own declarations keep the runtime, nothing removed and exit 1, 6; a declaration made meanwhile, 5).
+# The coordinator's ruling on review round 2 (protective automation fails closed): a user-level guard covers only with
+# the fail-closed tail. _runs_as's condition and docstring change in place: no line more.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # consolidate first).
-CORE_BUDGET = 14924
-PLUGIN_BUDGET = 39532
+CORE_BUDGET = 15097
+PLUGIN_BUDGET = 39740
 
 
 def _lines(files):
@@ -1065,7 +1097,7 @@ def test_whole_plugin_stays_within_its_budget():
 
 
 # What the modules a pre-tool-use call for a shell command loads import as they load, by the module that asks.
-HOOK_NEEDS = ("json", "os", "re", "sys", "time",                                  # hook.py
+HOOK_NEEDS = ("json", "os", "re", "signal", "sys", "time",                        # hook.py (signal: its deadline)
               "__future__", "datetime", "fnmatch", "itertools", "math", "shlex",  # guards.py
               "hashlib", "pathlib", "unicodedata",                                # approvals.py and paths.py
               "base64", "contextlib", "dataclasses",                              # board.py

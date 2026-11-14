@@ -13,9 +13,13 @@ stable hook is missing; Claude Code names the hook and says `failed` or `timed o
 Claude Code ignores the setting and lets the send through, and `synthesis doctor` warns. Codex
 (0.167) and Muse (1.4.20) have no such setting, but block on exit 2 with a reason, so the guard's
 own command turns a stable hook that cannot start or crashes into exit 2 with one line of reason,
-and a send is held there too (Muse's hook test, run on 2026-11-14); a guard that times out there
-still lets the call through. An unreadable config and an error inside a guard still block in all
-three, since the guard catches those itself.
+and a send is held there too (Muse's hook test, run on 2026-11-14). The guard keeps a deadline of
+its own, 4 seconds from when the hook starts judging the send (5.21.1): past it the send is held,
+and any process the guard started is stopped, so a slow guard answers closed in every harness
+inside its 5-second limit. What still lets a send through in Codex and Muse is a hook that uses up
+their 5 seconds before its deadline is set: Python itself slow to start by more than about a second.
+An unreadable config and an error inside a guard still block in all three, since the guard catches
+those itself.
 
 ## Keys
 
@@ -448,9 +452,11 @@ opened `linkedin.com/...`, `uk.linkedin.com` or `m.me/...` pressed Return with n
 `www.linkedin.com` or `www.messenger.com`. Each site's channel is the name a register rule's `channels` uses.
 
 - **Return sends and shift with Return writes a line:** Google Chat (`chat.google.com`, and `/chat` on
-  `mail.google.com`; `google chat`), Gmail (every other page of `mail.google.com`; `email` and `google chat`, since
-  5.21.0: Chat runs in pop-ups on Gmail's own pages, and a page cannot show which box has the focus, so Return and a
-  typed line break wait there as the send shortcut, cmd or ctrl with Return, did already), Slack (`slack.com`; `slack`), WhatsApp (`whatsapp.com`, `wa.me`; `whatsapp`),
+  `mail.google.com`; `google chat`), Gmail (every other page of `mail.google.com`, and `gmail.com` and `/gmail` on
+  `google.com`, the hosts a person types; `email` and `google chat`, since 5.21.0: Chat runs in pop-ups on Gmail's own
+  pages, and a page cannot show which box has the focus, so Return and a typed line break wait there as the send
+  shortcut, cmd or ctrl with Return, did already), Google Voice's texts (`voice.google.com`; `google voice`, since
+  5.21.1), Slack (`slack.com`; `slack`), WhatsApp (`whatsapp.com`, `wa.me`; `whatsapp`),
   Teams (`teams.microsoft.com`, `teams.live.com`, and `teams.cloud.microsoft`, where its web app moved in 2026;
   `teams`), Discord (`discord.com`, `discordapp.com`, `discord.gg`; `discord`), Telegram (`telegram.org`, `t.me`;
   `telegram`), Messenger (`messenger.com`, `m.me`, and `/messages` on `facebook.com` and `fb.com`; `messenger`),
@@ -465,8 +471,8 @@ opened `linkedin.com/...`, `uk.linkedin.com` or `m.me/...` pressed Return with n
   search box's included, and so does a click with no summary. A page of facebook.com outside `/messages` is both
   `facebook` and `messenger`, since a pop-up may hold the focus: a rule that names either holds there.
 - **Email:** Outlook on the web (`outlook.office.com`, `outlook.office365.com`, `outlook.live.com`, and
-  `outlook.cloud.microsoft`, its new address), under the email rules: Return writes a line, and cmd or ctrl with Return
-  sends.
+  `outlook.cloud.microsoft`, its new address; since 5.21.1 also `outlook.com`, `hotmail.com` and `/mail` on `live.com`,
+  the hosts a person types), under the email rules: Return writes a line, and cmd or ctrl with Return sends.
 
 The page is the tab a step names, else the one the last browser call ran on, read from the tab list Claude in Chrome
 prints after every call, or the page a `navigate` step earlier in the same batch opened. A `navigate` that names no
@@ -475,16 +481,55 @@ opens may be that site's still, so it is judged as that site's. A page whose add
 that prints no tab list) is judged by the summary rule alone. On 2026-10-22 a session found that Return in a Google
 Chat compose box went out with no code, because a browser page had counted as no app.
 
-**A click on the control that publishes** (5.21.0). On a messaging site's page, a click waits for a code when its
-summary names Send, Post, Comment, Reply, Repost, Share, Publish or Submit right after a click verb (clicks, presses,
-taps, hits, chooses or selects, with or without `on` and `the`, the label in quotes or not): "Clicks the Post button",
-"Taps on Share", "Clicks Comment". These sites label few controls Send: their Post, Comment and Reply post in the
-principal's name, and one label can both open a box and post what is in it, so the label alone holds. It passes when
-the summary says the click only opens something: the label followed by box, field, input, area, composer or editor
-("Clicks the comment box"), or the words opens, opening, expands, focuses, shows, reveals or starts, or to open,
-expand, focus, show, reveal or start ("Clicks Comment to open the comment box"). Best, write what the click does
-("Opens the comment box"). Over the 30 days before 5.21.0, 1,506 recorded browser clicks and 37 computer-use clicks
-held no summary of that form on any site, so the hold costs nothing measured.
+**A click whose summary says it publishes** (5.21.0 on messaging sites; 5.21.1 in every app and on every page). On
+2026-11-13 a public review went out with no code on a site that is no messaging site, through two clicks on a control
+labeled Submit rating, each summarized as the tools ask, effect first: "Submits the five-star public review of" a
+person. A click waits for a code when its summary
+
+- starts with a verb that posts, in any tense: submits, reposts, retweets, quotes or rates ("Submits the rating"); or
+- names Send, Post, Comment, Reply, Repost, Share, Publish, Submit, Tweet or Done after a click verb in any form
+  (click, clicks, clicked, clicking; press, tap, hit, choose, select), with or without `on`, `the` and up to three
+  words before the label, in quotes or not ("Clicks the blue Post button", "Clicking Submit rating").
+
+One label can both open a box and post what is in it, so the label alone holds. It passes when what follows the label says the click only opens or closes something, and nothing
+there says to post, publish, send or submit: the label followed by box, field, input, area, composer or editor
+("Clicks the comment box"), or opens, expands, focuses, shows, reveals or closes, or to open, expand, focus, show,
+reveal or close, with a box, field, menu, dialog, options, panel, sheet, form, window, list, modal, pop-up or drawer
+within three words ("Clicks Comment to open the comment box", "Clicks Done to close the dialog"). It passes too when
+the summary signs in, logs in, searches, queries, filters or looks something up and names no message, reply, comment,
+review, rating, post, tweet, feedback or answer ("Clicks the Submit button to sign in", "Clicks Submit to run the
+search"), and on the principal's own app on a local host (`localhost`, `127.0.0.1`, `[::1]`, a `.localhost` or
+`.test` name), where every step of the call acts. A bare "Clicks the Share button" still waits: say what it opens.
+
+Measured with the rule's own code over the 30 days to 2026-11-14: of 1,506 browser clicks and 37 computer-use clicks,
+it holds 12 that no rule held before, in 3 transcripts, among them the incident's two clicks on Submit rating and its
+four on the stars. 5.21.1 as first written held none of the twelve: its note that no click named one of these controls
+counted only summaries of the click-verb form, which the incident's were not.
+
+**Keys and page scripts that submit, on any page** (5.21.1). On a page that is no messaging site, a call that types
+words and then presses Return or Enter (without shift), Space or Return after Tab, or types a line break waits for a
+code when its summaries name a message, comment, review, post, reply or tweet: most forms submit on Return, and those
+are the ones that post. A call that names none passes, as before 5.21.1 (the principal's ruling of 2026-11-14, "Skip
+typed text that names no post"), and so does every call on a local app. A page script (`javascript_tool`, alone or as a batch step) reaches the guard: on a messaging
+site one that clicks, submits, sends a key or an event, writes by fetch (a POST, PUT, PATCH or DELETE, or
+`sendBeacon`) or sets a value waits; elsewhere one that submits a form, sends a key or an event, writes by fetch, or
+clicks with a word that publishes in it (submit, post, send, publish, reply, comment, share, review, rating, tweet,
+done) waits, unless it names a search, a sign-in, a password or a query as a whole word; on a local app none waits.
+A form fill alone (`form_input`) is typed text, scanned as a batch's is. Measured the same way: the key rule holds 16
+calls in 3 transcripts and passes 30 (23 that name no post, 6 that sign in or search, 1 on a local app; held as
+unsure, the 23 would have been held too); the script rule holds 5 of 118 scripts on messaging sites, in 2
+transcripts, and 24 of 459 elsewhere, in 5.
+
+**A register hit where the guard is unsure the words are a message** (5.21.1). On a page that is no messaging site,
+and in an app that is none, a call that sends with words that break a register rule is not refused outright: a review
+is a message and a search is not, and the guard cannot tell them apart. The send's own hold names the rule, and its
+code waives it for that exact call; a send window never covers it. On a messaging site or in a messaging app the hit
+is refused outright, as before.
+
+**What the records keep** (5.21.1). The text a call types, and the values it fills in, never go into a stored request
+or the send log, which keep only how many characters were typed: a test form's password, typed by an agent, had
+landed there in plain text. The hold asks for a screenshot of the compose area instead. An action's own summary is
+kept as the agent wrote it, so a summary does not quote what it types.
 
 **Words typed on these pages** (5.21.0). On the pages of facebook.com, instagram.com, linkedin.com and x.com outside
 their messages a box may be a search, so a call that only types there (no click, no key, nothing it says sends) and
@@ -493,6 +538,11 @@ rule, so they decide with the words in front of them. One code releases one iden
 does anything besides typing, is refused outright, as on a page of messages, where typing writes a message, and as
 on every page of Gmail; an address that can change keeps its own code. Holding these words unscanned until a call
 sends instead would let a comment typed in one call and posted by Return in the next reach people with no scan at all.
+Since 5.21.1 the words a code released are kept, with the rules they broke, for 15 minutes: a send from the same page
+in that time shows them and the rules in its hold, and its approval binds them (the second review found that a Return
+after them waited on a code that named neither). Gmail stays outside this release on purpose: a search there for words
+a rule names is refused outright, as email's rules were before 5.21.0, since agents send email through the connectors,
+which the guard reads, and the browser path to Gmail was made only stricter (a ruling of 2026-11-14).
 
 In any app or browser page, an action whose summary starts with a sending verb (sends, replies, forwards, posts,
 publishes, shares, invites, responds, comments, mentions, announces, notifies, reminds, schedules, delivers,
@@ -515,8 +565,10 @@ summary that says what it does. A send window covers a computer-use send in its 
 `email`, `browser`...) only when the call itself types the signed words.
 
 **Limits.** The click rule reads the summary the agent wrote: a summary that hides a send ("Clicks the green
-button") passes outside the Return and line-break rules, and so does a page script (`javascript_tool`) that
-submits a form. Pasted text (cmd+v) is not scanned. These are why the binding rule still governs every send.
+button") passes outside the Return and line-break rules, and so does a page script that hides one (one that calls a
+site's own send function, or clicks with no word that publishes in it, off a messaging site). Pasted text (cmd+v) is
+not scanned, and Playwright's browser tools reach no send rule (over the same 30 days they were used 31 times, none to
+click, type or press a key). These are why the binding rule still governs every send.
 
 ## Calibration
 

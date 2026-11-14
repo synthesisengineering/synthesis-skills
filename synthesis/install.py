@@ -320,8 +320,21 @@ def _owned_files(home: Path) -> list:
     return files + [(home / "git-hooks" / name, _sha(GIT_HOOK_SCRIPT)) for name in GIT_HOOKS]
 
 
-def uninstall(home: Path = None, dry_run: bool = False) -> list:
-    """Remove what install created; restore core.hooksPath; keep anything the user changed."""
+class InUse(Exception):
+    """The runtime stays: something still runs it."""
+
+
+def uninstall(home: Path = None, dry_run: bool = False, codex_cleared: bool = False) -> list:
+    """Remove what install created; restore core.hooksPath; keep anything the user changed. Refuses (InUse), removing
+    nothing, while Codex's own hooks.json runs the stable hook: its guard would then hold every guarded call in Codex,
+    with nothing there to put the runtime back (review round 2 of 5.21.0). `codex_cleared`: the caller takes all of that
+    out first (setup.py uninstall's dry run, which has left its own declarations in place)."""
+    from synthesis import doctor
+    running = {} if codex_cleared else doctor.codex_user_entries(paths.codex_home())[0]
+    if running:
+        raise InUse(f"Codex's own {paths.codex_home() / 'hooks.json'} runs the synthesis runtime for {', '.join(running)}, so "
+                    "it stays: run setup.py uninstall, which takes out what setup declared there, or remove those hooks, "
+                    "then this again; nothing was removed")
     home, report, (verb, kept) = home or _home(), [], ("would remove", "would keep") if dry_run else ("removed", "kept")
     registered = _registrations(home).get("git_hooks_path")
     if registered:

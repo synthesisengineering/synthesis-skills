@@ -119,6 +119,83 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   before its fix: an archive whose only JSON held no conversation was taken for an export, one id reached twice
   wrote one file twice, and names that differ only in case could be listed in another order on another run.
 
+## [5.21.1] - 2026-11-14
+
+- **A click whose summary says it publishes waits for the code in every app and on every page, not only on messaging
+  sites** (`synthesis-message-guard` 2.11.1). On 2026-11-13 a public review typed and submitted through the browser on
+  a site that is no messaging site went out with no code: its control was labeled Submit rating, and outside messaging
+  sites only a click on Send counted. The rule is a list of labels and verbs, not every control that publishes: a
+  click waits when its summary names Send, Post, Comment, Reply, Repost, Share, Publish, Submit, Tweet or Done after a
+  click verb in any form, a word or three before the label allowed, or starts with submits, reposts, retweets, quotes
+  or rates, as the tools' own effect-first summaries do. A click that only opens or closes a box, menu or dialog
+  passes, as do a sign-in, a search, and the principal's own app on a local host. As first written, 5.21.1 wanted a
+  click verb right before the label, and its measurement found no such click in 30 days. The records do hold the
+  incident's two clicks on Submit rating, at 12:56 and 12:57 EST, each summarized "Submits the five-star public review
+  of" a person, which that form did not hold. Measured again with the rule's own code, over the 30 days to
+  2026-11-14: of 1,506 browser clicks and 37 computer-use clicks, it holds 12 that no rule held before, in 3
+  transcripts, the incident's two clicks on Submit rating and four on its stars among them. Tests first.
+- **After the second review: keys and page scripts that submit, records without typed words, and the hosts a person
+  types** (`synthesis-message-guard` 2.11.1).
+  - On a page that is no messaging site, a call that types words and then presses Return, Space or Return after Tab,
+    or types a line break, waits for the code when its summaries name a message, comment, review, post, reply or
+    tweet; a call that names none passes, as before (the principal's ruling of 2026-11-14), and so does one on a
+    local app. Measured: it holds 16 calls in 3 transcripts in 30 days and passes 30, 23 of them naming no post.
+    With the clicks and page scripts below, the second review's holds come to about 57 codes a month.
+  - A page script and a form fill alone reach the send guard. On a messaging site a script that clicks, submits,
+    sends a key or an event, writes by fetch or sets a value waits (5 of 118 in 30 days); elsewhere one that submits a
+    form, sends a key or an event, writes by fetch, or clicks a control that publishes waits, unless it searches or
+    signs in (24 of 459).
+  - The text a call types and the values it fills in never go into a stored request or the send log, where a test
+    form's password had landed in plain text. A register hit in a send on a page that is no messaging site goes on the send's own code, which names it,
+    instead of an outright refusal, since the guard cannot tell a review from a search there.
+  - Words released by the typed-words code are shown, with the rules they broke, in the hold of the next send from
+    the same page, and bound to its approval.
+  - Gmail and Outlook by the hosts a person types (`gmail.com`, `google.com/gmail`, `outlook.com`, `hotmail.com`,
+    `live.com/mail`) and Google Voice's texts (`voice.google.com`) count as their sites.
+  - Rule 12 says this in brief. Gmail's search box keeps the outright refusal on purpose, as the reference now says.
+    The 5.21.0 entry below loses a stray copy of the browser bullet's measurement that a merge left behind.
+    Tests first.
+- **A click on a control that publishes waits for the code on every page, not only on messaging sites**
+  (`synthesis-message-guard`). On 2026-11-13 a public review typed and submitted through the browser on a site that
+  is no messaging site went out with no code: its control was labeled Submit rating, and outside messaging sites only
+  a click on Send counted. A click whose summary names Send, Post, Comment, Reply, Repost, Share, Publish or Submit
+  right after a click verb now waits on any page; one whose summary says it only opens a box still passes. Measured
+  first: over 30 days of records, no click named one of these controls on any site, so the hold costs nothing
+  measured. Tests first.
+- **A declaration in Codex's own `hooks.json` covers the plugin's guard only as the guard's own invocation**
+  (`synthesis-onboarding`, `synthesis-agent-conformance`). Setup and the doctor judged a user-level command by its first
+  two words, and read `~` and `$HOME` as expanded even inside quotes. So a guard whose answer went to `/dev/null`, was
+  swallowed by `|| true` or ran in the background was taken as covering: setup switched the plugin's fail-closed copy
+  off and the doctor said ok. A path `sh` never finds (`"~/…"`, `'$HOME/…'`) passed for a call. Now a group covers only
+  with the plugin's settings and each command the stable hook as `sh` finds it (`$HOME` or `${HOME}`, bare or in double
+  quotes, or a bare `~`), followed by the plugin's own words, for the guard its fail-closed tail: without the tail a
+  missing runtime exits 127, which Codex lets through. Anything else keeps the plugin's copy on, and the doctor names it
+  as a fault; a path `sh` never finds is no declaration. 5.21.0's notes said a
+  narrower declaration never leaves a tool unguarded; until now that held for the matcher alone. Tests first.
+- **The runtime stays while Codex's own hooks run it** (`synthesis-onboarding`, core). With the option on, the
+  plugin's own session start, the one that reinstalls a missing runtime, is switched off, and once the runtime is gone
+  the user-level guard holds every guarded call, setup's own command included. `synthesis uninstall` removed the runtime
+  under setup's declarations, `setup.py uninstall` removed it under declarations of the person's that run it, and on a
+  new Mac setup declared before installing the runtime, so a failed install left the declarations behind. Now
+  `synthesis uninstall` removes nothing and exits 1 while anything in Codex's `hooks.json` runs the stable hook, and
+  names `setup.py uninstall`; `setup.py uninstall` refuses the same way while a hook of the person's there runs it; and
+  setup installs the runtime before any harness's plugin and declares only where the stable hook is in place. Tests
+  first.
+- **The guard answers within 4 seconds, closed** (core). A guard slowed past a harness's 5-second limit by a cold
+  repository read or a lock was let through by Codex and Muse, and its own `git` calls were allowed 20 seconds. The
+  PreToolUse hook now sets a 4-second deadline before it loads the guards: past it the call is held with the reason,
+  and git or any other process the guard started is stopped. What still lets a call through in Codex and Muse is a hook
+  whose start uses up more than about a second before the deadline is set. Tests first.
+- **Setup names each event it leaves running twice** (`synthesis-onboarding`). A declaration of the person's beside
+  setup's own read as "already declared", and turning the option off over the person's own declarations said only that
+  the plugin's hooks run once approved, while each event then ran twice. Where two copies of the guard judge one call,
+  one spends the approval and the other holds the call with a new code, so an approved call never goes. Setup now
+  names those events, in its note on a narrower declaration too, with what two guards do to an approved call. A CRLF
+  `hooks.json` now keeps its line endings, as 5.21.0's notes said every write did; only `config.toml` had. Tests first.
+- **The doctor judges every Claude Code on the Mac** (`synthesis-agent-conformance`). `claude fail closed` checked the
+  first Claude Code it found, while the plugin loads in each, the desktop app's own copies included. It now judges the
+  oldest and names its path when there are several. Tests first.
+
 ## [5.21.0] - 2026-11-14
 
 - **One approval in Codex lasts through releases, as a setup option** (`synthesis-onboarding`,
@@ -170,9 +247,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
 - **The browser guard holds Return on every page of facebook.com, instagram.com and linkedin.com.** It knew
   www.messenger.com and LinkedIn's `/messaging`, but Messenger also runs inside facebook.com, in its own page and in
   chat pop-ups on every other page, Return in a comment box posts in the person's name, and LinkedIn's messages open
-  in an overlay on every page. A page cannot show which box has the focus. Measured first: over 30 days of recorded
-  browser calls, none pressed Return on these sites outside their messages (the control counts 320 calls on LinkedIn
-  and 10 on facebook.com), so the hold costs nothing measured. Tests first.
+  in an overlay on every page. A page cannot show which box has the focus. Measured first, over 30 days of recorded
+  browser calls: none of the 55 Return presses in all was on these sites (43 were on other sites, 12 on pages the
+  record does not place), and the control counted 320 browser calls on LinkedIn in all, 290 of them on its messages
+  and 30 elsewhere, and 10 on facebook.com, so the hold costs nothing measured. Tests first.
 - **A guard that cannot answer holds the call in Claude Code** (`synthesis-agent-guardrails`, `synthesis-message-guard`,
   `synthesis-onboarding`, `synthesis-agent-conformance`). On PreToolUse, Claude Code let a call through when the hook
   timed out (its limit is 5 seconds), crashed, printed output it could not read, or could not start because the stable
@@ -213,10 +291,6 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   and sleeping past its limit, beside a stub that denies as the control. What Codex does with a failed hook was read in
   its source at 0.167.2 (its runner marks the hook failed and blocks nothing). Two assertions in the onboarding tests that
   passed on the path `.../hooks.json` alone now read the note's own words.
-  in an overlay on every page. A page cannot show which box has the focus. Measured first, over 30 days of recorded
-  browser calls: none of the 55 Return presses in all was on these sites (43 were on other sites, 12 on pages the
-  record does not place), and the control counted 320 browser calls on LinkedIn in all, 290 of them on its messages
-  and 30 elsewhere, and 10 on facebook.com, so the hold costs nothing measured. Tests first.
 - **After the release's review: every host of these sites, the controls that publish, Gmail's chat pop-ups,
   Messenger's channel and searches** (message guard 2.11.0).
   - A site is its host and every host under it, as the browser lands on them: a batch that opened `linkedin.com/...`,
