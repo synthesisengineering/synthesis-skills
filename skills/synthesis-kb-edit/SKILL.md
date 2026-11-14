@@ -36,6 +36,7 @@ specifics live only in `.agents/knowledge-base.yaml`.
 
 - [references/edit-and-ship.md](references/edit-and-ship.md): the seven-step edit and ship workflow (preflight, find the owning concept, isolate, edit, validate with the exact commands, review and stage, ship) and the 1.0.0 hard invariants as written. Read it before any edit, and before shipping an existing edit.
 - [references/knowledge-base-config-v1.md](references/knowledge-base-config-v1.md): the complete `.agents/knowledge-base.yaml` contract. Read it when the config check fails or a key's meaning is unclear.
+- [references/sharing-standard.md](references/sharing-standard.md): what goes into a shared knowledge base and what stays out (two audiences, extraction, the test for each fact, the default classes, figures), enforcement in layers, the phrase scan and how a hook and a pipeline call it, and adopting it; the policy template is [assets/sharing-policy.template.md](assets/sharing-policy.template.md). Read it before importing a document, when a fact may fall in a class that stays out, or when the contract names a sharing policy.
 - [references/coverage-map.md](references/coverage-map.md): where each part of the 1.0.0 text now lives.
 - Configuration gate, Route by intent, Plain-language interaction, Synchronize after publication: below.
 
