@@ -256,31 +256,47 @@ runs no send guard, deploy guard, reply check or session-start context (six time
   plugin's session start also names the plugin's folder, so a first run can install the
   runtime; the user-level one calls the stable hook alone, since setup has installed the
   runtime by then. Setup's groups go after the person's own for the same event, and the
-  person's hooks stay as they are; an event the person already declares with the stable
-  hook is kept as written and not declared twice.
-- It switches the plugin's own four off by their state keys in `config.toml`
-  (`[hooks.state."synthesis-skills@synthesis-engineering:hooks/hooks.json:<event>:0:0"]`,
+  person's hooks stay as they are. An event the person already declares with the stable
+  hook (as the program its command runs, not a mention) is kept as written and not
+  declared twice; the plugin's copy of it goes off only when theirs holds the plugin's
+  declaration, the same matcher and timeout. A narrower one keeps the plugin's own on
+  beside it, and setup says to edit or remove theirs. Setup records the groups it wrote
+  (`~/.synthesis/v5/state/codex-user-hooks.json`) and treats only those as its own.
+- It switches the plugin's own copy of each covered event off by its state key in
+  `config.toml` (`[hooks.state."synthesis-skills@synthesis-engineering:hooks/hooks.json:<event>:0:0"]`,
   `enabled = false`), so no event runs twice. A key Codex already holds an approval
-  under gains the line in that table, never a second table; every line setup adds ends
+  under gains the line in that table, never a second table, and an `enabled` key spelled
+  in quotes is the one switched; every line setup adds ends
   `# synthesis-setup: codex-user-hooks`, and Codex keeps it when it writes the file, a
   "Trust all" at its startup review included. Setup writes no approval.
 - It says to approve the four once in Codex's `/hooks`; that stays the person's to do.
 
-A rerun changes nothing. A `hooks.json` Codex would not read (not JSON, a top-level key
-other than `hooks` and `description`, a hook of a type Codex does not know) or a
-`config.toml` that does not parse stops it before anything is written, and each file is
-copied to `~/.synthesis/v5/backups/` before a change. Once it is on, every install or
-update of the Codex plugin, by setup or by the release script, keeps the declaration in
-step with the plugin Codex now holds: a release that changes the plugin's
-`hooks/hooks.json` (5.13.0 added `shell_command` to the shell hook's matcher) changes the user-level copy
-in its place, and Codex asks once for the changed declaration. A run without the flag
-keeps the choice.
+A rerun changes nothing. Each of these stops it before anything is written: a `hooks.json`
+Codex would not read (not JSON, a top-level key other than `hooks` and `description`, a
+hook of a type Codex does not know); a `config.toml` that does not parse; hook state held
+as an inline table (`hooks = {...}`, `state = {...}`), where an added table would define
+it twice; an edit that would not parse once composed (setup reads it back with its strict
+reader, and with Python's own `tomllib` where Python has it); and a file that changed
+while setup was editing it, say Codex recording an approval. Each file is copied to
+`~/.synthesis/v5/backups/` before a change. Turning the option on writes `hooks.json`
+first and off writes `config.toml` first, and a write that fails midway puts back what
+was written, so no stop between the two leaves an event with neither copy. A symlinked
+file is written through to its target, a file keeps its mode (a new one is 0600), no
+temporary file outlives a failure, and lines keep their endings. Once it is on, setup's
+`plugin` command and the release script keep the declaration in step with the plugin
+Codex holds after each install or update: a release that changes the plugin's
+`hooks/hooks.json` (5.13.0 added `shell_command` to the shell hook's matcher) changes the
+user-level copy in its place, and Codex asks once for the changed declaration. A run
+without the flag keeps the choice; the mark's words in a comment turn nothing on.
 
-`setup.py plugin --no-codex-user-hooks` turns it off, and `setup.py uninstall` does too:
-each takes out setup's own groups (known by their exact text), its marked lines, a table
-it added that now holds nothing else, and a `hooks.json` it created, and nothing else.
-Approvals Codex recorded stay, as Codex's own. A hook of the person's declared after
-setup's in the same event moves up one place, so Codex asks for it again.
+`setup.py plugin --no-codex-user-hooks` turns it off, whatever the install says, since it
+needs no network, and `setup.py uninstall` does too, before it removes the runtime those
+hooks run: if it cannot, uninstall removes nothing and exits 1. Each takes out the groups
+setup recorded, its marked lines (found by their table, key, value and mark, however a
+formatter spaced them), a header it added once no key is left under it, and a
+`hooks.json` it created; the person's own lines and comments stay. Approvals Codex
+recorded stay, as Codex's own. A hook of the person's declared after setup's in the same
+event moves up one place, so Codex asks for it again.
 
 What it gives up is Codex's second look at a hook whose code changed. With the plugin's
 own hooks, Codex asks again whenever a release changes what they run, which protects
@@ -299,10 +315,14 @@ or a session in Claude Code or Muse does.
 
 `synthesis doctor`'s `codex hook trust` line then judges the user-level hooks (Codex keys
 each by `hooks.json`'s path under its home's real path, then the event, group and place)
-and treats the plugin's switched-off copies as intended. It fails a copy left on beside a
-user-level hook, which would run twice once approved; a user-level declaration unlike
-the installed plugin's; and a `hooks.json` Codex would not read. Without the declaration
-the line is as before.
+and treats the plugin's switched-off copies of covered events as intended. It fails a
+copy left on beside a covering declaration, which would run twice once approved; an
+event declared twice at the user level; a declaration that does not hold the installed
+plugin's, saying to run setup again for setup's own and to edit or remove the person's;
+setup's switch with nothing covering its event; a `hooks.json` Codex would not read while
+the option is on; and hook state held as an inline table. None of these is an approval
+the person gives. Without the option, the line is as before, and a `hooks.json` of the
+person's that Codex would not read is a `codex hooks file` warning of its own.
 
 ## Restart, verify, uninstall
 

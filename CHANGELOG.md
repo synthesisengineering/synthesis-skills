@@ -10,24 +10,37 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   `synthesis-agent-conformance`; plan item 13.7, part 2). Codex ties its approval of a plugin's hooks to the plugin's
   files, so after each release it ran none of synthesis's four hooks until the person approved them again in `/hooks`
   (six times on 2026-11-13). `setup.py plugin --codex-user-hooks` declares the four in Codex's own `hooks.json`, each
-  calling the stable hook, which Codex trusts by its declaration alone, and switches the plugin's own four off by their
-  state keys with lines marked as setup's, so no event runs twice; the person approves the four once. It keeps the
-  person's hooks, changes nothing on a rerun, refuses a `hooks.json` Codex would not read or a `config.toml` that does
-  not parse before writing anything, and every later install or update of the Codex plugin, the release script's
-  included, keeps the declaration in step with the plugin. `--no-codex-user-hooks` and `setup.py uninstall` take out
-  exactly what it added. It gives up Codex's second look at a hook whose code changed, which protects anyone installing
-  someone else's plugin: recommended for a publisher's own machines, off unless asked for. Codex's startup review still
-  lists the plugin's switched-off copies after a release; the user-level hooks run whatever the answer there.
+  calling the stable hook, which Codex trusts by its declaration alone, and switches the plugin's own copy of each
+  covered event off by its state key with a line marked as setup's, so no event runs twice; the person approves the
+  four once. A declaration of the person's stays as written, and the plugin's copy of its event goes off only when it
+  holds the plugin's declaration, so a narrower one never leaves a tool unguarded. Setup records the groups it wrote and
+  treats only those as its own. A rerun changes nothing. Before writing anything it refuses a `hooks.json` Codex would
+  not read, a `config.toml` that does not parse, hook state held as an inline table, an edit that would not parse once
+  composed, and a file changed meanwhile; turning the option on writes `hooks.json` first and off `config.toml` first, a
+  write that fails midway puts back what was written, and writes keep each file's mode, symlink and line endings.
+  Setup's `plugin` command and the release script keep the declaration in step with the plugin after each install or
+  update. `--no-codex-user-hooks` works offline, and it and `setup.py uninstall` take out the groups setup recorded and
+  the lines it marked, nothing of the person's; uninstall does so before it removes the runtime, or removes nothing and
+  exits 1. It gives up Codex's second look at a hook whose code changed, which protects anyone installing someone else's
+  plugin: recommended for a publisher's own machines, off unless asked for. Codex's startup review still lists the
+  plugin's switched-off copies after a release; the user-level hooks run whatever the answer there.
 - **The doctor reads that declaration.** With it present, `codex hook trust` judges the user-level hooks, keyed by
-  `hooks.json`'s path under Codex's home's real path, and treats the plugin's switched-off copies as intended; it fails
-  a copy left on beside them, a declaration unlike the installed plugin's, and a `hooks.json` Codex would not read.
-  Without it, the line is as before. `read_toml` gains a strict reading that names the first line it cannot place.
+  `hooks.json`'s path under Codex's home's real path, and treats the plugin's switched-off copies of covered events as
+  intended. It fails, as faults rather than approvals, a copy left on beside a covering declaration, an event declared
+  twice, a declaration that does not hold the installed plugin's (advising setup for setup's own and an edit for the
+  person's), setup's switch with nothing covering its event, a `hooks.json` Codex would not read while the option is
+  on, and hook state held as an inline table. Without the option the line is as before, and the person's own unreadable
+  `hooks.json` is a `codex hooks file` warning. `read_toml` reads lines at line feeds alone, and gains a strict reading
+  that refuses what Codex refuses: a line it cannot place, a key set twice, a table defined twice, and any table or key
+  inside a value.
 - **How it was checked.** Tests first. Codex's source at the installed build (0.167.0-alpha.4.1) and probes in homes
   of their own: approving in `/hooks` writes `trusted_hash` alone for a user-level hook, the state written by hand
   before, and the doctor's hash equals what Codex lists for all four; a plugin hook switched off by its key stays off
   across a change of the plugin's files and version, and through the startup review's "Trust all". Then end to end:
   the plugin installed with Codex's own commands, the option turned on, the four approved as `/hooks` approves them,
-  and a release that changed the plugin's files and version, with the user-level hooks trusted throughout.
+  and a release that changed the plugin's files and version, with the user-level hooks trusted throughout. Review
+  round 1 found fourteen faults in the option and the doctor's line, each fixed after a test that failed for it, and
+  each reviewer's probe run again against the fix.
 - **A fault of setup on an approval line no longer reads as waiting on the person.** The release counted any failing
   Codex or Muse approval line as waiting on the person. With the user-level option the same line can name a fault (a
   plugin copy left on, a declaration unlike the plugin's, a plugin Codex cannot fingerprint), which no approval fixes;

@@ -99,11 +99,14 @@ Because Codex ties that approval to the plugin's files, every release leaves Cod
 none of synthesis's hooks running until the person approves again. A hook declared in
 Codex's own `hooks.json` is trusted by its declaration alone, and all four synthesis
 hooks run one stable path, so `setup.py plugin --codex-user-hooks` declares them there
-and switches the plugin's own four off by their state keys (`enabled = false`, each line
-marked as setup's; setup writes no approval); the person approves the four once in
-`/hooks`, and a release asks again only when it changes a declaration. Every later
-install or update keeps the declaration in step with the plugin, and
-`--no-codex-user-hooks` or `setup.py uninstall` takes out exactly what it added. What it
+and switches the plugin's own copy of each covered event off by its state key (`enabled =
+false`, each line marked as setup's; setup writes no approval); a narrower declaration of
+the person's keeps the plugin's copy on. The person approves the four once in `/hooks`,
+and a release asks again only when it changes a declaration. Setup's `plugin` command and
+the release script keep the declaration in step with the plugin, and
+`--no-codex-user-hooks` or `setup.py uninstall` takes out the groups setup recorded and
+the lines it marked, nothing of the person's; it refuses, writing nothing, any file it
+cannot edit into one Codex reads. What it
 gives up is Codex's second look at a hook whose code changed, which protects anyone
 installing someone else's plugin: the option is meant for a publisher's own machines and
 is off unless asked for. With it on, doctor judges the user-level hooks' trust and treats
