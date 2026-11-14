@@ -486,7 +486,7 @@ def test_a_sign_in_a_search_and_the_principals_own_local_app_pass(url, steps):
 def test_typed_words_then_a_key_that_name_no_post_pass_off_a_messaging_site(steps):
     """The principal's ruling of 2026-11-14 ("Skip typed text that names no post"): off a messaging site, typed words
     then Return, Tab and Space or a line break wait only when the call names a message, comment, review, post, reply or
-    tweet. A call that names none passes, as before 5.21.1 (20 calls in 30 days named none)."""
+    tweet. A call that names none passes, as before 5.21.1 (23 calls in 30 days named none; 16 named a post)."""
     assert check(CHROME, _opened("https://assistant.example.com/chat", *steps)) is None
 
 

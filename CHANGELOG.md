@@ -22,9 +22,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
 - **After the second review: keys and page scripts that submit, records without typed words, and the hosts a person
   types** (`synthesis-message-guard` 2.11.1).
   - On a page that is no messaging site, a call that types words and then presses Return, Space or Return after Tab,
-    or types a line break, waits for the code, unless it signs in or searches or the page is a local app. Measured: it
-    holds 38 calls in 6 transcripts in 30 days; 18 name a message, comment, review or post, and the rest name neither
-    and are held as unsure.
+    or types a line break, waits for the code when its summaries name a message, comment, review, post, reply or
+    tweet; a call that names none passes, as before (the principal's ruling of 2026-11-14), and so does one on a
+    local app. Measured: it holds 16 calls in 3 transcripts in 30 days and passes 30, 23 of them naming no post.
+    With the clicks and page scripts below, the second review's holds come to about 57 codes a month.
   - A page script and a form fill alone reach the send guard. On a messaging site a script that clicks, submits,
     sends a key or an event, writes by fetch or sets a value waits (5 of 118 in 30 days); elsewhere one that submits a
     form, sends a key or an event, writes by fetch, or clicks a control that publishes waits, unless it searches or

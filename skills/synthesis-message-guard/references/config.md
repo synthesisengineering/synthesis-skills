@@ -504,16 +504,17 @@ counted only summaries of the click-verb form, which the incident's were not.
 
 **Keys and page scripts that submit, on any page** (5.21.1). On a page that is no messaging site, a call that types
 words and then presses Return or Enter (without shift), Space or Return after Tab, or types a line break waits for a
-code, since most forms submit on Return; it passes when its summaries sign in or search and name nothing that posts,
-and on a local app. A page script (`javascript_tool`, alone or as a batch step) reaches the guard: on a messaging
+code when its summaries name a message, comment, review, post, reply or tweet: most forms submit on Return, and those
+are the ones that post. A call that names none passes, as before 5.21.1 (the principal's ruling of 2026-11-14, "Skip
+typed text that names no post"), and so does every call on a local app. A page script (`javascript_tool`, alone or as a batch step) reaches the guard: on a messaging
 site one that clicks, submits, sends a key or an event, writes by fetch (a POST, PUT, PATCH or DELETE, or
 `sendBeacon`) or sets a value waits; elsewhere one that submits a form, sends a key or an event, writes by fetch, or
 clicks with a word that publishes in it (submit, post, send, publish, reply, comment, share, review, rating, tweet,
 done) waits, unless it names a search, a sign-in, a password or a query as a whole word; on a local app none waits.
-A form fill alone (`form_input`) is typed text, scanned as a batch's is. Measured the same way: the key rule holds 38
-calls in 6 transcripts (18 of them name a message, comment, review or post, and the rest name neither, so they are
-held as unsure) and passes 8; the script rule holds 5 of 118 scripts on messaging sites, in 2 transcripts, and 24 of
-459 elsewhere, in 5.
+A form fill alone (`form_input`) is typed text, scanned as a batch's is. Measured the same way: the key rule holds 16
+calls in 3 transcripts and passes 30 (23 that name no post, 6 that sign in or search, 1 on a local app; held as
+unsure, the 23 would have been held too); the script rule holds 5 of 118 scripts on messaging sites, in 2
+transcripts, and 24 of 459 elsewhere, in 5.
 
 **A register hit where the guard is unsure the words are a message** (5.21.1). On a page that is no messaging site,
 and in an app that is none, a call that sends with words that break a register rule is not refused outright: a review
