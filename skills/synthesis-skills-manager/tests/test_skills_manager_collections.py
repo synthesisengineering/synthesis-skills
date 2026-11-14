@@ -640,3 +640,51 @@ def test_carried_runtime_files_that_are_not_the_checkout_are_refused(tmp_path, c
     found = collections.verify(repo, rebuilt(files, change(files)))
     assert any(problem.startswith(expected) for problem in found), found
 
+
+
+# ---- a path into another skill's folder (R1-20 of 5.22.0's review) -------------------------------
+
+# The build's rule 3 saw only declared dependencies: two scripts reached into another collection's skill by a path,
+# undeclared. Every string of a collected script's code that names another skill's folder is now read, and the skill
+# must be beside it, or the script must need the whole set, or the collections file must name the load as optional,
+# with what the script does without it.
+REACH = "import pathlib\nHELPER = pathlib.Path(__file__).resolve().parents[2] / 'toolbox' / 'scripts' / 'tool.py'\n"
+
+
+def reaching(script=REACH, **extra):
+    return ({**SOUND, "toolbox": skill("toolbox", "engineering"),
+             "pen": {**skill("pen", "writing", '["base"]'), "scripts/run.py": script}}, {**FIXTURE, **extra})
+
+
+def test_a_script_that_reaches_another_collection_s_skill_by_a_path_fails_the_build(tmp_path):
+    found = problems(checkout(tmp_path, *reaching()))
+    assert any(problem.startswith("writing/skills/pen/scripts/run.py: reaches toolbox's folder, which is in engineering, "
+                                  "not beside it in writing") for problem in found), found
+
+
+@pytest.mark.parametrize("script, extra", [
+    (REACH, {"optional_loads": {"skills/pen/scripts/run.py": {"toolbox": "it says the tool is not there"}}}),
+    (GUARDED.format(module="board") + REACH, {"needs_the_whole_set": {"skills/pen/scripts/run.py": "the board"}}),
+    ('"""It loads ../../toolbox/scripts/tool.py by path, in another skill."""\nimport sys\n', {}),  # a docstring loads nothing
+])
+def test_a_reach_named_as_optional_or_from_a_script_that_needs_the_whole_set_passes(tmp_path, script, extra):
+    found = problems(checkout(tmp_path, *reaching(script, **extra)))
+    assert [problem for problem in found if "reaches" in problem or "optional_loads" in problem] == [], found
+
+
+def test_an_optional_load_the_script_does_not_take_fails_the_build(tmp_path):
+    found = problems(checkout(tmp_path, *reaching("import sys\n", optional_loads={
+        "skills/pen/scripts/run.py": {"toolbox": "it says the tool is not there"}})))
+    assert f"{collections.LIST}: optional_loads names toolbox for skills/pen/scripts/run.py, which does not reach it" in found
+
+
+def test_the_two_paths_the_review_found_across_collections_are_each_accounted_for(written):
+    """The rituals' pull-request scan reaches the Bitbucket skill's helper (engineering) from chief of staff, and says a
+    Bitbucket repository is unscanned without it; onboarding's setup reaches the rituals' launch file from the core,
+    and needs the whole set in any case."""
+    assert SPEC["optional_loads"] == {"skills/synthesis-daily-rituals/scripts/pr_queue_scan.py": {
+        "synthesis-bitbucket": SPEC["optional_loads"]["skills/synthesis-daily-rituals/scripts/pr_queue_scan.py"]["synthesis-bitbucket"]}}
+    assert "skills/synthesis-onboarding/scripts/setup.py" in SPEC["needs_the_whole_set"]
+    found = collections.verify(ROOT, {path.relative_to(written).as_posix(): path.read_bytes()
+                                      for path in written.rglob("*") if path.is_file()})
+    assert [problem for problem in found if "reaches" in problem] == []

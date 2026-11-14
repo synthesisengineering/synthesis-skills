@@ -588,3 +588,21 @@ def test_bitbucket_caller_requires_complete_reviewer_pages(monkeypatch, missing_
     else:
         assert result["unscanned"] == [] and result["scanned"] == ["repo"]
         assert {item["number"] for item in result["found"]} == {1, 2}
+
+
+def test_without_the_bitbucket_skill_beside_it_a_bitbucket_repo_is_unscanned_and_says_where_it_looked(monkeypatch, tmp_path):
+    """R1-20 of 5.22.0's review: the chief-of-staff collection holds this script and not the Bitbucket skill, which is in
+    engineering. The collections file names the load as optional, for this: the repository is reported unscanned, with
+    the path the helper was looked for at, never as an empty queue."""
+    missing = tmp_path / "synthesis-bitbucket" / "scripts" / "pr_queue.py"
+    monkeypatch.setattr(mod, "BITBUCKET_HELPER", missing)
+    monkeypatch.setattr(mod.shutil, "which", lambda name: f"/usr/local/bin/{name}")
+    mod.bitbucket_helper.cache_clear()
+    try:
+        result = mod.scan([{"name": "team-repo", "remotes": {"origin": "git@bitbucket.org:team/repo.git"}}], str(tmp_path),
+                          None, datetime.datetime.now(datetime.timezone.utc))
+    finally:
+        mod.bitbucket_helper.cache_clear()
+    assert result["unscanned"] == [{"repo": "team-repo", "reason": f"synthesis-bitbucket helper not found at {missing}",
+                                    "state": "UNREACHABLE"}]
+    assert result["found"] == [] and result["scanned"] == []
