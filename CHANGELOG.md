@@ -103,8 +103,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   conversation becomes one markdown transcript laid out like a Slack sync's, named by its id and its source
   (`messenger-dyi-<id>.md`, `messenger-e2ee-<id>.md`). Its text sits in fences marked `untrusted` that no line of a
   message can close, hidden characters are shown as `[U+XXXX]`, and attachments are named by their place in the
-  export, never copied. The regular export's text quirk (UTF-8 bytes written as Latin-1 escapes) is repaired only
-  where it round-trips. A re-import keeps every message written before, byte for byte, and adds only new ones; with
+  export, never copied. The regular export's text quirk (UTF-8 bytes written as Latin-1 escapes) is repaired once per
+  file, only in a file whose text shows it. A re-import keeps every message written before, byte for byte, and adds only new ones; with
   nothing new it writes nothing. Standard library only, no network: it reads only the export and its own earlier
   transcripts, and writes only in `--out`. The README (73 skills), the Muse manifest and the skill router list it, and
   it is in the chief-of-staff collection, beside `synthesis-local-messaging`.
@@ -112,8 +112,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   with a listing of file names and sizes and no message text, so that a reader can be added; so are a ZIP entry
   whose name could lead outside the archive, a link entry, a name given twice, a message file over 256 MiB, a link
   inside an export folder, an output folder inside the export, and two conversations that would share a file name.
-  A file in `--out` the importer did not write, a transcript edited since, and a secure-storage file that now lists
-  other participants are left alone and named.
+  A file in `--out` the importer did not write, a transcript edited since, and a secure-storage conversation whose
+  messages sit in two transcripts are left alone and named.
 - **The formats are written down with their sources** (`references/formats.md`): what Meta's own pages confirm, what
   a real secure-storage download showed, what independent open-source importers agree on, and what is still
   inferred, with how the importer handles each open question.
@@ -124,6 +124,19 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   written outside `--out`. Review of the first version found three defects, each fixed with a test that failed
   before its fix: an archive whose only JSON held no conversation was taken for an export, one id reached twice
   wrote one file twice, and names that differ only in case could be listed in another order on another run.
+- **The importer after review round 1** (`synthesis-message-exports`; seven findings, each fixed after a test that
+  failed first). A re-import no longer adds a message again when a sender's name, the export's layout or the
+  thread's section has changed: a message is known by its time, text, link, call and unsent facts and its
+  attachments' file names, never by the sender's name or an attachment's folders (R1-10; transcripts move to format
+  2). Two secure-storage chats with one display name and the same people never mix: a conversation goes to the
+  transcript already holding its messages, and a new one is named by its display name and first message, never by
+  the download's running index (R1-11). The encoding repair is decided once per file, so correct text such as `CAFÉ
+  !` with a no-break space stays as written (R1-12). A ZIP's message files are bounded before any is read (100,000
+  files, 2 GiB inflated in all, stored or deflate only, none over 1 MiB inflating past 200 times its compressed
+  size), so a few kilobytes no longer inflate hundreds of gigabytes (R1-13). Every character that shows nothing is
+  shown as `[U+XXXX]`, from Python's own Unicode tables, in text and in names (R1-23). `--out` inside the export is
+  caught in any letter case (R1-24). A refusal says its listing holds the names of the people in these
+  conversations, and `--listing-redacted` lists the same files with every name replaced by a token (R1-26).
 
 ## [5.21.1] - 2026-11-14
 

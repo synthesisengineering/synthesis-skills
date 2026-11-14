@@ -12,6 +12,8 @@ import os
 import re
 import subprocess
 import sys
+import time
+import unicodedata
 import zipfile
 from pathlib import Path
 
@@ -96,8 +98,8 @@ def test_the_secure_storage_download_gives_one_transcript_per_conversation_file(
     code, printed = run(im, capsys, export, "--out", out)
     assert code == 0, printed
     written = transcripts(out)
-    assert len(written) == 2 and all(re.fullmatch(r"messenger-e2ee-Alex-Sample_[01]-[0-9a-f]{6}\.md", name) for name in written)
-    first, second = (written[name] for name in sorted(written))
+    assert len(written) == 2 and all(re.fullmatch(r"messenger-e2ee-Alex-Sample-[0-9a-f]{8}\.md", name) for name in written)
+    first, second = sorted(written.values(), key=lambda text: "another chat" in text)  # named by first message, not index
     assert first.splitlines()[2].endswith("(secure storage)") and "From: `Alex Sample_0.json`" in first.splitlines()
     assert split_fences(first)[1] == ["first encrypted note", f"photo: ./{photo}"]
     assert "Participants: Alex Sample, Blair Example" in first.splitlines()
@@ -118,7 +120,7 @@ def test_secure_storage_timestamps_read_the_same_in_milliseconds_or_seconds(im, 
     [text] = transcripts(out).values()
     assert "## Tuesday, March 5, 2024" in text.splitlines()
     assert "### Alex Sample — 14:02 UTC" in text.splitlines() and "### Blair Example — 14:03 UTC" in text.splitlines()
-    assert re.search(r"^\*\*Message ID:\*\* e2ee-Blair-Example_5-[0-9a-f]{6}:1709647320000-[0-9a-f]{10}$", text, re.M)
+    assert re.search(r"^\*\*Message ID:\*\* e2ee-Blair-Example-[0-9a-f]{8}:1709647320000-[0-9a-f]{10}$", text, re.M)
 
 
 @pytest.mark.parametrize("stamps, why", [([1709647320, 1709647320000], "mixed units"),
@@ -150,9 +152,8 @@ def test_repaired_text_reaches_the_transcript_from_both_downloads(im, capsys, tm
     written = transcripts(out)
     regular = written.pop("messenger-dyi-cafecrew_2002.md")
     assert regular.splitlines()[1] == "# Messenger — Café crew" and split_fences(regular)[1] == [words]
-    escaped, proper = (written[name] for name in sorted(written))
-    assert escaped.splitlines()[1] == "# Messenger — Café crew" and split_fences(escaped)[1] == [words]
-    assert split_fences(proper)[1] == [words + " Ã© kept"]
+    assert sorted((split_fences(text)[1], text.splitlines()[1]) for text in written.values()) == [
+        ([words], "# Messenger — Café crew"), ([words + " Ã© kept"], "# Messenger — Café crew")]
 
 
 def test_a_thread_split_across_message_files_reads_in_time_order(im, capsys, tmp_path):
@@ -501,11 +502,12 @@ def test_both_downloads_share_an_output_folder_and_each_reimports_unchanged(im, 
         code, printed = run(im, capsys, tmp_path / given, "--out", out)
         assert code == 0, printed
     names = sorted(transcripts(out))
-    assert names[0] == "messenger-dyi-alexsample_1501.md" and names[1].startswith("messenger-e2ee-Alex-Sample_0-")
+    assert names[0] == "messenger-dyi-alexsample_1501.md" and names[1].startswith("messenger-e2ee-Alex-Sample-")
     assert len(names) == 2 and "messages: 0 new; 1 already in transcripts" in printed
 
 
-def test_a_secure_storage_name_that_now_holds_other_people_is_not_merged(im, capsys, tmp_path):
+def test_a_secure_storage_name_that_now_holds_another_conversation_gets_a_transcript_of_its_own(im, capsys, tmp_path):
+    """The download's running index passed to another chat: no message in common, so nothing is merged."""
     out = tmp_path / "out"
     write_secure(tmp_path / "first", "Alex Sample_4", [ALEX, BLAIR], [secure_message(ALEX, T0, "with Blair")])
     assert run(im, capsys, tmp_path / "first", "--out", out)[0] == 0
@@ -513,7 +515,29 @@ def test_a_secure_storage_name_that_now_holds_other_people_is_not_merged(im, cap
     before = path.read_bytes()
     write_secure(tmp_path / "second", "Alex Sample_4", [ALEX, CASEY], [secure_message(CASEY, T0 + DAY, "with Casey")])
     code, printed = run(im, capsys, tmp_path / "second", "--out", out)
-    assert code == 1 and f"skipped conversation {path.name}: " in printed and path.read_bytes() == before
+    assert code == 0 and path.read_bytes() == before and "1 new transcripts" in printed
+    assert sorted(split_fences(text)[1] for text in transcripts(out).values()) == [["with Blair"], ["with Casey"]]
+
+
+@pytest.mark.parametrize("case", ["in two transcripts", "two conversations, one transcript"])
+def test_a_secure_storage_conversation_that_cannot_be_placed_alone_is_skipped_and_named(im, capsys, tmp_path, case):
+    out, people = tmp_path / "out", [ALEX, BLAIR]
+    one, two, three = (secure_message(ALEX, T0 + n * 1000, f"message {n}") for n in range(3))
+    if case == "in two transcripts":
+        write_secure(tmp_path / "first", "Pat Lee_1", people, [one])
+        write_secure(tmp_path / "first", "Pat Lee_2", people, [two])
+        write_secure(tmp_path / "second", "Pat Lee_1", people, [one, two, three])
+    else:
+        write_secure(tmp_path / "first", "Pat Lee_1", people, [one, two])
+        write_secure(tmp_path / "second", "Pat Lee_1", people, [one, three])
+        write_secure(tmp_path / "second", "Pat Lee_2", people, [two])
+    assert run(im, capsys, tmp_path / "first", "--out", out)[0] == 0
+    before = {path.name: path.read_bytes() for path in out.iterdir()}
+    code, printed = run(im, capsys, tmp_path / "second", "--out", out)
+    assert code == 1 and "skipped conversation messenger-e2ee-Pat-Lee-" in printed
+    assert {"in two transcripts": "its messages are in more than one transcript",
+            "two conversations, one transcript": "2 conversations of this export belong to it"}[case] in printed
+    assert {path.name: path.read_bytes() for path in out.iterdir()} == before
 
 
 def test_a_file_the_importer_did_not_write_or_one_edited_since_is_left_alone(im, capsys, tmp_path):
@@ -571,3 +595,154 @@ def test_the_command_line_runs_as_documented(tmp_path):
     assert ran.stdout.splitlines()[-1] == "dry run: nothing written" and not (tmp_path / "out").exists()
     helped = subprocess.run([sys.executable, "-I", str(SCRIPT), "--help"], capture_output=True, text=True, timeout=60)
     assert helped.returncode == 0 and "--since" in helped.stdout and "--dry-run" in helped.stdout
+
+
+# ---- review round 1 of 5.22.0 -----------------------------------------------------------------
+
+def test_r1_10_a_reimport_from_another_layout_section_or_sender_name_adds_nothing(im, capsys, tmp_path):
+    """The same two messages in a later export: the 2025 layout, the thread archived since, the sender's account
+    renamed. A message is known by its time and what it says, never by the file or the name it came under."""
+    out = tmp_path / "out"
+    old_photo = "messages/inbox/alexsample_1234567890/photos/1.jpg"
+    new_photo = "your_facebook_activity/messages/archived_threads/alexsample_1234567890/photos/1.jpg"
+    write_dyi(tmp_path / "2023", "alexsample_1234567890", [dyi_thread(ALEX, [ALEX, BLAIR], [
+        dyi_message(BLAIR, T0 + 60_000, photos=[{"uri": old_photo, "creation_timestamp": 1}]),
+        dyi_message(ALEX, T0, "See you at noon")])], parent=None)
+    assert run(im, capsys, tmp_path / "2023", "--out", out)[0] == 0
+    path = out / "messenger-dyi-alexsample_1234567890.md"
+    first = path.read_bytes()
+    write_dyi(tmp_path / "2025", "alexsample_1234567890", [dyi_thread("Alex Renamed", ["Alex Renamed", BLAIR], [
+        dyi_message(BLAIR, T0 + 60_000, photos=[{"uri": new_photo, "creation_timestamp": 1}]),
+        dyi_message("Alex Renamed", T0, "See you at noon")])], section="archived_threads")
+    code, printed = run(im, capsys, tmp_path / "2025", "--out", out)
+    assert code == 0 and "messages: 0 new; 2 already in transcripts" in printed
+    assert path.read_bytes() == first
+
+
+def test_r1_11_two_secure_storage_chats_with_one_name_and_the_same_people_never_mix(im, capsys, tmp_path):
+    """Two chats shown under one generic name, with the same participants, swap their running index between two
+    downloads. Each transcript keeps its own chat's messages only, and each later message joins its own chat."""
+    out, people = tmp_path / "out", [BLAIR, "Facebook user"]
+    write_secure(tmp_path / "june", "Facebook user_1", people, [secure_message("Facebook user", T0, "A: the first chat")])
+    write_secure(tmp_path / "june", "Facebook user_2", people, [secure_message("Facebook user", T0 + 5000, "B: another chat")])
+    write_secure(tmp_path / "nov", "Facebook user_1", people, [secure_message("Facebook user", T0 + 5000, "B: another chat"),
+                                                               secure_message("Facebook user", T0 + 9000, "B: later")])
+    write_secure(tmp_path / "nov", "Facebook user_2", people, [secure_message("Facebook user", T0, "A: the first chat"),
+                                                               secure_message("Facebook user", T0 + 8000, "A: later")])
+    for given in ("june", "nov", "nov"):
+        code, printed = run(im, capsys, tmp_path / given, "--out", out)
+        assert code == 0, printed
+    assert sorted(split_fences(text)[1] for text in transcripts(out).values()) == [
+        ["A: the first chat", "A: later"], ["B: another chat", "B: later"]]
+
+
+def test_r1_12_correct_text_is_left_as_written_and_the_quirk_is_decided_once_per_file(im, capsys, tmp_path):
+    out = tmp_path / "out"
+    samples = ["CAFÉ !", "OLÉ !", "Ã©", "Â£5"]  # each fits Latin-1 and reads as UTF-8
+    write_secure(tmp_path / "secure", "Sam Roe_1", [BLAIR, "Sam Roe"],
+                 [secure_message("Sam Roe", T0 + n * 1000, s) for n, s in enumerate(samples)])
+    regular = tmp_path / "regular"  # the regular export writes each file the quirk's way: the same words come back
+    write_dyi(regular, "samroe_1", [dyi_thread("Sam Roe", [BLAIR, "Sam Roe"],
+                                               [dyi_message("Sam Roe", T0 + n * 1000, s) for n, s in enumerate(samples)][::-1])])
+    thread = regular / "your_facebook_activity" / "messages" / "inbox" / "samroe_2"  # one written right: a character above U+00FF shows it
+    thread.mkdir(parents=True)
+    (thread / "message_1.json").write_text(json.dumps({"title": "Sam Roe", "participants": [{"name": "Sam Roe"}], "messages": [
+        {"sender_name": "Sam Roe", "timestamp_ms": T0 + 1000, "content": "\U0001F44D"},
+        {"sender_name": "Sam Roe", "timestamp_ms": T0, "content": "Ã©"}]}, ensure_ascii=False), encoding="utf-8")
+    for given in ("secure", "regular"):
+        code, printed = run(im, capsys, tmp_path / given, "--out", out)
+        assert code == 0, printed
+    written = transcripts(out)
+    [secure] = (text for name, text in written.items() if name.startswith("messenger-e2ee-"))
+    assert split_fences(secure)[1] == samples
+    assert split_fences(written["messenger-dyi-samroe_1.md"])[1] == samples
+    assert split_fences(written["messenger-dyi-samroe_2.md"])[1] == ["Ã©", "\U0001F44D"]
+
+
+@pytest.mark.parametrize("case", ["bzip2", "ratio", "total", "count"])
+def test_r1_13_message_files_past_the_bounds_are_refused_before_any_is_read(im, capsys, tmp_path, monkeypatch, case):
+    """A ZIP bomb by member count: each message file under its own cap, the total inflating without bound. The
+    declared sizes, the compression method and the ratio are judged from the archive's directory, before a read."""
+    export, archive = tmp_path / "export", tmp_path / "export.zip"
+    for n in range(3):
+        one_thread(export, f"alexsample_{2500 + n}", "SECRET-TEXT" + (" " * (3 << 20) if case == "ratio" and n == 0 else ""))
+    with zipfile.ZipFile(archive, "w", zipfile.ZIP_BZIP2 if case == "bzip2" else zipfile.ZIP_DEFLATED) as handle:
+        for path in sorted(export.rglob("*.json")):
+            handle.write(path, path.relative_to(export).as_posix())
+    if case == "total":
+        monkeypatch.setattr(im, "MAX_READ_BYTES", sum(p.stat().st_size for p in export.rglob("*.json")) - 1)
+    if case == "count":
+        monkeypatch.setattr(im, "MAX_READS", 2)
+    monkeypatch.setattr(im.Zip, "read", lambda self, rel: pytest.fail("a message file was read before the bounds were checked"))
+    started = time.monotonic()
+    code, printed = run(im, capsys, archive, "--out", tmp_path / "out")
+    assert code == 2 and printed.startswith("refused: ") and not (tmp_path / "out").exists()
+    assert {"bzip2": "other than stored or deflate", "ratio": "times its compressed size",
+            "total": "would inflate to more than", "count": "more than 2 message files"}[case] in printed
+    assert "SECRET-TEXT" not in printed and time.monotonic() - started < 5
+
+
+FILLERS = "\u200e\u200f\u061c\u00ad\u034f\u115f\u1160\u3164\uffa0\u17b4\u2800"  # the eleven the review found left in
+
+
+def test_r1_23_every_invisible_character_is_shown_in_text_and_in_names(im, capsys, tmp_path):
+    """Each format character (Unicode category Cf, from this Python's own tables) and each blank or filler, in
+    fenced text and in a sender's name, which sits outside any fence. A joiner shows too, unless it sits between two
+    visible characters that are not ASCII (an emoji sequence, a script that needs it): a run of joiners never hides."""
+    hidden = sorted(set(FILLERS) | {chr(c) for c in [*range(0x20000), *range(0xE0000, 0xE1000)]
+                                    if unicodedata.category(chr(c)) == "Cf" and chr(c) not in "\u200c\u200d"})
+    joins = {"a\u200db": "a[U+200D]b", "é\u200c\u200d\u200cé": "é[U+200C][U+200D][U+200C]é",
+             "\u200dz": "[U+200D]z", "می\u200cخواهم": "می\u200cخواهم"}
+    messages = [secure_message(f"Lee{c}Roe", T0 + n * 1000, f"a{c}b") for n, c in enumerate(hidden)]
+    messages += [secure_message(BLAIR, T0 + (len(hidden) + n) * 1000, text) for n, text in enumerate(joins)]
+    write_secure(tmp_path / "secure", "Lee Roe_1", [BLAIR, "Lee Roe"], messages)
+    code, printed = run(im, capsys, tmp_path / "secure", "--out", tmp_path / "out")
+    assert code == 0, printed
+    [text] = transcripts(tmp_path / "out").values()
+    bodies = split_fences(text)[1]
+    assert bodies == [f"a[U+{ord(c):04X}]b" for c in hidden] + list(joins.values())
+    headings = [line for line in text.splitlines() if line.startswith("### Lee")]
+    assert headings == [f"### Lee\\[U+{ord(c):04X}\\]Roe — {line.split(' — ')[1]}" for c, line in zip(hidden, headings)]
+    assert len(headings) == len(hidden) and not set(hidden) & set(text)
+
+
+def test_r1_24_an_output_folder_inside_the_export_is_refused_in_any_letter_case(im, capsys, tmp_path):
+    export = tmp_path / "Export"
+    one_thread(export, "kimpoe_42")
+    code, printed = run(im, capsys, export, "--out", tmp_path / "EXPORT" / "transcripts")
+    assert code == 2 and printed.startswith("refused: ") and not (export / "transcripts").exists()
+    if (tmp_path / "EXPORT").exists():  # a disk that ignores case, as a Mac's does: one folder, two spellings
+        assert "one inside the other" in printed
+
+
+def test_r1_26_a_refusal_says_its_listing_names_people_and_lists_without_names_on_request(im, capsys, tmp_path):
+    export = tmp_path / "export"
+    thread = export / "your_facebook_activity" / "messages" / "inbox" / "alexsample_2001"
+    thread.mkdir(parents=True)
+    (thread / "message_1.html").write_text("<p>SECRET-TEXT</p>", encoding="utf-8")
+    (export / "Blair Example_3.json").write_text(json.dumps({"participants": [BLAIR], "messages": [{"from": BLAIR}]}))
+    code, printed = run(im, capsys, export, "--out", tmp_path / "out")
+    assert code == 2 and "names of the people in these conversations" in printed
+    assert "decides what, if anything, to send, and to whom" in printed and "--listing-redacted" in printed
+    code, redacted = run(im, capsys, export, "--out", tmp_path / "out", "--listing-redacted")
+    assert code == 2 and "alexsample" not in redacted and "Blair" not in redacted and "SECRET-TEXT" not in redacted
+    assert re.search(r"^ +\d+  your_facebook_activity/messages/inbox/name-[0-9a-f]{8}/message_1\.html\b", redacted, re.M)
+    assert re.search(r"^ +\d+  name-[0-9a-f]{8}\.json  <- ", redacted, re.M)
+    archive = zip_tree(export, tmp_path / "export.zip", extra={"messages/inbox/alexsample_2002/../../x.json": "{}"})
+    code, redacted = run(im, capsys, archive, "--out", tmp_path / "out", "--listing-redacted")
+    assert code == 2 and redacted.startswith("refused: ") and "alexsample" not in redacted
+
+
+def test_a_download_shaped_like_a_real_one_keeps_its_counts(im, capsys, tmp_path):
+    """The shape of a real secure-storage download (invented numbers here): most conversations empty, display names
+    repeated, a few attachments. Every count the dry run prints survives the round-1 changes to keys and names."""
+    export, sizes = tmp_path / "secure", [0] * 33 + [1, 2, 2, 3, 4, 5, 6]
+    for n, size in enumerate(sizes):
+        write_secure(export, f"{('Facebook user', ALEX, BLAIR)[n % 3]}_{n}", [ALEX, BLAIR], [
+            secure_message(BLAIR if k % 2 else ALEX, T0 + n * DAY + k * 1000, f"chat {n} line {k}",
+                           media=[{"uri": f"./media/{n}-{k}.jpeg"}] if k == 0 and n % 3 == 0 else [])
+            for k in range(size)])
+    code, printed = run(im, capsys, export, "--out", tmp_path / "out", "--dry-run")
+    assert code == 0, printed
+    assert "conversations: 40 found; 7 new transcripts, 0 extended, 0 with nothing new, 33 with no messages, 0 skipped" in printed
+    assert "messages: 23 new; 0 already in transcripts" in printed and "attachments referenced: 3 (none copied)" in printed

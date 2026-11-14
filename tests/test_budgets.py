@@ -1042,6 +1042,18 @@ ROOT = Path(__file__).resolve().parents[1]
 # checked_times, code, duration, fence (more backticks than the text holds), in_time_order, load, text_of and visible
 # (hidden characters shown) 7 each; Unreadable 6; day_heading, kind_of, participants_line, shown and tally 5 each;
 # moment, stamp, too_large and whole 4 each; the __main__ guard 2 and the opening two lines 2.
+# 5.22.0 review round 1 (2026-11-14): plugin 157 more, all in the message exports' import_messages.py; the core is as
+# it was. R1-10 4: keyed 2 (the key leaves out the sender's name and an attachment's folders) and parse_transcript 2 (a
+# transcript of an earlier format left alone). R1-11 43: plan 18 (a secure-storage conversation goes to the transcript
+# holding its messages; one in two transcripts, or two for one transcript, skipped), holders 17 (each secure-storage
+# transcript in --out read back), read_export 4 (named by display name and first message, never by index) and slug 4.
+# R1-12 27: fixer 11 (the repair decided once for a whole file), strings_of 9, as_written 4, and the repair passed to
+# the readers 3 (dyi_message, dyi_conversation and secure_conversation 1 each). R1-13 25: Zip 10 (vet: method and
+# ratio from the archive's directory), read_export 9 (count, total and each file's size before the first read), Folder
+# 3 and the three bounds 3. R1-23 16: the hidden and kept characters 6, visible 5, hidden 4 and unicodedata 1. R1-24
+# 11: within (each existing ancestor compared by its identity on disk). R1-26 31: redacted 15 (each name replaced by a
+# token keyed for one run), listing 6 (the caution), main 3 (--listing-redacted), the redaction key and the names a
+# listing keeps 4, hmac and secrets 2, shown 1.
 # Merged into release 5.22.0 on 5.21.0 (2026-11-14): the ceilings are 5.21.0's (core 14924, plugin 38171) and what
 # each 5.22.0 paragraph above adds over 5.20.1's: plugin 248 for the sharing standard, 344 for the collections and 769
 # for the message exports.
@@ -1079,10 +1091,12 @@ ROOT = Path(__file__).resolve().parents[1]
 # the fail-closed tail. _runs_as's condition and docstring change in place: no line more.
 # 5.22.0, the guard's time: guards.py 2 in _placed (the script's rebinding searched once, not for each character;
 # a 1,700-character heredoc of substitutions had taken the guard 13 s, past the hook's 5).
+# each 5.22.0 paragraph above adds over 5.20.1's: plugin 248 for the sharing standard, 344 for the collections, 769
+# for the message exports and 157 for their review round 1.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # consolidate first).
 CORE_BUDGET = 15099
-PLUGIN_BUDGET = 39742
+PLUGIN_BUDGET = 39899
 
 
 def _lines(files):
