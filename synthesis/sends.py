@@ -495,7 +495,10 @@ def batch_refusal(batch: dict, file: str) -> str:
     return (f"Opening batch {digest[:12]} ({count} send{'s' if count != 1 else ''} from {file}) lets each entry below go once, "
             f"exactly as written, within {MAX_HOURS} hours, from this session alone. Show the principal this whole list as it "
             f"stands (each text quoted, every hidden character as its code) and ask them to type {approvals.how(code)} to open "
-            f"exactly it. Then run the identical command again.\n{batch_listing(batch, show=True)}")
+            f"exactly it. Then run the identical command again." + (
+                " Each Messenger entry then goes as one plain Return in its box, on its tab, within 60 seconds of the check "
+                "`synthesis sends composer-check` prints, run there and reading the box focused; a click waits for its own code."
+                if any(e.get("channel") == "messenger" for e in batch["entries"]) else "") + f"\n{batch_listing(batch, show=True)}")
 
 
 def batch_listing(batch: dict, show: bool = False) -> str:

@@ -4712,26 +4712,25 @@ def _sends_key(chords: str, apps: dict) -> bool:
 # A batch's browser entry is sent in two calls on one tab (the review of 5.23.0: a call that cleared, typed and sent
 # made the guard trust which tab, the focus, an emptied box and an earlier paste, none of which it can see). Typing
 # happens in earlier calls, which send nothing; then the shipped composer check (sends.COMPOSER_CHECK) reads the box;
-# then the send is one plain Return or Enter, or one left click that says it sends, on that tab of that browser, within
-# 60 seconds, with no other browser call between. The guard reads the check's result from the session's own record.
+# then the send is one plain Return or Enter in the focused box, on that tab of that browser, within 60 seconds, with no
+# other browser call between: never a click, since the composer's neighbours send too (`Send a like`, `Send a voice
+# clip`, the coordinator's live read). The guard reads the check's result from the session's own record.
 CHECK_SECONDS = 60
 
 
 def _checked_box(tool: str, tool_input: dict, session: dict | None) -> tuple | None:
     """(channel, conversation, words) when this browser call is the send of a box just checked: it holds one plain Return
-    or Enter (repeat 1) or one left click that says it sends, on a tab it names; and the session's newest browser call
-    before it is the composer check on that tab of the same browser, with a result in the last 60 seconds that names one
-    conversation, with the focus in its box and nothing staged. None for any other call."""
+    or Enter (repeat 1) on a tab it names; and the session's newest browser call before it is the composer check on that
+    tab of the same browser, with a result in the last 60 seconds that names one conversation, with the focus in its box
+    and nothing staged. None for any other call, a click included."""
     from synthesis import sends
     server, _, short = tool.rpartition("__")
     steps = tool_input.get("actions") if short == "browser_batch" else [{"name": "computer", "input": tool_input}]
     act = steps[0].get("input") if isinstance(steps, list) and len(steps) == 1 and isinstance(steps[0], dict) and (
         steps[0].get("name") == "computer") and isinstance(steps[0].get("input"), dict) else {}
-    kind, said, tab, repeat = (str(act.get("action") or ""), str(act.get("action_summary") or ""), str(act.get("tabId") or ""),
-                               act.get("repeat", 1))
-    if not tab or not (kind == "key" and str(act.get("text") or "").strip().lower() in ("return", "enter")
-                       and type(repeat) is int and repeat == 1 or kind == "left_click" and not act.get("modifiers")
-                       and bool(SAYS_SENT.search(said) or _publishes(said, False))):
+    tab, repeat = str(act.get("tabId") or ""), act.get("repeat", 1)
+    if not (tab and act.get("action") == "key" and str(act.get("text") or "").strip().lower() in ("return", "enter")
+            and type(repeat) is int and repeat == 1):
         return None
     results, check = {}, None
     for line in reversed(_tail(str((session or {}).get("transcript_path") or ""))):  # its record, newest first

@@ -488,8 +488,11 @@ focus, an emptied box and an earlier paste, none of which it can see):
 
    It returns the page's address with those four, as one JSON report the guard finds in the call's result.
 2. **The send.** A call on the same tab, which it names, of the same browser server, holding one action: a plain
-   Return or Enter (repeat 1), or one left click whose summary says it sends; made within 60 seconds of the check, with
-   no other browser call between them.
+   Return or Enter (repeat 1), made within 60 seconds of a check that read the focus in the box, with no other browser
+   call between them. That is the one action that sends exactly the box's text. A click never is: the composer's
+   neighbours are send controls themselves (`Send a like` sends a thumbs-up, `Send a voice clip` starts a recording;
+   the coordinator's live read of 2026-11-14), so the guard cannot tie a click to the control that sends the box, and a
+   click there waits for the code per call.
 
 The guard reads the check's result from the session's own record and matches only when its address names the entry's
 conversation, the box's text equals the entry's text, the focus was in the box and nothing waits beside it; anything

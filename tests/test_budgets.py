@@ -1172,10 +1172,13 @@ ROOT = Path(__file__).resolve().parents[1]
 # The composer check on Messenger's live box (2026-11-14): core 7 more, plugin 7. sends.py 6: COMPOSER_CHECK 3 longer (the
 # one box by its label, placeholder or Lexical editor, `ambiguous` for two; the composer placed by its send or attach
 # control, `unknown` without one) and its note 3. guards.py 1: _checked_box reads the box's text as Lexical writes it.
+# The click form of a batch's browser send gone (2026-11-14; the composer's neighbours send too): core 2 more, plugin 2.
+# sends.py 3: batch_refusal says how a Messenger entry goes (one plain Return after the check; a click waits for its own
+# code). guards.py 1 fewer: _checked_box 2 fewer (the click form gone) and the note above it 1 longer.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 15627
-PLUGIN_BUDGET = 40869
+CORE_BUDGET = 15629
+PLUGIN_BUDGET = 40871
 
 
 def _lines(files):
