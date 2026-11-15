@@ -37,11 +37,11 @@ Four defects were filed from that day and one mechanism closes them:
 ## The verbs
 
 ```bash
-python3 <rituals>/scripts/sync_watermark.py begin   --workspace <W> --label day-start
-python3 <rituals>/scripts/sync_watermark.py window  --workspace <W> --surface slack --target <resolved id>
-python3 <rituals>/scripts/sync_watermark.py advance --workspace <W> --surface slack --target <resolved id> --through <latest>
-python3 <rituals>/scripts/sync_watermark.py defer   --workspace <W> --surface slack --target <resolved id> --reason "<why>"
-python3 <rituals>/scripts/sync_watermark.py status  --workspace <W> --surface <s> ... --targets-from <declared.json> --since run
+python3 -s <rituals>/scripts/sync_watermark.py begin   --workspace <W> --label day-start
+python3 -s <rituals>/scripts/sync_watermark.py window  --workspace <W> --surface slack --target <resolved id>
+python3 -s <rituals>/scripts/sync_watermark.py advance --workspace <W> --surface slack --target <resolved id> --through <latest>
+python3 -s <rituals>/scripts/sync_watermark.py defer   --workspace <W> --surface slack --target <resolved id> --reason "<why>"
+python3 -s <rituals>/scripts/sync_watermark.py status  --workspace <W> --surface <s> ... --targets-from <declared.json> --since run
 ```
 
 `<rituals>` is the runtime's copy of this skill, `$HOME/.synthesis/v5/current/skills/synthesis-daily-rituals`. What each prints: `begin` prints `run started <moment>`;

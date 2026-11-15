@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Check that project records are small, current and durable enough for a cold resume (R1.5).
 
-    python3 "$HOME/.synthesis/v5/current/skills/synthesis-context-lifecycle/scripts/context_doctor.py" [--project PATH | --root KNOWLEDGE_ROOT] [--json]
+    python3 -s "$HOME/.synthesis/v5/current/skills/synthesis-context-lifecycle/scripts/context_doctor.py" [--project PATH | --root KNOWLEDGE_ROOT] [--json]
 
 With neither flag it audits every knowledge root in ~/.synthesis/v5/config.json
 (`knowledge_roots`), else every ~/workspaces/*/ai-knowledge-*. Exit 0 healthy,

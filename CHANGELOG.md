@@ -26,17 +26,26 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   unmodified importer wrote into the session archive when an argument named it. Now:
   - The guard trusts only what lies inside the release it runs from (`releases/<hash>/`, a protected folder). A
     plugin-cache copy is judged like any other script; when one of the runtime's scripts waits from a copy, the hold
-    names the runtime's own copy. A module of a script's own that the same line writes makes the script wait.
+    names the runtime's own copy. A module of a script's own that the same line writes makes the script wait. A write by
+    a file tool or the shell to a file that is also one in a protected folder (a hard link) waits for the principal's
+    code, and a protected folder written as a pattern (`sta*`, `s?ate`, `[s]tate`) counts as that folder for any script.
   - A script of the release keeps its exemption only while its line names no protected folder (its arguments, its input,
-    a value the line gives, the folder it runs in) and the plain word of its interpreter runs it: no path to the
-    interpreter, wrapper, export, function, alias or file read into the shell, no value for a variable in the
-    environment or one that moves where a program loads from, and no option but Python's that only take away what it
-    loads. What its own text names stays exempt. Otherwise it is judged like any other script.
+    a value the line gives, the folder it runs in, or a configuration file it follows from there, such as the meeting
+    fetcher's `.agents/meeting-transcripts.yaml`) and the plain word of its interpreter runs it: no path to the
+    interpreter, wrapper, function, alias, `autoload` or file read into the shell; no builtin that gives a variable a
+    value (`export`, `read`, `printf -v`, `print -v`, `mapfile`, a parameter expansion that assigns and their like); no
+    assignment to a variable in the environment, to one that moves where a program loads from, or to zsh's tied arrays;
+    no HOME given a value the guard does not read (such a line, when it then uses HOME, waits); and Python run with
+    `-s`, `-S` or `-I`, so nothing in the user's own site folder loads into it, with no other option but those that only
+    take away what it loads. What its own text names stays exempt. Otherwise it is judged like any other script. The
+    workspace-mcp kit's scripts that write or load a LaunchAgent or a systemd unit wait from the runtime too, and the
+    messages reader opens its lock without following a link.
   - The runtime also carries `synthesis-meeting-transcripts` (the fetcher and the workspace-mcp server kit),
     `synthesis-message-exports`, `synthesis-local-messaging`, `synthesis-context-lifecycle` and the Bitbucket helper
     that `pr_queue_scan.py` loads: 59 files instead of 40. Never the installer and release kit (`setup.py`,
     `workspace.py`, `release.py`), which write the trust base itself.
-  - Every skill text and script that runs one of those scripts names `$HOME/.synthesis/v5/current/skills/...`
+  - Every skill text and script that runs one of those scripts names `$HOME/.synthesis/v5/current/skills/...`, a Python
+    one with `-s`
     (checkpoint 2.0.3, chief-of-staff 2.3.1, context-lifecycle 2.8.2, daily-rituals 3.19.0, inbox-cleanup 2.0.2,
     kb-edit 2.1.1, local-messaging 1.5.3, mac-sync 3.1.1, machine-sync 2.0.1, meeting-transcripts 1.2.1,
     message-exports 1.0.1, promotion-gate 2.0.1, slack-sync 4.0.4). Two passages moved word for word to make room:

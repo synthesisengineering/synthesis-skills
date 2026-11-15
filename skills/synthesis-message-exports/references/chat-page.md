@@ -27,7 +27,7 @@ rituals never open a chat; this fallback does, once, on the principal's word.
    `https://www.facebook.com/messages/t/<id>/` for a plain one (or the same on messenger.com).
 2. Scroll the message log up until messages from before the day asked for show; older messages load as the log scrolls
    up.
-3. `python3 "$HOME/.synthesis/v5/current/skills/synthesis-message-exports/scripts/chat_page.py" extractor` prints the script. Run it with the browser's JavaScript tool and save what
+3. `python3 -s "$HOME/.synthesis/v5/current/skills/synthesis-message-exports/scripts/chat_page.py" extractor` prints the script. Run it with the browser's JavaScript tool and save what
    the tool returns, as it returns it, to a file in the private folder or the session's scratch folder, never in a
    repository: it holds whole messages. The script reads the log labeled `Messages in conversation with <Name>`: for
    each message, the labels of its article (`Enter, Message sent <date>, <time> by <Sender>: <text>` and
@@ -38,7 +38,7 @@ rituals never open a chat; this fallback does, once, on the principal's word.
    two messages or more, and pass them all to one `save`. Reads that share fewer than two messages are not one read:
    the coverage stops where they meet, and a single message they share may be two identical messages from one minute,
    so it is written once and held for a person.
-5. `python3 "$HOME/.synthesis/v5/current/skills/synthesis-message-exports/scripts/chat_page.py" save READ [READ ...] --out PRIVATE_FOLDER --since YYYY-MM-DD --principal "NAME"`,
+5. `python3 -s "$HOME/.synthesis/v5/current/skills/synthesis-message-exports/scripts/chat_page.py" save READ [READ ...] --out PRIVATE_FOLDER --since YYYY-MM-DD --principal "NAME"`,
    with `--dry-run` first to see what it would write. `--since` is the day asked for, a real day. `--principal` is the
    principal's name exactly as the export writes it (any transcript's `Participants:` line shows it); the page calls
    them `You`, and a read that holds their messages is refused without it. `--into FILE` names the transcript to extend

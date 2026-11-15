@@ -50,7 +50,7 @@ chats from secure storage.
 2. **Count first.** A dry run reads and checks everything and writes nothing:
 
    ```bash
-   python3 "$HOME/.synthesis/v5/current/skills/synthesis-message-exports/scripts/import_messages.py" EXPORT.zip --out PRIVATE_FOLDER --dry-run
+   python3 -s "$HOME/.synthesis/v5/current/skills/synthesis-message-exports/scripts/import_messages.py" EXPORT.zip --out PRIVATE_FOLDER --dry-run
    ```
 
 3. **Import.** Run the same command without `--dry-run`. Add `--since YYYY-MM-DD` to take only messages from

@@ -153,14 +153,14 @@ values, all but the phrase list itself.
 
 ```bash
 # what a review request adds, and its commit messages (BASE...HEAD: from where HEAD's branch left BASE)
-python3 "$HOME/.synthesis/v5/current/skills/synthesis-kb-edit/scripts/sharing_scan.py" <repo-root> --range origin/main...HEAD
+python3 -s "$HOME/.synthesis/v5/current/skills/synthesis-kb-edit/scripts/sharing_scan.py" <repo-root> --range origin/main...HEAD
 
 # what this commit adds, as staged (a pre-commit hook), and its message (a commit-msg hook)
-python3 "$HOME/.synthesis/v5/current/skills/synthesis-kb-edit/scripts/sharing_scan.py" <repo-root> --staged
-python3 "$HOME/.synthesis/v5/current/skills/synthesis-kb-edit/scripts/sharing_scan.py" <repo-root> --message .git/COMMIT_EDITMSG
+python3 -s "$HOME/.synthesis/v5/current/skills/synthesis-kb-edit/scripts/sharing_scan.py" <repo-root> --staged
+python3 -s "$HOME/.synthesis/v5/current/skills/synthesis-kb-edit/scripts/sharing_scan.py" <repo-root> --message .git/COMMIT_EDITMSG
 
 # every line and name of these files, and of every file under these folders (a first pass over a knowledge base)
-python3 "$HOME/.synthesis/v5/current/skills/synthesis-kb-edit/scripts/sharing_scan.py" <repo-root> source/reference/team.md source/projects
+python3 -s "$HOME/.synthesis/v5/current/skills/synthesis-kb-edit/scripts/sharing_scan.py" <repo-root> source/reference/team.md source/projects
 ```
 
 **What governs a scan.** The contract under review must be valid, and the one before it governs too: a range is
@@ -242,7 +242,7 @@ checkout needs the base branch's history, so the range can find where the two pa
 ```sh
 git fetch --quiet origin main
 git clone --quiet --depth 1 --branch "$SYNTHESIS_TAG" https://github.com/synthesisengineering/synthesis-skills.git ../synthesis-skills
-python3 ../synthesis-skills/skills/synthesis-kb-edit/scripts/sharing_scan.py . --range origin/main...HEAD
+python3 -s ../synthesis-skills/skills/synthesis-kb-edit/scripts/sharing_scan.py . --range origin/main...HEAD
 ```
 
 A held line fails the step, and so does a scan that cannot run: a backstop that did not run protected nothing.
@@ -258,7 +258,7 @@ not run, and edits ship as they always have. Naming the policy also switches kno
 - **Any knowledge base**, new or existing, adopts it with the organization's own phrases:
 
   ```bash
-  python3 "$HOME/.synthesis/v5/current/skills/synthesis-kb-edit/scripts/kb_config.py" adopt-sharing-policy <repo-root> --phrase "zephyr ledger" --phrase "violet harbor"
+  python3 -s "$HOME/.synthesis/v5/current/skills/synthesis-kb-edit/scripts/kb_config.py" adopt-sharing-policy <repo-root> --phrase "zephyr ledger" --phrase "violet harbor"
   ```
 
   With no policy file where `confidentiality.sharing_policy` says (`.agents/sharing-policy.md` when it names no path),

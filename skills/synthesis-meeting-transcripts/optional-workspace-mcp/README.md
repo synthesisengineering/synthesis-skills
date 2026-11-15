@@ -23,8 +23,8 @@ If you use Anthropic's hosted Gmail + Drive connectors and a single Google accou
 `.agents/meeting-transcripts.yaml`:
 
 ```bash
-python3 "$HOME/.synthesis/v5/current/skills/synthesis-meeting-transcripts/optional-workspace-mcp/fetch-meeting.py" standup --date 2026-04-21
-python3 "$HOME/.synthesis/v5/current/skills/synthesis-meeting-transcripts/optional-workspace-mcp/fetch-meeting.py" --window 2026-10-01 2026-10-05
+python3 -s "$HOME/.synthesis/v5/current/skills/synthesis-meeting-transcripts/optional-workspace-mcp/fetch-meeting.py" standup --date 2026-04-21
+python3 -s "$HOME/.synthesis/v5/current/skills/synthesis-meeting-transcripts/optional-workspace-mcp/fetch-meeting.py" --window 2026-10-01 2026-10-05
 ```
 
 The first finds the one doc matching the meeting's pattern on that date, lists its
@@ -171,7 +171,7 @@ server's own dependencies are resolved afresh at each start, as before.
 - The local workspace-mcp server is running and signed in to that account. The
   service doctor reports supervisor and HTTP liveness with its 0/1/2 exit codes;
   its `ACCOUNT: not checked` line is deliberate: a read as the declared account
-  (for example `python3 "$HOME/.synthesis/v5/current/skills/synthesis-meeting-transcripts/optional-workspace-mcp/mcp_client.py" list_calendars '{"user_google_email": "<account>"}'`)
+  (for example `python3 -s "$HOME/.synthesis/v5/current/skills/synthesis-meeting-transcripts/optional-workspace-mcp/mcp_client.py" list_calendars '{"user_google_email": "<account>"}'`)
   shows which account answers.
 
 The service is installed under the launchd label `com.synthesis.workspace-mcp`

@@ -38,7 +38,7 @@ conversation was opened: `parse` counts and names it, and the plan says so.
 
 ## The read
 
-1. `python3 <rituals>/scripts/linkedin_messages.py plan --config .agents/linkedin-sync.yaml` prints, per inbox,
+1. `python3 -s <rituals>/scripts/linkedin_messages.py plan --config .agents/linkedin-sync.yaml` prints, per inbox,
    the address to open and how far back to scroll: past the moment the last read reached, or to two weeks back for
    a first read.
 
@@ -58,7 +58,7 @@ conversation was opened: `parse` counts and names it, and the plan says so.
    than 500 conversations in about a minute before it was stopped. Click no conversation.
 3. Save the list's text to a file: the list element's text where the browser tool can run a page script, or the
    whole page's text where it returns that. Note the time of the read.
-4. `python3 <rituals>/scripts/linkedin_messages.py parse --text <file> --read-at <ISO time> --inbox <inbox> --since
+4. `python3 -s <rituals>/scripts/linkedin_messages.py parse --text <file> --read-at <ISO time> --inbox <inbox> --since
    <day>` prints the coverage line and the conversations that end with someone else:
 
    ```text
@@ -78,7 +78,7 @@ conversation was opened: `parse` counts and names it, and the plan says so.
    `--json` gives every conversation (`who`, `last`, `from_me`, `speaker`, `kind`, `unread`, `nudge`, `open`,
    `preview`), the `inbox` and the coverage (`threads`, `oldest`, `since`, `opened`, `unreadable`, `complete`,
    `through`).
-5. Record the read: `python3 <rituals>/scripts/sync_watermark.py advance --workspace <W> --surface linkedin --target
+5. Record the read: `python3 -s <rituals>/scripts/sync_watermark.py advance --workspace <W> --surface linkedin --target
    <inbox> --through <read time> --coverage <the --json output>`. The watermark moves only with a complete read's
    coverage, as a local message store's does.
 6. The coverage line goes in the plan's sync state, word for word. It names no one.

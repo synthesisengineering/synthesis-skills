@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """Import a message export the principal authorized into private markdown transcripts, one per conversation.
 
-    python3 "$HOME/.synthesis/v5/current/skills/synthesis-message-exports/scripts/import_messages.py" EXPORT --out FOLDER [--since YYYY-MM-DD] [--dry-run]
+    python3 -s "$HOME/.synthesis/v5/current/skills/synthesis-message-exports/scripts/import_messages.py" EXPORT --out FOLDER [--since YYYY-MM-DD] [--dry-run]
 
 EXPORT is the export as downloaded: a ZIP, or the folder it was extracted to. It reads Meta's "Download your
 information" export of Messages in JSON (Facebook Messenger) in each folder layout it has used, and Messenger's

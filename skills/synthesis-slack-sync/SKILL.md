@@ -71,7 +71,7 @@ Each step below is its command; the full step is in references/sync-protocol.md.
 
 ### Step 1: Read channels for new top-level messages
 
-`slack_read_channel(resolved_channel_id, oldest=WINDOW_OLDEST, limit=30, detail="detailed")`, with `WINDOW_OLDEST` printed by `python3 "$HOME/.synthesis/v5/current/skills/synthesis-daily-rituals/scripts/sync_watermark.py" window --workspace <W> --surface slack --target <resolved id>`. Follow every page; the read rules are in references/sync-protocol.md.
+`slack_read_channel(resolved_channel_id, oldest=WINDOW_OLDEST, limit=30, detail="detailed")`, with `WINDOW_OLDEST` printed by `python3 -s "$HOME/.synthesis/v5/current/skills/synthesis-daily-rituals/scripts/sync_watermark.py" window --workspace <W> --surface slack --target <resolved id>`. Follow every page; the read rules are in references/sync-protocol.md.
 
 ### Step 2: Re-read ALL active threads — today AND recent days
 
@@ -87,7 +87,7 @@ The same read with `channel_id=RESOLVED_GROUP_DM_ID`.
 
 ### Step 4: Save to local transcripts
 
-Write, then `python3 "$HOME/.synthesis/v5/current/skills/synthesis-daily-rituals/scripts/sync_watermark.py" advance --workspace <W> --surface slack --target <resolved id> --through <the window's latest>`. Gate: `sync_watermark.py status --workspace <W> --surface slack --since run --targets-from <declared.json>`.
+Write, then `python3 -s "$HOME/.synthesis/v5/current/skills/synthesis-daily-rituals/scripts/sync_watermark.py" advance --workspace <W> --surface slack --target <resolved id> --through <the window's latest>`. Gate: `sync_watermark.py status --workspace <W> --surface slack --since run --targets-from <declared.json>`.
 
 ### Step 5: Update action plan
 

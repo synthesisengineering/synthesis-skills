@@ -3,7 +3,7 @@
 Read when a workers registry exists (`~/.synthesis/ritual/workers.yaml`): before a worker
 writes its artifact, and before the desk folds artifacts into the brief.
 `<rituals>` is the runtime's copy of this skill, `$HOME/.synthesis/v5/current/skills/synthesis-daily-rituals`. The desk's coverage
-line comes from `python3 <rituals>/scripts/ritual_workers.py coverage`, which prints
+line comes from `python3 -s <rituals>/scripts/ritual_workers.py coverage`, which prints
 `coverage: <workspace> <run type> <finished> (<outcome>) · <workspace> pending · <workspace> not scheduled`.
 
 Contents: Terms · Artifact path · Schema (YAML frontmatter) · Body (fixed sections) · Desk
@@ -259,7 +259,7 @@ person-side repository defeats that with every day it accretes.
 ## Recording a worker run
 
 The worker records its run like any ritual, after its artifact is complete:
-`python3 <rituals>/scripts/ritual_state.py record --direction <run type> --workspace <W> --date <logical workday> --outcome <outcome> --session <id> --pointer <artifact path>`.
+`python3 -s <rituals>/scripts/ritual_state.py record --direction <run type> --workspace <W> --date <logical workday> --outcome <outcome> --session <id> --pointer <artifact path>`.
 The `outcome` in the record and the artifact agree: clean only when every declared surface was
 synced and `gaps` is empty; an unread or failed surface makes it partial or failed. Lesson
 candidates stay as pointers to files in the worker's own workspace; the desk routes the

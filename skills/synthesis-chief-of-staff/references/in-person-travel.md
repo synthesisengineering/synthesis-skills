@@ -25,7 +25,7 @@ So the trip is worked out before an invitation or an ask that would put the prin
 them. Do steps 1 to 4 below, then run the slot check with the trip's minutes:
 
 ```bash
-python3 <cos>/scripts/slot_check.py --start … --end … --events read.json --in-person --travel-before 85 --travel-after 108
+python3 -s <cos>/scripts/slot_check.py --start … --end … --events read.json --in-person --travel-before 85 --travel-after 108
 ```
 
 Its `return` line says when the principal is home; a return past `travel_policy.latest_return` is theirs to
@@ -121,7 +121,7 @@ by its label alone or with a room or a note after it (`Office, 4th floor`). An a
 ## The check
 
 ```bash
-python3 <cos>/scripts/travel_check.py --events read.json [--from YYYY-MM-DD] [--days 7] [--today YYYY-MM-DD] [--json]
+python3 -s <cos>/scripts/travel_check.py --events read.json [--from YYYY-MM-DD] [--days 7] [--today YYYY-MM-DD] [--json]
 ```
 
 `read.json` is the calendar read `slot_check.py` takes, each event with its `location` and `description`.

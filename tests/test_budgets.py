@@ -1330,10 +1330,19 @@ ROOT = Path(__file__).resolve().parents[1]
 # scripts/: finding 6). Its test changes in place, and so does the fetcher's line naming the runtime's start.sh.
 # Then core and plugin each 1 more, in guards.py's _self_grant: a module of a script's own that the same line writes
 # is code the guard cannot read (finding 3: it was judged as it stood before the line rewrote it).
+# Then that change's review round 2, core and plugin each 83 more, all in guards.py. The tables and helpers 58: _shared
+# (a file that is also one in a protected folder, by a hard link: R2-4), _follows (the configuration file a release
+# script follows, read as its line is: open-list item 1), _globbed (a pattern as the shell expands it: R2-3),
+# MOVES_HOME and USES_HOME (a HOME the guard does not read, then used: R2-2), SERVICE_WRITERS (the kit's unit writers:
+# R2-8), and SETTERS, STARTUP and DEFINES one line longer each where they grew (every builtin that gives a value, zsh's
+# tied arrays, a parameter expansion that assigns), with their blank lines. check_file_write 10 (such a write waits for
+# the principal's code), _plainly 4 (Python only with -s, -S or -I: R2-6; printf -v and print -v), check_self_grant 4,
+# and _self_grant 7 (the config 1, the unit writers 3, a shell write to a hard link 2, a pattern expanded for the
+# script it judges 1).
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 16569
-PLUGIN_BUDGET = 42641
+CORE_BUDGET = 16652
+PLUGIN_BUDGET = 42724
 
 
 def _lines(files):

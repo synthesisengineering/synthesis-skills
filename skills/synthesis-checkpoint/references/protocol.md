@@ -150,7 +150,7 @@ infer uncommitted work from a date difference; inspect Git status for that.
   can still contain stale claims, and a valid session date can precede its commit.
 
 The context doctor checks the same agreement mechanically:
-`python3 "$HOME/.synthesis/v5/current/skills/synthesis-context-lifecycle/scripts/context_doctor.py" --project <path>`
+`python3 -s "$HOME/.synthesis/v5/current/skills/synthesis-context-lifecycle/scripts/context_doctor.py" --project <path>`
 (exit 0 healthy, 1 defects, 2 cannot tell).
 
 ### Step 4 — Cross-reference tasks and recent decisions

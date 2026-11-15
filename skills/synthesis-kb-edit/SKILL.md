@@ -50,7 +50,7 @@ Before interpreting or changing the repository:
 2. Run:
 
    ```bash
-   python3 "$HOME/.synthesis/v5/current/skills/synthesis-kb-edit/scripts/kb_config.py" <repo-root> --check-paths
+   python3 -s "$HOME/.synthesis/v5/current/skills/synthesis-kb-edit/scripts/kb_config.py" <repo-root> --check-paths
    ```
 
 3. Stop if the config is absent or invalid. Never infer a bundle, editable

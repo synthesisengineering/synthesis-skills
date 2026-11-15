@@ -52,7 +52,7 @@ installation uses that schema.
    explicit one-day window; a trailing review uses an explicit 30-day window.
    Give each window its own state directory, outside any repository.
 3. Run
-   `python3 "$HOME/.synthesis/v5/current/skills/synthesis-local-messaging/scripts/local_messaging.py" --request REQUEST.json --state STATE_DIR`.
+   `python3 -s "$HOME/.synthesis/v5/current/skills/synthesis-local-messaging/scripts/local_messaging.py" --request REQUEST.json --state STATE_DIR`.
    It reads one page inside the OS sandbox and prints it as JSON: candidate
    notes with pointers, and coverage (rows examined, skips by reason, gaps,
    `complete`, `through`). Exit 2 prints
@@ -84,7 +84,7 @@ belong in their own private workspace (rule 6).
 
 Read [sending](references/sending.md) first. Write the exact approved text to
 a file, then run
-`python3 "$HOME/.synthesis/v5/current/skills/synthesis-local-messaging/scripts/messages_send.py" --to +15551234567 --text-file reply.txt`, or
+`python3 -s "$HOME/.synthesis/v5/current/skills/synthesis-local-messaging/scripts/messages_send.py" --to +15551234567 --text-file reply.txt`, or
 `--members +15551234567,+15557654321` for an existing group or SMS chat;
 `--photo PATH` sends a photo first, with the text as its caption.
 The first run prints `needs-approval` with a code; show the principal the exact

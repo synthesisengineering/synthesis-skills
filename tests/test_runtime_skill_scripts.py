@@ -201,7 +201,7 @@ def test_a_copy_of_the_send_script_beside_a_synthesis_the_agent_wrote_waits(mac,
     work = _work(tmp_path)
     scripts = _agent_layout(work, "synthesis-local-messaging", ["messages_send.py", "messages_route.js", "messages_transport.js"],
                             {"guards.py": "def check_send(*args, **kwargs):\n    return None\n", "paths.py": "def state():\n    return None\n"})
-    reason = _verdict(mac, f"python3 {scripts / 'messages_send.py'} --to +15550100 --text-file {work / 't.txt'}", work)
+    reason = _verdict(mac, f"python3 -s {scripts / 'messages_send.py'} --to +15550100 --text-file {work / 't.txt'}", work)
     assert reason and str(mac.rt / SEND) in reason, reason
 
 

@@ -44,14 +44,14 @@ sessions and its own claims.
 
 1. In each session that holds a project's claims: `synthesis handoff -m "<generic message>"`. It commits and pushes only the records inside that session's claims and refuses, with the list, when any is dirty or unpushed.
 2. Publish source work by explicit path under each repository's policy; fast-forward pushes only, no `--no-verify`, no force.
-3. `python3 <rituals>/scripts/repo_state.py --discover ~/workspaces --fetch`. Resolve or name every DIRTY, DECISION, BLIND or UNREACHABLE repository.
+3. `python3 -s <rituals>/scripts/repo_state.py --discover ~/workspaces --fetch`. Resolve or name every DIRTY, DECISION, BLIND or UNREACHABLE repository.
 4. If config changed, `brctl monitor --wait-uploaded -t 300 "$ICLOUD_BASE"` before writing the arrive note for the other Mac.
 5. `synthesis release`.
 
 **Arrive on a Mac.**
 
 1. `brctl download "$ICLOUD_BASE"` and poll until no `.icloud` placeholder remains; pull config (`synthesis-mac-sync`).
-2. `python3 <rituals>/scripts/repo_state.py --discover ~/workspaces --fetch --ff`: fast-forwards only clean branches that are strictly behind; lists uncommitted files and leaves them alone.
+2. `python3 -s <rituals>/scripts/repo_state.py --discover ~/workspaces --fetch --ff`: fast-forwards only clean branches that are strictly behind; lists uncommitted files and leaves them alone.
 3. `synthesis brief <project>`: the phase and next action from the records, with a warning when the knowledge checkout is behind its fetched upstream or a newer copy exists elsewhere. Resolve the warning before working.
 4. Board truth (`synthesis who`, `synthesis inbox`), then claim what this session will write: `synthesis claim <paths> --project <id> --goal "<goal>"`.
 

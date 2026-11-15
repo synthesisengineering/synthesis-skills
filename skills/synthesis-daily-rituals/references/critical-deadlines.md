@@ -63,7 +63,7 @@ listed until it is classified: tag it, or write `**Critical:** no (<why this one
 
 ## The sweep's critical view
 
-`python3 <rituals>/scripts/decay_sweep.py --as-of <today> --workspace <W> --alert` (add
+`python3 -s <rituals>/scripts/decay_sweep.py --as-of <today> --workspace <W> --alert` (add
 `--json` for the full report). `--workspace` reads the plan folders the workspace declares;
 `--plans-dir` and `--artifacts-dir` still work and add to them. The text report opens with the
 critical items:

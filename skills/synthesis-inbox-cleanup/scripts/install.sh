@@ -81,5 +81,5 @@ fi
 
 echo ""
 echo "✓ synthesis-inbox-cleanup installed ($missing item(s) above to resolve)."
-echo "  Sanity-check: python3 $ENGINE/icloud_census.py"
+echo "  Sanity-check: python3 -s $ENGINE/icloud_census.py"
 echo "  Adversarial fixtures: python3 $SKILL_DIR/tests/run_poisoned.py"

@@ -542,20 +542,21 @@ stay open, and no hook running as that same user can close them:
   was closed with a test. There is always another. What the guard is
   measured on is the other direction as well: 30 days of recorded commands, where it must
   not refuse ordinary work.
-- Crafted: a script of the installed release writes wherever a configuration file in its
-  working folder points (the meeting fetcher's archive is one), so a configuration the agent
-  writes can aim it at a protected folder the line never names, since the guard reads the
-  line and the script's own text, not the files the script reads.
 - Crafted: outside the release, a program named like a Python interpreter and given by its
   path is taken to be Python, so a shell script named `python3` runs under the proof the
   guard made for the reader script it is handed.
-- Crafted: a function, an alias, `hash` or a `PATH` on the line that makes the word
-  `python3` run something else is looked for only in front of a script of the release, so
-  for any other script the proof made from its text holds while something else runs.
-- Crafted: a script in a folder the agent can write is proven by its own text and its own
-  modules, so a module named like a standard one planted beside it (one the standard
-  library imports, as `argparse` imports `gettext`) or compiled code made for one of its
-  own modules runs unseen.
+- Crafted: for a script outside the release, nothing on the line that makes the word
+  `python3` run something else (a function, an alias, `hash`, `autoload`, a value given by
+  any builtin, `PATH` or zsh's `path`) is looked for, so the proof made from its text holds
+  while something else runs; in front of a script of the release, each of them, and a HOME
+  given a value the guard does not read, makes it wait or be judged like any other.
+- Crafted: a script outside the release, or any Python run without `-s`, `-S` or `-I`, is
+  proven by its own text and modules alone, so a module named like a standard one planted
+  beside it (one the standard library imports, as `argparse` imports `gettext`), compiled
+  code made for one of its own modules, or a `usercustomize.py` or `.pth` file in the user's
+  own site folder runs unseen; a run of the release passes `-s`, which leaves out the user's
+  own site folder but not an interpreter's own site-packages where the agent can write
+  (a Homebrew Python's).
 - A prompt another process injects into the session through the harness's own CLI
   (`claude -p --resume`, `codex queue`, `muse session-message`) is recorded as a typed
   prompt. The shell guard refuses such a command when it carries a pending code; one

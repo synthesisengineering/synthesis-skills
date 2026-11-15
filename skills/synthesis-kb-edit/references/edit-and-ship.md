@@ -43,7 +43,7 @@ out, by class, for the review request.
 Classify every candidate path before writing:
 
 ```bash
-python3 "$HOME/.synthesis/v5/current/skills/synthesis-kb-edit/scripts/kb_config.py" <repo-root> --resolve <repo-relative-path>
+python3 -s "$HOME/.synthesis/v5/current/skills/synthesis-kb-edit/scripts/kb_config.py" <repo-root> --resolve <repo-relative-path>
 ```
 
 Write only when the result is `editable`. Treat `generated` and `refused` as
@@ -79,7 +79,7 @@ instructions.
 Run all three layers:
 
 ```bash
-python3 "$HOME/.synthesis/v5/current/skills/synthesis-kb-edit/scripts/kb_config.py" <repo-root> --check-paths
+python3 -s "$HOME/.synthesis/v5/current/skills/synthesis-kb-edit/scripts/kb_config.py" <repo-root> --check-paths
 python3 <synthesis-okf-root>/scripts/okf_validate.py <bundle-path> --summary --check-links
 python3 <synthesis-okf-root>/scripts/okf_consistency.py <repo-root> <touched-path>...
 ```
@@ -98,7 +98,7 @@ When the contract names a sharing policy (`confidentiality.sharing_policy`),
 run its phrase scan over the same staged lines:
 
 ```bash
-python3 "$HOME/.synthesis/v5/current/skills/synthesis-kb-edit/scripts/sharing_scan.py" <repo-root> --staged
+python3 -s "$HOME/.synthesis/v5/current/skills/synthesis-kb-edit/scripts/sharing_scan.py" <repo-root> --staged
 ```
 
 It prints each hit as where it is (a file and line, a file's name) and the

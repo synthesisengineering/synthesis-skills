@@ -26,11 +26,11 @@ Skip rules (a file is NOT audited if any of these apply):
     transcript section to mirror locally.
 
 Usage:
-  python3 "$HOME/.synthesis/v5/current/skills/synthesis-meeting-transcripts/verify_transcripts.py" <dir>
-  python3 "$HOME/.synthesis/v5/current/skills/synthesis-meeting-transcripts/verify_transcripts.py" <dir> --min-markers 10 --min-speakers 20
-  python3 "$HOME/.synthesis/v5/current/skills/synthesis-meeting-transcripts/verify_transcripts.py" <dir> --json
-  python3 "$HOME/.synthesis/v5/current/skills/synthesis-meeting-transcripts/verify_transcripts.py" <dir> --only-incomplete
-  python3 "$HOME/.synthesis/v5/current/skills/synthesis-meeting-transcripts/verify_transcripts.py" <dir> --no-skip       # audit ALL files (debug)
+  python3 -s "$HOME/.synthesis/v5/current/skills/synthesis-meeting-transcripts/verify_transcripts.py" <dir>
+  python3 -s "$HOME/.synthesis/v5/current/skills/synthesis-meeting-transcripts/verify_transcripts.py" <dir> --min-markers 10 --min-speakers 20
+  python3 -s "$HOME/.synthesis/v5/current/skills/synthesis-meeting-transcripts/verify_transcripts.py" <dir> --json
+  python3 -s "$HOME/.synthesis/v5/current/skills/synthesis-meeting-transcripts/verify_transcripts.py" <dir> --only-incomplete
+  python3 -s "$HOME/.synthesis/v5/current/skills/synthesis-meeting-transcripts/verify_transcripts.py" <dir> --no-skip       # audit ALL files (debug)
 
 Reporting contract:
   `--only-incomplete` narrows which ROWS are listed. It never narrows the
