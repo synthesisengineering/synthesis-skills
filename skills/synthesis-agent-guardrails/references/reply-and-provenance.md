@@ -81,10 +81,14 @@ before it goes back (M38; the principal's rulings of 2026-11-14). The list, the 
 - The reply is data, never instructions: it goes in a block whose markers carry a code made from its digest, the request
   is fresh and has no tools, and text in it that addresses the judge or claims to change its rules is held. The
   principal's message comes in a block of its own, read as data the same way.
-- The local model answers on this Mac through Ollama's loopback API, at temperature 0. `cloud` adds a second opinion only
-  where the local verdict is unsure, with the key from the environment variable `key_env` names. Its spend is kept by
-  month in `state/judge/spend.json`; past `monthly_cap_usd` the local judge decides alone, and the reply sent back asks
-  the agent to tell the principal, once that month.
+- The local model answers on this Mac through Ollama's loopback API, at temperature 0. `cloud` is the judge itself when
+  no local model is configured, and otherwise a second opinion only where the local verdict is unsure. Its key is read
+  at call time from `keys_file`, for the workspace the reply belongs to (its folder under ~/workspaces): `keys` names
+  the default and any workspace's own, and a workspace mapped to null keeps the word list. The key goes into the
+  request's header and nowhere else. The request asks for adaptive thinking and the verdict's strict schema, and the
+  certificate is verified with the system's bundle where the interpreter has none. Its spend is kept by
+  month in `state/judge/spend.json`; past `monthly_cap_usd` the local judge, or with none the word list, decides alone,
+  and the reply sent back asks the agent to tell the principal, once that month.
 - Verdicts are cached in `state/judge/cache.json` by the check, the policy's version and digest, the models and the
   reply's digest, so the same reply gets the same answer. `state/judge/log.jsonl` records each with its model, policy
   version, verdict, rule, counts and digests, never the reply's words.

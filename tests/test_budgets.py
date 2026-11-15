@@ -1312,10 +1312,25 @@ ROOT = Path(__file__).resolve().parents[1]
 # prompt and their import 2, turn_ends 2 (each turn end's last message), main 1 (the first question timed alone) and
 # report 3 (both configurations' gates and latencies), and judged 8 (the models' loop in a function of its own, so the
 # deadline a run raises to count slow verdicts is put back for the next run in the same process).
+# The cloud judge (the principal's ruling of 2026-11-15: measure a cloud model as the judge on the labels, and ship it only
+# if it passes the gate) adds 79 to the core and 119 to the plugin. judge.py 71: _cloud 39 in place of _second's 34 (the
+# cloud model as the judge, or a second opinion: the key of the reply's workspace, the month's cap reserved and settled,
+# adaptive thinking and the verdict's strict schema, a refusal or an unfinished answer no verdict, its tokens logged),
+# notice 17 (the cap's word to the principal once a month, with or without a verdict), _key 15 (the key read from the
+# keys file at call time for the workspace, the default for the rest, none for a workspace mapped to null, the file
+# never quoted), _judged 8 (the cloud model alone as the judge), _tls 7 (the system's certificate bundle where the
+# interpreter has none), _schema 5 (the verdict's shape held to both judges), settings 5 (a judge of either kind or
+# both; the keys file and each workspace's path), SYSTEM_CA_FILES 1, _post 1, ask 1, the ssl import 1, blank lines 8,
+# less 2 in _ask_local and 1 in Verdict (its notice field gone). reply_check.py 8: workspace_of 5 and its two blank lines
+# (a folder's workspace under ~/workspaces, read past links), shortcut_problem 1 (the workspace and the cap's notice
+# passed through). judge_replay.py 40: judged 15 (cloud models with each item's workspace key, an item whose workspace
+# has none left out and counted, tokens and dollars from the judge's own log), record_workspace 13 and its two blank
+# lines (the workspace a record ran in), main 9 (the cloud model's arguments and each record's workspace), report 1 (the
+# gate's limit, and no pass where nothing answered).
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 16351
-PLUGIN_BUDGET = 42720
+CORE_BUDGET = 16430
+PLUGIN_BUDGET = 42839
 
 
 def _lines(files):

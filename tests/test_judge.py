@@ -16,6 +16,7 @@ import os
 import re
 import shutil
 import socket
+import ssl
 import subprocess
 import sys
 import threading
@@ -381,6 +382,15 @@ def test_past_the_monthly_cap_the_cloud_is_not_asked_and_the_principal_is_told_o
     fake.local = _local(sure=False)
     judge.ask("demo", judge.parse_policy("demo", POLICY_TEXT), CONTENT, {}, config)
     assert fake.calls[-1]["path"] == "/v1/messages"  # a new month starts from nothing
+
+
+def test_the_cloud_is_reached_with_a_certificate_store_wherever_the_system_has_one():
+    """python.org's Python on macOS has no certificate store of its own, so every request to the cloud failed (the first
+    measurement, 2026-11-15): the system's bundle stands in where the interpreter has none."""
+    judge = _judge()
+    context = judge._tls()
+    assert context.verify_mode == ssl.CERT_REQUIRED and context.check_hostname
+    assert context.cert_store_stats()["x509_ca"] or not any(os.path.isfile(f) for f in judge.SYSTEM_CA_FILES)
 
 
 def test_the_reply_check_names_the_workspace_a_reply_belongs_to(fake, keys_file, tmp_path, monkeypatch):

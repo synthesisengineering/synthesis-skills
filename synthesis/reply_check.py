@@ -317,7 +317,14 @@ def last_message(transcript_path, tail: int = 4_000_000) -> str:
     return ""
 
 
-def shortcut_verdict(reply: str, hits: list, config: dict, until: float | None = None, asked: str = ""):
+def workspace_of(cwd) -> str:
+    """The workspace a folder belongs to: its first folder under ~/workspaces, read past links; "" anywhere else."""
+    root = os.path.realpath(os.path.join(os.path.expanduser("~"), "workspaces")) + os.sep
+    where = os.path.realpath(str(cwd)) + os.sep if isinstance(cwd, str) and cwd else ""
+    return where[len(root):].split(os.sep)[0] if where.startswith(root) and len(where) > len(root) else ""
+
+
+def shortcut_verdict(reply: str, hits: list, config: dict, until: float | None = None, asked: str = "", workspace: str = ""):
     """The judge's last word on a reply the list flagged, or None where it gave none. A sure pass of the first reading
     clears the hit only when a second, narrow question (does the reply ask leave for, wait on or offer back a step the
     agent could take itself?) passes it surely too: blind labels of the recorded hits found the shortcuts a first
@@ -326,16 +333,16 @@ def shortcut_verdict(reply: str, hits: list, config: dict, until: float | None =
     from dataclasses import replace
     from synthesis import judge
     content, context = _judged(reply, hits), {"where": WHERE, "list_hits": hits}
-    first = judge.ask("shortcut-phrasing", judge.load_policy("shortcut-phrasing"), content, context, config, until, asked)
+    first = judge.ask("shortcut-phrasing", judge.load_policy("shortcut-phrasing"), content, context, config, until, asked, workspace)
     if first is None or first.verdict == "hold" or not first.sure:
         return first
-    second = judge.ask(SECOND, judge.load_policy(SECOND), content, context, config, until, asked)
+    second = judge.ask(SECOND, judge.load_policy(SECOND), content, context, config, until, asked, workspace)
     if second is None or second.verdict == "pass" and not second.sure:
         return replace(first, sure=False)
-    return first if second.verdict == "pass" else replace(second, notice=first.notice or second.notice)
+    return first if second.verdict == "pass" else second
 
 
-def shortcut_problem(reply: str, config: dict, until: float | None = None, transcript_path: str | None = None) -> str:
+def shortcut_problem(reply: str, config: dict, until: float | None = None, transcript_path: str | None = None, cwd=None) -> str:
     """What the shortcut check says of a reply, or "". The list's hits stand as they always have unless a judge is
     configured and answers (M38): only a reply the list flags goes to it. On this check the judge decides (the
     principal's ruling of 2026-11-14: a sendback costs one turn): a hit it is sure is benign is cleared, and a hit it
@@ -352,10 +359,11 @@ def shortcut_problem(reply: str, config: dict, until: float | None = None, trans
     except judge.ConfigError as exc:
         return " ".join(filter(None, [listed, f"Also, {exc}; until it is fixed no judge reads replies and the list alone "
                                                 "decides: tell the principal."]))
-    found = shortcut_verdict(reply, hits, config, until, last_message(transcript_path)) if on else None
+    found = shortcut_verdict(reply, hits, config, until, last_message(transcript_path), workspace_of(cwd)) if on else None
+    said = judge.notice(config) if on else ""  # the cloud's cap reached: once a month, whatever the verdict
+    told = f"Tell the principal in this reply: {said}." if said else ""
     if found is None:
-        return listed
-    told = f"Tell the principal in this reply: {found.notice}." if found.notice else ""
+        return " ".join(filter(None, [listed, told]))
     if found.verdict == "pass":
         return told if found.sure else " ".join(filter(None, [listed, told]))
     return (listed.split(". Do the work")[0] + f' (the judge read "{found.span}" as {found.rule.replace("_", " ")}: '
@@ -710,6 +718,6 @@ def check(payload: dict, config: dict) -> str | None:
     if missing:
         problems.append("quotes not found in this session's record: " + "; ".join(f'"{q}"' for q in missing)
                         + ". Quote only what a tool surfaced this session, or remove the quote.")
-    shortcut = shortcut_problem(reply, config, began + ROOM, payload.get("transcript_path"))  # last: the hook ends in time
+    shortcut = shortcut_problem(reply, config, began + ROOM, payload.get("transcript_path"), payload.get("cwd"))  # last: in time
     problems = [shortcut] * bool(shortcut) + problems
     return "Before this reply goes out, revise it: " + " ".join(problems) if problems else None

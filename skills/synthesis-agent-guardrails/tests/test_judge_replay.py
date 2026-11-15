@@ -205,7 +205,9 @@ def test_the_cloud_replay_reads_each_workspaces_key_and_leaves_out_a_workspace_w
                         "--keys", json.dumps({"default": "default.anthropic", "heldback": None}), "--price", "4,20", "--effort", "low",
                         "--labels", str(tmp_path / "labels.jsonl"), "--limit", "8", "--cleared", str(cleared)]) == 0
     out = capsys.readouterr().out
-    assert "left out, their workspace's key not confirmed: 1 (dev 1, test 0)" in out
+    import re
+    left = re.search(r"left out, their workspace's key not confirmed: 1 \(dev (\d), test (\d)\)", out)
+    assert left and int(left.group(1)) + int(left.group(2)) == 1  # whichever half the seed put it in
     assert "cloud-judge all (1): shortcut 0 of 0 cleared, unsure 0 of 0 cleared, legitimate 1 of 1 cleared" in out
     assert "cloud-judge: cloud tokens in 4000, out 300; dollars 0.0220" in out  # both questions of the one item judged
     assert "against the 8000 ms limit" in out

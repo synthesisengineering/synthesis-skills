@@ -155,6 +155,21 @@ def split(rows: list, seed: int) -> tuple:
     return dev, test
 
 
+def record_workspace(path: Path) -> str:
+    """The workspace a record's session ran in, from the first folder it names (a Claude Code entry's `cwd`, a Codex
+    session's), read as the hook reads a payload's; "" where it names none."""
+    with open(path, encoding="utf-8", errors="replace") as handle:
+        for _, raw in zip(range(400), handle):
+            try:
+                row = json.loads(raw)
+            except ValueError:
+                continue
+            cwd = row.get("cwd") or (row.get("payload") or {}).get("cwd") if isinstance(row, dict) else None
+            if isinstance(cwd, str) and cwd:
+                return reply_check.workspace_of(cwd)
+    return ""
+
+
 def labeled(args, items: list) -> list:
     """[(part, label, turn end)] for the labeled list hits of the split asked for that the records still hold."""
     with open(args.labels, encoding="utf-8") as handle:
@@ -197,6 +212,14 @@ def main(argv=None) -> int:
     parser.add_argument("--split", choices=("dev", "test", "all"), default="all")
     parser.add_argument("--seed", type=int, default=20261114)
     parser.add_argument("--deadline", type=float, default=30.0, help="seconds a verdict may take here; past the hook's are counted")
+    parser.add_argument("--cloud", action="append", default=[], help="a cloud model to judge with, asked as the hook asks it")
+    parser.add_argument("--cloud-url", default=judge.CLOUD_URL)
+    parser.add_argument("--keys-file", default="")
+    parser.add_argument("--keys", default="{}", help="JSON: each workspace's dotted path in the keys file, `default` for the rest, null for none")
+    parser.add_argument("--price", default="0,0", help="the cloud model's dollars per million input and output tokens, as IN,OUT")
+    parser.add_argument("--effort", choices=("low", "medium", "high"), default=None)
+    parser.add_argument("--cap", type=float, default=25.0, help="dollars this run may spend on the cloud model")
+    parser.add_argument("--limit", type=float, default=0.0, help="seconds a flagged reply may take, for the gate (default: the hook's deadline)")
     parser.add_argument("--cleared", default="")
     parser.add_argument("--measure-only", action="store_true")
     args = parser.parse_args(argv)
@@ -209,7 +232,8 @@ def main(argv=None) -> int:
     extra, seen, items = list(config.get("shortcut_phrases", [])), set(), []
     for harness, root in (("claude-code", args.claude), ("codex", args.codex), ("muse", args.muse)):
         files = sorted(p for p in Path(root).rglob("*.jsonl") if p.is_file() and p.stat().st_mtime >= since) if Path(root).is_dir() else []
-        ends = [(harness, str(path), *end) for path in files for end in turn_ends(READERS[harness](path, seen))]
+        where = {path: record_workspace(path) for path in files}
+        ends = [(harness, str(path), *end, where[path]) for path in files for end in turn_ends(READERS[harness](path, seen))]
         sent = [e for e in ends if e[4] and LABEL in e[4]]
         print(f"{harness}: {len(files)} records, {len(ends)} turn ends, {len(sent)} shortcut sendbacks, "
               f"{sum(bool(reply_check.shortcut_hits(e[3], extra)) for e in sent)} of them a list hit today")
@@ -231,23 +255,34 @@ def main(argv=None) -> int:
 
 
 def judged(args, jobs: list, config: dict, hook: float) -> int:
-    """Each model's verdicts on the jobs, its report and its cleared items; the model unloaded if this run loaded it."""
-    policy = judge.load_policy("shortcut-phrasing")
-    for model in args.model:
+    """Each model's verdicts on the jobs, its report and its cleared items: local models through Ollama, each unloaded if
+    this run loaded it; cloud models with the key of each item's workspace, an item whose workspace has none left out."""
+    policy, keys, (price_in, price_out) = judge.load_policy("shortcut-phrasing"), json.loads(args.keys), (float(x) for x in args.price.split(","))
+    held_back = [job for job in jobs if keys.get(job[2][6], "") is None] if args.cloud else []
+    if held_back:
+        print(f"left out, their workspace's key not confirmed: {len(held_back)} "
+              f"({', '.join(f'{part} {sum(job[0] == part for job in held_back)}' for part in (('dev', 'test') if args.labels else ('sendbacks',)))})")
+    runs = [(model, {"local": {"models": [model], "url": args.url, "keep_alive": "10m"}}, jobs) for model in args.model] + [
+        (model, {"cloud": {"provider": "anthropic", "model": model, "url": args.cloud_url, "keys_file": args.keys_file, "keys": keys,
+                           "price_per_mtok": {"input": price_in, "output": price_out}, "monthly_cap_usd": args.cap,
+                           **({"effort": args.effort} if args.effort else {})}}, [job for job in jobs if job not in held_back])
+        for model in args.cloud]
+    log = paths.state() / "judge" / "log.jsonl"  # the judge's own record of each verdict: its tokens and dollars
+    for model, section, chosen in runs:
         try:
-            loaded = any(m.get("name") == model for m in _ollama(args.url, "/api/ps").get("models", []))
+            loaded = "local" in section and any(m.get("name") == model for m in _ollama(args.url, "/api/ps").get("models", []))
         except (OSError, ValueError) as exc:
             print(f"NOT REPLAYED on {model}: the local model server did not answer ({exc})", file=sys.stderr)
             return 2
-        settings = {**config, "judge": {"local": {"models": [model], "url": args.url, "keep_alive": "10m"}, "deadline_seconds": args.deadline}}
+        settings, before = {**config, "judge": {**section, "deadline_seconds": args.deadline}}, len(log.read_text().splitlines()) if log.exists() else 0
         times, cold, outcomes, cleared = [], None, [], []
-        for part, label, entry, hits in jobs:
-            harness, path, line, reply, _, asked = entry
+        for part, label, entry, hits in chosen:
+            harness, path, line, reply, _, asked, workspace = entry
             began = time.monotonic()
-            alone = judge.ask("shortcut-phrasing", policy, reply_check._judged(reply, hits), {"where": reply_check.WHERE,
-                              "list_hits": hits}, settings, asked=asked) if hits else None  # the first question alone
+            alone = judge.ask("shortcut-phrasing", policy, reply_check._judged(reply, hits), {"where": reply_check.WHERE, "list_hits": hits},
+                              settings, asked=asked, workspace=workspace) if hits else None  # the first question alone
             first = int((time.monotonic() - began) * 1000)
-            found = reply_check.shortcut_verdict(reply, hits, settings, asked=asked) if hits else None  # both, as the hook asks
+            found = reply_check.shortcut_verdict(reply, hits, settings, asked=asked, workspace=workspace) if hits else None  # both
             took = int((time.monotonic() - began) * 1000)  # the first answer comes from its cache: the hook's time is the sum
             if alone is not None and not alone.cached:
                 cold, times = (first, times) if cold is None and not loaded else (cold, times + [(first, took)])
@@ -257,16 +292,20 @@ def judged(args, jobs: list, config: dict, hook: float) -> int:
             if outcome == "cleared":
                 cleared.append({"harness": harness, "path": path, "line": line, "digest": hashlib.sha256(reply.encode()).hexdigest()[:16],
                                 "model": model, "rule": found.rule, **({"label": label, "part": part} if label else {})})
-        if not loaded:
+        if "local" in section and not loaded:
             _ollama(args.url, "/api/generate", {"model": model, "keep_alive": 0})  # unload what this run loaded
-        report(model, outcomes, bool(args.labels), args.split, times, cold, hook)
+        report(model, outcomes, bool(args.labels), args.split, times, cold, args.limit or hook, "limit" if args.limit else "deadline")
+        if "cloud" in section:
+            rows = [json.loads(row) for row in (log.read_text().splitlines() if log.exists() else [])[before:]]
+            print(f"{model}: cloud tokens in {sum(r.get('cloud_in', 0) for r in rows)}, out {sum(r.get('cloud_out', 0) for r in rows)}; "
+                  f"dollars {sum(r.get('cost_usd', 0) for r in rows):.4f}")
         if args.cleared:
             with open(args.cleared, "a", encoding="utf-8") as handle:
                 handle.writelines(json.dumps(row) + "\n" for row in cleared)
     return 0
 
 
-def report(model: str, outcomes: list, by_label: bool, part: str, times: list, cold, hook: float) -> None:
+def report(model: str, outcomes: list, by_label: bool, part: str, times: list, cold, bound: float, word: str) -> None:
     """The counts of one model's run, with both questions as the hook asks them and with the first question alone: by
     label for each half with a gate, or for the recorded sendbacks; then the latency of each."""
     count = lambda rows, **want: sum(all(dict(zip(("part", "label", "outcome"), row))[k] == v for k, v in want.items()) for row in rows)
@@ -286,11 +325,12 @@ def report(model: str, outcomes: list, by_label: bool, part: str, times: list, c
         legit, fine = count(rows, label="legitimate"), count(rows, label="legitimate", outcome="cleared")
         print(f"{model} gate on {len(rows)} list hits{which.rstrip() if which != ' ' else ':'} real shortcuts cleared {bad}, unsure cleared {unsure}, "
               f"legitimate cleared {fine} of {legit} ({100 * fine // max(1, legit)}%); warm 95th {percentile(ms, 0.95)} ms against the "
-              f"{hook * 1000:.0f} ms deadline: " + ("PASSES" if rows and not bad and not unsure and percentile(ms, 0.95) <= hook * 1000 else "FAILS"))
+              f"{bound * 1000:.0f} ms {word}: " + ("PASSES" if not bad and not unsure and percentile(ms, 0.95) <= bound * 1000
+                                                   and any(r[2] != "no verdict" for r in rows) else "FAILS"))  # nothing answered passes nothing
     print(f"{model}: latency ms: the first question alone, first {cold if cold is not None else 'n/a (already loaded)'} median "
           f"{percentile([t[0] for t in times], 0.5)} 95th {percentile([t[0] for t in times], 0.95)}; both questions, median "
-          f"{percentile([t[1] for t in times], 0.5)} 95th {percentile([t[1] for t in times], 0.95)}; both over {judge.DEADLINE:g} s "
-          f"{sum(t[1] > judge.DEADLINE * 1000 for t in times)} of {len(times)}")
+          f"{percentile([t[1] for t in times], 0.5)} 95th {percentile([t[1] for t in times], 0.95)}; both over {bound:g} s "
+          f"{sum(t[1] > bound * 1000 for t in times)} of {len(times)}")
 
 
 if __name__ == "__main__":
