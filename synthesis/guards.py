@@ -4588,17 +4588,18 @@ def _stand_in(code: str, where: str, module: str = "") -> str:
 
 
 # --- the release tool, run from the protected runtime with no code (the principal, 2026-11-15) -----------------------
-# A release installs the runtime this guard runs from, so it runs from that runtime, where no agent can change it.
-# Exactly that copy passes with no code: the running release's release.py, by its path in the runtime, run by python3 or
-# the system Python, alone on the line in plain words, with only the options it documents, on the canonical checkout
-# (`release_checkout`). What it then publishes its own preflight proves: the tip of that repository's main as GitHub
-# serves it, every object of it intact, CI passed. A copy of the tool, the scripts the runtime carries for it and every
-# other way of running it are judged as any other program: `RELEASE_KIT` is never the plugin's own (`_shipped`).
+# A release installs the runtime this guard runs from, so it runs from that runtime, where no agent can change it,
+# through the launcher install writes in the protected bin/ (review round 1 of 5.23.1, A4): the interpreter pinned at
+# install, isolated, with a fixed environment. Exactly that launcher passes with no code: alone on the line in plain
+# words, by its absolute path, with only the options the tool documents, on the canonical checkout (`release_checkout`)
+# or naming a tag to install. What it publishes and installs then comes from a fresh clone of what GitHub serves, which
+# its own preflight requires to be the tip of main with CI passed. The tool by its own path, a copy of it or of the
+# launcher, the scripts the runtime carries for it and every other way of running them are judged as any other program:
+# `RELEASE_KIT` is never the plugin's own (`_shipped`).
 RELEASE_REPOSITORY = "synthesisengineering/synthesis-skills"
-RELEASE_TOOL = "skills/synthesis-skills-manager/scripts/release.py"
 RELEASE_KIT = ("skills/synthesis-skills-manager/scripts/", "skills/synthesis-onboarding/scripts/")  # its imports with it
 GITHUB_REMOTE = re.compile(r"(?:https://github\.com/|git@github\.com:|ssh://git@github\.com/)([^/\s]+/[^/\s]+?)(?:\.git)?/?$")
-RELEASE_OPTIONS = {"--repo-root": r".+", "--clients": r"(?:claude|codex|muse)(?:,(?:claude|codex|muse))*",
+RELEASE_OPTIONS = {"--repo-root": r"/.+", "--tag": r"v\d+\.\d+\.\d+", "--clients": r"(?:claude|codex|muse)(?:,(?:claude|codex|muse))*",
                    "--session": r"[\w.:-]{1,128}", "--install-only": None, "--dry-run": None}
 RELEASE_CONFIG = re.compile(  # a checkout's own config keys that run no program and send git nowhere
     r"core\.(?:repositoryformatversion|filemode|bare|logallrefupdates|ignorecase|precomposeunicode|symlinks)|user\.(?:name|email)"
@@ -4650,21 +4651,29 @@ def release_checkout(repo: str) -> list:
         [f"its own git config sets {', '.join(odd[:6])}, which may run a program or send git elsewhere"] if odd else [])
 
 
-def _release_tool(command: str, cwd: str) -> bool:
-    """Whether a command line is exactly the running release's own release tool on the canonical checkout (above)."""
+def _release_tool(command: str, cwd: str, session: dict | None = None) -> bool:
+    """Whether a command line is exactly the release launcher install wrote, on the canonical checkout or naming a tag
+    to install (above). Its paths are absolute, so no folder the command runs from moves them (A5), and a session it
+    names is the one asking (A9)."""
     line, release = command.strip(), os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
     words, home = line.split(), os.path.expanduser("~")
-    if not PLAIN_LINE.fullmatch(line) or words[0] not in ("python3", "/usr/bin/python3") or os.path.realpath(
+    if not PLAIN_LINE.fullmatch(line) or os.path.basename(words[0]) != "synthesis-release" or os.path.realpath(
             paths.home() / "current") != release or not paths.inside(release, os.path.realpath(paths.home() / "releases")):
         return False  # a line a shell changes, another program, or this guard is not the protected runtime's
 
-    def place(word: str, shell: bool) -> str:  # a path as the shell hands it on: `~/` leads home only at a word's start
+    def place(word: str, shell: bool) -> str:  # an absolute path as the shell hands it on: `~/` leads home only at a word's start
         word = home + word[1:] if shell and word.startswith("~/") else word
-        return "" if "~" in word or word.startswith("=") else os.path.join(cwd, word)
-    script, tool = place(words[1], True) if len(words) > 1 else "", os.path.join(release, RELEASE_TOOL)
-    if os.path.basename(script) != "release.py" or os.path.realpath(os.path.dirname(script)) != os.path.dirname(tool):
-        return False
-    given, at = {}, 2
+        return word if word[:1] == "/" and "~" not in word else ""
+    from synthesis import install
+    target, python = paths.home() / "bin" / "synthesis-release", install.pinned(paths.home())
+    try:
+        written = target.read_text(encoding="utf-8") == install.launcher(paths.home(), python, "synthesis-release")
+    except OSError:
+        written = False
+    if not written or not python or install.interpreter_problems(python) or os.path.realpath(place(words[0], True) or "/") != (
+            os.path.realpath(target)):
+        return False  # not the launcher install wrote, for an interpreter it would still pin
+    given, at = {}, 1
     while at < len(words):
         name, joined, value = words[at].partition("=")
         pattern = RELEASE_OPTIONS.get(name, "")
@@ -4673,10 +4682,14 @@ def _release_tool(command: str, cwd: str) -> bool:
         if pattern is not None and not joined:
             at += 1
             value = words[at] if at < len(words) else ""
-        if pattern is not None and not re.fullmatch(pattern, value):
+        if pattern is not None and not re.fullmatch(pattern, place(value, not joined) if name == "--repo-root" else value):
             return False
         given[name], at = place(value, not joined) if name == "--repo-root" else value, at + 1
-    return bool(given.get("--repo-root")) and not release_checkout(given["--repo-root"])
+    if "--session" in given and given["--session"] != paths.session_id(session):
+        return False  # another session's id would take or drop that session's hold on the release train
+    if "--install-only" in given:
+        return "--tag" in given and "--repo-root" not in given
+    return "--tag" not in given and bool(given.get("--repo-root")) and not release_checkout(given["--repo-root"])
 
 
 def _shipped(path: str) -> bool:
@@ -5104,7 +5117,7 @@ def _spells(texts: list, words: list, where: str, env: dict, raw: list, linked: 
 def check_self_grant(command: str, cwd: str, config: dict | None = None, session: dict | None = None, hold: bool = True) -> str | None:
     """The reason a shell command is refused, or waits for the principal's code because a program the guard cannot prove
     only reads names a protected folder (`hold`: file the code and spend it; else the reason, as a refusal)."""
-    if hold and _release_tool(command, cwd):  # never for a command a program starts: that program is judged
+    if hold and _release_tool(command, cwd, session):  # never for a command a program starts: that program is judged
         codes = approvals.pending()
         if not (codes and re.search(r"(?i)\b(?:%s)\b" % "|".join(map(re.escape, codes)), command)):
             return None

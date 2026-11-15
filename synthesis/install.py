@@ -221,14 +221,46 @@ def _compile(package: Path) -> None:
         _pinned_run(package, COMPILE)
 
 
-def install(plugin_root: Path, forward_only: bool = False) -> str:
+class Refused(RuntimeError):
+    """An install that would put an older release, or bytes other than the ones expected, in the runtime's place."""
+
+
+def takes(rel: str) -> bool:
+    """Whether the runtime takes this file of a plugin (by its path in the plugin) when it installs."""
+    parts = rel.split("/")
+    return (len(parts) == 2 and parts[0] == "synthesis" and parts[1].endswith(".py")) or rel == "CHANGELOG.md" or (
+        len(parts) == 4 and parts[0] == "skills" and parts[1] in STABLE_SKILL_SCRIPTS and parts[2] == "scripts"
+        and not parts[3].startswith("test_"))
+
+
+def _blob(path: Path) -> str:
+    data = os.readlink(path).encode() if path.is_symlink() else path.read_bytes()
+    return hashlib.sha1(b"blob %d\0" % len(data) + data).hexdigest()
+
+
+def _differences(folder: Path, expected: dict) -> list:
+    """Each file of a staged or installed release that is not the expected blob, missing or extra."""
+    found = {p.relative_to(folder).as_posix(): p for p in folder.rglob("*") if p.is_file() and "__pycache__" not in p.parts
+             and p.relative_to(folder).as_posix() not in ("HASH", "SOURCE")}
+    return ([f"differs {rel}" for rel in sorted(set(found) & set(expected)) if _blob(found[rel]) != expected[rel]]
+            + [f"missing {rel}" for rel in sorted(set(expected) - set(found))] + [f"extra {rel}" for rel in sorted(set(found) - set(expected))])
+
+
+def install(plugin_root: Path, forward_only: bool = False, expected: dict = None) -> str:
     """Install the plugin's runtime if it differs from the current one. Returns a one-line report.
 
-    forward_only (the session-start hook): leave everything alone unless the plugin is a newer release."""
+    forward_only (the session-start hook): leave everything alone unless the plugin is a newer release. Any other
+    install refuses (Refused) a release older than the running one (review round 1 of 5.23.1, A1). `expected` ({path:
+    blob id}, every file the runtime takes, as the release read it from its fresh clone): the staged copy must hold
+    exactly those bytes before `current` moves, or nothing moves (A3)."""
     plugin_root = Path(plugin_root).resolve()
     if not (plugin_root / "synthesis" / "hook.py").is_file():
         return f"not a synthesis plugin: {plugin_root}"
     home = _home()
+    running = version(home / "current")
+    if not forward_only and running and version(plugin_root) < running:
+        raise Refused(f"{plugin_root} holds {'.'.join(map(str, version(plugin_root))) or 'no version'}, older than the "
+                      f"running {'.'.join(map(str, running))}: nothing older installs")
     try:
         move_board(home)  # before any switch, so the new release's first read finds the board in place
     except OSError as exc:  # never blocks a session start; the doctor names what is left in state/
@@ -250,7 +282,14 @@ def install(plugin_root: Path, forward_only: bool = False) -> str:
             if (plugin_root / "CHANGELOG.md").is_file():  # the upgrade note quotes it to running sessions
                 shutil.copy2(plugin_root / "CHANGELOG.md", staging / "CHANGELOG.md")
             (staging / "SOURCE").write_text(f"{plugin_root}\n{time.strftime('%Y-%m-%dT%H:%M:%S%z')}\n", encoding="utf-8")
+            wrong = _differences(staging, expected) if expected is not None else []
+            if wrong:
+                shutil.rmtree(staging, ignore_errors=True)
+                raise Refused(f"the staged runtime is not the release's bytes ({'; '.join(wrong[:4])}), so current did not move")
             os.replace(staging, release)
+        elif expected is not None and _differences(release, expected):
+            raise Refused(f"{release} is not the release's bytes ({'; '.join(_differences(release, expected)[:4])}), "
+                          "so current did not move")
         link = home / f".current.{os.getpid()}"
         link.symlink_to(release)
         os.replace(link, home / "current")  # atomic switch: a running hook sees old or new, never neither

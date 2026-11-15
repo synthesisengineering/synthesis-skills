@@ -260,7 +260,7 @@ def test_a_staged_runtime_that_differs_from_the_listing_never_becomes_current(tm
 def _github(tmp_path, repo):
     """A bare repository standing in for GitHub, holding what the checkout's main holds."""
     bare = tmp_path / "github.git"
-    subprocess.run(["git", "clone", "-q", "--bare", str(repo), str(bare)], check=True)
+    subprocess.run(["git", "clone", "-q", "--bare", "--no-local", str(repo), str(bare)], check=True)  # its own objects
     return bare
 
 
@@ -279,6 +279,7 @@ def test_a_release_builds_pushes_and_installs_from_a_fresh_clone_never_the_check
     monkeypatch.setattr(release, "floor_problems", no_floor)
     _forge(repo, git(repo, "rev-parse", "HEAD:skills/demo/SKILL.md"), b"What no CI saw.\n")  # the checkout's own store
     _forge(repo, git(repo, "rev-parse", "HEAD:synthesis/guards.py"), b"# a guard no CI saw\n")
+    monkeypatch.setattr(release.doctor, "run_checks", lambda: [])  # the doctor's own checks are tested where it lives
     installed = []
     real = install.install
     monkeypatch.setattr(install, "install", lambda root, **k: installed.append((Path(root), k)) or real(root, **k))
@@ -355,7 +356,7 @@ def _fake_bin(tmp_path, head, bare):
 def test_a_dry_run_from_the_runtime_reads_the_repository_from_repo_root_and_its_code_from_the_runtime(tmp_path, homes):
     install.install(ROOT)  # the runtime, in this test's own home
     runtime = Path(os.path.realpath(paths.home() / "current"))
-    repo = checkout(tmp_path / "work" / "synthesis-skills")
+    repo = checkout(tmp_path / "work" / "synthesis-skills", "9.9.9")  # newer than the runtime it runs from
     head = git(repo, "rev-parse", "HEAD")
     bin_dir, log = _fake_bin(tmp_path, head, _github(tmp_path, repo))
     driver = tmp_path / "driver.py"
@@ -368,11 +369,11 @@ def test_a_dry_run_from_the_runtime_reads_the_repository_from_repo_root_and_its_
     assert loaded["code"] == 0, ran.stdout + ran.stderr
     for name, file in loaded["files"].items():
         assert file and Path(os.path.realpath(file)).is_relative_to(runtime), (name, file)
-    assert f"would tag v5.1.0 at {head[:12]}" in ran.stdout and "to origin" in ran.stdout, ran.stdout
-    assert "claude: not on this Mac; skipped" in ran.stdout and "release complete: v5.1.0" in ran.stdout
+    assert f"would tag v9.9.9 at {head[:12]}" in ran.stdout and "to origin" in ran.stdout, ran.stdout
+    assert "claude: not on this Mac; skipped" in ran.stdout and "release complete: v9.9.9" in ran.stdout
     network = log.read_text()
     assert "ls-remote" in network and "clone" in network and "-R github.com/synthesisengineering/synthesis-skills" in network
-    assert not (repo / ".git" / "refs" / "tags" / "v5.1.0").exists()  # a dry run tags nothing
+    assert not (repo / ".git" / "refs" / "tags" / "v9.9.9").exists()  # a dry run tags nothing
 
 
 def test_a_release_names_its_checkout_and_an_install_names_its_tag(tmp_path):

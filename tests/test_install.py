@@ -47,7 +47,7 @@ def test_upgrade_switches_current_and_keeps_the_hook_text_identical(tmp_path, is
     hook_text = (isolated_home / "bin" / "synthesis-hook").read_text()
     first = os.path.realpath(isolated_home / "current")
     v2 = _plugin_copy(tmp_path, "v2")
-    (v2 / "synthesis" / "__init__.py").write_text('__version__ = "5.0.1"\n')
+    (v2 / "synthesis" / "__init__.py").write_text('__version__ = "99.0.1"\n')  # newer than the tree it copies
     install.install(v2)
     assert os.path.realpath(isolated_home / "current") != first
     assert (isolated_home / "bin" / "synthesis-hook").read_text() == hook_text
@@ -56,7 +56,8 @@ def test_upgrade_switches_current_and_keeps_the_hook_text_identical(tmp_path, is
 
 def test_a_session_on_an_older_plugin_never_switches_the_runtime_back(tmp_path, isolated_home):
     """2026-10-06: a session that loaded the 5.0.2 plugin started or compacted after 5.0.3 shipped, and its
-    session-start hook switched the stable runtime back to 5.0.2 for every harness. Only an explicit install may."""
+    session-start hook switched the stable runtime back to 5.0.2 for every harness. Since 5.23.1 no install may: an
+    older release installed as the runtime brings back the holes later releases closed (review round 1, A1)."""
     old, new = _plugin_copy(tmp_path, "old"), _plugin_copy(tmp_path, "new")
     (old / "synthesis" / "__init__.py").write_text('__version__ = "1.0.0"\n')
     (new / "synthesis" / "__init__.py").write_text('__version__ = "1.0.1"\n')
@@ -70,8 +71,9 @@ def test_a_session_on_an_older_plugin_never_switches_the_runtime_back(tmp_path, 
     (newer / "synthesis" / "__init__.py").write_text('__version__ = "1.0.2"\n')
     install.install(newer, forward_only=True)  # a session on a newer plugin still upgrades everyone
     assert install.version(isolated_home / "current") == (1, 0, 2)
-    install.install(old)  # a deliberate rollback is an explicit install
-    assert install.version(isolated_home / "current") == (1, 0, 0)
+    with pytest.raises(install.Refused, match="older than the running 1.0.2"):
+        install.install(old)  # an explicit install of an older release is refused too
+    assert install.version(isolated_home / "current") == (1, 0, 2)
 
 
 def test_cli_shim_runs_the_installed_copy_through_a_link_from_any_folder(tmp_path, isolated_home):
