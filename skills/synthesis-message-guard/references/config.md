@@ -718,9 +718,8 @@ them a later release's own composer check and 178 others, all in 4 sessions (96 
 Slack, 7 on X, 6 on Google Chat, 1 on Gmail), and the rule above held 5 of the 178, so a code for each would have asked
 the principal 173 times about scripts no one can read for what they do. The browser's own read tools (`get_page_text`,
 `read_page`, `find`) read a page with no code, and a click goes through the `computer` tool with a summary that says
-what it does. No script in those records called a member named as it ran, so none sent that way. The runtime the hook
-runs from carries both extractors' scripts (`synthesis-message-exports` joined the skills whose scripts the installer
-copies there).
+what it does. No script in those records called a member named as it ran, so none sent that way. In the runtime the
+hook runs from, an extractor counts only when its skill's scripts are among those the installer copies there.
 
 **A navigate is read as a URL parser reads it** (5.23.1). The `navigate` tool called alone was never judged, and a
 `navigate` step was read as written, while a browser strips control characters and spaces at an address's ends and

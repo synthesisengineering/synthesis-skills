@@ -1409,7 +1409,7 @@ ROOT = Path(__file__).resolve().parents[1]
 # change in place.
 # 5.23.1, round 4 of the batch approval's review, findings 1 (its plain form) and 3, both on 5.23.0 (2026-11-15: the
 # navigate tool alone was never judged and a `javascript:` address was read as written; on a messaging site's page a
-# script clicked Send by a name built as it ran): core 102 more and plugin 102. guards.py 101: _refused_scripts 20 (on a
+# script clicked Send by a name built as it ran): core 101 more and plugin 101, all in guards.py: _refused_scripts 20 (on a
 # messaging site's page, or a page a driven browser's record does not show, only the shipped readers' scripts run; a
 # javascript: address is such a script), _tabs 20 (each browser's own newest list: the pane's `tab-N` ids, its own
 # tabs_context and its navigate's result), _read_only_scripts 17 (the extractors as their commands print them, read from
@@ -1417,14 +1417,13 @@ ROOT = Path(__file__).resolve().parents[1]
 # runs), _browser_item 4 (a javascript: navigate is a script step), check_desktop 3, _steps 2 (a navigate read as a
 # parser reads it; a javascript: one runs on the page it is on), _driven_steps 2 (a driven browser's javascript:
 # navigate), _puts 1, BROWSER_STEPS 1 (the navigate tool), desktop_tool 1, PAGE_READERS 1, the comments 8 (the rule and
-# the 60 days it was decided by; the pane's ids) and 10 blank lines. install.py 1: synthesis-message-exports joins the
-# skills whose scripts the installer copies into the runtime, so chat_page.py's extractor is a shipped reader there.
-# Main's 5.23.1 page-script fix merged into the batch (2026-11-15): core 60 more and plugin 60 on the batch's own ceilings.
-# Of main's 102, its _refused_scripts, _read_only_scripts, PAGE_READERS and their comment fold into the batch's own (the
+# the 60 days it was decided by; the pane's ids) and 10 blank lines.
+# Main's 5.23.1 page-script fix merged into the batch (2026-11-15): core 59 more and plugin 59 on the batch's own ceilings.
+# Of main's 101, its _refused_scripts, _read_only_scripts, PAGE_READERS and their comment fold into the batch's own (the
 # batch's _refused_scripts 7 more: every other messaging site's page, and a page a driven browser's record does not show,
 # takes only the shipped readers, and a javascript: address is named as one; its comment 5 more, with the 60 days the rule was decided by). What stays of main's:
 # _tabs 20, _script_address 6, _url_read 5, _browser_item 4, _steps 2, _driven_steps 2, _puts 1, BROWSER_STEPS 1,
-# desktop_tool 1, TAB_LINE's comment 1, 4 blank lines, and install.py 1.
+# desktop_tool 1, TAB_LINE's comment 1 and 4 blank lines.
 # Review round 4 of the batch approval (2026-11-15): core 109 more and plugin 113. guards.py 66: _sender_runs 15 (the
 # messages sender's run a command makes, its program resolved as the write rules resolve one: its real file, arguments
 # and folder), _moves 10 (a step that may leave its tab on a page no list shows yet), _refused_scripts 12 (a script after
@@ -1441,8 +1440,8 @@ ROOT = Path(__file__).resolve().parents[1]
 # _real 7 and its 3 blank lines, as on main; the batch's per-call reset names it beside the sender runs.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 17469
-PLUGIN_BUDGET = 43546
+CORE_BUDGET = 17468
+PLUGIN_BUDGET = 43545
 
 
 def _lines(files):
