@@ -697,8 +697,8 @@ words and then presses Return or Enter (without shift), Space or Return after Ta
 code when its summaries name a message, comment, review, post, reply or tweet: most forms submit on Return, and those
 are the ones that post. A call that names none passes, as before 5.21.1 (the principal's ruling of 2026-11-14, "Skip
 typed text that names no post"), and so does every call on a local app. A page script (`javascript_tool`, alone or as a batch step) reaches the guard: on a messaging
-site's page it is refused unless it is one the plugin ships to read (below, since 5.23.1; on a Messenger site's tab a batch's send script runs too, in its send step,
-"Batches"); elsewhere one that submits
+site's page one the guard cannot read is refused and one that acts waits (below, since 5.23.1; on a Messenger site's tab none runs but the plugin's own read-only ones and a batch's send script in its
+send step, "Batches"); elsewhere one that submits
 a form, sends a key or an event, writes by fetch (a POST, PUT, PATCH or DELETE, or `sendBeacon`), or clicks with a word
 that publishes in it (submit, post, send, publish, reply, comment, share, review, rating, tweet, done) waits, unless it
 names a search, a sign-in, a password or a query as a whole word; on a local app none waits.
@@ -707,19 +707,23 @@ calls in 3 transcripts and passes 30 (23 that name no post, 6 that sign in or se
 unsure, the 23 would have been held too); the script rule holds 5 of 118 scripts on messaging sites, in 2
 transcripts, and 24 of 459 elsewhere, in 5.
 
-**On a messaging site's page only the plugin's own read-only scripts run** (5.23.1). Review round 4 of the batch
+**On a messaging site's page a script the guard cannot read is refused** (5.23.1). Review round 4 of the batch
 approval found a script that clicks Send by a name it builds as it runs (`el['cli' + 'ck']()`) passing on Slack,
 WhatsApp, LinkedIn, Gmail and X: the rule above read a script's text for a click, a submit or a key, and no reading of
 its text shows such a call. On a messaging site's page (every site and page the list above names), and on a page a
-driven browser's record does not show, every page script is now refused but the extractors the plugin ships
-(`messenger_messages.py extractor` and `chat_page.py extractor`, exactly as their commands print them). Refused, not
-held for a code: the 60 days of Claude Code and Codex records to 2026-11-15 held 183 page scripts on those pages, 5 of
-them a later release's own composer check and 178 others, all in 4 sessions (96 on LinkedIn, 56 on facebook.com, 12 on
-Slack, 7 on X, 6 on Google Chat, 1 on Gmail), and the rule above held 5 of the 178, so a code for each would have asked
-the principal 173 times about scripts no one can read for what they do. The browser's own read tools (`get_page_text`,
-`read_page`, `find`) read a page with no code, and a click goes through the `computer` tool with a summary that says
-what it does. No script in those records called a member named as it ran, so none sent that way. In the runtime the
-hook runs from, an extractor counts only when its skill's scripts are among those the installer copies there.
+driven browser's record does not show, a script is now read with its strings, comments and patterns out (the guard's
+own JavaScript reader): one that calls what it names only as it runs (a member by a name it builds, Reflect, `call`,
+`apply`, `bind`, `eval`, `Function`, `with`, `import()`, a timer given a string, a name written in escapes), puts code in
+a string the page runs (a script element, an inline handler) or never closes a string, comment or pattern is refused;
+one that acts waits for the code, by the rule above read over its code as well (`el['click']()` is `el.click()`) and by
+the plain spellings it lacked (opening a page by any spelling of `open`, calling a handler, a call whose name says it
+sends, posts, submits, publishes, replies, shares or tweets, a fetch whose method is no literal); a read passes, and so
+do the extractors the plugin ships. Measured over the 60 days of Claude Code and Codex records to 2026-11-15: of 181
+scripts on those pages that are none of the plugin's own, the seats' ordinary work in two workspaces, it refuses none,
+holds 5 (4 that click, 1 that moves the tab: the 5 the rule above held) and passes 176. No script in those records
+called a member named as it ran, so none sent that way. A first version refused every script there but the plugin's
+own; it would have refused all 181, against the principal's bar that a release refuses no ordinary work. What stays
+open is in `docs/runtime-integration.md`.
 
 **A navigate is read as a URL parser reads it** (5.23.1). The `navigate` tool called alone was never judged, and a
 `navigate` step was read as written, while a browser strips control characters and spaces at an address's ends and

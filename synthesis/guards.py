@@ -5404,6 +5404,34 @@ def _script_address(url: str):
     return urllib.parse.unquote(read[len("javascript:"):]) if read[:len("javascript:")].lower() == "javascript:" else None
 
 
+# On a messaging site's page a page script is read with its strings, comments and patterns out (_osa_code): one that calls
+# what it names only as it runs is refused, one that acts waits for the code, a read passes (the coordinator's ruling on
+# round 4's measurement, 2026-11-15: refusing every unshipped script there refused 178 in 60 days, the seats' ordinary
+# reads). SCRIPT_ACTS_MORE adds the plain spellings the text rule missed: opening a page by any spelling of open, calling a
+# handler, sending on a socket, posting a message, a method given as no literal.
+UNREAD_SCRIPT = re.compile(r"\]\s*\)?\s*(?:\?\.\s*)?(?:\(|\0)|\bReflect\s*\.|\.\s*(?:call|apply|bind)\s*(?:\?\.\s*)?\(|\beval\s*\("
+                           r"|\bFunction\s*\(|\bwith\s*\(|\bimport\s*\(|\b(?:setTimeout|setInterval)\s*\(\s*\0|\\u[0-9a-fA-F{]")  # a name in escapes
+PAGE_CODE = re.compile(r"(?i)^\s*script\s*$|<\s*script\b|\bon[a-z]+\s*=|^\s*javascript:")  # a string the page runs as code
+SCRIPT_ACTS_MORE = re.compile(r"(?:\b(?:window|globalThis|self|top|parent|frames|defaultView)\s*\??\.\s*|(?<![\w$.]))open\s*(?:\(|\0)"
+                              r"|\.\s*on[a-z]+\s*\(|\.\s*(?:send|post|submit|publish|reply|share|tweet)\w*\s*\(|\bmethod\s*:\s*(?!\0)", re.I)
+
+
+def _unread_script(text: str) -> str:
+    """What makes a page script one the guard cannot read, as its strings, comments and patterns out show; "" for none."""
+    code, literals, whole = _osa_code(text, True)
+    found = UNREAD_SCRIPT.search(code) if whole else None
+    return ("holds a string, a comment or a pattern it never closes" if not whole else
+            f"calls what it names only as it runs ({found[0].strip()[:24]})" if found else
+            "puts code in a string the page runs (a script element, an inline handler)" if any(PAGE_CODE.search(v) for v in literals) else "")
+
+
+def _script_acts(text: str) -> bool:
+    """A page script that acts on a messaging site's page: SCRIPT_ACTS over its text or its code (`el['click']()` is
+    `el.click()` there), or SCRIPT_ACTS_MORE over its code."""
+    code = _osa_code(text, True)[0]
+    return bool(SCRIPT_ACTS.search(text) or SCRIPT_ACTS.search(code) or SCRIPT_ACTS_MORE.search(code))
+
+
 def _messaging(config: dict) -> dict:
     """bundle id: (channel, line-break modifier) for every messaging app, with the config's `messaging_apps` (chat
     apps where shift with Return writes a line)."""
@@ -5748,6 +5776,9 @@ def _refused_scripts(name: str, tool: str, tool_input: dict, session: dict | Non
         went = went | ({tab} if kind.endswith("navigate") and text is None else set())  # a javascript: one goes nowhere
         if not other:
             continue
+        if address == UNKNOWN_PAGE:  # round 4, #9: it may be a Messenger site's
+            return ("This page script runs on a page the driven browser's record does not show, which may be a Messenger "
+                    "site's: take a snapshot so its page shows, then run it again.")
         if not address:
             return (f"This page script runs on tab {tab or 'in front'}, whose page no list of tabs names (a tab not listed yet, "
                     "or one a navigate sent where no host is named), and which may be a Messenger site's: list the tabs or "
@@ -5760,13 +5791,14 @@ def _refused_scripts(name: str, tool: str, tool_input: dict, session: dict | Non
                     " where only the plugin's shipped read-only scripts run (the composer check and the extractors) and a batch's "
                     "send script in its send step: any other can change what those read or what a send sends, then or later. "
                     "Read the page with the browser's own read tools (get_page_text, read_page, find) instead.")
-        if _web_app(address):
+        if _web_app(address):  # every other messaging site's page: main's rule (5.23.1)
             where = ("a page the browser's record does not show, which may be a messaging site's (take a snapshot so its page "
                      "shows)" if address == UNKNOWN_PAGE else f"a messaging site's page ({address})")
-            return (f"This {'navigate to a javascript: address runs a page script' if kind.endswith('navigate') else 'page script runs'}"
-                    f" on {where}, where only the plugin's shipped read-only scripts run (the extractors): any other can send in "
-                    "the principal's name by a way no reading of its text shows. Read the page with the browser's own read tools "
-                    "(get_page_text, read_page, find), and click through the computer tool with a summary that says what the click does.")
+            unread = "runs it as a javascript: address" if kind.endswith("navigate") else _unread_script(text)
+            if unread:
+                return (f"This page script runs on {where} and {unread}, so the guard cannot read what it does there, where a "
+                        "click or a key sends in the principal's name. Write each call out by its own name, or read the page with "
+                        "get_page_text, read_page or find.")
     return None
 
 
@@ -5865,7 +5897,7 @@ def check_desktop(name: str, tool: str, tool_input: dict, config: dict, session:
                   and (_submits(actions) or any(k == "type" and re.search(r"[\r\n]", v) for k, v, _ in actions)))
     sending = [s or {"type": "a typed line break", "script": "a page script"}.get(kind, f"{kind} {v}".strip()) for kind, v, s in actions
                if SAYS_SENT.search(s) or kind == "click" and _publishes(s, local) or kind == "script" and (
-                   SCRIPT_ACTS.search(v) if reached else SCRIPT_SENDS.search(v) and not SCRIPT_ROUTINE.search(v) and not local)
+                   _script_acts(v) if reached else SCRIPT_SENDS.search(v) and not SCRIPT_ROUTINE.search(v) and not local)
                or reached and (kind == "click" and not s.strip() or kind == "menu" and re.search(r"(?:^|> )send\b", v, re.I)
                                or kind == "key" and _sends_key(v, reached) or kind == "type" and re.search(r"[\r\n]", v) and _sends_key("return", reached))]
     sending += ["a key that submits the form after the typed words"] * (formed and not sending)
