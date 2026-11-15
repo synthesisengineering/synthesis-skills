@@ -2856,9 +2856,9 @@ def _reaches(target: str, root: str, whole: bool = False, hidden: bool = False) 
 
 def _protected_roots(config: dict | None) -> list[str]:
     """Where only the guard, the harness and the synthesis CLI write: synthesis state, the board, the transcript
-    archive, the installed runtime (its releases, `current` and `bin`), harness transcripts, approved commit lines."""
+    archive, the installed runtime (its releases, `current`, `bin` and `git-hooks`), harness transcripts, approved commit lines."""
     store = paths.line_allowances(config or {})
-    return [str(r) for r in [paths.state(), paths.board(), paths.sessions(), *(paths.home() / name for name in ("releases", "current", "bin")),
+    return [str(r) for r in [paths.state(), paths.board(), paths.sessions(), *(paths.home() / name for name in ("releases", "current", "bin", "git-hooks")),
                              *paths.transcript_roots().values(),  # the runtime the hook runs from, its entry points (5.22.1)
                              paths.desktop_dir() / "local-agent-mode-sessions",  # the desktop app's agent-mode transcripts, one path
                              *([store] if store else [])]]
@@ -4606,14 +4606,34 @@ RELEASE_CONFIG = re.compile(  # a checkout's own config keys that run no program
     r"|remote\.[^.\s]+\.(?:url|fetch|gh-resolved)|branch\..+\.(?:remote|merge|pushremote|rebase|vscode-merge-base|description)"
     r"|extensions\.(?:worktreeconfig|objectformat)")
 PLAIN_LINE = re.compile(r"[\w./:@%+,=~-]+(?: +[\w./:@%+,=~-]+)*")  # words no shell changes: no quote, variable, glob or operator
-KIT_MODULES, KIT_LOADS = ("release", "setup"), re.compile(r"\b(?:import_module|__import__)\(\s*['\"](?:release|setup)['\"]")
+KIT_FILES = ("skills/synthesis-skills-manager/scripts/release.py", "skills/synthesis-onboarding/scripts/setup.py",
+             "skills/synthesis-onboarding/scripts/workspace.py")  # the release tool's modules that write
+KIT_LOADS = re.compile(r"\b(?:import_module|__import__)\(\s*['\"](release|setup|workspace)['\"]")
 
 
-def _kit_code(text: str) -> bool:
-    """A program that imports the release tool's own modules, which claim the board, install the runtime and publish:
-    from wherever it finds them, the runtime included, it runs the tool around the one way that needs no code."""
-    return ("release" in text or "setup" in text) and (bool(KIT_LOADS.search(text)) or any(
-        not dots and module.split(".")[0] in KIT_MODULES for dots, module, _ in _imports(text)))
+def _kit_file(path: str) -> bool:
+    spelt = paths.spelled(os.path.realpath(path))
+    return any(spelt.endswith(paths.spelled(os.sep + rel.replace("/", os.sep))) for rel in KIT_FILES)
+
+
+def _kit_loaded(texts: list, where: str, isolated: bool, named: str) -> str:
+    """The release tool's own module a Python program loads ('' for none): a script or module of its own that is one,
+    or a module named like one that it imports and that is one where Python finds it (the folder it starts from, its
+    script's folder, a folder its text names). Found nowhere while the program names a protected folder, which is a
+    path it builds into the runtime, it is taken to be one. A project's own release or setup is not (round 1, A6)."""
+    for path, text in texts:
+        if path and _kit_file(path):
+            return path
+        wanted = ({m.split(".")[0] for dots, m, _ in _imports(text) if not dots} | set(KIT_LOADS.findall(text))) & {
+            "release", "setup", "workspace"} if "release" in text or "setup" in text or "workspace" in text else set()
+        folders = ([] if isolated else [where]) + [os.path.dirname(path)] * bool(path) + [
+            spot for spot in (os.path.join(where, os.path.expanduser(next(filter(None, c)))) for c in CANDIDATE.findall(text))
+            if os.path.isdir(spot)]
+        for name in sorted(wanted):
+            found = [file for file in (os.path.join(folder, name + ".py") for folder in folders) if os.path.isfile(file)]
+            if any(map(_kit_file, found)) or (not found and named):
+                return next(filter(_kit_file, found), f"`{name}`, which it finds in no folder this guard reads")
+    return ""
 
 
 def _canonical_remote(url: str) -> bool:
@@ -4655,6 +4675,12 @@ def _release_tool(command: str, cwd: str, session: dict | None = None) -> bool:
     """Whether a command line is exactly the release launcher install wrote, on the canonical checkout or naming a tag
     to install (above). Its paths are absolute, so no folder the command runs from moves them (A5), and a session it
     names is the one asking (A9)."""
+    try:
+        argv = shlex.split(command)
+    except ValueError:
+        argv = []
+    if len(argv) == 3 and os.path.basename(argv[0]) in ("bash", "zsh", "sh") and argv[1] in ("-lc", "-c"):
+        command = argv[2]  # Codex's shell tool hands the line to a shell, exactly as written (round 1, A7)
     line, release = command.strip(), os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
     words, home = line.split(), os.path.expanduser("~")
     if not PLAIN_LINE.fullmatch(line) or os.path.basename(words[0]) != "synthesis-release" or os.path.realpath(
@@ -5229,8 +5255,8 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None) -> str |
         if uses:  # finding 17: by what it, or a module of its own, does with synthesis's code
             waits = Unproven(f"runs `{head}` on {ran}, a script outside the plugin's release that {uses[1]}" + (f" ({uses[0]})" if uses[0] != ran else ""))
         source, argv = _python_source(words, fed) if head.startswith("python") else ("", [])
-        kit = next((f for f, k in ([("its program", source)] if python and source else []) + (
-            files if python and ran and not _shipped(ran) else []) if _kit_code(k)), "")
+        kit = _kit_loaded(([("", source)] if source else []) + (files if ran and not _shipped(ran) else []), where,
+                          _isolated(words), named) if python else ""
         if kit and not waits:  # 5.23.1: the release tool runs as itself, from the runtime, or waits
             waits = Unproven(f"runs `{head}` on a program that imports the release tool's own modules ({kit}), which claim "
                              "the board, install the runtime and publish; the tool itself, run from the installed runtime, needs no code")
@@ -6395,6 +6421,8 @@ def check(tool: str, tool_input: dict, config: dict, cwd: str | None = None, ses
             cwd = os.path.expanduser("~")
     if tool.endswith("__run_in_terminal") and tool_input.get("cwd"):  # the tab starts its shell there
         cwd = os.path.normpath(os.path.join(cwd, os.path.expanduser(str(tool_input["cwd"]))))
+    elif shell_tool(tool) and tool_input.get("workdir") and isinstance(tool_input["workdir"], str):  # Codex runs it there (round 1, A5)
+        cwd = os.path.normpath(os.path.join(cwd, os.path.expanduser(tool_input["workdir"])))
     if shell_tool(tool):
         command = shell_command(tool_input)
         return (check_destructive(command, config, cwd) or check_self_grant(command, cwd, config, session)  # a recursive delete is named as one

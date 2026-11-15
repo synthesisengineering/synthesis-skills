@@ -170,7 +170,7 @@ WAITS = {
     "the launcher through env": "env {launcher} --repo-root {canon}",
     "the launcher through a shell": "sh {launcher} --repo-root {canon}",
     "the launcher quoted": "'{launcher}' --repo-root {canon}",
-    "the launcher with a relative path": "../home/.synthesis/v5/bin/synthesis-release --repo-root {canon}",
+    "the launcher with a relative path": "{relative_launcher} --repo-root {canon}",
 }
 
 
@@ -184,6 +184,7 @@ def test_every_other_way_of_running_it_still_waits_for_the_code(world):
     (world["work"] / "release.sh").write_text(f"python3 {tool} --repo-root {canon} --dry-run\n", encoding="utf-8")
     shutil.copy2(world["launcher"], world["work"] / "synthesis-release")
     values = {"canon": canon, "tool": tool, "tool_rel": TOOL, "release": release, "work": world["work"], "launcher": world["launcher"],
+              "relative_launcher": os.path.relpath(world["launcher"], world["work"]),
               "elsewhere": _elsewhere(world), "importing": q(importing), "running": q(running), "starting": q(starting),
               "importing_raw": importing.replace("; ", "\n"), "shelled": q(f"python3 {tool} --repo-root {canon} --dry-run")}
     lines = [template.format(**values) for template in WAITS.values()]

@@ -92,40 +92,40 @@ Codex's settings and catalog, instruction adapters and durable storage.
 - Use a feature branch and a pull request; merge only after CI passes. GitHub enforces it: `main` and `stable`
   require the `ci` check (branch protection, admins included), and with auto-merge allowed,
   `gh pr merge --auto --merge` merges a pull request when its checks pass.
-- Ship with the release tool the installed runtime carries, from a clean checkout of the merged
-  default branch, alone on the line:
+- Ship with the release launcher the installed runtime carries, from a clean checkout of the merged
+  default branch, alone on the line, with absolute paths:
 
   ```bash
-  python3 ~/.synthesis/v5/current/skills/synthesis-skills-manager/scripts/release.py --repo-root <checkout> --dry-run   # the plan
-  python3 ~/.synthesis/v5/current/skills/synthesis-skills-manager/scripts/release.py --repo-root <checkout>
+  ~/.synthesis/v5/bin/synthesis-release --repo-root <absolute path of the checkout> --dry-run   # the plan
+  ~/.synthesis/v5/bin/synthesis-release --repo-root <absolute path of the checkout>
   ```
 
-  Run so, it needs no code from the principal: no agent can change the runtime's copy, and the
-  guard lets exactly that copy run, with only the options it documents, on the canonical checkout
-  (origin and every remote the synthesis-skills repository on GitHub, on `main`, its own git config
-  running no program). A release from a checkout's copy, or the tool run any other way, waits for
-  the principal's code. The repository is only ever the checkout `--repo-root` names. It refuses
-  unless the tree is clean, every object HEAD is made of matches its id, the manifests and
-  CHANGELOG agree, HEAD is the tip of `main` as GitHub serves it (with any tag of the version there
-  naming HEAD) and CI passed for HEAD there. It holds the release train (a board claim
-  on the main checkout's `CHANGELOG.md`; another live session holding it means
-  another release is under way, and the script names it), builds and checks the five
-  collections from the commit (`build_collections.py`), tags, pushes `main`, `stable`,
-  the tag and the collections, as the `collections` branch, atomically to every push
-  remote and reads them back with `git ls-remote`, creates the GitHub release for the
-  tag (its CHANGELOG entry as the notes, read back as latest), opens the Homebrew tap's
-  pull request that points the
-  `synthesis` formula at the tag's archive (it merges itself when the tap's install tests
-  pass), installs into Claude Code, Codex and Muse with each harness's
-  own commands, verifies each harness's installed files equal the tag at the folder
-  it reports loading, updates the stable runtime and runs `synthesis doctor`, then waits
-  for the tap's pull request to merge and reads the formula back from the tap's `main`.
-  A GitHub server error runs its stage again, up to three times, since each stage reads
-  what is already published first, and a tap job GitHub never gave a runner is run again.
-  A release is not complete until the script exits 0; a hook approval only the person can
-  give in a harness (Codex asks again after every release) is named as waiting, not counted.
-- `release.py --install-only` installs and verifies the tag HEAD carries, a tag GitHub serves on
-  its `main`, after drift, or on a new Mac, where no runtime is installed yet and the checkout's
-  copy runs it.
+  The launcher runs the release tool from the installed runtime with the interpreter pinned at install (owned by
+  root with every folder above it, writable by neither this user nor its groups), isolated (`-I -S`) and with only
+  named environment variables. Run so, the guard asks no code: it lets exactly that launcher run, with only the options
+  the tool documents, `--session` only as the asking session's own id, on the canonical checkout (origin and every
+  remote the synthesis-skills repository on GitHub, on `main`, its own git config running no program). A release from
+  a checkout's copy, or the tool run any other way, waits for the principal's code. The checkout only says what is
+  released: the tool refuses unless the tree is clean, the manifests and CHANGELOG agree, HEAD is the tip of GitHub's
+  `main` (read with git's own config left out; a tag of the version there must name HEAD), the version is no older than
+  the running runtime or GitHub's latest release, and CI passed for HEAD there. It then makes a fresh clone of the
+  repository from GitHub at that commit in the protected releases folder, and everything after comes from that clone.
+  It holds the release train (a board claim on the main checkout's `CHANGELOG.md`; another live session holding it
+  means another release is under way, and the script names it), builds and checks the five collections from the
+  clone's commit (`build_collections.py`), tags, pushes `main`, `stable`, the tag and the collections, as the
+  `collections` branch, atomically from the clone and reads them back with `git ls-remote`, creates the GitHub release
+  for the tag (its CHANGELOG entry as the notes, read back as latest), opens the Homebrew tap's pull request that points
+  the `synthesis` formula at the tag's archive (it merges itself when the tap's install tests pass), installs into Claude
+  Code, Codex and Muse with each harness's own commands (Muse from the clone), verifies each harness's installed files
+  equal the clone's tag at the folder it reports loading, installs the stable runtime from the clone (its staged copy
+  must hold the tag's listing before `current` moves) and runs `synthesis doctor`, then waits for the tap's pull
+  request to merge and reads the formula back from the tap's `main`. A GitHub server error runs its stage again, up to
+  three times, since each stage reads what is already published first, and a tap job GitHub never gave a runner is run
+  again. A release is not complete until the script exits 0; a hook approval only the person can give in a harness
+  (Codex asks again after every release) is named as waiting, not counted.
+- `~/.synthesis/v5/bin/synthesis-release --install-only --tag v<version>` installs a released tag from a fresh clone of
+  it, after drift: GitHub must serve the tag on its `main` with CI passed, and nothing older than the running runtime or
+  GitHub's latest release installs. On a new Mac, where no runtime is installed yet, the checkout's copy runs it
+  (`python3 skills/synthesis-skills-manager/scripts/release.py --install-only --tag v<version>`).
 
 See `CONTRIBUTING.md` for contribution structure and licensing.

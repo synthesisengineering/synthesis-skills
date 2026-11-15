@@ -13,22 +13,40 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   opening one marks it read. Messenger's section moved word for word from `references/linkedin-messages.md` to its own
   `references/messenger-messages.md` (its headings one level up), listed in Contents, and the four checklists point to
   it. The moved Procedure sentence's link now names `procedure.md`, the file it sits in. SKILL.md is 7,849 bytes.
-- **A release runs from the installed runtime's own release tool, with no code** (`synthesis-skills-manager` 3.7.0), by
-  the principal's ruling of 2026-11-15. Since 5.22.1 every release waited for a code: from a checkout the tool names
-  `board.claim`, and the runtime carried no release tool. The runtime now carries it and what it imports (this skill's
-  scripts and `synthesis-onboarding`'s), so no agent can change the copy that installs the guard, and the guard lets
-  exactly that copy run with no code: `python3 ~/.synthesis/v5/current/skills/synthesis-skills-manager/scripts/release.py
-  --repo-root <checkout>`, by `python3` or `/usr/bin/python3`, alone on the line in plain words, with only the options
-  it documents and no abbreviation, on the canonical checkout (origin and every remote's address, as git uses it, the
-  synthesis-skills repository on GitHub; on `main`; its own git config setting no key that runs a program or sends git
-  elsewhere). The checkout's copy, a copy elsewhere, the scripts the runtime carries for it (never trusted as the
-  plugin's own), another option, a program that imports its modules, a wrapper or another interpreter waits for the
-  code as before. `release.py` takes the repository only from `--repo-root`, now required, and its imports only from
-  where it runs. Its preflight also refuses, before anything is published: a checkout that is not the canonical one,
-  before git runs anything its config could start; an object of HEAD that does not match its id when hashed again
-  (every git it runs ignores replace refs, with hooks and the file monitor off); a HEAD that is not the tip of `main`
-  as GitHub serves it; a version tag GitHub has at another commit; and an `--install-only` of a tag GitHub does not
-  serve on its `main`. CI is read from the canonical repository by name. AGENTS.md and the skill name the command.
+- **A release runs from the installed runtime's own release launcher, with no code** (`synthesis-skills-manager`
+  3.7.0), by the principal's ruling of 2026-11-15, with review round 1's findings closed. Since 5.22.1 every release
+  waited for a code. The runtime now carries the release tool and what it imports (this skill's scripts and
+  `synthesis-onboarding`'s), and install writes `~/.synthesis/v5/bin/synthesis-release` beside the hook's launcher. The
+  guard lets exactly that launcher run with no code: alone on the line in plain words, by its absolute path, with only
+  the options the tool documents and no abbreviation, `--session` only as the asking session's own id, on the
+  canonical checkout by an absolute path (origin and every remote's address, as git uses it, the synthesis-skills
+  repository on GitHub; on `main`; its own git config setting no key that runs a program or sends git elsewhere), or
+  `--install-only --tag v<version>`. The line passes from Codex's shell tool (`bash -lc <line>`) as from the other
+  shells. The tool by its own path, the checkout's copy, a copy of the launcher, the scripts the runtime carries for it
+  (never trusted as the plugin's own), another option, a program that loads the tool's own modules (found by file, so a
+  project's own `release` or `setup` runs as before) and any wrapper wait for the code.
+- **Every entry point runs an interpreter pinned at install** (review round 1, P1, P3 and A4). The hook launcher ran
+  `python3 -S` from PATH, where both harnesses on the principal's Mac put folders this user writes before the real
+  interpreter, so one file named python3 there, or with Apple's Python one compiled file under
+  `~/Library/Caches/com.apple.python`, replaced the guard. Install now pins the first interpreter that is its own real
+  path, owned by root with every folder above it, writable by neither this user nor its groups, and Python 3.9 or later
+  (the one installing, else python.org's, the Command Line Tools', Xcode's or `/usr/bin/python3`). The hook, the git
+  hooks, the CLI and the release tool each run it through a launcher in the protected `bin/` or `git-hooks/` with
+  `-I -S` under `env -i`, keeping only the variables the runtime was measured to read (git's too, for the commit
+  check), with the system's own folders first on PATH. With no such interpreter the launchers refuse. The runtime is
+  compiled for that interpreter beside its source, and the doctor checks the pin and every launcher.
+- **What a release publishes and installs comes from a fresh clone of what GitHub serves** (review round 1, A1 to
+  A3). The checkout `--repo-root` names only says what is released: it must be clean, its manifests and CHANGELOG must
+  agree, HEAD must be the tip of GitHub's `main` (read with git's own config left out), a tag of the version on GitHub
+  must name HEAD, CI must have passed for HEAD there, and the version must be no older than the running runtime or
+  GitHub's latest release. The tool then clones the repository from GitHub, with git's own config left out, into the
+  protected releases folder at that commit, and builds and checks the collections, tags, pushes (read back the same
+  way), takes the release notes, exports Muse's bundle, verifies every harness and installs the runtime from that clone
+  alone; the runtime's staged copy must hold the tag's listing before `current` moves. `--install-only` names a tag
+  (`--tag v<version>`) whose commit must be on `main` in that clone. `install.install` refuses anything older than the
+  running runtime, so no install rolls the guard back.
+- **Codex's commands are judged in their `workdir`**, where Codex runs them (review round 1, A5), and
+  **`~/.synthesis/v5/git-hooks` is a protected folder** (A8).
 
 ## [5.23.0] - 2026-11-15
 

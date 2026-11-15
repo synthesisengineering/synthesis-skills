@@ -34,20 +34,22 @@ the script does not rerun the suite.
 2. In a pull request, bump `.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`
    and `.muse-plugin/plugin.json` together and add the CHANGELOG entry for that
    version. Merge once CI passes.
-3. From a clean checkout of the merged default branch, run the release tool the installed
-   runtime carries, alone on the line ([below](#run-from-the-installed-runtime-with-no-code)):
+3. From a clean checkout of the merged default branch, run the release launcher the installed
+   runtime carries, alone on the line with absolute paths
+   ([below](#run-from-the-installed-runtime-with-no-code)):
 
    ```bash
-   python3 ~/.synthesis/v5/current/skills/synthesis-skills-manager/scripts/release.py --repo-root <checkout> --dry-run
-   python3 ~/.synthesis/v5/current/skills/synthesis-skills-manager/scripts/release.py --repo-root <checkout>
+   ~/.synthesis/v5/bin/synthesis-release --repo-root <absolute checkout path> --dry-run
+   ~/.synthesis/v5/bin/synthesis-release --repo-root <absolute checkout path>
    ```
 
    It prints one line per stage, then `release complete: vX.Y.Z` (exit 0) or
    `release NOT complete: vX.Y.Z` (exit 1), and runs `synthesis doctor` at the end.
 4. A harness line reading `NOT verified` names each missing, differing or extra file.
-   Fix the cause and rerun; `--install-only` reinstalls and re-verifies the tag that
-   HEAD carries without publishing again (also the command for a new Mac, where no runtime
-   is installed yet: there the checkout's copy runs it, with `--repo-root` naming the checkout).
+   Fix the cause and rerun; `--install-only --tag vX.Y.Z` installs and verifies that tag from
+   a fresh clone without publishing again (also the command for a new Mac, where no runtime is
+   installed yet: there the checkout's copy runs it, `python3
+   skills/synthesis-skills-manager/scripts/release.py --install-only --tag vX.Y.Z`).
 5. On success the script releases the train claim. On failure the claim stays with
    this session, on purpose: the next attempt is still this session's.
 
@@ -57,22 +59,32 @@ Since 5.22.1 the guard holds a program that names synthesis's writers or runs fr
 protected runtime until the principal types a code, so every release waited for one. The
 principal's ruling of 2026-11-15: run releases from the protected installed tool, without a
 code. The runtime carries the release tool and what it imports (the scripts of this skill
-and of `synthesis-onboarding`), so no agent can change the copy that installs the guard,
-and the guard lets exactly that copy run with no code: the running release's
-`release.py`, named by its path in the runtime (through `current` or `releases/<hash>`),
-run by `python3` or `/usr/bin/python3`, alone on the line in plain words (no quote,
-variable, pipe, redirect or second command), with only the options it documents
-(`--repo-root`, once and required, `--dry-run`, `--install-only`, `--clients`, `--session`;
-no abbreviation), on the canonical checkout above. A release from a checkout's copy waits
-for the principal's code, and so does every other way of running the tool: a copy
-elsewhere, the scripts the runtime carries for it (never trusted as the plugin's own), an
-option it does not document, a program that imports its modules, a wrapper or an
-interpreter option. What the tool then publishes its own preflight proves.
+and of `synthesis-onboarding`), and install writes the launcher
+`~/.synthesis/v5/bin/synthesis-release` beside the hook's. Every launcher runs the
+interpreter pinned at install: its own real path, owned by root with every folder above it,
+writable by neither this user nor its groups, with `-I -S` under `env -i`, keeping only the
+variables the runtime was measured to read, with the system's own folders first on PATH. So
+no `python3` placed earlier on PATH, user site file, `PYTHONPATH`, `DYLD_*` variable or
+compiled file in Apple's cache runs inside it (review round 1 of 5.23.1, P1, P3 and A4).
 
-The repository is only ever the checkout `--repo-root` names: its collections, manifests,
-CHANGELOG, git and tap. The tool's own folder gives only its imports, from the runtime it
-runs from. Every git it starts reads the repository's own objects and nothing its config
-adds: replace refs ignored, hooks and the file monitor off.
+The guard lets exactly that launcher run with no code: alone on the line in plain words (no
+quote, variable, pipe, redirect or second command), by its absolute path, with only the options
+the tool documents (`--repo-root` by an absolute path for a release, or `--install-only --tag
+vX.Y.Z`; `--dry-run`, `--clients`, `--session` as the asking session's own id; no
+abbreviation), on the canonical checkout above. The same line passes from Codex's shell tool
+(`bash -lc <line>`). A release from a checkout's copy waits for the principal's code, and so
+does every other way of running the tool: by its own path, a copy elsewhere, a copy of the
+launcher, the scripts the runtime carries for it (never trusted as the plugin's own), an option
+it does not document, a program that loads its modules (found by file, so a project's own
+`release` or `setup` runs as before), a wrapper or an interpreter option.
+
+The checkout only says what is released. Everything built, pushed, exported and installed
+comes from a fresh clone of the repository that the run makes from GitHub, with git's own
+config left out, in the protected releases folder: git computes each object's id as it
+fetches it, and no agent writes there. The stable runtime is installed from that clone, its
+staged copy checked against the tag's listing before `current` moves, and nothing older than
+the running runtime or GitHub's latest release installs, by the release or by an explicit
+install (review round 1, A1 to A3).
 
 ## What the script refuses, and why
 
@@ -86,11 +98,13 @@ Before anything is pushed it refuses when:
   program and send git nowhere (a file monitor, hooks, a credential helper, a proxy or an
   include is refused before git can run it);
 - the tree has uncommitted changes;
-- an object HEAD's commit and files are made of does not match its id when hashed again
-  (git trusts the name an object is filed under; replace refs are ignored throughout);
-- HEAD is not the tip of that repository's `main` as GitHub serves it, or GitHub already
-  has the version's tag at another commit; for `--install-only`, GitHub serves no such
-  tag at HEAD, or HEAD is not on its `main`;
+- HEAD is not the tip of that repository's `main` as GitHub serves it (read with git's own
+  config left out), or GitHub already has the version's tag at another commit; for
+  `--install-only`, GitHub serves no such tag, or its commit is not on `main` in the fresh
+  clone;
+- the version is older than the running runtime or than GitHub's latest release, or the
+  latest release cannot be read;
+- the fresh clone cannot be made at that commit, or does not hold that version;
 - the three plugin manifests disagree or lack a version;
 - the CHANGELOG's newest entry is not that version;
 - the version's tag already names another commit;
