@@ -54,9 +54,11 @@ def test_upgrade_switches_current_and_keeps_the_hook_text_identical(tmp_path, is
     assert install.install(v2).endswith(str(isolated_home / "current"))  # idempotent
 
 
-def test_a_session_on_an_older_plugin_never_switches_the_runtime_back(tmp_path, isolated_home):
+def test_a_session_start_never_switches_the_runtime_either_way(tmp_path, isolated_home):
     """2026-10-06: a session that loaded the 5.0.2 plugin started or compacted after 5.0.3 shipped, and its
-    session-start hook switched the stable runtime back to 5.0.2 for every harness. Only an explicit install may."""
+    session-start hook switched the stable runtime back to 5.0.2 for every harness. Since 5.23.1 a session start does
+    not move it forward either: the folder a harness passes is its own plugin cache, which the guard does not protect
+    (the principal's sandbox rulings of 2026-11-15). Only an explicit install may, and that waits for his code."""
     old, new = _plugin_copy(tmp_path, "old"), _plugin_copy(tmp_path, "new")
     (old / "synthesis" / "__init__.py").write_text('__version__ = "1.0.0"\n')
     (new / "synthesis" / "__init__.py").write_text('__version__ = "1.0.1"\n')
@@ -65,11 +67,11 @@ def test_a_session_on_an_older_plugin_never_switches_the_runtime_back(tmp_path, 
     out = subprocess.run([str(isolated_home / "bin" / "synthesis-hook"), "session-start", str(old)], input="{}",
                          capture_output=True, text=True, env={**os.environ, "SYNTHESIS_HOME": str(isolated_home)})
     assert out.returncode == 0 and os.path.realpath(isolated_home / "current") == installed
-    assert "not newer" in install.install(old, forward_only=True)
+    assert "kept" in install.install(old, first_only=True)
     newer = _plugin_copy(tmp_path, "newer")
     (newer / "synthesis" / "__init__.py").write_text('__version__ = "1.0.2"\n')
-    install.install(newer, forward_only=True)  # a session on a newer plugin still upgrades everyone
-    assert install.version(isolated_home / "current") == (1, 0, 2)
+    assert "kept" in install.install(newer, first_only=True)  # a session on a newer plugin moves nobody
+    assert install.version(isolated_home / "current") == (1, 0, 1)
     install.install(old)  # a deliberate rollback is an explicit install
     assert install.version(isolated_home / "current") == (1, 0, 0)
 
@@ -390,11 +392,11 @@ def test_a_session_start_compiles_a_runtime_that_reached_it_uncompiled(tmp_path,
         install.install(plugin)
     runtime = isolated_home / "current"
     assert _compiled(runtime) == set()
-    assert "is not newer" in install.install(plugin, forward_only=True)
+    assert "kept" in install.install(plugin, first_only=True)
     assert {"guards", "hook", "approvals", "paths"} <= _compiled(runtime)
     import compileall
     monkeypatch.setattr(compileall, "compile_dir", lambda *args, **kwargs: pytest.fail("a compiled runtime was compiled again"))
-    assert "is not newer" in install.install(plugin, forward_only=True)  # every later session start only looks
+    assert "kept" in install.install(plugin, first_only=True)  # every later session start only looks
 
 
 def test_compiled_code_is_held_to_its_source_and_not_to_its_date(tmp_path, isolated_home):
