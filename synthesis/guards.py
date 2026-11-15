@@ -6187,6 +6187,247 @@ def _project(session: dict | None) -> str:
     return me.project if me else ""
 
 
+# --- a local MCP server's tools, called from the shell (5.23.1) --------------------------------------------------------
+# The meeting skill's client (`mcp_client.py <tool> <json>`) calls any tool of the local workspace server, whose default
+# tier holds send_gmail_message, and a write to this machine is no post to another host: neither the client nor a curl of
+# the same JSON-RPC waited (review of the runtime's carried scripts, 2026-11-15, problem A). A command that calls a local
+# server's tool, by an HTTP client to its endpoint or by a program that posts its JSON-RPC (the client is one), is judged
+# as that tool's call is, by `_connector`; one whose tool or arguments the guard cannot read waits when it may send.
+LOCAL_MCP = "workspace-mcp"  # the server the meeting skill runs here, as the harnesses name it
+MCP_CALLS = re.compile(r"tools/call|\bcall_?[tT]ool\s*\(")  # the JSON-RPC method, or a client library's call
+MCP_NAMED = re.compile(r"""["']?\bname["']?\s*:\s*["'`]([\w.-]+)["'`]|\bcall_?[tT]ool\s*\(\s*["'`]([\w.-]+)["'`]""")
+MCP_HOST = re.compile(r"(?:(https?)://)?(localhost|127\.0\.0\.1|\[::1\]|0\.0\.0\.0|[\w.-]+\.localhost)(?::(\d+))?(/[^\s?#]*)?(?:[?#]\S*)?$")
+BODIES = {"-d", "--data", "--data-raw", "--data-binary", "--data-ascii", "--data-urlencode", "--json", "--post-data",
+          "--body-data", "--post-file", "--body-file", "-T", "--upload-file", "-F", "--form"}
+ARGV = "\0argv"  # a tool name a program takes from its own arguments
+
+
+def _mcp_endpoint(word: str) -> str:
+    """'mcp' for a local MCP server's endpoint (the workspace server's port, or the one WORKSPACE_MCP_PORT names, or an
+    MCP path), 'local' for any other address on this machine, '' for a word that names none."""
+    found = MCP_HOST.match(word)
+    if not found or not (found[1] or found[3] or found[4]):
+        return ""
+    return "mcp" if (found[3] or "") in {"8765", os.environ.get("WORKSPACE_MCP_PORT") or "8765"} or re.search(
+        r"/(?:mcp|sse|messages)/?$", found[4] or "") else "local"
+
+
+def _rpc_calls(text: str) -> list:
+    """(tool or None, arguments or None) for each tools/call request a JSON-RPC body holds, a batch's included; text
+    that names the method and cannot be parsed is read for the names it gives."""
+    try:
+        data = json.loads(text)
+    except ValueError:
+        return [(a or b, None) for a, b in MCP_NAMED.findall(text)] or [(None, None)] if "tools/call" in text else []
+    calls = []
+    for item in data if isinstance(data, list) else [data]:
+        params = item.get("params") if isinstance(item, dict) and item.get("method") == "tools/call" else None
+        if params is not None:
+            name, given = (params.get("name"), params.get("arguments", {})) if isinstance(params, dict) else (None, None)
+            calls.append((name if isinstance(name, str) else None, given if isinstance(given, dict) else None))
+    return calls
+
+
+def _http_body(words: list, where: str, feed: str, written: set) -> tuple:
+    """(text, readable) of what an HTTP client posts: its data words, a file named with @ or a file option, its input,
+    or HTTPie's fields; a body the guard cannot read (a file it lacks, one the line writes, input another program
+    writes, a substitution) is not readable."""
+    from synthesis import sends
+    parts, readable, fields = [], True, {}
+    for i, word in enumerate(words[1:], 1):
+        key, eq, given = word.partition("=")
+        if word in BODIES:
+            value, form = (words[i + 1] if i + 1 < len(words) else ""), word
+        elif eq and key in BODIES and key.startswith("--"):
+            value, form = given, key
+        elif re.match(r"-[dFT].", word):
+            value, form = word[2:], word[:2]
+        elif os.path.basename(words[0]) in ("http", "https", "xh") and re.match(r"[\w.\[\]-]+:?=[^=]", word) and not word.startswith("-"):
+            name, raw = re.split(r":?=", word, 1)
+            try:
+                fields[name] = json.loads(raw) if ":=" in word else raw
+            except ValueError:
+                readable = False
+            continue
+        else:
+            continue
+        name = value[1:] if value.startswith("@") and form not in ("--data-raw",) else value if form in ("--post-file", "--body-file", "-T", "--upload-file") else None
+        if name is None:
+            inner, rest = sends._substitutions(value) if ("$(" in value or "`" in value) else ([], value)
+            cat = [sends.CAT.fullmatch(s) for s in inner]
+            if not all(c and os.path.isfile(os.path.join(where, os.path.expanduser(c[2]))) for c in cat):
+                readable = False
+            parts += [_code_of(os.path.join(where, os.path.expanduser(c[2]))) for c in cat if c] + ([rest] if rest.strip() else [])
+        elif name == "-":
+            readable, parts = readable and bool(feed.strip()) and UNREAD_INPUT not in feed, parts + [feed]
+        else:
+            path = os.path.realpath(os.path.join(where, _home(name)))
+            text = "" if "$" in name or "`" in name or path in written else _code_of(path)
+            readable, parts = readable and bool(text or (os.path.isfile(path) and path not in written and "$" not in name)), parts + [text]
+    if os.path.basename(words[0]) in ("http", "https", "xh"):
+        parts += [json.dumps(fields)] if fields else [feed] if feed.strip() and UNREAD_INPUT not in feed else []
+    return "\n".join(parts), readable
+
+
+def _tools_called(text: str, python: bool, own: bool = True) -> list:
+    """(tool, arguments) for each tool call a program's text makes on an MCP server: a literal name, ARGV for one it takes
+    from its arguments, None for one it builds or reads while it runs; arguments when they are a literal, else None. A
+    module the program imports (own=False) counts only its literal names: a name it is handed is its caller's."""
+    if not MCP_CALLS.search(text):
+        return []
+    import ast
+    try:
+        tree = ast.parse(text) if python else None
+    except (SyntaxError, ValueError, RecursionError, MemoryError):
+        tree = None
+    if tree is None:  # another language, or Python that does not parse: by the names its text gives
+        return [(a or b, None) for a, b in MCP_NAMED.findall(text)] or [(None, None)]
+
+    def literal(node):
+        try:
+            value = ast.literal_eval(node) if node is not None else None
+        except (ValueError, TypeError, SyntaxError, MemoryError, RecursionError):
+            return None
+        return value if isinstance(value, dict) else None
+
+    nodes, sites = list(ast.walk(tree)), []
+    for node in nodes:
+        if isinstance(node, ast.Call) and re.fullmatch(r"call_?[tT]ool", getattr(node.func, "attr", getattr(node.func, "id", ""))):
+            named = next((k.value for k in node.keywords if k.arg in ("name", "tool", "tool_name")), node.args[0] if node.args else None)
+            given = next((k.value for k in node.keywords if k.arg == "arguments"), node.args[1] if len(node.args) > 1 else None)
+            sites.append((named, given))
+        elif isinstance(node, ast.Dict):
+            keys = {k.value: v for k, v in zip(node.keys, node.values) if isinstance(k, ast.Constant) and isinstance(k.value, str)}
+            if isinstance(keys.get("method"), ast.Constant) and keys["method"].value == "tools/call":
+                params = keys.get("params")
+                inner = {k.value: v for k, v in zip(params.keys, params.values) if isinstance(k, ast.Constant)} if isinstance(params, ast.Dict) else {}
+                sites.append((inner.get("name"), inner.get("arguments")))
+        elif isinstance(node, ast.Constant) and isinstance(node.value, str) and "tools/call" in node.value and node.value.strip()[:1] in "{[":
+            sites += [(ast.Constant(n) if n else None, ast.Constant(None)) for n, _ in _rpc_calls(node.value)]
+
+    def names(expr, depth=0) -> list:
+        if isinstance(expr, ast.Constant) and isinstance(expr.value, str):
+            return [expr.value]
+        if expr is None or depth > 4 or not own:
+            return [None]
+        if any(isinstance(n, ast.Name) and n.id == "argv" or isinstance(n, ast.Attribute) and n.attr == "argv" for n in ast.walk(expr)):
+            return [ARGV]
+        if not isinstance(expr, ast.Name):
+            return [None]
+        found = []
+        for node in nodes:
+            if isinstance(node, (ast.Assign, ast.AnnAssign)) and any(isinstance(t, ast.Name) and t.id == expr.id for t in (
+                    node.targets if isinstance(node, ast.Assign) else [node.target])):
+                found += names(node.value, depth + 1)
+            elif isinstance(node, (ast.For, ast.comprehension)) and isinstance(node.target, ast.Name) and node.target.id == expr.id:
+                seq = node.iter
+                found += [x for e in seq.elts for x in names(e, depth + 1)] if isinstance(seq, (ast.Tuple, ast.List, ast.Set)) else names(seq, depth + 1)
+            elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)) and expr.id in [a.arg for a in node.args.args]:
+                at = [a.arg for a in node.args.args].index(expr.id)
+                called = node.name if not isinstance(node, ast.Lambda) else next((t.id for n in nodes if isinstance(n, ast.Assign) and n.value is node
+                                                                                     for t in n.targets if isinstance(t, ast.Name)), "")
+                for call in [n for n in nodes if isinstance(n, ast.Call) and called and getattr(n.func, "id", getattr(n.func, "attr", "")) == called]:
+                    given = next((k.value for k in call.keywords if k.arg == expr.id), call.args[at] if len(call.args) > at else None)
+                    found += names(given, depth + 1)
+                found += [] if called else [None]
+        return found or [None]
+
+    return [(n, literal(given) if isinstance(n, str) and n != ARGV else None) for named, given in sites for n in names(named)
+            if own or n is not None] or ([(None, None)] if own else [])
+
+
+def _mcp_calls(commands: list, feeds: list, written: set, depth: int = 0) -> list:
+    """(tool or None, arguments or None, how, folder, program file) for each call a parsed line makes on a local MCP
+    server: an HTTP client to an address here, a program whose text posts JSON-RPC or calls a client's call_tool (with
+    the modules of its own it imports), and the shell files it runs."""
+    from synthesis import sends
+    calls: list = []
+    for (words, where), feed in zip(commands, feeds + [""] * (len(commands) - len(feeds))):
+        head = os.path.basename(words[0]) if words else ""
+        if head in sends.WEB:
+            aims = [a for a in (_mcp_endpoint(w) for w in words[1:]) if a]
+            if not aims:
+                continue
+            text, readable = _http_body(words, where, feed, written)
+            found = _rpc_calls(text) if text else []
+            calls += [(t, a, f"`{head}` to an address here", where, "") for t, a in found]
+            if not readable and "mcp" in aims:
+                calls.append((None, None, f"`{head}` to a local MCP server, with a body the guard cannot read", where, ""))
+        elif SCRIPT.match(head) or UNREAD.match(head) or head in ("deno", "php"):
+            kind, at, given = _program(words)
+            module = _module_file(given, "" if _isolated(words) else os.path.realpath(where)) if words[at:at + 1] == ["-m"] else ""
+            path = module or (os.path.realpath(os.path.join(where, _home(given))) if kind == "file" and given else "")
+            text = given if kind == "inline" else feed if kind == "stdin" else "" if path in written else _code_of(path) if path else ""
+            if UNREAD_INPUT in text or (not text and path in written):
+                text = "tools/call"  # a program on input another program writes, or one the line writes: not read, so unknown
+            files = (_python_files(path or os.path.join(where, "-"), text, "" if _isolated(words) else os.path.realpath(
+                where if not path else os.path.dirname(path)), given if module else "")[0] if head.startswith("python") and text else [(path, text)])
+            args = words[at + 1:] if kind == "file" else words[at + (words[at:at + 1] == ["-"]):] if kind == "stdin" else words[at:]
+            for file, body in files:
+                for tool, given_args in _tools_called(body, head.startswith("python"), own=file == files[0][0]):
+                    how = f"`{head}` running {'a program that' if kind != 'file' else os.path.basename(path) + ', which'} calls a tool"
+                    if tool != ARGV:
+                        calls.append((tool, given_args, how, where, path))
+                        continue
+                    named = [w for w in args if "$" in w or "`" in w or re.fullmatch(r"[A-Za-z][\w.-]{1,80}", w)]
+                    objects = [o for o in (_json_object(w) for w in args) if o is not None]
+                    calls += [(None if "$" in w or "`" in w else w, objects[0] if len(named) == 1 and len(objects) == 1 else None,
+                               how + " named in its arguments", where, path) for w in named]
+        elif depth < 2:
+            script = _script_file(words, where)
+            if script and script != TOO_LARGE:
+                inner: list = []
+                try:
+                    parsed = _parse(script, where, feeds=inner)[0]
+                except (Unreadable, ValueError):
+                    continue
+                calls += _mcp_calls(parsed, inner, written, depth + 1)
+    return calls
+
+
+def _json_object(word: str) -> dict | None:
+    try:
+        value = json.loads(word)
+    except ValueError:
+        return None
+    return value if isinstance(value, dict) else None
+
+
+def _check_mcp(calls: list, command: str, config: dict, session: dict | None) -> str | None:
+    """A call whose tool and arguments are read is judged as that tool's own call; one that may send and cannot be read
+    exactly waits for the principal's code for this exact command and the programs it runs."""
+    from synthesis import sends
+    unsure, seen = [], set()
+    for tool, given, how, where, path in calls:
+        key = (tool, json.dumps(given, sort_keys=True, default=str), where)
+        if key in seen:  # one call read twice (a client's two call sites) is judged once, so one code releases it
+            continue
+        seen.add(key)
+        name = f"mcp__{LOCAL_MCP}__{tool}" if tool else ""
+        if tool and given is not None:
+            reason = _connector(name, given, config, where, session)
+            if reason:
+                return (f"This command calls `{tool}` on a local MCP server ({how}), judged as that tool's own call: "
+                        + reason.replace("make this identical call again", "run the identical command again"))
+        elif not tool or _sends(name, {}, config):
+            unsure.append((tool, how, where, path))
+    if not unsure:
+        return None
+    tools, dirs = sorted({t or "a tool whose name the guard cannot read" for t, _, _, _ in unsure}), sorted({w for _, _, w, _ in unsure})
+    subject = {"command": command, "runs_in": dirs, "tools": tools,
+               "programs": sorted((p, _CALL["ran"].get(os.path.realpath(p), "")) for _, _, _, p in unsure if p)}
+    summary = f"local MCP {', '.join(tools)} (runs in {', '.join(dirs)}): {command[:160]}"
+    with approvals.alone():
+        if approvals.consume("send", subject, session):
+            sends.log(sends.channel(tools[0], {}), "shell", summary, "approval", session)
+            return None
+        code = approvals.request("send", subject, summary)
+    return (f"This command calls {', '.join(tools)} on a local MCP server ({'; '.join(dict.fromkeys(h for _, h, _, _ in unsure))}), "
+            "and the guard cannot read exactly what it sends, so it waits as a send does. Show the principal the exact command "
+            f"and what it sends, and ask them to type {approvals.how(code)}. Then run the identical command again; a changed "
+            "program needs a new code.")
+
+
 def check_outgoing(command: str, config: dict, cwd: str, session: dict | None = None) -> str | None:
     """A shell command that posts words to people waits for the principal's code, as a connector send does, and
     opening a send window needs it too. The register scan reads the message the command sends (its text words and
@@ -6217,6 +6458,9 @@ def check_outgoing(command: str, config: dict, cwd: str, session: dict | None = 
             if problem:
                 return f"This command posts to {chan}, but {problem}. Put the text in the command or a readable file."
             posts.append((chan, text, where))
+    reason = _check_mcp(_mcp_calls(commands, feeds, written), command, config, session)  # a local MCP server's tools (5.23.1)
+    if reason:
+        return reason
     for window in windows:  # each command spends its own grant (`synthesis sends open` refuses without one)
         try:  # never ask the principal to approve a window the command would refuse
             sends.check_window(window["hours"], window["channels"], window["sends"])
@@ -6302,9 +6546,13 @@ def check(tool: str, tool_input: dict, config: dict, cwd: str | None = None, ses
         return check_desktop(desktop_tool(tool), tool, tool_input, config, session)
     kind = driven_tool(tool)  # a browser tool from any other server, by the steps it performs (round 3, finding 8)
     reason = check_driven(kind, tool, tool_input, config, session) if kind else None
-    if reason:
-        return reason
-    # The account is checked before the send approval, so no approval is spent on the wrong account.
+    return reason or _connector(tool, tool_input, config, cwd, session)
+
+
+def _connector(tool: str, tool_input: dict, config: dict, cwd: str, session: dict | None) -> str | None:
+    """A connector's call, judged: the account it acts as first, so no approval is spent on the wrong account, then the
+    travel rule, then the send rules for a call that sends or the upload rule for one that does not. A shell command
+    that calls a local MCP server's tool is judged by this too (5.23.1)."""
     reason = routed(tool, tool_input) and check_account(tool, tool_input, config, cwd)
     return reason or check_travel(tool, tool_input, config) or (
         check_send(tool, tool_input, config, session) if _sends(tool, tool_input, config) else check_upload(tool, tool_input))

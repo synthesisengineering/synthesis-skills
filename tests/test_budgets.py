@@ -1300,10 +1300,22 @@ ROOT = Path(__file__).resolve().parents[1]
 # heredoc shape asked 11,746 times over 102 paths and took 1.11 s on CI's macOS runner under Apple's Python 3.9, 0.31 s
 # on this Mac; with it, 123 times and 0.105 s) and its 3 blank lines. The per-call reset and the 29 places that ask
 # change in place.
+# 5.23.1, problem A of the review of the runtime's carried scripts (2026-11-15: the meeting skill's client and a curl of
+# the same JSON-RPC called the local workspace server's send_gmail_message with no code, since a write to this machine
+# is no post to another host): core 248 more and plugin 248, all in guards.py. _tools_called 67 (the tools a program's
+# text calls: a call_tool call, a JSON-RPC dict or JSON text, its name a literal, a loop over literals, a function's or
+# a lambda's parameter followed to the calls that pass it, a name taken from its arguments, or unknown; its literal
+# arguments; a module it imports counts only its literals; another language by the names its text gives), _mcp_calls 49
+# (an HTTP client to an address here, a program inline, on its input, in a file or a module with the modules of its own,
+# its arguments read for a name it takes from them, a shell file it runs), _http_body 41 (data words, @file, a file
+# option, its input, cat substitutions, HTTPie's fields; what it cannot read), _check_mcp 35 (judged as the tool's own
+# call, else one code for the exact command and the programs it runs, a call read twice judged once), _rpc_calls 16 (a
+# request or a batch), _mcp_endpoint 10, _json_object 8, the section's note and patterns 15, and _connector 7 (the
+# connector's judgement, which check and the shell route now share).
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 16507
-PLUGIN_BUDGET = 42579
+CORE_BUDGET = 16755
+PLUGIN_BUDGET = 42827
 
 
 def _lines(files):

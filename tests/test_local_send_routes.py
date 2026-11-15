@@ -188,7 +188,7 @@ def test_the_register_scan_and_the_format_rules_apply_as_to_the_connector():
     sorry = dict(MAIL, body="<p>Sorry for the delay, the notes are in the shared folder.</p>")
     reason = shell(client("send_gmail_message", sorry))
     assert "delay-apology" in reason and "can't go out as written" in reason
-    plain = dict(MAIL, body="Line one\nline two of the same paragraph")
+    plain = dict(MAIL, body="The notes are in the shared folder.", body_format="plain")  # mail goes out as HTML
     connector = guards.check("mcp__workspace-mcp__send_gmail_message", plain, CONFIG, cwd="/tmp", session=SESSION) or ""
     assert "can't go out as written" in connector and "can't go out as written" in shell(client("send_gmail_message", plain))
 
