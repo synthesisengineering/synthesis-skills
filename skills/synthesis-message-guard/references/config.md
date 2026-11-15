@@ -432,8 +432,9 @@ made through Claude in Chrome's `browser_batch`, none guarded either. Both now w
 
 **Which tools.** The computer-use server's action tools under any server id (`computer_batch`, `app_batch`,
 `app_click`, `app_key`, `app_type`, `app_menu`, `teach_step`, `teach_batch` and the single-action tools), a linked
-device's `computer_*` tools, and a browser server's `computer` and `browser_batch` (Claude in Chrome, the built-in
-browser). Screenshots, zooms, scrolls, waits, menu listings and every read pass at once. Since 5.23.0 a browser tool
+device's `computer_*` tools, and a browser server's `computer`, `browser_batch`, `form_input`, `javascript_tool` and,
+since 5.23.1, `navigate` (Claude in Chrome, the built-in browser). Screenshots, zooms, scrolls, waits, menu listings
+and every read pass at once. Since 5.23.0 a browser tool
 from any other server whose name says it drives a browser (Playwright, Chrome DevTools, Puppeteer) is read too, as the
 steps it performs (typing, a key, a click, a form, a page script), on the page that server's own results last showed;
 a click is read by the control the page's snapshot names, not only by the words the agent gives it; and a step that
@@ -481,7 +482,10 @@ opened `linkedin.com/...`, `uk.linkedin.com` or `m.me/...` pressed Return with n
   the hosts a person types), under the email rules: Return writes a line, and cmd or ctrl with Return sends.
 
 The page is the tab a step names, else the one the last browser call ran on, read from the tab list Claude in Chrome
-prints after every call, or the page a `navigate` step earlier in the same batch opened. A `navigate` that names no
+prints after every call, or the page a `navigate` step earlier in the same batch opened. Each browser keeps its own tab
+ids, so a call is read by its own browser's newest list: since 5.23.1 the built-in pane's lists (its tab ids are
+`tab-N`), its own `tabs_context` (each tab's origin, the active one in front) and its navigate's result (`navigated to`
+or `opened` and the address) are read too. A `navigate` that names no
 host (`back`, `forward`, a path, a script) leaves the page unknown, unless the tab was on a messaging site: the page it
 opens may be that site's still, so it is judged as that site's. A page whose address the guard cannot read (a browser
 that prints no tab list) is judged by the summary rule alone. On 2026-10-22 a session found that Return in a Google
@@ -517,14 +521,38 @@ words and then presses Return or Enter (without shift), Space or Return after Ta
 code when its summaries name a message, comment, review, post, reply or tweet: most forms submit on Return, and those
 are the ones that post. A call that names none passes, as before 5.21.1 (the principal's ruling of 2026-11-14, "Skip
 typed text that names no post"), and so does every call on a local app. A page script (`javascript_tool`, alone or as a batch step) reaches the guard: on a messaging
-site one that clicks, submits, sends a key or an event, writes by fetch (a POST, PUT, PATCH or DELETE, or
-`sendBeacon`) or sets a value waits; elsewhere one that submits a form, sends a key or an event, writes by fetch, or
-clicks with a word that publishes in it (submit, post, send, publish, reply, comment, share, review, rating, tweet,
-done) waits, unless it names a search, a sign-in, a password or a query as a whole word; on a local app none waits.
+site's page it is refused unless it is one the plugin ships to read (below, since 5.23.1); elsewhere one that submits
+a form, sends a key or an event, writes by fetch (a POST, PUT, PATCH or DELETE, or `sendBeacon`), or clicks with a word
+that publishes in it (submit, post, send, publish, reply, comment, share, review, rating, tweet, done) waits, unless it
+names a search, a sign-in, a password or a query as a whole word; on a local app none waits.
 A form fill alone (`form_input`) is typed text, scanned as a batch's is. Measured the same way: the key rule holds 16
 calls in 3 transcripts and passes 30 (23 that name no post, 6 that sign in or search, 1 on a local app; held as
 unsure, the 23 would have been held too); the script rule holds 5 of 118 scripts on messaging sites, in 2
 transcripts, and 24 of 459 elsewhere, in 5.
+
+**On a messaging site's page only the plugin's own read-only scripts run** (5.23.1). Review round 4 of the batch
+approval found a script that clicks Send by a name it builds as it runs (`el['cli' + 'ck']()`) passing on Slack,
+WhatsApp, LinkedIn, Gmail and X: the rule above read a script's text for a click, a submit or a key, and no reading of
+its text shows such a call. On a messaging site's page (every site and page the list above names), and on a page a
+driven browser's record does not show, every page script is now refused but the extractors the plugin ships
+(`messenger_messages.py extractor` and `chat_page.py extractor`, exactly as their commands print them). Refused, not
+held for a code: the 60 days of Claude Code and Codex records to 2026-11-15 held 183 page scripts on those pages, 5 of
+them a later release's own composer check and 178 others, all in 4 sessions (96 on LinkedIn, 56 on facebook.com, 12 on
+Slack, 7 on X, 6 on Google Chat, 1 on Gmail), and the rule above held 5 of the 178, so a code for each would have asked
+the principal 173 times about scripts no one can read for what they do. The browser's own read tools (`get_page_text`,
+`read_page`, `find`) read a page with no code, and a click goes through the `computer` tool with a summary that says
+what it does. No script in those records called a member named as it ran, so none sent that way. The runtime the hook
+runs from carries both extractors' scripts (`synthesis-message-exports` joined the skills whose scripts the installer
+copies there).
+
+**A navigate is read as a URL parser reads it** (5.23.1). The `navigate` tool called alone was never judged, and a
+`navigate` step was read as written, while a browser strips control characters and spaces at an address's ends and
+drops every tab and line break in it, so `java\tscript:` and `\x01javascript:` are `javascript:` addresses. Every
+navigate from any browser tool (Claude in Chrome's and the built-in pane's, alone or in a batch, and a driven browser's)
+is now read that way, and one to a `javascript:` address is the page script it runs, percent-decoded as the browser
+decodes it, on the page the tab is on: refused on a messaging site's page, judged by the rule above elsewhere. What
+its code leaves the page on is not known. No navigate to a `javascript:` address appears in the 60 days of records,
+read raw or as a parser reads it, among 704 navigates.
 
 **A register hit where the guard is unsure the words are a message** (5.21.1). On a page that is no messaging site,
 and in an app that is none, a call that sends with words that break a register rule is not refused outright: a review
