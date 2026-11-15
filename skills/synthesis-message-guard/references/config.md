@@ -652,7 +652,8 @@ a `curl` POST of the same JSON-RPC to `localhost:8765/mcp` waited (the review of
 connector call takes (the account it acts as, the travel rule, then the send rules, or the upload rule for one that does
 not send), with the server named `workspace-mcp`:
 
-- **An HTTP client to an address on this machine** (`curl`, `wget`, HTTPie, `xh`): its body read from its data words, an
+- **An HTTP client to an address on this machine** (`localhost`, `127.0.0.1`, `[::1]` and `*.localhost`, in any case and
+  with a trailing dot; `curl`, `wget`, HTTPie, `xh`): its body read from its data words, an
   `@file`, a file option, its heredoc or input, a `$(cat file)`, or HTTPie's fields. Each `tools/call` request it holds,
   a batch's included, is that tool's call. A body it cannot read (a file it lacks, one the same line writes, input another
   program writes, another substitution) waits when the address is a local MCP server's endpoint: port 8765 or the one
@@ -665,6 +666,9 @@ not send), with the server named `workspace-mcp`:
   method, or a name it takes from its arguments, which are then read (the client's own form: its first argument names the
   tool and a JSON argument gives its arguments). A program whose strings only mention the method makes no call, and a
   program the line writes is read as the line's heredocs. Another language is read by the names its text gives.
+- **A program that posts a body it reads** (review round 1) to such an endpoint, with no tool call in its own text, is
+  judged by that body, from its input or from a file it names or takes from its arguments, as curl's `-d @file` is; a
+  body built from parts the guard cannot read waits, and a request with no body (a liveness read) passes.
 - **The verdict:** a call whose tool and arguments are read is that tool's own call, so the principal's code is the one
   the connector's identical call takes, and either route spends it. A sending tool whose arguments are built while the
   program runs, and a call whose tool name the guard cannot read (one the shell fills in, one built or read while it
@@ -699,9 +703,20 @@ sends waits as a send.
 - **What waits:** a value the guard cannot read (`--config-env` naming a variable it is not shown) and programs nested
   past two levels wait for the protected-folder code. A repository whose configuration names no program reads as before;
   none of the 350 repositories the records' git commands ran in, nor the 320 under the workspaces, names one.
-- **Not covered:** a program that runs git itself in a folder it is handed (the context doctor's `git status` in
-  `--project`, the rituals' repository scan) runs what that repository's configuration names; the guard reads git
-  commands on the line.
+- **Other scopes (review round 1):** the user's and the system's config are read too (the global and XDG files or the
+  one `GIT_CONFIG_GLOBAL` names, the system file unless `GIT_CONFIG_NOSYSTEM`, with what each includes), and each
+  submodule's for a command that reaches submodules. Hooks count only for a command that runs them (a commit's, a
+  checkout's, a push's; status and diff only an index refresh's), never in synthesis's own installed git-hooks folder,
+  whose commit check then counts the repository's own `.githooks` and `.git/hooks` hooks for a commit; a credential
+  helper, an SSH command or an askpass program counts only for a command that reaches a remote.
+- **The plugin's scanners:** the context doctor (`--project`, the repository holding it, and each `--root`) and the
+  rituals' `repo_state.py` (the paths `--workspace-root`'s `.agents/repos.yaml` declares, relative to it, and each
+  repository one or two folders under `--discover`) run git themselves; a run whose repositories' own configuration
+  names a program waits for the protected-folder code, and the user's programs are judged as for git on the line. The
+  doctor given neither reads roots of its own setting, which the guard does not read.
+- **A planted hook:** a write into a repository's `.git/hooks` or `.githooks`, or into a folder `core.hooksPath` names
+  other than synthesis's own, by the file tools or the shell, and a `git config` that points `core.hooksPath` at such a
+  folder, wait for the principal's code for that exact call.
 
 ## Calibration
 

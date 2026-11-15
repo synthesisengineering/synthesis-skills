@@ -39,7 +39,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   `-c`, `--config-env` and `GIT_CONFIG_*` are read, and each program they name (the monitor, the hooks folder's files,
   the SSH command, credential helpers, pagers, editors, diff and filter drivers, an alias when it is the command run, and
   more), and each the line's environment gives git, is judged by every shell guard where git runs it; a value the guard
-  cannot read waits. A program that runs git itself in a folder it is handed is not read this way.
+  cannot read waits.
+- **Review round 1 of the three.** D now reads git's user and system config (the global and XDG files or the one
+  `GIT_CONFIG_GLOBAL` names, the system file, with what each includes) and a submodule's config when the command reaches
+  it: one line in `~/.gitconfig` had made every git read run the agent's program. Hooks count only for a command that
+  runs them, never in synthesis's own installed git-hooks folder (the commit check's repository hooks count for a
+  commit), and a credential helper or an SSH command only for a command that reaches a remote, so the principal's own
+  setup holds no read. The plugin's scripts that run git themselves (the context doctor's `--project` and `--root`, the
+  rituals' `repo_state.py`) wait when a repository they reach names a program of its own. A program posting a request
+  body it reads to a local MCP server is judged by that body, as curl's `-d @file` is, and one built from parts the guard
+  cannot read waits. The local host is read in any case and with its trailing dot. A write into `.git/hooks`,
+  `.githooks` or a folder `core.hooksPath` names, by the file tools or the shell, or a `git config` that points
+  `core.hooksPath` at one, waits for the principal's code: the next commit would run it. Tests first (19 failed).
 - **How the three were checked.** Tests first, committed alone (31 failed for the local server's tools, 21 for the
   osascript files and the git programs), with invented fixtures and stand-ins only. A harm check over the 60 days of
   Claude Code and Codex records before 2026-11-15 (265,000 shell commands) found no message sent and no state written by

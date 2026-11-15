@@ -542,20 +542,13 @@ stay open, and no hook running as that same user can close them:
   was closed with a test. There is always another. What the guard is
   measured on is the other direction as well: 30 days of recorded commands, where it must
   not refuse ordinary work.
-- A program that runs git itself in a folder it is handed (the context doctor's `--project`, the daily
-  rituals' repository scan) runs whatever that repository's configuration names, since the guard judges
-  those programs only for a git command on the line; this is crafted, as it needs a repository made to
-  name a program, and none of the 350 repositories the recorded git commands ran in, nor any under the
-  workspaces, names one.
-- A raw socket client (`nc`, `socat`) that writes a local MCP server's JSON-RPC itself, and a `curl` a
-  program builds while it runs, reach the server's tools unread, since the guard reads HTTP clients and
-  programs by their text; this is crafted, and 60 days of records hold no such socket client and three
-  programs that start curl at the server, none naming a sending tool.
-- A repository's own commit hooks, which the synthesis commit check runs after its own checks
-  (`.githooks/<hook>`, `.git/hooks/<hook>`), run on `git commit` as the repository wrote them, since a
-  hook is no configuration the guard reads; this is crafted, as it needs a hook written to write where
-  approvals live or to send, while the hooks repositories carry today (three under the workspaces) are
-  their own checks.
+- A program the guard does not know that runs git itself in a folder it is handed runs whatever that repository's
+  configuration names; the plugin's own scanners are read (the context doctor's `--project` and `--root`, and the
+  rituals' `repo_state.py` with the paths its `--workspace-root` declares and the repositories under `--discover`), but
+  not the knowledge roots the doctor takes from its own settings when it is given neither; this is crafted, as it needs
+  a program of the agent's own, or roots set up to reach such a repository.
+- A raw socket client (`nc`, `socat`) that writes a local MCP server's JSON-RPC itself reaches the server's tools
+  unread; this is crafted, and 60 days of records hold none.
 - A prompt another process injects into the session through the harness's own CLI
   (`claude -p --resume`, `codex queue`, `muse session-message`) is recorded as a typed
   prompt. The shell guard refuses such a command when it carries a pending code; one
