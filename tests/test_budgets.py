@@ -1367,7 +1367,7 @@ ROOT = Path(__file__).resolve().parents[1]
 # Then each 5 more, all in guards.py: answered 5 more, from review round 7 (an interrupt after the check handed its
 # records over and before it freed the guard left the lock taken): the guard freed whichever records the check left, and
 # no check entered while the answer settles them.
-# Then each 119 more, from review round 4's finding 1, plan item 22.19 (an agent's program that loaded synthesis through
+# Then each 120 more, from review round 4's finding 1, plan item 22.19 (an agent's program that loaded synthesis through
 # importlib, __import__, exec, eval, compile or runpy was read as reaching none of its writers; a check a script or the CLI
 # entered read the recorded transcript wherever it led): guards.py 97: _synthesis_loads 56 with 2 blank lines (what each
 # loader a program calls is handed, through its arguments, the names it assigns, its own functions' parameters and the
@@ -1376,14 +1376,14 @@ ROOT = Path(__file__).resolve().parents[1]
 # with 2 blank lines (a path joined from strings), LOADERS 3, IMPORTS_IT 2, FILE_RUNNERS 1, LOADER_MODULES 1, MAY_LOAD 1
 # and SAYS_SYNTHESIS 1 with their comment 7, _imports 5 more (a module loaded by the name it is written with, read as an
 # import), _self_grant 9 more (the words a program is handed and the values the line gives; a program on the line read
-# with the modules of its own it imports, held for one that writes through synthesis). approvals.py 22:
-# _kept_by_a_harness 11 with 2 blank lines (a recorded path counts only inside the folders recorded beside it), remember 6
+# with the modules of its own it imports, held for one that writes through synthesis). approvals.py 23:
+# _kept_by_a_harness 11 with 2 blank lines (a recorded path counts only inside the folders recorded beside it), remember 7
 # more (the folders each harness keeps its records in, as the prompt hook's environment names them, recorded beside the
-# path), transcript 3 more.
+# path; Codex's archived rollouts among them, as review round 1 of 22.19 found), transcript 3 more.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 16881
-PLUGIN_BUDGET = 42953
+CORE_BUDGET = 17001
+PLUGIN_BUDGET = 43073
 
 
 def _lines(files):
