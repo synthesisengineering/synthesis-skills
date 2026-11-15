@@ -50,7 +50,7 @@ def _copy_plugin(dest: Path, skills) -> Path:
 
 
 @pytest.fixture(scope="module")
-def mac(tmp_path_factory, sealed_python):
+def mac(tmp_path_factory):
     """A Mac of the test's own: every home under a temporary folder, Claude Code's records at the default place under
     it (so `.claude` beside `projects` spells a protected folder), the plugin in Claude Code's cache, and the runtime
     its installer builds from it. Stand-ins for osascript and say come first on PATH."""
@@ -64,7 +64,7 @@ def mac(tmp_path_factory, sealed_python):
     env = {k: v for k, v in os.environ.items() if k not in DROPPED}
     env.update(HOME=str(home), SYNTHESIS_HOME=str(home / ".synthesis" / "v5"), CLAUDE_CONFIG_DIR=str(home / ".claude"),
                CODEX_HOME=str(base / "codex"), XDG_DATA_HOME=str(base / "xdg"), RITUAL_STATE_DIR=str(base / "rituals"),
-               SYNTHESIS_CLAUDE_DESKTOP_DIR=str(base / "desktop"), PATH=f"{stand_ins}:{sealed_python}:{os.environ.get('PATH', '/usr/bin:/bin')}",
+               SYNTHESIS_CLAUDE_DESKTOP_DIR=str(base / "desktop"), PATH=f"{stand_ins}:{os.environ.get('PATH', '/usr/bin:/bin')}",
                PYTHONDONTWRITEBYTECODE="1")
     plugin = _copy_plugin(home / ".claude" / "plugins" / "cache" / "synthesis-engineering" / "synthesis-skills" / "5.23.1",
                           list(install.STABLE_SKILL_SCRIPTS) + list(KIT))

@@ -1339,14 +1339,14 @@ ROOT = Path(__file__).resolve().parents[1]
 # the principal's code), _plainly 4 (Python only with -s, -S or -I: R2-6; printf -v and print -v), check_self_grant 4,
 # and _self_grant 7 (the config 1, the unit writers 3, a shell write to a hard link 2, a pattern expanded for the
 # script it judges 1).
-# Then its review round 3, core and plugin each 35 more, all in guards.py: _writable_loads and SUBSCRIPTED 30 with their
-# blank lines (the python3 a line runs, found on PATH, trusted only when the user can write none of the folders it loads
-# from: N2 as ruled; a subscript assignment, zsh's PATH[1,-1]=: N1), and _plainly 5 (both asked, in any case of the
-# name). The call's cache of interpreters changes in place.
+# Then its review round 3, core and plugin each 5 more, all in guards.py: SUBSCRIPTED 3 with its blank lines (a
+# subscript assignment to an environment or startup variable, zsh's PATH[1,-1]=: N1) and _plainly 2 (asked in any case
+# of the name). The interpreter check that round first added (N2, 30 lines) came out again when the ruling changed: it
+# held ordinary work on Macs with Homebrew's Python first, so the interpreter's own folders are on the open list.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 16687
-PLUGIN_BUDGET = 42759
+CORE_BUDGET = 16657
+PLUGIN_BUDGET = 42729
 
 
 def _lines(files):

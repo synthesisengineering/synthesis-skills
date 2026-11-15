@@ -184,20 +184,3 @@ def principal(tmp_path, monkeypatch):
     approve.transcript = record
     return approve
 
-
-@pytest.fixture(scope="session")
-def sealed_python(tmp_path_factory) -> str:
-    """A folder to put first on PATH holding a `python3` laid out as a framework install is, whose own folders the user
-    cannot write; it runs this interpreter. The guard trusts a run of the release's script only under such a Python
-    (review round 3 of 5.23.1, N2), and a CI runner's Python lives in a toolcache the runner can write."""
-    prefix = tmp_path_factory.mktemp("sealed-python")
-    version = f"{sys.version_info.major}.{sys.version_info.minor}"
-    site = prefix / "lib" / f"python{version}" / "site-packages"
-    site.mkdir(parents=True)
-    (prefix / "bin").mkdir()
-    (prefix / "bin" / f"python{version}").write_text(f'#!/bin/sh\nexec "{sys.executable}" "$@"\n', encoding="utf-8")
-    (prefix / "bin" / f"python{version}").chmod(0o755)
-    (prefix / "bin" / "python3").symlink_to(f"python{version}")
-    for folder in (site, site.parent, site.parent.parent, prefix / "bin"):
-        folder.chmod(0o555)
-    return str(prefix / "bin")

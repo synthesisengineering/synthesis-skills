@@ -38,9 +38,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
     in any case of the name and by a subscript too (zsh's `PATH[1,-1]=`);
     no HOME given a value the guard does not read (such a line, when it then uses HOME, waits); and Python run with
     `-s`, `-S` or `-I`, so nothing in the user's own site folder loads into it, with no other option but those that only
-    take away what it loads, by a `python3` (the first on PATH) whose standard library, site-packages and the folders
-    its `.pth` files reach the user cannot write; under one the user can write, such as a Homebrew Python's, the run is
-    judged like any other script. What its own text names stays exempt. Otherwise it is judged like any other script. The
+    take away what it loads. A file planted in the interpreter's own site-packages (a `.pth` file, a site customization)
+    or in a standard library the user can write still runs inside such a run: that is on the open list until trusted runs
+    use the sealed interpreter the guard's sandbox plans. What its own text names stays exempt. Otherwise it is judged like any other script. The
     workspace-mcp kit's scripts that write or load a LaunchAgent or a systemd unit wait from the runtime too, and the
     messages reader opens its lock without following a link.
   - The runtime also carries `synthesis-meeting-transcripts` (the fetcher and the workspace-mcp server kit),
