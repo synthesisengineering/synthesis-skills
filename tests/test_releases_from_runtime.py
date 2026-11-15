@@ -33,8 +33,9 @@ JUDGE = r"""
 import json, sys
 sys.path[0] = sys.argv[1]
 from synthesis import guards
-for line, cwd in json.loads(sys.argv[2]):
-    print(json.dumps(guards.check("Bash", {"command": line}, {}, cwd=cwd, session={"session_id": "S-principal"})))
+for item in json.loads(sys.argv[2]):
+    tool, tool_input, cwd = item if len(item) == 3 else ("Bash", {"command": item[0]}, item[1])
+    print(json.dumps(guards.check(tool, tool_input, {}, cwd=cwd, session={"session_id": "S-principal"})))
 """
 
 
@@ -70,7 +71,7 @@ def world(tmp_path, monkeypatch):
     work.mkdir()
 
     def judge(lines):
-        pairs = [line if isinstance(line, list) else [line, str(work)] for line in lines]
+        pairs = [list(line) if isinstance(line, (list, tuple)) else [line, str(work)] for line in lines]
         done = subprocess.run([sys.executable, "-S", "-c", JUDGE, str(paths.home() / "current"), json.dumps(pairs)],
                               capture_output=True, text=True, timeout=600, cwd=str(work))
         assert done.returncode == 0, done.stderr[-3000:]
@@ -241,3 +242,57 @@ def test_a_pending_approval_code_on_the_line_is_never_let_through(world):
     code = re.search(r"\bcode ([a-z0-9]{6})\b", held).group(1)
     said = world["judge"]([f"{world['launcher']} --repo-root {world['canon']} --dry-run --session {code}"])[0]
     assert said and said.startswith("Refused") and "pending approval code" in said, said
+
+
+# --- review round 1 of 5.23.1: A5, A6, A7, A8 ----------------------------------------------------------------------------
+
+def test_a7_the_launcher_line_from_codexs_shell_tool_passes_as_it_does_from_the_other_shells(world):
+    line = f"{world['launcher']} --repo-root {world['canon']} --dry-run"
+    calls = [("shell", {"command": [shell, flag, line], "workdir": str(world["work"])}, str(world["work"]))
+             for shell, flag in (("bash", "-lc"), ("zsh", "-c"), ("/bin/sh", "-c"))]
+    calls += [("exec_command", {"cmd": line, "workdir": str(world["work"])}, str(world["work"])), ("bash", {"command": line},
+                                                                                                str(world["work"]))]
+    assert world["judge"](calls) == [None] * len(calls)
+    waits = [("shell", {"command": ["bash", "-lc", line, "more"]}, str(world["work"])),
+             ("shell", {"command": ["bash", "-lc", line + "; true"]}, str(world["work"])),
+             ("shell", {"command": ["bash", "-x", line]}, str(world["work"]))]
+    assert all(said and HELD in said for said in world["judge"](waits))
+
+
+def test_a5_codex_commands_are_judged_where_codex_runs_them(world):
+    """Codex runs an exec_command's `cmd` in its `workdir`, not the session's folder the payload names as `cwd`."""
+    session = world["home"] / "s1" / "s2" / "s3"
+    workdir = world["home"] / "w"
+    for folder in (session, workdir):
+        folder.mkdir(parents=True)
+    (workdir / "f.json").write_text("{}\n")
+    line = "cp f.json ../.synthesis/v5/state/approvals/a.json"  # from workdir it lands in the approvals
+    said = guards.check("exec_command", {"cmd": line, "workdir": str(workdir)}, {}, cwd=str(session),
+                        session={"session_id": "S-principal"})
+    assert said and said.startswith("Refused"), said
+    relative = f"../.synthesis/v5/bin/synthesis-release --repo-root {world['canon']}"
+    assert HELD in world["judge"]([("exec_command", {"cmd": relative, "workdir": str(workdir)}, str(session))])[0]
+
+
+def test_a6_a_project_of_its_own_named_release_or_setup_runs_with_no_code(world, tmp_path):
+    project = tmp_path / "project"
+    project.mkdir()
+    (project / "setup.py").write_text("print('a project of its own')\n")
+    (project / "release.py").write_text("def main():\n    print('bump')\n")
+    (project / "bump.py").write_text("import release\nrelease.main()\n")
+    lines = [[f"python3 -c 'import setup'", str(project)], [f"python3 {project}/bump.py", str(project)],
+             [f"python3 - <<'EOF'\nimport release\nrelease.main()\nEOF", str(project)]]
+    assert world["judge"](lines) == [None] * len(lines)
+    kit = world["tool"].parent
+    computed = ("import os, sys; sys.path.insert(0, os.path.join(os.path.expanduser('~'), '.synthesis/v5/current/skills/"
+                "synthesis-skills-manager/scripts')); import release; release.main(['--repo-root', '/x'])")
+    held = [f"python3 -c \"import sys; sys.path.insert(0, '{kit}'); import release\"", f"python3 -c {shlex.quote(computed)}",
+            [f"python3 -c 'import release; release.main([])'", str(kit)]]
+    assert all(said and HELD in said for said in world["judge"](held))
+
+
+def test_a8_the_git_hooks_folder_is_one_the_guard_protects(world):
+    hook = world["home"] / ".synthesis" / "v5" / "git-hooks" / "pre-commit"
+    said = world["judge"]([("Write", {"file_path": str(hook), "content": "exit 0\n"}, str(world["work"])),
+                           f"cp {world['work']}/x {hook}", f"echo exit 0 > {hook}"])
+    assert all(s and s.startswith("Refused") for s in said), said
