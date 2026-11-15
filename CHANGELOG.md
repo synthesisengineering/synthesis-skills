@@ -67,10 +67,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   `git -C` by their real paths, since the kernel follows a link before a `..` (review rounds 1 and 2, A5 and N1); a
   shell's `cd`, `pushd` and `popd` by their text and by their real paths (`cd -P`, `set -P`, zsh's `chase_dots` and
   `chase_links` resolve `..` physically, round 3, M1), under each CDPATH or cdpath entry the line or the environment
-  sets, at OLDPWD for `cd -`, at a variable's value under cdable_vars, at a folder named as a command under auto_cd,
-  where zsh's `cd old new` leads, and where the shell stays when a `cd` fails (a missing folder, a pipeline, `&`), for
-  the commands after its `&&` chain (round 4, Q1). `env cd` and the like move nothing. These readings are the parse's
-  own, so a check the guard runs for a program's commands no longer cuts the physical one short. A line whose folder
+  sets (the launchers now keep CDPATH and OLDPWD), at OLDPWD for `cd -`, at a variable's value under cdable_vars, at a
+  folder named as a command under auto_cd, where zsh's `cd old new` leads, and, for the commands after its `&&` chain,
+  where the shell stays when a `cd` may fail: no folder there when the guard looks, or a command before it that may
+  make, remove or move one (round 4, Q1). A `cd` piped into another command, or in a list sent to the background,
+  moves nothing past its subshell, and `env cd` and the like move nothing. These readings are the parse's own, so a
+  check the guard runs for a program's commands no longer cuts the physical one short. A line whose folder
   this cannot tell waits for the principal's code: a CDPATH set in a way it cannot read, a redefined `cd`, a `cd` inside
   eval, a sourced file, a function, an alias or a trap, BASH_ENV or ZDOTDIR. **`~/.synthesis/v5/git-hooks` is a
   protected folder** (A8). In a repository under `pr_gated`, a push waits for the principal's code when it makes, moves

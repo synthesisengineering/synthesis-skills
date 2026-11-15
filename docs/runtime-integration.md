@@ -576,12 +576,14 @@ stay open, and no hook running as that same user can close them:
   folder the line may leave it in: each `cd`, `pushd` and `popd` by its text and by its real path (`cd -P`, `set -P`,
   zsh's chase options, review round 3 of 5.23.1, M1), under each CDPATH or cdpath entry the line or the environment
   sets, at OLDPWD, a cdable_vars value or an auto_cd folder, where zsh's `cd old new` leads, and where the shell stays
-  when a `cd` fails (round 4, Q1). A line whose folder it cannot tell waits for the principal's code (a CDPATH it
-  cannot read, a redefined `cd`, a `cd` inside eval, a sourced file, a function, an alias or a trap, BASH_ENV or
-  ZDOTDIR). What it cannot see stays open: a CDPATH, cdable_vars or auto_cd set in the user's shell profile without
-  being exported, and a shell startup file (the harness's shell snapshot, `~/.zshenv`) that changes folder before
-  a command runs; the agent can write those files, so a later command's relative path can land in a protected folder
-  the guard did not place it in. Two routes are still open: the CLI's
+  when a `cd` may fail: no folder there when the guard looks, or a command before it that may make, remove or move one
+  (round 4, Q1). A line whose folder it cannot tell waits for the principal's code (a CDPATH it cannot read, a
+  redefined `cd`, a `cd` inside eval, a sourced file, a function, an alias or a trap, BASH_ENV or ZDOTDIR). What it
+  cannot see stays open: a folder another process removes or makes between the guard's look and the `cd`; a CDPATH,
+  cdable_vars or auto_cd set in the user's shell profile without being exported; and a shell startup file (the
+  harness's shell snapshot, `~/.zshenv`) that changes folder before a command runs. The agent can start such a process
+  or write those files with no code, so a later command's relative path can land in a protected folder the guard did
+  not place it in. Two routes are still open: the CLI's
   `synthesis uninstall` removes the runtime with no code, after which the next session start is a first install, and
   `synthesis install <folder>` installs any folder that declares a version no older than the running one. They stay
   in this list until they wait for the principal's code. A runtime removed by a route the guard cannot read (above)

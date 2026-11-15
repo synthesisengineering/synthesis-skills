@@ -1372,24 +1372,28 @@ ROOT = Path(__file__).resolve().parents[1]
 # (install's own lock removed, and passed over in the sweep of releases), pinned_python 2 (Apple's /usr/bin shim refused,
 # and its docstring) and the contextlib and fcntl imports 2. release.py: a clone folder named by the run's pid and a
 # random part (M4) changes lines in place.
-# 5.23.1, review round 4 of releases from the protected runtime: core 169 more and plugin 169, all in guards.py.
-# _commands and _walk 46 (101 lines become 39 and 108: a line is read from every starting point its changes of folder
-# give it, each kept on a list with the folder, the one before it, pushd's stack, the subshells open and what was piped,
-# a failed cd's own folder pushed at the end of its && chain, the physical reading run inside the parse so a nested
-# check no longer resets it, `env cd` moving nothing, auto_cd and a command named by a substitution, a cd in eval,
-# source or a trap leaving the line unplaced, and the docstring; Q1), _landings 28 (each landing of a cd or pushd:
-# OLDPWD, CDPATH and cdpath entries, cdable_vars values, zsh's `cd old new`), _cd_sources 33 (what the line sets up for
-# those, read with its quoting taken away, and what leaves it unplaced: a CDPATH it cannot read, a redefined cd, a
-# function or alias on a line that changes folder, BASH_ENV, ZDOTDIR), _moved 9 (the folder stack after a landing, out
-# of the old cd branch), _unquoted_line 7 ($'…', backslashes and quotes taken away), PLACINGS, FOLDER_MOVE, UNQUOTED,
-# FUNCTION and ESCAPES 5; _gated_push 22, _remote_tags 12 and check_pr_gate 1 (a push waits only when it makes, moves or
-# deletes a version tag the remote is asked about, a branch named v... is a branch; Q3); check_self_grant 5 fewer and
-# _CD_REAL with its comment 5 fewer (the physical pass and its flags gone, the unplaced wait added); the blank lines
-# between the new functions 16. install.py: the rollback keyword gone (Q4) changes lines in place.
+# 5.23.1, review round 4 of releases from the protected runtime: core 204 more and plugin 204, all in guards.py.
+# _commands and _walk 64 (101 lines become 42 and 123: a line is read from every starting point its changes of folder
+# give it, each kept on a list with the folder, the one before it, pushd's stack, the subshells open, what was piped,
+# whether a command before may have changed a folder and the folders the reading found there or missing; a cd that may
+# fail has its own folder read on at the end of its && chain, a cd piped into a command or a list sent to the
+# background moves nothing past its subshell, the last of a pipeline both ways; the physical reading runs inside the
+# parse, so a nested check no longer resets it; `env cd` moves nothing; auto_cd and a command named by a substitution;
+# a cd in eval, source or a trap leaves the line unplaced; and the docstring; Q1), _landings 28 (each landing of a cd or
+# pushd: OLDPWD, CDPATH and cdpath entries, cdable_vars values, zsh's `cd old new`), _cd_sources 33 (what the line sets
+# up for those, read with its quoting taken away, and what leaves it unplaced: a CDPATH it cannot read, a redefined cd,
+# a function or alias on a line that changes folder, BASH_ENV, ZDOTDIR), _moved 9 (the folder stack after a landing,
+# out of the old cd branch), _unquoted_line 7 ($'…', backslashes and quotes taken away), _keeps 5, FOLDER_KEEPERS 3 and
+# _enterable 3 (whether a cd may fail: no folder there now, or a command before that may make, remove or move one),
+# PLACINGS, FOLDER_MOVE, UNQUOTED, FUNCTION and ESCAPES 5; _gated_push 22, _remote_tags 12 and check_pr_gate 1 (a push
+# waits only when it makes, moves or deletes a version tag the remote is asked about, a branch named v... is a branch;
+# Q3); check_self_grant 5 fewer and _CD_REAL with its comment 5 fewer (the physical pass and its flags gone, the
+# unplaced wait added); the blank lines between the new functions 22. _simple hands on the operator after each command
+# in place. install.py: the rollback keyword gone (Q4), and CDPATH and OLDPWD kept by the launchers, in place.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 17108
-PLUGIN_BUDGET = 43327
+CORE_BUDGET = 17143
+PLUGIN_BUDGET = 43362
 
 
 def _lines(files):

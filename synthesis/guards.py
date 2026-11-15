@@ -1529,8 +1529,8 @@ def _bodies(s: str, i: int, pending: list, tokens: list) -> int:
 
 def _simple(tokens: list) -> list:
     """Simple commands: "(" and ")" for subshells, else (words, stdin texts, scripts, piped in, files written,
-    link). The link is "&&" when only `&&` stands between a command and the one before it, so it runs only if that
-    one succeeded; "||" when it runs only if that one failed; "" otherwise."""
+    link, the operator after it). The link is "&&" when only `&&` stands between a command and the one before it, so it
+    runs only if that one succeeded; "||" when it runs only if that one failed; "" otherwise."""
     items, words, stdin, scripts, skip, piped, writes, before = [], [], [], [], "", False, [], []
     for kind, *rest in tokens + [("op", ";")]:  # a closing ";" flushes the last command
         if kind == "w":
@@ -1552,7 +1552,7 @@ def _simple(tokens: list) -> list:
         else:
             if words or stdin or scripts or writes:
                 link = before[0] if before[:1] in (["&&"], ["||"]) and set(before[1:]) <= {"\n"} else ""  # `&&` may end a line
-                items.append((words, stdin, scripts, piped, writes, link))
+                items.append((words, stdin, scripts, piped, writes, link, rest[0]))
                 before = []
             before.append(rest[0])
             words, stdin, scripts, skip, writes = [], [], [], "", []
@@ -1722,9 +1722,12 @@ def _commands(command: str, cwd: str, depth: int = 0, writes: list | None = None
     folder may land where its text leads or where its real path does (`cd -P`, `set -P`, zsh's chase options: the guard
     cannot know a user's shell options), under a CDPATH or cdpath entry the line or the environment gives, at a
     variable's value (cdable_vars), at OLDPWD (`cd -`), where zsh's `cd old new` leads, or at a folder named as a
-    command (auto_cd); and it may fail (a missing folder, a pipeline, `&`), leaving the commands after its `&&` chain
-    where they were. Each such landing reads the rest of the line from there. One reading's choices (`mode`) reach the
-    scripts it nests and stay within this call: a check the guard runs for a program's own commands starts its own."""
+    command (auto_cd). It may fail (no folder there when the guard looks, or a command before it that may make, remove,
+    move or change one), leaving the commands after its `&&` chain where they were, and a folder a reading found missing
+    stays missing in it; in a pipeline it moves only its own subshell (the last one's moves zsh), and a list sent to the
+    background leaves the shell where it was. Each such landing reads the rest of the line from there. One reading's
+    choices (`mode`) reach the scripts it nests and stay within this call: a check the guard runs for a program's own
+    commands starts its own."""
     if mode is None:  # a line's own reading: by each change of folder's text, then, if one lands elsewhere physically, by its real path
         mode = {"real": False, "split": False, "quiet": prose, "sources": {
             "CDPATH": [e for e in os.environ.get("CDPATH", "").split(":") if e], "OLDPWD": [os.environ["OLDPWD"]] if os.environ.get("OLDPWD") else [],
@@ -1737,12 +1740,12 @@ def _commands(command: str, cwd: str, depth: int = 0, writes: list | None = None
     if depth > MAX_DEPTH:
         raise Unreadable("nested too deeply")
     _cd_sources(command, mode)
-    items, found, todo, seen = _simple(_lex(command)), [], [(0, cwd, cwd, (), (), "")], set()
+    items, found, todo, seen = _simple(_lex(command)), [], [(0, cwd, cwd, (), (), "", False, frozenset(), frozenset())], set()
     while todo:
         state = todo.pop()
-        if (*state[:5], repr(state[5])) in seen:
+        if (*state[:5], repr(state[5]), *state[6:]) in seen:
             continue
-        seen.add((*state[:5], repr(state[5])))
+        seen.add((*state[:5], repr(state[5]), *state[6:]))
         if len(seen) > PLACINGS:
             _CALL["unplaced"] = _CALL["unplaced"] or not mode["quiet"]
             break
@@ -1752,11 +1755,15 @@ def _commands(command: str, cwd: str, depth: int = 0, writes: list | None = None
 
 def _walk(items: list, state: tuple, depth: int, writes, runs, feeds, prose: bool, mode: dict, todo: list) -> list:
     """The commands of a line read from one starting point (its item, the folder, the one before it, pushd's stack, the
-    subshells open, what the command before piped): each landing of a change of folder past its first, and the folder
-    a failed one leaves the shell in after its `&&` chain, goes on `todo` as a starting point of its own."""
-    start, cwd, back, stack, outer, upstream = state
-    found, stack, outer, chain, pending = [], list(stack), list(outer), object(), []
+    subshells open, what the command before piped, whether a command before may have changed a folder, and the folders
+    this reading found there or missing): each landing of a change of folder past its first, and the folder a failed
+    one leaves the shell in after its `&&` chain, goes on `todo` as a starting point of its own."""
+    start, cwd, back, stack, outer, upstream, changed, present, gone = state
+    found, stack, outer, chain, pending, started, kept, after = [], list(stack), list(outer), object(), [], None, True, None
     for i, item in enumerate(items[start:], start):
+        if after:  # the list before was sent to the background: its changes of folder stay there
+            (cwd, back, stack), pending, after = after, [], None
+            stack = list(stack)
         if item in ("(", ")"):
             if item == "(":
                 outer.append((cwd, back, tuple(stack), tuple(pending)))
@@ -1765,10 +1772,14 @@ def _walk(items: list, state: tuple, depth: int, writes, runs, feeds, prose: boo
                 cwd, back, stack, pending = outer.pop()  # a subshell's cd ends with it
                 stack, pending = list(stack), list(pending)
             continue
-        words, stdin, scripts, piped, targets, link = item
+        words, stdin, scripts, piped, targets, link, ended = item
+        changed, kept = changed or not kept, _keeps(words)
         if link != "&&":  # a new chain: a change of folder before it may have failed, leaving the shell where it was
-            todo += [(i, *was, tuple(outer), upstream) for was in pending]
+            todo += [(i, *was[:3], tuple(outer), upstream, changed, *was[3:]) for was in pending]
             pending = []
+        if link == "" and not piped:  # a list starts here: where `&` after it leaves the shell
+            started = (cwd, back, tuple(stack))
+        after = (started or (cwd, back, tuple(stack))) if ended == "&" else None
         lead = next((os.path.basename(w) for w in words if w not in KEYWORDS and not re.match(r"[A-Za-z_]\w*=", w)), "")
         chain = chain if link == "&&" else object()
         opening = words[:next((i for i, w in enumerate(words) if w not in KEYWORDS), len(words))]
@@ -1821,25 +1832,32 @@ def _walk(items: list, state: tuple, depth: int, writes, runs, feeds, prose: boo
             if feeds is not None:
                 feeds.append("\n".join([text for text, _ in stdin] + [_piped(upstream)] * (piped and takes_in)))
             verb = words[1:] if words[0] == "builtin" else words
-            if verb[:1] and verb[0] in ("cd", "pushd", "popd") and lead in ("cd", "pushd", "popd", "builtin", "command"):
-                # where the next command runs (`env cd` and `nohup cd` run a cd of their own and move nothing): `cd -` goes
-                # back, `popd` to the folder pushd left
+            if verb[:1] and verb[0] in ("cd", "pushd", "popd") and lead in ("cd", "pushd", "popd", "builtin", "command") and ended not in ("|", "|&"):
+                # where the next command runs (`env cd` and `nohup cd` run a cd of their own, and one piped into another
+                # command moves only its own subshell): `cd -` goes back, `popd` to the folder pushd left
                 operands = [w for w in verb[1:] if w == "-" or not re.match(r"[-+]", w)]
                 to = operands[0] if operands else None
                 turn = next((w for w in verb[1:] if re.fullmatch(r"[-+]\d+", w)), "")  # +N from this folder, -N from the oldest
                 dirs = [cwd] + stack[::-1]  # the stack as the shell shows it: this folder first
                 at = (int(turn[1:]) if turn[:1] == "+" else len(dirs) - 1 - int(turn[1:])) % len(dirs) if turn else 0
                 lands = [cwd] if verb[0] == "popd" else _landings(operands, cwd, back, mode)
-                pending.append((cwd, back, tuple(stack)))  # where the shell stays if this one fails
-                for went in lands[1:]:  # each other folder it may land in: the rest of the line, read from there
-                    moved = _moved(verb[0], dirs, went, to, turn, at)
-                    todo.append((i + 1, moved[0], cwd, tuple(moved[1:][::-1]), tuple(outer), f"{UNREAD_INPUT} {verb[0]}"))
-                dirs = _moved(verb[0], dirs, lands[0], to, turn, at)
-                cwd, back, stack = dirs[0], cwd, dirs[1:][::-1]
+                aim = _moved(verb[0], dirs, lands[0], to, turn, at)[0]
+                if not changed and aim in gone:  # this reading had it fail before, and nothing since made it: it fails again
+                    lands = []
+                elif changed or not (aim in present or _enterable(aim)):  # no folder there now, or a command before may have
+                    pending.append((cwd, back, tuple(stack), present, gone | {aim}))  # made, removed or moved one: it may fail
+                    present = present | {aim}
+                for went in lands[1:] + [None] * (piped and bool(lands)):  # each other landing, and the last of a pipeline
+                    moved = _moved(verb[0], dirs, went, to, turn, at) if went else dirs  # in bash's own subshell: unmoved
+                    todo.append((i + 1, moved[0], cwd if went else back, tuple(moved[1:][::-1]), tuple(outer), f"{UNREAD_INPUT} {verb[0]}", changed,
+                                 present, gone))
+                if lands:
+                    dirs = _moved(verb[0], dirs, lands[0], to, turn, at)
+                    cwd, back, stack = dirs[0], cwd, dirs[1:][::-1]
             elif (mode["sources"]["autocd"] and len(words) == 1) or (re.match(r"[$`]", words[0]) and words[1:]):
                 # a folder named as a command (auto_cd), or a command whose name this cannot read, which may be a cd
                 went = _landings(words[:1] if len(words) == 1 else words[1:2], cwd, back, mode)[0]
-                todo.append((i + 1, went, cwd, tuple(stack), tuple(outer), f"{UNREAD_INPUT} {head}"))
+                todo.append((i + 1, went, cwd, tuple(stack), tuple(outer), f"{UNREAD_INPUT} {head}", changed or not kept, present, gone))
             if os.path.basename(words[0]) == "find":  # what it runs with -exec is a command of its own, `{}` a file under each folder it
                 roots, ran = _find(words)[0], _find(script)[1]  # searches; with -execdir it runs in the folder of what it found
                 scripts += [f"cd {shlex.quote(root.rstrip('/') + DEEP)} && " + shlex.join(w.replace("{}", "./{}") for w in run) if there
@@ -1858,6 +1876,23 @@ def _walk(items: list, state: tuple, depth: int, writes, runs, feeds, prose: boo
         for script in scripts:
             found += _commands(script, here, depth + 1, writes, runs, feeds, False, mode)
     return found
+
+
+FOLDER_KEEPERS = frozenset("cd pushd popd dirs echo printf pwd true false : test [ [[ ls cat head tail wc grep egrep fgrep rg sort uniq "
+                           "cut tr date whoami id uname basename dirname realpath readlink stat file which type export set setopt unsetopt "
+                           "shopt unset local declare typeset read sleep wait printenv touch tee diff cmp jq less more".split())
+
+
+def _keeps(words: list) -> bool:
+    """Whether a command can neither make, remove, move nor change a folder, so whether a `cd` after it finds its
+    folder is what the guard sees now (round 4 of 5.23.1, Q1). A folder another process changes meanwhile is not seen."""
+    head = next((os.path.basename(w) for w in words if w not in KEYWORDS and w not in ("builtin", "command") and not re.match(r"[A-Za-z_]\w*=", w)), "")
+    return head in FOLDER_KEEPERS or not head
+
+
+def _enterable(path: str) -> bool:
+    """A folder there now that this user may enter, or one named through what this cannot read, which may be."""
+    return path[:1] in ("$", "`") or (os.path.isdir(path) and os.access(path, os.X_OK))
 
 
 def _moved(verb: str, dirs: list, went: str, to, turn: str, at: int) -> list:
