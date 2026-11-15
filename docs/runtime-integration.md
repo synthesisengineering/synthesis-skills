@@ -554,9 +554,13 @@ stay open, and no hook running as that same user can close them:
   proven by its own text and modules alone, so a module named like a standard one planted
   beside it (one the standard library imports, as `argparse` imports `gettext`), compiled
   code made for one of its own modules, or a `usercustomize.py` or `.pth` file in the user's
-  own site folder runs unseen; a run of the release passes `-s`, which leaves out the user's
-  own site folder but not an interpreter's own site-packages where the agent can write
-  (a Homebrew Python's).
+  own site folder runs unseen; a run of the release passes `-s` and is trusted only under a
+  Python whose standard library, site-packages and the folders its `.pth` files reach the
+  user cannot write.
+- Crafted: an inline Python program that writes through a hard link the agent made earlier
+  to a release file (`open(<link>, 'w')`) is not seen as a write to that file: the shell
+  and the file tools ask whether a file they write shares its inode with a protected one,
+  and the Python reader does not.
 - A prompt another process injects into the session through the harness's own CLI
   (`claude -p --resume`, `codex queue`, `muse session-message`) is recorded as a typed
   prompt. The shell guard refuses such a command when it carries a pending code; one

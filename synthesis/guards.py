@@ -4428,7 +4428,7 @@ class Unproven(str):
     protected folder. Any reading that is refused outright is refused first."""
 
 
-_CALL: dict = {"codes": {}, "ran": {}, "proofs": {}, "files": {}, "real": {}, "until": 0.0}  # one call's script texts, their marks, its proofs, where its paths lead, and its deadline
+_CALL: dict = {"codes": {}, "ran": {}, "proofs": {}, "files": {}, "real": {}, "loads": {}, "until": 0.0}  # one call's script texts, their marks, its proofs, where its paths lead, and its deadline
 CALL_SECONDS, PROOFS_A_CALL = 3.0, 8  # under the hook's own 4 s; past either, a command waits rather than spins (finding 12)
 
 
@@ -4641,6 +4641,36 @@ SERVICE_WRITERS = frozenset(f"skills/synthesis-meeting-transcripts/optional-work
     "install-autostart.sh", "uninstall-autostart.sh"))  # they write or load a LaunchAgent or a systemd unit (review round 2, R2-8)
 
 
+SUBSCRIPTED = re.compile(r"(?:^|(?<=[\s;&|({]))([A-Za-z_]\w*)\[[^\]\n]*\]\+?=")  # NAME[...]=, zsh's PATH[1,-1]= (round 3, N1)
+
+
+def _writable_loads(word: str, flags: str) -> str:
+    """A folder the user can write that the Python a line runs by the word `word` would load from, else '': its standard
+    library, and unless -S its site-packages and each folder a .pth file there names (review round 3, N2, as ruled). The
+    interpreter is the first on PATH, where it really is; its folders follow from that path's version and prefix, else
+    it is asked once a call. A .pth file or a site customization the user can write counts as the folder it is in."""
+    key = (word, "S" in flags, os.environ.get("PATH", ""))
+    if key not in _CALL["loads"]:
+        found = next((os.path.join(d, word) for d in key[2].split(os.pathsep) if d and os.access(os.path.join(d, word), os.X_OK)), "")
+        real = os.path.realpath(found) if found else ""
+        version = re.search(r"\d+\.\d+$", os.path.basename(real))
+        stdlib = os.path.join(os.path.dirname(os.path.dirname(real)), "lib", f"python{version[0]}") if version else ""
+        site = os.path.join(stdlib, "site-packages") if stdlib else ""
+        if real and not version:  # a stand-in, as Apple's /usr/bin/python3 is
+            import subprocess
+            try:
+                stdlib, site = subprocess.run([real, "-S", "-c", "import sysconfig as s; print(s.get_path('stdlib')); print(s.get_path("
+                                               "'purelib'))"], capture_output=True, text=True, timeout=2).stdout.split("\n")[:2]
+            except (OSError, ValueError, subprocess.SubprocessError):
+                stdlib = site = real
+        pths = [os.path.join(site, n) for n in os.listdir(site) if n.endswith(".pth")] if "S" not in flags and os.path.isdir(site) else []
+        reached = [os.path.join(site, line.strip()) for p in pths for line in ((_regular(p, 1 << 16) or (b"",))[0].decode(
+            "utf-8", "replace").splitlines()) if line.strip() and not line.startswith(("#", "import ", "import\t"))]
+        held = [stdlib] + ([] if "S" in flags else [site, *reached, *pths, *(os.path.join(site, n) for n in ("sitecustomize.py", "usercustomize.py"))])
+        _CALL["loads"][key] = next((f for f in held if f and os.path.exists(f) and os.access(f, os.W_OK)), "") if real else ""
+    return _CALL["loads"][key]
+
+
 def _globbed(path: str) -> list:
     """A path after the shell's own pattern expansion (`*`, `?`, `[...]`): what it matches on the file system, as the
     copy and redirect checks read one, else the path as written (review round 2, R2-3)."""
@@ -4708,7 +4738,12 @@ def _plainly(words: list, where: str, text: str, found: list, given: list) -> st
         return "runs it through more than its interpreter's plain word (a path to it, a wrapper, an option or another program)"
     if python and not re.search(r"[sSI]", "".join(w[1:] for w in words[1:at])):
         return "runs Python without -s, -S or -I, so a usercustomize.py or a .pth file in the user's own site folder loads into it"
-    if DEFINES.search(text) or any(m[1] in os.environ or STARTUP.fullmatch(m[1]) for m in [*given, *LOOPED.finditer(text)]) or any(
+    loads = _writable_loads(head, "".join(w[1:] for w in words[1:at])) if python else ""
+    if loads:
+        return f"runs a Python that loads from {loads}, which the user can write, so what it loads there is not the release's"
+    upper = {name.upper() for name in os.environ}
+    if DEFINES.search(text) or any(n.upper() in upper or STARTUP.fullmatch(n.upper()) or STARTUP.fullmatch(n.lower()) for n in (
+            m[1] for m in [*given, *LOOPED.finditer(text), *SUBSCRIPTED.finditer(text)])) or any(
             os.path.basename(w[0]) in SETTERS or (w[0] == "set" and any(re.fullmatch(r"-\w*a\w*|allexport", x) for x in w[1:])) or (
                 w[0] in ("printf", "print") and any(x[:2] == "-v" for x in w[1:])) for w, _ in found):
         return "gives it an environment of its own (a value for a variable it may read, a function, an alias or a file read into the shell)"
@@ -5135,7 +5170,7 @@ def check_self_grant(command: str, cwd: str, config: dict | None = None, session
     else:
         readings = _resolved(command.replace("${HOME}", home).replace("$HOME", home))
     if hold:  # a call of its own: its script texts, their marks and its proofs start over, under its own deadline
-        _CALL.update(codes={}, ran={}, proofs={}, files={}, real={}, until=time.monotonic() + CALL_SECONDS)
+        _CALL.update(codes={}, ran={}, proofs={}, files={}, real={}, loads={}, until=time.monotonic() + CALL_SECONDS)
     waits = Unproven("gives HOME a value this guard does not read (read, printf -v, a loop, a parameter that assigns and their like) "
                      "and then uses it, so what the line names and runs is not known") if homeless else None
     for text in readings:
@@ -6411,7 +6446,7 @@ def check(tool: str, tool_input: dict, config: dict, cwd: str | None = None, ses
     """cwd is the session's working directory (the hook payload's `cwd`); defaults to this process's.
     session is the hook payload, which names the transcript an approval is checked against."""
     _TAILS.clear()  # each call reads the record anew: a rewrite in place can keep a file's size and its time stamp
-    _CALL.update(codes={}, ran={}, proofs={}, files={}, real={}, until=time.monotonic() + CALL_SECONDS)  # and every script it runs
+    _CALL.update(codes={}, ran={}, proofs={}, files={}, real={}, loads={}, until=time.monotonic() + CALL_SECONDS)  # and every script it runs
     if not cwd:
         try:
             cwd = str(tool_input.get("workdir") or "") or os.getcwd()

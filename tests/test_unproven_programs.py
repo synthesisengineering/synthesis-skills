@@ -318,7 +318,8 @@ SHIPPED_READERS = [
 
 
 @pytest.mark.parametrize("call", SHIPPED_READERS)
-def test_the_shipped_scripts_that_read_the_records_run_without_a_code(world, call):
+def test_the_shipped_scripts_that_read_the_records_run_without_a_code(world, call, sealed_python, monkeypatch):
+    monkeypatch.setenv("PATH", f"{sealed_python}:{os.environ['PATH']}")  # a Python the user cannot write into
     script, _, rest = call.partition(" ")
     assert _verdict(world, f"python3 -s {shlex.quote(str(SKILLS / script))} {rest}".strip()) is None, call
 
@@ -579,11 +580,12 @@ def test_the_runtime_is_a_protected_folder(world, target):
     assert reason and reason.startswith("Refused"), reason
 
 
-def test_the_rituals_scripts_run_from_the_installed_runtime_still_pass(world):
+def test_the_rituals_scripts_run_from_the_installed_runtime_still_pass(world, sealed_python, monkeypatch):
     """The guard trusts only the release it runs from, so here it runs from the installed runtime, as the hook runs it.
     A plugin-cache copy with the runtime's bytes is not the plugin's own (the review of 5.23.1, finding 1): it waits,
     and the hold names the runtime's copy."""
     from synthesis import install
+    monkeypatch.setenv("PATH", f"{sealed_python}:{os.environ['PATH']}")  # a Python the user cannot write into
     install.install(ROOT)
     script = paths.home() / "current" / "skills" / "synthesis-daily-rituals" / "scripts" / "ritual_state.py"
     assert script.is_file()

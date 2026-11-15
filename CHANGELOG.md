@@ -34,10 +34,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
     fetcher's `.agents/meeting-transcripts.yaml`) and the plain word of its interpreter runs it: no path to the
     interpreter, wrapper, function, alias, `autoload` or file read into the shell; no builtin that gives a variable a
     value (`export`, `read`, `printf -v`, `print -v`, `mapfile`, a parameter expansion that assigns and their like); no
-    assignment to a variable in the environment, to one that moves where a program loads from, or to zsh's tied arrays;
+    assignment to a variable in the environment, to one that moves where a program loads from, or to zsh's tied arrays,
+    in any case of the name and by a subscript too (zsh's `PATH[1,-1]=`);
     no HOME given a value the guard does not read (such a line, when it then uses HOME, waits); and Python run with
     `-s`, `-S` or `-I`, so nothing in the user's own site folder loads into it, with no other option but those that only
-    take away what it loads. What its own text names stays exempt. Otherwise it is judged like any other script. The
+    take away what it loads, by a `python3` (the first on PATH) whose standard library, site-packages and the folders
+    its `.pth` files reach the user cannot write; under one the user can write, such as a Homebrew Python's, the run is
+    judged like any other script. What its own text names stays exempt. Otherwise it is judged like any other script. The
     workspace-mcp kit's scripts that write or load a LaunchAgent or a systemd unit wait from the runtime too, and the
     messages reader opens its lock without following a link.
   - The runtime also carries `synthesis-meeting-transcripts` (the fetcher and the workspace-mcp server kit),
