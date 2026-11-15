@@ -1440,11 +1440,11 @@ CLICK_SAVE = ("computer", {"action": "left_click", "coordinate": [5, 5], "action
 
 @pytest.mark.parametrize("script", ["document.title", "document.querySelector('#save').click()"])
 def test_a_click_then_a_script_on_a_local_app_runs_in_chrome_and_in_the_pane(script):
-    """The batch's moved rule refused a pane batch on localhost that clicked and then read: ordinary work. A read after a
-    click on a local app's page runs; a script that acts goes in a call of its own, as after any move, since the page a
-    local app goes to may send the tab on (review round 5, #1)."""
+    """The batch's moved rule refused a pane batch on localhost that clicked and then read: ordinary work. On a local
+    app's page a click moves nothing, and a script after it runs, one that clicks Save included (review round 6, #4, as
+    ruled: a local page that redirects the tab is on the open list)."""
     listed(LOCAL, tab=9)
-    acts = script != "document.title"
+    acts = False
     reason = sent(_batch_on(9, CLICK_SAVE, ("javascript_tool", {"action": "javascript_exec", "text": script})))
     assert (reason and "may have moved" in reason) if acts else reason is None, reason
     ran(PANE + "navigate", {"url": LOCAL}, said=f"navigated to {LOCAL}\n\n\nTab Context:\n- Executed on tabId: tab-1\n- "
@@ -1777,12 +1777,13 @@ def test_exact_is_the_guards_own_word_and_never_an_agents():
     assert guards.check(playwright + "browser_evaluate", acts, CONFIG, session={**SESSION, "transcript_path": str(RECORD)}) is None
 
 
-@pytest.mark.parametrize("first", [("navigate", {"url": "http://localhost:8000/r.html"}), CLICK_SAVE], ids=["a-local-navigate", "a-local-click"])
-def test_after_a_move_on_a_local_app_a_script_that_acts_goes_in_its_own_call_and_a_read_runs(first):
+@pytest.mark.parametrize("first", [("navigate", {"url": "http://localhost:8000/new"}), CLICK_SAVE], ids=["a-local-navigate", "a-local-click"])
+def test_after_a_navigate_or_a_click_on_a_local_app_its_scripts_run(first):
+    """Review round 6, #4, as ruled: on a local app a navigate or a click moves nothing, so a read and a script that
+    clicks Save both run; a local page that redirects the tab is on the open list."""
     listed(LOCAL, tab=9)
-    reason = sent(_then_send(first, script=PLAIN_SEND))  # the page it went to may send the tab on, to a chat
-    assert reason and "may have moved" in reason and not held(reason), reason
-    assert sent(_batch_on(9, first, ("javascript_tool", {"action": "javascript_exec", "text": "document.title"}))) is None
+    for script in ("document.title", "document.querySelector('#save').click()"):
+        assert sent(_batch_on(9, first, ("javascript_tool", {"action": "javascript_exec", "text": script}))) is None, script
 
 
 @pytest.mark.parametrize("move", [("navigate", {"url": E2EE}), ("computer", {"action": "left_click", "coordinate": [5, 5],
@@ -1890,3 +1891,92 @@ def test_a_real_process_of_the_command_takes_its_ticket_and_another_process_does
     mine = subprocess.run([sys.executable, "-c", program, str(SENDER), *TO_A], capture_output=True, text=True, cwd=FOLDER, env=env, timeout=60)
     assert mine.returncode == 0 and json.loads(mine.stdout) is None, mine.stderr[-600:]
     assert [e["session"] for e in today()] == ["S-principal"]
+
+
+
+# --- review round 6 (2026-11-15) -----------------------------------------------------------------------------------
+# #4, as ruled: a page script moves a tab only when it can navigate (a location change, a click, a submit, `open`), not
+# when it sets a value or writes by fetch; on a local app a navigate or a click moves nothing. #1: an alias of
+# `location` and Object.assign(location, ...) move it. A local page that redirects the tab, and a page that redirects
+# itself after the last list, are on the open list. #2: `ps` is the system's, by its full path. #3: the reference.
+
+SAVE = "document.querySelector('#save').click()"
+
+
+@pytest.mark.parametrize("tool, tab", [(CHROME, 11), (PANE + "browser_batch", "tab-1")], ids=["chrome", "pane"])
+def test_on_a_local_app_a_click_then_a_script_that_clicks_save_runs(tool, tab):
+    page = "http://localhost:3000/items"
+    if tab == "tab-1":
+        ran(PANE + "navigate", {"url": page}, said=f"navigated to {page}\n\n\nTab Context:\n- Executed on tabId: {tab}\n- "
+            f"Available tabs:\n  • tabId {tab}: \"App\" ({page})")
+    else:
+        listed(page, tab=tab)
+    click = ("computer", {"action": "left_click", "coordinate": [40, 60], "action_summary": "Opens the Add item form"})
+    assert sent(_batch_on(tab, click, ("javascript_tool", {"action": "javascript_exec", "text": SAVE})), tool=tool) is None
+
+
+@pytest.mark.parametrize("first", ["document.querySelector('#freq').value = 'weekly'",
+                                   "fetch('/api/settings', {method: 'POST', body: 'freq=weekly'})"], ids=["a-value", "a-fetch-write"])
+def test_a_script_that_sets_a_value_or_writes_by_fetch_is_no_move(first):
+    listed("https://admin.example.com/settings", tab=9)
+    batch = _batch_on(9, ("javascript_tool", {"action": "javascript_exec", "text": first}), ("javascript_tool", {"action": "javascript_exec", "text": SAVE}))
+    assert sent(batch) is None
+
+
+@pytest.mark.parametrize("mover", ["const l = location; l.href = 'https://www.facebook.com/messages/e2ee/t/1000000001/'",
+                                   "const {location: l} = window; l.assign('https://bit.ly/3AbCdEf')",
+                                   "Object.assign(location, {href: 'https://bit.ly/3AbCdEf'})", "window.open('https://m.me/patexample')",
+                                   "location.href = 'https://m.me/patexample'"],
+                         ids=["an-alias", "a-destructured-alias", "object-assign", "an-open", "a-location-change"])
+@pytest.mark.parametrize("page", [SHOP, LOCAL], ids=["ordinary", "local"])
+def test_a_script_that_can_navigate_is_a_move_on_any_page(mover, page):
+    listed(page, tab=9)
+    reason = sent(_then_send(("javascript_tool", {"action": "javascript_exec", "text": mover})))
+    assert reason and "may have moved" in reason and not held(reason), (mover, reason)
+
+
+def test_a_form_value_still_moves_the_tab_since_a_select_can_navigate():
+    listed("https://admin.example.com/settings", tab=9)
+    reason = sent(_batch_on(9, ("form_input", {"ref": "ref_4", "value": "Weekly"}), ("javascript_tool", {"action": "javascript_exec", "text": SAVE})))
+    assert reason and "may have moved" in reason, reason
+
+
+CRAFTED_REDIRECTS = {"a-local-page-that-redirects-the-tab": ("http://localhost:8000/", [("navigate", {"url": "http://localhost:8000/r.html"})]),
+                     "a-page-that-redirects-itself": ("https://shop.example.com/redirect-in-5s", [])}
+
+
+@pytest.mark.xfail(strict=True, reason="on the open list in docs/runtime-integration.md: a page that moves the tab by itself")
+@pytest.mark.parametrize("name", sorted(CRAFTED_REDIRECTS))
+def test_open_a_page_that_moves_the_tab_by_itself(name):
+    page, first = CRAFTED_REDIRECTS[name]
+    listed(page, tab=9)
+    assert sent(_then_send(*first)), name  # the click names no word like send, as the reviewer's probe has it
+
+
+def test_the_process_table_and_command_line_are_the_systems_whatever_ps_comes_first_on_path(tmp_path):
+    import os
+    fake = tmp_path / "fakeps"
+    fake.mkdir()
+    (fake / "ps").write_text("#!/bin/sh\necho '1 0 Thu Jan  1 00:00:00 1970 forged'\n", encoding="utf-8")
+    (fake / "ps").chmod(0o755)
+    program = "from synthesis import sends; print(len(sends._table())); print(sends._own_line())"
+    done = subprocess.run([sys.executable, "-c", program], capture_output=True, text=True, cwd=ROOT, timeout=60,
+                          env={**os.environ, "PYTHONPATH": str(ROOT), "PATH": f"{fake}:{os.environ.get('PATH', '')}"})
+    rows, line = done.stdout.splitlines()[:2]
+    assert int(rows) > 2 and "forged" not in line and line.endswith("sends._own_line())"), done.stdout[-300:]
+
+
+def test_a_hook_under_shells_alone_binds_its_ticket_to_the_topmost_of_them(monkeypatch):
+    """A hook whose ancestors are shells up to the system's first process (a run left behind by its terminal) names the
+    topmost shell as its harness, where it named none and no ticket could be taken."""
+    import os
+    monkeypatch.setattr(sends, "_table", lambda: {os.getppid(): (4242, "Sat Nov 15 10:00:00 2026", "zsh"),
+                                                  4242: (1, "Sat Nov 15 09:00:00 2026", "sh")})
+    assert sends._harness() == [4242, "Sat Nov 15 09:00:00 2026"]
+
+
+def test_the_reference_says_how_a_sender_ticket_is_bound():
+    text = (ROOT / "skills" / "synthesis-message-guard" / "references" / "config.md").read_text(encoding="utf-8")
+    ticket = text[text.index("The messages sender names no session"):][:3000]
+    assert "so do identical runs of two sessions in one folder within the same minute" not in text
+    assert "command line" in ticket and "harness" in ticket, ticket[:200]
