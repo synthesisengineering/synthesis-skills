@@ -1541,6 +1541,13 @@ def test_the_newest_list_of_tabs_across_sessions_decides_a_tabs_page():
     listed(E2EE, tab=7, record=other)  # now the other session's list is the newer
     reason = guards.check(SCRIPT, {"action": "javascript_exec", "text": "document.title", "tabId": 7}, CONFIG, session=session) or ""
     assert "another session's newer list" in reason and E2EE in reason, reason
+    for tool, given in ((NAVIGATE_TOOL, {"url": "javascript:void(document.title)", "tabId": 7}),  # a javascript: address goes nowhere,
+                        (CHROME, {"actions": [{"name": "navigate", "input": {"url": "javascript:void(0)", "tabId": 7}}]})):  # alone or in a batch
+        reason = guards.check(tool, given, CONFIG, session=session) or ""
+        assert "another session's newer list" in reason, (tool, reason)
+
+
+NAVIGATE_TOOL = "mcp__claude-in-chrome__navigate"
 
 
 def _run(*argv, program=SENDER, cwd=None) -> dict:

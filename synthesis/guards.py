@@ -5733,14 +5733,16 @@ def _refused_scripts(name: str, tool: str, tool_input: dict, session: dict | Non
             return (f"This page script follows a step in this call that may have moved tab {tab or 'in front'} to another page "
                     "(a navigate, a click or a key), and no list of tabs shows where it landed, which may be a Messenger chat: "
                     "run the script in a call of its own, once a list of tabs shows the page.")
-        moved, went = moved | ({tab} if _moves(kind, given) else set()), went | ({tab} if kind.endswith("navigate") else set())
+        earlier = tab in went  # an address an earlier step of this call went to decides the page, not any session's list
+        moved = moved | ({tab} if _moves(kind, given) else set())
+        went = went | ({tab} if kind.endswith("navigate") and text is None else set())  # a javascript: one goes nowhere
         if not other:
             continue
         if not address:
             return (f"This page script runs on tab {tab or 'in front'}, whose page no list of tabs names (a tab not listed yet, "
                     "or one a navigate sent where no host is named), and which may be a Messenger site's: list the tabs or "
                     "navigate to an address first.")
-        listed = "" if tab in went or _messenger_site(address) else _listed_on_messenger(tab, tool.rpartition("__")[0], session)
+        listed = "" if earlier or _messenger_site(address) else _listed_on_messenger(tab, tool.rpartition("__")[0], session)
         if _messenger_site(address) or listed:
             where = f"tab {tab}, which another session's newer list of tabs shows on {listed}" if listed else address
             return (f"This {'navigate to a javascript: address runs a page script' if kind.endswith('navigate') else 'page script runs'}"
