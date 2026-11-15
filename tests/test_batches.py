@@ -1002,18 +1002,34 @@ def test_the_composer_check_reports_a_reply_or_edit_banner_and_images_in_the_box
 # inside it: a `role="heading"` reading `Replying to <First name>`, the quoted message's text and a `Cancel reply`
 # button; the composer holds its seven controls and the box, focused and empty. The check reads every other child of
 # the composer's parent, so a banner after the composer (where an edit banner might sit; none was read live) marks too.
+# The composer always holds a visually hidden `<h3>` reading `Compose` (the live read of synthesis-composer-4,
+# 2026-11-15: one pixel square, clipped, placed absolutely), and in plain mode it is its parent's only child.
+HIDDEN_COMPOSE = ("el('h3', {style: 'position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0)'}, "
+                  "[], 'Compose')")
+LIVE_BANNER = ("el('div', {}, [el('div', {role: 'heading'}, [], 'Replying to Pat'), "
+               "el('div', {}, [], 'Can you wire it today?'), el('div', {role: 'button', 'aria-label': 'Cancel reply'})])")
 LIVE_REPLY = ("const box = el('div', LIVE, [], '\\n');"
-              "const composer = el('div', {}, [...['Send a voice clip', 'Attach a file up to 100 MB', 'Choose a sticker', "
-              "'Choose a GIF'].map(l => el('div', {role: 'button', 'aria-label': l})), el('div', {}, [box]), "
+              "const composer = el('div', {}, [" + HIDDEN_COMPOSE + ", ...['Send a voice clip', 'Attach a file up to 100 MB', "
+              "'Choose a sticker', 'Choose a GIF'].map(l => el('div', {role: 'button', 'aria-label': l})), el('div', {}, [box]), "
               "el('div', {role: 'button', 'aria-label': 'Choose an emoji'}), el('div', {role: 'button', 'aria-label': 'Send a like'})]);"
               "const body = el('body', {}, [el('div', {role: 'main'}, [el('div', {}, CHILDREN)])]);"
               "const focus = box; const href = 'https://www.facebook.com/messages/e2ee/t/1000000001/';")
 
 
+def test_the_hidden_compose_heading_inside_the_composer_is_no_mark():
+    """The live read of synthesis-composer-4: a plain composer read one mark, its own hidden `Compose` heading."""
+    plain = _composer_on(LIVE_REPLY.replace("CHILDREN", "[composer]").replace("const focus = box", "const focus = body"))
+    assert plain == {"check": sends.COMPOSER_MARK, "url": E2EE, "box": "found", "text": "\n", "focused": False,
+                     "staged": 0, "marks": 0, "inline": 0, "boxes": 1}
+    assert _composer_on(LIVE_REPLY.replace("CHILDREN", f"[{LIVE_BANNER}, composer]"))["marks"] > 0
+    for heading in ("el('h3', {}, [], 'Replying to Pat')", "el('div', {role: 'heading'}, [], 'Editing message')"):
+        titled = LIVE_REPLY.replace("CHILDREN", "[composer]").replace(HIDDEN_COMPOSE, heading)
+        assert _composer_on(titled)["marks"] > 0, heading  # inside the composer, a heading counts by its own words
+
+
 @pytest.mark.parametrize("after", [False, True], ids=["before", "after"])
 @pytest.mark.parametrize("banner", [
-    "el('div', {}, [el('div', {role: 'heading'}, [], 'Replying to Pat'), el('div', {}, [], 'Can you wire it today?'), "
-    "el('div', {role: 'button', 'aria-label': 'Cancel reply'})])",
+    LIVE_BANNER,
     "el('div', {role: 'heading'}, [], 'Replying to Pat')",
     "el('div', {}, [el('div', {role: 'heading'}, [], 'Pat')])",
     "el('div', {}, [el('h4', {}, [], 'Pat')])",
