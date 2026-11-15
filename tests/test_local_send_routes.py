@@ -9,6 +9,18 @@ JSON-RPC, is now judged as that tool's call would be: a sending tool waits for t
 call, a reading tool passes, and a tool whose name the guard cannot read waits. Sixty days of Claude Code and Codex
 records (2026-11-15) held 251 client runs, 48 liveness reads of the server and 113 programs posting its JSON-RPC: none
 named a sending tool, and no result read as a message, draft or event made.
+
+B. An agent's own program that handed `osascript` a script it read from a file ran with no code, while `osascript <file>`
+waited; pointed at the local-messaging skill's `messages_transport.js`, that is a Messages send. A program that starts
+osascript with a script file is now judged by that file's text, as `osascript <file>` is, and one whose file it builds
+or the guard cannot read waits. The plugin's own sender, as shipped, is judged by the send gate inside it, and a run the
+principal approved by its exact command is not asked about twice.
+
+D. `git status`, which the guard reads as a reader, runs the program a repository's own `core.fsmonitor` names, and the
+agent may make the repository: the reviewer's wrote into the state folder. A git command is now judged as running each
+program the configuration it reads names (the repository's own, with what it includes, and the line's own), and one
+whose program cannot be read waits; a repository whose configuration names no program reads as before. None of the
+350 repositories the records' git commands ran in, nor the 320 under the workspaces, names one.
 """
 
 from __future__ import annotations
@@ -214,3 +226,184 @@ def test_a_known_sending_tool_whose_arguments_are_built_waits_for_the_command(pr
     assert shell(command, cwd=str(tmp_path)) == ""
     program.write_text(program.read_text(encoding="utf-8") + "# changed\n", encoding="utf-8")
     assert held(shell(command, cwd=str(tmp_path)))  # the program changed: a new code
+
+
+# --- B: a program that starts osascript with a script file -------------------------------------------------------------
+
+LM = ROOT / "skills" / "synthesis-local-messaging" / "scripts"
+TRANSPORT = LM / "messages_transport.js"
+QUIET = 'Application("Finder").name()\n'
+READS_ARGV = ("import subprocess, sys\njs = open(sys.argv[1]).read()\n"
+              "subprocess.run(['/usr/bin/osascript', '-l', 'JavaScript', '-e', js, sys.argv[2]])\n")  # the review's probe
+
+
+def program(tmp_path, text: str, name: str = "send.py") -> Path:
+    path = tmp_path / name
+    path.write_text(text, encoding="utf-8")
+    return path
+
+
+def test_the_reviews_program_pointed_at_the_messages_transport_waits(tmp_path):
+    send = program(tmp_path, READS_ARGV)
+    reason = shell(f"python3 {send} {TRANSPORT} 3", cwd=str(tmp_path))
+    assert held(reason) and "mobilesms" in reason.lower(), reason  # Messages, by its bundle id as the script names it
+    (tmp_path / "quiet.js").write_text(QUIET, encoding="utf-8")
+    assert shell(f"python3 {send} {tmp_path / 'quiet.js'} 3", cwd=str(tmp_path)) == ""  # as `osascript quiet.js` passes
+
+
+@pytest.mark.parametrize("text", [
+    "import subprocess\njs = open('send.js').read()\nsubprocess.run(['osascript', '-l', 'JavaScript', '-e', js])\n",  # a file it names
+    "import subprocess, sys\npath = sys.argv[1]\nsubprocess.run(['osascript', '-l', 'JavaScript', path])\n",            # handed on to osascript
+    "import subprocess, sys\nsubprocess.run(['osascript'], input=open(sys.argv[1]).read(), text=True)\n",               # on its input
+    "from pathlib import Path\nimport subprocess\nHERE = Path(__file__).parent\n"
+    "subprocess.run(['osascript', '-l', 'JavaScript', '-e', (HERE / 'send.js').read_text()])\n",                       # beside it
+])
+def test_a_program_is_judged_by_the_script_file_it_hands_osascript(tmp_path, text):
+    send = program(tmp_path, text)
+    (tmp_path / "send.js").write_bytes(TRANSPORT.read_bytes())
+    assert held(shell(f"python3 {send} send.js", cwd=str(tmp_path))), text
+    (tmp_path / "send.js").write_text(QUIET, encoding="utf-8")
+    assert shell(f"python3 {send} send.js", cwd=str(tmp_path)) == "", text
+
+
+def test_node_reading_the_script_file_is_judged_the_same_way(tmp_path):
+    send = program(tmp_path, "const {execFileSync} = require('child_process');\nconst fs = require('fs');\n"
+                             "execFileSync('osascript', ['-l', 'JavaScript', '-e', fs.readFileSync(process.argv[2], 'utf8')]);\n", "send.js")
+    assert held(shell(f"node {send} {TRANSPORT}", cwd=str(tmp_path)))
+
+
+@pytest.mark.parametrize("text", [
+    "import os, subprocess\nsubprocess.run(['osascript', '-l', 'JavaScript', os.environ['SCRIPT']])\n",            # a file it is not shown
+    "import subprocess\njs = open('missing.js').read()\nsubprocess.run(['osascript', '-l', 'JavaScript', '-e', js])\n",  # a file that is not there
+    "import subprocess\nopen('built.js', 'w').write('Application(\"Messages\")')\nsubprocess.run(['osascript', 'built.js'])\n",  # one it builds
+    "import json, subprocess\nscript = json.load(open('config.json'))['script']\nsubprocess.run(['osascript', '-e', script])\n",  # read from data
+])
+def test_a_script_file_it_builds_or_the_guard_cannot_read_waits(tmp_path, text):
+    send = program(tmp_path, text)
+    (tmp_path / "built.js").write_text(QUIET, encoding="utf-8")  # what is there before the program rewrites it
+    (tmp_path / "config.json").write_text('{"script": "display notification \\"x\\""}', encoding="utf-8")
+    assert held(shell(f"python3 {send}", cwd=str(tmp_path))), text
+
+
+@pytest.mark.parametrize("text", [
+    "import subprocess\nsubprocess.run(['osascript', '-e', 'display notification \"done\" with title \"Build\"'])\n",
+    "import subprocess\ntext = 'done'\nsubprocess.run(['osascript', '-e', f'display notification \"{text}\" with title \"Autopilot\"'])\n",
+    "import subprocess\nnotes = open('notes.txt').read()\nsubprocess.run(['osascript', '-e', f'display notification \"{len(notes)}\"'])\n",
+    "import subprocess\nsubprocess.run(['osascript', '-e', 'tell application \"Mail\" to count messages of inbox'])\n",
+])
+def test_ordinary_osascript_from_a_program_still_needs_no_code(tmp_path, text):
+    (tmp_path / "notes.txt").write_text("some notes\n", encoding="utf-8")
+    assert shell(f"python3 {program(tmp_path, text, 'note.py')}", cwd=str(tmp_path)) == "", text
+
+
+@pytest.mark.parametrize("script", ["synthesis-autopilot/scripts/autopilot_cli.py status",
+                                    "synthesis-daily-rituals/scripts/decay_sweep.py --help"])
+def test_the_plugins_notifying_scripts_still_need_no_code(script):
+    path, _, rest = script.partition(" ")
+    assert guards.check_outgoing(f"python3 {ROOT / 'skills' / path} {rest}", CONFIG, "/tmp", SESSION) is None
+
+
+def test_the_plugins_own_sender_as_shipped_is_judged_by_the_gate_inside_it(tmp_path, principal):
+    (tmp_path / "t.txt").write_text("On my way\n", encoding="utf-8")
+    shipped = f"python3 {LM / 'messages_send.py'} --to +15550100 --text-file {tmp_path / 't.txt'}"
+    assert guards.check_outgoing(shipped, CONFIG, str(tmp_path), SESSION) is None
+    copy = tmp_path / "copy"  # a byte-identical copy outside the release is no plugin script: its first run waits
+    copy.mkdir()
+    for name in ("messages_send.py", "messages_route.js", "messages_transport.js"):
+        (copy / name).write_bytes((LM / name).read_bytes())
+    command = f"python3 {copy / 'messages_send.py'} --to +15550100 --text-file {tmp_path / 't.txt'}"
+    reason = shell(command, cwd=str(tmp_path))
+    assert held(reason)
+    principal(reason)  # the principal approves that exact run, and it is not asked about a second time
+    assert shell(command, cwd=str(tmp_path)) == ""
+
+
+# --- D: a git command and the programs its configuration names ---------------------------------------------------------
+
+def repo(tmp_path, name: str = "proj", **config) -> Path:
+    import subprocess
+    path = tmp_path / name
+    subprocess.run(["git", "init", "-q", str(path)], check=True)
+    for key, value in config.items():
+        subprocess.run(["git", "-C", str(path), "config", key.replace("__", "."), value], check=True)
+    return path
+
+
+def writer(tmp_path) -> Path:
+    """A program that writes into the synthesis state folder, where approvals live."""
+    from synthesis import paths
+    script = tmp_path / "fsmonitor.sh"
+    script.write_text(f"#!/bin/sh\necho ran > '{paths.state()}/marker'\nexit 1\n", encoding="utf-8")
+    script.chmod(0o755)
+    return script
+
+
+@pytest.mark.parametrize("command", ["git -C {r} status --porcelain", "git -C {r} status", "git -C {r} diff",
+                                     "git -C {r} ls-files", "git -C {r} log --oneline -1", "cd {r} && git status"])
+def test_a_repositorys_fsmonitor_program_is_judged_as_run(tmp_path, command):
+    r = repo(tmp_path, core__fsmonitor=str(writer(tmp_path)))
+    assert held(shell(command.format(r=r), cwd=str(tmp_path))), command
+
+
+def test_every_way_a_repositorys_configuration_names_a_program_is_judged(tmp_path):
+    from synthesis import paths
+    write = f"echo ran > '{paths.state()}/marker'"
+    assert held(shell(f"git -C {repo(tmp_path, 'a', core__fsmonitor=write)} status", cwd=str(tmp_path)))  # shell text
+    extra = tmp_path / "extra.cfg"
+    extra.write_text(f"[core]\n\tfsmonitor = {writer(tmp_path)}\n", encoding="utf-8")
+    assert held(shell(f"git -C {repo(tmp_path, 'b', include__path=str(extra))} status", cwd=str(tmp_path)))  # through an include
+    hooks = tmp_path / "hooks"
+    hooks.mkdir()
+    (hooks / "post-index-change").write_text(f"#!/bin/sh\n{write}\n", encoding="utf-8")
+    (hooks / "post-index-change").chmod(0o755)
+    assert held(shell(f"git -C {repo(tmp_path, 'c', core__hooksPath=str(hooks))} status", cwd=str(tmp_path)))  # its hooks
+    aliased = repo(tmp_path, "d", alias__st=f"!{write}")
+    assert held(shell(f"git -C {aliased} st", cwd=str(tmp_path)))  # an alias that runs a shell, by its own name
+    assert shell(f"git -C {aliased} status", cwd=str(tmp_path)) == ""  # status runs no alias
+    assert held(shell(f"git -C {repo(tmp_path, 'e', core__sshCommand=write)} fetch origin", cwd=str(tmp_path)))
+    assert held(shell(f"git -C {repo(tmp_path, 'f', credential__helper='!' + write)} push", cwd=str(tmp_path)))
+    assert held(shell(f"git -C {repo(tmp_path, 'g', diff__external=write)} diff", cwd=str(tmp_path)))
+    assert held(shell(f"git -C {repo(tmp_path, 'h', core__pager=write)} log", cwd=str(tmp_path)))
+
+
+def test_a_linked_worktree_reads_its_repositorys_configuration(tmp_path):
+    import subprocess
+    r = repo(tmp_path, core__fsmonitor=str(writer(tmp_path)))
+    subprocess.run(["git", "-C", str(r), "-c", "core.fsmonitor=false", "commit", "-q", "--allow-empty", "-m", "one"], check=True)
+    subprocess.run(["git", "-C", str(r), "-c", "core.fsmonitor=false", "worktree", "add", "-q", str(tmp_path / "wt")], check=True)
+    assert held(shell(f"git -C {tmp_path / 'wt'} status", cwd=str(tmp_path)))
+
+
+def test_the_lines_own_configuration_and_environment_are_judged_too(tmp_path):
+    w, r = writer(tmp_path), repo(tmp_path)
+    assert held(shell(f"git -c core.fsmonitor={w} -C {r} status", cwd=str(tmp_path)))
+    assert held(shell(f"GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.fsmonitor GIT_CONFIG_VALUE_0={w} git -C {r} status", cwd=str(tmp_path)))
+    assert held(shell(f"GIT_EXTERNAL_DIFF={w} git -C {r} diff", cwd=str(tmp_path)))
+    assert held(shell(f"git --config-env=core.fsmonitor=NOT_SET_HERE -C {r} status", cwd=str(tmp_path)))  # a value it cannot read
+
+
+def test_a_program_that_sends_is_judged_as_a_send(tmp_path):
+    send = "osascript -e 'tell application \"Messages\" to send \"On my way\" to buddy \"+15550100\"'"
+    reason = shell(f"git -C {repo(tmp_path, core__fsmonitor=send)} status", cwd=str(tmp_path))
+    assert held(reason) and "messages" in reason.lower()
+
+
+@pytest.mark.parametrize("config", [{}, {"core__fsmonitor": "true"}, {"core__fsmonitor": "false"}, {"core__fsmonitor": "/usr/bin/true"},
+                                    {"user__email": "a@example.com", "pull__rebase": "true", "core__autocrlf": "input"}])
+def test_an_ordinary_repositorys_reads_still_pass(tmp_path, config):
+    r = repo(tmp_path, **config)
+    for command in (f"git -C {r} status --porcelain", f"git -C {r} log --oneline -3", f"git -C {r} diff --stat",
+                    f"git -C {r} rev-parse --show-toplevel", f"git -C {r} remote -v", f"cd {r} && git status && git branch",
+                    f"GIT_EDITOR=true git -C {r} status", f"GIT_CONFIG_GLOBAL=/dev/null git -C {r} status",
+                    f"git -c core.hooksPath=/dev/null -C {r} status", f"git -c core.fsmonitor=false -C {r} status"):
+        assert shell(command, cwd=str(tmp_path)) == "", (config, command)
+
+
+def test_the_code_releases_that_git_command_once(tmp_path, principal):
+    r = repo(tmp_path, core__fsmonitor=str(writer(tmp_path)))
+    command = f"git -C {r} status --porcelain"
+    reason = shell(command, cwd=str(tmp_path))
+    assert held(reason) and "core.fsmonitor" in reason
+    principal(reason)
+    assert shell(command, cwd=str(tmp_path)) == ""
+    assert held(shell(command, cwd=str(tmp_path)))
