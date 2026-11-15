@@ -1439,15 +1439,20 @@ CLICK_SAVE = ("computer", {"action": "left_click", "coordinate": [5, 5], "action
 
 @pytest.mark.parametrize("script", ["document.title", "document.querySelector('#save').click()"])
 def test_a_click_then_a_script_on_a_local_app_runs_in_chrome_and_in_the_pane(script):
-    """The batch's moved rule refused a pane batch on localhost that clicked and then read: ordinary work. A local app's
-    page is placed, and a click there moves it nowhere the rule protects."""
+    """The batch's moved rule refused a pane batch on localhost that clicked and then read: ordinary work. A read after a
+    click on a local app's page runs; a script that acts goes in a call of its own, as after any move, since the page a
+    local app goes to may send the tab on (review round 5, #1)."""
     listed(LOCAL, tab=9)
-    assert sent(_batch_on(9, CLICK_SAVE, ("javascript_tool", {"action": "javascript_exec", "text": script}))) is None
+    acts = script != "document.title"
+    reason = sent(_batch_on(9, CLICK_SAVE, ("javascript_tool", {"action": "javascript_exec", "text": script})))
+    assert (reason and "may have moved" in reason) if acts else reason is None, reason
     ran(PANE + "navigate", {"url": LOCAL}, said=f"navigated to {LOCAL}\n\n\nTab Context:\n- Executed on tabId: tab-1\n- "
         f"Available tabs:\n  • tabId tab-1: \"App\" ({LOCAL})")
     pane = {"actions": [{"name": "computer", "input": {k: v for k, v in CLICK_SAVE[1].items()}},
                         {"name": "javascript_tool", "input": {"action": "javascript_exec", "text": script}}]}
-    assert sent(pane, tool=PANE + "browser_batch") is None
+    reason = sent(pane, tool=PANE + "browser_batch")
+    assert (reason and "may have moved" in reason) if acts else reason is None, reason
+    assert sent({"actions": [pane["actions"][-1]]}, tool=PANE + "browser_batch") is None  # in a call of its own it runs
 
 
 def test_a_click_then_a_read_on_an_ordinary_site_runs_and_one_that_acts_goes_in_its_own_call():
@@ -1653,6 +1658,7 @@ def test_each_sender_run_in_one_line_takes_a_ticket_of_its_own():
     line = f"python3 {SENDER} {' '.join(TO_A)} && python3 {SENDER} {' '.join(second)}"
     assert guards.check("Bash", {"command": line}, CONFIG, cwd=str(FOLDER), session=me) is None
     assert guards.check_send("imessage_send", {"to": "+15550100", "text": REPLY}, CONFIG, run=_run(*TO_A)) is None
+    PROCESS["line"] = f"/usr/bin/python3 {SENDER} {' '.join(second)}"  # the second run's own process (review round 5, #4)
     assert guards.check_send("imessage_send", {"to": "+15550101", "text": REPLY}, CONFIG, run=_run(*second)) is None
 
 
@@ -1721,3 +1727,147 @@ def test_a_batch_is_open_until_twelve_hours_after_the_principal_typed_its_code()
     data = sends.open_batch(sends.read_batch(str(batch_file([CALL]))), {"code": "abc123", "asked": typed - 30, "at": typed}, "S-principal")
     assert abs(float(data["until"]) - (typed + sends.MAX_HOURS * 3600)) < 1 and float(data["granted"]) > typed
     assert [b["digest"] for b in sends.batches()] == [data["digest"]]  # still whole, and open
+
+
+# --- review round 5 (2026-11-15) -----------------------------------------------------------------------------------
+# #1: the moved rule did not count a page script that moves the tab, a form value, an upload, a navigate the agent
+# marked `exact` or a move on a local app's page; #3: on a Messenger page it gave its own words, not that page's rule's;
+# #4: a sender's ticket was taken by any identical run, one the guard never saw included; #5: a sub-agent's send step was
+# read by its session's record alone; #6: the CHANGELOG's word on other messaging sites' pages.
+
+SHOP = "https://shop.example.com/contact"
+UNSAID = "document.querySelector('[aria-label*=\"enter to\"]').click()"  # a click on Send whose text names no send word
+PLAIN_SEND = "document.querySelector('[aria-label=\"Press enter to send\"]').click()"
+MOVERS = {"location-href-to-the-chat": "location.href = 'https://www.facebook.com/messages/e2ee/t/1000000001/'",
+          "location-href": "location.href = 'https://bit.ly/3AbCdEf'", "location-assign": "location.assign('https://bit.ly/3AbCdEf')",
+          "history-back": "history.back()", "history-go": "history.go(-1)",
+          "a-link-followed-by-a-script": "document.querySelector('a[href*=\"m.me\"]').click()"}
+
+
+def _then_send(*first, script=UNSAID) -> dict:
+    return _batch_on(9, *first, ("computer", {"action": "wait", "duration": 3}), ("computer", {"action": "type", "text": "Words nobody approved."}),
+                     ("javascript_tool", {"action": "javascript_exec", "text": script}))
+
+
+@pytest.mark.parametrize("name", sorted(MOVERS))
+def test_a_page_script_that_moves_the_tab_is_a_move(name):
+    listed(SHOP, tab=9)
+    reason = sent(_then_send(("javascript_tool", {"action": "javascript_exec", "text": MOVERS[name]})))
+    assert reason and "may have moved" in reason and not held(reason), (name, reason)
+
+
+@pytest.mark.parametrize("first", [("form_input", {"ref": "ref_12", "value": "Message us on Messenger"}),
+                                   ("upload_image", {"imageId": "img_1", "ref": "ref_3"}),
+                                   ("file_upload", {"paths": ["/tmp/a.txt"], "ref": "ref_4"})], ids=["form-input", "upload-image", "file-upload"])
+def test_a_form_value_or_an_upload_is_a_move(first):
+    listed(SHOP, tab=9)
+    reason = sent(_then_send(first))
+    assert reason and "may have moved" in reason and not held(reason), (first[0], reason)
+
+
+def test_exact_is_the_guards_own_word_and_never_an_agents():
+    listed(SHOP, tab=9)
+    reason = sent(_then_send(("navigate", {"url": "https://bit.ly/3AbCdEf", "exact": True})))
+    assert reason and "may have moved" in reason, "a navigate the agent marked exact moved the tab"
+    playwright = "mcp__plugin_playwright_playwright__"  # the guard's own first step for a driven browser still places its page
+    ran(playwright + "browser_navigate", {"url": "https://shop.example.com/"},
+        said="### Ran Playwright code\n### Page\n- Page URL: https://shop.example.com/\n- Page Title: Shop\n")
+    acts = {"function": "() => document.querySelector('#save').click()"}
+    assert guards.check(playwright + "browser_evaluate", acts, CONFIG, session={**SESSION, "transcript_path": str(RECORD)}) is None
+
+
+@pytest.mark.parametrize("first", [("navigate", {"url": "http://localhost:8000/r.html"}), CLICK_SAVE], ids=["a-local-navigate", "a-local-click"])
+def test_after_a_move_on_a_local_app_a_script_that_acts_goes_in_its_own_call_and_a_read_runs(first):
+    listed(LOCAL, tab=9)
+    reason = sent(_then_send(first, script=PLAIN_SEND))  # the page it went to may send the tab on, to a chat
+    assert reason and "may have moved" in reason and not held(reason), reason
+    assert sent(_batch_on(9, first, ("javascript_tool", {"action": "javascript_exec", "text": "document.title"}))) is None
+
+
+@pytest.mark.parametrize("move", [("navigate", {"url": E2EE}), ("computer", {"action": "left_click", "coordinate": [5, 5],
+                                                                            "action_summary": "Opens the thread"})], ids=["onto", "on"])
+def test_a_script_after_a_move_onto_or_on_a_messenger_page_is_given_that_pages_rule(move):
+    listed("https://docs.example.com/guide" if move[0] == "navigate" else E2EE, tab=9)
+    reason = sent(_batch_on(9, move, ("javascript_tool", {"action": "javascript_exec", "text": "document.title"})))
+    assert reason and "call of its own" not in reason and "get_page_text" in reason, reason
+
+
+# The process a sender's guard call runs in, as `ps` shows it (#4): the sender's direct run of TO_A unless a test says
+# otherwise; each test's own process is the harness's, as the hook's is.
+PROCESS = {"line": ""}
+
+
+@pytest.fixture(autouse=True)
+def _sender_process(monkeypatch):
+    PROCESS["line"] = f"/usr/bin/python3 {SENDER} {' '.join(TO_A)}"
+    monkeypatch.setattr(sends, "_own_line", lambda: PROCESS["line"], raising=False)
+
+
+def test_a_ticket_is_taken_only_by_the_process_whose_command_filed_it():
+    granted([TEXT])
+    me = {**SESSION, "transcript_path": str(RECORD)}
+    assert guards.check("Bash", {"command": f"false && python3 {SENDER} {' '.join(TO_A)}"}, CONFIG, cwd=str(FOLDER), session=me) is None
+    runpy = (f"python3 -c \"import runpy, sys; sys.argv = ['m'] + '{' '.join(TO_A)}'.split(); runpy.run_path('{SENDER}', "
+             "run_name='__main__')\"")
+    assert guards.check("Bash", {"command": runpy}, CONFIG, cwd=str(FOLDER), session=OTHER) is None  # no sender seen: no ticket
+    PROCESS["line"] = runpy.replace('\\"', '"')  # the run the guard never saw: its own command line is runpy's
+    assert held(guards.check_send("imessage_send", {"to": "+15550100", "text": REPLY}, CONFIG, run=_run(*TO_A)))
+    assert not today()
+    PROCESS["line"] = f"/usr/bin/python3 {SENDER} {' '.join(TO_A)}"  # the process of the command that filed it takes it
+    assert guards.check_send("imessage_send", {"to": "+15550100", "text": REPLY}, CONFIG, run=_run(*TO_A)) is None
+
+
+def test_a_ticket_filed_under_another_harness_is_taken_by_no_process_of_this_one(monkeypatch):
+    granted([TEXT])
+    me = {**SESSION, "transcript_path": str(RECORD)}
+    monkeypatch.setattr(sends, "_harness", lambda: [999999, "Thu Jan  1 00:00:00 1970"], raising=False)  # another session's harness
+    assert guards.check("Bash", {"command": f"python3 {SENDER} {' '.join(TO_A)}"}, CONFIG, cwd=str(FOLDER), session=me) is None
+    assert held(guards.check_send("imessage_send", {"to": "+15550100", "text": REPLY}, CONFIG, run=_run(*TO_A)))
+    assert not today()
+
+
+def test_a_process_reads_its_own_command_line_and_its_harness_from_the_system():
+    """What a sender's process reads of itself is the system's: its command line as `ps` shows it, and an ancestor its
+    hook's harness is; a run that sets sys.argv changes neither."""
+    program = ("import json, sys; sys.argv = ['m', 'X' * 3]; from synthesis import sends; "
+               "print(json.dumps({'line': sends._own_line(), 'ancestors': sorted(map(list, sends._ancestors()))}))")
+    done = subprocess.run([sys.executable, "-c", program, "--marker"], capture_output=True, text=True, cwd=ROOT,
+                          env={**__import__("os").environ, "PYTHONPATH": str(ROOT)}, timeout=60)
+    assert done.returncode == 0, done.stderr[-800:]
+    seen = json.loads(done.stdout)
+    assert seen["line"].endswith("--marker") and not seen["line"].endswith("XXX"), seen["line"]
+    harness = sends._harness()
+    assert harness and list(harness) in seen["ancestors"], (harness, len(seen["ancestors"]))
+
+
+def test_a_sub_agents_send_step_on_a_tab_it_made_reads_its_own_record():
+    granted([CHAT])
+    own = RECORD.parent / RECORD.stem / "subagents" / "agent-a1.jsonl"
+    own.parent.mkdir(parents=True, exist_ok=True)
+    made(7, own)
+    listed(E2EE, 7, own)
+    sub = {**SESSION, "transcript_path": str(RECORD), "agent_id": "a1"}
+    assert guards.check(CHROME, step(), CONFIG, session=sub) is None
+    assert [e["session"] for e in today()] == ["S-principal"]
+
+
+def test_the_changelog_says_what_mains_rule_does_on_other_messaging_sites():
+    entry = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8").split("## [5.23.1]")[0]
+    assert "on every other messaging site's page none runs but the shipped read-only ones" not in entry
+    listed("https://www.linkedin.com/messaging/thread/2-abc/", tab=5)
+    read = sent({"actions": [{"name": "javascript_tool", "input": {"action": "javascript_exec", "text": "document.title", "tabId": 5}}]})
+    opened_ = sent({"actions": [{"name": "javascript_tool", "input": {"action": "javascript_exec", "tabId": 5,
+                                                                         "text": "window?.open('https://www.linkedin.com/messaging/')"}}]})
+    assert read is None and held(opened_), (read, opened_)
+
+
+CRAFTED_MOVERS = {"location-by-a-bracketed-member": "location['href'] = 'https://m.me/patexample'",
+                  "a-refresh-written-into-the-page": ("document.body.innerHTML = '<meta http-equiv=\"refresh\" "
+                                                      "content=\"0;url=https://m.me/patexample\">'")}
+
+
+@pytest.mark.xfail(strict=True, reason="on the open list in docs/runtime-integration.md: a move made to beat the reader")
+@pytest.mark.parametrize("name", sorted(CRAFTED_MOVERS))
+def test_open_a_move_the_page_script_reader_does_not_see(name):
+    listed(SHOP, tab=9)
+    assert sent(_then_send(("javascript_tool", {"action": "javascript_exec", "text": CRAFTED_MOVERS[name]}))), name
