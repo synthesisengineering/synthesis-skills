@@ -54,7 +54,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   removes only its own clone, and another run's only when that run is gone and the clone is over six hours old.
   `--install-only` names a tag (`--tag v<version>`) whose commit must be on `main` in that clone. `install.install`
   refuses a folder that declares a version older than the running runtime, read when it starts and again, under a
-  lock on the synthesis home, just before `current` moves (review round 3); a parameter for the code-approved route
+  lock on the synthesis home, just before `current` moves (review round 3; the lock's file is one this user may only
+  write, so no program that only reads can hold it); a parameter for the code-approved route
   alone lets a deliberate rollback install an older release, and a program that names the locked half of the install
   waits for the principal's code, as one naming `install` does. With no interpreter to pin, install stops and names what
   to install, and Apple's `/usr/bin/python3` shim is never pinned. What a folder declares is its own claim, so the

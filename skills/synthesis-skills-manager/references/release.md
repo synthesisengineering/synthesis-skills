@@ -88,8 +88,9 @@ give. The stable runtime is installed from that clone, its staged copy checked a
 listing before `current` moves, and the release refuses a version older than the running runtime
 or GitHub's highest version tag (read from its tags by git, never by a `gh` found on PATH).
 `install.install` refuses a folder that declares an older version than the running runtime, read
-when it starts and again, under a lock on the synthesis home, just before `current` moves; only
-the code-approved route may pass a rollback. What a folder declares is its own claim, so the
+when it starts and again, under a lock on the synthesis home, just before `current` moves (its
+file is one this user may only write, so no program that only reads can hold it); only the
+code-approved route may pass a rollback. What a folder declares is its own claim, so the
 CLI's `synthesis install <folder>` and `synthesis uninstall`, which pass with no code, are open
 until they wait for the principal's code (a separate change). Review rounds 1 to 3 of 5.23.1
 found and closed the rest (A1 to A3, N2, N3, N7, N8, N10, M2, M4).

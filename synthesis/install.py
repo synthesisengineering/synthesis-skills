@@ -291,13 +291,16 @@ def _differences(folder: Path, expected: dict) -> list:
 def _install_lock(home: Path):
     """One install at a time in a synthesis home, from its floor check to the switch of `current`, so an install of an
     older release that overlaps a release cannot put the older runtime back (review round 3 of 5.23.1, M2). Another
-    install is waited for up to two minutes."""
+    install is waited for up to two minutes. flock takes a file opened only to read, and the guard lets a program that
+    only reads run with no code, so the lock file is one this user may only write: no such program can open it."""
     (home / "releases").mkdir(parents=True, exist_ok=True)
-    with open(home / "releases" / ".install.lock", "a") as handle:
+    fd = os.open(home / "releases" / ".install.lock", os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o200)
+    try:
+        os.fchmod(fd, 0o200)  # one an earlier build left readable
         deadline = time.monotonic() + 120
         while True:
             try:
-                fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
                 break
             except BlockingIOError:
                 if time.monotonic() > deadline:
@@ -306,7 +309,9 @@ def _install_lock(home: Path):
         try:
             yield
         finally:
-            fcntl.flock(handle, fcntl.LOCK_UN)
+            fcntl.flock(fd, fcntl.LOCK_UN)
+    finally:
+        os.close(fd)
 
 
 def _older(plugin_root: Path, home: Path) -> str:
