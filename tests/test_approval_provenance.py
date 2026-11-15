@@ -250,6 +250,16 @@ def test_a_desktop_agent_mode_record_counts_where_its_transcripts_lie_and_nowher
     assert approvals.transcript(None) == ""
 
 
+def test_a_codex_rollout_kept_among_its_archived_sessions_counts(monkeypatch):
+    """Review round 1 of 22.19, finding 2: Codex keeps rollouts under `archived_sessions` beside `sessions`, where
+    sessions.natives reads them too; a check in such a session must find its record."""
+    monkeypatch.setenv("SYNTHESIS_SESSION", SID)
+    rollout = _record(Path(os.environ["CODEX_HOME"]) / "archived_sessions" / f"rollout-2026-11-15T10-00-00-{SID}.jsonl",
+                      codex_user("hello", time.time()))
+    approvals.remember(SID, str(rollout))
+    assert approvals.transcript(None) == str(rollout)
+
+
 def test_a_record_with_no_folders_beside_it_counts_once_the_prompt_hook_records_it_again(monkeypatch):
     """A record written before 5.23.1, or by hand, names no folders: a check finds no transcript, and holds, until the
     session's next prompt, which the principal types to approve anyway."""
