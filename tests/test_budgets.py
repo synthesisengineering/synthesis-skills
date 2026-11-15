@@ -1296,6 +1296,10 @@ ROOT = Path(__file__).resolve().parents[1]
 # to _caller). sends.py 2: command_send reads an osascript by the guard's reading of its script, across its lines, in
 # place of the one-line pattern. A reuse of the reader of a Python program's writes to spell the commands it starts was
 # tried and dropped: over two days of records it took 168 ms a program on average and 4 s at worst.
+# 5.23.1: core and plugin each 10 more, all in guards.py: _real 7 (where a path leads, asked once a call: the recorded
+# heredoc shape asked 11,746 times over 102 paths and took 1.11 s on CI's macOS runner under Apple's Python 3.9, 0.31 s
+# on this Mac; with it, 123 times and 0.105 s) and its 3 blank lines. The per-call reset and the 29 places that ask
+# change in place.
 # 5.23.1, round 4 of the batch approval's review, findings 1 (its plain form) and 3, both on 5.23.0 (2026-11-15: the
 # navigate tool alone was never judged and a `javascript:` address was read as written; on a messaging site's page a
 # script clicked Send by a name built as it ran): core 102 more and plugin 102. guards.py 101: _refused_scripts 20 (on a
@@ -1308,10 +1312,11 @@ ROOT = Path(__file__).resolve().parents[1]
 # navigate), _puts 1, BROWSER_STEPS 1 (the navigate tool), desktop_tool 1, PAGE_READERS 1, the comments 8 (the rule and
 # the 60 days it was decided by; the pane's ids) and 10 blank lines. install.py 1: synthesis-message-exports joins the
 # skills whose scripts the installer copies into the runtime, so chat_page.py's extractor is a shipped reader there.
+# The two 5.23.1 notes above sum: core 10 and 102 more, plugin 10 and 102 more, on 5.23.0's ceilings.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 16599
-PLUGIN_BUDGET = 42671
+CORE_BUDGET = 16609
+PLUGIN_BUDGET = 42681
 
 
 def _lines(files):
