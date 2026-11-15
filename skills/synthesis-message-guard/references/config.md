@@ -663,8 +663,10 @@ ids, so a call is read by its own browser's newest list: since 5.23.1 the built-
 `tab-N`), its own `tabs_context` (each tab's origin, the active one in front) and its navigate's result (`navigated to`
 or `opened` and the address) are read too. A `navigate` that names no
 host (`back`, `forward`, a path, a script) leaves the page unknown, unless the tab was on a messaging site: the page it
-opens may be that site's still, so it is judged as that site's. A page whose address the guard cannot read (a browser
-that prints no tab list) is judged by the summary rule alone. On 2026-10-22 a session found that Return in a Google
+opens may be that site's still, so it is judged as that site's. In Claude in Chrome and the built-in pane a page no list
+of tabs shows (a tab not listed yet; a sub-agent's, whose own record the guard reads when the hook names one) is judged
+as a page that may be a messaging site's (review round 1 of 5.23.1, #3); the pane's first page, which its answer files
+under no tab, is its tab's. On 2026-10-22 a session found that Return in a Google
 Chat compose box went out with no code, because a browser page had counted as no app.
 
 **A click whose summary says it publishes** (5.21.0 on messaging sites; 5.21.1 in every app and on every page). On
@@ -710,20 +712,30 @@ transcripts, and 24 of 459 elsewhere, in 5.
 **On a messaging site's page a script the guard cannot read is refused** (5.23.1). Review round 4 of the batch
 approval found a script that clicks Send by a name it builds as it runs (`el['cli' + 'ck']()`) passing on Slack,
 WhatsApp, LinkedIn, Gmail and X: the rule above read a script's text for a click, a submit or a key, and no reading of
-its text shows such a call. On a messaging site's page (every site and page the list above names), and on a page a
-driven browser's record does not show, a script is now read with its strings, comments and patterns out (the guard's
-own JavaScript reader): one that calls what it names only as it runs (a member by a name it builds, Reflect, `call`,
-`apply`, `bind`, `eval`, `Function`, `with`, `import()`, a timer given a string, a name written in escapes), puts code in
-a string the page runs (a script element, an inline handler) or never closes a string, comment or pattern is refused;
-one that acts waits for the code, by the rule above read over its code as well (`el['click']()` is `el.click()`) and by
-the plain spellings it lacked (opening a page by any spelling of `open`, calling a handler, a call whose name says it
-sends, posts, submits, publishes, replies, shares or tweets, a fetch whose method is no literal); a read passes, and so
-do the extractors the plugin ships. Measured over the 60 days of Claude Code and Codex records to 2026-11-15: of 181
-scripts on those pages that are none of the plugin's own, the seats' ordinary work in two workspaces, it refuses none,
-holds 5 (4 that click, 1 that moves the tab: the 5 the rule above held) and passes 176. No script in those records
-called a member named as it ran, so none sent that way. A first version refused every script there but the plugin's
-own; it would have refused all 181, against the principal's bar that a release refuses no ordinary work. What stays
-open is in `docs/runtime-integration.md`.
+its text shows such a call. On a messaging site's page (every site and page the list above names), and on a page no
+record shows (below), a script is now read as code by the guard's own JavaScript reader: its strings, comments and
+patterns out, an optional call (`x?.()`, `x?.[k]`) read as a plain one, and `X.call(`, `.apply(` or `.bind(` read as a
+call of X where X is a dotted name (`Array.prototype.slice.call(...)` is a call of `slice`).
+- **Refused:** one that calls what it names only as it runs (a member by a name it builds, Reflect, `call`, `apply` or
+  `bind` of a plain name, `eval`, `Function`, `with`, `import()`, a timer given a string, a name written in escapes); one
+  that puts code where the page runs it (a `script` element, an `on...` attribute, HTML with a script or an inline
+  handler in `innerHTML`, `outerHTML`, `srcdoc`, `insertAdjacentHTML`, `document.write` or a `Blob`, a `javascript:`
+  address given to the location, an `href` or a `src`); one whose string, comment or pattern never closes.
+- **Waits for the code:** one that acts: the rule above over its text and its code (`el['click']()` is `el.click()`),
+  without the browser server's own calls, which no page script makes (`new Array(5).fill(0)` is a read); any spelling of
+  `open`; a handler called or read (`.onclick`, `onClick`); a call whose name says it sends, posts, submits, publishes,
+  replies, shares or tweets, by a member or a bare name; a move by another part of the address (`location.pathname`,
+  `search`, `hash`, `navigation.navigate`, `history.go`); and a fetch, `Request` or XHR unless its method, in any form
+  (a quoted key, the shorthand, an assignment), is a literal GET or HEAD and it carries no body.
+- **Passes:** a read, and the extractors the plugin ships.
+
+Measured over the 60 days of Claude Code and Codex records to 2026-11-15: of 181 scripts on those pages that are none of
+the plugin's own, the seats' ordinary work in two workspaces, it refuses none, holds 5 (4 that click, 1 that moves the
+tab: the 5 the rule above held) and passes 176; the 2 scripts on a page no record showed pass too. No script in those
+records called a member named as it ran, so none sent that way. A first version refused every script there but the
+plugin's own; it would have refused all 181, against the principal's bar that a release refuses no ordinary work.
+Spellings made to beat the reader are on the open list in `docs/runtime-integration.md`, each with a test expected to
+fail until it is closed.
 
 **A navigate is read as a URL parser reads it** (5.23.1). The `navigate` tool called alone was never judged, and a
 `navigate` step was read as written, while a browser strips control characters and spaces at an address's ends and

@@ -167,8 +167,9 @@ def test_a_browser_action_that_says_it_sends_waits_for_the_code(tool, call):
     _steps(("computer", {"action": "key", "text": "Return", "action_summary": "Submits the search"})),
     _steps(("form_input", {"ref": "ref_3", "value": "I'm sorry for the delay.", "action_summary": "Fills the search box"})),
 ])
-def test_browsing_and_searching_need_no_code(call):
-    assert check(CHROME, call) is None
+def test_browsing_and_searching_need_no_code(tmp_path, call):
+    """On a page the record shows to be no messaging site's (round 1 of 5.23.1, #3: a page no list shows is unknown)."""
+    assert guards.check(CHROME, call, CONFIG, session=_on(tmp_path, 1, tab1="https://example.com/")) is None
 
 
 def test_words_a_browser_send_carries_pass_the_register_scan_first():
@@ -580,9 +581,9 @@ def test_a_navigate_that_names_no_host_keeps_a_messaging_sites_page(tmp_path):
     it opens may be that site's still, so it is judged as that site's; from any other page it is unknown, as before."""
     for where, held in (("https://www.facebook.com/groups/1/", True), ("https://docs.google.com/document/d/x", False)):
         session = _on(tmp_path, 7, tab7=where)
-        for url in ("back", "forward", "/messages/t/1"):
+        for url in ("back", "forward", "/messages/t/1"):  # from any other page that page is unknown, and may be one (round 1 of 5.23.1, #3)
             reason = guards.check(CHROME, _steps(("navigate", {"url": url, "tabId": 7}), RETURN), CONFIG, session=session)
-            assert bool(reason and "approve" in reason) is held, (where, url)
+            assert bool(reason and "approve" in reason), (where, url)
         # a javascript: address runs a page script on the page it is on (round 4 of 5.24.0's review, #1): refused on a
         # messaging site's page, judged as the script it is elsewhere
         reason = guards.check(CHROME, _steps(("navigate", {"url": "javascript:void(0)", "tabId": 7}), RETURN), CONFIG, session=session)
@@ -595,7 +596,8 @@ def test_a_tab_list_printed_by_another_tool_is_not_the_browsers(tmp_path):
     with open(session["transcript_path"], "a", encoding="utf-8") as transcript:
         transcript.write(_result("toolu_2", "Bash", 7, {"tab7": "https://docs.google.com/document/d/x"}))
     assert "approve" in guards.check(CHROME, _steps(RETURN), CONFIG, session=session)
-    assert guards.check(CHROME, _steps(RETURN), CONFIG, session={**session, "transcript_path": str(tmp_path / "gone")}) is None
+    gone = guards.check(CHROME, _steps(RETURN), CONFIG, session={**session, "transcript_path": str(tmp_path / "gone")})
+    assert "approve" in (gone or "")  # a page no list shows may be a messaging site's (round 1 of 5.23.1, #3)
 
 
 def test_words_typed_on_a_messaging_site_pass_the_register_scan(tmp_path):

@@ -1449,10 +1449,23 @@ ROOT = Path(__file__).resolve().parents[1]
 # refused whatever it runs; the batch's Messenger rule (only the plugin's own scripts) stays as built.
 # And 3 for round 4's #9 in the batch's own words: a page a driven browser's record does not show takes no script but the
 # plugin's own, since main's rule there no longer refuses every script.
+# Review round 1 of that rule (2026-11-15): core 60 more and plugin 60, all in guards.py. _writes_by_fetch 15 (a fetch,
+# Request or XHR writes unless its method is a literal GET or HEAD, in any spelling), _unread_script 8 (the form named in
+# fixed words; code only where it reaches a sink), _script_code 7 (an optional call read as a call, X.call( as a call of
+# a dotted X), _record 6 (a sub-agent's own record), UNREAD_FORMS 4, _script_acts 4 (PAGE_ACTS for a page's script; a
+# GET by XHR reads), CODE_SINKS 3, SCRIPT_ACTS_MORE 3 (optional, bare and destructured calls; other parts of the
+# address), _steps 3 (a page no list shows is unknown; the pane's first page), PAGE_ACTS 2, _driver_events 2 (a call a
+# hook refused left out), _refused_scripts 1, HANDLERS 1, SERVER_CODE 1, _osa_code 1 (`/` after `++` or `--` divides),
+# _driver_page 1 (a javascript: navigate is no page), _driven_steps 1 and 6 blank lines; less PAGE_CODE 1,
+# UNREAD_SCRIPT 2 and 6 lines of comment.
+# Review round 1 of main's rule merged into the batch (2026-11-15): core and plugin 66 more. Main's 60, less its
+# _refused_scripts 1 (the batch keeps its own), plus 6 lines of comment main took from a block the batch never carried
+# (the new block's comment lands whole), and 1 for the batch's refusal on a page no list shows, now named for every
+# browser (a tab not listed yet, a sub-agent's, a driven browser's after a tab change).
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 17500
-PLUGIN_BUDGET = 43577
+CORE_BUDGET = 17566
+PLUGIN_BUDGET = 43643
 
 
 def _lines(files):
