@@ -717,3 +717,112 @@ def test_includes_named_on_the_line_are_followed(tmp_path):
     for line in (f"git -c include.path={evil} -C {r} status --porcelain", f"git -c includeIf.gitdir:/.path={evil} -C {r} status",
                  f"GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=include.path GIT_CONFIG_VALUE_0={evil} git -C {r} status --porcelain"):
         assert shell(line, cwd=str(tmp_path)), line
+
+
+# --- review round 3 (2026-11-15) ------------------------------------------------------------------------------------
+# A program that names this machine's MCP endpoint (together or apart) and makes any HTTP write is judged by every body
+# it hands over that the guard can read, and waits when its body cannot be read; HTTPie's --raw; --config-env includes.
+
+@pytest.mark.parametrize("program", [
+    "python3 -c " + shlex.quote("import http.client, sys; c = http.client.HTTPConnection('localhost', 8765); "
+                                "c.request('POST', '/mcp', open(sys.argv[1]).read(), {'Content-Type': 'application/json'})") + " {body}",
+    "node -e " + shlex.quote("const h=require('http'),f=require('fs');const r=h.request({host:'localhost',port:8765,path:'/mcp',"
+                             "method:'POST',headers:{'Content-Type':'application/json'}});r.write(f.readFileSync(process.argv[1]));r.end()") + " {body}",
+    "node -e " + shlex.quote("const fs=require('fs');fetch('http://localhost:8765/mcp',{method:'POST',headers:{'Content-Type':'application/json'},"
+                             "body:fs.readFileSync(process.argv[1])})") + " {body}",
+    "node -e " + shlex.quote("const PORT = 8765;\nconst http = require('http'), fs = require('fs');\n"
+                             "const r = http.request({host: 'localhost', port: PORT, path: '/mcp'});\nr.end(fs.readFileSync(process.argv[1]))") + " {body}",
+    "python3 -c " + shlex.quote("import sys, urllib.request as u; u.urlopen('http://localhost:8765/mcp', open(sys.argv[1], 'rb').read())") + " {body}",
+    "python3 - {body} <<'EOF'\nimport json, sys, urllib.request\nURL = 'http://localhost:8765/mcp'\n"
+    "def rpc(method, params):\n    return urllib.request.urlopen(URL, data=json.dumps({'jsonrpc': '2.0', 'id': 1, 'method': method, 'params': params}).encode())\n"
+    "rpc('tools/call', {'name': 'search_drive_files', 'arguments': {}})\nurllib.request.urlopen(URL, data=open(sys.argv[1], 'rb').read())\nEOF",
+])
+def test_a_program_writing_to_the_endpoint_is_judged_by_every_body_it_can_read(tmp_path, program):
+    (tmp_path / "send.json").write_text(SEND_BODY, encoding="utf-8")
+    (tmp_path / "read.json").write_text(READ_BODY, encoding="utf-8")
+    assert held(shell(program.replace("{body}", str(tmp_path / "send.json")), cwd=str(tmp_path))), program
+    assert shell(program.replace("{body}", str(tmp_path / "read.json")), cwd=str(tmp_path)) == "", program
+
+
+def test_httpie_raw_bodies_and_the_config_env_include(tmp_path):
+    (tmp_path / "send.json").write_text(SEND_BODY, encoding="utf-8")
+    assert held(shell(f'http POST :8765/mcp --raw "$(cat {tmp_path / "send.json"})"', cwd=str(tmp_path)))
+    assert held(shell('http POST :8765/mcp --raw "$(cat missing.json)"', cwd=str(tmp_path)))  # a body it cannot read
+    assert held(shell(f"http POST :8765/mcp --raw={shlex.quote(SEND_BODY)}", cwd=str(tmp_path)))
+    evil = tmp_path / "evil.cfg"
+    evil.write_text(f"[core]\n\tfsmonitor = {writer(tmp_path)}\n", encoding="utf-8")
+    r = repo(tmp_path)
+    assert shell(f"P={evil} git --config-env=include.path=P -C {r} status --porcelain", cwd=str(tmp_path))
+    assert shell(f"P={evil} git --config-env includeIf.gitdir:/.path=P -C {r} status", cwd=str(tmp_path))
+    assert held(shell(f"git --config-env=include.path=NOT_SET_ON_THIS_LINE -C {r} status", cwd=str(tmp_path)))
+
+
+@pytest.mark.parametrize("program", [  # a GET, a liveness check: no body handed over, so nothing to judge
+    "python3 -c " + shlex.quote("import http.client; c = http.client.HTTPConnection('localhost', 8765); c.request('GET', '/mcp'); "
+                                "print(c.getresponse().status)"),
+    "python3 -c " + shlex.quote("import json, urllib.request; cfg = json.load(open('settings.json')); "
+                                "print(urllib.request.urlopen('http://localhost:8765/mcp', timeout=5).status)"),
+    "python3 -c " + shlex.quote("import requests; print(requests.get('http://localhost:8765/mcp', timeout=5).status_code)"),
+    "node -e " + shlex.quote("fetch('http://localhost:8765/mcp').then(r=>console.log(r.status))"),
+    "node -e " + shlex.quote("require('http').get({host:'localhost',port:8765,path:'/mcp'},r=>console.log(r.statusCode))"),
+    "node -e " + shlex.quote("const r=require('http').request({host:'localhost',port:8765,path:'/mcp',method:'GET'},"
+                             "s=>console.log(s.statusCode));r.end()"),
+])
+def test_programs_that_only_read_from_the_endpoint_keep_passing(tmp_path, program):
+    (tmp_path / "settings.json").write_text("{}", encoding="utf-8")
+    assert shell(program, cwd=str(tmp_path)) == "", program
+
+
+def test_a_body_in_a_variable_the_line_does_not_set_waits_and_one_it_sets_is_read_whole(tmp_path):
+    for line in ('curl -s http://localhost:8765/mcp -d "$BODY"', 'curl -s http://localhost:8765/mcp --data-binary $BODY',
+                 'wget -qO- --post-data="$BODY" http://localhost:8765/mcp', 'http POST :8765/mcp --raw "$BODY"'):
+        assert held(shell(line, cwd=str(tmp_path))), line
+    assert shell(f'B={shlex.quote(READ_BODY)}; curl -s http://localhost:8765/mcp -d "$B"', cwd=str(tmp_path)) == ""  # its quotes kept
+    assert held(shell(f'B={shlex.quote(SEND_BODY)}; curl -s http://localhost:8765/mcp -d "$B"', cwd=str(tmp_path)))
+    quoted = rpc("search_gmail_messages", {"user_google_email": "principal@example.com", "query": "subject:$5 OR $PRICE"})
+    assert shell(f"curl -s http://localhost:8765/mcp -d {shlex.quote(quoted)}", cwd=str(tmp_path)) == ""  # a `$` in single quotes is text
+
+
+@pytest.mark.parametrize("program", [
+    RPC + "rpc('tools/call', {'name': 'search_drive_files', 'arguments': {}})\n"
+    "urllib.request.urlopen(URL, data=os.environ['BODY'].encode())\n",                         # a readable call beside one it cannot read
+    RPC + "body = {'jsonrpc': '2.0', 'id': 3, 'method': 'tools/call', 'params': {'name': 'search_drive_files', 'arguments': {}}}\n"
+    "body['params']['name'] = os.environ['TOOL']\nurllib.request.urlopen(URL, data=json.dumps(body).encode())\n",  # one it changes in place
+    RPC + "TOOLS = ['search_drive_files']\nTOOLS.append(os.environ['TOOL'])\n"
+    "for tool in TOOLS:\n    rpc('tools/call', {'name': tool, 'arguments': {}})\n",
+    RPC + "rpc(os.environ['METHOD'], {'name': 'search_drive_files', 'arguments': {}})\n",    # a method it cannot read
+])
+def test_a_program_waits_when_any_body_it_hands_over_cannot_be_read(tmp_path, program):
+    assert held(shell("python3 - <<'EOF'\nimport os\n" + program + "EOF", cwd=str(tmp_path))), program
+
+
+@pytest.mark.parametrize("program", [
+    "import os, sys; os.system('curl -s http://localhost:8765/mcp -d @' + sys.argv[1])",
+    "import subprocess, sys; subprocess.run('curl -s -X POST http://localhost:8765/mcp --data-binary @{body}', shell=True)",
+    "import urllib.request as u; print(u.urlopen('http://localhost:8765/mcp', data={send!r}.encode()).read())",
+    "import urllib.request as u; u.urlopen('http://localhost:8765/mcp', data=b'{send_bytes}')",
+    "import json, urllib.request as u; M = 'tools/call'; T = 'send_gmail_message'\n"
+    "u.urlopen('http://localhost:8765/mcp', data=json.dumps({{'jsonrpc': '2.0', 'id': 1, 'method': M, 'params': {{'name': T, 'arguments': {{}}}}}}).encode())",
+])
+def test_programs_that_start_clients_print_replies_or_spell_bodies_are_judged(tmp_path, program):
+    (tmp_path / "send.json").write_text(SEND_BODY, encoding="utf-8")
+    code = program.format(body=tmp_path / "send.json", send=SEND_BODY, send_bytes=SEND_BODY.replace("'", "\\'"))
+    assert held(shell(f"python3 -c {shlex.quote(code)} {tmp_path / 'send.json'}", cwd=str(tmp_path))), program
+
+
+NODE_RPC = ("const fs = require('fs');\nconst URL = 'http://localhost:8765/mcp';\n"
+            "async function rpc(method, params) {\n  return fetch(URL, {method: 'POST', headers: {'Content-Type': 'application/json'},\n"
+            "    body: JSON.stringify({jsonrpc: '2.0', id: 1, method, params})});\n}\n")
+
+
+def test_a_node_helper_is_read_through_its_calls(tmp_path):
+    reading = NODE_RPC + "rpc('initialize', {});\nrpc('tools/call', {name: 'search_drive_files', arguments: {}});\n"
+    assert shell("node - <<'EOF'\n" + reading + "EOF", cwd=str(tmp_path)) == ""
+    named = NODE_RPC + "const TOOL = 'send_gmail_message';\nrpc('tools/call', {name: 'search_drive_files', arguments: {}});\n" \
+                       "rpc('tools/call', {name: TOOL, arguments: {}});\n"
+    assert held(shell("node - <<'EOF'\n" + named + "EOF", cwd=str(tmp_path)))  # a name a constant gives is read
+    built = NODE_RPC + "rpc('tools/call', {name: process.env.TOOL, arguments: {}});\n"
+    assert held(shell("node - <<'EOF'\n" + built + "EOF", cwd=str(tmp_path)))
+    changed = ("const body = {jsonrpc: '2.0', id: 1, method: 'tools/call', params: {name: 'search_drive_files', arguments: {}}};\n"
+               "body.params.name = process.env.TOOL;\nfetch('http://localhost:8765/mcp', {method: 'POST', body: JSON.stringify(body)});\n")
+    assert held(shell("node - <<'EOF'\n" + changed + "EOF", cwd=str(tmp_path)))  # a request it changes in place
