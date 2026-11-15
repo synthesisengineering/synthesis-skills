@@ -49,8 +49,7 @@ COMMANDS = [
     ("bitbucket", rf"bkt{OPTS}\s+pr\s+(?:comment|create|edit|approve|decline|reopen|request-changes)\b"),
     ("gitlab", rf"glab{OPTS}\s+(?:mr|issue)\s+(?:note|comment|create|update)\b"),
     ("jira", r"(?:jira|acli)\b.*\b(?:comment|create|edit)\b"),
-    ("messages", r"osascript\b.*\b(?:Messages|Mail)\b.*\bsend\b"),
-]
+]  # an osascript send is read by the guard's reading of its script (`guards.osa_send`), across its lines
 API = {"gh": "github", "bkt": "bitbucket", "glab": "gitlab"}
 WEB = {"curl", "wget", "http", "https", "xh"}
 LOCAL = re.compile(r"(?:localhost|127\.0\.0\.1|\[?::1\]?|[\w.-]+\.localhost|[\w.-]+\.test)$")
@@ -131,6 +130,9 @@ def command_send(words: list, cwd: str, config: dict) -> str | None:
         return None  # help prints and posts nothing (2026-10-13: `bkt pr edit --help` asked for a code)
     if head in WEB:
         return "web" if _web_write(words) else None
+    if head in ("osascript", "osacompile"):
+        from synthesis import guards
+        return guards.osa_send(words, cwd)
     if head in API and re.match(rf"{head}{OPTS}\s+api\b", line):
         if not re.search(r"\s(?:-X|--method)[=\s]*(?:POST|PUT|PATCH|DELETE)\b|\s(?:-f|-F|--field|--raw-field|--input)\b",
                          " " + line) or ("graphql" in words and "mutation" not in line):
