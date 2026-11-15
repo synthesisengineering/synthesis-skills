@@ -46,7 +46,28 @@ CODE = [
     "node -e \"/* synthesis */ const consume = require('x'); consume()\"",                             # code in node
     # a program it starts runs it: judged as the command the program starts
     "python3 -c \"import subprocess; subprocess.run(['python3', '-c', 'from synthesis import approvals; approvals.consume(1, 2)'])\"",
+    # review round 1 of 22.22: a program that starts a program keeps every string, as one that runs a string as code does
+    "node -e \"require('child_process').execSync('python3 -c \\\\\"from synthesis import approvals; approvals.consume(1, 2)\\\\\"')\"",
+    "node -e \"require('child_process').execFileSync('python3', ['-c', 'from synthesis import approvals; approvals.consume(1, 2)'])\"",
+    "python3 -c \"import subprocess; open('s.py', 'w').write('from synthesis import approvals; approvals.consume(1, 2)'); "
+    "subprocess.run(['python3', 's.py'])\"",
+    "node -e \"require('child_process').execFileSync('synthesis', ['sends', 'open', '--hours', '1', '--channels', 'slack', '--sends', '1'])\"",
+    # a script the same line writes by a heredoc and then runs is judged by the heredoc's body, as the script it is
+    "cat > s3.py <<'EOF'\nfrom synthesis import approvals\napprovals.consume('probe', {})\nEOF\npython3 s3.py",
 ]
+
+
+def test_a_heredoc_script_that_opens_a_send_window_waits_like_any_other(tmp_path):
+    line = "cat > w.py <<'EOF'\nfrom synthesis import sends\nsends.open_window(1, ['slack'], '', 1)\nEOF\npython3 w.py"
+    said = _said(line, tmp_path)
+    assert said.startswith("Refused") or "approve followed by the code" in said, said
+
+
+def test_prose_in_a_program_that_starts_nothing_stays_prose_and_one_that_starts_a_program_keeps_its_strings(tmp_path):
+    prose = "python3 -c \"open('n.md', 'w').write('synthesis: consume is the guard\\'s')\""
+    assert APPROVAL_CODE not in _said(prose, tmp_path)
+    started = "python3 -c \"import subprocess; open('n.md', 'w').write('synthesis: consume'); subprocess.run(['true'])\""
+    assert APPROVAL_CODE in _said(started, tmp_path)
 
 
 @pytest.mark.parametrize("line", CODE)
