@@ -396,3 +396,102 @@ def test_a_prompt_line_that_holds_the_read_s_first_byte_is_read_whole(tmp_path):
     assert list(approvals._lines_back(str(path), block=8, stop=7 + 20)) == ["after", "a" * 50]
     assert list(approvals._lines_back(str(path), block=8, stop=7)) == ["after", "a" * 50]
     assert list(approvals._lines_back(str(path), block=8, stop=6)) == ["after", "a" * 50, "before"]
+
+
+# --- review round 3 of this fix (2026-11-15): a check entered from outside the hook, a record that cannot be written, a
+# window's send held after another went ---------------------------------------------------------------------------
+
+
+def test_a_send_the_local_messaging_sender_lets_through_is_recorded(tmp_path):
+    """Round 3, finding 1: the sender calls check_send itself, outside the hook; its approved send left no record."""
+    from synthesis import sends
+    session = _granted(tmp_path, guards.check(SLACK, CALL, {}))
+    assert guards.check_send(SLACK, CALL, {}, session=session) is None
+    assert len(sends.ledger(time.strftime("%Y-%m-%d"))) == 1
+
+
+def test_a_window_s_last_send_let_through_by_a_direct_check_closes_it():
+    from synthesis import sends
+    sends.open_window(1.0, ["all"], "", 1)
+    call = {"channel_id": "C0PROBE", "message": "A planned note, signed probe."}
+    assert guards.check_send(SLACK, call, {"send_window_signatures": ["signed probe"]}) is None
+    assert sends.window() == {} and len(sends.ledger(time.strftime("%Y-%m-%d"))) == 1
+
+
+def test_every_check_called_from_outside_the_guard_settles_its_records():
+    import re
+    from pathlib import Path
+    root = Path(__file__).resolve().parents[1]
+    named = set()
+    for f in [*(root / "synthesis").glob("*.py"), *(root / "skills").rglob("*.py")]:
+        if f.name != "guards.py" and "tests" not in f.parts and not f.name.startswith("test_"):
+            named |= set(re.findall(r"\bguards\.(check\w*)\(", f.read_text(encoding="utf-8")))
+    assert {"check", "check_send"} <= named
+    assert [n for n in sorted(named) if not getattr(getattr(guards, n), "settles", False)] == []
+
+
+def test_a_record_that_cannot_be_written_still_answers_and_holds(tmp_path, monkeypatch, capsys):
+    """Round 3, finding 2: an undo that failed ended the hook with no answer, and Claude Code ran the held call."""
+    from synthesis import hook
+    session = _granted(tmp_path, guards.check(SLACK, CALL, {}))
+
+    def full(allowed):
+        raise OSError("no space left on device")
+    monkeypatch.setattr(guards, "settle", full)
+    hook.pre_tool_use({"tool_name": SLACK, "tool_input": CALL, **session})  # let through by its grant, but unrecorded
+    out = capsys.readouterr().out
+    assert '"permissionDecision": "deny"' in out and "could not record this call" in out
+    hook.pre_tool_use({"tool_name": SLACK, "tool_input": {**CALL, "message": "Another note."}, **session})  # held
+    assert '"permissionDecision": "deny"' in capsys.readouterr().out
+
+
+def test_one_record_that_fails_does_not_stop_the_others(monkeypatch):
+    ran, given = [], []
+
+    def fails():
+        raise OSError("full")
+    guards.EFFECTS[:] = [(None, lambda: ran.append("first")), (None, fails), (None, lambda: ran.append("third"))]
+    monkeypatch.setattr(approvals, "give_back", lambda: given.append(True))
+    with pytest.raises(OSError):
+        guards.settle(False)
+    assert ran == ["third", "first"] and given == [True] and guards.EFFECTS == []
+
+
+def test_a_window_s_send_held_after_another_went_is_left_to_the_window(monkeypatch):
+    """Round 3, finding 4: two window sends were counted at once; the first went and closed the window, then the second
+    was held, and its planned send was lost."""
+    from synthesis import sends
+    config = {"send_window_signatures": ["signed probe"]}
+    sends.open_window(1.0, ["all"], "", 2)
+    first, second, third = ({"channel_id": "C0PROBE", "message": f"Note {n}, signed probe."} for n in (1, 2, 3))
+    monkeypatch.setitem(guards.UNDER_HOOK, "on", True)  # as two hook processes: each decides, then answers
+    assert guards.check(SLACK, first, config) is None
+    went = list(guards.EFFECTS)
+    assert guards.check(SLACK, second, config) is None
+    held = list(guards.EFFECTS)
+    guards.EFFECTS[:] = went
+    guards.settle(True)
+    guards.EFFECTS[:] = held
+    guards.settle(False)
+    monkeypatch.setitem(guards.UNDER_HOOK, "on", False)
+    assert sends.window() and guards.check(SLACK, third, config) is None
+    assert sends.window() == {}  # its last planned send, gone, closes it
+
+
+def test_the_hook_process_counts_its_deadline_from_its_own_start(monkeypatch, capsys):
+    """Run as the hook, the deadline counts from when hook.py loaded, not from when the guard was called."""
+    import io
+    import runpy
+    import signal
+    import sys
+    from pathlib import Path
+    seen, real, clock = [], signal.setitimer, iter([0.0] + [3.0] * 100000)
+    monkeypatch.setattr(sys, "path", list(sys.path))
+    monkeypatch.setattr(time, "monotonic", lambda: next(clock))
+    monkeypatch.setattr(signal, "setitimer", lambda which, seconds, *rest: seen.append(seconds) or real(which, 0))
+    monkeypatch.setattr(sys, "argv", ["hook.py", "pre-tool-use"])
+    monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps({"tool_name": "Read", "tool_input": {"file_path": "/dev/null"},
+                                                              "session_id": SID})))
+    with pytest.raises(SystemExit):
+        runpy.run_path(str(Path(guards.__file__).with_name("hook.py")), run_name="__main__")
+    assert 0.9 < seen[0] <= 1.0
