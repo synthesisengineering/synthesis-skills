@@ -24,7 +24,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   no list shows read as no messaging site's (a sub-agent's above all) and a refused navigate taken as a driven browser's
   page; its second, the pane's page after `preview_start` read as unknown, so a local app's click waited for a code.
   Each is read rightly now, and a call that sends only if a page no result shows is a messaging site's is told to read
-  the page first, with no code asked. Over 60 days of records
+  the page first, with no code asked, in a browser whose reads show its page. Over 60 days of records
   it refuses none of the seats' 181 ordinary scripts on those pages, holds the 5 that click or move the tab, as before,
   and passes 176, and the second round changes the guard's verdict on none of Claude Code's 3,708 browser calls there.
   Spellings made to beat the reader are on the runtime doc's open list.

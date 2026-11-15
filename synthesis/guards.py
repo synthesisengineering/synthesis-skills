@@ -5440,6 +5440,7 @@ SCRIPT_ACTS_MORE = re.compile(r"(?:\b(?:window|globalThis|self|top|parent|frames
                               r"|\.\s*(?:send|post|submit|publish|reply|share|tweet)\w*\s*\(|\.\s*postMessage\s*\("
                               r"|\blocation\s*\.\s*(?:pathname|search|hash|host|hostname|port|protocol)\s*[+-]?=(?!=)|\bnavigation\s*\.\s*navigate\s*\("
                               r"|\bhistory\s*\.\s*(?:go|back|forward)\s*\(", re.I)
+SHOWS_PAGE = re.compile(r"claude-in-chrome|claude[_-]browser|playwright|chrome-devtools", re.I)  # whose reads show the page
 BARE_SENDS = re.compile(r"(?<![\w$.])((?:send|post|submit|publish|reply|share|tweet)\w*)\s*\(", re.I)  # a page's own, unless the script defines it
 SERVER_CODE = "/* the browser server's own code */ "
 
@@ -5759,7 +5760,8 @@ def check_desktop(name: str, tool: str, tool_input: dict, config: dict, session:
     sending = [s or {"type": "a typed line break", "script": "a page script"}.get(kind, f"{kind} {v}".strip()) for kind, v, s in actions
                if goes(kind, v, s, reached)]
     sending += ["a key that submits the form after the typed words"] * (formed and not reached and not sending)
-    unplaced = set(reached) == {UNKNOWN_PAGE} and not formed and not any(goes(k, v, s, {}) for k, v, s in actions)
+    unplaced = set(reached) == {UNKNOWN_PAGE} and not formed and not any(goes(k, v, s, {}) for k, v, s in actions) and bool(
+        SHOWS_PAGE.search(tool))  # another browser's results may never show its page: its call keeps the code
     problems = message_problems("desktop_type", {"message_text": "\n\n".join(typed)}, config, {  # a page may be several channels'
         c for chan, _ in reached.values() for c in chan.split("+")}, session) if typed and (reached or sending) else []
     if problems and search and not sending and all(k == "type" for k, _, _ in actions) and not temporary_addresses(typed, config):
@@ -5795,7 +5797,8 @@ def check_desktop(name: str, tool: str, tool_input: dict, config: dict, session:
         return None
     if unplaced:  # it sends only if the page is a messaging site's (review round 2 of 5.23.1, #1: a local app's click waited for a code)
         return (f"This call may send on a page the record does not show ({what}): read the page first, with tabs_context in "
-                "Claude in Chrome or the built-in pane, or a snapshot in a driven browser, so its address shows, then make this call again.")
+                "Claude in Chrome or the built-in pane, or a snapshot or a list of pages in a driven browser, so its address shows, then "
+                "make this call again.")
     code = approvals.request("send", subject, summary[:300])
     return (f"This call sends in {where} ({what})."
             + (f" Words typed on this page under the code for words that break a rule may go with it: {' / '.join(words)}." if words else "")

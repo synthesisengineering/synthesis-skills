@@ -493,9 +493,10 @@ opens may be that site's still, so it is judged as that site's. In Claude in Chr
 of tabs shows (a tab not listed yet; a sub-agent's, whose own record the guard reads when the hook names one) is judged
 as a page that may be a messaging site's (review round 1 of 5.23.1, #3), and so is a driven browser's page no result
 shows. A call there that sends only if the page is a messaging site's (a Return, a typed line break, a click no summary
-describes, a script that acts) is told to read the page first (`tabs_context`, or a snapshot in a driven browser), and
-no code is asked; one that sends on any page waits for the code (review round 2 of 5.23.1, #1: after `preview_start`, a
-local app's click in the pane waited for a code). The pane's first page, which its answer files
+describes, a script that acts) is told to read the page first (`tabs_context` in Claude in Chrome or the pane, a
+snapshot or a list of pages in Playwright or Chrome DevTools), and no code is asked; one that sends on any page waits for
+the code, and so does a call from any other driven browser, whose results may never show the guard its page (review
+round 2 of 5.23.1, #1: after `preview_start`, a local app's click in the pane waited for a code). The pane's first page, which its answer files
 under no tab, is its tab's. On 2026-10-22 a session found that Return in a Google
 Chat compose box went out with no code, because a browser page had counted as no app.
 
