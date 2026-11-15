@@ -1327,10 +1327,27 @@ ROOT = Path(__file__).resolve().parents[1]
 # has none left out and counted, tokens and dollars from the judge's own log), record_workspace 13 and its two blank
 # lines (the workspace a record ran in), main 9 (the cloud model's arguments and each record's workspace), report 1 (the
 # gate's limit, and no pass where nothing answered).
+# The judge on the harness's own plan (the principal, 2026-11-15: synthesis must not depend on people buying API credits;
+# the cloud stays an option) adds 103 to the core and 123 to the plugin. judge.py 89: _subscription 42, primary 8 and
+# _first 3 with their six blank lines (Claude Code's print mode or Codex's exec on the person's plan, with no tools,
+# every hook off, no user settings, plugins or memory and no session kept, in a room of the judge's own with its marker
+# set, stopped at the deadline, a refusal, an error or an answer that is not a verdict no verdict; which judge reads a
+# reply first: local, else the plan of the reply's harness where its workspace is not left out, else the cloud),
+# settings 9 (an entry per harness with its model, command and effort, and the workspaces left out), _judged 10 (the
+# plan's judge first, none for a harness without one, the cloud's second opinion after either), ANSWER and BY_TOOL with
+# their comment 4 (the verdict through Claude Code's structured-output tool as the model's first act: an answer written
+# as text first cost two to three seconds more), HARNESSES, ENTRY_KEYS and MARKER 2, the docstring 2, the subprocess
+# import 1, notice 1 (which judge decides alone past the cap), ask 1. reply_check.py 12: shortcut_verdict 11 (where the
+# judge is a service both questions are asked at once, so a flagged reply waits about one answer's time),
+# shortcut_problem 1 (the reply's harness passed through). hook.py 2: inside the judge's own run the session-start,
+# prompt and Stop hooks return at once, so a verdict is never judged, and the guard still guards. guards.py 0:
+# _subscription among the judge's writers, in its line. judge_replay.py 20: the usage 1 (the plan's, the cloud's and the left-out options, the cloud's missing until now), main 4 (the plan's model, its harness and
+# command, the workspaces left out), judged 15 (runs on the plan, items of a left-out workspace counted and left out,
+# both questions timed at once as the hook asks them, the first question's own time from the judge's log).
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 16430
-PLUGIN_BUDGET = 42839
+CORE_BUDGET = 16533
+PLUGIN_BUDGET = 42962
 
 
 def _lines(files):

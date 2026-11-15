@@ -337,6 +337,8 @@ def stop(payload):
 
 def main(argv):
     event = argv[1] if len(argv) > 1 else ""
+    if os.environ.get("SYNTHESIS_JUDGE_RUN") and event in ("session-start", "user-prompt-submit", "stop"):
+        return 0  # inside the judge's own run (judge.MARKER): nothing to brief, record or judge, so a verdict is never judged; the guard still guards
     try:
         payload = json.loads(sys.stdin.read() or "{}")
     except json.JSONDecodeError:

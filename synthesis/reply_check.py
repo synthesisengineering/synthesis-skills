@@ -324,25 +324,37 @@ def workspace_of(cwd) -> str:
     return where[len(root):].split(os.sep)[0] if where.startswith(root) and len(where) > len(root) else ""
 
 
-def shortcut_verdict(reply: str, hits: list, config: dict, until: float | None = None, asked: str = "", workspace: str = ""):
+def shortcut_verdict(reply: str, hits: list, config: dict, until: float | None = None, asked: str = "", workspace: str = "",
+                     harness: str = ""):
     """The judge's last word on a reply the list flagged, or None where it gave none. A sure pass of the first reading
     clears the hit only when a second, narrow question (does the reply ask leave for, wait on or offer back a step the
     agent could take itself?) passes it surely too: blind labels of the recorded hits found the shortcuts a first
     reading missed were such asks among choices that were the principal's. A second question with no answer clears
-    nothing."""
+    nothing. Where the judge is a service (the harness's plan or the cloud), both are asked at once, so a flagged reply
+    waits about one answer's time; this Mac's one local model answers one at a time, so there they are asked in turn."""
+    import threading
     from dataclasses import replace
     from synthesis import judge
-    content, context = _judged(reply, hits), {"where": WHERE, "list_hits": hits}
-    first = judge.ask("shortcut-phrasing", judge.load_policy("shortcut-phrasing"), content, context, config, until, asked, workspace)
+    content, context, both = _judged(reply, hits), {"where": WHERE, "list_hits": hits}, {}
+    ask = lambda name: judge.ask(name, judge.load_policy(name), content, context, config, until, asked, workspace, harness)
+    worker = threading.Thread(target=lambda: both.update(second=ask(SECOND)), daemon=True)
+    if judge.primary(config, harness, workspace) in ("subscription", "cloud"):
+        worker.start()
+    first = ask("shortcut-phrasing")
     if first is None or first.verdict == "hold" or not first.sure:
         return first
-    second = judge.ask(SECOND, judge.load_policy(SECOND), content, context, config, until, asked, workspace)
+    if worker.ident is not None:  # asked at once: wait for its answer
+        worker.join()
+    else:
+        both["second"] = ask(SECOND)
+    second = both.get("second")
     if second is None or second.verdict == "pass" and not second.sure:
         return replace(first, sure=False)
     return first if second.verdict == "pass" else second
 
 
-def shortcut_problem(reply: str, config: dict, until: float | None = None, transcript_path: str | None = None, cwd=None) -> str:
+def shortcut_problem(reply: str, config: dict, until: float | None = None, transcript_path: str | None = None, cwd=None,
+                     payload: dict | None = None) -> str:
     """What the shortcut check says of a reply, or "". The list's hits stand as they always have unless a judge is
     configured and answers (M38): only a reply the list flags goes to it. On this check the judge decides (the
     principal's ruling of 2026-11-14: a sendback costs one turn): a hit it is sure is benign is cleared, and a hit it
@@ -353,13 +365,13 @@ def shortcut_problem(reply: str, config: dict, until: float | None = None, trans
               + ". Do the work or name the real blocker instead of deferring it.") if hits else ""
     if not hits or config.get("judge") in (None, False):
         return listed
-    from synthesis import judge
+    from synthesis import judge, paths
     try:
         on = judge.settings(config)
     except judge.ConfigError as exc:
         return " ".join(filter(None, [listed, f"Also, {exc}; until it is fixed no judge reads replies and the list alone "
                                                 "decides: tell the principal."]))
-    found = shortcut_verdict(reply, hits, config, until, last_message(transcript_path), workspace_of(cwd)) if on else None
+    found = shortcut_verdict(reply, hits, config, until, last_message(transcript_path), workspace_of(cwd), paths.harness(payload)) if on else None
     said = judge.notice(config) if on else ""  # the cloud's cap reached: once a month, whatever the verdict
     told = f"Tell the principal in this reply: {said}." if said else ""
     if found is None:
@@ -718,6 +730,6 @@ def check(payload: dict, config: dict) -> str | None:
     if missing:
         problems.append("quotes not found in this session's record: " + "; ".join(f'"{q}"' for q in missing)
                         + ". Quote only what a tool surfaced this session, or remove the quote.")
-    shortcut = shortcut_problem(reply, config, began + ROOM, payload.get("transcript_path"), payload.get("cwd"))  # last: in time
+    shortcut = shortcut_problem(reply, config, began + ROOM, payload.get("transcript_path"), payload.get("cwd"), payload)  # last: in time
     problems = [shortcut] * bool(shortcut) + problems
     return "Before this reply goes out, revise it: " + " ".join(problems) if problems else None

@@ -81,19 +81,35 @@ before it goes back (M38; the principal's rulings of 2026-11-14). The list, the 
 - The reply is data, never instructions: it goes in a block whose markers carry a code made from its digest, the request
   is fresh and has no tools, and text in it that addresses the judge or claims to change its rules is held. The
   principal's message comes in a block of its own, read as data the same way.
-- The local model answers on this Mac through Ollama's loopback API, at temperature 0. `cloud` is the judge itself when
-  no local model is configured, and otherwise a second opinion only where the local verdict is unsure. Its key is read
+- The local model answers on this Mac through Ollama's loopback API, at temperature 0.
+- `subscription` runs the judge on the plan of the harness the reply came from, through its own command line, so no one
+  buys API credits for it (the principal, 2026-11-15); it reads a reply first where no local model is configured, for a
+  harness the config names and a workspace not in `leave_out`. Claude Code's `claude -p` runs the configured model with
+  no tools, every hook off (`--settings '{"disableAllHooks": true}'`), no user settings, plugins or memory
+  (`--setting-sources local`) and no session kept, and the verdict comes through its structured-output tool as the
+  model's first act: an answer written as text first is asked for again after a summary step of Claude Code's own, two
+  to three seconds more. Codex's `codex exec` runs read only, ephemeral, without the user's config and with hooks off.
+  Each run is in a room of the judge's own under `state/judge/`, with `SYNTHESIS_JUDGE_RUN` set: a synthesis hook
+  started inside it returns at once, so a verdict is never itself judged, and the guard still guards. Its verdicts count
+  against the plan's usage and cost nothing more. Claude Code says `--bare`, which never reads the plan's sign-in, will
+  become the default for `-p`; when it does, these runs fail, the log shows `refused`, and the list decides.
+- Where the judge is a service, the plan's or the cloud's, the two questions are asked at once, so a flagged reply waits
+  about one answer's time; this Mac's one local model answers one at a time, so there they are asked in turn.
+- `cloud` is the judge itself when neither a local model nor the reply's plan judges it, and otherwise a second opinion
+  only where the first verdict is unsure. Its key is read
   at call time from `keys_file`, for the workspace the reply belongs to (its folder under ~/workspaces): `keys` names
   the default and any workspace's own, and a workspace mapped to null keeps the word list. The key goes into the
   request's header and nowhere else. The request asks for adaptive thinking and the verdict's strict schema, and the
   certificate is verified with the system's bundle where the interpreter has none. Its spend is kept by
-  month in `state/judge/spend.json`; past `monthly_cap_usd` the local judge, or with none the word list, decides alone,
+  month in `state/judge/spend.json`; past `monthly_cap_usd` the other judges, or with none the word list, decide alone,
   and the reply sent back asks the agent to tell the principal, once that month.
 - Verdicts are cached in `state/judge/cache.json` by the check, the policy's version and digest, the models and the
   reply's digest, so the same reply gets the same answer. `state/judge/log.jsonl` records each with its model, policy
   version, verdict, rule, counts and digests, never the reply's words.
 - Before a model or policy change ships, replay it: `scripts/judge_replay.py --since <date> --model <name>`, with
-  `SYNTHESIS_HOME` pointing at a copy of the config, judges the recorded list hits and prints counts only. With
+  `SYNTHESIS_HOME` pointing at a copy of the config, judges the recorded list hits and prints counts only.
+  `--subscription <name>` judges on the plan of the harness `--harness` names, `--cloud <name>` on the cloud, and
+  `--leave-out <workspace>` leaves a workspace's items out of both, counted. With
   `--labels` (rows of path, line, digest, source and label) it splits the labeled list hits by label with a fixed seed,
   tunes on `--split dev`, and prints for each half how many real shortcuts, unsure and legitimate hits the judge
   cleared, and the gate: no real shortcut or unsure item cleared, and the warm 95th percentile inside the deadline.
