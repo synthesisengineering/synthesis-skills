@@ -461,9 +461,14 @@ def test_the_subscription_judge_runs_the_replys_own_harness_with_no_tools_hooks_
     assert args[0] == "-p" and args[args.index("--model") + 1] == "small-model" and args[args.index("--tools") + 1] == ""
     assert {"--no-session-persistence", "--strict-mcp-config", "--disable-slash-commands"} <= set(args)
     assert json.loads(args[args.index("--settings") + 1])["disableAllHooks"] is True and args[args.index("--effort") + 1] == "low"
+    assert args[args.index("--setting-sources") + 1] == "local"  # no user settings, plugins or memory: the judge's prompt alone
     assert json.loads(args[args.index("--json-schema") + 1])["additionalProperties"] is False
     assert POLICY_TEXT.strip() in args[args.index("--system-prompt") + 1] and "<content-" in run["stdin"] and CONTENT in run["stdin"]
     assert run["marker"] == "1" and run["cwd"].startswith(str(isolated_home))  # the judge's own run, in a room of its own
+    # The verdict comes through Claude Code's structured-output tool as the model's first act: an answer written as text
+    # first is asked for again after a summary step of Claude Code's own, two to three seconds more (measured 2026-11-15)
+    assert args[args.index("--system-prompt") + 1].endswith(judge.BY_TOOL) and run["stdin"].endswith(judge.BY_TOOL)
+    assert "JSON object only" not in run["stdin"].split("</content-")[-1]
 
 
 def test_a_codex_reply_is_judged_through_codex_exec(fake_cli, tmp_path):
