@@ -753,3 +753,91 @@ def test_a_member_built_from_itself_leaves_a_write_to_a_plain_path_placed(world)
 def test_a_writer_by_name_through_a_member_built_from_itself_waits(world):
     script = _script(world["work"] / "looped", "figure.py", LOOPED + "figure = object()\nfigure.savefig(b.p)\n")
     assert HELD in (_verdict(world, f"python3 {script} {world['rec']}") or "")
+
+
+# --- a program that imports synthesis waits only when it writes through it, reaches it in a way its reader cannot
+# follow, or names one of its writers (the coordinator, 2026-11-14: waiting on every import stopped every probe, review
+# script and skill script outside the runtime that uses synthesis's code, about 1,300 a month) ---------------------
+
+READS_SYNTHESIS = ("import sys\nfrom synthesis import yamlish, paths, guards, sessions\nfrom synthesis.yamlish import load as parse\n"
+                   "print(parse('a: 1'), yamlish.load_mapping('b: 2'), paths.home(), len(sessions.ADAPTERS), 'x' in sessions.CITED)\n"
+                   "print(guards.check('Bash', {'command': 'ls'}, {}, cwd='.'))\n")
+
+
+def test_a_script_that_only_reads_through_synthesis_passes(world):
+    script = _script(world["work"] / "reads-synthesis", "look.py", READS_SYNTHESIS)
+    assert _verdict(world, f"python3 {script}") is None
+    _script(world["work"] / "reads-synthesis", "helper.py", "from synthesis import yamlish\ndef parse(text):\n    return yamlish.load(text)\n")
+    main = _script(world["work"] / "reads-synthesis", "main.py", "import sys\nimport helper\nprint(helper.parse(open(sys.argv[1]).read()))\n")
+    assert _verdict(world, f"python3 {main} {world['rec']}") is None
+    assert _verdict(world, f"python3 -I - <<'EOF'\n{READS_SYNTHESIS}EOF") is None
+
+
+@pytest.mark.parametrize("body", [
+    "from synthesis import board\nboard.claim('S-x', ['/tmp/a'])\n",                                  # names a writer
+    "from synthesis.paths import write_json as keep\nkeep('/tmp/x.json', {})\n",                      # by another name
+    "import synthesis.sends\nprint(synthesis.sends.open_window.__doc__)\n",                           # named, not called
+    "from synthesis import paths\nname = 'home'\nprint(getattr(paths, name)())\n",                     # getattr on it
+    "from synthesis import sends\nprint(vars(sends).keys())\n",                                         # vars()
+    "from synthesis import paths\nprint(paths.__dict__['home']())\n",                                   # __dict__
+    "from synthesis import paths\ndef go(m):\n    return m.home()\nprint(go(paths))\n",                # a module handed on
+    "import sys\nfrom synthesis import paths\nprint(list(map(paths.read_json, sys.argv[1:])))\n",      # a member handed on
+    "import importlib\nimport synthesis\nm = importlib.import_module('synthesis.' + 'sends')\n",      # a name it builds
+    "from synthesis.approvals import *\n",                                                              # every name at once
+])
+def test_a_script_that_writes_through_synthesis_or_reaches_it_unfollowably_waits(world, body):
+    script = _script(world["work"] / "uses-synthesis", "use.py", body)
+    assert HELD in (_verdict(world, f"python3 {script}") or "")
+
+
+def test_an_inline_program_naming_a_synthesis_writer_waits_and_one_reaching_it_unfollowably_is_refused(world):
+    assert HELD in (_verdict(world, "python3 -I -c 'from synthesis import board; board.release(\"S-x\", [\"/tmp/a\"])'") or "")
+    reason = _verdict(world, "python3 -I -c 'from synthesis import paths; print(getattr(paths, \"ho\" + \"me\")())'")
+    assert reason and reason.startswith("Refused"), reason
+
+
+def _writers_in(root: Path) -> set:
+    """synthesis's own functions that write a file, directly (an open to write, os's and shutil's writing calls, a
+    path's own) or through another of its own; a class, when making one does."""
+    import ast
+    os_w = {"replace", "rename", "renames", "remove", "unlink", "makedirs", "mkdir", "rmdir", "removedirs", "symlink", "link",
+            "chmod", "chown", "utime", "truncate", "write"}
+    sh_w = {"copy", "copy2", "copyfile", "copytree", "move", "rmtree", "make_archive", "unpack_archive", "chown", "copymode", "copystat"}
+    path_w = {"write_text", "write_bytes", "mkdir", "touch", "unlink", "rmdir", "symlink_to", "hardlink_to", "chmod", "lchmod"}
+
+    def opens_to_write(c) -> bool:
+        f = c.func
+        if not ((isinstance(f, ast.Name) and f.id == "open") or (isinstance(f, ast.Attribute) and f.attr == "open"
+                                                                 and not (isinstance(f.value, ast.Name) and f.value.id == "os"))):
+            return False
+        at = 1 if isinstance(f, ast.Name) or (isinstance(f.value, ast.Name) and f.value.id in ("io", "codecs", "builtins", "gzip")) else 0
+        mode = (c.args[at:at + 1] or [k.value for k in c.keywords if k.arg == "mode"] or [None])[0]
+        return mode is not None and not (isinstance(mode, ast.Constant) and isinstance(mode.value, str) and not set(mode.value) & set("wax+"))
+    found, calls = {}, {}
+    for file in sorted((root / "synthesis").glob("*.py")):
+        tree = ast.parse(file.read_text(encoding="utf-8"))
+        alias = {a.asname or a.name: a.name for n in ast.walk(tree) if isinstance(n, ast.ImportFrom) and n.module == "synthesis" for a in n.names}
+        for top in tree.body:
+            own = [top] if isinstance(top, (ast.FunctionDef, ast.AsyncFunctionDef)) else [
+                f for f in getattr(top, "body", []) if isinstance(f, ast.FunctionDef) and f.name in ("__init__", "__post_init__", "__new__")
+            ] if isinstance(top, ast.ClassDef) else None
+            if own is None:
+                continue
+            key, writes, called = f"{file.stem}.{top.name}", False, set()
+            for c in (n for f in own for n in ast.walk(f) if isinstance(n, ast.Call)):
+                f = c.func
+                owner = f.value.id if isinstance(f, ast.Attribute) and isinstance(f.value, ast.Name) else ""
+                writes = writes or opens_to_write(c) or (isinstance(f, ast.Attribute) and (
+                    (owner == "os" and f.attr in os_w) or (owner == "shutil" and f.attr in sh_w) or f.attr in path_w))
+                called |= {f"{file.stem}.{f.id}"} if isinstance(f, ast.Name) else {f"{alias[owner]}.{f.attr}"} if owner in alias else set()
+            found[key], calls[key] = writes, called
+    writers = {k for k, v in found.items() if v}
+    while any(calls[k] & writers for k in found if k not in writers):
+        writers |= {k for k in found if k not in writers and calls[k] & writers}
+    return writers
+
+
+def test_the_writers_the_guard_knows_are_the_ones_synthesis_has():
+    """The guard's own judging functions (guards.check and the rest) file a hold the principal answers and never grant,
+    so they read (the coordinator, 2026-11-14); every other function that writes is one of synthesis's writers."""
+    assert guards.SYNTHESIS_WRITES == {w for w in _writers_in(ROOT) if not w.startswith("guards.")}
