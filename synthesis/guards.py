@@ -5149,6 +5149,7 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None) -> str |
                                                                             else _program(words)[2]))) if code and code != text else ""  # the script file it runs
         files, stand, missed = _python_files(ran, code, "" if _isolated(words) else _real(where) if mine else os.path.dirname(ran),
                                              _program(words)[2] if mine else "") if python and ran else (([(ran, code)] if ran else []), "", "")
+        missed = missed or next((f"imports {f}, which the same line writes" for f, _ in files[1:] if _real(f) in written), "")  # finding 3
         said = [w for at, w in enumerate(words[1:], 1) if head not in PROMPTED and not MESSAGE.fullmatch(words[at - 1]) and not (
             w[:1] == "-" and MESSAGE.fullmatch(w.split("=", 1)[0])) and not any(f(_real(os.path.join(where, os.path.expanduser(w)))) for f in (_own, lambda x: _own(x, True), _material))]
         named = ("input that this guard could not read" if UNREAD_INPUT in head + fed else _spells(  # each word, and each program text, apart

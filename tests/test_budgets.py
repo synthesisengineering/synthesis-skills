@@ -1331,10 +1331,12 @@ ROOT = Path(__file__).resolve().parents[1]
 # Then core and plugin each 1 more, in install.py: _stable_skill_files' docstring 1 (a carried skill's shell scripts
 # outside scripts/, the meeting skill's server kit, which its doctor checks the service against, and its Python below
 # scripts/: finding 6). Its test changes in place, and so does the fetcher's line naming the runtime's start.sh.
+# Then core and plugin each 1 more, in guards.py's _self_grant: a module of a script's own that the same line writes
+# is code the guard cannot read (finding 3: it was judged as it stood before the line rewrote it).
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 16569
-PLUGIN_BUDGET = 42641
+CORE_BUDGET = 16570
+PLUGIN_BUDGET = 42642
 
 
 def _lines(files):
