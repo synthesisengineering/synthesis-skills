@@ -1267,10 +1267,15 @@ ROOT = Path(__file__).resolve().parents[1]
 # statement spells: from its code and pieces of a path, with at most one path written whole, and such a path alone
 # only where they stand one after another), LITERAL 1, 6 blank lines; _spells judging each text and each word apart
 # and expanding a word's variables, and the naming line handing it each word apart, change lines in place.
+# Python on the line that writes where its reader cannot place it (the batch's second review, #6, 2026-11-15): core 19
+# more and plugin 19. guards.py 19: _python_writes 15 (settled 9 with its blank line: an end that cannot be read lies
+# under a folder that can, outside every protected one and above none, unless it starts unread; what a started
+# command runs and where, and the list it adds a write or a run whose place it cannot read to, 4; its docstring 2,
+# less 0), _self_grant 4 (the list handed to the reader, and the hold whatever the line names).
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 15886
-PLUGIN_BUDGET = 41958
+CORE_BUDGET = 15905
+PLUGIN_BUDGET = 41977
 
 
 def _lines(files):

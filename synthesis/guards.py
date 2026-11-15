@@ -3000,7 +3000,7 @@ BUILT_CALLS = ("vars", "globals", "locals", "__builtins__", "__getattribute__", 
 
 
 def _python_writes(source: str, names: list, roots: list | tuple = (), where: str = "", argv: list | tuple = (),
-                   env: dict | None = None, config: dict | None = None, until: float | None = None) -> tuple:
+                   env: dict | None = None, config: dict | None = None, until: float | None = None, unread_places: list | None = None) -> tuple:
     """(whether a Python program writes into a protected path, whether it writes at all; the first is the refusal's own
     text when it is a command the program starts that is refused); (None, None) when it cannot
     be told (no source, a syntax error), and (None, True) for a program that runs code it builds (exec, eval,
@@ -3014,7 +3014,8 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
     a transcript and numbered their output files by its lines were refused).
     `argv` is what the shell hands the program, from its own name on, and `env` the variables it runs with;
     `where` is the folder it runs in, and inside a protected folder, or after a chdir into one, every write must
-    be led by a plain folder elsewhere. Past `until`, a moment of time.monotonic(), it raises TimeoutError."""
+    be led by a plain folder elsewhere. Past `until`, a moment of time.monotonic(), it raises TimeoutError. Given a
+    list as `unread_places`, it adds to it a write or a run whose place cannot be read."""
     import ast
     import copy
     import warnings
@@ -4086,6 +4087,16 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
     settle()
     stand_in = os.path.expanduser(next((m for m in names if m[:1] in ("/", "~")), "".join(names[:1])))  # a protected folder, for one built from it that cannot be spelled
 
+    def settled(raw: str, at) -> bool:  # an end that cannot be read lies under a folder that can, outside every protected one and above none
+        path = home(raw[raw.rfind("\1") + 1:])
+        if path[:1] == "\0":  # it starts where it cannot be read: from any folder at all
+            return False
+        for full in [path] if os.path.isabs(path) else [os.path.join(spot, path) for spot in at]:
+            lead = os.path.dirname(full.split("\0")[0])
+            if not os.path.isabs(lead) or any(paths.inside(os.path.realpath(lead), r) or paths.inside(r, os.path.realpath(lead)) for r in roots):
+                return False
+        return True
+
     def within(spot: str) -> bool:  # a folder the program may stand in lies in a protected one; an end that cannot be read lies under the part that can
         lead = spot if "\0" not in spot else os.path.dirname(spot.split("\0")[0])
         return os.path.isabs(lead) and any(paths.inside(os.path.realpath(lead), r) for r in roots)
@@ -4364,6 +4375,10 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
             targets.append(n)  # argparse opens each path it is handed to be written: what the command hands it (5.22.1)
         wrote = wrote or bool(targets)
         blind = blind or any("\5" in s for t in targets for s in spellings(t))  # a write a member read in its own reading reaches
+        aimed = [e for a in n.args[:1] + [kw[k] for k in ("args", "executable", "cwd") if k in kw] for e in (a.elts if isinstance(a, (ast.List, ast.Tuple)) else [a])
+                 ] if starts else targets  # what a started command runs and where; any other write's target
+        if unread_places is not None and targets and not unread_places and any("\0" in s and not settled(s, at) for t in aimed for s in spellings(t) if "\2" not in s):
+            unread_places.append(label)  # a write or a run whose place its reader cannot read (the batch's second review, #6)
         gone = ([base] if method and label in ("rename", "replace") else (n.args[:1] or [kw[k] for k in ("src", "path") if k in kw])
                 if label in ("rmtree", "move", "rename", "renames", "replace") else [])  # a tree removed or moved away whole takes all it holds
         over_it = n.args[1:2] + [kw[k] for k in ("dst",) if k in kw] if label == "copytree" else []  # one copied over a folder lands in what it holds
@@ -5110,9 +5125,10 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None) -> str |
         # runs in (2026-10-06: through a variable). Its arguments are put where it reads them; through the
         # environment, or through arguments it takes unseen, any write it makes is refused. Another script is
         # judged by the words it is given, or, read from stdin, by the whole command.
+        unread_places = []  # a write or a run of the program on the line whose place its reader cannot read
         try:
             hit, wrote = _python_writes(reach[2] or source, names, [os.path.realpath(r) for r in raw], where, argv, dict(env, PWD=where), config,
-                                        _CALL["until"]) if source else (None, None)
+                                        _CALL["until"], unread_places) if source else (None, None)
         except (RecursionError, TimeoutError):  # nested too deeply to follow, or past the call's time: judged by its text
             hit, wrote = None, None
         inner, hit = (hit, False) if isinstance(hit, Unproven) else (None, hit)  # it starts a command that waits: it waits too
@@ -5145,6 +5161,9 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None) -> str |
                              f"runs `{label}`, which its reader proves only reads, but {bare}, or with -I, and it needs no code). It names "
                              f"{named}" if bare and hit is False else f"runs `{label}`, which this guard cannot prove only reads, and names {named}")
         waits = waits or (Unproven(f"runs `{head}`, which starts a command that {inner}") if inner else None)
+        waits = waits or (Unproven(f"runs `{head}` with a program on the line that writes or runs where its reader cannot place it (a path or a "
+                                   "name it builds or reads while it runs), whatever the line names") if source and not why and (
+            unread_places or (hit is None and wrote)) else None)  # the batch's second review, #6: forged with paths built at run time
         if head in EXTRACTS and not waits and any(re.fullmatch(EXTRACTS[head], w) for w in words[1:]) and (
                 within or head == "pax" or any(ABSOLUTE.fullmatch(w) for w in words[1:]) or paths.spelled(os.path.realpath(where)) in _spellings(raw, env)[2]):
             waits = Unproven(f"runs `{head}`, which unpacks where it stands or where its members say, in {where}")  # findings 9 and 15

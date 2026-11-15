@@ -397,7 +397,13 @@ harness that gives no transcript cannot carry approved sends or deploys until it
      Python on the line (`-c`, or a program on its input) is proved only where none of the
      agent's modules can stand in: run with `-I` (or `-P` with `-E`), or with no file or
      package where it runs named like a module it imports, and no `PYTHONPATH`,
-     `PYTHONSTARTUP`, `PYTHONHOME`, `PYTHONUSERBASE` or `PYTHONSAFEPATH` set on the line. A
+     `PYTHONSTARTUP`, `PYTHONHOME`, `PYTHONUSERBASE` or `PYTHONSAFEPATH` set on the line. Such
+     a program that writes or runs where its reader cannot place it waits for the code
+     whatever the line names (2026-11-15, the batch's second review: two programs built every
+     path at run time, from a variable's name and from the state's own records, and wrote a
+     grant and the principal's prompt): a target that starts where it cannot be read, or whose
+     readable folder holds a protected one, a call by a name it builds, code it builds. One
+     whose writes all land in a readable folder outside them, or that only reads, passes. A
      script file, or a module run with `-m` from the folder that holds it, is judged by what
      its text shows (after the 30-day replay: proving every expression held about 3,700
      commands a month): read whole up to 4 MB, with each module of its own it imports (a file

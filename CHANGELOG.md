@@ -63,6 +63,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   `..` and links: inside it, the folder itself, or a folder above it; parts in two words never join. In a program's
   text, parts still join within one statement however they are joined, but not from two separate paths written whole,
   and one path written whole names a folder only where its parts stand one after another in it.
+- **Python on the line that writes where its reader cannot place it waits** (core). The batch's second review forged
+  a grant and the principal's prompt with two `python3 -c` programs that never spelled a protected folder: each built
+  its paths while it ran, from a variable's name and from the state's own records, and the guard judged a program on
+  the line only when the line named such a folder. A program given with `-c` or on Python's input that holds a write
+  or a run whose place its reader cannot read (a target that starts where it cannot be read, or whose readable folder
+  holds a protected one; a call by a name it builds; code it builds) now waits for the principal's code whatever the
+  line names. One whose writes all land in a readable folder outside the protected ones, or that only reads, still
+  passes. A script file keeps the text check's scope: it is judged when the line or its text names such a folder.
 
 ## [5.22.1] - 2026-11-14
 
