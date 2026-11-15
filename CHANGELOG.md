@@ -18,16 +18,37 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   substitutions in a loop asked 11,746 times over 102 paths, which took 0.31 s on a Mac under Apple's Python 3.9 and
   1.11 s on CI's macOS runner, past the 1.0 s its test allows. The guard writes nothing while it judges, so each
   answer now holds for the call: 123 questions and 0.105 s. A test counts the questions, so it holds on any runner.
-- **The runtime carries the scripts a day-end runs.** Two seats' day-ends ran skill scripts from the plugin cache, and
-  the guard held them for the principal's code: it vouches for a plugin copy of a skill script only by comparing it
-  with the runtime's own copy, and the runtime carried just six skills' `scripts/` folders. Of the plugin's 89 skill
-  scripts, it held seven: the meeting fetcher, `context_doctor.py`, `local_messaging.py`, `messages_send.py`, and the
-  installer and release kit. The runtime now also carries `synthesis-meeting-transcripts`, `synthesis-message-exports`,
-  `synthesis-local-messaging` and `synthesis-context-lifecycle`, and a carried skill's Python outside `scripts/` (the
-  fetcher lives in `optional-workspace-mcp/`), never its tests: 53 files instead of 40. The kit (`setup.py`,
-  `workspace.py`, `release.py`) writes the trust base itself, is never carried and still waits; a copy changed after it
-  shipped still waits; the send guard does not consult this check, so sending is unchanged. The tests run the guard from
-  a runtime laid out as the installer builds it, since the checkout's own tests ran it beside every skill.
+- **Every skill runs the runtime's copy of its scripts, and the guard trusts only the release it runs from.** Two seats'
+  day-ends ran skill scripts from the plugin cache, and the guard held them for the principal's code. The first version
+  of this fix carried those skills' scripts in the runtime and vouched for a plugin copy with the runtime's bytes. Its
+  review found that a copy's bytes say nothing about the code it loads from other folders, all of them writable: a
+  byte-identical `messages_send.py` beside a `synthesis/` the agent wrote reached its send call with no code, and an
+  unmodified importer wrote into the session archive when an argument named it. Now:
+  - The guard trusts only what lies inside the release it runs from (`releases/<hash>/`, a protected folder). A
+    plugin-cache copy is judged like any other script; when one of the runtime's scripts waits from a copy, the hold
+    names the runtime's own copy. A module of a script's own that the same line writes makes the script wait.
+  - A script of the release keeps its exemption only while its line names no protected folder (its arguments, its input,
+    a value the line gives, the folder it runs in) and the plain word of its interpreter runs it: no path to the
+    interpreter, wrapper, export, function, alias or file read into the shell, no value for a variable in the
+    environment or one that moves where a program loads from, and no option but Python's that only take away what it
+    loads. What its own text names stays exempt. Otherwise it is judged like any other script.
+  - The runtime also carries `synthesis-meeting-transcripts` (the fetcher and the workspace-mcp server kit),
+    `synthesis-message-exports`, `synthesis-local-messaging`, `synthesis-context-lifecycle` and the Bitbucket helper
+    that `pr_queue_scan.py` loads: 59 files instead of 40. Never the installer and release kit (`setup.py`,
+    `workspace.py`, `release.py`), which write the trust base itself.
+  - Every skill text and script that runs one of those scripts names `$HOME/.synthesis/v5/current/skills/...`
+    (checkpoint 2.0.3, chief-of-staff 2.3.1, context-lifecycle 2.8.2, daily-rituals 3.19.0, inbox-cleanup 2.0.2,
+    kb-edit 2.1.1, local-messaging 1.5.3, mac-sync 3.1.1, machine-sync 2.0.1, meeting-transcripts 1.2.1,
+    message-exports 1.0.1, promotion-gate 2.0.1, slack-sync 4.0.4). Two passages moved word for word to make room:
+    slack-sync's "When This Skill Runs" to `references/sync-protocol.md`, which also lets its SKILL.md take its
+    `category` line, and local-messaging's account of what the reader skips to `references/adapter-contract.md`.
+  - A harness's session start runs the plugin's own installer first, and a forward-only install takes the same release
+    built by another installer. Before, the previous release's installer built the new release without the scripts it
+    did not know, the new release kept that build as "not newer", and the doctor's advice to start a session changed
+    nothing.
+  - On a Mac that runs the workspace-mcp server under launchd or systemd, its doctor now runs from the runtime and
+    reports a unit installed from anywhere else; running the runtime's `install-autostart.sh` once points the unit at
+    the runtime's stable path, which plugin upgrades no longer move.
 
 ## [5.23.0] - 2026-11-15
 
