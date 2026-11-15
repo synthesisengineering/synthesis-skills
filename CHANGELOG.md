@@ -18,13 +18,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   substitutions in a loop asked 11,746 times over 102 paths, which took 0.31 s on a Mac under Apple's Python 3.9 and
   1.11 s on CI's macOS runner, past the 1.0 s its test allows. The guard writes nothing while it judges, so each
   answer now holds for the call: 123 questions and 0.105 s. A test counts the questions, so it holds on any runner.
-- **The runtime carries the meeting and message skills' scripts.** A seat's day-end ran the meeting fetcher from the
-  plugin cache, and the guard held it for the principal's code: it vouches for a plugin copy of a skill script only by
-  comparing it with the runtime's own copy, and the runtime carried just six skills' `scripts/` folders. It now also
-  carries `synthesis-meeting-transcripts` and `synthesis-message-exports`, and a carried skill's Python outside
-  `scripts/` (the fetcher lives in `optional-workspace-mcp/`), never its tests: 46 files instead of 40. A copy changed
-  after it shipped still waits. The tests run the guard from a runtime laid out as the installer builds it, since the
-  checkout's own tests passed the fetcher with the guard beside every skill.
+- **The runtime carries the scripts a day-end runs.** Two seats' day-ends ran skill scripts from the plugin cache, and
+  the guard held them for the principal's code: it vouches for a plugin copy of a skill script only by comparing it
+  with the runtime's own copy, and the runtime carried just six skills' `scripts/` folders. Of the plugin's 89 skill
+  scripts, it held seven: the meeting fetcher, `context_doctor.py`, `local_messaging.py`, `messages_send.py`, and the
+  installer and release kit. The runtime now also carries `synthesis-meeting-transcripts`, `synthesis-message-exports`,
+  `synthesis-local-messaging` and `synthesis-context-lifecycle`, and a carried skill's Python outside `scripts/` (the
+  fetcher lives in `optional-workspace-mcp/`), never its tests: 53 files instead of 40. The kit (`setup.py`,
+  `workspace.py`, `release.py`) writes the trust base itself, is never carried and still waits; a copy changed after it
+  shipped still waits; the send guard does not consult this check, so sending is unchanged. The tests run the guard from
+  a runtime laid out as the installer builds it, since the checkout's own tests ran it beside every skill.
 
 ## [5.23.0] - 2026-11-15
 
