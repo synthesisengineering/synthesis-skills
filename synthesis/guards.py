@@ -1341,7 +1341,7 @@ WRAPPERS = {"env": {"-u", "--unset", "-C", "--chdir", "-S", "--split-string"}, "
             "nohup": set(), "time": set(), "nice": {"-n", "--adjustment"},
             "timeout": {"-s", "--signal", "-k", "--kill-after"}, "sudo": {"-u", "-g", "-h", "-p", "-C", "-D", "--chdir", "-U"},
             "xargs": {"-I", "-L", "-n", "-P", "-s", "-d", "-E", "-a"}, "npx": {"-p", "--package"},
-            "bunx": set(), "pnpx": set(), "caffeinate": set()}
+            "bunx": set(), "pnpx": set(), "caffeinate": set(), "arch": {"-arch"}}
 
 
 def _close(s: str, i: int, opener: str) -> int:
@@ -1603,6 +1603,13 @@ def _bare(words: list[str], moved: list | None = None) -> tuple[list[str], list[
         if head == "trap":  # what it keeps to run when the shell ends or a signal comes: the word before its signals, past `--`
             rest = list(itertools.dropwhile(lambda w: w in ("--", "-l", "-p"), words[1:]))
             scripts += [w for w in rest[:1] if len(rest) > 1 and w != "-"]
+        if head == "script" and len(words) > 1:  # script [-adkpqr] [-F pipe] [-t time] [file [command ...]]: the command it records
+            i = next((k for k in range(1, len(words)) if not words[k].startswith("-") and words[k - 1] not in ("-t", "-F")), len(words))
+            words = words[i + 1:]
+            continue
+        if head == "launchctl" and words[1:2] in (["asuser"], ["bsexec"]):  # the command it runs as a user or in a session
+            words = words[3:]
+            continue
         if head not in WRAPPERS:
             break
         takes, i = WRAPPERS[head], 1
@@ -1718,7 +1725,7 @@ PLACE = re.compile(r"\$(?:(OLD)?PWD\b|\{(OLD)?PWD\})")  # the folder a command i
 DEEP = "/**"  # after a folder a command runs in: that folder or any under it (`find -execdir` runs in the folder of what it found)
 OPAQUE = frozenset({"php", "lua", "luajit", "Rscript", "julia", "swift", "tclsh", "groovy", "scala", "elixir", "pwsh", "jshell"})
 MESSAGE = re.compile(r"--?(?:m|msg|message|body|title|subtitle|subject|description|notes?|comment|text|caption|summary|prompt)")  # its value is words for a reader
-PROMPTED = frozenset({"codex", "claude", "muse", "gh"})  # their words are prompts and messages: each runs under its own guards
+PROMPTED = frozenset({"codex", "claude", "muse", "gh", "say"})  # their words are prompts and messages: each runs under its own guards
 STARTERS = frozenset({"echo", "printf", "cat", "cd", "pushd", "find", "sed", "perl", "tee", "touch", "truncate", "mkdir", "rmdir", "rm",
                       "unlink", "shred", "chmod", "chown", "chgrp", "dd", "cp", "mv", "ln", "install", "rsync", "ditto", "gzip", "gunzip"})
 
@@ -1766,7 +1773,7 @@ def _commands(command: str, cwd: str, depth: int = 0, writes: list | None = None
         # Read out of a word that may be a message, a line counts as a command only when it starts as one the guard
         # knows (a shell, an interpreter, a file utility): `select ... where n > 5` and `Example: echo x > file` are words.
         taken = not prose or head in STARTERS or head in SHELLS or bool(SCRIPT.match(head)) or head in WRITERS or head in OWN_RULES or (
-            head in OPAQUE or head in READERS - WORDS)  # a reader may still redirect: `date >> file`
+            head in OPAQUE or head in READERS - WORDS or head in ACTORS)  # a reader may still redirect: `date >> file`; a key press handed to `watch`
         if writes is not None and taken:
             writes += [(t, cwd) for t in targets]
         if words and (not taken or (_named(words) and head not in PROMPTED)):  # a word it is handed may be a script it runs: read as one
@@ -2647,7 +2654,8 @@ def _program(words: list[str]) -> tuple[str, int, str]:
     after `-` or after -W is an argument (2026-11-11: each of those hid the program)."""
     head, i, fed = os.path.basename(words[0]), 1, False
     takes = ({"--check-hash-based-pycs"} if head.startswith("python") else {"-o", "+o", "-O", "+O"} if head in SHELLS  # options that take the next word
-             else {"-r", "--require", "--loader", "--import"} if head in ("node", "bun", "deno") else {"-I", "-r"})
+             else {"-r", "--require", "--loader", "--import"} if head in ("node", "bun", "deno")
+             else {"-l", "-s", "-o", "-t", "-c"} if head in ("osascript", "osacompile") else {"-I", "-r"})  # `osascript -l JavaScript`
     while i < len(words):
         word = words[i]
         at = next((j for j, c in enumerate(word) if j and c in "cmWX"), 0) if head.startswith("python") and re.match(r"-[A-Za-z]", word) else 0
@@ -2656,8 +2664,12 @@ def _program(words: list[str]) -> tuple[str, int, str]:
         if at and word[at] in "cm":
             given = word[at + 1:] or "".join(words[i + 1:i + 2])
             return ("inline", i + 1 + (not word[at + 1:]), given) if word[at] == "c" else ("file", i, given)
-        if word == "-c" or (word == "-e" and head not in SHELLS):
+        if word == "-c" or (word == "-e" and head not in SHELLS) or (word in ("--eval", "-p", "--print") and head in ("node", "nodejs", "bun")) or (
+                word == "-E" and head.startswith("perl")) or (word == "-r" and head.startswith("php")):
             return "inline", i + 2, "".join(words[i + 1:i + 2])
+        if head == "deno" and word in ("eval", "run"):  # deno eval CODE; deno run [options] FILE
+            later = next((k for k in range(i + 1, len(words)) if not words[k].startswith("-")), len(words))
+            return ("inline", i + 2, "".join(words[i + 1:i + 2])) if word == "eval" else ("file", later, "".join(words[later:later + 1]))
         if word == "-m" or not word.startswith(("-", "+")):
             return ("stdin", i, "") if fed else ("file", i, "".join(words[i + (word == "-m"):i + 1 + (word == "-m")]))
         fed = fed or (head in SHELLS and bool(re.fullmatch(r"-[A-Za-z]*s[A-Za-z]*", word)))  # sh -s: the script is on stdin, the words are its own
@@ -5252,8 +5264,8 @@ CLICKS = {"click", "left_click", "double_click", "triple_click", "right_click", 
 DESKTOP_TOOLS = CLICKS | {"batch", "teach_step", "teach_batch", "app_batch", "app_click", "app_key", "app_type", "app_menu",
                           "key", "hold_key", "type", "request_access", "request_teach_access"}
 BROWSER_STEPS = {"computer": "browser", "browser_batch": "browser_batch", "form_input": "browser_form", "javascript_tool": "browser_script"}
-RETURNS = {"return", "enter", "kp_enter", "kp_return"}
-MODIFIERS = {"alt": "option", "opt": "option", "command": "cmd", "meta": "cmd", "super": "cmd", "control": "ctrl"}
+RETURNS = {"return", "enter", "kp_enter", "kp_return", "numpadenter"}  # the last as Playwright names it
+MODIFIERS = {"alt": "option", "opt": "option", "command": "cmd", "meta": "cmd", "super": "cmd", "control": "ctrl", "controlormeta": "cmd"}
 SAYS_SENT = re.compile(r"^\W*(?:(?:send|repl(?:y|ie)|forward|post|publish|share|invite|respond|comment|mention|announce"
                        r"|notif(?:y|ie)|remind|schedule|deliver|email|text)(?:s|es|d|ed|ing)?\b"
                        r"|(?:click|press|tap|hit|choose|select)(?:s|es)?\s+(?:on\s+)?(?:the\s+)?send\b)|\bto send\b", re.I)
@@ -5281,9 +5293,12 @@ NAMES_POST = re.compile(r"\b(?:messag\w*|comment\w*|review\w*|post(?:s|ed|ing)?|
 WRITES = r"method\s*:\s*['\"`](?:post|put|patch|delete)|\.open\s*\(\s*['\"`](?:post|put|patch|delete)|sendBeacon"
 MOVES = (r"\blocation\s*\.\s*(?:assign|replace)\s*\(|\blocation(?:\s*\.\s*href)?\s*=(?!=)|(?:\b(?:window|globalThis|self|top|"
          r"parent|frames)\s*(?:\.\s*open|\[\s*['\"`]open['\"`]\s*\])|(?<![\w$.])open)\s*\(")  # open( by any name (5.24.0)
+# A browser server's own code (Playwright's run_code, Puppeteer's) acts through its page and its keyboard and mouse.
+DRIVES = r"\.(?:press|pressSequentially|type|fill|tap|dblclick|check|uncheck|selectOption|setInputFiles|dragTo|goto|goBack|reload)\s*\(|\b(?:keyboard|mouse|touchscreen)\s*\."
+PRESSES_ENTER = r"\.press\s*\(\s*['\"`](?:[^'\"`]*\+)?(?:Enter|Return|NumpadEnter)['\"`]"
 SCRIPT_ACTS = re.compile(r"\.click\s*\(|\.submit\s*\(|requestSubmit|dispatchEvent|KeyboardEvent|\.value\s*=[^=]|execCommand|"
-                         + WRITES + "|" + MOVES, re.I)
-SCRIPT_SENDS = re.compile(r"requestSubmit|\.submit\s*\(|dispatchEvent|KeyboardEvent|" + WRITES + r"|^(?=[\s\S]*\.click\s*\()[\s\S]*"
+                         + WRITES + "|" + MOVES + "|" + DRIVES, re.I)
+SCRIPT_SENDS = re.compile(r"requestSubmit|\.submit\s*\(|dispatchEvent|KeyboardEvent|" + WRITES + "|" + PRESSES_ENTER + r"|^(?=[\s\S]*\.click\s*\()[\s\S]*"
                           r"(?:submit|\bpost|\bsend|publish|repl(?:y|ies)|comment|share|review|rating|tweet|\bdone\b)", re.I)
 SCRIPT_ROUTINE = re.compile(r"\b(?:search|log-?in|sign-?in|password|query|q)\b", re.I)  # whole words: querySelector is none
 
@@ -5398,6 +5413,8 @@ def _web_app(url: str):
     """(page, (channel, line-break modifier), whether a box there may be a search) when url is a messaging site's page,
     else None. A site is its host and every host under it, as the browser lands on them (2026-11-14: `linkedin.com/...`,
     `uk.linkedin.com`, `messenger.com` and `m.me` passed while only www.linkedin.com and www.messenger.com were named)."""
+    if url == UNKNOWN_PAGE:  # a browser whose own results show no page is read as on one where Return may send
+        return url, ("browser", "shift"), False
     for site, prefix, chan, brk in WEB_MESSAGING:
         if _on_site(url, site, prefix.strip("*")):
             return _where(url)[0] + prefix.strip("*"), (chan, brk), prefix == "*"
@@ -5408,11 +5425,8 @@ def _browser_call(lines: list, i: int, ident: str) -> dict | None:
     """The call whose result is on line i, when it went to a browser server (a shell printing a tab list did not).
     It is looked for in the 5,000 lines above (2026-11-13: in 200, a result far below its call was passed over, and an
     older list of tabs was used)."""
-    for line in reversed(lines[max(0, i - 5000):i] if ident else []):
-        for call in (_blocks(line) if ident in line else []):
-            if call.get("type") == "tool_use" and call.get("id") == ident:
-                return call if re.search(r"browser|chrome", str(call.get("name", "")).rpartition("__")[0], re.I) else None
-    return None
+    call = _caller(lines, i, ident)
+    return call if call and re.search(r"browser|chrome", str(call.get("name", "")).rpartition("__")[0], re.I) else None
 
 
 def _tabs(transcript: str) -> tuple:
@@ -5440,7 +5454,7 @@ def _steps(name: str, tool_input: dict, session: dict | None, keep: bool = False
         tab = str(given.get("tabId") or front)
         if step.endswith("navigate"):  # the steps after it act on the new page; `back`, a path or a script names no host, and that page is not known
             url = str(given.get("url") or "").strip().replace("\\", "/")
-            tabs[tab] = url if re.match(r"(?i)(?:https?:|//|localhost\b|[\w-]+(?:\.[\w-]+)+(?:[:/?#]|$))", url) else (
+            tabs[tab] = url if given.get("exact") or url == UNKNOWN_PAGE or re.match(r"(?i)(?:https?:|//|localhost\b|[\w-]+(?:\.[\w-]+)+(?:[:/?#]|$))", url) else (
                 tabs.get(tab, "") if keep and _web_app(tabs.get(tab, "")) else "")
         yield step, given, tabs.get(tab, ""), tab
 
@@ -5786,9 +5800,591 @@ def check_desktop(name: str, tool: str, tool_input: dict, config: dict, session:
                "naming the apps again tells it which apps this session controls." if unseen else ""))
 
 
+# --- keys, clicks and other apps, from the shell (5.23.0; round 3 of the batch review, finding 8) -----------------
+# Words typed into a Messenger box with the browser tool, then Return pressed through osascript (System Events `key
+# code 36`), went out with no code: the shell guard read no key events. A command that presses keys or clicks in
+# whatever app is in front, types into another terminal, sends through a scriptable app, or runs code inside another
+# app now waits for the principal's code for that exact command, as a send does. AppleScript names each verb in its own
+# words or by a raw «event» code, so its verbs are read; what a script cannot show (a compiled script, one it builds and
+# runs, words the shell fills in, a bridge to the system's classes, an app named only when it runs) is held. Review
+# round 1 of this change (2026-11-15) read it through runners, task recipes, programs' own calls and imports, and the
+# lexer's edges. In 60 days of records no session pressed a key this way; 36 recorded commands now wait.
+ACTORS = frozenset({"osascript", "osacompile", "cliclick", "xdotool", "ydotool", "wtype", "dotool", "sendkeys", "hs", "skhd",
+                    "automator", "shortcuts", "tmux", "screen", "kitty", "wezterm"})
+INPUT_PROGRAMS = ("cliclick", "xdotool", "ydotool", "wtype", "dotool", "sendkeys")  # named in a program that starts commands, they wait
+INPUT_WORDS = {"cliclick": r"(?:c|dc|tc|rc|kd|ku|kp|t|dd|du|dm):.*|-f|--file|-|.*\$.*", "skhd": r"-k|--key|-t|--text", "shortcuts": r"run",
+               "xdotool": r"key|keydown|keyup|type|click|mousedown|mouseup|exec|script|behave|.*\$.*", "ydotool": r"key|type|click|mousedown|mouseup",
+               "tmux": r"send-keys|send|send-prefix|paste-buffer|pasteb", "screen": r"stuff", "kitty": r"send-text|send-key",
+               "wezterm": r"send-text"}  # the words that act; a program with none named acts on every run (hs is read by its Lua)
+HS_ACTS = re.compile(r"\b(?:eventtap|keyStrokes?|osascript|applescript|execute|task|axuielement|uielement|mouse|selectMenuItem|urlevent"
+                     r"|messages|shortcuts|loadstring|load|dofile|require|http)\b")
+KEYS = "presses keys or clicks in whatever app is in front"
+OTHER = "runs code in another app"
+UNREAD_OSA = "runs a script the guard cannot read"
+UI_SCRIPTING = ("system events", "com.apple.systemevents")  # read by its verbs: its readers ask which apps run (2026-11-15: 6 in 60 days)
+ACTING_APPS = {**dict.fromkeys(("systemuiserver", "com.apple.systemuiserver", "bettertouchtool", "com.hegenberg.bettertouchtool"), KEYS),
+               **dict.fromkeys(("keyboard maestro engine", "keyboard maestro", "com.stairways.keyboardmaestro.engine", "shortcuts events",
+                                "shortcuts", "com.apple.shortcuts.events", "com.apple.shortcuts", "automator", "automator runner",
+                                "com.apple.automator.runner", "hammerspoon", "org.hammerspoon.hammerspoon", "alfred", "alfred 4", "alfred 5",
+                                "com.runningwithcrayons.alfred", "osascript"), OTHER)}
+SENDING_APPS = {"messages": "messages", "com.apple.mobilesms": "messages", "com.apple.ichat": "messages", "mail": "email",
+                "com.apple.mail": "email", "microsoft outlook": "email", "com.microsoft.outlook": "email"}
+OSA_KEYS = re.compile(r"\bkeystroke\b|\bkey\s+code\b|\bkey\s+(?:down|up)\b|\bkey(?:Code|Down|Up)\b", re.I)
+SE_VERBS = re.compile(r"\bclick\b|\bperform\b|\bselect\b|\bset\s+(?:the\s+)?(?:value|focused|selected)\b|\bconfirm\b|\bpick\b"
+                      r"|\b(?:in|de)crement\b|\.value\s*=(?!=)|\bAX(?:Press|Confirm)\b", re.I)  # System Events' UI verbs, where it is named
+OSA_OTHER = re.compile(r"\bdo\s+script\b|\bdoScript\b|\bdo\s+javascript\b|\bdoJavaScript\b|\bexecute\b[^\n]*\bjavascript\b"
+                       r"|\bexecute\s*\(|\bwrite\s+text\b|\bcommand\s+\0\d+\0|\brun\s+trigger\b|\bexecute\s+lua\b", re.I)
+OSA_UNREAD = re.compile(r"\bdo\s+shell\s+script\b|\bdoShellScript\b|\b(?:run|load|store)\s+script\b|\b(?:run|load|store)Script\b"
+                        r"|«\s*(?:event|class)|\buse\s+(?:framework|script)\b|\bcurrent\s+application's\b|\beval\s*\(|\bFunction\s*\("
+                        r"|\bscript\s+\0\d+\0|\bLibrary\s*\(|=\s*\$\s*[;,)\n]|NSAppleEvent\w*"
+                        r"|ObjC\s*\.\s*(?:bindFunction|castRefToObject|registerSubclass)|\$\s*(?:\[|\.\s*(?:system|popen|exec\w*|fork"
+                        r"|NSTask|NSAppleScript|NSUserAppleScriptTask|NSUserUnixTask|CGEvent\w*|NSWorkspace|dlopen|dlsym|NSBundle"
+                        r"|NSClassFromString|performSelector\w*)\b)", re.I)
+OSA_CALLED = re.compile(r"\[(?!\s*(?:\0\d+\0|\d+)\s*\])[^\]\n]*\]\s*(?:\(|\.\s*(?:call|apply|bind)\s*\()")  # a member named when it runs, called
+OBJC_SAFE = ("Foundation", "AppKit", "Cocoa", "stdlib")  # stdlib's system and popen are held by name
+AUTOMATION_URL = re.compile(r"(?i)^(?:shortcuts|kmtrigger|keyboardmaestro|alfred|hammerspoon|raycast|btt|bettertouchtool|x-callback-url):")
+TERMINALS = ("terminal", "iterm", "warp", "kitty", "alacritty", "wezterm", "ghostty", "hyper")  # `open -a` one of these runs the file
+INPUT_LIBS = re.compile(r"\b(?:pyautogui|pynput|autopy|pydirectinput|pywinauto|robotjs|CGEvent\w*|CGPost(?:Keyboard|Mouse)Event"
+                        r"|AXUIElement\w*|NSAppleScript|NSUserAppleScriptTask|SBApplication|ScriptingBridge|appscript)\b"
+                        r"|\b(?:import|from)\s+(?:osascript|applescript|py_applescript)\b")
+INPUT_MODULES = re.compile(r"pyautogui|pynput|robotjs|@nut-tree/.*|nut-js|node-key-sender|keysender|@jxa/run|applescript|run-applescript"
+                           r"|node-osascript|osascript")  # a module a program imports by a string (`require("…")`)
+IMPORTED = re.compile(r"""(?:\b(?:require|import|__import__|import_module)\s*\(\s*|\bfrom\s+|\bimport\s+)(["'`])([^"'`\n]+)\1""")
+SPAWNS = re.compile(r"\b(?:subprocess|Popen|check_output|check_call|os\s*\.\s*(?:system|popen|exec\w*|spawn\w*|posix_spawn\w*)"
+                    r"|pty\s*\.\s*spawn|create_subprocess_\w+|child_process|execSync|execFileSync|spawnSync|Open3|NSTask|execa"
+                    r"|Runtime\s*\.\s*getRuntime|executableURL|launchPath)\b|\b(?:system|exec|spawn|popen|Process)\s*\("
+                    r"|\b(?:system|exec|spawn)\s+[\w\"'\[(]|\bIO\s*\.\s*popen|\bDeno\s*\.\s*(?:Command|run)\b|\bBun\s*\.\s*(?:spawn|\$)"
+                    r"|\bsh\s*\.\s*[\w-]+\s*\(")
+QUOTED_RUN = re.compile(r"`([^`\n]*)`|%x[({\[]([^)}\]\n]*)[)}\]]|\bqx\s*[({/'\"]([^)}/'\"\n]*)")  # Perl's and Ruby's commands
+CALLED_WITH = re.compile(r"(?:\b(?:system|popen|run|call|check_call|check_output|getoutput|getstatusoutput|Popen|execSync|exec|spawn|spawnSync"
+                         r"|execFile|execFileSync|execa|create_subprocess_shell)\s*\(|\b(?:system|exec)\s+)\s*$")  # a string handed to one starts
+LOOKS_OSA = re.compile(r"\btell\s+(?:application|app)\b|\bApplication\s*\(|\bdo\s+shell\s+script\b|«", re.I)  # an AppleScript itself
+PROGRAM_STRINGS = re.compile(r'''[rRbBuUfF]{0,2}(?:"""[\s\S]*?"""|\'\'\'[\s\S]*?\'\'\'|"(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*'|`(?:[^`\\]|\\.)*`)''')
+
+
+def _osa_code(text: str, jxa: bool) -> tuple:
+    """(code, literals, whole): the script with its comments out and each string literal as \\0N\\0, so a verb inside a
+    string is no verb; whole is False when a string, a comment or a pattern is never closed. In JavaScript a member named
+    by a literal (`app["keyCode"]`) is written as it runs, a template's `${…}` stays code, and a pattern (`/'/g`) is
+    passed over; in AppleScript `¬` joins two lines and a `|name|` is a name."""
+    literals: list = []
+    out, i, n, ends = [], 0, len(text), "\n\r\u2028\u2029" if jxa else "\n\r"
+    while i < n:
+        c = text[i]
+        if (jxa and text.startswith("//", i)) or (not jxa and (text.startswith("--", i) or (c == "#" and (i == 0 or text[i - 1] in " \t\n\r")))):
+            i = min([j for j in (text.find(e, i) for e in ends) if j >= 0] or [n])
+            continue
+        if text.startswith("/*" if jxa else "(*", i):
+            depth, j = 1, i + 2
+            while j < n and depth:
+                step = text[j:j + 2]
+                depth += (step == "(*" and not jxa) - (step == ("*/" if jxa else "*)"))
+                j += 2 if step in ("(*", "*)", "*/") else 1
+            if depth:
+                return "".join(out), literals, False
+            i = j
+            continue
+        if not jxa and c == "¬":  # a line continued on the next
+            i = next((j + 1 for j in range(i + 1, n) if text[j] in "\n\r" or not text[j].isspace()), n) if text[i + 1:].lstrip(" \t")[:1] in "\n\r" else i + 1
+            out.append(" ")
+            continue
+        if not jxa and c == "|":
+            j = text.find("|", i + 1)
+            if j < 0:
+                return "".join(out), literals, False
+            out.append("name")
+            i = j + 1
+            continue
+        if jxa and c == "/" and re.search(r"(?:^|[(,=:\[!&|?{};+\-*%<>~^]|\breturn|\btypeof|\bcase)\s*$", "".join(out[-40:])):
+            j, cls = i + 1, False
+            while j < n and (text[j] != "/" or cls) and text[j] not in "\n\r":
+                cls = (cls or text[j] == "[") and text[j] != "]"
+                j += 2 if text[j] == "\\" else 1
+            if j >= n or text[j] != "/":
+                return "".join(out), literals, False
+            literals.append(text[i + 1:j])
+            out.append(f"\0{len(literals) - 1}\0")
+            i = j + 1
+            continue
+        if c in ("'\"`" if jxa else '"'):
+            j, value, parts = i + 1, [], []
+            while j < n and text[j] != c:
+                if c == "`" and text.startswith("${", j):  # a template's expression is code
+                    depth, k = 1, j + 2
+                    while k < n and depth:
+                        depth += (text[k] == "{") - (text[k] == "}")
+                        k += 1
+                    inner = _osa_code(text[j + 2:k - 1], True)
+                    if depth or not inner[2]:
+                        return "".join(out), literals, False
+                    parts.append(re.sub(r"\0(\d+)\0", lambda m: f"\0{int(m[1]) + len(literals)}\0", inner[0]))
+                    literals += inner[1]
+                    j = k
+                    continue
+                value.append(text[j + 1] if text[j] == "\\" and j + 1 < n else text[j])
+                j += 2 if text[j] == "\\" else 1
+            if j >= n:
+                return "".join(out), literals, False
+            literals.append("".join(value))
+            out.append(f"\0{len(literals) - 1}\0" + "".join(f" {p} " for p in parts))
+            i = j + 1
+            continue
+        out.append(c)
+        i += 1
+    code = "".join(out)
+    if jxa:
+        code = re.sub(r"\[\s*\0(\d+)\0\s*\]", lambda m: ("." + literals[int(m[1])]) if re.fullmatch(r"[A-Za-z_$][\w$]*", literals[int(m[1])]) else m[0], code)
+    return code, literals, True
+
+
+def _app_name(name: str) -> str:
+    """An app as a script names it, by name, path or bundle id, in one spelling."""
+    name = re.sub(r"\s+", " ", name.strip().strip("\\").rstrip("/:")).lower()
+    return re.sub(r"\.app$", "", re.split(r"[/:]", name)[-1]) if ("/" in name or ":" in name) and not name.startswith("com.") else re.sub(r"\.app$", "", name)
+
+
+def _osa_judge(text: str, jxa: bool):
+    """(channel, what it does, the words it types or sends) for an AppleScript or JavaScript for Automation script
+    that presses keys or clicks, sends, runs code in another app, or cannot be read; None for one that does none of
+    these."""
+    if len(text) > SCRIPT_LIMIT:
+        return "desktop", UNREAD_OSA + " (one larger than the guard reads)", ""
+    code, literals, whole = _osa_code(text, jxa)
+    if not whole:
+        return "desktop", UNREAD_OSA + " (a string, comment or pattern it never closes)", ""
+    if HANDED in text or (re.search(r"\$\{|\$\(\s*[\w./-]+\s+\S|\$[A-Z_][A-Z0-9_]*\b(?!\s*[.(\[])", code) if jxa else re.search(r"[$`]", code)):
+        return "desktop", UNREAD_OSA + " (words the shell fills in when it runs)", ""
+    named = [literals[int(n)] for n in re.findall(r"\b(?:application|app)\s+(?:id\s+)?\0(\d+)\0|\bApplication\s*\(\s*\0(\d+)\0\s*\)", code, re.I)
+             for n in n if n]
+    apps = [_app_name(a) for a in named]
+    typed = [re.sub(r"\\(.)", r"\1", t) for t in re.findall(r"""\bkeystroke\s*\(?\s*\\*["'`]((?:[^"'`\\]|\\.)*)""", text, re.I)]
+    sent = [re.sub(r"\\(.)", r"\1", t) for t in re.findall(r"""\bsend\s*\(?\s*\\*["'`]((?:[^"'`\\]|\\.)*)""", text, re.I)]
+    acting = next((a for a in apps if a in ACTING_APPS), "")
+    if acting:
+        return "desktop", f"{ACTING_APPS[acting]} ({acting})", "\n".join(typed)
+    if OSA_KEYS.search(code):
+        return "desktop", KEYS, "\n".join(typed)
+    ui = any(a in UI_SCRIPTING for a in apps)
+    if ui and (SE_VERBS.search(code) or OSA_UNREAD.search(code) or OSA_CALLED.search(code)):
+        return "desktop", KEYS + " (System Events)", "\n".join(typed)
+    if jxa and re.search(r"\bApplication\s*\(\s*(?!\0\d+\0\s*\))", code):
+        return "desktop", "names the app it acts on only when it runs, so it may press keys or click in whatever app is in front", ""
+    imported = re.findall(r"ObjC\s*\.\s*import\s*\(\s*(\0(\d+)\0|[^)]*)\)", code)
+    if OSA_UNREAD.search(code) or OSA_CALLED.search(code) or any(not n or literals[int(n)] not in OBJC_SAFE for _, n in imported):
+        return "desktop", UNREAD_OSA + " (a shell command, a script it builds or a library, or the system's own classes)", ""
+    if OSA_OTHER.search(code) or (re.search(r"\bopen\s*location\b|\bopenLocation\b", code, re.I) and any(map(AUTOMATION_URL.match, literals))) or any(
+            re.search(r"\.(?:command|tool)\s*$", lit) for lit in literals):
+        return "desktop", OTHER + " (a terminal, a page script, an automation link or a .command file)", ""
+    if re.search(r"\bsend\b", code, re.I):
+        chan = next((SENDING_APPS[a] for a in apps if a in SENDING_APPS), "messages")
+        return chan, f"sends through {next((a for a in apps if a in SENDING_APPS), 'an app')}", "\n\n".join(sent)
+    return None
+
+
+def _home(word: str) -> str:
+    return os.path.expanduser(re.sub(r"^\$\{?HOME\}?(?=/|$)", "~", word))
+
+
+def _osa_source(words: list, where: str, feed: str, written: set, bodies: str) -> tuple:
+    """(text, JavaScript, readable) of the script an osascript or osacompile command runs: its -e lines, the file it
+    names (read as the line's own heredocs when the same line writes it), or its input."""
+    lines, lang, i, name = [], "", 1, "-"
+    while i < len(words):
+        word = words[i]
+        if word in ("-e", "-l"):
+            lines, lang = (lines + words[i + 1:i + 2], lang) if word == "-e" else (lines, "".join(words[i + 1:i + 2]))
+            i += 2
+        elif word[:2] in ("-e", "-l") and len(word) > 2:
+            lines, lang = (lines + [word[2:]], lang) if word[:2] == "-e" else (lines, word[2:])
+            i += 1
+        elif word in ("-s", "-o", "-t", "-c"):
+            i += 2
+        elif word == "--" or not word.startswith("-") or word == "-":
+            name = "".join(words[i + (word == "--"):i + 1 + (word == "--")]) or "-"
+            break
+        else:
+            i += 1
+    if lines:
+        return "\n".join(lines), lang.lower() == "javascript", True
+    path = os.path.realpath(os.path.join(where, _home(name))) if name != "-" else ""
+    text = feed if name == "-" else "" if "$" in _home(name) or name == HANDED else bodies if path in written else _code_of(path)
+    jxa = lang.lower() == "javascript" or (text.startswith("#!") and "javascript" in text.split("\n", 1)[0].lower())
+    return text, jxa, bool(text.strip()) and UNREAD_INPUT not in text
+
+
+def _code_only(text: str, head: str) -> str:
+    """A program's text with its strings and comments taken out: a library a comment or a message names is not used."""
+    text = PROGRAM_STRINGS.sub('""', text)
+    hashed = not re.match(r"(?:node|nodejs|bun|deno|tsx|ts-node|swift|java|jshell|groovy|scala)", head)
+    return re.sub(r"(?m)#.*$", "", text) if hashed else re.sub(r"/\*[\s\S]*?\*/|//[^\n]*", "", text)
+
+
+def _program_acts(text: str, head: str = "", where: str = "/", depth: int = 0) -> str:
+    """What a program's text does that waits: an input or Apple Event library it uses, or a command it starts that
+    presses keys, clicks or acts through another app (each read where the program runs, through the files it names).
+    A program that starts nothing is only read, and so is the prose in its strings and comments."""
+    code = _code_only(text, head)
+    if INPUT_LIBS.search(code) or any(INPUT_MODULES.fullmatch(m[2]) for m in IMPORTED.finditer(text)):
+        return KEYS + ", or acts through another app"
+    if not SPAWNS.search(text) and not (re.match(r"(?:perl|ruby)", head) and QUOTED_RUN.search(text)) and not re.match(r"(?:tclsh|wish|expect)", head):
+        return ""
+    lines: list = []  # (command line, folder)
+    lines += [(shlex.join([m[1]] + [_unquoted(s) for s in PROGRAM_STRINGS.findall(m[2])]), where)  # Python's sh package: sh.cliclick(...)
+              for m in re.finditer(r"\bsh\s*\.\s*([\w-]+)\s*\(([^)]*)\)", text) if m[1] in ACTORS]
+    lines += [(next(filter(None, m.groups()), ""), where) for m in QUOTED_RUN.finditer(text)] if re.match(r"(?:perl|ruby)", head) else []
+    lines += [(m[1], where) for m in re.finditer(r"(?m)^\s*(?:exec|spawn)\s+([^\n;\]]+)", text)] if re.match(r"(?:tclsh|wish|expect)", head) else []
+    found = list(PROGRAM_STRINGS.finditer(text))
+    runs_osa = any(re.match(r"\s*(?:\S*/)?osa(?:script|compile)\b", line) for line, _ in lines) or any(  # an osascript list, whole or cut short
+        os.path.basename(_unquoted(m[0]).strip()) in ("osascript", "osacompile") for m in found)
+    for at, literal in enumerate(found):
+        value = _unquoted(literal[0])
+        first = os.path.basename(value.split(None, 1)[0]) if value.strip() else ""
+        program = first in ACTORS or first in SHELLS or bool(SCRIPT.match(first) or UNREAD.match(first))
+        if program and value.strip() == value.split(None, 1)[0]:  # a list of words: this one and the strings after it
+            words, last = [value], literal
+            for later, nxt in zip(found[at:], found[at + 1:]):
+                if not re.fullmatch(r"\s*,\s*", text[later.end():nxt.start()]):
+                    break
+                words.append(_unquoted(nxt[0]))
+                last = nxt
+            if first in INPUT_PROGRAMS:
+                return KEYS + ", or acts through another app"
+            whole = text[last.end():].lstrip()[:1] in ("]", ")")  # a list a computed word cuts short shows no script
+            if first not in ("osascript", "osacompile") or (whole and len(words) > 1):  # osascript alone is a lookup or a message
+                lines.append((shlex.join(words), where))
+                runs_osa = runs_osa or first in ("osascript", "osacompile")
+        elif program and CALLED_WITH.search(text[max(0, literal.start() - 40):literal.start()]):  # a command line handed to a shell
+            lines.append((value, where))
+            runs_osa = runs_osa or first in ("osascript", "osacompile")
+    for line, there in lines:
+        fed: list = []
+        try:
+            commands = _parse(line, there if there and "\0" not in there else where, feeds=fed)[0]
+        except (Unreadable, ValueError):
+            continue
+        for (words, place), given in zip(commands, fed + [""] * (len(commands) - len(fed))):
+            acts = _acts_outside(words, place, given, depth + 1)
+            if acts:
+                return acts[1]
+    for literal in found if runs_osa else ():  # an AppleScript kept in a variable, in a program that runs osascript
+        value = _unquoted(literal[0])
+        if LOOKS_OSA.search(value) and not re.match(r"\s*(?:\S*/)?osa(?:script|compile)\b", value):
+            acts = _osa_judge(value, bool(re.search(r"\bApplication\s*\(", value)))
+            if acts:
+                return acts[1]
+    return ""
+
+
+def _unquoted(literal: str) -> str:
+    body = re.sub(r"^[rRbBuUfF]{0,2}", "", literal)
+    edge = 3 if body[:3] in ('"""', "'''") else 1
+    return re.sub(r"\\(.)", lambda m: {"n": "\n", "t": "\t"}.get(m[1], m[1]), body[edge:-edge], flags=re.S)
+
+
+def _recipe(words: list, where: str) -> str | None:
+    """The shell text a task runner runs: a make target's recipe, or a package script (npm, pnpm, yarn or bun run)."""
+    head, rest = os.path.basename(words[0]), [w for w in words[1:] if not w.startswith("-") and "=" not in w]
+    if head in ("make", "gmake"):
+        text = next((t for t in (_code_of(os.path.join(where, f)) for f in ("GNUmakefile", "makefile", "Makefile")) if t), "")
+        target = rest[0] if rest else next(iter(re.findall(r"(?m)^([\w.-]+)\s*:(?!=)", text)), "")
+        found = re.search(rf"(?m)^{re.escape(target)}\s*:(?!=)[^\n]*\n((?:\t[^\n]*\n?)*)", text) if target else None
+        return "\n".join(re.sub(r"^\t[@+-]*", "", line) for line in found[1].splitlines()) if found else None
+    if head in ("npm", "pnpm", "yarn", "bun") and rest:
+        name = rest[1] if rest[0] in ("run", "run-script") and len(rest) > 1 else rest[0] if rest[0] in ("test", "start") or head in ("yarn", "pnpm") else ""
+        try:
+            scripts = json.loads(_code_of(os.path.join(where, "package.json")) or "{}").get("scripts") or {}
+        except (ValueError, AttributeError):
+            return None
+        found = [str(scripts[k]) for k in (f"pre{name}", name, f"post{name}") if isinstance(scripts, dict) and k in scripts]
+        return "\n".join(found) if name and found else None
+    return None
+
+
+def _acts_outside(words: list, where: str, feed: str = "", depth: int = 0, written: set = frozenset(), bodies: str = ""):
+    """(channel, what it does, the words it types or sends) for a command that presses keys or clicks, sends through
+    an app, or runs code in another app, read through the scripts, programs, runners and shell files it runs; None for
+    any other."""
+    if not words or depth > 3:
+        return None
+    if "$" in words[0] or words[0] == HANDED:  # a program the shell names when it runs: `$(command -v osascript)`, or unknown
+        found = re.fullmatch(r"\$\(\s*(?:command\s+-v|which)\s+([\w./-]+)\s*\)|`\s*(?:command\s+-v|which)\s+([\w./-]+)\s*`", words[0])
+        if found:
+            return _acts_outside([next(filter(None, found.groups()))] + words[1:], where, feed, depth, written, bodies)
+        if any(LOOKS_OSA.search(w) for w in words[1:]):
+            return _osa_judge("\n".join(w for w in words[1:] if not w.startswith("-")), False) or ("desktop", UNREAD_OSA, "")
+        return ("desktop", KEYS + ", or acts through another app", "") if any(re.fullmatch(r"(?:c|dc|tc|rc|kd|ku|kp|t|dd|du|dm):\S+", w)
+                                                                           for w in words[1:]) else None  # cliclick's own words
+    head = os.path.basename(words[0])
+    if head == "hs":
+        lua = words[words.index("-c") + 1] if "-c" in words[:-1] else next((_code_of(os.path.join(where, w)) or "\0" for w in words[1:] if w.endswith(".lua")), feed)
+        return ("desktop", KEYS + ", or acts through another app (Hammerspoon)", "") if lua and ("\0" in lua or HS_ACTS.search(lua)) else None
+    if head in ACTORS - {"osascript", "osacompile"}:
+        if len(words) == 2 and words[1] in ("-h", "--help", "-V", "--version"):
+            return None
+        pattern = INPUT_WORDS.get(head)
+        if pattern and not any(re.fullmatch(pattern, w) or w == HANDED for w in words[1:]):
+            return None
+        typed = ([w[2:] for w in words[1:] if w.startswith("t:")] if head == "cliclick" else words[1:] if head == "wtype"
+                 else [w for w in words[words.index("type") + 1:] if not w.startswith("-")] if "type" in words else [])
+        return "desktop", KEYS + ", or types into another terminal, or acts through another app", "\n".join(typed)
+    if head in ("osascript", "osacompile"):
+        text, jxa, readable = _osa_source(words, where, feed, written, bodies)
+        return _osa_judge(text, jxa) if readable else ("desktop", UNREAD_OSA + " (a compiled script, one on an input it cannot see, or one the line writes)", "")
+    if head == "open":
+        app = next((words[k + 1] for k, w in enumerate(words[:-1]) if w in ("-a", "-b")), "").lower()
+        operands = [w for k, w in enumerate(words[1:], 1) if not w.startswith("-") and words[k - 1] not in ("-a", "-b")]
+        if any(t in app for t in TERMINALS) or any(re.search(r"\.(?:command|tool|terminal)$", w) or AUTOMATION_URL.match(w) for w in operands):
+            return "desktop", OTHER + " (a terminal, a .command file or an automation link)", ""
+        return None
+    if SCRIPT.match(head) or UNREAD.match(head) or head in OPAQUE or head in ("deno", "php"):
+        kind, _, given = _program(words)
+        cat = re.fullmatch(r"\$\(\s*(?:cat\s+|<\s*)([\w./~-]+)\s*\)", given) if kind == "inline" else None
+        path = os.path.realpath(os.path.join(where, _home(cat[1] if cat else given))) if (kind == "file" or cat) and given else ""
+        module = _module_file(given, "" if _isolated(words) else os.path.realpath(where)) if words[_program(words)[1]:][:1] == ["-m"] and head.startswith("python") else ""
+        text = (bodies or "\0") if path in written else given if kind == "inline" and not cat else feed if kind == "stdin" else _code_of(module or path) if path or module else ""
+        if text == "\0":
+            return "desktop", UNREAD_OSA + " (a program the line writes before it runs it)", ""
+        files = (_python_files(module or path or os.path.join(where, "-"), text, "" if _isolated(words) else os.path.realpath(where if kind != "file" else os.path.dirname(path)), given if module else "")[0]
+                 if head.startswith("python") and text else [(path, text)])
+        acts = next((a for _, body in files for a in [_program_acts(body, head, where, depth)] if a), "")
+        return ("desktop", acts, "") if acts else None
+    if "/" in words[0]:
+        first = _code_of(os.path.join(where, os.path.expanduser(words[0])))
+        shebang = first.split("\n", 1)[0] if first.startswith("#!") else ""
+        if "osascript" in shebang:
+            return _osa_judge(first, "javascript" in shebang.lower())
+        if re.search(r"\b(?:python[\d.]*|node|bun|deno|perl|ruby|swift)\b", shebang):
+            acts = _program_acts(first, os.path.basename(shebang.split()[-1]) if shebang.split() else "", where, depth)
+            return ("desktop", acts, "") if acts else None
+    runs_file = head in SHELLS or head in (".", "source") or "/" in words[0]
+    target = os.path.realpath(os.path.join(where, os.path.expanduser(words[0] if "/" in words[0] and head not in SHELLS
+                                                                     else next((w for w in words[1:] if not w.startswith(("-", "+"))), ""))))
+    if runs_file and target in written:  # a shell file the same line writes is read as the line's own heredocs
+        if not bodies:
+            return "desktop", UNREAD_OSA + " (a script the line writes before it runs it)", ""
+        script = bodies
+    else:
+        script = _script_file(words, where)
+        script = script if script and script != TOO_LARGE else _recipe(words, where)
+    if script:
+        fed: list = []
+        try:
+            commands = _parse(script, where, feeds=fed)[0]
+        except (Unreadable, ValueError):
+            return None
+        for (inner, there), given in zip(commands, fed + [""] * (len(commands) - len(fed))):
+            found = _acts_outside(inner, there, given, depth + 1)
+            if found:
+                return found
+    return None
+
+
+def osa_send(words: list, cwd: str):
+    """The channel an osascript command's script sends to ("messages", "email"), for `sends.command_send`; None when it
+    sends nothing or does something else the guard holds as its own."""
+    if os.path.basename(words[0]) not in ("osascript", "osacompile"):
+        return None
+    text, jxa, readable = _osa_source(words, cwd, "", frozenset(), "")  # its script alone: this reads, and files no hold
+    found = _osa_judge(text, jxa) if readable else None
+    return found[0] if found and found[0] != "desktop" else None
+
+
+def _acts_in_line(command: str, cwd: str, written: set, bodies: str, parsed: tuple | None = None) -> list:
+    """(words, folder, what it does) for each command a shell line runs that presses keys, clicks or acts through an
+    app, read in every reading of the variables the line gives (`O=osascript; $O -e …`); a line the guard cannot read
+    that names such a program is held whole."""
+    found = []
+    named = re.search(r"(?<![\w.-])(?:" + "|".join(sorted(ACTORS)) + r")(?![\w-])", command)
+    readings = [command] + (_resolved(command) if "$" in command and (named or LOOKS_OSA.search(command)) else [])
+    for reading in list(dict.fromkeys(readings))[:READINGS + 1]:
+        fed: list = []
+        commands, readable = (parsed[0], parsed[2]) if parsed and reading == command else _parse(reading, cwd, feeds=fed)
+        fed = parsed[1] if parsed and reading == command else fed  # the line as written, as the caller parsed it
+        if not readable and any(os.path.basename(w[0]) in ACTORS or "osascript" in " ".join(w) for w, _ in commands):
+            return [(commands[0][0], cwd, ("desktop", UNREAD_OSA + " (a line the guard cannot read)", ""))]
+        for (words, where), feed in zip(commands, fed + [""] * (len(commands) - len(fed))):
+            acts = _acts_outside(words, where, feed, 0, written, bodies)
+            if acts and not any(acts == a and where == w for _, w, a in found):
+                found.append((words, where, acts))
+    return found
+
+
+# --- browser tools from any server, by what they do (5.23.0; round 3 of the batch review, finding 8) ---------------
+# Only Claude in Chrome's tools and the browser pane's computer, batch, form and script tools reached the send rules:
+# the Playwright plugin's browser_type with submit, or browser_press_key Enter, on a Messenger page went out with no
+# code. A browser tool from any server whose name says it drives a browser is read as the steps it performs, on the page
+# its own results, or its own last navigate, show; a click is read by the control the page's newest snapshot names as
+# well as the agent's words for it; a tool the guard does not know is a step that may send; and where nothing shows the
+# page, it is held as one that may send. The code binds the call itself, not the steps read from it.
+DRIVERS = re.compile(r"browser|chrome|chromium|playwright|puppeteer|devtools|webdriver|selenium|firefox|safari|stagehand", re.I)
+DRIVEN = {**dict.fromkeys(("type", "fill", "type_text", "fill_input"), "type"), **dict.fromkeys(("press_key", "press", "key", "keyboard"), "key"),
+          **dict.fromkeys(("click", "double_click", "dblclick", "tap", "select_option", "select", "check", "drag", "handle_dialog"), "click"),
+          **dict.fromkeys(("fill_form", "form_input"), "form"), "drop": "drop",
+          **dict.fromkeys(("navigate", "navigate_page", "new_page", "goto", "open", "navigate_back", "go_back", "tabs"), "navigate"),
+          **dict.fromkeys(("evaluate", "evaluate_script", "run_code", "run_code_unsafe", "execute_script", "script", "javascript"), "script"),
+          **dict.fromkeys(("snapshot", "take_screenshot", "screenshot", "console_messages", "network_requests", "network_request", "wait_for",
+                           "find", "hover", "resize", "close", "emulate_media", "install", "file_upload", "list_pages", "select_page"), "read")}
+READ_WORDS = re.compile(r"(?:^|_)(?:get|read|list|snapshot|screenshot|console|wait|find|query|scroll|hover|resize|close|history|content|text"
+                        r"|title|url|cookies|logs?|status|info|search)(?:_|$)")  # an unknown tool that says it only reads
+UNKNOWN_PAGE = "a page the record does not show"
+PAGE_LINE = re.compile(r"^- Page URL: (\S+)\s*$|^\d+: (\S+) \[selected\]\s*$|^- \d+: \(current\) \[[^\]\n]*\]\((\S+?)\)\s*$|^Navigated to (\S+)", re.M)
+PAGE_MARKS = ("Page URL", "[selected]", "(current)", "Navigated to", "[ref=")
+
+
+def driven_tool(tool: str) -> str:
+    """The step a browser tool from a server not otherwise read performs ("type", "key", "click", "form", "drop",
+    "navigate", "script"), "read" for one that only reads, "unknown" for one the guard does not know, or "" for no
+    browser tool."""
+    server, _, name = tool.rpartition("__")
+    if not tool.startswith("mcp__") or tool.startswith(BROWSER) or desktop_tool(tool) or re.search(r"claude[_-]browser", server, re.I):
+        return ""  # Claude in Chrome's and the browser pane's own tools are read by their own rules
+    if not (DRIVERS.search(server) or DRIVERS.search(name.split("_")[0])):
+        return ""
+    bare = name[len("browser_"):] if name.startswith("browser_") else name  # Playwright's own names; any other server's by its words
+    if bare in DRIVEN:
+        return DRIVEN[bare]
+    if re.search(r"navigate|goto|go_to|open_?url|new_page|new_tab", bare):
+        return "navigate"
+    return "read" if READ_WORDS.search(bare) and not re.search(r"click|type|fill|press|key|send|submit|post|act|inject|execute|evaluate|script"
+                                                              r"|run|request|drop|drag|upload", bare) else "unknown"
+
+
+def _caller(lines: list, i: int, ident: str) -> dict | None:
+    for line in reversed(lines[max(0, i - 5000):i] if ident else []):
+        for call in (_blocks(line) if ident in line else []):
+            if call.get("type") == "tool_use" and call.get("id") == ident:
+                return call
+    return None
+
+
+def _line_events(line: str) -> list:
+    """(call or result, its id, the tool's name, its input or its text) for each tool call and result on a line of a
+    Claude Code record or a Codex rollout."""
+    try:
+        entry = json.loads(line)
+    except ValueError:
+        return []
+    payload = entry.get("payload") if isinstance(entry, dict) else None
+    if isinstance(payload, dict):
+        kind, ident = payload.get("type"), str(payload.get("call_id") or "")
+        if kind in ("function_call", "custom_tool_call"):
+            given = payload.get("arguments") if kind == "function_call" else payload.get("input")
+            try:
+                given = json.loads(given) if isinstance(given, str) else given
+            except ValueError:
+                given = {}
+            return [("call", ident, str(payload.get("name") or ""), given if isinstance(given, dict) else {})]
+        if kind in ("function_call_output", "custom_tool_call_output"):
+            out = payload.get("output")
+            out = out.get("output", out) if isinstance(out, dict) else out
+            return [("result", ident, "", out if isinstance(out, str) else json.dumps(out))]
+        return []
+    return [("call", str(b.get("id") or ""), str(b.get("name") or ""), b.get("input") if isinstance(b.get("input"), dict) else {})
+            if b.get("type") == "tool_use" else ("result", str(b.get("tool_use_id") or ""), "", _said(b))
+            for b in _blocks(line) if b.get("type") in ("tool_use", "tool_result")]
+
+
+def _driver_events(transcript: str, server: str) -> list:
+    """(call or result, the tool's name, its input, its text) for this server's own calls and results, newest first."""
+    calls, events = {}, []
+    for line in _tail(transcript):
+        if server + "__" not in line and not any(m in line for m in PAGE_MARKS):
+            continue
+        for kind, ident, name, data in _line_events(line):
+            if kind == "call" and name.startswith(server + "__"):
+                calls[ident] = name
+                events.append(("call", name, data, ""))
+            elif kind == "result" and ident in calls:
+                events.append(("result", calls[ident], {}, data))
+    return events[::-1]
+
+
+def _driver_page(events: list) -> str:
+    """The page this server's browser is on: the newest of its results that shows one, or of its own navigates; '' when
+    a tab change or a step back left it unknown, or nothing shows it."""
+    for kind, name, given, text in events:
+        found = [next(filter(None, m)) for m in PAGE_LINE.findall(text)] if kind == "result" else []
+        if found:
+            return found[-1]
+        bare = re.sub(r"^browser_", "", name.rpartition("__")[2])
+        if kind == "call" and driven_tool(name) == "navigate" and not (bare == "tabs" and given.get("action") == "list"):
+            if bare in ("navigate_back", "go_back") or (bare == "tabs" and given.get("action") != "new"):
+                return ""  # a step back or a tab change whose result shows no page
+            return str(given.get("url") or "")
+    return ""
+
+
+def _driver_ref(events: list, page: str, ref: str) -> tuple | None:
+    """(role, name) of a control its ref names in the newest snapshot of the current page; None when that snapshot does
+    not show it, or the newest snapshot is another page's."""
+    text = next((t for kind, _, _, t in events if kind == "result" and "[ref=" in t), "")
+    own = [next(filter(None, m)) for m in PAGE_LINE.findall(text)]
+    if not text or (own and own[-1] != page):
+        return None
+    found = re.search(r'^\s*-\s+(\w[\w-]*)(?:\s+"((?:[^"\\]|\\.)*)")?[^\n]*\[ref=' + re.escape(ref) + r"\]", text, re.M)
+    return (found[1], found[2] or "") if found else None
+
+
+def _driven_steps(kind: str, tool: str, tool_input: dict, session: dict | None) -> list:
+    """The steps a browser tool performs, as a browser batch reads them, after a navigate step to the page they act on."""
+    server, name = tool.rpartition("__")[0], tool.rpartition("__")[2]
+    events = _driver_events(str((session or {}).get("transcript_path") or ""), server)
+    page = _driver_page(events) or UNKNOWN_PAGE
+    urls = [v for v in tool_input.values() if isinstance(v, str) and _web_app(v)] if kind == "unknown" else []
+    page = urls[0] if urls else page
+    target = str(tool_input.get("target") or tool_input.get("ref") or tool_input.get("startTarget") or "")
+    is_ref = bool(re.fullmatch(r"(?:f\d+)?e\d+", target))
+    said = " ".join(filter(None, [str(tool_input.get("element") or tool_input.get("startElement") or tool_input.get("selector") or ""),
+                                  "" if is_ref else target]))
+    shown = _driver_ref(events, page, target) if is_ref else None
+    on = f'the {shown[0]} "{shown[1]}"' if shown and shown[1] else ""  # the control as the page names it, where the click rules read a label
+    summary = (f"Clicks {on}" + (f" ({said})" if said else "") if on else "" if page == UNKNOWN_PAGE or _web_app(page) else f"Clicks {said}".strip() if said else "")
+    step = lambda **given: {"name": "computer", "input": given}  # noqa: E731
+    if kind == "type":
+        steps = [step(action="type", text=str(tool_input.get("text", tool_input.get("value", ""))), action_summary=f"Types into {said}".strip())] + (
+            [step(action="key", text="Return")] if tool_input.get("submit") else [])
+    elif kind == "key":
+        key = str(tool_input.get("key") or tool_input.get("keys") or "")
+        steps = [step(action="key", text="Return" if key in ("\n", "\r", "\r\n") else key)]
+    elif kind == "click":
+        steps = ([step(action="type", text=str(tool_input["promptText"]))] if tool_input.get("promptText") else []) + (
+            [step(action="left_click", action_summary="" if name.endswith("handle_dialog") else summary)]
+            if tool_input.get("accept", True) is not False else [])
+    elif kind == "form":
+        steps = [step(action="type", text=str(f.get("value", "")), action_summary=f"Fills {f.get('name') or ''}".strip())
+                 for f in tool_input.get("fields") or tool_input.get("elements") or [] if isinstance(f, dict)]
+    elif kind == "drop":
+        steps = [step(action="type", text=str(v)) for v in (tool_input.get("data") or {}).values()] if isinstance(tool_input.get("data"), dict) else []
+    elif kind == "script":
+        code = str(tool_input.get("function") or tool_input.get("code") or tool_input.get("script") or tool_input.get("expression") or "")
+        steps = [{"name": "javascript_tool", "input": {"action": "javascript_exec", "text": code + (f" /* on {on} */" if on else "")}}]
+    elif kind == "unknown":
+        given = [str(tool_input[k]) for k in ("text", "value", "keys", "message") if isinstance(tool_input.get(k), str)]
+        steps = [step(action="type", text=t) for t in given] + [step(action="left_click", action_summary="")]
+    else:
+        steps = []
+    return [{"name": "navigate", "input": {"url": page, "exact": True}}] + steps if steps else []
+
+
+def check_driven(kind: str, tool: str, tool_input: dict, config: dict, session: dict | None = None) -> str | None:
+    if kind in ("read", "navigate"):
+        return None
+    if tool.endswith("run_code_unsafe"):  # code for the server's own process: from a file it reads, or starting commands
+        acts = "runs code from a file the guard does not read" if tool_input.get("filename") else _program_acts(str(tool_input.get("code") or ""), "node")
+        if acts:
+            subject = {"tool": tool, "input": tool_input}
+            if approvals.consume("send", subject, session):
+                return None
+            code = approvals.request("send", subject, f"{tool}: {acts}")
+            return (f"This call {acts} in the browser server's own process, where a key, a click or a command can send in the principal's "
+                    f"name. Show them the exact call and ask them to type {approvals.how(code)}. Then make this identical call again.")
+    steps = _driven_steps(kind, tool, tool_input, session)
+    return check_desktop("browser_batch", tool, {"actions": steps, "call": {"tool": tool, "input": tool_input}}, config, session) if steps else None
+
+
 # --- dispatch -----------------------------------------------------------------------------------
 
-SHELL_TOOLS = {"Bash", "bash", "exec_command", "exec", "shell", "shell_command", "local_shell", "run_shell_command"}  # "bash": Muse
+SHELL_TOOLS ={"Bash", "bash", "exec_command", "exec", "shell", "shell_command", "local_shell", "run_shell_command"}  # "bash": Muse
 
 
 def shell_tool(tool: str) -> bool:
@@ -5844,13 +6440,19 @@ def check_outgoing(command: str, config: dict, cwd: str, session: dict | None = 
         _commands(command, cwd, writes=writes)
     except (Unreadable, StopIteration, IndexError):
         pass
-    commands = _parse(command, cwd)[0]
+    feeds: list = []
+    commands, readable = _parse(command, cwd, feeds=feeds)
     written = {os.path.realpath(os.path.join(w, os.path.expanduser(t))) for t, w in writes} | {
         os.path.realpath(os.path.join(where, t)) for words, where in commands if os.path.basename(words[0]) in COPIERS | {"tee"}
         for t in (words[-1:] if os.path.basename(words[0]) in COPIERS else words[1:])}
+    found = _acts_in_line(command, cwd, written, "\n".join(f for f in feeds if f.strip()), (commands, feeds, readable))  # keys, clicks, apps
+    acts = [a[1] for _, _, a in found]
+    posts += [(a[0], a[2], where) for _, where, a in found]
     for words, where in commands:
         calls += [(args, argv, where) for args, argv in sends.cli_calls(words)]
         _CALL["sender"] = _CALL.get("sender") or any(os.path.basename(w) == "messages_send.py" for w in words)  # check() files its ticket
+        if any(words == w and where == h for w, h, _ in found):
+            continue
         chan = sends.command_send(words, where, config)
         if chan:
             text, problem = sends.message_text(words, where, written)
@@ -5920,15 +6522,18 @@ def check_outgoing(command: str, config: dict, cwd: str, session: dict | None = 
                 approvals.void("send-time", subject)
             return None
         code = approvals.request("send", subject, summary)
-    return (f"This command posts to {', '.join(chans)} on the principal's behalf; it runs in {', '.join(dirs)}. Show "
-            f"them the exact command and its message and ask them to type {approvals.how(code)}. Then run the identical "
-            "command again from any directory: the approval binds where it runs, not where the shell started.")
+    lead = (f"This command {'; '.join(dict.fromkeys(acts))}; it runs in {', '.join(dirs)}. A key, a click or code run in another "
+            "app can send a message in the principal's name, and the guard cannot see which app or box it reaches"
+            if chans == ["desktop"] else f"This command posts to {', '.join(chans)} on the principal's behalf; it runs in "
+            f"{', '.join(dirs)}" + (f". It also {'; '.join(dict.fromkeys(acts))}" if "desktop" in chans else ""))
+    return (f"{lead}. Show them the exact command and its message and ask them to type {approvals.how(code)}. Then run the "
+            "identical command again from any directory: the approval binds where it runs, not where the shell started.")
 
 
 def guarded(tool: str, tool_input: dict | None = None) -> bool:
     """Calls whose guard must fail closed when the config can't be read (R3.5)."""
-    return (shell_tool(tool) or tool.startswith(BROWSER) or bool(desktop_tool(tool)) or _sends(tool, tool_input or {}, {})
-            or routed(tool, tool_input or {}))
+    return (shell_tool(tool) or tool.startswith(BROWSER) or bool(desktop_tool(tool)) or bool(driven_tool(tool))
+            or _sends(tool, tool_input or {}, {}) or routed(tool, tool_input or {}))
 
 
 def check(tool: str, tool_input: dict, config: dict, cwd: str | None = None, session: dict | None = None) -> str | None:
@@ -5961,6 +6566,10 @@ def check(tool: str, tool_input: dict, config: dict, cwd: str | None = None, ses
             check_desktop(desktop_tool(tool), tool, tool_input, config, session) if desktop_tool(tool) else None)
     if desktop_tool(tool):
         return check_desktop(desktop_tool(tool), tool, tool_input, config, session)
+    kind = driven_tool(tool)  # a browser tool from any other server, by the steps it performs (round 3, finding 8)
+    reason = check_driven(kind, tool, tool_input, config, session) if kind else None
+    if reason:
+        return reason
     # The account is checked before the send approval, so no approval is spent on the wrong account.
     reason = routed(tool, tool_input) and check_account(tool, tool_input, config, cwd)
     return reason or check_travel(tool, tool_input, config) or (

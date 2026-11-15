@@ -139,7 +139,8 @@ def test_teach_steps_and_a_linked_device_are_held_the_same_way():
                                        ("mcp__Claude_Browser__form_input", "browser_form")])
 def test_computer_use_tools_are_recognized_by_name_on_any_server(tool, name):
     assert guards.desktop_tool(tool) == name
-    assert guards.guarded(tool, {}) is bool(name)
+    # Playwright's tools are no computer-use tools, but since 5.23.0 they are read by what they do, so they fail closed too
+    assert guards.guarded(tool, {}) is (bool(name) or "playwright" in tool)
 
 
 CHROME, PANE = "mcp__claude-in-chrome__browser_batch", "mcp__Claude_Browser__computer"

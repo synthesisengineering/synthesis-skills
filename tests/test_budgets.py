@@ -1369,10 +1369,43 @@ ROOT = Path(__file__).resolve().parents[1]
 # page script but the shipped ones in its record or its sub-agents', and any action on it, or naming no tab, in another
 # session's record, void it), _send_template 12 (the shipped send script, for some conversation and digest, opens no
 # window) and _when 8 (a record line's time), each with its blank lines; _send_step changes in place.
+# 5.23.0, round 3 of the batch review, finding 8, and that fix's own review round 1 (2026-11-15: words typed into a
+# Messenger box with the browser tool, then Return pressed through osascript, and the Playwright plugin's browser tools,
+# sent with no code; the review found 15 more ways through and 16 false holds): core 611 more and plugin 611. guards.py
+# 609. Keys, clicks and other apps from the shell, 409: _acts_outside 77 (a command read through the scripts, programs,
+# runners, task recipes and shell files it runs, a program the shell names, a file the line writes), _osa_code 73 (an
+# AppleScript or JavaScript script with comments and strings out: a member a string names written as it runs, a
+# template's code kept, a pattern passed over, `¬` and `|name|` read, a string never closed found), _program_acts 54 (an
+# input library or module it uses, or a command it starts, from its calls, command spans and strings, an AppleScript kept
+# in a variable of a program that runs osascript), _osa_judge 36 (the apps a script names and the verbs it uses, System
+# Events by its UI verbs, words the shell fills in), _osa_source 25 (its -e lines, its file with $HOME filled in, its
+# input, or the line's heredocs), _recipe 17 (a make target's recipe or a package script), _acts_in_line 18 (every
+# reading of the line's variables, the line as its caller parsed it, a line the parser cannot read), osa_send 8,
+# _code_only 5, _app_name 4, _unquoted 4, _home 2, the tables and patterns 51 (ACTORS, INPUT_PROGRAMS, INPUT_WORDS,
+# HS_ACTS, the three descriptions, UI_SCRIPTING, ACTING_APPS, SENDING_APPS, OSA_KEYS, SE_VERBS, OSA_OTHER, OSA_UNREAD,
+# OSA_CALLED, OBJC_SAFE, AUTOMATION_URL, TERMINALS, INPUT_LIBS, INPUT_MODULES, IMPORTED, SPAWNS, QUOTED_RUN, CALLED_WITH,
+# LOOKS_OSA, PROGRAM_STRINGS), the comment 9 and 26 blank lines. Browser tools from any server, 173: _driven_steps 39
+# (a tool's steps as a browser batch reads them, on its page: a click by the control the current page's snapshot names for
+# its target or ref with the agent's words, a line-break key, a dialog, dropped text, an unknown tool as a step that may
+# send), _line_events 25 (a call or a result from a Claude Code record or a Codex rollout), driven_tool 16 (Playwright's
+# names, any other server's by its words), check_driven 14 (run_code from a file or starting a command, the code bound to
+# the call), _driver_events 13, _driver_page 13 (the page its results or its own last navigate show), _driver_ref 9,
+# _caller 6, DRIVERS, DRIVEN, READ_WORDS, UNKNOWN_PAGE, PAGE_LINE and PAGE_MARKS 13, the comment 7 and 18 blank lines.
+# Elsewhere 27: check_outgoing 9 (the line's keys and apps, and a hold that says what they do), _bare 7 (`script` and
+# `launchctl asuser` run the command they are given), _program 5 (node's --eval and -p, perl's -E, php's -r, deno eval
+# and run), the dispatch 4 (a driven tool is read before the connectors), DRIVES and PRESSES_ENTER 3 (a browser server's
+# own code acts through its page and keyboard), _web_app 2 (a page nothing shows), less _browser_call 3 (its search moved
+# to _caller). sends.py 2: command_send reads an osascript by the guard's reading of its script, across its lines, in
+# place of the one-line pattern. A reuse of the reader of a Python program's writes to spell the commands it starts was
+# tried and dropped: over two days of records it took 168 ms a program on average and 4 s at worst.
+# Main's key and browser-tool fix (e783606f) merged into the batch (2026-11-15): the ceilings are main's (core 16,497,
+# plugin 42,569) with the batch's 793 and 794 since 5.23.0 summed onto them (the paragraphs above from "5.23.0 merged
+# into the batch"); the two merged with no line changed (MOVES keeps the batch's open( by any name beside main's DRIVES
+# and PRESSES_ENTER; check_outgoing keeps the batch's reading of every sends command and main's skip of a key or app).
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 16679
-PLUGIN_BUDGET = 42752
+CORE_BUDGET = 17290
+PLUGIN_BUDGET = 43363
 
 
 def _lines(files):
