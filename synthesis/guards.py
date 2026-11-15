@@ -4457,8 +4457,8 @@ SYNTHESIS_WRITES = frozenset(f"{module}.{name}" for module, names in (  # synthe
             "cmd_sessions cmd_uninstall cmd_use cmd_who cmd_worktree main"), ("commit_check", "main problems unapproved"),
     ("doctor", "_note_waits check_wait_check main run_checks"),
     ("hook", "_carried_since _newer_plugin_note _ran _upgrade_note main pre_tool_use session_start stop user_prompt_submit"),
-    ("install", "_merge _write_exec install move_board refresh_launchers register_git_hooks uninstall"), ("paths", "note_wait write_json"),
-    ("project", "_carry_out _mark_carried_out _peers _recent_conversation handoff resume"),
+    ("install", "_install_lock _install_locked _merge _write_exec install move_board refresh_launchers register_git_hooks uninstall"),
+    ("paths", "note_wait write_json"), ("project", "_carry_out _mark_carried_out _peers _recent_conversation handoff resume"),
     ("reply_check", "check misrouted_accounts unarmed_wait unwatched_sends"), ("sends", "close_window log open_window settle window_refusal"),
     ("sessions", "_Session _export _ritual_history _sync_workspace _write_synced _writer behind export export_file fetch lost peek recent sync"),
     ("wait", "_watch live main record unread watching"), ("worktree", "create main retire")) for name in names.split())
