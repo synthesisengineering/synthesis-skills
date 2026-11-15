@@ -165,6 +165,7 @@ def remember(session_id: str, transcript_path: str) -> None:
     state folder holds them, which an agent's command, or a program that calls this, writes only on the principal's code."""
     if re.fullmatch(r"[\w.-]+", str(session_id or "")) and transcript_path and os.path.isabs(str(transcript_path)):
         record = {"path": str(transcript_path), "folders": {**{name: str(root) for name, root in paths.transcript_roots().items()},
+                                                            "codex-archived": str(paths.codex_home() / "archived_sessions"),  # as sessions.natives reads them
                                                             "desktop": str(paths.desktop_dir() / "local-agent-mode-sessions")}}
         if paths.read_json(_dir("transcripts") / f"{session_id}.json") != record:
             paths.write_json(_dir("transcripts") / f"{session_id}.json", record)

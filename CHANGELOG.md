@@ -57,9 +57,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   A program whose loaders are handed other code passes, whatever else it says about synthesis. With no transcript in a
   hook's payload, a check reads the path the prompt hook recorded only inside the folders each harness keeps its
   records in as the prompt hook's environment named them, recorded beside it; the environment of the command running
-  the check, which an agent sets, never widens them. A record from an earlier release names none, so a script's check
-  holds until the session's next prompt. Of 73,637 shell commands recorded over 60 days, none newly waits or is refused,
-  under the hook's 3 s deadline as without it, while two planted programs that load synthesis through `importlib` do.
+  the check, which an agent sets, never widens them, once plan item 22.21 lands: until then a test pytest runs, an
+  `ipython -c` program or one `uv run` or `poetry run` starts, which the guard does not read, can still call the
+  recorder under an environment of its own. A record from an earlier release names none, so a script's check holds
+  until the session's next prompt. Codex's archived rollouts count as its records. Of 73,637 shell commands recorded
+  over 60 days and judged under the hook's 3 s deadline, none newly waits or is refused, while two planted programs that
+  load synthesis through `importlib` do.
 
 ## [5.23.0] - 2026-11-15
 
