@@ -1402,6 +1402,7 @@ ROOT = Path(__file__).resolve().parents[1]
 # plugin 42,569) with the batch's 793 and 794 since 5.23.0 summed onto them (the paragraphs above from "5.23.0 merged
 # into the batch"); the two merged with no line changed (MOVES keeps the batch's open( by any name beside main's DRIVES
 # and PRESSES_ENTER; check_outgoing keeps the batch's reading of every sends command and main's skip of a key or app).
+# The message guard's skill move (binding rule 18, the principal's ruling of 2026-11-15) moves prose only: no code line.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
 CORE_BUDGET = 17290

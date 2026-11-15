@@ -1,5 +1,7 @@
 # Message guard: the procedure
 
+Compose, check, approve, send, verify and record, step by step: [references/procedure.md](references/procedure.md). Read it every time.
+
 The six steps from composing a message to recording its send. Moved here word for word from SKILL.md in 2.11.0, to make room for binding rules 16 and 17; "binding rule" means a rule of SKILL.md, and a file it names is linked from this folder. Step 7, a reviewed batch, was added in 2.12.0.
 
 1. **Research, then compose** (binding rule 2). Write email as HTML paragraphs: `htmlBody` on the Gmail connector (its `body` is the plain-text alternative, also whole paragraphs), `body` with `body_format: "html"` on the workspace connector.

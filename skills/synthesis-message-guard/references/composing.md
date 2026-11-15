@@ -13,6 +13,11 @@
 
 ## Why it exists
 
+Prose rules do not survive contact with a model under load. This skill is the
+enforcement layer for correspondence the way commit hooks are the enforcement
+layer for repositories: the rules live in code, run outside the model, and fail
+closed.
+
 Two same-night incidents (2026-07-29), both by an agent that had the relevant
 rules loaded in context:
 
