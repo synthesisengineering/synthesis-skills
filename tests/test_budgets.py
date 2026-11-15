@@ -1380,10 +1380,24 @@ ROOT = Path(__file__).resolve().parents[1]
 # _kept_by_a_harness 11 with 2 blank lines (a recorded path counts only inside the folders recorded beside it), remember 7
 # more (the folders each harness keeps its records in, as the prompt hook's environment names them, recorded beside the
 # path; Codex's archived rollouts among them, as review round 1 of 22.19 found), transcript 3 more.
+# Then each 125 more, all in guards.py, plan item 22.21 and review round 1 of 22.19's finding 1 (a shell script a command
+# ran, pytest's test files, `ipython -c` and `uv run` let a program import synthesis and name a writer unread):
+# _pytest_reach 42 with 2 blank lines (the test files pytest collects and the conftests it loads, read for a writer
+# approvals rest on, or synthesis loaded another way, unless a conftest above, or the test file itself, puts the
+# synthesis home at a temporary path; pytest's walk pruned as pytest prunes it, and bounded by the call's time),
+# _isolates_home 23 with 2 blank lines (that setting, read in the code: an autouse fixture, a test file's own fixture or
+# test, or the environment set from a temporary folder as the file loads), _release_script 6 with 2 blank lines (the
+# release's own scripts and the CLI's launcher, trusted as before: a first version held all 143 recorded runs of the
+# launcher by its path), GRANTING 2 (the writers approvals rest on), _self_grant 28 more (a shell script run by a shell,
+# by its path or sourced, judged as its command lines three scripts deep, the one the line writes as its bodies or as
+# it stands, with $0 its path; one that cannot be opened waits; a Python script run by its path read as Python;
+# pytest's runs), _bare 9 more (`uv run`, `poetry run`, `pipx run` and their like unwrapped, a .py file as Python runs
+# it; ipython as Python), RUNNERS 4, PYTEST_VALUES 2 and TEMPORARY 1 with their 2 blank lines, check_self_grant 1 more
+# (how deep a script it judges), less _script_file 1 (a text file with no first line is the shell's own script).
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 17001
-PLUGIN_BUDGET = 43073
+CORE_BUDGET = 17126
+PLUGIN_BUDGET = 43198
 
 
 def _lines(files):

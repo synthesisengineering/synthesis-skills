@@ -413,7 +413,8 @@ def test_finding_5_a_launcher_hides_nothing(world, launcher):
 
 
 @pytest.mark.parametrize("line", ["view -es -c 'w! {R}' -c q {F}", "python3.13t -c 'print(1)' {R}", "pythonw -c 'print(1)' {R}",
-                                  "python3-intel64 -c 'print(1)' {R}", "ipython -c 'print(1)' {R}", "R -e 'file.copy(\"{F}\", \"{R}\")'",
+                                  "python3-intel64 -c 'print(1)' {R}", "R -e 'file.copy(\"{F}\", \"{R}\")'",
+                                  "ipython -c 'import shutil, sys; shutil.copy(sys.argv[1], sys.argv[2])' {F} {R}",  # read as Python since 22.21
                                   "zx {W}/x.mjs {R}", "gdb -batch -ex 'python print(1)' {R}", "lldb -o 'script print(1)' {R}"])
 def test_finding_6_a_program_off_every_list_waits(world, line):
     _held_or_refused(world, line.format(**_raw(world)))
@@ -1168,15 +1169,15 @@ def test_tests_under_a_conftest_that_puts_the_home_at_a_temporary_path_run_with_
     """What isolates the home is read in the conftest's code, not taken from where it sits: the same tests copied
     beside a conftest that does not isolate it, or run with conftests turned off, wait."""
     copied = world["work"] / "tests"
-    _script(copied, "test_approval_provenance.py", (ROOT / "tests" / "test_approval_provenance.py").read_text(encoding="utf-8"))
-    assert HELD in (_verdict(world, "python3 -m pytest -q tests/test_approval_provenance.py") or "")  # a folder named tests isolates nothing
+    _script(copied, "test_sends.py", (ROOT / "tests" / "test_sends.py").read_text(encoding="utf-8"))  # it leaves the home to its conftest
+    assert HELD in (_verdict(world, "python3 -m pytest -q tests/test_sends.py") or "")  # a folder named tests isolates nothing
     _script(copied, "conftest.py", ISOLATING.replace("autouse=True", "autouse=False"))
-    assert HELD in (_verdict(world, "python3 -m pytest -q tests/test_approval_provenance.py") or "")
+    assert HELD in (_verdict(world, "python3 -m pytest -q tests/test_sends.py") or "")
     _script(copied, "conftest.py", ISOLATING.replace("str(home)", "'/tmp/a-fixed-home'"))
-    assert HELD in (_verdict(world, "python3 -m pytest -q tests/test_approval_provenance.py") or "")
+    assert HELD in (_verdict(world, "python3 -m pytest -q tests/test_sends.py") or "")
     _script(copied, "conftest.py", ISOLATING)
-    assert _verdict(world, "python3 -m pytest -q tests/test_approval_provenance.py") is None
-    assert HELD in (_verdict(world, "python3 -m pytest -q --noconftest tests/test_approval_provenance.py") or "")
+    assert _verdict(world, "python3 -m pytest -q tests/test_sends.py") is None
+    assert HELD in (_verdict(world, "python3 -m pytest -q --noconftest tests/test_sends.py") or "")
     _script(world["work"], "test_mine.py", WRITER_TEST)
     assert HELD in (_verdict(world, "pytest tests test_mine.py") or "")  # one file outside the isolating conftest
 

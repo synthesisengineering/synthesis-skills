@@ -57,12 +57,26 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   A program whose loaders are handed other code passes, whatever else it says about synthesis. With no transcript in a
   hook's payload, a check reads the path the prompt hook recorded only inside the folders each harness keeps its
   records in as the prompt hook's environment named them, recorded beside it; the environment of the command running
-  the check, which an agent sets, never widens them, once plan item 22.21 lands: until then a test pytest runs, an
-  `ipython -c` program or one `uv run` or `poetry run` starts, which the guard does not read, can still call the
-  recorder under an environment of its own. A record from an earlier release names none, so a script's check holds
-  until the session's next prompt. Codex's archived rollouts count as its records. Of 73,637 shell commands recorded
-  over 60 days and judged under the hook's 3 s deadline, none newly waits or is refused, while two planted programs that
-  load synthesis through `importlib` do.
+  the check, which an agent sets, never widens them, now that the runners below are read too. A record from an earlier
+  release names none, so a script's check holds until the session's next prompt. Codex's archived rollouts count as its
+  records. Of 73,637 shell commands recorded over 60 days and judged under the hook's 3 s deadline, none newly waits or is
+  refused, while two planted programs that load synthesis through `importlib` do.
+- **A shell script a command runs, the test files pytest runs, and programs run through `ipython`, `uv run` and their
+  like are judged as the programs they hold.** The same review found the guard read a shell script's text only for the
+  protected folders it names, and never read the test files pytest collects, an `ipython -c` program, or what `uv run`,
+  `poetry run` or `pipx run` start: through any of them, a program could import synthesis in plain words and open a send
+  window, void a grant, or record a transcript under folders of its own. A shell script run by a shell, by its path or
+  sourced is now judged as the command lines it holds, three scripts deep, a script the line writes by what the line
+  writes, and `$0` as the script's own path; one the guard cannot open waits. A Python script run by its path, `ipython`,
+  and what `uv run`, `poetry run`, `pipx run`, `pdm run`, `uvx` and their like start are read as Python and as the
+  command they run. The test files pytest collects and the conftests it loads are read as script files, unless every
+  test runs under a conftest whose own code puts the synthesis home at a temporary path for every test, an autouse fixture
+  that sets `SYNTHESIS_HOME` from the test's `tmp_path`, as synthesis's own conftests do: the suite runs from its checkout
+  or a worktree with no code, while a test file elsewhere that writes through synthesis waits. An import after `;` on a
+  program's line counts as one at a line's start. Of 73,747 shell commands recorded over 60 days, 13 newly wait: 7
+  programs whose import after a `;` names one of synthesis's writers, as the same program on separate lines already did,
+  and 6 pytest runs of probe and measurement tests that call synthesis's writers with no isolation the guard can read; a
+  planted shell script and a planted test file wait too.
 
 ## [5.23.0] - 2026-11-15
 

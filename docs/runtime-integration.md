@@ -570,9 +570,14 @@ stay open, and no hook running as that same user can close them:
   approval, the CLI's send window), it must also record the session's transcript path under
   an environment of its own making, since the recorder takes the harness folders it writes
   beside the path from its own environment, or write a record into a harness's own folders
-  (review rounds 4 and 5 of 5.23.1's approval fix; crafted, except that until plan item 22.21
-  lands a test pytest runs, an `ipython -c` program or one `uv run` or `poetry run` starts
-  can call the recorder in plain words, since the guard does not read those programs). One that loads synthesis
+  (review rounds 4 and 5 of 5.23.1's approval fix; crafted). A shell script built at run
+  time (`bash -c "$(…)"`, a script assembled from pieces in a variable) or fetched over the
+  network and piped or substituted into a shell (`curl … | sh`, `bash <(curl …)`) is not
+  read, nor is a test placed under a conftest that isolates the synthesis home and then
+  undoes it (deleting or re-pointing `SYNTHESIS_HOME`, overriding the `tmp_path` fixture), or
+  a test file that puts the home at a temporary path in some of its tests and not in others,
+  run where no conftest isolates the rest (plan item 22.21; crafted). Test runners other than pytest (`unittest` discovery, `tox`,
+  `nox`) are ordinary and their tests are not yet read. One that loads synthesis
   through `importlib`, `__import__`, `exec`, `eval`, `compile` or `runpy` by a name or a
   text that says synthesis waits for the principal's code, or is refused on the line.
 

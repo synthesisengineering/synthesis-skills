@@ -1450,7 +1450,11 @@ WRAPPERS = {"env": {"-u", "--unset", "-C", "--chdir", "-S", "--split-string"}, "
             "nohup": set(), "time": set(), "nice": {"-n", "--adjustment"},
             "timeout": {"-s", "--signal", "-k", "--kill-after"}, "sudo": {"-u", "-g", "-h", "-p", "-C", "-D", "--chdir", "-U"},
             "xargs": {"-I", "-L", "-n", "-P", "-s", "-d", "-E", "-a"}, "npx": {"-p", "--package"},
-            "bunx": set(), "pnpx": set(), "caffeinate": set(), "arch": {"-arch"}}
+            "bunx": set(), "pnpx": set(), "caffeinate": set(), "arch": {"-arch"}, "uvx": {"--from", "--with", "--python", "-p"}}
+RUNNERS = {"uv": {"--with", "--python", "-p", "--project", "--directory", "--package", "--group", "--extra", "--env-file", "--index"},
+           "poetry": {"-C", "--directory", "-P", "--project"}, "pipx": {"--spec", "--python", "--pip-args", "--index-url"},
+           "pdm": {"-p", "--project"}, "hatch": set(), "rye": set(), "pipenv": set(), "conda": {"-n", "--name", "-p", "--prefix", "--cwd"},
+           "mamba": {"-n", "--name", "-p", "--prefix"}}  # `<tool> run`, with each one's options that take a value
 
 
 def _close(s: str, i: int, opener: str) -> int:
@@ -1719,6 +1723,15 @@ def _bare(words: list[str], moved: list | None = None) -> tuple[list[str], list[
         if head == "launchctl" and words[1:2] in (["asuser"], ["bsexec"]):  # the command it runs as a user or in a session
             words = words[3:]
             continue
+        if head in RUNNERS and words[1:2] == ["run"]:  # `uv run`, `poetry run` and their like: the command they run, a .py file as
+            i = 2  # Python runs it (review round 1 of 22.19, finding 1)
+            while i < len(words) and words[i].startswith("-") and words[i] != "--":
+                i += 2 if words[i] in RUNNERS[head] else 1
+            words = words[i + (words[i:i + 1] == ["--"]):]
+            words = ["python3"] + words if words[:1] and words[0].endswith(".py") else words
+            continue
+        if re.fullmatch(r"ipython[\d.]*", head):  # IPython runs `-c` and a file as Python does
+            return ["python3"] + words[1:], scripts
         if head not in WRAPPERS:
             break
         takes, i = WRAPPERS[head], 1
@@ -2150,12 +2163,11 @@ def _script_file(words: list[str], cwd: str) -> str | None:
         path = words[0]
     if not path:
         return None
-    first = _regular(os.path.join(cwd, os.path.expanduser(path)), 2)  # a regular file, opened without waiting (finding 10)
-    if first is None or (head not in SHELLS and first[0] != b"#!"):
-        return None  # a program, not a script: never read past its first bytes
+    first = _regular(os.path.join(cwd, os.path.expanduser(path)), 8192)  # a regular file, opened without waiting (finding 10)
+    if first is None or (head not in SHELLS and (not SHEBANG.match(first[0]) if first[0][:2] == b"#!" else b"\0" in first[0])):
+        return None  # a program, not a script: a binary, or a file whose first line names another interpreter (a text file
+        # with none is run by the shell as its own script, 22.21)
     text = (_regular(os.path.join(cwd, os.path.expanduser(path)), SCRIPT_LIMIT + 1) or (b"",))[0]
-    if head not in SHELLS and not SHEBANG.match(text):
-        return None
     return TOO_LARGE if len(text) > SCRIPT_LIMIT else text.decode("utf-8", "replace")
 
 
@@ -4585,7 +4597,7 @@ READER_WRITES = {"less": r"-[A-Za-z]*[oO].*|--(?:log-file|LOG-FILE)(?:=.*)?", "r
 GIT_FIRST = re.compile(r"-c|--config-env(?:=.*)?|--work-tree(?:=.*)?|--exec-path(?:=.*)?|-p|--paginate")  # git's own, before its subcommand
 GIT_RUNS = re.compile(r"--output(?:=.*)?|--ext-diff|--textconv|-O.*|--open-files-in-pager(?:=.*)?|--upload-pack(?:=.*)?|--exec(?:=.*)?")
 ABSOLUTE = re.compile(r"-[A-Za-z]*P[A-Za-z]*|--absolute-names|--absolute-filenames|--insecure|-:|-spf")  # an archive's members land where they say
-SYNTHESIS_IMPORT = re.compile(r"^[ \t]*(?:from[ \t]+synthesis\b|import[ \t]+synthesis\b)", re.M)
+SYNTHESIS_IMPORT = re.compile(r"(?:^|[;:])[ \t]*(?:from[ \t]+synthesis\b|import[ \t]+synthesis\b)", re.M)  # after `;` too (22.21)
 # What runs code it is handed by a name or a text, and the modules whose loaders may be imported by another name (review
 # round 4 of 5.23.1's approval fix, finding 1); of them, what runs a file; and how a string or a word says synthesis as
 # code does: the package's name alone or leading a dotted name, an import of it where code starts, a path to its folder
@@ -4616,6 +4628,8 @@ SYNTHESIS_WRITES = frozenset(f"{module}.{name}" for module, names in (  # synthe
     ("reply_check", "check misrouted_accounts unarmed_wait unwatched_sends"), ("sends", "_note close_window log open_window settle undo window_refusal"),
     ("sessions", "_Session _export _ritual_history _sync_workspace _write_synced _writer behind export export_file fetch lost peek recent sync"),
     ("wait", "_watch live main record unread watching"), ("worktree", "create main retire")) for name in names.split())
+GRANTING = re.compile(r"\b(?:%s)\b" % "|".join(sorted(re.escape(w) for w in SYNTHESIS_WRITES if w.split(".")[0] in (
+    "approvals", "sends", "guards", "hook", "cli", "commit_check", "paths"))))  # the writers approvals rest on; the board's grant nothing
 SYNTHESIS_DEFS: dict = {}  # a module of synthesis: the names it imports
 SYNTHESIS_PLACES = frozenset({"paths.home", "paths.state", "paths.board", "paths.sessions", "paths.old_board", "paths.codex_home", "paths.desktop_dir",
                               "paths.transcript_roots", "paths.desktop_agent_roots", "paths.line_allowances", "approvals._dir", "sessions.root"})
@@ -5096,6 +5110,88 @@ def _synthesis_reach(text: str) -> tuple:
     return "places", places, data.decode("utf-8")
 
 
+PYTEST_VALUES = frozenset({"-k", "-m", "-p", "-c", "-o", "-n", "-W", "--rootdir", "--confcutdir", "--basetemp", "--deselect", "--ignore",
+                           "--ignore-glob", "--maxfail", "--tb", "--junitxml", "--import-mode", "--durations", "--timeout"})  # options taking a value
+TEMPORARY = frozenset({"tmp_path", "tmp_path_factory", "tmpdir", "tmpdir_factory"})
+
+
+def _release_script(path: str, text: str) -> bool:
+    """A shell script that is the release's own, trusted as before (22.21): inside the synthesis home's bin, current or
+    releases, which only its installer writes, one of the plugin's scripts as it shipped, or the installer's launcher of
+    the CLI wherever it was copied, which runs the CLI as `synthesis` does."""
+    from synthesis import install
+    return text == install.CLI_SCRIPT or _shipped(path) or any(paths.inside(path, _real(str(paths.home() / n))) for n in ("bin", "current", "releases"))
+
+
+def _isolates_home(text: str, autouse: bool = True) -> bool:
+    """Whether a conftest's code puts the synthesis home at a temporary path for every test: an autouse fixture that sets
+    SYNTHESIS_HOME (or HOME, which it falls back on) from the test's own temporary folder, as synthesis's own conftests
+    do; with `autouse` False, a test file's own fixture or test that does. Read in its code, not taken from where it
+    sits; a copy isolates the tests beside it the same way, so their writes reach only a temporary home."""
+    import ast
+    try:
+        tree = ast.parse(text)
+    except (SyntaxError, ValueError, RecursionError, MemoryError):
+        return False
+    for f in (n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and (not autouse or any(isinstance(d, ast.Call) and any(
+            k.arg == "autouse" and getattr(k.value, "value", None) is True for k in d.keywords) for d in n.decorator_list))):
+        values = {t.id: n.value for n in ast.walk(f) if isinstance(n, ast.Assign) for t in n.targets if isinstance(t, ast.Name)}
+        for c in (n for n in ast.walk(f) if isinstance(n, ast.Call) and getattr(n.func, "attr", "") == "setenv" and n.args[:1]
+                  and getattr(n.args[0], "value", None) in ("SYNTHESIS_HOME", "HOME")):
+            names = {x.id for a in c.args[1:2] for x in ast.walk(a) if isinstance(x, ast.Name)}
+            if (names | {x.id for name in names if name in values for x in ast.walk(values[name]) if isinstance(x, ast.Name)}) & TEMPORARY:
+                return True
+    values = {t.id: n.value for n in ast.walk(tree) if isinstance(n, ast.Assign) for t in n.targets if isinstance(t, ast.Name)}
+    said = lambda e: {x.id if isinstance(x, ast.Name) else x.attr for x in ast.walk(e) if isinstance(x, (ast.Name, ast.Attribute))}
+    return any(getattr(c, "value", None) == "SYNTHESIS_HOME" for c in ast.walk(tree)) and any(  # set for the whole run as it loads
+        (said(n.value) | {y for x in said(n.value) if x in values for y in said(values[x])}) & (TEMPORARY | {"mkdtemp", "TemporaryDirectory"})
+        for n in ast.walk(tree) if isinstance(n, ast.Assign) and any(getattr(getattr(t, "value", None), "attr", "") == "environ" for t in n.targets))
+
+
+def _pytest_reach(words: list, where: str) -> str:
+    """'' unless pytest, as this command runs it, collects a test file or loads a conftest whose code reaches synthesis's
+    (names one of its writers, reaches it in a way its reader cannot follow, or hands a loader synthesis) with no conftest
+    above it that isolates the synthesis home (_isolates_home); else which file and how. Review round 1 of 22.19, finding 1:
+    an agent's test file opened a send window in plain words through pytest. Synthesis's own suite, under its conftests,
+    runs with no code; `--noconftest` and `--confcutdir` leave no conftest trusted."""
+    at = next(i for i, w in enumerate(words) if os.path.basename(w) in ("pytest", "py.test"))
+    args, i = [], at + 1
+    while i < len(words):
+        args, i = (args, i + 1 + (words[i] in PYTEST_VALUES)) if words[i].startswith("-") else (args + [words[i].split("::")[0]], i + 1)
+    files = []
+    for root in [os.path.join(where, os.path.expanduser(a)) for a in args] or [where]:
+        for folder, dirs, names in os.walk(root) if os.path.isdir(root) else [(os.path.dirname(root), [], [os.path.basename(root)])] * os.path.isfile(root):
+            dirs[:] = [d for d in dirs if not d.startswith(".") and not d.endswith(".egg") and d not in (
+                "node_modules", "__pycache__", "venv", "site-packages", "build", "dist", "Library")]  # as pytest's norecursedirs
+            files += [os.path.join(folder, n) for n in names if re.fullmatch(r"test_.*\.py|.*_test\.py", n) or not os.path.isdir(root)]
+            if len(files) > 3000 or time.monotonic() > _CALL["until"]:
+                return "more test files than this guard reads in its time"
+    trusted, conftests, isolating, judged = not any(w == "--noconftest" or w.startswith("--confcutdir") for w in words), {}, {}, set()
+    for file in files:
+        folder = os.path.dirname(_real(file))
+        if folder not in conftests:  # the conftests pytest loads for a test there: its folder's and every one above
+            spot, conftests[folder] = folder, []
+            while True:
+                conftests[folder] += [os.path.join(spot, "conftest.py")] * os.path.isfile(os.path.join(spot, "conftest.py"))
+                if spot == os.path.dirname(spot):
+                    break
+                spot = os.path.dirname(spot)
+        for c in conftests[folder]:
+            isolating[c] = isolating[c] if c in isolating else _isolates_home(_code_of(c))
+        if (trusted and any(isolating[c] for c in conftests[folder])) or _isolates_home(_code_of(file), False):
+            continue  # a test file that puts the home at a temporary path itself, as a skill's tests may
+        if time.monotonic() > _CALL["until"]:
+            return "more test files than this guard reads in its time"
+        for path, text in [(p, _code_of(p)) for p in [file] + conftests[folder] if p not in judged]:
+            judged.add(path)  # a writer named, or synthesis loaded another way; a test that patches a module changes only its process
+            reach = _synthesis_reach(text) if "synthesis" in text else ("", "", None)
+            why = ("names one of synthesis's writers that approvals rest on" if reach[0] == "names" and GRANTING.search(text)
+                   else _synthesis_loads([text], [], where) if "synthesis" in text else "")
+            if why:
+                return f"{path}, which {why}, with no conftest that puts the synthesis home at a temporary path for every test"
+    return ""
+
+
 def _joined_text(node) -> str:
     """The string a sum of string constants makes (`'/a' + '/b.py'`), or ''."""
     import ast
@@ -5262,7 +5358,8 @@ def _spells(texts: list, words: list, where: str, env: dict, raw: list, linked: 
     return ""
 
 
-def check_self_grant(command: str, cwd: str, config: dict | None = None, session: dict | None = None, hold: bool = True) -> str | None:
+def check_self_grant(command: str, cwd: str, config: dict | None = None, session: dict | None = None, hold: bool = True,
+                     depth: int = 0) -> str | None:
     """The reason a shell command is refused, or waits for the principal's code because a program the guard cannot prove
     only reads names a protected folder (`hold`: file the code and spend it; else the reason, as a refusal)."""
     home = os.path.expanduser("~")
@@ -5274,7 +5371,7 @@ def check_self_grant(command: str, cwd: str, config: dict | None = None, session
         _CALL.update(codes={}, ran={}, proofs={}, files={}, real={}, until=time.monotonic() + CALL_SECONDS)
     waits = None
     for text in readings:
-        reason = _self_grant(command, text, cwd, config) if time.monotonic() <= _CALL["until"] else Unproven(
+        reason = _self_grant(command, text, cwd, config, depth) if time.monotonic() <= _CALL["until"] else Unproven(
             "is more than this guard could judge in its time")  # it waits, rather than leave the verdict to the harness
         if reason and not isinstance(reason, Unproven):
             return reason
@@ -5294,8 +5391,9 @@ def check_self_grant(command: str, cwd: str, config: dict | None = None, session
             "tail, grep or jq, or a Python program whose writes the guard can read.")
 
 
-def _self_grant(command: str, text: str, cwd: str, config: dict | None) -> str | None:
-    """One reading of a command: the reason it is refused, or None."""
+def _self_grant(command: str, text: str, cwd: str, config: dict | None, depth: int = 0) -> str | None:
+    """One reading of a command: the reason it is refused, or None. A shell script it runs, by a shell, by its path or
+    sourced, is read as the command lines it holds, three scripts deep (22.21)."""
     codes, home, store = approvals.pending(), os.path.expanduser("~"), paths.line_allowances(config or {})
     raw = _protected_roots(config)
 
@@ -5328,6 +5426,9 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None) -> str |
         _real(os.path.join(where, os.path.expanduser(t))) for words, where in found for t in _landing(words)}
     for (words, where), fed in [((words, spot), fed) for (words, where), fed in zip(found, feeds + [""] * len(found))
                                 for spot in spots(where)]:  # each command, where it runs, with what it reads on its own stdin
+        if "/" in words[0] and not SCRIPT.match(os.path.basename(words[0])) and re.match(rb"#![^\n]*\bpython[\d.]*\b", (_regular(
+                os.path.join(where, os.path.expanduser(words[0])), 256) or (b"",))[0]):
+            words = ["python3"] + words  # a Python script run by its path is read as Python runs it (22.21)
         head, own = os.path.basename(words[0]), " ".join(words[1:])
         wheres.add(where)  # a redirect after `cd <root>` writes relative to that root
         if HOOK_RUN.search(words[0]) or ((SCRIPT.match(head) or head in SHELLS) and HOOK_RUN.search(_ran(words))):
@@ -5435,6 +5536,30 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None) -> str |
                 (SCRIPT.match(head) or head in SHELLS) and (source or not _ran(words)))):  # it names nothing, yet may write where it stands
             why = why or (f"runs `{head}` inside the synthesis state folder, its board or the session archive, where a "
                           "program this guard cannot read may write without naming a file (run it from another folder)")
+        # A shell script it runs, by a shell, by its path or sourced, is judged as the command lines it holds, three scripts
+        # deep, the one the line writes as the line's own bodies; one this guard cannot read waits (22.21: `bash run.sh`
+        # let a `python3 -c` inside it import synthesis and name a writer). Pytest's test files are read as script files.
+        runs = head in SHELLS or head in (".", "source") or "/" in words[0]
+        target = _real(os.path.join(where, os.path.expanduser(words[0] if "/" in words[0] and head not in SHELLS else next(
+            (w for w in words[1:] if not w.startswith(("-", "+"))), "")))) if runs else ""
+        body = ("\n".join(f for f in feeds if f.strip()) or _script_file(words, where) or "") if runs and target in written else (
+            _script_file(words, where) if runs else None)  # one the line writes: its bodies, else the file as it stands; built at run time, unread
+        if body == TOO_LARGE:
+            pass  # held already, as a script whose deploys cannot be read (5.20.1)
+        elif (body and depth >= 3) or (runs and body is None and os.path.exists(target) and not os.path.isdir(target)
+                                                       and not target.startswith("/dev/") and _regular(target, 1) is None):
+            waits = waits or Unproven(f"runs a shell script this guard cannot read ({target}), which may reach synthesis's own code")
+        elif body and not _release_script(target, body):
+            _code_of(target) if target not in written else ""  # the principal's code binds the script as it stood
+            text_ = body if head in (".", "source") else re.sub(r"\$\{?0\}?(?!\w)", lambda m: target, body)  # $0: the script's own path
+            inner = check_self_grant(text_, where, config, None, False, depth + 1)
+            said = re.sub(r"^Refused: this command |\. Approvals come[\s\S]*$", "", inner) if inner else ""
+            why = why or (f"runs {target}, a shell script that {said}" if inner and not isinstance(inner, Unproven) else "")
+            waits = waits or (Unproven(f"runs {target}, a shell script that {inner}") if isinstance(inner, Unproven) else None)
+            if not inner and re.search(r"\b(?:from|import)\s+synthesis\b|\bsynthesis\.\w", text_) and not _parse(text_, where)[1]:
+                waits = waits or Unproven(f"runs {target}, a shell script this guard cannot read with certainty that names synthesis's code")
+        tested = _pytest_reach(words, where) if head in ("pytest", "py.test") or (python and words[_program(words)[1]:][:2] == ["-m", "pytest"]) else ""
+        waits = waits or (Unproven(f"runs pytest, which loads {tested}") if tested else None)
         if head == "apply_patch":  # Codex's file editor, run as a command: the patch names every file it writes
             asked += [(a or b, where) for a, b in PATCH_PATHS.findall(text)]
     spelt = "" if why or waits or readable else _spells([text], [], cwd, env, raw, [])  # a line it cannot read with certainty (finding 1)
