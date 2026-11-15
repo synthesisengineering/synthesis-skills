@@ -25,6 +25,7 @@ import json
 import os
 import re
 import shutil
+import stat
 import subprocess
 import sys
 import time
@@ -60,13 +61,99 @@ def _home() -> Path:
     return paths.home()
 
 
-def package_hash(plugin_root: Path) -> str:
+def _files(root: Path) -> list:
+    """(relative path, file) for every file an install copies, in order: every file in the runtime package and the folders
+    in it (compiled code and hidden names left out, a link to a folder not followed), the stable skill scripts and the
+    CHANGELOG. Each is hashed and copied (review round 1 of 22.18, H2: a package folder added to `synthesis/` was copied
+    and not hashed)."""
+    root, found = Path(root), []
+    for folder, dirs, names in os.walk(root / "synthesis"):
+        dirs[:] = sorted(d for d in dirs if d != "__pycache__" and not d.startswith("."))
+        found += [(Path(folder, n).relative_to(root).as_posix(), Path(folder, n)) for n in sorted(names) if not n.startswith(".")]
+    return found + list(_stable_skill_files(root)) + [("CHANGELOG.md", root / "CHANGELOG.md")] * (root / "CHANGELOG.md").is_file()
+
+
+def _read(path: Path) -> bytes:
+    """A regular file's bytes, opened without waiting; OSError for anything else, so a FIFO stops no install or guard."""
+    fd = os.open(path, os.O_RDONLY | getattr(os, "O_NONBLOCK", 0))
+    try:
+        if not stat.S_ISREG(os.fstat(fd).st_mode):
+            raise OSError(f"{path} is not a regular file")
+        chunks = [os.read(fd, 1 << 20)]
+        while chunks[-1]:
+            chunks.append(os.read(fd, 1 << 20))
+        return b"".join(chunks)
+    finally:
+        os.close(fd)
+
+
+def package_digest(plugin_root: Path) -> str:
+    """The sha256 of every file an install copies, each by its relative path and its length: what the principal's code for
+    an install binds and, cut to 16 characters, the release's name."""
     digest = hashlib.sha256()
-    for path in sorted((plugin_root / "synthesis").glob("*.py")):
-        digest.update(path.name.encode() + b"\0" + path.read_bytes())
-    for rel, path in _stable_skill_files(plugin_root):
-        digest.update(rel.encode() + b"\0" + path.read_bytes())
-    return digest.hexdigest()[:16]
+    for rel, path in _files(plugin_root):
+        data = _read(path)
+        digest.update(f"{rel}\0{len(data)}\0".encode() + data)
+    return digest.hexdigest()
+
+
+def package_hash(plugin_root: Path) -> str:
+    return package_digest(plugin_root)[:16]
+
+
+class Unapproved(Exception):
+    """A change of an installed runtime the principal's code does not approve; the message says how it is approved."""
+
+
+def subject(action: str, home, digest: str = "", git_hooks: bool = False, versions: tuple = ("", "")) -> dict:
+    """What the principal's code for a change of the runtime binds: the change ("install", "rollback" for a release older
+    than the running one, named to him as a downgrade, or "uninstall"), the home, every byte the install takes (the
+    digest of its staged copy), whether git's hooks follow, and the versions it goes from and to. The hook asks for it;
+    the install or uninstall itself spends it."""
+    return {"action": action, "home": os.path.realpath(home), "digest": digest, "git_hooks": bool(git_hooks),
+            "from": versions[0], "to": versions[1]}
+
+
+def change(home, staged: Path, source, digest: str, git_hooks: bool = False) -> tuple:
+    """(the subject, the words for the principal) of installing a staged copy (or a folder, for the hook) into a home."""
+    have, take = version(Path(home) / "current"), version(staged)
+    back = bool(have and take and take < have)
+    said = (f"rolls the synthesis runtime under {home} back from {'.'.join(map(str, have))} to {'.'.join(map(str, take))}, a "
+            f"downgrade, installing from {source}" if back else f"installs a synthesis runtime from {source} into {home}")
+    return (subject("rollback" if back else "install", home, digest, git_hooks, (".".join(map(str, have)), ".".join(map(str, take)))),
+            said + (", and points git's global hooks at its commit check" if git_hooks else ""))
+
+
+RELEASE_TOOL = os.path.join("skills", "synthesis-skills-manager", "scripts", "release.py")
+
+
+def release_route() -> bool:
+    """Whether this process is the release tool running from the protected runtime: its main program is that tool inside
+    a release under this home, started isolated (-I -S, as the release launcher starts it), so no code of an agent's runs
+    in it. Its install of a fresh clone's merged tag needs no code (the principal's ruling of 2026-11-15); a rollback
+    still does. An agent's program is never this route: it is not that file, and that file started any other way, or
+    imported by a program, is not the process's isolated main program."""
+    import __main__
+    main = os.path.realpath(getattr(__main__, "__file__", "") or os.devnull)
+    return bool(sys.flags.isolated and sys.flags.no_site) and main.endswith(os.sep + RELEASE_TOOL) and paths.inside(
+        main, os.path.realpath(_home() / "releases"))
+
+
+def approval(wanted: dict, said: str, session: dict | None) -> None:
+    """Spend the principal's code for this change of an installed runtime, or file the request and raise Unapproved with
+    what the hook says, so the change waits however the CLI was started (review round 1 of 22.18, H1). Where no runtime
+    ran the prompt hook to make a grant, the session's own record showing the code typed after the request is enough."""
+    from synthesis import approvals
+    try:
+        if approvals.consume("runtime", wanted, session) or approvals.answered("runtime", wanted, session):
+            return
+    except approvals.Unverified as exc:
+        raise Unapproved(str(exc)) from None
+    code = approvals.request("runtime", wanted, f"the synthesis runtime: {said[:150]}")
+    raise Unapproved(f"This {said}. That runtime is what the guard runs, so it changes only on the principal's word: show "
+                     f"them this exact install and ask them to type {approvals.how(code)}; then run the identical command "
+                     "again, with the folder it installs from left as it is now." + ("" if paths.session_id(session) else
+                     " This shell names no session: pass --session with the one the principal types it in."))
 
 
 def _stable_skill_files(plugin_root: Path):
@@ -149,55 +236,76 @@ def traces(home: Path) -> list:
     return [name for name in TRACES if os.path.lexists(Path(home) / name)]
 
 
-def install(plugin_root: Path, first_only: bool = False) -> str:
-    """Install the plugin's runtime if it differs from the current one. Returns a one-line report.
+def _stage(plugin_root: Path, home: Path) -> Path:
+    """A copy of every file an install takes, made in the protected releases folder, where no agent writes: what is
+    hashed, checked and installed is this copy, never the folder as it stands a moment later (review round 1 of 22.18)."""
+    import secrets
+    staging = home / "releases" / f".stage.{os.getpid()}.{secrets.token_hex(4)}"
+    try:
+        for rel, path in _files(plugin_root):
+            (staging / rel).parent.mkdir(parents=True, exist_ok=True)
+            (staging / rel).write_bytes(_read(path))
+            (staging / rel).chmod(stat.S_IMODE(os.stat(path).st_mode) | 0o600)
+    except BaseException:
+        shutil.rmtree(staging, ignore_errors=True)
+        raise
+    return staging
+
+
+def install(plugin_root: Path, first_only: bool = False, git_hooks: bool = False, session: dict | None = None) -> str:
+    """Install the plugin's runtime if it differs from the current one, from a copy staged and hashed under the home's
+    protected releases folder. Returns a one-line report.
 
     first_only (the session-start hook and the first-install bootstrap): install only into a home no runtime has been
     in. The folder a harness passes is its own plugin cache, which the guard does not protect, so an installed runtime,
     or one that was removed, is never replaced from it (the principal's sandbox rulings of 2026-11-15). A home that
-    shows a runtime but has none whole is refused (RuntimeError), loudly, rather than kept."""
+    shows a runtime but has none whole is refused (RuntimeError), loudly, rather than kept. Into a home that shows a
+    runtime, every other install spends the principal's code for exactly the staged copy, or raises Unapproved and
+    nothing moves, whoever calls it (review round 4 of 5.23.1, Q4): the release tool's own install from the protected
+    runtime (release_route) needs none unless it rolls back. git_hooks binds that the caller points git's hooks at it."""
     plugin_root = Path(plugin_root).resolve()
     if not (plugin_root / "synthesis" / "hook.py").is_file():
         return f"not a synthesis plugin: {plugin_root}"
     home = _home()
-    found = traces(home) if first_only else []
+    found = traces(home)
     try:
         move_board(home)  # before any switch, so the new release's first read finds the board in place
     except OSError as exc:  # never blocks a session start; the doctor names what is left in state/
         print(f"synthesis: the board could not be moved out of {home / 'state'}: {exc}", file=sys.stderr)
-    if found and current_hash() and os.access(home / "bin" / "synthesis-hook", os.X_OK):
+    if first_only and found and current_hash() and os.access(home / "bin" / "synthesis-hook", os.X_OK):
         _compile(home / "current" / "synthesis")  # an older release's installer made the switch, or the interpreter changed
         return f"synthesis runtime kept at {current_hash()}: a session start installs only into a home no runtime has been in"
-    if found:
+    if first_only and found:
         raise RuntimeError(f"{home} holds {', '.join(found)}, left by a runtime installed there, so a session start does not "
                            f"install one from {plugin_root}, the harness's own folder. Install it from your own terminal: "
                            "setup.py, or `synthesis install` with no folder where the runtime is still there")
-    wanted = package_hash(plugin_root)
-    if wanted != current_hash():
+    staging = _stage(plugin_root, home)
+    try:
+        digest = package_digest(staging)
+        wanted = digest[:16]
+        if found:
+            wanted_change, said = change(home, staging, plugin_root, digest, git_hooks)
+            if wanted_change["action"] == "rollback" or not release_route():
+                approval(wanted_change, said, session or {"session_id": paths.session_id()})
         release = home / "releases" / wanted
-        if not release.is_dir():
-            staging = home / "releases" / f".{wanted}.{os.getpid()}"
-            shutil.copytree(plugin_root / "synthesis", staging / "synthesis",
-                            ignore=shutil.ignore_patterns("__pycache__"))
-            for rel, path in _stable_skill_files(plugin_root):
-                (staging / rel).parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(path, staging / rel)
-            (staging / "HASH").write_text(wanted + "\n", encoding="utf-8")
-            if (plugin_root / "CHANGELOG.md").is_file():  # the upgrade note quotes it to running sessions
-                shutil.copy2(plugin_root / "CHANGELOG.md", staging / "CHANGELOG.md")
-            (staging / "SOURCE").write_text(f"{plugin_root}\n{time.strftime('%Y-%m-%dT%H:%M:%S%z')}\n", encoding="utf-8")
-            os.replace(staging, release)
-        link = home / f".current.{os.getpid()}"
-        link.symlink_to(release)
-        os.replace(link, home / "current")  # atomic switch: a running hook sees old or new, never neither
+        if wanted != current_hash():
+            if not release.is_dir():
+                (staging / "HASH").write_text(wanted + "\n", encoding="utf-8")
+                (staging / "SOURCE").write_text(f"{plugin_root}\n{time.strftime('%Y-%m-%dT%H:%M:%S%z')}\n", encoding="utf-8")
+                os.replace(staging, release)
+            link = home / f".current.{os.getpid()}"
+            link.symlink_to(release)
+            os.replace(link, home / "current")  # atomic switch: a running hook sees old or new, never neither
+    finally:
+        shutil.rmtree(staging, ignore_errors=True)
     _compile(home / "current" / "synthesis")
     _write_exec(home / "bin" / "synthesis-hook", HOOK_SCRIPT)
     _write_exec(home / "bin" / "synthesis", CLI_SCRIPT)
     for name in GIT_HOOKS:
         _write_exec(home / "git-hooks" / name, GIT_HOOK_SCRIPT)
     copies = {}
-    for name in DAY_END:
-        source = plugin_root / "skills" / "synthesis-daily-rituals" / "scripts" / name
+    for name in DAY_END:  # from the release as installed, never from the folder after its check
+        source = Path(os.path.realpath(home / "current")) / "skills" / "synthesis-daily-rituals" / "scripts" / name
         if source.is_file():
             copies[name] = source.read_text(encoding="utf-8")
             _write_exec(home / "bin" / name, copies[name])
@@ -345,17 +453,21 @@ class InUse(Exception):
     """The runtime stays: something still runs it."""
 
 
-def uninstall(home: Path = None, dry_run: bool = False, codex_cleared: bool = False) -> list:
+def uninstall(home: Path = None, dry_run: bool = False, codex_cleared: bool = False, session: dict | None = None) -> list:
     """Remove what install created; restore core.hooksPath; keep anything the user changed. Refuses (InUse), removing
     nothing, while Codex's own hooks.json runs the stable hook: its guard would then hold every guarded call in Codex,
     with nothing there to put the runtime back (review round 2 of 5.21.0). `codex_cleared`: the caller takes all of that
-    out first (setup.py uninstall's dry run, which has left its own declarations in place)."""
+    out first (setup.py uninstall's dry run, which has left its own declarations in place). Where the home shows a
+    runtime, a removal spends the principal's code for it, or raises Unapproved and nothing is removed, whoever calls it."""
     from synthesis import doctor
     running = {} if codex_cleared else doctor.codex_user_entries(paths.codex_home())[0]
     if running:
         raise InUse(f"Codex's own {paths.codex_home() / 'hooks.json'} runs the synthesis runtime for {', '.join(running)}, so "
                     "it stays: run setup.py uninstall, which takes out what setup declared there, or remove those hooks, "
                     "then this again; nothing was removed")
+    if not dry_run and traces(home or _home()):
+        approval(subject("uninstall", home or _home()), f"removes the installed synthesis runtime under {home or _home()} "
+                 "(`current`, its launchers and its releases)", session or {"session_id": paths.session_id()})
     home, report, (verb, kept) = home or _home(), [], ("would remove", "would keep") if dry_run else ("removed", "kept")
     registered = _registrations(home).get("git_hooks_path")
     if registered:
@@ -377,8 +489,12 @@ def uninstall(home: Path = None, dry_run: bool = False, codex_cleared: bool = Fa
     if (home / "current").is_symlink() and not dry_run:
         (home / "current").unlink()
     for release in sorted((home / "releases").glob("*")) if (home / "releases").is_dir() else []:
-        if release.name.startswith(".") or package_hash(release) != release.name:
-            report.append(f"{kept} {release}: its files changed since install")
+        try:
+            whole = not release.name.startswith(".") and package_hash(release) == release.name
+        except OSError:  # a file in it that is no regular file, or cannot be read
+            whole = False
+        if not whole:
+            report.append(f"{kept} {release}: its files do not hash to its name (changed since install, or named by an older install)")
             continue
         if not dry_run:
             shutil.rmtree(release)

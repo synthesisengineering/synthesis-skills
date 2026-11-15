@@ -47,8 +47,8 @@ def world(tmp_path, monkeypatch):
     record = home / ".claude" / "projects" / "-work" / "S-principal.jsonl"
     record.parent.mkdir(parents=True)
     record.write_text(json.dumps({"type": "user", "message": {"role": "user", "content": "hello"}}) + "\n", encoding="utf-8")
-    paths.write_json(paths.state() / "transcripts" / "S-principal.json", {"path": str(record)})
-    install.install(ROOT)
+    install.install(ROOT)  # a first install: the home holds nothing yet
+    paths.write_json(paths.state() / "transcripts" / "S-principal.json", {"path": str(record)})  # as the prompt hook then records it
     work = tmp_path / "work"
     work.mkdir()
     folder = tmp_path / "my-plugin"  # an agent's copy of the runtime with its own guard, at the running version number
@@ -239,6 +239,16 @@ def _session_start(world, tmp_path, plugin, command=BOOTSTRAP, root_env="CLAUDE_
                           text=True, env=env, capture_output=True, timeout=300)
 
 
+def _uninstall_on_the_code(world):
+    """What `synthesis uninstall` does once the principal's code lets it run: asked for, typed, run (review round 4 of
+    5.23.1, Q4: uninstall itself spends it)."""
+    try:
+        install.uninstall(codex_cleared=True, session=None)
+    except install.Unapproved as held:
+        world["approve"](str(held))
+        install.uninstall(codex_cleared=True, session=None)
+
+
 def _guards_now(world) -> str:
     found = world["v5"] / "current" / "synthesis" / "guards.py"
     return found.read_text() if found.is_file() else ""
@@ -253,7 +263,7 @@ def test_a_session_start_never_replaces_an_installed_runtime_even_with_a_newer_p
 
 def test_n6_after_the_runtime_is_removed_a_session_start_installs_nothing_from_the_harness_folder(world, tmp_path):
     plugin = _harness_folder(tmp_path)
-    install.uninstall(codex_cleared=True)  # what `synthesis uninstall` does once the principal's code lets it run
+    _uninstall_on_the_code(world)  # what `synthesis uninstall` does once the principal's code lets it run
     assert not (world["v5"] / "current").exists() and not (world["v5"] / "bin" / "synthesis-hook").exists()
     done = _session_start(world, tmp_path, plugin)
     assert not (world["v5"] / "current").exists() and _guards_now(world) != STUB
@@ -284,7 +294,7 @@ def test_n9_a_hash_removed_or_a_launcher_folder_moved_makes_no_first_install(wor
 
 def test_muse_s_bootstrap_installs_nothing_where_a_runtime_was(world, tmp_path):
     plugin = _harness_folder(tmp_path)
-    install.uninstall(codex_cleared=True)
+    _uninstall_on_the_code(world)
     script = (ROOT / ".muse-plugin" / "hooks" / "session-start.sh").read_text()
     _session_start(world, tmp_path, plugin, command=script, root_env="MUSE_PLUGIN_ROOT")
     assert not (world["v5"] / "current").exists()
@@ -305,7 +315,7 @@ def test_first_only_reads_what_a_runtime_leaves_behind(world, tmp_path):
     plugin = _harness_folder(tmp_path)
     kept = install.install(plugin, first_only=True)  # the runtime is there and whole: kept, quietly
     assert "kept" in kept and _guards_now(world) != STUB
-    install.uninstall(codex_cleared=True)
+    _uninstall_on_the_code(world)
     with pytest.raises(RuntimeError, match="a session start"):  # gone, but its state and board are there: never a first install
         install.install(plugin, first_only=True)
     assert install.traces(world["v5"]) and not (world["v5"] / "current").exists()

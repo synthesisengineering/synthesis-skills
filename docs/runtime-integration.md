@@ -488,21 +488,41 @@ harness that gives no transcript cannot carry approved sends or deploys until it
    - The hook is run when it is the script an interpreter or a shell runs: its first
      operand past its options, or the module after `-m`. A program handed the hook's file
      (a line counter, a compiler, another script) is not running it.
-   - **The runtime itself** (5.23.1; review round 2, N5 and N6). A command that installs a
-     runtime from a folder, removes the installed one or writes its launchers again waits
-     for the principal's code for that exact command, run in the folder it was asked from,
-     with each folder it installs from bound as it is then (the hash of its runtime): a
-     changed folder asks again. That is `synthesis install` with or without a folder (and
-     `--git-hooks`, which also points git's global hooks at the commit check) and
-     `synthesis uninstall`, by every spelling the guard reads: `synthesis` on PATH, its
-     stable path, `~/.local/bin/synthesis` or any link to it, `python -m synthesis.cli`,
-     `-m synthesis` and `-m synthesis.install`, the CLI's module or any `synthesis/install.py`
-     run by path (the runtime's own included), the CLI's script read by a shell, behind
-     `env`, `nohup`, `timeout`, `xargs`, `find -exec` or a runner (`uv run` and its like),
-     and in any shell a harness has. The CLI's own parser reads the words, so its help, a
-     dry run (`uninstall --dry-run`) and words it refuses need no code; a word the guard
-     cannot read (a substitution, a variable it cannot be sure of, a glob) makes the
-     command wait, since it may be empty or an option when it runs. A Python program that
+   - **The runtime itself** (5.23.1; review round 2, N5 and N6; review round 1 of 22.18, H1
+     and H2; review round 4 of 5.23.1, Q4). Replacing or removing an installed runtime waits
+     for the principal's code for exactly that change, and `install.install` and
+     `install.uninstall` themselves spend it, so a program that calls them directly waits as
+     the CLI, setup.py and the release script do. A release older than the running one is a
+     subject of its own (`rollback`), named to the principal as a downgrade with both
+     versions. Only the release tool running from the protected runtime, started isolated
+     (`-I -S`, as its launcher starts it), installs a merged tag with no code, and never a
+     rollback (`install.release_route`); run from a checkout its install stage waits for the
+     code. `synthesis install` (with or without
+     a folder, and `--git-hooks`, which also points git's global hooks at the commit check)
+     and `synthesis uninstall` refuse wherever the home shows a runtime (`install.traces`)
+     unless a live grant the principal's prompt backs names that change; otherwise they file
+     the request and say what the hook says. So the spelling does not matter: a script run
+     by `sh`, by its path or sourced, Python's `subprocess`, perl, awk, a git alias, a make
+     recipe, a wrapper of another name and a scheduled job all end at that refusal. The code
+     binds the change, the home, whether git's hooks follow, and the sha256 of every file the
+     install copies (the whole `synthesis/` package with the folders in it, the stable skill
+     scripts and the CHANGELOG): the install copies those files into a staging folder inside
+     the protected releases folder, hashes that copy, checks it against the grant and
+     installs from it, so a file changed or added after the code is never installed on it.
+     The hook asks for the same subject wherever it reads the CLI as the command (`synthesis`
+     on PATH, its stable path, `~/.local/bin/synthesis` or any link to it, `python -m
+     synthesis.cli`, `-m synthesis` and `-m synthesis.install`, the CLI's module or any
+     `synthesis/install.py` run by path, the CLI's script read by a shell, behind `env`,
+     `nohup`, `timeout`, `xargs`, `find -exec` or a runner such as `uv run`, in any shell a
+     harness has) and only checks it, so the principal approves before the run; a bare
+     `synthesis` that PATH resolves to anything but the stable launcher is judged as the
+     program it is, never as the CLI. The CLI's own parser reads the words, so its help, a
+     dry run (`uninstall --dry-run`) and words it refuses need no code, and neither does a
+     first install into a home no runtime has been in; a word the guard cannot read (a
+     substitution, a variable it cannot be sure of, a glob) makes the command wait. Where no
+     runtime runs the prompt hook to record a grant (after an uninstall), the CLI reads the
+     session's own record for the code instead (`--session` names a session the hook
+     recorded before). A Python program that
      calls the installer (`install.install`, `install.uninstall`, the CLI's install or
      uninstall) waits as any program that names one of synthesis's writers does, and its
      import is read wherever a statement may start (after `;` or `:`, in a list of
@@ -586,8 +606,11 @@ stay open, and no hook running as that same user can close them:
 - The first install comes from the harness's plugin folder, and that folder is the agent's to write. Where the
   synthesis home holds no trace of a runtime, the bootstrap in `hooks.json` (and Muse's `session-start.sh`) runs
   `python3 -B -S <plugin>/synthesis/install.py` from PATH while the stable hook is missing, and installs the runtime
-  from the folder the harness passes. Once a runtime has been installed, the CLI's install and uninstall wait for the
-  principal's code and the guard refuses the plain routes to its folders (`rm`, `mv`, `ln`, `chmod` and their like),
+  from the folder the harness passes. Once a runtime has been installed, the CLI's install and uninstall refuse
+  without the principal's code however they are started, and the guard refuses the plain routes to its folders (`rm`,
+  `mv`, `ln`, `chmod` and their like). A program of the agent's own that writes those folders itself (its own copy of
+  the installer, with that check taken out) and runs where the guard cannot read it is the first case above: the
+  CLI's check binds the runtime's own CLI, not code the agent wrote,
   and even a runtime removed by some other route leaves the state and board its sessions wrote, which keep any session
   start from installing again. But the bootstrap
   runs the plugin folder's own code, and the registration itself (`hooks.json`) is in that folder: an agent that

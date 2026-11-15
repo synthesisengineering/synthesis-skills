@@ -47,6 +47,27 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   probe work by their own marks (a temporary folder, a home of their own, pytest).
 - **How it was checked.** Tests first, committed alone: 50 of them failed on the code before. The runtime's own entry
   points are also judged by the installed runtime's guard, where its install.py had passed as the plugin's.
+- **Install and uninstall themselves spend the principal's code** (review round 1 of 22.18, H1; review round 4 of 5.23.1,
+  Q4). The guard held the CLI only where it was the command on the line, so a script run by `sh`, by its path or
+  sourced, Python's `subprocess` or `os.system`, a Python file, perl, awk, a git alias, a make recipe, a wrapper of
+  another name, `crontab` or `at` reached it with no code, and a program could call `install.install` itself. Now
+  `install.install` and `install.uninstall`, which the CLI, install.py's main, setup.py and the release script all run
+  through, refuse to replace or remove a runtime in a home that shows one (`install.traces`) unless a live grant the
+  principal's prompt backs names that exact change; otherwise they file the request and raise `install.Unapproved` with
+  what the hook says. The hook asks for the same subject where it reads the CLI as the command and only checks it, so
+  the principal approves before the run and the install spends it. Where no runtime runs the prompt hook (after an
+  uninstall), the session's own record showing the code is enough (`approvals.answered`). The first install, help, a dry
+  run and words the CLI refuses need no code.
+- **The code binds the install that happens** (H2). `package_hash` read only `synthesis/*.py` and the stable scripts, of
+  the folder as the hook saw it: a package folder added after the code was installed on it, and a change made after the
+  hook's check was what got installed. Now `package_digest` is the sha256 of every file an install copies (the whole
+  package with its folders, the stable scripts and the CHANGELOG, each by its path and length); the install stages that
+  copy in the protected releases folder, hashes the copy, checks it and installs from it. `synthesis install` with no
+  folder binds the CLI's own folder the same way, and a bare `synthesis` that PATH resolves to anything but the stable
+  launcher is not read as the CLI. A release older than the running one is a subject of its own, `rollback`, named to
+  the principal as a downgrade with both versions. The release tool's own install needs no code only where the process
+  is that tool inside the protected runtime, started isolated (`-I -S`), and never for a rollback
+  (`install.release_route`); run from a checkout, as main runs it, its install stage waits for the code.
 
 - **The daily rituals' skill file holds the Messenger rule** (`synthesis-daily-rituals` 3.19.0), by the move the principal
   approved in his decision packet of 2026-11-15. Two passages that describe the skill (its introduction and its

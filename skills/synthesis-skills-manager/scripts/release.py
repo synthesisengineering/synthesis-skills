@@ -501,7 +501,11 @@ def main(argv=None) -> int:
         board.release(args.session or paths.session_id(), [train])
     healthy = True
     if verified and not args.dry_run:
-        lines.append(install.install(next(iter(verified.values()))))  # the stable runtime from verified bytes
+        try:  # the stable runtime from verified bytes; from a checkout's release tool it waits for the principal's code
+            lines.append(install.install(next(iter(verified.values()))))
+        except install.Unapproved as exc:
+            print("\n".join(lines + [f"runtime: {exc}"]), flush=True)
+            return 2
     print("\n".join(lines), flush=True)
     if verified and not args.dry_run:
         start = time.perf_counter()

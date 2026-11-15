@@ -44,8 +44,8 @@ def world(tmp_path, monkeypatch):
     record = home / ".claude" / "projects" / "-work" / f"{SID}.jsonl"
     record.parent.mkdir(parents=True)
     record.write_text(json.dumps({"type": "user", "message": {"role": "user", "content": "hello"}}) + "\n", encoding="utf-8")
-    paths.write_json(paths.state() / "transcripts" / f"{SID}.json", {"path": str(record)})
-    install.install(ROOT)
+    install.install(ROOT)  # a first install: the home holds nothing yet
+    paths.write_json(paths.state() / "transcripts" / f"{SID}.json", {"path": str(record)})  # as the prompt hook then records it
     evil = tmp_path / "my-plugin"
     shutil.copytree(os.path.realpath(paths.home() / "current"), evil, ignore=shutil.ignore_patterns("__pycache__", "HASH", "SOURCE"))
     (evil / "synthesis" / "guards.py").write_text(STUB, encoding="utf-8")
@@ -188,7 +188,11 @@ def test_every_file_an_install_copies_is_hashed_and_installed_from_its_staged_co
     assert install.package_hash(folder) != before
     (folder / "CHANGELOG.md").write_text("# Changelog\n")
     third = install.package_hash(folder)
-    install.install(folder)  # a direct call (setup, a test): staged and hashed, no code asked
+    try:  # a direct call is staged, hashed and checked like the CLI's (Q4)
+        install.install(folder)
+    except install.Unapproved as held:
+        world["typed"](_code(str(held)))
+        install.install(folder)
     release = Path(os.path.realpath(world["v5"] / "current"))
     assert release.name == third and (release / "synthesis" / "sub" / "x.py").is_file()
     assert not [p for p in (world["v5"] / "releases").iterdir() if p.name.startswith(".")]  # no staging left behind

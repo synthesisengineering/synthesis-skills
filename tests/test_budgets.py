@@ -1314,10 +1314,23 @@ ROOT = Path(__file__).resolve().parents[1]
 # not), the module's docstring 2 and uninstall's last report line 2. cli.py 14: parsed 13 and command_at 6 (one reading
 # of the CLI's words for it and for the guard), less _main's 6, and `install --first` 1. hook.py and doctor.py change
 # lines in place.
+# 22.18's review round 1 (H1, H2) and 5.23.1's round 4 (Q4): install and uninstall themselves spend the principal's
+# code for the install that happens: core 160 more and plugin 165, measured. install.py 116: approval 17 (spends the code,
+# or files the request and says what the hook says; the session's own record where no hook ran), _stage 16 (the copy
+# made in the protected releases folder, from which the install is made), _read 14 (a regular file's bytes, opened
+# without waiting), _files 12 (every file an install copies), release_route 12 (the release tool from the protected
+# runtime, started isolated), change 10 (an install's subject and words, a rollback named as a downgrade), package_digest
+# 10 (sha256 of each file by its path and length), subject 9, uninstall 8 (it spends the code itself), install 5 (the
+# check on the staged copy, the release route, the day-end copies from the installed release), Unapproved 4,
+# RELEASE_TOOL 3 and the stat import 1, less package_hash's 5. approvals.py 19: answered (the code as the session's record
+# shows it, where no prompt hook made a grant). cli.py 16: _shell 8 (the session a shell belongs to), cmd_install 5 and
+# cmd_uninstall 3 (through install and uninstall, a refusal said). guards.py 9: _cli_words 7 (the CLI's own folder; a
+# bare `synthesis` PATH finds elsewhere is no CLI) and _runtime_change 4 (the install's own subject), less check_runtime's
+# 2 (it checks the grant and spends nothing). setup.py 1 and release.py 4: a refused install is said, not raised.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 16663
-PLUGIN_BUDGET = 42735
+CORE_BUDGET = 16823
+PLUGIN_BUDGET = 42900
 
 
 def _lines(files):

@@ -934,7 +934,8 @@ def main(argv=None) -> int:
         if args.command in ("all", "workspace", "org"):  # what a compaction summary keeps, in every synthesis workspace
             import workspace
             say(workspace.add_brief(interactive, args.compact_brief, args.dry_run))
-    except (SetupError, ValueError, OSError) as exc:  # a malformed manifest or an unwritable folder: say which
+    except (SetupError, ValueError, OSError, install.Unapproved) as exc:  # a malformed manifest, an unwritable folder, or a
+        # change of an installed runtime that waits for the principal's code: say which
         say([f"stopped: {exc}"])
         failed = True
     except KeyboardInterrupt:

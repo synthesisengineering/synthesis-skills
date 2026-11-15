@@ -579,8 +579,9 @@ def test_the_runtime_is_a_protected_folder(world, target):
     assert reason and reason.startswith("Refused"), reason
 
 
-def test_the_rituals_scripts_run_from_the_installed_runtime_still_pass(world):
+def test_the_rituals_scripts_run_from_the_installed_runtime_still_pass(world, monkeypatch):
     from synthesis import install
+    monkeypatch.setattr(install, "approval", lambda *args, **kwargs: None)  # the principal's code, given: an install into this home is no subject here
     install.install(ROOT)
     script = paths.home() / "current" / "skills" / "synthesis-daily-rituals" / "scripts" / "ritual_state.py"
     assert script.is_file()

@@ -353,13 +353,26 @@ def cmd_approvals(args) -> int:
     return 0
 
 
+def _shell(args) -> dict:
+    """The session this shell belongs to, which only it may act as; empty where it names none."""
+    given, own = getattr(args, "session", ""), paths.session_id()
+    if given and own and given != own:
+        sys.exit(f"refused: this shell belongs to session {own}; it cannot act as {given}")
+    return {"session_id": given or own}
+
+
 def cmd_install(args) -> int:
+    """Replacing an installed runtime spends the principal's code for exactly what is installed, however this command was
+    started (review round 1 of 22.18): a script, another program or a job reaches this check as the hook's never does."""
     from synthesis import install
     plugin = Path(args.plugin) if args.plugin else Path(__file__).resolve().parents[1]
     try:
-        print(install.install(plugin, first_only=args.first))
+        print(install.install(plugin, first_only=args.first, git_hooks=args.git_hooks, session=_shell(args)))
         if args.git_hooks:
             print(install.register_git_hooks())
+    except install.Unapproved as exc:
+        print(exc, file=sys.stderr)
+        return 2
     except (OSError, RuntimeError, subprocess.SubprocessError) as exc:
         print(f"install failed: {exc}", file=sys.stderr)
         return 1
@@ -369,10 +382,13 @@ def cmd_install(args) -> int:
 def cmd_uninstall(args) -> int:
     from synthesis import install
     try:
-        print("\n".join(install.uninstall(dry_run=args.dry_run)))
+        print("\n".join(install.uninstall(dry_run=args.dry_run, session=_shell(args))))
     except install.InUse as exc:  # Codex's own hooks still run it (review round 2 of 5.21.0)
         print(f"stopped: {exc}")
         return 1
+    except install.Unapproved as exc:
+        print(exc, file=sys.stderr)
+        return 2
     return 0
 
 

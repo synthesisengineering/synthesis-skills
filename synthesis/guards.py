@@ -4431,14 +4431,14 @@ SYNTHESIS_IMPORT = re.compile(  # wherever a statement may start: a line, after 
 SYNTHESIS_LOADED = re.compile(r"\b(?:__import__|import_module|run_module|run_path|spec_from_file_location|SourceFileLoader|load_source|(open))"
                               r"[ \t]*\([^)\n]*?['\"][^'\"\n]*\bsynthesis(?:[./]|['\"])")  # a name or a file of synthesis's handed to a loader
 SYNTHESIS_WRITES = frozenset(f"{module}.{name}" for module, names in (  # synthesis's own functions that write a file (a test reads them from the source)
-    ("approvals", "_expire alone consume grant_from_prompt remember request void"), ("autopilot", "_evaluate _write_pointer evaluate"),
+    ("approvals", "_expire alone answered consume grant_from_prompt remember request void"), ("autopilot", "_evaluate _write_pointer evaluate"),
     ("board", "_claim _claim_lock _describe _post claim inbox mark_carried mark_read_messages message notify release resolve save touch"),
     ("checkout", "_append _staged_commit _tree_commit index_set log_claims snapshot snapshot_paths"),
     ("cli", "_main cmd_claim cmd_doctor cmd_handoff cmd_inbox cmd_index cmd_install cmd_msg cmd_release cmd_resume cmd_sends "
             "cmd_sessions cmd_uninstall cmd_use cmd_who cmd_worktree main"), ("commit_check", "main problems unapproved"),
     ("doctor", "_note_waits check_wait_check main run_checks"),
     ("hook", "_carried_since _ran _upgrade_note main pre_tool_use session_start stop user_prompt_submit"),
-    ("install", "_merge _write_exec install move_board register_git_hooks uninstall"), ("paths", "note_wait write_json"),
+    ("install", "_merge _stage _write_exec approval install move_board register_git_hooks uninstall"), ("paths", "note_wait write_json"),
     ("project", "_carry_out _mark_carried_out _peers _recent_conversation handoff resume"),
     ("reply_check", "check misrouted_accounts unarmed_wait unwatched_sends"), ("sends", "close_window log open_window settle window_refusal"),
     ("sessions", "_Session _export _ritual_history _sync_workspace _write_synced _writer behind export export_file fetch lost peek recent sync"),
@@ -6167,28 +6167,35 @@ def _named_cli(word: str, where: str) -> bool:
         "/" in word and os.path.basename(_real(os.path.join(where, os.path.expanduser(word)))) == "synthesis")
 
 
-def _cli_words(words: list, where: str) -> list | None:
-    """The words the CLI is handed by a command that runs it, by any spelling the guard can read: its name, `python -m
-    synthesis.cli` (or `synthesis`, `synthesis.install`), its module or the runtime's install.py run by path, its script
-    read by a shell, behind a runner. install.py hands `install --first` unless it is told `uninstall`. None otherwise."""
+def _cli_words(words: list, where: str) -> tuple | None:
+    """(the words the CLI is handed, the folder its own install takes) for a command that runs it, by any spelling the
+    guard can read: its name, `python -m synthesis.cli` (or `synthesis`, `synthesis.install`), its module or an
+    install.py run by path, its script read by a shell, behind a runner. install.py hands `install` unless it is told
+    `uninstall` (this release's adds --first; a copy of another's may not). A bare `synthesis` that PATH finds anywhere
+    but the stable launcher is a program of its own, judged as that (review round 1 of 22.18, H2). None otherwise."""
     if os.path.basename(words[0]) in RUNNERS:
         words = next((words[i:] for i, w in enumerate(words) if i and (_named_cli(w, where) or SCRIPT.match(os.path.basename(w)))), [])
     head = os.path.basename(words[0]) if words else ""
     if words and _named_cli(words[0], where):
-        return words[1:]
+        import shutil
+        found = shutil.which("synthesis") if words[0] == "synthesis" and {"install", "uninstall"} & set(words[1:]) else ""
+        if found and _real(found) != _real(str(paths.home() / "bin" / "synthesis")):
+            return None
+        launcher = _real(os.path.join(where, os.path.expanduser(words[0] if "/" in words[0] else str(paths.home() / "bin" / "synthesis"))))
+        return words[1:], _real(os.path.join(os.path.dirname(os.path.dirname(launcher)), "current"))
     if not (head in SHELLS or (head.startswith("python") and SCRIPT.match(head))):
         return None
     kind, at, name = _program(words)
     if kind != "file" or not name:
         return None
-    if words[at] != name:  # -m, alone or after other letters
-        entry, rest = CLI_MODULES.get(name), words[at + 1 + words[at].endswith("m"):]
+    if words[at] != name:  # -m, alone or after other letters: the package from the folder it starts in, if it is there
+        entry, rest, own = CLI_MODULES.get(name), words[at + 1 + words[at].endswith("m"):], where if os.path.isdir(os.path.join(where, "synthesis")) else ""
     else:
         path, rest = _real(os.path.join(where, os.path.expanduser(name))), words[at + 1:]
-        inside = os.path.basename(os.path.dirname(path)) == "synthesis"
+        inside, own = os.path.basename(os.path.dirname(path)) == "synthesis", os.path.dirname(os.path.dirname(path))
         entry = ("cli" if _named_cli(name, where) or (inside and os.path.basename(path) in ("cli.py", "__main__.py"))
                  else "install" if inside and os.path.basename(path) == "install.py" else None)
-    return (rest if rest[:1] == ["uninstall"] else ["install", "--first", *rest]) if entry == "install" else rest if entry else None
+    return ((rest if entry == "cli" or rest[:1] == ["uninstall"] else ["install", *rest]), own) if entry else None
 
 
 def _cli_reads(argv: list) -> tuple:
@@ -6211,29 +6218,33 @@ def _cli_reads(argv: list) -> tuple:
     return ("uninstall" if args.fn is cli.cmd_uninstall and not args.dry_run else "install" if args.fn is cli.cmd_install else ""), args
 
 
-def _runtime_change(words: list, where: str, folders: dict) -> str:
-    """What a command does to the runtime the guard runs, in words for the principal; '' for nothing. Each folder an
-    install would take goes into `folders` with the hash of its runtime as it is now, so the code binds that."""
+def _runtime_change(words: list, where: str, subjects: list) -> str:
+    """What a command does to the runtime the guard runs, in words for the principal; '' for nothing. The subject the CLI
+    spends for it goes into `subjects`: the change, the home, and every byte the install takes from its folder as it is
+    now (install.subject), so the code binds the install that happens."""
     from pathlib import Path
     from synthesis import install
-    argv = _cli_words(words, where) if words else None
+    argv, own = (_cli_words(words, where) if words else None) or (None, "")
     action, args = _cli_reads(argv) if argv is not None else ("", None)
     home = paths.home()
     if action and args is None:
+        subjects.append({"action": "unreadable", "command": shlex.join(words), "where": str(where)})
         return f"runs the synthesis CLI with a word this guard cannot read, so it may {action} the runtime under {home}"
     if action == "uninstall":
+        subjects.append(install.subject("uninstall", home))
         return (f"removes the installed synthesis runtime under {home} (`current`, its launchers and its releases); until one is "
                 "installed again every guarded call is held, and no session start installs one there")
     if action != "install":
         return ""
-    folder = os.path.normpath(os.path.join(where, os.path.expanduser(args.plugin))) if args and args.plugin else ""
+    folder = os.path.normpath(os.path.join(where, os.path.expanduser(args.plugin))) if args.plugin else own
     try:
-        folders.update({folder: install.package_hash(Path(folder)) if os.path.isfile(os.path.join(folder, "synthesis", "hook.py")) else ""} if folder else {})
+        digest = install.package_digest(Path(folder)) if folder and os.path.isfile(os.path.join(folder, "synthesis", "hook.py")) else ""
     except OSError:
-        folders[folder] = "unreadable"
-    return ((f"installs a synthesis runtime from {folder}, replacing the one under {home} that the guard runs for every check"
-             if folder else f"installs the synthesis runtime from the CLI's own folder into {home} and writes its launchers again")
-            + (", and points git's global hooks at its commit check" if args and args.git_hooks else ""))
+        digest = "unreadable"
+    source = folder if args.plugin else f"{own or 'a folder this guard cannot find'}, the CLI's own folder, writing its launchers again,"
+    wanted, said = install.change(home, Path(folder or os.devnull), source, digest, args.git_hooks)
+    subjects.append(wanted)  # the same subject the install computes from its staged copy, a rollback named as one
+    return said
 
 
 def check_runtime(command: str, cwd: str, session: dict | None = None) -> str | None:
@@ -6241,23 +6252,21 @@ def check_runtime(command: str, cwd: str, session: dict | None = None) -> str | 
     waits for the principal's code for that exact command, run where it was asked and with each folder it takes as it is
     now. Help and a dry run need no code: the CLI's own parser says what its words do. The line is read with its variables
     put, and also as written when it uses one it does not set, whose value where it runs the guard cannot be sure of."""
-    found, folders = [], {}
+    found, subjects = [], []
     unset = {m[1] or m[4] for m in USED.finditer(command)} - {m[1] for m in ASSIGNED.finditer(_own_text(command))} - {
         m[1] for m in LOOPED.finditer(command)}
     for text in dict.fromkeys([command] * bool(unset) + _resolved(command)):
         if "synthesis" in text.lower():
             for words, where in _parse(text, cwd)[0]:
-                said = "" if isinstance(where, Quoted) else _runtime_change(words, where, folders)
+                said = "" if isinstance(where, Quoted) else _runtime_change(words, where, subjects)
                 found += [said] if said and said not in found else []
-    if not found:
+    waiting = [s for i, s in enumerate(subjects) if s not in subjects[:i] and not approvals.backed("runtime", s, session)]
+    if not found or not waiting:  # the hook checks the code and spends nothing: the CLI spends it (review round 1 of 22.18)
         return None
-    subject = {"command": command, "runs_in": os.path.realpath(cwd), "folders": folders}
-    if approvals.consume("runtime", subject, session):
-        return None
-    code = approvals.request("runtime", subject, f"the synthesis runtime: {command[:150]}")
+    code = approvals.request("runtime", waiting[0], f"the synthesis runtime: {command[:150]}")
     return (f"This command {'; it '.join(found)}. That runtime is what the guard runs, so it changes only on the principal's "
             f"word: show them this exact command and ask them to type {approvals.how(code)}; then run the identical command "
-            f"again from {cwd}, with each folder it installs from left as it is now.")
+            "again, with each folder it installs from left as it is now. The install itself spends the code.")
 
 
 # --- dispatch -----------------------------------------------------------------------------------
