@@ -875,7 +875,8 @@ def test_the_action_sheet_publisher_from_the_plugin_cache_with_a_project_page_pa
     page = world["home"] / "workspaces" / "kb" / "projects" / "a-project" / "resources" / "artifacts" / "a-page.html"
     page.parent.mkdir(parents=True)
     page.write_text("<p>a page</p>\n", encoding="utf-8")
-    assert _verdict(world, f"python3 {folder / 'publish_sheet.py'} {page} --project rp-sheets") is None
+    line = f"python3 {folder / 'publish_sheet.py'} {page} --project rp-sheets"  # the principal lists the host, as live
+    assert guards.check("Bash", {"command": line}, {**CONFIG, "sheet_hosts": ["rp-sheets"]}, cwd=str(world["work"]), session=world["session"]) is None
 
 
 def test_a_word_inside_a_protected_folder_still_counts(world):
