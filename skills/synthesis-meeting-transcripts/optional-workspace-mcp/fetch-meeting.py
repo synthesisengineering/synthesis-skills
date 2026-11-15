@@ -254,7 +254,7 @@ def main(argv=None) -> int:
     mcp_url = f"http://localhost:{args.port}/mcp"
     if not server_reachable(mcp_url):
         print(f"ERROR: workspace-mcp not reachable at {mcp_url}", file=sys.stderr)
-        print("       Run ./start.sh or verify server status.", file=sys.stderr)
+        print("       Run bash \"$HOME/.synthesis/v5/current/skills/synthesis-meeting-transcripts/optional-workspace-mcp/start.sh\" or verify server status.", file=sys.stderr)
         return 1
 
     if args.window:

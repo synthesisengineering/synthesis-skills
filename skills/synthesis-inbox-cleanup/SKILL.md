@@ -5,7 +5,7 @@ license: "Apache-2.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "2.0.1"
+  version: "2.0.2"
   format: v5
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
@@ -46,7 +46,7 @@ Rules 1 to 8 are the prompt-injection rules, numbered as before so a citation of
 - [references/workflow.md](references/workflow.md): the three tool stacks, the four dispositions, workflow steps 1 to 6 with exact commands, the Microsoft 365 and Gmail paths, and the pitfalls table. Read it when running a sweep.
 - [references/injection-rules.md](references/injection-rules.md): rules 1 to 8 in full. Read it before any path that reads email content into your context.
 - [references/setup-and-scoping.md](references/setup-and-scoping.md): public engine and private rules, the `scopes.yaml` contract and `resolve_scope.py`, setup steps. Read it when installing, onboarding an account or resolving which accounts a seat may sweep.
-- [references/release-notes.md](references/release-notes.md): version notes 1.4.0 to 2.0.0 (1.6.0 and 2.0.0 document `scan_impersonation.py`: `python3 scripts/scan_impersonation.py [--json] [--strict-only] [--folder F] [--check-config]`), license, author. Read it when scanning for impersonation or tracing a change.
+- [references/release-notes.md](references/release-notes.md): version notes 1.4.0 to 2.0.0 (1.6.0 and 2.0.0 document `scan_impersonation.py`: `python3 "$HOME/.synthesis/v5/current/skills/synthesis-inbox-cleanup/scripts/scan_impersonation.py" [--json] [--strict-only] [--folder F] [--check-config]`), license, author. Read it when scanning for impersonation or tracing a change.
 - [references/three-tool-stacks.md](references/three-tool-stacks.md): the decision tree and trade-offs per account class. Read it when choosing a stack or setting up Gmail or M365.
 - [references/manifest-schema.md](references/manifest-schema.md): the `rules.yaml` schema and resolution precedence. Read it when editing rules.
 - [references/gmail-filters-patterns.md](references/gmail-filters-patterns.md): the five proven Gmail filter categories. Read it before creating filters.

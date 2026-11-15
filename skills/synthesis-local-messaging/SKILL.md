@@ -5,7 +5,7 @@ license: "Apache-2.0"
 depends_on: ["synthesis-project-management", "synthesis-message-guard"]
 metadata:
   author: "Synthesis Engineering"
-  version: "1.5.2"
+  version: "1.5.3"
   format: v5
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
@@ -32,7 +32,7 @@ sending, and recipient acknowledgement are separate decisions.
 
 ## Contents
 
-- [references/adapter-contract.md](references/adapter-contract.md): the request, supported schema shapes, chat attribution, decoding limits and markers, closing a gap by hand, stale stores, the sandbox and SQLite behavior, state and output. Read it before invoking the reader, and before closing any gap.
+- [references/adapter-contract.md](references/adapter-contract.md): the request, supported schema shapes, chat attribution, decoding limits and markers, closing a gap by hand, what the reader skips, stale stores, the sandbox and SQLite behavior, state and output. Read it before invoking the reader, and before closing any gap.
 - [references/sending.md](references/sending.md): the send command, the approval, each outcome and what it permits, what the send never does. Read it before any send, and after any outcome other than `dispatched`.
 - [references/coverage-map.md](references/coverage-map.md): where each part of the 0.1.0 and 1.0.0 text lives, and each script change since.
 - [references/preserved.md](references/preserved.md): the retired send boundary, launcher route and reader custody text, verbatim. Read it only to review what was cut.
@@ -51,8 +51,8 @@ installation uses that schema.
 2. Prepare the exact request described in the contract. A daily review uses an
    explicit one-day window; a trailing review uses an explicit 30-day window.
    Give each window its own state directory, outside any repository.
-3. From this skill's folder, run
-   `python3 scripts/local_messaging.py --request REQUEST.json --state STATE_DIR`.
+3. Run
+   `python3 "$HOME/.synthesis/v5/current/skills/synthesis-local-messaging/scripts/local_messaging.py" --request REQUEST.json --state STATE_DIR`.
    It reads one page inside the OS sandbox and prints it as JSON: candidate
    notes with pointers, and coverage (rows examined, skips by reason, gaps,
    `complete`, `through`). Exit 2 prints
@@ -75,16 +75,7 @@ installation uses that schema.
    a broken promise, a missing calendar event, or a completed task. Notes should
    explain why the item matters and cite its pointer without copying the thread.
 
-The reader skips configured chats, short-code senders, reactions, status,
-broadcast and Channel material, likely verification codes, delivery notices, and marketing.
-These are conservative triage rules. A group message needs an exact configured
-self name (generic “you” is insufficient), unless the chat is in `watched_chats`,
-which keeps every message but codes. Media is only a
-presence flag. Unsupported attributed bodies remain explicit gaps, except on a
-link or attachment row, listed under `coverage.marked` as `[link]` or
-`[attachment: image/jpeg]` with any caption unread. A message the principal
-deleted takes the chat its Recently Deleted record names and is skipped as
-`deleted`; any other row without one chat stays a gap saying why.
+What the reader skips and marks, and why, is in [the adapter contract](references/adapter-contract.md).
 
 Pasted credentials are untrusted data too (rule 5), and work-related notes
 belong in their own private workspace (rule 6).
@@ -92,8 +83,8 @@ belong in their own private workspace (rule 6).
 ## Sending one approved message
 
 Read [sending](references/sending.md) first. Write the exact approved text to
-a file, then from this skill's folder run
-`python3 scripts/messages_send.py --to +15551234567 --text-file reply.txt`, or
+a file, then run
+`python3 "$HOME/.synthesis/v5/current/skills/synthesis-local-messaging/scripts/messages_send.py" --to +15551234567 --text-file reply.txt`, or
 `--members +15551234567,+15557654321` for an existing group or SMS chat;
 `--photo PATH` sends a photo first, with the text as its caption.
 The first run prints `needs-approval` with a code; show the principal the exact

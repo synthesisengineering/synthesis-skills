@@ -1,8 +1,7 @@
 # Mid-Day Sync and the Ritual Modes
 
 Read when the user asks for a sync during the day, says they are away or only keeping up,
-other sessions are live while a ritual runs, or the user steps away mid-task. `<rituals>` is
-this skill's folder.
+other sessions are live while a ritual runs, or the user steps away mid-task. `<rituals>` is the runtime's copy of this skill, `$HOME/.synthesis/v5/current/skills/synthesis-daily-rituals`.
 
 Contents: Mid-Day Sync Protocol · Vacation / Observer Mode Ritual · Concurrent-Seats Mode
 Ritual · Autonomous Work and Audio Alerts.

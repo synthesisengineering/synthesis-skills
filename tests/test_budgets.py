@@ -1328,10 +1328,13 @@ ROOT = Path(__file__).resolve().parents[1]
 # Then core and plugin each 1 more: cli.py's install takes --forward-only, which a harness's session start now runs from
 # the plugin itself (finding 5: the previous release's installer built the new release and left out what it did not
 # know). install.py's test of what a session start keeps changes in place.
+# Then core and plugin each 1 more, in install.py: _stable_skill_files' docstring 1 (a carried skill's shell scripts
+# outside scripts/, the meeting skill's server kit, which its doctor checks the service against, and its Python below
+# scripts/: finding 6). Its test changes in place, and so does the fetcher's line naming the runtime's start.sh.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 16568
-PLUGIN_BUDGET = 42640
+CORE_BUDGET = 16569
+PLUGIN_BUDGET = 42641
 
 
 def _lines(files):

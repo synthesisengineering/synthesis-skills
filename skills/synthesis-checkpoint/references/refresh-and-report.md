@@ -38,7 +38,7 @@ project work.
    session) prints the directive, current state and plan; read the files it
    points to. A reported conflict stops project inspection beyond reporting it.
 4. **The records.** Run the context doctor on the project:
-   `python3 <synthesis-context-lifecycle>/scripts/context_doctor.py --project <path>`.
+   `python3 "$HOME/.synthesis/v5/current/skills/synthesis-context-lifecycle/scripts/context_doctor.py" --project <path>`.
 5. **The skill text.** Compare the skill bodies in context with the installed
    ones when the upgrade changed them; a stale loaded skill body is a reason to
    reload, not proof that the current startup failed.

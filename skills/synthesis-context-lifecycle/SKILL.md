@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "2.8.1"
+  version: "2.8.2"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
   format: v5
@@ -56,7 +56,7 @@ AI collaborators start every session with zero context; their effectiveness depe
 **Check.** Run the doctor for this project:
 
 ```bash
-python3 <skill>/scripts/context_doctor.py --project <root>/projects/<id>
+python3 "$HOME/.synthesis/v5/current/skills/synthesis-context-lifecycle/scripts/context_doctor.py" --project <root>/projects/<id>
 ```
 
 It prints this project's findings, each `FAIL` or `warn` with a remedy line, then `HEALTHY` or `DEFECTS` with totals; it exits 0, 1 or 2. Without `--project` it audits every knowledge root, leads with this session's project and counts the rest.

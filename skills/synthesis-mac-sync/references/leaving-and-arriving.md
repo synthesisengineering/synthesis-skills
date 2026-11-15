@@ -17,7 +17,7 @@ Contents: Leaving a Mac · Arriving on a Mac · What never moves between Macs ·
    by explicit path), and push. Never `--no-verify`, never force, never rebase on your own; on a
    remote that moved ahead, fetch and push only as a fast-forward, and on divergence leave the
    local commit and report it.
-3. **Run the strand scan:** `python3 <synthesis-daily-rituals>/scripts/repo_state.py --discover ~/workspaces --fetch`.
+3. **Run the strand scan:** `python3 "$HOME/.synthesis/v5/current/skills/synthesis-daily-rituals/scripts/repo_state.py" --discover ~/workspaces --fetch`.
    Every repository lands in one state; anything DIRTY, DECISION (ahead or diverged), BLIND (no
    upstream, detached) or UNREACHABLE is work that would stay behind on this Mac. Resolve each
    one, or name it to the principal, before calling the move done.
@@ -31,7 +31,7 @@ Contents: Leaving a Mac · Arriving on a Mac · What never moves between Macs ·
 1. **Materialize iCloud first:** `brctl download "$ICLOUD_BASE"` and poll until no `.icloud`
    placeholder remains, then pull config ([icloud-config-sync.md](icloud-config-sync.md)).
 2. **Pull, never over uncommitted work:**
-   `python3 <synthesis-daily-rituals>/scripts/repo_state.py --discover ~/workspaces --fetch --ff`.
+   `python3 "$HOME/.synthesis/v5/current/skills/synthesis-daily-rituals/scripts/repo_state.py" --discover ~/workspaces --fetch --ff`.
    It fast-forwards only branches that are strictly behind and whose working tree is clean. A
    repository with uncommitted changes is listed file by file and left as it is: decide with the
    principal what those changes are before anything is pulled over them.

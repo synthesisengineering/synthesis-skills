@@ -1,7 +1,7 @@
 # Critical deadlines
 
 Read at day-start, at every deadline sweep, and the day a deadline with irreversible stakes is
-first seen. `<rituals>` is this skill's folder; `<W>` is the workspace.
+first seen. `<rituals>` is the runtime's copy of this skill, `$HOME/.synthesis/v5/current/skills/synthesis-daily-rituals`; `<W>` is the workspace.
 
 Contents: What is critical · The tag · Where it lives in the plan · The sweep's critical view ·
 Alerts · Closing one · The ritual record · Declared plan folders · Why.

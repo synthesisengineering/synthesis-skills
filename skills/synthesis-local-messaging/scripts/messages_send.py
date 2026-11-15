@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: Apache-2.0
 """Send one approved message to an existing Messages chat through the v5 send guard, at most once.
 
-Run: python3 messages_send.py --to HANDLE --text-file FILE [--photo PATH] [--account ACCOUNT_ID]
-     python3 messages_send.py --members HANDLE[,HANDLE...] --text-file FILE [--photo PATH] [--service iMessage|SMS]
+Run: python3 "$HOME/.synthesis/v5/current/skills/synthesis-local-messaging/scripts/messages_send.py" --to HANDLE --text-file FILE [--photo PATH] [--account ACCOUNT_ID]
+     python3 "$HOME/.synthesis/v5/current/skills/synthesis-local-messaging/scripts/messages_send.py" --members HANDLE[,HANDLE...] --text-file FILE [--photo PATH] [--service iMessage|SMS]
                               [--account ID]
 
 --photo adds one photo (2026-10-22, the principal's ruling: iMessage and SMS photos send directly). The approval

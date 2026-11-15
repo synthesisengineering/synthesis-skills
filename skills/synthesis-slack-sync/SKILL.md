@@ -5,7 +5,8 @@ license: "CC0-1.0"
 depends_on: ["synthesis-project-management"]
 metadata:
   author: "Rajiv Pant"
-  version: "4.0.3"
+  version: "4.0.4"
+  category: chief-of-staff
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
   format: v5
@@ -34,7 +35,7 @@ A protocol for syncing Slack channels and threads to local transcript files usin
 
 ## Contents
 
-- [references/sync-protocol.md](references/sync-protocol.md): Steps 0 to 5 in full, draft rules, transcript and permalink rules. Read it at the start of every sync.
+- [references/sync-protocol.md](references/sync-protocol.md): Steps 0 to 5 in full, draft rules, transcript and permalink rules, when this skill runs. Read it at the start of every sync.
 - [references/lookups-and-absence.md](references/lookups-and-absence.md): the search-API rule, zero-result protocols, backfills, continuing conversations. Read it before any lookup, verification or backfill.
 - [references/provenance-and-errors.md](references/provenance-and-errors.md): provenance in full, dates, errors. Read it before writing a sync section or quoting anyone, or when a call fails.
 - [references/configuration.md](references/configuration.md): the config, multi-workspace registry, paths, prerequisites. Read it when setting up.
@@ -44,7 +45,7 @@ A protocol for syncing Slack channels and threads to local transcript files usin
 - [templates/draft-block.md](templates/draft-block.md), [templates/sent-marker.md](templates/sent-marker.md): the literal draft and SENT forms. Read them before writing or marking a draft.
 - [references/coverage-map.md](references/coverage-map.md): where the 3.14.0 text lives, and the M3 script changes.
 - [references/preserved.md](references/preserved.md): the retired acquisition, token and retrofit text. Read it only to review the cut.
-- The search-API rule, the step outline with every command, Provenance Discipline, When This Skill Runs: below.
+- The search-API rule, the step outline with every command, Provenance Discipline: below.
 
 ## ⛔ NEVER Use Slack Search API for Lookups
 
@@ -70,7 +71,7 @@ Each step below is its command; the full step is in references/sync-protocol.md.
 
 ### Step 1: Read channels for new top-level messages
 
-`slack_read_channel(resolved_channel_id, oldest=WINDOW_OLDEST, limit=30, detail="detailed")`, with `WINDOW_OLDEST` printed by `python3 <synthesis-daily-rituals-root>/scripts/sync_watermark.py window --workspace <W> --surface slack --target <resolved id>`. Follow every page; the read rules are in references/sync-protocol.md.
+`slack_read_channel(resolved_channel_id, oldest=WINDOW_OLDEST, limit=30, detail="detailed")`, with `WINDOW_OLDEST` printed by `python3 "$HOME/.synthesis/v5/current/skills/synthesis-daily-rituals/scripts/sync_watermark.py" window --workspace <W> --surface slack --target <resolved id>`. Follow every page; the read rules are in references/sync-protocol.md.
 
 ### Step 2: Re-read ALL active threads — today AND recent days
 
@@ -86,7 +87,7 @@ The same read with `channel_id=RESOLVED_GROUP_DM_ID`.
 
 ### Step 4: Save to local transcripts
 
-Write, then `python3 <synthesis-daily-rituals-root>/scripts/sync_watermark.py advance --workspace <W> --surface slack --target <resolved id> --through <the window's latest>`. Gate: `sync_watermark.py status --workspace <W> --surface slack --since run --targets-from <declared.json>`.
+Write, then `python3 "$HOME/.synthesis/v5/current/skills/synthesis-daily-rituals/scripts/sync_watermark.py" advance --workspace <W> --surface slack --target <resolved id> --through <the window's latest>`. Gate: `sync_watermark.py status --workspace <W> --surface slack --since run --targets-from <declared.json>`.
 
 ### Step 5: Update action plan
 
@@ -99,10 +100,3 @@ Use templates/draft-block.md; mark sent per templates/sent-marker.md.
 ## Provenance Discipline
 
 Every `## ... sync (~HH:MM TZ)` section is backed by a `slack_read_channel` or `slack_read_thread` call in the same turn and holds only what those calls returned. Full rules: references/provenance-and-errors.md.
-
-## When This Skill Runs
-
-This skill is invoked:
-- **By the user** typing `/synthesis-slack-sync` or "sync from Slack" or similar
-- **By `synthesis-daily-rituals`** during Day-Start (Step 3: Sync), Mid-Day Sync, and Day-End (Step 1: Transcript Sync)
-- **Before drafting any Slack reply** — the daily-rituals skill requires re-reading the actual thread before drafting, to avoid stale-information replies

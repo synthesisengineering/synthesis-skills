@@ -22,6 +22,7 @@ import pytest
 
 SCRIPTS = Path(__file__).resolve().parents[1] / "optional-workspace-mcp"
 INSTALL, START, DOCTOR = (SCRIPTS / name for name in ("install-autostart.sh", "start.sh", "doctor.sh"))
+KIT = '"$HOME/.synthesis/v5/current/skills/synthesis-meeting-transcripts/optional-workspace-mcp'  # the runtime's copy, which the documents run
 PLATFORMS = ["Darwin", "Linux"]
 AWKWARD = 'plans & drafts <2026>/100% "final" \\ v5'  # what XML and a systemd unit each need escaped
 PLUTIL = f"""#!{sys.executable}
@@ -247,7 +248,7 @@ def test_a_unit_with_another_synthesis_home_than_this_shells_is_a_defect_only_th
         assert report.returncode == 1 and "DEFECTS: 1 defect(s), 0 unverifiable." in report.stdout, report.stdout
         assert str(unit_home / "outbox") in report.stdout and str(shell_home / "outbox") in report.stdout
         # The installer replaces a unit that is loaded (it boots the old one out first); a restart would not.
-        assert "run ./install-autostart.sh from this shell" in report.stdout and "restart alone" in report.stdout
+        assert f"run {SCRIPTS}/install-autostart.sh from this shell" in report.stdout and "restart alone" in report.stdout
         assert "replaces the one that is loaded" in report.stdout
         same = doctor(tmp_path, platform, unit, **({"SYNTHESIS_HOME": str(unit_home)} if unit_home != default else {}))
         assert same.returncode == 0 and "HEALTHY" in same.stdout, same.stdout + same.stderr
@@ -289,8 +290,8 @@ def test_the_plist_the_installer_writes_is_read_back_by_the_real_plutil(tmp_path
 def test_the_setup_documents_say_what_the_unit_carries_and_what_the_doctor_reports(document: str) -> None:
     text = " ".join((SCRIPTS.parent / document).read_text(encoding="utf-8").split())  # the documents wrap their lines
     for said in ("`SYNTHESIS_HOME` is among them when it is set at install", "`ALLOWED_FILE_DIRS` is not",
-                 "`./doctor.sh` reports the outbox the unit gives the server",
-                 "run `./install-autostart.sh` from that shell", "keeps the unit it has loaded",
+                 f"`bash {KIT}/doctor.sh\"` reports the outbox the unit gives the server",
+                 f"run `bash {KIT}/install-autostart.sh\"` from that shell", "keeps the unit it has loaded",
                  "replaces the one that is loaded", "it leaves the installed unit as it was"):
         assert said in text, said
     for earlier in ("`./doctor.sh` does not look at it", "`ALLOWED_FILE_DIRS` and `SYNTHESIS_HOME` are not among them",

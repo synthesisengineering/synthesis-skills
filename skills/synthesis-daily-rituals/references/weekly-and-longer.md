@@ -2,7 +2,7 @@
 
 Read when the weekly review is owed (the session-start ritual line or
 `ritual_state.py query weekly-review --workspace <W>` says so), and when running a quarterly,
-six-month or annual review. `<rituals>` is this skill's folder.
+six-month or annual review. `<rituals>` is the runtime's copy of this skill, `$HOME/.synthesis/v5/current/skills/synthesis-daily-rituals`.
 
 Contents: When the weekly review is owed · Scope · Sources to scan · Classify each item · Output
 requirements · Slipped through: the lapse register · Quarterly, six-month and annual reviews ·

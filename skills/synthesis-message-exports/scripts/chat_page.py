@@ -2,8 +2,8 @@
 # SPDX-License-Identifier: Apache-2.0
 """Save one Messenger chat's text from its page when an export lacks it, as the importer writes a transcript.
 
-    python3 chat_page.py extractor
-    python3 chat_page.py save READ [READ ...] --out FOLDER --since YYYY-MM-DD [--principal NAME] [--into FILE] [--dry-run]
+    python3 "$HOME/.synthesis/v5/current/skills/synthesis-message-exports/scripts/chat_page.py" extractor
+    python3 "$HOME/.synthesis/v5/current/skills/synthesis-message-exports/scripts/chat_page.py" save READ [READ ...] --out FOLDER --since YYYY-MM-DD [--principal NAME] [--into FILE] [--dry-run]
 
 `extractor` prints the script the browser tool runs on one open chat: it reads the chat's message log and returns each
 message's labels (its time, sender and whole text), the page's clock and time zone and each dialog's heading as JSON,

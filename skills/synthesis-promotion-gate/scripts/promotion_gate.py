@@ -4,7 +4,7 @@
 Run it on the built output folder after the build and before the deploy
 command (which still needs the principal's approval):
 
-    python3 promotion_gate.py dist --config .agents/promotion-markers.json
+    python3 "$HOME/.synthesis/v5/current/skills/synthesis-promotion-gate/scripts/promotion_gate.py" dist --config .agents/promotion-markers.json
 
 Each marker in the JSON config names a pattern and where to look in every
 built page: "text" (what a reader sees: tags, scripts, styles and comments

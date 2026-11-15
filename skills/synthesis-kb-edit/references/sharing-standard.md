@@ -153,14 +153,14 @@ values, all but the phrase list itself.
 
 ```bash
 # what a review request adds, and its commit messages (BASE...HEAD: from where HEAD's branch left BASE)
-python3 <skill-root>/scripts/sharing_scan.py <repo-root> --range origin/main...HEAD
+python3 "$HOME/.synthesis/v5/current/skills/synthesis-kb-edit/scripts/sharing_scan.py" <repo-root> --range origin/main...HEAD
 
 # what this commit adds, as staged (a pre-commit hook), and its message (a commit-msg hook)
-python3 <skill-root>/scripts/sharing_scan.py <repo-root> --staged
-python3 <skill-root>/scripts/sharing_scan.py <repo-root> --message .git/COMMIT_EDITMSG
+python3 "$HOME/.synthesis/v5/current/skills/synthesis-kb-edit/scripts/sharing_scan.py" <repo-root> --staged
+python3 "$HOME/.synthesis/v5/current/skills/synthesis-kb-edit/scripts/sharing_scan.py" <repo-root> --message .git/COMMIT_EDITMSG
 
 # every line and name of these files, and of every file under these folders (a first pass over a knowledge base)
-python3 <skill-root>/scripts/sharing_scan.py <repo-root> source/reference/team.md source/projects
+python3 "$HOME/.synthesis/v5/current/skills/synthesis-kb-edit/scripts/sharing_scan.py" <repo-root> source/reference/team.md source/projects
 ```
 
 **What governs a scan.** The contract under review must be valid, and the one before it governs too: a range is
@@ -258,7 +258,7 @@ not run, and edits ship as they always have. Naming the policy also switches kno
 - **Any knowledge base**, new or existing, adopts it with the organization's own phrases:
 
   ```bash
-  python3 <skill-root>/scripts/kb_config.py adopt-sharing-policy <repo-root> --phrase "zephyr ledger" --phrase "violet harbor"
+  python3 "$HOME/.synthesis/v5/current/skills/synthesis-kb-edit/scripts/kb_config.py" adopt-sharing-policy <repo-root> --phrase "zephyr ledger" --phrase "violet harbor"
   ```
 
   With no policy file where `confidentiality.sharing_policy` says (`.agents/sharing-policy.md` when it names no path),

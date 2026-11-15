@@ -110,12 +110,12 @@ def test_every_file_a_carried_script_loads_from_another_skill_is_carried_too(mac
     assert (mac.rt / "skills" / "synthesis-bitbucket" / "scripts" / "pr_queue.py").is_file()
 
 
-def test_a_carried_skills_code_outside_scripts_is_python_only_and_never_its_tests():
+def test_a_carried_skills_code_outside_scripts_is_python_or_shell_only_and_never_its_tests():
     for rel, path in install._stable_skill_files(ROOT):
         parts = Path(rel).parts
         assert "tests" not in parts and "__pycache__" not in parts and not path.name.startswith("test_"), rel
         if parts[2] != "scripts":
-            assert path.suffix == ".py", rel
+            assert path.suffix in (".py", ".sh"), rel
 
 
 def test_the_installer_and_release_kit_is_never_carried(mac):
@@ -491,7 +491,8 @@ def _runtime_form(prefix: str, skill: str, text: str) -> bool:
     if not named:
         return False
     word = named.group(1) if named.group(1).startswith("<") else named.group(2)
-    return bool(re.search(rf"(?:`{re.escape(word)}`|\b{re.escape(word)}=|`\${re.escape(word)}`)[^\n]*{stable}", text))
+    within = rf"(?:{stable}|\$\{{?\w+\}}?/current/skills/{re.escape(skill)})"  # also through the synthesis home's own variable
+    return bool(re.search(rf"(?:`{re.escape(word)}`|\b{re.escape(word)}=|`\${re.escape(word)}`)[^\n]*{within}", text))
 
 
 def test_every_skill_text_and_script_runs_the_runtimes_copy_of_a_carried_script():

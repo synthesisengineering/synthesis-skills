@@ -1,7 +1,8 @@
 # Ritual worker artifact contract — v1
 
 Read when a workers registry exists (`~/.synthesis/ritual/workers.yaml`): before a worker
-writes its artifact, and before the desk folds artifacts into the brief. The desk's coverage
+writes its artifact, and before the desk folds artifacts into the brief.
+`<rituals>` is the runtime's copy of this skill, `$HOME/.synthesis/v5/current/skills/synthesis-daily-rituals`. The desk's coverage
 line comes from `python3 <rituals>/scripts/ritual_workers.py coverage`, which prints
 `coverage: <workspace> <run type> <finished> (<outcome>) · <workspace> pending · <workspace> not scheduled`.
 

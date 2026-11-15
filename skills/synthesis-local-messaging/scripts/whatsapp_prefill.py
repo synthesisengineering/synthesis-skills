@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """Open an existing one-to-one WhatsApp chat with the principal's exact text in its composer. Nothing is sent.
 
-Run: python3 whatsapp_prefill.py --to +15551234567 --text-file FILE [--photo PATH] [--store FOLDER]
+Run: python3 "$HOME/.synthesis/v5/current/skills/synthesis-local-messaging/scripts/whatsapp_prefill.py" --to +15551234567 --text-file FILE [--photo PATH] [--store FOLDER]
 
 WhatsApp's Mac app has no scripting interface, so the principal presses Send (the principal's ruling,
 2026-10-22). This opens whatsapp://send with the number and text once; with --photo it also shows the photo in

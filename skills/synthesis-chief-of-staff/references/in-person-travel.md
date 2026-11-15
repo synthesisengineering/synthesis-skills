@@ -1,7 +1,7 @@
 # Travel for in-person commitments
 
 Read this before recording any commitment that has a place, and at each ritual in a workspace that checks
-travel. `<cos>` is this skill's folder.
+travel. `<cos>` is the runtime's copy of this skill, `$HOME/.synthesis/v5/current/skills/synthesis-chief-of-staff`.
 
 ## Why it is a step of its own
 

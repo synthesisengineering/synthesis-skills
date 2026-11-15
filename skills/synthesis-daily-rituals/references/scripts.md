@@ -1,6 +1,6 @@
 # The ritual scripts: command lines, output, exit codes
 
-Read before running a script. `<rituals>` is this skill's folder; `<W>` is the workspace. Every
+Read before running a script. `<rituals>` is the runtime's copy of this skill, `$HOME/.synthesis/v5/current/skills/synthesis-daily-rituals`; `<W>` is the workspace. Every
 script is standard-library Python that runs on Apple's `/usr/bin/python3`; the YAML manifests are
 read by the plugin's one YAML reader, `synthesis/yamlish.py`, which refuses anything it cannot read rather
 than half-reading it.

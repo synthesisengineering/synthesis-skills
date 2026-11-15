@@ -23,8 +23,8 @@ If you use Anthropic's hosted Gmail + Drive connectors and a single Google accou
 `.agents/meeting-transcripts.yaml`:
 
 ```bash
-python3 <synthesis-meeting-transcripts-root>/optional-workspace-mcp/fetch-meeting.py standup --date 2026-04-21
-python3 <synthesis-meeting-transcripts-root>/optional-workspace-mcp/fetch-meeting.py --window 2026-10-01 2026-10-05
+python3 "$HOME/.synthesis/v5/current/skills/synthesis-meeting-transcripts/optional-workspace-mcp/fetch-meeting.py" standup --date 2026-04-21
+python3 "$HOME/.synthesis/v5/current/skills/synthesis-meeting-transcripts/optional-workspace-mcp/fetch-meeting.py" --window 2026-10-01 2026-10-05
 ```
 
 The first finds the one doc matching the meeting's pattern on that date, lists its
@@ -84,8 +84,8 @@ and 1 otherwise.
 An auto-start service that dies stays dead quietly. Run the doctor first:
 
 ```bash
-./doctor.sh          # full report
-./doctor.sh --quiet  # exit code + service/recorder summary, for hooks and rituals
+bash "$HOME/.synthesis/v5/current/skills/synthesis-meeting-transcripts/optional-workspace-mcp/doctor.sh"          # full report
+bash "$HOME/.synthesis/v5/current/skills/synthesis-meeting-transcripts/optional-workspace-mcp/doctor.sh" --quiet  # exit code + service/recorder summary, for hooks and rituals
 ```
 
 Exit codes follow the synthesis guard contract: `0` healthy, `1` defects found,
@@ -103,10 +103,10 @@ The fix is always to **re-run the installer**, never to hand-edit the unit —
 construction:
 
 ```bash
-./install-autostart.sh
+bash "$HOME/.synthesis/v5/current/skills/synthesis-meeting-transcripts/optional-workspace-mcp/install-autostart.sh"
 ```
 
-Consider wiring `./doctor.sh --quiet` into a daily ritual or login check. A guard with
+Consider wiring `bash "$HOME/.synthesis/v5/current/skills/synthesis-meeting-transcripts/optional-workspace-mcp/doctor.sh" --quiet` into a daily ritual or login check. A guard with
 no heartbeat is indistinguishable from a guard that is working.
 
 ## Local files the server reads: the outbox
@@ -129,7 +129,7 @@ A server that is already running keeps the folders it was started with, so resta
 after updating these scripts:
 
 ```bash
-./stop.sh && ./start.sh                                       # started by hand
+bash "$HOME/.synthesis/v5/current/skills/synthesis-meeting-transcripts/optional-workspace-mcp/stop.sh" && bash "$HOME/.synthesis/v5/current/skills/synthesis-meeting-transcripts/optional-workspace-mcp/start.sh"                                       # started by hand
 launchctl kickstart -k gui/$UID/com.synthesis.workspace-mcp   # macOS, under launchd
 systemctl --user restart workspace-mcp.service                # Linux, under systemd
 ```
@@ -147,10 +147,10 @@ server started by hand was given, so that what passes the guard is read by every
 this script starts. `synthesis doctor` fails its `outbox` line for a server started with
 `WORKSPACE_MCP_DISABLE_LOCAL_FILES=true`, which reads no local file at all.
 
-`./doctor.sh` reports the outbox the unit gives the server: the folder is there to
+`bash "$HOME/.synthesis/v5/current/skills/synthesis-meeting-transcripts/optional-workspace-mcp/doctor.sh"` reports the outbox the unit gives the server: the folder is there to
 write, and it is the outbox of the shell the doctor runs in. When the unit carries
 another synthesis home than that shell's, no restart helps, since a supervisor keeps the
-unit it has loaded: run `./install-autostart.sh` from that shell. It writes that shell's
+unit it has loaded: run `bash "$HOME/.synthesis/v5/current/skills/synthesis-meeting-transcripts/optional-workspace-mcp/install-autostart.sh"` from that shell. It writes that shell's
 home into the unit and replaces the one that is loaded: a loaded launch agent is booted
 out before the new one is loaded, and a running systemd unit is restarted. Answered "n",
 it leaves the installed unit as it was.
@@ -171,13 +171,13 @@ server's own dependencies are resolved afresh at each start, as before.
 - The local workspace-mcp server is running and signed in to that account. The
   service doctor reports supervisor and HTTP liveness with its 0/1/2 exit codes;
   its `ACCOUNT: not checked` line is deliberate: a read as the declared account
-  (for example `python3 mcp_client.py list_calendars '{"user_google_email": "<account>"}'`)
+  (for example `python3 "$HOME/.synthesis/v5/current/skills/synthesis-meeting-transcripts/optional-workspace-mcp/mcp_client.py" list_calendars '{"user_google_email": "<account>"}'`)
   shows which account answers.
 
 The service is installed under the launchd label `com.synthesis.workspace-mcp`
 (systemd: `workspace-mcp.service`). An install from an earlier release may carry a
 personal label; run `uninstall-autostart.sh` from that release, or `launchctl bootout`
-the old label and remove its plist, then run `./install-autostart.sh`.
+the old label and remove its plist, then run `bash "$HOME/.synthesis/v5/current/skills/synthesis-meeting-transcripts/optional-workspace-mcp/install-autostart.sh"`.
 
 ## Why separate from the skill core
 

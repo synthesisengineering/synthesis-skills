@@ -44,7 +44,7 @@ python3 <rituals>/scripts/sync_watermark.py defer   --workspace <W> --surface sl
 python3 <rituals>/scripts/sync_watermark.py status  --workspace <W> --surface <s> ... --targets-from <declared.json> --since run
 ```
 
-`<rituals>` is this skill's folder. What each prints: `begin` prints `run started <moment>`;
+`<rituals>` is the runtime's copy of this skill, `$HOME/.synthesis/v5/current/skills/synthesis-daily-rituals`. What each prints: `begin` prints `run started <moment>`;
 `window` prints `<surface>: <from> → <to> (<span>)` and `oldest=<epoch> latest=<epoch>`;
 `advance` and `defer` print JSON (`advance` exits 2 when a watermark refused to move backwards);
 `status` prints one row per surface and per stale target and exits 1 while anything blocks,

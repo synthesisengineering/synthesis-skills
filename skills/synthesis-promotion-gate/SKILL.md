@@ -5,7 +5,7 @@ license: "Apache-2.0"
 depends_on: ["synthesis-grounding-discipline", "synthesis-implementation-integrity"]
 metadata:
   author: "Rajiv Pant"
-  version: "2.0.0"
+  version: "2.0.1"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
   format: v5
@@ -40,7 +40,7 @@ Reads the built site the way a reader will see it, before the deploy command may
 In the site repository's `build.sh`, between the build and the deploy:
 
 ```bash
-python3 <synthesis-promotion-gate-root>/scripts/promotion_gate.py dist --config .agents/promotion-markers.json || exit 1
+python3 "$HOME/.synthesis/v5/current/skills/synthesis-promotion-gate/scripts/promotion_gate.py" dist --config .agents/promotion-markers.json || exit 1
 ```
 
 It prints one line per hit, `<file>[:line]: <marker id> in <view> (<rationale>)`, then a summary such as `42 file(s) scanned, 3 marker(s), 0 hit(s): clean`. Exit 0 clean; 1 hits found, so do not deploy; 2 the config, the folder or an empty scan made the result meaningless. The matched text itself is not printed; open the file at the reported place.

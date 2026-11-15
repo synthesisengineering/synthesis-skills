@@ -6,7 +6,7 @@ depends_on:
   - synthesis-okf
 metadata:
   author: Rajiv Pant
-  version: "2.1.0"
+  version: "2.1.1"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
   format: v5
@@ -50,7 +50,7 @@ Before interpreting or changing the repository:
 2. Run:
 
    ```bash
-   python3 <skill-root>/scripts/kb_config.py <repo-root> --check-paths
+   python3 "$HOME/.synthesis/v5/current/skills/synthesis-kb-edit/scripts/kb_config.py" <repo-root> --check-paths
    ```
 
 3. Stop if the config is absent or invalid. Never infer a bundle, editable

@@ -5,7 +5,7 @@ license: "Apache-2.0"
 depends_on: ["synthesis-mac-sync", "synthesis-daily-rituals"]
 metadata:
   author: "Rajiv Pant"
-  version: "2.0.0"
+  version: "2.0.1"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
   format: v5
@@ -38,7 +38,7 @@ sessions and its own claims.
 
 ## Procedure
 
-`<rituals>` is the synthesis-daily-rituals folder.
+`<rituals>` is the runtime's copy of synthesis-daily-rituals, `$HOME/.synthesis/v5/current/skills/synthesis-daily-rituals`.
 
 **Leave this Mac.**
 

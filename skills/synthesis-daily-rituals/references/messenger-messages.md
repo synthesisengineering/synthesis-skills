@@ -1,6 +1,6 @@
 # Messenger's chat list
 
-Read before a sync in a workspace that declares `.agents/messenger-sync.yaml`. `<rituals>` is this skill's folder;
+Read before a sync in a workspace that declares `.agents/messenger-sync.yaml`. `<rituals>` is the runtime's copy of this skill, `$HOME/.synthesis/v5/current/skills/synthesis-daily-rituals`;
 `<W>` is the workspace.
 
 Messenger runs inside facebook.com, and it reaches a mailbox only as notification emails that hide most of what was

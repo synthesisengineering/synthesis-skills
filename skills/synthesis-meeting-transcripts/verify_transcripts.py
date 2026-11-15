@@ -26,11 +26,11 @@ Skip rules (a file is NOT audited if any of these apply):
     transcript section to mirror locally.
 
 Usage:
-  python3 verify_transcripts.py <dir>
-  python3 verify_transcripts.py <dir> --min-markers 10 --min-speakers 20
-  python3 verify_transcripts.py <dir> --json
-  python3 verify_transcripts.py <dir> --only-incomplete
-  python3 verify_transcripts.py <dir> --no-skip       # audit ALL files (debug)
+  python3 "$HOME/.synthesis/v5/current/skills/synthesis-meeting-transcripts/verify_transcripts.py" <dir>
+  python3 "$HOME/.synthesis/v5/current/skills/synthesis-meeting-transcripts/verify_transcripts.py" <dir> --min-markers 10 --min-speakers 20
+  python3 "$HOME/.synthesis/v5/current/skills/synthesis-meeting-transcripts/verify_transcripts.py" <dir> --json
+  python3 "$HOME/.synthesis/v5/current/skills/synthesis-meeting-transcripts/verify_transcripts.py" <dir> --only-incomplete
+  python3 "$HOME/.synthesis/v5/current/skills/synthesis-meeting-transcripts/verify_transcripts.py" <dir> --no-skip       # audit ALL files (debug)
 
 Reporting contract:
   `--only-incomplete` narrows which ROWS are listed. It never narrows the
@@ -72,7 +72,7 @@ from pathlib import Path
 # own output could reveal that the copy being run was stale. This constant plus the banner
 # line below close that gap — if the printed version doesn't match SKILL.md's frontmatter
 # version, the copy being run is not the one you think it is.
-SCRIPT_VERSION = "1.2.0"
+SCRIPT_VERSION = "1.2.1"
 
 # A Docs image exported to markdown links googleusercontent.com with an access key that opens the image to
 # anyone holding the URL; 94 such keys sat in saved transcripts by 2026-10-13. Saving redacts them, and the

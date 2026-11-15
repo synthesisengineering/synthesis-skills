@@ -75,14 +75,15 @@ def package_hash(plugin_root: Path) -> str:
 
 
 def _stable_skill_files(plugin_root: Path):
-    """Each carried skill's scripts/ folder, and its Python anywhere else (a skill may keep code beside SKILL.md or in a
-    folder of its own), never its tests: the copies a skill runs, inside the release the guard trusts (guards._shipped)."""
+    """Each carried skill's scripts/ folder, and its Python and shell scripts anywhere else (a skill may keep code beside
+    SKILL.md or in a folder of its own, as the meeting skill keeps its fetcher and server kit), never its tests: the
+    copies a skill runs, inside the release the guard trusts (guards._shipped)."""
     for name in STABLE_SKILL_SCRIPTS:
         skill = Path(plugin_root) / "skills" / name
         for path in sorted(skill.rglob("*")) if skill.is_dir() else []:
             parts = path.relative_to(skill).parts
             if (path.is_file() and not path.name.startswith("test_") and not {"tests", "__pycache__"} & set(parts)
-                    and (parts[0] == "scripts" and len(parts) == 2 or parts[0] != "scripts" and path.suffix == ".py")):
+                    and (parts[0] == "scripts" or path.suffix in (".py", ".sh"))):
                 yield f"skills/{name}/{'/'.join(parts)}", path
 
 

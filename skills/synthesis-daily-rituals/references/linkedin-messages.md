@@ -1,6 +1,6 @@
 # LinkedIn messages as a declared surface
 
-Read before a sync in a workspace that declares `.agents/linkedin-sync.yaml`. `<rituals>` is this skill's folder;
+Read before a sync in a workspace that declares `.agents/linkedin-sync.yaml`. `<rituals>` is the runtime's copy of this skill, `$HOME/.synthesis/v5/current/skills/synthesis-daily-rituals`;
 `<W>` is the workspace.
 
 ## Why it is a surface of its own

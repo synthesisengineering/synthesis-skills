@@ -23,8 +23,8 @@
 #       look like a check that passed)
 #
 # Usage:
-#   ./doctor.sh          # human-readable report
-#   ./doctor.sh --quiet  # exit code plus a single summary line
+#   bash "$HOME/.synthesis/v5/current/skills/synthesis-meeting-transcripts/optional-workspace-mcp/doctor.sh"          # human-readable report
+#   bash "$HOME/.synthesis/v5/current/skills/synthesis-meeting-transcripts/optional-workspace-mcp/doctor.sh" --quiet  # exit code plus a single summary line
 
 set -uo pipefail
 
@@ -57,7 +57,7 @@ esac
 UNIT_PATH_TARGET=""
 if [ -n "$UNIT" ]; then
   if [ ! -f "$UNIT" ]; then
-    fail "auto-start unit not installed ($UNIT)" "run ./install-autostart.sh"
+    fail "auto-start unit not installed ($UNIT)" "run $SCRIPT_DIR/install-autostart.sh"
   else
     ok "auto-start unit installed"
 
@@ -76,7 +76,7 @@ if [ -n "$UNIT" ]; then
     elif [ ! -f "$UNIT_PATH_TARGET" ]; then
       # The headline check. A missing target is why the service silently dies.
       fail "unit points at a start script that does not exist:" \
-           "re-run ./install-autostart.sh to regenerate the unit with the current path"
+           "re-run $SCRIPT_DIR/install-autostart.sh to regenerate the unit with the current path"
       say "        missing: $UNIT_PATH_TARGET"
       say "        current: $SCRIPT_DIR/start.sh"
     elif [ ! -x "$UNIT_PATH_TARGET" ]; then
@@ -106,7 +106,7 @@ if [ "$OS" = "Darwin" ] && [ -f "$UNIT" ]; then
       ok "LaunchAgent loaded (state: ${STATE:-unknown}; last exit: ${LAST_EXIT:-not reported})"
     else
       HINT="check $HOME/Library/Logs/workspace-mcp/launchd-stderr.log"
-      [ "$LAST_EXIT" = "78" ] && HINT="EX_CONFIG — usually a stale unit path; re-run ./install-autostart.sh"
+      [ "$LAST_EXIT" = "78" ] && HINT="EX_CONFIG — usually a stale unit path; re-run $SCRIPT_DIR/install-autostart.sh"
       fail "LaunchAgent last exit status $LAST_EXIT" "$HINT"
     fi
   elif printf '%s' "$LAUNCH_OUTPUT" | grep -Eqi \
@@ -137,9 +137,9 @@ if [ -z "$SECRET" ] && [ -n "$UNIT" ] && [ -f "$UNIT" ] && [ "$OS" = "Darwin" ];
 fi
 if [ -z "$SECRET" ]; then
   unknown "GOOGLE_CLIENT_SECRET_PATH not set and not readable from the unit" \
-          "export it, or re-run ./install-autostart.sh"
+          "export it, or re-run $SCRIPT_DIR/install-autostart.sh"
 elif [ ! -f "$SECRET" ]; then
-  fail "client secret file missing: $SECRET" "restore it, then re-run ./install-autostart.sh"
+  fail "client secret file missing: $SECRET" "restore it, then re-run $SCRIPT_DIR/install-autostart.sh"
 else
   ok "client secret present"
 fi
@@ -162,7 +162,7 @@ elif [ "$LISTENING" = "0" ]; then
     unknown "port $PORT visibility is inconclusive in this execution environment" \
             "run the doctor in an unrestricted local shell"
   else
-    fail "nothing listening on port $PORT" "./start.sh, or fix the unit above"
+    fail "nothing listening on port $PORT" "$SCRIPT_DIR/start.sh, or fix the unit above"
   fi
 fi
 
@@ -224,7 +224,7 @@ UNIT_HOME="${UNIT_HOME%/}"
 OUTBOX="$UNIT_HOME/outbox"
 if [ "$UNIT_HOME" != "$HERE_HOME" ]; then
   fail "the unit starts the server to read the outbox $OUTBOX, and this shell's synthesis home puts it at $HERE_HOME/outbox" \
-       "run ./install-autostart.sh from this shell: it writes the unit for this shell's synthesis home and replaces the one that is loaded (a restart alone keeps the unit that is loaded)"
+       "run $SCRIPT_DIR/install-autostart.sh from this shell: it writes the unit for this shell's synthesis home and replaces the one that is loaded (a restart alone keeps the unit that is loaded)"
 elif [ -e "$OUTBOX" ] && [ ! -d "$OUTBOX" ]; then
   fail "the outbox $OUTBOX is not a folder" "move it away, then restart the service: start.sh makes the folder"
 elif [ ! -d "$OUTBOX" ]; then

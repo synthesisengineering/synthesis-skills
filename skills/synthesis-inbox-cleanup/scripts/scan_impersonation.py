@@ -35,11 +35,11 @@ well-written spear-phish from a plausible domain with no brand claim, and nothin
 here replaces reading the message. It reduces a category; it does not close it.
 
 Usage:
-    python3 scan_impersonation.py                  # report only (default)
-    python3 scan_impersonation.py --json           # machine-readable
-    python3 scan_impersonation.py --strict-only    # only high-confidence hits
-    python3 scan_impersonation.py --folder Archive # scan another folder
-    python3 scan_impersonation.py --check-config   # validate the private config only
+    python3 "$HOME/.synthesis/v5/current/skills/synthesis-inbox-cleanup/scripts/scan_impersonation.py"                  # report only (default)
+    python3 "$HOME/.synthesis/v5/current/skills/synthesis-inbox-cleanup/scripts/scan_impersonation.py" --json           # machine-readable
+    python3 "$HOME/.synthesis/v5/current/skills/synthesis-inbox-cleanup/scripts/scan_impersonation.py" --strict-only    # only high-confidence hits
+    python3 "$HOME/.synthesis/v5/current/skills/synthesis-inbox-cleanup/scripts/scan_impersonation.py" --folder Archive # scan another folder
+    python3 "$HOME/.synthesis/v5/current/skills/synthesis-inbox-cleanup/scripts/scan_impersonation.py" --check-config   # validate the private config only
 
 Never trashes. Removal is a separate, human-reviewed step, per the engine's rule
 that the LLM proposes and the deterministic layer disposes. A false positive here

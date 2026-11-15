@@ -14,7 +14,7 @@ Workflow:
   2. Run this script with the address to archive the current backlog.
 
 Usage:
-  python3 icloud_archive_senders.py <address> [<address> ...] [--apply]
+  python3 "$HOME/.synthesis/v5/current/skills/synthesis-inbox-cleanup/scripts/icloud_archive_senders.py" <address> [<address> ...] [--apply]
 
 Dry-run by default; --apply to actually move. Archive is reversible (move
 back from the Archive folder). UID-based (no sequence-shift bugs).

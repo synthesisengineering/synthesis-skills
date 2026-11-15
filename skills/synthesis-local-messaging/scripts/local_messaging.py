@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """Read one explicitly selected iMessage or WhatsApp window into pointer-only notes.
 
-Run: python3 local_messaging.py --request REQUEST.json --state STATE_DIR [--stale-after-hours HOURS]
+Run: python3 "$HOME/.synthesis/v5/current/skills/synthesis-local-messaging/scripts/local_messaging.py" --request REQUEST.json --state STATE_DIR [--stale-after-hours HOURS]
 
 The database is opened read-only inside the OS sandbox (os_sandbox.py); a reader that can
 open the database for writing refuses before SQLite runs. Each run reads one page of the

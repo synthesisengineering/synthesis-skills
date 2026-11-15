@@ -14,9 +14,9 @@ until v3.7.0 (2026-11-11) and moved here word for word, to make room there for a
 The last paragraph is new in v3.7.0. The paragraph before it, about what other people rely on, is
 new in v3.10.0.
 
-`<rituals>` is this skill's folder; `<W>` the workspace (its folder under `~/workspaces/`). Scripts run with plain `python3`, standard library only.
+`<rituals>` is the runtime's copy of this skill, `$HOME/.synthesis/v5/current/skills/synthesis-daily-rituals`; `<W>` the workspace (its folder under `~/workspaces/`). Scripts run with plain `python3`, standard library only.
 
-**Day-start** ([day-start.md](day-start.md)): `date`; `synthesis who`, `synthesis inbox`; `synthesis doctor`; `python3 <synthesis-context-lifecycle>/scripts/context_doctor.py --root <knowledge root>` (exit 0 healthy, 1 defects, 2 cannot tell); `python3 <rituals>/scripts/portfolio_review.py` (at most three stale projects as decisions); `ritual_state.py query summary --workspace <W>` and `query weekly-review`; context optimization; `repo_state.py --workspace-root ~/workspaces/<W> --fetch --ff`; channel sync under the watermark gate (Slack, Chat via `gchat_preflight.py`, email via `mailboxes.py`, documents, meeting transcripts); inbox hygiene; catch-up read with ownership routing; `pr_queue_scan.py --workspace <W>`; the day plan with decay tags; morning messages; `ritual_state.py record --direction day-start`.
+**Day-start** ([day-start.md](day-start.md)): `date`; `synthesis who`, `synthesis inbox`; `synthesis doctor`; `python3 "$HOME/.synthesis/v5/current/skills/synthesis-context-lifecycle/scripts/context_doctor.py" --root <knowledge root>` (exit 0 healthy, 1 defects, 2 cannot tell); `python3 <rituals>/scripts/portfolio_review.py` (at most three stale projects as decisions); `ritual_state.py query summary --workspace <W>` and `query weekly-review`; context optimization; `repo_state.py --workspace-root ~/workspaces/<W> --fetch --ff`; channel sync under the watermark gate (Slack, Chat via `gchat_preflight.py`, email via `mailboxes.py`, documents, meeting transcripts); inbox hygiene; catch-up read with ownership routing; `pr_queue_scan.py --workspace <W>`; the day plan with decay tags; morning messages; `ritual_state.py record --direction day-start`.
 
 **Mid-day sync** ([mid-day-and-modes.md](mid-day-and-modes.md)): every declared surface, every target re-read, the same gate.
 

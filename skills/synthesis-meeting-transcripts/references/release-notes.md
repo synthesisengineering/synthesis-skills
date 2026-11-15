@@ -1,8 +1,9 @@
-# Release notes: 1.2.0, 1.1.1, 1.1.0, 1.0.1, 1.0.0, 0.14.0, 0.13.0, and v0.2.0 to v0.5.3
+# Release notes: 1.2.1, 1.2.0, 1.1.1, 1.1.0, 1.0.1, 1.0.0, 0.14.0, 0.13.0, and v0.2.0 to v0.5.3
 
 The notes for 1.0.0 and later, newest first, then the release notes that opened the 0.14.0 SKILL.md, in their original order. The v0.4.0 and v0.5.0 notes carry live rules, so they are in [transcript-primary-and-commit-gate.md](transcript-primary-and-commit-gate.md); v0.6.0 to v0.11.0 are in [earlier-version-history.md](earlier-version-history.md).
 
 Contents:
+- 1.2.1: every script runs from the runtime's copy
 - 1.2.0: the mail connector reads the outbox, and runs one release
 - 1.1.1: the second image host
 - 1.1.0: the window never suggests passing a meeting still under way
@@ -14,6 +15,16 @@ Contents:
 - v0.5.1: Plaud spaced timestamp ranges
 - v0.3.0: mandatory verification and the do-not-extract-from-email rule
 - v0.2.0: workspace-rooted paths
+
+## 1.2.1 — every script runs from the runtime's copy
+
+The synthesis runtime now carries this skill's scripts, its server kit included, and the guard trusts only the copy
+inside the runtime: a copy in a harness's plugin cache waits for the principal's code when its text names a
+protected folder, as the fetcher's does. The skill's commands name `$HOME/.synthesis/v5/current/skills/` paths, and
+the server kit's messages name the folder it runs from. A launchd or systemd unit installed from another folder is
+reported by the runtime's `doctor.sh`; running the runtime's `install-autostart.sh` once points it at the runtime's
+stable path, which plugin upgrades no longer move. The fetch and verify scripts are unchanged but for their version
+and their usage lines.
 
 ## 1.2.0 — the mail connector reads the outbox, and runs one release
 
