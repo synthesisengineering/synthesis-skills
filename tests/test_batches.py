@@ -559,8 +559,6 @@ class El {
   contains(o) { for (let e = o; e; e = e.parentElement) if (e === this) return true; return false; }
   closest(s) { for (let e = this; e; e = e.parentElement) if (matches(e, s)) return e; return null; }
   get innerText() { return this.text; }
-  get previousElementSibling() { const k = this.parentElement ? this.parentElement.kids : []; const i = k.indexOf(this);
-    return i > 0 ? k[i - 1] : null; }
   querySelectorAll(s) { const out = []; const walk = e => e.kids.forEach(k => { if (matches(k, s)) out.push(k); walk(k); });
     walk(this); return out; }
 }
@@ -1002,27 +1000,35 @@ def test_the_composer_check_reports_a_reply_or_edit_banner_and_images_in_the_box
 
 # Reply mode as the coordinator read it on a live chat (2026-11-15): the banner is the composer's previous sibling, not
 # inside it: a `role="heading"` reading `Replying to <First name>`, the quoted message's text and a `Cancel reply`
-# button; the composer holds its seven controls and the box, focused and empty.
+# button; the composer holds its seven controls and the box, focused and empty. The check reads every other child of
+# the composer's parent, so a banner after the composer (where an edit banner might sit; none was read live) marks too.
 LIVE_REPLY = ("const box = el('div', LIVE, [], '\\n');"
               "const composer = el('div', {}, [...['Send a voice clip', 'Attach a file up to 100 MB', 'Choose a sticker', "
               "'Choose a GIF'].map(l => el('div', {role: 'button', 'aria-label': l})), el('div', {}, [box]), "
               "el('div', {role: 'button', 'aria-label': 'Choose an emoji'}), el('div', {role: 'button', 'aria-label': 'Send a like'})]);"
-              "const body = el('body', {}, [el('div', {role: 'main'}, [el('div', {}, [BANNERcomposer])])]);"
+              "const body = el('body', {}, [el('div', {role: 'main'}, [el('div', {}, CHILDREN)])]);"
               "const focus = box; const href = 'https://www.facebook.com/messages/e2ee/t/1000000001/';")
 
 
+@pytest.mark.parametrize("after", [False, True], ids=["before", "after"])
 @pytest.mark.parametrize("banner", [
     "el('div', {}, [el('div', {role: 'heading'}, [], 'Replying to Pat'), el('div', {}, [], 'Can you wire it today?'), "
-    "el('div', {role: 'button', 'aria-label': 'Cancel reply'})]), ",
-    "el('div', {role: 'heading'}, [], 'Replying to Pat'), ",                    # the sibling itself the heading
-    "el('div', {}, [el('div', {role: 'button', 'aria-label': 'Cancel reply'})]), ",  # the control alone
-    "el('div', {}, [el('span', {}, [], 'Editing message')]), ",
-])
-def test_the_composer_check_reads_reply_mode_from_the_banner_beside_the_composer(banner):
-    report = _composer_on(LIVE_REPLY.replace("BANNER", banner))
+    "el('div', {role: 'button', 'aria-label': 'Cancel reply'})])",
+    "el('div', {role: 'heading'}, [], 'Replying to Pat')",
+    "el('div', {}, [el('div', {role: 'heading'}, [], 'Pat')])",
+    "el('div', {}, [el('h4', {}, [], 'Pat')])",
+    "el('div', {}, [el('div', {role: 'button', 'aria-label': 'Cancel reply'})])",
+    "el('div', {}, [el('div', {role: 'button'}, [], 'Cancel reply')])",
+    "el('div', {}, [el('span', {}, [], 'Editing message')])",
+], ids=["live", "the-sibling-the-heading", "a-heading-whatever-it-reads", "a-heading-by-its-tag", "cancel-by-its-label",
+        "cancel-by-its-text", "editing"])
+def test_the_composer_check_reads_reply_mode_from_the_banner_beside_the_composer(banner, after):
+    def on(sibling):
+        return _composer_on(LIVE_REPLY.replace("CHILDREN", f"[composer, {sibling}]" if after else f"[{sibling}, composer]"))
+    report = on(banner)
     assert report["marks"] > 0 and report["box"] == "found" and report["focused"] is True and report["text"] == "\n"
     assert report["staged"] == 0
-    plain = _composer_on(LIVE_REPLY.replace("BANNER", "el('div', {}, [el('span', {}, [], 'Pat Example')]), "))
+    plain = on("el('div', {}, [el('span', {}, [], 'Pat Example')])")
     assert plain["marks"] == 0 and plain["staged"] == 0  # a sibling that is no banner marks nothing
 
 
