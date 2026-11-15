@@ -215,7 +215,7 @@ def test_a_config_that_cannot_be_read_or_a_workspace_not_in_it_is_never_a_pass(t
 # ---- the rituals run it ---------------------------------------------------------------------------------------
 
 SKILL = SCRIPT.parents[1]
-COMMAND = "python3 <rituals>/scripts/relied_on.py --workspace <W>"
+COMMAND = "python3 -s <rituals>/scripts/relied_on.py --workspace <W>"  # -s: the user's own site folder loads nothing into the runtime's copy
 LEADS = "**A `DOWN` line is the first thing in the plan and in the reply to the principal, before anything else,**"
 INCIDENT = ("It is an incident, so the principal is told first, with who is affected and what the fix is, and the people "
             "affected are told only on the principal's approval.")
@@ -281,7 +281,7 @@ def test_the_plan_opens_with_what_is_down():
 
 def test_the_scripts_page_shows_the_command_and_the_key_and_the_example_config_declares_one():
     scripts = reference("scripts.md")
-    assert "| `python3 <rituals>/scripts/relied_on.py --workspace <W>\\|--all [--timeout SECONDS] [--json]` |" in scripts
+    assert "| `python3 -s <rituals>/scripts/relied_on.py --workspace <W>\\|--all [--timeout SECONDS] [--json]` |" in scripts
     assert '`"relied_on": [{"what": ' in scripts
     example = json.loads((SKILL / "assets" / "ritual-config.example.json").read_text(encoding="utf-8"))
     found = [declared for conf in example["workspaces"].values() for declared in conf.get("relied_on", [])]
