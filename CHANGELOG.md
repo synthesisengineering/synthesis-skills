@@ -42,10 +42,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
     message-exports 1.0.1, promotion-gate 2.0.1, slack-sync 4.0.4). Two passages moved word for word to make room:
     slack-sync's "When This Skill Runs" to `references/sync-protocol.md`, which also lets its SKILL.md take its
     `category` line, and local-messaging's account of what the reader skips to `references/adapter-contract.md`.
-  - A harness's session start runs the plugin's own installer first, and a forward-only install takes the same release
-    built by another installer. Before, the previous release's installer built the new release without the scripts it
-    did not know, the new release kept that build as "not newer", and the doctor's advice to start a session changed
-    nothing.
+  - The runtime holds these files once this release's own installer installs it, as `release.py` and
+    `release.py --install-only` do.
   - On a Mac that runs the workspace-mcp server under launchd or systemd, its doctor now runs from the runtime and
     reports a unit installed from anywhere else; running the runtime's `install-autostart.sh` once points the unit at
     the runtime's stable path, which plugin upgrades no longer move.
