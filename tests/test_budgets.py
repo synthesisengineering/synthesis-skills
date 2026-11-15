@@ -1156,6 +1156,70 @@ ROOT = Path(__file__).resolve().parents[1]
 # does not know 4. sessions.py 1 fewer: the lost-transcript gate's own-terminal shortcut is gone, its docstring
 # rewritten in as many lines. provenance_scan.py 1: its git helper's five lines become five that spell each read whole,
 # and the docstring gains a line saying why.
+# Review round 1 of 5.22.1 (2026-11-14): core 210 more and plugin 210, for its nineteen findings and the coordinator's
+# rulings (a command that names a protected folder passes only when its program is a known reader; brace lists and
+# every redirect form; programs judged by their text, failing closed; Python isolated from the agent's modules; the hold
+# on time and bound to the scripts it runs). guards.py 203, each with the blank lines after it: _braces 26 (brace lists
+# as bash and zsh expand them, nested, with sequences, under a cap), _sed_writes 25 more (a sed program read with
+# certainty: bracket expressions as BSD sed reads them, any command or flag it does not know taken to write), _regular
+# 21 (a regular file read without waiting, bounded), _shipped 18 (the installed plugin's own scripts: the guard's
+# folder, the synthesis home, or a harness's plugin folder whose guard is this one byte for byte), _awk_reads 17 (an awk
+# program with no redirect, pipe or system), _proven 13 more (each script proved once a call under a cap and the call's
+# deadline, and no planted module beside it), _git_reads 13 (git's read subcommands without options that write or run),
+# _python_writes 10 more (a writer handed on rather than called, sys.modules, a started command's wait carried, a
+# refusal preferred), _unread 8 more (every program not known to only read is named; open runs what it opens), _self_grant
+# 8 more (each command's words judged for what they name, a script file outside the plugin using synthesis's code, a
+# line it cannot read), _piped 8 (what cat pipes into a shell, and what another program pipes, which waits), _isolated 6,
+# _commands 5 more (a file on a program's input read as its script; what printed into a shell), check_self_grant 3 more
+# (its deadline, its caches, the scripts the code binds), _lex 3 and _bare 3 more (quoted braces kept whole; env -S read
+# as env's own words), SYNTHESIS_IMPORT 3, _simple 2, _code_of 2, READER_WRITES 2, check 1, _spells 1, _spellings 1, and
+# one line each for _CALL, UNREAD_INPUT, SHIELD, OUTPUTS, GIT_RUNS, GIT_FIRST, ABSOLUTE and the operator list, less
+# _script_file's 4 (it opens its file through _regular). approvals.py 6: transcript reads the path the prompt hook recorded
+# (and only one that is there), remember records it. hook.py 1: the prompt hook records it.
+# The coordinator's ruling on the plugin's own scripts (2026-11-14): core 3 more and plugin 3. guards.py 3: _shipped 1
+# more (only the release the guard runs from, or a script and the modules beside it that it imports byte for byte that
+# release's copy, in place of the synthesis home and a plugin cache's guard match), _protected_roots 1 (the runtime's
+# releases, current and bin), and a script file outside the release that imports synthesis's code waits apart from the
+# approval-call refusal 1.
+# What the 30-day replay of recorded commands showed the round-1 code misread (2026-11-14): core 5 more and plugin 5.
+# guards.py 5: _lex 5 (arithmetic, whose own substitutions alone run, and an array's values, kept in its word; the
+# substitution branch and the `$` branch step past `$((` in place); _dquote's arithmetic, the empty word no longer read
+# as a reader's writing option and the import check for synthesis's code each change one line in place.
+# The coordinator's ruling on Python without -I (2026-11-14): core 18 more and plugin 18. guards.py 18: _stand_in 11 with
+# its two blank lines (a module a program imports or runs with -m that a file where it starts could stand in for),
+# PYTHON_ENV 3 with its blank line (the variables that move Python's module path, set on the line), _unread 1 (the -m
+# exemptions under the same rule), and _self_grant 3 (why only isolation is missing, and a hold that says -I or a clean
+# folder needs no code). And 1 more to both: the refusal of a program that imports synthesis's code and that its reader
+# cannot follow says that, not that it runs the approval code (its words take a second line).
+# The coordinator's ruling on Python script files (2026-11-14, after the 30-day replay held about 3,700 such runs a month
+# for want of a full proof): core 138 more and plugin 138. guards.py 138: _python_files 47 (the script and each module
+# of its own it imports, read whole: a file or package in the folder Python looks in first named like no module found
+# elsewhere, or one a package names relative to itself, and theirs in turn, with the packages that hold a module run
+# with -m; a file there named like a module found elsewhere stands in; past TEXT_LIMIT, OWN_MODULES or the call's time
+# it waits), _shows 30 in place of _proven's 22 (judged by what the text shows: no write or run the reader recognizes,
+# or each placed outside the protected folders, a module of its own by any write it holds; once a call, under the
+# cap), _imports 18 (each import a program's syntax holds), _module_file 16 (the file `python -m` runs when the folder
+# it starts from holds it; one found elsewhere keeps the full rule), _found_elsewhere 9, _python_writes 15 (a member
+# read inside its own reading, where the reader recursed without end, leaves the writes it reaches unplaced and no
+# member followed after it, a file argparse opens to write is a write, and the call's deadline it stops at), _self_grant 10 (each script read with its
+# own modules, the import check for synthesis's code over all of them, the text check in place of the proof), _unread 2
+# (a module run with -m from the folder that holds it), the block's comment and blank lines 13, and TEXT_LIMIT with
+# OWN_MODULES 1 in place of PROOF_LIMIT 1; df on the readers' list, _code_of reading to TEXT_LIMIT and the call's
+# module cache change lines in place.
+# The coordinator's ruling on programs that use synthesis's own code (2026-11-14: waiting on every import stopped every
+# probe, review script and skill script outside the runtime that reads through it): core 119 more and plugin 119.
+# guards.py 119: _synthesis_reach 78 (what a program does with synthesis's code: names one of its writers under any
+# name it is imported by, reaches it in a way the reader cannot follow, or reaches a protected folder through its own
+# paths, each such call spelled out as the folder it returns), _synthesis_own 14 (whether a module makes a name itself
+# or only imports it), SYNTHESIS_WRITES 13 (synthesis's writers, which a test reads from the source), _self_grant 5 (the
+# check over a script and its own modules and over Python on the line, and where its paths lead counted as named),
+# SYNTHESIS_PLACES 2, _shows 2 (a program read with its paths spelled out, and a write where they lead unspelled taken
+# to land there), SYNTHESIS_DEFS 1 and 4 blank lines.
+# What the replay of that rule showed it misread (2026-11-14): core 17 more and plugin 17. guards.py 17:
+# _synthesis_reach 10 (a module printed or shown as text is no module handed on; a call inside an f-string, or one
+# whose place cannot be read with certainty or whose spelled-out text does not parse, is not spelled out), _ancestors 7
+# with its 2 blank lines (the nodes that hold a node), less _synthesis_own's 2 (only a name a module imports leads
+# elsewhere, so a value it makes by a tuple, a dunder or a name it no longer has does not).
 # 5.23.0, the Messenger surface and a chat saved from its page (2026-11-14): plugin 602 more, the core as it was.
 # messenger_messages.py 274 (synthesis-daily-rituals): parse 56 (rows to chats, the owed and nudged ones, unread marks
 # and the coverage line; a wall, another inbox's grid, an empty list without --empty and --end off the list's bottom
@@ -1199,8 +1263,8 @@ ROOT = Path(__file__).resolve().parents[1]
 # read_transcript 8.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 15332
-PLUGIN_BUDGET = 41404
+CORE_BUDGET = 15843
+PLUGIN_BUDGET = 41915
 
 
 def _lines(files):

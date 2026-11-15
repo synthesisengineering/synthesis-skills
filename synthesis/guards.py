@@ -1299,9 +1299,12 @@ class Unreadable(ValueError):
 
 
 MAX_DEPTH = 6
-OPERATORS = ("<<<", "<<-", "<<", "<&", "<", "&&", "&>", "&", "||", "|&", "|", ";;", ";", ">>", ">&", ">|", ">",
-             "(", ")", "\n")
-REDIRECTS = frozenset({"<<<", "<&", "<", "&>", ">>", ">&", ">|", ">"})
+OPERATORS = ("<<<", "<<-", "<<", "<&", "<>", "<", "&&", "&>>!", "&>>|", "&>>", "&>!", "&>|", "&>", "&", "||", "|&", "|", ";;", ";",
+             ">>&!", ">>&|", ">>&", ">>!", ">>|", ">>", ">&!", ">&|", ">&", ">!", ">|", ">", "(", ")", "\n")  # zsh's clobber forms too
+OUTPUTS = frozenset({"<>", "&>>!", "&>>|", "&>>", "&>!", "&>|", "&>", ">>&!", ">>&|", ">>&", ">>!", ">>|", ">>", ">&!", ">&|", ">!", ">|", ">"})
+REDIRECTS = OUTPUTS | {"<<<", "<&", "<", ">&"}
+SHIELD = str.maketrans("{},", "\1\2\3")  # a quoted brace or comma takes no part in brace expansion
+UNREAD_INPUT = "\0unread-input"  # stands for a script on a program's input that the guard could not read
 PLAIN = re.compile(r"[^\s'\"\\`$#;&|()<>]+")
 SHELLS = ("sh", "bash", "zsh", "dash", "ksh")
 HANDED = "$(xargs)"  # stands for the files xargs hands a command; the lexer never yields this as a word
@@ -1363,7 +1366,7 @@ def _dquote(s: str, i: int, subs: list, closing: str = '"') -> tuple[int, str]:
         elif c == "`" or s.startswith("$(", i):
             start = i + (1 if c == "`" else 2)
             end = _close(s, start, c if c == "`" else "(")
-            subs.append(s[start:end - 1])
+            subs += [t[1] for t in _lex(s[start + 1:end - 2]) if t[0] == "sub"] if s.startswith("$((", i) else [s[start:end - 1]]  # arithmetic
             out.append(s[i:end])
             i = end
         else:
@@ -1393,6 +1396,32 @@ def _delimiter(s: str, i: int) -> tuple[int, str, bool]:
     return j, re.sub(r"['\"\\]", "", raw), bool(re.search(r"['\"\\]", raw))
 
 
+def _braces(word: str, room: int = 4096) -> list:
+    """The words one word becomes after brace expansion, as bash and zsh make them: `a{b,c}d` is abd and acd, `{1..3}`
+    and `{a..c}` are sequences, a list inside a list expands in turn; `${...}`, `{}` and a brace with no list stay as
+    written (review of 5.22.1, finding 1: `cp {SRC,TRANSCRIPT}` was read as one word). More words than `room` cannot be read."""
+    for start in (i for i, c in enumerate(word) if c == "{" and word[i - 1:i] != "$"):
+        depth, cuts = 0, []
+        for end in range(start, len(word)):
+            depth += (word[end] == "{") - (word[end] == "}")
+            cuts += [end] if depth == 1 and word[end] == "," else []
+            if not depth:
+                break
+        else:
+            continue
+        seq = None if cuts else re.fullmatch(r"(-?\d+)\.\.(-?\d+)(?:\.\.(-?\d+))?|([A-Za-z])\.\.([A-Za-z])", word[start + 1:end])
+        if not cuts and not seq:
+            continue
+        a, b = ((int(seq[1]), int(seq[2])) if seq[1] else (ord(seq[4]), ord(seq[5]))) if seq else (0, 0)
+        step = abs(int(seq[3] or 1)) or 1 if seq else 1
+        values = range(a, b + 1, step) if a <= b else range(a, b - 1, -step)
+        if (len(values) if seq else len(cuts) + 1) > room:
+            raise Unreadable("a brace list too long to read")
+        items = [word[x + 1:y] for x, y in zip([start] + cuts, cuts + [end])] if cuts else [str(v) if seq[1] else chr(v) for v in values]
+        return [w for item in items for w in _braces(word[:start] + item + word[end + 1:], max(room // len(items), 1))]
+    return [word]
+
+
 def _lex(s: str) -> list:
     """Tokens: ("w", word), ("op", op), ("redir", op), ("in", stdin text, literal) and ("sub", script)."""
     tokens, word, started, heredocs, i = [], [], False, [], 0
@@ -1400,7 +1429,10 @@ def _lex(s: str) -> list:
     def end_word():
         nonlocal word, started
         if started:
-            tokens.append(("w", "".join(word)))
+            made = _braces("".join(word))
+            if len(made) > 4096:
+                raise Unreadable("a brace list too long to read")
+            tokens.extend(("w", w.translate({1: "{", 2: "}", 3: ","})) for w in made)
         word, started = [], False
 
     while i < len(s):
@@ -1414,7 +1446,7 @@ def _lex(s: str) -> list:
             i += 1
         elif c == "\\":
             if s[i + 1:i + 2] != "\n":
-                word.append(s[i + 1:i + 2])
+                word.append(s[i + 1:i + 2].translate(SHIELD))
                 started = True
             i += 2
         elif c == "'" or s.startswith("$'", i):  # single quotes, or ANSI-C quotes with their escapes decoded
@@ -1427,26 +1459,31 @@ def _lex(s: str) -> list:
             if c == "$":  # $'g\x69t' is git: decode \xHH, octal and the letter escapes
                 import codecs
                 text = codecs.escape_decode(text.encode("utf-8", "surrogateescape"))[0].decode("utf-8", "replace")
-            word.append(text)
+            word.append(text.translate(SHIELD))
             started, i = True, end + 1
         elif c == '"':
             subs = []
             i, text = _dquote(s, i + 1, subs)
             tokens += [("sub", x) for x in subs]
-            word.append(text)
+            word.append(text.translate(SHIELD))
             started = True
-        elif c == "`" or s.startswith("$(", i):
+        elif c == "`" or (s.startswith("$(", i) and not s.startswith("$((", i)):
             start = i + (1 if c == "`" else 2)
             end = _close(s, start, c if c == "`" else "(")
             tokens.append(("sub", s[start:end - 1]))
-            word.append(s[i:end])
+            word.append(s[i:end].translate(SHIELD))
             started, i = True, end
-        elif c in "$#" and (started or c == "$"):
+        elif c in "$#" and (started or c == "$") and not s.startswith("$((", i):
             word.append(c)
             started, i = True, i + 1
         elif c == "#":  # a comment runs to the end of its line
             end = s.find("\n", i)
             i = len(s) if end < 0 else end
+        elif s.startswith("$((", i) or (c == "(" and started and re.fullmatch(r"[A-Za-z_]\w*\+?=", "".join(word))):
+            end = _close(s, i + 2 if c == "$" else i + 1, "(")  # arithmetic, or an array's values: part of the word
+            tokens += [t for t in _lex(s[i + 3:end - 2]) if t[0] == "sub"] if c == "$" else []  # what arithmetic substitutes runs
+            word.append(s[i:end].translate(SHIELD))
+            started, i = True, end
         else:
             op = next(o for o in OPERATORS if s.startswith(o, i))
             if op in REDIRECTS and started and "".join(word).isdigit():
@@ -1499,9 +1536,11 @@ def _simple(tokens: list) -> list:
         if kind == "w":
             if skip == "<<<":
                 stdin.append((rest[0], True))
+            elif skip == "<":  # a file on its input: read where a program takes its script from there (finding 18)
+                stdin.append(("\0<" + rest[0], True))
             elif not skip:
                 words.append(rest[0])
-            elif skip in (">", ">>", ">|", "&>") or (skip == ">&" and not rest[0].isdigit()):
+            elif skip in OUTPUTS or (skip == ">&" and not rest[0].isdigit()):
                 writes.append(rest[0])  # a file this command writes (2026-10-13: a `>` inside quotes is not one)
             skip = ""
         elif kind == "in":
@@ -1548,10 +1587,13 @@ def _bare(words: list[str], moved: list | None = None) -> tuple[list[str], list[
                     else [words[i].split("=", 1)[1]] if words[i].startswith("--chdir=") else [])
             if moved is not None and head in ("env", "sudo") and sent:
                 moved.append(sent[0])  # `env -C <folder> <command>`, `sudo -D <folder> <command>`: the command runs there
-            if words[i] in ("-S", "--split-string") and i + 1 < len(words):
-                scripts.append(words[i + 1])
-            elif words[i].startswith("--split-string="):
-                scripts.append(words[i].split("=", 1)[1])
+            if head == "env" and (words[i][:2] == "-S" or words[i].startswith("--split-string")):  # its words are env's own (finding 19)
+                given = words[i].split("=", 1)[1] if "=" in words[i] else words[i][2:] if words[i][:2] == "-S" and words[i] != "-S" else "".join(words[i + 1:i + 2])
+                try:
+                    words = words[:i] + shlex.split(given) + words[i + 1 + (words[i] in ("-S", "--split-string")):]
+                except ValueError as exc:
+                    raise Unreadable(str(exc)) from None
+                continue
             i += 2 if words[i] in takes else 1
         if head == "xargs" and words[i:]:  # the files it hands a command arrive on its input: HANDED stands where they go
             mark = next((w[2:] or "".join(words[k + 1:k + 2]) for k, w in enumerate(words[1:i], 1) if w[:2] in ("-I", "-J")), "")
@@ -1689,6 +1731,9 @@ def _commands(command: str, cwd: str, depth: int = 0, writes: list | None = None
         for folder in moved:  # `env -C a env -C b`: b is read from a
             here = os.path.normpath(os.path.join(here, os.path.expanduser(folder)))
         head, script = os.path.basename(words[0]) if words else "", words
+        takes_in = bool(words) and bool((head in SHELLS and _shell_input(words)[1]) or ((SCRIPT.match(head) or UNREAD.match(head)) and _program(words)[0] == "stdin"))
+        stdin = [((_code_of(os.path.join(here, os.path.expanduser(t[2:]))) or f"{UNREAD_INPUT} {t[2:]}") if takes_in else "", True)
+                 if t.startswith("\0<") else (t, lit) for t, lit in stdin]  # its script, when it reads one there; else nothing it runs
         # $PWD and $OLDPWD in a command's own words and targets are the folder it is in and the one before. A script it
         # hands a shell is left as written: that script puts its own, where it runs.
         words, targets = [[PLACE.sub(lambda m: back if m[1] or m[2] else cwd, w) for w in each] for each in (words, targets)]
@@ -1718,7 +1763,7 @@ def _commands(command: str, cwd: str, depth: int = 0, writes: list | None = None
             if runs is not None:
                 runs.append((chain, needed))
             if feeds is not None:
-                feeds.append("\n".join(text for text, _ in stdin))
+                feeds.append("\n".join([text for text, _ in stdin] + [_piped(upstream)] * (piped and takes_in)))
             if words[0] in ("cd", "pushd", "popd"):  # where the next command runs: `cd -` goes back, `popd` to the folder pushd left
                 to = next((w for w in words[1:] if w == "-" or not re.match(r"[-+]", w)), None)
                 turn = next((w for w in words[1:] if re.fullmatch(r"[-+]\d+", w)), "")  # +N from this folder, -N from the oldest
@@ -1741,14 +1786,24 @@ def _commands(command: str, cwd: str, depth: int = 0, writes: list | None = None
             if script is not None:
                 scripts.append(_placed(script, given))
             elif reads:  # the shell runs whatever reaches its stdin
-                scripts += [_placed(text, given) for text in [text for text, _ in stdin] + ([upstream] if piped else [])]
+                scripts += [_placed(text, given) for text in [text for text, _ in stdin] + ([_piped(upstream)] if piped else [])]
         said, fill = words[1:], iter(words[2:])
         if head == "printf":  # what it prints: its format with its words put in
             said = [re.sub(r"%[-0-9.]*[sbqd]", lambda m: next(fill, ""), w) for w in said[:1]]
-        upstream = "\n".join([t for t, _ in stdin] + said).replace("\\n", "\n")
+        files = [w for w in said if w[:1] != "-"] if head == "cat" else []  # cat prints its files, else its input
+        upstream = (here, files) if files else "\n".join([t for t, _ in stdin] + said).replace("\\n", "\n") if head in ("echo", "printf", "cat") else (
+            f"{UNREAD_INPUT} {head}")  # what another program prints into a shell cannot be read (finding 18)
         for script in scripts:
             found += _commands(script, here, depth + 1, writes, runs, feeds)
     return found
+
+
+def _piped(upstream) -> str:
+    """What the command before a pipe sends down it: its words, or for `cat` what its files hold (finding 18)."""
+    if isinstance(upstream, str):
+        return upstream
+    here, files = upstream
+    return "\n".join(_code_of(os.path.join(here, os.path.expanduser(w))) or f"{UNREAD_INPUT} {w}" for w in files if w[:1] != "-")
 
 
 def _parse(command: str, cwd: str, runs: list | None = None, feeds: list | None = None) -> tuple[list[tuple[list[str], str]], bool]:
@@ -1954,14 +2009,10 @@ def _script_file(words: list[str], cwd: str) -> str | None:
         path = words[0]
     if not path:
         return None
-    try:
-        with open(os.path.join(cwd, os.path.expanduser(path)), "rb") as handle:
-            if head not in SHELLS and handle.read(2) != b"#!":
-                return None  # a program, not a script: never read past its first bytes
-            handle.seek(0)
-            text = handle.read(SCRIPT_LIMIT + 1)
-    except OSError:
-        return None
+    first = _regular(os.path.join(cwd, os.path.expanduser(path)), 2)  # a regular file, opened without waiting (finding 10)
+    if first is None or (head not in SHELLS and first[0] != b"#!"):
+        return None  # a program, not a script: never read past its first bytes
+    text = (_regular(os.path.join(cwd, os.path.expanduser(path)), SCRIPT_LIMIT + 1) or (b"",))[0]
     if head not in SHELLS and not SHEBANG.match(text):
         return None
     return TOO_LARGE if len(text) > SCRIPT_LIMIT else text.decode("utf-8", "replace")
@@ -2513,7 +2564,7 @@ READERS = frozenset(("cat head tail grep egrep fgrep rg ls stat wc file du diff 
                      "basename dirname realpath readlink test [ [[ echo printf cd pushd popd true false : export readonly "
                      "local declare typeset unset zcat gzcat strings od hexdump nl cut tr tac column jq date which "
                      "for case select read fold fmt expand paste join rev sort uniq less more sleep kill wait exit return "
-                     "break continue shift trap seq expr bc ps pgrep uname hostname whoami id git synthesis").split())
+                     "break continue shift trap seq expr bc ps pgrep uname hostname whoami id git synthesis df").split())
 WORDS = frozenset("for case select read test [ [[ : true false export readonly local declare typeset unset less more sleep kill wait exit "
                   "return break continue shift trap which file id synthesis".split())  # a shell's own words, and words a sentence starts with
 AWKS = ("awk", "gawk", "mawk", "nawk")
@@ -2793,9 +2844,10 @@ def _reaches(target: str, root: str, whole: bool = False, hidden: bool = False) 
 
 def _protected_roots(config: dict | None) -> list[str]:
     """Where only the guard, the harness and the synthesis CLI write: synthesis state, the board, the transcript
-    archive, harness transcripts, approved commit lines."""
+    archive, the installed runtime (its releases, `current` and `bin`), harness transcripts, approved commit lines."""
     store = paths.line_allowances(config or {})
-    return [str(r) for r in [paths.state(), paths.board(), paths.sessions(), *paths.transcript_roots().values(),
+    return [str(r) for r in [paths.state(), paths.board(), paths.sessions(), *(paths.home() / name for name in ("releases", "current", "bin")),
+                             *paths.transcript_roots().values(),  # the runtime the hook runs from, its entry points (5.22.1)
                              paths.desktop_dir() / "local-agent-mode-sessions",  # the desktop app's agent-mode transcripts, one path
                              *([store] if store else [])]]
 
@@ -2944,11 +2996,11 @@ PATH_KEYS = ("path", "filepath", "file_path", "filename", "file", "fname", "fp",
 STARTS = ("system", "popen", "create_subprocess_exec", "create_subprocess_shell", "spawn")  # os's, asyncio's and pty's ways to start a command
 PLACED = ("args", "shell", "cwd", "env", "input", "executable", "stdin", "stdout", "stderr")  # what a started command is given that the reader places or judges
 BUILT_CALLS = ("vars", "globals", "locals", "__builtins__", "__getattribute__", "partial", "partialmethod", "methodcaller",
-               "attrgetter", "ctypes", "cffi", "CDLL", "cdll")  # a call the reader cannot follow to the function it reaches
+               "attrgetter", "ctypes", "cffi", "CDLL", "cdll", "__call__")  # a call the reader cannot follow to the function it reaches
 
 
 def _python_writes(source: str, names: list, roots: list | tuple = (), where: str = "", argv: list | tuple = (),
-                   env: dict | None = None, config: dict | None = None) -> tuple:
+                   env: dict | None = None, config: dict | None = None, until: float | None = None) -> tuple:
     """(whether a Python program writes into a protected path, whether it writes at all; the first is the refusal's own
     text when it is a command the program starts that is refused); (None, None) when it cannot
     be told (no source, a syntax error), and (None, True) for a program that runs code it builds (exec, eval,
@@ -2962,7 +3014,7 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
     a transcript and numbered their output files by its lines were refused).
     `argv` is what the shell hands the program, from its own name on, and `env` the variables it runs with;
     `where` is the folder it runs in, and inside a protected folder, or after a chdir into one, every write must
-    be led by a plain folder elsewhere."""
+    be led by a plain folder elsewhere. Past `until`, a moment of time.monotonic(), it raises TimeoutError."""
     import ast
     import copy
     import warnings
@@ -3053,8 +3105,17 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
         return None, True  # it runs code it builds, or imports a module it names at run time
     if any(getattr(n, "id", getattr(n, "attr", "")) in BUILT_CALLS or (isinstance(n, ast.Call) and getattr(n.func, "id", "") in (
             "getattr", "setattr", "delattr") and len(n.args) > 1 and (said(n.args[1]) is None or getattr(n.args[0], "id", "") in modules))
-           or (getattr(n, "attr", "") == "__dict__" and getattr(n.value, "id", "") in modules) for n in nodes):  # an object's own is read
+           or (getattr(n, "attr", "") in ("__dict__", "modules") and getattr(n.value, "id", "") in modules) for n in nodes):  # an object's own is read
         return None, True  # a call it reaches by a name it builds, through a module's own table, handed on, or into C (5.22.1)
+    called = {id(n.func) for n in nodes if isinstance(n, ast.Call)} | {id(n.value) for n in nodes if isinstance(n, ast.Assign) and all(
+        isinstance(t, ast.Name) for t in n.targets)}  # called where it is named, or kept under a plain name the reader follows
+
+    def writer(owner, name) -> bool:  # a writing callable of os, shutil or subprocess
+        return bool(owner == "os" and OS_WRITES.fullmatch(name)) or (owner == "shutil" and name in COPIES + ("move", "rmtree", "make_archive", "unpack_archive",
+                    "chown")) or (owner == "subprocess" and name in ("run", "call", "check_call", "check_output", "Popen", "getoutput", "getstatusoutput"))
+    if any(id(n) not in called and writer(*((modules.get(getattr(n.value, "id", "")), n.attr) if isinstance(n, ast.Attribute) else direct.get(n.id, ("", ""))))
+           for n in nodes if isinstance(n, (ast.Attribute, ast.Name)) and isinstance(n.ctx, ast.Load)):
+        return None, True  # a writer handed on, not called where it is named: map, a thread's target, atexit, a lambda (finding 16)
     for target, value in pairs:  # a function kept under another name is still that function
         if isinstance(target, ast.Name) and isinstance(value, ast.Attribute) and isinstance(value.value, ast.Name) and value.value.id in modules:
             direct[target.id] = (modules[value.value.id], value.attr)
@@ -3376,7 +3437,7 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
     # object stands under ".field" and an entry of its own table under "[table]key". "\2" is no value at all: None
     # (this project's probe after the tenth review: thirty everyday programs were refused from inside a transcript
     # folder because a name was read only when it was given one value, once).
-    picked, stores, sites, turns, finds, deep = {}, {}, {}, {}, set(), []
+    picked, stores, sites, turns, finds, deep, reading, looped = {}, {}, {}, {}, set(), [], set(), []
 
     def given_to(key, values, site: int = 0) -> None:
         stores.setdefault(key, []).extend(values)
@@ -3726,11 +3787,18 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
         deep.pop()
         this[id(own)] = was
 
-    def read_as(n) -> list:  # every spelling a member read may have
+    def read_as(n) -> list:  # every spelling a member read may have; read again inside its own reading (`self.p = self.p + x`), it cannot be told
+        if looped or id(n) in reading:  # the 30-day replay: 526 everyday programs the reader followed into themselves without end;
+            looped.append(n)            # after one, no member is followed (each reading of it grew without bound), and \5 marks what it reaches
+            return ["\0\5"]
         found = []
-        for v, calls_ in members(n):
-            for _ in under(calls_) if isinstance(v, ast.AST) else [0]:
-                found += ["\0"] if v is None else [v] if isinstance(v, str) else ["\2"] if isinstance(v, ast.Constant) and v.value is None else spellings(v)
+        reading.add(id(n))
+        try:
+            for v, calls_ in members(n):
+                for _ in under(calls_) if isinstance(v, ast.AST) else [0]:
+                    found += ["\0"] if v is None else [v] if isinstance(v, str) else ["\2"] if isinstance(v, ast.Constant) and v.value is None else spellings(v)
+        finally:
+            reading.discard(id(n))
         found = list(dict.fromkeys(found))
         return ["\0"] if len(found) > 12 else found
 
@@ -3837,6 +3905,8 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
         return list(dict.fromkeys(found)) or ["\2"]
 
     def spellings(node) -> list:  # each path a node may spell, one for every value its names may hold; as `spelled` reads it when they are too many
+        if until is not None and time.monotonic() > until:
+            raise TimeoutError("past the time the guard may spend reading a program")
         if walked.get(id(node), (None,))[0] is not node:  # walked once: a value is read again at each settling
             seen = list(outer(node))
             walked[id(node)] = (node, [c for c in seen if isinstance(c, ast.IfExp) or (isinstance(c, ast.BoolOp) and isinstance(c.op, ast.Or))
@@ -4160,8 +4230,10 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
         made = [(given or [None])[0]] if isinstance((given or [None])[0], ast.Constant) else stores.get(getattr((given or [None])[0], "id", ""), [])
         return bool(made) and all((isinstance(v, ast.Constant) and (type(v.value) is int or v.value == "\2")) or (isinstance(v, ast.Call) and source(v) is not None and (
             modules.get(getattr(getattr(v.func, "value", None), "id", "")) == "os" or direct.get(getattr(v.func, "id", ""), ("",))[0] == "os")) for v in made)
-    hit = wrote = False
+    hit = wrote = blind = False
     for n in calls:
+        if until is not None and time.monotonic() > until:
+            raise TimeoutError("past the time the guard may spend reading a program")
         base = n.func.value if isinstance(n.func, ast.Attribute) else None
         label, kw = n.func.attr if base is not None else getattr(n.func, "id", ""), {k.arg: k.value for k in n.keywords}
         fds = [kw[k] for k in ("dir_fd", "src_dir_fd", "dst_dir_fd") if k in kw]  # a name given beside a descriptor is read from its folder
@@ -4229,7 +4301,8 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
             if "\0" not in ran:  # a command it spells whole is judged as the shell guard judges one, wherever it may run
                 for text in [t for t in texts if "\0" not in t] or [""]:
                     line = f"{ran} <<'INPUT_OF_THE_COMMAND'\n{text}\nINPUT_OF_THE_COMMAND" if text else ran
-                    hit = hit or next(filter(None, (check_self_grant(line, f, config, hold=False) for f in known)), False)  # the refusal itself
+                    found = next(filter(None, (check_self_grant(line, f, config, hold=False) for f in known)), False)  # the refusal itself
+                    hit = found if not hit or (isinstance(hit, Unproven) and found and not isinstance(found, Unproven)) else hit  # a refusal wins
                 hit = hit or (bool(dark) and any(map(named, dark))) or (stored and any(USED.search(text) for text in _resolved(ran)))
                 if not dark and not unplaced:  # everything it is given was placed: nothing is left for the older rule,
                     continue                   # which holds a command handed anything built from a protected path
@@ -4281,20 +4354,24 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
         elif writer:  # to_<anything else>, write_<anything else>, another module's save(a, b): either may be the path; a deletion, as a module's own function
             maybe = (n.args if owners and not method else []) if writer[5] else n.args[:1 + (not method)]
         sure += [kw[k] for k in PATH_KEYS if k in kw] if writer else []
-        led = {id(a): [s for s in spellings(a) if s[:1] not in ("\0", "\2")] for a in sure + maybe}  # each reading with a lead that can be read
+        led = {id(a): [s for s in spellings(a) if s[:1] not in ("\0", "\2") or "\5" in s] for a in sure + maybe}  # each reading with a lead that can be read
         targets += [a for a in sure if led[id(a)] or stringy(a)] + [
-            a for a in maybe if led[id(a)] and (named(a) or any(re.search(r"/|^~|\.\w{1,6}$", s) for s in led[id(a)]))]
+            a for a in maybe if led[id(a)] and (named(a) or any(re.search(r"/|^~|\.\w{1,6}$|\x05", s) for s in led[id(a)]))]
         if label in LIBRARY_WRITES:  # the standard library's own writers: a log file, a download, a temporary file made where it is told
             targets += [kw[k] for k in ("filename", "dir") if k in kw] + (
                 n.args[1:2] if label == "urlretrieve" else n.args[:1] if "Handler" in label else n.args[2:3] if label.startswith(("mk", "TemporaryD")) else [])
+        if label == "FileType" and "argparse" in owners and says((n.args[:1] or [kw.get("mode", ast.Constant(value="r"))])[0], r"[wax+]"):
+            targets.append(n)  # argparse opens each path it is handed to be written: what the command hands it (5.22.1)
         wrote = wrote or bool(targets)
+        blind = blind or any("\5" in s for t in targets for s in spellings(t))  # a write a member read in its own reading reaches
         gone = ([base] if method and label in ("rename", "replace") else (n.args[:1] or [kw[k] for k in ("src", "path") if k in kw])
                 if label in ("rmtree", "move", "rename", "renames", "replace") else [])  # a tree removed or moved away whole takes all it holds
         over_it = n.args[1:2] + [kw[k] for k in ("dst",) if k in kw] if label == "copytree" else []  # one copied over a folder lands in what it holds
         hit = hit or any(lands(t, label in ("mkdir", "makedirs"), label in LINKS or bool(kept), at,
                                roots if any(t is x for x in gone) else folders_held if any(t is x for x in over_it) else ())
                          for t in targets)  # a copy that keeps links may make one
-    return hit or (wrote and loose), wrote
+    hit = hit or (wrote and loose)
+    return (None, True) if blind and not hit else (hit, wrote)  # a write such a member reaches cannot be placed
 
 
 # --- a program the guard cannot read, near the records approvals rest on (5.22.1) ----------------------------------
@@ -4320,15 +4397,64 @@ class Unproven(str):
     protected folder. Any reading that is refused outright is refused first."""
 
 
-def _code_of(path: str) -> str:
-    """The text of a script file a command runs (its first SCRIPT_LIMIT bytes), or '' for one that cannot be read
-    or is no text."""
+_CALL: dict = {"codes": {}, "ran": {}, "proofs": {}, "files": {}, "until": 0.0}  # one call's script texts, their marks, its proofs and deadline
+CALL_SECONDS, PROOFS_A_CALL = 3.0, 8  # under the hook's own 4 s; past either, a command waits rather than spins (finding 12)
+READER_WRITES = {"less": r"-[A-Za-z]*[oO].*|--(?:log-file|LOG-FILE)(?:=.*)?", "rg": r"--pre(?:-glob)?(?:=.*)?", "sort": r"-o.*|--output(?:=.*)?",
+                 "file": r"-[A-Za-z]*C[A-Za-z]*|--compile", "date": r"-s|--set(?:=.*)?"}  # a reader's own options that write or run
+GIT_FIRST = re.compile(r"-c|--config-env(?:=.*)?|--work-tree(?:=.*)?|--exec-path(?:=.*)?|-p|--paginate")  # git's own, before its subcommand
+GIT_RUNS = re.compile(r"--output(?:=.*)?|--ext-diff|--textconv|-O.*|--open-files-in-pager(?:=.*)?|--upload-pack(?:=.*)?|--exec(?:=.*)?")
+ABSOLUTE = re.compile(r"-[A-Za-z]*P[A-Za-z]*|--absolute-names|--absolute-filenames|--insecure|-:|-spf")  # an archive's members land where they say
+SYNTHESIS_IMPORT = re.compile(r"^[ \t]*(?:from[ \t]+synthesis\b|import[ \t]+synthesis\b)", re.M)
+SYNTHESIS_WRITES = frozenset(f"{module}.{name}" for module, names in (  # synthesis's own functions that write a file (a test reads them from the source)
+    ("approvals", "_expire alone consume grant_from_prompt remember request void"), ("autopilot", "_evaluate _write_pointer evaluate"),
+    ("board", "_claim _claim_lock _describe _post claim inbox mark_carried mark_read_messages message notify release resolve save touch"),
+    ("checkout", "_append _staged_commit _tree_commit index_set log_claims snapshot snapshot_paths"),
+    ("cli", "_main cmd_claim cmd_doctor cmd_handoff cmd_inbox cmd_index cmd_install cmd_msg cmd_release cmd_resume cmd_sends "
+            "cmd_sessions cmd_uninstall cmd_use cmd_who cmd_worktree main"), ("commit_check", "main problems unapproved"),
+    ("doctor", "_note_waits check_wait_check main run_checks"),
+    ("hook", "_carried_since _ran _upgrade_note main pre_tool_use session_start stop user_prompt_submit"),
+    ("install", "_merge _write_exec install move_board register_git_hooks uninstall"), ("paths", "note_wait write_json"),
+    ("project", "_carry_out _mark_carried_out _peers _recent_conversation handoff resume"),
+    ("reply_check", "check misrouted_accounts unarmed_wait unwatched_sends"), ("sends", "close_window log open_window settle window_refusal"),
+    ("sessions", "_Session _export _ritual_history _sync_workspace _write_synced _writer behind export export_file fetch lost peek recent sync"),
+    ("wait", "_watch live main record unread watching"), ("worktree", "create main retire")) for name in names.split())
+SYNTHESIS_DEFS: dict = {}  # a module of synthesis: the names it imports
+SYNTHESIS_PLACES = frozenset({"paths.home", "paths.state", "paths.board", "paths.sessions", "paths.old_board", "paths.codex_home", "paths.desktop_dir",
+                              "paths.transcript_roots", "paths.desktop_agent_roots", "paths.line_allowances", "approvals._dir", "sessions.root"})
+
+
+def _regular(path: str, limit: int = SCRIPT_LIMIT):
+    """(the first `limit` bytes of a regular file, its status), opened without waiting; None for anything else: a FIFO
+    named as a script stopped the guard (review of 5.22.1, finding 10)."""
     try:
-        with open(path, "rb") as handle:
-            data = handle.read(SCRIPT_LIMIT)
+        fd = os.open(path, os.O_RDONLY | getattr(os, "O_NONBLOCK", 0))
+    except (OSError, ValueError):
+        return None
+    try:
+        st, chunks, size = os.fstat(fd), [], 0
+        while st.st_mode & 0o170000 == 0o100000 and size < limit:
+            chunks.append(os.read(fd, limit - size))
+            size, done = size + len(chunks[-1]), not chunks[-1]
+            if done:
+                break
+        return (b"".join(chunks), st) if st.st_mode & 0o170000 == 0o100000 else None
     except OSError:
-        return ""
-    return "" if b"\0" in data[:8192] else data.decode("utf-8", "replace")
+        return None
+    finally:
+        os.close(fd)
+
+
+def _code_of(path: str) -> str:
+    """The text of a script file a command runs, read whole up to TEXT_LIMIT (one byte more says it is larger), or ''
+    for one that cannot be read, is no regular file or is no text. Read once a call, and marked by its size, time and
+    the digest of what was read, so the principal's code binds the script as it stood (finding 11)."""
+    import hashlib
+    if path not in _CALL["codes"]:
+        found = _regular(path, TEXT_LIMIT + 1)
+        _CALL["codes"][path] = "" if found is None or b"\0" in found[0][:8192] else found[0].decode("utf-8", "replace")
+        if found is not None:
+            _CALL["ran"][os.path.realpath(path)] = f"{found[1].st_size}:{found[1].st_mtime_ns}:{hashlib.sha256(found[0]).hexdigest()}"
+    return _CALL["codes"][path]
 
 
 def _sed_scripts(words: list) -> list | None:
@@ -4350,36 +4476,134 @@ def _sed_scripts(words: list) -> list | None:
 
 
 def _sed_writes(script: str) -> bool:
-    """Whether a sed script may write a file or run a command: `w`, `W` or `e`, or an `s` whose flags hold `w` or `e`.
-    Addresses, the parts of `s` and `y`, text, labels and file names are passed over (`/user/p` writes nothing)."""
+    """Whether a sed script may write a file or run a command, or cannot be read with certainty, which is taken to: `w`,
+    `W` or `e`, an `s` whose flags hold `w` or `e`, or a command or a flag it does not know. Addresses and the parts of
+    `s` and `y` are read as BSD sed reads them, a bracket expression whole (finding 2: `/[/]*/w FILE` hid its `w`)."""
+    n = len(script)
+
+    def past(i: int, mark: str, regex: bool) -> int:  # the index past the delimiter that ends a part; -1 when none does
+        while i < n and script[i] != mark:
+            if script[i] == "\\":
+                i += 2
+            elif regex and script[i] == "[":  # [^]a/] and [[:alpha:]]: the delimiter is literal inside
+                j = i + 1 + (script[i + 1:i + 2] == "^")
+                j += script[j:j + 1] == "]"
+                while j < n and script[j] != "]":
+                    j = script.find(script[j + 1] + "]", j + 2) + 2 if script[j] == "[" and script[j + 1:j + 2] in (":", "=", ".") else j + 1
+                    if j < 2:
+                        return -1
+                i = j + 1
+            else:
+                i += 1
+        return i + 1 if i < n else -1
     i = 0
-    while i < len(script):
+    while i < n:
         c = script[i]
-        if c in "/\\":  # an address: /re/ or \cREc
-            mark, i = (script[i + 1:i + 2] or "/", i + 2) if c == "\\" else ("/", i + 1)
-            while i < len(script) and script[i] != mark:
-                i += 2 if script[i] == "\\" else 1
-        elif c in "sy" and i + 1 < len(script):
-            mark, i, seen = script[i + 1], i + 2, 0
-            while i < len(script) and seen < 2:
-                seen, i = seen + (script[i] == mark), i + (2 if script[i] == "\\" else 1)
-            flags = re.match(r"[^;\n}]*", script[i:])[0]
-            if c == "s" and re.search(r"[we]", flags):
+        if c in " \t\n;{}!0123456789$,~+":
+            i += 1
+        elif c in "/\\":
+            mark = script[i + 1:i + 2] if c == "\\" else "/"
+            i = past(i + 1 + (c == "\\"), mark, True) if mark not in ("", "\n", "\\") else -1
+            if i < 0:
                 return True
-            i += len(flags) - 1
-        elif c in "wWe":
-            return True
-        elif c in "aicrR:btT":  # text, a file read, a label: the rest of the command
-            i = min([j for j in (script.find("\n", i), script.find(";", i) if c in ":btT" else -1) if j >= 0] or [len(script)])
-        i += 1
+            i += script[i:i + 1] in ("I", "M")
+        elif c in "sy":
+            mark = script[i + 1:i + 2]
+            j = past(i + 2, mark, c == "s") if mark not in ("", "\n", "\\") else -1
+            j = past(j, mark, False) if j >= 0 else -1
+            flags = re.match(r"[^;\n}]*", script[max(j, 0):])[0]
+            if j < 0 or not re.fullmatch(r"\s*[gpIiMm0-9]*\s*" if c == "s" else r"\s*", flags):
+                return True
+            i = j + len(flags)
+        elif c in "aicrR#":  # text, a file read or a comment: the rest of its line
+            i = n if script.find("\n", i) < 0 else script.find("\n", i)
+        elif c in ":btT":  # a label: to the end of the command
+            i = min([j for j in (script.find("\n", i), script.find(";", i)) if j >= 0] or [n])
+        elif c in "=dDgGhHlnNpPqQxzFL":
+            i += 1
+        else:
+            return True  # w, W, e, or a command it does not know
     return False
 
 
+def _awk_reads(words: list) -> bool:
+    """An awk program read with certainty, with options that write nothing, that writes no file and runs no command: no
+    output redirect, no pipe, no `system` (finding 3: `"cp ..." | getline` ran a command). One read from a file does not."""
+    i = 1
+    while i < len(words) and words[i][:1] == "-" and words[i] != "-":
+        if words[i] in ("-F", "-v", "--field-separator", "--assign"):
+            i += 2
+        elif AWK_SAFE.fullmatch(words[i]):
+            i += 1
+        else:
+            return False
+    program = words[i] if i < len(words) else None
+    tokens = [m[0] for m in AWK_TOKEN.finditer(program or "")]
+    return program is not None and not re.search(r"@(?:load|include|namespace)", program) and not _awk_writes(program) and not any(
+        t in ('"', "|", "|&") or t.startswith("system") for t in tokens)
+
+
+def _git_reads(words: list) -> bool:
+    """git with a read subcommand and none of the options that write or run a program: `--output`, `--work-tree`, `-c`,
+    `--config-env`, a pager, an external diff or text converter (finding 4)."""
+    i = 1
+    while i < len(words) and words[i].startswith("-"):
+        if GIT_FIRST.fullmatch(words[i]):
+            return False
+        i += 2 if words[i] in GIT_VALUE_OPTIONS else 1
+    sub, rest = (words[i] if i < len(words) else None), words[i + 1:]
+    return (sub is None or sub in GIT_READS or (sub == "remote" and rest[:1] in ([], ["-v"], ["get-url"], ["show"]))) and not any(
+        GIT_RUNS.fullmatch(w) for w in rest)
+
+
+def _isolated(words: list) -> bool:
+    """Python told to leave the folders of its user out of its module path: -I, or -P with -E (finding 7)."""
+    flags = "".join(w[1:] for w in words[1:_program(words)[1]] if w[:1] == "-" and w[:2] != "--")
+    return "I" in flags or ("P" in flags and "E" in flags)
+
+
+PYTHON_ENV = re.compile(r"(?:^|[\s;&|(])(?:export\s+)?(?:PYTHONPATH|PYTHONSTARTUP|PYTHONHOME|PYTHONUSERBASE|PYTHONSAFEPATH)=")
+
+
+def _stand_in(code: str, where: str, module: str = "") -> str:
+    """A module a Python program imports (or runs with -m) that a file or package in the folder it starts from could
+    stand in for, since an inline, stdin or module run looks there first; '' for none (the coordinator, 2026-11-14)."""
+    import sys
+    names = {m.split(".")[0] for a, b in re.findall(r"^[ \t]*(?:from[ \t]+([\w.]+)[ \t]+import|import[ \t]+([\w., \t]+))", code, re.M)
+             for m in ([a] if a else [part.split()[0] for part in b.split(",") if part.strip()])} | {module.split(".")[0]} - {""}
+    return next((m for m in sorted(names - set(sys.builtin_module_names)) if os.path.exists(os.path.join(where, m + ".py"))
+                 or os.path.isdir(os.path.join(where, m))), "")
+
+
+def _shipped(path: str) -> bool:
+    """A script of the plugin as it shipped: inside the release this guard runs from (`releases/<hash>/` under the
+    synthesis home, a protected folder), or with the same bytes as that release's copy at the same relative path,
+    as are the modules beside it that it imports (a skill's script in a harness's plugin cache). Nothing else in the
+    synthesis home, and no file beside an unchanged guard elsewhere, is the plugin's (the coordinator, 2026-11-14)."""
+    release = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+    if paths.inside(path, release):
+        return True
+    parts = path.split(os.sep)
+    rel = os.path.join(*parts[len(parts) - 1 - parts[::-1].index("skills"):]) if "skills" in parts[:-1] else ""
+    here, there = os.path.dirname(path), os.path.dirname(os.path.join(release, rel))
+    mine = _regular(path, SCRIPT_LIMIT + 1)
+    names = {m for a, b in re.findall(r"^[ \t]*(?:from[ \t]+(\w+)|import[ \t]+([\w, \t]+))", (mine or (b"",))[0].decode("utf-8", "replace"), re.M)
+             for m in ([a] if a else [x.split()[0] for x in b.split(",") if x.strip()])}
+    return bool(rel) and all(os.path.isfile(os.path.join(there, name)) and (_regular(os.path.join(here, name), SCRIPT_LIMIT + 1) or (b"",))[0] == (
+        _regular(os.path.join(there, name), SCRIPT_LIMIT + 1) or (None,))[0] for name in [os.path.basename(path)] + sorted(
+        n + ".py" for n in names if os.path.exists(os.path.join(here, n + ".py")) or os.path.isdir(os.path.join(here, n))))
+
+
 def _unread(words: list, where: str, written: set, line: str) -> tuple:
-    """(the program a command runs that the guard cannot prove only reads, the text of the script file it runs), or
-    ("", "") for one it can read or that runs no program text: a shell's script on the line or its input, an awk or sed
-    program that writes no file and runs no command, a reader or a file utility. Python is named whatever its program:
-    the reader proves it, or not, where it is read. A script file the same line writes is read as the line."""
+    """(the program a command runs that the guard cannot prove only reads, the text of the script file it runs, whether
+    its words carry program text, the file of a module run with -m from the folder that holds it), or ("", "", False,
+    "") for a known reader: a program on the READERS list with none of
+    its own options that write or run, git with a read subcommand and none of its writing or running options, find
+    (each command it runs is judged as one, what it removes where it lands), a hex dump with one file, an awk or sed
+    program read with certainty that writes nothing and runs nothing, a shell's script on the line or its input (each
+    command is judged). Python is named whatever its program, which its reader proves or not where it is read. Any
+    other program is named, wherever it sits (review of 5.22.1: a list of the programs that write never ends). A script
+    file the same line writes is read as the line."""
     head = os.path.basename(words[0])
 
     def code(name: str) -> str:
@@ -4392,41 +4616,287 @@ def _unread(words: list, where: str, written: set, line: str) -> tuple:
     kind, at, name = _program(words) if SCRIPT.match(head) or UNREAD.match(head) or head in SHELLS or head in (".", "source") else ("", 0, "")
     if SCRIPT.match(head) and head.startswith("python"):
         module, operands = words[at:at + 1] == ["-m"], [w for w in words[at + 2:] if w[:1] != "-"]  # json.tool's second is its output
-        return ("", "") if module and (name.split(".")[0] == "synthesis" or (name == "json.tool" and len(operands) <= 1)) else (
-            head, code(name) if kind == "file" and not module else "")
+        free = module and (_isolated(words) or not (PYTHON_ENV.search(line) or _stand_in("", where, name))) and (
+            name.split(".")[0] == "synthesis" or (name == "json.tool" and len(operands) <= 1))
+        mine = _module_file(name, "" if _isolated(words) else os.path.realpath(where)) if module and not free else ""
+        return ("", "", False, "") if free else (head, code(mine or name) if mine or (kind == "file" and not module) else "", True, mine)
     if head in SHELLS or head in (".", "source"):
         inline, reads, _ = _shell_input(words)
-        return ("", "") if inline is not None or reads or (head in SHELLS and _no_exec(words[1:at])) else (head, code(name))
+        return ("", "", False, "") if inline is not None or reads or (head in SHELLS and _no_exec(words[1:at])) else (head, code(name), True, "")
     if head in AWKS:
-        safe = all(AWK_SAFE.fullmatch(w) for w in words[1:] if w[:1] == "-") and not re.search(r"@(?:load|include)", " ".join(words))
-        return ("", "") if safe else (head, files())
+        return ("", "", False, "") if _awk_reads(words) else (head, files(), True, "")
     if head in ("sed", "gsed"):
         scripts = _sed_scripts(words)
-        return ("", "") if scripts is not None and not any(map(_sed_writes, scripts)) else (head, files())
+        return ("", "", False, "") if scripts is not None and not any(map(_sed_writes, scripts)) else (head, files(), True, "")
     if UNREAD.match(head) or head in EDITORS:
-        return head, code(name) if kind == "file" else ""
-    if "/" in words[0] and not (head in READERS or head in WRITERS or head in OWN_RULES):
-        return head, code(words[0])  # a program run by its path: a script, or a program the guard cannot read
-    return "", ""
+        return head, code(name) if kind == "file" else "", True, ""
+    if head == "git" or head in READERS:
+        known = _git_reads(words) if head == "git" else not any(re.fullmatch(READER_WRITES.get(head, "(?!)"), w) for w in words[1:])
+        return ("", "", False, "") if known else (head, "", False, "")
+    if head in ("find", "eval") or (head == "xxd" and len([w for w in words[1:] if w[:1] != "-"]) <= 1):
+        return "", "", False, ""
+    if head == "open":  # it runs a script it is handed (in Terminal): what it opens is read as one (finding 5)
+        return head, "\n".join(code(w) for w in words[1:] if w[:1] != "-"), True, ""
+    return head, code(words[0]) if "/" in words[0] else "", "/" in words[0], ""  # a program run by its path is a script or one unread
 
 
-PROOF_LIMIT = 16 * 1024  # a script file the Python reader proves inside the hook's time (about 5 ms a kilobyte, 2026-11-14)
+# A Python script file, or a module run with -m from the folder that holds it, is judged by what its text shows, with
+# the modules of its own it imports: it waits only when the command or that text names a protected folder and that text
+# holds a write or a run the reader recognizes that may land in one (the coordinator, 2026-11-14: a full proof of every
+# expression held about 3,700 commands of the 30-day replay a month). Each is read whole up to TEXT_LIMIT, OWN_MODULES of
+# them a script, inside the call's time; past any, it waits.
+TEXT_LIMIT, OWN_MODULES = 4 << 20, 64
 
 
-def _proven(code: str, words: list, where: str, names: list, raw: list, env: dict, config: dict | None) -> bool:
-    """A Python script file short enough to read in the hook's time whose every write the reader follows to a place
-    outside the protected folders. A longer one, or one it cannot follow, waits; none is refused on this reading."""
-    if not code or len(code) > PROOF_LIMIT:
-        return False
+def _found_elsewhere(name: str, first: str) -> bool:
+    """A module Python finds somewhere other than `first`: built in, or on the module path this guard runs with."""
+    import importlib.machinery
+    import sys
     try:
-        return _python_writes(code, names, [os.path.realpath(r) for r in raw], where, words[_program(words)[1]:], dict(env, PWD=where), config)[0] is False
-    except RecursionError:
-        return False
+        return name in sys.builtin_module_names or importlib.machinery.PathFinder.find_spec(name, [
+            p for p in sys.path if p and os.path.realpath(p) != first]) is not None
+    except (ImportError, ValueError, OSError):
+        return True  # it cannot be told: a file in `first` named so may stand in for it
+
+
+def _imports(text: str) -> list:
+    """(dots, module, names) for each import a program's syntax holds: `import a.b` is (0, "a.b", ()), `from .x import
+    y` is (1, "x", ("y",)); none for a program that cannot be parsed, which its reader judges."""
+    import ast
+    import warnings
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            tree = ast.parse(text)
+    except (SyntaxError, ValueError, RecursionError, MemoryError):
+        return []
+    found = []
+    for n in ast.walk(tree):
+        if isinstance(n, ast.Import):
+            found += [(0, a.name, ()) for a in n.names]
+        elif isinstance(n, ast.ImportFrom):
+            found.append((n.level, n.module or "", tuple(a.name for a in n.names)))
+    return found
+
+
+def _module_file(name: str, first: str) -> str:
+    """The file `python -m name` runs when `first`, the folder it starts from, holds the module, as Python finds it
+    there first (a package's __main__.py, else the module's own file); '' for one found anywhere else, whose first file
+    is not the program it runs (pip's and pytest's hand everything on) and need not be this Python's."""
+    parts, spot = name.split("."), first
+    if not first or not all(re.fullmatch(r"\w+", part) for part in parts):
+        return ""
+    for i, part in enumerate(parts):
+        spot, last = os.path.join(spot, part), i == len(parts) - 1
+        if last and (os.path.isfile(os.path.join(spot, "__init__.py")) or not os.path.lexists(spot + ".py")):
+            return os.path.join(spot, "__main__.py") if os.path.isfile(os.path.join(spot, "__main__.py")) else ""
+        if last:
+            return spot + ".py"
+        if not os.path.isdir(spot):
+            return ""
+    return ""
+
+
+def _python_files(path: str, text: str, first: str, module: str = "") -> tuple:
+    """(the script and each module of its own it imports, as (file, text): a file or a package in `first`, the folder
+    Python looks in first, named like no module found elsewhere, or one a package names relative to itself, and theirs
+    in turn, with the packages that hold a module run with -m; the module a file in `first` could stand in for, being
+    found elsewhere too, or ''; why not all of them could be read, or ''). `first` is '' when Python is isolated."""
+    key = (_CALL["ran"].get(path, path), first, module)
+    if key in _CALL["files"]:
+        return _CALL["files"][key]
+    lead = module.split(".")[0]
+    files, seen, queue, stand, missed = [], {path}, [(path, text)], lead if lead and _found_elsewhere(lead, first) else "", ""
+    held = os.path.dirname(path) if module else ""
+    while held and paths.inside(held, first) and held != first:  # the packages that hold a module run with -m run first
+        init = os.path.join(held, "__init__.py")
+        if os.path.isfile(init):
+            seen.add(os.path.realpath(init))
+            queue.append((init, _code_of(init)))
+        held = os.path.dirname(held)
+    while queue and not missed:
+        at, body = queue.pop(0)
+        if len(body) > TEXT_LIMIT:
+            missed = f"is larger than the {TEXT_LIMIT >> 20} MB this guard reads" + (f" ({at})" if at != path else "")
+            break
+        files.append((at, body))
+        for dots, name, names in _imports(body):
+            top = name.split(".")[0]
+            regular = bool(first) and (os.path.lexists(os.path.join(first, top + ".py")) or os.path.lexists(os.path.join(first, top, "__init__.py")))
+            if not dots and not (regular or (first and os.path.isdir(os.path.join(first, top)))):
+                continue  # found elsewhere, or nowhere: not the script's own
+            if not dots and _found_elsewhere(top, first):
+                stand = stand or (top if regular else "")  # a file of its own named like a module found elsewhere stands in for it
+                continue
+            base = first if not dots else os.path.dirname(at) if dots == 1 else os.path.normpath(os.path.join(os.path.dirname(at), *[".."] * (dots - 1)))
+            parts = [p for p in name.split(".") if p]
+            heads = [os.path.join(base, *parts[:i]) for i in range(1, len(parts) + 1)]
+            for spot in heads + [os.path.join(heads[-1] if heads else base, n) for n in names if n != "*"]:
+                for file in (spot + ".py", os.path.join(spot, "__init__.py")):
+                    if os.path.realpath(file) in seen or not os.path.lexists(file):
+                        continue
+                    seen.add(os.path.realpath(file))
+                    code = _code_of(file) if os.path.isfile(file) else ""
+                    if len(seen) > OWN_MODULES or time.monotonic() > _CALL["until"]:
+                        missed = "imports more modules of its own than this guard reads in its time"
+                    elif not code and (not os.path.isfile(file) or os.path.getsize(file)):
+                        missed = f"imports {file}, which this guard cannot read"
+                    queue.append((file, code))
+    _CALL["files"][key] = (files, stand, missed)
+    return _CALL["files"][key]
+
+
+def _shows(files: list, words: list, where: str, names: list, raw: list, env: dict, config: dict | None) -> str:
+    """'' when no text among a Python script file and its own modules holds a write or a run its reader recognizes that
+    may land in a protected folder: a program with no such write passes though the reader cannot place every expression
+    it holds. Else what one holds. A module of its own is judged by any such write it holds, since what its functions
+    are handed comes from another file, which the reader does not follow there. Read once a call; past PROOFS_A_CALL
+    scripts or the call's deadline, it is not read (finding 12). None is refused on this reading."""
+    at = _program(words)[1]
+    argv = words[at + (words[at:at + 1] == ["-m"]):]  # what Python hands it: its own file first, then the words after it
+    key = (tuple(_CALL["ran"].get(os.path.realpath(f), f) for f, _ in files), tuple(argv), where, tuple(names))
+    if key not in _CALL["proofs"]:
+        if len(_CALL["proofs"]) >= PROOFS_A_CALL:
+            return "is one script more than this guard reads in one call"
+        _CALL["proofs"][key] = ""
+        for file, text in files:
+            reach = _synthesis_reach(text)  # synthesis's own paths spelled out where it can be
+            try:
+                hit, wrote = _python_writes(reach[2] or text, names, [os.path.realpath(r) for r in raw], where, argv, dict(env, PWD=where), config,
+                                            _CALL["until"]) if text.strip() else (False, False)
+            except RecursionError:
+                hit, wrote = None, None
+            except TimeoutError:
+                hit, wrote = None, "late"
+            at, hit = ("", hit) if file == files[0][0] else (f" ({file})", hit if hit is not False else bool(wrote))
+            hit = hit if hit is not False or reach[0] != "places" or reach[2] else bool(wrote)  # where those paths lead, unspelled
+            _CALL["proofs"][key] = "" if hit is False else (
+                f"starts a command that {hit}{at}" if isinstance(hit, Unproven) else f"starts a command this guard refuses{at}" if isinstance(hit, str)
+                else f"holds a write or a run that may land in a protected folder{at}" if hit
+                else f"is more than this guard could read in its time{at}" if wrote == "late"
+                else f"holds code its reader cannot follow (a name it builds, a call handed on){at}" if wrote else f"cannot be read as Python{at}")
+            if _CALL["proofs"][key]:
+                break
+    return _CALL["proofs"][key]
+
+
+def _synthesis_own(module: str, name: str) -> bool:
+    """Whether a module of synthesis (its __init__ for the package's own names) does not only import `name`: a name it
+    imports (`paths.os`) leads where the reader does not follow; one it makes itself, or no longer has, does not. A
+    module that cannot be read imports everything."""
+    import ast
+    if module not in SYNTHESIS_DEFS:
+        try:
+            tree = ast.parse(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), module + ".py"), encoding="utf-8").read())
+            SYNTHESIS_DEFS[module] = {(a.asname or a.name).split(".")[0] for n in ast.walk(tree) if isinstance(n, (ast.Import, ast.ImportFrom)) for a in n.names}
+        except (OSError, SyntaxError, ValueError):
+            SYNTHESIS_DEFS[module] = None
+    return SYNTHESIS_DEFS[module] is not None and name not in SYNTHESIS_DEFS[module]
+
+
+def _ancestors(parents: dict, node) -> list:
+    """The nodes that hold a node, nearest first."""
+    found = []
+    while id(node) in parents:
+        node = parents[id(node)]
+        found.append(node)
+    return found
+
+
+def _synthesis_reach(text: str) -> tuple:
+    """("", "", None) for a program that imports none of synthesis's code, or uses it only by name to read; else (how,
+    why, text): ("names", ...) for one that names one of SYNTHESIS_WRITES, under any name it imports it by, even
+    uncalled; ("follows", ...) for one that reaches it in a way its reader cannot follow: getattr, vars() or __dict__
+    on it, a module handed on rather than used, a name its module only imports, a name or code it builds, every name
+    at once; ("places", ...) for one that reaches a protected folder through synthesis's own paths, with its text
+    where each such call is spelled out as the folder it returns, or None where one cannot be (the coordinator,
+    2026-11-14: waiting on every import stopped every probe and review script, and every skill script outside the
+    runtime that uses synthesis's code to read, about 1,300 commands a month). A function the source shows never
+    writes reads, whoever calls it."""
+    import ast
+    import warnings
+    if not SYNTHESIS_IMPORT.search(text):
+        return "", "", None
+    unfollowed = "reaches synthesis's own code in a way its reader cannot follow ({})"
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            tree = ast.parse(text)
+    except (SyntaxError, ValueError, RecursionError, MemoryError):
+        return "follows", unfollowed.format("its syntax cannot be read"), None
+    bound = {}  # each name the program imports synthesis's code under: what of it that name is
+    for n in ast.walk(tree):
+        if isinstance(n, ast.Import):
+            bound.update({a.asname or "synthesis": a.name if a.asname else "synthesis" for a in n.names if a.name.split(".")[0] == "synthesis"})
+        elif isinstance(n, ast.ImportFrom) and not n.level and (n.module or "").split(".")[0] == "synthesis":
+            if any(a.name == "*" for a in n.names):
+                return "follows", unfollowed.format("every name of it at once"), None
+            bound.update({a.asname or a.name: f"{n.module}.{a.name}" for a in n.names})
+    parents = {id(c): p for p in ast.walk(tree) for c in ast.iter_child_nodes(p)}
+
+    def spelt(node) -> str:  # what of synthesis a name, or a chain of attributes from one, spells
+        return bound.get(node.id, "") if isinstance(node, ast.Name) else (
+            f"{spelt(node.value)}.{node.attr}" if spelt(node.value) else "") if isinstance(node, ast.Attribute) else ""
+    places, spots, coarse = "", [], False  # a protected folder it reaches through synthesis's own paths; each call that spells one
+    for n in ast.walk(tree):
+        label = (n.func.id if isinstance(n.func, ast.Name) else "") if isinstance(n, ast.Call) else ""
+        called = (getattr(n.func, "attr", "") or label) if isinstance(n, ast.Call) else ""
+        said = n.args[0].value if isinstance(n, ast.Call) and n.args and isinstance(n.args[0], ast.Constant) and isinstance(n.args[0].value, str) else None
+        if label in ("exec", "eval", "compile", "globals", "locals") or called in ("run_path", "run_module") or (
+                called in ("import_module", "__import__") and (said is None or said.split(".")[0] == "synthesis")) or (
+                isinstance(n, ast.Attribute) and n.attr == "modules" and isinstance(parents.get(id(n)), ast.Subscript)):
+            return "follows", unfollowed.format("code or a name it builds"), None
+        whole = spelt(n) if isinstance(n, (ast.Name, ast.Attribute)) and isinstance(n.ctx, ast.Load) else ""
+        if not whole:
+            continue
+        parts, up = whole.split("."), parents.get(id(n))
+        if ".".join(parts[1:3]) in SYNTHESIS_WRITES:
+            return "names", f"names synthesis's `{'.'.join(parts[1:3])}`, which writes its state, approvals, windows, board or archive", None
+        if ".".join(parts[1:3]) in SYNTHESIS_PLACES:
+            places = places or "reaches a protected folder through synthesis's own `" + ".".join(parts[1:3]) + "`"
+            plain = isinstance(up, ast.Call) and up.func is n and not up.keywords and len(up.args) == (parts[2] == "_dir") and len(parts) == 3 and not any(
+                isinstance(p, ast.JoinedStr) for p in _ancestors(parents, up))  # inside an f-string a call's place is not to be trusted
+            spots, coarse = spots + [(up, parts[1], parts[2])] * plain, coarse or not plain or parts[2] in ("old_board", "transcript_roots", "desktop_agent_roots", "line_allowances")
+        module = len(parts) > 1 and os.path.isfile(os.path.join(os.path.dirname(os.path.abspath(__file__)), parts[1] + ".py"))
+        if (len(parts) > 2 and module and not _synthesis_own(parts[1], parts[2])) or (len(parts) == 2 and not module and not _synthesis_own("__init__", parts[1])):
+            return "follows", unfollowed.format(f"`{'.'.join(parts[1:3])}`, a name its module imports"), None
+        if isinstance(up, ast.Attribute) and up.value is n:  # a longer chain: judged at its end, unless it opens the object
+            if up.attr in ("__dict__", "__getattribute__", "__getattr__", "__setattr__", "__call__"):
+                return "follows", unfollowed.format(f"its {up.attr}"), None
+            continue
+        if isinstance(up, ast.Call) and up.func is not n and getattr(up.func, "id", "") in ("getattr", "setattr", "delattr", "vars") and up.args[:1] == [n]:
+            return "follows", unfollowed.format(f"{up.func.id}() on it"), None
+        shown = isinstance(up, ast.Call) and up.func is not n and (getattr(up.func, "id", "") in ("print", "repr", "str", "type", "id", "hash", "dir") or (
+            getattr(up.func, "attr", "") in ("getsource", "getsourcefile", "getfile", "getdoc") and getattr(up.func.value, "id", "") == "inspect"))  # its text, not its code
+        if (len(parts) == 1 or (len(parts) == 2 and module)) and not (isinstance(up, ast.Call) and up.func is n) and not shown and not (
+                isinstance(up, (ast.If, ast.IfExp, ast.While, ast.Assert)) and up.test is n) and not isinstance(up, (ast.BoolOp, ast.UnaryOp, ast.Compare)):
+            return "follows", unfollowed.format(f"the module `{'.'.join(parts)}` handed on"), None  # a function of its own that writes is named above
+    if not places:
+        return "", "", None
+    if coarse:  # where it leads cannot be put in its place: any write it holds may go there
+        return "places", places, None
+    data, starts = text.encode("utf-8"), [0]
+    for line in data.splitlines(keepends=True):
+        starts.append(starts[-1] + len(line))
+    for call, module, name in sorted(spots, key=lambda spot: (spot[0].lineno, spot[0].col_offset), reverse=True):  # each spelled out, as the reader reads one
+        root = paths.sessions() if (module, name) == ("sessions", "root") else paths.state() if name == "_dir" else getattr(paths, name)()
+        arg = ast.get_source_segment(text, call.args[0]) if call.args else ""
+        put = (f"({str(root)!r} + '/' + ({arg}))" if arg else repr(str(root))).encode("utf-8")
+        start, end = starts[call.lineno - 1] + call.col_offset, starts[call.end_lineno - 1] + call.end_col_offset
+        if not data[start:end].decode("utf-8", "replace").rstrip().endswith(")") or name.encode() not in data[start:end]:
+            return "places", places, None  # where the call stands could not be read with certainty
+        data = data[:start] + put + data[end:]
+    try:
+        ast.parse(data.decode("utf-8"))
+    except (SyntaxError, ValueError):
+        return "places", places, None
+    return "places", places, data.decode("utf-8")
 
 
 def _spellings(raw: list, env: dict) -> tuple:
-    """(the pattern of each way a program's text spells a protected folder, the folder each part names, the folders
-    between each protected one and the home folder or a variable's folder that holds it, the protected folders)."""
+    """(each part's pattern, each spelling of a protected folder as the parts it needs, the folders between each
+    protected one and the home folder or a variable's folder that holds it, the protected folders as compared). A
+    folder's parts count wherever they stand in one program, however they are joined (finding 14)."""
     home = os.path.realpath(os.path.expanduser("~"))
     roots = sorted({form for r in raw for form in (os.path.normpath(r), os.path.realpath(r))})
     low_roots = [paths.spelled(r).rstrip(os.sep) for r in roots]
@@ -4436,36 +4906,37 @@ def _spellings(raw: list, env: dict) -> tuple:
                 for v in [paths.spelled(os.path.normpath(os.path.expanduser(value))).rstrip(os.sep)])))
     key = (home, tuple(roots), anchors)
     if key not in SPELLINGS:
-        def steps(parts: list) -> str:  # a path's parts, apart by anything but a letter or a digit: "/", '" / "', '", "'
-            return r"[^\w]{0,10}".join(map(re.escape, parts)) + r"(?![\w-])"
-        found = []
+        spellings = []
         for root in roots:
             below = os.path.relpath(root, home).split(os.sep) if paths.inside(root, home) and root != home else []
-            found += [(re.escape(root), root)] + [(r"(?<![\w.-])" + steps(below), root)] * bool(below) + [
-                (rf"\b{re.escape(name)}\b" + (r"[^\w]{0,12}" + steps(os.path.relpath(root, value).split(os.sep)) if root != value else ""), root)
-                for name, value in anchors if paths.inside(root, value)] + [(rf"\b{re.escape(name)}\b", root) for name, value in anchors
+            spellings += [((root,), root)] + [(tuple(below), root)] * bool(below) + [
+                ((f"${name}",) + (tuple(os.path.relpath(root, value).split(os.sep)) if root != value else ()), root)
+                for name, value in anchors if paths.inside(root, value)] + [((f"${name}",), root) for name, value in anchors
                                                                             if paths.inside(value, root) and value != root]
+        parts = {part for spelling, _ in spellings for part in spelling}
+        patterns = {part: re.compile(rf"\b{re.escape(part[1:])}\b" if part[:1] == "$" else rf"(?<![\w.-]){re.escape(part)}(?![\w-])", re.I)
+                    for part in parts}
         gates = set()
         for root in roots:  # the folders above each one, up to the home folder or a variable's folder
             at = os.path.dirname(root)
             while at != os.path.dirname(at) and (paths.inside(at, home) or any(paths.inside(at, v) for _, v in anchors)):
                 gates, at = gates | {paths.spelled(at)}, os.path.dirname(at)
-        SPELLINGS[key] = (re.compile("|".join(f"({p})" for p, _ in found), re.I), [r for _, r in found], gates,
-                          [paths.spelled(r) for r in roots])
+        SPELLINGS[key] = (patterns, spellings, gates, [paths.spelled(r) for r in roots])
     return SPELLINGS[key]
 
 
 def _spells(texts: list, words: list, where: str, env: dict, raw: list, linked: list) -> str:
-    """The protected folder a program names in any spelling, else '': in its words, its program text or the script it
-    runs; spelled out in any case, by its path below the home folder (`Path.home() / ".claude" / "projects"`,
-    `$ENV{HOME}/.claude/projects`, `~/.claude/projects`), after a variable that holds it or a folder above it, or as
-    a path that leads into it (or, handed as an argument, to a folder between it and the home folder or such a
-    variable), through `..`, a link made beforehand or one the same command makes."""
-    pattern, named, gates, spelled = _spellings(raw, env)
+    """The protected folder a command names in any spelling, else '': its words as paths that lead into one (or to a
+    folder between one and the home folder or a variable's folder), through `..`, a link made beforehand or one the
+    same command makes; and a program's own text by the parts of a folder's path, wherever they stand in it
+    (`Path.home() / ".claude" / "projects"`, `$ENV{HOME} . "/" . ".claude"`), after a variable that holds it. What is
+    the agent's own, and material it is sent to work on, is named by no word."""
+    patterns, spellings, gates, spelled = _spellings(raw, env)
     text = "\n".join(t for t in texts if t)
-    hit = pattern.search(text)
-    if hit:
-        return named[hit.lastindex - 1]
+    found = {part for part, pattern in patterns.items() if pattern.search(text)} if text else set()
+    named = next((root for spelling, root in spellings if set(spelling) <= found), "")
+    if named:
+        return named
     picks = [(part, True) for w in words[1:] for part in {w, w.split("=", 1)[-1], "".join(re.findall(r"^-[^~/]*([~/].*)", w))} if part]
     for pick, handed in (picks + [(a or b or c, False) for a, b, c in CANDIDATE.findall(text)][:100])[:200]:
         if "/" in pick or pick[:1] == "~" or (handed and os.path.lexists(os.path.join(where, pick))):  # a bare name: a file that is there
@@ -4473,7 +4944,7 @@ def _spells(texts: list, words: list, where: str, env: dict, raw: list, linked: 
             forms = {os.path.normpath(full), os.path.realpath(full)}
             for form in forms | {aim + f[len(link):] for f in forms for link, aim in linked if paths.inside(f, link)}:
                 low = paths.spelled(form)
-                if (handed and low in gates) or any(low == r or low.startswith(r + os.sep) for r in spelled):
+                if not (_own(form) or _own(form, True) or _material(form)) and ((handed and low in gates) or any(low == r or low.startswith(r + os.sep) for r in spelled)):
                     return form
     return ""
 
@@ -4486,22 +4957,25 @@ def check_self_grant(command: str, cwd: str, config: dict | None = None, session
         readings = _resolved(re.sub(r"(?<![\w$~./-])~(?=/|\s|$)", "$HOME", command))
     else:
         readings = _resolved(command.replace("${HOME}", home).replace("$HOME", home))
+    if hold:  # a call of its own: its script texts, their marks and its proofs start over, under its own deadline
+        _CALL.update(codes={}, ran={}, proofs={}, files={}, until=time.monotonic() + CALL_SECONDS)
     waits = None
     for text in readings:
-        reason = _self_grant(command, text, cwd, config)
+        reason = _self_grant(command, text, cwd, config) if time.monotonic() <= _CALL["until"] else Unproven(
+            "is more than this guard could judge in its time")  # it waits, rather than leave the verdict to the harness
         if reason and not isinstance(reason, Unproven):
             return reason
         waits = waits or reason
     if not waits:
         return None
     if not hold:
-        return f"Refused: this command {waits}. Approvals come only from the principal's own prompt; show them the command."
-    subject = {"command": command, "runs_in": os.path.realpath(cwd)}
+        return waits  # a command a program starts that waits makes that program wait
+    subject = {"command": command, "runs_in": os.path.realpath(cwd), "scripts": sorted(_CALL["ran"].items())}  # a rewritten script is a new command
     if approvals.consume("protected-read", subject, session):
         return None
     code = approvals.request("protected-read", subject, f"a program near the approval records: {command[:140]}")
     return (f"This command {waits}. The protected folders hold what every approval rests on (the synthesis state, its "
-            "board, the session archive, a harness's transcripts, the approved commit lines), and a program the guard cannot "
+            "board, the session archive, the installed runtime, a harness's transcripts, the approved commit lines), and a program the guard cannot "
             "prove only reads may write there. If it only reads, show the principal this exact command and ask them to type "
             f"{approvals.how(code)}; then run the identical command again from {cwd}. To read with no code, use cat, head, "
             "tail, grep or jq, or a Python program whose writes the guard can read.")
@@ -4567,23 +5041,38 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None) -> str |
             if not within or word[:1] in ("~", "/") or word == HANDED or os.path.lexists(led):  # inside the folder, a file that is there
                 handed.append((head, word, led))
         script = (fed or text) if _program(words)[0] == "stdin" else own  # read from stdin: its own heredoc, else whatever the line pipes in
-        label, code = _unread(words, where, written, text)  # a program the guard may not be able to read, and its script file
-        named = (_spells([own, fed, code, script], words, where, env, raw, linked) or (where if any(  # standing where no session works
-            paths.inside(os.path.realpath(where), os.path.realpath(str(r))) for r in (paths.state(), paths.board(), paths.sessions())) else "")
-                 or ("the files xargs hands it" if HANDED in words and names else "")) if label else ""
-        if SCRIPT.match(head) and re.search(r"\bsynthesis\b", script + code) and (SELF_GRANT_CALLS.search(script) or re.search(
-                r"\b(?:open_window|grant_from_prompt|_window_file)\b", code)):  # a script file may spend a code, never make one
+        label, code, program, mine = _unread(words, where, written, text) if readable else ("", "", False, "")  # a program not known to only read, its script, its text
+        python = head.startswith("python") and bool(SCRIPT.match(head))
+        ran = os.path.realpath(mine or os.path.join(where, os.path.expanduser(words[0] if "/" in words[0] and not (SCRIPT.match(head) or head in SHELLS)
+                                                                            else _program(words)[2]))) if code and code != text else ""  # the script file it runs
+        files, stand, missed = _python_files(ran, code, "" if _isolated(words) else os.path.realpath(where) if mine else os.path.dirname(ran),
+                                             _program(words)[2] if mine else "") if python and ran else (([(ran, code)] if ran else []), "", "")
+        said = [w for at, w in enumerate(words[1:], 1) if head not in PROMPTED and not MESSAGE.fullmatch(words[at - 1]) and not (
+            w[:1] == "-" and MESSAGE.fullmatch(w.split("=", 1)[0])) and not any(f(os.path.realpath(os.path.join(where, os.path.expanduser(w)))) for f in (_own, lambda x: _own(x, True), _material))]
+        named = ("input that this guard could not read" if UNREAD_INPUT in head + fed else _spells(
+            [own, fed, "\n".join(t for _, t in files) or code, script] if program else said, words, where, env, raw, linked)
+                 or (where if any(paths.inside(os.path.realpath(where), os.path.realpath(str(r))) for r in (paths.state(), paths.board(), paths.sessions())) else "")
+                 or ("the files xargs hands it" if HANDED in words and names else "")) if label else ""  # standing where no session works, or what xargs hands it
+        if SCRIPT.match(head) and re.search(r"\bsynthesis\b", script + code) and SELF_GRANT_CALLS.search(script):
             why = why or "runs synthesis's approval or send-window code, which only the guard and the principal's prompt use"
+        reaches = [(f, _synthesis_reach(t)) for f, t in files] if python and ran and not waits and not _shipped(ran) else []
+        uses = next(((f, r[1]) for f, r in reaches if r[0] in ("names", "follows")), None)
+        if uses:  # finding 17: by what it, or a module of its own, does with synthesis's code
+            waits = Unproven(f"runs `{head}` on {ran}, a script outside the plugin's release that {uses[1]}" + (f" ({uses[0]})" if uses[0] != ran else ""))
         source, argv = _python_source(words, fed) if head.startswith("python") else ("", [])
+        reach = _synthesis_reach(source) if python and source else next((r for _, r in reaches if r[0] == "places"), ("", "", None))
+        named = named or (reach[1].replace("reaches ", "") if reach[0] == "places" and label else "")  # a folder synthesis's own paths lead to
         # A Python program given inline or on stdin is judged by its own text: what its code writes. A protected
         # path named elsewhere on the line reaches it only through its arguments, its environment or the folder it
         # runs in (2026-10-06: through a variable). Its arguments are put where it reads them; through the
         # environment, or through arguments it takes unseen, any write it makes is refused. Another script is
         # judged by the words it is given, or, read from stdin, by the whole command.
         try:
-            hit, wrote = _python_writes(source, names, [os.path.realpath(r) for r in raw], where, argv, dict(env, PWD=where), config) if source else (None, None)
-        except RecursionError:  # nested too deeply to follow: judged by its text
+            hit, wrote = _python_writes(reach[2] or source, names, [os.path.realpath(r) for r in raw], where, argv, dict(env, PWD=where), config,
+                                        _CALL["until"]) if source else (None, None)
+        except (RecursionError, TimeoutError):  # nested too deeply to follow, or past the call's time: judged by its text
             hit, wrote = None, None
+        inner, hit = (hit, False) if isinstance(hit, Unproven) else (None, hit)  # it starts a command that waits: it waits too
         wrote = bool(re.search(SCRIPTED_WRITE, source or script)) if wrote is None else wrote  # by its syntax, else by its text
         carried = re.search(r"\b(?:environ|getenv|ENV)\b|\.env\b", script) and (any(n in m[3] for m in ASSIGNED.finditer(text) for n in names) or any(
             v[:1] == "/" and paths.inside(v, os.path.realpath(r)) for v in os.environ.values() for r in raw))
@@ -4595,11 +5084,27 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None) -> str |
                           "runs a script that writes where the synthesis state, its board or a harness's transcripts live, or that "
                           "writes while such a path reaches it through an argument, the environment or the folder it runs in "
                           "(spell each file's path inside the program, or run the script alone)")
-        if named and not waits and (not head.startswith("python") or (hit is None and not _proven(code, words, where, names, raw, env, config))):
-            waits = Unproven(f"runs `{label}`, a program whose writes this guard cannot read, and names {named}")
+        if source and ((hit is None and SYNTHESIS_IMPORT.search(source)) or reach[0] == "follows"):  # synthesis's code reached by a name it builds
+            why = why or ("runs a program that imports synthesis's own code and that its reader cannot follow (a name it builds, a "
+                          "call handed on), so it may reach the approval or send-window code")
+        waits = waits or (Unproven(f"runs `{head}`, a program that {reach[1]}") if reach[0] == "names" else None)
+        bare = "" if not python or _isolated(words) else "the line sets a variable that moves Python's module path (run it without that variable" if PYTHON_ENV.search(
+            text) else f"a file in {where} could stand in for `{_stand_in(source, where)}`, which it imports (run it from a folder without that file" if source and _stand_in(source, where) else ""
+        shipped = bool(ran) and _shipped(ran)  # the plugin's own
+        shows = "" if not (python and ran and not source) or shipped or not named or waits else (  # a script file judged by what its text shows
+            "runs while the line sets a variable that moves Python's module path (without that variable, or with -I, it needs no code)" if bare
+            else f"imports `{stand}`, for which a file beside it could stand in (where no such file is, or with -I, it needs no code)" if stand
+            else missed or _shows(files, words, where, names, raw, env, config))
+        proven = shipped or (not shows if python and ran and not source else python and not bare and bool(source) and hit is False and not (
+            reach[0] == "places" and not reach[2] and wrote))  # a write to where synthesis's own paths lead, unspelled, cannot be placed
+        if named and not waits and not proven:
+            waits = Unproven(f"runs `{label}` on {ran}, which {shows}, and names {named}" if shows else
+                             f"runs `{label}`, which its reader proves only reads, but {bare}, or with -I, and it needs no code). It names "
+                             f"{named}" if bare and hit is False else f"runs `{label}`, which this guard cannot prove only reads, and names {named}")
+        waits = waits or (Unproven(f"runs `{head}`, which starts a command that {inner}") if inner else None)
         if head in EXTRACTS and not waits and any(re.fullmatch(EXTRACTS[head], w) for w in words[1:]) and (
-                within or paths.spelled(os.path.realpath(where)) in _spellings(raw, env)[2]):  # it unpacks into the folder it stands in
-            waits = Unproven(f"runs `{head}`, which unpacks where it stands, in {where}, a folder that holds or lies in a protected one")
+                within or head == "pax" or any(ABSOLUTE.fullmatch(w) for w in words[1:]) or paths.spelled(os.path.realpath(where)) in _spellings(raw, env)[2]):
+            waits = Unproven(f"runs `{head}`, which unpacks where it stands or where its members say, in {where}")  # findings 9 and 15
         sub, acts = _git(words, where)  # git acts where -C sends it; sent somewhere this cannot read, it is not shown to act here
         reads = sub is None or sub in GIT_READS or (sub == "remote" and words[words.index(sub) + 1:words.index(sub) + 2] in (
             [], ["-v"], ["get-url"], ["show"])) or any(w.startswith(("$", "`")) for w in words[1:words.index(sub)])
@@ -4610,6 +5115,8 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None) -> str |
                           "program this guard cannot read may write without naming a file (run it from another folder)")
         if head == "apply_patch":  # Codex's file editor, run as a command: the patch names every file it writes
             asked += [(a or b, where) for a, b in PATCH_PATHS.findall(text)]
+    spelt = "" if why or waits or readable else _spells([text], [], cwd, env, raw, [])  # a line it cannot read with certainty (finding 1)
+    waits = waits or (Unproven(f"cannot be read with certainty (a quote or a substitution left open) and names {spelt}") if spelt else None)
     unread = ("$", "`")  # a target, or for a relative one the folder it is written in, that the command does not spell
     if not why and names and any(t.startswith(unread) or (not os.path.isabs(t) and str(w).startswith(unread)) for t, w in asked):
         why = ("writes to a place this guard cannot read (the target starts with a variable or a substitution the command "
@@ -4639,11 +5146,7 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None) -> str |
         why = (f"gives `{given}` a file in the synthesis state folder, its board, a harness's session transcripts or the "
                f"approved commit lines, or files it takes from there through xargs, and `{given}` is not a program this "
                "guard knows to only read what it is given (read the file with cat, head, tail, grep or jq and pipe that in, or "
-               "copy it out with cp and work on the copy)")
-    gates = _spellings(raw, env)[2] if handed and not (why or waits) else set()  # a folder that holds a protected one, handed over
-    above = next((head for head, word, path in handed if paths.spelled(path) in gates), "")
-    waits = waits or (Unproven(f"gives `{above}` a folder that holds a protected one, and `{above}` is not a program this guard "
-                               "knows to only read what it is given") if above else None)
+               "copy it out with `cat <file> > <copy>` and work on the copy)")
     return (f"Refused: this command {why}. Approvals come only from the principal's own prompt; show them "
             "what needs approving and ask them to answer in their own message.") if why else waits
 
@@ -5117,6 +5620,7 @@ def check(tool: str, tool_input: dict, config: dict, cwd: str | None = None, ses
     """cwd is the session's working directory (the hook payload's `cwd`); defaults to this process's.
     session is the hook payload, which names the transcript an approval is checked against."""
     _TAILS.clear()  # each call reads the record anew: a rewrite in place can keep a file's size and its time stamp
+    _CALL.update(codes={}, ran={}, proofs={}, files={}, until=time.monotonic() + CALL_SECONDS)  # and every script it runs
     if not cwd:
         try:
             cwd = str(tool_input.get("workdir") or "") or os.getcwd()

@@ -45,6 +45,7 @@ def world(tmp_path, monkeypatch):
     record.parent.mkdir(parents=True)
     record.write_text(json.dumps({"type": "user", "message": {"role": "user", "content": "hello"}}) + "\n", encoding="utf-8")
     (paths.state() / "approvals").mkdir(parents=True)
+    paths.write_json(paths.state() / "transcripts" / "S-principal.json", {"path": str(record)})  # as the prompt hook records it
     work = tmp_path / "work"
     work.mkdir()
     (work / "forged.jsonl").write_text("{}\n", encoding="utf-8")
@@ -209,8 +210,8 @@ READS = {
     "awk": "awk -F, '{{ print $1 }}' {rec}",
     "sed": "sed -n '1,5p' {rec}",
     "python -I script that reads": "python3 -I {work}/read.py {rec}",
-    "python -c that reads": "python3 -c 'import sys; print(open(sys.argv[1]).read()[:40])' {rec}",
-    "python heredoc that reads": "python3 - {rec} <<'EOF'\nimport json, sys\nprint(sum(1 for _ in open(sys.argv[1])))\nEOF",
+    "python -c that reads": "python3 -I -c 'import sys; print(open(sys.argv[1]).read()[:40])' {rec}",
+    "python heredoc that reads": "python3 -I - {rec} <<'EOF'\nimport json, sys\nprint(sum(1 for _ in open(sys.argv[1])))\nEOF",
     "synthesis": "synthesis approvals",
     "synthesis sessions": "synthesis sessions show S-principal --kinds user",
     "git": "git -C {work} status",
@@ -218,7 +219,7 @@ READS = {
     "node naming no protected folder": "node -e 'console.log(1)'",
     "a script naming no protected folder": "python3 {work}/copy.py {forged} {work}/copied.jsonl",
     "a script run from inside a transcript folder": "cd {home}/.claude/projects/-work && python3 -B {work}/copy.py {forged} {work}/out.jsonl",
-    "json.tool reading one file": "python3 -m json.tool {rec}",
+    "json.tool reading one file": "python3 -I -m json.tool {rec}",
 }
 
 
@@ -297,7 +298,7 @@ GIT_NOT_READS = {
 @pytest.mark.parametrize("name", sorted(GIT_READS_SPELLED))
 def test_a_spelled_git_read_in_the_archive_is_a_read(world, name):
     program = "import subprocess, sys; " + GIT_READS_SPELLED[name]
-    assert _verdict(world, f"python3 -c {shlex.quote(program)} {shlex.quote(str(paths.sessions()))}") is None
+    assert _verdict(world, f"python3 -I -c {shlex.quote(program)} {shlex.quote(str(paths.sessions()))}") is None
 
 
 @pytest.mark.parametrize("name", sorted(GIT_NOT_READS))
@@ -365,3 +366,497 @@ def test_every_window_request_in_a_line_needs_its_own_code(world):
         assert reason and HELD in reason and "50 sends in 12 h" in reason, line
     world["approve"](_verdict(world, second))
     assert _verdict(world, f"{first} ; {second}") is None
+
+
+# --- review round 1 of 5.22.1: one test for each finding, before its fix ----------------------------------------------
+
+def _raw(world):
+    return {"F": str(world["work"] / "forged.jsonl"), "R": str(world["record"]), "W": str(world["work"]), "H": str(world["home"]),
+            "S": str(paths.state()), "G": str(paths.state() / "approvals" / ("a" * 64 + ".json")), "T": str(world["record"].parent)}
+
+
+def _held_or_refused(world, line: str) -> str:
+    reason = _verdict(world, line)
+    assert reason, line
+    return reason
+
+
+@pytest.mark.parametrize("line", ["cp {{{F},{R}}}", "cp {{{F},{G}}}", "cp {W}/forged.{{jsonl,x}} {T}/{{S-principal,x}}.jsonl",
+                                  "cat {F} >! {R}", "cat {F} >>! {R}", "cat {F} >&! {R}", "cat {F} &>! {R}", "cat {F} &>> {R}"])
+def test_finding_1_brace_lists_and_every_redirect_form(world, line):
+    _held_or_refused(world, line.format(**_raw(world)))
+
+
+@pytest.mark.parametrize("line", ["sed -n '/[/]*/w {R}' {F}", "sed -n '/[/]/w {G}' {F}", "sed -n 's/[/]/x/w {R}' {F}",
+                                  "sed -n '/x/{{w {R}' {F}"])
+def test_finding_2_sed_brackets_and_programs_it_cannot_read(world, line):
+    _held_or_refused(world, line.format(**_raw(world)))
+
+
+@pytest.mark.parametrize("line", ["awk 'BEGIN {{ \"cp \" ARGV[1] \" \" ARGV[2] | getline }}' {F} {R}",
+                                  "awk -v c=\"cp {F} {R}\" 'BEGIN {{ c | getline }}'", "awk 'BEGIN {{ c = \"cp\"; c | getline }}' {R}",
+                                  "awk '{{ print > \"{R}\"' {F}"])
+def test_finding_3_awk_judged_by_its_program(world, line):
+    _held_or_refused(world, line.format(**_raw(world)))
+
+
+@pytest.mark.parametrize("line", ["git -C {W} log --output={R}", "git -C {W} show --output={G} HEAD", "git --work-tree={S} checkout HEAD -- a",
+                                  "git -C {T} init", "git -C {T} hash-object -w {F}", "git -C {T} update-index --add x"])
+def test_finding_4_git_that_writes_waits(world, line):
+    _held_or_refused(world, line.format(**_raw(world)))
+
+
+@pytest.mark.parametrize("launcher", ["script -q /dev/null", "arch -arm64", "taskpolicy -c utility", "time -p", "xcrun", "uv run",
+                                      "noglob", "stdbuf -o0", "sandbox-exec -n no-network"])
+def test_finding_5_a_launcher_hides_nothing(world, launcher):
+    _held_or_refused(world, f"{launcher} perl -MFile::Copy -e 'copy(\"{_raw(world)['F']}\", \"{_raw(world)['R']}\")'")
+
+
+@pytest.mark.parametrize("line", ["view -es -c 'w! {R}' -c q {F}", "python3.13t -c 'print(1)' {R}", "pythonw -c 'print(1)' {R}",
+                                  "python3-intel64 -c 'print(1)' {R}", "ipython -c 'print(1)' {R}", "R -e 'file.copy(\"{F}\", \"{R}\")'",
+                                  "zx {W}/x.mjs {R}", "gdb -batch -ex 'python print(1)' {R}", "lldb -o 'script print(1)' {R}"])
+def test_finding_6_a_program_off_every_list_waits(world, line):
+    _held_or_refused(world, line.format(**_raw(world)))
+
+
+@pytest.fixture
+def planted(world):
+    """A work folder where the agent planted modules that Python would find before the standard library's."""
+    folder = world["work"] / "planted"
+    for name, text in (("synthesis/__init__.py", ""), ("synthesis/cli.py", "print('planted')\n"), ("json/__init__.py", ""),
+                       ("json/tool.py", "print('planted')\n")):
+        (folder / name).parent.mkdir(parents=True, exist_ok=True)
+        (folder / name).write_text(text, encoding="utf-8")
+    (folder / "x").mkdir()
+    (folder / "x" / "json.py").write_text("print('planted')\n", encoding="utf-8")
+    return folder
+
+
+@pytest.mark.parametrize("line,where", [("python3 -m synthesis.cli approvals {R}", ""), ("python3 -m json.tool {R}", ""),
+                                        ("python3 -c 'import json, sys; print(open(sys.argv[1]).read())' {R}", "x")])
+def test_finding_7_python_finds_the_agents_module_first(world, planted, line, where):
+    reason = guards.check("Bash", {"command": line.format(**_raw(world))}, CONFIG, cwd=str(planted / where), session=world["session"])
+    assert reason, line
+
+
+def test_finding_7_isolated_python_still_reads(world, planted):
+    line = "python3 -I -c 'import json, sys; print(open(sys.argv[1]).read())' {R}".format(**_raw(world))
+    assert guards.check("Bash", {"command": line}, CONFIG, cwd=str(planted / "x"), session=world["session"]) is None
+
+
+def test_finding_8_a_hard_link_from_a_record_waits(world):
+    _held_or_refused(world, "ln {R} {W}/hl".format(**_raw(world)))
+
+
+@pytest.mark.parametrize("line", ["tar -xPf {W}/abs.tar", "bsdtar -x -P -f {W}/abs.tar", "tar --absolute-names -xf {W}/abs.tar",
+                                  "unzip -: {W}/abs.zip"])
+def test_finding_9_an_archive_with_absolute_members_waits(world, line):
+    _held_or_refused(world, line.format(**_raw(world)))
+
+
+def test_finding_10_a_fifo_never_stops_the_guard(world):
+    os.mkfifo(world["work"] / "fifo")
+    line = "false && perl {W}/fifo; cp {F} {R}".format(**_raw(world))
+    code = ("import sys; sys.path.insert(0, sys.argv[1]); from synthesis import guards; "
+            "print(bool(guards.check('Bash', {'command': sys.argv[2]}, {}, cwd=sys.argv[3])))")
+    run = subprocess.run([sys.executable, "-c", code, str(ROOT), line, str(world["work"])], capture_output=True, text=True, timeout=20)
+    assert run.stdout.strip() == "True", run.stderr[-300:]
+
+
+def test_finding_11_a_code_binds_the_script_it_runs(world):
+    script = world["work"] / "count.pl"
+    script.write_text("my $n = 0; $n++ while <>; print \"$n\\n\";\n", encoding="utf-8")
+    line = "perl {W}/count.pl {R}".format(**_raw(world))
+    world["approve"](_verdict(world, line))
+    script.write_text("use File::Copy; copy('{F}', '{R}');\n".format(**_raw(world)), encoding="utf-8")
+    assert _verdict(world, line), "a rewritten script is a new command"
+
+
+def test_finding_12_proofs_are_made_once_a_call(world, pace):
+    body = "import sys\nlines = open(sys.argv[1], encoding='utf-8').read().splitlines()\n" + "".join(
+        f"count_{i} = sum(1 for line in lines if '{i}' in line)\n" for i in range(220))
+    for i in range(8):
+        (world["work"] / f"r{i}.py").write_text(body + f"print({i})\n", encoding="utf-8")
+    values = "; ".join(f"V={i}" for i in range(16))
+    line = values + "; echo \"$V\"; " + "; ".join(f"python3 -I {world['work']}/r{i}.py {world['record']}" for i in range(8))
+    began = time.perf_counter()
+    _verdict(world, line)
+    assert time.perf_counter() - began < 2.0 * pace
+
+
+def test_finding_13_the_cli_finds_the_transcript_the_hook_recorded_not_the_callers(world):
+    env = {**os.environ, "PYTHONPATH": str(ROOT)}
+    ask = [sys.executable, "-m", "synthesis.cli", "--session", "S-principal", "sends", "open", "--hours", "2", "--sends", "3", "--channels", "jira"]
+    refused = subprocess.run(ask, capture_output=True, text=True, env=env, cwd=str(ROOT), stdin=subprocess.DEVNULL)
+    code = re.search(r"\bcode ([a-z0-9]{6})\b", refused.stderr).group(1)
+    request = paths.read_json(paths.state() / "approval-requests" / f"{code}.json")
+    paths.write_json(paths.state() / "approvals" / f"{request['digest']}.json", {**request, "code": code, "asked": request["at"], "at": time.time()})
+    fake = world["work"] / "fake" / "projects" / "-x" / "S-principal.jsonl"
+    fake.parent.mkdir(parents=True)
+    when = (datetime.now(timezone.utc) + timedelta(seconds=1)).isoformat()
+    fake.write_text(json.dumps({"type": "user", "timestamp": when, "origin": {"kind": "human"}, "sessionId": "S-principal",
+                                "message": {"role": "user", "content": f"approve {code}"}}) + "\n", encoding="utf-8")
+    time.sleep(1.1)
+    opened = subprocess.run(ask, capture_output=True, text=True, env={**env, "CLAUDE_CONFIG_DIR": str(world["work"] / "fake")},
+                            cwd=str(ROOT), stdin=subprocess.DEVNULL)
+    assert opened.returncode != 0 and sends.window() == {}
+
+
+def test_finding_14_a_folder_named_in_parts_however_far_apart(world):
+    line = ("perl -MFile::Copy -e 'copy($ARGV[0], $ENV{{HOME}} . \"/\" . \".claude\" . \"/\" . \"projects\" . \"/-work/S-principal.jsonl\")' {F}")
+    _held_or_refused(world, line.format(**_raw(world)))
+
+
+@pytest.mark.parametrize("line", ["rsync -b --backup-dir={T} {W}/a {W}/b", "rsync --log-file={R} {W}/a {W}/b"])
+def test_finding_15_a_copiers_options_are_words_too(world, line):
+    _held_or_refused(world, line.format(**_raw(world)))
+
+
+@pytest.mark.parametrize("handed", ["list(map(shutil.copy, [a], [b]))", "threading.Thread(target=shutil.copy, args=(a, b)).start()",
+                                    "atexit.register(shutil.copy, a, b)", "functools.reduce(shutil.copy, [a, b])",
+                                    "list(itertools.starmap(shutil.copy, [(a, b)]))", "(lambda f: f(a, b))(shutil.copy)",
+                                    "{'c': shutil.copy}['c'](a, b)", "(c := shutil.copy)(a, b)", "sys.modules['shutil'].copy(a, b)",
+                                    "shutil.copy.__call__(a, b)"])
+def test_finding_16_a_writer_handed_on_is_a_write(world, handed):
+    program = "import atexit, functools, itertools, shutil, sys, threading; a, b = sys.argv[1], sys.argv[2]; " + handed
+    _held_or_refused(world, f"python3 -I -c {shlex.quote(program)} {world['forged']} {world['rec']}")
+
+
+@pytest.mark.parametrize("text", ["from synthesis import sends\ngetattr(sends, 'open_' + 'window')(1, ['all'], count=1)\n",
+                                  "from synthesis import paths\npaths.write_json(paths.state() / 'approvals' / 'x.json', {})\n"])
+def test_finding_17_a_script_file_using_synthesis_code_that_writes(world, text):
+    (world["work"] / "uses.py").write_text(text, encoding="utf-8")
+    _held_or_refused(world, f"python3 -I {world['work']}/uses.py")
+
+
+@pytest.mark.parametrize("line", ["zsh < {W}/x.sh", "bash < {W}/x.sh", "sh -s < {W}/x.sh", "sh /dev/stdin < {W}/x.sh", "perl < {W}/x.pl",
+                                  "cat {W}/x.sh | sh"])
+def test_finding_18_a_script_on_a_shells_input_is_read(world, line):
+    (world["work"] / "x.sh").write_text("cp {F} {R}\n".format(**_raw(world)), encoding="utf-8")
+    (world["work"] / "x.pl").write_text("use File::Copy; copy('{F}', '{R}');\n".format(**_raw(world)), encoding="utf-8")
+    _held_or_refused(world, line.format(**_raw(world)))
+
+
+@pytest.mark.parametrize("line", ["env -S 'perl -ne print' {F} {R}", "cat {W}/y.sh | sh"])
+def test_finding_19_the_hold_names_the_program_that_runs(world, line):
+    (world["work"] / "y.sh").write_text("perl -ne print {R}\n".format(**_raw(world)), encoding="utf-8")
+    reason = _held_or_refused(world, line.format(**_raw(world)))
+    assert "`perl`" in reason and "`forged" not in reason and "`y.sh`" not in reason, reason
+
+
+@pytest.mark.parametrize("line", ["cat {R} > {W}/copy", "git -C {T} log -1", "python3 -I -c 'import sys; print(open(sys.argv[1]).read())' {R}",
+                                  "ls {H}/.claude", "grep -c user {R}"])
+def test_round_one_reads_still_pass(world, line):
+    assert _verdict(world, line.format(**_raw(world))) is None, line
+
+
+# --- only the guard's own release is the plugin's, and the runtime is protected (coordinator, 2026-11-14) -------------
+
+def _reader_script(folder: Path, name: str = "x.py") -> Path:
+    """A script that waits unless it is the plugin's own: it copies the file it is handed beside that file. (Until the
+    script text check, a long script that only read waited for its length alone.)"""
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / name).write_text("import shutil, sys\nshutil.copy(sys.argv[1], sys.argv[1] + '.bak')\n", encoding="utf-8")
+    return folder / name
+
+
+def test_a_script_planted_in_the_synthesis_home_outside_its_release_waits(world):
+    script = _reader_script(paths.home() / "outbox")
+    assert HELD in (_verdict(world, f"python3 {script} {world['rec']}") or "")
+
+
+def test_a_file_beside_an_unchanged_guard_in_a_plugin_cache_waits(world):
+    cache = world["home"] / ".claude" / "plugins" / "cache" / "m" / "synthesis-skills" / "9.9.9"
+    (cache / "synthesis").mkdir(parents=True)
+    (cache / "synthesis" / "guards.py").write_bytes((ROOT / "synthesis" / "guards.py").read_bytes())
+    script = _reader_script(cache / "skills" / "planted" / "scripts")
+    assert HELD in (_verdict(world, f"python3 {script} {world['rec']}") or "")
+
+
+@pytest.mark.parametrize("target", ["bin/synthesis-hook", "current/synthesis/guards.py", "releases/abc/synthesis/guards.py"])
+def test_the_runtime_is_a_protected_folder(world, target):
+    reason = _verdict(world, f"cp {world['forged']} {paths.home() / target}")
+    assert reason and reason.startswith("Refused"), reason
+
+
+def test_the_rituals_scripts_run_from_the_installed_runtime_still_pass(world):
+    from synthesis import install
+    install.install(ROOT)
+    script = paths.home() / "current" / "skills" / "synthesis-daily-rituals" / "scripts" / "ritual_state.py"
+    assert script.is_file()
+    assert _verdict(world, f"python3 {script} --direction start") is None
+    cache = world["home"] / ".claude" / "plugins" / "cache" / "m" / "synthesis-skills" / "9.9.9" / "skills" / "synthesis-daily-rituals" / "scripts"
+    cache.mkdir(parents=True)
+    (cache / "ritual_state.py").write_bytes(script.read_bytes())  # the same bytes as the protected runtime's copy
+    for sibling in script.parent.glob("*.py"):
+        (cache / sibling.name).write_bytes(sibling.read_bytes())
+    assert _verdict(world, f"python3 {cache / 'ritual_state.py'} --direction start") is None
+
+
+# --- what the 30-day replay of recorded commands showed the round-1 code misread (2026-11-14) -----------------------
+
+@pytest.mark.parametrize("line", [
+    "F=({W}/notes.md drafts/b.md) && ls \"${{F[@]}}\"",                       # an array assignment is no subshell
+    "printf '%s\\n' '' {R}",                                                    # an empty word is no writing option
+    "echo $(( $(date +%s) - $(stat -f %m {R}) ))",                             # arithmetic runs only its substitutions
+    "python3 -I - <<'EOF'\nimport sys  # see ~/.synthesis/coordination\nprint(getattr(sys, 'ver' + 'sion'))\nEOF"])
+def test_what_the_replay_showed_misread_now_passes(world, line):
+    (world["work"] / "notes.md").write_text("see ~/.claude/projects for the transcripts\n", encoding="utf-8")
+    assert _verdict(world, line.format(**_raw(world))) is None
+
+
+# --- Python without -I: proven by its reader, with no module of the agent's where it starts (coordinator, 2026-11-14) -
+
+READ_HEREDOC = "python3 - {R} <<'EOF'\nimport json, sys\nprint(len(open(sys.argv[1], encoding='utf-8').read()))\nEOF"
+
+
+def test_a_read_only_heredoc_from_a_clean_folder_passes_without_isolation(world):
+    assert _verdict(world, READ_HEREDOC.format(**_raw(world))) is None
+    assert _verdict(world, "python3 -c 'import sys; print(open(sys.argv[1]).read()[:9])' {R}".format(**_raw(world))) is None
+    assert _verdict(world, "python3 -m json.tool {R}".format(**_raw(world))) is None
+
+
+def test_a_module_that_could_stand_in_or_a_path_variable_on_the_line_waits_and_the_hold_says_how_to_need_none(world):
+    (world["work"] / "json.py").write_text("print('planted')\n", encoding="utf-8")
+    reason = _verdict(world, READ_HEREDOC.format(**_raw(world)))
+    assert reason and HELD in reason and "-I" in reason and "needs no code" in reason, reason
+    assert HELD in (_verdict(world, "python3 -m json.tool {R}".format(**_raw(world))) or "")
+    (world["work"] / "json.py").unlink()
+    reason = _verdict(world, ("PYTHONPATH=. " + READ_HEREDOC).format(**_raw(world)))
+    assert reason and HELD in reason and "-I" in reason, reason
+    assert _verdict(world, ("cd /tmp && " + READ_HEREDOC).format(**_raw(world))) is None  # after the line's own cd
+
+
+# --- a Python script file is judged by what its text shows (coordinator, 2026-11-14, after the replay) ----------------
+
+def _script(folder: Path, name: str, body: str) -> Path:
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / name).write_text(body, encoding="utf-8")
+    return folder / name
+
+
+def test_a_long_script_with_no_write_passes_even_where_the_reader_cannot_place_its_reads(world):
+    reads = "import os, sys\nbase = sys.argv[1]\n" + "".join(f"n{i} = len(open(os.path.join(base, 'x{i}')).read()) if os.path.exists(os.path.join(base, 'x{i}')) else 0\n"
+                                                         for i in range(400))
+    script = _script(world["work"] / "long", "count.py", reads)
+    assert len(reads) > 16 * 1024
+    assert _verdict(world, f"python3 {script} {world['record'].parent}") is None
+
+
+def test_a_script_and_the_module_beside_it_it_imports_are_read_together(world):
+    folder = world["work"] / "pair"
+    _script(folder, "helper.py", "def count(p):\n    return len(open(p, encoding='utf-8').read())\n")
+    script = _script(folder, "main.py", "import sys\nimport helper\nprint(helper.count(sys.argv[1]))\n")
+    assert _verdict(world, f"python3 {script} {world['rec']}") is None
+    _script(folder, "helper.py", "import shutil\ndef count(p):\n    shutil.copy(p, p + '.bak')\n    return 0\n")
+    assert HELD in (_verdict(world, f"python3 {script} {world['rec']}") or "")
+
+
+def test_a_module_beside_a_script_named_like_one_found_elsewhere_still_stands_in(world):
+    folder = world["work"] / "shadow"
+    _script(folder, "json.py", "print('planted')\n")
+    script = _script(folder, "main.py", "import json, sys\nprint(len(open(sys.argv[1]).read()))\n")
+    assert HELD in (_verdict(world, f"python3 {script} {world['rec']}") or "")
+
+
+def test_a_writer_handed_on_in_a_script_still_waits(world):
+    script = _script(world["work"] / "handed", "copy.py", "import shutil, sys\nlist(map(shutil.copy, [sys.argv[1]], [sys.argv[2]]))\n")
+    assert HELD in (_verdict(world, f"python3 {script} {world['forged']} {world['rec']}") or "")
+
+
+def test_df_is_a_reader(world):
+    assert _verdict(world, f"df -h {world['home']}/.claude") is None
+
+
+def test_a_file_in_the_folder_a_script_runs_from_does_not_stand_in(world):
+    """Python puts a script's own folder first on its path, not the folder it runs from (the replay: 149 commands)."""
+    folder = world["work"] / "runs-from"
+    _script(folder, "json.py", "print('planted')\n")
+    script = _script(world["work"] / "elsewhere", "pretty.py", "import json, sys\nprint(json.dumps(len(open(sys.argv[1]).read())))\n")
+    assert guards.check("Bash", {"command": f"python3 {script} {world['rec']}"}, CONFIG, cwd=str(folder), session=world["session"]) is None
+
+
+def test_isolated_python_imports_nothing_beside_its_script(world):
+    folder = world["work"] / "isolated"
+    _script(folder, "json.py", "print('planted')\n")
+    script = _script(folder, "main.py", "import json, sys\nprint(len(open(sys.argv[1]).read()))\n")
+    assert _verdict(world, f"python3 -I {script} {world['rec']}") is None
+
+
+def test_a_member_built_from_itself_is_read_and_a_write_through_it_still_waits(world):
+    """The reader followed a member read back into itself without end (the replay: 526 commands it could not judge)."""
+    body = ("import sys\nclass Box:\n    def __init__(self, p):\n        self.p = p\n        self.p = self.p + ''\n"
+            "d = {'a': sys.argv[1]}\nfor k in list(d):\n    d[k] = d[k] + ''\n")
+    reads = _script(world["work"] / "member", "reads.py", body + "print(len(open(Box(d['a']).p).read()))\n")
+    assert _verdict(world, f"python3 {reads} {world['rec']}") is None
+    assert _verdict(world, f"python3 -I - {world['rec']} <<'EOF'\n{body}print(len(open(Box(d['a']).p).read()))\nEOF") is None
+    writes = _script(world["work"] / "member", "writes.py", body + "open(Box(d['a']).p, 'a').write('x')\n")
+    assert _verdict(world, f"python3 {writes} {world['rec']}")
+
+
+def test_argparse_opening_a_file_for_writing_is_a_write(world):
+    program = ("import argparse\np = argparse.ArgumentParser()\np.add_argument('out', type=argparse.FileType('w'))\n"
+               "p.parse_args().out.write('{}')\n")
+    script = _script(world["work"] / "filetype", "out.py", program)
+    assert HELD in (_verdict(world, f"python3 {script} {world['rec']}") or "")
+    _held_or_refused(world, f"python3 -I -c {shlex.quote(program)} {world['rec']}")
+
+
+def test_a_module_run_with_m_from_the_folder_it_runs_from_is_read_as_a_script(world):
+    folder = world["work"] / "mods"
+    _script(folder, "tally.py", "import sys\nprint(len(open(sys.argv[1], encoding='utf-8').read()))\n")
+    _script(folder / "kit", "__init__.py", "")
+    _script(folder / "kit", "__main__.py", "from .work import run\nrun()\n")
+    _script(folder / "kit", "work.py", "import shutil, sys\ndef run():\n    shutil.copy(sys.argv[1], sys.argv[2])\n")
+    run = lambda line: guards.check("Bash", {"command": line}, CONFIG, cwd=str(folder), session=world["session"])  # noqa: E731
+    assert run(f"python3 -m tally {world['rec']}") is None
+    assert HELD in (run(f"python3 -m kit {world['forged']} {world['rec']}") or "")
+
+
+def test_a_module_installed_elsewhere_and_run_with_m_still_waits(world):
+    """Its first file is not the program (pip's and pytest's hand everything on), nor need it be this Python's."""
+    assert HELD in (_verdict(world, f"python3 -m json.tool {world['rec']} {world['work']}/pretty.json") or "")
+
+
+def test_a_script_past_the_text_limit_waits(world):
+    script = _script(world["work"] / "big", "big.py", "import sys\nprint(sys.argv[1])\n" + "#" * guards.TEXT_LIMIT + "\n")
+    assert HELD in (_verdict(world, f"python3 {script} {world['rec']}") or "")
+
+
+def test_a_code_binds_the_modules_a_script_imports(world):
+    folder = world["work"] / "bound"
+    _script(folder, "helper.py", "import sys\ndef save(text):\n    open(sys.argv[2], 'w').write(text)\n")
+    script = _script(folder, "main.py", "import sys\nimport helper\nhelper.save(open(sys.argv[1]).read())\n")
+    line = f"python3 {script} {world['rec']} {world['work']}/copy.txt"
+    world["approve"](_verdict(world, line))
+    _script(folder, "helper.py", "import shutil, sys\ndef save(text):\n    shutil.copy(sys.argv[1] + '.x', sys.argv[1])\n")
+    assert HELD in (_verdict(world, line) or ""), "a rewritten module is a new command"
+
+
+def test_a_module_beside_a_script_that_uses_synthesis_code_waits(world):
+    folder = world["work"] / "uses-beside"
+    _script(folder, "helper.py", "from synthesis import paths\ndef go():\n    paths.write_json(paths.state() / 'approvals' / 'x.json', {})\n")
+    script = _script(folder, "main.py", "import helper\nhelper.go()\n")
+    _held_or_refused(world, f"python3 {script}")
+
+
+LOOPED = ("import sys\nclass Box:\n    def __init__(self, p):\n        self.p = p\n        self.p = self.p + ''\n"
+          "b = Box(sys.argv[1])\n")
+
+
+def test_a_member_built_from_itself_leaves_a_write_to_a_plain_path_placed(world):
+    script = _script(world["work"] / "looped", "report.py",
+                     LOOPED + "open('/tmp/a-report-of-its-own.txt', 'w').write(str(len(open(b.p).read())))\n")
+    assert _verdict(world, f"python3 {script} {world['rec']}") is None
+
+
+def test_a_writer_by_name_through_a_member_built_from_itself_waits(world):
+    script = _script(world["work"] / "looped", "figure.py", LOOPED + "figure = object()\nfigure.savefig(b.p)\n")
+    assert HELD in (_verdict(world, f"python3 {script} {world['rec']}") or "")
+
+
+# --- a program that imports synthesis waits only when it writes through it, reaches it in a way its reader cannot
+# follow, or names one of its writers (the coordinator, 2026-11-14: waiting on every import stopped every probe, review
+# script and skill script outside the runtime that uses synthesis's code, about 1,300 a month) ---------------------
+
+READS_SYNTHESIS = ("import sys\nfrom synthesis import yamlish, paths, guards, sessions\nfrom synthesis.yamlish import load as parse\n"
+                   "print(parse('a: 1'), yamlish.load_mapping('b: 2'), paths.home(), len(sessions.ADAPTERS), 'x' in sessions.CITED)\n"
+                   "print(guards.check('Bash', {'command': 'ls'}, {}, cwd='.'))\n")
+
+
+def test_a_script_that_only_reads_through_synthesis_passes(world):
+    script = _script(world["work"] / "reads-synthesis", "look.py", READS_SYNTHESIS)
+    assert _verdict(world, f"python3 {script}") is None
+    _script(world["work"] / "reads-synthesis", "helper.py", "from synthesis import yamlish\ndef parse(text):\n    return yamlish.load(text)\n")
+    main = _script(world["work"] / "reads-synthesis", "main.py", "import sys\nimport helper\nprint(helper.parse(open(sys.argv[1]).read()))\n")
+    assert _verdict(world, f"python3 {main} {world['rec']}") is None
+    assert _verdict(world, f"python3 -I - <<'EOF'\n{READS_SYNTHESIS}EOF") is None
+    handed = _script(world["work"] / "reads-synthesis", "each.py", "import sys\nfrom synthesis import paths\nprint(list(map(paths.read_json, sys.argv[1:])))\n")
+    assert _verdict(world, f"python3 {handed} {world['rec']}") is None  # a function the source shows never writes reads, whoever calls it
+    report = _script(world["work"] / "reads-synthesis", "report.py", "from synthesis import paths\n"
+                     "found = sorted(p.name for p in (paths.state() / 'approvals').glob('*.json'))\n"
+                     "open('/tmp/a-report-of-its-own.txt', 'w').write(str(found))\n")
+    assert _verdict(world, f"python3 {report}") is None  # its paths spelled out, the write is placed outside them
+    shown = "import synthesis.board\nfrom synthesis import guards\nprint(synthesis.board, guards.TEXT_LIMIT, synthesis.board.__file__)\n"
+    assert _verdict(world, f"python3 -I - <<'EOF'\n{shown}EOF") is None  # a module printed, a value made by a tuple, a dunder: read
+
+
+def test_a_write_where_synthesis_paths_lead_inside_an_f_string_waits(world):
+    script = _script(world["work"] / "uses-synthesis", "fstring.py",
+                     "from synthesis import paths\nopen(f\"{paths.board()}/sessions/x.json\", \"w\").write(\"{}\")\n")
+    assert HELD in (_verdict(world, f"python3 {script}") or "")
+
+
+@pytest.mark.parametrize("body", [
+    "from synthesis import board\nboard.claim('S-x', ['/tmp/a'])\n",                                  # names a writer
+    "from synthesis.paths import write_json as keep\nkeep('/tmp/x.json', {})\n",                      # by another name
+    "import synthesis.sends\nprint(synthesis.sends.open_window.__doc__)\n",                           # named, not called
+    "from synthesis import paths\nname = 'home'\nprint(getattr(paths, name)())\n",                     # getattr on it
+    "from synthesis import sends\nprint(vars(sends).keys())\n",                                         # vars()
+    "from synthesis import paths\nprint(paths.__dict__['home']())\n",                                   # __dict__
+    "from synthesis import paths\ndef go(m):\n    return m.home()\nprint(go(paths))\n",                # a module handed on
+    "from synthesis import paths\nwhere = paths.state\n(where() / 'approvals' / 'x.json').write_text('{}')\n",  # where its paths lead
+    "from synthesis import paths\nopen(str(paths.board()) + '/sessions/x.json', 'w').write('{}')\n",
+    "from synthesis.paths import os as o\no.remove('/tmp/x')\n",                                          # a name its module imports
+    "import importlib\nimport synthesis\nm = importlib.import_module('synthesis.' + 'sends')\n",      # a name it builds
+    "from synthesis.approvals import *\n",                                                              # every name at once
+])
+def test_a_script_that_writes_through_synthesis_or_reaches_it_unfollowably_waits(world, body):
+    script = _script(world["work"] / "uses-synthesis", "use.py", body)
+    assert HELD in (_verdict(world, f"python3 {script}") or "")
+
+
+def test_an_inline_program_naming_a_synthesis_writer_waits_and_one_reaching_it_unfollowably_is_refused(world):
+    assert HELD in (_verdict(world, "python3 -I -c 'from synthesis import board; board.release(\"S-x\", [\"/tmp/a\"])'") or "")
+    reason = _verdict(world, "python3 -I -c 'from synthesis import paths; print(getattr(paths, \"ho\" + \"me\")())'")
+    assert reason and reason.startswith("Refused"), reason
+
+
+def _writers_in(root: Path) -> set:
+    """synthesis's own functions that write a file, directly (an open to write, os's and shutil's writing calls, a
+    path's own) or through another of its own; a class, when one of its methods writes directly or making one writes
+    through another (so the board's readers, whose sessions only prune what has run out, read)."""
+    import ast
+    os_w = {"replace", "rename", "renames", "remove", "unlink", "makedirs", "mkdir", "rmdir", "removedirs", "symlink", "link",
+            "chmod", "chown", "utime", "truncate", "write"}
+    sh_w = {"copy", "copy2", "copyfile", "copytree", "move", "rmtree", "make_archive", "unpack_archive", "chown", "copymode", "copystat"}
+    path_w = {"write_text", "write_bytes", "mkdir", "touch", "unlink", "rmdir", "symlink_to", "hardlink_to", "chmod", "lchmod"}
+
+    def opens_to_write(c) -> bool:
+        f = c.func
+        if not ((isinstance(f, ast.Name) and f.id == "open") or (isinstance(f, ast.Attribute) and f.attr == "open"
+                                                                 and not (isinstance(f.value, ast.Name) and f.value.id == "os"))):
+            return False
+        at = 1 if isinstance(f, ast.Name) or (isinstance(f.value, ast.Name) and f.value.id in ("io", "codecs", "builtins", "gzip")) else 0
+        mode = (c.args[at:at + 1] or [k.value for k in c.keywords if k.arg == "mode"] or [None])[0]
+        return mode is not None and not (isinstance(mode, ast.Constant) and isinstance(mode.value, str) and not set(mode.value) & set("wax+"))
+    found, calls = {}, {}
+    for file in sorted((root / "synthesis").glob("*.py")):
+        tree = ast.parse(file.read_text(encoding="utf-8"))
+        alias = {a.asname or a.name: a.name for n in ast.walk(tree) if isinstance(n, ast.ImportFrom) and n.module == "synthesis" for a in n.names}
+        for top in tree.body:
+            own = [top] if isinstance(top, (ast.FunctionDef, ast.AsyncFunctionDef)) else [
+                f for f in top.body if isinstance(f, (ast.FunctionDef, ast.AsyncFunctionDef))] if isinstance(top, ast.ClassDef) else None
+            if own is None:
+                continue
+            key, writes, called = f"{file.stem}.{top.name}", False, set()
+            for g in own:
+                for c in (n for n in ast.walk(g) if isinstance(n, ast.Call)):
+                    f = c.func
+                    owner = f.value.id if isinstance(f, ast.Attribute) and isinstance(f.value, ast.Name) else ""
+                    writes = writes or opens_to_write(c) or (isinstance(f, ast.Attribute) and (
+                        (owner == "os" and f.attr in os_w) or (owner == "shutil" and f.attr in sh_w) or f.attr in path_w))
+                    if isinstance(top, ast.ClassDef) and g.name not in ("__init__", "__post_init__", "__new__"):
+                        continue  # another method writes through another function only when it is called, which is not followed
+                    called |= {f"{file.stem}.{f.id}"} if isinstance(f, ast.Name) else {f"{alias[owner]}.{f.attr}"} if owner in alias else set()
+            found[key], calls[key] = writes, called
+    writers = {k for k, v in found.items() if v}
+    while any(calls[k] & writers for k in found if k not in writers):
+        writers |= {k for k in found if k not in writers and calls[k] & writers}
+    return writers
+
+
+def test_the_writers_the_guard_knows_are_the_ones_synthesis_has():
+    """The guard's own judging functions (guards.check and the rest) file a hold the principal answers and never grant,
+    so they read (the coordinator, 2026-11-14); every other function that writes is one of synthesis's writers."""
+    assert guards.SYNTHESIS_WRITES == {w for w in _writers_in(ROOT) if not w.startswith("guards.")}

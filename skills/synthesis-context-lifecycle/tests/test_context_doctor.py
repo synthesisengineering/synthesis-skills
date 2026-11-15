@@ -18,8 +18,13 @@ doctor = importlib.util.module_from_spec(SPEC)
 sys.modules[SPEC.name] = doctor
 SPEC.loader.exec_module(doctor)
 
-TODAY = date.today()
-RECENT = (TODAY - timedelta(days=2)).isoformat()
+def today() -> date:
+    """Today as the doctor reads it, taken when each test runs, so a suite that crosses midnight agrees with it."""
+    return date.today()
+
+
+def recent() -> str:
+    return (today() - timedelta(days=2)).isoformat()
 
 
 def _git(repo, *args):
@@ -37,7 +42,7 @@ def isolated(tmp_path, monkeypatch):
         monkeypatch.delenv(key, raising=False)
 
 
-def context(status="Active", phase="Build", last=RECENT, body=""):
+def context(status="Active", phase="Build", last=recent(), body=""):
     return f"# Project\n\n**Phase:** {phase}\n**Status:** {status}\n**Last session:** {last}\n\n## Current State\n\nWorking.\n{body}"
 
 
@@ -49,7 +54,7 @@ def kb(tmp_path):
     root = tmp_path / "ai-knowledge-test"
     subprocess.run(["git", "clone", "-q", str(remote), str(root)], check=True, capture_output=True)
     root.joinpath("projects").mkdir()
-    write_index(root, [{"id": "alpha", "status": "active", "last_session": RECENT}])
+    write_index(root, [{"id": "alpha", "status": "active", "last_session": recent()}])
     add_project(root, "alpha", context())
     publish(root)
     return root
@@ -64,11 +69,11 @@ def write_index(root, entries):
     (root / "projects" / "index.yaml").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
-def add_project(root, pid, text, log=f"### {RECENT}: work\n\nDone.\n"):
+def add_project(root, pid, text, log=f"### {recent()}: work\n\nDone.\n"):
     project = root / "projects" / pid
     (project / "sessions").mkdir(parents=True, exist_ok=True)
     (project / "CONTEXT.md").write_text(text, encoding="utf-8")
-    (project / "sessions" / f"{RECENT[:7]}.md").write_text(f"# Log\n\n{log}", encoding="utf-8")
+    (project / "sessions" / f"{recent()[:7]}.md").write_text(f"# Log\n\n{log}", encoding="utf-8")
     return project
 
 
@@ -98,8 +103,8 @@ def test_context_over_150_lines_active_or_80_completed_fails_and_reference_over_
     add_project(kb, "alpha", context(body="line\n" * 160))
     add_project(kb, "done", context(status="Completed", body="line\n" * 90))
     (kb / "projects" / "alpha" / "REFERENCE.md").write_text("fact\n" * 310, encoding="utf-8")
-    write_index(kb, [{"id": "alpha", "status": "active", "last_session": RECENT},
-                     {"id": "done", "status": "completed", "completed_date": RECENT}])
+    write_index(kb, [{"id": "alpha", "status": "active", "last_session": recent()},
+                     {"id": "done", "status": "completed", "completed_date": recent()}])
     publish(kb)
     code, found, _ = findings(kb, capsys)
     assert code == 1
@@ -109,7 +114,7 @@ def test_context_over_150_lines_active_or_80_completed_fails_and_reference_over_
 
 def test_a_standing_project_over_its_reference_budget_is_told_to_shard(kb, capsys):
     (kb / "projects" / "alpha" / "REFERENCE.md").write_text("fact\n" * 310, encoding="utf-8")
-    write_index(kb, [{"id": "alpha", "status": "active", "last_session": RECENT, "bounded": "false"}])
+    write_index(kb, [{"id": "alpha", "status": "active", "last_session": recent(), "bounded": "false"}])
     publish(kb)
     _, _, data = findings(kb, capsys)
     assert "shard into reference/" in data["findings"][0]["remedy"]
@@ -123,7 +128,7 @@ def test_a_standing_project_over_its_reference_budget_is_told_to_shard(kb, capsy
 ])
 def test_index_and_context_status_must_agree(kb, capsys, status_line, index_status, disagrees):
     add_project(kb, "alpha", context(status=status_line))
-    write_index(kb, [{"id": "alpha", "status": index_status, "last_session": RECENT, "completed_date": RECENT}])
+    write_index(kb, [{"id": "alpha", "status": index_status, "last_session": recent(), "completed_date": recent()}])
     publish(kb)
     _, found, _ = findings(kb, capsys)
     assert (("alpha", "status-agreement", "defect") in found) is disagrees
@@ -137,15 +142,15 @@ def test_status_wins_over_phase_wording(kb, capsys):
 
 def test_unknown_status_is_a_defect_and_a_retired_one_a_warning(kb, capsys):
     add_project(kb, "beta", context())
-    write_index(kb, [{"id": "alpha", "status": "wip", "last_session": RECENT},
-                     {"id": "beta", "status": "ongoing", "last_session": RECENT}])
+    write_index(kb, [{"id": "alpha", "status": "wip", "last_session": recent()},
+                     {"id": "beta", "status": "ongoing", "last_session": recent()}])
     publish(kb)
     _, found, _ = findings(kb, capsys)
     assert ("alpha", "status-vocabulary", "defect") in found and ("beta", "status-vocabulary", "warning") in found
 
 
 def test_last_session_behind_the_newest_log_entry_fails(kb, capsys):
-    older = (TODAY - timedelta(days=9)).isoformat()
+    older = (today() - timedelta(days=9)).isoformat()
     add_project(kb, "alpha", context(last=older))
     publish(kb)
     _, found, data = findings(kb, capsys)
@@ -154,8 +159,8 @@ def test_last_session_behind_the_newest_log_entry_fails(kb, capsys):
 
 
 def test_same_day_staleness_is_caught_by_round_and_each_field_is_judged_alone(kb, capsys):
-    log = f"### {RECENT} (round 10): first\n\nx\n\n### {RECENT} (round 11): second\n\ny\n"
-    add_project(kb, "alpha", context(phase="Review (round 11)", last=f"{RECENT} (round 10)"), log=log)
+    log = f"### {recent()} (round 10): first\n\nx\n\n### {recent()} (round 11): second\n\ny\n"
+    add_project(kb, "alpha", context(phase="Review (round 11)", last=f"{recent()} (round 10)"), log=log)
     publish(kb)
     _, _, data = findings(kb, capsys)
     stale = [f["message"] for f in data["findings"] if f["check"] == "header-currency"]
@@ -163,17 +168,17 @@ def test_same_day_staleness_is_caught_by_round_and_each_field_is_judged_alone(kb
 
 
 def test_the_first_ordinal_in_a_field_is_its_identity(kb, capsys):
-    log = f"### {RECENT} (round 11): second\n\ny\n"
+    log = f"### {recent()} (round 11): second\n\ny\n"
     add_project(kb, "alpha", context(phase="Review (round 11 — round 10 refuted)",
-                                     last=f"{RECENT} (round 11, after round 9)"), log=log)
+                                     last=f"{recent()} (round 11, after round 9)"), log=log)
     publish(kb)
     _, found, _ = findings(kb, capsys)
     assert not any(check in ("header-currency", "header-lag") for _, check, _ in found)
 
 
 def test_phase_moved_but_last_session_did_not(kb, capsys):
-    log = f"### {RECENT} (wave 3): x\n\ny\n"
-    add_project(kb, "alpha", context(phase="Wave 4 started", last=f"{RECENT} (wave 3)"), log=log)
+    log = f"### {recent()} (wave 3): x\n\ny\n"
+    add_project(kb, "alpha", context(phase="Wave 4 started", last=f"{recent()} (wave 3)"), log=log)
     publish(kb)
     _, found, _ = findings(kb, capsys)
     assert ("alpha", "header-lag", "defect") in found
@@ -182,7 +187,7 @@ def test_phase_moved_but_last_session_did_not(kb, capsys):
 def test_a_bulk_commit_touching_many_projects_is_not_a_session(kb, capsys):
     for pid in ("beta", "gamma"):
         add_project(kb, pid, context())
-    write_index(kb, [{"id": p, "status": "active", "last_session": RECENT} for p in ("alpha", "beta", "gamma")])
+    write_index(kb, [{"id": p, "status": "active", "last_session": recent()} for p in ("alpha", "beta", "gamma")])
     publish(kb)
     for pid in ("alpha", "beta", "gamma"):
         (kb / "projects" / pid / "notes.md").write_text("bulk reformat\n", encoding="utf-8")
@@ -197,9 +202,9 @@ def test_a_stale_section_marker_fails(kb, capsys):
 
 
 def test_item_stamps(kb, capsys):
-    old = (TODAY - timedelta(days=30)).isoformat()
+    old = (today() - timedelta(days=30)).isoformat()
     body = (f"\n## Open items\n\n- [ ] chase the reply (as of {old}, review 7d)\n"
-            f"- [ ] fresh item (as of {RECENT}, review 7d)\n- [x] closed item (as of {old})\n"
+            f"- [ ] fresh item (as of {recent()}, review 7d)\n- [x] closed item (as of {old})\n"
             "- [ ] no stamp at all\n- [ ] vague (as of yesterday)\n- [ ] impossible (as of 2026-02-30)\n"
             "\n## Narrative\n\n- a bullet of prose is not an obligation\n")
     add_project(kb, "alpha", context(body=body))
@@ -215,11 +220,11 @@ def test_item_stamps(kb, capsys):
 
 
 def test_paused_and_completed_projects_stay_quiet_on_advice_but_not_on_work_after_completion(kb, capsys):
-    old = (TODAY - timedelta(days=60)).isoformat()
+    old = (today() - timedelta(days=60)).isoformat()
     add_project(kb, "paused", context(status="Paused", last=old, body="\n## Next\n\n- [ ] someday\n"))
     (kb / "projects" / "paused" / "REFERENCE.md").write_text("fact\n" * 400, encoding="utf-8")
     add_project(kb, "done", context(status="Completed", last=old, body="\n## Open\n\n- [ ] still owed\n"))
-    write_index(kb, [{"id": "alpha", "status": "active", "last_session": RECENT},
+    write_index(kb, [{"id": "alpha", "status": "active", "last_session": recent()},
                      {"id": "paused", "status": "paused", "last_session": old},
                      {"id": "done", "status": "completed", "completed_date": old, "last_session": old}])
     publish(kb)
@@ -231,20 +236,20 @@ def test_paused_and_completed_projects_stay_quiet_on_advice_but_not_on_work_afte
 
 
 def test_a_post_close_review_silences_the_finding_until_a_new_commit_and_must_resolve(kb, capsys):
-    old = (TODAY - timedelta(days=60)).isoformat()
+    old = (today() - timedelta(days=60)).isoformat()
     add_project(kb, "done", context(status="Completed", last=old))
-    write_index(kb, [{"id": "alpha", "status": "active", "last_session": RECENT},
+    write_index(kb, [{"id": "alpha", "status": "active", "last_session": recent()},
                      {"id": "done", "status": "completed", "completed_date": old}])
     publish(kb)
     head = _git(kb, "rev-parse", "HEAD")
-    write_index(kb, [{"id": "alpha", "status": "active", "last_session": RECENT},
+    write_index(kb, [{"id": "alpha", "status": "active", "last_session": recent()},
                      {"id": "done", "status": "completed", "completed_date": old, "post_close_reviewed_through": head}])
     publish(kb)
     assert not any(c == "terminal-project-active" for _, c, _ in findings(kb, capsys)[1])
     (kb / "projects" / "done" / "late.md").write_text("more\n", encoding="utf-8")
     publish(kb)
     assert ("done", "terminal-project-active", "warning") in findings(kb, capsys)[1]
-    write_index(kb, [{"id": "alpha", "status": "active", "last_session": RECENT},
+    write_index(kb, [{"id": "alpha", "status": "active", "last_session": recent()},
                      {"id": "done", "status": "completed", "completed_date": old, "post_close_reviewed_through": "0" * 40}])
     publish(kb)
     assert ("done", "post-close-review-unresolvable", "defect") in findings(kb, capsys)[1]
@@ -276,7 +281,7 @@ def test_nothing_to_audit_is_not_a_clean_result(tmp_path, capsys):
 
 
 def test_projects_without_an_index_and_index_entries_without_a_folder_are_defects(kb, capsys):
-    write_index(kb, [{"id": "alpha", "status": "active", "last_session": RECENT},
+    write_index(kb, [{"id": "alpha", "status": "active", "last_session": recent()},
                      {"id": "ghost", "status": "active"}, {"id": "gone", "status": "archived"}])
     add_project(kb, "stray", context())
     publish(kb)
@@ -309,8 +314,8 @@ def test_an_uncommitted_index_names_its_last_claimant_and_is_a_defect_after_a_da
 def test_a_gitignored_context_is_a_defect_and_an_uncommitted_one_a_warning(kb, capsys):
     add_project(kb, "secret", context())
     (kb / ".gitignore").write_text("projects/secret/CONTEXT.md\n", encoding="utf-8")
-    write_index(kb, [{"id": "alpha", "status": "active", "last_session": RECENT},
-                     {"id": "secret", "status": "active", "last_session": RECENT}])
+    write_index(kb, [{"id": "alpha", "status": "active", "last_session": recent()},
+                     {"id": "secret", "status": "active", "last_session": recent()}])
     publish(kb)
     (kb / "projects" / "alpha" / "CONTEXT.md").write_text(context(body="edited\n"), encoding="utf-8")
     _, found, _ = findings(kb, capsys)
@@ -331,8 +336,8 @@ def test_output_leads_with_the_active_project_and_counts_the_rest(kb, capsys, tm
     for i in range(5):
         add_project(kb, f"p{i}", context(body="line\n" * 160))
     add_project(kb, "alpha", context(body="\n## Next\n\n- [ ] unstamped\n"))
-    write_index(kb, [{"id": "alpha", "status": "active", "last_session": RECENT}] +
-                [{"id": f"p{i}", "status": "active", "last_session": RECENT} for i in range(5)])
+    write_index(kb, [{"id": "alpha", "status": "active", "last_session": recent()}] +
+                [{"id": f"p{i}", "status": "active", "last_session": recent()} for i in range(5)])
     publish(kb)
     sessions = tmp_path / "synthesis-home" / "state" / "sessions"
     sessions.mkdir(parents=True)
@@ -389,11 +394,11 @@ def _archive(tmp_path, *sessions):
 
 
 def _entries(kb):
-    old = (TODAY - timedelta(days=30)).isoformat()
-    log = (f"### {RECENT}: work\n\nDecided after {HERE[:8]} #42, and again at #44.\n\n"
-           f"### {RECENT}: more work\n\nNo citation here: pull request #295 is none, and neither is step #3.\n\n"
-           f"### {RECENT}: by its whole id\n\nSettled at {THERE} #7.\n\n"
-           f"### {RECENT}: words that look like one\n\nNeither commit abc12345 #3, order 12345678 #2, build 20261113 #1\n"
+    old = (today() - timedelta(days=30)).isoformat()
+    log = (f"### {recent()}: work\n\nDecided after {HERE[:8]} #42, and again at #44.\n\n"
+           f"### {recent()}: more work\n\nNo citation here: pull request #295 is none, and neither is step #3.\n\n"
+           f"### {recent()}: by its whole id\n\nSettled at {THERE} #7.\n\n"
+           f"### {recent()}: words that look like one\n\nNeither commit abc12345 #3, order 12345678 #2, build 20261113 #1\n"
            f"nor deadbeef\n#2 names a session, and {HERE[:7]} #9 is a character short.\n\n"
            f"### {old}: long ago\n\nCites {HERE[:8]} #7, outside the window.\n")
     add_project(kb, "alpha", context(), log=log)
@@ -453,13 +458,13 @@ def test_a_config_that_cannot_be_read_costs_the_report_nothing(kb, tmp_path, cap
 
 def test_a_folder_named_like_a_session_that_holds_no_session_is_none(kb, tmp_path, capsys):
     """The second review, finding 8: any folder of a sessions repo named `<harness>-<words>` was taken for a session."""
-    add_project(kb, "alpha", context(), log=f"### {RECENT}: work\n\nSee notes-2026 #3 and {HERE[:8]} #4.\n")
+    add_project(kb, "alpha", context(), log=f"### {recent()}: work\n\nSee notes-2026 #3 and {HERE[:8]} #4.\n")
     publish(kb)
     _archive(tmp_path, ("claude-code", HERE))
     (tmp_path / "synthesis-home" / "sessions" / "alpha" / "docs" / "claude-code-notes-2026").mkdir(parents=True)
     code, out = run("--root", str(kb), capsys=capsys)
     assert "citations  ai-knowledge-test: 1 of 1 session entries" in out
-    add_project(kb, "alpha", context(), log=f"### {RECENT}: work\n\nSee notes-2026 #3.\n")
+    add_project(kb, "alpha", context(), log=f"### {recent()}: work\n\nSee notes-2026 #3.\n")
     publish(kb)
     assert "citations  ai-knowledge-test: 0 of 1 session entries" in run("--root", str(kb), capsys=capsys)[1]
 
@@ -479,7 +484,7 @@ def test_two_roots_of_one_name_each_get_their_own_line(kb, tmp_path, capsys):
 
 
 def test_a_root_with_no_entry_in_the_window_prints_no_citation_line(kb, capsys):
-    old = (TODAY - timedelta(days=40)).isoformat()
+    old = (today() - timedelta(days=40)).isoformat()
     add_project(kb, "alpha", context(last=old), log=f"### {old}: work\n\nDone, {HERE[:8]} #42.\n")
     write_index(kb, [{"id": "alpha", "status": "active", "last_session": old}])
     publish(kb)
