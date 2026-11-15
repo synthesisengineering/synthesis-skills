@@ -419,9 +419,14 @@ harness that gives no transcript cannot carry approved sends or deploys until it
      the guard can read, for no code. Words are judged wherever the program sits, so a launcher
      (`script`, `arch`, `time -p`, `xcrun`) hides nothing, and after the shell's own expansions:
      brace lists (`{a,b}`, `{1..3}`, nested) and every redirect bash and zsh accept (`>|`,
-     `>!`, `>>!`, `&>!`, `>&!`, `&>>`, `<>`). A folder is named by its path in any case; by the
-     parts of its path below the home folder, wherever they stand in one program and however
-     they are joined (`Path.home() / ".claude" / "projects"`, `$ENV{HOME} . "/" . ".claude"`);
+     `>!`, `>>!`, `&>!`, `>&!`, `&>>`, `<>`). A folder is named by its path in any case; on the
+     command line, each word only by its own path (after `~`, variables, `..` and links), so
+     parts in two words never join (2026-11-15: a skill script's path in the harness's plugin
+     cache and a project page's path were read together as naming the transcripts); in a
+     program's text, by the parts of its path below the home folder within one statement,
+     however they are joined (`Path.home() / ".claude" / "projects"`, `$ENV{HOME} . "/" .
+     ".claude"`), but never from two paths written whole, and a path written whole only where
+     they stand one after another;
      by a variable that holds it, a folder above it or a place inside it, with the rest of the
      path anywhere after it; by a path that leads into it through `..`, a link made beforehand
      or one the line makes; by a folder between it and the home folder or such a variable,

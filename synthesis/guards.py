@@ -4925,20 +4925,63 @@ def _spellings(raw: list, env: dict) -> tuple:
     return SPELLINGS[key]
 
 
+LITERAL = re.compile(r"\"(?:[^\"\\\n]|\\.)*\"|'(?:[^'\\\n]|\\.)*'|`[^`\n]*`|(?<![\w$])(?:~|\.{0,2}/)[^\s'\"`;|&()<>,]*")  # a string, or a path written bare
+
+
+def _statements(text: str) -> list:
+    """A program's text cut into its statements: at a line's end or a `;` outside quotes and brackets, so a call spread
+    over lines stays one; a `#` comment is left out. Any language is read this way; brackets left open for 40 lines
+    close."""
+    found, start, depth, quote, i = [], 0, 0, "", 0
+    while i < len(text):
+        c = text[i]
+        if quote:
+            quote, i = ("" if c == quote else quote), i + 1 + (c == "\\")
+            continue
+        if c == "#" and (i == 0 or text[i - 1] in " \t\n"):
+            i = len(text) if text.find("\n", i) < 0 else text.find("\n", i)
+            continue
+        quote, depth = (c if c in "'\"`" else ""), max(0, depth + (c in "([{") - (c in ")]}"))
+        if c in ";\n" and text[i - 1:i] != "\\" and (depth == 0 or text.count("\n", start, i) > 40):
+            found, start, depth = found + [text[start:i]], i + 1, 0
+        i += 1
+    return [s for s in found + [text[start:]] if s.strip()]
+
+
+def _joined(statement: str, patterns: dict, spellings: list) -> str:
+    """The protected folder one statement spells by the parts of its path, else '': parts in its code or in pieces of a
+    path join, and with them those of at most one path written whole; parts of two paths written whole never join, and
+    one such path alone counts only where they stand one after another in it (the coordinator, 2026-11-15: a script's
+    path and a page's path on one line spelled the transcripts between them)."""
+    whole = [(m.start(), m.end(), m.group().strip("'\"`")) for m in LITERAL.finditer(statement)]
+    whole = [(a, b, t) for a, b, t in whole if t[:1] in "/~" and len([s for s in t.split("/") if s]) > 1]
+    found: dict = {}
+    for part, pattern in patterns.items():
+        for m in pattern.finditer(statement):
+            found.setdefault(part, set()).add(next((i for i, (a, b, _) in enumerate(whole) if a <= m.start() < b), -1))
+    for spelling, root in spellings:
+        sets = [found.get(part, set()) for part in spelling]
+        if all(sets) and (all(-1 in s for s in sets) or any(all(-1 in s or i in s for s in sets) and (
+                any(-1 in s for s in sets) or len(spelling) == 1 or any(p[:1] == "$" for p in spelling)
+                or re.search(r"(?:^|/)" + "/".join(map(re.escape, spelling)) + r"(?:/|$)", whole[i][2], re.I)) for i in set().union(*sets) - {-1})):
+            return root
+    return ""
+
+
 def _spells(texts: list, words: list, where: str, env: dict, raw: list, linked: list) -> str:
     """The protected folder a command names in any spelling, else '': its words as paths that lead into one (or to a
-    folder between one and the home folder or a variable's folder), through `..`, a link made beforehand or one the
-    same command makes; and a program's own text by the parts of a folder's path, wherever they stand in it
-    (`Path.home() / ".claude" / "projects"`, `$ENV{HOME} . "/" . ".claude"`), after a variable that holds it. What is
-    the agent's own, and material it is sent to work on, is named by no word."""
+    folder between one and the home folder or a variable's folder), after the shell's own expansions, through `..`,
+    a link made beforehand or one the same command makes; and each text (a program, or one word) by the parts of a
+    folder's path within one statement (`Path.home() / ".claude" / "projects"`, `$ENV{HOME} . "/" . ".claude"`), after
+    a variable that holds it. Parts in two words never join (2026-11-15). What is the agent's own, and material it is
+    sent to work on, is named by no word."""
     patterns, spellings, gates, spelled = _spellings(raw, env)
-    text = "\n".join(t for t in texts if t)
-    found = {part for part, pattern in patterns.items() if pattern.search(text)} if text else set()
-    named = next((root for spelling, root in spellings if set(spelling) <= found), "")
+    named = next((root for text in texts if text for statement in _statements(text) for root in [_joined(statement, patterns, spellings)] if root), "")
     if named:
         return named
     picks = [(part, True) for w in words[1:] for part in {w, w.split("=", 1)[-1], "".join(re.findall(r"^-[^~/]*([~/].*)", w))} if part]
-    for pick, handed in (picks + [(a or b or c, False) for a, b, c in CANDIDATE.findall(text)][:100])[:200]:
+    for pick, handed in (picks + [(a or b or c, False) for t in texts if t for a, b, c in CANDIDATE.findall(t)][:100])[:200]:
+        pick = re.sub(r"\$\{(\w+)\}|\$(\w+)", lambda m: env[m[1] or m[2]] if isinstance(env.get(m[1] or m[2]), str) else m[0], pick)  # as the shell expands it
         if "/" in pick or pick[:1] == "~" or (handed and os.path.lexists(os.path.join(where, pick))):  # a bare name: a file that is there
             full = os.path.join(where, os.path.expanduser(pick))
             forms = {os.path.normpath(full), os.path.realpath(full)}
@@ -5049,8 +5092,8 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None) -> str |
                                              _program(words)[2] if mine else "") if python and ran else (([(ran, code)] if ran else []), "", "")
         said = [w for at, w in enumerate(words[1:], 1) if head not in PROMPTED and not MESSAGE.fullmatch(words[at - 1]) and not (
             w[:1] == "-" and MESSAGE.fullmatch(w.split("=", 1)[0])) and not any(f(os.path.realpath(os.path.join(where, os.path.expanduser(w)))) for f in (_own, lambda x: _own(x, True), _material))]
-        named = ("input that this guard could not read" if UNREAD_INPUT in head + fed else _spells(
-            [own, fed, "\n".join(t for _, t in files) or code, script] if program else said, words, where, env, raw, linked)
+        named = ("input that this guard could not read" if UNREAD_INPUT in head + fed else _spells(  # each word, and each program text, apart
+            [fed, *([t for _, t in files] or [code])] + words[1:] if program else said, words, where, env, raw, linked)
                  or (where if any(paths.inside(os.path.realpath(where), os.path.realpath(str(r))) for r in (paths.state(), paths.board(), paths.sessions())) else "")
                  or ("the files xargs hands it" if HANDED in words and names else "")) if label else ""  # standing where no session works, or what xargs hands it
         if SCRIPT.match(head) and re.search(r"\bsynthesis\b", script + code) and SELF_GRANT_CALLS.search(script):
@@ -5202,10 +5245,13 @@ MESSAGE_WORDS = re.compile(r"\b(?:message|repl(?:y|ies)|comment|review|rating|po
 # Off a messaging site, typed words then a key that submits wait only when the call names one of these (the principal, 2026-11-14)
 NAMES_POST = re.compile(r"\b(?:messag\w*|comment\w*|review\w*|post(?:s|ed|ing)?|repl(?:y|ies|ied|ying)|tweet\w*)\b", re.I)
 # A page script that can send (the second review: one that clicked a comment's submit button went out): on a messaging
-# site's page one that clicks, submits, sends a key or an event, writes by fetch or sets a value; elsewhere one that
-# submits a form, sends a key or an event, writes by fetch or clicks a control that publishes, unless it searches or signs in.
+# site's page one that clicks, submits, sends a key or an event, writes by fetch, sets a value or moves the tab (a chat's
+# address opens it and marks it read, 2026-11-14); elsewhere one that submits a form, sends a key or an event, writes by
+# fetch or clicks a control that publishes, unless it searches or signs in.
 WRITES = r"method\s*:\s*['\"`](?:post|put|patch|delete)|\.open\s*\(\s*['\"`](?:post|put|patch|delete)|sendBeacon"
-SCRIPT_ACTS = re.compile(r"\.click\s*\(|\.submit\s*\(|requestSubmit|dispatchEvent|KeyboardEvent|\.value\s*=[^=]|execCommand|" + WRITES, re.I)
+MOVES = r"\blocation\s*\.\s*(?:assign|replace)\s*\(|\blocation(?:\s*\.\s*href)?\s*=(?!=)|\bwindow\s*\.\s*open\s*\("
+SCRIPT_ACTS = re.compile(r"\.click\s*\(|\.submit\s*\(|requestSubmit|dispatchEvent|KeyboardEvent|\.value\s*=[^=]|execCommand|"
+                         + WRITES + "|" + MOVES, re.I)
 SCRIPT_SENDS = re.compile(r"requestSubmit|\.submit\s*\(|dispatchEvent|KeyboardEvent|" + WRITES + r"|^(?=[\s\S]*\.click\s*\()[\s\S]*"
                           r"(?:submit|\bpost|\bsend|publish|repl(?:y|ies)|comment|share|review|rating|tweet|\bdone\b)", re.I)
 SCRIPT_ROUTINE = re.compile(r"\b(?:search|log-?in|sign-?in|password|query|q)\b", re.I)  # whole words: querySelector is none
