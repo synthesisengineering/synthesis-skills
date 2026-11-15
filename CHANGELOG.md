@@ -29,21 +29,30 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   no typist, other session or later script acts between the read and the send. On a Messenger site's tab (a page of
   facebook.com or messenger.com, or of m.me, fb.com, fb.me or Business Suite's inbox), on one whose page no list of tabs
   names, and on one a step earlier in the same call may have moved onto or from such a page, no page script runs but
-  the shipped read-only ones and that send script (after any other move a read runs, and what acts or cannot be read
-  waits for a call of its own; a local app's click moves nothing), whichever browser tool runs it, a navigate to a
-  `javascript:` address included; on every other messaging site's page none runs but the shipped read-only ones, so
-  `open(` is refused there by any spelling. A time's code binds the exact step. The four Messenger
+  the shipped read-only ones and that send script, whichever browser tool runs it, a navigate to a `javascript:`
+  address included. A step that may move a tab is a navigate, a click, a key, a drag, words typed with a line break, a
+  form value, an upload or a page script that acts or cannot be read, on any page, a local app's included; after any
+  other move a read runs, and a script that acts or cannot be read runs in a call of its own, as protection against a
+  redirect onto a chat (one more call, and no code). On every other messaging site's page main's rule judges a script:
+  a read runs, one that acts waits for the code (`window?.open(` among them), and one the guard cannot read is refused.
+  A time's code binds the exact step. The four Messenger
   address forms (`facebook.com/messages/t/<id>`, `facebook.com/messages/e2ee/t/<id>`, `messenger.com/t/<id>`,
   `messenger.com/e2ee/t/<id>`) are four conversations, named only in that form, one entry each.
 - **What review round 4 found** (core). The messages sender's ticket is filed for each run of the sender a command
   makes (its program resolved as the write rules resolve one, through links), bound to that run's file, arguments and
-  folder, and taken only by that run, so a `cat` or a `grep` of the sender files none and two sends in one line take
-  one each. Another session's call voids a send step only in the same browser, on its tab or naming none, when it can
+  folder, and taken only by that run: by a process of the harness whose hook filed it whose own command line, as the
+  system shows it, is that run's (round 5: a ticket filed for a run that never ran was taken by an identical run the
+  guard never saw), so a `cat` or a `grep` of the sender files none and two sends in one line take one each. Another session's call voids a send step only in the same browser, on its tab or naming none, when it can
   change the page and no hook refused it, and only the extension's `Created new tab. Tab ID: N` makes a tab this
   session's. The newest list of tabs across sessions decides a tab's page. A batch closes 12 hours after its code was
   typed, as `sends status` says. The day's ledger reads a Messenger send's own report, so `synthesis sends log` names
   one its script declined as not sent. A listing prints as its code any character whose name says it is a blank,
   filler, joiner, subjoiner, conjoiner or selector.
+- **What review round 5 found** (core). The moved rule counts every step that may move a tab (above), honours `exact`
+  only on the guard's own steps for a driven browser, never on an agent's call, and on a Messenger site's page names
+  that page's rule (the read tools) rather than a second call that rule refuses too. A sub-agent's send step reads its
+  own record for the tab list and the tabs_create that make its tab its own. Two moves made to beat the reader are on
+  the runtime doc's open list.
 - **The guard reads every `synthesis sends` command in a line with the CLI's own parser** (core): each window or batch
   request asks for its own code, a command it cannot read as the CLI would waits for one, a file goes only with `sends
   batch`, and a held window or batch code no longer lets the rest of the line through unjudged.

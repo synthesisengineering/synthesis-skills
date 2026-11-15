@@ -514,6 +514,12 @@ harness that gives no transcript cannot carry approved sends or deploys until it
   script's own words, so one that a page's own function returns (`fetch(url, options())`) passes when the script names
   no method and no body, a case of the first item above (a call whose name says nothing of what it does) and of the
   same test.
+- **Moves made to beat the batch's moved rule** (review round 5 of 5.24.0, #1), cases of
+  `test_open_a_move_the_page_script_reader_does_not_see`, expected to fail until closed: a page script moves the tab by
+  a member of `location` it names as it runs (`location[['hr', 'ef'].join('')] = ...`), or by writing a refresh into the
+  page (`document.body.innerHTML = '<meta http-equiv="refresh" ...>'`). Each is no move to the reader, so a script after
+  it in the same call is judged on the page the list showed before. A move by an address, a link, a click, a key, a form
+  value, an upload or any script the reader counts as acting is one.
 
 No local file is secret from an agent running as the person's own OS user, so these
 stay open, and no hook running as that same user can close them:

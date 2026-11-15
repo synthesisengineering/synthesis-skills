@@ -5724,6 +5724,7 @@ def _steps(name: str, tool_input: dict, session: dict | None, keep: bool = False
     and what its code does to the page after is not known."""
     tabs, front = _shared_tabs(session, tool.rpartition("__")[0]) if keep else _tabs(str((session or {}).get("transcript_path") or ""), tool.rpartition("__")[0])
     unknown = keep and bool(re.search(r"claude-in-chrome|claude[_-]browser", tool, re.I))  # its own lists show its pages (round 1 of 5.23.1, #3)
+    own = bool(driven_tool(tool))  # the guard's own steps for a driven browser; an agent's `exact` places nothing (round 5, #1)
     steps = [(name, tool_input)] if name != "browser_batch" else [
         (str(s.get("name", "")), s["input"]) for s in tool_input.get("actions") or []
         if isinstance(s, dict) and isinstance(s.get("input"), dict)]
@@ -5731,7 +5732,7 @@ def _steps(name: str, tool_input: dict, session: dict | None, keep: bool = False
         tab, before = str(given.get("tabId") or front), None
         if step.endswith("navigate"):  # the steps after it act on the new page; `back`, a path or a script names no host, and that page is not known
             url, before = _url_read(given.get("url") or "").replace("\\", "/"), tabs.get(tab, "")
-            tabs[tab] = url if given.get("exact") or url == UNKNOWN_PAGE or re.match(r"(?i)(?:https?:|//|localhost\b|[\w-]+(?:\.[\w-]+)+(?:[:/?#]|$))", url) else (
+            tabs[tab] = url if own and given.get("exact") or url == UNKNOWN_PAGE or re.match(r"(?i)(?:https?:|//|localhost\b|[\w-]+(?:\.[\w-]+)+(?:[:/?#]|$))", url) else (
                 before if keep and _web_app(before) else "")
         address = before if before is not None and _script_address(str(given.get("url") or "")) is not None else (
             tabs.get(tab) or (tabs[""] if set(tabs) == {""} else ""))  # the pane's first page, which no list files under its tab (#7)
@@ -5832,21 +5833,19 @@ def _messenger_site(address: str) -> bool:
                               or bool(page and "messenger" in page[1][0].split("+")))
 
 
-def _local(address: str) -> bool:
-    host = _where(_url_read(address or ""))[0]
-    return host in ("localhost", "127.0.0.1", "::1") or host.endswith((".localhost", ".test"))
-
-
-def _moves(kind: str, given: dict, address: str = "") -> bool:
+def _moves(kind: str, given: dict, own: bool = False) -> bool:
     """Whether a browser step may leave its tab on a page no list of tabs shows yet (round 4, #2: a batch that reached a
-    Messenger chat by a short link or a followed link ran its script there): a navigate, but one to a local app or the
-    guard's own reading of a page; a click, a key or words typed with a line break, but on a local app's page, which the
-    principal's own app keeps placed (a pane batch on localhost that clicked and then read was refused)."""
+    Messenger chat by a short link or a followed link ran its script there): a navigate, but the guard's own first step
+    for a driven browser (`exact`, never an agent's word); a click, a key, a drag or words typed with a line break; a form
+    value or an upload; a page script that acts or cannot be read (`location.href`, `history.back()`, a link it clicks).
+    On a local app's page each moves too, since the page that app goes to may send the tab on (round 5, #1)."""
     if kind.endswith("navigate"):
-        return not given.get("exact") and not _local(str(given.get("url") or ""))
+        return not (own and given.get("exact"))
+    if kind.endswith(("javascript_tool", "browser_script")):
+        return bool(_unread_script(str(given.get("text") or "")) or _script_acts(str(given.get("text") or "")))
     action = str(given.get("action") or "")
-    return kind.endswith("computer") and not _local(address) and (action in CLICKS or action in ("key", "left_click_drag")
-                                                                 or action == "type" and bool(re.search(r"[\r\n]", str(given.get("text") or ""))))
+    return kind.endswith(("form_input", "upload_image", "file_upload")) or kind.endswith("computer") and (
+        action in CLICKS or action in ("key", "left_click_drag") or action == "type" and bool(re.search(r"[\r\n]", str(given.get("text") or ""))))
 
 
 def _when(line: str) -> float:
@@ -5883,8 +5882,8 @@ def _made_here(tab: str, session: dict | None, server: str) -> str:
     tool made)."""
     from pathlib import Path
     record, made, readers = str((session or {}).get("transcript_path") or ""), 0.0, _read_only_scripts()
-    lines = _tail(record)
-    for i, line in enumerate(lines if record else []):
+    for i, line, lines in ((i, line, lines) for path in dict.fromkeys([_record(session), record]) if path  # a sub-agent's own
+                           for lines in [_tail(path)] for i, line in enumerate(lines)):  # tabs_create too (round 5, #5)
         for block in _blocks(line) if '"tool_result"' in line and "Created new tab" in line else ():
             call = _browser_call(lines, i, str(block.get("tool_use_id") or "")) if block.get("type") == "tool_result" else None
             named = str((call or {}).get("name", ""))
@@ -5945,13 +5944,21 @@ def _listed_on_messenger(tab: str, server: str, session: dict | None) -> str:
 def _refused_scripts(name: str, tool: str, tool_input: dict, session: dict | None, step) -> str | None:
     """Why a page script this browser call runs is refused: on a Messenger site's tab, by this call's own navigates, this
     session's newest list of tabs or another active session's, only the shipped read-only scripts run, and a send script
-    only last in its send step (`step`); on every other messaging site's page, and on a page a driven browser's record
-    does not show, only the shipped read-only scripts run (5.23.1); a navigate to a javascript: address, as a URL parser
-    reads it, is such a script. A page no list of tabs names may be a Messenger site's, so it takes none (the third
-    round's opener ran on a tab no list had named yet), and neither does the page a step earlier in the call may have
-    left a tab on (round 4, #2)."""
+    only last in its send step (`step`); on every other messaging site's page main's rule refuses one the guard cannot
+    read (5.23.1); a navigate to a javascript: address, as a URL parser reads it, is such a script. A page no list of tabs
+    names may be a Messenger site's, so it takes none (the third round's opener ran on a tab no list had named yet). After
+    a step earlier in the call that may have moved the tab (`_moves`), a script there runs in a call of its own unless it
+    only reads and the move was from and onto pages that are no Messenger site's (round 4, #2; round 5, #1 and #2, kept
+    as protection by the coordinator's ruling: one more call, and no code)."""
     from synthesis import sends
     readers, steps = None, list(_steps("computer" if name == "browser" else name, tool_input, session, keep=True, tool=tool))
+    own = bool(driven_tool(tool))
+
+    def on_messenger(kind: str, where: str) -> str:
+        return (f"This {'navigate to a javascript: address runs a page script' if kind.endswith('navigate') else 'page script runs'}"
+                f" on a Messenger site's tab ({where}), where only the plugin's shipped read-only scripts run (the composer check "
+                "and the extractors) and a batch's send script in its send step: any other can change what those read or what a "
+                "send sends, then or later. Read the page with the browser's own read tools (get_page_text, read_page, find) instead.")
     moved, went = {}, set()  # tab: "strict" or "ordinary", by the page a step of this call may have moved it from or to; tabs it navigated
     for n, (kind, given, address, tab) in enumerate(steps):
         text = (str(given.get("text") or "") if kind.endswith(("javascript_tool", "browser_script")) else
@@ -5965,13 +5972,16 @@ def _refused_scripts(name: str, tool: str, tool_input: dict, session: dict | Non
                     "there and runs the script `synthesis sends script` prints.")
         if other and tab in moved and (moved[tab] == "strict" or _unread_script(text) or _script_acts(text)):  # a read after a
             # move from a page that is no messaging site's runs (the principal's bar: no ordinary work refused)
+            if _messenger_site(address):  # that page's own rule says what runs there (round 5, #3)
+                return on_messenger(kind, address)
             return (f"This page script follows a step in this call that may have moved tab {tab or 'in front'} to another page "
-                    "(a navigate, a click or a key), and no list of tabs shows where it landed, which may be a Messenger chat: "
-                    "run the script in a call of its own, once a list of tabs shows the page.")
+                    "(a navigate, a click, a key, a form value, an upload or a page script that acts), and no list of tabs shows "
+                    "where it landed, which may be a Messenger chat: run the script in a call of its own, once a list of tabs "
+                    "shows the page.")
         earlier = tab in went  # an address an earlier step of this call went to decides the page, not any session's list
         if kind.endswith("navigate") and text is None:  # an address places the page anew
             moved.pop(tab, None)
-        if _moves(kind, given, address):  # onto, or from, a Messenger site's page or one no list shows: strict (every other
+        if _moves(kind, given, own):  # onto, or from, a Messenger site's page or one no list shows: strict (every other
             # messaging site's page takes main's rule by itself, and a read there runs)
             strict = not address or address == UNKNOWN_PAGE or _messenger_site(address) or moved.get(tab) == "strict"
             moved[tab] = "strict" if strict else "ordinary"
@@ -5988,12 +5998,7 @@ def _refused_scripts(name: str, tool: str, tool_input: dict, session: dict | Non
                     "navigate to an address first.")
         listed = "" if earlier or _messenger_site(address) else _listed_on_messenger(tab, tool.rpartition("__")[0], session)
         if _messenger_site(address) or listed:
-            where = f"tab {tab}, which another session's newer list of tabs shows on {listed}" if listed else address
-            return (f"This {'navigate to a javascript: address runs a page script' if kind.endswith('navigate') else 'page script runs'}"
-                    f" on a Messenger site's tab ({where}),"
-                    " where only the plugin's shipped read-only scripts run (the composer check and the extractors) and a batch's "
-                    "send script in its send step: any other can change what those read or what a send sends, then or later. "
-                    "Read the page with the browser's own read tools (get_page_text, read_page, find) instead.")
+            return on_messenger(kind, f"tab {tab}, which another session's newer list of tabs shows on {listed}" if listed else address)
         if _web_app(address):  # every other messaging site's page: main's rule (5.23.1)
             where = ("a page the browser's record does not show, which may be a messaging site's (take a snapshot so its page "
                      "shows)" if address == UNKNOWN_PAGE else f"a messaging site's page ({address})")
@@ -6033,7 +6038,7 @@ def _send_step(tool: str, tool_input: dict, session: dict | None):
         given.get("action") == "type" and not re.search(r"[\r\n]", str(given.get("text") or "")) or given.get("action") == "wait"
         or given.get("action") == "key" and str(given.get("text") or "").strip() != "" and all(
             chord in STEP_KEYS for chord in str(given.get("text") or "").lower().split())) for kind, given in steps[1:-1])
-    shown = _tabs(str((session or {}).get("transcript_path") or ""), tool.rpartition("__")[0])[0].get(tab, "")
+    shown = _shared_tabs(session, tool.rpartition("__")[0])[0].get(tab, "")  # a sub-agent's own list too (round 5, #5)
     if not (loads and place and typing and last == "javascript_tool" and run.get("action") == "javascript_exec"
             and str(run.get("tabId") or "") == tab and sends.conversation(shown) == place):
         return refused
@@ -6807,8 +6812,9 @@ def _sender_runs(words: list, where: str) -> list:
     else:
         program, args = (words[0], words[1:]) if "/" in words[0] else ("", [])
     real = os.path.realpath(os.path.join(where, os.path.expanduser(program))) if program else ""
+    shown = [os.path.expanduser(w) if w.startswith("~") else w for w in (words[1:] if SCRIPT.match(head) and head.startswith("python") else words)]
     return [{"program": real, "argv": [os.path.expanduser(a) if a.startswith("~") else a for a in args],
-             "cwd": os.path.realpath(where)}] if os.path.basename(real) == "messages_send.py" else []
+             "cwd": os.path.realpath(where), "line": " ".join(shown)}] if os.path.basename(real) == "messages_send.py" else []
 
 
 def check_outgoing(command: str, config: dict, cwd: str, session: dict | None = None) -> str | None:

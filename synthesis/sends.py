@@ -727,23 +727,73 @@ def _run_key(run) -> str:
         return ""
 
 
+# Round 5, #4: a ticket filed for a run that never ran (`false && python3 messages_send.py ...`) was taken by an identical
+# run the guard never saw (another session's runpy). A ticket now names the harness whose hook filed it (its nearest
+# ancestor that is no shell, interpreter or the hook's launcher) and the command line its run's process shows; only a
+# process of that harness whose own command line, as the system shows it, ends so takes it.
+NOT_HARNESS = re.compile(r"-?(?:sh|bash|zsh|dash|fish|ksh|tcsh|csh)|env|python[\d.]*|synthesis-hook", re.I)
+
+
+def _table() -> dict:
+    """{pid: (parent pid, start, name)} of every process, as `ps` reports them; {} when it cannot say."""
+    import subprocess  # here, not on every call's path
+    try:
+        shown = subprocess.run(["ps", "-A", "-o", "pid=,ppid=,lstart=,comm="], capture_output=True, text=True, timeout=10,
+                               env={**os.environ, "LC_ALL": "C"}).stdout
+    except (OSError, subprocess.SubprocessError):
+        return {}
+    rows = (row.split(None, 7) for row in shown.splitlines())
+    return {int(r[0]): (int(r[1]), " ".join(r[2:7]), os.path.basename(r[7].strip())) for r in rows if len(r) == 8 and r[0].isdigit() and r[1].isdigit()}
+
+
+def _ancestors() -> set:
+    """{(pid, start)} of this process's ancestors."""
+    table, found, pid = _table(), set(), os.getppid()
+    while pid > 1 and pid in table and (pid, table[pid][1]) not in found:
+        found, pid = found | {(pid, table[pid][1])}, table[pid][0]
+    return found
+
+
+def _harness() -> list:
+    """[pid, start] of this process's nearest ancestor that is no shell, interpreter or the hook's launcher; [] for none."""
+    table, pid = _table(), os.getppid()
+    while pid > 1 and pid in table:
+        if not NOT_HARNESS.fullmatch(table[pid][2]):
+            return [pid, table[pid][1]]
+        pid = table[pid][0]
+    return []
+
+
+def _own_line() -> str:
+    """This process's command line as the system shows it: what a run puts in `sys.argv` changes nothing in it."""
+    import subprocess
+    try:
+        return subprocess.run(["ps", "-o", "command=", "-p", str(os.getpid())], capture_output=True, text=True, timeout=10).stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        return ""
+
+
 def sender_ticket(session_id: str, run: dict) -> None:
     key = _run_key(run)
     if re.fullmatch(r"[\w.-]+", session_id or "") and key:
-        paths.write_json(_ticket_file(f"{key[:16]}-{os.urandom(6).hex()}"), {"at": time.time(), "session": session_id, "run": key})
+        paths.write_json(_ticket_file(f"{key[:16]}-{os.urandom(6).hex()}"), {"at": time.time(), "session": session_id, "run": key,
+                                                                             "line": str(run.get("line") or ""), "harness": _harness()})
 
 
 def ticket(run: dict | None) -> dict | None:
-    """The session of a ticket this run's command filed in the last minute, taken (one ticket, one run); None for none, or
-    when the fresh tickets of this run name more than one session. The caller holds approvals.alone(); stale tickets go
-    as they are passed."""
-    key, fresh = _run_key(run) if run else "", []
+    """The session of a ticket this run's command filed in the last minute, taken (one ticket, one run) by a process of the
+    harness whose hook filed it whose own command line is that command's run; None for none, or when the fresh tickets
+    this process may take name more than one session. The caller holds approvals.alone(); stale tickets go as they are
+    passed."""
+    key, fresh, mine = _run_key(run) if run else "", [], None
     for file in _ticket_file("x").parent.glob("*.json"):
         data = paths.read_json(file)
         if time.time() - float(data.get("at") or 0) > TICKET_SECONDS:
             file.unlink(missing_ok=True)
         elif key and data.get("run") == key and isinstance(data.get("session"), str):
-            fresh.append((file, data["session"]))
+            mine = mine or (_ancestors(), _own_line())
+            if data.get("harness") and tuple(data["harness"]) in mine[0] and data.get("line") and mine[1].endswith(" " + str(data["line"])):
+                fresh.append((file, data["session"]))
     if not fresh or len({who for _, who in fresh}) != 1:
         return None
     fresh[0][0].unlink(missing_ok=True)

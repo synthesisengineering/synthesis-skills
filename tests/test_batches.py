@@ -1086,7 +1086,8 @@ def test_no_page_script_but_the_shipped_ones_runs_on_a_messenger_sites_tab(url, 
     batched = {"actions": [{"name": "navigate", "input": {"url": url, "tabId": 9}},
                            {"name": "javascript_tool", "input": {"action": "javascript_exec", "text": script, "tabId": 9}}]}
     reason = guards.check(CHROME, batched, CONFIG, session=listed("https://example.com/", tab=9)) or ""
-    assert "may have moved" in reason and not held(reason), reason  # after the batch's own navigate (round 4, #2)
+    assert "shipped" in reason and "call of its own" not in reason and not held(reason), reason  # after the batch's own
+    # navigate (round 4, #2), the page's own rule (round 5, #3)
 
 
 def test_the_shipped_read_only_scripts_run_there():
@@ -1427,8 +1428,8 @@ def test_a_script_after_a_step_that_may_move_the_page_is_refused(move, script):
     onto = move[0] == "navigate" and guards._messenger_site(move[1]["url"])  # onto a Messenger site's page: only the plugin's own
     if script == "document.title" and not onto:  # a read after a move from a page that is no messaging site's runs (round 5 prep)
         assert reason is None, reason
-    else:
-        assert reason and not held(reason) and "may have moved" in reason, reason
+    else:  # onto a Messenger site's page that page's own rule is named (round 5, #3)
+        assert reason and not held(reason) and ("shipped" if onto else "may have moved") in reason, reason
     alone = sent({"actions": [batch["actions"][-1]]})  # in a call of its own, judged on the page the list shows
     assert session and alone is None, alone
 
@@ -1861,7 +1862,7 @@ def test_the_changelog_says_what_mains_rule_does_on_other_messaging_sites():
     assert read is None and held(opened_), (read, opened_)
 
 
-CRAFTED_MOVERS = {"location-by-a-bracketed-member": "location['href'] = 'https://m.me/patexample'",
+CRAFTED_MOVERS = {"location-by-a-built-name": "location[['hr', 'ef'].join('')] = 'https://m.me/patexample'",
                   "a-refresh-written-into-the-page": ("document.body.innerHTML = '<meta http-equiv=\"refresh\" "
                                                       "content=\"0;url=https://m.me/patexample\">'")}
 

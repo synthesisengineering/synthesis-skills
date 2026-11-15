@@ -1478,10 +1478,17 @@ ROOT = Path(__file__).resolve().parents[1]
 # Review round 3 of main's rule merged into the batch (2026-11-15): core and plugin 71 more, all in guards.py, as on
 # main less what the batch had: _shared_tabs 26, _writes_by_fetch 14, _listed 12, _script_acts 6, _defined_names 4,
 # MEMBER_SENDS 2, _LISTS 1 and 6 blank lines; the batch's _when and its _tab_list with the list's time stand.
+# Review round 5 of the batch (2026-11-15): core and plugin 56 more. sends.py 50: _table 10 (the system's process table,
+# one `ps`), _harness 8 (the hook's harness: its nearest ancestor that is no shell, interpreter or the hook's launcher),
+# _own_line 7 (a process's command line as the system shows it), _ancestors 6, ticket 3 (taken only by a process of
+# that harness whose command line is the run's), sender_ticket 1, NOT_HARNESS 1, the comment 4 and 10 blank lines (#4).
+# guards.py 6: _refused_scripts 6 (a Messenger page's own rule named after a move; every kind of move in the refusal),
+# _moves 3 (a page script that acts, a form value, an upload; `exact` the guard's own word), _steps 1, _sender_runs 1
+# (the line its process shows), less _local 3 and its 2 blank lines (a local app's page moves too) (#1, #3).
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 17717
-PLUGIN_BUDGET = 43794
+CORE_BUDGET = 17773
+PLUGIN_BUDGET = 43850
 
 
 def _lines(files):
