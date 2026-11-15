@@ -66,14 +66,14 @@ def test_a_session_on_an_older_plugin_never_switches_the_runtime_back(tmp_path, 
     out = subprocess.run([str(isolated_home / "bin" / "synthesis-hook"), "session-start", str(old)], input="{}",
                          capture_output=True, text=True, env={**os.environ, "SYNTHESIS_HOME": str(isolated_home)})
     assert out.returncode == 0 and os.path.realpath(isolated_home / "current") == installed
-    assert "not newer" in install.install(old, forward_only=True)
+    assert "kept" in install.install(old, first_only=True)
     newer = _plugin_copy(tmp_path, "newer")
     (newer / "synthesis" / "__init__.py").write_text('__version__ = "1.0.2"\n')
-    install.install(newer, forward_only=True)  # a session on a newer plugin still upgrades everyone
-    assert install.version(isolated_home / "current") == (1, 0, 2)
-    with pytest.raises(install.Refused, match="older than the running 1.0.2"):
+    install.install(newer, first_only=True)  # since 5.23.1 a session on a newer plugin does not replace it either
+    assert install.version(isolated_home / "current") == (1, 0, 1)
+    with pytest.raises(install.Refused, match="older than the running 1.0.1"):
         install.install(old)  # an explicit install of an older release is refused too
-    assert install.version(isolated_home / "current") == (1, 0, 2)
+    assert install.version(isolated_home / "current") == (1, 0, 1)
 
 
 def test_cli_shim_runs_the_installed_copy_through_a_link_from_any_folder(tmp_path, isolated_home):
@@ -395,11 +395,11 @@ def test_a_session_start_compiles_a_runtime_that_reached_it_uncompiled(tmp_path,
         install.install(plugin)
     runtime = isolated_home / "current"
     assert _compiled(runtime) == set()
-    assert "is not newer" in install.install(plugin, forward_only=True)
+    assert "kept" in install.install(plugin, first_only=True)
     assert {"guards", "hook", "approvals", "paths"} <= _compiled(runtime)
     import compileall
     monkeypatch.setattr(compileall, "compile_dir", lambda *args, **kwargs: pytest.fail("a compiled runtime was compiled again"))
-    assert "is not newer" in install.install(plugin, forward_only=True)  # every later session start only looks
+    assert "kept" in install.install(plugin, first_only=True)  # every later session start only looks
 
 
 def test_compiled_code_is_held_to_its_source_and_not_to_its_date(tmp_path, isolated_home):
