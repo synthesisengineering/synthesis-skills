@@ -396,8 +396,7 @@ def test_the_browser_guard_lets_the_chat_extractor_through_as_a_read(tmp_path, m
     read = {"action": "javascript_exec", "text": script, "tabId": 7}
     assert guards.check("mcp__claude-in-chrome__javascript_tool", read, {}, session=session) is None
     held = {"action": "javascript_exec", "text": script + "\ndocument.querySelector('[role=\"article\"]').click()", "tabId": 7}
-    reason = guards.check("mcp__claude-in-chrome__javascript_tool", held, {}, session=session) or ""
-    assert "shipped" in reason and "approve" not in reason  # anything else on a chat is refused (5.23.1)
+    assert "approve" in (guards.check("mcp__claude-in-chrome__javascript_tool", held, {}, session=session) or "")
 
 
 def find_chromium():

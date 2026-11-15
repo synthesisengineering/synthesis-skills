@@ -370,8 +370,7 @@ def test_the_browser_guard_lets_the_extractor_through_as_a_read(tmp_path, monkey
         call = {"action": "javascript_exec", "text": script, "tabId": 7}
         assert guards.check("mcp__claude-in-chrome__javascript_tool", call, {}, session=_session(tmp_path, LIST)) is None
     held = {"action": "javascript_exec", "text": script + "\ndocument.querySelector('[role=\"row\"] a').click()", "tabId": 7}
-    reason = guards.check("mcp__claude-in-chrome__javascript_tool", held, {}, session=_session(tmp_path, LIST)) or ""
-    assert "shipped" in reason and "approve" not in reason  # anything else on a Messenger page is refused (5.23.1)
+    assert "approve" in (guards.check("mcp__claude-in-chrome__javascript_tool", held, {}, session=_session(tmp_path, LIST)) or "")
 
 
 # --- the extractor in a real browser, on an invented page ---------------------------------------------------------
