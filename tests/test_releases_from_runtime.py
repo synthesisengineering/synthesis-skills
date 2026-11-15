@@ -78,7 +78,7 @@ def world(tmp_path, monkeypatch):
 
     release = Path(os.path.realpath(paths.home() / "current"))
     return {"home": home, "canon": canon, "work": work, "judge": judge, "release": release,
-            "tool": paths.home() / "current" / TOOL, "q": shlex.quote}
+            "tool": paths.home() / "current" / TOOL, "launcher": paths.home() / "bin" / "synthesis-release", "q": shlex.quote}
 
 
 def _variant(world, name, *steps):
@@ -92,15 +92,17 @@ def _variant(world, name, *steps):
 
 # --- the one way through -----------------------------------------------------------------------------------------------
 
-def test_the_running_releases_own_release_tool_on_the_canonical_checkout_needs_no_code(world):
-    canon, tool, release = world["canon"], world["tool"], world["release"]
+def test_the_release_launcher_on_the_canonical_checkout_needs_no_code(world):
+    """Round 1 of the review (A4, P1, P3): the one way through is the launcher install writes in the protected bin/,
+    which runs the release tool with the interpreter pinned at install, isolated. Paths are absolute (A5)."""
+    canon, launcher = world["canon"], world["launcher"]
     lines = [
-        f"python3 {tool} --repo-root {canon} --dry-run",
-        f"/usr/bin/python3 {release / TOOL} --repo-root={canon}",
-        f"python3 ~/.synthesis/v5/current/{TOOL} --repo-root ~/work/synthesis-skills --install-only --clients claude,codex "
-        "--session S-principal",
-        f"python3 {tool}   --dry-run   --repo-root {canon}  --clients=muse --session=abc.def:1",
-        [f"python3 {tool} --repo-root . --dry-run", str(canon)],  # relative to where the command runs
+        f"{launcher} --repo-root {canon} --dry-run",
+        f"~/.synthesis/v5/bin/synthesis-release --repo-root ~/work/synthesis-skills",
+        f"{launcher} --repo-root={canon} --clients claude,codex --session S-principal",
+        f"{launcher}   --dry-run   --repo-root {canon}  --clients=muse",
+        f"{launcher} --install-only --tag v5.23.1 --clients muse",
+        [f"~/.synthesis/v5/bin/synthesis-release --install-only --tag=v5.23.1 --dry-run", str(world["work"])],
     ]
     assert world["judge"](lines) == [None] * len(lines)
 
@@ -151,6 +153,23 @@ WAITS = {
     "into a file": "python3 {tool} --repo-root {canon} --dry-run > {work}/out.txt",
     "a quoted word": "python3 '{tool}' --repo-root {canon} --dry-run",
     "a second command": "python3 {tool} --repo-root {canon} --dry-run; true",
+    "the tool by its own path, not the launcher": "python3 {tool} --repo-root {canon} --dry-run",
+    "the system Python on the tool": "/usr/bin/python3 {release}/{tool_rel} --repo-root {canon}",
+    "the launcher with an option it does not document": "{launcher} --repo-root {canon} --verbose",
+    "the launcher with an option abbreviated": "{launcher} --repo {canon}",
+    "the launcher with an option twice": "{launcher} --repo-root {canon} --repo-root {canon}",
+    "the launcher with no repository": "{launcher} --dry-run",
+    "the launcher with a relative repository": "{launcher} --repo-root work/synthesis-skills",
+    "the launcher with another session's id": "{launcher} --repo-root {canon} --session S-other",
+    "an install with no tag": "{launcher} --install-only",
+    "a tag on a release": "{launcher} --repo-root {canon} --tag v5.23.1",
+    "an install with a repository": "{launcher} --install-only --tag v5.23.1 --repo-root {canon}",
+    "a tag that is no version": "{launcher} --install-only --tag main",
+    "a copy of the launcher": "{work}/synthesis-release --repo-root {canon}",
+    "the launcher through env": "env {launcher} --repo-root {canon}",
+    "the launcher through a shell": "sh {launcher} --repo-root {canon}",
+    "the launcher quoted": "'{launcher}' --repo-root {canon}",
+    "the launcher with a relative path": "../home/.synthesis/v5/bin/synthesis-release --repo-root {canon}",
 }
 
 
@@ -162,7 +181,8 @@ def test_every_other_way_of_running_it_still_waits_for_the_code(world):
                f"runpy.run_path({str(tool)!r}, run_name='__main__')")
     starting = f"import subprocess; subprocess.run(['python3', {str(tool)!r}, '--repo-root', {str(canon)!r}, '--dry-run'])"
     (world["work"] / "release.sh").write_text(f"python3 {tool} --repo-root {canon} --dry-run\n", encoding="utf-8")
-    values = {"canon": canon, "tool": tool, "tool_rel": TOOL, "release": release, "work": world["work"],
+    shutil.copy2(world["launcher"], world["work"] / "synthesis-release")
+    values = {"canon": canon, "tool": tool, "tool_rel": TOOL, "release": release, "work": world["work"], "launcher": world["launcher"],
               "elsewhere": _elsewhere(world), "importing": q(importing), "running": q(running), "starting": q(starting),
               "importing_raw": importing.replace("; ", "\n"), "shelled": q(f"python3 {tool} --repo-root {canon} --dry-run")}
     lines = [template.format(**values) for template in WAITS.values()]
@@ -186,19 +206,19 @@ NOT_CANONICAL = {
 
 
 def test_a_checkout_that_is_not_the_canonical_one_waits(world):
-    tool, q = world["tool"], world["q"]
+    tool, q = world["launcher"], world["q"]
     roots = {name: _variant(world, name.replace(" ", "-"), *steps) for name, steps in NOT_CANONICAL.items()}
     (world["canon"] / "inner").mkdir()
     roots["a folder inside the checkout"] = world["canon"] / "inner"
     (world["work"] / "plain").mkdir()
     roots["no checkout at all"] = world["work"] / "plain"
-    lines = [f"python3 {tool} --repo-root {q(str(root))} --dry-run" for root in roots.values()]
+    lines = [f"{tool} --repo-root {q(str(root))} --dry-run" for root in roots.values()]
     assert [(name, said) for name, said in zip(roots, world["judge"](lines)) if not (said and HELD in said)] == []
 
 
 def test_the_guard_lets_the_tool_through_only_when_it_runs_from_that_runtime(world):
     """In this process the guard runs from this tree, not from the protected runtime, so no release tool is its own."""
-    said = guards.check("Bash", {"command": f"python3 {world['tool']} --repo-root {world['canon']} --dry-run"}, {},
+    said = guards.check("Bash", {"command": f"{world['launcher']} --repo-root {world['canon']} --dry-run"}, {},
                         cwd=str(world["work"]), session={"session_id": "S-principal"})
     assert said and HELD in said, said
 
@@ -219,5 +239,5 @@ def test_a_pending_approval_code_on_the_line_is_never_let_through(world):
     import re
     held = world["judge"]([f"python3 {world['canon']}/{TOOL} --repo-root {world['canon']} --dry-run"])[0]
     code = re.search(r"\bcode ([a-z0-9]{6})\b", held).group(1)
-    said = world["judge"]([f"python3 {world['tool']} --repo-root {world['canon']} --dry-run --session {code}"])[0]
+    said = world["judge"]([f"{world['launcher']} --repo-root {world['canon']} --dry-run --session {code}"])[0]
     assert said and said.startswith("Refused") and "pending approval code" in said, said
