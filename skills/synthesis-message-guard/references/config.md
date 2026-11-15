@@ -433,7 +433,11 @@ made through Claude in Chrome's `browser_batch`, none guarded either. Both now w
 **Which tools.** The computer-use server's action tools under any server id (`computer_batch`, `app_batch`,
 `app_click`, `app_key`, `app_type`, `app_menu`, `teach_step`, `teach_batch` and the single-action tools), a linked
 device's `computer_*` tools, and a browser server's `computer` and `browser_batch` (Claude in Chrome, the built-in
-browser). Screenshots, zooms, scrolls, waits, menu listings and every read pass at once.
+browser). Screenshots, zooms, scrolls, waits, menu listings and every read pass at once. Since 5.23.0 a browser tool
+from any other server whose name says it drives a browser (Playwright, Chrome DevTools, Puppeteer) is read too, as the
+steps it performs (typing, a key, a click, a form, a page script), on the page that server's own results last showed;
+a click is read by the control the page's snapshot names, not only by the words the agent gives it; and a step that
+may send on a page those results do not show waits for the code.
 
 **Messaging apps.** Built in: WhatsApp (`net.whatsapp.WhatsApp`, `desktop.WhatsApp`), Messages
 (`com.apple.MobileSMS`), Slack (`com.tinyspeck.slackmacgap`), Signal (`org.whispersystems.signal-desktop`),
@@ -571,6 +575,58 @@ button") passes outside the Return and line-break rules, and so does a page scri
 site's own send function, or clicks with no word that publishes in it, off a messaging site). Pasted text (cmd+v) is
 not scanned, and Playwright's browser tools reach no send rule (over the same 30 days they were used 31 times, none to
 click, type or press a key). These are why the binding rule still governs every send.
+
+## Keys, clicks and other apps from the shell (5.23.0)
+
+Round 3 of the batch approval's review (2026-11-15) typed words into a Messenger box with the browser tool, which
+sends nothing, then pressed Return through `osascript` (System Events `key code 36`), and the message went out with
+no code: the shell guard read no key events. A shell command now waits for the principal's code for that exact
+command, as a send does, when it
+
+- presses keys or clicks in whatever app is in front: `osascript` or JavaScript for Automation with keystroke, key
+  code or key down or up, or with System Events' UI verbs (click, perform, set value, focus or selection, select,
+  confirm) where System Events is named; SystemUIServer or BetterTouchTool; `cliclick` and `xdotool` with an action,
+  `ydotool`, `wtype`, `dotool`, `sendkeys`, `skhd -k` or `-t`, `shortcuts run`, `automator`; Hammerspoon's `hs` with Lua
+  that presses, clicks, runs a task or loads code (`hs -c 'hs.reload()'` passes, and so does the HubSpot CLI, also
+  `hs`); an input library a program uses (pyautogui, pynput, Quartz's CGEvent, AXUIElement, NSAppleScript,
+  ScriptingBridge, appscript, robotjs, `@jxa/run`, the `osascript` and `applescript` modules);
+- types into another terminal: `tmux send-keys`, `screen -X stuff`, `kitty @ send-text`, `wezterm cli send-text`;
+- opens a terminal or an automation link: `open -a Terminal` (or iTerm, Warp, kitty, Alacritty, WezTerm, Ghostty), a
+  `.command` or `.tool` file, a `shortcuts://`, `kmtrigger://`, `alfred://`, `hammerspoon://` or `raycast://` link;
+- sends through a scriptable app: a `send` in Messages, Mail or Outlook, read across all of a script's lines;
+- runs code in another app: Terminal's `do script`, iTerm's `write text` or `command`, a browser's `execute ...
+  javascript` or `do JavaScript`, Keyboard Maestro, Alfred's `run trigger`, Hammerspoon, Shortcuts, Automator, an
+  automation link or a `.command` file opened by a script;
+- or runs a script the guard cannot read: a compiled script, one on an input another program writes, words the shell
+  fills in (`-e "$S"`, `$(cat …)`, xargs's input), `do shell script`, `run script` or a script library, a raw `«event»`
+  code, `use framework`, a bridge to the system's classes (`$.system`, `NSTask`, `NSAppleEventDescriptor`, an
+  `ObjC.import` beyond Foundation, AppKit, Cocoa and stdlib), `eval`, an app or member a JavaScript script names only
+  when it runs, or a string, comment or pattern it never closes.
+
+The command is read wherever it runs: its `-e` lines, the file it names (`$HOME` and `~` filled in), a heredoc or pipe,
+`bash -c`, `watch`, `script`, `launchctl asuser`, `arch`, a shell file, a `make` target's recipe, an npm, pnpm, yarn or
+bun package script, every reading of the variables the line gives (`O=osascript; $O -e …`), and the commands a program
+starts, from its calls, its command spans and its strings (an argument list, a string handed to a shell, an AppleScript
+kept in a variable of a program that runs osascript), in Python with the modules of its own it imports and a module run
+with `-m`, and in Perl, Ruby, Tcl, expect, Node, Deno, PHP and Swift. A file the same line writes is read as the line's
+own heredocs. A command a program builds while it runs, or code it builds and runs, is not read: a sandbox around the
+shell, not a reading of text, closes that. A program that starts nothing is only read, so an analysis, a comment or a help text that
+names osascript or a library passes; a line the parser cannot read that names one of these programs waits. Words a
+command types or sends pass the register scan first. System Events alone, asked which apps run, passes, and so do
+Terminal and iTerm asked a window's name, Finder's select and a spreadsheet's set value. Over the 276,500 shell
+commands recorded in the 60 days before 5.23.0, this reading holds 39 the old guard passed, none a message sent or a
+key pressed: osascript whose script comes from another program's output or from words the shell fills in, and programs
+whose strings run such a script. It takes 0.17 ms on a typical command and 307 ms at worst.
+
+A browser tool from any other server is read by what it does (5.23.0, the same review), on the page that server's own
+results show (Playwright's `- Page URL:` and tab list, Chrome DevTools' selected page, Puppeteer's `Navigated to`) or its
+own newest navigate, in a Claude Code record or a Codex rollout. A click is read by the control the current page's
+newest snapshot names for its `target` or `ref` together with the agent's words; on a messaging site a control the
+snapshot does not name waits. `browser_type` with `submit`, `browser_press_key` Enter or a typed line break, a form or
+dropped text holding one, an accepted dialog, and an evaluate or a script that acts are read as Claude in Chrome's are.
+`browser_run_code_unsafe` waits when it loads its code from a file or its code starts a command that acts. A tool the
+guard does not know, on a server that drives a browser, is a step that may send, and so is any step where nothing shows
+the page. The code binds the call itself, so it is not spent on another control or box.
 
 ## Calibration
 

@@ -4,6 +4,44 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [5.23.1] - 2026-11-15
+
+- **The daily rituals' skill file holds the Messenger rule** (`synthesis-daily-rituals` 3.19.0), by the move the principal
+  approved in his decision packet of 2026-11-15. Two passages that describe the skill (its introduction and its
+  Procedure section) moved word for word to the head of `references/procedure.md`, so SKILL.md could take rule 17:
+  Messenger's chat list is read at its own address, beside "No chats selected", and the daily read opens no chat, since
+  opening one marks it read. Messenger's section moved word for word from `references/linkedin-messages.md` to its own
+  `references/messenger-messages.md` (its headings one level up), listed in Contents, and the four checklists point to
+  it. The moved Procedure sentence's link now names `procedure.md`, the file it sits in. SKILL.md is 7,849 bytes.
+- **The guard asks where a path leads once a call.** Judging a long shell command, it asked the file system where the
+  same paths lead again for each of the command's readings and each of its words: one recorded heredoc of
+  substitutions in a loop asked 11,746 times over 102 paths, which took 0.31 s on a Mac under Apple's Python 3.9 and
+  1.11 s on CI's macOS runner, past the 1.0 s its test allows. The guard writes nothing while it judges, so each
+  answer now holds for the call: 123 questions and 0.105 s. A test counts the questions, so it holds on any runner.
+- **An approval is spent only once it is confirmed, and confirming it reads only the record written since it was
+  granted.** A Codex session's record had grown to 1.9 GB. The principal typed two codes; the guard deleted each grant
+  and then read the record from its start for the prompt, which took 4.6 s, past the hook's 4 s deadline. The calls
+  were held with the grants gone, so each identical retry asked for a new code and neither call ran. The guard now
+  reads the grant, finds the prompt, and only then spends it; a grant changed while it was checked is never used. The
+  prompt hook records how long the session's record was when the principal typed, and the check reads back from the
+  end to 16 MB before that point, and the whole line there, so older lines written after the prompt (a compaction
+  block) cannot hide it: 0.02 s on that record. A grant filed before this release, or by a harness whose prompt names
+  no record, keeps the approval window's time rule. Nothing a call's decisions record stands until its answer (a
+  window's send is counted at once and marked settled or undone then): a call that is held, at the deadline or by a
+  later check, ran nothing, so it gives back the grants it used and leaves no record of a send, a send window's count,
+  a deploy for the 45-minute brake, or a grant voided by the code that released it; the hook settles them as it
+  answers, and a check a script enters itself (the local-messaging sender's) settles them when it returns. A record
+  that cannot be written holds the call, undoes the records written before it (a deploy another call recorded
+  meanwhile stays, and a desktop page's record of typed words released by their code is not undone) and gives back
+  its grants, and the answer still goes out. In one process, one thread judges at a time and another waits its turn,
+  the send lock too, and the hook settles only the call its own check judged. A grant given back appears whole or not
+  at all. A window closes once its last planned send has gone, so a send held after another went leaves its place to
+  the window, and desktop window sends are judged one at a time like the others. The guard's 4 s deadline counts from
+  when the hook process loaded, and an alarm that lands as the deadline is taken down still holds the call; a hold
+  answered more than 4.5 s after that may reach a harness after its 5 s, when it lets the call through, so then the
+  records stand and the grants stay spent. A grant spent before this release cannot be brought back; its call is
+  approved again once.
+
 ## [5.23.0] - 2026-11-15
 
 - **Messenger's chat list is a ritual surface** (`synthesis-daily-rituals` 3.18.0). A workspace declares
@@ -63,6 +101,36 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   `..` and links: inside it, the folder itself, or a folder above it; parts in two words never join. In a program's
   text, parts still join within one statement however they are joined, but not from two separate paths written whole,
   and one path written whole names a folder only where its parts stand one after another in it.
+- **A key, a click or another app driven from the shell waits for the code, and so does any browser server's tool**
+  (core; `synthesis-message-guard` 2.12.0, references/config.md). Round 3 of the batch approval's review found that
+  words typed into a Messenger box with the browser tool, then Return pressed through `osascript` (System Events `key
+  code 36`), went out with no code, and that the Playwright plugin's browser tools reached no send rule. A shell command
+  that presses keys or clicks in whatever app is in front (System Events' UI verbs through `osascript` or JavaScript for
+  Automation, `cliclick`, `xdotool`, Hammerspoon's Lua, `skhd -k`, `shortcuts run`, `automator`, an input library in a
+  program), types into another terminal (`tmux send-keys`, `screen -X stuff`, `kitty @ send-text`, `wezterm cli
+  send-text`), opens a terminal or an automation link (`open -a Terminal`, a `.command` file, `shortcuts://`), sends
+  through a scriptable app (a `send` in Messages, Mail or Outlook, read across all of a script's lines where a pattern
+  read one), or runs code in another app (Terminal's `do script`, iTerm's `write text`, a browser's JavaScript, Keyboard
+  Maestro, Alfred, Shortcuts) now waits for the principal's code for that exact command. The command is read through
+  `bash -c`, `watch`, `script`, `launchctl asuser` and `arch`, heredocs, pipes, shell files, `make` and package-script
+  recipes, the variables the line gives, the commands a program starts (from its calls, its command spans and its
+  strings, in Python with the modules of its own it imports, and in Perl, Ruby, Tcl, Node, Deno, PHP and Swift), and a
+  file the same line writes, read as the line's own heredocs. What a script cannot show waits too: a
+  compiled script, words the shell fills in, `do shell script`, `run script`, a script library, a raw `«event»` code, a
+  bridge to the system's classes, an app or member named only when it runs, a string or comment it never closes. Words a
+  command types or sends pass the register scan first. A browser tool from any server whose name says it drives a
+  browser (Playwright, Chrome DevTools, Puppeteer) is read as the steps it performs, on the page its own results or its
+  own last navigate show, in Claude Code's records or Codex's: a click by the control the page's newest snapshot names
+  (Playwright's `target`) as well as the agent's words; a Return, a submit, a click that sends or a page script that acts
+  waits on a messaging site as Claude in Chrome's does; a tool the guard does not know, or any step where nothing shows
+  the page, waits as one that may send; `browser_run_code_unsafe` waits when it loads a file or its code starts a command
+  that acts; and the code binds the call itself. Sixty days of Claude Code and Codex records held no message sent either
+  way (the one osascript Return was the review's own scan; Playwright pressed Tab twice, on local pages). Over the
+  276,500 shell commands they hold, the reading holds 39 the old guard passed, none a message sent or a key pressed:
+  osascript whose script comes from another program's output or from words the shell fills in, and programs whose
+  strings run such a script; 154 more ran script files since removed, judged live by their text. It takes 0.17 ms on a
+  typical command and 307 ms at worst. Tests first: 66 of the 95 first cases failed on main; review round 1 then found 15
+  more ways through and 16 false holds, all pinned by its probes (125 cases, 113 failing on their own commit) and fixed.
 
 ## [5.22.1] - 2026-11-14
 

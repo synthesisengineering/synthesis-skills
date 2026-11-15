@@ -49,8 +49,7 @@ COMMANDS = [
     ("bitbucket", rf"bkt{OPTS}\s+pr\s+(?:comment|create|edit|approve|decline|reopen|request-changes)\b"),
     ("gitlab", rf"glab{OPTS}\s+(?:mr|issue)\s+(?:note|comment|create|update)\b"),
     ("jira", r"(?:jira|acli)\b.*\b(?:comment|create|edit)\b"),
-    ("messages", r"osascript\b.*\b(?:Messages|Mail)\b.*\bsend\b"),
-]
+]  # an osascript send is read by the guard's reading of its script (`guards.osa_send`), across its lines
 API = {"gh": "github", "bkt": "bitbucket", "glab": "gitlab"}
 WEB = {"curl", "wget", "http", "https", "xh"}
 LOCAL = re.compile(r"(?:localhost|127\.0\.0\.1|\[?::1\]?|[\w.-]+\.localhost|[\w.-]+\.test)$")
@@ -131,6 +130,9 @@ def command_send(words: list, cwd: str, config: dict) -> str | None:
         return None  # help prints and posts nothing (2026-10-13: `bkt pr edit --help` asked for a code)
     if head in WEB:
         return "web" if _web_write(words) else None
+    if head in ("osascript", "osacompile"):
+        from synthesis import guards
+        return guards.osa_send(words, cwd)
     if head in API and re.match(rf"{head}{OPTS}\s+api\b", line):
         if not re.search(r"\s(?:-X|--method)[=\s]*(?:POST|PUT|PATCH|DELETE)\b|\s(?:-f|-F|--field|--raw-field|--input)\b",
                          " " + line) or ("graphql" in words and "mutation" not in line):
@@ -301,16 +303,23 @@ def close_window() -> bool:
         return False
 
 
-def spent(w: dict) -> int:
-    """Sends the window has let through since it opened (it may span midnight)."""
+def spent(w: dict, gone: bool = False) -> int:
+    """Sends the window has let through since it opened (it may span midnight); with `gone`, only those whose call was
+    let through as well (a send logged before 5.23.1 carries no id and counts as gone)."""
     days = {time.strftime("%Y-%m-%d", time.localtime(w["opened"])), time.strftime("%Y-%m-%d")}
-    return sum(1 for d in days for e in ledger(d) if e.get("how") == "window" and e.get("at", 0) >= w["opened"])
+    settled = {r.get("of") for d in days for r in _rows(d) if r.get("how") == "settled"} if gone else set()
+    return sum(1 for d in days for e in ledger(d) if e.get("how") == "window" and e.get("at", 0) >= w["opened"]
+               and (not gone or not e.get("id") or e["id"] in settled))
 
 
-def settle() -> None:
-    """After a send the window let through: its last planned send closes it."""
+def settle(mark: str = "") -> None:
+    """After a send the window let through: once its last planned send has gone, it closes. A send counted but still
+    being judged keeps it open, so one then held leaves its send to the window (review round 3 of the spend order,
+    finding 4)."""
+    if mark:
+        _note(mark, "settled")
     w = window()
-    if w and spent(w) >= w.get("sends", 0):
+    if w and spent(w, gone=True) >= w.get("sends", 0):
         close_window()
 
 
@@ -335,16 +344,42 @@ def describe(w: dict) -> str:
 # --- the ledger ---------------------------------------------------------------------------------
 
 
-def log(chan: str, tool: str, summary: str, how: str, session: dict | None = None) -> None:
-    """One line per send the guard let through, for the daily plan's "On your behalf"."""
-    entry = {"at": time.time(), "channel": chan, "tool": tool, "summary": summary[:200], "how": how,
+def log(chan: str, tool: str, summary: str, how: str, session: dict | None = None) -> str:
+    """One line per send the guard let through, for the daily plan's "On your behalf". Returns its mark (the day and
+    its id), for `undo` when the call it belongs to is then held."""
+    import uuid
+    day = time.strftime("%Y-%m-%d")
+    entry = {"id": uuid.uuid4().hex, "at": time.time(), "channel": chan, "tool": tool, "summary": summary[:200], "how": how,
              "session": paths.session_id(session) if session else os.environ.get("SYNTHESIS_SESSION", "")}
-    target = paths.state() / "sends" / f"{time.strftime('%Y-%m-%d')}.jsonl"
+    target = paths.state() / "sends" / f"{day}.jsonl"
     target.parent.mkdir(parents=True, exist_ok=True)
     with target.open("a", encoding="utf-8") as handle:
         handle.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    return f"{day}/{entry['id']}"
+
+
+def undo(mark: str) -> None:
+    """A send counted at once (a window's planned send) whose call was then held: it did not go. The ledger only grows,
+    so a line says so, and `ledger` leaves both out (review round 2 of the spend order, finding 1)."""
+    _note(mark, "undone")
+
+
+def _note(mark: str, how: str) -> None:
+    """A line about the send `mark` names: "undone" (its call was held) or "settled" (its call was let through)."""
+    day, _, ident = mark.partition("/")
+    target = paths.state() / "sends" / f"{day}.jsonl"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    with target.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps({"at": time.time(), "how": how, "of": ident}) + "\n")
+
+
+def _rows(day: str) -> list:
+    target = paths.state() / "sends" / f"{day}.jsonl"
+    return [json.loads(line) for line in target.read_text(encoding="utf-8").splitlines() if line] if target.is_file() else []
 
 
 def ledger(day: str) -> list:
-    target = paths.state() / "sends" / f"{day}.jsonl"
-    return [json.loads(line) for line in target.read_text(encoding="utf-8").splitlines() if line] if target.is_file() else []
+    """The sends of a day that went: a send its call's hold undid is left out, and so are the lines about sends."""
+    rows = _rows(day)
+    undone = {r.get("of") for r in rows if r.get("how") == "undone"}
+    return [r for r in rows if r.get("how") not in ("undone", "settled") and not (r.get("id") and r["id"] in undone)]
