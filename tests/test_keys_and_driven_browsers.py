@@ -301,18 +301,19 @@ def test_a_code_lets_that_one_playwright_step_go_once(principal):
     assert held(driven(*ENTER, session))
 
 
-@pytest.mark.parametrize("tool, tool_input", [
-    ("mcp__chrome-devtools__press_key", {"key": "Enter"}),
-    ("mcp__puppeteer__puppeteer_click", {"selector": "button[type=submit]"}),
+@pytest.mark.parametrize("tool, tool_input, unplaced", [
+    ("mcp__chrome-devtools__press_key", {"key": "Enter"}, "read first"),
+    ("mcp__puppeteer__puppeteer_click", {"selector": "button[type=submit]"}, "code"),
 ])
-def test_other_browser_servers_are_read_by_what_their_tools_do(tmp_path, tool, tool_input):
-    """A key or click that sends on a messaging site's page waits for the code there; on a page no result of theirs
-    shows it is held until the page is read (review round 2 of 5.23.1, #1)."""
+def test_other_browser_servers_are_read_by_what_their_tools_do(tmp_path, tool, tool_input, unplaced):
+    """A key or click that sends on a messaging site's page waits for the code there. On a page no result of theirs
+    shows, Chrome DevTools' key is held until the page is read, since a list of its pages shows it (review round 2 of
+    5.23.1, #1); Puppeteer's results may never show its page, so its click waits for the code."""
     placed = _call("toolu_o1", tool.rpartition("__")[0] + "__navigate_page", {"url": MESSENGER}, f"Navigated to {MESSENGER}")
     assert held(driven(tool, tool_input, _on(tmp_path, None, placed)))
     (tmp_path / "unplaced").mkdir()
     reason = driven(tool, tool_input, _on(tmp_path / "unplaced", None))
-    assert "read the page first" in reason and "does not show" in reason, reason
+    assert held(reason) if unplaced == "code" else "read the page first" in reason and "does not show" in reason, reason
 
 
 def test_every_browser_tool_fails_closed_when_the_config_cannot_be_read():
