@@ -548,3 +548,44 @@ def test_finding_19_the_hold_names_the_program_that_runs(world, line):
                                   "ls {H}/.claude", "grep -c user {R}"])
 def test_round_one_reads_still_pass(world, line):
     assert _verdict(world, line.format(**_raw(world))) is None, line
+
+
+# --- only the guard's own release is the plugin's, and the runtime is protected (coordinator, 2026-11-14) -------------
+
+def _reader_script(folder: Path, name: str = "x.py") -> Path:
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / name).write_text("import sys\nprint(open(sys.argv[1], encoding='utf-8').read()[:10])\nimport os\nos.listdir('.')\n" * 600, encoding="utf-8")
+    return folder / name
+
+
+def test_a_script_planted_in_the_synthesis_home_outside_its_release_waits(world):
+    script = _reader_script(paths.home() / "outbox")
+    assert HELD in (_verdict(world, f"python3 {script} {world['rec']}") or "")
+
+
+def test_a_file_beside_an_unchanged_guard_in_a_plugin_cache_waits(world):
+    cache = world["home"] / ".claude" / "plugins" / "cache" / "m" / "synthesis-skills" / "9.9.9"
+    (cache / "synthesis").mkdir(parents=True)
+    (cache / "synthesis" / "guards.py").write_bytes((ROOT / "synthesis" / "guards.py").read_bytes())
+    script = _reader_script(cache / "skills" / "planted" / "scripts")
+    assert HELD in (_verdict(world, f"python3 {script} {world['rec']}") or "")
+
+
+@pytest.mark.parametrize("target", ["bin/synthesis-hook", "current/synthesis/guards.py", "releases/abc/synthesis/guards.py"])
+def test_the_runtime_is_a_protected_folder(world, target):
+    reason = _verdict(world, f"cp {world['forged']} {paths.home() / target}")
+    assert reason and reason.startswith("Refused"), reason
+
+
+def test_the_rituals_scripts_run_from_the_installed_runtime_still_pass(world):
+    from synthesis import install
+    install.install(ROOT)
+    script = paths.home() / "current" / "skills" / "synthesis-daily-rituals" / "scripts" / "ritual_state.py"
+    assert script.is_file()
+    assert _verdict(world, f"python3 {script} --direction start") is None
+    cache = world["home"] / ".claude" / "plugins" / "cache" / "m" / "synthesis-skills" / "9.9.9" / "skills" / "synthesis-daily-rituals" / "scripts"
+    cache.mkdir(parents=True)
+    (cache / "ritual_state.py").write_bytes(script.read_bytes())  # the same bytes as the protected runtime's copy
+    for sibling in script.parent.glob("*.py"):
+        (cache / sibling.name).write_bytes(sibling.read_bytes())
+    assert _verdict(world, f"python3 {cache / 'ritual_state.py'} --direction start") is None
