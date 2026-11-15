@@ -44,6 +44,22 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   opening one marks it read. Messenger's section moved word for word from `references/linkedin-messages.md` to its own
   `references/messenger-messages.md` (its headings one level up), listed in Contents, and the four checklists point to
   it. The moved Procedure sentence's link now names `procedure.md`, the file it sits in. SKILL.md is 7,849 bytes.
+- **On a messaging site's page only the plugin's own read-only scripts run** (core; `synthesis-message-guard` 2.12.1,
+  references/config.md). Round 4 of the batch approval's review found a page script that clicks Send by a name it builds
+  as it runs (`el['cli' + 'ck']()`) passing on Slack, WhatsApp, LinkedIn, Gmail and X, since the old rule read a
+  script's text for a click, a submit or a key. On a messaging site's page, and on a page a driven browser's record does
+  not show, every page script is now refused but the extractors the plugin ships. Refused rather than held for a code:
+  60 days of records held 178 other scripts on those pages, all in 4 sessions, and the old rule passed 173 of them, so a
+  code for each would have asked the principal 173 times; the browser's own read tools read a page with no code. None
+  of those scripts called a member named as it ran. The runtime the hook runs from now carries both extractors'
+  scripts, so `chat_page.py`'s reads a chat there too.
+- **A navigate is read as a URL parser reads it** (core). The `navigate` tool called alone was never judged, and a
+  navigate's address was read as written while a browser drops tabs and line breaks anywhere in it and control
+  characters at its ends, so `java\tscript:` was a `javascript:` address to the browser alone. Every navigate, from
+  Claude in Chrome, the built-in pane or a driven browser, alone or in a batch, is now read that way, and one to a
+  `javascript:` address is the page script it runs, on the page it runs on. None appears among the 704 navigates of
+  the last 60 days. The built-in pane's own tab lists, `tabs_context` and navigate results are read for its page, and
+  each browser's tab ids are its own.
 
 ## [5.23.0] - 2026-11-15
 

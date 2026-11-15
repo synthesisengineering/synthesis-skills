@@ -513,18 +513,27 @@ def test_a_register_hit_in_a_send_on_a_site_that_is_no_messaging_site_goes_on_a_
     "document.querySelector('button.comments-comment-box__submit-button').click()",
     "document.activeElement.dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter', bubbles: true}))",
     "fetch('/voyager/api/messaging/conversations', {method: 'POST', body: '{}'})"])
-def test_a_page_script_that_can_send_on_a_messaging_site_waits(tmp_path, script):
+def test_a_page_script_that_can_send_on_a_messaging_site_is_refused(tmp_path, script):
     """The second review: a page script never reached the send guard, so one that clicks a comment's submit button or
-    presses Enter in LinkedIn's message overlay went out with no code."""
+    presses Enter in LinkedIn's message overlay went out with no code. Since round 4 of 5.24.0's review (#3) every page
+    script there but the shipped read-only ones is refused, whatever its text says."""
     session = _on(tmp_path, 7, tab7="https://www.linkedin.com/feed/")
     alone = {"action": "javascript_exec", "text": script, "tabId": 7}
-    assert "approve" in (guards.check("mcp__claude-in-chrome__javascript_tool", alone, CONFIG, session=session) or "")
+    reason = guards.check("mcp__claude-in-chrome__javascript_tool", alone, CONFIG, session=session) or ""
+    assert "get_page_text" in reason and "approve" not in reason
     fill = ("form_input", {"ref": "ref_2", "value": "Congratulations, Pat", "action_summary": "Fills the comment box"})
-    assert "approve" in (check(CHROME, _opened("https://www.linkedin.com/feed/", fill, ("javascript_tool", alone))) or "")
+    reason = check(CHROME, _opened("https://www.linkedin.com/feed/", fill, ("javascript_tool", alone))) or ""
+    assert "get_page_text" in reason and "approve" not in reason
+
+
+def test_a_page_script_that_only_reads_a_messaging_sites_page_is_refused_too(tmp_path):
+    """A script that reads is one the guard cannot tell from one that sends by a name it builds (round 4, #3)."""
+    alone = {"action": "javascript_exec", "text": "[...document.querySelectorAll('h2')].map(h => h.innerText).join(', ')", "tabId": 7}
+    reason = guards.check("mcp__claude-in-chrome__javascript_tool", alone, CONFIG, session=_on(tmp_path, 7, tab7="https://www.linkedin.com/feed/"))
+    assert reason and "get_page_text" in reason and "approve" not in reason
 
 
 @pytest.mark.parametrize("url, script", [
-    ("https://www.linkedin.com/feed/", "[...document.querySelectorAll('h2')].map(h => h.innerText).join(', ')"),
     ("https://www.example.com/list", "document.querySelector('.load-more').click()"),
     ("https://www.example.com/", "document.querySelector('form#search').requestSubmit()"),
 ])
@@ -577,10 +586,13 @@ def test_a_navigate_that_names_no_host_keeps_a_messaging_sites_page(tmp_path):
     it opens may be that site's still, so it is judged as that site's; from any other page it is unknown, as before."""
     for where, held in (("https://www.facebook.com/groups/1/", True), ("https://docs.google.com/document/d/x", False)):
         session = _on(tmp_path, 7, tab7=where)
-        for url in ("back", "forward", "/messages/t/1", "javascript:void(0)"):
+        for url in ("back", "forward", "/messages/t/1"):
             reason = guards.check(CHROME, _steps(("navigate", {"url": url, "tabId": 7}), RETURN), CONFIG, session=session)
-            script = url.startswith("javascript:") and "shipped" in (reason or "")  # a script by address: refused there (5.24.0)
-            assert bool(reason and ("approve" in reason or script)) is held, (where, url)
+            assert bool(reason and "approve" in reason) is held, (where, url)
+        # a javascript: address runs a page script on the page it is on (round 4 of 5.24.0's review, #1): refused on a
+        # messaging site's page, judged as the script it is elsewhere
+        reason = guards.check(CHROME, _steps(("navigate", {"url": "javascript:void(0)", "tabId": 7}), RETURN), CONFIG, session=session)
+        assert bool(reason and "get_page_text" in reason and "approve" not in reason) is held, (where, reason)
 
 
 def test_a_tab_list_printed_by_another_tool_is_not_the_browsers(tmp_path):
@@ -645,22 +657,21 @@ def test_the_hook_holds_the_incident_call_and_fails_closed(isolated_home, write_
     "location.assign('/messages/e2ee/t/4004/')", "location.replace('/messages/e2ee/t/4004/')",
     "window.location.href = 'https://www.facebook.com/messages/e2ee/t/4004/'", "document.location = '/messages/t/1/'",
     "window.open('/messages/e2ee/t/4004/', '_self')", "location.href = document.querySelector('[role=\"row\"] a').href"])
-def test_a_page_script_that_moves_the_tab_on_a_messaging_site_waits(tmp_path, script):
+def test_a_page_script_that_moves_the_tab_on_a_messaging_site_is_refused(tmp_path, script):
     """Review round 1 of the Messenger surface, finding 13: on the chat list a script that moves the tab opens a chat,
-    which marks it read in the principal's view, so it waits for the code like one that clicks. On a Messenger site no
-    page script runs now but the plugin's own read-only ones (5.24.0); elsewhere the rule stands."""
+    which marks it read in the principal's view. Since round 4 of 5.24.0's review (#3), refused like every page script
+    there but the shipped read-only ones."""
     alone = {"action": "javascript_exec", "text": script, "tabId": 7}
     session = _on(tmp_path, 7, tab7="https://www.facebook.com/messages/t/")
-    assert "shipped" in (guards.check("mcp__claude-in-chrome__javascript_tool", alone, CONFIG, session=session) or "")
-    session = _on(tmp_path, 7, tab7="https://www.linkedin.com/messaging/")
-    assert "approve" in (guards.check("mcp__claude-in-chrome__javascript_tool", alone, CONFIG, session=session) or "")
+    reason = guards.check("mcp__claude-in-chrome__javascript_tool", alone, CONFIG, session=session) or ""
+    assert "get_page_text" in reason and "approve" not in reason
 
 
 @pytest.mark.parametrize("script", ["location.href", "({url: location.href, path: location.pathname})",
                                     "location.href === 'https://www.facebook.com/messages/t/'"])
-def test_a_page_script_that_only_reads_its_address_passes(tmp_path, script):
+def test_a_page_script_that_only_reads_its_address_is_refused_there_too(tmp_path, script):
+    """Each browser result's own tab list shows the page's address; a script that reads it is a script all the same."""
     alone = {"action": "javascript_exec", "text": script, "tabId": 7}
-    session = _on(tmp_path, 7, tab7="https://www.linkedin.com/messaging/")
-    assert guards.check("mcp__claude-in-chrome__javascript_tool", alone, CONFIG, session=session) is None
-    session = _on(tmp_path, 7, tab7="https://www.facebook.com/messages/t/")  # a Messenger site takes the shipped ones alone
-    assert "shipped" in (guards.check("mcp__claude-in-chrome__javascript_tool", alone, CONFIG, session=session) or "")
+    session = _on(tmp_path, 7, tab7="https://www.facebook.com/messages/t/")
+    reason = guards.check("mcp__claude-in-chrome__javascript_tool", alone, CONFIG, session=session) or ""
+    assert "get_page_text" in reason and "approve" not in reason

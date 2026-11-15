@@ -1130,12 +1130,13 @@ def test_a_page_script_on_a_page_no_record_names_is_refused(where):
 
 @pytest.mark.parametrize("text", ["open('https://www.linkedin.com/messaging/thread/1/')", "globalThis.open('/messaging/thread/1/')",
                                   "window['open']('/messaging/thread/1/')", "self.open('/messaging/thread/1/')"])
-def test_opening_a_page_by_any_spelling_of_open_waits_on_a_messaging_page(text):
-    """The third round (#2): `open(` opens a chat and marks it read as `window.open(` does, under any name."""
+def test_opening_a_page_by_any_spelling_of_open_is_refused_on_a_messaging_page(text):
+    """The third round (#2): `open(` opens a chat and marks it read as `window.open(` does, under any name. Since 5.23.1
+    (round 4, #3 and #7) every page script on a messaging site's page but the shipped readers is refused, by any spelling."""
     session = listed("https://www.linkedin.com/messaging/", tab=8)
-    assert held(guards.check(SCRIPT, {"action": "javascript_exec", "text": text, "tabId": 8}, CONFIG, session=session)), text
-    assert guards.check(SCRIPT, {"action": "javascript_exec", "text": "reopen(1); x.open('GET', '/a')", "tabId": 8}, CONFIG,
-                        session=session) is None
+    for script in (text, "reopen(1); x.open('GET', '/a')"):
+        reason = guards.check(SCRIPT, {"action": "javascript_exec", "text": script, "tabId": 8}, CONFIG, session=session)
+        assert reason and "shipped" in reason and not held(reason), script
 
 
 def test_the_hold_shows_the_files_path_escaped():
