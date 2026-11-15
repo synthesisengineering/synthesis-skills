@@ -82,6 +82,7 @@ CANONICAL, TAP = guards.RELEASE_REPOSITORY, "synthesisengineering/homebrew-tap"
 GIT = ("git", "--no-replace-objects", "-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false")
 CANONICAL_URL = f"https://github.com/{CANONICAL}.git"
 TAG = re.compile(r"v\d+\.\d+\.\d+")
+STALE_CLONE = 6 * 3600  # seconds: no release runs this long, so an older clone whose run is gone is left over
 FORMULA = "Formula/synthesis.rb"
 FAILED = {"FAILURE", "ERROR", "CANCELLED", "TIMED_OUT", "ACTION_REQUIRED", "STARTUP_FAILURE"}
 # GitHub's own server errors, which the same request usually gets past a moment later. An error body GitHub sends
@@ -242,9 +243,9 @@ def fresh_clone(sha: str) -> Path:
     earlier run left are removed first."""
     folder = paths.home() / "releases"
     folder.mkdir(parents=True, exist_ok=True)
-    for old in folder.glob(".clone-*"):  # only those of runs that ended: another run's is its own (round 2, N8)
-        if not _running(old.name[len(".clone-"):]):
-            shutil.rmtree(old, ignore_errors=True)
+    for old in folder.glob(".clone-*"):  # only those of runs that ended long ago: another run's is its own (round 2, N8),
+        if not _running(old.name[len(".clone-"):]) and time.time() - old.stat().st_mtime > STALE_CLONE:  # one this run
+            shutil.rmtree(old, ignore_errors=True)  # cannot see (another sandbox's) included
     where = folder / f".clone-{os.getpid()}"
     made = setup.run([*GIT, "clone", "--quiet", "--no-local", "--no-checkout", CANONICAL_URL, str(where)], 900, env=clean_env())
     moved = git(where, "checkout", "--quiet", "--detach", sha, clean=True) if made.returncode == 0 else made
@@ -598,6 +599,11 @@ def main(argv=None) -> int:
         parser.error("--tag takes a tag such as v5.23.1")
     clients = [c for c in args.clients.split(",") if c in doctor.HARNESSES]
     repo = args.repo_root.resolve() if args.repo_root else None
+    own = PLUGIN.parent.parent  # the synthesis home whose runtime this copy is, when it runs from one
+    if PLUGIN.parent.name == "releases" and os.path.realpath(paths.home()) != os.path.realpath(own):
+        print(f"refused before publishing anything:\n  this run's synthesis home {paths.home()} is not {own}, where the "
+              "runtime it runs from is installed; run it through that home's launcher (round 2, N2)")
+        return 1
     if args.install_only:
         version, sha, problems = install_preflight(args.tag)
     else:

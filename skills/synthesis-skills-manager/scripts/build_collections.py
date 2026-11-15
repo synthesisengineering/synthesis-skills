@@ -412,25 +412,25 @@ def verify(repo: Path, files: dict, commit: bool = False) -> list:
 
 
 def tree(repo: Path, files: dict, modes: dict) -> str:
-    """The git tree of these files, its objects written into repo's store and its own index untouched: what the release
-    commits as the collections branch."""
-    with tempfile.TemporaryDirectory() as scratch:
-        paths, folder = sorted(files), Path(scratch, "files")
-        for path in paths:
-            (folder / path).parent.mkdir(parents=True, exist_ok=True)
-            (folder / path).write_bytes(files[path])
-        objects = git(repo, "hash-object", "-w", "--no-filters", "--stdin-paths",
-                      stdin="".join(f"{folder / path}\n" for path in paths).encode()).split()
-        kind = git(repo, "rev-parse", "--show-object-format").strip() or "sha1"  # each id held to the bytes in memory:
-        wrong = [path for path, oid in zip(paths, objects) if hashlib.new(kind, b"blob %d\0" % len(files[path])  # the
-                 + files[path]).hexdigest() != oid]  # scratch folder is one others can write (review round 2, N3)
-        if wrong or len(objects) != len(paths):
-            raise Unreadable(f"a collection file changed on disk while it was stored: {', '.join(wrong[:3]) or 'a file'}")
+    """The git tree of these files, its objects written into repo's store from memory and its own index untouched: what
+    the release commits as the collections branch. Nothing is read back from a folder others can write (review round 2
+    of 5.23.1, N3: the files went through a temporary folder and were hashed back from it): `git fast-import` takes the
+    blobs on its input, the index lives in the repository's own git folder, and the tree written is held to the ids the
+    files' bytes give in memory."""
+    paths = sorted(files)
+    kind = git(repo, "rev-parse", "--show-object-format").strip() or "sha1"
+    ids = {path: hashlib.new(kind, b"blob %d\0" % len(files[path]) + files[path]).hexdigest() for path in paths}
+    git(repo, "fast-import", "--quiet", stdin=b"".join(b"blob\ndata %d\n%s\n" % (len(files[p]), files[p]) for p in paths))
+    gitdir = Path(git(repo, "rev-parse", "--absolute-git-dir").strip())
+    with tempfile.TemporaryDirectory(dir=gitdir) as scratch:  # inside the repository's own git folder
         index = {**os.environ, "GIT_INDEX_FILE": str(Path(scratch, "index"))}
-        entries = (f"{'100755' if modes.get(path) == '100755' else '100644'} {sha}\t{path}\n"
-                   for path, sha in zip(paths, objects))
+        entries = (f"{'100755' if modes.get(path) == '100755' else '100644'} {ids[path]}\t{path}\n" for path in paths)
         git(repo, "update-index", "--add", "--index-info", env=index, stdin="".join(entries).encode())
-        return git(repo, "write-tree", env=index).strip()
+        made = git(repo, "write-tree", env=index).strip()
+    listed = dict(line.split(" ", 2)[2].split("\t", 1)[::-1] for line in git(repo, "ls-tree", "-r", made).splitlines())
+    if listed != ids:
+        raise Unreadable(f"the collections tree {made[:12]} is not the files built: {len(set(listed.items()) ^ set(ids.items()))} entries differ")
+    return made
 
 
 def main(argv=None) -> int:
