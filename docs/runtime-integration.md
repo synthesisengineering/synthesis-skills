@@ -379,9 +379,12 @@ harness that gives no transcript cannot carry approved sends or deploys until it
      sed program read with certainty (bracket expressions as BSD sed reads them) with no `w`,
      `W` or `e`, a shell whose script is on the line, on its input or in a file `cat` pipes to
      it (each of its commands is judged; a script on its input that cannot be read waits),
-     Python its reader proves, and the plugin's own installed scripts (inside the folder the
-     guard runs from, the synthesis home, or a harness's plugin folder whose guard is this one
-     byte for byte). Python is proved only isolated from the agent's modules: an inline or
+     Python its reader proves, and the plugin's own scripts: inside the release the guard runs
+     from (`releases/<hash>/` under the synthesis home), or byte for byte that release's copy at
+     the same relative path, with the modules beside it that it imports (a skill's script in a
+     harness's plugin cache). The installed runtime (`releases`, `current` and `bin` under the
+     synthesis home) is a protected folder, so no command plants or changes a file there; a
+     script outside the release that imports synthesis's own code waits. Python is proved only isolated from the agent's modules: an inline or
      module run with `-I` (or `-P` with `-E`), a script file when no file beside it or in the
      folder it runs from could stand in for a module it imports, one of up to 16 KB that the
      reader proves; a git read it spells whole (a list that starts with `git`, a read
@@ -406,9 +409,10 @@ harness that gives no transcript cannot carry approved sends or deploys until it
      words given to `codex`, `claude`, `muse` and `gh` are left alone. An archive tool that
      unpacks where it stands in a folder that holds or lies in a protected one, or where its
      members say (`-P`, `--absolute-names`, `--insecure`, `pax -r`), waits too; a copy into
-     such a folder stays refused. A script file outside the installed plugin that imports
-     synthesis's own modules is refused, and so is Python that reaches synthesis's code by a
-     name it builds. The guard reads only regular files a command runs as scripts, bounded in
+     such a folder stays refused. A script file outside the runtime release that imports
+     synthesis's own modules waits (the release script and onboarding's setup, run from a
+     checkout, are such files); Python that reaches synthesis's code by a name it builds is
+     refused. The guard reads only regular files a command runs as scripts, bounded in
      size and opened without waiting, proves each script once a call (at most eight), and a
      command it cannot finish judging within 3 seconds waits for the principal's code.
    - **Standing in a protected folder.** A program can write where it stands without naming

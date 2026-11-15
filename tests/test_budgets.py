@@ -1176,10 +1176,15 @@ ROOT = Path(__file__).resolve().parents[1]
 # one line each for _CALL, UNREAD_INPUT, SHIELD, OUTPUTS, GIT_RUNS, GIT_FIRST, ABSOLUTE and the operator list, less
 # _script_file's 4 (it opens its file through _regular). approvals.py 6: transcript reads the path the prompt hook recorded
 # (and only one that is there), remember records it. hook.py 1: the prompt hook records it.
+# The coordinator's ruling on the plugin's own scripts (2026-11-14): core 3 more and plugin 3. guards.py 3: _shipped 1
+# more (only the release the guard runs from, or a script and the modules beside it that it imports byte for byte that
+# release's copy, in place of the synthesis home and a plugin cache's guard match), _protected_roots 1 (the runtime's
+# releases, current and bin), and a script file outside the release that imports synthesis's code waits apart from the
+# approval-call refusal 1.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 15539
-PLUGIN_BUDGET = 40782
+CORE_BUDGET = 15542
+PLUGIN_BUDGET = 40785
 
 
 def _lines(files):

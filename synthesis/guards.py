@@ -2839,9 +2839,10 @@ def _reaches(target: str, root: str, whole: bool = False, hidden: bool = False) 
 
 def _protected_roots(config: dict | None) -> list[str]:
     """Where only the guard, the harness and the synthesis CLI write: synthesis state, the board, the transcript
-    archive, harness transcripts, approved commit lines."""
+    archive, the installed runtime (its releases, `current` and `bin`), harness transcripts, approved commit lines."""
     store = paths.line_allowances(config or {})
-    return [str(r) for r in [paths.state(), paths.board(), paths.sessions(), *paths.transcript_roots().values(),
+    return [str(r) for r in [paths.state(), paths.board(), paths.sessions(), *(paths.home() / name for name in ("releases", "current", "bin")),
+                             *paths.transcript_roots().values(),  # the runtime the hook runs from, its entry points (5.22.1)
                              paths.desktop_dir() / "local-agent-mode-sessions",  # the desktop app's agent-mode transcripts, one path
                              *([store] if store else [])]]
 
@@ -4526,21 +4527,22 @@ def _isolated(words: list) -> bool:
 
 
 def _shipped(path: str) -> bool:
-    """A script of this plugin as it was installed: inside the folder this guard runs from or the synthesis home (the
-    stable runtime), or inside a harness's plugin folder where the plugin's own guard is this one byte for byte. The
-    installed runtime and plugin are trusted as the guard itself is; a copy of the plugin in a work folder is not."""
-    mine = os.path.realpath(__file__)
-    if any(paths.inside(path, os.path.realpath(top)) for top in (os.path.dirname(os.path.dirname(mine)), paths.home())):
+    """A script of the plugin as it shipped: inside the release this guard runs from (`releases/<hash>/` under the
+    synthesis home, a protected folder), or with the same bytes as that release's copy at the same relative path,
+    as are the modules beside it that it imports (a skill's script in a harness's plugin cache). Nothing else in the
+    synthesis home, and no file beside an unchanged guard elsewhere, is the plugin's (the coordinator, 2026-11-14)."""
+    release = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+    if paths.inside(path, release):
         return True
-    if not any(paths.inside(path, os.path.realpath(os.path.join(os.path.dirname(root), "plugins"))) for root in paths.transcript_roots().values()):
-        return False
-    own, at = _regular(mine, 1 << 21), os.path.dirname(path)
-    for _ in range(8):
-        found = _regular(os.path.join(at, "synthesis", "guards.py"), 1 << 21) if os.path.isfile(os.path.join(at, "synthesis", "guards.py")) else None
-        if found is not None and own is not None and found[0] == own[0]:
-            return True
-        at = os.path.dirname(at)
-    return False
+    parts = path.split(os.sep)
+    rel = os.path.join(*parts[len(parts) - 1 - parts[::-1].index("skills"):]) if "skills" in parts[:-1] else ""
+    here, there = os.path.dirname(path), os.path.dirname(os.path.join(release, rel))
+    mine = _regular(path, SCRIPT_LIMIT + 1)
+    names = {m for a, b in re.findall(r"^[ \t]*(?:from[ \t]+(\w+)|import[ \t]+([\w, \t]+))", (mine or (b"",))[0].decode("utf-8", "replace"), re.M)
+             for m in ([a] if a else [x.split()[0] for x in b.split(",") if x.strip()])}
+    return bool(rel) and all(os.path.isfile(os.path.join(there, name)) and (_regular(os.path.join(here, name), SCRIPT_LIMIT + 1) or (b"",))[0] == (
+        _regular(os.path.join(there, name), SCRIPT_LIMIT + 1) or (None,))[0] for name in [os.path.basename(path)] + sorted(
+        n + ".py" for n in names if os.path.exists(os.path.join(here, n + ".py")) or os.path.isdir(os.path.join(here, n))))
 
 
 def _unread(words: list, where: str, written: set, line: str) -> tuple:
@@ -4695,7 +4697,7 @@ def check_self_grant(command: str, cwd: str, config: dict | None = None, session
         return None
     code = approvals.request("protected-read", subject, f"a program near the approval records: {command[:140]}")
     return (f"This command {waits}. The protected folders hold what every approval rests on (the synthesis state, its "
-            "board, the session archive, a harness's transcripts, the approved commit lines), and a program the guard cannot "
+            "board, the session archive, the installed runtime, a harness's transcripts, the approved commit lines), and a program the guard cannot "
             "prove only reads may write there. If it only reads, show the principal this exact command and ask them to type "
             f"{approvals.how(code)}; then run the identical command again from {cwd}. To read with no code, use cat, head, "
             "tail, grep or jq, or a Python program whose writes the guard can read.")
@@ -4769,9 +4771,10 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None) -> str |
                  or ("the files xargs hands it" if HANDED in words and names else "")) if label else ""  # standing where no session works, or what xargs hands it
         ran = os.path.realpath(os.path.join(where, os.path.expanduser(words[0] if "/" in words[0] and not (SCRIPT.match(head) or head in SHELLS)
                                                                     else _program(words)[2]))) if code and code != text else ""  # the script file it runs
-        if SCRIPT.match(head) and re.search(r"\bsynthesis\b", script + code) and (SELF_GRANT_CALLS.search(script) or (
-                ran and SYNTHESIS_IMPORT.search(code) and not _shipped(ran))):  # outside the plugin, a script file may not use synthesis's code
+        if SCRIPT.match(head) and re.search(r"\bsynthesis\b", script + code) and SELF_GRANT_CALLS.search(script):
             why = why or "runs synthesis's approval or send-window code, which only the guard and the principal's prompt use"
+        if SCRIPT.match(head) and ran and SYNTHESIS_IMPORT.search(code) and not waits and not _shipped(ran):  # finding 17: by what it imports
+            waits = Unproven(f"runs `{head}` on {ran}, a script outside the plugin's release that uses synthesis's own code")
         source, argv = _python_source(words, fed) if head.startswith("python") else ("", [])
         # A Python program given inline or on stdin is judged by its own text: what its code writes. A protected
         # path named elsewhere on the line reaches it only through its arguments, its environment or the folder it
