@@ -5648,9 +5648,9 @@ def _writes_by_fetch(code: str, literals: list) -> bool:
     """A fetch, Request or XHR that may write: the init of fetch or Request (its second argument, or the object a variable
     given there holds and what is set on it) with a body or a method that is not one literal GET or HEAD, or keyed by a
     name built as it runs; an init the reader cannot follow otherwise (spread into, a variable set again or handed on, a
-    parameter, any other expression) when the script gives a body or such a method anywhere (review round 3 of 5.23.1,
-    T1: a read through a fetch wrapper waited); an XHR opened with a method that is not one (rounds 1 and 2, #1 and #2:
-    a `body` read from a response is no write)."""
+    parameter, any other expression) when the script puts a body or such a method in an object it passes to a call, or
+    one a variable it passes holds (review rounds 3 and 4 of 5.23.1, T1 and U1); an XHR opened with a method that is not
+    one (rounds 1 and 2, #1 and #2: a `body` read from a response is no write)."""
     def group(at: int) -> str:
         return _bracketed(code, at)
 
