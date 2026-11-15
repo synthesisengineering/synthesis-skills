@@ -1254,3 +1254,59 @@ def test_the_cli_launcher_is_trusted_only_beside_the_synthesis_home_s_own_runtim
     _script(copy / "current" / "synthesis", "cli.py", "def main():\n    return 0\n")  # a runtime the agent wrote
     for line in (f"bash {copy / 'bin' / 'synthesis'} sends status", f"sh {copy / 'bin' / 'synthesis'}"):
         assert HELD in (_verdict(world, line) or ""), line
+
+
+# --- review round 2 of 22.21: only test functions, and the function-scoped fixtures they use, run under the isolating
+# fixture; what runs at load is read with its aliases, the file's own functions it calls, and getattr with a name written
+# out; xunit setup and teardown, fixtures scoped wider than a function, and pytest's hooks never count as isolated -----
+
+OPENS = "(2.0, ['all'], '', 9)"
+NEVER_ISOLATED = {
+    "an alias imported at the top": f"from synthesis.sends import open_window as ow\now{OPENS}\n\n\ndef test_it():\n    pass\n",
+    "a module alias": f"import synthesis.sends as s\ns.open_window{OPENS}\n\n\ndef test_it():\n    pass\n",
+    "getattr with the name written out": f"from synthesis import sends\ngetattr(sends, 'open_window'){OPENS}\n\n\ndef test_it():\n    pass\n",
+    "a helper of its own called at load": f"from synthesis import sends\n\n\ndef _now():\n    sends.open_window{OPENS}\n\n\n_now()\n\n\ndef test_it():\n    pass\n",
+    "setup_module": f"from synthesis import sends\n\n\ndef setup_module(module):\n    sends.open_window{OPENS}\n\n\ndef test_it():\n    pass\n",
+    "setup_class": (f"from synthesis import sends\n\n\nclass TestIt:\n    @classmethod\n    def setup_class(cls):\n        sends.open_window{OPENS}\n\n"
+                    "    def test_it(self):\n        pass\n"),
+    "a module-scoped autouse fixture": (f"import pytest\nfrom synthesis import sends\n\n\n@pytest.fixture(scope='module', autouse=True)\ndef opened():\n"
+                                        f"    sends.open_window{OPENS}\n\n\ndef test_it():\n    pass\n"),
+    "pytest's hook in the test file": f"from synthesis import sends\n\n\ndef pytest_generate_tests(metafunc):\n    sends.open_window{OPENS}\n\n\ndef test_it():\n    pass\n",
+}
+HOOKED = {
+    "pytest_configure in the conftest": f"\nfrom synthesis import sends\n\n\ndef pytest_configure(config):\n    sends.open_window{OPENS}\n",
+    "pytest_sessionstart in the conftest": f"\nfrom synthesis import sends\n\n\ndef pytest_sessionstart(session):\n    sends.open_window{OPENS}\n",
+}
+
+
+@pytest.mark.parametrize("name", sorted(NEVER_ISOLATED) + sorted(HOOKED))
+def test_code_that_runs_outside_the_tests_is_never_isolated(world, name):
+    suite = world["work"] / "suite"
+    _script(suite, "conftest.py", ISOLATING + HOOKED.get(name, ""))
+    _script(suite, "test_mine.py", NEVER_ISOLATED.get(name, "def test_it():\n    pass\n"))
+    assert HELD in (_verdict(world, "python3 -m pytest -q suite/test_mine.py") or ""), name
+
+
+def test_a_plugin_of_its_own_named_with_p_is_read_as_code_outside_the_tests(world):
+    _script(world["work"], "myplugin.py", f"from synthesis import sends\n\n\ndef pytest_configure(config):\n    sends.open_window{OPENS}\n")
+    _script(world["work"] / "suite", "conftest.py", ISOLATING)
+    _script(world["work"] / "suite", "test_mine.py", "def test_it():\n    pass\n")
+    assert HELD in (_verdict(world, "python3 -m pytest -q -p myplugin suite/test_mine.py") or "")
+
+
+STILL_ISOLATED = {
+    "a writer inside a test": f"from synthesis import sends\n\n\ndef test_it():\n    sends.open_window{OPENS}\n",
+    "a function-scoped fixture a test uses": (f"import pytest\nfrom synthesis import sends\n\n\n@pytest.fixture\ndef opened():\n"
+                                              f"    sends.open_window{OPENS}\n\n\ndef test_it(opened):\n    pass\n"),
+    "a helper of its own called inside a test": f"from synthesis import sends\n\n\ndef _now():\n    sends.open_window{OPENS}\n\n\ndef test_it():\n    _now()\n",
+    "a path taken at load and only read": "from synthesis import paths\nHOME = paths.home()\n\n\ndef test_it():\n    assert str(HOME)\n",
+    "unittest's per-test setUp": (f"import unittest\nfrom synthesis import sends\n\n\nclass TestIt(unittest.TestCase):\n    def setUp(self):\n"
+                                  f"        sends.open_window{OPENS}\n\n    def test_it(self):\n        pass\n"),
+}
+
+
+@pytest.mark.parametrize("name", sorted(STILL_ISOLATED))
+def test_code_inside_the_tests_stays_isolated(world, name):
+    _script(world["work"] / "suite", "conftest.py", ISOLATING)
+    _script(world["work"] / "suite", "test_mine.py", STILL_ISOLATED[name])
+    assert _verdict(world, "python3 -m pytest -q suite/test_mine.py") is None, name
