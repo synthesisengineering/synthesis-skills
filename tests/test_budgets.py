@@ -1403,6 +1403,10 @@ ROOT = Path(__file__).resolve().parents[1]
 # into the batch"); the two merged with no line changed (MOVES keeps the batch's open( by any name beside main's DRIVES
 # and PRESSES_ENTER; check_outgoing keeps the batch's reading of every sends command and main's skip of a key or app).
 # The message guard's skill move (binding rule 18, the principal's ruling of 2026-11-15) moves prose only: no code line.
+# 5.23.1: core and plugin each 10 more, all in guards.py: _real 7 (where a path leads, asked once a call: the recorded
+# heredoc shape asked 11,746 times over 102 paths and took 1.11 s on CI's macOS runner under Apple's Python 3.9, 0.31 s
+# on this Mac; with it, 123 times and 0.105 s) and its 3 blank lines. The per-call reset and the 29 places that ask
+# change in place.
 # 5.23.1, round 4 of the batch approval's review, findings 1 (its plain form) and 3, both on 5.23.0 (2026-11-15: the
 # navigate tool alone was never judged and a `javascript:` address was read as written; on a messaging site's page a
 # script clicked Send by a name built as it ran): core 102 more and plugin 102. guards.py 101: _refused_scripts 20 (on a
@@ -1433,10 +1437,12 @@ ROOT = Path(__file__).resolve().parents[1]
 # BLANK_NAMES 1 (a blank by its name), open_batch 1 (closed 12 hours after its code was typed), log 1, the comments 3 and
 # 6 blank lines. cli.py 2: `sends log` names a send its script declined, or one not yet confirmed. In the plugin,
 # messages_send.py 4 more: it hands the guard its own run (its file, the arguments it was run with, its folder).
+# Main's guard path cache (82412084, its 5.23.1 note above) merged into the batch (2026-11-15): core and plugin 10 more,
+# _real 7 and its 3 blank lines, as on main; the batch's per-call reset names it beside the sender runs.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 17459
-PLUGIN_BUDGET = 43536
+CORE_BUDGET = 17469
+PLUGIN_BUDGET = 43546
 
 
 def _lines(files):

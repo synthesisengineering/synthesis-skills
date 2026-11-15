@@ -345,3 +345,16 @@ def test_a_heredoc_of_substitutions_in_a_loop_is_judged_within_the_hook_s_time(t
     start = time.perf_counter()
     guards.check("Bash", {"command": RECORDED_SHAPE}, {}, session={"session_id": "s", "cwd": str(tmp_path)})
     assert time.perf_counter() - start < 1.0
+
+
+def test_the_guard_asks_where_a_path_leads_once_a_call(tmp_path, monkeypatch):
+    """2026-11-15: the shape above took 1.11 s on CI's macOS runner under Apple's Python 3.9, past the line above,
+    while this Mac took 0.31 s. Its time went to 11,746 questions of where a path leads (each a file-system lookup
+    for every part of the path), the same paths asked again in each of the command's ten readings and for each of
+    its words. The guard writes nothing while it judges, so each answer holds for the whole call; counted rather
+    than timed, this holds on any runner."""
+    import os
+    real, asked = os.path.realpath, []
+    monkeypatch.setattr(os.path, "realpath", lambda path, *a, **k: asked.append(path) or real(path, *a, **k))
+    guards.check("Bash", {"command": RECORDED_SHAPE}, {}, session={"session_id": "s", "cwd": str(tmp_path)})
+    assert len(asked) < 1000, f"{len(asked)} questions of where a path leads, {len(set(map(str, asked)))} paths"

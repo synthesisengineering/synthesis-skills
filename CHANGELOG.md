@@ -72,6 +72,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   `javascript:` address is the page script it runs, on the page it runs on. None appears among the 704 navigates of
   the last 60 days. The built-in pane's own tab lists, `tabs_context` and navigate results are read for its page, and
   each browser's tab ids are its own.
+- **The guard asks where a path leads once a call.** Judging a long shell command, it asked the file system where the
+  same paths lead again for each of the command's readings and each of its words: one recorded heredoc of
+  substitutions in a loop asked 11,746 times over 102 paths, which took 0.31 s on a Mac under Apple's Python 3.9 and
+  1.11 s on CI's macOS runner, past the 1.0 s its test allows. The guard writes nothing while it judges, so each
+  answer now holds for the call: 123 questions and 0.105 s. A test counts the questions, so it holds on any runner.
 
 ## [5.23.0] - 2026-11-15
 
