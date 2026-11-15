@@ -483,10 +483,18 @@ is outside every batch. A Messenger entry is sent in one step, a single `browser
 check read in one call and a Return pressed in another left room between them for a page script that rewrote what the
 check reported, a typist the guard could not see, and another session):
 
-1. **A navigate** on a tab it names, which this session's newest list of tabs already shows on the entry's
-   conversation, to that conversation's https address with no query or fragment (`https://www.<its address>/`). It
-   loads the page again, so whatever an earlier script did to it goes with it; since the tab already showed that
-   conversation, no session's guard reads another address for it while the step runs.
+1. **A navigate** on a tab it names, which this session made with the browser's own `tabs_create` (the guard reads the
+   new tab's id from that call's result in this session's record) and which this session's newest list of tabs already
+   shows on the entry's conversation, to that conversation's https address with no query or fragment (`https://www.<its
+   address>/`). A page gets a handle to another window only by opening it, so no page holds one to a tab the browser tool
+   made (the review's third round: a script on a page the guard read as the agent's own `data:` page, after that page
+   had moved itself to facebook.com, opened the chat and patched it through every load; the coordinator's ruling of
+   2026-11-15). Since the tab was made, any action on it in another session's record, or one there that names no tab,
+   and any page script but the shipped ones run on it in this session's record or its sub-agents' (a window a script
+   opens keeps a handle to the tab) void it; a tab the guard did not see this session make is refused with that word:
+   open a fresh tab with `tabs_create` and navigate it to the conversation. The navigate loads the page again, so
+   whatever an earlier script did to it goes with it; since the tab already showed that conversation, no session's guard
+   reads another address for it while the step runs.
 2. **The words typed** on that tab, and nothing else: typing with no line break, shift+Return for each line break,
    select-all with Delete or Backspace to clear, and waits. No click and no other key: Return sends the box as it stands,
    and the composer's neighbours are send controls themselves (`Send a like` sends a thumbs-up; the coordinator's live
@@ -522,16 +530,18 @@ hours) no page script runs but the shipped read-only ones (the composer check, a
 `messenger_messages.py` and `chat_page.py` print) and the send script as the last step of its send step; any other,
 a navigate to a `javascript:` address included, is refused at its own call, since it can change what the send reads
 or what a click sends, then or later. A page no list of tabs names (a tab not listed yet, or one a navigate sent where
-no host is named) takes none either, since it may be a Messenger site's (the third round's opener ran on such a tab). The guard spends the entry when it lets the step through, so a step whose script
-then finds the page otherwise sends nothing and the entry is gone: the principal's code per call (the Return after the
-words) or a new batch sends it. A conversation is a page's site and path, its trailing slash and query left off: the
+no host is named) takes none either, since it may be a Messenger site's (the third round's opener ran on such a tab).
+The guard spends the entry when it lets the step through, so a step whose script then finds the page wrong sends
+nothing, and that entry needs a new code: the principal's code per call (the Return after the words) or a new batch. A
+conversation is a page's site and path, its trailing slash and query left off: the
 four forms above are four distinct conversations (every chat facebook.com lists links to `/messages/e2ee/t/<id>/`), and
 a send on one never spends an entry for another. Each entry sends once, decided under the send guard's lock; only within
 12 hours of the grant; and only from the session that ran the granted command, as the guard is told it (a hook's
 payload). The messages sender names no session (its third round: a link or runpy kept a `--session` naming another):
 when the guard lets a command that runs `messages_send.py` by name through, it files a one-use ticket for the session
 its hook names, and the sender's own guard call takes the one ticket filed in the last minute; a run the guard did not
-see as the sender's finds none and waits for the code per call. That session's own record must show, each time an
+see as the sender's finds none and waits for the code per call, and so do two sessions' sends within the same minute,
+each of which finds more than one ticket. That session's own record must show, each time an
 entry is spent, the principal typing the batch's
 code after the guard first filed that code for that digest. The guard records each request it files for a batch, its
 digest and code, in a ledger only it writes (`sends._requests_file`); no line of the session's record stands in for

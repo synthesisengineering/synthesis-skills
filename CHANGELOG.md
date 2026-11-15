@@ -20,7 +20,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   meeting placed on today never covered), a window and a batch never combine, and anything that differs waits for the
   code per call.
 - **A batch's Messenger send is one step that reads and sends in the same run** (core). One browser_batch on a tab
-  already showing the conversation loads its address there again, types the words, and last runs the entry's send
+  this session made with tabs_create (no page holds a handle to it) and navigated to the conversation, untouched since by
+  any other session or any page script, loads its address there again, types the words, and last runs the entry's send
   script (`synthesis sends script`), which finds the one message box (labelled `Write to ...` or for a message, with the
   placeholder `Aa`, or a Lexical editor), compares its words, the one trailing line break Lexical adds left off, with
   the entry's by SHA-256, reads the composer and its parent for anything staged and for a reply or edit banner, checks

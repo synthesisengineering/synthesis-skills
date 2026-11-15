@@ -1364,10 +1364,15 @@ ROOT = Path(__file__).resolve().parents[1]
 # Round 3's probes on that head (#2: an opener script on a tab no list of tabs had named yet passed): core 8 more,
 # plugin 8. guards.py 8: _refused_scripts 8 more (a page no list of tabs names takes no page script 4, the page a
 # javascript: address runs on 3, its note 1).
+# The send step runs only on a tab this session made (the coordinator's ruling on the opener, 2026-11-15): core 63
+# more, plugin 63. guards.py 63: _made_here 43 (the tab's id from this session's own tabs_create result; since then any
+# page script but the shipped ones in its record or its sub-agents', and any action on it, or naming no tab, in another
+# session's record, void it), _send_template 12 (the shipped send script, for some conversation and digest, opens no
+# window) and _when 8 (a record line's time), each with its blank lines; _send_step changes in place.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 16616
-PLUGIN_BUDGET = 42689
+CORE_BUDGET = 16679
+PLUGIN_BUDGET = 42752
 
 
 def _lines(files):

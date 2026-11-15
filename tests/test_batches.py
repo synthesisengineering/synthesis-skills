@@ -635,7 +635,8 @@ def test_the_send_step_runs_only_on_a_tab_this_session_made_with_tabs_create():
     listed()  # on the conversation, but made by no tabs_create of this session
     reason = sent(step())
     assert reason and "tabs_create" in reason
-    made(tab=8)  # another tab made here makes tab 7 none
+    made(tab=8)  # another tab made here makes tab 7 none (its list here names tab 8 alone, so tab 7 is listed again)
+    listed()
     assert "tabs_create" in sent(step())
     opened(tab=9)
     assert sent(step(tab=9)) is None
@@ -663,7 +664,7 @@ def test_another_sessions_call_on_the_tab_since_this_session_made_it_voids_it(wh
                    "a-navigate-naming-no-tab": ("mcp__claude-in-chrome__navigate", {"url": "https://example.com/"})}[what]
     ran(name, given, other)
     reason = sent(step())
-    assert reason and "another session" in reason, reason
+    assert reason and "another session" in reason.lower(), reason
     assert not any(e["how"].startswith("batch") for e in today())
 
 

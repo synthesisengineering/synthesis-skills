@@ -564,10 +564,10 @@ def batch_refusal(batch: dict, file: str) -> str:
             f"exactly as written, within {MAX_HOURS} hours, from this session alone. Show the principal this whole list as it "
             f"stands (each text quoted, every hidden character as its code) and ask them to type {approvals.how(code)} to open "
             f"exactly it. Then run the identical command again." + (
-                " Each Messenger entry then goes as one browser_batch on a tab that already shows its conversation: a navigate "
-                "to the conversation's address on that tab, its words typed there (shift+Return for a line break), and last the "
-                "page script `synthesis sends script --entry <digest prefix>:<its number>` prints, which sends only those words; "
-                "a Return or a click there waits for its own code."
+                " Each Messenger entry then goes as one browser_batch on a tab this session made with tabs_create and navigated "
+                "to its conversation: a navigate to that address on the tab, its words typed there (shift+Return for a line "
+                "break), and last the page script `synthesis sends script --entry <digest prefix>:<its number>` prints, which "
+                "sends only those words; a Return or a click there waits for its own code."
                 if any(e.get("channel") == "messenger" for e in batch["entries"]) else "") + f"\n{batch_listing(batch, show=True)}")
 
 

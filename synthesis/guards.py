@@ -5530,6 +5530,69 @@ def _messenger_site(address: str) -> bool:
     return bool(address) and any(_on_site(address, site) for site, _, _ in sends.CONVERSATIONS)
 
 
+def _when(line: str) -> float:
+    try:
+        stamp = datetime.fromisoformat(str(json.loads(line).get("timestamp")).replace("Z", "+00:00"))
+    except (ValueError, TypeError, AttributeError):
+        return 0.0
+    return (stamp if stamp.tzinfo else stamp.replace(tzinfo=timezone.utc)).timestamp()
+
+
+def _send_template(text: str) -> bool:
+    """Whether a page script is the shipped send script for some conversation and digest, and nothing more."""
+    from synthesis import sends
+    head, _, tail = sends.SEND_SCRIPT.partition("__WANT__")
+    try:
+        want = json.loads(text[len(head):len(text) - len(tail)]) if text.startswith(head) and text.endswith(tail) else None
+    except ValueError:
+        return False
+    return isinstance(want, dict) and set(want) == {"to", "digest"} and isinstance(want["to"], str) and bool(
+        re.fullmatch(r"[0-9a-f]{64}", str(want["digest"])))
+
+
+def _made_here(tab: str, session: dict | None) -> str:
+    """"" when this session made the tab with the browser's tabs_create (that call's own result in its record names it)
+    and, since, no page script but the shipped ones ran on it in its record or its sub-agents' (a window a script opens
+    keeps an opener's handle to the tab) and no other session's record shows an action on it or one that names no tab;
+    else why the send step may not run there (the coordinator's ruling on the opener, 2026-11-15: a page holds a handle
+    to another window only by opening it, and none opened a tab the browser tool made)."""
+    from pathlib import Path
+    record, made, readers = str((session or {}).get("transcript_path") or ""), 0.0, _read_only_scripts()
+    lines = _tail(record)
+    for i, line in enumerate(lines if record else []):
+        for block in _blocks(line) if '"tool_result"' in line and re.search(r"Tab ID|Executed on tabId", line) else ():
+            call = _browser_call(lines, i, str(block.get("tool_use_id") or "")) if block.get("type") == "tool_result" else None
+            if call and str(call.get("name", "")).endswith(("__tabs_create_mcp", "__tabs_create")) and re.search(
+                    rf"\b(?:Tab ID:|Executed on tabId:)\s*{re.escape(tab)}\b", _said(block)):
+                made = max(made, _when(line))
+    if not made:
+        return ("This send step's tab was not made by this session's tabs_create, so a page may hold a handle to it: open a "
+                "fresh tab with tabs_create, navigate it to the conversation, then run the send step there.")
+    others = [str(paths.read_json(kept).get("path") or "") for kept in (paths.state() / "transcripts").glob("*.json")]
+    mine = [record, *map(str, Path(os.path.splitext(record)[0], "subagents").glob("*.jsonl"))]
+    for path in mine + [p for p in others if p and os.path.isfile(p) and not os.path.samefile(p, record)
+                        and time.time() - os.path.getmtime(p) <= 12 * 3600]:
+        for line in (line for line in _tail(path) if '"tool_use"' in line and _when(line) >= made):
+            for call in _blocks(line):
+                server, _, short = str(call.get("name", "")).rpartition("__")
+                if call.get("type") != "tool_use" or not re.search(r"browser|chrome", server, re.I):
+                    continue
+                given = call.get("input") if isinstance(call.get("input"), dict) else {}
+                for kind, step in ([(str(s.get("name", "")), s.get("input")) for s in given.get("actions") or [] if isinstance(s, dict)]
+                                   if short == "browser_batch" else [(short, given)]):
+                    step, here = step if isinstance(step, dict) else {}, str((step or {}).get("tabId") or "") in (tab, "")
+                    text = str(step.get("text") if kind == "javascript_tool" else step.get("url") if kind == "navigate" else "")
+                    if path in mine and here and (kind == "javascript_tool" or text.lower().startswith("javascript:")) and not (
+                            text.strip() in readers or _send_template(text)):
+                        return ("A page script ran on this send step's tab since this session made it, and a window it opened "
+                                "keeps a handle to the tab: open a fresh tab with tabs_create and navigate it to the conversation.")
+                    if path not in mine and here and kind in ("navigate", "computer", "javascript_tool", "form_input", "upload_image",
+                                                               "file_upload"):
+                        return ("Another session's record shows an action on this send step's tab, or one naming no tab, since this "
+                                "session made it: open a fresh tab with tabs_create and navigate it to the conversation.")
+    return ""
+
+
 def _listed_on_messenger(tab: str) -> bool:
     """Whether a session active in the last 12 hours lists this tab on a Messenger site in its newest list of tabs:
     sessions share one browser and its tab ids, so one that last saw a tab elsewhere, or never saw it, is not the only
@@ -5611,7 +5674,7 @@ def _send_step(tool_input: dict, session: dict | None):
     if not (loads and place and typing and last == "javascript_tool" and run.get("action") == "javascript_exec"
             and str(run.get("tabId") or "") == tab and sends.conversation(shown) == place):
         return refused
-    return (*place, str(run.get("text") or ""))
+    return _made_here(tab, session) or (*place, str(run.get("text") or ""))
 
 
 def _batch_send(tool: str, tool_input: dict, step: tuple, config: dict, session: dict | None) -> str | None:
