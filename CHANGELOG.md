@@ -4,15 +4,8 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
-## [5.23.1] - 2026-11-15
+## [5.23.2] - 2026-11-15
 
-- **The daily rituals' skill file holds the Messenger rule** (`synthesis-daily-rituals` 3.19.0), by the move the principal
-  approved in his decision packet of 2026-11-15. Two passages that describe the skill (its introduction and its
-  Procedure section) moved word for word to the head of `references/procedure.md`, so SKILL.md could take rule 17:
-  Messenger's chat list is read at its own address, beside "No chats selected", and the daily read opens no chat, since
-  opening one marks it read. Messenger's section moved word for word from `references/linkedin-messages.md` to its own
-  `references/messenger-messages.md` (its headings one level up), listed in Contents, and the four checklists point to
-  it. The moved Procedure sentence's link now names `procedure.md`, the file it sits in. SKILL.md is 7,849 bytes.
 - **On a messaging site's page a script the guard cannot read is refused** (core; `synthesis-message-guard` 2.12.1,
   references/config.md). Round 4 of the batch approval's review found a page script that clicks Send by a name it builds
   as it runs (`el['cli' + 'ck']()`) passing on Slack, WhatsApp, LinkedIn, Gmail and X. A script there is now read as
@@ -39,6 +32,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   `javascript:` address is the page script it runs, on the page it runs on. None appears among the 704 navigates of
   the last 60 days. The built-in pane's own tab lists, `tabs_context` and navigate results are read for its page, and
   each browser's tab ids are its own.
+
+## [5.23.1] - 2026-11-15
+
+- **The daily rituals' skill file holds the Messenger rule** (`synthesis-daily-rituals` 3.19.0), by the move the principal
+  approved in his decision packet of 2026-11-15. Two passages that describe the skill (its introduction and its
+  Procedure section) moved word for word to the head of `references/procedure.md`, so SKILL.md could take rule 17:
+  Messenger's chat list is read at its own address, beside "No chats selected", and the daily read opens no chat, since
+  opening one marks it read. Messenger's section moved word for word from `references/linkedin-messages.md` to its own
+  `references/messenger-messages.md` (its headings one level up), listed in Contents, and the four checklists point to
+  it. The moved Procedure sentence's link now names `procedure.md`, the file it sits in. SKILL.md is 7,849 bytes.
 - **The guard asks where a path leads once a call.** Judging a long shell command, it asked the file system where the
   same paths lead again for each of the command's readings and each of its words: one recorded heredoc of
   substitutions in a loop asked 11,746 times over 102 paths, which took 0.31 s on a Mac under Apple's Python 3.9 and
