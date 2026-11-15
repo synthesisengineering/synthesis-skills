@@ -166,6 +166,33 @@ def test_reading_tools_and_other_local_calls_need_no_code(command, tmp_path):
     assert shell(command, cwd=str(tmp_path)) == "", command
 
 
+RPC = ("import json, urllib.request\nURL = 'http://localhost:8765/mcp'\n"
+       "def rpc(method, params):\n    body = {'jsonrpc': '2.0', 'id': 2, 'method': method, 'params': params}\n"
+       "    return urllib.request.urlopen(URL, data=json.dumps(body).encode()).read()\n")
+
+
+@pytest.mark.parametrize("program", [  # shapes 60 days of records held, each reading through the local server
+    RPC + "for tool in ['search_drive_files', 'get_doc_as_markdown']:\n    rpc('tools/call', {'name': tool, 'arguments': {}})\n",
+    RPC + "CALLS = [{'name': 'get_events', 'arguments': {}}, {'name': 'list_calendars', 'arguments': {}}]\n"
+    "for spec in CALLS:\n    rpc('tools/call', {'name': spec['name'], 'arguments': spec['arguments']})\n",
+    RPC + "for name, args in [('search_gmail_messages', {'query': 'x'}), ('get_gmail_messages_content_batch', {})]:\n"
+    "    rpc('tools/call', {'name': name, 'arguments': args})\n",
+    RPC + "class Client:\n    def call(self, tool, args):\n        return rpc('tools/call', {'name': tool, 'arguments': args})\n"
+    "Client().call('read_sheet_values', {})\n",
+    "notes = 'the client posts tools/call to the server, and fetch-meeting.py uses call_tool() for its reads'\nprint(notes)\n",
+])
+def test_ordinary_programs_that_read_through_the_server_need_no_code(tmp_path, program):
+    assert shell("python3 - <<'EOF'\n" + program + "EOF", cwd=str(tmp_path)) == "", program
+    assert shell("cat > reader.py <<'EOF'\n" + program + "EOF\npython3 reader.py", cwd=str(tmp_path)) == "", program  # one the line writes
+
+
+def test_a_method_its_text_names_with_no_readable_call_waits(tmp_path):
+    program = ("import json, urllib.request\nbody = {'jsonrpc': '2.0', 'id': 2}\nbody['method'] = 'tools/call'\n"
+               "body['params'] = {'name': open('tool.txt').read().strip(), 'arguments': {}}\n"
+               "urllib.request.urlopen('http://localhost:8765/mcp', data=json.dumps(body).encode())\n")
+    assert held(shell("python3 - <<'EOF'\n" + program + "EOF", cwd=str(tmp_path)))
+
+
 @pytest.mark.parametrize("arguments", [["--window", "2026-11-14", "2026-11-15"], ["standup", "--date", "2026-11-14"],
                                        ["--window", "2026-11-14", "2026-11-15", "--port", "8765"]])
 def test_the_meeting_fetcher_reads_through_the_client_with_no_new_wait(arguments):
@@ -290,6 +317,8 @@ def test_a_script_file_it_builds_or_the_guard_cannot_read_waits(tmp_path, text):
     "import subprocess\ntext = 'done'\nsubprocess.run(['osascript', '-e', f'display notification \"{text}\" with title \"Autopilot\"'])\n",
     "import subprocess\nnotes = open('notes.txt').read()\nsubprocess.run(['osascript', '-e', f'display notification \"{len(notes)}\"'])\n",
     "import subprocess\nsubprocess.run(['osascript', '-e', 'tell application \"Mail\" to count messages of inbox'])\n",
+    "import shutil, subprocess\nnotes = open('notes.txt').read()\nif shutil.which('osascript'):\n"  # a lookup is no run
+    "    subprocess.run(['osascript', '-e', f'display notification \"{len(notes)}\"'])\n",
 ])
 def test_ordinary_osascript_from_a_program_still_needs_no_code(tmp_path, text):
     (tmp_path / "notes.txt").write_text("some notes\n", encoding="utf-8")

@@ -4409,7 +4409,7 @@ class Unproven(str):
     protected folder. Any reading that is refused outright is refused first."""
 
 
-_CALL: dict = {"codes": {}, "ran": {}, "proofs": {}, "files": {}, "real": {}, "until": 0.0}  # one call's script texts, their marks, its proofs, where its paths lead, and its deadline
+_CALL: dict = {"codes": {}, "ran": {}, "proofs": {}, "files": {}, "real": {}, "until": 0.0, "approved": False}  # one call's script texts, their marks, its proofs, where its paths lead, its deadline, a run the principal approved
 CALL_SECONDS, PROOFS_A_CALL = 3.0, 8  # under the hook's own 4 s; past either, a command waits rather than spins (finding 12)
 
 
@@ -5023,7 +5023,7 @@ def check_self_grant(command: str, cwd: str, config: dict | None = None, session
     else:
         readings = _resolved(command.replace("${HOME}", home).replace("$HOME", home))
     if hold:  # a call of its own: its script texts, their marks and its proofs start over, under its own deadline
-        _CALL.update(codes={}, ran={}, proofs={}, files={}, real={}, until=time.monotonic() + CALL_SECONDS)
+        _CALL.update(codes={}, ran={}, proofs={}, files={}, real={}, until=time.monotonic() + CALL_SECONDS, approved=False)
     waits = None
     for text in readings:
         reason = _self_grant(command, text, cwd, config) if time.monotonic() <= _CALL["until"] else Unproven(
@@ -5037,6 +5037,7 @@ def check_self_grant(command: str, cwd: str, config: dict | None = None, session
         return waits  # a command a program starts that waits makes that program wait
     subject = {"command": command, "runs_in": os.path.realpath(cwd), "scripts": sorted(_CALL["ran"].items())}  # a rewritten script is a new command
     if approvals.consume("protected-read", subject, session):
+        _CALL["approved"] = True  # this exact run: a program's osascript file is not asked about again (`_osa_files`)
         return None
     code = approvals.request("protected-read", subject, f"a program near the approval records: {command[:140]}")
     return (f"This command {waits}. The protected folders hold what every approval rests on (the synthesis state, its "
@@ -5778,9 +5779,10 @@ def _code_only(text: str, head: str) -> str:
     return re.sub(r"(?m)#.*$", "", text) if hashed else re.sub(r"/\*[\s\S]*?\*/|//[^\n]*", "", text)
 
 
-def _program_acts(text: str, head: str = "", where: str = "/", depth: int = 0) -> str:
+def _program_acts(text: str, head: str = "", where: str = "/", depth: int = 0, path: str = "", args: tuple = ()) -> str:
     """What a program's text does that waits: an input or Apple Event library it uses, or a command it starts that
-    presses keys, clicks or acts through another app (each read where the program runs, through the files it names).
+    presses keys, clicks or acts through another app (each read where the program runs, through the files it names),
+    and a script it hands osascript from a file (`_osa_files`, with `path` the program's file and `args` its words).
     A program that starts nothing is only read, and so is the prose in its strings and comments."""
     code = _code_only(text, head)
     if INPUT_LIBS.search(code) or any(INPUT_MODULES.fullmatch(m[2]) for m in IMPORTED.finditer(text)):
@@ -5795,23 +5797,31 @@ def _program_acts(text: str, head: str = "", where: str = "/", depth: int = 0) -
     found = list(PROGRAM_STRINGS.finditer(text))
     runs_osa = any(re.match(r"\s*(?:\S*/)?osa(?:script|compile)\b", line) for line, _ in lines) or any(  # an osascript list, whole or cut short
         os.path.basename(_unquoted(m[0]).strip()) in ("osascript", "osacompile") for m in found)
+    cuts: list = []  # how each osascript list that shows no whole script is cut short ("file", "read" or "built")
     for at, literal in enumerate(found):
         value = _unquoted(literal[0])
         first = os.path.basename(value.split(None, 1)[0]) if value.strip() else ""
         program = first in ACTORS or first in SHELLS or bool(SCRIPT.match(first) or UNREAD.match(first))
         if program and value.strip() == value.split(None, 1)[0]:  # a list of words: this one and the strings after it
             words, last = [value], literal
-            for later, nxt in zip(found[at:], found[at + 1:]):
-                if not re.fullmatch(r"\s*,\s*", text[later.end():nxt.start()]):
+            osa = first in ("osascript", "osacompile")
+            for later, nxt in zip(found[at:], found[at + 1:]):  # osascript's words may follow in an array of their own (Node's)
+                if not re.fullmatch(r"\s*,\s*" + (r"\[?\s*" if osa and later is literal else ""), text[later.end():nxt.start()]):
                     break
                 words.append(_unquoted(nxt[0]))
                 last = nxt
             if first in INPUT_PROGRAMS:
                 return KEYS + ", or acts through another app"
             whole = text[last.end():].lstrip()[:1] in ("]", ")")  # a list a computed word cuts short shows no script
-            if first not in ("osascript", "osacompile") or (whole and len(words) > 1):  # osascript alone is a lookup or a message
+            run = len(words) > 1 or text[:literal.start()].rstrip().endswith("[") or CALLED_WITH.search(text[max(0, literal.start() - 40):literal.start()])
+            cut = _osa_cut(words, whole, text[last.end():], text) if osa and run else ""  # `which("osascript")` is a lookup
+            if cut == "args" and _writes_script(text, [w for w in words[1:] if not w.startswith("-")][:1]):
+                cuts.append("file")  # a script file it names, which it writes before it runs it
+            if not osa or cut in ("args", "lines") or (whole and len(words) > 1):  # osascript alone is a lookup, a message or its input
                 lines.append((shlex.join(words), where))
-                runs_osa = runs_osa or first in ("osascript", "osacompile")
+                runs_osa = runs_osa or osa
+            elif cut:
+                cuts.append(cut)
         elif program and CALLED_WITH.search(text[max(0, literal.start() - 40):literal.start()]):  # a command line handed to a shell
             lines.append((value, where))
             runs_osa = runs_osa or first in ("osascript", "osacompile")
@@ -5831,6 +5841,88 @@ def _program_acts(text: str, head: str = "", where: str = "/", depth: int = 0) -
             acts = _osa_judge(value, bool(re.search(r"\bApplication\s*\(", value)))
             if acts:
                 return acts[1]
+    return _osa_files(text, head, where, path, cuts, args) if {"file", "read"} & set(cuts) else ""
+
+
+# A program that hands osascript a script it read from a file ran with no code while `osascript <file>` waited: pointed at
+# the local-messaging skill's transport, a Messages send (review of the runtime's carried scripts, 2026-11-15, problem B).
+OSA_EXT = re.compile(r"\.(?:js|jxa|scpt|scptd|applescript|osa)$", re.I)
+FILE_READS = re.compile(r"\bopen\s*\(|\.read_(?:text|bytes)\s*\(|\breadFile(?:Sync)?\s*\(|\bFile\s*\.\s*(?:read|open)\b|\bIO\s*\.\s*read"
+                        r"|\bslurp\b|\bfile_get_contents\s*\(|\bDeno\s*\.\s*readTextFile|\bjson\s*\.\s*load\s*\(|\bload\s*\(")
+WRITE_TARGET = re.compile(r"""\bopen\s*\(\s*([^,\n]+?)\s*,\s*['"][wax]|([\w.()\[\]'"/ ]+?)\s*\.write_(?:text|bytes)\s*\(|"""
+                          r"""\b(?:writeFile(?:Sync)?|File\s*\.\s*write|IO\s*\.\s*write|file_put_contents|Deno\s*\.\s*writeTextFile)\s*\(\s*([^,\n]+)""")
+
+
+def _writes_script(text: str, names: list) -> bool:
+    """Whether a program writes a script file it hands osascript: a write whose target spells one of `names` or any
+    script file, or is a name the program gives one (a log or a record it writes is none)."""
+    for found in WRITE_TARGET.finditer(text):
+        target = next((g for g in found.groups() if g), "")
+        if any(n and n in target for n in names) or OSA_EXT.search(target.strip("'\"` )")):
+            return True
+        var = re.match(r"\s*\(?\s*([A-Za-z_]\w*)", target)
+        if var and re.search(rf"(?m)^\s*{re.escape(var[1])}\s*=[^\n]*['\"][^'\"\n]*\.(?:js|jxa|scpt|scptd|applescript|osa)['\"]", text):
+            return True
+    return False
+
+
+def _osa_cut(words: list, whole: bool, after: str, text: str) -> str:
+    """What an osascript argument list hands it: "args" when it names its script file (any computed words are the
+    script's own), "lines" when its -e lines are shown, "file" when its script file (or an option's value) is computed,
+    "read" when it hands -e or its input a script from a file, "built" for one built from the program's own strings."""
+    i, given = 1, False
+    while i < len(words):
+        word = words[i]
+        if word in ("-e", "-l", "-s", "-o", "-t", "-c"):
+            if i + 1 >= len(words):
+                return _osa_from(after, text) if word == "-e" else "file"
+            given, i = given or word == "-e", i + 2
+        elif word.startswith("-") and word != "-":
+            given, i = given or word.startswith("-e"), i + 1
+        else:
+            return "lines" if given else "args"
+    if given:
+        return "lines"
+    return _osa_from(after, text) if whole else "file"  # alone, on its input; cut short, at its script file
+
+
+def _osa_from(after: str, text: str) -> str:
+    """"read" for a computed script (the expression after the list, or osascript's input) that comes from a file: a read
+    in the expression, or in what a name it uses is given; "built" for one the program builds from its own strings."""
+    expression = (re.match(r"\s*,\s*([^,\]\n]+)", after) or re.search(r"\binput\s*=\s*([^,\n]+)", after[:300]) or [None, ""])[1]
+    if FILE_READS.search(expression):
+        return "read"
+    name = re.match(r"\s*\*?([A-Za-z_]\w*)", expression)
+    given = re.findall(rf"(?m)^\s*(?:(?:const|let|var)\s+)?{re.escape(name[1])}\s*(?::[^=\n]*)?=(?!=)\s*(.+)$", text) if name else []
+    if any(FILE_READS.search(g) for g in given):
+        return "read"
+    return "built" if given and all(re.match(r"""[rRbBuUfF]{0,2}['"`]""", g) for g in given) else "read" if FILE_READS.search(text) else "built"
+
+
+def _osa_files(text: str, head: str, where: str, path: str, cuts: list, args) -> str:
+    """For a program that starts osascript with a script file it computes or a script it reads from a file: each script
+    file it names, or takes from its arguments, judged as `osascript <file>` is; a file it writes, one it does not name
+    and one the guard cannot read wait. The plugin's own script as shipped is judged by its own gate (a sender asks the
+    send guard itself), and a run the principal approved by its exact command in this call is not asked about twice."""
+    if (path and _shipped(path)) or _CALL.get("approved"):
+        return ""
+    code = _code_only(text, head)
+    names = [n for n in (_unquoted(m[0]).strip() for m in PROGRAM_STRINGS.finditer(text)) if OSA_EXT.search(n)]
+    names += [a for a in args if OSA_EXT.search(a)] if re.search(r"\bargv\b|\bARGV\b|\$ARGV\b", code) else []
+    if not names:
+        return UNREAD_OSA + " (a script it reads from a file it does not name)"
+    if _writes_script(text, names):
+        return UNREAD_OSA + " (a script file the program writes before it runs it)"
+    jxa = bool(re.search(r"""['"`]-l['"`]\s*,\s*\[?\s*['"`]JavaScript['"`]""", text, re.I))
+    for name in dict.fromkeys(names):
+        file = next((p for p in (os.path.realpath(os.path.join(f, _home(name))) for f in ([os.path.dirname(path)] if path else []) + [where])
+                     if os.path.isfile(p)), "")
+        body = _code_of(file) if file else ""
+        if not body:
+            return UNREAD_OSA + f" (a script file it names that the guard cannot read: {name})"
+        acts = _osa_judge(body, jxa or name.lower().endswith((".js", ".jxa")) or "javascript" in body.split("\n", 1)[0].lower())
+        if acts:
+            return acts[1]
     return ""
 
 
@@ -5905,7 +5997,8 @@ def _acts_outside(words: list, where: str, feed: str = "", depth: int = 0, writt
             return "desktop", UNREAD_OSA + " (a program the line writes before it runs it)", ""
         files = (_python_files(module or path or os.path.join(where, "-"), text, "" if _isolated(words) else os.path.realpath(where if kind != "file" else os.path.dirname(path)), given if module else "")[0]
                  if head.startswith("python") and text else [(path, text)])
-        acts = next((a for _, body in files for a in [_program_acts(body, head, where, depth)] if a), "")
+        args = words[_program(words)[1] + (kind == "file" or words[_program(words)[1]:][:1] == ["-"]):]  # the words it is handed
+        acts = next((a for file, body in files for a in [_program_acts(body, head, where, depth, file if file and os.path.basename(file) != "-" else "", args)] if a), "")
         return ("desktop", acts, "") if acts else None
     if "/" in words[0]:
         first = _code_of(os.path.join(where, os.path.expanduser(words[0])))
@@ -5913,7 +6006,8 @@ def _acts_outside(words: list, where: str, feed: str = "", depth: int = 0, writt
         if "osascript" in shebang:
             return _osa_judge(first, "javascript" in shebang.lower())
         if re.search(r"\b(?:python[\d.]*|node|bun|deno|perl|ruby|swift)\b", shebang):
-            acts = _program_acts(first, os.path.basename(shebang.split()[-1]) if shebang.split() else "", where, depth)
+            acts = _program_acts(first, os.path.basename(shebang.split()[-1]) if shebang.split() else "", where, depth,
+                                 os.path.realpath(os.path.join(where, os.path.expanduser(words[0]))), words[1:])
             return ("desktop", acts, "") if acts else None
     runs_file = head in SHELLS or head in (".", "source") or "/" in words[0]
     target = os.path.realpath(os.path.join(where, os.path.expanduser(words[0] if "/" in words[0] and head not in SHELLS
@@ -6195,6 +6289,7 @@ def _project(session: dict | None) -> str:
 # as that tool's call is, by `_connector`; one whose tool or arguments the guard cannot read waits when it may send.
 LOCAL_MCP = "workspace-mcp"  # the server the meeting skill runs here, as the harnesses name it
 MCP_CALLS = re.compile(r"tools/call|\bcall_?[tT]ool\s*\(")  # the JSON-RPC method, or a client library's call
+MCP_LINE = re.compile(r"tools/call|call_?[tT]ool|mcp_client|:8765\b|/mcp\b")  # a line that names a local MCP server or its call
 MCP_NAMED = re.compile(r"""["']?\bname["']?\s*:\s*["'`]([\w.-]+)["'`]|\bcall_?[tT]ool\s*\(\s*["'`]([\w.-]+)["'`]""")
 MCP_HOST = re.compile(r"(?:(https?)://)?(localhost|127\.0\.0\.1|\[::1\]|0\.0\.0\.0|[\w.-]+\.localhost)(?::(\d+))?(/[^\s?#]*)?(?:[?#]\S*)?$")
 BODIES = {"-d", "--data", "--data-raw", "--data-binary", "--data-ascii", "--data-urlencode", "--json", "--post-data",
@@ -6243,7 +6338,7 @@ def _http_body(words: list, where: str, feed: str, written: set) -> tuple:
         elif re.match(r"-[dFT].", word):
             value, form = word[2:], word[:2]
         elif os.path.basename(words[0]) in ("http", "https", "xh") and re.match(r"[\w.\[\]-]+:?=[^=]", word) and not word.startswith("-"):
-            name, raw = re.split(r":?=", word, 1)
+            name, raw = re.split(r":?=", word, maxsplit=1)
             try:
                 fields[name] = json.loads(raw) if ":=" in word else raw
             except ValueError:
@@ -6296,6 +6391,11 @@ def _tools_called(text: str, python: bool, own: bool = True) -> list:
             named = next((k.value for k in node.keywords if k.arg in ("name", "tool", "tool_name")), node.args[0] if node.args else None)
             given = next((k.value for k in node.keywords if k.arg == "arguments"), node.args[1] if len(node.args) > 1 else None)
             sites.append((named, given))
+        elif isinstance(node, ast.Call) and any(isinstance(a, ast.Constant) and a.value == "tools/call" for a in node.args):
+            at = next(i for i, a in enumerate(node.args) if isinstance(a, ast.Constant) and a.value == "tools/call")  # rpc("tools/call", params)
+            params = next((k.value for k in node.keywords if k.arg == "params"), node.args[at + 1] if len(node.args) > at + 1 else None)
+            inner = {k.value: v for k, v in zip(params.keys, params.values) if isinstance(k, ast.Constant)} if isinstance(params, ast.Dict) else {}
+            sites.append((inner.get("name"), inner.get("arguments")))
         elif isinstance(node, ast.Dict):
             keys = {k.value: v for k, v in zip(node.keys, node.values) if isinstance(k, ast.Constant) and isinstance(k.value, str)}
             if isinstance(keys.get("method"), ast.Constant) and keys["method"].value == "tools/call":
@@ -6303,40 +6403,56 @@ def _tools_called(text: str, python: bool, own: bool = True) -> list:
                 inner = {k.value: v for k, v in zip(params.keys, params.values) if isinstance(k, ast.Constant)} if isinstance(params, ast.Dict) else {}
                 sites.append((inner.get("name"), inner.get("arguments")))
         elif isinstance(node, ast.Constant) and isinstance(node.value, str) and "tools/call" in node.value and node.value.strip()[:1] in "{[":
-            sites += [(ast.Constant(n) if n else None, ast.Constant(None)) for n, _ in _rpc_calls(node.value)]
+            sites += [(ast.Constant(n) if n else None, ast.Constant(a)) for n, a in _rpc_calls(node.value)]
 
-    def names(expr, depth=0) -> list:
-        if isinstance(expr, ast.Constant) and isinstance(expr.value, str):
+    def names(expr, depth=0, part=None) -> list:  # part: the place in each item a loop unpacks, as `for name, args in CALLS`
+        if isinstance(expr, ast.Constant) and isinstance(expr.value, str) and part is None:
             return [expr.value]
         if expr is None or depth > 4 or not own:
             return [None]
         if any(isinstance(n, ast.Name) and n.id == "argv" or isinstance(n, ast.Attribute) and n.attr == "argv" for n in ast.walk(expr)):
             return [ARGV]
+        if isinstance(expr, ast.Subscript) and isinstance(expr.slice, ast.Constant) and part is None:  # spec["name"], pair[0]
+            return names(expr.value, depth + 1, expr.slice.value)
+        if isinstance(expr, ast.Dict) and isinstance(part, str):
+            return next((names(v, depth + 1) for k, v in zip(expr.keys, expr.values) if isinstance(k, ast.Constant) and k.value == part), [None])
+        if isinstance(expr, (ast.List, ast.Tuple, ast.Set)):  # a literal collection a loop walks: each item, or its part
+            return [x for e in expr.elts for x in (names(e, depth + 1) if part is None else names(e, depth + 1, part) if isinstance(e, ast.Dict)
+                                                   else names(e.elts[part], depth + 1) if isinstance(part, int) and isinstance(e, (ast.Tuple, ast.List))
+                                                   and len(e.elts) > part else [None])]
+        if isinstance(expr, ast.Dict) or (isinstance(expr, ast.Call) and getattr(expr.func, "attr", "") in ("keys", "items")):
+            keys = expr.keys if isinstance(expr, ast.Dict) else None  # a dict walked gives its keys
+            return [x for k in keys for x in names(k, depth + 1)] if keys is not None and part in (None, 0) else (
+                names(expr.func.value, depth + 1) if keys is None and part in (None, 0) else [None])
         if not isinstance(expr, ast.Name):
             return [None]
         found = []
         for node in nodes:
             if isinstance(node, (ast.Assign, ast.AnnAssign)) and any(isinstance(t, ast.Name) and t.id == expr.id for t in (
                     node.targets if isinstance(node, ast.Assign) else [node.target])):
-                found += names(node.value, depth + 1)
-            elif isinstance(node, (ast.For, ast.comprehension)) and isinstance(node.target, ast.Name) and node.target.id == expr.id:
-                seq = node.iter
-                found += [x for e in seq.elts for x in names(e, depth + 1)] if isinstance(seq, (ast.Tuple, ast.List, ast.Set)) else names(seq, depth + 1)
+                found += names(node.value, depth + 1, part)
+            elif isinstance(node, (ast.For, ast.comprehension)) and isinstance(node.target, (ast.Name, ast.Tuple, ast.List)):
+                spots = [node.target] if isinstance(node.target, ast.Name) else node.target.elts
+                at = next((i for i, t in enumerate(spots) if isinstance(t, ast.Name) and t.id == expr.id), None)
+                found += [] if at is None else names(node.iter, depth + 1, None if isinstance(node.target, ast.Name) else at)
             elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)) and expr.id in [a.arg for a in node.args.args]:
                 at = [a.arg for a in node.args.args].index(expr.id)
                 called = node.name if not isinstance(node, ast.Lambda) else next((t.id for n in nodes if isinstance(n, ast.Assign) and n.value is node
                                                                                      for t in n.targets if isinstance(t, ast.Name)), "")
                 for call in [n for n in nodes if isinstance(n, ast.Call) and called and getattr(n.func, "id", getattr(n.func, "attr", "")) == called]:
-                    given = next((k.value for k in call.keywords if k.arg == expr.id), call.args[at] if len(call.args) > at else None)
+                    spot = at - (isinstance(call.func, ast.Attribute) and [a.arg for a in node.args.args][:1] in (["self"], ["cls"]))  # a method's own
+                    given = next((k.value for k in call.keywords if k.arg == expr.id), call.args[spot] if 0 <= spot < len(call.args) else None)
                     found += names(given, depth + 1)
                 found += [] if called else [None]
         return found or [None]
 
+    strong = sites or any(isinstance(n, ast.Constant) and n.value == "tools/call" or getattr(n, "attr", getattr(n, "id", "")) in ("call_tool", "callTool")
+                          for n in nodes)  # a method or a client call it uses, not prose in a string that names one
     return [(n, literal(given) if isinstance(n, str) and n != ARGV else None) for named, given in sites for n in names(named)
-            if own or n is not None] or ([(None, None)] if own else [])
+            if own or n is not None] or ([(None, None)] if own and strong else [])
 
 
-def _mcp_calls(commands: list, feeds: list, written: set, depth: int = 0) -> list:
+def _mcp_calls(commands: list, feeds: list, written: set, line: str = "", bodies: str = "", depth: int = 0) -> list:
     """(tool or None, arguments or None, how, folder, program file) for each call a parsed line makes on a local MCP
     server: an HTTP client to an address here, a program whose text posts JSON-RPC or calls a client's call_tool (with
     the modules of its own it imports), and the shell files it runs."""
@@ -6357,9 +6473,9 @@ def _mcp_calls(commands: list, feeds: list, written: set, depth: int = 0) -> lis
             kind, at, given = _program(words)
             module = _module_file(given, "" if _isolated(words) else os.path.realpath(where)) if words[at:at + 1] == ["-m"] else ""
             path = module or (os.path.realpath(os.path.join(where, _home(given))) if kind == "file" and given else "")
-            text = given if kind == "inline" else feed if kind == "stdin" else "" if path in written else _code_of(path) if path else ""
-            if UNREAD_INPUT in text or (not text and path in written):
-                text = "tools/call"  # a program on input another program writes, or one the line writes: not read, so unknown
+            text = given if kind == "inline" else feed if kind == "stdin" else bodies if path in written else _code_of(path) if path else ""
+            if UNREAD_INPUT in text or (not text and path in written):  # input another program writes, or a file the line
+                text = "tools/call" if MCP_LINE.search(line) else ""  # writes with no heredoc: unknown where the line names a server
             files = (_python_files(path or os.path.join(where, "-"), text, "" if _isolated(words) else os.path.realpath(
                 where if not path else os.path.dirname(path)), given if module else "")[0] if head.startswith("python") and text else [(path, text)])
             args = words[at + 1:] if kind == "file" else words[at + (words[at:at + 1] == ["-"]):] if kind == "stdin" else words[at:]
@@ -6381,7 +6497,7 @@ def _mcp_calls(commands: list, feeds: list, written: set, depth: int = 0) -> lis
                     parsed = _parse(script, where, feeds=inner)[0]
                 except (Unreadable, ValueError):
                     continue
-                calls += _mcp_calls(parsed, inner, written, depth + 1)
+                calls += _mcp_calls(parsed, inner, written, script, "\n".join(f for f in inner if f.strip()), depth + 1)
     return calls
 
 
@@ -6458,7 +6574,7 @@ def check_outgoing(command: str, config: dict, cwd: str, session: dict | None = 
             if problem:
                 return f"This command posts to {chan}, but {problem}. Put the text in the command or a readable file."
             posts.append((chan, text, where))
-    reason = _check_mcp(_mcp_calls(commands, feeds, written), command, config, session)  # a local MCP server's tools (5.23.1)
+    reason = _check_mcp(_mcp_calls(commands, feeds, written, command, "\n".join(f for f in feeds if f.strip())), command, config, session)  # 5.23.1
     if reason:
         return reason
     for window in windows:  # each command spends its own grant (`synthesis sends open` refuses without one)
@@ -6512,6 +6628,142 @@ def check_outgoing(command: str, config: dict, cwd: str, session: dict | None = 
             "identical command again from any directory: the approval binds where it runs, not where the shell started.")
 
 
+# --- a git command and the programs its configuration names (5.23.1) ----------------------------------------------------
+# `git status`, a read, runs the program a repository's own core.fsmonitor names, and an agent may make the repository:
+# the reviewer's wrote into the state folder (review of the runtime's carried scripts, 2026-11-15, problem D). A git
+# command is judged as running each program the configuration it reads names, as if the line ran it where git does: the
+# repository's own config (with the files it includes and its worktree's) and a file the line points git at, the line's
+# own (-c, --config-env, GIT_CONFIG_COUNT, GIT_CONFIG_PARAMETERS), and the programs the line's environment gives git. A
+# value the guard cannot read waits, and an alias counts only when it is the command run.
+GIT_PROGRAMS = re.compile(r"core\.(?:fsmonitor|hookspath|sshcommand|editor|pager|askpass|gitproxy|alternaterefscommand)|sequence\.editor"
+                          r"|pager\..+|credential\.(?:.+\.)?helper|diff\.(?:external|.+\.(?:command|textconv))|filter\..+\.(?:clean|smudge|process)"
+                          r"|merge\..+\.driver|gpg\.(?:.+\.)?program|gpg\.ssh\.defaultkeycommand|interactive\.difffilter|web\.browser"
+                          r"|remote\..+\.(?:uploadpack|receivepack)|submodule\..+\.update|trailer\..+\.(?:command|cmd)"
+                          r"|(?:difftool|mergetool|man|browser)\..+\.(?:cmd|path)|sendemail\.smtpserver|alias\..+")
+GIT_PROGRAM_ENV = ("GIT_SSH_COMMAND", "GIT_SSH", "GIT_EDITOR", "GIT_SEQUENCE_EDITOR", "GIT_PAGER", "GIT_EXTERNAL_DIFF", "GIT_ASKPASS",
+                   "SSH_ASKPASS", "GIT_PROXY_COMMAND")
+GIT_DEPTH = [0]  # how deep one call follows a program a git command's configuration names that itself runs git
+
+
+def _git_config(path: str, depth: int = 0) -> list:
+    """(key, value) for each entry of a git config file and the files it includes, as git reads them; none for a file
+    that is not there or no regular file (a FIFO would stop git, not the guard)."""
+    found = _regular(path, 1 << 20) if depth <= 10 else None
+    lines, section, entries, i = (found[0].decode("utf-8", "replace").replace("\r\n", "\n").split("\n") if found else []), "", [], 0
+    while i < len(lines):
+        line, i = lines[i], i + 1
+        while line.rstrip().endswith("\\") and i < len(lines):  # a value continued on the next line
+            line, i = line.rstrip()[:-1] + lines[i], i + 1
+        head = re.match(r'\s*\[\s*([\w.-]+)(?:\s+"((?:[^"\\]|\\.)*)")?\s*\]\s*(.*)$', line)
+        if head:
+            section, line = head[1].lower() + ("." + re.sub(r"\\(.)", r"\1", head[2]) if head[2] is not None else ""), head[3]
+        entry = re.match(r"\s*([A-Za-z][\w-]*)\s*(?:=\s*(.*))?$", line)
+        if not entry or not section:
+            continue
+        out, quoted, raw, j = [], False, entry[2] or "", 0
+        while j < len(raw) and (quoted or raw[j] not in "#;"):
+            out.append({"n": "\n", "t": "\t", "b": "\b"}.get(raw[j + 1], raw[j + 1]) if raw[j] == "\\" and j + 1 < len(raw) else "" if raw[j] == '"' else raw[j])
+            quoted, j = quoted != (raw[j] == '"'), j + 1 + (raw[j] == "\\" and j + 1 < len(raw))
+        key, value = f"{section}.{entry[1].lower()}", "".join(out).strip() if entry[2] is not None else "true"
+        entries.append((key, value))
+        if re.fullmatch(r"include(?:if\..+)?\.path", key) and value:
+            entries += _git_config(os.path.join(os.path.dirname(path), os.path.expanduser(value)), depth + 1)
+    return entries
+
+
+def _git_programs(words: list, where: str, line: str) -> list:
+    """(what names it, the command line git runs, the folder it runs in) for each program the configuration a git
+    command reads names; the command line is None for a value the guard cannot read."""
+    env = {m[1]: m[3].strip("'\"") for m in ASSIGNED.finditer(_own_text(line)) if m[1].startswith(("GIT_", "SSH_"))}
+    entries, cwd, gitdir, exec_path, i = [], where, env.get("GIT_DIR"), env.get("GIT_EXEC_PATH"), 1
+    while i < len(words) and words[i].startswith("-"):
+        word, after = words[i], (words[i + 1] if i + 1 < len(words) else "")
+        key, eq, value = word.partition("=")
+        if word == "-C":
+            cwd = os.path.normpath(os.path.join(cwd, _home(after)))
+        elif word == "-c":
+            entries.append((after.split("=", 1)[0].lower(), after.split("=", 1)[1] if "=" in after else "true"))
+        elif key == "--config-env":
+            name, _, var = (value if eq else after).partition("=")
+            entries.append((name.lower(), env.get(var, os.environ.get(var))))
+        elif key == "--git-dir":
+            gitdir = value if eq else after
+        elif key == "--exec-path" and eq:
+            exec_path = value
+        i += 2 if word in GIT_VALUE_OPTIONS else 1
+    sub = words[i].lower() if i < len(words) else ""
+    count = env.get("GIT_CONFIG_COUNT", "")
+    entries += [((env.get(f"GIT_CONFIG_KEY_{n}") or "").lower(), env.get(f"GIT_CONFIG_VALUE_{n}")) for n in range(int(count) if count.isdigit() else 0)]
+    try:
+        entries += [(p.split("=", 1)[0].lower(), p.split("=", 1)[1] if "=" in p else "true") for p in shlex.split(env.get("GIT_CONFIG_PARAMETERS", ""))]
+    except ValueError:
+        entries.append(("GIT_CONFIG_PARAMETERS", None))
+    pointed = [e for var in ("GIT_CONFIG_SYSTEM", "GIT_CONFIG_GLOBAL", "GIT_CONFIG") if env.get(var) for e in _git_config(os.path.join(cwd, _home(env[var])))]
+    gitdir = os.path.normpath(os.path.join(cwd, _home(gitdir))) if gitdir else None
+    top, here = cwd, cwd
+    while not gitdir and here:
+        dot = os.path.join(here, ".git")
+        if os.path.isdir(dot) or os.path.isfile(dot):
+            given = re.match(r"gitdir:\s*(.+)", (_code_of(dot) if os.path.isfile(dot) else "").strip())
+            gitdir, top = (os.path.join(here, given[1].strip()) if given else dot) if os.path.isfile(dot) else dot, here
+        here = "" if os.path.dirname(here) == here else os.path.dirname(here)
+    common = os.path.join(gitdir, _code_of(os.path.join(gitdir, "commondir")).strip() or ".") if gitdir else ""
+    local = _git_config(os.path.join(common, "config")) + _git_config(os.path.join(gitdir, "config.worktree")) if gitdir else []
+    last: dict = {}
+    for key, value in pointed + local + entries:  # the value git uses: the last one read, all of a helper list since it was emptied
+        last[key] = ([*last.get(key, []), value] if value != "" else []) if re.fullmatch(r"credential\.(?:.+\.)?helper", key) else [value]
+    found = []
+    for key, values in last.items():
+        for value in values if GIT_PROGRAMS.fullmatch(key) and (not key.startswith("alias.") or key[6:] == sub) else ():
+            low = (value or "").strip().lower()
+            if value is not None and (key in ("core.fsmonitor", "web.browser") or key.startswith("pager.")) and low in BOOLEAN_WORDS:
+                continue
+            if value is not None and key == "core.hookspath":
+                folder = os.path.join(top, _home(value))
+                hooks = sorted(os.listdir(folder)) if os.path.isdir(folder) else []
+                found += [(f"core.hooksPath ({name})", shlex.quote(os.path.join(folder, name)), top) for name in hooks
+                          if os.path.isfile(os.path.join(folder, name)) and os.access(os.path.join(folder, name), os.X_OK)][:32]
+                continue
+            if value is not None and ((key.startswith(("submodule.", "sendemail.")) and not value.startswith(("!", "/"))) or not value.strip()):
+                continue
+            text = None if value is None else value[1:] if value.startswith("!") else (
+                f"git {value} {shlex.join(words[i + 1:])}" if key.startswith("alias.") else
+                f"git credential-{value}" if key.startswith("credential.") and "/" not in value.split()[0] else value)
+            found.append((key, text, top))
+    found += [(var, shlex.quote(env[var]) if var == "GIT_SSH" else env[var], top) for var in GIT_PROGRAM_ENV if env.get(var)]
+    run = os.path.join(cwd, _home(exec_path), f"git-{sub}") if exec_path and sub else ""
+    return found + ([("--exec-path", shlex.quote(run), top)] if run and os.path.isfile(run) else [])
+
+
+BOOLEAN_WORDS = {"", "true", "false", "yes", "no", "on", "off", "1", "0", "keep"}
+
+
+def check_git_programs(command: str, config: dict, cwd: str, session: dict | None = None) -> str | None:
+    """A git command waits as each program its configuration names would, judged where git runs it (see above)."""
+    if not re.search(r"(?<![\w.-])git(?![\w.-])", command):
+        return None
+    found = [(what, text, folder) for words, where in _parse(command, cwd)[0] if words and os.path.basename(words[0]) == "git"
+             for what, text, folder in _git_programs(words, where, command)]
+    for what, text, folder in found:
+        if text is None or GIT_DEPTH[0] >= 2:
+            subject = {"command": command, "runs_in": os.path.realpath(cwd), "git": what}
+            if approvals.consume("protected-read", subject, session):
+                return None
+            code = approvals.request("protected-read", subject, f"a git command whose configuration names a program: {command[:120]}")
+            return (f"This git command runs the program its configuration names in {what}, which the guard cannot read"
+                    f"{' (nested past what it follows)' if text else ''}. Show the principal this exact command and ask them to "
+                    f"type {approvals.how(code)}; then run the identical command again.")
+        GIT_DEPTH[0] += 1
+        try:
+            reason = check("Bash", {"command": text}, config, cwd=folder, session=session)
+        finally:
+            GIT_DEPTH[0] -= 1
+        if reason:
+            return (f"This git command runs the program its configuration names in {what} (`{text[:120]}`, in {folder}), so it "
+                    f"is judged as running it there. {reason}")
+    return None
+
+
 def guarded(tool: str, tool_input: dict | None = None) -> bool:
     """Calls whose guard must fail closed when the config can't be read (R3.5)."""
     return (shell_tool(tool) or tool.startswith(BROWSER) or bool(desktop_tool(tool)) or bool(driven_tool(tool))
@@ -6522,7 +6774,7 @@ def check(tool: str, tool_input: dict, config: dict, cwd: str | None = None, ses
     """cwd is the session's working directory (the hook payload's `cwd`); defaults to this process's.
     session is the hook payload, which names the transcript an approval is checked against."""
     _TAILS.clear()  # each call reads the record anew: a rewrite in place can keep a file's size and its time stamp
-    _CALL.update(codes={}, ran={}, proofs={}, files={}, real={}, until=time.monotonic() + CALL_SECONDS)  # and every script it runs
+    _CALL.update(codes={}, ran={}, proofs={}, files={}, real={}, until=time.monotonic() + CALL_SECONDS, approved=False)  # and every script it runs
     if not cwd:
         try:
             cwd = str(tool_input.get("workdir") or "") or os.getcwd()
@@ -6536,7 +6788,8 @@ def check(tool: str, tool_input: dict, config: dict, cwd: str | None = None, ses
                 or check_pr_gate(command, config, cwd, session)
                 or check_deploy(command, config, cwd, session) or check_tunnel(command, config, cwd, session)
                 or check_outgoing(command, config, cwd, session)
-                or check_claimed(_shell_writes(command, cwd), cwd, session))
+                or check_claimed(_shell_writes(command, cwd), cwd, session)
+                or check_git_programs(command, config, cwd, session))  # last: it judges each program as a call of its own
     if tool in FILE_TOOLS:
         return check_file_write(tool, tool_input, cwd, config) or check_claimed(_file_targets(tool, tool_input), cwd, session)
     if tool.startswith(BROWSER):

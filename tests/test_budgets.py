@@ -1312,10 +1312,33 @@ ROOT = Path(__file__).resolve().parents[1]
 # call, else one code for the exact command and the programs it runs, a call read twice judged once), _rpc_calls 16 (a
 # request or a batch), _mcp_endpoint 10, _json_object 8, the section's note and patterns 15, and _connector 7 (the
 # connector's judgement, which check and the shell route now share).
+# 5.23.1, problems B and D of the same review: core 253 more and plugin 253, all in guards.py. B 94 (an agent's own Python
+# read a script file and handed it to osascript's -e with no code while `osascript <file>` waited; pointed at the
+# local-messaging transport, a Messages send): _osa_files 27 (each script file the program names, or takes from its
+# arguments, judged as `osascript <file>` is; one it writes first, does not name or cannot be read waits; the plugin's own
+# as shipped, and a run the principal approved in this call, judged by their own gates), _osa_cut 20 (how a list that
+# shows no whole script is cut short: a computed script file, a computed -e script or input, a shown file with computed
+# arguments, shown -e lines), _osa_from 13 (a computed script read from a file, in its expression or in what its name is
+# given), _writes_script 13 (a write whose target spells a script file it hands osascript, or a name given one; a log or
+# a record it writes is none), the note and patterns 9 (OSA_EXT, FILE_READS, WRITE_TARGET), _program_acts 9 (the cuts it
+# keeps, osascript's words in an array of their own, a lookup of osascript is no run, a script file it writes, the
+# program's file and words), _acts_outside 2 (the program's file and words) and check_self_grant 1 (the run the
+# principal approved). A's reading 22 more, from replaying 60 days of recorded commands through it: _tools_called 21 (a
+# literal list, a dict's keys, a loop that unpacks, an item's key, a method's own parameter, a JSON-RPC helper called
+# with the method, and a program whose strings only name the method is no call) and MCP_LINE 1 (a program the guard
+# cannot read is an unknown call only where its line names a local server). D 137 (`git status` ran the program a
+# repository's own core.fsmonitor names, which wrote into the state folder): _git_programs 67 (the line's environment,
+# git's options, GIT_CONFIG_COUNT and GIT_CONFIG_PARAMETERS, a file the line points git at, the repository found upward and
+# its worktree's common folder, the last value read winning and a helper list emptied, each key's command line: a hooks
+# folder's executables, a ! command, an alias run as git, a named credential helper; the environment's programs and the
+# exec path; the boolean words), _git_config 26 (sections and subsections, continued lines, quotes, escapes, comments, and
+# the files include and every includeIf name), check_git_programs 26 (each program judged by the whole shell guard where git
+# runs it; a value it cannot read, and nesting past two levels, held for the protected-folder code), the note and patterns
+# 17 (GIT_PROGRAMS, GIT_PROGRAM_ENV, GIT_DEPTH) and the dispatch 1.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 16755
-PLUGIN_BUDGET = 42827
+CORE_BUDGET = 17008
+PLUGIN_BUDGET = 43080
 
 
 def _lines(files):
