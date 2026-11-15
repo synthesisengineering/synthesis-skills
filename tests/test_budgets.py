@@ -1334,10 +1334,16 @@ ROOT = Path(__file__).resolve().parents[1]
 # fresh clone, the stages renumbered); preflight 4 (GitHub's state and the floor); CANONICAL_URL, TAG and GIT's
 # comment 3 and the CANONICAL comment 2. PLUGIN for REPO, ci_state, git, collections_head and publish's read-back
 # change lines in place.
+# 5.23.1, a session start never replaces an installed runtime from its harness's folder (the principal's sandbox
+# rulings of 2026-11-15; review round 1's open item 1): core 29 more and plugin 29. hook.py 20: _newer_plugin_note 18
+# with its blank lines (once per version: both versions and the release launcher's install line), _emit 1 (a system
+# message beside the context) and session_start 1. doctor.py 6: check_package's warning for a newer plugin 5 and its
+# fail message's second line 1. install.py 2: install's docstring (first_only, the first install only, in place of
+# forward_only). cli.py 1: `install --first`, which the bootstrap passes.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 16787
-PLUGIN_BUDGET = 42979
+CORE_BUDGET = 16816
+PLUGIN_BUDGET = 43008
 
 
 def _lines(files):

@@ -357,7 +357,7 @@ def cmd_install(args) -> int:
     from synthesis import install
     plugin = Path(args.plugin) if args.plugin else Path(__file__).resolve().parents[1]
     try:
-        print(install.install(plugin))
+        print(install.install(plugin, first_only=args.first))
         if args.git_hooks:
             print(install.register_git_hooks())
     except (OSError, RuntimeError, subprocess.SubprocessError) as exc:
@@ -482,6 +482,7 @@ def parser() -> argparse.ArgumentParser:
     s.add_argument("plugin", nargs="?", default="")
     s.set_defaults(late="plugin")
     s.add_argument("--git-hooks", action="store_true", help="also run the commit check for every repository")
+    s.add_argument("--first", action="store_true", help="only where no runtime exists, as the first-install bootstrap does")
     s.set_defaults(fn=cmd_install)
     s = sub.add_parser("uninstall", help="remove what install wrote; keep config and the board")
     s.add_argument("--dry-run", action="store_true")

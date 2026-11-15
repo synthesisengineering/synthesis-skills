@@ -241,17 +241,21 @@ task when a Codex update deleted that folder (2026-09-02, CHANGELOG 4.90.2).
 
 v5 has two stable paths, both outside the harnesses' caches:
 
-- `~/.synthesis/v5/bin/synthesis-hook` is what every hook calls. Its text never changes
-  between releases, so a deleted plugin folder never breaks a running task. A hook
-  approval is another matter: Muse has kept its approval across every release so far,
-  and Codex asks again after each one, because it ties the approval to a fingerprint of
-  the installed plugin. Until the person approves in `/hooks`, Codex runs none of the
-  hooks; `release.py` names that approval as waiting.
+- `~/.synthesis/v5/bin/synthesis-hook` is what every hook calls. Its path never changes
+  between releases, so a deleted plugin folder never breaks a running task; since 5.23.1
+  its text names the interpreter pinned at install. A hook approval is another matter:
+  Muse has kept its approval across every release so far, and Codex asks again after
+  each one, because it ties the approval to a fingerprint of the installed plugin. Until
+  the person approves in `/hooks`, Codex runs none of the hooks; `release.py` names that
+  approval as waiting.
 - `~/.synthesis/v5/current` is the runtime. At each session start the hook passes the
-  plugin folder the harness loaded; if it is a newer release, it is installed beside the
-  old one and `current` switches atomically, and a session on an older plugin never
-  switches it back. `release.py` installs from a verified install whatever its version,
-  and `synthesis doctor` fails when `current` is missing or its files changed.
+  plugin folder the harness loaded, which installs the runtime only where none exists
+  (the first install). Since 5.23.1 an installed runtime is replaced only by the release
+  launcher, from a clone of GitHub it verified, never from a harness's folder, which the
+  guard does not protect: a session start on a newer plugin says so once and names
+  `~/.synthesis/v5/bin/synthesis-release --install-only --tag v<version>`, and the
+  doctor warns while the two differ. Nothing older than the running runtime installs, and
+  `synthesis doctor` fails when `current` is missing or its files changed.
 
 Instruction files and scripts call `synthesis` (or `~/.synthesis/v5/bin/synthesis`),
 never a versioned folder.

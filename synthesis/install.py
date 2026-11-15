@@ -246,28 +246,30 @@ def _differences(folder: Path, expected: dict) -> list:
             + [f"missing {rel}" for rel in sorted(set(expected) - set(found))] + [f"extra {rel}" for rel in sorted(set(found) - set(expected))])
 
 
-def install(plugin_root: Path, forward_only: bool = False, expected: dict = None) -> str:
+def install(plugin_root: Path, first_only: bool = False, expected: dict = None) -> str:
     """Install the plugin's runtime if it differs from the current one. Returns a one-line report.
 
-    forward_only (the session-start hook): leave everything alone unless the plugin is a newer release. Any other
-    install refuses (Refused) a release older than the running one (review round 1 of 5.23.1, A1). `expected` ({path:
-    blob id}, every file the runtime takes, as the release read it from its fresh clone): the staged copy must hold
-    exactly those bytes before `current` moves, or nothing moves (A3)."""
+    first_only (the session-start hook and the first-install bootstrap): install only where no runtime exists at all.
+    The folder a harness passes is its own plugin cache, which the guard does not protect, so an installed runtime is
+    replaced only by the release tool, from a clone it verified (the principal's sandbox rulings of 2026-11-15). Any
+    other install refuses (Refused) a release older than the running one (review round 1 of 5.23.1, A1). `expected`
+    ({path: blob id}, every file the runtime takes, as the release read it from its fresh clone): the staged copy must
+    hold exactly those bytes before `current` moves, or nothing moves (A3)."""
     plugin_root = Path(plugin_root).resolve()
     if not (plugin_root / "synthesis" / "hook.py").is_file():
         return f"not a synthesis plugin: {plugin_root}"
     home = _home()
     running = version(home / "current")
-    if not forward_only and running and version(plugin_root) < running:
-        raise Refused(f"{plugin_root} holds {'.'.join(map(str, version(plugin_root))) or 'no version'}, older than the "
-                      f"running {'.'.join(map(str, running))}: nothing older installs")
     try:
         move_board(home)  # before any switch, so the new release's first read finds the board in place
     except OSError as exc:  # never blocks a session start; the doctor names what is left in state/
         print(f"synthesis: the board could not be moved out of {home / 'state'}: {exc}", file=sys.stderr)
-    if forward_only and current_hash() and version(plugin_root) <= version(home / "current"):
-        _compile(home / "current" / "synthesis")  # an older release's installer made the switch, or the interpreter changed
-        return f"synthesis runtime kept at {current_hash()}: {plugin_root} is not newer"
+    if first_only and current_hash():
+        _compile(home / "current" / "synthesis")  # the interpreter it runs on may have changed under it
+        return f"synthesis runtime kept at {current_hash()}: a session start installs only where no runtime exists"
+    if running and version(plugin_root) < running:
+        raise Refused(f"{plugin_root} holds {'.'.join(map(str, version(plugin_root))) or 'no version'}, older than the "
+                      f"running {'.'.join(map(str, running))}: nothing older installs")
     wanted = package_hash(plugin_root)
     if wanted != current_hash():
         release = home / "releases" / wanted
@@ -494,4 +496,4 @@ def uninstall(home: Path = None, dry_run: bool = False, codex_cleared: bool = Fa
 
 if __name__ == "__main__":  # the bootstrap hooks.json runs before the stable `synthesis` command exists
     from synthesis import cli
-    sys.exit(cli.main(sys.argv[1:] if sys.argv[1:2] == ["uninstall"] else ["install", *sys.argv[1:]]))
+    sys.exit(cli.main(sys.argv[1:] if sys.argv[1:2] == ["uninstall"] else ["install", "--first", *sys.argv[1:]]))

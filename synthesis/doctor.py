@@ -240,9 +240,15 @@ def check_package(harness: str, plugin_root: Path | None, runtime: str) -> Check
     if not runtime:
         return Check("fail", name, "no runtime to compare against (see runtime)")
     found = install.package_hash(plugin_root)
+    have, offered = install.version(paths.home() / "current"), install.version(plugin_root)
+    if found != runtime and have and offered > have:  # a session start never installs it (2026-11-15)
+        return Check("warn", name, f"the plugin is synthesis {'.'.join(map(str, offered))}, newer than the runtime "
+                                   f"{'.'.join(map(str, have))}; install it with `~/.synthesis/v5/bin/synthesis-release "
+                                   f"--install-only --tag v{'.'.join(map(str, offered))}`")
     if found != runtime:
-        return Check("fail", name, f"plugin code {found} differs from the runtime {runtime}; "
-                                   "start a session in this harness to update, or reinstall the plugin")
+        return Check("fail", name, f"plugin code {found} differs from the runtime {runtime}; reinstall the plugin in this "
+                                   "harness, or install the release it carries with `~/.synthesis/v5/bin/synthesis-release "
+                                   "--install-only --tag v<version>`")
     if (plugin_root / "synthesis" / "__pycache__").exists():
         return Check("warn", name, f"matches the runtime ({found}), but something wrote __pycache__ into the plugin folder")
     return Check("ok", name, f"plugin code matches the runtime ({found})")

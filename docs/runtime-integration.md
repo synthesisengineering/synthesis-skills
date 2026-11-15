@@ -36,17 +36,24 @@ approves them again (found 2026-11-05 on Codex 0.166 by running a real turn;
 the doctor had read Codex's own record and reported the hooks trusted). The
 doctor's `codex hook trust` check now computes that fingerprint itself, and the
 release script names the approval as waiting on the person. The script runs
-`python3 -S ~/.synthesis/v5/current/synthesis/hook.py <event>`; `current` is a
-symlink switched atomically, so a running hook sees the old release or the new
-one, never neither.
+`~/.synthesis/v5/current/synthesis/hook.py <event>` with the interpreter pinned
+at install, by its real path, owned by root with every folder above it and
+writable by neither this user nor its groups, with `-I -S` under `env -i` and
+only the variables the runtime reads (5.23.1; the CLI, the git hooks and the
+release launcher run the same way). `current` is a symlink switched atomically,
+so a running hook sees the old release or the new one, never neither.
 
 The SessionStart registration also passes the plugin folder the harness loaded
 (Claude Code's `${CLAUDE_PLUGIN_ROOT}`; Muse's `MUSE_PLUGIN_ROOT`, or the
-script's own location). If the stable hook is missing it installs the runtime
-from that folder first, and on every start it installs the folder's runtime if
-it is a newer release than the current one. A session still on an older plugin
-never switches the runtime back; a rollback is an explicit `synthesis install`.
-A failed self-update never blocks the session; `synthesis doctor` reports it.
+script's own location). That folder is the harness's own plugin cache, which the
+guard does not protect, so since 5.23.1 a session start installs from it only
+where no runtime exists at all: the first install, and the bootstrap that runs
+when the stable hook is missing. An installed runtime is replaced only by the
+release launcher (`~/.synthesis/v5/bin/synthesis-release --install-only --tag
+v<version>`), which installs from a clone of GitHub it verified, a tag on `main`
+no older than the runtime. When the folder carries a newer release, the session
+start says so once, naming both versions and that line, and `synthesis doctor`
+warns while the two differ. Nothing older than the running runtime installs.
 
 ## The four events
 
@@ -553,6 +560,14 @@ stay open, and no hook running as that same user can close them:
   A fingerprint added that way passes its line without the person. It holds hashes, so
   the agent would have to compute the hash of the exact line, path and repository.
 - The agent can rewrite the runtime under `~/.synthesis/v5` or its config.
+- The first install comes from the harness's plugin folder. Where no runtime exists at all, the session start and
+  the bootstrap in `hooks.json` (which runs `python3 -B -S <plugin>/synthesis/install.py` from PATH while the stable
+  hook is missing) install the runtime from the folder the harness passes, which the guard does not protect. This
+  is acceptable: with no runtime there is no guard yet to keep, and once one is installed a session cannot force
+  that path again, because the runtime's own files (`releases`, `current`, `bin`, `git-hooks`) are protected folders
+  the guard refuses to remove or change, and an install, by any route, refuses anything older than the running
+  runtime. A runtime removed by a route the guard cannot read (above) would make the next session start a first
+  install again; that is the same class as the line before this one.
 
 Closing these needs isolation the hooks do not have: the agent under its own OS user
 or sandbox, or approvals signed by something outside the agent's reach.
@@ -643,9 +658,10 @@ What the M5 sandbox showed for Muse 1.4.3, and what it could not test:
   forever. The reply check sends a reply back at most once in a row, and an
   autopilot run is asked to continue at most `autopilot.max_continuations`
   times in a row (3 by default) before the session is allowed to stop.
-- **SessionStart never blocks a session.** A failed self-update is skipped and
-  `synthesis doctor` reports the stale runtime; a ritual line that cannot be
-  computed is left out.
+- **SessionStart never blocks a session.** A failed first install is skipped and
+  `synthesis doctor` reports the missing runtime; a runtime older than the plugin
+  the harness loaded is named once and reported by the doctor, never replaced
+  there; a ritual line that cannot be computed is left out.
 
 ## Hook trust
 

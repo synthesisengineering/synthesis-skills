@@ -47,6 +47,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   running runtime, so no install rolls the guard back.
 - **Codex's commands are judged in their `workdir`**, where Codex runs them (review round 1, A5), and
   **`~/.synthesis/v5/git-hooks` is a protected folder** (A8).
+- **A session start never replaces an installed runtime from its harness's folder**, by the principal's sandbox
+  rulings of 2026-11-15 ("seal everything the guard trusts", "install from the protected release tool"). The session
+  start installed the runtime from the plugin folder the harness loaded whenever it carried a newer release; that
+  folder is the harness's own plugin cache, which the guard does not protect, so a higher version written into it
+  became the runtime at the next session start (live in 5.23.0). Now the session start, and the bootstrap in
+  `hooks.json` (`install.py`, which passes `synthesis install --first`), install from that folder only where no runtime
+  exists at all. Where one does and the folder is newer, the session start says so once (a system message naming both
+  versions and `~/.synthesis/v5/bin/synthesis-release --install-only --tag v<version>`, which verifies the tag on
+  GitHub's main and that it is newer), and the doctor warns while the two differ. `docs/runtime-integration.md` lists
+  the first install from a harness folder among what stays open, and why it is acceptable.
 - **The guard asks where a path leads once a call.** Judging a long shell command, it asked the file system where the
   same paths lead again for each of the command's readings and each of its words: one recorded heredoc of
   substitutions in a loop asked 11,746 times over 102 paths, which took 0.31 s on a Mac under Apple's Python 3.9 and
