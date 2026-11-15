@@ -678,25 +678,14 @@ def _interpreter(prefix: Path) -> dict:
     return {"PATH": f"{prefix / 'bin'}:{os.environ.get('PATH', '/usr/bin:/bin')}"}
 
 
-def test_a_run_whose_interpreter_loads_from_a_folder_the_user_can_write_is_not_proven(mac, tmp_path):
-    """N2, ruled: a run is the release's only when the python3 it runs would load nothing from a folder the user can
-    write: its own site-packages and the folders its .pth files reach (a Homebrew Python's site-packages can be written)."""
+def test_a_run_under_a_python_whose_own_site_packages_the_user_can_write_is_still_the_releases(mac, tmp_path):
+    """N2, ruled again: holding these runs would hold ordinary work on every Mac with Homebrew's Python first (and on
+    one whose framework site-packages holds a .pth file its user owns), against an attack that needs a planted file. The
+    interpreter's own folders are on the open list until trusted runs use the sealed interpreter the sandbox plans."""
     work = _work(tmp_path)
     line = f"python3 -s {mac.rt}/{FETCHER} --window 2026-11-14 2026-11-15"
-    assert _verdict(mac, line, work) is None  # this Mac's interpreter: nothing it loads can be written by the user
     writable = _interpreter(work / "brew")
-    assert _verdict(mac, line, work, {**mac.env, **writable}), "its own site-packages can be written"
-    reached = _interpreter(work / "framework")
-    site = work / "framework" / "lib" / "python3.12" / "site-packages"
-    (work / "elsewhere").mkdir()
-    (site / "extra.pth").write_text(f"{work / 'elsewhere'}\n", encoding="utf-8")
-    for folder in (site, site.parent, site.parent.parent):
-        folder.chmod(0o555)
-    try:
-        assert _verdict(mac, line, work, {**mac.env, **reached}), "a .pth file reaches a folder the user can write"
-    finally:
-        for folder in (site.parent.parent, site.parent, site):
-            folder.chmod(0o755)
+    assert _verdict(mac, line, work, {**mac.env, **writable}) is None, "its own site-packages can be written"
 
 
 def test_a_config_whose_folder_is_the_home_folder_itself_holds_the_run(mac, tmp_path):
