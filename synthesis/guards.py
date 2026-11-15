@@ -5421,11 +5421,13 @@ PAGE_ACTS = re.compile(r"\.click\s*\(|\.submit\s*\(|requestSubmit|dispatchEvent|
                        + WRITES + "|" + MOVES, re.I)  # SCRIPT_ACTS but a browser server's own calls, which no page script makes (#8)
 SCRIPT_ACTS_MORE = re.compile(r"(?:\b(?:window|globalThis|self|top|parent|frames|defaultView)\s*\.\s*|(?<![\w$.]))open\s*(?:\(|\0)"
                               r"|\.\s*on[a-z]+\s*\(|\.\s*" + HANDLERS + r"\b(?!\s*=[^=])|(?<![\w$.])" + HANDLERS + r"\b"
-                              r"|\.\s*(?:send|post|submit|publish|reply|share|tweet)\w*\s*\(|\.\s*postMessage\s*\("
+                              r"|\.\s*postMessage\s*\("
                               r"|\blocation\s*\.\s*(?:pathname|search|hash|host|hostname|port|protocol)\s*[+-]?=(?!=)|\bnavigation\s*\.\s*navigate\s*\("
                               r"|\bhistory\s*\.\s*(?:go|back|forward)\s*\(", re.I)
 SHOWS_PAGE = re.compile(r"claude-in-chrome|claude[_-]browser|playwright|chrome-devtools", re.I)  # whose reads show the page
 BARE_SENDS = re.compile(r"(?<![\w$.])((?:send|post|submit|publish|reply|share|tweet)\w*)\s*\(", re.I)  # a page's own, unless the script defines it
+MEMBER_SENDS = re.compile(r"(?:\bnew\s+([A-Za-z_$][\w$]*)\s*\([^()]*\)|(?<![\w$.])([A-Za-z_$][\w$]*))?\s*\.\s*((?:send|post|submit|publish|reply"
+                          r"|share|tweet)\w*)\s*\(", re.I)  # (a class the receiver is made by, the receiver, the method)
 SERVER_CODE = "/* the browser server's own code */ "
 
 
@@ -5458,10 +5460,11 @@ def _unread_script(text: str) -> str:
 
 def _writes_by_fetch(code: str, literals: list) -> bool:
     """A fetch, Request or XHR that may write: the init of fetch or Request (its second argument, or the object a variable
-    given there holds and what is set on it) with a body or a method that is not one literal GET or HEAD, or an init the
-    reader cannot follow (spread into, keyed by a name built as it runs, a variable set again, handed on or keyed by a
-    variable, any other expression); an XHR opened with a method that is not one (review rounds 1 and 2 of 5.23.1, #1 and
-    #2: a `body` read from a response is no write)."""
+    given there holds and what is set on it) with a body or a method that is not one literal GET or HEAD, or keyed by a
+    name built as it runs; an init the reader cannot follow otherwise (spread into, a variable set again or handed on, a
+    parameter, any other expression) when the script gives a body or such a method anywhere (review round 3 of 5.23.1,
+    T1: a read through a fetch wrapper waited); an XHR opened with a method that is not one (rounds 1 and 2, #1 and #2:
+    a `body` read from a response is no write)."""
     def group(at: int) -> str:  # the bracketed text that opens at `at`
         depth = 0
         for j in range(at, len(code)):
@@ -5480,13 +5483,19 @@ def _writes_by_fetch(code: str, literals: list) -> bool:
         return bool(found) and literals[int(found[1])].strip().upper() in ("GET", "HEAD")
 
     def writes(init: str) -> bool:  # an init written out as an object
-        if re.search(r"\.\.\.|\]\s*:", init):
-            return True
         for key in re.finditer(r"[{,]\s*(?:([A-Za-z_$][\w$]*)|\0(\d+)\0)\s*(?=([:,}]))", init):
             name, at = key[1] or literals[int(key[2])], given("method") if key[3] != ":" else -1
             if name == "body" or name == "method" and not reads(init[key.end() + 1:] if key[3] == ":" else code[at:] if at >= 0 else ""):
                 return True
         return False
+
+    def anywhere() -> bool:  # a body, or a method that is no literal GET or HEAD, given anywhere in the script
+        for found in re.finditer(r"(?<![\w$])method\b|\0(\d+)\0(?=\s*\]?\s*[:=](?!=))", code):
+            set_ = re.match(r"\s*\]?\s*[:=](?!=)", code[found.end():])
+            if (found[1] is None or literals[int(found[1])] == "method") and not (set_ and reads(code[found.end() + set_.end():])):
+                return True
+        return any(found[1] is None or literals[int(found[1])] == "body" for found in re.finditer(
+            r"(?<![\w$.])body\b(?=\s*[:,}])|\.\s*body\s*[-+]?=(?!=)|\0(\d+)\0(?=\s*\]?\s*(?::|[-+]?=(?!=)))", code))
 
     inits = []
     for call in re.finditer(r"\b(?:fetch|Request)\s*\(", code):
@@ -5499,22 +5508,33 @@ def _writes_by_fetch(code: str, literals: list) -> bool:
     for init in filter(None, inits):
         name = re.escape(init)
         at = -1 if init.startswith("{") or not re.fullmatch(r"[A-Za-z_$][\w$]*", init) else given(init)
-        if writes(init) if init.startswith("{") else at < 0 or code[at:at + 1] != "{" or writes(group(at)) or len(
-                re.findall(rf"(?<![\w$.]){name}\b(?!\s*[.\[])", code)) != 1 + inits.count(init):
+        held = init if init.startswith("{") else group(at) if at >= 0 and code[at:at + 1] == "{" else ""
+        members = list(re.finditer(rf"(?<![\w$.]){name}\s*(?:\.\s*([A-Za-z_$][\w$]*)|\[\s*(?:\0(\d+)\0\s*(?=\]))?)", code)) if at >= 0 else []
+        if re.search(r"\]\s*:", held) or any(not (m[1] or m[2]) for m in members):  # keyed by a name built as it runs
             return True
-        for member in re.finditer(rf"(?<![\w$.]){name}\s*(?:\.\s*([A-Za-z_$][\w$]*)|\[\s*(?:\0(\d+)\0\s*(?=\]))?)", code) if at >= 0 else ():
-            prop, set_ = member[1] or (literals[int(member[2])] if member[2] else ""), re.match(r"\s*\]?\s*=(?!=)", code[member.end():])
-            if prop in ("", "body") or prop == "method" and not (set_ and reads(code[member.end() + set_.end():])):
+        if not held or "..." in held or not init.startswith("{") and len(re.findall(rf"(?<![\w$.]){name}\b(?!\s*[.\[])", code)) != 1 + inits.count(init):
+            if anywhere():  # not followed: the script's own words decide
+                return True
+            continue
+        if writes(held):
+            return True
+        for member in members:
+            prop, set_ = member[1] or literals[int(member[2])], re.match(r"\s*\]?\s*=(?!=)", code[member.end():])
+            if prop == "body" or prop == "method" and not (set_ and reads(code[member.end() + set_.end():])):
                 return True
     opened = re.findall(r"\.\s*open\s*\(\s*(\0(\d+)\0)?", code) if "XMLHttpRequest" in code else []
     return any(not lit or literals[int(lit)].strip().upper() not in ("GET", "HEAD") for _, lit in opened)
 
 
 def _defined_names(code: str) -> set:
-    """The names a script defines itself, as a function or a parameter (review round 2 of 5.23.1, #3: a read helper named
-    for what it reads); a name bound from another object (`const {sendMessage} = TS.client.ui`) is none."""
-    found = re.findall(r"\bfunction\s+([A-Za-z_$][\w$]*)|\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:async\s+)?(?:function\b|\([^()]*\)\s*=>"
-                       r"|[A-Za-z_$][\w$]*\s*=>)|(?<![\w$.])([A-Za-z_$][\w$]*)\s*=>", code)
+    """The names a script defines itself: a function, a parameter, an object's or a class's method, a property or a field
+    given a function (review rounds 2 and 3 of 5.23.1, #3 and T2: a read helper named for what it reads). A name bound
+    from another object (`const {sendMessage} = TS.client.ui`) is none, and a method's head is on one line, so a call and
+    a block after it are none."""
+    fn = r"\s*(?:async\s+)?(?:function\b|\([^()]*\)\s*=>|[A-Za-z_$][\w$]*\s*=>)"
+    found = re.findall(r"\bfunction\s+([A-Za-z_$][\w$]*)|\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=" + fn + r"|(?<![\w$.])([A-Za-z_$][\w$]*)\s*=>"
+                       r"|(?:^|[{,;}\n])\s*(?:(?:static|async|get|set)\s+)*\*?\s*([A-Za-z_$][\w$]*)\s*\([^()]*\)[ \t]*\{"
+                       r"|(?:[{,]\s*|\.\s*|(?:^|[;{}\n])\s*(?:static\s+)?)([A-Za-z_$][\w$]*)\s*[:=]" + fn, code)
     params = re.findall(r"\bfunction\s*[A-Za-z_$]*\s*\(([^()]*)\)|\(([^()]*)\)\s*=>", code)
     return {n for row in found for n in row if n} | {n for row in params for part in row for n in re.findall(
         r"(?:^|,)\s*[{\[]?\s*(?:\.\.\.)?\s*([A-Za-z_$][\w$]*)", part)}
@@ -5522,14 +5542,20 @@ def _defined_names(code: str) -> set:
 
 def _script_acts(text: str) -> bool:
     """A page script that acts on a messaging site's page: PAGE_ACTS over its text or its code (`el['click']()` is
-    `el.click()` there; a browser server's own code is read with SCRIPT_ACTS), SCRIPT_ACTS_MORE over its code, or a write
-    by fetch, Request or XHR. `.send(` on an XHR opened only with GET or HEAD is a read."""
+    `el.click()` there; a browser server's own code is read with SCRIPT_ACTS), SCRIPT_ACTS_MORE over its code, a call
+    whose name says it sends (a page's own: by a bare name the script does not define, or by a method unless the script
+    defines it and calls it on `this` or on an object it defines; review round 3 of 5.23.1, T2), or a write by fetch,
+    Request or XHR. `.send(` on an XHR opened only with GET or HEAD is a read."""
     code, literals, _ = _script_code(text)
     acts = SCRIPT_ACTS if text.startswith(SERVER_CODE) else PAGE_ACTS
     xhr_read = "XMLHttpRequest" in code and not _writes_by_fetch(code, literals) and not re.search(r"\bWebSocket\b|\bRTCDataChannel\b", code)
-    more = SCRIPT_ACTS_MORE.search(re.sub(r"\.\s*send\s*\(\s*(?:null\s*)?\)", ".read()", code) if xhr_read else code)
-    bare = {found[1] for found in BARE_SENDS.finditer(code)} - _defined_names(code)
-    return bool(acts.search(text) or acts.search(code) or more or bare or _writes_by_fetch(code, literals))
+    read = re.sub(r"\.\s*send\s*\(\s*(?:null\s*)?\)", ".read()", code) if xhr_read else code
+    defined, classes = _defined_names(code), set(re.findall(r"\bclass\s+([A-Za-z_$][\w$]*)", code))
+    objects = {"this"} | {n for n, brace, made in re.findall(r"\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:(\{)|new\s+([A-Za-z_$][\w$]*))", code)
+                          if brace or made in classes}
+    member = any(not (m[3] in defined and (m[1] in classes or m[2] in objects)) for m in MEMBER_SENDS.finditer(read))
+    bare = {found[1] for found in BARE_SENDS.finditer(code)} - defined
+    return bool(acts.search(text) or acts.search(code) or SCRIPT_ACTS_MORE.search(read) or member or bare or _writes_by_fetch(code, literals))
 
 
 def _messaging(config: dict) -> dict:
@@ -5645,13 +5671,58 @@ def _tab_list(transcript: str, server: str = "") -> tuple:
     return blank or ({}, "", 0.0)
 
 
+_LISTS: dict = {}
+
+
+def _listed(record: str, server: str) -> tuple:
+    """A record's newest list of this browser's tabs, (tabs, front, when), read once per version of the file; `when` is the
+    list's line's time, else the file's."""
+    try:
+        state = os.stat(record)
+    except OSError:
+        return {}, "", 0.0
+    key = (record, server, state.st_size, state.st_mtime_ns)
+    if key not in _LISTS:
+        tabs, front, when = _tab_list(record, server)
+        _LISTS[key] = tabs, front, when or (state.st_mtime if tabs else 0.0)
+    return _LISTS[key]
+
+
+def _shared_tabs(session: dict | None, server: str) -> tuple:
+    """({tab: address}, the tab this call's own record ran on last). Claude in Chrome is one browser, whose tab ids a
+    session shares with its sub-agents, so each tab is read at the newest list that names it across the session's record
+    and its sub-agents' records of the last 12 hours, as the batch reads other sessions' lists (review round 3 of 5.23.1,
+    T3: a sub-agent was judged by its own list after its session moved the tab; round 1's #3 the other way). Any other
+    browser is read by the call's own record."""
+    main, own = str((session or {}).get("transcript_path") or ""), _record(session)
+    tabs, front, when = _listed(own, server)
+    if "claude-in-chrome" not in server or not main:
+        return tabs, front
+    folder, newest = os.path.join(os.path.splitext(main)[0], "subagents"), {tab: (when, address) for tab, address in tabs.items()}
+    try:
+        others = [os.path.join(folder, n) for n in os.listdir(folder) if n.startswith("agent-") and n.endswith(".jsonl")]
+    except OSError:
+        others = []
+    for record in dict.fromkeys([main] + others):
+        try:
+            if record == own or os.path.getmtime(record) < max(when, time.time() - 12 * 3600):
+                continue  # nothing in it is newer than this call's own list
+        except OSError:
+            continue
+        listed, _, at = _listed(record, server)
+        for tab, address in listed.items():
+            if at > newest.get(tab, (-1.0, ""))[0]:
+                newest[tab] = at, address
+    return {tab: address for tab, (_, address) in newest.items()}, front
+
+
 def _steps(name: str, tool_input: dict, session: dict | None, keep: bool = False, tool: str = ""):
     """(step, its input, the address of the page it acts on, its tab) for a browser call, or for each step of a batch:
     its tab's address in the newest list of tabs of the browser `tool` belongs to, or the one a navigate step earlier in
     the batch went to, read as a URL parser reads it. With `keep`, a navigate that names no host leaves a messaging site's
     page as it was, since the page it opens may be that site's. One to a javascript: address runs on the page it is on,
     and what its code does to the page after is not known."""
-    tabs, front = _tabs(_record(session) if keep else str((session or {}).get("transcript_path") or ""), tool.rpartition("__")[0])
+    tabs, front = _shared_tabs(session, tool.rpartition("__")[0]) if keep else _tabs(str((session or {}).get("transcript_path") or ""), tool.rpartition("__")[0])
     unknown = keep and bool(re.search(r"claude-in-chrome|claude[_-]browser", tool, re.I))  # its own lists show its pages (round 1 of 5.23.1, #3)
     steps = [(name, tool_input)] if name != "browser_batch" else [
         (str(s.get("name", "")), s["input"]) for s in tool_input.get("actions") or []

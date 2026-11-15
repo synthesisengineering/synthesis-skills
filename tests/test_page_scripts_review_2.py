@@ -82,7 +82,7 @@ READS = ["fetch('/api/conversations.history').then(r => r.json()).then(d => d.me
          "fetch('/api/thread').then(r => r.json()).then(body => JSON.stringify(body, null, 2))"]
 WRITES = ["fetch('/api/messages', {body: 'text=hello'})", "const init = {}; init.body = 'text=hello'; fetch('/api/messages', init)",
           "const init = {method: 'POST'}; fetch('/api/messages', init)", "const method = 'POST'; fetch('/api/messages', {method})",
-          "fetch('/api/messages', options())", "fetch(new Request('/api/messages', {'method': 'PUT', body: 'x'}))"]
+          "fetch(new Request('/api/messages', {'method': 'PUT', body: 'x'}))"]
 
 
 @pytest.mark.parametrize("site", ["slack", "linkedin", "gmail"])
@@ -161,7 +161,10 @@ OPEN = {"fetch-destructured": "const {fetch: f} = window; f('/api/messages', {'m
         "method-in-an-object": "const o = {c: HTMLElement.prototype.click}; o.c.call(document.querySelector('b'))",
         "method-under-another-name": "const btn = document.querySelector('b'); btn.go = HTMLElement.prototype.click; btn.go()",
         # found in fixing #3: the reader keeps no scopes, so a name the script defines anywhere is its own everywhere
-        "name-defined-elsewhere": "[0].map(sendMessage => sendMessage); sendMessage('C0001', 'hello')"}
+        "name-defined-elsewhere": "[0].map(sendMessage => sendMessage); sendMessage('C0001', 'hello')",
+        # review round 3, T1: an init the reader cannot follow is read by the script's own words, and a page's function
+        # that returns one shows none (the open list's call whose name says nothing of what it does)
+        "init-from-a-page-function": "fetch('/api/messages', options())"}
 
 
 @pytest.mark.xfail(strict=True, reason="on the open list in docs/runtime-integration.md: a spelling made to beat the reader")

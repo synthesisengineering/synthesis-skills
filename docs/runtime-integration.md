@@ -510,7 +510,10 @@ harness that gives no transcript cannot carry approved sends or deploys until it
   name (`const o = {c: HTMLElement.prototype.click}; o.c.call(el)`; `el.go = HTMLElement.prototype.click; el.go()`).
   A third came with closing #3: the reader keeps no scopes, so a page's own send called by a bare name the script also
   defines elsewhere, as a function or a parameter (`[0].map(sendMessage => sendMessage); sendMessage(...)`), passes (a
-  case of the same test).
+  case of the same test). A fourth came with review round 3's T1: an init the reader cannot follow is read by the
+  script's own words, so one that a page's own function returns (`fetch(url, options())`) passes when the script names
+  no method and no body, a case of the first item above (a call whose name says nothing of what it does) and of the
+  same test.
 
 No local file is secret from an agent running as the person's own OS user, so these
 stay open, and no hook running as that same user can close them:

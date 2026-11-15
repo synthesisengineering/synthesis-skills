@@ -1475,10 +1475,13 @@ ROOT = Path(__file__).resolve().parents[1]
 # its page), _defined_names 8 (a name the script defines is no page's send), SHOWS_PAGE 1, BARE_SENDS 1, _script_code 1
 # (`[].x.call(` is a call of x), _script_acts 1 and 2 blank lines; the batch's MOVES and its message on a page no list
 # shows keep their line counts.
+# Review round 3 of main's rule merged into the batch (2026-11-15): core and plugin 71 more, all in guards.py, as on
+# main less what the batch had: _shared_tabs 26, _writes_by_fetch 14, _listed 12, _script_acts 6, _defined_names 4,
+# MEMBER_SENDS 2, _LISTS 1 and 6 blank lines; the batch's _when and its _tab_list with the list's time stand.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 17646
-PLUGIN_BUDGET = 43723
+CORE_BUDGET = 17717
+PLUGIN_BUDGET = 43794
 
 
 def _lines(files):

@@ -674,8 +674,11 @@ new pane's is blank (review round 2 of 5.23.1, #1). A `navigate` that names no
 host (`back`, `forward`, a path, a script) leaves the page unknown, unless the tab was on a messaging site: the page it
 opens may be that site's still, so it is judged as that site's. In Claude in Chrome and the built-in pane a page no list
 of tabs shows (a tab not listed yet; a sub-agent's, whose own record the guard reads when the hook names one) is judged
-as a page that may be a messaging site's (review round 1 of 5.23.1, #3), and so is a driven browser's page no result
-shows. A call there that sends only if the page is a messaging site's (a Return, a typed line break, a click no summary
+as a page that may be a messaging site's (review round 1 of 5.23.1, #3). Claude in Chrome is one browser, whose tab ids
+a session shares with its sub-agents, so there each tab is read at the newest list that names it across the session's
+record and its sub-agents' records of the last 12 hours (review round 3 of 5.23.1, T3: a sub-agent was judged by its own
+list after its session moved the tab). A driven browser's page no result shows is judged as one that may be a messaging
+site's too. A call on such a page that sends only if the page is a messaging site's (a Return, a typed line break, a click no summary
 describes, a script that acts) is told to read the page first (`tabs_context` in Claude in Chrome or the pane, a
 snapshot or a list of pages in Playwright or Chrome DevTools), and no code is asked; one that sends on any page waits for
 the code, and so does a call from any other driven browser, whose results may never show the guard its page (review
@@ -739,14 +742,18 @@ call of X where X is a dotted name or an empty array's method (`Array.prototype.
 - **Waits for the code:** one that acts: the rule above over its text and its code (`el['click']()` is `el.click()`),
   without the browser server's own calls, which no page script makes (`new Array(5).fill(0)` is a read); any spelling of
   `open`; a handler called or read (`.onclick`, `onClick`); a call whose name says it sends, posts, submits, publishes,
-  replies, shares or tweets, by a member, or by a bare name the script does not define itself (a page's own; a helper the
-  script defines and names for what it reads, `tweetText` or `postBody`, is none); a move by the address or another part
+  replies, shares or tweets, a page's own: by a bare name the script does not define itself, or by a method unless the
+  script defines it and calls it on `this` or on an object it defines (a helper the script defines and names for what
+  it reads, `tweetText` or `postBody`, as a function or an object's or a class's method, is none; review round 3 of
+  5.23.1, T2); a move by the address or another part
   of it, set or added to (`location.href +=`, `location.pathname`, `search`, `hash`, `navigation.navigate`,
   `history.go`); a fetch or `Request` whose init (its second argument, or the object a variable given there holds and
   what is set on that variable) carries a body or a method, in any form (a quoted key, the shorthand, an assignment),
-  that is not one literal GET or HEAD, or that the reader cannot follow (spread into, keyed by a name built as it runs,
-  the variable set again, handed to other code or keyed by a variable, any other expression); and an XHR opened with a
-  method that is not GET or HEAD. A `body` read from a response is no write (review round 2 of 5.23.1, #2).
+  that is not one literal GET or HEAD, or keyed by a name built as it runs (a computed key, a member named by a
+  variable); an init the reader cannot follow otherwise (spread into, the variable set again or handed to other code, a
+  parameter, any other expression) when the script gives a body, or such a method, anywhere, so a read through a fetch
+  wrapper passes (review round 3 of 5.23.1, T1); and an XHR opened with a method that is not GET or HEAD. A `body` read
+  from a response is no write (review round 2 of 5.23.1, #2).
 - **Passes:** a read, and the extractors the plugin ships.
 
 Measured over the 60 days of Claude Code and Codex records to 2026-11-15: of 181 scripts on those pages that are none of
