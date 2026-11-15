@@ -117,6 +117,16 @@ def test_m2_only_the_code_approved_route_may_install_an_older_release(home, tmp_
     assert install.version(paths.home() / "current") == (1, 0, 0)
 
 
+def test_m2_a_program_naming_the_locked_half_of_install_waits_for_the_code(home):
+    """`install` checks the floor in `_install_locked`, under `_install_lock`; a program that calls either itself could
+    pass `rollback`, or move `current` with no lock, so it waits for the principal's code as one naming `install` does."""
+    for name in ("_install_locked", "_install_lock"):
+        line = (f"python3 -I -c 'from synthesis import install; from pathlib import Path; "
+                f"install.{name}(Path(\"plugin\"), install._home(), install.pinned_python(), None, True)'")
+        said = _check(line, home / "work")
+        assert said and "approve followed by the code" in said, (name, said)
+
+
 def test_m3_apples_python_shim_is_never_pinned_and_with_nothing_to_pin_install_stops(home, monkeypatch):
     if sys.platform == "darwin":
         assert install.pinned_python(["/usr/bin/python3"]) == ""  # the shim reads its target from a file this user owns
