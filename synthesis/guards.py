@@ -4560,6 +4560,22 @@ GIT_FIRST = re.compile(r"-c|--config-env(?:=.*)?|--work-tree(?:=.*)?|--exec-path
 GIT_RUNS = re.compile(r"--output(?:=.*)?|--ext-diff|--textconv|-O.*|--open-files-in-pager(?:=.*)?|--upload-pack(?:=.*)?|--exec(?:=.*)?")
 ABSOLUTE = re.compile(r"-[A-Za-z]*P[A-Za-z]*|--absolute-names|--absolute-filenames|--insecure|-:|-spf")  # an archive's members land where they say
 SYNTHESIS_IMPORT = re.compile(r"^[ \t]*(?:from[ \t]+synthesis\b|import[ \t]+synthesis\b)", re.M)
+# What runs code it is handed by a name or a text, and the modules whose loaders may be imported by another name (review
+# round 4 of 5.23.1's approval fix, finding 1); of them, what runs a file; and how a string or a word says synthesis as
+# code does: the package's name alone or leading a dotted name, an import of it where code starts, a path to its folder
+# or one of its files (a Mac's file system ignores case; Python's imports do not). Finding a module runs none of it
+# (`find_spec`, `spec_from_file_location`): what runs the spec is read for what it was made from. `exec`, `eval` and
+# `compile` are the builtins, never another object's method of that name (`model.eval()`, `re.compile`), and `compile`
+# alone runs nothing, so it counts only for a text that imports synthesis: compiling synthesis's own source reads.
+LOADERS = frozenset({"exec", "eval", "__import__", "import_module", "reload", "exec_module", "load_module", "run_module", "run_path",
+                     "load_source", "load_compiled", "resolve_name", "locate", "runsource", "runcode", "interact", "FunctionType",
+                     "dictConfig", "fileConfig"})
+FILE_RUNNERS = frozenset({"exec", "eval", "exec_module", "load_module", "run_path", "load_source", "load_compiled"})
+LOADER_MODULES = frozenset({"importlib", "runpy", "pkgutil", "imp", "pydoc", "zipimport", "code", "codeop"})
+MAY_LOAD = re.compile(r"\b(?:%s|compile)\b|^[ \t]*(?:import|from)[ \t]+(?:%s)\b" % ("|".join(sorted(LOADERS)), "|".join(sorted(LOADER_MODULES))), re.M)
+IMPORTS_IT = re.compile(r"(?:^|[;\n])[ \t]*(?:from[ \t]+synthesis(?:\.[\w.]+)?(?:[ \t]+import\b|[ \t]*$)"
+                        r"|import[ \t]+synthesis(?:\.[\w.]+)?(?:[ \t]+as[ \t]+\w+)?[ \t]*(?:$|[;,\n)]))")
+SAYS_SYNTHESIS = re.compile(r"^synthesis(?:\.[\w.:]*)?$|(?i:(?:^|[/\\])synthesis(?:[/\\](?:[\w.-]+\.py)?)?$)")
 SYNTHESIS_WRITES = frozenset(f"{module}.{name}" for module, names in (  # synthesis's own functions that write a file (a test reads them from the source)
     ("approvals", "_expire _spend alone consume grant_from_prompt put_back remember request void"),
     ("guards", "_record_deploys _swap _void answered settle"), ("autopilot", "_evaluate _write_pointer evaluate"),
@@ -4817,7 +4833,9 @@ def _found_elsewhere(name: str, first: str) -> bool:
 
 def _imports(text: str) -> list:
     """(dots, module, names) for each import a program's syntax holds: `import a.b` is (0, "a.b", ()), `from .x import
-    y` is (1, "x", ("y",)); none for a program that cannot be parsed, which its reader judges."""
+    y` is (1, "x", ("y",)), and a module loaded by the name it is written with, `importlib.import_module("a")` or
+    `__import__("a")`, as `import a` (review round 4 of 5.23.1's approval fix); none for a program that cannot be
+    parsed, which its reader judges."""
     import ast
     import warnings
     try:
@@ -4832,6 +4850,9 @@ def _imports(text: str) -> list:
             found += [(0, a.name, ()) for a in n.names]
         elif isinstance(n, ast.ImportFrom):
             found.append((n.level, n.module or "", tuple(a.name for a in n.names)))
+        elif isinstance(n, ast.Call) and getattr(n.func, "attr", getattr(n.func, "id", "")) in ("import_module", "__import__") and n.args and isinstance(
+                n.args[0], ast.Constant) and isinstance(n.args[0].value, str) and n.args[0].value[:1] not in (".", ""):
+            found.append((0, n.args[0].value, ()))
     return found
 
 
@@ -5049,6 +5070,73 @@ def _synthesis_reach(text: str) -> tuple:
     return "places", places, data.decode("utf-8")
 
 
+def _joined_text(node) -> str:
+    """The string a sum of string constants makes (`'/a' + '/b.py'`), or ''."""
+    import ast
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return node.value
+    left, right = (_joined_text(node.left), _joined_text(node.right)) if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add) else ("", "")
+    return left + right if left and right else ""
+
+
+def _synthesis_loads(texts: list, words: list, where: str, depth: int = 0) -> str:
+    """'' unless a program's texts (a script and its own modules, or a program on the line or its input) hand a loader
+    (LOADERS: importlib's, runpy's and the builtins exec, eval and __import__; compile only for a text that imports it)
+    a name or a text that says synthesis as code does, code that loads it, or a file whose code reaches it; else what. A
+    call is read for what it is handed: its arguments, a name the program assigns, what the program's own function is
+    called with for a parameter, and the words the program is handed where an argument reads them (its argv, the
+    environment, its input). Review round 4 of 5.23.1's approval fix, finding 1: a program that loaded synthesis through
+    importlib or a built exec string was read as reaching none of its writers, so it could forge the send ledger's lines,
+    open a send window, or point the transcript a script checks at a record it wrote. So `__import__("pathlib")` beside
+    `open("synthesis/guards.py")` reads, as does a test module loaded to call a helper; a name built from pieces none of
+    which says synthesis is not read (docs/runtime-integration.md)."""
+    import ast
+    import warnings
+    for text in texts:
+        if not MAY_LOAD.search(text):
+            continue
+        try:
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                tree = ast.parse(text)
+        except (SyntaxError, ValueError, RecursionError, MemoryError):
+            continue
+        values, aliases, params, calls = {}, set(), {}, {}  # what a name is given, a loader imported by another name, parameters
+        for n in ast.walk(tree):
+            for t in n.targets if isinstance(n, ast.Assign) else [n.target] if isinstance(n, ast.AnnAssign) and n.value else []:
+                values.setdefault(getattr(t, "id", ""), []).append(n.value)
+            aliases |= {a.asname or a.name for a in n.names if a.name in LOADERS} if isinstance(n, ast.ImportFrom) and (
+                n.module or "").split(".")[0] in LOADER_MODULES else set()
+            params.update({a.arg: n.name for a in n.args.args + n.args.kwonlyargs} if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) else {})
+            name = (getattr(n.func, "id", "") or getattr(n.func, "attr", "")) if isinstance(n, ast.Call) else ""
+            calls.setdefault(name, []).extend(list(n.args) + [k.value for k in n.keywords] if name else [])
+        for n in ast.walk(tree):
+            name = (getattr(n.func, "id", "") or getattr(n.func, "attr", "")) if isinstance(n, ast.Call) else ""
+            if not (name in LOADERS or name in aliases or name == "compile") or not (isinstance(n.func, ast.Name) or name not in (
+                    "exec", "eval", "compile") or getattr(n.func.value, "id", "") in ("builtins", "__builtins__")):
+                continue  # `model.eval()` and `re.compile` are no loaders
+            handed = list(n.args) + [k.value for k in n.keywords] + [getattr(n.func, "value", None)] * isinstance(n.func, ast.Attribute)
+            seen, said, reads = set(), [], False  # with what a method is called on: `spec.loader.exec_module(m)`
+            while handed:
+                for c in ast.walk(handed.pop()):
+                    said += [c.value.decode("latin-1") if isinstance(c.value, bytes) else c.value] if isinstance(c, ast.Constant) and isinstance(c.value, (str, bytes)) else []
+                    said += [_joined_text(c)] if isinstance(c, ast.BinOp) and _joined_text(c) else []  # a path joined from strings
+                    key = getattr(c, "id", "") if isinstance(c, ast.Name) else ""
+                    handed += (values.get(key, []) + calls.get(params.get(key), [])) if key and key not in seen else []
+                    seen.add(key)
+                    reads = reads or (getattr(c, "id", "") or getattr(c, "attr", "")) in ("argv", "environ", "getenv", "stdin", "input")
+            for value in [s.strip() for s in said + (list(words) if reads else [])]:
+                if (name != "compile" and SAYS_SYNTHESIS.search(value)) or IMPORTS_IT.search(value):
+                    return f"it hands {name} a name or a text that says synthesis, {value[:60]!r}"
+                if depth < 2 and re.search(r"(?i)synthesis", value) and _synthesis_loads([value], [], where, depth + 1):
+                    return f"it hands {name} code that loads synthesis, {value[:60]!r}"
+                file = os.path.join(where, os.path.expanduser(value)) if name in FILE_RUNNERS and depth < 2 and value.endswith(".py") else ""
+                code = _code_of(file) if file and os.path.isfile(file) else ""
+                if code and (_synthesis_reach(code)[0] in ("names", "follows") or _synthesis_loads([code], [], where, depth + 1)):
+                    return f"it runs {value}, whose code reaches synthesis"
+    return ""
+
+
 def _spellings(raw: list, env: dict) -> tuple:
     """(each part's pattern, each spelling of a protected folder as the parts it needs, the folders between each
     protected one and the home folder or a variable's folder that holds it, the protected folders as compared). A
@@ -5206,7 +5294,8 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None) -> str |
         why = "carries a pending approval code (to see pending requests, run `synthesis approvals`)"
     feeds, env = [], dict(os.environ)
     found = _parse(text, cwd, feeds=feeds)[0]
-    for m in ASSIGNED.finditer(_own_text(text)):  # the value the command gives a variable; given two, the one that names a protected path
+    assigns = list(ASSIGNED.finditer(_own_text(text)))
+    for m in assigns:  # the value the command gives a variable; given two, the one that names a protected path
         if not m[2] and (env.get(m[1]) is None or m[1] in os.environ or any(n in m[3] for n in names)):
             env[m[1]] = m[3].strip("'\"")
     written = {_real(os.path.join(w, os.path.expanduser(t))) for t, w in redirects} | {  # a script the line writes
@@ -5254,12 +5343,20 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None) -> str |
                  or ("the files xargs hands it" if HANDED in words and names else "")) if label else ""  # standing where no session works, or what xargs hands it
         if SCRIPT.match(head) and re.search(r"\bsynthesis\b", script + code) and SELF_GRANT_CALLS.search(script):
             why = why or "runs synthesis's approval or send-window code, which only the guard and the principal's prompt use"
-        reaches = [(f, _synthesis_reach(t)) for f, t in files] if python and ran and not waits and not _shipped(ran) else []
-        uses = next(((f, r[1]) for f, r in reaches if r[0] in ("names", "follows")), None)
-        if uses:  # finding 17: by what it, or a module of its own, does with synthesis's code
-            waits = Unproven(f"runs `{head}` on {ran}, a script outside the plugin's release that {uses[1]}" + (f" ({uses[0]})" if uses[0] != ran else ""))
         source, argv = _python_source(words, fed) if head.startswith("python") else ("", [])
+        start = _program(words)[1]  # what it is handed to load, and the values the line gives variables (review round 4 of 5.23.1's approval fix)
+        loaded = [m[3].strip("'\"") for m in assigns] + (argv[1:] if source else words[start + 1 + (words[start:start + 1] == ["-m"]):])
+        modules = files or (_python_files(os.path.join(where, "-"), source, "" if _isolated(words) else _real(where))[0][1:] if python and source else [])
+        reaches = [(f, _synthesis_reach(t)) for f, t in modules] if python and modules and not waits and not _shipped(ran) else []
+        uses = next(((f, r[1]) for f, r in reaches if r[0] == "names" or (r[0] == "follows" and ran)), None)  # a line's: one that writes
+        unfollowed = _synthesis_loads([t for _, t in modules], loaded, where) if reaches and not uses else ""
+        uses = uses or ((modules[0][0], f"reaches synthesis's own code in a way its reader cannot follow ({unfollowed})") if unfollowed else None)
+        if uses:  # finding 17: by what it, or a module of its own (one a program on the line imports too), does with synthesis's code
+            waits = Unproven((f"runs `{head}` on {ran}, a script outside the plugin's release that {uses[1]}" + (f" ({uses[0]})" if uses[0] != ran else ""))
+                             if ran else f"runs `{head}` with a program whose own module {uses[0]} {uses[1]}")
         reach = _synthesis_reach(source) if python and source else next((r for _, r in reaches if r[0] == "places"), ("", "", None))
+        unfollowed = _synthesis_loads([source], loaded, where) if python and source and reach[0] not in ("names", "follows") else ""
+        reach = ("follows", f"reaches synthesis's own code in a way its reader cannot follow ({unfollowed})", None) if unfollowed else reach
         named = named or (reach[1].replace("reaches ", "") if reach[0] == "places" and label else "")  # a folder synthesis's own paths lead to
         # A Python program given inline or on stdin is judged by its own text: what its code writes. A protected
         # path named elsewhere on the line reaches it only through its arguments, its environment or the folder it

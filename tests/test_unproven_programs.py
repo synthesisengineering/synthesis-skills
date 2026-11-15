@@ -45,7 +45,7 @@ def world(tmp_path, monkeypatch):
     record.parent.mkdir(parents=True)
     record.write_text(json.dumps({"type": "user", "message": {"role": "user", "content": "hello"}}) + "\n", encoding="utf-8")
     (paths.state() / "approvals").mkdir(parents=True)
-    paths.write_json(paths.state() / "transcripts" / "S-principal.json", {"path": str(record)})  # as the prompt hook records it
+    approvals.remember("S-principal", str(record))  # as the prompt hook records it, with the folders its environment names
     work = tmp_path / "work"
     work.mkdir()
     (work / "forged.jsonl").write_text("{}\n", encoding="utf-8")
@@ -935,6 +935,10 @@ LOADS = {  # each loads synthesis another way and writes through it
     "a name pkgutil resolves": "import sys, pkgutil\nsys.path.insert(0, COPY)\npkgutil.resolve_name('synthesis.approvals:void')('send', {})\n",
     "a module name built in an f-string": "import sys, importlib\nsys.path.insert(0, COPY)\nname = 'sends'\n"
                                           "s = importlib.import_module(f'synthesis.{name}')\ns.undo('2026-11-15/0123')\n",
+    "a loader imported by another name": "import sys\nfrom importlib import import_module as load\nsys.path.insert(0, COPY)\n"
+                                         "load('synthesis.sends').undo('2026-11-15/0123')\n",
+    "a loader inside a function of its own": "import sys, importlib\nsys.path.insert(0, COPY)\n\ndef load(name):\n    return importlib.import_module(name)\n\n"
+                                             "load('synthesis.approvals').void('send', {})\n",
 }
 HANDED = {  # the same, with what it loads in the words it is handed
     "a module name handed as a word": ("import sys, importlib\nsys.path.insert(0, COPY)\nm = importlib.import_module(sys.argv[1])\n"
@@ -1005,6 +1009,20 @@ ORDINARY_LOADS = {  # they load code, and none of it is synthesis's
     "a docstring that names a module of synthesis": '"""Counts the skills, where synthesis.paths names their folder."""\nimport importlib\n'
                                                     "print(len(importlib.import_module('os').listdir('.')))\n",
     "a helper of its own loaded by import_module": "import importlib\nprint(importlib.import_module('plain_helper').total([1, 2]))\n",
+    "a pattern that finds synthesis's imports": "import re\nprint(re.compile(r'from synthesis import (\\w+)').findall('from synthesis import paths'))\n",
+    "prose about synthesis beside a library loaded by name": "import importlib\nprint('Notes from Synthesis Engineering; import synthesis notes')\n"
+                                                             "print(importlib.import_module('json').dumps([1]))\n",
+    "a model's own eval beside the word synthesis": "class Model:\n    def eval(self):\n        return 'synthesis'\nprint(Model().eval())\n",
+    # shapes from 60 days of recorded commands that a first version held: a loader's own argument names no synthesis
+    "a library loaded by __import__ beside synthesis's source": "src = open(COPY + '/synthesis/guards.py').read().splitlines()\n"
+                                                                "print(len(src), __import__('pathlib').Path('.').name)\n",
+    "the CLI's path beside a library loaded by __import__": "print(__import__('os').path.expanduser('~/.local/bin/synthesis'))\n",
+    "the budgets test loaded to count lines": "import importlib.util\nfrom pathlib import Path\n"
+                                              "spec = importlib.util.spec_from_file_location('tb', COPY + '/tests/test_budgets.py')\n"
+                                              "m = importlib.util.module_from_spec(spec)\nspec.loader.exec_module(m)\n"
+                                              "print(m._lines((Path(COPY) / 'synthesis').glob('*.py')), m.CORE_BUDGET)\n",
+    "the names a program's imports could stand for": "import importlib.util\nfor n in ('yaml', 'synthesis', '__future__'):\n"
+                                                      "    if n not in ('synthesis', '__future__'):\n        print(n, importlib.util.find_spec(n))\n",
 }
 
 
@@ -1017,6 +1035,6 @@ def test_a_program_that_loads_code_without_reaching_synthesis_passes(world, name
 
 
 def test_synthesis_s_own_source_compiled_to_check_its_syntax_passes(world):
-    body = "import sys\ntext = open(sys.argv[1]).read()\ncompile(text, sys.argv[1], 'exec')\nprint(text.count('def '))\n"
-    for form in ("script file", "inline -c", "stdin"):
-        assert _verdict(world, _loaded(world, body, form, f" {ROOT}/synthesis/guards.py")) is None, form
+    body = "import sys\nfor name in sys.argv[1:]:\n    text = open(name).read()\n    compile(text, name, 'exec')\n    print(text.count('def '))\n"
+    for form in ("script file", "inline -c", "stdin"):  # compiling runs nothing: a test that writes through synthesis is read too
+        assert _verdict(world, _loaded(world, body, form, f" {ROOT}/synthesis/guards.py {ROOT}/tests/test_approval_spend_order.py")) is None, form

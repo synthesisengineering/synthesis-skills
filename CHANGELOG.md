@@ -41,6 +41,25 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   answered more than 4.5 s after that may reach a harness after its 5 s, when it lets the call through, so then the
   records stand and the grants stay spent. A grant spent before this release cannot be brought back; its call is
   approved again once.
+- **A program that loads synthesis another way is judged as one that imports it, and a check a script or the CLI enters
+  reads a recorded transcript only inside a harness's own folders.** Review round 4 of this fix found the guard read an
+  agent's Python program as reaching synthesis only when a line began with `import synthesis` or `from synthesis`, the
+  same before this release: a program that loaded it through `importlib`, `__import__`, `exec` or `eval` of a string it
+  built, or `runpy`, from a clone or the plugin cache, could write the send ledger's lines, open a send window with no
+  code, void a grant, or point the session's recorded transcript at a record it wrote and grant itself what a check a
+  script enters releases, such as a send by the local-messaging sender. A program that hands a loader (`exec`, `eval`,
+  `__import__`, `importlib`'s and `runpy`'s, `pkgutil.resolve_name`, `pydoc.locate` and the like) a name or a text that
+  says synthesis as code does (the package's name alone or leading a dotted name, an import of it, a path to its folder
+  or one of its files), through its arguments, a name it assigns, its own function's parameters or the words it is
+  handed, or that runs a file or loads a module of its own whose code reaches synthesis, now waits for the principal's
+  code as a script file and is refused on the line or its input, as one that imports synthesis and reaches it in a way
+  its reader cannot follow; the modules of its own that a program on the line imports are read as a script file's are.
+  A program whose loaders are handed other code passes, whatever else it says about synthesis. With no transcript in a
+  hook's payload, a check reads the path the prompt hook recorded only inside the folders each harness keeps its
+  records in as the prompt hook's environment named them, recorded beside it; the environment of the command running
+  the check, which an agent sets, never widens them. A record from an earlier release names none, so a script's check
+  holds until the session's next prompt. Of 73,637 shell commands recorded over 60 days, none newly waits or is refused,
+  under the hook's 3 s deadline as without it, while two planted programs that load synthesis through `importlib` do.
 
 ## [5.23.0] - 2026-11-15
 

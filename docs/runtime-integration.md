@@ -169,7 +169,10 @@ spent.
 Inside a counted prompt, text the harness wraps in a tag block (`<system-reminder>`,
 `<task-notification>`, `<bash-stdout>`, pasted content) does not count. A script run
 from a harness's shell (the iMessage sender) has no hook payload, so it finds the
-session's transcript by the session id its shell carries. When there is no
+session's transcript by the session id its shell carries, at the path the prompt hook
+recorded. That path counts only inside the folders each harness keeps its records in as
+the prompt hook's environment named them, recorded beside it: the environment of the
+command running the script, which the agent sets, never names them. When there is no
 transcript, when it cannot be read, or when it does not show the prompt, the grant is
 spent unused, the call is blocked with that reason, and the request is filed again. A
 harness that gives no transcript cannot carry approved sends or deploys until it does.
@@ -553,14 +556,23 @@ stay open, and no hook running as that same user can close them:
   A fingerprint added that way passes its line without the person. It holds hashes, so
   the agent would have to compute the hash of the exact line, path and repository.
 - The agent can rewrite the runtime under `~/.synthesis/v5` or its config.
-- A program of the agent's that loads synthesis without the plain words `import synthesis`
-  or `from synthesis` (through `importlib`, `__import__` or a built `exec` string, from a
-  copy that is no protected folder) is read as reaching none of synthesis's writers, so it
-  can forge the send ledger's lines, open a send window, delete pending grants and requests,
-  plant a deploy record, or point the transcript that any check a script or the CLI enters
-  itself reads at a file it wrote, and so grant itself what such a check releases: a send a
-  script makes, a line approval, the CLI's send window (review rounds 4 and 5 of 5.23.1's
-  approval fix; crafted, the same before that release).
+- A program of the agent's that loads synthesis by a name no piece of which says synthesis
+  as code does (`'synth' + 'esis'`, character codes, a decoded or capitalized string, a
+  name read from a file, its environment or its input), through a way of loading the guard
+  does not list (a pickle, a mock's patch), as one of the package's modules under its bare
+  name from the package's own folder, from a copy of the package under another name, by
+  running a file of its own through a path the reader cannot put together, or, on the line
+  or its input, through a module of its own that reaches synthesis in a way the reader cannot
+  follow without naming one of its writers (a script file's such module waits), is read as
+  reaching none of synthesis's writers: it can forge the send ledger's lines, open a send
+  window, delete pending grants and requests or plant a deploy record. To grant itself what
+  a check a script or the CLI enters itself releases (a send a script makes, a line
+  approval, the CLI's send window), it must also record the session's transcript path under
+  an environment of its own making, since the recorder takes the harness folders it writes
+  beside the path from its own environment, or write a record into a harness's own folders
+  (review rounds 4 and 5 of 5.23.1's approval fix; crafted). One that loads synthesis
+  through `importlib`, `__import__`, `exec`, `eval`, `compile` or `runpy` by a name or a
+  text that says synthesis waits for the principal's code, or is refused on the line.
 
 Closing these needs isolation the hooks do not have: the agent under its own OS user
 or sandbox, or approvals signed by something outside the agent's reach.
