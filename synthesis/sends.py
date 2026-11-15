@@ -52,7 +52,7 @@ COMMANDS = [
 ]  # an osascript send is read by the guard's reading of its script (`guards.osa_send`), across its lines
 API = {"gh": "github", "bkt": "bitbucket", "glab": "gitlab"}
 WEB = {"curl", "wget", "http", "https", "xh"}
-LOCAL = re.compile(r"(?:localhost|127\.0\.0\.1|\[?::1\]?|[\w.-]+\.localhost|[\w.-]+\.test)$")
+LOCAL = re.compile(r"(?:localhost|127\.0\.0\.1|\[?::1\]?|[\w.-]+\.localhost|[\w.-]+\.test)\.?$", re.I)  # any case, a trailing dot
 
 
 def _words(name: str) -> list:

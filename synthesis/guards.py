@@ -6293,7 +6293,7 @@ LOCAL_MCP = "workspace-mcp"  # the server the meeting skill runs here, as the ha
 MCP_CALLS = re.compile(r"tools/call|\bcall_?[tT]ool\s*\(")  # the JSON-RPC method, or a client library's call
 MCP_LINE = re.compile(r"tools/call|call_?[tT]ool|mcp_client|:8765\b|/mcp\b")  # a line that names a local MCP server or its call
 MCP_NAMED = re.compile(r"""["']?\bname["']?\s*:\s*["'`]([\w.-]+)["'`]|\bcall_?[tT]ool\s*\(\s*["'`]([\w.-]+)["'`]""")
-MCP_HOST = re.compile(r"(?:(https?)://)?(localhost|127\.0\.0\.1|\[::1\]|0\.0\.0\.0|[\w.-]+\.localhost)(?::(\d+))?(/[^\s?#]*)?(?:[?#]\S*)?$")
+MCP_HOST = re.compile(r"(?:(https?)://)?(localhost|127\.0\.0\.1|\[::1\]|0\.0\.0\.0|[\w.-]+\.localhost)\.?(?::(\d+))?(/[^\s?#]*)?(?:[?#]\S*)?$", re.I)
 BODIES = {"-d", "--data", "--data-raw", "--data-binary", "--data-ascii", "--data-urlencode", "--json", "--post-data",
           "--body-data", "--post-file", "--body-file", "-T", "--upload-file", "-F", "--form"}
 ARGV = "\0argv"  # a tool name a program takes from its own arguments
@@ -6492,6 +6492,10 @@ def _mcp_calls(commands: list, feeds: list, written: set, line: str = "", bodies
             files = (_python_files(path or os.path.join(where, "-"), text, "" if _isolated(words) else os.path.realpath(
                 where if not path else os.path.dirname(path)), given if module else "")[0] if head.startswith("python") and text else [(path, text)])
             args = words[at + 1:] if kind == "file" else words[at + (words[at:at + 1] == ["-"]):] if kind == "stdin" else words[at:]
+            before = len(calls)
+            calls += _posted_bodies(text, head, where, path, args, "" if kind == "stdin" else feed, written) if text and not any(
+                _tools_called(body, head.startswith("python"), own=file == files[0][0]) for file, body in files) else []
+            files = files if len(calls) == before else []
             for file, body in files:
                 for tool, given_args in _tools_called(body, head.startswith("python"), own=file == files[0][0]):
                     how = f"`{head}` running {'a program that' if kind != 'file' else os.path.basename(path) + ', which'} calls a tool"
@@ -6512,6 +6516,31 @@ def _mcp_calls(commands: list, feeds: list, written: set, line: str = "", bodies
                     continue
                 calls += _mcp_calls(parsed, inner, written, script, "\n".join(f for f in inner if f.strip()), depth + 1)
     return calls
+
+
+MCP_POSTS = re.compile(r"\burlopen\s*\(|\bRequest\s*\(|\.(?:post|put|patch|request)\s*\(|\bfetch\s*\(|['\"`](?:curl|wget|http|xh)['\"`]|HTTPConnection")
+BODY_GIVEN = re.compile(r"\bdata\s*=|\bjson\s*=|\bcontent\s*=|\bbody\s*[:=]|['\"`](?:-d|--data[\w-]*|--json|-T)['\"`]|\.(?:post|put|patch)\s*\(")
+STDIN_READ = re.compile(r"\bsys\s*\.\s*stdin\b|\binput\s*\(|\bprocess\s*\.\s*stdin\b|/dev/stdin|readFileSync\s*\(\s*0\b|\bSTDIN\b|\bfileinput\b")
+
+
+def _posted_bodies(text: str, head: str, where: str, path: str, args, feed: str, written: set) -> list:
+    """Calls for a program with no tool call in its text that posts a body to a local MCP endpoint (review round 1, S2):
+    the body read from its input, or from a file it names or takes from its arguments, is read as curl's -d @file is; a
+    body built from parts the guard cannot read is an unknown call; a program that posts no body (a liveness read) none."""
+    aims = [u for u in re.findall(r"""['"`]([^'"`\s]{4,200})['"`]""", text) if _mcp_endpoint(u) == "mcp"] or re.findall(r"WORKSPACE_MCP_(?:URL|PORT)", text)
+    if not aims or not MCP_POSTS.search(text) or not BODY_GIVEN.search(text):
+        return []
+    code, bodies, how = _code_only(text, head), [], f"`{head}` posting a body it reads or builds to a local MCP server"
+    if STDIN_READ.search(code):
+        bodies += [feed] if feed.strip() and UNREAD_INPUT not in feed else []
+    if FILE_READS.search(code):
+        names = [n for n in (_unquoted(m[0]) for m in PROGRAM_STRINGS.finditer(text)) if 0 < len(n) < 300 and "\n" not in n]
+        names += list(args) if re.search(r"\bargv\b|\bARGV\b", code) else []
+        files = {p for p in (os.path.realpath(os.path.join(f, _home(n))) for n in names for f in ([os.path.dirname(path)] if path else []) + [where])
+                 if p not in written and os.path.isfile(p)}
+        bodies += [_code_of(p) for p in sorted(files)[:32]]
+    found = [(t, a, how, where, path) for b in bodies if re.search(r'"(?:jsonrpc|method)"\s*:', b) for t, a in _rpc_calls(b)]
+    return found or ([] if any(re.search(r'"(?:jsonrpc|method)"\s*:', b) for b in bodies) else [(None, None, how, where, path)])
 
 
 def _json_object(word: str) -> dict | None:
@@ -6684,10 +6713,40 @@ def _git_config(path: str, depth: int = 0) -> list:
     return entries
 
 
+def _git_scopes(cwd: str, look, gitdir: str | None = None, deep: bool = False) -> tuple:
+    """(the user's entries: the system file, the global and XDG files or the one GIT_CONFIG_GLOBAL names, with what they
+    include; the repository's own: its config and its worktree's; each submodule's own when `deep`; git dir; top; common
+    dir) for the repository holding cwd, as git reads them (review round 1, S1 and S3). `look` reads a variable from the
+    line, else from this process's environment."""
+    home = look("HOME") or os.path.expanduser("~")
+    system = [] if look("GIT_CONFIG_NOSYSTEM").lower() in ("1", "true", "yes", "on") else [look("GIT_CONFIG_SYSTEM")] if look(
+        "GIT_CONFIG_SYSTEM") else list(SYSTEM_GITCONFIG)
+    mine = [look("GIT_CONFIG_GLOBAL")] if look("GIT_CONFIG_GLOBAL") else [os.path.join(home, ".gitconfig"), os.path.join(
+        look("XDG_CONFIG_HOME") or os.path.join(home, ".config"), "git", "config")]
+    user = [e for f in system + mine + [look("GIT_CONFIG")][:bool(look("GIT_CONFIG"))] for e in _git_config(os.path.join(cwd, os.path.expanduser(f)))]
+    top, here = cwd, cwd
+    while not gitdir and here:
+        dot = os.path.join(here, ".git")
+        if os.path.isdir(dot) or os.path.isfile(dot):
+            given = re.match(r"gitdir:\s*(.+)", (_code_of(dot) if os.path.isfile(dot) else "").strip())
+            gitdir, top = (os.path.join(here, given[1].strip()) if given else dot) if os.path.isfile(dot) else dot, here
+        here = "" if os.path.dirname(here) == here else os.path.dirname(here)
+    common = os.path.join(gitdir, _code_of(os.path.join(gitdir, "commondir")).strip() or ".") if gitdir else ""
+    local = _git_config(os.path.join(common, "config")) + _git_config(os.path.join(gitdir, "config.worktree")) if gitdir else []
+    mods = os.path.join(common, "modules") if deep and common else ""
+    found = [os.path.join(mods, n) for n in (sorted(os.listdir(mods)) if mods and os.path.isdir(mods) else [])]  # a submodule's git dir,
+    found += [os.path.join(f, "modules", n) for f in found if os.path.isdir(os.path.join(f, "modules")) for n in sorted(os.listdir(os.path.join(f, "modules")))]
+    subs = [_git_config(os.path.join(f, "config")) for f in found[:16]]  # and one nested in it
+    return user, local, subs, gitdir, top, common
+
+
 def _git_programs(words: list, where: str, line: str) -> list:
-    """(what names it, the command line git runs, the folder it runs in) for each program the configuration a git
-    command reads names; the command line is None for a value the guard cannot read."""
-    env = {m[1]: m[3].strip("'\"") for m in ASSIGNED.finditer(_own_text(line)) if m[1].startswith(("GIT_", "SSH_"))}
+    """(what names it, the command line git runs, the folder it runs in, "repo" when the repository's own config or a
+    submodule's names it, else "user") for each program the configuration a git command reads names; the command line
+    is None for a value the guard cannot read. Hooks count only for a command that runs them, a credential helper or an
+    SSH command only for one that reaches a remote, and synthesis's own installed git-hooks folder never."""
+    env = {m[1]: m[3].strip("'\"") for m in ASSIGNED.finditer(_own_text(line)) if m[1].startswith(("GIT_", "SSH_", "XDG_")) or m[1] == "HOME"}
+    look = lambda name: env.get(name, os.environ.get(name, ""))  # noqa: E731
     entries, cwd, gitdir, exec_path, i = [], where, env.get("GIT_DIR"), env.get("GIT_EXEC_PATH"), 1
     while i < len(words) and words[i].startswith("-"):
         word, after = words[i], (words[i + 1] if i + 1 < len(words) else "")
@@ -6711,53 +6770,129 @@ def _git_programs(words: list, where: str, line: str) -> list:
         entries += [(p.split("=", 1)[0].lower(), p.split("=", 1)[1] if "=" in p else "true") for p in shlex.split(env.get("GIT_CONFIG_PARAMETERS", ""))]
     except ValueError:
         entries.append(("GIT_CONFIG_PARAMETERS", None))
-    pointed = [e for var in ("GIT_CONFIG_SYSTEM", "GIT_CONFIG_GLOBAL", "GIT_CONFIG") if env.get(var) for e in _git_config(os.path.join(cwd, _home(env[var])))]
-    gitdir = os.path.normpath(os.path.join(cwd, _home(gitdir))) if gitdir else None
-    top, here = cwd, cwd
-    while not gitdir and here:
-        dot = os.path.join(here, ".git")
-        if os.path.isdir(dot) or os.path.isfile(dot):
-            given = re.match(r"gitdir:\s*(.+)", (_code_of(dot) if os.path.isfile(dot) else "").strip())
-            gitdir, top = (os.path.join(here, given[1].strip()) if given else dot) if os.path.isfile(dot) else dot, here
-        here = "" if os.path.dirname(here) == here else os.path.dirname(here)
-    common = os.path.join(gitdir, _code_of(os.path.join(gitdir, "commondir")).strip() or ".") if gitdir else ""
-    local = _git_config(os.path.join(common, "config")) + _git_config(os.path.join(gitdir, "config.worktree")) if gitdir else []
-    last: dict = {}
-    for key, value in pointed + local + entries:  # the value git uses: the last one read, all of a helper list since it was emptied
-        last[key] = ([*last.get(key, []), value] if value != "" else []) if re.fullmatch(r"credential\.(?:.+\.)?helper", key) else [value]
-    found = []
-    for key, values in last.items():
-        for value in values if GIT_PROGRAMS.fullmatch(key) and (not key.startswith("alias.") or key[6:] == sub) else ():
-            low = (value or "").strip().lower()
-            if value is not None and (key in ("core.fsmonitor", "web.browser") or key.startswith("pager.")) and low in BOOLEAN_WORDS:
+    user, local, subs, gitdir, top, common = _git_scopes(cwd, look, os.path.normpath(os.path.join(cwd, _home(gitdir))) if gitdir else None,
+                                                         sub not in GIT_QUIET)
+    found, own = [], os.path.realpath(str(paths.home() / "git-hooks"))
+    for scoped in [[(k, v, "user") for k, v in user] + [(k, v, "repo") for k, v in local] + [(k, v, "user") for k, v in entries]] + [
+            [(k, v, "repo") for k, v in s] for s in subs]:
+        last: dict = {}
+        for key, value, scope in scoped:  # the value git uses: the last one read, all of a helper list since it was emptied
+            last[key] = ([*last.get(key, []), (value, scope)] if value != "" else []) if re.fullmatch(r"credential\.(?:.+\.)?helper", key) else [(value, scope)]
+        for key, values in last.items():
+            if not GIT_PROGRAMS.fullmatch(key) or (key.startswith("alias.") and key[6:] != sub) or (GIT_REMOTE_KEYS.fullmatch(key) and sub not in GIT_NET):
                 continue
-            if value is not None and key == "core.hookspath":
-                folder = os.path.join(top, _home(value))
-                hooks = sorted(os.listdir(folder)) if os.path.isdir(folder) else []
-                found += [(f"core.hooksPath ({name})", shlex.quote(os.path.join(folder, name)), top) for name in hooks
-                          if os.path.isfile(os.path.join(folder, name)) and os.access(os.path.join(folder, name), os.X_OK)][:32]
-                continue
-            if value is not None and ((key.startswith(("submodule.", "sendemail.")) and not value.startswith(("!", "/"))) or not value.strip()):
-                continue
-            text = None if value is None else value[1:] if value.startswith("!") else (
-                f"git {value} {shlex.join(words[i + 1:])}" if key.startswith("alias.") else
-                f"git credential-{value}" if key.startswith("credential.") and "/" not in value.split()[0] else value)
-            found.append((key, text, top))
-    found += [(var, shlex.quote(env[var]) if var == "GIT_SSH" else env[var], top) for var in GIT_PROGRAM_ENV if env.get(var)]
+            for value, scope in values:
+                low = (value or "").strip().lower()
+                if value is not None and ((key in ("core.fsmonitor", "web.browser") or key.startswith("pager.")) and low in BOOLEAN_WORDS
+                                          or key == "core.hookspath" or not value.strip()
+                                          or (key.startswith(("submodule.", "sendemail.")) and not value.startswith(("!", "/")))):
+                    continue
+                text = None if value is None else value[1:] if value.startswith("!") else (
+                    f"git {value} {shlex.join(words[i + 1:])}" if key.startswith("alias.") else
+                    shlex.quote(f"git-credential-{value}") if key.startswith("credential.") and "/" not in value.split()[0] else value)
+                found.append((key, text, top, scope))
+    hooked, chosen = _hook_names(sub), ""
+    path_value = next((v for k, v in reversed([(k, v) for k, v in user] + [(k, v) for k, v in local] + entries) if k == "core.hookspath"), None)
+    folder = os.path.join(top, _home(path_value)) if path_value else os.path.join(common, "hooks") if common else ""
+    if hooked and folder and os.path.realpath(folder) != own:  # git runs the folder's hooks for this command
+        chosen = folder
+    elif hooked and folder:  # synthesis's own: its commit check runs the repository's own hooks after its checks
+        for name in sorted(hooked & {"pre-commit", "pre-merge-commit", "commit-msg"}):
+            for hook in (os.path.join(top, ".githooks", "pre-commit" if name == "pre-merge-commit" else name), os.path.join(common, "hooks", name)):
+                found += [(f"the repository's own {name} hook, which the commit check runs", shlex.quote(hook), top, "repo")] if os.access(hook, os.X_OK) and os.path.isfile(hook) else []
+    for name in sorted(hooked) if chosen else ():
+        hook = os.path.join(chosen, name)
+        found += [(f"core.hooksPath ({name})", shlex.quote(hook), top, "repo")] if os.path.isfile(hook) and os.access(hook, os.X_OK) else []
+    found += [(var, shlex.quote(env[var]) if var == "GIT_SSH" else env[var], top, "user") for var in GIT_PROGRAM_ENV
+              if env.get(var) and (sub in GIT_NET or var in ("GIT_EDITOR", "GIT_SEQUENCE_EDITOR", "GIT_PAGER", "GIT_EXTERNAL_DIFF"))]
     run = os.path.join(cwd, _home(exec_path), f"git-{sub}") if exec_path and sub else ""
-    return found + ([("--exec-path", shlex.quote(run), top)] if run and os.path.isfile(run) else [])
+    return found + ([("--exec-path", shlex.quote(run), top, "user")] if run and os.path.isfile(run) else [])
+
+
+def _hook_names(sub: str) -> set:
+    """The hooks a git subcommand may run: none for a read, an index refresh's for status and diff, its own and those of
+    any command that writes the index or a ref for the rest."""
+    if sub in GIT_QUIET:
+        return set()
+    return {"post-index-change"} if sub in ("status", "diff", "ls-files") else set(GIT_HOOKS.get(sub, "").split()) | set(GIT_ANY_HOOKS.split())
 
 
 BOOLEAN_WORDS = {"", "true", "false", "yes", "no", "on", "off", "1", "0", "keep"}
+GIT_NET = frozenset({"fetch", "pull", "push", "clone", "ls-remote", "remote", "submodule", "archive", "fetch-pack", "send-pack"})
+GIT_REMOTE_KEYS = re.compile(r"credential\.(?:.+\.)?helper|core\.(?:sshcommand|askpass|gitproxy)|remote\..+\.(?:uploadpack|receivepack)")
+GIT_QUIET = frozenset({"log", "show", "rev-parse", "blame", "grep", "describe", "cat-file", "shortlog", "rev-list", "ls-tree", "for-each-ref",
+                       "show-ref", "merge-base", "name-rev", "count-objects", "config", "help", "version", "var", "check-ignore", "check-attr",
+                       "reflog", "whatchanged", "diff-tree", "ls-remote", ""})  # they run no hook and reach no submodule
+GIT_HOOKS = {"commit": "pre-commit prepare-commit-msg commit-msg post-commit post-rewrite", "merge": "pre-merge-commit prepare-commit-msg commit-msg post-merge",
+             "pull": "pre-merge-commit prepare-commit-msg commit-msg post-merge pre-rebase post-rewrite post-checkout",
+             "rebase": "pre-rebase post-rewrite post-checkout pre-commit prepare-commit-msg commit-msg post-commit",
+             "cherry-pick": "pre-commit prepare-commit-msg commit-msg post-commit", "revert": "pre-commit prepare-commit-msg commit-msg post-commit",
+             "am": "applypatch-msg pre-applypatch post-applypatch pre-commit prepare-commit-msg commit-msg post-commit", "checkout": "post-checkout",
+             "switch": "post-checkout", "clone": "post-checkout", "worktree": "post-checkout", "bisect": "post-checkout", "push": "pre-push",
+             "send-email": "sendemail-validate"}
+GIT_ANY_HOOKS = "post-index-change reference-transaction pre-auto-gc"
+SYSTEM_GITCONFIG = ("/etc/gitconfig", "/opt/homebrew/etc/gitconfig", "/usr/local/etc/gitconfig",
+                    "/Library/Developer/CommandLineTools/usr/share/git-core/gitconfig",
+                    "/Applications/Xcode.app/Contents/Developer/usr/share/git-core/gitconfig")  # each git's own; all are read
+GIT_SCANNERS = {"context_doctor.py": ("status",), "repo_state.py": ("status", "branch", "rev-parse", "rev-list")}
+
+
+def _scanned_folders(words: list, where: str) -> tuple:
+    """(the folders a plugin script that runs git itself reaches, the subcommands it runs there): the context doctor's
+    --project (the repository holding it) and each --root; the rituals' repo_state.py: the paths --workspace-root's
+    .agents/repos.yaml declares (relative to it), and each repository one or two folders under --discover. The doctor
+    run with neither reads roots of its own setting, which the guard does not read."""
+    kind, at, given = _program(words)
+    name = os.path.basename(given) if kind == "file" else ""
+    if name not in GIT_SCANNERS:
+        return [], ()
+    flags, rest, folders = {}, words[at + 1:], []
+    for k, word in enumerate(rest):
+        key, eq, value = word.partition("=")
+        if key in ("--project", "--root", "--workspace-root", "--discover"):
+            flags.setdefault(key, []).append(value if eq else "".join(rest[k + 1:k + 2]))
+        flags.setdefault(word, []) if word in ("--fetch", "--ff") else None
+    folders += [os.path.join(where, _home(f)) for f in flags.get("--project", []) + flags.get("--root", []) if f]
+    for space in flags.get("--workspace-root", []):
+        from synthesis.yamlish import load
+        root = os.path.join(where, _home(space))
+        try:
+            rows = (load(_code_of(os.path.join(root, ".agents", "repos.yaml"))) or {}).get("repos") or []
+        except (ValueError, AttributeError):
+            rows = []
+        rows = [{"name": k, **(v if isinstance(v, dict) else {})} for k, v in rows.items()] if isinstance(rows, dict) else rows
+        folders += [os.path.join(root, os.path.expanduser(str(r.get("path") or r.get("name")))) for r in rows if isinstance(r, dict)]
+    for top in flags.get("--discover", []):
+        import glob
+        base = os.path.join(where, _home(top))
+        folders += sorted({os.path.dirname(g) for depth in ("*", "*/*") for g in glob.glob(os.path.join(base, depth, ".git")) if os.path.isdir(g)})
+    runs = GIT_SCANNERS[name] + (("fetch",) if "--fetch" in flags else ()) + (("merge", "update-ref") if "--ff" in flags else ())
+    return folders[:64], runs
 
 
 def check_git_programs(command: str, config: dict, cwd: str, session: dict | None = None) -> str | None:
-    """A git command waits as each program its configuration names would, judged where git runs it (see above)."""
-    if not re.search(r"(?<![\w.-])git(?![\w.-])", command):
-        return None
-    found = [(what, text, folder) for words, where in _parse(command, cwd)[0] if words and os.path.basename(words[0]) == "git"
-             for what, text, folder in _git_programs(words, where, command)]
-    for what, text, folder in found:
+    """A git command waits as each program its configuration names would, judged where git runs it (see above); a
+    plugin script that runs git itself waits when a repository it reaches names a program of its own (round 1)."""
+    commands = _parse(command, cwd)[0] if re.search(r"(?<![\w.-])git(?![\w.-])|context_doctor|repo_state", command) else []
+    found = [(what, text, folder, scope) for words, where in commands if words and os.path.basename(words[0]) == "git"
+             for what, text, folder, scope in _git_programs(words, where, command)]
+    reached = []
+    for words, where in commands:
+        folders, runs = _scanned_folders(words, where) if words and SCRIPT.match(os.path.basename(words[0])) else ([], ())
+        for folder in folders:
+            for what, text, top, scope in [p for run in runs for p in _git_programs(["git", "-C", folder, run], where, "")]:
+                reached += [(top, what)] if scope == "repo" else []
+                found += [] if scope == "repo" else [(what, text, top, scope)]
+    if reached:
+        subject = {"command": command, "runs_in": os.path.realpath(cwd), "repositories": sorted(set(reached))}
+        if approvals.consume("protected-read", subject, session):
+            return None
+        code = approvals.request("protected-read", subject, f"a scanner reaches a repository whose config names a program: {command[:120]}")
+        top, what = reached[0]
+        return (f"This command runs a plugin script that runs git itself in the repositories it is handed, and {top}'s own "
+                f"configuration names a program git would run there ({what}). Show the principal this exact command and ask them "
+                f"to type {approvals.how(code)}; then run the identical command again.")
+    for what, text, folder, scope in dict.fromkeys(found):
         if text is None or GIT_DEPTH[0] >= 2:
             subject = {"command": command, "runs_in": os.path.realpath(cwd), "git": what}
             if approvals.consume("protected-read", subject, session):
@@ -6775,6 +6910,58 @@ def check_git_programs(command: str, config: dict, cwd: str, session: dict | Non
             return (f"This git command runs the program its configuration names in {what} (`{text[:120]}`, in {folder}), so it "
                     f"is judged as running it there. {reason}")
     return None
+
+
+# --- a write that plants a hook (5.23.1, review round 1) -----------------------------------------------------------------
+# Writing .git/hooks/pre-commit and committing ran the agent's program with no code (a plain two-step attempt). A write into
+# a repository's .git/hooks or .githooks (the commit check's delegates), or into a folder core.hooksPath names other than
+# synthesis's own installed git-hooks folder, and a `git config` that points core.hooksPath at such a folder, wait for the
+# principal's code, by the file tools and by the shell.
+
+def _hook_folder(path: str) -> str:
+    """The hooks folder a path lies in, or ''."""
+    real = os.path.realpath(path)
+    found = re.match(r"(.*?/(?:\.git/hooks|\.githooks))(?:/|$)", real)
+    if found:
+        return found[1]
+    user, local, _, gitdir, top, common = _git_scopes(os.path.dirname(real), lambda name: os.environ.get(name, ""))
+    value = next((v for k, v in reversed(user + local) if k == "core.hookspath"), None)
+    folder = os.path.realpath(os.path.join(top, _home(value))) if value else ""
+    return folder if folder and paths.inside(real, folder) and folder != os.path.realpath(str(paths.home() / "git-hooks")) else ""
+
+
+def _hooks_pointed(words: list, where: str) -> str:
+    """The folder a `git config` sets core.hooksPath to, when it is not synthesis's own or /dev/null; else ''."""
+    sub, _ = _git(words, where)
+    rest = words[words.index(sub) + 1:] if sub == "config" else []
+    at = next((k for k, w in enumerate(rest) if w.lower() == "core.hookspath"), None)
+    if at is None or at + 1 >= len(rest) or any(w.startswith(("--get", "--unset", "--list", "-l")) for w in rest):
+        return ""
+    value = rest[at + 1]
+    folder = os.path.realpath(os.path.join(_git(words, where)[1], _home(value)))
+    return "" if value == "/dev/null" or folder == os.path.realpath(str(paths.home() / "git-hooks")) else value
+
+
+def check_hook_writes(tool: str, tool_input: dict, cwd: str, session: dict | None = None) -> str | None:
+    """A file tool's write, or a shell line's, into a hooks folder, or a line that points core.hooksPath at one, waits for
+    the principal's code for that exact call."""
+    if shell_tool(tool):
+        command = shell_command(tool_input)
+        planted = [t for t in _shell_writes(command, cwd) if _hook_folder(os.path.join(cwd, os.path.expanduser(t)))]
+        planted += [f"core.hooksPath {v}" for words, where in (_parse(command, cwd)[0] if "hookspath" in command.lower() else [])
+                    if words and os.path.basename(words[0]) == "git" for v in [_hooks_pointed(words, where)] if v]
+        subject = {"command": command, "runs_in": os.path.realpath(cwd)}
+    else:
+        planted = [t for t in _file_targets(tool, tool_input) if _hook_folder(os.path.join(cwd, os.path.expanduser(t)))]
+        subject = {"tool": tool, "input": tool_input}
+    if not planted:
+        return None
+    if approvals.consume("hook-write", subject, session):
+        return None
+    code = approvals.request("hook-write", subject, f"a hook git will run: {', '.join(planted)[:120]}")
+    return (f"This {'command' if shell_tool(tool) else tool + ' call'} writes {', '.join(planted)[:200]}, a hook git runs on a later "
+            "commit, checkout or push (or points git at one). Show the principal what it writes and ask them to type "
+            f"{approvals.how(code)}; then {'run the identical command' if shell_tool(tool) else 'make this identical call'} again.")
 
 
 def guarded(tool: str, tool_input: dict | None = None) -> bool:
@@ -6802,9 +6989,10 @@ def check(tool: str, tool_input: dict, config: dict, cwd: str | None = None, ses
                 or check_deploy(command, config, cwd, session) or check_tunnel(command, config, cwd, session)
                 or check_outgoing(command, config, cwd, session)
                 or check_claimed(_shell_writes(command, cwd), cwd, session)
+                or check_hook_writes(tool, tool_input, cwd, session)
                 or check_git_programs(command, config, cwd, session))  # last: it judges each program as a call of its own
     if tool in FILE_TOOLS:
-        return check_file_write(tool, tool_input, cwd, config) or check_claimed(_file_targets(tool, tool_input), cwd, session)
+        return check_file_write(tool, tool_input, cwd, config) or check_claimed(_file_targets(tool, tool_input), cwd, session) or check_hook_writes(tool, tool_input, cwd, session)
     if tool.startswith(BROWSER):
         return check_browser(tool, tool_input, config, cwd, session) or (
             check_desktop(desktop_tool(tool), tool, tool_input, config, session) if desktop_tool(tool) else None)

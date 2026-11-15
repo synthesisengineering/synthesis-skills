@@ -1340,10 +1340,23 @@ ROOT = Path(__file__).resolve().parents[1]
 # 11 (each name's assignments, loops and parameters, each function's calls and each lambda's name, indexed once a program
 # in place of a scan of every node for each name; past 64 calls, one more is unknown) and _writes_script 2 (a write
 # method's receiver read back from its call, and the names given a script file found in one pass).
+# Review round 1 of the send routes (2026-11-15: one line in ~/.gitconfig made every git read run the agent's program; a
+# program posting a body it read from a file, curl to LOCALHOST, a scanner's git and a planted .git/hooks/pre-commit ran
+# with no code): core 188 more and plugin 188, all in guards.py. Git's other scopes 54: _git_scopes 27 (the system file,
+# the global and XDG files or the one GIT_CONFIG_GLOBAL names, with what they include, the repository's and its
+# worktree's, and each submodule's for a command that reaches them), _hook_names 8, _git_programs 5 (each scope's programs
+# apart, a helper or an SSH command only for a command that reaches a remote, hooks only for one that runs them,
+# synthesis's own git-hooks folder never, the commit check's repository hooks for a commit) and the tables 14 (GIT_HOOKS,
+# GIT_QUIET, GIT_NET, GIT_REMOTE_KEYS, GIT_ANY_HOOKS, SYSTEM_GITCONFIG; BOOLEAN_WORDS on one line). The scanners 52:
+# _scanned_folders 33 (the context doctor's --project and --root; repo_state.py's repos.yaml paths and --discover),
+# check_git_programs 16 (a repository a scanner reaches that names a program waits) and GIT_SCANNERS 3. A program's
+# request body 29: _posted_bodies 20, _mcp_calls 4, MCP_POSTS, BODY_GIVEN and STDIN_READ 5. A planted hook 53:
+# check_hook_writes 22, _hook_folder 12, _hooks_pointed 12, the section's note 6 and the dispatch 1. sends.py's LOCAL
+# changes in place (any case, a trailing dot).
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 17021
-PLUGIN_BUDGET = 43093
+CORE_BUDGET = 17209
+PLUGIN_BUDGET = 43281
 
 
 def _lines(files):
