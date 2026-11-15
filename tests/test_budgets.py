@@ -1189,11 +1189,12 @@ ROOT = Path(__file__).resolve().parents[1]
 # its two blank lines (a module a program imports or runs with -m that a file where it starts could stand in for),
 # PYTHON_ENV 3 with its blank line (the variables that move Python's module path, set on the line), _unread 1 (the -m
 # exemptions under the same rule), and _self_grant 3 (why only isolation is missing, and a hold that says -I or a clean
-# folder needs no code).
+# folder needs no code). And 1 more to both: the refusal of a program that imports synthesis's code and that its reader
+# cannot follow says that, not that it runs the approval code (its words take a second line).
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 15565
-PLUGIN_BUDGET = 40808
+CORE_BUDGET = 15566
+PLUGIN_BUDGET = 40809
 
 
 def _lines(files):
