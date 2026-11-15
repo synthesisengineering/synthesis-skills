@@ -2564,7 +2564,7 @@ READERS = frozenset(("cat head tail grep egrep fgrep rg ls stat wc file du diff 
                      "basename dirname realpath readlink test [ [[ echo printf cd pushd popd true false : export readonly "
                      "local declare typeset unset zcat gzcat strings od hexdump nl cut tr tac column jq date which "
                      "for case select read fold fmt expand paste join rev sort uniq less more sleep kill wait exit return "
-                     "break continue shift trap seq expr bc ps pgrep uname hostname whoami id git synthesis").split())
+                     "break continue shift trap seq expr bc ps pgrep uname hostname whoami id git synthesis df").split())
 WORDS = frozenset("for case select read test [ [[ : true false export readonly local declare typeset unset less more sleep kill wait exit "
                   "return break continue shift trap which file id synthesis".split())  # a shell's own words, and words a sentence starts with
 AWKS = ("awk", "gawk", "mawk", "nawk")
@@ -3000,7 +3000,7 @@ BUILT_CALLS = ("vars", "globals", "locals", "__builtins__", "__getattribute__", 
 
 
 def _python_writes(source: str, names: list, roots: list | tuple = (), where: str = "", argv: list | tuple = (),
-                   env: dict | None = None, config: dict | None = None) -> tuple:
+                   env: dict | None = None, config: dict | None = None, until: float | None = None) -> tuple:
     """(whether a Python program writes into a protected path, whether it writes at all; the first is the refusal's own
     text when it is a command the program starts that is refused); (None, None) when it cannot
     be told (no source, a syntax error), and (None, True) for a program that runs code it builds (exec, eval,
@@ -3014,7 +3014,7 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
     a transcript and numbered their output files by its lines were refused).
     `argv` is what the shell hands the program, from its own name on, and `env` the variables it runs with;
     `where` is the folder it runs in, and inside a protected folder, or after a chdir into one, every write must
-    be led by a plain folder elsewhere."""
+    be led by a plain folder elsewhere. Past `until`, a moment of time.monotonic(), it raises TimeoutError."""
     import ast
     import copy
     import warnings
@@ -3437,7 +3437,7 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
     # object stands under ".field" and an entry of its own table under "[table]key". "\2" is no value at all: None
     # (this project's probe after the tenth review: thirty everyday programs were refused from inside a transcript
     # folder because a name was read only when it was given one value, once).
-    picked, stores, sites, turns, finds, deep = {}, {}, {}, {}, set(), []
+    picked, stores, sites, turns, finds, deep, reading, looped = {}, {}, {}, {}, set(), [], set(), []
 
     def given_to(key, values, site: int = 0) -> None:
         stores.setdefault(key, []).extend(values)
@@ -3787,11 +3787,18 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
         deep.pop()
         this[id(own)] = was
 
-    def read_as(n) -> list:  # every spelling a member read may have
+    def read_as(n) -> list:  # every spelling a member read may have; read again inside its own reading (`self.p = self.p + x`), it cannot be told
+        if id(n) in reading:  # the 30-day replay: 526 everyday programs the reader followed into themselves without end
+            looped.append(n)
+            return ["\0"]
         found = []
-        for v, calls_ in members(n):
-            for _ in under(calls_) if isinstance(v, ast.AST) else [0]:
-                found += ["\0"] if v is None else [v] if isinstance(v, str) else ["\2"] if isinstance(v, ast.Constant) and v.value is None else spellings(v)
+        reading.add(id(n))
+        try:
+            for v, calls_ in members(n):
+                for _ in under(calls_) if isinstance(v, ast.AST) else [0]:
+                    found += ["\0"] if v is None else [v] if isinstance(v, str) else ["\2"] if isinstance(v, ast.Constant) and v.value is None else spellings(v)
+        finally:
+            reading.discard(id(n))
         found = list(dict.fromkeys(found))
         return ["\0"] if len(found) > 12 else found
 
@@ -3898,6 +3905,8 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
         return list(dict.fromkeys(found)) or ["\2"]
 
     def spellings(node) -> list:  # each path a node may spell, one for every value its names may hold; as `spelled` reads it when they are too many
+        if until is not None and time.monotonic() > until:
+            raise TimeoutError("past the time the guard may spend reading a program")
         if walked.get(id(node), (None,))[0] is not node:  # walked once: a value is read again at each settling
             seen = list(outer(node))
             walked[id(node)] = (node, [c for c in seen if isinstance(c, ast.IfExp) or (isinstance(c, ast.BoolOp) and isinstance(c.op, ast.Or))
@@ -4223,6 +4232,8 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
             modules.get(getattr(getattr(v.func, "value", None), "id", "")) == "os" or direct.get(getattr(v.func, "id", ""), ("",))[0] == "os")) for v in made)
     hit = wrote = False
     for n in calls:
+        if until is not None and time.monotonic() > until:
+            raise TimeoutError("past the time the guard may spend reading a program")
         base = n.func.value if isinstance(n.func, ast.Attribute) else None
         label, kw = n.func.attr if base is not None else getattr(n.func, "id", ""), {k.arg: k.value for k in n.keywords}
         fds = [kw[k] for k in ("dir_fd", "src_dir_fd", "dst_dir_fd") if k in kw]  # a name given beside a descriptor is read from its folder
@@ -4349,6 +4360,8 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
         if label in LIBRARY_WRITES:  # the standard library's own writers: a log file, a download, a temporary file made where it is told
             targets += [kw[k] for k in ("filename", "dir") if k in kw] + (
                 n.args[1:2] if label == "urlretrieve" else n.args[:1] if "Handler" in label else n.args[2:3] if label.startswith(("mk", "TemporaryD")) else [])
+        if label == "FileType" and "argparse" in owners and says((n.args[:1] or [kw.get("mode", ast.Constant(value="r"))])[0], r"[wax+]"):
+            targets.append(n)  # argparse opens each path it is handed to be written: what the command hands it (5.22.1)
         wrote = wrote or bool(targets)
         gone = ([base] if method and label in ("rename", "replace") else (n.args[:1] or [kw[k] for k in ("src", "path") if k in kw])
                 if label in ("rmtree", "move", "rename", "renames", "replace") else [])  # a tree removed or moved away whole takes all it holds
@@ -4356,7 +4369,8 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
         hit = hit or any(lands(t, label in ("mkdir", "makedirs"), label in LINKS or bool(kept), at,
                                roots if any(t is x for x in gone) else folders_held if any(t is x for x in over_it) else ())
                          for t in targets)  # a copy that keeps links may make one
-    return hit or (wrote and loose), wrote
+    hit = hit or (wrote and loose)
+    return (None, True) if looped and wrote and not hit else (hit, wrote)  # a member read in its own reading: its writes cannot be placed
 
 
 # --- a program the guard cannot read, near the records approvals rest on (5.22.1) ----------------------------------
@@ -4382,7 +4396,7 @@ class Unproven(str):
     protected folder. Any reading that is refused outright is refused first."""
 
 
-_CALL: dict = {"codes": {}, "ran": {}, "proofs": {}, "until": 0.0}  # one call's script texts, their marks, its proofs and deadline
+_CALL: dict = {"codes": {}, "ran": {}, "proofs": {}, "files": {}, "until": 0.0}  # one call's script texts, their marks, its proofs and deadline
 CALL_SECONDS, PROOFS_A_CALL = 3.0, 8  # under the hook's own 4 s; past either, a command waits rather than spins (finding 12)
 READER_WRITES = {"less": r"-[A-Za-z]*[oO].*|--(?:log-file|LOG-FILE)(?:=.*)?", "rg": r"--pre(?:-glob)?(?:=.*)?", "sort": r"-o.*|--output(?:=.*)?",
                  "file": r"-[A-Za-z]*C[A-Za-z]*|--compile", "date": r"-s|--set(?:=.*)?"}  # a reader's own options that write or run
@@ -4414,12 +4428,12 @@ def _regular(path: str, limit: int = SCRIPT_LIMIT):
 
 
 def _code_of(path: str) -> str:
-    """The text of a script file a command runs (its first SCRIPT_LIMIT bytes), or '' for one that cannot be read, is
-    no regular file or is no text. Read once a call, and marked by its size, time and digest, so the principal's code
-    binds the script as it stood (finding 11)."""
+    """The text of a script file a command runs, read whole up to TEXT_LIMIT (one byte more says it is larger), or ''
+    for one that cannot be read, is no regular file or is no text. Read once a call, and marked by its size, time and
+    the digest of what was read, so the principal's code binds the script as it stood (finding 11)."""
     import hashlib
     if path not in _CALL["codes"]:
-        found = _regular(path)
+        found = _regular(path, TEXT_LIMIT + 1)
         _CALL["codes"][path] = "" if found is None or b"\0" in found[0][:8192] else found[0].decode("utf-8", "replace")
         if found is not None:
             _CALL["ran"][os.path.realpath(path)] = f"{found[1].st_size}:{found[1].st_mtime_ns}:{hashlib.sha256(found[0]).hexdigest()}"
@@ -4565,7 +4579,8 @@ def _shipped(path: str) -> bool:
 
 def _unread(words: list, where: str, written: set, line: str) -> tuple:
     """(the program a command runs that the guard cannot prove only reads, the text of the script file it runs, whether
-    its words carry program text), or ("", "", False) for a known reader: a program on the READERS list with none of
+    its words carry program text, the file of a module run with -m from the folder that holds it), or ("", "", False,
+    "") for a known reader: a program on the READERS list with none of
     its own options that write or run, git with a read subcommand and none of its writing or running options, find
     (each command it runs is judged as one, what it removes where it lands), a hex dump with one file, an awk or sed
     program read with certainty that writes nothing and runs nothing, a shell's script on the line or its input (each
@@ -4586,51 +4601,163 @@ def _unread(words: list, where: str, written: set, line: str) -> tuple:
         module, operands = words[at:at + 1] == ["-m"], [w for w in words[at + 2:] if w[:1] != "-"]  # json.tool's second is its output
         free = module and (_isolated(words) or not (PYTHON_ENV.search(line) or _stand_in("", where, name))) and (
             name.split(".")[0] == "synthesis" or (name == "json.tool" and len(operands) <= 1))
-        return ("", "", False) if free else (head, code(name) if kind == "file" and not module else "", True)
+        mine = _module_file(name, "" if _isolated(words) else os.path.realpath(where)) if module and not free else ""
+        return ("", "", False, "") if free else (head, code(mine or name) if mine or (kind == "file" and not module) else "", True, mine)
     if head in SHELLS or head in (".", "source"):
         inline, reads, _ = _shell_input(words)
-        return ("", "", False) if inline is not None or reads or (head in SHELLS and _no_exec(words[1:at])) else (head, code(name), True)
+        return ("", "", False, "") if inline is not None or reads or (head in SHELLS and _no_exec(words[1:at])) else (head, code(name), True, "")
     if head in AWKS:
-        return ("", "", False) if _awk_reads(words) else (head, files(), True)
+        return ("", "", False, "") if _awk_reads(words) else (head, files(), True, "")
     if head in ("sed", "gsed"):
         scripts = _sed_scripts(words)
-        return ("", "", False) if scripts is not None and not any(map(_sed_writes, scripts)) else (head, files(), True)
+        return ("", "", False, "") if scripts is not None and not any(map(_sed_writes, scripts)) else (head, files(), True, "")
     if UNREAD.match(head) or head in EDITORS:
-        return head, code(name) if kind == "file" else "", True
+        return head, code(name) if kind == "file" else "", True, ""
     if head == "git" or head in READERS:
         known = _git_reads(words) if head == "git" else not any(re.fullmatch(READER_WRITES.get(head, "(?!)"), w) for w in words[1:])
-        return ("", "", False) if known else (head, "", False)
+        return ("", "", False, "") if known else (head, "", False, "")
     if head in ("find", "eval") or (head == "xxd" and len([w for w in words[1:] if w[:1] != "-"]) <= 1):
-        return "", "", False
+        return "", "", False, ""
     if head == "open":  # it runs a script it is handed (in Terminal): what it opens is read as one (finding 5)
-        return head, "\n".join(code(w) for w in words[1:] if w[:1] != "-"), True
-    return head, code(words[0]) if "/" in words[0] else "", "/" in words[0]  # a program run by its path is a script or one unread
+        return head, "\n".join(code(w) for w in words[1:] if w[:1] != "-"), True, ""
+    return head, code(words[0]) if "/" in words[0] else "", "/" in words[0], ""  # a program run by its path is a script or one unread
 
 
-PROOF_LIMIT = 16 * 1024  # a script file the Python reader proves inside the hook's time (about 5 ms a kilobyte, 2026-11-14)
+# A Python script file, or a module run with -m from the folder that holds it, is judged by what its text shows, with
+# the modules of its own it imports: it waits only when the command or that text names a protected folder and that text
+# holds a write or a run the reader recognizes that may land in one (the coordinator, 2026-11-14: a full proof of every
+# expression held about 3,700 commands of the 30-day replay a month). Each is read whole up to TEXT_LIMIT, OWN_MODULES of
+# them a script, inside the call's time; past any, it waits.
+TEXT_LIMIT, OWN_MODULES = 4 << 20, 64
 
 
-def _proven(code: str, words: list, where: str, names: list, raw: list, env: dict, config: dict | None) -> bool:
-    """A Python script file short enough to read in the hook's time whose every write the reader follows to a place
-    outside the protected folders, and none of whose imports a file beside it or in the folder it runs from could stand
-    in for, unless Python is isolated (finding 7). Proved once a call; past PROOFS_A_CALL or the call's deadline, it is
-    not proved (finding 12). A longer one, or one it cannot follow, waits; none is refused on this reading."""
+def _found_elsewhere(name: str, first: str) -> bool:
+    """A module Python finds somewhere other than `first`: built in, or on the module path this guard runs with."""
+    import importlib.machinery
     import sys
-    name = words[_program(words)[1]] if _program(words)[0] == "file" else ""
-    script = os.path.realpath(os.path.join(where, os.path.expanduser(name)))
-    key = (_CALL["ran"].get(script, script), _isolated(words), where, tuple(names))
+    try:
+        return name in sys.builtin_module_names or importlib.machinery.PathFinder.find_spec(name, [
+            p for p in sys.path if p and os.path.realpath(p) != first]) is not None
+    except (ImportError, ValueError, OSError):
+        return True  # it cannot be told: a file in `first` named so may stand in for it
+
+
+def _imports(text: str) -> list:
+    """(dots, module, names) for each import a program's syntax holds: `import a.b` is (0, "a.b", ()), `from .x import
+    y` is (1, "x", ("y",)); none for a program that cannot be parsed, which its reader judges."""
+    import ast
+    import warnings
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            tree = ast.parse(text)
+    except (SyntaxError, ValueError, RecursionError, MemoryError):
+        return []
+    found = []
+    for n in ast.walk(tree):
+        if isinstance(n, ast.Import):
+            found += [(0, a.name, ()) for a in n.names]
+        elif isinstance(n, ast.ImportFrom):
+            found.append((n.level, n.module or "", tuple(a.name for a in n.names)))
+    return found
+
+
+def _module_file(name: str, first: str) -> str:
+    """The file `python -m name` runs when `first`, the folder it starts from, holds the module, as Python finds it
+    there first (a package's __main__.py, else the module's own file); '' for one found anywhere else, whose first file
+    is not the program it runs (pip's and pytest's hand everything on) and need not be this Python's."""
+    parts, spot = name.split("."), first
+    if not first or not all(re.fullmatch(r"\w+", part) for part in parts):
+        return ""
+    for i, part in enumerate(parts):
+        spot, last = os.path.join(spot, part), i == len(parts) - 1
+        if last and (os.path.isfile(os.path.join(spot, "__init__.py")) or not os.path.lexists(spot + ".py")):
+            return os.path.join(spot, "__main__.py") if os.path.isfile(os.path.join(spot, "__main__.py")) else ""
+        if last:
+            return spot + ".py"
+        if not os.path.isdir(spot):
+            return ""
+    return ""
+
+
+def _python_files(path: str, text: str, first: str, module: str = "") -> tuple:
+    """(the script and each module of its own it imports, as (file, text): a file or a package in `first`, the folder
+    Python looks in first, named like no module found elsewhere, or one a package names relative to itself, and theirs
+    in turn, with the packages that hold a module run with -m; the module a file in `first` could stand in for, being
+    found elsewhere too, or ''; why not all of them could be read, or ''). `first` is '' when Python is isolated."""
+    key = (_CALL["ran"].get(path, path), first, module)
+    if key in _CALL["files"]:
+        return _CALL["files"][key]
+    lead = module.split(".")[0]
+    files, seen, queue, stand, missed = [], {path}, [(path, text)], lead if lead and _found_elsewhere(lead, first) else "", ""
+    held = os.path.dirname(path) if module else ""
+    while held and paths.inside(held, first) and held != first:  # the packages that hold a module run with -m run first
+        init = os.path.join(held, "__init__.py")
+        if os.path.isfile(init):
+            seen.add(os.path.realpath(init))
+            queue.append((init, _code_of(init)))
+        held = os.path.dirname(held)
+    while queue and not missed:
+        at, body = queue.pop(0)
+        if len(body) > TEXT_LIMIT:
+            missed = f"is larger than the {TEXT_LIMIT >> 20} MB this guard reads" + (f" ({at})" if at != path else "")
+            break
+        files.append((at, body))
+        for dots, name, names in _imports(body):
+            top = name.split(".")[0]
+            regular = bool(first) and (os.path.lexists(os.path.join(first, top + ".py")) or os.path.lexists(os.path.join(first, top, "__init__.py")))
+            if not dots and not (regular or (first and os.path.isdir(os.path.join(first, top)))):
+                continue  # found elsewhere, or nowhere: not the script's own
+            if not dots and _found_elsewhere(top, first):
+                stand = stand or (top if regular else "")  # a file of its own named like a module found elsewhere stands in for it
+                continue
+            base = first if not dots else os.path.dirname(at) if dots == 1 else os.path.normpath(os.path.join(os.path.dirname(at), *[".."] * (dots - 1)))
+            parts = [p for p in name.split(".") if p]
+            heads = [os.path.join(base, *parts[:i]) for i in range(1, len(parts) + 1)]
+            for spot in heads + [os.path.join(heads[-1] if heads else base, n) for n in names if n != "*"]:
+                for file in (spot + ".py", os.path.join(spot, "__init__.py")):
+                    if os.path.realpath(file) in seen or not os.path.lexists(file):
+                        continue
+                    seen.add(os.path.realpath(file))
+                    code = _code_of(file) if os.path.isfile(file) else ""
+                    if len(seen) > OWN_MODULES or time.monotonic() > _CALL["until"]:
+                        missed = "imports more modules of its own than this guard reads in its time"
+                    elif not code and (not os.path.isfile(file) or os.path.getsize(file)):
+                        missed = f"imports {file}, which this guard cannot read"
+                    queue.append((file, code))
+    _CALL["files"][key] = (files, stand, missed)
+    return _CALL["files"][key]
+
+
+def _shows(files: list, words: list, where: str, names: list, raw: list, env: dict, config: dict | None) -> str:
+    """'' when no text among a Python script file and its own modules holds a write or a run its reader recognizes that
+    may land in a protected folder: a program with no such write passes though the reader cannot place every expression
+    it holds. Else what one holds. A module of its own is judged by any such write it holds, since what its functions
+    are handed comes from another file, which the reader does not follow there. Read once a call; past PROOFS_A_CALL
+    scripts or the call's deadline, it is not read (finding 12). None is refused on this reading."""
+    at = _program(words)[1]
+    argv = words[at + (words[at:at + 1] == ["-m"]):]  # what Python hands it: its own file first, then the words after it
+    key = (tuple(_CALL["ran"].get(os.path.realpath(f), f) for f, _ in files), tuple(argv), where, tuple(names))
     if key not in _CALL["proofs"]:
-        if not code or len(code) > PROOF_LIMIT or len(_CALL["proofs"]) >= PROOFS_A_CALL or time.monotonic() > _CALL["until"]:
-            return False
-        imports = {m.split(".")[0] for a, b in re.findall(r"^[ \t]*(?:from[ \t]+([\w.]+)[ \t]+import|import[ \t]+([\w., \t]+))", code, re.M)
-                   for m in ([a] if a else [part.split()[0] for part in b.split(",") if part.strip()])} - set(sys.builtin_module_names)
-        shadowed = not _isolated(words) and any(os.path.exists(os.path.join(folder, m + ".py")) or os.path.isdir(os.path.join(folder, m))
-                                                for m in imports for folder in {os.path.dirname(script), where})
-        try:
-            _CALL["proofs"][key] = not shadowed and _python_writes(code, names, [os.path.realpath(r) for r in raw], where, words[_program(words)[1]:],
-                                                                     dict(env, PWD=where), config)[0] is False
-        except RecursionError:
-            _CALL["proofs"][key] = False
+        if len(_CALL["proofs"]) >= PROOFS_A_CALL:
+            return "is one script more than this guard reads in one call"
+        _CALL["proofs"][key] = ""
+        for file, text in files:
+            try:
+                hit, wrote = _python_writes(text, names, [os.path.realpath(r) for r in raw], where, argv, dict(env, PWD=where), config,
+                                            _CALL["until"]) if text.strip() else (False, False)
+            except RecursionError:
+                hit, wrote = None, None
+            except TimeoutError:
+                hit, wrote = None, "late"
+            at, hit = ("", hit) if file == files[0][0] else (f" ({file})", hit if hit is not False else bool(wrote))
+            _CALL["proofs"][key] = "" if hit is False else (
+                f"starts a command that {hit}{at}" if isinstance(hit, Unproven) else f"starts a command this guard refuses{at}" if isinstance(hit, str)
+                else f"holds a write or a run that may land in a protected folder{at}" if hit
+                else f"is more than this guard could read in its time{at}" if wrote == "late"
+                else f"holds code its reader cannot follow (a name it builds, a call handed on){at}" if wrote else f"cannot be read as Python{at}")
+            if _CALL["proofs"][key]:
+                break
     return _CALL["proofs"][key]
 
 
@@ -4699,7 +4826,7 @@ def check_self_grant(command: str, cwd: str, config: dict | None = None, session
     else:
         readings = _resolved(command.replace("${HOME}", home).replace("$HOME", home))
     if hold:  # a call of its own: its script texts, their marks and its proofs start over, under its own deadline
-        _CALL.update(codes={}, ran={}, proofs={}, until=time.monotonic() + CALL_SECONDS)
+        _CALL.update(codes={}, ran={}, proofs={}, files={}, until=time.monotonic() + CALL_SECONDS)
     waits = None
     for text in readings:
         reason = _self_grant(command, text, cwd, config) if time.monotonic() <= _CALL["until"] else Unproven(
@@ -4782,18 +4909,23 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None) -> str |
             if not within or word[:1] in ("~", "/") or word == HANDED or os.path.lexists(led):  # inside the folder, a file that is there
                 handed.append((head, word, led))
         script = (fed or text) if _program(words)[0] == "stdin" else own  # read from stdin: its own heredoc, else whatever the line pipes in
-        label, code, program = _unread(words, where, written, text) if readable else ("", "", False)  # a program not known to only read, its script, its text
+        label, code, program, mine = _unread(words, where, written, text) if readable else ("", "", False, "")  # a program not known to only read, its script, its text
+        python = head.startswith("python") and bool(SCRIPT.match(head))
+        ran = os.path.realpath(mine or os.path.join(where, os.path.expanduser(words[0] if "/" in words[0] and not (SCRIPT.match(head) or head in SHELLS)
+                                                                            else _program(words)[2]))) if code and code != text else ""  # the script file it runs
+        files, stand, missed = _python_files(ran, code, "" if _isolated(words) else os.path.realpath(where) if mine else os.path.dirname(ran),
+                                             _program(words)[2] if mine else "") if python and ran else (([(ran, code)] if ran else []), "", "")
         said = [w for at, w in enumerate(words[1:], 1) if head not in PROMPTED and not MESSAGE.fullmatch(words[at - 1]) and not (
             w[:1] == "-" and MESSAGE.fullmatch(w.split("=", 1)[0])) and not any(f(os.path.realpath(os.path.join(where, os.path.expanduser(w)))) for f in (_own, lambda x: _own(x, True), _material))]
-        named = ("input that this guard could not read" if UNREAD_INPUT in head + fed else _spells([own, fed, code, script] if program else said, words, where, env, raw, linked)
+        named = ("input that this guard could not read" if UNREAD_INPUT in head + fed else _spells(
+            [own, fed, "\n".join(t for _, t in files) or code, script] if program else said, words, where, env, raw, linked)
                  or (where if any(paths.inside(os.path.realpath(where), os.path.realpath(str(r))) for r in (paths.state(), paths.board(), paths.sessions())) else "")
                  or ("the files xargs hands it" if HANDED in words and names else "")) if label else ""  # standing where no session works, or what xargs hands it
-        ran = os.path.realpath(os.path.join(where, os.path.expanduser(words[0] if "/" in words[0] and not (SCRIPT.match(head) or head in SHELLS)
-                                                                    else _program(words)[2]))) if code and code != text else ""  # the script file it runs
         if SCRIPT.match(head) and re.search(r"\bsynthesis\b", script + code) and SELF_GRANT_CALLS.search(script):
             why = why or "runs synthesis's approval or send-window code, which only the guard and the principal's prompt use"
-        if SCRIPT.match(head) and ran and SYNTHESIS_IMPORT.search(code) and not waits and not _shipped(ran):  # finding 17: by what it imports
-            waits = Unproven(f"runs `{head}` on {ran}, a script outside the plugin's release that uses synthesis's own code")
+        uses = next((f for f, t in files if SYNTHESIS_IMPORT.search(t)), "") if SCRIPT.match(head) and ran and not waits and not _shipped(ran) else ""
+        if uses:  # finding 17: by what it imports, or a module of its own imports
+            waits = Unproven(f"runs `{head}` on {ran}, a script outside the plugin's release that uses synthesis's own code" + (f" ({uses})" if uses != ran else ""))
         source, argv = _python_source(words, fed) if head.startswith("python") else ("", [])
         # A Python program given inline or on stdin is judged by its own text: what its code writes. A protected
         # path named elsewhere on the line reaches it only through its arguments, its environment or the folder it
@@ -4801,8 +4933,9 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None) -> str |
         # environment, or through arguments it takes unseen, any write it makes is refused. Another script is
         # judged by the words it is given, or, read from stdin, by the whole command.
         try:
-            hit, wrote = _python_writes(source, names, [os.path.realpath(r) for r in raw], where, argv, dict(env, PWD=where), config) if source else (None, None)
-        except RecursionError:  # nested too deeply to follow: judged by its text
+            hit, wrote = _python_writes(source, names, [os.path.realpath(r) for r in raw], where, argv, dict(env, PWD=where), config,
+                                        _CALL["until"]) if source else (None, None)
+        except (RecursionError, TimeoutError):  # nested too deeply to follow, or past the call's time: judged by its text
             hit, wrote = None, None
         inner, hit = (hit, False) if isinstance(hit, Unproven) else (None, hit)  # it starts a command that waits: it waits too
         wrote = bool(re.search(SCRIPTED_WRITE, source or script)) if wrote is None else wrote  # by its syntax, else by its text
@@ -4819,13 +4952,17 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None) -> str |
         if source and hit is None and SYNTHESIS_IMPORT.search(source):  # synthesis's code reached by a name it builds
             why = why or ("runs a program that imports synthesis's own code and that its reader cannot follow (a name it builds, a "
                           "call handed on), so it may reach the approval or send-window code")
-        python = head.startswith("python") and bool(SCRIPT.match(head))
         bare = "" if not python or _isolated(words) else "the line sets a variable that moves Python's module path (run it without that variable" if PYTHON_ENV.search(
             text) else f"a file in {where} could stand in for `{_stand_in(source, where)}`, which it imports (run it from a folder without that file" if source and _stand_in(source, where) else ""
-        proven = (bool(ran) and _shipped(ran)) or (python and not bare and (hit is False if source else bool(ran) and _proven(
-            code, words, where, names, raw, env, config)))  # the plugin's own, or proved with no module of the agent's in its way
+        shipped = bool(ran) and _shipped(ran)  # the plugin's own
+        shows = "" if not (python and ran and not source) or shipped or not named or waits else (  # a script file judged by what its text shows
+            "runs while the line sets a variable that moves Python's module path (without that variable, or with -I, it needs no code)" if bare
+            else f"imports `{stand}`, for which a file beside it could stand in (where no such file is, or with -I, it needs no code)" if stand
+            else missed or _shows(files, words, where, names, raw, env, config))
+        proven = shipped or (not shows if python and ran and not source else python and not bare and bool(source) and hit is False)
         if named and not waits and not proven:
-            waits = Unproven(f"runs `{label}`, which its reader proves only reads, but {bare}, or with -I, and it needs no code). It names "
+            waits = Unproven(f"runs `{label}` on {ran}, which {shows}, and names {named}" if shows else
+                             f"runs `{label}`, which its reader proves only reads, but {bare}, or with -I, and it needs no code). It names "
                              f"{named}" if bare and hit is False else f"runs `{label}`, which this guard cannot prove only reads, and names {named}")
         waits = waits or (Unproven(f"runs `{head}`, which starts a command that {inner}") if inner else None)
         if head in EXTRACTS and not waits and any(re.fullmatch(EXTRACTS[head], w) for w in words[1:]) and (
@@ -5343,7 +5480,7 @@ def check(tool: str, tool_input: dict, config: dict, cwd: str | None = None, ses
     """cwd is the session's working directory (the hook payload's `cwd`); defaults to this process's.
     session is the hook payload, which names the transcript an approval is checked against."""
     _TAILS.clear()  # each call reads the record anew: a rewrite in place can keep a file's size and its time stamp
-    _CALL.update(codes={}, ran={}, proofs={}, until=time.monotonic() + CALL_SECONDS)  # and every script it runs
+    _CALL.update(codes={}, ran={}, proofs={}, files={}, until=time.monotonic() + CALL_SECONDS)  # and every script it runs
     if not cwd:
         try:
             cwd = str(tool_input.get("workdir") or "") or os.getcwd()

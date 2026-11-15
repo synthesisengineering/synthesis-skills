@@ -553,8 +553,10 @@ def test_round_one_reads_still_pass(world, line):
 # --- only the guard's own release is the plugin's, and the runtime is protected (coordinator, 2026-11-14) -------------
 
 def _reader_script(folder: Path, name: str = "x.py") -> Path:
+    """A script that waits unless it is the plugin's own: it copies the file it is handed beside that file. (Until the
+    script text check, a long script that only read waited for its length alone.)"""
     folder.mkdir(parents=True, exist_ok=True)
-    (folder / name).write_text("import sys\nprint(open(sys.argv[1], encoding='utf-8').read()[:10])\nimport os\nos.listdir('.')\n" * 600, encoding="utf-8")
+    (folder / name).write_text("import shutil, sys\nshutil.copy(sys.argv[1], sys.argv[1] + '.bak')\n", encoding="utf-8")
     return folder / name
 
 

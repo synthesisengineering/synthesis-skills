@@ -18,24 +18,33 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   none of their own options that write or run, git with a read subcommand and none of its options that write or run
   (an output file, a work tree, configuration, a pager, an external diff), an awk or sed program read with certainty
   that writes no file and runs no command, a shell whose script is on the line, on its input or in a file `cat` pipes
-  to it (each of its commands is judged), Python its reader proves, and the plugin's own scripts (inside the runtime
+  to it (each of its commands is judged), Python its reader proves or whose script shows no write it cannot place,
+  and the plugin's own scripts (inside the runtime
   release the hook runs from, or byte for byte its copy, which is now a protected folder with `current` and `bin`). Anything
   else, wherever it sits behind a launcher, waits for the principal's code for exactly that command, the folder it runs
   in and the scripts it runs, so a script rewritten after the approval is a new command; the hold names the program that
   runs and says how to read with no code. A folder's parts count wherever they stand in one program, however they are
   joined. Every refusal from before stands; copying a file out of a protected folder with a copier now waits too (a
   redirect of `cat` passes), and so does an archive tool that unpacks where its members say.
-- **Python passes only when its reader proves it, and the agent's own modules cannot stand in** (core). A program
-  passes without isolation only when no file in the folder it starts from (or beside a script file) could stand in for
-  a module it imports or runs, and the line sets none of the variables that move Python's module path; a hold for want
-  of only that says that `-I`, or such a folder or line, needs no code; a git read it spells whole is a read wherever it points. A writer named
-  without being called (handed to `map`, a thread, `atexit`, a lambda or a table), or reached through `sys.modules`,
-  `__call__`, a built name, `vars()` or a module's `__dict__`, is taken to write. A script file outside the installed
-  runtime release that imports synthesis's own modules waits for the principal's code; the release script and
-  onboarding's setup run from a checkout are such files, so each run of either now waits for the code.
+- **Python on the line passes when its reader proves it; a script file is judged by what its text shows** (core). A
+  program given with `-c` or on Python's input passes without isolation only when its reader proves it, no file in the
+  folder it starts from could stand in for a module it imports, and the line sets none of the variables that move
+  Python's module path; a hold for want of only that says that `-I`, or such a folder or line, needs no code. A script
+  file, or a module run with `-m` from the folder that holds it, is read whole (up to 4 MB) with each module of its own
+  it imports, and waits only when the command or that text names a protected folder and the text holds a write or a run
+  the reader recognizes that it cannot place outside them (a module of its own: any such write). A file beside it named
+  like a module found elsewhere stands in and waits; a module run with `-m` that is found anywhere else waits whenever
+  the command names a protected folder, since its first file is not the program it runs. A git read it spells whole
+  is a read wherever it points. A writer named without being called (handed to `map`, a thread, `atexit`, a lambda or a
+  table), or reached through `sys.modules`, `__call__`, a built name, `vars()` or a module's `__dict__`, is taken to
+  write, and so is a file argparse opens to write; a value a program builds from itself no longer stops its reader. A
+  script file outside the installed runtime release that imports synthesis's own modules, or whose own modules do,
+  waits for the principal's code; the release script and onboarding's setup run from a checkout are such files, so each
+  run of either now waits for the code. `df` is a reader.
 - **The guard answers in its time** (core). It reads only regular files a command runs as scripts, bounded in size,
-  opened so that none can stop it; it proves each script once a call, at most eight, and a command it cannot finish
-  judging in its time waits for the principal's code instead of leaving the verdict to the harness.
+  opened so that none can stop it; it reads each script and its own modules once a call, at most eight scripts, stops
+  reading a program at the call's deadline, and a command it cannot finish judging in its time waits for the
+  principal's code instead of leaving the verdict to the harness.
 - **The send window and a lost transcript need the principal's code from any terminal** (core). `synthesis sends open`
   and `synthesis sessions export --lost` each went ahead with no code when they saw no harness in their environment and
   a terminal on their input, and an agent's shell can supply both. Each now spends the principal's granted code for

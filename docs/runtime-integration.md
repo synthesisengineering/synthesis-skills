@@ -384,12 +384,24 @@ harness that gives no transcript cannot carry approved sends or deploys until it
      the same relative path, with the modules beside it that it imports (a skill's script in a
      harness's plugin cache). The installed runtime (`releases`, `current` and `bin` under the
      synthesis home) is a protected folder, so no command plants or changes a file there; a
-     script outside the release that imports synthesis's own code waits. Python is proved only where none of the agent's modules can stand in: run
-     with `-I` (or `-P` with `-E`), or with no file or package in the folder it starts from
-     (beside a script file, or where it runs) named like a module it imports or runs with
-     `-m`, and no `PYTHONPATH`, `PYTHONSTARTUP`, `PYTHONHOME`, `PYTHONUSERBASE` or
-     `PYTHONSAFEPATH` set on the line; a script file of up to 16 KB that the reader proves. A
-     hold for want of only that says that `-I`, or a folder or line without it, needs no code; a git read it spells whole (a list that starts with `git`, a read
+     script outside the release that imports synthesis's own code, or whose own modules do, waits.
+     Python on the line (`-c`, or a program on its input) is proved only where none of the
+     agent's modules can stand in: run with `-I` (or `-P` with `-E`), or with no file or
+     package where it runs named like a module it imports, and no `PYTHONPATH`,
+     `PYTHONSTARTUP`, `PYTHONHOME`, `PYTHONUSERBASE` or `PYTHONSAFEPATH` set on the line. A
+     script file, or a module run with `-m` from the folder that holds it, is judged by what
+     its text shows (after the 30-day replay: proving every expression held about 3,700
+     commands a month): read whole up to 4 MB, with each module of its own it imports (a file
+     or package beside it named like no module found elsewhere, or one its package names
+     relative to itself, and theirs in turn), it waits only when the command or that text
+     names a protected folder and the text holds a write or a run the reader recognizes that
+     it cannot place outside them; a module of its own waits on any such write, since what
+     its functions are handed comes from another file. A file beside it named like a module
+     found elsewhere stands in, and waits; a module run with `-m` found anywhere else waits
+     whenever the command names a protected folder, since its first file is not the program
+     it runs (pip's and pytest's hand everything on) and need not be this Python's. A file
+     argparse opens to write is a write. A hold for want of only isolation says that `-I`, or
+     a folder or line without the module or variable, needs no code; a git read it spells whole (a list that starts with `git`, a read
      subcommand, no option that writes or runs, no shell) is a read wherever it points. Anything
      else waits for the principal's code for exactly that command, the folder it runs in and
      the size, time and digest of every script it runs, so a script rewritten after the
@@ -415,8 +427,10 @@ harness that gives no transcript cannot carry approved sends or deploys until it
      synthesis's own modules waits (the release script and onboarding's setup, run from a
      checkout, are such files); Python that reaches synthesis's code by a name it builds is
      refused. The guard reads only regular files a command runs as scripts, bounded in
-     size and opened without waiting, proves each script once a call (at most eight), and a
-     command it cannot finish judging within 3 seconds waits for the principal's code.
+     size and opened without waiting, reads each script and its own modules once a call (at
+     most eight scripts, 64 modules a script), stops reading a program at the call's
+     deadline, and a command it cannot finish judging within 3 seconds waits for the
+     principal's code.
    - **Standing in a protected folder.** A program can write where it stands without naming
      a file (an archive unpacked, a script file). Inside the state folder, the board or the
      sessions archive, where no session has reason to stand, only a command the guard can
@@ -469,8 +483,10 @@ stay open, and no hook running as that same user can close them:
   A command that builds the path or the code at run time (an encoding, the output of a
   substitution, a glob in the folder's own name, a name assembled from pieces none of which
   spells the folder), a script file, a module or a program run by its path that names no
-  protected folder in a spelling the guard reads (it reads a script's first 256 KB, and an
-  editor's file as text it edits, not a script), a program other than an archive tool that
+  protected folder in a spelling the guard reads (it reads a script's first 4 MB, a longer
+  Python script waits, and it reads an editor's file as text it edits, not a script), a Python
+  script whose own text and own modules show no write the reader recognizes while a module
+  it imports from anywhere else, or compiled code beside it, does the writing, a program other than an archive tool that
   writes where it stands inside a transcript folder without naming a file, a file-writing
   tool of another server that the guard does not know as a file tool, or a program the agent
   writes and runs that names no such folder gets through. The installed plugin and runtime

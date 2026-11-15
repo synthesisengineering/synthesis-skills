@@ -1191,10 +1191,25 @@ ROOT = Path(__file__).resolve().parents[1]
 # exemptions under the same rule), and _self_grant 3 (why only isolation is missing, and a hold that says -I or a clean
 # folder needs no code). And 1 more to both: the refusal of a program that imports synthesis's code and that its reader
 # cannot follow says that, not that it runs the approval code (its words take a second line).
+# The coordinator's ruling on Python script files (2026-11-14, after the 30-day replay held about 3,700 such runs a month
+# for want of a full proof): core 137 more and plugin 137. guards.py 137: _python_files 47 (the script and each module
+# of its own it imports, read whole: a file or package in the folder Python looks in first named like no module found
+# elsewhere, or one a package names relative to itself, and theirs in turn, with the packages that hold a module run
+# with -m; a file there named like a module found elsewhere stands in; past TEXT_LIMIT, OWN_MODULES or the call's time
+# it waits), _shows 30 in place of _proven's 22 (judged by what the text shows: no write or run the reader recognizes,
+# or each placed outside the protected folders, a module of its own by any write it holds; once a call, under the
+# cap), _imports 18 (each import a program's syntax holds), _module_file 16 (the file `python -m` runs when the folder
+# it starts from holds it; one found elsewhere keeps the full rule), _found_elsewhere 9, _python_writes 14 (a member
+# read inside its own reading leaves the program's writes unplaced where the reader recursed without end, a file
+# argparse opens to write is a write, and the call's deadline it stops at), _self_grant 10 (each script read with its
+# own modules, the import check for synthesis's code over all of them, the text check in place of the proof), _unread 2
+# (a module run with -m from the folder that holds it), the block's comment and blank lines 13, and TEXT_LIMIT with
+# OWN_MODULES 1 in place of PROOF_LIMIT 1; df on the readers' list, _code_of reading to TEXT_LIMIT and the call's
+# module cache change lines in place.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 15566
-PLUGIN_BUDGET = 40809
+CORE_BUDGET = 15703
+PLUGIN_BUDGET = 40946
 
 
 def _lines(files):
