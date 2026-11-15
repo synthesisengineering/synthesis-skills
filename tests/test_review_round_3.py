@@ -127,6 +127,24 @@ def test_m2_a_program_naming_the_locked_half_of_install_waits_for_the_code(home)
         assert said and "approve followed by the code" in said, (name, said)
 
 
+def test_m2_no_program_that_only_reads_can_hold_the_install_lock(home):
+    """flock takes a file opened only to read, and the guard lets a program that only reads run with no code; so the
+    lock file is one this user may only write. A reader cannot open it to hold the lock (which would make every install
+    wait out its two minutes and refuse), and a program that opens it to write, or changes its mode, waits or is refused."""
+    lock = paths.home() / "releases" / ".install.lock"
+    assert lock.stat().st_mode & 0o777 == 0o200
+    for flags in (os.O_RDONLY, os.O_RDONLY | os.O_NONBLOCK, getattr(os, "O_EVTONLY", os.O_RDONLY)):
+        with pytest.raises(PermissionError):
+            os.close(os.open(lock, flags))
+    for line in (f"python3 -c \"import os, fcntl, time; fd = os.open('{lock}', os.O_WRONLY); fcntl.flock(fd, 2); time.sleep(600)\"",
+                 f"python3 -c \"import os, fcntl; fd = os.open('{lock}', 1); fcntl.flock(fd, 2)\"",
+                 f"chmod 644 {lock}", f"python3 -c \"import os; os.chmod('{lock}', 0o644)\"", f"exec 9<>{lock}; sleep 600"):
+        assert _check(line, home / "work") is not None, line
+    lock.chmod(0o644)  # left readable by an earlier build: the next install makes it write-only before it locks
+    install.install(ROOT)
+    assert lock.stat().st_mode & 0o777 == 0o200
+
+
 def test_m3_apples_python_shim_is_never_pinned_and_with_nothing_to_pin_install_stops(home, monkeypatch):
     if sys.platform == "darwin":
         assert install.pinned_python(["/usr/bin/python3"]) == ""  # the shim reads its target from a file this user owns
