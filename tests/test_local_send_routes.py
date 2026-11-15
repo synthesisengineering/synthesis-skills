@@ -26,6 +26,7 @@ whose program cannot be read waits; a repository whose configuration names no pr
 from __future__ import annotations
 
 import json
+import os
 import shlex
 from pathlib import Path
 
@@ -436,3 +437,162 @@ def test_the_code_releases_that_git_command_once(tmp_path, principal):
     principal(reason)
     assert shell(command, cwd=str(tmp_path)) == ""
     assert held(shell(command, cwd=str(tmp_path)))
+
+
+# --- review round 1 (2026-11-15) ------------------------------------------------------------------------------------
+# S1 and S3: git reads the user's own config, the system file and a submodule's; S2: a program posting a request body it
+# reads; S4: the local host in any case; git run by the plugin's scanners in folders they are handed; and a write that
+# plants a hook the next commit runs.
+
+WRITER = "echo ran > '{state}/marker'"
+
+
+def _write_program(tmp_path) -> str:
+    return str(writer(tmp_path))
+
+
+@pytest.mark.parametrize("scope", ["GIT_CONFIG_GLOBAL file", "~/.gitconfig", "XDG git config", "system file"])
+def test_the_users_and_the_systems_git_config_are_read_too(tmp_path, monkeypatch, scope):
+    program, r = _write_program(tmp_path), repo(tmp_path)
+    text = f"[core]\n\tfsmonitor = {program}\n"
+    if scope == "GIT_CONFIG_GLOBAL file":
+        Path(os.environ["GIT_CONFIG_GLOBAL"]).write_text(text, encoding="utf-8")
+    elif scope == "~/.gitconfig":
+        monkeypatch.delenv("GIT_CONFIG_GLOBAL")
+        monkeypatch.setenv("HOME", str(tmp_path / "home"))
+        (tmp_path / "home").mkdir()
+        (tmp_path / "home" / ".gitconfig").write_text(text, encoding="utf-8")
+    elif scope == "XDG git config":
+        monkeypatch.delenv("GIT_CONFIG_GLOBAL")
+        monkeypatch.setenv("HOME", str(tmp_path / "home"))
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg-config"))
+        (tmp_path / "xdg-config" / "git").mkdir(parents=True)
+        (tmp_path / "xdg-config" / "git" / "config").write_text(text, encoding="utf-8")
+    else:
+        monkeypatch.delenv("GIT_CONFIG_NOSYSTEM")
+        monkeypatch.setenv("GIT_CONFIG_SYSTEM", str(tmp_path / "system-gitconfig"))
+        (tmp_path / "system-gitconfig").write_text(text, encoding="utf-8")
+    assert shell(f"git -C {r} status --porcelain", cwd=str(tmp_path)), scope
+
+
+def test_a_submodules_config_is_read_when_the_command_reaches_it(tmp_path):
+    import subprocess
+    sub, parent = repo(tmp_path, "sub"), repo(tmp_path, "parent")
+    (sub / "f.txt").write_text("x\n", encoding="utf-8")
+    subprocess.run(["git", "-C", str(sub), "add", "f.txt"], check=True)
+    subprocess.run(["git", "-C", str(sub), "commit", "-qm", "s"], check=True)
+    subprocess.run(["git", "-C", str(parent), "-c", "protocol.file.allow=always", "submodule", "add", "-q", str(sub), "sub"], check=True)
+    subprocess.run(["git", "-C", str(parent / "sub"), "config", "core.fsmonitor", _write_program(tmp_path)], check=True)
+    assert shell(f"git -C {parent} status --porcelain", cwd=str(tmp_path))
+    assert shell(f"git -C {parent} log --oneline -1", cwd=str(tmp_path)) == ""  # a log reaches no submodule
+
+
+def test_hooks_are_judged_only_for_commands_that_run_them(tmp_path, monkeypatch):
+    from synthesis import paths
+    own = paths.home() / "git-hooks"  # synthesis's own installed hooks: the commit check's entry points
+    own.mkdir(parents=True)
+    (own / "pre-commit").write_text(f"#!/bin/sh\necho checked > '{paths.state()}/commit-check'\n", encoding="utf-8")
+    (own / "pre-commit").chmod(0o755)
+    Path(os.environ["GIT_CONFIG_GLOBAL"]).write_text(f"[user]\n\temail = t@example.com\n\tname = t\n[core]\n\thooksPath = {own}\n"
+                                                    "[credential]\n\thelper = osxkeychain\n", encoding="utf-8")
+    r = repo(tmp_path)
+    for command in ("status --porcelain", "log --oneline -1", "diff", "commit -qm x", "fetch origin", "branch --show-current"):
+        assert shell(f"git -C {r} {command}", cwd=str(tmp_path)) == "", command  # the principal's own setup needs nothing
+    other = tmp_path / "other-hooks"
+    other.mkdir()
+    (other / "pre-commit").write_text(f"#!/bin/sh\n{WRITER.format(state=paths.state())}\n", encoding="utf-8")
+    (other / "pre-commit").chmod(0o755)
+    hooked = repo(tmp_path, "hooked", core__hooksPath=str(other))
+    assert shell(f"git -C {hooked} status --porcelain", cwd=str(tmp_path)) == ""  # status runs no pre-commit
+    assert shell(f"git -C {hooked} commit -qm x", cwd=str(tmp_path))
+    helper = repo(tmp_path, "helper", credential__helper="!" + WRITER.format(state=paths.state()))
+    assert shell(f"git -C {helper} status", cwd=str(tmp_path)) == "" and shell(f"git -C {helper} fetch origin", cwd=str(tmp_path))
+
+
+SEND_BODY = rpc("send_gmail_message", MAIL)
+READ_BODY = rpc("search_gmail_messages", {"user_google_email": "principal@example.com", "query": "from:me"})
+POSTER = "import urllib.request as u, sys; u.urlopen(u.Request('http://localhost:8765/mcp', data=open(sys.argv[1], 'rb').read()))"
+
+
+def test_a_program_posting_a_body_it_reads_is_judged_by_that_body(tmp_path):
+    (tmp_path / "send.json").write_text(SEND_BODY, encoding="utf-8")
+    (tmp_path / "read.json").write_text(READ_BODY, encoding="utf-8")
+    assert held(shell(f"python3 -c {shlex.quote(POSTER)} send.json", cwd=str(tmp_path)))
+    assert shell(f"python3 -c {shlex.quote(POSTER)} read.json", cwd=str(tmp_path)) == ""
+    stdin = "import sys, urllib.request as u; u.urlopen('http://127.0.0.1:8765/mcp', data=sys.stdin.buffer.read())"
+    assert held(shell(f"cat send.json | python3 -c {shlex.quote(stdin)}", cwd=str(tmp_path)))
+    named = "import requests\nrequests.post('http://localhost:8765/mcp', data=open('send.json').read())\n"
+    assert held(shell("python3 - <<'EOF'\n" + named + "EOF", cwd=str(tmp_path)))
+    built = "import os, urllib.request as u; u.urlopen('http://localhost:8765/mcp', data=os.environ['BODY'].encode())"
+    assert held(shell(f"python3 -c {shlex.quote(built)}", cwd=str(tmp_path)))  # parts the guard cannot read
+    curl = "import subprocess, sys; subprocess.run(['curl', '-s', 'http://localhost:8765/mcp', '-d', open(sys.argv[1]).read()])"
+    assert held(shell(f"python3 -c {shlex.quote(curl)} send.json", cwd=str(tmp_path)))  # a curl the program starts
+    liveness = "import urllib.request as u; print(u.urlopen('http://localhost:8765/mcp', timeout=5).status)"
+    assert shell(f"python3 -c {shlex.quote(liveness)}", cwd=str(tmp_path)) == ""
+
+
+@pytest.mark.parametrize("host", ["LOCALHOST", "LocalHost", "localhost.", "127.0.0.1.", "LOCALHOST."])
+def test_the_local_host_is_read_in_any_case_and_with_its_trailing_dot(host):
+    reason = shell(curl(SEND_BODY, f"http://{host}:8765/mcp"))
+    assert held(reason) and "send_gmail_message" in reason, host  # judged as the tool, not as a post elsewhere
+    assert shell(curl(READ_BODY, f"http://{host}:8765/mcp")) == "", host
+
+
+CONTEXT_DOCTOR = ROOT / "skills" / "synthesis-context-lifecycle" / "scripts" / "context_doctor.py"
+REPO_STATE = ROOT / "skills" / "synthesis-daily-rituals" / "scripts" / "repo_state.py"
+
+
+def test_the_plugins_scanners_wait_when_a_repository_they_reach_names_a_program(tmp_path):
+    corpus = repo(tmp_path, "corpus")
+    (corpus / "projects" / "p").mkdir(parents=True)
+    (corpus / "projects" / "p" / "CONTEXT.md").write_text("# P\n", encoding="utf-8")
+    doctor = f"python3 {CONTEXT_DOCTOR} --project {corpus / 'projects' / 'p'}"
+    assert guards.check_outgoing(doctor, CONFIG, str(tmp_path), SESSION) is None and shell(doctor, cwd=str(tmp_path)) == ""
+    import subprocess
+    subprocess.run(["git", "-C", str(corpus), "config", "core.fsmonitor", "/usr/bin/true"], check=True)  # an ordinary-looking line
+    assert held(shell(doctor, cwd=str(tmp_path)))
+    assert held(shell(f"python3 {CONTEXT_DOCTOR} --root {corpus}", cwd=str(tmp_path)))
+    space = tmp_path / "space"
+    (space / ".agents").mkdir(parents=True)
+    plain = repo(tmp_path, "plain")
+    (space / ".agents" / "repos.yaml").write_text(f"repos:\n  - name: plain\n    path: {plain}\n    ritual_sync: true\n", encoding="utf-8")
+    scan = f"python3 {REPO_STATE} --workspace-root {space} --fetch --json"
+    assert shell(scan, cwd=str(tmp_path)) == ""
+    subprocess.run(["git", "-C", str(plain), "config", "filter.x.clean", "cat"], check=True)
+    assert held(shell(scan, cwd=str(tmp_path)))
+    assert held(shell(f"python3 {REPO_STATE} --discover {tmp_path} --json", cwd=str(tmp_path)))
+
+
+@pytest.mark.parametrize("where", [".git/hooks/pre-commit", ".git/hooks/post-checkout", ".githooks/pre-commit", "hooks-folder/pre-commit"])
+def test_a_write_that_plants_a_hook_waits_by_the_file_tools_and_the_shell(tmp_path, where):
+    r = repo(tmp_path, core__hooksPath=str(tmp_path / "proj" / "hooks-folder")) if where.startswith("hooks-folder") else repo(tmp_path)
+    (r / os.path.dirname(where)).mkdir(parents=True, exist_ok=True)
+    target = r / where
+    body = "#!/bin/sh\necho hello\n"
+    for tool, tool_input in (("Write", {"file_path": str(target), "content": body}),
+                             ("Edit", {"file_path": str(target), "old_string": "a", "new_string": "b"}),
+                             ("apply_patch", {"input": f"*** Begin Patch\n*** Add File: {target}\n+echo hi\n*** End Patch\n"})):
+        assert held(guards.check(tool, tool_input, CONFIG, cwd=str(r), session=SESSION) or ""), (tool, where)
+    for command in (f"cat > {where} <<'EOF'\n{body}EOF", f"printf 'echo hi\\n' > {where}", f"cp /dev/null {where}", f"tee {where} < /dev/null"):
+        assert held(shell(command, cwd=str(r))), (command, where)
+
+
+def test_pointing_git_at_a_hooks_folder_waits_and_ordinary_writes_pass(tmp_path):
+    from synthesis import paths
+    r = repo(tmp_path)
+    assert held(shell(f"git -C {r} config core.hooksPath {tmp_path / 'mine'}", cwd=str(tmp_path)))
+    assert held(shell(f"git -C {r} config --local core.hookspath .hooks", cwd=str(tmp_path)))
+    assert shell(f"git -C {r} config core.hooksPath {paths.home() / 'git-hooks'}", cwd=str(tmp_path)) == ""  # synthesis's own
+    assert shell(f"git -C {r} config user.email a@example.com", cwd=str(tmp_path)) == ""
+    assert guards.check("Write", {"file_path": str(r / "src" / "hooks.py"), "content": "x"}, CONFIG, cwd=str(r), session=SESSION) is None
+    assert shell("echo x > notes/hooks.md", cwd=str(r)) == ""
+
+
+def test_the_code_releases_that_hook_write_once(tmp_path, principal):
+    r = repo(tmp_path)
+    command = "printf 'echo hi\\n' > .git/hooks/pre-commit"
+    reason = shell(command, cwd=str(r))
+    assert held(reason)
+    principal(reason)
+    assert shell(command, cwd=str(r)) == ""
+    assert held(shell(command, cwd=str(r)))
