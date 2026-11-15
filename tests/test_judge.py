@@ -802,6 +802,25 @@ def test_the_judge_answers_inside_the_stop_hooks_room_or_the_list_decides(fake, 
     assert time.monotonic() - began < 1.2
 
 
+def test_the_stop_hook_gives_the_plans_judge_eight_seconds_inside_ten(isolated_home):
+    """The principal approved the Stop hook's time for the plan's judge (2026-11-15): a flagged reply's two questions
+    took up to 7.2 s at the 95th on his plan. A judge may be given up to 8 s, the reply check gives it 8 s from its own
+    start, and the Stop hook is registered with 10 in every harness, the interpreter's start and the rest of the check
+    inside the difference. Every other hook keeps its time, and a reply the list does not flag never waits on a judge
+    (the two tests around this one)."""
+    judge = _judge()
+    assert judge.LONGEST == 8.0 and reply_check.ROOM == 8.0
+    assert judge.settings({"judge": {"local": {"models": ["m"]}, "deadline_seconds": 8}})["deadline_seconds"] == 8.0
+    with pytest.raises(judge.ConfigError):
+        judge.settings({"judge": {"local": {"models": ["m"]}, "deadline_seconds": 8.5}})
+    hooks = json.loads((ROOT / "hooks" / "hooks.json").read_text(encoding="utf-8"))["hooks"]
+    seconds = {event: [h["timeout"] for group in groups for h in group["hooks"]] for event, groups in hooks.items()}
+    assert seconds == {"SessionStart": [10], "UserPromptSubmit": [5], "PreToolUse": [5], "Stop": [10]}  # Claude Code's and Codex's
+    muse = json.loads((ROOT / ".muse-plugin" / "plugin.json").read_text(encoding="utf-8"))["capabilities"]["hooks"]
+    assert {h["event"]: h["timeoutMs"] for h in muse} == {"SessionStart": 10000, "UserPromptSubmit": 5000, "PreToolUse": 5000, "Stop": 10000}
+    assert judge.LONGEST <= reply_check.ROOM <= seconds["Stop"][0] - 2
+
+
 def test_the_judge_is_not_loaded_on_a_turn_end_it_does_not_read(isolated_home):
     program = ("import json, sys; from synthesis import reply_check; "
                "reply_check.check({'last_assistant_message': 'Fixed the parser; all tests pass.'}, "
