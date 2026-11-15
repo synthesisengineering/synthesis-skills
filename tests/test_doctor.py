@@ -79,7 +79,8 @@ def test_runtime_files_changed_after_install_fail(runtime):
 
 def test_drifted_hook_script_fails(runtime):
     home, _ = runtime
-    (home / "bin" / "synthesis-hook").write_text(install.HOOK_SCRIPT.replace("-S", ""))
+    hook = home / "bin" / "synthesis-hook"
+    hook.write_text(hook.read_text().replace(" -I -S ", " -S "))  # isolation dropped from the pinned launcher
     assert doctor.check_hook_script(home).status == "fail"
 
 

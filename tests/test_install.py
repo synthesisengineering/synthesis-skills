@@ -344,7 +344,11 @@ def _compiled(runtime) -> set:
     under the prefix an interpreter keeps its compiled code in (Apple's Python has one, keyed by the path a module
     is imported from, which for a hook is the path through `current`)."""
     from importlib.util import cache_from_source
-    return {path.stem for path in (runtime / "synthesis").glob("*.py") if Path(cache_from_source(str(path))).is_file()}
+    prefix, sys.pycache_prefix = sys.pycache_prefix, None  # the launchers run it isolated, where no prefix applies
+    try:
+        return {path.stem for path in (runtime / "synthesis").glob("*.py") if Path(cache_from_source(str(path))).is_file()}
+    finally:
+        sys.pycache_prefix = prefix
 
 
 def test_the_runtime_carries_compiled_code_whatever_the_callers_environment_says(tmp_path, isolated_home, monkeypatch):
@@ -369,9 +373,8 @@ def test_an_install_over_a_runtime_without_compiled_code_adds_it(tmp_path, isola
     plugin = _plugin_copy(tmp_path)
     install.install(plugin)
     runtime = isolated_home / "current"
-    from importlib.util import cache_from_source
-    for source in (runtime / "synthesis").glob("*.py"):
-        Path(cache_from_source(str(source))).unlink()
+    for compiled in (runtime / "synthesis" / "__pycache__").glob("*.pyc"):
+        compiled.unlink()
     assert _compiled(runtime) == set()
     stamp = (runtime / "SOURCE").read_text(encoding="utf-8")
     install.install(plugin)
@@ -402,7 +405,6 @@ def test_compiled_code_is_held_to_its_source_and_not_to_its_date(tmp_path, isola
     interpreter that keeps compiled code by path, every release is read through the one path `current`, so a file of
     the next release with the same size and date ran the release before it. A compiled file carries its source's
     hash instead, and is checked against it each time it is loaded."""
-    from importlib.util import cache_from_source
     install.install(_plugin_copy(tmp_path))
     source = isolated_home / "current" / "synthesis" / "__init__.py"
     was, text = source.stat(), source.read_text(encoding="utf-8")
@@ -415,7 +417,9 @@ def test_compiled_code_is_held_to_its_source_and_not_to_its_date(tmp_path, isola
                            "print(synthesis.__version__)", str(isolated_home / "current")], capture_output=True, text=True,
                           env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"})
     assert said.stdout.strip() == other, said.stderr
-    assert Path(cache_from_source(str(source.with_name("guards.py")))).read_bytes()[4] & 3 == 3  # hashed, and checked
+    tag = sys.implementation.cache_tag if install.pinned(isolated_home) == os.path.realpath(sys.executable) else "*"
+    compiled = next((source.parent / "__pycache__").glob(f"guards.{tag}.pyc"))  # beside it: the launchers run isolated
+    assert compiled.read_bytes()[4] & 3 == 3  # hashed, and checked
 
 
 def test_an_interpreter_with_nowhere_to_keep_compiled_code_still_gets_a_whole_install(tmp_path, isolated_home, monkeypatch):
