@@ -191,9 +191,12 @@ def test_q3_a_branch_whose_name_starts_with_v_is_never_taken_for_a_tag(checkout)
     for line in ("git push origin --delete vendor-update", "git push origin :vendor-update", "git push origin vendor-update",
                  "git push origin vendor-update:vendor-update", "git push origin -d vendor-update"):
         assert _check(line, work, GATED) is None, line
-    for line in ("git push origin --delete v5.0.0", "git push origin :refs/tags/v5.0.0", "git push origin --delete v7.1.0",
-                 "git push origin refs/tags/v5.0.0", "git push origin tag v5.0.0", "git push origin v5.0.0"):
-        assert _check(line, work, GATED) is not None, line
+    run("tag", "-a", "v9.9.9", "-m", "stray")  # here, and missing from the remote
+    for line in ("git push origin --delete v5.0.0", "git push origin :refs/tags/v5.0.0", "git push origin refs/tags/v9.9.9",
+                 "git push origin tag v9.9.9", "git push origin v9.9.9", "git push origin HEAD:v5.0.0", "git push origin +HEAD:refs/tags/v5.0.0"):
+        assert _check(line, work, GATED) is not None, line  # makes, moves or deletes a version tag there
+    for line in ("git push origin refs/tags/v5.0.0", "git push origin tag v5.0.0", "git push origin v5.0.0", "git push origin --delete v7.1.0"):
+        assert _check(line, work, GATED) is None, line  # the remote holds v5.0.0 as it is here, and no v7.1.0 to delete
 
 
 def test_q3_tags_alone_wait_only_when_one_would_be_made(checkout):
