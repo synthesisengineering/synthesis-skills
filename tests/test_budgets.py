@@ -1206,10 +1206,19 @@ ROOT = Path(__file__).resolve().parents[1]
 # (a module run with -m from the folder that holds it), the block's comment and blank lines 13, and TEXT_LIMIT with
 # OWN_MODULES 1 in place of PROOF_LIMIT 1; df on the readers' list, _code_of reading to TEXT_LIMIT and the call's
 # module cache change lines in place.
+# The coordinator's ruling on programs that use synthesis's own code (2026-11-14: waiting on every import stopped every
+# probe, review script and skill script outside the runtime that reads through it): core 119 more and plugin 119.
+# guards.py 119: _synthesis_reach 78 (what a program does with synthesis's code: names one of its writers under any
+# name it is imported by, reaches it in a way the reader cannot follow, or reaches a protected folder through its own
+# paths, each such call spelled out as the folder it returns), _synthesis_own 14 (whether a module makes a name itself
+# or only imports it), SYNTHESIS_WRITES 13 (synthesis's writers, which a test reads from the source), _self_grant 5 (the
+# check over a script and its own modules and over Python on the line, and where its paths lead counted as named),
+# SYNTHESIS_PLACES 2, _shows 2 (a program read with its paths spelled out, and a write where they lead unspelled taken
+# to land there), SYNTHESIS_DEFS 1 and 4 blank lines.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 15704
-PLUGIN_BUDGET = 40947
+CORE_BUDGET = 15823
+PLUGIN_BUDGET = 41066
 
 
 def _lines(files):

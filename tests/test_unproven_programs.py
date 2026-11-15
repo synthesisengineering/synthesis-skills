@@ -771,6 +771,12 @@ def test_a_script_that_only_reads_through_synthesis_passes(world):
     main = _script(world["work"] / "reads-synthesis", "main.py", "import sys\nimport helper\nprint(helper.parse(open(sys.argv[1]).read()))\n")
     assert _verdict(world, f"python3 {main} {world['rec']}") is None
     assert _verdict(world, f"python3 -I - <<'EOF'\n{READS_SYNTHESIS}EOF") is None
+    handed = _script(world["work"] / "reads-synthesis", "each.py", "import sys\nfrom synthesis import paths\nprint(list(map(paths.read_json, sys.argv[1:])))\n")
+    assert _verdict(world, f"python3 {handed} {world['rec']}") is None  # a function the source shows never writes reads, whoever calls it
+    report = _script(world["work"] / "reads-synthesis", "report.py", "from synthesis import paths\n"
+                     "found = sorted(p.name for p in (paths.state() / 'approvals').glob('*.json'))\n"
+                     "open('/tmp/a-report-of-its-own.txt', 'w').write(str(found))\n")
+    assert _verdict(world, f"python3 {report}") is None  # its paths spelled out, the write is placed outside them
 
 
 @pytest.mark.parametrize("body", [
@@ -781,7 +787,9 @@ def test_a_script_that_only_reads_through_synthesis_passes(world):
     "from synthesis import sends\nprint(vars(sends).keys())\n",                                         # vars()
     "from synthesis import paths\nprint(paths.__dict__['home']())\n",                                   # __dict__
     "from synthesis import paths\ndef go(m):\n    return m.home()\nprint(go(paths))\n",                # a module handed on
-    "import sys\nfrom synthesis import paths\nprint(list(map(paths.read_json, sys.argv[1:])))\n",      # a member handed on
+    "from synthesis import paths\nwhere = paths.state\n(where() / 'approvals' / 'x.json').write_text('{}')\n",  # where its paths lead
+    "from synthesis import paths\nopen(str(paths.board()) + '/sessions/x.json', 'w').write('{}')\n",
+    "from synthesis.paths import os as o\no.remove('/tmp/x')\n",                                          # a name its module imports
     "import importlib\nimport synthesis\nm = importlib.import_module('synthesis.' + 'sends')\n",      # a name it builds
     "from synthesis.approvals import *\n",                                                              # every name at once
 ])
@@ -798,7 +806,8 @@ def test_an_inline_program_naming_a_synthesis_writer_waits_and_one_reaching_it_u
 
 def _writers_in(root: Path) -> set:
     """synthesis's own functions that write a file, directly (an open to write, os's and shutil's writing calls, a
-    path's own) or through another of its own; a class, when making one does."""
+    path's own) or through another of its own; a class, when one of its methods writes directly or making one writes
+    through another (so the board's readers, whose sessions only prune what has run out, read)."""
     import ast
     os_w = {"replace", "rename", "renames", "remove", "unlink", "makedirs", "mkdir", "rmdir", "removedirs", "symlink", "link",
             "chmod", "chown", "utime", "truncate", "write"}
@@ -819,17 +828,19 @@ def _writers_in(root: Path) -> set:
         alias = {a.asname or a.name: a.name for n in ast.walk(tree) if isinstance(n, ast.ImportFrom) and n.module == "synthesis" for a in n.names}
         for top in tree.body:
             own = [top] if isinstance(top, (ast.FunctionDef, ast.AsyncFunctionDef)) else [
-                f for f in getattr(top, "body", []) if isinstance(f, ast.FunctionDef) and f.name in ("__init__", "__post_init__", "__new__")
-            ] if isinstance(top, ast.ClassDef) else None
+                f for f in top.body if isinstance(f, (ast.FunctionDef, ast.AsyncFunctionDef))] if isinstance(top, ast.ClassDef) else None
             if own is None:
                 continue
             key, writes, called = f"{file.stem}.{top.name}", False, set()
-            for c in (n for f in own for n in ast.walk(f) if isinstance(n, ast.Call)):
-                f = c.func
-                owner = f.value.id if isinstance(f, ast.Attribute) and isinstance(f.value, ast.Name) else ""
-                writes = writes or opens_to_write(c) or (isinstance(f, ast.Attribute) and (
-                    (owner == "os" and f.attr in os_w) or (owner == "shutil" and f.attr in sh_w) or f.attr in path_w))
-                called |= {f"{file.stem}.{f.id}"} if isinstance(f, ast.Name) else {f"{alias[owner]}.{f.attr}"} if owner in alias else set()
+            for g in own:
+                for c in (n for n in ast.walk(g) if isinstance(n, ast.Call)):
+                    f = c.func
+                    owner = f.value.id if isinstance(f, ast.Attribute) and isinstance(f.value, ast.Name) else ""
+                    writes = writes or opens_to_write(c) or (isinstance(f, ast.Attribute) and (
+                        (owner == "os" and f.attr in os_w) or (owner == "shutil" and f.attr in sh_w) or f.attr in path_w))
+                    if isinstance(top, ast.ClassDef) and g.name not in ("__init__", "__post_init__", "__new__"):
+                        continue  # another method writes through another function only when it is called, which is not followed
+                    called |= {f"{file.stem}.{f.id}"} if isinstance(f, ast.Name) else {f"{alias[owner]}.{f.attr}"} if owner in alias else set()
             found[key], calls[key] = writes, called
     writers = {k for k, v in found.items() if v}
     while any(calls[k] & writers for k in found if k not in writers):

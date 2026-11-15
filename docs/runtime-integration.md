@@ -383,8 +383,17 @@ harness that gives no transcript cannot carry approved sends or deploys until it
      from (`releases/<hash>/` under the synthesis home), or byte for byte that release's copy at
      the same relative path, with the modules beside it that it imports (a skill's script in a
      harness's plugin cache). The installed runtime (`releases`, `current` and `bin` under the
-     synthesis home) is a protected folder, so no command plants or changes a file there; a
-     script outside the release that imports synthesis's own code, or whose own modules do, waits.
+     synthesis home) is a protected folder, so no command plants or changes a file there. A
+     script, a module or Python on the line that uses synthesis's own code from outside the
+     release waits only when it names one of synthesis's functions that write (its state,
+     approvals, send windows and batches, board or archive: the list a test keeps to what the
+     source shows, under any name it is imported by, called or not), reaches that code in a
+     way its reader cannot follow (`getattr`, `vars()` or `__dict__` on it, a module handed
+     on, a name its module only imports, a name or code it builds, `import *`), or writes
+     where synthesis's own paths lead (`paths.state()` and the like, spelled out as the
+     folders they return where they can be); using it by name to read passes (`guards.check`,
+     `paths.home()`, `yamlish`, the board's readers), as does a function the source shows
+     never writes, handed on.
      Python on the line (`-c`, or a program on its input) is proved only where none of the
      agent's modules can stand in: run with `-I` (or `-P` with `-E`), or with no file or
      package where it runs named like a module it imports, and no `PYTHONPATH`,
@@ -423,10 +432,10 @@ harness that gives no transcript cannot carry approved sends or deploys until it
      words given to `codex`, `claude`, `muse` and `gh` are left alone. An archive tool that
      unpacks where it stands in a folder that holds or lies in a protected one, or where its
      members say (`-P`, `--absolute-names`, `--insecure`, `pax -r`), waits too; a copy into
-     such a folder stays refused. A script file outside the runtime release that imports
-     synthesis's own modules waits (the release script and onboarding's setup, run from a
-     checkout, are such files); Python that reaches synthesis's code by a name it builds is
-     refused. The guard reads only regular files a command runs as scripts, bounded in
+     such a folder stays refused. A script file outside the runtime release that names one of
+     synthesis's writers waits (the release script and onboarding's setup, run from a
+     checkout, are such files); Python on the line that reaches synthesis's code in a way its
+     reader cannot follow is refused. The guard reads only regular files a command runs as scripts, bounded in
      size and opened without waiting, reads each script and its own modules once a call (at
      most eight scripts, 64 modules a script), stops reading a program at the call's
      deadline, and a command it cannot finish judging within 3 seconds waits for the

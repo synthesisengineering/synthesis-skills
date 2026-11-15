@@ -38,9 +38,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   is a read wherever it points. A writer named without being called (handed to `map`, a thread, `atexit`, a lambda or a
   table), or reached through `sys.modules`, `__call__`, a built name, `vars()` or a module's `__dict__`, is taken to
   write, and so is a file argparse opens to write; a value a program builds from itself no longer stops its reader. A
-  script file outside the installed runtime release that imports synthesis's own modules, or whose own modules do,
-  waits for the principal's code; the release script and onboarding's setup run from a checkout are such files, so each
-  run of either now waits for the code. `df` is a reader.
+  script, module or inline program that uses synthesis's own code from outside the installed release waits only when it
+  names one of synthesis's functions that write its state, approvals, windows and batches, board or archive (a test
+  keeps the list to what the source shows), reaches that code in a way its reader cannot follow, or writes where
+  synthesis's own paths lead; reading it by name passes, and an inline program that reaches it unfollowably is still
+  refused. The release script and onboarding's setup, run from a checkout, name such writers, so each run of either
+  waits for the code. `df` is a reader.
 - **The guard answers in its time** (core). It reads only regular files a command runs as scripts, bounded in size,
   opened so that none can stop it; it reads each script and its own modules once a call, at most eight scripts, stops
   reading a program at the call's deadline, and a command it cannot finish judging in its time waits for the
