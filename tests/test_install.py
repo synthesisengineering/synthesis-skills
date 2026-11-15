@@ -197,12 +197,15 @@ def test_install_rerun_changes_nothing(tmp_path, isolated_home):
     assert {str(p): p.stat().st_mtime_ns for p in isolated_home.rglob("*")} == stamp
 
 
-def test_command_line_install_with_git_hooks_then_uninstall(tmp_path, isolated_home):
+def test_command_line_install_with_git_hooks_then_uninstall(tmp_path, isolated_home, principal):
     plugin = _plugin_copy(tmp_path)
     run = lambda *a: subprocess.run([sys.executable, "-S", str(plugin / "synthesis" / "install.py"), *a],
                                     capture_output=True, text=True, env={**os.environ, "SYNTHESIS_HOME": str(isolated_home)})
-    out = run(str(plugin), "--git-hooks")
+    out = run(str(plugin), "--git-hooks")  # a first install: no code
     assert out.returncode == 0 and "core.hooksPath ->" in out.stdout
+    out = run("uninstall")  # removing an installed runtime waits for the principal's code (review round 1 of 22.18)
+    assert out.returncode == 2 and "approve followed by the code" in out.stderr and _hooks_path() != []
+    principal(out.stderr)
     out = run("uninstall")
     assert out.returncode == 0 and "restored core.hooksPath to unset" in out.stdout and _hooks_path() == []
 

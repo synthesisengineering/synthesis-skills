@@ -169,20 +169,20 @@ def test_a_program_that_calls_the_installer_never_passes_with_no_code(world, ite
     assert _verdict(world, line) is not None, item
 
 
-def test_the_code_binds_the_exact_command_where_it_runs_and_the_folder_as_it_is(world, tmp_path):
+def test_the_code_binds_the_install_and_the_hook_only_checks_it(world, tmp_path):
+    """Review round 1 of 22.18: the hook asks for the code and checks it; the CLI spends it, so the code binds what the
+    install takes (every byte of it, the home, git's hooks), wherever the command is run from."""
     line = _lines(world, ["synthesis install {f}"])[0]
     reason = _verdict(world, line)
     assert "synthesis runtime" in reason and str(world["folder"]) in reason
     world["approve"](reason)
-    assert _verdict(world, line) is None  # the identical command, once
-    assert HELD in _verdict(world, line)  # and only once
-    world["approve"](_verdict(world, line))
+    assert _verdict(world, line) is None and _verdict(world, line) is None  # checked, not spent
     elsewhere = tmp_path / "elsewhere"
     elsewhere.mkdir()
-    assert HELD in _verdict(world, line, where=elsewhere)  # another folder to run in asks again
+    assert _verdict(world, line, where=elsewhere) is None  # the same install from another folder
+    assert HELD in _verdict(world, line + " --git-hooks")  # git's hooks too: another install
     (world["folder"] / "synthesis" / "guards.py").write_text(STUB + "# changed after the approval\n", encoding="utf-8")
     assert HELD in _verdict(world, line)  # the folder changed after the code: it asks again
-    assert HELD in _verdict(world, line + " --git-hooks")
 
 
 JUDGE = r"""
@@ -319,4 +319,6 @@ def test_the_bootstrap_entry_passes_first_and_an_explicit_install_still_installs
                           text=True, env={**os.environ, "SYNTHESIS_HOME": str(world["v5"])}, timeout=300)
     assert _guards_now(world) != STUB and done.returncode == 0  # the runtime is there: install.py, the bootstrap's entry, keeps it
     from synthesis import cli
-    assert cli.main(["install", str(plugin)]) == 0 and _guards_now(world) == STUB  # an explicit install, once the code let it run
+    assert cli.main(["install", str(plugin)]) == 2 and _guards_now(world) != STUB  # an explicit install waits for the code
+    world["approve"](f"the code {approvals.pending()[0]}")
+    assert cli.main(["install", str(plugin)]) == 0 and _guards_now(world) == STUB  # and runs once the code let it
