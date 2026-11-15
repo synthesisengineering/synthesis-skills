@@ -2849,9 +2849,10 @@ def test_no_plan_judge_configured_adds_no_line():
 
 
 @pytest.mark.parametrize("signed, why, seconds, status, words", [
-    ("plan", "", 2.1, "ok", "answered an invented sentence in 2.1 s on the plan"),
-    ("plan", "", 4.2, "warn", "past the judge's deadline of 3.0 s"),
-    ("unknown", "", 2.0, "ok", "a flagged reply takes longer"),
+    ("plan", "", 1.4, "ok", "answered an invented sentence in 1.4 s on the plan"),
+    ("plan", "", 2.1, "warn", "a flagged reply takes about twice as long, past the judge's deadline of 3.0 s"),
+    ("plan", "", 4.2, "warn", "past the judge's deadline of 3.0 s: most verdicts are cut off"),
+    ("unknown", "", 1.2, "ok", "room for a flagged reply"),
     ("none", "", 0.0, "warn", "is not signed in"),
     ("api", "", 0.0, "warn", "an API account, not a plan"),
     ("missing", "", 0.0, "warn", "is not on PATH"),
@@ -2873,6 +2874,18 @@ def test_the_plan_judge_line_says_whether_it_answers_and_what_to_do(signed, why,
     assert line.status == status and words in line.detail, line
     assert ("claude-code" in asked) == (signed in ("plan", "unknown"))  # no sign-in, an API account or no command: never probed
     assert status == "ok" or "word list" in line.detail or signed == "api"
+
+
+@pytest.mark.parametrize("took, status, words", [
+    (1.4, "warn", "give judge.deadline_seconds up to 8"), (3.9, "ok", "room for a flagged reply"),
+    (4.5, "warn", "8 s is the most the Stop hook gives: name a faster model in judge.subscription.claude-code.model")])
+def test_the_fix_for_a_slow_plan_judge_is_the_deadline_up_to_eight_then_a_faster_model(took, status, words):
+    """The Stop hook gives the plan's judge up to 8 s (the principal's approval, 2026-11-15): below that the fix is the
+    config's deadline; at 8 it is a faster model. A flagged reply took about twice the probe's time in the replay."""
+    deadline = 3.0 if took == 1.4 else 8.0
+    config = {"judge": {**PLAN["judge"], "deadline_seconds": deadline}}
+    line = doctor.check_plan_judge(config, probe=lambda config, harness: ("", took), status=lambda harness, command: "plan")[0]
+    assert line.status == status and words in line.detail, line
 
 
 def test_a_judge_section_that_cannot_be_used_is_one_warn():
