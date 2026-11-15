@@ -13,6 +13,7 @@ A verified grant lets exactly one matching call through and expires.
 
 from __future__ import annotations
 
+import _thread
 import contextlib
 import hashlib
 import json
@@ -121,16 +122,21 @@ def mentioned(prompt: str) -> list[str]:
     return list(dict.fromkeys(code.lower() for code in re.findall(rf"\b{ONE}", prompt or "", re.IGNORECASE)))
 
 
-def grant_from_prompt(prompt: str) -> list[str]:
-    """Grant every pending request whose code the prompt carries. Returns the summaries granted."""
+def grant_from_prompt(prompt: str, transcript_path: str = "") -> list[str]:
+    """Grant every pending request whose code the prompt carries, each with where the session's record ended when the
+    principal typed, so that finding his prompt reads only from there. Returns the summaries granted."""
     granted = []
+    try:
+        ended = {"record_at": os.path.getsize(transcript_path)} if transcript_path and os.path.isfile(transcript_path) else {}
+    except OSError:
+        ended = {}
     for code in typed_codes(prompt):
         pending_file = _dir("approval-requests") / f"{code}.json"
         data = paths.read_json(pending_file)
         if not data.get("digest"):
             continue
         paths.write_json(_dir("approvals") / f"{data['digest']}.json",
-                         {**data, "code": code, "asked": data.get("at", 0), "at": time.time()})
+                         {**data, "code": code, "asked": data.get("at", 0), "at": time.time(), **ended})
         pending_file.unlink(missing_ok=True)
         granted.append(data["summary"])
     return granted
@@ -190,18 +196,86 @@ def _prompt(record: dict, session_id: str) -> tuple[float, list]:
     return datetime.fromisoformat(str(stamp).replace("Z", "+00:00")).timestamp(), texts
 
 
-def typed(transcript_path: str, code: str, since: float, session_id: str = "") -> bool:
-    """Whether the harness's record shows the principal typing approve <code> after `since`."""
-    with open(transcript_path, encoding="utf-8", errors="replace") as handle:
-        for line in handle:
-            if not code or code not in line.lower():
+STAMP = re.compile(r'"(?:timestamp|recorded_at)"\s*:\s*(?:"([^"]{10,40})"|(\d{10,19}))')
+OLD_RUN, SLACK_SECONDS = 200, 600  # with no position: this many lines in a row, older than the window by this much, end it
+MARGIN = 16 << 20  # read this far before the position the grant records: the prompt line may be written before the hook runs
+
+
+def _stamps(line: str) -> list:
+    """Every time a record line carries, as seconds, nested ones included: ISO times, and numbers read by their length
+    (seconds, milliseconds, Muse's microseconds, nanoseconds)."""
+    from datetime import datetime
+    found = []
+    for iso, number in STAMP.findall(line):
+        try:
+            found.append(int(number) / 10 ** (3 * min(3, max(0, (len(number) - 9) // 3))) if number
+                         else datetime.fromisoformat(iso.replace("Z", "+00:00")).timestamp())
+        except (ValueError, OverflowError):
+            continue
+    return found
+
+
+def _lines_back(transcript_path: str, block: int = 1 << 20, stop: int = 0):
+    """A record's lines from its end back to the line that holds the byte `stop`, newest first, that line whole even when
+    it began before `stop` (review round 2 of the spend order, finding 3: a prompt line longer than the margin was cut).
+    A line longer than a block is kept as its pieces and joined once, so reading it costs its length, not its square."""
+    with open(transcript_path, "rb") as handle:
+        handle.seek(0, os.SEEK_END)
+        at, tail = handle.tell(), []  # tail: the pieces of the line being read backward, the latest piece first
+        while at > stop:
+            step = min(block, at - stop)
+            at -= step
+            handle.seek(at)
+            data = handle.read(step)
+            if b"\n" not in data:
+                tail.append(data)
                 continue
+            lines = data.split(b"\n")
+            newest = lines[-1] + b"".join(reversed(tail))
+            if newest.strip():
+                yield newest.decode("utf-8", "replace")
+            for raw in reversed(lines[1:-1]):
+                if raw.strip():
+                    yield raw.decode("utf-8", "replace")
+            tail = [lines[0]]
+        while 0 < at <= stop:  # the line holding `stop` may have begun before it: read back to its start
+            step = min(block, at)
+            at -= step
+            handle.seek(at)
+            data = handle.read(step)
+            cut = data.rfind(b"\n")
+            tail.append(data[cut + 1:])
+            if cut >= 0:
+                break
+        rest = b"".join(reversed(tail))
+        if rest.strip():
+            yield rest.decode("utf-8", "replace")
+
+
+def typed(transcript_path: str, code: str, since: float, session_id: str = "", start=None) -> bool:
+    """Whether the harness's record shows the principal typing approve <code> after `since`. It is read from its end:
+    back to MARGIN before `start`, where the record ended when the prompt hook granted, and the whole line there (a
+    forged position can only hide a prompt, never add one), and with no position, only as far as the approval window, a run of lines all older than it
+    ending the search (2026-11-15: a Codex record of 1.9 GB took 4.6 s to read from its start, past the hook's 4 s; then
+    a compaction block of older lines written after a prompt ended the window's search before it)."""
+    if not code:
+        return False
+    size = os.path.getsize(transcript_path)
+    bounded = isinstance(start, int) and not isinstance(start, bool) and 0 <= start <= size
+    hit, old = re.compile(re.escape(code), re.IGNORECASE), 0
+    for line in _lines_back(transcript_path, stop=max(0, start - MARGIN) if bounded else 0):
+        if hit.search(line):
             try:
                 when, texts = _prompt(json.loads(line), session_id)
             except (ValueError, TypeError, AttributeError):
-                continue
+                when, texts = 0.0, []
             if when > since and any(code in typed_codes(text) for text in texts):
                 return True
+        stamps = [] if bounded else _stamps(line)
+        if stamps:
+            old = old + 1 if max(stamps) < since - SLACK_SECONDS else 0
+            if old >= OLD_RUN:
+                return False
     return False
 
 
@@ -225,56 +299,131 @@ def backed(kind: str, subject, session: dict | None = None) -> bool:
         return False
     try:
         return bool(transcript(session)) and typed(transcript(session), str(data.get("code", "")),
-                                                   max(float(data.get("asked", 0)), time.time() - TTL_SECONDS), paths.session_id(session))
+                                                   max(float(data.get("asked", 0)), time.time() - TTL_SECONDS), paths.session_id(session),
+                                                   data.get("record_at"))
     except OSError:
         return False
 
 
-def void(kind: str, subject) -> None:
+def void(kind: str, subject) -> list:
     """Spend a grant of exactly this subject, and drop a request for one that still waits, using neither: the same
     thing went out on another code, so a second copy has to be shown again (2026-11-13: a message released by the
-    code for a time in its words left the ordinary grant live, and an identical call went a second time on it)."""
+    code for a time in its words left the ordinary grant live, and an identical call went a second time on it).
+    Returns what it removed, (file, bytes) each, for a call that is then held to put back."""
     key = digest(kind, subject)
-    (_dir("approvals") / f"{key}.json").unlink(missing_ok=True)
-    for code in pending():
-        if paths.read_json(_dir("approval-requests") / f"{code}.json").get("digest") == key:
-            (_dir("approval-requests") / f"{code}.json").unlink(missing_ok=True)
+    files = [_dir("approvals") / f"{key}.json"] + [_dir("approval-requests") / f"{code}.json" for code in pending()
+                                                   if paths.read_json(_dir("approval-requests") / f"{code}.json").get("digest") == key]
+    removed = []
+    for path in files:
+        try:
+            removed.append((path, path.read_bytes()))
+            path.unlink()
+        except FileNotFoundError:
+            continue
+    return removed
 
 
 @contextlib.contextmanager
 def alone():
     """One decision at a time for a thing that can go on either of two codes: the code that lets it go spends the
     other before an identical call, judged at the same moment, is looked at (2026-11-13, a review: between the two
-    steps a second copy went on the other code)."""
+    steps a second copy went on the other code). Taken again inside itself by the thread that holds it, it does not
+    lock again: the lock belongs to the open file, so a second one would wait for good (review round 4, finding 5);
+    another thread waits for it like another process (round 5, finding 2)."""
+    me = _thread.get_ident()
+    if _ALONE[0] and _ALONE[1] == me:
+        _ALONE[0] += 1
+        try:
+            yield
+        finally:
+            _ALONE[0] -= 1
+        return
     import fcntl
     held = _dir("approvals.lock")  # beside the folder: a spent or expired approval leaves no file in it
     held.parent.mkdir(parents=True, exist_ok=True)
     with open(held, "a") as handle:
         fcntl.flock(handle, fcntl.LOCK_EX)
-        yield
+        _ALONE[0], _ALONE[1] = 1, me
+        try:
+            yield
+        finally:
+            _ALONE[0], _ALONE[1] = 0, None
 
 
-def consume(kind: str, subject, session: dict | None = None) -> bool:
-    """True once for a live grant of exactly this subject that the principal's own prompt backs. The
-    grant is spent either way; when the record does not back it, files the request again and raises."""
-    path = _dir("approvals") / f"{digest(kind, subject)}.json"
+_ALONE = [0, None]  # how many times the thread `_ALONE[1]` holds the lock of `alone`
+
+
+SPENT: list = []  # (grant file, the bytes it held) each grant this call used, for the hook to give back if the call is held
+
+
+def put_back(items: list) -> None:
+    """Put each (file, bytes) back whole, never over a file now in its place: written beside it first, then linked in,
+    so an identical call never finds it half written (review round 2 of the spend order, finding 2)."""
+    for path, data in items:
+        made = Path(path).with_name(f".{Path(path).name}.{os.getpid()}.back")
+        try:
+            handle = os.open(made, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        except OSError:
+            continue  # the folder is gone, or another put-back of it is under way
+        try:
+            try:
+                view = memoryview(data)
+                while view:  # a write may take only part
+                    view = view[os.write(handle, view):]
+            finally:
+                os.close(handle)
+            os.link(made, path)
+        except OSError:
+            pass  # a newer file of the same thing is in place: nothing to put back
+        finally:
+            made.unlink(missing_ok=True)
+
+
+def _spend(path: Path) -> bytes | None:
+    """Take a grant once: the bytes it held, or None where another caller took it first."""
     spent = path.with_suffix(".spent")
     try:
         os.replace(path, spent)
     except FileNotFoundError:
+        return None
+    try:
+        return spent.read_bytes()
+    except OSError:
+        return b""
+    finally:
+        spent.unlink(missing_ok=True)
+
+
+def consume(kind: str, subject, session: dict | None = None) -> bool:
+    """True once for a live grant of exactly this subject that the principal's own prompt backs. The
+    grant is read before it is spent, so a deadline that ends the read leaves it for the identical retry (2026-11-15:
+    two grants were spent, then the read ran past the hook's 4 s); a grant that does not hold, or that the record does
+    not back, is spent all the same, and for the latter the request is filed again and this raises."""
+    path = _dir("approvals") / f"{digest(kind, subject)}.json"
+    try:
+        before = path.read_bytes()
+    except FileNotFoundError:
         return False
-    data = paths.read_json(spent)
-    spent.unlink(missing_ok=True)
+    try:
+        data = json.loads(before)
+    except ValueError:
+        data = {}
+    data = data if isinstance(data, dict) else {}
     if data.get("kind") != kind or time.time() - float(data.get("at", 0)) > TTL_SECONDS:
+        _spend(path)
         return False
     record, since = transcript(session), max(float(data.get("asked", 0)), time.time() - TTL_SECONDS)
     try:
-        if record and typed(record, str(data.get("code", "")), since, paths.session_id(session)):
+        if record and typed(record, str(data.get("code", "")), since, paths.session_id(session), data.get("record_at")):
+            if _spend(path) != before:  # once; a grant put in place while the record was read was never checked
+                return False
+            SPENT.append((path, before))
             return True
         problem = (f"{record} shows no prompt from the principal with its code since it was asked for" if record else
                    "the harness gave no transcript for this session, and only that record can show who typed it")
     except OSError as exc:
         problem = f"the session's transcript could not be read ({exc})"
+    _spend(path)
     code = request(kind, subject, str(data.get("summary", "")))
     raise Unverified(f"An approval for this call was recorded, but {problem}. Approvals come only from the principal's "
                      f"own prompt, so it was not used. Show them the exact call again and ask them to type {how(code)}.")

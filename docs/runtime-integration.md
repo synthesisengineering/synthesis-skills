@@ -520,6 +520,12 @@ harness that gives no transcript cannot carry approved sends or deploys until it
   page (`document.body.innerHTML = '<meta http-equiv="refresh" ...>'`). Each is no move to the reader, so a script after
   it in the same call is judged on the page the list showed before. A move by an address, a link, a click, a key, a form
   value, an upload or any script the reader counts as acting is one.
+- **Two more from review round 4 of 5.23.1** (C1 and C2), cases of
+  `test_open_an_init_from_a_string_or_a_pages_send_under_the_scripts_own_name`, expected to fail until closed: an init
+  parsed from a string (`fetch(url, JSON.parse('{"method":"POST",...}'))`), whose method and body the reader sees only
+  as a string; and a page's send under a method name the script defines, by `this` at the script's top level (where it
+  is the page's window) or by a receiver the script sets to the page's object (`let o = {sendMessage() {}}; o =
+  window.app; o.sendMessage(...)`), the member-call form of the item above on scopes.
 
 No local file is secret from an agent running as the person's own OS user, so these
 stay open, and no hook running as that same user can close them:
@@ -586,6 +592,14 @@ stay open, and no hook running as that same user can close them:
   A fingerprint added that way passes its line without the person. It holds hashes, so
   the agent would have to compute the hash of the exact line, path and repository.
 - The agent can rewrite the runtime under `~/.synthesis/v5` or its config.
+- A program of the agent's that loads synthesis without the plain words `import synthesis`
+  or `from synthesis` (through `importlib`, `__import__` or a built `exec` string, from a
+  copy that is no protected folder) is read as reaching none of synthesis's writers, so it
+  can forge the send ledger's lines, open a send window, delete pending grants and requests,
+  plant a deploy record, or point the transcript that any check a script or the CLI enters
+  itself reads at a file it wrote, and so grant itself what such a check releases: a send a
+  script makes, a line approval, the CLI's send window (review rounds 4 and 5 of 5.23.1's
+  approval fix; crafted, the same before that release).
 
 Closing these needs isolation the hooks do not have: the agent under its own OS user
 or sandbox, or approvals signed by something outside the agent's reach.

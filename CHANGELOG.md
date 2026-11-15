@@ -57,15 +57,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   request asks for its own code, a command it cannot read as the CLI would waits for one, a file goes only with `sends
   batch`, and a held window or batch code no longer lets the rest of the line through unjudged.
 
-## [5.23.1] - 2026-11-15
+## [5.23.2] - 2026-11-15
 
-- **The daily rituals' skill file holds the Messenger rule** (`synthesis-daily-rituals` 3.19.0), by the move the principal
-  approved in his decision packet of 2026-11-15. Two passages that describe the skill (its introduction and its
-  Procedure section) moved word for word to the head of `references/procedure.md`, so SKILL.md could take rule 17:
-  Messenger's chat list is read at its own address, beside "No chats selected", and the daily read opens no chat, since
-  opening one marks it read. Messenger's section moved word for word from `references/linkedin-messages.md` to its own
-  `references/messenger-messages.md` (its headings one level up), listed in Contents, and the four checklists point to
-  it. The moved Procedure sentence's link now names `procedure.md`, the file it sits in. SKILL.md is 7,849 bytes.
 - **On a messaging site's page a script the guard cannot read is refused** (core; `synthesis-message-guard` 2.12.1,
   references/config.md). Round 4 of the batch approval's review found a page script that clicks Send by a name it builds
   as it runs (`el['cli' + 'ck']()`) passing on Slack, WhatsApp, LinkedIn, Gmail and X. A script there is now read as
@@ -73,8 +66,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   waits for the code, now with an optional call, a call or handler by a destructured name or a bare one the script does
   not define, a move by the address or another part of it, set or added to, and a fetch or Request whose init has a
   method that is no literal GET or HEAD or carries a body (an init the reader cannot follow is read by a method or a
-  body anywhere in the script; an XHR's method too); a read passes, `Array.fill`, `[].slice.call`, a read through a
-  fetch wrapper and a read helper named for what it reads, a function or an object's or a class's method, included. Its
+  body in an object the script passes to a call, or one a variable it passes holds; an XHR's method too); a read passes,
+  `Array.fill`, `[].slice.call`, a read through a fetch wrapper and a read helper named for what it reads, a function
+  or a method of an object or class the script defines, included. Its
   first review round found a page no list shows read as no messaging site's (a sub-agent's above all) and a refused
   navigate taken as a driven browser's page; its second, the pane's page after `preview_start` read as unknown, so a
   local app's click waited for a code; its third, a sub-agent judged by its own list after its session moved the tab
@@ -91,11 +85,44 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   `javascript:` address is the page script it runs, on the page it runs on. None appears among the 704 navigates of
   the last 60 days. The built-in pane's own tab lists, `tabs_context` and navigate results are read for its page, and
   each browser's tab ids are its own.
+
+## [5.23.1] - 2026-11-15
+
+- **The daily rituals' skill file holds the Messenger rule** (`synthesis-daily-rituals` 3.19.0), by the move the principal
+  approved in his decision packet of 2026-11-15. Two passages that describe the skill (its introduction and its
+  Procedure section) moved word for word to the head of `references/procedure.md`, so SKILL.md could take rule 17:
+  Messenger's chat list is read at its own address, beside "No chats selected", and the daily read opens no chat, since
+  opening one marks it read. Messenger's section moved word for word from `references/linkedin-messages.md` to its own
+  `references/messenger-messages.md` (its headings one level up), listed in Contents, and the four checklists point to
+  it. The moved Procedure sentence's link now names `procedure.md`, the file it sits in. SKILL.md is 7,849 bytes.
 - **The guard asks where a path leads once a call.** Judging a long shell command, it asked the file system where the
   same paths lead again for each of the command's readings and each of its words: one recorded heredoc of
   substitutions in a loop asked 11,746 times over 102 paths, which took 0.31 s on a Mac under Apple's Python 3.9 and
   1.11 s on CI's macOS runner, past the 1.0 s its test allows. The guard writes nothing while it judges, so each
   answer now holds for the call: 123 questions and 0.105 s. A test counts the questions, so it holds on any runner.
+- **An approval is spent only once it is confirmed, and confirming it reads only the record written since it was
+  granted.** A Codex session's record had grown to 1.9 GB. The principal typed two codes; the guard deleted each grant
+  and then read the record from its start for the prompt, which took 4.6 s, past the hook's 4 s deadline. The calls
+  were held with the grants gone, so each identical retry asked for a new code and neither call ran. The guard now
+  reads the grant, finds the prompt, and only then spends it; a grant changed while it was checked is never used. The
+  prompt hook records how long the session's record was when the principal typed, and the check reads back from the
+  end to 16 MB before that point, and the whole line there, so older lines written after the prompt (a compaction
+  block) cannot hide it: 0.02 s on that record. A grant filed before this release, or by a harness whose prompt names
+  no record, keeps the approval window's time rule. Nothing a call's decisions record stands until its answer (a
+  window's send is counted at once and marked settled or undone then): a call that is held, at the deadline or by a
+  later check, ran nothing, so it gives back the grants it used and leaves no record of a send, a send window's count,
+  a deploy for the 45-minute brake, or a grant voided by the code that released it; the hook settles them as it
+  answers, and a check a script enters itself (the local-messaging sender's) settles them when it returns. A record
+  that cannot be written holds the call, undoes the records written before it (a deploy another call recorded
+  meanwhile stays, and a desktop page's record of typed words released by their code is not undone) and gives back
+  its grants, and the answer still goes out. In one process, one thread judges at a time and another waits its turn,
+  the send lock too, and the hook settles only the call its own check judged. A grant given back appears whole or not
+  at all. A window closes once its last planned send has gone, so a send held after another went leaves its place to
+  the window, and desktop window sends are judged one at a time like the others. The guard's 4 s deadline counts from
+  when the hook process loaded, and an alarm that lands as the deadline is taken down still holds the call; a hold
+  answered more than 4.5 s after that may reach a harness after its 5 s, when it lets the call through, so then the
+  records stand and the grants stay spent. A grant spent before this release cannot be brought back; its call is
+  approved again once.
 
 ## [5.23.0] - 2026-11-15
 

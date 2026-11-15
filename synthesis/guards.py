@@ -7,6 +7,7 @@ These fail closed when their config can't be read or is malformed (R3.5).
 
 from __future__ import annotations
 
+import _thread
 import fnmatch
 import itertools
 import json
@@ -531,6 +532,138 @@ def _sha256(file: str, until: float, whole: bool = True) -> str:
     return out[0]
 
 
+EFFECTS: list = []  # (what to do if the call is let through, what to undo if it is held) for each record a decision makes
+UNDER_HOOK = {"on": 0}  # the thread whose hook answers last and settles its call's records; a check entered elsewhere settles them
+_DEPTH = [0, None]  # how deep in the guard's checks this process is, and the thread judging: only the first one entered settles
+_JUDGING = _thread.allocate_lock()  # one thread judges at a time and a second waits: a call's records are its own
+_PENDING: dict = {}  # a hook's thread: the records and grants of the call its check judged, kept for its answer
+_SETTLING = [None]  # the thread settling a call's records, which no check of its own may enter meanwhile
+
+
+def _after(commit=None, undo=None) -> None:
+    """A record of a decision that stands only if the whole call is let through: the send ledger, the deploy brake, a
+    grant voided by the code that released the call (review round 2 of the spend order, finding 1)."""
+    EFFECTS.append((commit, undo))
+
+
+def _void(kind: str, subject) -> None:
+    """Void the other code's grant at once, inside the decision's lock, and put it back if the call is held."""
+    removed = approvals.void(kind, subject)
+    _after(undo=lambda: approvals.put_back(removed))
+
+
+def _logged(*line) -> None:
+    """A send's line in the ledger, written if the call is let through and marked undone if a later record of the same
+    call cannot be written, which holds it (review round 4 of the spend order, finding 4)."""
+    from synthesis import sends
+    marks: list = []
+    _after(lambda: marks.append(sends.log(*line)), lambda: [sends.undo(m) for m in marks])
+
+
+def settle(allowed: bool, effects: list | None = None, spent: list | None = None) -> None:
+    """The call is let through: write each record its decisions made and keep the grants it used spent. It is held:
+    undo what was written ahead and give the grants back, since it ran nothing. Each record is its own: one that
+    cannot be written does not stop the rest, and the first failure is raised after them; a call whose record cannot be
+    written is held, so then its records are undone and its grants go back as well (review round 4, finding 4). With
+    no records given, the ones the current check made."""
+    if effects is None:
+        effects, spent = list(EFFECTS), list(approvals.SPENT)
+        EFFECTS.clear()
+        approvals.SPENT.clear()
+    failed: list = []
+
+    def run(steps):
+        for step in steps:
+            try:
+                if step:
+                    step()
+            except Exception as exc:
+                failed.append(exc)
+    if allowed:
+        run(commit for commit, _ in effects)
+    if failed or not allowed:
+        run(undo for _, undo in reversed(effects))
+        approvals.put_back(spent or [])
+    if failed:
+        raise failed[0]
+
+
+def hook_answers() -> None:
+    """This thread's call is the hook's: its records wait for the hook's answer. Records an earlier call of this thread
+    left with no answer stand, since a harness given no answer may have let that call run."""
+    if _thread.get_ident() in _PENDING:
+        answered(True)
+    UNDER_HOOK["on"] = _thread.get_ident()
+
+
+def answered(allowed: bool) -> None:
+    """The hook's answer: settle the records of the call its check judged, when that check entered the guard, and stop
+    waiting for the hook. Another thread's records are its own (review round 5 of the spend order, finding 1). A check
+    of this thread cut short in its own finally, before it handed its records over, left them with the guard: they are
+    settled here, and the guard freed if that check still holds it, whichever records it left (review round 6, finding
+    2; round 7, finding 1)."""
+    me = _thread.get_ident()
+    UNDER_HOOK["on"] = 0
+    pending, held = _PENDING.pop(me, False), _DEPTH[1] == me and _JUDGING.locked()
+    try:
+        _SETTLING[0] = me
+        if pending:
+            settle(allowed, *pending)
+        elif pending is None and (held or _JUDGING.acquire(False)):
+            held = True
+            settle(allowed)
+    finally:
+        _SETTLING[0] = None
+        if held:
+            _DEPTH[0], _DEPTH[1] = 0, None
+            _JUDGING.release()
+
+
+def _entry(judge):
+    """A check that a caller may enter directly (the hook enters `check`; the local-messaging sender enters
+    `check_send`): the first one entered starts the call's records afresh and settles them when it returns, held as
+    well when it raises, or keeps them for the hook's answer (review round 3 of the spend order, finding 1). One thread
+    judges at a time, a second waiting its turn, and the first one entered puts the depth and the lock back however it
+    ends (review round 4, findings 2 and 3; round 5, finding 3). A check is never entered from a commit or an undo of
+    the records being settled, nor by a thread inside the send lock, which a judging thread may wait for: either would
+    wait on itself (review round 6, findings 1 and 3)."""
+    def entered(*args, **kwargs):
+        me = _thread.get_ident()
+        first, acquired, verdict, decided = not (_DEPTH[0] and _DEPTH[1] == me), False, None, False
+        if _SETTLING[0] == me or first and approvals._ALONE[1] == me:
+            raise RuntimeError("the synthesis guard is not entered while it settles a call's records or inside the send lock")
+        try:
+            if first:
+                acquired = _JUDGING.acquire()
+                _DEPTH[1] = me
+                if UNDER_HOOK["on"] == me:
+                    _PENDING[me] = None  # entered: if its finally is cut short, the hook's answer settles what it left
+                EFFECTS.clear()
+                approvals.SPENT.clear()
+            _DEPTH[0] += 1
+            verdict, decided = judge(*args, **kwargs), True
+        finally:
+            if not first:
+                _DEPTH[0] -= 1
+            elif acquired:
+                try:
+                    if UNDER_HOOK["on"] == me:  # the hook answers last: its call's records wait for it
+                        _PENDING[me] = (list(EFFECTS), list(approvals.SPENT))
+                        EFFECTS.clear()
+                        approvals.SPENT.clear()
+                    else:
+                        _SETTLING[0] = me
+                        settle(decided and verdict is None)
+                finally:
+                    _SETTLING[0] = None
+                    _DEPTH[0], _DEPTH[1] = 0, None
+                    _JUDGING.release()
+        return verdict
+    entered.__name__, entered.__qualname__, entered.__doc__, entered.__wrapped__ = judge.__name__, judge.__qualname__, judge.__doc__, judge
+    entered.settles = True  # functools.wraps is not used: the hook's own path imports nothing it does not need
+    return entered
+
+
 def check_upload(tool: str, tool_input: dict) -> str | None:
     """A Drive upload that asks for no code still names a file the connector must read: one it would not read is
     refused here, as a send's is before its code, and so is one it cannot read: its first byte is read, since no
@@ -539,6 +672,7 @@ def check_upload(tool: str, tool_input: dict) -> str | None:
     return "This call can't go as written: " + "; ".join(unread) + "." if unread else None
 
 
+@_entry
 def check_send(tool: str, tool_input: dict, config: dict, session: dict | None = None, run: dict | None = None) -> str | None:
     """session: the hook payload, whose transcript shows who typed an approval (a shell's script passes none); run: the
     messages sender's own run (its file, its arguments, its folder), which takes the ticket its command filed. One
@@ -570,10 +704,10 @@ def _judged_send(tool: str, tool_input: dict, config: dict, session: dict | None
     # a batch may cover: nothing the connector fetches or reads when the call runs (a batch binds words, not what a path
     # or a url holds then), and no meeting on today
     if timed is not None and approvals.consume("send-time", subject, session):  # released as it is, by the code that says so
-        approvals.void("send", subject)  # one message, one release: a second copy asks again
+        _void("send", subject)  # one message, one release: a second copy asks again
         if entry:  # and a batch's entry for it is spent with it
             sends.batch_spend(entry, session)
-        sends.log(chan, tool, summary, "approval", session)
+        _logged(chan, tool, summary, "approval", session)
         return None
     if timed:  # asked before any other code, and again when the approved call comes
         code = approvals.request("send-time", subject, f"{tool}, a time in its words and no calendar read: {summary[len(tool) + 2:][:100]}")
@@ -585,15 +719,15 @@ def _judged_send(tool: str, tool_input: dict, config: dict, session: dict | None
         approvals.void("send-time", subject)
         return None
     if not others and sends.covered(chan, [t for _, t in _strings(tool_input)], _project(session), config):
-        sends.log(chan, tool, summary, "window", session)
-        sends.settle()
+        mark = sends.log(chan, tool, summary, "window", session)  # counted at once, so no other call takes the same send
+        _after(lambda: sends.settle(mark), lambda: sends.undo(mark))
         if timed is not None:
-            approvals.void("send-time", subject)
+            _void("send-time", subject)
         return None
     if approvals.consume(kind, subject, session):
-        sends.log(chan, tool, summary, "approval", session)
+        _logged(chan, tool, summary, "approval", session)
         if timed is not None:
-            approvals.void("send-time", subject)
+            _void("send-time", subject)
         return None
     text = " ".join(t for _, t in _strings(tool_input))
     code = approvals.request(kind, subject, f"{'SAME-DAY meeting' if others else tool}: {text[:120]}")
@@ -2175,6 +2309,34 @@ def _last_deploy(identity: str):
     return paths.state() / "deploys" / (hashlib.sha256(identity.encode("utf-8")).hexdigest()[:16] + ".json")
 
 
+def _record_deploys(identities) -> None:
+    """The deploy brake's record of a deploy the guard let through, for the 45-minute check: written if the call is let
+    through, and put back as it was if a later record of the same call cannot be written (review round 4, finding 4),
+    unless another call has recorded a deploy since (round 5, finding 4). Each write replaces the file whole."""
+    kept: list = []
+
+    def write():
+        for identity in identities:
+            record, mine = _last_deploy(identity), f"{identity}\n{time.time()}\n".encode("utf-8")
+            kept.append((record, record.read_bytes() if record.exists() else None, mine))
+            _swap(record, mine)
+
+    def restore():
+        for record, before, mine in reversed(kept):
+            if record.exists() and record.read_bytes() == mine:
+                _swap(record, before) if before is not None else record.unlink(missing_ok=True)
+    _after(write, restore)
+
+
+def _swap(path, data: bytes) -> None:
+    """Replace a file whole: written beside it, then renamed over it, so a reader never finds half of it."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    made = path.with_name(f".{path.name}.{os.getpid()}.{_thread.get_ident():x}.tmp")
+    made.write_bytes(data)
+    os.replace(made, path)
+
+
+@_entry
 def check_deploy(command: str, config: dict, cwd: str | None = None, session: dict | None = None) -> str | None:
     cwd = cwd or os.getcwd()
     found = _targets(command, config, cwd)
@@ -2209,10 +2371,7 @@ def check_deploy(command: str, config: dict, cwd: str | None = None, session: di
     subject = {"command": command, "heads": heads} if heads else command
     # A rapid-redeploy approval is the stronger one, so it still counts if the window has just closed.
     if approvals.consume(kind, subject, session) or (kind == "deploy" and approvals.consume("deploy-rapid", subject, session)):
-        for identity in identities:
-            record = _last_deploy(identity)
-            record.parent.mkdir(parents=True, exist_ok=True)
-            record.write_text(f"{identity}\n{time.time()}\n", encoding="utf-8")
+        _record_deploys(identities)  # a deploy held later by another check of the call did not happen
         return None
     if recent:
         name, last = recent[0]
@@ -2620,7 +2779,7 @@ SCRIPTED_WRITE = re.compile(
     r"|open\s*\(?\s*(?:my\s+)?[$\w]+\s*,\s*['\"]\s*\+?[>|]")
 # A script that opens a send window or a batch, grants or spends an approval or a batch's entry, or writes into
 # synthesis state. Reading the window, a batch, the ledger or the board stays allowed (a read-only check was refused on 2026-10-13).
-SELF_GRANT_CALLS = re.compile(r"\b(?:open_window|open_batch|batch_spend|grant_from_prompt|consume|_window_file|_batch_file)\b"
+SELF_GRANT_CALLS = re.compile(r"\b(?:open_window|open_batch|batch_spend|grant_from_prompt|consume|put_back|_window_file|_batch_file)\b"
                               r"|\bpaths\.state\b[\s\S]*\b(?:"
                               r"write_json|write_text|touch|unlink)\b|\b(?:write_json|write_text|touch|unlink)\b[\s\S]*\bpaths\.state\b")
 HOOK_RUN = re.compile(r"(?:^|/)(?:synthesis-hook|synthesis/hook\.py)$|^synthesis\.hook$")
@@ -4456,7 +4615,8 @@ GIT_RUNS = re.compile(r"--output(?:=.*)?|--ext-diff|--textconv|-O.*|--open-files
 ABSOLUTE = re.compile(r"-[A-Za-z]*P[A-Za-z]*|--absolute-names|--absolute-filenames|--insecure|-:|-spf")  # an archive's members land where they say
 SYNTHESIS_IMPORT = re.compile(r"^[ \t]*(?:from[ \t]+synthesis\b|import[ \t]+synthesis\b)", re.M)
 SYNTHESIS_WRITES = frozenset(f"{module}.{name}" for module, names in (  # synthesis's own functions that write a file (a test reads them from the source)
-    ("approvals", "_expire alone consume grant_from_prompt remember request void"), ("autopilot", "_evaluate _write_pointer evaluate"),
+    ("approvals", "_expire _spend alone consume grant_from_prompt put_back remember request void"),
+    ("guards", "_record_deploys _swap _void answered settle"), ("autopilot", "_evaluate _write_pointer evaluate"),
     ("board", "_claim _claim_lock _describe _post claim inbox mark_carried mark_read_messages message notify release resolve save touch"),
     ("checkout", "_append _staged_commit _tree_commit index_set log_claims snapshot snapshot_paths"),
     ("cli", "_batch _main cmd_claim cmd_doctor cmd_handoff cmd_inbox cmd_index cmd_install cmd_msg cmd_release cmd_resume cmd_sends "
@@ -4466,7 +4626,7 @@ SYNTHESIS_WRITES = frozenset(f"{module}.{name}" for module, names in (  # synthe
     ("install", "_merge _write_exec install move_board register_git_hooks uninstall"), ("paths", "note_wait write_json"),
     ("project", "_carry_out _mark_carried_out _peers _recent_conversation handoff resume"),
     ("reply_check", "check misrouted_accounts unarmed_wait unwatched_sends"),
-    ("sends", "batch_refusal batch_spend close_batches close_window log open_batch open_window sender_ticket settle ticket window_refusal"),
+    ("sends", "_note batch_refusal batch_spend close_batches close_window log open_batch open_window sender_ticket settle ticket undo window_refusal"),
     ("sessions", "_Session _export _ritual_history _sync_workspace _write_synced _writer behind export export_file fetch lost peek recent sync"),
     ("wait", "_watch live main record unread watching"), ("worktree", "create main retire")) for name in names.split())
 SYNTHESIS_DEFS: dict = {}  # a module of synthesis: the names it imports
@@ -5458,20 +5618,25 @@ def _unread_script(text: str) -> str:
     return ""
 
 
+def _bracketed(code: str, at: int) -> str:
+    """The bracketed text that opens at `at`, to its closing bracket (the rest of the code when it never closes)."""
+    depth = 0
+    for j in range(at, len(code)):
+        depth += (code[j] in "([{") - (code[j] in ")]}")
+        if not depth:
+            return code[at:j + 1]
+    return code[at:]
+
+
 def _writes_by_fetch(code: str, literals: list) -> bool:
     """A fetch, Request or XHR that may write: the init of fetch or Request (its second argument, or the object a variable
     given there holds and what is set on it) with a body or a method that is not one literal GET or HEAD, or keyed by a
     name built as it runs; an init the reader cannot follow otherwise (spread into, a variable set again or handed on, a
-    parameter, any other expression) when the script gives a body or such a method anywhere (review round 3 of 5.23.1,
-    T1: a read through a fetch wrapper waited); an XHR opened with a method that is not one (rounds 1 and 2, #1 and #2:
-    a `body` read from a response is no write)."""
-    def group(at: int) -> str:  # the bracketed text that opens at `at`
-        depth = 0
-        for j in range(at, len(code)):
-            depth += (code[j] in "([{") - (code[j] in ")]}")
-            if not depth:
-                return code[at:j + 1]
-        return code[at:]
+    parameter, any other expression) when the script puts a body or such a method in an object it passes to a call, or
+    one a variable it passes holds (review rounds 3 and 4 of 5.23.1, T1 and U1); an XHR opened with a method that is not
+    one (rounds 1 and 2, #1 and #2: a `body` read from a response is no write)."""
+    def group(at: int) -> str:
+        return _bracketed(code, at)
 
     def given(name: str) -> int:  # where the one value a variable is ever given starts, else -1
         sets = [m.end() for m in re.finditer(rf"(?<![\w$.]){re.escape(name)}\s*[-+*/%&|^?]*=(?![=>])", code)]
@@ -5489,22 +5654,32 @@ def _writes_by_fetch(code: str, literals: list) -> bool:
                 return True
         return False
 
-    def anywhere() -> bool:  # a body, or a method that is no literal GET or HEAD, given anywhere in the script
-        for found in re.finditer(r"(?<![\w$])method\b|\0(\d+)\0(?=\s*\]?\s*[:=](?!=))", code):
-            set_ = re.match(r"\s*\]?\s*[:=](?!=)", code[found.end():])
-            if (found[1] is None or literals[int(found[1])] == "method") and not (set_ and reads(code[found.end() + set_.end():])):
-                return True
-        return any(found[1] is None or literals[int(found[1])] == "body" for found in re.finditer(
-            r"(?<![\w$.])body\b(?=\s*[:,}])|\.\s*body\s*[-+]?=(?!=)|\0(\d+)\0(?=\s*\]?\s*(?::|[-+]?=(?!=)))", code))
-
-    inits = []
-    for call in re.finditer(r"\b(?:fetch|Request)\s*\(", code):
-        args, depth, start, inner = [], 0, 0, group(call.end() - 1)[1:-1]
+    def arguments(at: int) -> list:  # the arguments of the call whose `(` is at `at`
+        args, depth, start, inner = [], 0, 0, group(at)[1:-1]
         for j, c in enumerate(inner + ","):
             depth += (c in "([{") - (c in ")]}")
             if c == "," and not depth:
                 args, start = args + [inner[start:j].strip()], j + 1
-        inits.append(args[1] if len(args) > 1 else "")
+        return args
+
+    def anywhere() -> bool:  # a body, or a method that is no literal GET or HEAD, in an object the script passes to a call,
+        # or in one a variable passed or spread into one holds or is given (round 4, U1: not in what a callback returns or names)
+        passed = set()
+        for call in re.finditer(r"(?:(?<![\w$])(?!(?:if|for|while|switch|catch|with|function|return|typeof)\b)[A-Za-z_$][\w$]*|[)\]])\s*\(", code):
+            for arg in arguments(call.end() - 1):
+                if arg.startswith("{") and writes(arg):
+                    return True
+                passed |= set(re.findall(r"\.\.\.\s*([A-Za-z_$][\w$]*)", arg) if arg.startswith("{") else re.findall(r"^[A-Za-z_$][\w$]*$", arg))
+        for name in map(re.escape, passed):
+            if any(writes(group(m.end())) for m in re.finditer(rf"(?<![\w$.]){name}\s*=\s*(?=\{{)", code)):
+                return True
+            for member in re.finditer(rf"(?<![\w$.]){name}\s*(?:\.\s*(method|body)\b|\[\s*\0(\d+)\0\s*\])\s*[-+]?=(?!=)", code):
+                prop = member[1] or literals[int(member[2])]
+                if prop == "body" or prop == "method" and not reads(code[member.end():]):
+                    return True
+        return False
+
+    inits = [(lambda args: args[1] if len(args) > 1 else "")(arguments(call.end() - 1)) for call in re.finditer(r"\b(?:fetch|Request)\s*\(", code)]
     for init in filter(None, inits):
         name = re.escape(init)
         at = -1 if init.startswith("{") or not re.fullmatch(r"[A-Za-z_$][\w$]*", init) else given(init)
@@ -5551,8 +5726,11 @@ def _script_acts(text: str) -> bool:
     xhr_read = "XMLHttpRequest" in code and not _writes_by_fetch(code, literals) and not re.search(r"\bWebSocket\b|\bRTCDataChannel\b", code)
     read = re.sub(r"\.\s*send\s*\(\s*(?:null\s*)?\)", ".read()", code) if xhr_read else code
     defined, classes = _defined_names(code), set(re.findall(r"\bclass\s+([A-Za-z_$][\w$]*)", code))
-    objects = {"this"} | {n for n, brace, made in re.findall(r"\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:(\{)|new\s+([A-Za-z_$][\w$]*))", code)
-                          if brace or made in classes}
+    objects = {"this"}
+    for m in re.finditer(r"\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:(\{)|new\s+([A-Za-z_$][\w$]*)|(\())", code):
+        iife = _bracketed(code, m.start(4)) if m[4] else ""  # round 4, U4: what an IIFE of its own returns, an object it writes
+        if m[2] or m[3] in classes or iife and re.match(r"\s*\(", code[m.start(4) + len(iife):]) and re.search(r"=>\s*\(\s*\{|\breturn\s*\{", iife):
+            objects.add(m[1])
     member = any(not (m[3] in defined and (m[1] in classes or m[2] in objects)) for m in MEMBER_SENDS.finditer(read))
     bare = {found[1] for found in BARE_SENDS.finditer(code)} - defined
     return bool(acts.search(text) or acts.search(code) or SCRIPT_ACTS_MORE.search(read) or member or bare or _writes_by_fetch(code, literals))
@@ -5707,6 +5885,10 @@ def _shared_tabs(session: dict | None, server: str) -> tuple:
         try:
             if record == own or os.path.getmtime(record) < max(when, time.time() - 12 * 3600):
                 continue  # nothing in it is newer than this call's own list
+            with open(record, "rb") as handle:  # one whose last 8 MB name no tab list is not parsed (round 4: a busy
+                handle.seek(max(0, os.path.getsize(record) - TRANSCRIPT_TAIL))  # session's 70 records, 0.9 s of the 4)
+                if b"Tab Context" not in handle.read():
+                    continue
         except OSError:
             continue
         listed, _, at = _listed(record, server)
@@ -5762,7 +5944,7 @@ def _released(session: dict | None, pages: list, add: tuple = (), drop: bool = F
     if record and (add or drop):
         kept = [e for e in kept if not (drop and e in mine)] + ([{"pages": sorted(pages), "words": add[0], "rules": add[1],
                                                                  "at": time.time()}] if add else [])
-        paths.write_json(record, {"released": kept})
+        _after(lambda: paths.write_json(record, {"released": kept}))  # recorded only if the call is let through
     return mine
 
 
@@ -6078,6 +6260,7 @@ def _batch_send(tool: str, tool_input: dict, step: tuple, config: dict, session:
     return None
 
 
+@_entry
 def check_desktop(name: str, tool: str, tool_input: dict, config: dict, session: dict | None = None) -> str | None:
     from synthesis import sends
     apps, record = _messaging(config), _grants(session)
@@ -6139,19 +6322,20 @@ def check_desktop(name: str, tool: str, tool_input: dict, config: dict, session:
     words, rules = [w for e in earlier for w in e["words"]], problems[:6] + [r for e in earlier for r in e["rules"]]
     subject = {**subject, "earlier": words} if earlier else subject
     summary = f"{tool} in {where}: {what}" + (f"; typed words not stored ({sum(map(len, typed + words))} characters)" if typed or words else "")
-    if not rules and sends.covered(chan, typed, _project(session), config):  # a window never covers words a rule stopped
-        sends.log(chan, tool, summary, "window", session)
-        sends.settle()
-        return None
-    if approvals.consume("send", subject, session):
-        sends.log(chan, tool, summary, "approval", session)
-        _released(session, list(reached), drop=True)
-        return None
-    if unplaced:  # it sends only if the page is a messaging site's (review round 2 of 5.23.1, #1: a local app's click waited for a code)
-        return (f"This call may send on a page the record does not show ({what}): read the page first, with tabs_context in "
-                "Claude in Chrome or the built-in pane, or a snapshot or a list of pages in a driven browser, so its address shows, then "
-                "make this call again.")
-    code = approvals.request("send", subject, summary[:300])
+    with approvals.alone():  # one send judged at a time, as on the other send paths (review round 3 of the spend order)
+        if not rules and sends.covered(chan, typed, _project(session), config):  # a window never covers words a rule stopped
+            mark = sends.log(chan, tool, summary, "window", session)  # counted at once, so no other call takes the same send
+            _after(lambda: sends.settle(mark), lambda: sends.undo(mark))
+            return None
+        if approvals.consume("send", subject, session):
+            _logged(chan, tool, summary, "approval", session)
+            _released(session, list(reached), drop=True)
+            return None
+        if unplaced:  # it sends only if the page is a messaging site's (review round 2 of 5.23.1, #1: a local app's click waited for a code)
+            return (f"This call may send on a page the record does not show ({what}): read the page first, with tabs_context in "
+                    "Claude in Chrome or the built-in pane, or a snapshot or a list of pages in a driven browser, so its address shows, then "
+                    "make this call again.")
+        code = approvals.request("send", subject, summary[:300])
     return (f"This call sends in {where} ({what})."
             + (f" Words typed on this page under the code for words that break a rule may go with it: {' / '.join(words)}." if words else "")
             + (f" These words break the principal's rules for messages: {'; '.join(rules)}. The code below waives that for this exact"
@@ -6737,6 +6921,7 @@ def _driven_steps(kind: str, tool: str, tool_input: dict, session: dict | None) 
     return [{"name": "navigate", "input": {"url": page, "exact": True}}] + steps if steps else []
 
 
+@_entry
 def check_driven(kind: str, tool: str, tool_input: dict, config: dict, session: dict | None = None) -> str | None:
     if kind == "read" or kind == "navigate" and _script_address(str(tool_input.get("url") or "")) is None:
         return None
@@ -6817,6 +7002,7 @@ def _sender_runs(words: list, where: str) -> list:
              "cwd": os.path.realpath(where), "line": " ".join(shown)}] if os.path.basename(real) == "messages_send.py" else []
 
 
+@_entry
 def check_outgoing(command: str, config: dict, cwd: str, session: dict | None = None) -> str | None:
     """A shell command that posts words to people waits for the principal's code, as a connector send does, and
     opening a send window needs it too. The register scan reads the message the command sends (its text words and
@@ -6890,25 +7076,22 @@ def check_outgoing(command: str, config: dict, cwd: str, session: dict | None = 
         return timed
     with approvals.alone():  # the code that lets it go spends the other before an identical command is judged
         if timed is not None and approvals.consume("send-time", subject, session):
-            approvals.void("send", subject)
-            for c in chans:
-                sends.log(c, "shell", summary, "approval", session)
+            _void("send", subject)
+            [_logged(c, "shell", summary, "approval", session) for c in chans]
             return None
         if timed:
             code = approvals.request("send-time", subject, f"a time in its words and no calendar read: {summary[:120]}")
             return timed.replace("make this identical call", "run the identical command").replace("{code}", approvals.how(code))
         if all(sends.covered(c, [text], _project(session), config) for c in chans):
-            for c in chans:
-                sends.log(c, "shell", summary, "window", session)
-            sends.settle()
+            marks = [sends.log(c, "shell", summary, "window", session) for c in chans]  # counted at once, under the lock
+            _after(lambda: [sends.settle(m) for m in marks], lambda: [sends.undo(m) for m in marks])
             if timed is not None:
-                approvals.void("send-time", subject)
+                _void("send-time", subject)
             return None
         if approvals.consume("send", subject, session):
-            for c in chans:
-                sends.log(c, "shell", summary, "approval", session)
+            [_logged(c, "shell", summary, "approval", session) for c in chans]
             if timed is not None:
-                approvals.void("send-time", subject)
+                _void("send-time", subject)
             return None
         code = approvals.request("send", subject, summary)
     lead = (f"This command {'; '.join(dict.fromkeys(acts))}; it runs in {', '.join(dirs)}. A key, a click or code run in another "
@@ -6925,9 +7108,15 @@ def guarded(tool: str, tool_input: dict | None = None) -> bool:
             or _sends(tool, tool_input or {}, {}) or routed(tool, tool_input or {}))
 
 
+@_entry
 def check(tool: str, tool_input: dict, config: dict, cwd: str | None = None, session: dict | None = None) -> str | None:
     """cwd is the session's working directory (the hook payload's `cwd`); defaults to this process's.
-    session is the hook payload, which names the transcript an approval is checked against."""
+    session is the hook payload, which names the transcript an approval is checked against. The records the call's
+    decisions make are written only if it is let through: here for a direct caller, by the hook when it answers."""
+    return _check(tool, tool_input, config, cwd, session)
+
+
+def _check(tool: str, tool_input: dict, config: dict, cwd: str | None, session: dict | None) -> str | None:
     _TAILS.clear()  # each call reads the record anew: a rewrite in place can keep a file's size and its time stamp
     _CALL.update(codes={}, ran={}, proofs={}, files={}, real={}, senders=[], until=time.monotonic() + CALL_SECONDS)  # and every script it runs
     if not cwd:
