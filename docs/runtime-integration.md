@@ -542,6 +542,20 @@ stay open, and no hook running as that same user can close them:
   was closed with a test. There is always another. What the guard is
   measured on is the other direction as well: 30 days of recorded commands, where it must
   not refuse ordinary work.
+- Crafted: a script of the installed release writes wherever a configuration file in its
+  working folder points (the meeting fetcher's archive is one), so a configuration the agent
+  writes can aim it at a protected folder the line never names, since the guard reads the
+  line and the script's own text, not the files the script reads.
+- Crafted: outside the release, a program named like a Python interpreter and given by its
+  path is taken to be Python, so a shell script named `python3` runs under the proof the
+  guard made for the reader script it is handed.
+- Crafted: a function, an alias, `hash` or a `PATH` on the line that makes the word
+  `python3` run something else is looked for only in front of a script of the release, so
+  for any other script the proof made from its text holds while something else runs.
+- Crafted: a script in a folder the agent can write is proven by its own text and its own
+  modules, so a module named like a standard one planted beside it (one the standard
+  library imports, as `argparse` imports `gettext`) or compiled code made for one of its
+  own modules runs unseen.
 - A prompt another process injects into the session through the harness's own CLI
   (`claude -p --resume`, `codex queue`, `muse session-message`) is recorded as a typed
   prompt. The shell guard refuses such a command when it carries a pending code; one
