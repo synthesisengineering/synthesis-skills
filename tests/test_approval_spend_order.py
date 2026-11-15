@@ -495,3 +495,90 @@ def test_the_hook_process_counts_its_deadline_from_its_own_start(monkeypatch, ca
     with pytest.raises(SystemExit):
         runpy.run_path(str(Path(guards.__file__).with_name("hook.py")), run_name="__main__")
     assert 0.9 < seen[0] <= 1.0
+
+
+# --- review round 4 of this fix (2026-11-15): threads, state left set, a record that fails after others, the lock ------
+
+
+def test_a_second_thread_is_refused_while_one_judges(monkeypatch):
+    """Round 4, finding 2: two threads shared the call's records; the second now cannot judge until the first is done."""
+    import threading
+    entered, release, seen = threading.Event(), threading.Event(), []
+    real = guards._check
+
+    def slow(*args):
+        entered.set()
+        release.wait(5)
+        return real(*args)
+    monkeypatch.setattr(guards, "_check", slow)
+    first = threading.Thread(target=lambda: seen.append(guards.check("Read", {"file_path": "/dev/null"}, {})))
+    first.start()
+    assert entered.wait(5)
+    with pytest.raises(RuntimeError, match="one call at a time"):
+        guards.check("Read", {"file_path": "/dev/null"}, {})
+    release.set()
+    first.join(5)
+    assert seen == [None] and guards._DEPTH[0] == 0
+
+
+def test_a_check_ended_by_an_interrupt_leaves_the_process_judging_as_a_caller(tmp_path, monkeypatch):
+    """Round 4, finding 3: an interrupt out of the hook's check left the hook's flag on, so later checks settled nothing."""
+    from synthesis import hook, sends
+
+    def interrupted(*args):
+        raise KeyboardInterrupt()
+    real = guards._check
+    monkeypatch.setattr(guards, "_check", interrupted)
+    with pytest.raises(KeyboardInterrupt):
+        hook.pre_tool_use({"tool_name": SLACK, "tool_input": CALL, "session_id": SID})
+    monkeypatch.setattr(guards, "_check", real)
+    assert guards.UNDER_HOOK["on"] is False and guards._DEPTH[0] == 0
+    session = _granted(tmp_path, guards.check(SLACK, CALL, {}))
+    assert guards.check_send(SLACK, CALL, {}, session=session) is None
+    assert len(sends.ledger(time.strftime("%Y-%m-%d"))) == 1
+
+
+def test_a_call_held_because_its_record_failed_gives_back_and_undoes(tmp_path, monkeypatch, capsys):
+    """Round 4, finding 4: the call was held, but its grant stayed spent and the records before the failure stood."""
+    from synthesis import hook, sends
+    session = _granted(tmp_path, guards.check(SLACK, CALL, {}))
+    real = sends.log
+
+    def full(*args, **kwargs):
+        raise OSError("no space left on device")
+    monkeypatch.setattr(sends, "log", full)
+    hook.pre_tool_use({"tool_name": SLACK, "tool_input": CALL, **session})
+    assert "could not record this call" in capsys.readouterr().out
+    monkeypatch.setattr(sends, "log", real)
+    assert guards.check(SLACK, CALL, {}, session=session) is None  # its grant came back
+    assert len(sends.ledger(time.strftime("%Y-%m-%d"))) == 1
+
+
+def test_a_deploy_record_written_before_a_failing_record_is_put_back(tmp_path):
+    record = guards._last_deploy("probe-site")
+    record.parent.mkdir(parents=True, exist_ok=True)
+    record.write_text("probe-site\n100.0\n", encoding="utf-8")
+
+    def fails():
+        raise OSError("full")
+    guards.EFFECTS.clear()
+    guards._record_deploys(["probe-site", "other-site"])
+    guards._after(fails)
+    with pytest.raises(OSError):
+        guards.settle(True)
+    assert record.read_text(encoding="utf-8") == "probe-site\n100.0\n" and not guards._last_deploy("other-site").exists()
+
+
+def test_the_send_lock_taken_inside_itself_does_not_wait_for_good():
+    """Round 4, finding 5: the lock belongs to the open file, so a second taking in one process waited for ever."""
+    import threading
+    done = []
+
+    def nested():
+        with approvals.alone():
+            with approvals.alone():
+                done.append(True)
+    worker = threading.Thread(target=nested, daemon=True)
+    worker.start()
+    worker.join(5)
+    assert done == [True] and approvals._ALONE[0] == 0
