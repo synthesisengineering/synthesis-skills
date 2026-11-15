@@ -160,10 +160,10 @@ def install(plugin_root: Path, forward_only: bool = False) -> str:
         move_board(home)  # before any switch, so the new release's first read finds the board in place
     except OSError as exc:  # never blocks a session start; the doctor names what is left in state/
         print(f"synthesis: the board could not be moved out of {home / 'state'}: {exc}", file=sys.stderr)
-    if forward_only and current_hash() and version(plugin_root) <= version(home / "current"):
-        _compile(home / "current" / "synthesis")  # an older release's installer made the switch, or the interpreter changed
+    wanted, mine, there = package_hash(plugin_root), version(plugin_root), version(home / "current")
+    if forward_only and current_hash() and (mine < there or (mine == there and wanted == current_hash())):  # the same release,
+        _compile(home / "current" / "synthesis")  # built by another installer, is installed (the review of 5.23.1, finding 5)
         return f"synthesis runtime kept at {current_hash()}: {plugin_root} is not newer"
-    wanted = package_hash(plugin_root)
     if wanted != current_hash():
         release = home / "releases" / wanted
         if not release.is_dir():

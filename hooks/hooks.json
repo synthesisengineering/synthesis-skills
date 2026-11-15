@@ -5,7 +5,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "/bin/sh -c 'h=\"$HOME/.synthesis/v5/bin/synthesis-hook\"; [ -x \"$h\" ] || python3 -B -S \"$1/synthesis/install.py\" \"$1\" >/dev/null; exec \"$h\" session-start \"$1\"' synthesis-session-start \"${CLAUDE_PLUGIN_ROOT}\"",
+            "command": "/bin/sh -c 'h=\"$HOME/.synthesis/v5/bin/synthesis-hook\"; python3 -B -S \"$1/synthesis/install.py\" \"$1\" --forward-only >/dev/null; exec \"$h\" session-start \"$1\"' synthesis-session-start \"${CLAUDE_PLUGIN_ROOT}\"",
             "timeout": 10
           }
         ]
