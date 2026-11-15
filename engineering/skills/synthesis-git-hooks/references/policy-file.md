@@ -96,7 +96,7 @@ pattern would still compile and the protection would be dead.
 ## The disclosure ledger
 
 The ledger records names the principal has personally published, each with evidence; see
-the [`synthesis-disclosure-policy`](https://github.com/synthesisengineering/synthesis-skills/blob/v5.22.0/skills/synthesis-disclosure-policy/SKILL.md) skill.
+the [`synthesis-disclosure-policy`](https://github.com/synthesisengineering/synthesis-skills/blob/v5.22.1/skills/synthesis-disclosure-policy/SKILL.md) skill.
 Under `entities:`, each entry carries:
 
 - `evidence`: one or more citations. Precedent without evidence is not precedent; an

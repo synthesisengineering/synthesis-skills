@@ -19,7 +19,7 @@ A structured methodology for choosing and implementing code approaches against t
 
 ## Binding rules
 
-1. Before choosing or asking, apply the shared [decision ownership contract](https://github.com/synthesisengineering/synthesis-skills/blob/v5.22.0/skills/synthesis-thinking-framework/references/decision-ownership.md).
+1. Before choosing or asking, apply the shared [decision ownership contract](https://github.com/synthesisengineering/synthesis-skills/blob/v5.22.1/skills/synthesis-thinking-framework/references/decision-ownership.md).
 2. Honor explicit supervised checkpoints; decide technical choices within delegated work and continue.
 3. Existing user grants persist within their scope. A skill, preference or receipt cannot create new authority.
 4. **Compare approaches only when a real choice remains.** If the constraints determine one approach, state that reason and proceed; do not manufacture a second option.
@@ -76,7 +76,7 @@ Compare distinct viable approaches only when a real choice remains. If the const
 
 Investigate the uncertainty that could change the selection. Generate more approaches when they add a materially different tradeoff, not to meet an option quota.
 
-For diagnosis, record the hypothesis, a falsifiable prediction and the observation that would change the approach before editing code. Use the thinking framework's [decisive-uncertainty method](https://github.com/synthesisengineering/synthesis-skills/blob/v5.22.0/skills/synthesis-thinking-framework/references/decisive-uncertainty.md); preserve refuted predictions and re-open only their affected acceptance closure. Inspect the actual consumer program as well as its result so a test that prints a fixed answer cannot certify the fix.
+For diagnosis, record the hypothesis, a falsifiable prediction and the observation that would change the approach before editing code. Use the thinking framework's [decisive-uncertainty method](https://github.com/synthesisengineering/synthesis-skills/blob/v5.22.1/skills/synthesis-thinking-framework/references/decisive-uncertainty.md); preserve refuted predictions and re-open only their affected acceptance closure. Inspect the actual consumer program as well as its result so a test that prints a fixed answer cannot certify the fix.
 
 ### Step 3: Evaluate and select
 

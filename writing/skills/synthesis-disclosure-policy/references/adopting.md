@@ -51,12 +51,12 @@ surfaces, and evidence stay in their own private configuration.
 
 ## Relationship to other skills
 
-- [`synthesis-git-hooks`](https://github.com/synthesisengineering/synthesis-skills/blob/v5.22.0/skills/synthesis-git-hooks/SKILL.md) — the
+- [`synthesis-git-hooks`](https://github.com/synthesisengineering/synthesis-skills/blob/v5.22.1/skills/synthesis-git-hooks/SKILL.md) — the
   mechanical enforcement engine for the surface classes and ledger.
 - [`synthesis-content-quality`](../../synthesis-content-quality/SKILL.md) —
   its anonymization checks (outsider, insider, adversary, irony tests)
   operationalize the identification test for prose review.
-- [`synthesis-message-guard`](https://github.com/synthesisengineering/synthesis-skills/blob/v5.22.0/skills/synthesis-message-guard/SKILL.md) —
+- [`synthesis-message-guard`](https://github.com/synthesisengineering/synthesis-skills/blob/v5.22.1/skills/synthesis-message-guard/SKILL.md) —
   outbound-send gating; drafts that pass the five tests still go through
   send-time review.
 
