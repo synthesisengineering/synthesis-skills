@@ -99,8 +99,10 @@ no_floor = lambda version: []  # noqa: E731
 
 def check(repo, **given):
     head = git(repo, "rev-parse", "HEAD")
-    return release.preflight(repo, ci=given.get("ci", green), github=given.get("github", served(head)),
-                             floor=given.get("floor", no_floor))
+    version, read, problems = release.preflight(repo, ci=given.get("ci", green), github=given.get("github", served(head)),
+                                                floor=given.get("floor", no_floor))
+    assert read == (head if version else ""), (read, head)  # the commit it read is the one it returns (round 2, N10)
+    return version, problems
 
 
 def test_a_canonical_checkout_at_the_tip_of_githubs_main_passes(tmp_path):

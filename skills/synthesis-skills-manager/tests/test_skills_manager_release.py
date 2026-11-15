@@ -85,7 +85,7 @@ def canonical_source(tmp_path, **kwargs):
 
 def test_a_coherent_repository_passes_preflight(tmp_path):
     repo = canonical_source(tmp_path)
-    version, problems = release.preflight(repo, ci=green, github=served(repo), floor=no_floor)
+    version, _, problems = release.preflight(repo, ci=green, github=served(repo), floor=no_floor)
     assert version == "5.1.0" and problems == []
 
 
@@ -98,20 +98,20 @@ def test_a_coherent_repository_passes_preflight(tmp_path):
 def test_preflight_refuses_before_pushing(tmp_path, break_it, message):
     repo = canonical_source(tmp_path)
     break_it(repo)
-    _, problems = release.preflight(repo, ci=green, github=served(repo), floor=no_floor)
+    _, _, problems = release.preflight(repo, ci=green, github=served(repo), floor=no_floor)
     assert any(message in p for p in problems)
 
 
 def test_preflight_refuses_a_plugin_cache_as_the_repository(tmp_path):
     cache = tmp_path / "plugins" / "cache" / "synthesis-engineering" / "synthesis-skills" / "5.1.0"
     cache.mkdir(parents=True)
-    version, problems = release.preflight(cache, ci=green)
+    version, _, problems = release.preflight(cache, ci=green)
     assert version is None and "installed plugin copy" in problems[0]
 
 
 def test_preflight_refuses_when_ci_has_not_passed(tmp_path):
     repo = canonical_source(tmp_path)
-    _, problems = release.preflight(repo, ci=lambda r, sha: (False, "CI for abc: failed ['test']"), github=served(repo),
+    _, _, problems = release.preflight(repo, ci=lambda r, sha: (False, "CI for abc: failed ['test']"), github=served(repo),
                                     floor=no_floor)
     assert problems == ["CI for abc: failed ['test']"]
 
@@ -158,7 +158,7 @@ def test_main_refuses_while_another_session_releases(tmp_path, monkeypatch, caps
     repo = source_repo(tmp_path)
     board.claim("other-session", [release.train_path(repo)], goal="release v5.1.0")
     monkeypatch.setattr(release, "ci_state", green)
-    monkeypatch.setattr(release, "preflight", lambda r, **k: ("5.1.0", []))
+    monkeypatch.setattr(release, "preflight", lambda r, **k: ("5.1.0", "a" * 40, []))
     monkeypatch.setattr(release, "fresh_clone", lambda sha, **k: repo)  # what GitHub serves, here the checkout itself
     assert release.main(["--repo-root", str(repo), "--session", "me", "--clients", ""]) == 1
     assert "another release is under way" in capsys.readouterr().out and not git(repo, "tag")
@@ -475,7 +475,7 @@ def test_the_release_is_complete_only_once_homebrew_serves_the_tag(tmp_path, mon
         if not merged:
             raise setup.SetupError(f"{PR} did not merge (ci)")
         return [f"{release.TAP}: Homebrew serves synthesis 5.1.0"]
-    monkeypatch.setattr(release, "preflight", lambda repo, **k: ("5.1.0", []))
+    monkeypatch.setattr(release, "preflight", lambda repo, **k: ("5.1.0", "a" * 40, []))
     clone = source_repo(tmp_path / "clone")  # the fresh clone: v5.1.0 as GitHub serves it
     monkeypatch.setattr(release, "fresh_clone", lambda sha, **k: clone)
     monkeypatch.setattr(release, "hold_train", lambda repo, session, version: "train")
@@ -506,7 +506,7 @@ def test_the_release_is_complete_only_once_homebrew_serves_the_tag(tmp_path, mon
 def test_an_approval_only_the_person_can_give_does_not_hold_the_release(tmp_path, monkeypatch, capsys, failing,
                                                                           detail, complete):
     """2026-11-05: Codex ties a hook approval to the plugin's files, so every release leaves it to be given again."""
-    monkeypatch.setattr(release, "preflight", lambda repo, **k: ("5.1.0", []))
+    monkeypatch.setattr(release, "preflight", lambda repo, **k: ("5.1.0", "a" * 40, []))
     clone = source_repo(tmp_path / "clone")  # the fresh clone: v5.1.0 as GitHub serves it
     monkeypatch.setattr(release, "fresh_clone", lambda sha, **k: clone)
     monkeypatch.setattr(release, "hold_train", lambda repo, session, version: "train")
