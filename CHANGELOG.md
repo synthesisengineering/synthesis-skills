@@ -20,8 +20,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   not show, every page script is now refused but the extractors the plugin ships. Refused rather than held for a code:
   60 days of records held 178 other scripts on those pages, all in 4 sessions, and the old rule passed 173 of them, so a
   code for each would have asked the principal 173 times; the browser's own read tools read a page with no code. None
-  of those scripts called a member named as it ran. The runtime the hook runs from now carries both extractors'
-  scripts, so `chat_page.py`'s reads a chat there too.
+  of those scripts called a member named as it ran.
 - **A navigate is read as a URL parser reads it** (core). The `navigate` tool called alone was never judged, and a
   navigate's address was read as written while a browser drops tabs and line breaks anywhere in it and control
   characters at its ends, so `java\tscript:` was a `javascript:` address to the browser alone. Every navigate, from
