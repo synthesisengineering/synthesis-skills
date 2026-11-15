@@ -3788,9 +3788,9 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
         this[id(own)] = was
 
     def read_as(n) -> list:  # every spelling a member read may have; read again inside its own reading (`self.p = self.p + x`), it cannot be told
-        if id(n) in reading:  # the 30-day replay: 526 everyday programs the reader followed into themselves without end
-            looped.append(n)
-            return ["\0"]
+        if looped or id(n) in reading:  # the 30-day replay: 526 everyday programs the reader followed into themselves without end;
+            looped.append(n)            # after one, no member is followed (each reading of it grew without bound), and \5 marks what it reaches
+            return ["\0\5"]
         found = []
         reading.add(id(n))
         try:
@@ -4230,7 +4230,7 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
         made = [(given or [None])[0]] if isinstance((given or [None])[0], ast.Constant) else stores.get(getattr((given or [None])[0], "id", ""), [])
         return bool(made) and all((isinstance(v, ast.Constant) and (type(v.value) is int or v.value == "\2")) or (isinstance(v, ast.Call) and source(v) is not None and (
             modules.get(getattr(getattr(v.func, "value", None), "id", "")) == "os" or direct.get(getattr(v.func, "id", ""), ("",))[0] == "os")) for v in made)
-    hit = wrote = False
+    hit = wrote = blind = False
     for n in calls:
         if until is not None and time.monotonic() > until:
             raise TimeoutError("past the time the guard may spend reading a program")
@@ -4354,15 +4354,16 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
         elif writer:  # to_<anything else>, write_<anything else>, another module's save(a, b): either may be the path; a deletion, as a module's own function
             maybe = (n.args if owners and not method else []) if writer[5] else n.args[:1 + (not method)]
         sure += [kw[k] for k in PATH_KEYS if k in kw] if writer else []
-        led = {id(a): [s for s in spellings(a) if s[:1] not in ("\0", "\2")] for a in sure + maybe}  # each reading with a lead that can be read
+        led = {id(a): [s for s in spellings(a) if s[:1] not in ("\0", "\2") or "\5" in s] for a in sure + maybe}  # each reading with a lead that can be read
         targets += [a for a in sure if led[id(a)] or stringy(a)] + [
-            a for a in maybe if led[id(a)] and (named(a) or any(re.search(r"/|^~|\.\w{1,6}$", s) for s in led[id(a)]))]
+            a for a in maybe if led[id(a)] and (named(a) or any(re.search(r"/|^~|\.\w{1,6}$|\x05", s) for s in led[id(a)]))]
         if label in LIBRARY_WRITES:  # the standard library's own writers: a log file, a download, a temporary file made where it is told
             targets += [kw[k] for k in ("filename", "dir") if k in kw] + (
                 n.args[1:2] if label == "urlretrieve" else n.args[:1] if "Handler" in label else n.args[2:3] if label.startswith(("mk", "TemporaryD")) else [])
         if label == "FileType" and "argparse" in owners and says((n.args[:1] or [kw.get("mode", ast.Constant(value="r"))])[0], r"[wax+]"):
             targets.append(n)  # argparse opens each path it is handed to be written: what the command hands it (5.22.1)
         wrote = wrote or bool(targets)
+        blind = blind or any("\5" in s for t in targets for s in spellings(t))  # a write a member read in its own reading reaches
         gone = ([base] if method and label in ("rename", "replace") else (n.args[:1] or [kw[k] for k in ("src", "path") if k in kw])
                 if label in ("rmtree", "move", "rename", "renames", "replace") else [])  # a tree removed or moved away whole takes all it holds
         over_it = n.args[1:2] + [kw[k] for k in ("dst",) if k in kw] if label == "copytree" else []  # one copied over a folder lands in what it holds
@@ -4370,7 +4371,7 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
                                roots if any(t is x for x in gone) else folders_held if any(t is x for x in over_it) else ())
                          for t in targets)  # a copy that keeps links may make one
     hit = hit or (wrote and loose)
-    return (None, True) if looped and wrote and not hit else (hit, wrote)  # a member read in its own reading: its writes cannot be placed
+    return (None, True) if blind and not hit else (hit, wrote)  # a write such a member reaches cannot be placed
 
 
 # --- a program the guard cannot read, near the records approvals rest on (5.22.1) ----------------------------------
