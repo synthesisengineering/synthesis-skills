@@ -379,7 +379,7 @@ def test_a_put_on_a_tab_whose_page_the_record_does_not_show_waits_for_a_list_of_
     assert reason and "which page" in reason and "tab 7" in reason and "misconfiguration" not in reason
     for tool, given in READS:                                             # what puts nothing never waits for the account
         reason = call(tool, given, tab=7)                                 # (the send guard holds a click with no summary on a
-        assert reason is None or "sends in the browser" in reason, reason  # page no list shows: round 1 of 5.23.1, #3)
+        assert reason is None or "read the page first" in reason, reason  # page no list shows: round 1 of 5.23.1, #3)
     ran("computer", {"action": "screenshot", "tabId": 7}, "", front=7, tabs={7: "https://mail.example/"})
     assert call(*TYPE, tab=7) is None
     assert call(*TYPE, tab=7, using=config({})) is None and call(*TYPE, tab=9, using=config({})) is None   # and only where a site is named

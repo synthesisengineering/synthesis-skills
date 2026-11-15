@@ -61,12 +61,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   references/config.md). Round 4 of the batch approval's review found a page script that clicks Send by a name it builds
   as it runs (`el['cli' + 'ck']()`) passing on Slack, WhatsApp, LinkedIn, Gmail and X. A script there is now read as
   code: one that calls what it names only as it runs, or puts code where the page runs it, is refused; one that acts
-  waits for the code, now with an optional call, a call or handler by a bare or destructured name, a move by another
-  part of the address, and a fetch, Request or XHR whose method is no literal GET or HEAD; a read passes, `Array.fill`
-  and `slice.call` included. Its review round found a page no list shows read as no messaging site's (a sub-agent's
-  above all) and a refused navigate taken as a driven browser's page; both are read rightly now. Over 60 days of records
+  waits for the code, now with an optional call, a call or handler by a destructured name or a bare one the script does
+  not define, a move by the address or another part of it, set or added to, and a fetch or Request whose init has a
+  method that is no literal GET or HEAD, or carries a body, or cannot be followed (an XHR's method too); a read passes,
+  `Array.fill`, `[].slice.call` and a read helper named for what it reads included. Its first review round found a page
+  no list shows read as no messaging site's (a sub-agent's above all) and a refused navigate taken as a driven browser's
+  page; its second, the pane's page after `preview_start` read as unknown, so a local app's click waited for a code.
+  Each is read rightly now, and a call that sends only if a page no result shows is a messaging site's is told to read
+  the page first, with no code asked. Over 60 days of records
   it refuses none of the seats' 181 ordinary scripts on those pages, holds the 5 that click or move the tab, as before,
-  and passes 176. Spellings made to beat the reader are on the runtime doc's open list.
+  and passes 176, and the second round changes the guard's verdict on none of Claude Code's 3,708 browser calls there.
+  Spellings made to beat the reader are on the runtime doc's open list.
 - **A navigate is read as a URL parser reads it** (core). The `navigate` tool called alone was never judged, and a
   navigate's address was read as written while a browser drops tabs and line breaks anywhere in it and control
   characters at its ends, so `java\tscript:` was a `javascript:` address to the browser alone. Every navigate, from

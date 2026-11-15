@@ -583,7 +583,7 @@ def test_a_navigate_that_names_no_host_keeps_a_messaging_sites_page(tmp_path):
         session = _on(tmp_path, 7, tab7=where)
         for url in ("back", "forward", "/messages/t/1"):  # from any other page that page is unknown, and may be one (round 1 of 5.23.1, #3)
             reason = guards.check(CHROME, _steps(("navigate", {"url": url, "tabId": 7}), RETURN), CONFIG, session=session)
-            assert bool(reason and "approve" in reason), (where, url)
+            assert reason and ("approve" in reason or "read the page first" in reason), (where, url)  # unknown: read it first
         # a javascript: address runs a page script on the page it is on (round 4 of 5.24.0's review, #1): refused on a
         # messaging site's page, judged as the script it is elsewhere
         reason = guards.check(CHROME, _steps(("navigate", {"url": "javascript:void(0)", "tabId": 7}), RETURN), CONFIG, session=session)
@@ -597,7 +597,7 @@ def test_a_tab_list_printed_by_another_tool_is_not_the_browsers(tmp_path):
         transcript.write(_result("toolu_2", "Bash", 7, {"tab7": "https://docs.google.com/document/d/x"}))
     assert "approve" in guards.check(CHROME, _steps(RETURN), CONFIG, session=session)
     gone = guards.check(CHROME, _steps(RETURN), CONFIG, session={**session, "transcript_path": str(tmp_path / "gone")})
-    assert "approve" in (gone or "")  # a page no list shows may be a messaging site's (round 1 of 5.23.1, #3)
+    assert "read the page first" in (gone or "")  # a page no list shows may be a messaging site's: read it first (round 2 of 5.23.1, #1)
 
 
 def test_words_typed_on_a_messaging_site_pass_the_register_scan(tmp_path):

@@ -88,7 +88,7 @@ def test_a_sub_agents_call_is_judged_by_its_own_record(tmp_path, name):
     parent = tmp_path / "S-principal.jsonl"
     _ran(parent, "mcp__claude-in-chrome__computer", {"action": "screenshot", "tabId": 5}, _listing({5: "https://www.example.com/"}, 5))
     sub = {"session_id": "S-principal", "transcript_path": str(parent), "agent_id": "a1b2c3"}
-    assert _stopped(_check(tool, given, sub)), name  # its own record shows nothing yet: the page is unknown (the batch refuses there)
+    assert _stopped(_check(tool, given, sub)), name  # its own record shows nothing yet: the page is unknown, read it first (the batch refuses a script there until it is)
     own = tmp_path / "S-principal" / "subagents" / "agent-a1b2c3.jsonl"
     own.parent.mkdir(parents=True)
     _ran(own, "mcp__claude-in-chrome__computer", {"action": "screenshot", "tabId": 5}, _listing({5: SITES["slack"]}, 5))

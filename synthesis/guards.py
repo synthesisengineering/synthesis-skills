@@ -5304,7 +5304,7 @@ NAMES_POST = re.compile(r"\b(?:messag\w*|comment\w*|review\w*|post(?:s|ed|ing)?|
 # address opens it and marks it read, 2026-11-14); elsewhere one that submits a form, sends a key or an event, writes by
 # fetch or clicks a control that publishes, unless it searches or signs in.
 WRITES = r"method\s*:\s*['\"`](?:post|put|patch|delete)|\.open\s*\(\s*['\"`](?:post|put|patch|delete)|sendBeacon"
-MOVES = (r"\blocation\s*\.\s*(?:assign|replace)\s*\(|\blocation(?:\s*\.\s*href)?\s*=(?!=)|(?:\b(?:window|globalThis|self|top|"
+MOVES = (r"\blocation\s*\.\s*(?:assign|replace)\s*\(|\blocation(?:\s*\.\s*href)?\s*[+-]?=(?!=)|(?:\b(?:window|globalThis|self|top|"
          r"parent|frames)\s*(?:\.\s*open|\[\s*['\"`]open['\"`]\s*\])|(?<![\w$.])open)\s*\(")  # open( by any name (5.24.0)
 # A browser server's own code (Playwright's run_code, Puppeteer's) acts through its page and its keyboard and mouse.
 DRIVES = r"\.(?:press|pressSequentially|type|fill|tap|dblclick|check|uncheck|selectOption|setInputFiles|dragTo|goto|goBack|reload)\s*\(|\b(?:keyboard|mouse|touchscreen)\s*\."
@@ -5421,18 +5421,20 @@ PAGE_ACTS = re.compile(r"\.click\s*\(|\.submit\s*\(|requestSubmit|dispatchEvent|
                        + WRITES + "|" + MOVES, re.I)  # SCRIPT_ACTS but a browser server's own calls, which no page script makes (#8)
 SCRIPT_ACTS_MORE = re.compile(r"(?:\b(?:window|globalThis|self|top|parent|frames|defaultView)\s*\.\s*|(?<![\w$.]))open\s*(?:\(|\0)"
                               r"|\.\s*on[a-z]+\s*\(|\.\s*" + HANDLERS + r"\b(?!\s*=[^=])|(?<![\w$.])" + HANDLERS + r"\b"
-                              r"|(?:\.\s*|(?<![\w$.]))(?:send|post|submit|publish|reply|share|tweet)\w*\s*\(|\.\s*postMessage\s*\("
-                              r"|\blocation\s*\.\s*(?:pathname|search|hash|host|hostname|port|protocol)\s*=(?!=)|\bnavigation\s*\.\s*navigate\s*\("
+                              r"|\.\s*(?:send|post|submit|publish|reply|share|tweet)\w*\s*\(|\.\s*postMessage\s*\("
+                              r"|\blocation\s*\.\s*(?:pathname|search|hash|host|hostname|port|protocol)\s*[+-]?=(?!=)|\bnavigation\s*\.\s*navigate\s*\("
                               r"|\bhistory\s*\.\s*(?:go|back|forward)\s*\(", re.I)
+BARE_SENDS = re.compile(r"(?<![\w$.])((?:send|post|submit|publish|reply|share|tweet)\w*)\s*\(", re.I)  # a page's own, unless the script defines it
 SERVER_CODE = "/* the browser server's own code */ "
 
 
 def _script_code(text: str) -> tuple:
     """(code, literals, whole) of a page script as the rules read it: _osa_code's, with `x?.(` and `x?.[` read as `x(`
-    and `x[` (#2), and `X.call(`, `.apply(` or `.bind(` read as `X(` where X is a dotted name (#5)."""
+    and `x[` (#2), and `X.call(`, `.apply(` or `.bind(` read as `X(` where X is a dotted name (#5) or an empty array's
+    method (review round 2, #4: `[].slice.call(`)."""
     code, literals, whole = _osa_code(text, True)
     code = re.sub(r"\?\.\s*(?=[(\[\0])", "", code).replace("?.", ".")
-    code = re.sub(r"((?:[A-Za-z_$][\w$]*\s*\.\s*)+[A-Za-z_$][\w$]*)\s*\.\s*(?:call|apply|bind)\s*\(", r"\1(", code)
+    code = re.sub(r"((?:\[\s*\]|[A-Za-z_$][\w$]*)(?:\s*\.\s*[A-Za-z_$][\w$]*)+)\s*\.\s*(?:call|apply|bind)\s*\(", r"\1(", code)
     return code, literals, whole
 
 
@@ -5454,20 +5456,67 @@ def _unread_script(text: str) -> str:
 
 
 def _writes_by_fetch(code: str, literals: list) -> bool:
-    """A fetch, Request or XHR that may write: a method given in any form that is not a literal GET or HEAD, a body, or
-    an XHR opened with a method that is not one (review round 1 of 5.23.1, #1)."""
-    if not re.search(r"\bfetch\s*\(|\bRequest\s*\(|\bXMLHttpRequest\b", code):
-        return False
-    for found in re.finditer(r"(?<![\w$])method\b|\0(\d+)\0(?=\s*:)", code):
-        if found[1] is not None and literals[int(found[1])] != "method":
-            continue
-        value = re.match(r"\s*[:=]\s*\0(\d+)\0", code[found.end():])
-        if not (value and literals[int(value[1])].strip().upper() in ("GET", "HEAD")):
+    """A fetch, Request or XHR that may write: the init of fetch or Request (its second argument, or the object a variable
+    given there holds and what is set on it) with a body or a method that is not one literal GET or HEAD, or an init the
+    reader cannot follow (spread into, keyed by a name built as it runs, a variable set again, handed on or keyed by a
+    variable, any other expression); an XHR opened with a method that is not one (review rounds 1 and 2 of 5.23.1, #1 and
+    #2: a `body` read from a response is no write)."""
+    def group(at: int) -> str:  # the bracketed text that opens at `at`
+        depth = 0
+        for j in range(at, len(code)):
+            depth += (code[j] in "([{") - (code[j] in ")]}")
+            if not depth:
+                return code[at:j + 1]
+        return code[at:]
+
+    def given(name: str) -> int:  # where the one value a variable is ever given starts, else -1
+        sets = [m.end() for m in re.finditer(rf"(?<![\w$.]){re.escape(name)}\s*[-+*/%&|^?]*=(?![=>])", code)]
+        declared = re.search(rf"\b(?:const|let|var)\s+{re.escape(name)}\s*=(?!=)", code)
+        return len(code) - len(code[sets[0]:].lstrip()) if len(sets) == 1 and declared else -1
+
+    def reads(value: str) -> bool:  # one literal GET or HEAD, whole
+        found = re.match(r"\s*\0(\d+)\0\s*(?:[,;)}\]]|$)", value)
+        return bool(found) and literals[int(found[1])].strip().upper() in ("GET", "HEAD")
+
+    def writes(init: str) -> bool:  # an init written out as an object
+        if re.search(r"\.\.\.|\]\s*:", init):
             return True
-    keys = [literals[int(i)] for i in re.findall(r"\0(\d+)\0\s*:", code)]
+        for key in re.finditer(r"[{,]\s*(?:([A-Za-z_$][\w$]*)|\0(\d+)\0)\s*(?=([:,}]))", init):
+            name, at = key[1] or literals[int(key[2])], given("method") if key[3] != ":" else -1
+            if name == "body" or name == "method" and not reads(init[key.end() + 1:] if key[3] == ":" else code[at:] if at >= 0 else ""):
+                return True
+        return False
+
+    inits = []
+    for call in re.finditer(r"\b(?:fetch|Request)\s*\(", code):
+        args, depth, start, inner = [], 0, 0, group(call.end() - 1)[1:-1]
+        for j, c in enumerate(inner + ","):
+            depth += (c in "([{") - (c in ")]}")
+            if c == "," and not depth:
+                args, start = args + [inner[start:j].strip()], j + 1
+        inits.append(args[1] if len(args) > 1 else "")
+    for init in filter(None, inits):
+        name = re.escape(init)
+        at = -1 if init.startswith("{") or not re.fullmatch(r"[A-Za-z_$][\w$]*", init) else given(init)
+        if writes(init) if init.startswith("{") else at < 0 or code[at:at + 1] != "{" or writes(group(at)) or len(
+                re.findall(rf"(?<![\w$.]){name}\b(?!\s*[.\[])", code)) != 1 + inits.count(init):
+            return True
+        for member in re.finditer(rf"(?<![\w$.]){name}\s*(?:\.\s*([A-Za-z_$][\w$]*)|\[\s*(?:\0(\d+)\0\s*(?=\]))?)", code) if at >= 0 else ():
+            prop, set_ = member[1] or (literals[int(member[2])] if member[2] else ""), re.match(r"\s*\]?\s*=(?!=)", code[member.end():])
+            if prop in ("", "body") or prop == "method" and not (set_ and reads(code[member.end() + set_.end():])):
+                return True
     opened = re.findall(r"\.\s*open\s*\(\s*(\0(\d+)\0)?", code) if "XMLHttpRequest" in code else []
-    return ("body" in keys or bool(re.search(r"(?<![\w$.])body\b(?=\s*[:,}])", code))
-            or any(not lit or literals[int(lit)].strip().upper() not in ("GET", "HEAD") for _, lit in opened))
+    return any(not lit or literals[int(lit)].strip().upper() not in ("GET", "HEAD") for _, lit in opened)
+
+
+def _defined_names(code: str) -> set:
+    """The names a script defines itself, as a function or a parameter (review round 2 of 5.23.1, #3: a read helper named
+    for what it reads); a name bound from another object (`const {sendMessage} = TS.client.ui`) is none."""
+    found = re.findall(r"\bfunction\s+([A-Za-z_$][\w$]*)|\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:async\s+)?(?:function\b|\([^()]*\)\s*=>"
+                       r"|[A-Za-z_$][\w$]*\s*=>)|(?<![\w$.])([A-Za-z_$][\w$]*)\s*=>", code)
+    params = re.findall(r"\bfunction\s*[A-Za-z_$]*\s*\(([^()]*)\)|\(([^()]*)\)\s*=>", code)
+    return {n for row in found for n in row if n} | {n for row in params for part in row for n in re.findall(
+        r"(?:^|,)\s*[{\[]?\s*(?:\.\.\.)?\s*([A-Za-z_$][\w$]*)", part)}
 
 
 def _script_acts(text: str) -> bool:
@@ -5478,7 +5527,8 @@ def _script_acts(text: str) -> bool:
     acts = SCRIPT_ACTS if text.startswith(SERVER_CODE) else PAGE_ACTS
     xhr_read = "XMLHttpRequest" in code and not _writes_by_fetch(code, literals) and not re.search(r"\bWebSocket\b|\bRTCDataChannel\b", code)
     more = SCRIPT_ACTS_MORE.search(re.sub(r"\.\s*send\s*\(\s*(?:null\s*)?\)", ".read()", code) if xhr_read else code)
-    return bool(acts.search(text) or acts.search(code) or more or _writes_by_fetch(code, literals))
+    bare = {found[1] for found in BARE_SENDS.finditer(code)} - _defined_names(code)
+    return bool(acts.search(text) or acts.search(code) or more or bare or _writes_by_fetch(code, literals))
 
 
 def _messaging(config: dict) -> dict:
@@ -5555,12 +5605,14 @@ def _tabs(transcript: str, server: str = "") -> tuple:
 def _tab_list(transcript: str, server: str = "") -> tuple:
     """({tab id: address}, the tab the newest call ran on, when its line was written), from the newest result of this browser server (of any
     browser server when none is named) that shows its tabs: a list of tabs (Claude in Chrome's, and the built-in pane's),
-    the pane's own tabs_context (each tab's origin, the active one in front), or a navigate's own result, `navigated to`
-    or `opened` and the address. Each browser has tab ids of its own (round 4 of 5.24.0's review, #5: the pane's results
-    were read as none, and its tab 1 could be read as Chrome's)."""
-    lines = _tail(transcript)
+    the pane's own tabs_context (each tab's origin, the active one in front), or a navigate's or the pane's preview_start's
+    own result, `navigated to`, `opened` or `Opened tab "..." at` and the address; `Browser pane opened` names none and
+    changes no page, so an earlier result's page stands, else a new pane's blank one (review round 2 of 5.23.1, #1). Each
+    browser has tab ids of its own (round 4 of 5.24.0's review, #5: the pane's results were read as none, and its tab 1
+    could be read as Chrome's)."""
+    lines, blank = _tail(transcript), None
     for i in range(len(lines) - 1, -1, -1):
-        marked = any(m in lines[i] for m in ("Tab Context", "browserOpen", "avigated to ", "pened "))
+        marked = any(m in lines[i] for m in ("Tab Context", "browserOpen", "avigated to ", "pened ", "pane opened"))
         for block in reversed(_blocks(lines[i]) if marked else []):
             text = _said(block) if block.get("type") == "tool_result" else ""
             call = _browser_call(lines, i, str(block.get("tool_use_id") or "")) if text else None
@@ -5578,11 +5630,18 @@ def _tab_list(transcript: str, server: str = "") -> tuple:
                             next((str(t["tabId"]) for t in shown if t.get("isActive")), ""), _when(lines[i]))
                 except (ValueError, KeyError, TypeError, IndexError):
                     continue
-            went = re.match(r"\s*(?:navigated to|opened) (\S+)", text, re.I) if named.endswith("navigate") else None
+            went = re.match(r"\s*(?:navigated to|opened) (\S+)", text, re.I) if named.endswith(("navigate", "preview_start")) else None
+            if named.endswith("preview_start") and not went:
+                shown, tab = re.search(r'Opened tab "[^"\n]*" at (\S+?)\.?(?:\s|$)', text), (re.search(r'"tabId":\s*"([^"]+)"', text) or ["", ""])[1]
+                if shown:
+                    return {tab: shown[1]}, tab, _when(lines[i])
+                if blank is None and "Browser pane opened" in text:
+                    blank = {tab: "about:blank"}, tab, _when(lines[i])
+                continue  # an error opens no page
             if went:
                 tab = str((call.get("input") or {}).get("tabId") or "")
                 return {tab: went[1]}, tab, _when(lines[i])
-    return {}, "", 0.0
+    return blank or ({}, "", 0.0)
 
 
 def _steps(name: str, tool_input: dict, session: dict | None, keep: bool = False, tool: str = ""):
@@ -5850,7 +5909,7 @@ def _refused_scripts(name: str, tool: str, tool_input: dict, session: dict | Non
         if address == UNKNOWN_PAGE:  # round 4, #9; review round 1 of 5.23.1, #3: it may be a Messenger site's
             return (f"This page script runs on tab {tab or 'in front'}, whose page no list of tabs names or the record does not "
                     "show (a tab not listed yet, a sub-agent's, a driven browser's after a tab change), and which may be a "
-                    "Messenger site's: list the tabs, or take a snapshot, then run it again.")
+                    "Messenger site's: read the page first (list the tabs, or take a snapshot), then run it again.")
         if not address:
             return (f"This page script runs on tab {tab or 'in front'}, whose page no list of tabs names (a tab not listed yet, "
                     "or one a navigate sent where no host is named), and which may be a Messenger site's: list the tabs or "
@@ -5965,14 +6024,18 @@ def check_desktop(name: str, tool: str, tool_input: dict, config: dict, session:
                else pages if name.startswith("browser") else apps if unseen else {b: apps[b] for b in seen["apps"] if b in apps})
     typed, subject = [v for kind, v, _ in actions if kind == "type" and v.strip()], {"tool": tool, "input": tool_input}
     said = " ".join(s for _, _, s in actions)  # the second review: words, then Return, Tab and Space or a line break, submit a form
-    formed = bool(name.startswith("browser") and not reached and typed and not local and NAMES_POST.search(said)
+    formed = bool(name.startswith("browser") and typed and not local and NAMES_POST.search(said)
                   and (_submits(actions) or any(k == "type" and re.search(r"[\r\n]", v) for k, v, _ in actions)))
+
+    def goes(kind: str, v: str, s: str, pages: dict) -> bool:  # an action that sends, with these messaging pages reached
+        return bool(SAYS_SENT.search(s) or kind == "click" and _publishes(s, local) or kind == "script" and (
+            _script_acts(v) if pages else SCRIPT_SENDS.search(v) and not SCRIPT_ROUTINE.search(v) and not local)
+            or pages and (kind == "click" and not s.strip() or kind == "menu" and re.search(r"(?:^|> )send\b", v, re.I)
+                          or kind == "key" and _sends_key(v, pages) or kind == "type" and re.search(r"[\r\n]", v) and _sends_key("return", pages)))
     sending = [s or {"type": "a typed line break", "script": "a page script"}.get(kind, f"{kind} {v}".strip()) for kind, v, s in actions
-               if SAYS_SENT.search(s) or kind == "click" and _publishes(s, local) or kind == "script" and (
-                   _script_acts(v) if reached else SCRIPT_SENDS.search(v) and not SCRIPT_ROUTINE.search(v) and not local)
-               or reached and (kind == "click" and not s.strip() or kind == "menu" and re.search(r"(?:^|> )send\b", v, re.I)
-                               or kind == "key" and _sends_key(v, reached) or kind == "type" and re.search(r"[\r\n]", v) and _sends_key("return", reached))]
-    sending += ["a key that submits the form after the typed words"] * (formed and not sending)
+               if goes(kind, v, s, reached)]
+    sending += ["a key that submits the form after the typed words"] * (formed and not reached and not sending)
+    unplaced = set(reached) == {UNKNOWN_PAGE} and not formed and not any(goes(k, v, s, {}) for k, v, s in actions)
     problems = message_problems("desktop_type", {"message_text": "\n\n".join(typed)}, config, {  # a page may be several channels'
         c for chan, _ in reached.values() for c in chan.split("+")}, session) if typed and (reached or sending) else []
     if problems and search and not sending and all(k == "type" for k, _, _ in actions) and not temporary_addresses(typed, config):
@@ -6006,6 +6069,9 @@ def check_desktop(name: str, tool: str, tool_input: dict, config: dict, session:
         sends.log(chan, tool, summary, "approval", session)
         _released(session, list(reached), drop=True)
         return None
+    if unplaced:  # it sends only if the page is a messaging site's (review round 2 of 5.23.1, #1: a local app's click waited for a code)
+        return (f"This call may send on a page the record does not show ({what}): read the page first, with tabs_context in "
+                "Claude in Chrome or the built-in pane, or a snapshot in a driven browser, so its address shows, then make this call again.")
     code = approvals.request("send", subject, summary[:300])
     return (f"This call sends in {where} ({what})."
             + (f" Words typed on this page under the code for words that break a rule may go with it: {' / '.join(words)}." if words else "")

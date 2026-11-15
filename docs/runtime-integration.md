@@ -503,6 +503,11 @@ harness that gives no transcript cannot carry approved sends or deploys until it
   HTML-like comment (`<!-- '`), whose quote the reader takes for a string; and an object divided (`{} / x / 1`), whose
   `/` the reader takes for a pattern. A batch whose `javascript:` navigate moves the tab was closed by reading the page
   after it as unknown.
+- **Two more spellings** (review round 2 of 5.23.1, #5 and #6), cases of
+  `test_open_a_fetch_or_a_method_reached_under_another_name`, expected to fail until closed: `fetch` reached under
+  another name with its method quoted (`const {fetch: f} = window` or `const f = window.fetch`, then
+  `f(url, {"method": "POST", ...})`), and a method that names what it does read as a value and called under another
+  name (`const o = {c: HTMLElement.prototype.click}; o.c.call(el)`; `el.go = HTMLElement.prototype.click; el.go()`).
 
 No local file is secret from an agent running as the person's own OS user, so these
 stay open, and no hook running as that same user can close them:
