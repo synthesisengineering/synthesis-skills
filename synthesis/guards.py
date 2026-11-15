@@ -4446,7 +4446,7 @@ SYNTHESIS_WRITES = frozenset(f"{module}.{name}" for module, names in (  # synthe
 SYNTHESIS_DEFS: dict = {}  # a module of synthesis: the names it imports
 SYNTHESIS_PLACES = frozenset({"paths.home", "paths.state", "paths.board", "paths.sessions", "paths.old_board", "paths.codex_home", "paths.desktop_dir",
                               "paths.transcript_roots", "paths.desktop_agent_roots", "paths.line_allowances", "approvals._dir", "sessions.root",
-                              "sends._spends_file", "sends._batch_file", "sends._window_file"})
+                              "sends._spends_file", "sends._batch_file", "sends._window_file", "sends._requests_file"})
 
 
 def _regular(path: str, limit: int = SCRIPT_LIMIT):
@@ -4883,7 +4883,8 @@ def _synthesis_reach(text: str) -> tuple:
             plain = isinstance(up, ast.Call) and up.func is n and not up.keywords and len(up.args) == (parts[2] == "_dir") and len(parts) == 3 and not any(
                 isinstance(p, ast.JoinedStr) for p in _ancestors(parents, up))  # inside an f-string a call's place is not to be trusted
             spots, coarse = spots + [(up, parts[1], parts[2])] * plain, coarse or not plain or parts[2] in (
-                "old_board", "transcript_roots", "desktop_agent_roots", "line_allowances", "_spends_file", "_batch_file", "_window_file")
+                "old_board", "transcript_roots", "desktop_agent_roots", "line_allowances", "_spends_file", "_batch_file", "_window_file",
+                "_requests_file")
         module = len(parts) > 1 and os.path.isfile(os.path.join(os.path.dirname(os.path.abspath(__file__)), parts[1] + ".py"))
         if (len(parts) > 2 and module and not _synthesis_own(parts[1], parts[2])) or (len(parts) == 2 and not module and not _synthesis_own("__init__", parts[1])):
             return "follows", unfollowed.format(f"`{'.'.join(parts[1:3])}`, a name its module imports"), None

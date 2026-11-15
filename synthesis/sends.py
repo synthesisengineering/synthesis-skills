@@ -527,6 +527,9 @@ def batch_refusal(batch: dict, file: str) -> str:
     digest, count = batch_digest(batch), len(batch["entries"])
     code = approvals.request("send-batch", digest, f"open batch {_shown(batch['batch'])}: {count} sends, digest {digest[:12]}, "
                              f"project {_shown(batch['project'])}")
+    _requests_file().parent.mkdir(parents=True, exist_ok=True)
+    with _requests_file().open("a", encoding="utf-8") as handle:  # what ties this code to this digest at each spend
+        handle.write(json.dumps({"digest": digest, "code": code, "at": time.time()}) + "\n")
     return (f"Opening batch {digest[:12]} ({count} send{'s' if count != 1 else ''} from {_shown(file)}) lets each entry below go once, "
             f"exactly as written, within {MAX_HOURS} hours, from this session alone. Show the principal this whole list as it "
             f"stands (each text quoted, every hidden character as its code) and ask them to type {approvals.how(code)} to open "
@@ -658,20 +661,27 @@ def _spends() -> set:
     return found
 
 
+def _requests_file():
+    return paths.state() / "sends" / "batch-requests.jsonl"
+
+
 def _backed(data: dict, session: dict | None) -> bool:
-    """Whether the granting session's own record shows the hold that named this batch's digest with its code, and the
-    principal typing that code after it, within its last 12 hours: a code typed for anything else backs nothing (the
-    review of 5.24.0: any code typed in 12 hours made forged state spendable)."""
+    """Whether the principal typed this batch's code in the granting session's own record, after the guard first filed
+    that code for this batch's digest (the request it recorded), within its last 12 hours. A code typed for anything else
+    backs nothing (the review of 5.24.0), and no line of the record stands in for the request: the agent writes those
+    (its third round: its own sentence naming the digest and a code tied them; repeating both held a granted batch)."""
     from synthesis import approvals
+    filed = []
+    for line in _requests_file().read_text(encoding="utf-8").splitlines() if _requests_file().is_file() else []:
+        try:
+            row = json.loads(line)
+            filed += [float(row["at"])] if (row["digest"], row["code"]) == (data["digest"], data["code"]) else []
+        except (ValueError, KeyError, TypeError):
+            continue
     try:
-        record, hold = approvals.transcript(session), None
-        named = (data["digest"], f"code {data['code']}")
-        with open(record, encoding="utf-8", errors="replace") as handle:
-            for line in handle if record else ():
-                if all(part in line for part in named):
-                    hold = max(hold or 0.0, _when(line))
-        return hold is not None and approvals.typed(record, data["code"], max(hold, float(data["asked"]),
-                                                                              time.time() - MAX_HOURS * 3600), data["session"])
+        record = approvals.transcript(session)
+        return bool(filed and record) and approvals.typed(record, data["code"], max(min(filed), float(data["asked"]),
+                                                                                    time.time() - MAX_HOURS * 3600), data["session"])
     except OSError:
         return False
 

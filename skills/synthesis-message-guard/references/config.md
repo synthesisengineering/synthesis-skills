@@ -449,16 +449,20 @@ member's handle once, the chat's service and its chat id, as the sender's own ap
 connector entry never names the sender's own tools (`imessage_send`, `messages_send`), which would carry its photo. One
 entry goes to each conversation (an address, a handle, a chat, or for a connector call the recipient fields its input
 names: `to`, `channel_id`, a thread and their kin). Anything else is refused with what is wrong, and so
-are a control character other than a newline anywhere in the file (the review of 5.23.0: an escape code hid words in a
-listing, and a carriage return printed one line over another), a key given twice, a number JSON does not have, a
-repeated entry and a file over 1 MB.
+are a control character other than a newline, or half of a surrogate pair, anywhere in the file (the review of 5.23.0:
+an escape code hid words in a listing, and a carriage return printed one line over another), a connector entry's tool
+name holding more than letters, digits and `_ . : -` (its third round: the listing prints a name as it is, and a line
+separator in one drew a line of the agent's own), a key given twice, a number JSON does not have, a repeated entry and
+a file over 1 MB.
 
 **Asking.** `synthesis sends batch <file>` prints the digest (SHA-256 of the batch's canonical JSON: sorted keys, no
 spaces, UTF-8), the count and each entry's channel and recipient; `--show` also prints every text in full and opens
-nothing, so it needs no code. Every listing quotes each text as JSON, with each control, format (zero-width,
-direction), separator, private or unassigned character, every space but the plain one, and the fillers, blanks and
-variation selectors that render as nothing written as its code; the file's path, the batch's name and its project are
-shown the same way (the review of 5.24.0). The command opens a batch only on the principal's code for exactly that
+nothing, so it needs no code. Every listing quotes each text as JSON and prints as it is only what draws a glyph (a
+letter, mark, digit, punctuation or symbol), a plain space and a line break; every other character (a control, format,
+separator, private or unassigned one, every other space) is written as its code, and so are the fillers, blanks and
+variation selectors of a drawing kind that render as nothing (U+1D159 and U+16FE4 among them, the third round). The
+file's path, the batch's name and its project are shown the same way (the review of 5.24.0), and a connector call's
+input prints one field to a line. The command opens a batch only on the principal's code for exactly that
 digest, typed in the session that runs it, from any terminal: an agent could fake a terminal of the principal's own, so
 there is no such shortcut. It spends the code itself, so a file changed after the hold has another digest and gets
 nothing. The guard holds the command with the code and the whole listing, texts included, so the principal reads in the
@@ -522,9 +526,12 @@ forms above are four distinct conversations (every chat facebook.com lists links
 send on one never spends an entry for another. Each entry sends once, decided under the send guard's lock; only within
 12 hours of the grant; and only from the session that ran the granted command, as the guard is told it (a hook's
 payload; for the messages sender, the `--session` it names, which the shell guard checks is the one running it, and
-never the environment's), whose own record must show, each time an entry is spent, the hold that named the batch's
-digest with its code and the principal typing that code after it: a code typed for anything else backs nothing, so
-batch state alone is never a grant. Each send is
+never the environment's), whose own record must show, each time an entry is spent, the principal typing the batch's
+code after the guard first filed that code for that digest. The guard records each request it files for a batch, its
+digest and code, in a ledger only it writes (`sends._requests_file`); no line of the session's record stands in for
+it, since the agent writes those (the review's third round: its own sentence naming a digest and a code tied them, and
+repeating both after the principal typed the code held a granted batch). A code typed for anything else backs
+nothing, so batch state alone is never a grant. Each send is
 written to an append-only spends ledger and to the day's ledger as `batch:<digest prefix>:<index>`, so `synthesis
 sends log` shows it for "On your behalf".
 
@@ -541,9 +548,9 @@ it covers is not counted against a window's planned sends, and a call is covered
 
 **What tampering with the state does.** The file tools and the shell writes the guard reads cannot write the state,
 and a script that names a batch's opening or spending code is refused as the window's is; 5.22.1 closes the
-interpreter writes the review of 5.23.0 found, and the guard reads `sends._batch_file`, `sends._spends_file` and
-`sends._window_file` as leading into the state, so a program that names one is judged as one that names the state
-folder. A path a program builds at run time is still unseen (the review of 5.24.0, #6, a sandbox's to close, not this
+interpreter writes the review of 5.23.0 found, and the guard reads `sends._batch_file`, `sends._spends_file`,
+`sends._requests_file` and `sends._window_file` as leading into the state, so a program that names one is judged as
+one that names the state folder. A path a program builds at run time is still unseen (the review of 5.24.0, #6, a sandbox's to close, not this
 batch's). Behind that: state that cannot be read, whose entries no longer hash to
 its digest and its file's name, that marks entries it does not have as spent, or whose life runs past 12 hours from
 its grant is no batch, and its sends fall back to the code per call; the same batch granted again is then refused
