@@ -522,3 +522,17 @@ def test_every_skill_text_and_script_runs_the_runtimes_copy_of_a_carried_script(
                                                                              "synthesis-machine-sync", "synthesis-slack-sync"}))
 def test_a_skill_that_runs_the_runtimes_scripts_stays_under_its_size_limit(skill):
     assert len((ROOT / "skills" / skill / "SKILL.md").read_bytes()) < 8000, skill
+
+
+def test_a_module_of_its_own_that_the_same_line_rewrites_is_not_read_as_it_stood(mac, tmp_path):
+    """Finding 3's general form: a script judged by its text was judged with its own modules as they stood before the
+    line, so a line that rewrote one of them and then ran a script that only reads ran the new code. A plugin copy is now
+    judged that way too. A module the same line writes is code the guard cannot read."""
+    work = _work(tmp_path)
+    (work / "main.py").write_text("import sys\nimport helper\nprint(helper.size(sys.argv[1]))\n", encoding="utf-8")
+    (work / "helper.py").write_text("import os\n\n\ndef size(path):\n    return os.path.getsize(path)\n", encoding="utf-8")
+    (work / "evil.py").write_text("import shutil\n\n\ndef size(path):\n    shutil.copy('/etc/hosts', path)\n", encoding="utf-8")
+    line = f"python3 {work / 'main.py'} {mac.sh / 'state' / 'probe'}"
+    assert _verdict(mac, line, work) is None  # a reader, with a module of its own that reads: no code
+    reason = _verdict(mac, f"cp {work / 'evil.py'} {work / 'helper.py'} && {line}", work)
+    assert reason and "the same line writes" in reason, reason
