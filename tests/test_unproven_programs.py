@@ -1130,3 +1130,69 @@ def test_an_ordinary_shell_script_passes_however_it_is_run(world, name, how):
     _script(world["work"] / ".venv" / "bin", "activate", "export VIRTUAL_ENV=\"$PWD/.venv\"\nexport PATH=\"$VIRTUAL_ENV/bin:$PATH\"\n")
     assert _verdict(world, RUNS_SCRIPT[how]) is None, (name, how)
     assert _verdict(world, "bash -n run.sh") is None  # read for its syntax, it runs nothing
+
+
+# --- runners whose program the guard did not read (review round 1 of 22.19, finding 1, folded into 22.21): pytest on a
+# test file, `ipython -c`, and `uv run`, `poetry run`, `pipx run` and their like. A test pytest runs is read as a script
+# file, unless every test runs under a conftest whose code puts the synthesis home at a temporary path for every test --
+
+WRITER_TEST = "from synthesis import approvals\n\n\ndef test_it():\n    approvals.void('send', {})\n"
+ISOLATING = ("import pytest\n\n\n@pytest.fixture(autouse=True)\ndef own_home(tmp_path, monkeypatch):\n"
+             "    home = tmp_path / 'synthesis-home'\n    monkeypatch.setenv('SYNTHESIS_HOME', str(home))\n")
+RUNNERS_HELD = {
+    "pytest by -m": "python3 -m pytest test_mine.py", "pytest": "pytest test_mine.py", "pytest a test by its id": "pytest -q -x test_mine.py::test_it",
+    "pytest on its folder": "pytest", "pytest on a folder named": "python3 -m pytest -q .", "uv run pytest": "uv run pytest test_mine.py",
+    "poetry run python -m pytest": "poetry run python -m pytest test_mine.py",
+    "ipython -c": f"ipython -c 'import sys; sys.path.insert(0, \"{ROOT}\"); from synthesis import approvals; approvals.void(\"send\", {{}})'",
+    "ipython on a script": "ipython3 tool.py", "uv run python -c": f"uv run --with requests python -c 'import sys; sys.path.insert(0, \"{ROOT}\"); "
+                                                                       "from synthesis import approvals; approvals.void(\"send\", {})'",
+    "uv run a script": "uv run tool.py", "poetry run python": "poetry run python tool.py", "pipx run": "pipx run --spec ipython ipython tool.py",
+    "uvx": "uvx --from ipython ipython tool.py", "pdm run": "pdm run python tool.py",
+}
+
+
+@pytest.mark.parametrize("name", sorted(RUNNERS_HELD))
+def test_a_runner_s_program_that_writes_through_synthesis_waits(world, name):
+    _script(world["work"], "test_mine.py", WRITER_TEST)
+    _script(world["work"], "tool.py", WRITES_THROUGH.replace("COPY", COPY))
+    assert HELD in (_verdict(world, RUNNERS_HELD[name]) or ""), name
+
+
+def test_a_conftest_that_writes_through_synthesis_waits_for_the_test_beside_it(world):
+    _script(world["work"], "conftest.py", WRITES_THROUGH.replace("COPY", COPY))
+    _script(world["work"], "test_plain.py", "def test_sum():\n    assert sum([1, 2]) == 3\n")
+    assert HELD in (_verdict(world, "python3 -m pytest test_plain.py") or "")
+
+
+def test_tests_under_a_conftest_that_puts_the_home_at_a_temporary_path_run_with_no_code(world):
+    """What isolates the home is read in the conftest's code, not taken from where it sits: the same tests copied
+    beside a conftest that does not isolate it, or run with conftests turned off, wait."""
+    copied = world["work"] / "tests"
+    _script(copied, "test_approval_provenance.py", (ROOT / "tests" / "test_approval_provenance.py").read_text(encoding="utf-8"))
+    assert HELD in (_verdict(world, "python3 -m pytest -q tests/test_approval_provenance.py") or "")  # a folder named tests isolates nothing
+    _script(copied, "conftest.py", ISOLATING.replace("autouse=True", "autouse=False"))
+    assert HELD in (_verdict(world, "python3 -m pytest -q tests/test_approval_provenance.py") or "")
+    _script(copied, "conftest.py", ISOLATING.replace("str(home)", "'/tmp/a-fixed-home'"))
+    assert HELD in (_verdict(world, "python3 -m pytest -q tests/test_approval_provenance.py") or "")
+    _script(copied, "conftest.py", ISOLATING)
+    assert _verdict(world, "python3 -m pytest -q tests/test_approval_provenance.py") is None
+    assert HELD in (_verdict(world, "python3 -m pytest -q --noconftest tests/test_approval_provenance.py") or "")
+    _script(world["work"], "test_mine.py", WRITER_TEST)
+    assert HELD in (_verdict(world, "pytest tests test_mine.py") or "")  # one file outside the isolating conftest
+
+
+@pytest.mark.parametrize("line", ["python3 -m pytest -q tests/test_approval_provenance.py", "pytest -q -x tests/test_unproven_programs.py -k transcript",
+                                  "python3 -m pytest -q tests/ skills/", "uv run pytest skills/synthesis-local-messaging/tests/test_imessage_send.py",
+                                  "pytest"])
+def test_synthesis_s_own_suite_runs_from_its_checkout_with_no_code(world, line):
+    assert guards.check("Bash", {"command": line}, CONFIG, cwd=str(ROOT), session=world["session"]) is None, line
+
+
+@pytest.mark.parametrize("line", ["ipython -c 'print(1 + 1)'", "uv run python -c 'import json; print(json.dumps([1]))'",
+                                  "poetry run pytest -q", "uv run --with httpx python tool_plain.py", "pipx run cowsay hello",
+                                  "uvx ruff check .", "pdm run pytest tests"])
+def test_a_runner_s_ordinary_program_passes(world, line):
+    _script(world["work"], "tool_plain.py", "import json\nprint(json.dumps({'ok': True}))\n")
+    _script(world["work"] / "tests", "test_plain.py", "def test_sum():\n    assert sum([1, 2]) == 3\n")
+    _script(world["work"], "test_more.py", "import json\n\n\ndef test_json():\n    assert json.loads('[1]') == [1]\n")
+    assert _verdict(world, line) is None, line
