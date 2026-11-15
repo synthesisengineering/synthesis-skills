@@ -4597,23 +4597,27 @@ def _stand_in(code: str, where: str, module: str = "") -> str:
                  or os.path.isdir(os.path.join(where, m))), "")
 
 
+def _release() -> str:
+    """The release this guard runs from: `releases/<hash>/` under the synthesis home, a protected folder."""
+    return os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+
+
 def _shipped(path: str) -> bool:
-    """A script of the plugin as it shipped: inside the release this guard runs from (`releases/<hash>/` under the
-    synthesis home, a protected folder), or with the same bytes as that release's copy at the same relative path,
-    as are the modules beside it that it imports (a skill's script in a harness's plugin cache). Nothing else in the
-    synthesis home, and no file beside an unchanged guard elsewhere, is the plugin's (the coordinator, 2026-11-14)."""
-    release = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
-    if paths.inside(path, release):
-        return True
+    """A script of the plugin as it shipped: inside the release this guard runs from, whose every import resolves
+    inside it. A copy anywhere else is never the plugin's own, whatever its bytes, since what lies around it is
+    writable: the plugin's synthesis/ two folders up, the skill's root, a module planted beside it (the review of
+    5.23.1, finding 1). Every skill runs the runtime's copy instead (`_runtime_copy`; the coordinator, 2026-11-15)."""
+    return paths.inside(path, _release())
+
+
+def _runtime_copy(path: str) -> str:
+    """The runtime's own copy of the script a copy outside the release stands for: the file at the same place under
+    its last `skills/` folder, spelled through the synthesis home's `current` where that leads to this release; ''
+    when the runtime carries none."""
     parts = path.split(os.sep)
     rel = os.path.join(*parts[len(parts) - 1 - parts[::-1].index("skills"):]) if "skills" in parts[:-1] else ""
-    here, there = os.path.dirname(path), os.path.dirname(os.path.join(release, rel))
-    mine = _regular(path, SCRIPT_LIMIT + 1)
-    names = {m for a, b in re.findall(r"^[ \t]*(?:from[ \t]+(\w+)|import[ \t]+([\w, \t]+))", (mine or (b"",))[0].decode("utf-8", "replace"), re.M)
-             for m in ([a] if a else [x.split()[0] for x in b.split(",") if x.strip()])}
-    return bool(rel) and all(os.path.isfile(os.path.join(there, name)) and (_regular(os.path.join(here, name), SCRIPT_LIMIT + 1) or (b"",))[0] == (
-        _regular(os.path.join(there, name), SCRIPT_LIMIT + 1) or (None,))[0] for name in [os.path.basename(path)] + sorted(
-        n + ".py" for n in names if os.path.exists(os.path.join(here, n + ".py")) or os.path.isdir(os.path.join(here, n))))
+    stable, release = str(paths.home() / "current"), _release()
+    return os.path.join(stable if _real(stable) == release else release, rel) if rel and os.path.isfile(os.path.join(release, rel)) else ""
 
 
 def _unread(words: list, where: str, written: set, line: str) -> tuple:
@@ -5120,10 +5124,13 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None) -> str |
                  or ("the files xargs hands it" if HANDED in words and names else "")) if label else ""  # standing where no session works, or what xargs hands it
         if SCRIPT.match(head) and re.search(r"\bsynthesis\b", script + code) and SELF_GRANT_CALLS.search(script):
             why = why or "runs synthesis's approval or send-window code, which only the guard and the principal's prompt use"
-        reaches = [(f, _synthesis_reach(t)) for f, t in files] if python and ran and not waits and not _shipped(ran) else []
+        shipped = bool(ran) and _shipped(ran)  # the plugin's own
+        copy = _runtime_copy(ran) if python and ran and not shipped else ""  # a copy of a script the runtime carries
+        then = f"; it is a copy outside the installed release, which the guard never vouches for: the runtime's own copy, {copy}, runs with no code" if copy else ""
+        reaches = [(f, _synthesis_reach(t)) for f, t in files] if python and ran and not waits and not shipped else []
         uses = next(((f, r[1]) for f, r in reaches if r[0] in ("names", "follows")), None)
         if uses:  # finding 17: by what it, or a module of its own, does with synthesis's code
-            waits = Unproven(f"runs `{head}` on {ran}, a script outside the plugin's release that {uses[1]}" + (f" ({uses[0]})" if uses[0] != ran else ""))
+            waits = Unproven(f"runs `{head}` on {ran}, a script outside the plugin's release that {uses[1]}" + (f" ({uses[0]})" if uses[0] != ran else "") + then)
         source, argv = _python_source(words, fed) if head.startswith("python") else ("", [])
         reach = _synthesis_reach(source) if python and source else next((r for _, r in reaches if r[0] == "places"), ("", "", None))
         named = named or (reach[1].replace("reaches ", "") if reach[0] == "places" and label else "")  # a folder synthesis's own paths lead to
@@ -5155,7 +5162,6 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None) -> str |
         waits = waits or (Unproven(f"runs `{head}`, a program that {reach[1]}") if reach[0] == "names" else None)
         bare = "" if not python or _isolated(words) else "the line sets a variable that moves Python's module path (run it without that variable" if PYTHON_ENV.search(
             text) else f"a file in {where} could stand in for `{_stand_in(source, where)}`, which it imports (run it from a folder without that file" if source and _stand_in(source, where) else ""
-        shipped = bool(ran) and _shipped(ran)  # the plugin's own
         shows = "" if not (python and ran and not source) or shipped or not named or waits else (  # a script file judged by what its text shows
             "runs while the line sets a variable that moves Python's module path (without that variable, or with -I, it needs no code)" if bare
             else f"imports `{stand}`, for which a file beside it could stand in (where no such file is, or with -I, it needs no code)" if stand
@@ -5163,7 +5169,7 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None) -> str |
         proven = shipped or (not shows if python and ran and not source else python and not bare and bool(source) and hit is False and not (
             reach[0] == "places" and not reach[2] and wrote))  # a write to where synthesis's own paths lead, unspelled, cannot be placed
         if named and not waits and not proven:
-            waits = Unproven(f"runs `{label}` on {ran}, which {shows}, and names {named}" if shows else
+            waits = Unproven(f"runs `{label}` on {ran}, which {shows}, and names {named}{then}" if shows else
                              f"runs `{label}`, which its reader proves only reads, but {bare}, or with -I, and it needs no code). It names "
                              f"{named}" if bare and hit is False else f"runs `{label}`, which this guard cannot prove only reads, and names {named}")
         waits = waits or (Unproven(f"runs `{head}`, which starts a command that {inner}") if inner else None)

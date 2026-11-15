@@ -52,9 +52,10 @@ STABLE_SKILL_SCRIPTS = ("synthesis-inbox-cleanup", "synthesis-autopilot", "synth
                         "synthesis-meeting-transcripts",  # the fetcher a day-end runs from a plugin copy (2026-11-15)
                         "synthesis-message-exports",  # the importer and the one-chat page reader, run the same way
                         "synthesis-local-messaging",  # the day-end's messages read, which moves its watermark
-                        "synthesis-context-lifecycle")  # the day-end's records gate (context_doctor.py)
-# Never synthesis-skills-manager or synthesis-onboarding: release.py, setup.py and workspace.py write the trust base
-# itself, so a plugin copy of them is never the plugin's own (guards._shipped) and they wait for the principal's code.
+                        "synthesis-context-lifecycle",  # the day-end's records gate (context_doctor.py)
+                        "synthesis-bitbucket")  # pr_queue.py, which the rituals' pr_queue_scan.py loads from beside its skill
+# Every skill runs the runtime's copy, the only one the guard trusts (guards._shipped). Never synthesis-skills-manager
+# or synthesis-onboarding: release.py, setup.py and workspace.py write the trust base itself, so they wait for the code.
 CLI_SCRIPT = """#!/bin/sh
 exec python3 -c 'import os, sys; sys.path[0] = os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(sys.argv.pop(1)))), "current"); from synthesis.cli import main; sys.exit(main())' "$0" "$@"
 """  # through a link (~/.local/bin/synthesis) and from any folder: the runtime, not a checkout in the working directory
@@ -75,7 +76,7 @@ def package_hash(plugin_root: Path) -> str:
 
 def _stable_skill_files(plugin_root: Path):
     """Each carried skill's scripts/ folder, and its Python anywhere else (a skill may keep code beside SKILL.md or in a
-    folder of its own), never its tests: what the guard compares a plugin copy with (guards._shipped)."""
+    folder of its own), never its tests: the copies a skill runs, inside the release the guard trusts (guards._shipped)."""
     for name in STABLE_SKILL_SCRIPTS:
         skill = Path(plugin_root) / "skills" / name
         for path in sorted(skill.rglob("*")) if skill.is_dir() else []:

@@ -1306,10 +1306,15 @@ ROOT = Path(__file__).resolve().parents[1]
 # scripts a seat's day-end runs from a plugin copy: of the plugin's 89 skill scripts, the installed guard held the four a
 # day-end runs, since the runtime it compares a copy with did not carry them) and the comment that the installer and
 # release kit is never carried 2.
+# Then, that change's second version, core and plugin each 7 more. guards.py 6: _shipped 11 fewer (only the release the
+# guard runs from: a plugin copy's bytes said nothing about the code it loads from other folders, its review's finding
+# 1), _release 3 and _runtime_copy 8 with their 4 blank lines (the runtime's own copy of a script a plugin copy stands
+# for), _self_grant 2 (a hold on such a copy names it). install.py 1: synthesis-bitbucket carried, whose pr_queue.py the
+# rituals' pr_queue_scan.py loads from beside its own skill.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 16517
-PLUGIN_BUDGET = 42589
+CORE_BUDGET = 16524
+PLUGIN_BUDGET = 42596
 
 
 def _lines(files):
