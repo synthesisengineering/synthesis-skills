@@ -13,6 +13,7 @@ installer, under homes of their own, and run the guard from it in a fresh interp
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -426,3 +427,97 @@ def test_a_plugin_copy_run_with_its_own_environment_is_not_told_the_runtimes_cop
     work = _work(tmp_path)
     reason = _verdict(mac, f"PYTHONPATH={work}/pp python3 {mac.plugin / FETCHER} --window 2026-11-14 2026-11-15", work)
     assert reason and "runs with no code" not in reason, reason
+
+
+# --- the callers: every skill runs the runtime's copy ---------------------------------------------------------------
+
+MCP = "skills/synthesis-meeting-transcripts/optional-workspace-mcp"
+
+
+def test_the_runtime_carries_a_carried_skills_shell_scripts_and_python_at_any_depth(tmp_path):
+    """The meeting skill's server kit (its doctor, which a ritual may run, and the start script the doctor checks the
+    service against) lives beside the fetcher; a carried skill's Python below a folder of scripts/ is carried too
+    (finding 6). Never its tests, never compiled code."""
+    carried = {rel for rel, _ in install._stable_skill_files(ROOT)}
+    assert {f"{MCP}/{name}" for name in ("doctor.sh", "start.sh", "stop.sh", "install-autostart.sh", "uninstall-autostart.sh")} <= carried
+    plugin = _copy_plugin(tmp_path / "plugin", ["synthesis-context-lifecycle"])
+    deep = plugin / "skills" / "synthesis-context-lifecycle" / "scripts" / "helpers"
+    deep.mkdir()
+    (deep / "lines.py").write_text("print('a helper')\n", encoding="utf-8")
+    (deep / "test_lines.py").write_text("def test_it():\n    pass\n", encoding="utf-8")
+    found = {rel for rel, _ in install._stable_skill_files(plugin)}
+    assert "skills/synthesis-context-lifecycle/scripts/helpers/lines.py" in found
+    assert not [rel for rel in found if "test_" in rel or "__pycache__" in rel]
+
+
+EVERYDAY = {  # each newly carried skill's ordinary use, as its skill text now runs it (the review's matrix)
+    "fetch-meeting --window": f"python3 {{rt}}/{FETCHER} --window 2026-11-14 2026-11-15",
+    "fetch-meeting standup": f"python3 {{rt}}/{FETCHER} standup --date 2026-11-14",
+    "mcp_client list": f"python3 {{rt}}/{MCP}/mcp_client.py list",
+    "verify_transcripts": "python3 {rt}/skills/synthesis-meeting-transcripts/verify_transcripts.py {work}/t.txt",
+    "extract_commitments": "python3 {rt}/skills/synthesis-meeting-transcripts/extract_commitments.py {work}/t.txt",
+    "the server's doctor": f"bash {{rt}}/{MCP}/doctor.sh --quiet",
+    "import_messages --dry-run": "python3 {rt}/" + IMPORT + " {work}/export --out {work}/out --dry-run",
+    "chat_page": "python3 {rt}/" + PAGE + " {work}/t.txt --out {work}/out --since 2026-11-14",
+    "local_messaging --request --state": f"python3 {{rt}}/{READ} --request {{work}}/r.json --state {{work}}/state",
+    "messages_send --help": f"python3 {{rt}}/{SEND} --help",
+    "whatsapp_prefill --help": "python3 {rt}/skills/synthesis-local-messaging/scripts/whatsapp_prefill.py --help",
+    "context_doctor --project": f"python3 {{rt}}/{DOCTOR} --project {{work}}",
+    "context_doctor --json": f"python3 {{rt}}/{DOCTOR} --json",
+    "pr_queue_scan": "python3 -S {rt}/skills/synthesis-daily-rituals/scripts/pr_queue_scan.py --workspace w",
+}
+
+
+@pytest.mark.parametrize("name", list(EVERYDAY))
+def test_the_everyday_use_of_each_carried_skill_from_the_runtime_needs_no_code(mac, tmp_path, name):
+    work = _work(tmp_path)
+    assert _verdict(mac, EVERYDAY[name].format(rt=mac.rt, work=work), work) is None, name
+
+
+ARCHIVAL = re.compile(r"preserved|version-history|release-notes|coverage-map|earlier-version")  # records of what was
+INVOKE = re.compile(r"(?:\bpython3?(?:[ \t]+-[A-Za-z]+)*[ \t]+|\b(?:ba)?sh[ \t]+|(?<![\w/.$-])(?=\./))(\"?[^\s`\"'()|;&]*?)([\w.-]+\.(?:py|sh))\b")
+ALIASES = {"<rituals>": "synthesis-daily-rituals", "<cos>": "synthesis-chief-of-staff", "<chief-of-staff>": "synthesis-chief-of-staff"}
+
+
+def _runtime_form(prefix: str, skill: str, text: str) -> bool:
+    """A path into the runtime's copy of `skill`: written out, through a placeholder or a variable the same file sets to
+    it, or found by the script's own folder (a shell script beside its kit) or a checkout a CI recipe clones."""
+    stable = rf"(?:\$HOME|\$\{{HOME\}}|~)/\.synthesis/v5/current/skills/{re.escape(skill)}"
+    if re.match(rf'"?(?:{stable}/|\$\{{SYNTHESIS_SKILLS:-\$\{{SYNTHESIS_HOME:-\$HOME/\.synthesis/v5\}}/current\}}/skills/{re.escape(skill)}/)', prefix):
+        return True
+    if re.match(r'"?(?:\$SCRIPT_DIR|\$SELF_DIR/\.\./current/skills/[\w-]+/scripts)/|\.\./synthesis-skills/skills/', prefix):
+        return True
+    named = re.match(r'"?(<[\w-]+>|\$\{?(\w+)\}?)/', prefix)
+    if not named:
+        return False
+    word = named.group(1) if named.group(1).startswith("<") else named.group(2)
+    return bool(re.search(rf"(?:`{re.escape(word)}`|\b{re.escape(word)}=|`\${re.escape(word)}`)[^\n]*{stable}", text))
+
+
+def test_every_skill_text_and_script_runs_the_runtimes_copy_of_a_carried_script():
+    """A skill that runs one of the runtime's scripts names the runtime's path, as the autopilot skill does: a copy
+    anywhere else is not the plugin's own and waits for the principal's code (the coordinator, 2026-11-15)."""
+    carried = {}
+    for rel, _ in install._stable_skill_files(ROOT):
+        carried.setdefault(Path(rel).parts[1], set()).add(Path(rel).name)
+    wrong = []
+    for path in sorted((ROOT / "skills").rglob("*")):
+        rel = path.relative_to(ROOT / "skills").parts
+        if not path.is_file() or ARCHIVAL.search(path.name) or "tests" in rel or path.name.startswith("test_") or (
+                path.suffix not in (".md", ".py", ".sh", ".json", ".yaml", ".txt") and path.name != "day-end"):
+            continue
+        text = path.read_text(encoding="utf-8", errors="replace")
+        for n, line in enumerate(text.splitlines(), 1):
+            for m in INVOKE.finditer(line):
+                prefix, name = m.group(1) or "", m.group(2)
+                skill = next((s for s in carried if f"skills/{s}/" in prefix or f"<{s}>" in prefix or f"<{s}-root>" in prefix), None) or next(
+                    (s for alias, s in ALIASES.items() if prefix.lstrip('"').startswith(alias)), None) or (rel[0] if rel[0] in carried else None)
+                if skill and name in carried[skill] and not _runtime_form(prefix, skill, text):
+                    wrong.append(f"skills/{'/'.join(rel)}:{n}: {m.group(0).strip()}")
+    assert not wrong, "these run a copy outside the runtime:\n" + "\n".join(wrong)
+
+
+@pytest.mark.parametrize("skill", sorted(set(install.STABLE_SKILL_SCRIPTS) | {"synthesis-checkpoint", "synthesis-mac-sync",
+                                                                             "synthesis-machine-sync", "synthesis-slack-sync"}))
+def test_a_skill_that_runs_the_runtimes_scripts_stays_under_its_size_limit(skill):
+    assert len((ROOT / "skills" / skill / "SKILL.md").read_bytes()) < 8000, skill
