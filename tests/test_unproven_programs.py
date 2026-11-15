@@ -859,7 +859,7 @@ def _writers_in(root: Path) -> set:
     return writers
 
 
-GUARD_WRITERS = {"guards._record_deploys", "guards._void", "guards.settle"}
+GUARD_WRITERS = {"guards._record_deploys", "guards._swap", "guards._void", "guards.answered", "guards.settle"}
 
 
 def test_the_writers_the_guard_knows_are_the_ones_synthesis_has():

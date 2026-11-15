@@ -31,12 +31,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   later check, ran nothing, so it gives back the grants it used and leaves no record of a send, a send window's count,
   a deploy for the 45-minute brake, or a grant voided by the code that released it; the hook settles them as it
   answers, and a check a script enters itself (the local-messaging sender's) settles them when it returns. A record
-  that cannot be written holds the call, undoes the records written before it and gives back its grants, and the
-  answer still goes out. One thread judges at a time. A grant given back appears whole or not at all. A window closes once its last planned send has gone, so a send held after
-  another went leaves its place to the window, and desktop window sends are judged one at a time like the others. The
-  guard's 4 s deadline counts from when the hook process loaded; a hold answered more than 4.5 s after that may reach a
-  harness after its 5 s, when it lets the call through, so then the records stand and the grants stay spent. A grant
-  spent before this release cannot be brought back; its call is approved again once.
+  that cannot be written holds the call, undoes the records written before it (a deploy another call recorded
+  meanwhile stays, and a desktop page's record of typed words released by their code is not undone) and gives back
+  its grants, and the answer still goes out. In one process, one thread judges at a time and another waits its turn,
+  the send lock too, and the hook settles only the call its own check judged. A grant given back appears whole or not
+  at all. A window closes once its last planned send has gone, so a send held after another went leaves its place to
+  the window, and desktop window sends are judged one at a time like the others. The guard's 4 s deadline counts from
+  when the hook process loaded, and an alarm that lands as the deadline is taken down still holds the call; a hold
+  answered more than 4.5 s after that may reach a harness after its 5 s, when it lets the call through, so then the
+  records stand and the grants stay spent. A grant spent before this release cannot be brought back; its call is
+  approved again once.
 
 ## [5.23.0] - 2026-11-15
 

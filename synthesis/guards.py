@@ -533,9 +533,10 @@ def _sha256(file: str, until: float, whole: bool = True) -> str:
 
 
 EFFECTS: list = []  # (what to do if the call is let through, what to undo if it is held) for each record a decision makes
-UNDER_HOOK = {"on": False}  # the hook answers last, so it settles the effects; a check entered from elsewhere settles them
+UNDER_HOOK = {"on": 0}  # the thread whose hook answers last and settles its call's records; a check entered elsewhere settles them
 _DEPTH = [0, None]  # how deep in the guard's checks this process is, and the thread judging: only the first one entered settles
-_JUDGING = _thread.allocate_lock()  # one thread judges at a time: the records of a call are the process's own
+_JUDGING = _thread.allocate_lock()  # one thread judges at a time and a second waits: a call's records are its own
+_PENDING: dict = {}  # a hook's thread: the records and grants of the call its check judged, kept for its answer
 
 
 def _after(commit=None, undo=None) -> None:
@@ -558,13 +559,17 @@ def _logged(*line) -> None:
     _after(lambda: marks.append(sends.log(*line)), lambda: [sends.undo(m) for m in marks])
 
 
-def settle(allowed: bool) -> None:
+def settle(allowed: bool, effects: list | None = None, spent: list | None = None) -> None:
     """The call is let through: write each record its decisions made and keep the grants it used spent. It is held:
     undo what was written ahead and give the grants back, since it ran nothing. Each record is its own: one that
     cannot be written does not stop the rest, and the first failure is raised after them; a call whose record cannot be
-    written is held, so then its records are undone and its grants go back as well (review round 4, finding 4)."""
-    effects, failed = list(EFFECTS), []
-    EFFECTS.clear()
+    written is held, so then its records are undone and its grants go back as well (review round 4, finding 4). With
+    no records given, the ones the current check made."""
+    if effects is None:
+        effects, spent = list(EFFECTS), list(approvals.SPENT)
+        EFFECTS.clear()
+        approvals.SPENT.clear()
+    failed: list = []
 
     def run(steps):
         for step in steps:
@@ -577,35 +582,53 @@ def settle(allowed: bool) -> None:
         run(commit for commit, _ in effects)
     if failed or not allowed:
         run(undo for _, undo in reversed(effects))
-    approvals.SPENT.clear() if allowed and not failed else approvals.give_back()
+        approvals.put_back(spent or [])
     if failed:
         raise failed[0]
 
 
+def hook_answers() -> None:
+    """This thread's call is the hook's: its records wait for the hook's answer."""
+    UNDER_HOOK["on"] = _thread.get_ident()
+
+
+def answered(allowed: bool) -> None:
+    """The hook's answer: settle the records of the call its check judged, when that check entered the guard, and stop
+    waiting for the hook. Another thread's records are its own (review round 5 of the spend order, finding 1)."""
+    UNDER_HOOK["on"] = 0
+    pending = _PENDING.pop(_thread.get_ident(), None)
+    if pending:
+        settle(allowed, *pending)
+
+
 def _entry(judge):
     """A check that a caller may enter directly (the hook enters `check`; the local-messaging sender enters
-    `check_send`): the first one entered starts the call's records afresh and, unless the hook answers, settles them
-    when it returns, held as well when it raises (review round 3 of the spend order, finding 1). One thread judges at a
-    time, and the first one entered puts the depth back however it ends (review round 4, findings 2 and 3)."""
+    `check_send`): the first one entered starts the call's records afresh and settles them when it returns, held as
+    well when it raises, or keeps them for the hook's answer (review round 3 of the spend order, finding 1). One thread
+    judges at a time, a second waiting its turn, and the first one entered puts the depth and the lock back however it
+    ends (review round 4, findings 2 and 3; round 5, finding 3)."""
     def entered(*args, **kwargs):
-        first = not (_DEPTH[0] and _DEPTH[1] == _thread.get_ident())
-        if first and not _JUDGING.acquire(False):
-            raise RuntimeError("the synthesis guard judges one call at a time, and another thread is judging one")
-        if first:
-            EFFECTS.clear()
-            approvals.SPENT.clear()
-            _DEPTH[1] = _thread.get_ident()
-        verdict, decided = None, False
+        me = _thread.get_ident()
+        first, acquired, verdict, decided = not (_DEPTH[0] and _DEPTH[1] == me), False, None, False
         try:
+            if first:
+                acquired = _JUDGING.acquire()
+                EFFECTS.clear()
+                approvals.SPENT.clear()
+                _DEPTH[1] = me
             _DEPTH[0] += 1
             verdict, decided = judge(*args, **kwargs), True
         finally:
             if not first:
                 _DEPTH[0] -= 1
-            else:
-                _DEPTH[0] = 0
+            elif acquired:
+                _DEPTH[0], _DEPTH[1] = 0, None
                 try:
-                    if not UNDER_HOOK["on"]:
+                    if UNDER_HOOK["on"] == me:  # the hook answers last: its call's records wait for it
+                        _PENDING[me] = (list(EFFECTS), list(approvals.SPENT))
+                        EFFECTS.clear()
+                        approvals.SPENT.clear()
+                    else:
                         settle(decided and verdict is None)
                 finally:
                     _JUDGING.release()
@@ -2235,20 +2258,29 @@ def _last_deploy(identity: str):
 
 def _record_deploys(identities) -> None:
     """The deploy brake's record of a deploy the guard let through, for the 45-minute check: written if the call is let
-    through, and put back as it was if a later record of the same call cannot be written (review round 4, finding 4)."""
+    through, and put back as it was if a later record of the same call cannot be written (review round 4, finding 4),
+    unless another call has recorded a deploy since (round 5, finding 4). Each write replaces the file whole."""
     kept: list = []
 
     def write():
         for identity in identities:
-            record = _last_deploy(identity)
-            kept.append((record, record.read_bytes() if record.exists() else None))
-            record.parent.mkdir(parents=True, exist_ok=True)
-            record.write_text(f"{identity}\n{time.time()}\n", encoding="utf-8")
+            record, mine = _last_deploy(identity), f"{identity}\n{time.time()}\n".encode("utf-8")
+            kept.append((record, record.read_bytes() if record.exists() else None, mine))
+            _swap(record, mine)
 
     def restore():
-        for record, before in reversed(kept):
-            record.write_bytes(before) if before is not None else record.unlink(missing_ok=True)
+        for record, before, mine in reversed(kept):
+            if record.exists() and record.read_bytes() == mine:
+                _swap(record, before) if before is not None else record.unlink(missing_ok=True)
     _after(write, restore)
+
+
+def _swap(path, data: bytes) -> None:
+    """Replace a file whole: written beside it, then renamed over it, so a reader never finds half of it."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    made = path.with_name(f".{path.name}.{os.getpid()}.{_thread.get_ident():x}.tmp")
+    made.write_bytes(data)
+    os.replace(made, path)
 
 
 @_entry
@@ -2694,7 +2726,7 @@ SCRIPTED_WRITE = re.compile(
     r"|open\s*\(?\s*(?:my\s+)?[$\w]+\s*,\s*['\"]\s*\+?[>|]")
 # A script that opens a send window, grants or spends an approval, or writes into synthesis state. Reading the
 # window, the ledger or the board stays allowed (a read-only check was refused on 2026-10-13).
-SELF_GRANT_CALLS = re.compile(r"\b(?:open_window|grant_from_prompt|consume|give_back|put_back|_window_file)\b|\bpaths\.state\b[\s\S]*\b(?:"
+SELF_GRANT_CALLS = re.compile(r"\b(?:open_window|grant_from_prompt|consume|put_back|_window_file)\b|\bpaths\.state\b[\s\S]*\b(?:"
                               r"write_json|write_text|touch|unlink)\b|\b(?:write_json|write_text|touch|unlink)\b[\s\S]*\bpaths\.state\b")
 HOOK_RUN = re.compile(r"(?:^|/)(?:synthesis-hook|synthesis/hook\.py)$|^synthesis\.hook$")
 ASSIGNED = re.compile(r"(?:^|(?<=[\s;&|({'\"]))([A-Za-z_]\w*)(\+?)=(\"[^\"\n]*\"|'[^'\n]*'|\$\([^()\n]*\)[^\s;&|()<>\"']*|[^\s;&|()<>\"']*)")
@@ -4529,8 +4561,8 @@ GIT_RUNS = re.compile(r"--output(?:=.*)?|--ext-diff|--textconv|-O.*|--open-files
 ABSOLUTE = re.compile(r"-[A-Za-z]*P[A-Za-z]*|--absolute-names|--absolute-filenames|--insecure|-:|-spf")  # an archive's members land where they say
 SYNTHESIS_IMPORT = re.compile(r"^[ \t]*(?:from[ \t]+synthesis\b|import[ \t]+synthesis\b)", re.M)
 SYNTHESIS_WRITES = frozenset(f"{module}.{name}" for module, names in (  # synthesis's own functions that write a file (a test reads them from the source)
-    ("approvals", "_expire _spend alone consume give_back grant_from_prompt put_back remember request void"),
-    ("guards", "_record_deploys _void settle"), ("autopilot", "_evaluate _write_pointer evaluate"),
+    ("approvals", "_expire _spend alone consume grant_from_prompt put_back remember request void"),
+    ("guards", "_record_deploys _swap _void answered settle"), ("autopilot", "_evaluate _write_pointer evaluate"),
     ("board", "_claim _claim_lock _describe _post claim inbox mark_carried mark_read_messages message notify release resolve save touch"),
     ("checkout", "_append _staged_commit _tree_commit index_set log_claims snapshot snapshot_paths"),
     ("cli", "_main cmd_claim cmd_doctor cmd_handoff cmd_inbox cmd_index cmd_install cmd_msg cmd_release cmd_resume cmd_sends "

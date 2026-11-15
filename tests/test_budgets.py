@@ -1347,10 +1347,21 @@ ROOT = Path(__file__).resolve().parents[1]
 # record fails is held: every record undone and its grants given back). approvals.py 15: alone 12 more (taken again
 # inside itself in one process, it does not lock again), _ALONE 1 with 2 blank lines. hook.py 2: pre_tool_use 2 more
 # (the hook's flag put back however the check ended).
+# Then each 37 more, from review round 5 and CI on b458c09f (refusing a second thread broke two identical calls at once,
+# which the send lock serializes; the hook settled another thread's records; the send lock's count was the process's; an
+# interrupt just after the guard was taken left it taken; putting back a deploy record erased another call's; an alarm
+# as the deadline was taken down escaped the hook with no answer): guards.py 32: answered 7 and hook_answers 3, with 4
+# blank lines (the hook settles only the call its own check judged, in the thread it answers for), _PENDING 1, _swap 6
+# with 2 blank lines (a file replaced whole), _entry 4 more (a second thread waits its turn; the lock taken and freed
+# inside the try; the hook's call's records kept for its answer), settle 4 more (the records given, or the current
+# check's), _record_deploys 1 more (a deploy recorded meanwhile stays). hook.py 10: pre_tool_use 3 more (an alarm as the
+# deadline is taken down still holds; an interrupt settles as held), _answer 5 with 2 blank lines. approvals.py 5 fewer:
+# alone 2 more (the thread that holds the lock) and `import _thread` 1, less give_back 6 and its 2 blank lines (settle
+# puts back the grants it is given).
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 16818
-PLUGIN_BUDGET = 42890
+CORE_BUDGET = 16855
+PLUGIN_BUDGET = 42927
 
 
 def _lines(files):
