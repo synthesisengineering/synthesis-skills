@@ -48,7 +48,9 @@ DAY_END = ("day-end", "day-end-nudge.sh")  # the rituals' launcher and nudge rid
 # Scripts run outside a session (scheduled sweeps, autopilot wakes and backstops) need a stable path too.
 STABLE_SKILL_SCRIPTS = ("synthesis-inbox-cleanup", "synthesis-autopilot", "synthesis-promotion-gate", "synthesis-daily-rituals",
                         "synthesis-chief-of-staff",  # the holds ledger's reader, which the same-day guard asks
-                        "synthesis-kb-edit")  # the phrase scan a knowledge base's own git hooks run (sharing-standard.md)
+                        "synthesis-kb-edit",  # the phrase scan a knowledge base's own git hooks run (sharing-standard.md)
+                        "synthesis-meeting-transcripts",  # the fetcher a day-end runs from a plugin copy (2026-11-15)
+                        "synthesis-message-exports")  # the importer and the one-chat page reader, run the same way
 CLI_SCRIPT = """#!/bin/sh
 exec python3 -c 'import os, sys; sys.path[0] = os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(sys.argv.pop(1)))), "current"); from synthesis.cli import main; sys.exit(main())' "$0" "$@"
 """  # through a link (~/.local/bin/synthesis) and from any folder: the runtime, not a checkout in the working directory
@@ -68,11 +70,15 @@ def package_hash(plugin_root: Path) -> str:
 
 
 def _stable_skill_files(plugin_root: Path):
+    """Each carried skill's scripts/ folder, and its Python anywhere else (a skill may keep code beside SKILL.md or in a
+    folder of its own), never its tests: what the guard compares a plugin copy with (guards._shipped)."""
     for name in STABLE_SKILL_SCRIPTS:
-        folder = Path(plugin_root) / "skills" / name / "scripts"
-        for path in sorted(folder.iterdir()) if folder.is_dir() else []:
-            if path.is_file() and not path.name.startswith("test_"):
-                yield f"skills/{name}/scripts/{path.name}", path
+        skill = Path(plugin_root) / "skills" / name
+        for path in sorted(skill.rglob("*")) if skill.is_dir() else []:
+            parts = path.relative_to(skill).parts
+            if (path.is_file() and not path.name.startswith("test_") and not {"tests", "__pycache__"} & set(parts)
+                    and (parts[0] == "scripts" and len(parts) == 2 or parts[0] != "scripts" and path.suffix == ".py")):
+                yield f"skills/{name}/{'/'.join(parts)}", path
 
 
 def version_tuple(text: str) -> tuple:

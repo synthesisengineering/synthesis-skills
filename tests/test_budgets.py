@@ -1300,10 +1300,14 @@ ROOT = Path(__file__).resolve().parents[1]
 # heredoc shape asked 11,746 times over 102 paths and took 1.11 s on CI's macOS runner under Apple's Python 3.9, 0.31 s
 # on this Mac; with it, 123 times and 0.105 s) and its 3 blank lines. The per-call reset and the 29 places that ask
 # change in place.
+# Then core and plugin each 6 more, all in install.py: _stable_skill_files 4 (its docstring 2, and a carried skill's
+# Python outside scripts/ beside its scripts/ folder, never its tests: the meeting fetcher lives in a folder of its own)
+# and STABLE_SKILL_SCRIPTS 2 (the meeting-transcripts and message-exports skills, whose scripts a seat's day-end runs
+# from a plugin copy; the guard held the fetcher, since the runtime it compares a copy with did not carry it).
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 16507
-PLUGIN_BUDGET = 42579
+CORE_BUDGET = 16513
+PLUGIN_BUDGET = 42585
 
 
 def _lines(files):
