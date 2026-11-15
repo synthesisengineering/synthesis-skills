@@ -1181,10 +1181,14 @@ ROOT = Path(__file__).resolve().parents[1]
 # release's copy, in place of the synthesis home and a plugin cache's guard match), _protected_roots 1 (the runtime's
 # releases, current and bin), and a script file outside the release that imports synthesis's code waits apart from the
 # approval-call refusal 1.
+# What the 30-day replay of recorded commands showed the round-1 code misread (2026-11-14): core 5 more and plugin 5.
+# guards.py 5: _lex 5 (arithmetic, whose own substitutions alone run, and an array's values, kept in its word; the
+# substitution branch and the `$` branch step past `$((` in place); _dquote's arithmetic, the empty word no longer read
+# as a reader's writing option and the import check for synthesis's code each change one line in place.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 15542
-PLUGIN_BUDGET = 40785
+CORE_BUDGET = 15547
+PLUGIN_BUDGET = 40790
 
 
 def _lines(files):

@@ -1366,7 +1366,7 @@ def _dquote(s: str, i: int, subs: list, closing: str = '"') -> tuple[int, str]:
         elif c == "`" or s.startswith("$(", i):
             start = i + (1 if c == "`" else 2)
             end = _close(s, start, c if c == "`" else "(")
-            subs.append(s[start:end - 1])
+            subs += [t[1] for t in _lex(s[start + 1:end - 2]) if t[0] == "sub"] if s.startswith("$((", i) else [s[start:end - 1]]  # arithmetic
             out.append(s[i:end])
             i = end
         else:
@@ -1467,18 +1467,23 @@ def _lex(s: str) -> list:
             tokens += [("sub", x) for x in subs]
             word.append(text.translate(SHIELD))
             started = True
-        elif c == "`" or s.startswith("$(", i):
+        elif c == "`" or (s.startswith("$(", i) and not s.startswith("$((", i)):
             start = i + (1 if c == "`" else 2)
             end = _close(s, start, c if c == "`" else "(")
             tokens.append(("sub", s[start:end - 1]))
             word.append(s[i:end].translate(SHIELD))
             started, i = True, end
-        elif c in "$#" and (started or c == "$"):
+        elif c in "$#" and (started or c == "$") and not s.startswith("$((", i):
             word.append(c)
             started, i = True, i + 1
         elif c == "#":  # a comment runs to the end of its line
             end = s.find("\n", i)
             i = len(s) if end < 0 else end
+        elif s.startswith("$((", i) or (c == "(" and started and re.fullmatch(r"[A-Za-z_]\w*\+?=", "".join(word))):
+            end = _close(s, i + 2 if c == "$" else i + 1, "(")  # arithmetic, or an array's values: part of the word
+            tokens += [t for t in _lex(s[i + 3:end - 2]) if t[0] == "sub"] if c == "$" else []  # what arithmetic substitutes runs
+            word.append(s[i:end].translate(SHIELD))
+            started, i = True, end
         else:
             op = next(o for o in OPERATORS if s.startswith(o, i))
             if op in REDIRECTS and started and "".join(word).isdigit():
@@ -4579,7 +4584,7 @@ def _unread(words: list, where: str, written: set, line: str) -> tuple:
     if UNREAD.match(head) or head in EDITORS:
         return head, code(name) if kind == "file" else "", True
     if head == "git" or head in READERS:
-        known = _git_reads(words) if head == "git" else not any(re.fullmatch(READER_WRITES.get(head, "$^"), w) for w in words[1:])
+        known = _git_reads(words) if head == "git" else not any(re.fullmatch(READER_WRITES.get(head, "(?!)"), w) for w in words[1:])
         return ("", "", False) if known else (head, "", False)
     if head in ("find", "eval") or (head == "xxd" and len([w for w in words[1:] if w[:1] != "-"]) <= 1):
         return "", "", False
@@ -4797,7 +4802,7 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None) -> str |
                           "runs a script that writes where the synthesis state, its board or a harness's transcripts live, or that "
                           "writes while such a path reaches it through an argument, the environment or the folder it runs in "
                           "(spell each file's path inside the program, or run the script alone)")
-        if source and hit is None and re.search(r"\bsynthesis\b", source):  # synthesis's code reached by a name it builds
+        if source and hit is None and SYNTHESIS_IMPORT.search(source):  # synthesis's code reached by a name it builds
             why = why or "runs synthesis's approval or send-window code, which only the guard and the principal's prompt use"
         proven = (bool(ran) and _shipped(ran)) or (((_isolated(words) and hit is False) if source else bool(ran) and _proven(
             code, words, where, names, raw, env, config)) if head.startswith("python") and SCRIPT.match(head) else False)  # the plugin's own, or proved
