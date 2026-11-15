@@ -1467,10 +1467,21 @@ ROOT = Path(__file__).resolve().parents[1]
 # whose flagged reply would take longer than the deadline warns too), FLAGGED 1 (a flagged reply's time against the
 # probe's sentence, measured). judge.py, reply_check.py, hooks/hooks.json and Muse's manifest 0: the judge's ceiling and
 # the reply check's room at 8 s and the Stop hook at 10 s in every harness, each in its own line.
+# Review round 1 of the judge (2026-11-15, H1 and H2: a written setting made the Stop hook run any program and post to
+# any host) adds 40 to the core and 39 to the plugin. judge.py 28: _program 13 with its two blank lines (a `command` is
+# used only where it resolves to the file the harness's own name does on PATH or in its install locations, else nothing
+# runs), _url 6 (the cloud's address only its provider's own host over https, on port 443, with no user in it),
+# _subscription 3 (the harness's own program or no run), PROVIDER_HOSTS, NAME and LEVEL 2 (a model is a plain name and
+# an effort letters: values on the command line, never options), settings 1 (each key path ends in the provider's
+# name), the shutil import 1. paths.py 21: INSTALLS with its comment 7 and expand_install 10, with their blank lines,
+# moved from doctor.py so the judge and the doctor share the harnesses' own install locations. doctor.py less 9: the 15
+# lines moved out for 1 that names them, its glob import gone, and check_plan_judge 6 more (a `command` that is not the
+# harness's own program is named in a warn, and its status command and probe never run). judge_replay.py less 1:
+# --cloud-url, which the binding leaves nothing to choose.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 17645
-PLUGIN_BUDGET = 44075
+CORE_BUDGET = 17685
+PLUGIN_BUDGET = 44114
 
 
 def _lines(files):

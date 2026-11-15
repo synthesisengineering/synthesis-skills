@@ -23,6 +23,7 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import ssl
 import subprocess
 import threading
@@ -38,6 +39,8 @@ from synthesis import paths
 POLICIES = Path(__file__).resolve().parent / "policies"
 ADDRESSED_RULE = "instructions-in-content"
 LOCAL_URL, CLOUD_URL = "http://127.0.0.1:11434", "https://api.anthropic.com/v1/messages"
+PROVIDER_HOSTS = {"anthropic": "api.anthropic.com"}  # the cloud judge's only host: the reply and the key go nowhere else
+NAME, LEVEL = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:@/+-]{0,99}"), re.compile(r"[a-z]{1,16}")  # a model, an effort: values, never options
 DEADLINE, LONGEST, CLOUD_LEAST = 3.0, 8.0, 1.0  # seconds: the whole verdict, its limit inside the Stop hook's 10, a cloud ask
 CAP, KEEP, LOG_LIMIT, MAX_TOKENS = 10.0, 2000, 4_000_000, 8000  # dollars a month; cached verdicts; log bytes; cloud tokens, thinking included
 ASKED = 3000  # characters of the principal's last message the judge reads, from its end: the prompt stays short
@@ -126,13 +129,19 @@ def load_policy(check: str) -> Policy:
     return parse_policy(check, (POLICIES / f"{check}.md").read_text(encoding="utf-8"))
 
 
-def _url(value, default: str, where: str, local: bool) -> str:
+def _url(value, default: str, where: str, host: str = "") -> str:
+    """The judge's address: the local model's on this Mac's loopback, the cloud's on its provider's own host over https
+    (review round 1 of 21.3: a written setting sent the reply and the key to any host)."""
     url = str(value or default).rstrip("/")
     part = urllib.parse.urlsplit(url)
-    loop = (part.hostname or "") in LOOPBACK
-    if part.scheme not in ("http", "https") or (local and not loop) or (not local and part.scheme != "https" and not loop):
-        raise ConfigError(f"the judge section of the synthesis config gives judge.{where}.url {url!r}: the local judge "
-                          "answers on this Mac's loopback address, and the cloud over https")
+    try:
+        port = part.port
+    except ValueError:
+        port = -1
+    if not (part.scheme == "https" and part.hostname == host and port in (None, 443) and not part.username and not part.password
+            if host else part.scheme in ("http", "https") and (part.hostname or "") in LOOPBACK):
+        raise ConfigError(f"the judge section of the synthesis config gives judge.{where}.url {url!r}: " + (
+            f"the cloud judge asks only {host} over https" if host else "the local judge answers on this Mac's loopback address"))
     return url
 
 
@@ -151,10 +160,10 @@ def settings(config: dict) -> dict | None:
     local, cloud, sub, deadline = given.get("local"), given.get("cloud"), given.get("subscription"), given.get("deadline_seconds", DEADLINE)
     need(local is not None or cloud is not None or sub is not None, "names no judge: give it `local`, `subscription`, `cloud` or more")
     need(sub is None or isinstance(sub, dict) and not set(sub) - set(HARNESSES) - {"leave_out"} and all(
-        isinstance(sub[h], dict) and not set(sub[h]) - ENTRY_KEYS and isinstance(sub[h].get("model"), str) and sub[h]["model"].strip()
-        and all(isinstance(sub[h].get(k, "x"), str) for k in ("command", "effort")) for h in set(sub) & set(HARNESSES)),
-         "gives `subscription` other than an entry for `claude-code` or `codex` (each a `model`, and a `command` and an "
-         "`effort` if wanted) and `leave_out`")
+        isinstance(sub[h], dict) and not set(sub[h]) - ENTRY_KEYS and isinstance(sub[h].get("model"), str) and NAME.fullmatch(sub[h]["model"])
+        and isinstance(sub[h].get("command", "x"), str) and LEVEL.fullmatch(str(sub[h].get("effort", "low"))) for h in set(sub) & set(HARNESSES)),
+         "gives `subscription` other than an entry for `claude-code` or `codex` (each a `model` named plainly, and a `command` "
+         "and an `effort` of letters if wanted) and `leave_out`")
     need(sub is None or isinstance(sub.get("leave_out", []), list) and all(isinstance(w, str) for w in sub.get("leave_out", [])),
          "gives `subscription.leave_out` other than a list of workspaces")
     need(local is None or isinstance(local, dict) and not set(local) - LOCAL_KEYS, "gives `local` with keys other than `models`, `url` and `keep_alive`")
@@ -162,7 +171,7 @@ def settings(config: dict) -> dict | None:
          "needs `local.models`, a list of the names of installed models, the first that answers deciding")
     need(local is None or isinstance(local.get("keep_alive", "30m"), (str, int)), "gives `local.keep_alive` as neither a duration nor seconds")
     need(type(deadline) in (int, float) and 0 < deadline <= LONGEST, f"needs `deadline_seconds` above 0 and at most {LONGEST}, inside the Stop hook's limit")
-    out = {"local": {"models": local["models"], "url": _url(local.get("url"), LOCAL_URL, "local", True), "keep_alive": local.get("keep_alive", "30m")}
+    out = {"local": {"models": local["models"], "url": _url(local.get("url"), LOCAL_URL, "local"), "keep_alive": local.get("keep_alive", "30m")}
            if local is not None else None, "deadline_seconds": float(deadline), "cloud": None,
            "subscription": {**{h: {"command": HARNESSES[h], **e} for h, e in sub.items() if h in HARNESSES}, "leave_out": sub.get("leave_out", [])}
            if sub is not None else None}
@@ -173,15 +182,16 @@ def settings(config: dict) -> dict | None:
         need(isinstance(cloud.get("model"), str) and cloud["model"].strip(), "needs `cloud.model`")
         keys = cloud.get("keys")
         need(isinstance(cloud.get("keys_file"), str) and cloud["keys_file"].strip(), "needs `cloud.keys_file`, the file that holds the keys")
-        need(isinstance(keys, dict) and isinstance(keys.get("default"), str) and keys["default"].strip() and all(
-            value is None or isinstance(value, str) and value.strip() for value in keys.values()),
-             "needs `cloud.keys`: `default`, the dotted path of the key in that file for every workspace, and beside it a "
-             "workspace's own path, or null where that workspace has no key and keeps the word list")
+        need(isinstance(keys, dict) and isinstance(keys.get("default"), str) and all(
+            value is None or isinstance(value, str) and value.split(".")[-1] == cloud["provider"] for value in keys.values()),
+             f"needs `cloud.keys`: `default`, the dotted path of the key in that file for every workspace, and beside it a "
+             f"workspace's own path, or null where that workspace has no key and keeps the word list; each path ends in "
+             f"{cloud['provider']}, so the file gives the judge its provider's key and nothing else")
         need(isinstance(price, dict) and all(type(price.get(k)) in (int, float) and price[k] >= 0 for k in ("input", "output")),
              "needs `cloud.price_per_mtok` with input and output dollars per million tokens, so its monthly cap can be kept")
         need(type(cap) in (int, float) and cap >= 0, "needs `cloud.monthly_cap_usd` as dollars")
         need(cloud.get("effort") in (None, "low", "medium", "high"), "gives `cloud.effort` other than low, medium or high")
-        out["cloud"] = {**cloud, "url": _url(cloud.get("url"), CLOUD_URL, "cloud", False), "monthly_cap_usd": float(cap)}
+        out["cloud"] = {**cloud, "url": _url(cloud.get("url"), CLOUD_URL, "cloud", PROVIDER_HOSTS[cloud["provider"]]), "monthly_cap_usd": float(cap)}
     return out
 
 
@@ -382,18 +392,21 @@ def _subscription(entry: dict, harness: str, system: str, user: str, policy: Pol
     its start) and no session kept; Codex's exec runs read only, ephemeral, without the user's config and with hooks off. Each
     runs in a room of the judge's own with its marker set, so a synthesis hook in it judges nothing. Past the deadline the
     run is stopped; a refusal, an error or an answer that is not a verdict is no verdict."""
+    program, why = _program(entry, harness)
+    if not program:
+        return None, why  # not the harness's own program: nothing runs, and the list decides
     room, schema = _folder() / "room", json.dumps(_schema(policy))
     room.mkdir(parents=True, exist_ok=True)
     answer_file, schema_file = (room / f"{name}-{os.getpid()}-{threading.get_ident()}.json" for name in ("answer", "schema"))
     effort = entry.get("effort")
     if harness == "claude-code":
-        argv, stdin = [entry["command"], "-p", "--model", entry["model"], "--output-format", "json", "--json-schema", schema,
+        argv, stdin = [program, "-p", "--model", entry["model"], "--output-format", "json", "--json-schema", schema,
                        "--system-prompt", system + "\n\n" + BY_TOOL, "--tools", "", "--no-session-persistence", "--strict-mcp-config",
                        "--disable-slash-commands", "--settings", json.dumps({"disableAllHooks": True}), "--setting-sources", "local",
                        *(["--effort", effort] if effort else [])], user.removesuffix(ANSWER) + " " + BY_TOOL
     else:  # Codex takes no system prompt of its own: the instruction leads the input
         schema_file.write_text(schema, encoding="utf-8")
-        argv, stdin = [entry["command"], "exec", "--ephemeral", "--ignore-user-config", "--disable", "hooks", "--sandbox", "read-only",
+        argv, stdin = [program, "exec", "--ephemeral", "--ignore-user-config", "--disable", "hooks", "--sandbox", "read-only",
                        "--skip-git-repo-check", "-C", str(room), "-m", entry["model"], "--output-schema", str(schema_file), "-o", str(answer_file)] \
             + (["-c", f'model_reasoning_effort="{effort}"'] if effort else []) + ["-"], system + "\n\n" + user
     try:
@@ -419,6 +432,21 @@ def _subscription(entry: dict, harness: str, system: str, user: str, policy: Pol
             leftover.unlink(missing_ok=True)
     fields, bad = _verdict(text, policy, content)
     return (Verdict(**fields, model=entry["model"]) if fields else None), bad
+
+
+def _program(entry: dict, harness: str) -> tuple:
+    """(the harness's own program for the judge's run, or "", and why not). A setting names the model, never what runs
+    (review round 1 of 21.3: a session can write the config with no code, and the Stop hook ran whatever `command`
+    named): a `command` is used only where it resolves to the very file the harness's own name does on PATH or in its
+    install locations; anything else runs nothing, and the list decides."""
+    name = HARNESSES[harness]
+    places = [shutil.which(name)] + [os.path.expanduser(x) for c in paths.INSTALLS[name] for x in paths.expand_install(c)]
+    own = {os.path.realpath(p) for p in places if p and os.path.isfile(p) and os.access(p, os.X_OK)}
+    given = os.path.expanduser(entry.get("command") or name)
+    found = given if os.sep in given else shutil.which(given)
+    if not found or not os.path.isfile(found):
+        return "", "missing" if given == name else "not_the_harness"
+    return (found, "") if os.path.realpath(found) in own else ("", "not_the_harness")
 
 
 def plan_env() -> dict:

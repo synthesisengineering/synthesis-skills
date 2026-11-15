@@ -20,6 +20,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   no real shortcut or unsure item and 7 of 25 legitimate hits, a flagged reply's 95th percentile 7.2 seconds; Codex's
   models did not pass. Verdicts are cached, and logged with counts and digests only; `scripts/judge_replay.py` replays a
   model or a policy on recorded list hits, by label, before it ships.
+- **The judge binds every setting it takes from the config** (review round 1 of the judge, 2026-11-15: a session can
+  write the config with no code, and a written setting made the Stop hook run any program or post to any host). A
+  `judge.subscription` entry's `command` is used only where it resolves to that harness's own program, the file its
+  name resolves to on PATH or in its install locations; anything else runs nothing, the word list decides, and the
+  doctor names the setting instead of running it. `judge.cloud.url` is only the provider's own host over https
+  (`api.anthropic.com`), so the reply, the principal's last message and the workspace's key go nowhere else. A
+  subscription `model` is a plain name and its `effort` letters, values on the harness's command line and never options
+  of their own; each `cloud.keys` path ends in the provider's name; `local.url` stays on this Mac's loopback address and
+  `deadline_seconds` at most 8. A section outside these bounds is said in the reply sent back and by the doctor, and
+  the list decides until it is fixed.
 - **The Stop hook gives the judge 8 seconds inside 10**, by the principal's approval of 2026-11-15: the hook is
   registered with 10 seconds in Claude Code, Codex and Muse (every other hook keeps its time), the reply check gives the
   judge 8 from its own start, and `deadline_seconds` may be up to 8. A reply the list does not flag never waits on a

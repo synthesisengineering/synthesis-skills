@@ -752,8 +752,8 @@ def test_no_judge_section_means_no_judge():
     judge = _judge()
     assert judge.settings({}) is None and judge.settings({"judge": False}) is None
     cloud = judge.settings({"judge": {"cloud": {"provider": "anthropic", "model": "c", "keys_file": "k.yaml",
-                                                "keys": {"default": "a.b", "other": None}, "price_per_mtok": {"input": 1, "output": 5}}}})
-    assert cloud["local"] is None and cloud["cloud"]["keys"] == {"default": "a.b", "other": None}  # the cloud alone is the judge
+                                                "keys": {"default": "a.anthropic", "other": None}, "price_per_mtok": {"input": 1, "output": 5}}}})
+    assert cloud["local"] is None and cloud["cloud"]["keys"] == {"default": "a.anthropic", "other": None}  # the cloud alone is the judge
     sub = judge.settings({"judge": {"subscription": {"claude-code": {"model": "m"}, "leave_out": ["w"]}}})
     assert sub["subscription"]["claude-code"]["command"] == "claude" and sub["subscription"]["leave_out"] == ["w"] and sub["local"] is None
     on = judge.settings({"judge": {"local": {"models": ["m"]}}})

@@ -180,6 +180,27 @@ def codex_hooks_record() -> Path:
     return state() / "codex-user-hooks.json"
 
 
+# Each harness's own install locations: where the doctor finds its command line, and the only programs, beside its name
+# on PATH, the judge runs for it (review round 1 of 21.3: a setting never chooses what the Stop hook runs).
+INSTALLS = {h: tuple(f"{d}/{h}" for d in ("~/.local/bin", "/opt/homebrew/bin", "/usr/local/bin")) + (
+    tuple(f"/Applications/{app}.app/Contents/Resources/{p}" for p in ("codex-cli/bin/codex", "codex")
+          for app in ("ChatGPT", "Codex")) if h == "codex" else ()) + (
+    ("~/Library/Application Support/Claude/claude-code/*/*/claude.app/Contents/MacOS/claude",) if h == "claude" else ())
+    for h in ("claude", "codex", "muse")}
+
+
+def expand_install(candidate: str) -> list:
+    """A location as it is, or a pattern's matches with the newest version folder first."""
+    if "*" not in candidate:
+        return [candidate]
+    import glob
+    import re
+
+    def newest(path: str) -> tuple:
+        return max((tuple(map(int, p.split("."))) for p in Path(path).parts if re.fullmatch(r"\d+(\.\d+)+", p)), default=())
+    return sorted(glob.glob(os.path.expanduser(candidate)), key=newest, reverse=True)
+
+
 def transcript_roots() -> dict:
     """Where each harness writes its record of every session, as the M5 sandbox found them."""
     env, user = os.environ, Path.home()

@@ -84,7 +84,10 @@ before it goes back (M38; the principal's rulings of 2026-11-14). The list, the 
 - The local model answers on this Mac through Ollama's loopback API, at temperature 0.
 - `subscription` runs the judge on the plan of the harness the reply came from, through its own command line, so no one
   buys API credits for it (the principal, 2026-11-15); it reads a reply first where no local model is configured, for a
-  harness the config names and a workspace not in `leave_out`. Claude Code's `claude -p` runs the configured model with
+  harness the config names and a workspace not in `leave_out`. It runs only the harness's own program: a `command` is
+  used where it resolves to the file the harness's name does on PATH or in its install locations, and anything else
+  runs nothing, so a written setting never chooses what the Stop hook runs (logged as `not_the_harness`). Claude
+  Code's `claude -p` runs the configured model with
   no tools, every hook off (`--settings '{"disableAllHooks": true}'`), no user settings, plugins or memory
   (`--setting-sources local`) and no session kept, and the verdict comes through its structured-output tool as the
   model's first act: an answer written as text first is asked for again after a summary step of Claude Code's own, two
@@ -105,7 +108,8 @@ before it goes back (M38; the principal's rulings of 2026-11-14). The list, the 
 - Where the judge is a service, the plan's or the cloud's, the two questions are asked at once, so a flagged reply waits
   about one answer's time; this Mac's one local model answers one at a time, so there they are asked in turn.
 - `cloud` is the judge itself when neither a local model nor the reply's plan judges it, and otherwise a second opinion
-  only where the first verdict is unsure. Its key is read
+  only where the first verdict is unsure. It asks only its provider's own host over https (`api.anthropic.com`); a
+  `cloud.url` anywhere else is a section that cannot be used. Its key is read
   at call time from `keys_file`, for the workspace the reply belongs to (its folder under ~/workspaces): `keys` names
   the default and any workspace's own, and a workspace mapped to null keeps the word list. The key goes into the
   request's header and nowhere else. The request asks for adaptive thinking and the verdict's strict schema, and the

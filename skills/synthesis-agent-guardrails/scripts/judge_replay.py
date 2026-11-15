@@ -218,7 +218,6 @@ def main(argv=None) -> int:
     parser.add_argument("--command", default="", help="that command line's path, where it is not on PATH")
     parser.add_argument("--leave-out", action="append", default=[], help="a workspace whose items the plan's and the cloud's runs leave out")
     parser.add_argument("--cloud", action="append", default=[], help="a cloud model to judge with, asked as the hook asks it")
-    parser.add_argument("--cloud-url", default=judge.CLOUD_URL)
     parser.add_argument("--keys-file", default="")
     parser.add_argument("--keys", default="{}", help="JSON: each workspace's dotted path in the keys file, `default` for the rest, null for none")
     parser.add_argument("--price", default="0,0", help="the cloud model's dollars per million input and output tokens, as IN,OUT")
@@ -275,7 +274,7 @@ def judged(args, jobs: list, config: dict, hook: float) -> int:
     runs = [(model, {"local": {"models": [model], "url": args.url, "keep_alive": "10m"}}, jobs) for model in args.model] + [
         (model, {"subscription": {**{h: {**e, "model": model} for h, e in plan.items()}, "leave_out": args.leave_out}},
          [job for job in jobs if job not in set_aside]) for model in args.subscription] + [
-        (model, {"cloud": {"provider": "anthropic", "model": model, "url": args.cloud_url, "keys_file": args.keys_file, "keys": keys,
+        (model, {"cloud": {"provider": "anthropic", "model": model, "keys_file": args.keys_file, "keys": keys,
                            "price_per_mtok": {"input": price_in, "output": price_out}, "monthly_cap_usd": args.cap,
                            **({"effort": args.effort} if args.effort else {})}}, [job for job in jobs if job not in held_back + set_aside])
         for model in args.cloud]
