@@ -1129,15 +1129,41 @@ def test_the_composer_check_reads_reply_mode_from_the_banner_beside_the_composer
     assert plain["marks"] == 0 and plain["staged"] == 0  # a sibling that is no banner marks nothing
 
 
-def test_a_messages_entry_is_spent_only_with_the_session_the_guard_is_told():
-    """Review 2 #10: the sender asked the guard with no session, so SYNTHESIS_SESSION, which any shell can set, chose
-    the session a spend checked. A spend now needs the session given to the guard, and the shell guard checks that a
-    session messages_send.py names is the one that runs it."""
+SENDER = ROOT / "skills" / "synthesis-local-messaging" / "scripts" / "messages_send.py"
+OTHER = {"session_id": "S-other", "transcript_path": "/nonexistent/S-other.jsonl"}
+
+
+def test_the_senders_session_is_the_one_whose_guard_let_it_run():
+    """Review 3 #5 (round 2's #10): the sender's own --session chose whose entry it spent, and the shell guard checked
+    that only on a word named messages_send.py. Now the sender names no session: a command the guard sees run it files a
+    one-use ticket for the session the hook names, and an entry is spent only on its granting session's ticket."""
     granted([TEXT])
-    assert held(guards.check_send("imessage_send", {"to": "+15550100", "text": REPLY}, CONFIG))  # the environment's
-    sender = ROOT / "skills" / "synthesis-local-messaging" / "scripts" / "messages_send.py"
-    line = f"python3 {sender} --session S-principal --to +15550100 --text-file reply.txt"
-    other = {"session_id": "S-other", "transcript_path": str(RECORD.parent / "S-other.jsonl")}
-    assert "S-principal" in (guards.check("Bash", {"command": line}, CONFIG, cwd=str(FOLDER), session=other) or "")
+    asked, line = {"to": "+15550100", "text": REPLY}, f"python3 {SENDER} --to +15550100 --text-file reply.txt"
+    assert held(guards.check_send("imessage_send", asked, CONFIG))  # no command the guard let through runs it
+    assert guards.check("Bash", {"command": line}, CONFIG, cwd=str(FOLDER), session=OTHER) is None
+    assert held(guards.check_send("imessage_send", asked, CONFIG, {"session_id": "S-principal"}))  # S-other's ticket
     assert guards.check("Bash", {"command": line}, CONFIG, cwd=str(FOLDER), session={**SESSION, "transcript_path": str(RECORD)}) is None
-    assert guards.check_send("imessage_send", {"to": "+15550100", "text": REPLY}, CONFIG, {"session_id": "S-principal"}) is None
+    assert guards.check_send("imessage_send", asked, CONFIG) is None  # its own session's ticket, spent with the entry
+    assert held(guards.check_send("imessage_send", asked, CONFIG))  # one ticket, one send
+
+
+@pytest.mark.parametrize("form", ["link", "runpy"])
+def test_a_sender_run_under_another_name_spends_no_entry(form):
+    """Review 3 #5: a link made earlier, or runpy from python3 -c, kept the --session naming the principal's session,
+    and another session spent its entry. Such a run files no ticket, so it waits for the code per call."""
+    granted([TEXT])
+    (FOLDER / "reply_tool.py").symlink_to(SENDER)
+    command = ("python3 reply_tool.py --to +15550100 --text-file reply.txt" if form == "link" else
+               f"python3 -c \"import runpy, sys; sys.argv = ['m', '--to', '+15550100', '--text-file', 'reply.txt']; "
+               f"runpy.run_path('{SENDER}', run_name='__main__')\"")
+    guards.check("Bash", {"command": command}, CONFIG, cwd=str(FOLDER), session=OTHER)  # whatever it says, it files no ticket
+    assert held(guards.check_send("imessage_send", {"to": "+15550100", "text": REPLY}, CONFIG, {"session_id": "S-principal"}))
+
+
+def test_the_sender_takes_no_session_of_its_own():
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("messages_send_under_test", SENDER)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    with pytest.raises(SystemExit):  # an argument it does not have: nothing is read, resolved or sent
+        module.main(["--to", "+15550100", "--session", "S-principal"])
