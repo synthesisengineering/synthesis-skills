@@ -777,6 +777,14 @@ def test_a_script_that_only_reads_through_synthesis_passes(world):
                      "found = sorted(p.name for p in (paths.state() / 'approvals').glob('*.json'))\n"
                      "open('/tmp/a-report-of-its-own.txt', 'w').write(str(found))\n")
     assert _verdict(world, f"python3 {report}") is None  # its paths spelled out, the write is placed outside them
+    shown = "import synthesis.board\nfrom synthesis import guards\nprint(synthesis.board, guards.TEXT_LIMIT, synthesis.board.__file__)\n"
+    assert _verdict(world, f"python3 -I - <<'EOF'\n{shown}EOF") is None  # a module printed, a value made by a tuple, a dunder: read
+
+
+def test_a_write_where_synthesis_paths_lead_inside_an_f_string_waits(world):
+    script = _script(world["work"] / "uses-synthesis", "fstring.py",
+                     "from synthesis import paths\nopen(f\"{paths.board()}/sessions/x.json\", \"w\").write(\"{}\")\n")
+    assert HELD in (_verdict(world, f"python3 {script}") or "")
 
 
 @pytest.mark.parametrize("body", [
