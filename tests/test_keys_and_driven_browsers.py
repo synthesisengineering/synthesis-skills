@@ -134,6 +134,22 @@ def test_a_script_on_its_input_or_in_a_file_is_read(tmp_path):
     assert held(shell(f"python3 {py}"))
 
 
+@pytest.mark.parametrize("command, waits", [
+    # Found by running the reading over 60 days of recorded commands (2026-11-15): a backtick in a Python string is no
+    # shell call, an AppleScript-looking string counts only in a program that runs osascript, and `-l JavaScript`
+    # takes its value, so a script piped to it is read.
+    ("python3 - <<'EOF'\nimport re\nPAT = re.compile(r'`?Application(\"Messages\")`? and send')\nEOF", False),
+    ("python3 -c 'import subprocess; subprocess.run([\"git\", \"status\"]); doc = \"tell application \\\"Messages\\\" to send\"'", False),
+    ("cat <<'EOF' | osascript -l JavaScript\nApplication(\"Contacts\").people().length\nEOF", False),
+    ("cat <<'EOF' | osascript -l JavaScript\nApplication(\"System Events\").keyCode(36)\nEOF", True),
+    ("osascript -l JavaScript <<'EOF'\nApplication(\"System Events\").keyCode(36)\nEOF", True),
+    ("osascript -e 'tell application \"System Events\" to (name of processes) contains \"Mail\"'", False),  # which apps run
+    ("osascript -e 'tell application \"System Events\" to tell process \"Messages\" to set value of text field 1 of window 1 to \"hi\"'", True),
+])
+def test_what_the_recorded_commands_showed(command, waits):
+    assert held(shell(command)) is waits, command
+
+
 def test_the_code_lets_that_one_command_run_once_and_the_ledger_says_so(principal):
     reason = shell(PRESS)
     assert held(reason)
@@ -253,8 +269,10 @@ def test_the_newest_page_is_the_one_a_later_step_moved_to(tmp_path):
     assert held(driven(*ENTER, _on(tmp_path, LOCAL, moved)))
 
 
-def test_a_code_lets_that_one_playwright_step_go_once(principal, tmp_path):
-    session = _on(tmp_path, MESSENGER)
+def test_a_code_lets_that_one_playwright_step_go_once(principal):
+    with principal.transcript.open("a", encoding="utf-8") as record:  # the record the principal types the code into
+        record.write(_call("toolu_pw1", PW + "browser_navigate", {"url": MESSENGER}, _page(MESSENGER)))
+    session = {**SESSION, "transcript_path": str(principal.transcript)}
     reason = driven(*ENTER, session)
     principal(reason)
     assert driven(*ENTER, session) == ""

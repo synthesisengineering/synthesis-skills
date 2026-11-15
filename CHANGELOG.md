@@ -63,6 +63,26 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   `..` and links: inside it, the folder itself, or a folder above it; parts in two words never join. In a program's
   text, parts still join within one statement however they are joined, but not from two separate paths written whole,
   and one path written whole names a folder only where its parts stand one after another in it.
+- **A key, a click or another app driven from the shell waits for the code, and so does any browser server's tool**
+  (core; `synthesis-message-guard` 2.12.0, references/config.md). Round 3 of the batch approval's review found that words
+  typed into a Messenger box with the browser tool, then Return pressed through `osascript` (System Events `key code
+  36`), went out with no code, and that the Playwright plugin's browser tools reached no send rule. A shell command that
+  presses keys or clicks in whatever app is in front (System Events' UI verbs through `osascript` or JavaScript for
+  Automation, `cliclick`, `xdotool`, `hs`, `skhd -k`, `shortcuts run`, `automator`, an input library in a program),
+  sends through a scriptable app (a `send` in Messages, Mail or Outlook, read across all of a script's lines where a
+  pattern read one), or runs code in another app (Terminal, iTerm, a browser's JavaScript, Keyboard Maestro, Shortcuts)
+  now waits for the principal's code for that exact command, read through `bash -c`, `watch`, heredocs, pipes, shell
+  files, programs and the commands written in a program's strings. What a script cannot show waits too: a compiled
+  script, `do shell script`, `run script`, a raw `«event»` code, a bridge to the system's classes, an app or member
+  named only when it runs. Words a command types or sends pass the register scan first. A browser tool from any server
+  whose name says it drives a browser (Playwright, Chrome DevTools, Puppeteer) is read as the steps it performs, on the
+  page its own results last showed, a click by the control the page's snapshot names: a Return, a submit, a click that
+  sends or a page script that acts waits on a messaging site as Claude in Chrome's does, and where its results show no
+  page such a step waits too. Sixty days of Claude Code and Codex records held no message sent either way (the one
+  osascript Return was the review's own scan; Playwright pressed Tab twice, on local pages). Over the 276,170 shell
+  commands they recorded, the reading holds 36 the old guard passed, none a message sent: osascript fed by another
+  program's output, and programs whose strings hold such a script, guard probes among them. Tests first: 66 of the 95
+  first cases failed on main.
 
 ## [5.22.1] - 2026-11-14
 

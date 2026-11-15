@@ -1267,10 +1267,26 @@ ROOT = Path(__file__).resolve().parents[1]
 # statement spells: from its code and pieces of a path, with at most one path written whole, and such a path alone
 # only where they stand one after another), LITERAL 1, 6 blank lines; _spells judging each text and each word apart
 # and expanding a word's variables, and the naming line handing it each word apart, change lines in place.
+# 5.23.0, round 3 of the batch review, finding 8 (2026-11-15: words typed into a Messenger box with the browser tool,
+# then Return pressed through osascript, and the Playwright plugin's browser tools, sent with no code): core 341 more and
+# plugin 341. guards.py 339. Keys, clicks and other apps from the shell, 236: _osa_code 39 (an AppleScript or JavaScript
+# script with its comments and strings taken out, and a member a string names written as it runs), _acts_outside 39 (a
+# command read through the scripts, programs and shell files it runs), _program_acts 31 (an input library, or a command
+# written in a program's strings), _osa_judge 27 (the apps a script names and the verbs it uses), _osa_source 24 (its -e
+# lines, its file or its input), osa_send 5, _app_name 4, _unquoted 4, the tables and patterns 34 (ACTORS, INPUT_WORDS,
+# the three descriptions, ACTING_APPS, SENDING_APPS, OSA_KEYS, OSA_OTHER, OSA_UNREAD, OSA_CALLED, INPUT_LIBS, SPAWNS,
+# PROGRAM_STRINGS, LOOKS_OSA), the comment 8 and 21 blank lines. Browser tools from any server, 87: _driven_steps 33 (a
+# tool's steps as a browser batch reads them, on the page its own results last showed, a click by the control its
+# snapshot names), driven_tool 9, _driver_results 9, _caller 6, check_driven 5, DRIVERS, DRIVEN, UNKNOWN_PAGE and
+# PAGE_LINE 6, the comment 6 and 13 blank lines. Elsewhere 16: check_outgoing 10 (each command's keys and apps, and a
+# hold that says what they do), the dispatch 4 (a driven tool is read before the connectors), DRIVES and PRESSES_ENTER 3
+# (a browser server's own code acts through its page and keyboard), _web_app 2 (a page its results do not show), less
+# _browser_call 3 (its search moved to _caller). sends.py 2: command_send reads an osascript by the guard's reading of
+# its script, across its lines, in place of the one-line pattern.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 15886
-PLUGIN_BUDGET = 41958
+CORE_BUDGET = 16227
+PLUGIN_BUDGET = 42299
 
 
 def _lines(files):

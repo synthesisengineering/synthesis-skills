@@ -433,7 +433,11 @@ made through Claude in Chrome's `browser_batch`, none guarded either. Both now w
 **Which tools.** The computer-use server's action tools under any server id (`computer_batch`, `app_batch`,
 `app_click`, `app_key`, `app_type`, `app_menu`, `teach_step`, `teach_batch` and the single-action tools), a linked
 device's `computer_*` tools, and a browser server's `computer` and `browser_batch` (Claude in Chrome, the built-in
-browser). Screenshots, zooms, scrolls, waits, menu listings and every read pass at once.
+browser). Screenshots, zooms, scrolls, waits, menu listings and every read pass at once. Since 5.23.0 a browser tool
+from any other server whose name says it drives a browser (Playwright, Chrome DevTools, Puppeteer) is read too, as the
+steps it performs (typing, a key, a click, a form, a page script), on the page that server's own results last showed;
+a click is read by the control the page's snapshot names, not only by the words the agent gives it; and a step that
+may send on a page those results do not show waits for the code.
 
 **Messaging apps.** Built in: WhatsApp (`net.whatsapp.WhatsApp`, `desktop.WhatsApp`), Messages
 (`com.apple.MobileSMS`), Slack (`com.tinyspeck.slackmacgap`), Signal (`org.whispersystems.signal-desktop`),
@@ -571,6 +575,34 @@ button") passes outside the Return and line-break rules, and so does a page scri
 site's own send function, or clicks with no word that publishes in it, off a messaging site). Pasted text (cmd+v) is
 not scanned, and Playwright's browser tools reach no send rule (over the same 30 days they were used 31 times, none to
 click, type or press a key). These are why the binding rule still governs every send.
+
+## Keys, clicks and other apps from the shell (5.23.0)
+
+Round 3 of the batch approval's review (2026-11-15) typed words into a Messenger box with the browser tool, which
+sends nothing, then pressed Return through `osascript` (System Events `key code 36`), and the message went out with
+no code: the shell guard read no key events. A shell command now waits for the principal's code for that exact
+command, as a send does, when it
+
+- presses keys or clicks in whatever app is in front: `osascript` or JavaScript for Automation through System Events
+  (keystroke, key code, key down or up, click, perform action, set value, focus or selection, select), SystemUIServer
+  or BetterTouchTool; `cliclick` and `xdotool` with an action, `ydotool`, `wtype`, `dotool`, `sendkeys`, Hammerspoon's
+  `hs`, `skhd -k` or `-t`, `shortcuts run`, `automator`; an input library in a program (pyautogui, pynput, Quartz's
+  CGEvent, AXUIElement, NSAppleScript, ScriptingBridge, appscript, robotjs);
+- sends through a scriptable app: a `send` in Messages, Mail or Outlook, read across all of a script's lines;
+- runs code in another app: Terminal's `do script`, iTerm's `write text`, a browser's `execute ... javascript` or
+  `do JavaScript`, Keyboard Maestro, Shortcuts, Automator, Script Editor;
+- or runs a script the guard cannot read: a compiled script, a script on an input another program writes,
+  `do shell script`, `run script` or `load script`, a raw `«event»` code, `use framework`, a bridge to the system's
+  classes (`$.system`, `NSTask`, an `ObjC.import` beyond Foundation, AppKit and Cocoa), `eval`, or an app or member a
+  JavaScript script names only when it runs.
+
+The script is read wherever the command gives it: its `-e` lines, the file it names, a heredoc or pipe, a shell file
+it runs, a program run with `-c` or from a file, and a command written in a program's strings (`["osascript", "-e",
+...]`, `os.system("cliclick kp:return")`). A program that runs nothing is only read, so an analysis or a help text that
+names osascript passes. Words a command types or sends pass the register scan first. System Events alone, asked which
+apps run, passes. Over the 276,170 shell commands recorded in the 60 days before 5.23.0, the reading holds 36 the old
+guard passed (osascript fed by another program's output, and programs whose strings hold such a script, guard probes
+among them) and none was a message sent.
 
 ## Calibration
 
