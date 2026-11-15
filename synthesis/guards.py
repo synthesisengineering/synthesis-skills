@@ -7,6 +7,7 @@ These fail closed when their config can't be read or is malformed (R3.5).
 
 from __future__ import annotations
 
+import _thread
 import fnmatch
 import itertools
 import json
@@ -531,6 +532,138 @@ def _sha256(file: str, until: float, whole: bool = True) -> str:
     return out[0]
 
 
+EFFECTS: list = []  # (what to do if the call is let through, what to undo if it is held) for each record a decision makes
+UNDER_HOOK = {"on": 0}  # the thread whose hook answers last and settles its call's records; a check entered elsewhere settles them
+_DEPTH = [0, None]  # how deep in the guard's checks this process is, and the thread judging: only the first one entered settles
+_JUDGING = _thread.allocate_lock()  # one thread judges at a time and a second waits: a call's records are its own
+_PENDING: dict = {}  # a hook's thread: the records and grants of the call its check judged, kept for its answer
+_SETTLING = [None]  # the thread settling a call's records, which no check of its own may enter meanwhile
+
+
+def _after(commit=None, undo=None) -> None:
+    """A record of a decision that stands only if the whole call is let through: the send ledger, the deploy brake, a
+    grant voided by the code that released the call (review round 2 of the spend order, finding 1)."""
+    EFFECTS.append((commit, undo))
+
+
+def _void(kind: str, subject) -> None:
+    """Void the other code's grant at once, inside the decision's lock, and put it back if the call is held."""
+    removed = approvals.void(kind, subject)
+    _after(undo=lambda: approvals.put_back(removed))
+
+
+def _logged(*line) -> None:
+    """A send's line in the ledger, written if the call is let through and marked undone if a later record of the same
+    call cannot be written, which holds it (review round 4 of the spend order, finding 4)."""
+    from synthesis import sends
+    marks: list = []
+    _after(lambda: marks.append(sends.log(*line)), lambda: [sends.undo(m) for m in marks])
+
+
+def settle(allowed: bool, effects: list | None = None, spent: list | None = None) -> None:
+    """The call is let through: write each record its decisions made and keep the grants it used spent. It is held:
+    undo what was written ahead and give the grants back, since it ran nothing. Each record is its own: one that
+    cannot be written does not stop the rest, and the first failure is raised after them; a call whose record cannot be
+    written is held, so then its records are undone and its grants go back as well (review round 4, finding 4). With
+    no records given, the ones the current check made."""
+    if effects is None:
+        effects, spent = list(EFFECTS), list(approvals.SPENT)
+        EFFECTS.clear()
+        approvals.SPENT.clear()
+    failed: list = []
+
+    def run(steps):
+        for step in steps:
+            try:
+                if step:
+                    step()
+            except Exception as exc:
+                failed.append(exc)
+    if allowed:
+        run(commit for commit, _ in effects)
+    if failed or not allowed:
+        run(undo for _, undo in reversed(effects))
+        approvals.put_back(spent or [])
+    if failed:
+        raise failed[0]
+
+
+def hook_answers() -> None:
+    """This thread's call is the hook's: its records wait for the hook's answer. Records an earlier call of this thread
+    left with no answer stand, since a harness given no answer may have let that call run."""
+    if _thread.get_ident() in _PENDING:
+        answered(True)
+    UNDER_HOOK["on"] = _thread.get_ident()
+
+
+def answered(allowed: bool) -> None:
+    """The hook's answer: settle the records of the call its check judged, when that check entered the guard, and stop
+    waiting for the hook. Another thread's records are its own (review round 5 of the spend order, finding 1). A check
+    of this thread cut short in its own finally, before it handed its records over, left them with the guard: they are
+    settled here, and the guard freed if that check still holds it, whichever records it left (review round 6, finding
+    2; round 7, finding 1)."""
+    me = _thread.get_ident()
+    UNDER_HOOK["on"] = 0
+    pending, held = _PENDING.pop(me, False), _DEPTH[1] == me and _JUDGING.locked()
+    try:
+        _SETTLING[0] = me
+        if pending:
+            settle(allowed, *pending)
+        elif pending is None and (held or _JUDGING.acquire(False)):
+            held = True
+            settle(allowed)
+    finally:
+        _SETTLING[0] = None
+        if held:
+            _DEPTH[0], _DEPTH[1] = 0, None
+            _JUDGING.release()
+
+
+def _entry(judge):
+    """A check that a caller may enter directly (the hook enters `check`; the local-messaging sender enters
+    `check_send`): the first one entered starts the call's records afresh and settles them when it returns, held as
+    well when it raises, or keeps them for the hook's answer (review round 3 of the spend order, finding 1). One thread
+    judges at a time, a second waiting its turn, and the first one entered puts the depth and the lock back however it
+    ends (review round 4, findings 2 and 3; round 5, finding 3). A check is never entered from a commit or an undo of
+    the records being settled, nor by a thread inside the send lock, which a judging thread may wait for: either would
+    wait on itself (review round 6, findings 1 and 3)."""
+    def entered(*args, **kwargs):
+        me = _thread.get_ident()
+        first, acquired, verdict, decided = not (_DEPTH[0] and _DEPTH[1] == me), False, None, False
+        if _SETTLING[0] == me or first and approvals._ALONE[1] == me:
+            raise RuntimeError("the synthesis guard is not entered while it settles a call's records or inside the send lock")
+        try:
+            if first:
+                acquired = _JUDGING.acquire()
+                _DEPTH[1] = me
+                if UNDER_HOOK["on"] == me:
+                    _PENDING[me] = None  # entered: if its finally is cut short, the hook's answer settles what it left
+                EFFECTS.clear()
+                approvals.SPENT.clear()
+            _DEPTH[0] += 1
+            verdict, decided = judge(*args, **kwargs), True
+        finally:
+            if not first:
+                _DEPTH[0] -= 1
+            elif acquired:
+                try:
+                    if UNDER_HOOK["on"] == me:  # the hook answers last: its call's records wait for it
+                        _PENDING[me] = (list(EFFECTS), list(approvals.SPENT))
+                        EFFECTS.clear()
+                        approvals.SPENT.clear()
+                    else:
+                        _SETTLING[0] = me
+                        settle(decided and verdict is None)
+                finally:
+                    _SETTLING[0] = None
+                    _DEPTH[0], _DEPTH[1] = 0, None
+                    _JUDGING.release()
+        return verdict
+    entered.__name__, entered.__qualname__, entered.__doc__, entered.__wrapped__ = judge.__name__, judge.__qualname__, judge.__doc__, judge
+    entered.settles = True  # functools.wraps is not used: the hook's own path imports nothing it does not need
+    return entered
+
+
 def check_upload(tool: str, tool_input: dict) -> str | None:
     """A Drive upload that asks for no code still names a file the connector must read: one it would not read is
     refused here, as a send's is before its code, and so is one it cannot read: its first byte is read, since no
@@ -539,6 +672,7 @@ def check_upload(tool: str, tool_input: dict) -> str | None:
     return "This call can't go as written: " + "; ".join(unread) + "." if unread else None
 
 
+@_entry
 def check_send(tool: str, tool_input: dict, config: dict, session: dict | None = None) -> str | None:
     """session: the hook payload, whose transcript shows who typed an approval (a shell's script passes none). One
     send is judged at a time: the code that lets a message go spends its other code before an identical call is
@@ -564,22 +698,22 @@ def _judged_send(tool: str, tool_input: dict, config: dict, session: dict | None
     if timed and timed.startswith("fresh_calendar"):
         return timed
     if timed is not None and approvals.consume("send-time", subject, session):  # released as it is, by the code that says so
-        approvals.void("send", subject)  # one message, one release: a second copy asks again
-        sends.log(chan, tool, summary, "approval", session)
+        _void("send", subject)  # one message, one release: a second copy asks again
+        _logged(chan, tool, summary, "approval", session)
         return None
     if timed:  # asked before any other code, and again when the approved call comes
         code = approvals.request("send-time", subject, f"{tool}, a time in its words and no calendar read: {summary[len(tool) + 2:][:100]}")
         return timed.replace("{code}", approvals.how(code))
     if not others and sends.covered(chan, [t for _, t in _strings(tool_input)], _project(session), config):
-        sends.log(chan, tool, summary, "window", session)
-        sends.settle()
+        mark = sends.log(chan, tool, summary, "window", session)  # counted at once, so no other call takes the same send
+        _after(lambda: sends.settle(mark), lambda: sends.undo(mark))
         if timed is not None:
-            approvals.void("send-time", subject)
+            _void("send-time", subject)
         return None
     if approvals.consume(kind, subject, session):
-        sends.log(chan, tool, summary, "approval", session)
+        _logged(chan, tool, summary, "approval", session)
         if timed is not None:
-            approvals.void("send-time", subject)
+            _void("send-time", subject)
         return None
     text = " ".join(t for _, t in _strings(tool_input))
     code = approvals.request(kind, subject, f"{'SAME-DAY meeting' if others else tool}: {text[:120]}")
@@ -2149,6 +2283,34 @@ def _last_deploy(identity: str):
     return paths.state() / "deploys" / (hashlib.sha256(identity.encode("utf-8")).hexdigest()[:16] + ".json")
 
 
+def _record_deploys(identities) -> None:
+    """The deploy brake's record of a deploy the guard let through, for the 45-minute check: written if the call is let
+    through, and put back as it was if a later record of the same call cannot be written (review round 4, finding 4),
+    unless another call has recorded a deploy since (round 5, finding 4). Each write replaces the file whole."""
+    kept: list = []
+
+    def write():
+        for identity in identities:
+            record, mine = _last_deploy(identity), f"{identity}\n{time.time()}\n".encode("utf-8")
+            kept.append((record, record.read_bytes() if record.exists() else None, mine))
+            _swap(record, mine)
+
+    def restore():
+        for record, before, mine in reversed(kept):
+            if record.exists() and record.read_bytes() == mine:
+                _swap(record, before) if before is not None else record.unlink(missing_ok=True)
+    _after(write, restore)
+
+
+def _swap(path, data: bytes) -> None:
+    """Replace a file whole: written beside it, then renamed over it, so a reader never finds half of it."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    made = path.with_name(f".{path.name}.{os.getpid()}.{_thread.get_ident():x}.tmp")
+    made.write_bytes(data)
+    os.replace(made, path)
+
+
+@_entry
 def check_deploy(command: str, config: dict, cwd: str | None = None, session: dict | None = None) -> str | None:
     cwd = cwd or os.getcwd()
     found = _targets(command, config, cwd)
@@ -2183,10 +2345,7 @@ def check_deploy(command: str, config: dict, cwd: str | None = None, session: di
     subject = {"command": command, "heads": heads} if heads else command
     # A rapid-redeploy approval is the stronger one, so it still counts if the window has just closed.
     if approvals.consume(kind, subject, session) or (kind == "deploy" and approvals.consume("deploy-rapid", subject, session)):
-        for identity in identities:
-            record = _last_deploy(identity)
-            record.parent.mkdir(parents=True, exist_ok=True)
-            record.write_text(f"{identity}\n{time.time()}\n", encoding="utf-8")
+        _record_deploys(identities)  # a deploy held later by another check of the call did not happen
         return None
     if recent:
         name, last = recent[0]
@@ -2594,7 +2753,7 @@ SCRIPTED_WRITE = re.compile(
     r"|open\s*\(?\s*(?:my\s+)?[$\w]+\s*,\s*['\"]\s*\+?[>|]")
 # A script that opens a send window, grants or spends an approval, or writes into synthesis state. Reading the
 # window, the ledger or the board stays allowed (a read-only check was refused on 2026-10-13).
-SELF_GRANT_CALLS = re.compile(r"\b(?:open_window|grant_from_prompt|consume|_window_file)\b|\bpaths\.state\b[\s\S]*\b(?:"
+SELF_GRANT_CALLS = re.compile(r"\b(?:open_window|grant_from_prompt|consume|put_back|_window_file)\b|\bpaths\.state\b[\s\S]*\b(?:"
                               r"write_json|write_text|touch|unlink)\b|\b(?:write_json|write_text|touch|unlink)\b[\s\S]*\bpaths\.state\b")
 HOOK_RUN = re.compile(r"(?:^|/)(?:synthesis-hook|synthesis/hook\.py)$|^synthesis\.hook$")
 ASSIGNED = re.compile(r"(?:^|(?<=[\s;&|({'\"]))([A-Za-z_]\w*)(\+?)=(\"[^\"\n]*\"|'[^'\n]*'|\$\([^()\n]*\)[^\s;&|()<>\"']*|[^\s;&|()<>\"']*)")
@@ -4429,7 +4588,8 @@ GIT_RUNS = re.compile(r"--output(?:=.*)?|--ext-diff|--textconv|-O.*|--open-files
 ABSOLUTE = re.compile(r"-[A-Za-z]*P[A-Za-z]*|--absolute-names|--absolute-filenames|--insecure|-:|-spf")  # an archive's members land where they say
 SYNTHESIS_IMPORT = re.compile(r"^[ \t]*(?:from[ \t]+synthesis\b|import[ \t]+synthesis\b)", re.M)
 SYNTHESIS_WRITES = frozenset(f"{module}.{name}" for module, names in (  # synthesis's own functions that write a file (a test reads them from the source)
-    ("approvals", "_expire alone consume grant_from_prompt remember request void"), ("autopilot", "_evaluate _write_pointer evaluate"),
+    ("approvals", "_expire _spend alone consume grant_from_prompt put_back remember request void"),
+    ("guards", "_record_deploys _swap _void answered settle"), ("autopilot", "_evaluate _write_pointer evaluate"),
     ("board", "_claim _claim_lock _describe _post claim inbox mark_carried mark_read_messages message notify release resolve save touch"),
     ("checkout", "_append _staged_commit _tree_commit index_set log_claims snapshot snapshot_paths"),
     ("cli", "_main cmd_claim cmd_doctor cmd_handoff cmd_inbox cmd_index cmd_install cmd_msg cmd_release cmd_resume cmd_sends "
@@ -4438,7 +4598,7 @@ SYNTHESIS_WRITES = frozenset(f"{module}.{name}" for module, names in (  # synthe
     ("hook", "_carried_since _ran _upgrade_note main pre_tool_use session_start stop user_prompt_submit"),
     ("install", "_merge _write_exec install move_board register_git_hooks uninstall"), ("paths", "note_wait write_json"),
     ("project", "_carry_out _mark_carried_out _peers _recent_conversation handoff resume"),
-    ("reply_check", "check misrouted_accounts unarmed_wait unwatched_sends"), ("sends", "close_window log open_window settle window_refusal"),
+    ("reply_check", "check misrouted_accounts unarmed_wait unwatched_sends"), ("sends", "_note close_window log open_window settle undo window_refusal"),
     ("sessions", "_Session _export _ritual_history _sync_workspace _write_synced _writer behind export export_file fetch lost peek recent sync"),
     ("wait", "_watch live main record unread watching"), ("worktree", "create main retire")) for name in names.split())
 SYNTHESIS_DEFS: dict = {}  # a module of synthesis: the names it imports
@@ -5807,7 +5967,7 @@ def _released(session: dict | None, pages: list, add: tuple = (), drop: bool = F
     if record and (add or drop):
         kept = [e for e in kept if not (drop and e in mine)] + ([{"pages": sorted(pages), "words": add[0], "rules": add[1],
                                                                  "at": time.time()}] if add else [])
-        paths.write_json(record, {"released": kept})
+        _after(lambda: paths.write_json(record, {"released": kept}))  # recorded only if the call is let through
     return mine
 
 
@@ -5833,6 +5993,7 @@ def _sends_key(chords: str, apps: dict) -> bool:
     return False
 
 
+@_entry
 def check_desktop(name: str, tool: str, tool_input: dict, config: dict, session: dict | None = None) -> str | None:
     from synthesis import sends
     apps, record = _messaging(config), _grants(session)
@@ -5892,19 +6053,20 @@ def check_desktop(name: str, tool: str, tool_input: dict, config: dict, session:
     words, rules = [w for e in earlier for w in e["words"]], problems[:6] + [r for e in earlier for r in e["rules"]]
     subject = {**subject, "earlier": words} if earlier else subject
     summary = f"{tool} in {where}: {what}" + (f"; typed words not stored ({sum(map(len, typed + words))} characters)" if typed or words else "")
-    if not rules and sends.covered(chan, typed, _project(session), config):  # a window never covers words a rule stopped
-        sends.log(chan, tool, summary, "window", session)
-        sends.settle()
-        return None
-    if approvals.consume("send", subject, session):
-        sends.log(chan, tool, summary, "approval", session)
-        _released(session, list(reached), drop=True)
-        return None
-    if unplaced:  # it sends only if the page is a messaging site's (review round 2 of 5.23.1, #1: a local app's click waited for a code)
-        return (f"This call may send on a page the record does not show ({what}): read the page first, with tabs_context in "
-                "Claude in Chrome or the built-in pane, or a snapshot or a list of pages in a driven browser, so its address shows, then "
-                "make this call again.")
-    code = approvals.request("send", subject, summary[:300])
+    with approvals.alone():  # one send judged at a time, as on the other send paths (review round 3 of the spend order)
+        if not rules and sends.covered(chan, typed, _project(session), config):  # a window never covers words a rule stopped
+            mark = sends.log(chan, tool, summary, "window", session)  # counted at once, so no other call takes the same send
+            _after(lambda: sends.settle(mark), lambda: sends.undo(mark))
+            return None
+        if approvals.consume("send", subject, session):
+            _logged(chan, tool, summary, "approval", session)
+            _released(session, list(reached), drop=True)
+            return None
+        if unplaced:  # it sends only if the page is a messaging site's (review round 2 of 5.23.1, #1: a local app's click waited for a code)
+            return (f"This call may send on a page the record does not show ({what}): read the page first, with tabs_context in "
+                    "Claude in Chrome or the built-in pane, or a snapshot or a list of pages in a driven browser, so its address shows, then "
+                    "make this call again.")
+        code = approvals.request("send", subject, summary[:300])
     return (f"This call sends in {where} ({what})."
             + (f" Words typed on this page under the code for words that break a rule may go with it: {' / '.join(words)}." if words else "")
             + (f" These words break the principal's rules for messages: {'; '.join(rules)}. The code below waives that for this exact"
@@ -6490,6 +6652,7 @@ def _driven_steps(kind: str, tool: str, tool_input: dict, session: dict | None) 
     return [{"name": "navigate", "input": {"url": page, "exact": True}}] + steps if steps else []
 
 
+@_entry
 def check_driven(kind: str, tool: str, tool_input: dict, config: dict, session: dict | None = None) -> str | None:
     if kind == "read" or kind == "navigate" and _script_address(str(tool_input.get("url") or "")) is None:
         return None
@@ -6552,6 +6715,7 @@ def _project(session: dict | None) -> str:
     return me.project if me else ""
 
 
+@_entry
 def check_outgoing(command: str, config: dict, cwd: str, session: dict | None = None) -> str | None:
     """A shell command that posts words to people waits for the principal's code, as a connector send does, and
     opening a send window needs it too. The register scan reads the message the command sends (its text words and
@@ -6604,25 +6768,22 @@ def check_outgoing(command: str, config: dict, cwd: str, session: dict | None = 
         return timed
     with approvals.alone():  # the code that lets it go spends the other before an identical command is judged
         if timed is not None and approvals.consume("send-time", subject, session):
-            approvals.void("send", subject)
-            for c in chans:
-                sends.log(c, "shell", summary, "approval", session)
+            _void("send", subject)
+            [_logged(c, "shell", summary, "approval", session) for c in chans]
             return None
         if timed:
             code = approvals.request("send-time", subject, f"a time in its words and no calendar read: {summary[:120]}")
             return timed.replace("make this identical call", "run the identical command").replace("{code}", approvals.how(code))
         if all(sends.covered(c, [text], _project(session), config) for c in chans):
-            for c in chans:
-                sends.log(c, "shell", summary, "window", session)
-            sends.settle()
+            marks = [sends.log(c, "shell", summary, "window", session) for c in chans]  # counted at once, under the lock
+            _after(lambda: [sends.settle(m) for m in marks], lambda: [sends.undo(m) for m in marks])
             if timed is not None:
-                approvals.void("send-time", subject)
+                _void("send-time", subject)
             return None
         if approvals.consume("send", subject, session):
-            for c in chans:
-                sends.log(c, "shell", summary, "approval", session)
+            [_logged(c, "shell", summary, "approval", session) for c in chans]
             if timed is not None:
-                approvals.void("send-time", subject)
+                _void("send-time", subject)
             return None
         code = approvals.request("send", subject, summary)
     lead = (f"This command {'; '.join(dict.fromkeys(acts))}; it runs in {', '.join(dirs)}. A key, a click or code run in another "
@@ -6639,9 +6800,15 @@ def guarded(tool: str, tool_input: dict | None = None) -> bool:
             or _sends(tool, tool_input or {}, {}) or routed(tool, tool_input or {}))
 
 
+@_entry
 def check(tool: str, tool_input: dict, config: dict, cwd: str | None = None, session: dict | None = None) -> str | None:
     """cwd is the session's working directory (the hook payload's `cwd`); defaults to this process's.
-    session is the hook payload, which names the transcript an approval is checked against."""
+    session is the hook payload, which names the transcript an approval is checked against. The records the call's
+    decisions make are written only if it is let through: here for a direct caller, by the hook when it answers."""
+    return _check(tool, tool_input, config, cwd, session)
+
+
+def _check(tool: str, tool_input: dict, config: dict, cwd: str | None, session: dict | None) -> str | None:
     _TAILS.clear()  # each call reads the record anew: a rewrite in place can keep a file's size and its time stamp
     _CALL.update(codes={}, ran={}, proofs={}, files={}, real={}, until=time.monotonic() + CALL_SECONDS)  # and every script it runs
     if not cwd:

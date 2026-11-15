@@ -624,6 +624,35 @@ def test_a_signed_send_in_an_open_window_goes_when_typed_in_the_same_call():
     assert "approve" in check("mcp__computer-use__app_batch", {**call, "app": WHATSAPP}, config)
 
 
+def test_a_window_send_from_the_desktop_is_judged_under_the_send_lock(monkeypatch):
+    """Review round 3 of the spend order, its note: two desktop window sends at once could both take the last planned
+    send, since this path alone took no lock; it now takes the one the other send paths take."""
+    import contextlib
+    from synthesis import approvals
+    inside, logged, real = [], [], sends.log
+
+    @contextlib.contextmanager
+    def lock():
+        inside.append(True)
+        try:
+            yield
+        finally:
+            inside.pop()
+
+    def log(*args, **kwargs):
+        logged.append(bool(inside))
+        return real(*args, **kwargs)
+    monkeypatch.setattr(approvals, "alone", lock)
+    monkeypatch.setattr(sends, "log", log)
+    sends.open_window(1, ["slack"], count=2)
+    config = {**CONFIG, "send_window_signatures": [r"helperbot\.example"]}
+    call = {"app": "com.tinyspeck.slackmacgap", "actions": [
+        {"action": "type", "text": "Deploy is done. 🤖 Helperbot (helperbot.example)", "action_summary": "Types the update"},
+        {"action": "key", "combo": "return", "action_summary": "Sends the update"}]}
+    assert check("mcp__computer-use__app_batch", call, config) is None
+    assert logged == [True]
+
+
 def _hook(payload, env):
     import os
     import subprocess
