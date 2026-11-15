@@ -676,3 +676,66 @@ def test_an_alarm_landing_as_the_deadline_is_taken_down_still_holds(monkeypatch,
     monkeypatch.setattr(signal, "setitimer", lands)
     hook.pre_tool_use({"tool_name": "Read", "tool_input": {"file_path": "/dev/null"}, "session_id": SID})
     assert "did not answer within" in capsys.readouterr().out
+
+
+# --- review round 6 of this fix (2026-11-15): re-entry while settling, a finally cut short, the send lock's order -------
+
+
+def test_a_record_that_enters_the_guard_while_it_settles_is_refused_not_waited_for(monkeypatch):
+    """Round 6, finding 1: a commit that called back into the guard waited for ever on a lock its own thread held."""
+    import threading
+    real, outcome = guards._check, []
+
+    def queues_a_reentry(*args):
+        guards._after(lambda: guards.check("Read", {"file_path": "/dev/null"}, {}))
+        return real(*args)
+    monkeypatch.setattr(guards, "_check", queues_a_reentry)
+
+    def call():
+        try:
+            outcome.append(guards.check("Read", {"file_path": "/dev/null"}, {}))
+        except RuntimeError as exc:
+            outcome.append(str(exc))
+    worker = threading.Thread(target=call, daemon=True)
+    worker.start()
+    worker.join(5)
+    assert outcome and "while it settles" in str(outcome[0]) and not guards._JUDGING.locked()
+
+
+def test_a_check_cut_short_in_its_own_finally_still_gives_the_grant_back(tmp_path, monkeypatch, capsys):
+    """Round 6, finding 2: the alarm landing in the check's own finally, before it handed its records to the hook, left
+    the call held with its grant spent."""
+    from synthesis import hook
+    session = _granted(tmp_path, guards.check(SLACK, CALL, {}))
+
+    class CutShort(list):
+        armed = True
+
+        def __iter__(self):
+            if CutShort.armed and guards.UNDER_HOOK["on"]:
+                CutShort.armed = False
+                raise hook._Late()
+            return super().__iter__()
+    monkeypatch.setattr(approvals, "SPENT", CutShort())
+    hook.pre_tool_use({"tool_name": SLACK, "tool_input": CALL, **session})
+    assert "did not answer within" in capsys.readouterr().out
+    monkeypatch.setattr(approvals, "SPENT", [])  # never monkeypatch.undo(): it would also take the test's own home away
+    assert not guards._JUDGING.locked() and guards.check(SLACK, CALL, {}, session=session) is None
+
+
+def test_a_check_entered_inside_the_send_lock_is_refused_not_waited_for():
+    """Round 6, finding 3: a thread inside the send lock entering a check could wait on a thread that waits for the lock."""
+    with approvals.alone():
+        with pytest.raises(RuntimeError, match="inside the send lock"):
+            guards.check("Read", {"file_path": "/dev/null"}, {})
+    assert not guards._JUDGING.locked()
+
+
+def test_records_a_call_left_with_no_answer_stand_when_its_thread_judges_again():
+    """A thread's hook call that never answered may have let its call run: its records stand, its grants stay spent."""
+    import _thread
+    ran = []
+    guards._PENDING[_thread.get_ident()] = ([(lambda: ran.append("commit"), lambda: ran.append("undo"))], [])
+    guards.hook_answers()
+    guards.answered(True)
+    assert ran == ["commit"] and _thread.get_ident() not in guards._PENDING
