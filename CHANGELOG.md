@@ -56,6 +56,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   and imports a conversation split between a page read and its own transcript instead of skipping it on every run.
   The browser guard holds a page script that moves the tab on a messaging site (a location assignment, `assign`,
   `replace` or `window.open`), since a chat's address opens it; both extractors still pass as reads.
+- **A word names a protected folder only by its own path** (core). 5.22.1 joined the parts of a folder's path across
+  the whole command line, so a skill script run from Claude Code's plugin cache with a project's path anywhere on the
+  line was held as naming the transcripts, whenever the script's text could write; the action sheet's publisher was
+  the first seen. On the command line a word now names a protected folder only by its own path, after `~`, variables,
+  `..` and links: inside it, the folder itself, or a folder above it; parts in two words never join. In a program's
+  text, parts still join within one statement however they are joined, but not from two separate paths written whole,
+  and one path written whole names a folder only where its parts stand one after another in it.
 
 ## [5.22.1] - 2026-11-14
 
