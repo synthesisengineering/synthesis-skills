@@ -2868,10 +2868,10 @@ def _claude_parts(real: str) -> list:
     """A path's parts below the Claude Code `projects` folder it lies in, the CLI's or a desktop agent-mode session's
     (`<app>/local-agent-mode-sessions/<account>/<org>/local_<session>/.claude/projects`), read from its words alone;
     [] where it lies in neither. No folder is listed on the hook's path."""
-    root = os.path.realpath(paths.transcript_roots()["claude-code"])
+    root = _real(paths.transcript_roots()["claude-code"])
     if paths.inside(real, root):
         return os.path.relpath(paths.spelled(real), paths.spelled(root)).split(os.sep)
-    base = os.path.realpath(paths.desktop_dir() / "local-agent-mode-sessions")
+    base = _real(paths.desktop_dir() / "local-agent-mode-sessions")
     parts = os.path.relpath(paths.spelled(real), paths.spelled(base)).split(os.sep) if paths.inside(real, base) else []
     return parts[5:] if len(parts) > 5 and parts[2].startswith("local_") and parts[3:5] == [".claude", "projects"] else []
 
@@ -4409,8 +4409,18 @@ class Unproven(str):
     protected folder. Any reading that is refused outright is refused first."""
 
 
-_CALL: dict = {"codes": {}, "ran": {}, "proofs": {}, "files": {}, "until": 0.0}  # one call's script texts, their marks, its proofs and deadline
+_CALL: dict = {"codes": {}, "ran": {}, "proofs": {}, "files": {}, "real": {}, "until": 0.0}  # one call's script texts, their marks, its proofs, where its paths lead, and its deadline
 CALL_SECONDS, PROOFS_A_CALL = 3.0, 8  # under the hook's own 4 s; past either, a command waits rather than spins (finding 12)
+
+
+def _real(path) -> str:
+    """Where a path really leads, asked once a call. The guard writes nothing while it judges a command, so the
+    answer holds for the whole call (2026-11-15: one heredoc asked 11,746 times, over 102 paths)."""
+    memo = _CALL["real"]
+    if path not in memo:
+        memo[path] = os.path.realpath(path)
+    return memo[path]
+
 READER_WRITES = {"less": r"-[A-Za-z]*[oO].*|--(?:log-file|LOG-FILE)(?:=.*)?", "rg": r"--pre(?:-glob)?(?:=.*)?", "sort": r"-o.*|--output(?:=.*)?",
                  "file": r"-[A-Za-z]*C[A-Za-z]*|--compile", "date": r"-s|--set(?:=.*)?"}  # a reader's own options that write or run
 GIT_FIRST = re.compile(r"-c|--config-env(?:=.*)?|--work-tree(?:=.*)?|--exec-path(?:=.*)?|-p|--paginate")  # git's own, before its subcommand
@@ -5013,7 +5023,7 @@ def check_self_grant(command: str, cwd: str, config: dict | None = None, session
     else:
         readings = _resolved(command.replace("${HOME}", home).replace("$HOME", home))
     if hold:  # a call of its own: its script texts, their marks and its proofs start over, under its own deadline
-        _CALL.update(codes={}, ran={}, proofs={}, files={}, until=time.monotonic() + CALL_SECONDS)
+        _CALL.update(codes={}, ran={}, proofs={}, files={}, real={}, until=time.monotonic() + CALL_SECONDS)
     waits = None
     for text in readings:
         reason = _self_grant(command, text, cwd, config) if time.monotonic() <= _CALL["until"] else Unproven(
@@ -5050,11 +5060,11 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None) -> str |
         _commands(text, cwd, writes=redirects)  # folder or to a `cd` was never looked at); a `>` inside quotes is not one
     except (Unreadable, StopIteration, IndexError):
         readable = False
-    held = [os.path.realpath(r) for r in raw if not store or r != str(store)]
+    held = [_real(r) for r in raw if not store or r != str(store)]
 
     def spots(where: str) -> list:  # where a command runs; for one `find -execdir` runs, the top of its search and each protected folder under it
         top = where[:-len(DEEP)]
-        return [top] + [r for r in held if paths.inside(r, os.path.realpath(top))] if where.endswith(DEEP) else [where]
+        return [top] + [r for r in held if paths.inside(r, _real(top))] if where.endswith(DEEP) else [where]
     asked = [(_led(os.path.expanduser(os.path.expandvars(t)), spot), spot) for t, w in redirects for spot in spots(w)]  # each write's target, and where it runs
     asked += [(t.strip("'\""), cwd) for t in re.findall(r">{1,2}\|?\s*([^\s;&|<>()]+)", text)] if names and not readable else []
     why, wheres, handed, links, made, linked, waits = "", {cwd}, [], [], [], [], None
@@ -5065,8 +5075,8 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None) -> str |
     for m in ASSIGNED.finditer(_own_text(text)):  # the value the command gives a variable; given two, the one that names a protected path
         if not m[2] and (env.get(m[1]) is None or m[1] in os.environ or any(n in m[3] for n in names)):
             env[m[1]] = m[3].strip("'\"")
-    written = {os.path.realpath(os.path.join(w, os.path.expanduser(t))) for t, w in redirects} | {  # a script the line writes
-        os.path.realpath(os.path.join(where, os.path.expanduser(t))) for words, where in found for t in _landing(words)}
+    written = {_real(os.path.join(w, os.path.expanduser(t))) for t, w in redirects} | {  # a script the line writes
+        _real(os.path.join(where, os.path.expanduser(t))) for words, where in found for t in _landing(words)}
     for (words, where), fed in [((words, spot), fed) for (words, where), fed in zip(found, feeds + [""] * len(found))
                                 for spot in spots(where)]:  # each command, where it runs, with what it reads on its own stdin
         head, own = os.path.basename(words[0]), " ".join(words[1:])
@@ -5074,39 +5084,39 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None) -> str |
         if HOOK_RUN.search(words[0]) or ((SCRIPT.match(head) or head in SHELLS) and HOOK_RUN.search(_ran(words))):
             why = why or "runs the synthesis hook, which only the harness may run"
         landed = _landing(words)  # a copy onto a note or a script that is the agent's own lands on it, not inside it
-        firm = {w for w in landed if _own(os.path.realpath(os.path.join(where, os.path.expanduser(w))))}
-        roomy = {w for w in landed if head in COPIERS and _own(os.path.realpath(os.path.join(where, os.path.expanduser(w))), True)
+        firm = {w for w in landed if _own(_real(os.path.join(where, os.path.expanduser(w))))}
+        roomy = {w for w in landed if head in COPIERS and _own(_real(os.path.join(where, os.path.expanduser(w))), True)
                  and w not in firm and any(os.path.dirname(x.rstrip("/")) == w.rstrip("/") for x in landed if x != w)}
         landed = [w for w in landed if os.path.dirname(w) not in firm and w not in roomy]  # into its memory folder: the note it makes there
         asked += [(_led(os.path.expanduser(os.path.expandvars(w)), where), where) for w in landed]
-        led = [os.path.realpath(os.path.join(where, os.path.expanduser(w))) for w in landed] if head in ("ln", "mkdir") else []
+        led = [_real(os.path.join(where, os.path.expanduser(w))) for w in landed] if head in ("ln", "mkdir") else []
         links, made = links + led * (head == "ln"), made + led * (head == "mkdir")
         aimed = [w for w in words[1:] if not w.startswith("-")][:1] if head == "ln" else []  # what a link made here points at
         soft = any(re.fullmatch(r"-[A-Za-z]*s[A-Za-z]*|--symbolic", w) for w in words[1:])  # its target is read from the link's own folder
-        linked += [(link, os.path.realpath(os.path.join(os.path.dirname(link) if soft else where, os.path.expanduser(aimed[0]))))
+        linked += [(link, _real(os.path.join(os.path.dirname(link) if soft else where, os.path.expanduser(aimed[0]))))
                    for link in led if aimed]
-        moves = [os.path.realpath(os.path.join(where, os.path.expanduser(w))) for w in words[1:] if not w.startswith("-")] if head == "mv" else []
+        moves = [_real(os.path.join(where, os.path.expanduser(w))) for w in words[1:] if not w.startswith("-")] if head == "mv" else []
         for link, aim in [pair for pair in linked if pair[0] in moves[:-1]]:  # a link made here and then moved is that link at its new place
             for spot in (moves[-1], os.path.join(moves[-1], os.path.basename(link))):
                 links, linked = links + [spot], linked + [(spot, aim)]
-        within = any(paths.inside(os.path.realpath(where), os.path.realpath(r)) for r in raw)
+        within = any(paths.inside(_real(where), _real(r)) for r in raw)
         quoted = isinstance(where, Quoted)  # read out of a word handed to another program: judged for what it writes, runs and starts
         for word in _named(words) if readable and (not quoted or head in OPAQUE) else ():  # words the parser could not read name no program
-            led = os.path.realpath(os.path.join(where, _led(os.path.expanduser(os.path.expandvars(word)), where)))
+            led = _real(os.path.join(where, _led(os.path.expanduser(os.path.expandvars(word)), where)))
             if not within or word[:1] in ("~", "/") or word == HANDED or os.path.lexists(led):  # inside the folder, a file that is there
                 handed.append((head, word, led))
         script = (fed or text) if _program(words)[0] == "stdin" else own  # read from stdin: its own heredoc, else whatever the line pipes in
         label, code, program, mine = _unread(words, where, written, text) if readable else ("", "", False, "")  # a program not known to only read, its script, its text
         python = head.startswith("python") and bool(SCRIPT.match(head))
-        ran = os.path.realpath(mine or os.path.join(where, os.path.expanduser(words[0] if "/" in words[0] and not (SCRIPT.match(head) or head in SHELLS)
+        ran = _real(mine or os.path.join(where, os.path.expanduser(words[0] if "/" in words[0] and not (SCRIPT.match(head) or head in SHELLS)
                                                                             else _program(words)[2]))) if code and code != text else ""  # the script file it runs
-        files, stand, missed = _python_files(ran, code, "" if _isolated(words) else os.path.realpath(where) if mine else os.path.dirname(ran),
+        files, stand, missed = _python_files(ran, code, "" if _isolated(words) else _real(where) if mine else os.path.dirname(ran),
                                              _program(words)[2] if mine else "") if python and ran else (([(ran, code)] if ran else []), "", "")
         said = [w for at, w in enumerate(words[1:], 1) if head not in PROMPTED and not MESSAGE.fullmatch(words[at - 1]) and not (
-            w[:1] == "-" and MESSAGE.fullmatch(w.split("=", 1)[0])) and not any(f(os.path.realpath(os.path.join(where, os.path.expanduser(w)))) for f in (_own, lambda x: _own(x, True), _material))]
+            w[:1] == "-" and MESSAGE.fullmatch(w.split("=", 1)[0])) and not any(f(_real(os.path.join(where, os.path.expanduser(w)))) for f in (_own, lambda x: _own(x, True), _material))]
         named = ("input that this guard could not read" if UNREAD_INPUT in head + fed else _spells(  # each word, and each program text, apart
             [fed, *([t for _, t in files] or [code])] + words[1:] if program else said, words, where, env, raw, linked)
-                 or (where if any(paths.inside(os.path.realpath(where), os.path.realpath(str(r))) for r in (paths.state(), paths.board(), paths.sessions())) else "")
+                 or (where if any(paths.inside(_real(where), _real(str(r))) for r in (paths.state(), paths.board(), paths.sessions())) else "")
                  or ("the files xargs hands it" if HANDED in words and names else "")) if label else ""  # standing where no session works, or what xargs hands it
         if SCRIPT.match(head) and re.search(r"\bsynthesis\b", script + code) and SELF_GRANT_CALLS.search(script):
             why = why or "runs synthesis's approval or send-window code, which only the guard and the principal's prompt use"
@@ -5123,14 +5133,14 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None) -> str |
         # environment, or through arguments it takes unseen, any write it makes is refused. Another script is
         # judged by the words it is given, or, read from stdin, by the whole command.
         try:
-            hit, wrote = _python_writes(reach[2] or source, names, [os.path.realpath(r) for r in raw], where, argv, dict(env, PWD=where), config,
+            hit, wrote = _python_writes(reach[2] or source, names, [_real(r) for r in raw], where, argv, dict(env, PWD=where), config,
                                         _CALL["until"]) if source else (None, None)
         except (RecursionError, TimeoutError):  # nested too deeply to follow, or past the call's time: judged by its text
             hit, wrote = None, None
         inner, hit = (hit, False) if isinstance(hit, Unproven) else (None, hit)  # it starts a command that waits: it waits too
         wrote = bool(re.search(SCRIPTED_WRITE, source or script)) if wrote is None else wrote  # by its syntax, else by its text
         carried = re.search(r"\b(?:environ|getenv|ENV)\b|\.env\b", script) and (any(n in m[3] for m in ASSIGNED.finditer(text) for n in names) or any(
-            v[:1] == "/" and paths.inside(v, os.path.realpath(r)) for v in os.environ.values() for r in raw))
+            v[:1] == "/" and paths.inside(v, _real(r)) for v in os.environ.values() for r in raw))
         reaches = hit is None and (carried or any(n in w for w in words[1:] if w != source for n in names))  # read by its syntax, both are placed
         lost = where[:1] in ("$", "`") and bool(names)  # it runs in a folder the guard cannot read, in a command that names a protected one
         if SCRIPT.match(head) and (hit or (wrote and (reaches or lost or (hit is None and (within or any(n in script for n in names)))))):
@@ -5158,12 +5168,12 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None) -> str |
                              f"{named}" if bare and hit is False else f"runs `{label}`, which this guard cannot prove only reads, and names {named}")
         waits = waits or (Unproven(f"runs `{head}`, which starts a command that {inner}") if inner else None)
         if head in EXTRACTS and not waits and any(re.fullmatch(EXTRACTS[head], w) for w in words[1:]) and (
-                within or head == "pax" or any(ABSOLUTE.fullmatch(w) for w in words[1:]) or paths.spelled(os.path.realpath(where)) in _spellings(raw, env)[2]):
+                within or head == "pax" or any(ABSOLUTE.fullmatch(w) for w in words[1:]) or paths.spelled(_real(where)) in _spellings(raw, env)[2]):
             waits = Unproven(f"runs `{head}`, which unpacks where it stands or where its members say, in {where}")  # findings 9 and 15
         sub, acts = _git(words, where)  # git acts where -C sends it; sent somewhere this cannot read, it is not shown to act here
         reads = sub is None or sub in GIT_READS or (sub == "remote" and words[words.index(sub) + 1:words.index(sub) + 2] in (
             [], ["-v"], ["get-url"], ["show"])) or any(w.startswith(("$", "`")) for w in words[1:words.index(sub)])
-        stood = any(paths.inside(os.path.realpath(acts), os.path.realpath(str(r))) for r in (paths.state(), paths.board(), paths.sessions()))
+        stood = any(paths.inside(_real(acts), _real(str(r))) for r in (paths.state(), paths.board(), paths.sessions()))
         if stood and readable and not quoted and not ((head in READERS and reads) or head in WRITERS or head in OWN_RULES or (
                 (SCRIPT.match(head) or head in SHELLS) and (source or not _ran(words)))):  # it names nothing, yet may write where it stands
             why = why or (f"runs `{head}` inside the synthesis state folder, its board or the session archive, where a "
@@ -5177,26 +5187,26 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None) -> str |
         why = ("writes to a place this guard cannot read (the target starts with a variable or a substitution the command "
                "does not set) while it names the synthesis state folder, its board or a harness's transcripts")
     targets = [os.path.join(w, t) for t, w in asked]
-    real = [os.path.realpath(os.path.join(w, os.path.expanduser(t))) for t in targets for w in wheres]
+    real = [_real(os.path.join(w, os.path.expanduser(t))) for t in targets for w in wheres]
     real += [aim + t[len(link):] for t in real for link, aim in linked if t not in links and paths.inside(t, link)]  # through a link made here
     real += [os.path.join(t, store.name) for t in real] if mine else []  # a copy into its folder
     owned = next((o for o in map(_cli_owned, real) if o), "") if not why else ""
     if owned:
         return f"Refused: this command writes {owned}"
-    if not why and any(paths.inside(t, os.path.realpath(r)) for t in real for r in raw
+    if not why and any(paths.inside(t, _real(r)) for t in real for r in raw
                        if t in links or not (_own(t) or (t in made and _own(t, True)))):
         why = "writes into the synthesis state folder, a harness's session transcripts or the approved commit lines"
     # A target outside every protected folder may still change one. The approved lines are one file in a working
     # repository: removing or moving its folder removes it, while a search or a copy across that folder is judged by
     # what it names.
-    apart = [t for t in real if not any(paths.inside(t, os.path.realpath(r)) for r in raw)]
-    if not why and any(_reaches(t[:-len(end)] if end else t, os.path.realpath(r), bool(end)) for t in apart for r in raw
+    apart = [t for t in real if not any(paths.inside(t, _real(r)) for r in raw)]
+    if not why and any(_reaches(t[:-len(end)] if end else t, _real(r), bool(end)) for t in apart for r in raw
                        for end in [next((e for e in (OVER, GONE) if t.endswith(e)), "")]
                        if (end == GONE or (end and (not store or r != str(store)))) or (not end and re.search(r"[*?\[]", t))):
         why = ("changes a whole folder that holds the synthesis state folder, its board, the session archive or a harness's "
                "session transcripts, or names by a pattern what may lie in one (name what is to change, beside those folders)")
     given = "" if why else next((head for head, word, path in handed if (word == HANDED and names) or (not _material(path) and not _own(path) and any(
-        paths.inside(path, os.path.realpath(r)) for r in raw))), "")  # HANDED: files from xargs, which cannot be read here
+        paths.inside(path, _real(r)) for r in raw))), "")  # HANDED: files from xargs, which cannot be read here
     if given:
         why = (f"gives `{given}` a file in the synthesis state folder, its board, a harness's session transcripts or the "
                f"approved commit lines, or files it takes from there through xargs, and `{given}` is not a program this "
@@ -6268,7 +6278,7 @@ def check(tool: str, tool_input: dict, config: dict, cwd: str | None = None, ses
     """cwd is the session's working directory (the hook payload's `cwd`); defaults to this process's.
     session is the hook payload, which names the transcript an approval is checked against."""
     _TAILS.clear()  # each call reads the record anew: a rewrite in place can keep a file's size and its time stamp
-    _CALL.update(codes={}, ran={}, proofs={}, files={}, until=time.monotonic() + CALL_SECONDS)  # and every script it runs
+    _CALL.update(codes={}, ran={}, proofs={}, files={}, real={}, until=time.monotonic() + CALL_SECONDS)  # and every script it runs
     if not cwd:
         try:
             cwd = str(tool_input.get("workdir") or "") or os.getcwd()
