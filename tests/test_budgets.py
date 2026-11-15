@@ -1353,10 +1353,12 @@ ROOT = Path(__file__).resolve().parents[1]
 # request body 29: _posted_bodies 20, _mcp_calls 4, MCP_POSTS, BODY_GIVEN and STDIN_READ 5. A planted hook 53:
 # check_hook_writes 22, _hook_folder 12, _hooks_pointed 12, the section's note 6 and the dispatch 1. sends.py's LOCAL
 # changes in place (any case, a trailing dot).
+# Then 1 more in each, from the round's replay (a scanner reaching repositories under a hooks folder the user's config
+# names waited 115 times): _git_programs 1 (a hooks folder's hooks take the scope of the setting that names it).
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 17209
-PLUGIN_BUDGET = 43281
+CORE_BUDGET = 17210
+PLUGIN_BUDGET = 43282
 
 
 def _lines(files):

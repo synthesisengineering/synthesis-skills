@@ -6792,7 +6792,8 @@ def _git_programs(words: list, where: str, line: str) -> list:
                     shlex.quote(f"git-credential-{value}") if key.startswith("credential.") and "/" not in value.split()[0] else value)
                 found.append((key, text, top, scope))
     hooked, chosen = _hook_names(sub), ""
-    path_value = next((v for k, v in reversed([(k, v) for k, v in user] + [(k, v) for k, v in local] + entries) if k == "core.hookspath"), None)
+    path_value, path_scope = next(((v, s) for k, v, s in reversed([(k, v, "user") for k, v in user] + [(k, v, "repo") for k, v in local]
+                                                             + [(k, v, "user") for k, v in entries]) if k == "core.hookspath"), (None, "repo"))
     folder = os.path.join(top, _home(path_value)) if path_value else os.path.join(common, "hooks") if common else ""
     if hooked and folder and os.path.realpath(folder) != own:  # git runs the folder's hooks for this command
         chosen = folder
@@ -6802,7 +6803,7 @@ def _git_programs(words: list, where: str, line: str) -> list:
                 found += [(f"the repository's own {name} hook, which the commit check runs", shlex.quote(hook), top, "repo")] if os.access(hook, os.X_OK) and os.path.isfile(hook) else []
     for name in sorted(hooked) if chosen else ():
         hook = os.path.join(chosen, name)
-        found += [(f"core.hooksPath ({name})", shlex.quote(hook), top, "repo")] if os.path.isfile(hook) and os.access(hook, os.X_OK) else []
+        found += [(f"core.hooksPath ({name})", shlex.quote(hook), top, path_scope)] if os.path.isfile(hook) and os.access(hook, os.X_OK) else []
     found += [(var, shlex.quote(env[var]) if var == "GIT_SSH" else env[var], top, "user") for var in GIT_PROGRAM_ENV
               if env.get(var) and (sub in GIT_NET or var in ("GIT_EDITOR", "GIT_SEQUENCE_EDITOR", "GIT_PAGER", "GIT_EXTERNAL_DIFF"))]
     run = os.path.join(cwd, _home(exec_path), f"git-{sub}") if exec_path and sub else ""
@@ -6829,7 +6830,7 @@ GIT_HOOKS = {"commit": "pre-commit prepare-commit-msg commit-msg post-commit pos
              "cherry-pick": "pre-commit prepare-commit-msg commit-msg post-commit", "revert": "pre-commit prepare-commit-msg commit-msg post-commit",
              "am": "applypatch-msg pre-applypatch post-applypatch pre-commit prepare-commit-msg commit-msg post-commit", "checkout": "post-checkout",
              "switch": "post-checkout", "clone": "post-checkout", "worktree": "post-checkout", "bisect": "post-checkout", "push": "pre-push",
-             "send-email": "sendemail-validate"}
+             "send-email": "sendemail-validate", "merge-ff": "post-merge"}
 GIT_ANY_HOOKS = "post-index-change reference-transaction pre-auto-gc"
 SYSTEM_GITCONFIG = ("/etc/gitconfig", "/opt/homebrew/etc/gitconfig", "/usr/local/etc/gitconfig",
                     "/Library/Developer/CommandLineTools/usr/share/git-core/gitconfig",
@@ -6866,7 +6867,7 @@ def _scanned_folders(words: list, where: str) -> tuple:
         import glob
         base = os.path.join(where, _home(top))
         folders += sorted({os.path.dirname(g) for depth in ("*", "*/*") for g in glob.glob(os.path.join(base, depth, ".git")) if os.path.isdir(g)})
-    runs = GIT_SCANNERS[name] + (("fetch",) if "--fetch" in flags else ()) + (("merge", "update-ref") if "--ff" in flags else ())
+    runs = GIT_SCANNERS[name] + (("fetch",) if "--fetch" in flags else ()) + (("merge-ff", "update-ref") if "--ff" in flags else ())  # a fast-forward makes no commit
     return folders[:64], runs
 
 

@@ -596,3 +596,17 @@ def test_the_code_releases_that_hook_write_once(tmp_path, principal):
     principal(reason)
     assert shell(command, cwd=str(r)) == ""
     assert held(shell(command, cwd=str(r)))
+
+
+def test_a_hooks_folder_the_users_config_names_is_judged_not_held_for_a_scan(tmp_path):
+    """Found by the round-1 replay: a scanner reaching repositories under a hooks folder the user's own config names (not
+    the repository's) waited 115 times; that folder's hooks are judged, and a fast-forward runs only post-merge."""
+    hooks = tmp_path / "user-hooks"
+    hooks.mkdir()
+    (hooks / "pre-commit").write_text("#!/bin/sh\necho checking\n", encoding="utf-8")
+    (hooks / "pre-commit").chmod(0o755)
+    Path(os.environ["GIT_CONFIG_GLOBAL"]).write_text(f"[user]\n\temail = t@example.com\n\tname = t\n[core]\n\thooksPath = {hooks}\n", encoding="utf-8")
+    space, plain = tmp_path / "space", repo(tmp_path, "plain")
+    (space / ".agents").mkdir(parents=True)
+    (space / ".agents" / "repos.yaml").write_text(f"repos:\n  - name: plain\n    path: {plain}\n    ritual_sync: true\n", encoding="utf-8")
+    assert shell(f"python3 {REPO_STATE} --workspace-root {space} --fetch --ff --json", cwd=str(tmp_path)) == ""
