@@ -945,8 +945,53 @@ def test_a_spends_code_must_be_the_one_typed_for_this_batchs_digest():
     assert held(guards.check(SLACK, SAID, CONFIG, session=SESSION))
 
 
+def _says(text: str, age: float = 0.0) -> None:
+    """The agent's own words in the session's record, as Claude Code writes an assistant text block."""
+    _record({"type": "assistant", "timestamp": (datetime.now(timezone.utc) - timedelta(seconds=age)).isoformat(),
+             "message": {"role": "assistant", "content": [{"type": "text", "text": text}]}})
+
+
+def _typed(code: str, age: float) -> None:
+    _record({"type": "user", "timestamp": (datetime.now(timezone.utc) - timedelta(seconds=age)).isoformat(),
+             "origin": {"kind": "human"}, "sessionId": "S-principal", "message": {"role": "user", "content": f"approve {code}"}})
+
+
+def test_a_line_the_agent_writes_never_ties_a_code_to_a_batch():
+    """Review 3 #4: the hold was any record line naming the digest and the code, so the agent's own sentence tied a code
+    the principal typed for an unrelated note to forged batch state (the state write stands in for round 2's #6)."""
+    note = {"tool": SLACK, "input": {"channel_id": "D0555", "message": "Hi."}}
+    code = approvals.request("send", note, "a note")
+    batch = sends.read_batch(str(batch_file([CALL])))
+    _says(f"Batch digest {sends.batch_digest(batch)} is filed for later. The note waits on the code {code}.")
+    APPROVE(f"code {code}")
+    sends.open_batch(batch, {"code": code, "asked": time.time() - 30}, "S-principal")
+    assert held(guards.check(SLACK, SAID, CONFIG, session=SESSION))
+
+
+def test_a_forged_batch_outlives_no_code_typed_hours_ago():
+    """Review 3 #4, second case: a code typed three hours ago for something else let forged state go, where 5.23.0's
+    fifteen minutes refuse a forged approval of the same message."""
+    code, hours = approvals.request("send", {"tool": SLACK, "input": {"channel_id": "D0555", "message": "Hi."}}, "a note"), 3 * 3600
+    batch = sends.read_batch(str(batch_file([CALL])))
+    _says(f"batch {sends.batch_digest(batch)}; the note waits on the code {code}", age=hours + 60)
+    _typed(code, age=hours)
+    sends.open_batch(batch, {"code": code, "asked": time.time() - hours - 120}, "S-principal")
+    assert held(guards.check(SLACK, SAID, CONFIG, session=SESSION))
+
+
+def test_a_batch_whose_digest_and_code_the_agent_repeats_still_sends():
+    """Review 3, its note: the newest line naming both was taken as the hold, so repeating them after the principal typed
+    the code held every later send of a granted batch."""
+    data = granted([CALL, {"tool": SLACK, "input": {"channel_id": "D0124", "message": REPLY}}])
+    time.sleep(0.02)  # after the principal's code, which the fixture stamps 5 ms ahead
+    _says(f"Batch {data['digest']} is open on the code {data['code']}; two sends to go.")
+    assert guards.check(SLACK, SAID, CONFIG, session=SESSION) is None
+    assert guards.check(SLACK, {"channel_id": "D0124", "message": REPLY}, CONFIG, session=SESSION) is None
+
+
 def test_the_functions_that_lead_into_the_state_are_the_guards_to_see():
     assert {"sends._spends_file", "sends._batch_file", "sends._window_file"} <= guards.SYNTHESIS_PLACES
+    assert "sends._requests_file" in guards.SYNTHESIS_PLACES  # the guard's own record of each batch's code (round 3 #4)
     for line in ("python3 -c 'from synthesis import sends; sends._spends_file().write_text(\"\")'",
                  "python3 -c 'from synthesis import sends; open(sends._spends_file(), \"w\").close()'"):
         assert guards.check("Bash", {"command": line}, CONFIG, cwd=str(FOLDER)), line
