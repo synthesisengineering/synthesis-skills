@@ -1197,3 +1197,60 @@ def test_a_runner_s_ordinary_program_passes(world, line):
     _script(world["work"] / "tests", "test_plain.py", "def test_sum():\n    assert sum([1, 2]) == 3\n")
     _script(world["work"], "test_more.py", "import json\n\n\ndef test_json():\n    assert json.loads('[1]') == [1]\n")
     assert _verdict(world, line) is None, line
+
+
+# --- review round 1 of 22.21: what a test module runs as pytest collects it is never isolated (finding 1, a and b); a
+# test file isolates itself only through a fixture that is autouse or that every test requests (finding 1, c); the CLI's
+# launcher is trusted only beside the synthesis home's own runtime (finding 2) ------------------------------------------
+
+AT_IMPORT = {
+    "a writer at the module's top level": "from synthesis import approvals\napprovals.void('send', {})\n\n\ndef test_it():\n    pass\n",
+    "a state path taken at load": ("from synthesis import paths\nSTATE = paths.state()\n\n\ndef test_it():\n"
+                                   "    paths.write_json(STATE / 'approvals' / 'x.json', {})\n"),
+    "a writer in a class body": "from synthesis import approvals\n\n\nclass TestIt:\n    approvals.void('send', {})\n\n    def test_it(self):\n        pass\n",
+}
+
+
+@pytest.mark.parametrize("name", sorted(AT_IMPORT))
+def test_what_a_test_module_runs_as_pytest_collects_it_is_never_isolated(world, name):
+    _script(world["work"] / "suite", "conftest.py", ISOLATING)  # it puts the home at a temporary path, but only once a test starts
+    _script(world["work"] / "suite", "test_mine.py", AT_IMPORT[name])
+    assert HELD in (_verdict(world, "python3 -m pytest -q suite/test_mine.py") or ""), name
+
+
+OWN_FIXTURE = ("import pytest\nfrom synthesis import approvals\n\n\n@pytest.fixture\ndef own_home(tmp_path, monkeypatch):\n"
+               "    monkeypatch.setenv('SYNTHESIS_HOME', str(tmp_path / 'home'))\n\n\n")
+OWN_ISOLATION = {  # a test file with no conftest above it, and whether it waits
+    "one test sets the home and another does not": ("from synthesis import approvals\n\n\ndef test_isolated(monkeypatch, tmp_path):\n"
+                                                    "    monkeypatch.setenv('SYNTHESIS_HOME', str(tmp_path))\n\n\n"
+                                                    "def test_other():\n    approvals.void('send', {})\n", True),
+    "a fixture some tests request": (OWN_FIXTURE + "def test_isolated(own_home):\n    approvals.void('send', {})\n\n\n"
+                                     "def test_other():\n    approvals.void('send', {})\n", True),
+    "a fixture every test requests": (OWN_FIXTURE + "def test_one(own_home):\n    approvals.void('send', {})\n\n\n"
+                                      "class TestMore:\n    def test_two(self, tmp_path, own_home):\n        approvals.void('send', {})\n", False),
+    "an autouse fixture": (OWN_FIXTURE.replace("@pytest.fixture\n", "@pytest.fixture(autouse=True)\n")
+                           + "def test_one():\n    approvals.void('send', {})\n", False),
+}
+
+
+@pytest.mark.parametrize("name", sorted(OWN_ISOLATION))
+def test_a_test_file_isolates_itself_only_through_an_autouse_fixture_or_one_every_test_requests(world, name):
+    body, held = OWN_ISOLATION[name]
+    _script(world["work"], "test_mine.py", body)
+    assert (HELD in (_verdict(world, "python3 -m pytest -q test_mine.py") or "")) == held, name
+
+
+def test_the_cli_launcher_is_trusted_only_beside_the_synthesis_home_s_own_runtime(world):
+    from synthesis import install
+    home = paths.home()
+    _script(home / "bin", "synthesis", install.CLI_SCRIPT).chmod(0o755)
+    (home / "current" / "synthesis").mkdir(parents=True, exist_ok=True)
+    (world["work"] / "bin").mkdir()
+    (world["work"] / "bin" / "synthesis").symlink_to(home / "bin" / "synthesis")  # as ~/.local/bin/synthesis leads to it
+    assert _verdict(world, "./bin/synthesis who") is None  # handed to bash, its path in a protected folder waits, as before
+    copy = world["work"] / "x"
+    _script(copy / "bin", "synthesis", install.CLI_SCRIPT)
+    _script(copy / "current" / "synthesis", "__init__.py", "")
+    _script(copy / "current" / "synthesis", "cli.py", "def main():\n    return 0\n")  # a runtime the agent wrote
+    for line in (f"bash {copy / 'bin' / 'synthesis'} sends status", f"sh {copy / 'bin' / 'synthesis'}"):
+        assert HELD in (_verdict(world, line) or ""), line
