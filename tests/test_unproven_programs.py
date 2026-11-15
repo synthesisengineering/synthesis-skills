@@ -623,3 +623,44 @@ def test_a_module_that_could_stand_in_or_a_path_variable_on_the_line_waits_and_t
     reason = _verdict(world, ("PYTHONPATH=. " + READ_HEREDOC).format(**_raw(world)))
     assert reason and HELD in reason and "-I" in reason, reason
     assert _verdict(world, ("cd /tmp && " + READ_HEREDOC).format(**_raw(world))) is None  # after the line's own cd
+
+
+# --- a Python script file is judged by what its text shows (coordinator, 2026-11-14, after the replay) ----------------
+
+def _script(folder: Path, name: str, body: str) -> Path:
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / name).write_text(body, encoding="utf-8")
+    return folder / name
+
+
+def test_a_long_script_with_no_write_passes_even_where_the_reader_cannot_place_its_reads(world):
+    reads = "import os, sys\nbase = sys.argv[1]\n" + "".join(f"n{i} = len(open(os.path.join(base, 'x{i}')).read()) if os.path.exists(os.path.join(base, 'x{i}')) else 0\n"
+                                                         for i in range(400))
+    script = _script(world["work"] / "long", "count.py", reads)
+    assert len(reads) > 16 * 1024
+    assert _verdict(world, f"python3 {script} {world['record'].parent}") is None
+
+
+def test_a_script_and_the_module_beside_it_it_imports_are_read_together(world):
+    folder = world["work"] / "pair"
+    _script(folder, "helper.py", "def count(p):\n    return len(open(p, encoding='utf-8').read())\n")
+    script = _script(folder, "main.py", "import sys\nimport helper\nprint(helper.count(sys.argv[1]))\n")
+    assert _verdict(world, f"python3 {script} {world['rec']}") is None
+    _script(folder, "helper.py", "import shutil\ndef count(p):\n    shutil.copy(p, p + '.bak')\n    return 0\n")
+    assert HELD in (_verdict(world, f"python3 {script} {world['rec']}") or "")
+
+
+def test_a_module_beside_a_script_named_like_one_found_elsewhere_still_stands_in(world):
+    folder = world["work"] / "shadow"
+    _script(folder, "json.py", "print('planted')\n")
+    script = _script(folder, "main.py", "import json, sys\nprint(len(open(sys.argv[1]).read()))\n")
+    assert HELD in (_verdict(world, f"python3 {script} {world['rec']}") or "")
+
+
+def test_a_writer_handed_on_in_a_script_still_waits(world):
+    script = _script(world["work"] / "handed", "copy.py", "import shutil, sys\nlist(map(shutil.copy, [sys.argv[1]], [sys.argv[2]]))\n")
+    assert HELD in (_verdict(world, f"python3 {script} {world['forged']} {world['rec']}") or "")
+
+
+def test_df_is_a_reader(world):
+    assert _verdict(world, f"df -h {world['home']}/.claude") is None
