@@ -5849,19 +5849,21 @@ def _program_acts(text: str, head: str = "", where: str = "/", depth: int = 0, p
 OSA_EXT = re.compile(r"\.(?:js|jxa|scpt|scptd|applescript|osa)$", re.I)
 FILE_READS = re.compile(r"\bopen\s*\(|\.read_(?:text|bytes)\s*\(|\breadFile(?:Sync)?\s*\(|\bFile\s*\.\s*(?:read|open)\b|\bIO\s*\.\s*read"
                         r"|\bslurp\b|\bfile_get_contents\s*\(|\bDeno\s*\.\s*readTextFile|\bjson\s*\.\s*load\s*\(|\bload\s*\(")
-WRITE_TARGET = re.compile(r"""\bopen\s*\(\s*([^,\n]+?)\s*,\s*['"][wax]|([\w.()\[\]'"/ ]+?)\s*\.write_(?:text|bytes)\s*\(|"""
+WRITE_TARGET = re.compile(r"""\bopen\s*\(\s*([^,\n]{1,300}?)\s*,\s*['"][wax]|\.write_(?:text|bytes)\s*\(|"""
                           r"""\b(?:writeFile(?:Sync)?|File\s*\.\s*write|IO\s*\.\s*write|file_put_contents|Deno\s*\.\s*writeTextFile)\s*\(\s*([^,\n]+)""")
 
 
 def _writes_script(text: str, names: list) -> bool:
     """Whether a program writes a script file it hands osascript: a write whose target spells one of `names` or any
     script file, or is a name the program gives one (a log or a record it writes is none)."""
+    given = set(re.findall(r"(?m)^[ \t]*([A-Za-z_]\w*)[ \t]*=[^\n]*['\"][^'\"\n]*\.(?:js|jxa|scpt|scptd|applescript|osa)['\"]", text))
     for found in WRITE_TARGET.finditer(text):
-        target = next((g for g in found.groups() if g), "")
-        if any(n and n in target for n in names) or OSA_EXT.search(target.strip("'\"` )")):
-            return True
+        at = start = found.start()
+        while not (found[1] or found[2]) and start > 0 and at - start < 200 and (text[start - 1].isalnum() or text[start - 1] in "_.()[]'\"/ "):
+            start -= 1  # a path's own write method: its receiver, read back from the call
+        target = found[1] or found[2] or text[start:at]
         var = re.match(r"\s*\(?\s*([A-Za-z_]\w*)", target)
-        if var and re.search(rf"(?m)^\s*{re.escape(var[1])}\s*=[^\n]*['\"][^'\"\n]*\.(?:js|jxa|scpt|scptd|applescript|osa)['\"]", text):
+        if any(n and n in target for n in names) or OSA_EXT.search(target.strip("'\"` )")) or (var and var[1] in given):
             return True
     return False
 
@@ -6427,27 +6429,38 @@ def _tools_called(text: str, python: bool, own: bool = True) -> list:
         if not isinstance(expr, ast.Name):
             return [None]
         found = []
-        for node in nodes:
-            if isinstance(node, (ast.Assign, ast.AnnAssign)) and any(isinstance(t, ast.Name) and t.id == expr.id for t in (
-                    node.targets if isinstance(node, ast.Assign) else [node.target])):
+        for how, node, at in binds.get(expr.id, ()):
+            if how == "assign":
                 found += names(node.value, depth + 1, part)
-            elif isinstance(node, (ast.For, ast.comprehension)) and isinstance(node.target, (ast.Name, ast.Tuple, ast.List)):
-                spots = [node.target] if isinstance(node.target, ast.Name) else node.target.elts
-                at = next((i for i, t in enumerate(spots) if isinstance(t, ast.Name) and t.id == expr.id), None)
-                found += [] if at is None else names(node.iter, depth + 1, None if isinstance(node.target, ast.Name) else at)
-            elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)) and expr.id in [a.arg for a in node.args.args]:
-                at = [a.arg for a in node.args.args].index(expr.id)
-                called = node.name if not isinstance(node, ast.Lambda) else next((t.id for n in nodes if isinstance(n, ast.Assign) and n.value is node
-                                                                                     for t in n.targets if isinstance(t, ast.Name)), "")
-                for call in [n for n in nodes if isinstance(n, ast.Call) and called and getattr(n.func, "id", getattr(n.func, "attr", "")) == called]:
+            elif how == "loop":
+                found += names(node.iter, depth + 1, at)
+            else:  # a parameter: what each call of its function passes there
+                called = node.name if not isinstance(node, ast.Lambda) else lambdas.get(id(node), "")
+                for call in calls.get(called, ()) if called else ():
                     spot = at - (isinstance(call.func, ast.Attribute) and [a.arg for a in node.args.args][:1] in (["self"], ["cls"]))  # a method's own
                     given = next((k.value for k in call.keywords if k.arg == expr.id), call.args[spot] if 0 <= spot < len(call.args) else None)
                     found += names(given, depth + 1)
                 found += [] if called else [None]
         return found or [None]
 
+    binds, calls, lambdas = {}, {}, {}  # each name's assignments, loops and parameters; each function's calls; a lambda's name
+    for node in nodes:
+        if isinstance(node, (ast.Assign, ast.AnnAssign)):
+            for target in node.targets if isinstance(node, ast.Assign) else [node.target]:
+                binds.setdefault(getattr(target, "id", None), []).append(("assign", node, None))
+                lambdas.update({id(node.value): target.id} if isinstance(node.value, ast.Lambda) and isinstance(target, ast.Name) else {})
+        elif isinstance(node, (ast.For, ast.comprehension)) and isinstance(node.target, (ast.Name, ast.Tuple, ast.List)):
+            for at, target in enumerate([node.target] if isinstance(node.target, ast.Name) else node.target.elts):
+                binds.setdefault(getattr(target, "id", None), []).append(("loop", node, None if isinstance(node.target, ast.Name) else at))
+        elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
+            for at, arg in enumerate(node.args.args):
+                binds.setdefault(arg.arg, []).append(("param", node, at))
+        elif isinstance(node, ast.Call):
+            calls.setdefault(getattr(node.func, "id", getattr(node.func, "attr", "")), []).append(node)
+
     strong = sites or any(isinstance(n, ast.Constant) and n.value == "tools/call" or getattr(n, "attr", getattr(n, "id", "")) in ("call_tool", "callTool")
                           for n in nodes)  # a method or a client call it uses, not prose in a string that names one
+    sites = sites[:64] + [(None, None)] * (len(sites) > 64)  # past 64 calls, one more is unknown: each name is followed through the program
     return [(n, literal(given) if isinstance(n, str) and n != ARGV else None) for named, given in sites for n in names(named)
             if own or n is not None] or ([(None, None)] if own and strong else [])
 

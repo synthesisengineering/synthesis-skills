@@ -1335,10 +1335,15 @@ ROOT = Path(__file__).resolve().parents[1]
 # the files include and every includeIf name), check_git_programs 26 (each program judged by the whole shell guard where git
 # runs it; a value it cannot read, and nesting past two levels, held for the protected-folder code), the note and patterns
 # 17 (GIT_PROGRAMS, GIT_PROGRAM_ENV, GIT_DEPTH) and the dispatch 1.
+# Then 13 more in each, all in guards.py, for the guard's own time on what those readings read (a program with 3,000 tool
+# calls took 0.95 s, and a 200,000-character line 0.77 s in the write-target pattern; now 0.08 s and 5 ms): _tools_called
+# 11 (each name's assignments, loops and parameters, each function's calls and each lambda's name, indexed once a program
+# in place of a scan of every node for each name; past 64 calls, one more is unknown) and _writes_script 2 (a write
+# method's receiver read back from its call, and the names given a script file found in one pass).
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 17008
-PLUGIN_BUDGET = 43080
+CORE_BUDGET = 17021
+PLUGIN_BUDGET = 43093
 
 
 def _lines(files):
