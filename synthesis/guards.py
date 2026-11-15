@@ -4415,7 +4415,7 @@ SYNTHESIS_WRITES = frozenset(f"{module}.{name}" for module, names in (  # synthe
     ("hook", "_carried_since _ran _upgrade_note main pre_tool_use session_start stop user_prompt_submit"),
     ("install", "_merge _write_exec install move_board register_git_hooks uninstall"), ("paths", "note_wait write_json"),
     ("project", "_carry_out _mark_carried_out _peers _recent_conversation handoff resume"),
-    ("judge", "_ask_local _cloud _judged _locked _log _post _remember _spend _subscription ask notice"),
+    ("judge", "_ask_local _cloud _judged _locked _log _post _remember _spend _subscription ask notice probe"),
     ("reply_check", "check misrouted_accounts shortcut_problem shortcut_verdict unarmed_wait unwatched_sends"), ("sends", "close_window log open_window settle window_refusal"),
     ("sessions", "_Session _export _ritual_history _sync_workspace _write_synced _writer behind export export_file fetch lost peek recent sync"),
     ("wait", "_watch live main record unread watching"), ("worktree", "create main retire")) for name in names.split())

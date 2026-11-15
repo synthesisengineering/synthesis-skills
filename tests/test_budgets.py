@@ -1346,10 +1346,23 @@ ROOT = Path(__file__).resolve().parents[1]
 # _subscription among the judge's writers, in its line. judge_replay.py 20: the usage 1 (the plan's, the cloud's and the left-out options, the cloud's missing until now), main 4 (the plan's model, its harness and
 # command, the workspaces left out), judged 15 (runs on the plan, items of a left-out workspace counted and left out,
 # both questions timed at once as the hook asks them, the first question's own time from the judge's log).
+# The doctor's look at the plan's judge (2026-11-15: the fall back to the word list is never silent) adds 107 to the
+# core and 108 to the plugin. doctor.py 75: check_plan_judge 26 (a line for each harness whose plan judges replies: ok
+# where its model answers inside the judge's deadline, else a warn with the fix; a judge section that cannot be used one
+# warn), plan_status 18 (the sign-in read from the command line's own status command, asked as the judge's run asks: a
+# plan, an API account, none, no command, or unknown), _plan_fix 16 (each failure's fix in plain words), PLAN_NAMES 1,
+# the section's heading 1, run_checks 4 (the probe in the background beside the other checks, only where a judge is
+# configured, and its lines or why it could not tell), and nine blank lines. judge.py 32: probe 12 (one invented
+# sentence the way a flagged reply goes, nothing logged or kept), _why 7 (a failed run's cause in fixed words: a flag the
+# command line does not know, no sign-in it could use, a model the plan does not offer, else a refusal; the judge's log
+# names it too), plan_env 4 (the run's environment less the credentials that outrank the plan, shared by the judge and
+# the doctor), _subscription 2 (a command that is not there named so), PROBE and PROBE_SECONDS 1, and six blank lines.
+# judge_replay.py 1: every item judged on the plan --harness names, whichever harness recorded it (all 33 personal
+# items were recorded in Claude Code, and Codex's plan was measured on them).
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 16537
-PLUGIN_BUDGET = 42966
+CORE_BUDGET = 16644
+PLUGIN_BUDGET = 43074
 
 
 def _lines(files):

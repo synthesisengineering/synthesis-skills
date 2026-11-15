@@ -92,7 +92,12 @@ before it goes back (M38; the principal's rulings of 2026-11-14). The list, the 
   Each run is in a room of the judge's own under `state/judge/`, with `SYNTHESIS_JUDGE_RUN` set: a synthesis hook
   started inside it returns at once, so a verdict is never itself judged, and the guard still guards. It runs on the
   plan's sign-in alone: an API key, a gateway token or a cloud account in the environment is kept out of its run, since
-  print mode would use them before the plan, so its verdicts count against the plan's usage and cost nothing more. Claude Code says `--bare`, which never reads the plan's sign-in, will
+  print mode would use them before the plan, so its verdicts count against the plan's usage and cost nothing more.
+  A run that gives no verdict is logged with why in fixed words: `not_signed_in`, `unknown_flag` (a command line too
+  old for a flag the judge passes), `model_unavailable`, `missing`, `timeout`, `refused`. `synthesis doctor` reads each
+  configured harness's sign-in from its own status command and, where it is a plan, asks its judge one invented
+  sentence the same way (`judge.probe`, at most 20 seconds, nothing logged), and warns with the fix when it would not
+  answer or answers past the deadline, so the fall back to the list is never silent. Claude Code says `--bare`, which never reads the plan's sign-in, will
   become the default for `-p`; when it does, these runs fail, the log shows `refused`, and the list decides.
 - Where the judge is a service, the plan's or the cloud's, the two questions are asked at once, so a flagged reply waits
   about one answer's time; this Mac's one local model answers one at a time, so there they are asked in turn.

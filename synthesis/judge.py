@@ -50,6 +50,7 @@ MARKER = "SYNTHESIS_JUDGE_RUN"  # set in the judge's own run: a synthesis hook t
 # the environment when present, a cloud account or gateway before it (its authentication precedence), Codex a key of its own
 NOT_THE_PLAN = ("CLAUDE_CODE_USE_BEDROCK", "CLAUDE_CODE_USE_VERTEX", "CLAUDE_CODE_USE_FOUNDRY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_API_KEY",
                 "ANTHROPIC_PROFILE", "ANTHROPIC_FEDERATION_RULE_ID", "CODEX_API_KEY", "OPENAI_API_KEY")
+PROBE, PROBE_SECONDS = "The parser tests pass on both systems, and the release notes are updated.", 20.0  # the doctor's: invented
 CLOUD_KEYS = {"provider", "model", "keys_file", "keys", "price_per_mtok", "monthly_cap_usd", "url", "effort"}
 FIELDS = ("verdict", "rule", "span", "reason", "sure")
 QUOTES = str.maketrans({"‘": "'", "’": "'", "“": '"', "”": '"'})
@@ -396,19 +397,21 @@ def _subscription(entry: dict, harness: str, system: str, user: str, policy: Pol
                        "--skip-git-repo-check", "-C", str(room), "-m", entry["model"], "--output-schema", str(schema_file), "-o", str(answer_file)] \
             + (["-c", f'model_reasoning_effort="{effort}"'] if effort else []) + ["-"], system + "\n\n" + user
     try:
-        env = {**{k: v for k, v in os.environ.items() if k not in NOT_THE_PLAN}, MARKER: "1"}
-        done = subprocess.run(argv, input=stdin, capture_output=True, text=True, cwd=str(room), env=env, timeout=max(0.05, deadline - time.monotonic()))
+        done = subprocess.run(argv, input=stdin, capture_output=True, text=True, cwd=str(room), env=plan_env(),
+                              timeout=max(0.05, deadline - time.monotonic()))
         if harness == "claude-code":
             answer = json.loads(done.stdout) if done.stdout.strip() else None
             if not isinstance(answer, dict) or answer.get("is_error") or done.returncode:
-                return None, "refused"
+                return None, _why(done.stdout, done.stderr)
             text = json.dumps(answer["structured_output"]) if isinstance(answer.get("structured_output"), dict) else answer.get("result")
         else:
             text = answer_file.read_text(encoding="utf-8") if done.returncode == 0 and answer_file.exists() else None
             if text is None:
-                return None, "refused"
+                return None, _why(done.stdout, done.stderr)
     except subprocess.TimeoutExpired:
         return None, "timeout"
+    except FileNotFoundError:
+        return None, "missing"
     except (OSError, ValueError):
         return None, "unreadable"
     finally:
@@ -416,6 +419,35 @@ def _subscription(entry: dict, harness: str, system: str, user: str, policy: Pol
             leftover.unlink(missing_ok=True)
     fields, bad = _verdict(text, policy, content)
     return (Verdict(**fields, model=entry["model"]) if fields else None), bad
+
+
+def plan_env() -> dict:
+    """The environment of a run on the plan: this one, less the credentials that outrank the plan's sign-in, with the
+    judge's marker set."""
+    return {**{k: v for k, v in os.environ.items() if k not in NOT_THE_PLAN}, MARKER: "1"}
+
+
+def _why(out: str, err: str) -> str:
+    """A failed run's cause in fixed words, from what its command line said: a flag it does not know (it is too old),
+    no sign-in it could use, a model the plan does not offer, or else a refusal. The words are matched, never kept."""
+    said = out + "\n" + err
+    return ("unknown_flag" if re.search(r"unknown option|unexpected argument", err) else
+            "not_signed_in" if re.search(r"(?i)not logged in|please run /login|invalid api key|401 unauthorized", said) else
+            "model_unavailable" if re.search(r"(?i)issue with the selected model|unrecognized_model|model is not supported", said) else "refused")
+
+
+def probe(config: dict, harness: str, seconds: float = PROBE_SECONDS) -> tuple:
+    """(why the plan's judge for `harness` would not answer, "" where it answers, and the seconds it took): the doctor's
+    look, never a turn's. One invented sentence goes the way a flagged reply goes, by the shortcut policy, through the
+    judge's own command line with hooks off and the credentials that outrank the plan taken out. Nothing is logged or
+    kept, so the next reply is asked afresh."""
+    entry = ((settings(config) or {}).get("subscription") or {}).get(harness)
+    if entry is None or harness not in HARNESSES:
+        return "not_configured", 0.0
+    policy, began = load_policy("shortcut-phrasing"), time.monotonic()
+    system, user = _prompt(policy, PROBE, {"where": "a probe of the judge", "list_hits": []})
+    found, why = _subscription(entry, harness, system, user, policy, PROBE, began + seconds)
+    return ("" if found else why or "refused"), round(time.monotonic() - began, 2)
 
 
 def notice(config: dict) -> str:

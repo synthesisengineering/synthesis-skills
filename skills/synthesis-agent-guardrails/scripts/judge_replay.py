@@ -291,12 +291,13 @@ def judged(args, jobs: list, config: dict, hook: float) -> int:
         remote = "local" not in section  # a service: the hook asks both questions at once
         for part, label, entry, hits in chosen:
             harness, path, line, reply, _, asked, workspace = entry
+            by = args.harness if "subscription" in section else harness  # the plan named judges every item, whoever recorded it
             first_alone = lambda: judge.ask("shortcut-phrasing", policy, reply_check._judged(reply, hits), {"where": reply_check.WHERE,
-                                            "list_hits": hits}, settings, asked=asked, workspace=workspace, harness=harness) if hits else None
+                                            "list_hits": hits}, settings, asked=asked, workspace=workspace, harness=by) if hits else None
             began, seen = time.monotonic(), len(log.read_text().splitlines()) if log.exists() else 0
             alone = None if remote else first_alone()  # this Mac's model: the first question alone, timed, then the second in turn
             first = int((time.monotonic() - began) * 1000)
-            found = reply_check.shortcut_verdict(reply, hits, settings, asked=asked, workspace=workspace, harness=harness) if hits else None
+            found = reply_check.shortcut_verdict(reply, hits, settings, asked=asked, workspace=workspace, harness=by) if hits else None
             took = int((time.monotonic() - began) * 1000)  # the hook's time for both questions, as it asks them
             if remote:  # the first question's own time from the judge's log, its verdict from its cache
                 rows = [json.loads(row) for row in (log.read_text().splitlines() if log.exists() else [])[seen:]]
