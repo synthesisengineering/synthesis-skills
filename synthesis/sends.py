@@ -363,23 +363,26 @@ KINDS = ('none of the four kinds: a connector call {"tool", "input"}, a browser 
 # The box is the one contenteditable textbox labelled `Write to ...` or for a message, with the placeholder `Aa`, or a
 # Lexical editor (the coordinator's live read of 2026-11-14: `Write to <Name>`, `Aa`, Lexical, in no form); the composer
 # around it is its nearest ancestor that holds a control labelled for sending or for a file or attachment.
-# Its marks count what puts the composer in another mode, outside the box: a reply or edit banner (text that opens with
-# `Replying to` or `Editing`), a control labelled for a reply or an edit, a quotation; inline counts images in the box.
-COMPOSER_MARK = "synthesis-composer-3"
+# Its marks count what puts the composer in another mode, outside the box, in the composer or in any other child of its
+# parent (the reply banner is the composer's previous sibling, live 2026-11-15): a heading, text that opens with
+# `Replying to`, `Editing`, `Cancel reply` or `Cancel edit`, a control labelled for a reply or an edit, a quotation;
+# inline counts images in the box.
+COMPOSER_MARK = "synthesis-composer-4"
 COMPOSER_CHECK = ("(() => { const boxes = [...document.querySelectorAll('[contenteditable=\"true\"][role=\"textbox\"]')]; "
                   "const fits = b => /^write to|message/i.test(b.getAttribute('aria-label') || '') || "
                   "b.getAttribute('aria-placeholder') === 'Aa' || b.hasAttribute('data-lexical-editor'); "
                   "const found = boxes.filter(fits); const box = found.length === 1 ? found[0] : null; let area = box && "
                   "box.parentElement; while (area && ![...area.querySelectorAll('[aria-label*=\"send\" i], [aria-label*=\"file\" i], "
                   "[aria-label*=\"attach\" i]')].some(e => !box.contains(e))) area = area.parentElement; "
-                  "return JSON.stringify({check: 'synthesis-composer-3', url: location.href, box: found.length > 1 ? 'ambiguous' : "
+                  "return JSON.stringify({check: 'synthesis-composer-4', url: location.href, box: found.length > 1 ? 'ambiguous' : "
                   "box ? 'found' : 'none', text: box ? box.innerText : null, focused: !!box && box.contains(document.activeElement), "
                   "staged: !box ? null : area ? [...area.querySelectorAll('img, video, audio, canvas, object, embed, iframe, "
                   "[aria-label*=\"remove\" i]')].filter(e => !box.contains(e)).length : 'unknown', marks: !box ? null : area ? "
-                  "[...area.querySelectorAll('*')].filter(e => !box.contains(e) && !e.contains(box) && (/^\\s*(replying to|editing)\\b/i"
-                  ".test(e.innerText || '') || /reply|edit/i.test(e.getAttribute('aria-label') || '') || e.tagName === 'BLOCKQUOTE'))"
-                  ".length : 'unknown', inline: box ? box.querySelectorAll('img, svg, picture, canvas, video, [role=\"img\"]').length "
-                  ": null, boxes: boxes.length}); })()")
+                  "[...(area.parentElement || area).querySelectorAll('*')].filter(e => !box.contains(e) && !e.contains(box) && "
+                  "(/^\\s*(replying to|editing|cancel (reply|edit))\\b/i.test(e.innerText || '') || /reply|edit/i.test("
+                  "e.getAttribute('aria-label') || '') || e.getAttribute('role') === 'heading' || /^(H[1-6]|BLOCKQUOTE)$/.test("
+                  "e.tagName))).length : 'unknown', inline: box ? box.querySelectorAll('img, svg, picture, canvas, video, "
+                  "[role=\"img\"]').length : null, boxes: boxes.length}); })()")
 ADDRESS_KEYS = ("to", "cc", "bcc", "channel", "channel_id", "chat_id", "space_id", "space_name", "thread_id", "thread_ts",
                 "user_id", "recipient", "recipients", "issueIdOrKey", "owner", "repo", "pull_number", "issue_number")
 

@@ -1339,10 +1339,13 @@ ROOT = Path(__file__).resolve().parents[1]
 # code, and the code typed after it), _entry_problem 2 more (the sender's own tools are no connector entry); read_batch,
 # batch_refusal, describe_batch and batch_spend change lines in place (the path, name and project escaped; the session
 # the guard is told). messages_send.py 3 (plugin): main 2 (--session) and _send 1 (the session given to the guard).
+# Reply mode read live (2026-11-15): core 3 more, plugin 3. sends.py 3: COMPOSER_CHECK 1 longer (its marks read every
+# other child of the composer's parent, where the reply banner sits, and count a heading and a `Cancel reply` named by
+# its text) and its note 2 longer.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 16535
-PLUGIN_BUDGET = 42610
+CORE_BUDGET = 16538
+PLUGIN_BUDGET = 42613
 
 
 def _lines(files):

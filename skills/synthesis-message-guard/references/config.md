@@ -492,10 +492,14 @@ focus, an emptied box and an earlier paste, none of which it can see):
      enter to send`, `Send`) or a file or attachment (`Attach a file`). What is staged is the count of images, video,
      audio, canvases, objects, frames and `Remove` controls inside it and outside the box; with no such ancestor it is
      `unknown`, which matches nothing.
-   - **Its mode** (the review of 5.24.0; the labels await a live read): the count of what puts the composer in another
-     mode, inside the composer and outside the box (text that opens with `Replying to` or `Editing`, a control labelled
-     for a reply or an edit, a quotation), and the count of images inside the box, whose `innerText` leaves an emoji
-     drawn as an image out. Either above nothing matches.
+   - **Its mode** (the review of 5.24.0; reply mode read live on 2026-11-15, edit mode not yet): the count of what puts
+     the composer in another mode, outside the box, inside the composer or in any other child of the composer's parent,
+     where the reply banner sits as the composer's previous sibling: a heading (`role="heading"` or `h1` to `h6`),
+     whatever it reads; text that opens with `Replying to`, `Editing`, `Cancel reply` or `Cancel edit`; a control
+     labelled for a reply or an edit (`Cancel reply`); a quotation. With it, the count of images inside the box, whose
+     `innerText` leaves an emoji drawn as an image out. Either above nothing matches. A plain composer holds none of
+     these; were a page to put more than its banner beside the composer, a heading there would void every check, so
+     nothing is sent and each send waits for its code.
 
    It returns the page's address with those, as one JSON report the guard finds in the call's result. No page script
    but the shipped read-only ones (this check, and the extractors `messenger_messages.py` and `chat_page.py` print) may
