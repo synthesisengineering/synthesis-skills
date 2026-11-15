@@ -664,3 +664,75 @@ def test_a_writer_handed_on_in_a_script_still_waits(world):
 
 def test_df_is_a_reader(world):
     assert _verdict(world, f"df -h {world['home']}/.claude") is None
+
+
+def test_a_file_in_the_folder_a_script_runs_from_does_not_stand_in(world):
+    """Python puts a script's own folder first on its path, not the folder it runs from (the replay: 149 commands)."""
+    folder = world["work"] / "runs-from"
+    _script(folder, "json.py", "print('planted')\n")
+    script = _script(world["work"] / "elsewhere", "pretty.py", "import json, sys\nprint(json.dumps(len(open(sys.argv[1]).read())))\n")
+    assert guards.check("Bash", {"command": f"python3 {script} {world['rec']}"}, CONFIG, cwd=str(folder), session=world["session"]) is None
+
+
+def test_isolated_python_imports_nothing_beside_its_script(world):
+    folder = world["work"] / "isolated"
+    _script(folder, "json.py", "print('planted')\n")
+    script = _script(folder, "main.py", "import json, sys\nprint(len(open(sys.argv[1]).read()))\n")
+    assert _verdict(world, f"python3 -I {script} {world['rec']}") is None
+
+
+def test_a_member_built_from_itself_is_read_and_a_write_through_it_still_waits(world):
+    """The reader followed a member read back into itself without end (the replay: 526 commands it could not judge)."""
+    body = ("import sys\nclass Box:\n    def __init__(self, p):\n        self.p = p\n        self.p = self.p + ''\n"
+            "d = {'a': sys.argv[1]}\nfor k in list(d):\n    d[k] = d[k] + ''\n")
+    reads = _script(world["work"] / "member", "reads.py", body + "print(len(open(Box(d['a']).p).read()))\n")
+    assert _verdict(world, f"python3 {reads} {world['rec']}") is None
+    assert _verdict(world, f"python3 -I - {world['rec']} <<'EOF'\n{body}print(len(open(Box(d['a']).p).read()))\nEOF") is None
+    writes = _script(world["work"] / "member", "writes.py", body + "open(Box(d['a']).p, 'a').write('x')\n")
+    assert _verdict(world, f"python3 {writes} {world['rec']}")
+
+
+def test_argparse_opening_a_file_for_writing_is_a_write(world):
+    program = ("import argparse\np = argparse.ArgumentParser()\np.add_argument('out', type=argparse.FileType('w'))\n"
+               "p.parse_args().out.write('{}')\n")
+    script = _script(world["work"] / "filetype", "out.py", program)
+    assert HELD in (_verdict(world, f"python3 {script} {world['rec']}") or "")
+    _held_or_refused(world, f"python3 -I -c {shlex.quote(program)} {world['rec']}")
+
+
+def test_a_module_run_with_m_from_the_folder_it_runs_from_is_read_as_a_script(world):
+    folder = world["work"] / "mods"
+    _script(folder, "tally.py", "import sys\nprint(len(open(sys.argv[1], encoding='utf-8').read()))\n")
+    _script(folder / "kit", "__init__.py", "")
+    _script(folder / "kit", "__main__.py", "from .work import run\nrun()\n")
+    _script(folder / "kit", "work.py", "import shutil, sys\ndef run():\n    shutil.copy(sys.argv[1], sys.argv[2])\n")
+    run = lambda line: guards.check("Bash", {"command": line}, CONFIG, cwd=str(folder), session=world["session"])  # noqa: E731
+    assert run(f"python3 -m tally {world['rec']}") is None
+    assert HELD in (run(f"python3 -m kit {world['forged']} {world['rec']}") or "")
+
+
+def test_a_module_installed_elsewhere_and_run_with_m_still_waits(world):
+    """Its first file is not the program (pip's and pytest's hand everything on), nor need it be this Python's."""
+    assert HELD in (_verdict(world, f"python3 -m json.tool {world['rec']} {world['work']}/pretty.json") or "")
+
+
+def test_a_script_past_the_text_limit_waits(world):
+    script = _script(world["work"] / "big", "big.py", "import sys\nprint(sys.argv[1])\n" + "#" * guards.TEXT_LIMIT + "\n")
+    assert HELD in (_verdict(world, f"python3 {script} {world['rec']}") or "")
+
+
+def test_a_code_binds_the_modules_a_script_imports(world):
+    folder = world["work"] / "bound"
+    _script(folder, "helper.py", "import sys\ndef save(text):\n    open(sys.argv[2], 'w').write(text)\n")
+    script = _script(folder, "main.py", "import sys\nimport helper\nhelper.save(open(sys.argv[1]).read())\n")
+    line = f"python3 {script} {world['rec']} {world['work']}/copy.txt"
+    world["approve"](_verdict(world, line))
+    _script(folder, "helper.py", "import shutil, sys\ndef save(text):\n    shutil.copy(sys.argv[1] + '.x', sys.argv[1])\n")
+    assert HELD in (_verdict(world, line) or ""), "a rewritten module is a new command"
+
+
+def test_a_module_beside_a_script_that_uses_synthesis_code_waits(world):
+    folder = world["work"] / "uses-beside"
+    _script(folder, "helper.py", "from synthesis import paths\ndef go():\n    paths.write_json(paths.state() / 'approvals' / 'x.json', {})\n")
+    script = _script(folder, "main.py", "import helper\nhelper.go()\n")
+    _held_or_refused(world, f"python3 {script}")
