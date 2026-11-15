@@ -860,3 +860,40 @@ def test_the_writers_the_guard_knows_are_the_ones_synthesis_has():
     """The guard's own judging functions (guards.check and the rest) file a hold the principal answers and never grant,
     so they read (the coordinator, 2026-11-14); every other function that writes is one of synthesis's writers."""
     assert guards.SYNTHESIS_WRITES == {w for w in _writers_in(ROOT) if not w.startswith("guards.")}
+
+
+# --- a word names a protected folder only by its own path (the coordinator, 2026-11-15: a skill script run from Claude
+# Code's plugin cache with a project path elsewhere on the line was held as naming the transcripts, `.claude` coming
+# from one word and `projects` from another) ------------------------------------------------------------------------
+
+def test_the_action_sheet_publisher_from_the_plugin_cache_with_a_project_page_passes(world):
+    cache = world["home"] / ".claude" / "plugins" / "cache" / "synthesis-engineering" / "synthesis-skills" / "5.22.1"
+    folder = cache / "skills" / "synthesis-action-sheet" / "scripts"
+    folder.mkdir(parents=True)
+    for source in (ROOT / "skills" / "synthesis-action-sheet" / "scripts").glob("*.py"):
+        (folder / source.name).write_text(source.read_text(encoding="utf-8") + "\n# a copy unlike the release's\n", encoding="utf-8")
+    page = world["home"] / "workspaces" / "kb" / "projects" / "a-project" / "resources" / "artifacts" / "a-page.html"
+    page.parent.mkdir(parents=True)
+    page.write_text("<p>a page</p>\n", encoding="utf-8")
+    assert _verdict(world, f"python3 {folder / 'publish_sheet.py'} {page} --project rp-sheets") is None
+
+
+def test_a_word_inside_a_protected_folder_still_counts(world):
+    assert HELD in (_verdict(world, f"python3 {world['work']}/copy.py {world['forged']} ~/.claude/projects/-work/S-principal.jsonl") or "")
+    unread = _script(world["work"] / "unread", "x.py", "import shutil\ngetattr(shutil, 'co' + 'py')('/tmp/a.txt', '/tmp/b.txt')\n")
+    assert HELD in (_verdict(world, f"python3 {unread} ~/.claude/projects/a.jsonl") or "")  # named by the word alone
+
+
+def test_parts_in_two_words_never_join(world):
+    for line in (f"cp ~/.claude/plugins/x ~/notes/projects/y", f"cp {world['home']}/.claude/plugins/x {world['home']}/notes/projects/y"):
+        assert _verdict(world, line) is None, line
+
+
+def test_parts_in_two_separate_paths_of_a_program_never_join_but_parts_of_one_expression_do(world):
+    home, unread = world["home"], "getattr(shutil, 'co' + 'py')('/tmp/a.txt', '/tmp/b.txt')\n"  # code its reader cannot follow
+    apart = _script(world["work"] / "apart", "x.py", f"import shutil\nprint(('{home}/.claude/plugins/a.txt', '{home}/notes/projects/b.txt'))\n" + unread)
+    assert _verdict(world, f"python3 {apart}") is None
+    joined = _script(world["work"] / "joined", "x.py", "import os, shutil\n"
+                     "print(os.path.join(os.path.expanduser('~'), '.claude',\n    'projects', '-work', 'x.jsonl'))\n" + unread)
+    assert HELD in (_verdict(world, f"python3 {joined}") or "")
+    _held_or_refused(world, "perl -MFile::Copy -e 'copy($ARGV[0], $ENV{{HOME}} . \"/\" . \".claude\" . \"/\" . \"projects\" . \"/-work/S-principal.jsonl\")' {F}".format(**_raw(world)))
