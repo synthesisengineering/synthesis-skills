@@ -159,7 +159,9 @@ def test_a_move_by_adding_to_the_address_waits(tmp_path, text):
 OPEN = {"fetch-destructured": "const {fetch: f} = window; f('/api/messages', {'method': 'POST', body: 'text=hello'})",
         "fetch-alias": "const f = window.fetch; f('/api/messages', {\"method\": \"POST\", \"body\": \"text=hello\"})",
         "method-in-an-object": "const o = {c: HTMLElement.prototype.click}; o.c.call(document.querySelector('b'))",
-        "method-under-another-name": "const btn = document.querySelector('b'); btn.go = HTMLElement.prototype.click; btn.go()"}
+        "method-under-another-name": "const btn = document.querySelector('b'); btn.go = HTMLElement.prototype.click; btn.go()",
+        # found in fixing #3: the reader keeps no scopes, so a name the script defines anywhere is its own everywhere
+        "name-defined-elsewhere": "[0].map(sendMessage => sendMessage); sendMessage('C0001', 'hello')"}
 
 
 @pytest.mark.xfail(strict=True, reason="on the open list in docs/runtime-integration.md: a spelling made to beat the reader")
