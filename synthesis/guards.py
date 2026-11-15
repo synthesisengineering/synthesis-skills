@@ -537,6 +537,7 @@ UNDER_HOOK = {"on": 0}  # the thread whose hook answers last and settles its cal
 _DEPTH = [0, None]  # how deep in the guard's checks this process is, and the thread judging: only the first one entered settles
 _JUDGING = _thread.allocate_lock()  # one thread judges at a time and a second waits: a call's records are its own
 _PENDING: dict = {}  # a hook's thread: the records and grants of the call its check judged, kept for its answer
+_SETTLING = [None]  # the thread settling a call's records, which no check of its own may enter meanwhile
 
 
 def _after(commit=None, undo=None) -> None:
@@ -588,17 +589,29 @@ def settle(allowed: bool, effects: list | None = None, spent: list | None = None
 
 
 def hook_answers() -> None:
-    """This thread's call is the hook's: its records wait for the hook's answer."""
+    """This thread's call is the hook's: its records wait for the hook's answer. Records an earlier call of this thread
+    left with no answer stand, since a harness given no answer may have let that call run."""
+    if _thread.get_ident() in _PENDING:
+        answered(True)
     UNDER_HOOK["on"] = _thread.get_ident()
 
 
 def answered(allowed: bool) -> None:
     """The hook's answer: settle the records of the call its check judged, when that check entered the guard, and stop
-    waiting for the hook. Another thread's records are its own (review round 5 of the spend order, finding 1)."""
+    waiting for the hook. Another thread's records are its own (review round 5 of the spend order, finding 1). A check
+    of this thread cut short in its own finally, before it handed its records over, left them with the guard: they are
+    settled here, and the guard freed if that check still holds it (review round 6, finding 2)."""
+    me = _thread.get_ident()
     UNDER_HOOK["on"] = 0
-    pending = _PENDING.pop(_thread.get_ident(), None)
+    pending = _PENDING.pop(me, False)
     if pending:
         settle(allowed, *pending)
+    elif pending is None and (_DEPTH[1] == me and _JUDGING.locked() or _JUDGING.acquire(False)):
+        try:
+            settle(allowed)
+        finally:
+            _DEPTH[0], _DEPTH[1] = 0, None
+            _JUDGING.release()
 
 
 def _entry(judge):
@@ -606,31 +619,39 @@ def _entry(judge):
     `check_send`): the first one entered starts the call's records afresh and settles them when it returns, held as
     well when it raises, or keeps them for the hook's answer (review round 3 of the spend order, finding 1). One thread
     judges at a time, a second waiting its turn, and the first one entered puts the depth and the lock back however it
-    ends (review round 4, findings 2 and 3; round 5, finding 3)."""
+    ends (review round 4, findings 2 and 3; round 5, finding 3). A check is never entered from a commit or an undo of
+    the records being settled, nor by a thread inside the send lock, which a judging thread may wait for: either would
+    wait on itself (review round 6, findings 1 and 3)."""
     def entered(*args, **kwargs):
         me = _thread.get_ident()
         first, acquired, verdict, decided = not (_DEPTH[0] and _DEPTH[1] == me), False, None, False
+        if _SETTLING[0] == me or first and approvals._ALONE[1] == me:
+            raise RuntimeError("the synthesis guard is not entered while it settles a call's records or inside the send lock")
         try:
             if first:
                 acquired = _JUDGING.acquire()
+                _DEPTH[1] = me
+                if UNDER_HOOK["on"] == me:
+                    _PENDING[me] = None  # entered: if its finally is cut short, the hook's answer settles what it left
                 EFFECTS.clear()
                 approvals.SPENT.clear()
-                _DEPTH[1] = me
             _DEPTH[0] += 1
             verdict, decided = judge(*args, **kwargs), True
         finally:
             if not first:
                 _DEPTH[0] -= 1
             elif acquired:
-                _DEPTH[0], _DEPTH[1] = 0, None
                 try:
                     if UNDER_HOOK["on"] == me:  # the hook answers last: its call's records wait for it
                         _PENDING[me] = (list(EFFECTS), list(approvals.SPENT))
                         EFFECTS.clear()
                         approvals.SPENT.clear()
                     else:
+                        _SETTLING[0] = me
                         settle(decided and verdict is None)
                 finally:
+                    _SETTLING[0] = None
+                    _DEPTH[0], _DEPTH[1] = 0, None
                     _JUDGING.release()
         return verdict
     entered.__name__, entered.__qualname__, entered.__doc__, entered.__wrapped__ = judge.__name__, judge.__qualname__, judge.__doc__, judge

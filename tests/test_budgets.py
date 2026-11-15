@@ -1358,10 +1358,16 @@ ROOT = Path(__file__).resolve().parents[1]
 # deadline is taken down still holds; an interrupt settles as held), _answer 5 with 2 blank lines. approvals.py 5 fewer:
 # alone 2 more (the thread that holds the lock) and `import _thread` 1, less give_back 6 and its 2 blank lines (settle
 # puts back the grants it is given).
+# Then each 21 more, all in guards.py, from review round 6 (a commit that entered the guard while it settled waited for
+# ever; the alarm in a check's own finally left the hook's call unsettled; a thread inside the send lock entering a check
+# could wait on a thread waiting for the lock): answered 9 more (a check cut short in its own finally: what it left is
+# settled and the guard freed), _entry 8 more (no entry while this thread settles or holds the send lock; the hook's
+# call marked as entered; the depth and the lock put back last), hook_answers 3 more (records an unanswered call left
+# stand), _SETTLING 1.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 16855
-PLUGIN_BUDGET = 42927
+CORE_BUDGET = 16876
+PLUGIN_BUDGET = 42948
 
 
 def _lines(files):
