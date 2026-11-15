@@ -106,8 +106,8 @@ Codex's settings and catalog, instruction adapters and durable storage.
   running no program). A release from a checkout's copy, or the tool run any other way, waits for
   the principal's code. The repository is only ever the checkout `--repo-root` names. It refuses
   unless the tree is clean, every object HEAD is made of matches its id, the manifests and
-  CHANGELOG agree, HEAD is the tip of `main` as GitHub serves it (a tag of the version there names
-  it) and CI passed for HEAD there. It holds the release train (a board claim
+  CHANGELOG agree, HEAD is the tip of `main` as GitHub serves it (with any tag of the version there
+  naming HEAD) and CI passed for HEAD there. It holds the release train (a board claim
   on the main checkout's `CHANGELOG.md`; another live session holding it means
   another release is under way, and the script names it), builds and checks the five
   collections from the commit (`build_collections.py`), tags, pushes `main`, `stable`,

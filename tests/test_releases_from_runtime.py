@@ -212,3 +212,12 @@ def test_the_release_kit_is_never_trusted_as_one_of_the_plugins_own_scripts(worl
     said = guards.check("Bash", {"command": f"python3 {ROOT / 'skills/synthesis-onboarding/scripts/setup.py'} --dry-run"}, {},
                         cwd=str(world["work"]), session={"session_id": "S-principal"})
     assert said and HELD in said, said
+
+
+def test_a_pending_approval_code_on_the_line_is_never_let_through(world):
+    """The exact run passes only without a pending code in its words: a line carrying one is judged, and refused."""
+    import re
+    held = world["judge"]([f"python3 {world['canon']}/{TOOL} --repo-root {world['canon']} --dry-run"])[0]
+    code = re.search(r"\bcode ([a-z0-9]{6})\b", held).group(1)
+    said = world["judge"]([f"python3 {world['tool']} --repo-root {world['canon']} --dry-run --session {code}"])[0]
+    assert said and said.startswith("Refused") and "pending approval code" in said, said
