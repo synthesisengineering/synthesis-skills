@@ -1185,10 +1185,15 @@ ROOT = Path(__file__).resolve().parents[1]
 # guards.py 5: _lex 5 (arithmetic, whose own substitutions alone run, and an array's values, kept in its word; the
 # substitution branch and the `$` branch step past `$((` in place); _dquote's arithmetic, the empty word no longer read
 # as a reader's writing option and the import check for synthesis's code each change one line in place.
+# The coordinator's ruling on Python without -I (2026-11-14): core 18 more and plugin 18. guards.py 18: _stand_in 11 with
+# its two blank lines (a module a program imports or runs with -m that a file where it starts could stand in for),
+# PYTHON_ENV 3 with its blank line (the variables that move Python's module path, set on the line), _unread 1 (the -m
+# exemptions under the same rule), and _self_grant 3 (why only isolation is missing, and a hold that says -I or a clean
+# folder needs no code).
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 15547
-PLUGIN_BUDGET = 40790
+CORE_BUDGET = 15565
+PLUGIN_BUDGET = 40808
 
 
 def _lines(files):

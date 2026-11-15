@@ -25,9 +25,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   runs and says how to read with no code. A folder's parts count wherever they stand in one program, however they are
   joined. Every refusal from before stands; copying a file out of a protected folder with a copier now waits too (a
   redirect of `cat` passes), and so does an archive tool that unpacks where its members say.
-- **Python passes only when its reader proves it, and the agent's own modules cannot stand in** (core). An inline or
-  module run is proved only in isolated mode, and a script file only when no file beside it or in the folder it runs
-  from could stand in for a module it imports; a git read it spells whole is a read wherever it points. A writer named
+- **Python passes only when its reader proves it, and the agent's own modules cannot stand in** (core). A program
+  passes without isolation only when no file in the folder it starts from (or beside a script file) could stand in for
+  a module it imports or runs, and the line sets none of the variables that move Python's module path; a hold for want
+  of only that says that `-I`, or such a folder or line, needs no code; a git read it spells whole is a read wherever it points. A writer named
   without being called (handed to `map`, a thread, `atexit`, a lambda or a table), or reached through `sys.modules`,
   `__call__`, a built name, `vars()` or a module's `__dict__`, is taken to write. A script file outside the installed
   runtime release that imports synthesis's own modules waits for the principal's code; the release script and

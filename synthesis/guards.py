@@ -4531,6 +4531,19 @@ def _isolated(words: list) -> bool:
     return "I" in flags or ("P" in flags and "E" in flags)
 
 
+PYTHON_ENV = re.compile(r"(?:^|[\s;&|(])(?:export\s+)?(?:PYTHONPATH|PYTHONSTARTUP|PYTHONHOME|PYTHONUSERBASE|PYTHONSAFEPATH)=")
+
+
+def _stand_in(code: str, where: str, module: str = "") -> str:
+    """A module a Python program imports (or runs with -m) that a file or package in the folder it starts from could
+    stand in for, since an inline, stdin or module run looks there first; '' for none (the coordinator, 2026-11-14)."""
+    import sys
+    names = {m.split(".")[0] for a, b in re.findall(r"^[ \t]*(?:from[ \t]+([\w.]+)[ \t]+import|import[ \t]+([\w., \t]+))", code, re.M)
+             for m in ([a] if a else [part.split()[0] for part in b.split(",") if part.strip()])} | {module.split(".")[0]} - {""}
+    return next((m for m in sorted(names - set(sys.builtin_module_names)) if os.path.exists(os.path.join(where, m + ".py"))
+                 or os.path.isdir(os.path.join(where, m))), "")
+
+
 def _shipped(path: str) -> bool:
     """A script of the plugin as it shipped: inside the release this guard runs from (`releases/<hash>/` under the
     synthesis home, a protected folder), or with the same bytes as that release's copy at the same relative path,
@@ -4571,7 +4584,8 @@ def _unread(words: list, where: str, written: set, line: str) -> tuple:
     kind, at, name = _program(words) if SCRIPT.match(head) or UNREAD.match(head) or head in SHELLS or head in (".", "source") else ("", 0, "")
     if SCRIPT.match(head) and head.startswith("python"):
         module, operands = words[at:at + 1] == ["-m"], [w for w in words[at + 2:] if w[:1] != "-"]  # json.tool's second is its output
-        free = module and _isolated(words) and (name.split(".")[0] == "synthesis" or (name == "json.tool" and len(operands) <= 1))
+        free = module and (_isolated(words) or not (PYTHON_ENV.search(line) or _stand_in("", where, name))) and (
+            name.split(".")[0] == "synthesis" or (name == "json.tool" and len(operands) <= 1))
         return ("", "", False) if free else (head, code(name) if kind == "file" and not module else "", True)
     if head in SHELLS or head in (".", "source"):
         inline, reads, _ = _shell_input(words)
@@ -4804,10 +4818,14 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None) -> str |
                           "(spell each file's path inside the program, or run the script alone)")
         if source and hit is None and SYNTHESIS_IMPORT.search(source):  # synthesis's code reached by a name it builds
             why = why or "runs synthesis's approval or send-window code, which only the guard and the principal's prompt use"
-        proven = (bool(ran) and _shipped(ran)) or (((_isolated(words) and hit is False) if source else bool(ran) and _proven(
-            code, words, where, names, raw, env, config)) if head.startswith("python") and SCRIPT.match(head) else False)  # the plugin's own, or proved
+        python = head.startswith("python") and bool(SCRIPT.match(head))
+        bare = "" if not python or _isolated(words) else "the line sets a variable that moves Python's module path (run it without that variable" if PYTHON_ENV.search(
+            text) else f"a file in {where} could stand in for `{_stand_in(source, where)}`, which it imports (run it from a folder without that file" if source and _stand_in(source, where) else ""
+        proven = (bool(ran) and _shipped(ran)) or (python and not bare and (hit is False if source else bool(ran) and _proven(
+            code, words, where, names, raw, env, config)))  # the plugin's own, or proved with no module of the agent's in its way
         if named and not waits and not proven:
-            waits = Unproven(f"runs `{label}`, which this guard cannot prove only reads, and names {named}")
+            waits = Unproven(f"runs `{label}`, which its reader proves only reads, but {bare}, or with -I, and it needs no code). It names "
+                             f"{named}" if bare and hit is False else f"runs `{label}`, which this guard cannot prove only reads, and names {named}")
         waits = waits or (Unproven(f"runs `{head}`, which starts a command that {inner}") if inner else None)
         if head in EXTRACTS and not waits and any(re.fullmatch(EXTRACTS[head], w) for w in words[1:]) and (
                 within or head == "pax" or any(ABSOLUTE.fullmatch(w) for w in words[1:]) or paths.spelled(os.path.realpath(where)) in _spellings(raw, env)[2]):

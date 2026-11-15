@@ -384,10 +384,12 @@ harness that gives no transcript cannot carry approved sends or deploys until it
      the same relative path, with the modules beside it that it imports (a skill's script in a
      harness's plugin cache). The installed runtime (`releases`, `current` and `bin` under the
      synthesis home) is a protected folder, so no command plants or changes a file there; a
-     script outside the release that imports synthesis's own code waits. Python is proved only isolated from the agent's modules: an inline or
-     module run with `-I` (or `-P` with `-E`), a script file when no file beside it or in the
-     folder it runs from could stand in for a module it imports, one of up to 16 KB that the
-     reader proves; a git read it spells whole (a list that starts with `git`, a read
+     script outside the release that imports synthesis's own code waits. Python is proved only where none of the agent's modules can stand in: run
+     with `-I` (or `-P` with `-E`), or with no file or package in the folder it starts from
+     (beside a script file, or where it runs) named like a module it imports or runs with
+     `-m`, and no `PYTHONPATH`, `PYTHONSTARTUP`, `PYTHONHOME`, `PYTHONUSERBASE` or
+     `PYTHONSAFEPATH` set on the line; a script file of up to 16 KB that the reader proves. A
+     hold for want of only that says that `-I`, or a folder or line without it, needs no code; a git read it spells whole (a list that starts with `git`, a read
      subcommand, no option that writes or runs, no shell) is a read wherever it points. Anything
      else waits for the principal's code for exactly that command, the folder it runs in and
      the size, time and digest of every script it runs, so a script rewritten after the
