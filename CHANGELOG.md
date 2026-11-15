@@ -63,7 +63,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   program git runs waits as `core.hooksPath` does. A write into any git dir's own `hooks` folder (a bare repository's)
   waits, and a push to a repository on this disk counts its receiving hooks unless the hooks folder is synthesis's own.
   Includes named on the command line (`-c include.path`, `GIT_CONFIG_COUNT`) are followed as in a file. Tests first (20
-  failed).
+  failed). Replayed: the round's first run held 26 more programs, through the line's readings, which now count only an
+  HTTP client's call; at its end 16 wait that main's guard passed: round 1's 14, and two curl posts whose URL comes from
+  the environment with a body the guard cannot read.
 - **How the three were checked.** Tests first, committed alone (31 failed for the local server's tools, 21 for the
   osascript files and the git programs), with invented fixtures and stand-ins only. A harm check over the 60 days of
   Claude Code and Codex records before 2026-11-15 (265,000 shell commands) found no message sent and no state written by
