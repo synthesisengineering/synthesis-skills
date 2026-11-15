@@ -218,10 +218,12 @@ def test_code_that_starts_osascript_in_the_server_process_waits(url):
 
 
 def test_control_a_page_key_press_in_code_waits_on_messenger():
-    code = "async (page) => { await page.keyboard.press('Enter'); }"  # refused outright there: no page script runs on a
-    assert "shipped" in (browse(PW + "browser_run_code_unsafe", {"code": code}, on(at(MESSENGER))) or "")  # Messenger
-    # site but the plugin's own (5.24.0's batch); on another messaging site it waits for the code
-    assert held(browse(PW + "browser_run_code_unsafe", {"code": code}, on(at("https://www.linkedin.com/messaging/thread/1/"))))
+    """Since 5.23.1 (round 4 of 5.24.0's review, #3) a script on a messaging site's page is refused, not held."""
+    code = "async (page) => { await page.keyboard.press('Enter'); }"
+    reason = browse(PW + "browser_run_code_unsafe", {"code": code}, on(at(MESSENGER)))
+    assert reason and "shipped" in reason and not held(reason), reason
+    elsewhere = browse(PW + "browser_run_code_unsafe", {"code": code}, on(at("https://www.linkedin.com/messaging/thread/1/")))
+    assert elsewhere and "shipped" in elsewhere and not held(elsewhere), elsewhere  # every messaging site's page alike
 
 
 # --- driven_target_field -------------------------------------------------------------------------------------------

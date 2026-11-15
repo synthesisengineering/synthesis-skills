@@ -226,9 +226,6 @@ SUBMIT = (PW + "browser_type", {"element": "Message box", "ref": "e12", "text": 
     (PW + "browser_press_key", {"key": "Control+Enter"}),
     (PW + "browser_click", {"element": "the blue icon at the bottom", "ref": "e45"}),         # its snapshot says it sends
     (PW + "browser_click", {"element": "a button", "ref": "e99"}),                              # a control the record does not show
-    (PW + "browser_run_code_unsafe", {"code": "async (page) => { await page.keyboard.press('Enter'); }"}),
-    (PW + "browser_run_code_unsafe", {"code": "async (page) => { await page.getByRole('button').click(); }"}),
-    (PW + "browser_evaluate", {"function": "() => document.querySelector('[aria-label=Send]').click()"}),
     (PW + "browser_fill_form", {"fields": [{"name": "Message", "type": "textbox", "ref": "e12", "value": "On my way\n"}]}),
 ])
 def test_a_playwright_step_that_can_send_on_a_messaging_page_waits(tmp_path, tool, tool_input):
@@ -240,9 +237,21 @@ def test_a_playwright_step_that_can_send_on_a_messaging_page_waits(tmp_path, too
 
 
 @pytest.mark.parametrize("tool, tool_input", [
+    (PW + "browser_run_code_unsafe", {"code": "async (page) => { await page.keyboard.press('Enter'); }"}),
+    (PW + "browser_run_code_unsafe", {"code": "async (page) => { await page.getByRole('button').click(); }"}),
+    (PW + "browser_evaluate", {"function": "() => document.querySelector('[aria-label=Send]').click()"}),
+    (PW + "browser_evaluate", {"function": "() => document.title"}),
+])
+def test_a_driven_script_on_a_messaging_page_is_refused(tmp_path, tool, tool_input):
+    """Since 5.23.1 (round 4 of 5.24.0's review, #3) every page script on a messaging site's page but the shipped
+    readers is refused: no reading of a script's text shows what it calls."""
+    reason = driven(tool, tool_input, _on(tmp_path, MESSENGER))
+    assert reason and "shipped" in reason and not held(reason), (tool, tool_input, reason)
+
+
+@pytest.mark.parametrize("tool, tool_input", [
     (PW + "browser_type", {"element": "Message box", "ref": "e12", "text": "On my way"}),      # typing sends nothing
     (PW + "browser_click", {"element": "Search", "ref": "e3"}),
-    (PW + "browser_evaluate", {"function": "() => document.title"}),
     (PW + "browser_snapshot", {}),
     (PW + "browser_take_screenshot", {"type": "png"}),
     (PW + "browser_press_key", {"key": "Shift+Enter"}),                                         # a line break in the box
