@@ -1271,11 +1271,13 @@ ROOT = Path(__file__).resolve().parents[1]
 # 5.22.1 merged into the batch (2026-11-15): the ceilings are 5.22.1's (core 15,840, plugin 41,083) with the batch's four
 # paragraphs above summed onto them (529 each). In check_outgoing, 5.22.1's 3 lines that ask a code for every window
 # request of a line become the batch's loop over every sends command, which gathers each waiting code (a window, a
-# batch or a command it cannot read) and returns them together: `waiting` 1 and its return 2, in place of those 3.
+# batch or a command it cannot read) and returns them together: `waiting` 1 and its return 2, in place of those 3. And 1
+# more to both: SYNTHESIS_WRITES names the batch's writers (open_batch, batch_spend, close_batches and batch_refusal in
+# sends, _batch in the CLI), as 5.22.1's test of that list reads them from the source, on a line of their own.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 16369
-PLUGIN_BUDGET = 41612
+CORE_BUDGET = 16370
+PLUGIN_BUDGET = 41613
 
 
 def _lines(files):
