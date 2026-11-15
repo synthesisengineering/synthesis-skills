@@ -1433,10 +1433,32 @@ ROOT = Path(__file__).resolve().parents[1]
 # RECEIVE_HOOKS 3, _hook_folder 3 (a git dir's own hooks folder) and _git_programs 1. Line includes 2 (_git_programs).
 # Then 1 more in each, from the round's replay (the line's readings had made 26 programs unknown calls): check_outgoing 1
 # (a reading counts only an HTTP client's call); a request's host and port count only side by side, and `.end()` no body.
+# Review round 3 (node's fetch with a file body, node's http.request with the port in a constant, urlopen's data by
+# position, a helper's reading call beside a file posted, HTTPie's --raw, `curl -d "$BODY"` and an include named by
+# --config-env ran with no code; program posts were read spelling by spelling): core 435 more and plugin 435, all in
+# guards.py. A Python program's bodies 183: _py_bodies 148 (each write it makes: a body keyword, a body by position for
+# urlopen, Request, an opener's open, a library's post, put and patch and http.client's request after its method, send
+# and sendall when it opens a connection by hand, a call handed a write method, a write method set where no write takes
+# it, a .data it sets, a client it starts from a list or a shell line; each body read through literals it joins, a
+# request it builds and that request's method, a file by a name it spells or takes from its arguments or argparse, its
+# input, its own functions' returns, a parameter's every call and default, a name it changes in place; each expression
+# read once, a cycle unknown), the reader's bindings 34 (_bindings 35 and _constant 9, which _tools_called now shares,
+# dropping its own 10: `with` targets, unpacking, names changed in place, a method given by a name only that literal is
+# given, byte literals), the patterns 5 (BODY_KEYS, WRITE_METHODS, SHELLED, LOGGED, CLIENT_LINE) less round 1's 4
+# (MCP_POSTS, BODY_GIVEN, STDIN_READ). A node program's bodies 164: _js_read 44 and _js_kind 10 (a string, a join,
+# JSON.stringify, a file read, a name and what changes it in place, an object literal's method and its tools/call's
+# name), _js_bodies 33 (a body, data or json property, what .write(), .end() or .send() hands a request, a .post()'s
+# body, a pipe into a request, a client it runs, a write method no write takes), _js_scan 16, _js_files 14, _js_called
+# 10, _js_props 10, _js_parts 9, _js_pairs 7, _js_values 5, _js_expr 2, and JS_SITES, JS_RUNS and JS_FUNCS 4. The
+# endpoint named together or apart 11 (_names_mcp 10, LOCAL_IN 1). _posted_bodies 16 (each body by its kind: a file,
+# input, arguments, the lines a program starts; a program nested past what the readers follow waits). The line's
+# variables 17 (_line_values 8, _filled 8 and _unfilled 5, less check_outgoing's 4: a body in a variable the line does
+# not set waits, and one it sets is put into the words that use it whole). Includes by --config-env 3 (_git_programs).
+# The section's note and the blank lines between its 18 new functions 41.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 17651
-PLUGIN_BUDGET = 43723
+CORE_BUDGET = 18086
+PLUGIN_BUDGET = 44158
 
 
 def _lines(files):
