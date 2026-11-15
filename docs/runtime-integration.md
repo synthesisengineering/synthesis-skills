@@ -488,6 +488,12 @@ harness that gives no transcript cannot carry approved sends or deploys until it
 
 ### What remains open
 
+- **A page script's call whose name says nothing of what it does** (5.23.1). On a messaging site's page the guard
+  reads a script's code: a call by a name built as it runs is refused and one that acts waits, but a library's own
+  event call (jQuery's `.trigger('click')`) or an app's own function under a name that does not say it sends passes as
+  a read, since nothing in the script shows its effect. Tests: `test_open_a_call_whose_name_says_nothing_of_what_it_does`,
+  marked to fail until it is closed.
+
 No local file is secret from an agent running as the person's own OS user, so these
 stay open, and no hook running as that same user can close them:
 

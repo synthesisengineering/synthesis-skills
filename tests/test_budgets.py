@@ -1311,11 +1311,17 @@ ROOT = Path(__file__).resolve().parents[1]
 # parser reads it; a javascript: one runs on the page it is on), _driven_steps 2 (a driven browser's javascript:
 # navigate), _puts 1, BROWSER_STEPS 1 (the navigate tool), desktop_tool 1, PAGE_READERS 1, the comments 8 (the rule and
 # the 60 days it was decided by; the pane's ids) and 10 blank lines.
-# The two 5.23.1 notes above sum: core 10 and 101 more, plugin 10 and 101 more, on 5.23.0's ceilings.
+# The coordinator's ruling on round 4's measurement (2026-11-15): on a messaging site's page a script the guard cannot
+# read is refused, one that acts waits, a read passes, in place of refusing every script but the plugin's own: core 30
+# more and plugin 30, all in guards.py. _unread_script 7 (a call by a name built as it runs, code in a string the page
+# runs, text never closed), _script_acts 5 (the acts rule over the code too, and its new spellings), _refused_scripts 2
+# (a javascript: address refused there whatever it runs), UNREAD_SCRIPT 2, SCRIPT_ACTS_MORE 2, PAGE_CODE 1, the comment
+# 5 and 6 blank lines.
+# The 5.23.1 notes above sum: core 10, 101 and 30 more, plugin 10, 101 and 30 more, on 5.23.0's ceilings.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 16608
-PLUGIN_BUDGET = 42680
+CORE_BUDGET = 16638
+PLUGIN_BUDGET = 42710
 
 
 def _lines(files):

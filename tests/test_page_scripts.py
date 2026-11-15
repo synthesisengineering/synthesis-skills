@@ -132,12 +132,14 @@ def test_a_driven_browsers_navigate_to_a_javascript_address(tmp_path):
 
 OPAQUE = [BUILT, "document.querySelector('b')?.['cli' + 'ck']?.()", "el[k]`x`", "(el['cli' + 'ck'])()", "Reflect.apply(f, el, [])",
           "HTMLElement.prototype.click.call(el)", "f.apply(el, [])", "f.bind(el)()", "eval('el.click()')", "new Function('el.click()')()",
-          "with (el) { click() }", "import('https://x.example/a.js')", "setTimeout('el.click()', 10)", "document.title + '"]
+          "with (el) { click() }", "import('https://x.example/a.js')", "setTimeout('el.click()', 10)", "document.title + '",
+          "el.\\u0063lick()", "document.body.append(Object.assign(document.createElement('script'), {textContent: 'x()'}))",
+          "box.innerHTML = '<img src=x onerror=go()>'"]
 ACTS = ["document.querySelector('[aria-label=\"Send now\"]').click()", "document.activeElement.dispatchEvent(new KeyboardEvent('keydown'))",
         "fetch('/api/messages', {method: 'POST', body: '{}'})", "fetch('/api/messages', {method: m})", "location.href = '/messages/t/2/'",
         "window.open('/messaging/thread/2/')", "open('/messaging/thread/2/')", "window?.open('/messaging/thread/2/')",
         "document.defaultView.open('/m/2/')", "open`/m/2/`", "el.onclick()", "socket.send('hi')", "frames[0].postMessage('x', '*')",
-        "el['click']()"]
+        "el['click']()", "TS.client.ui.sendMessage('hi')", "api.postReply(id, 'hi')"]
 READS = ["document.title", "[...document.querySelectorAll('h2')].map(h => h.innerText).join(', ')", "location.href",
          "({url: location.href, rows: document.querySelectorAll('[role=row]').length})", "document.body.innerText.slice(0, 2000)",
          "Array.from(document.querySelectorAll('a'), a => a.href).filter(h => h.includes('/messages/'))"]
@@ -169,6 +171,14 @@ def test_on_a_messaging_sites_page_a_plain_read_passes(tmp_path, site, text):
     assert guards.check(SCRIPT, _script(text, tab=5), CONFIG, session=session) is None, (site, text)
     batch = {"actions": [{"name": "javascript_tool", "input": _script(text, tab=5)}]}
     assert guards.check(CHROME, batch, CONFIG, session=session) is None, (site, text)
+
+
+@pytest.mark.xfail(strict=True, reason="open (docs/runtime-integration.md): a library's own event call, or an app's own function "
+                                       "under a name that does not say it sends, is a call the guard cannot know the effect of")
+@pytest.mark.parametrize("text", ["$(el).trigger('click')", "app.go(id, 'hi')"])
+def test_open_a_call_whose_name_says_nothing_of_what_it_does(tmp_path, text):
+    session = _session(tmp_path, PAGES["slack"], tab=5)
+    assert guards.check(SCRIPT, _script(text, tab=5), CONFIG, session=session)
 
 
 def test_a_javascript_address_is_refused_on_a_messaging_sites_page_whatever_it_runs(tmp_path):
