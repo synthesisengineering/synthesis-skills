@@ -601,3 +601,25 @@ def test_the_rituals_scripts_run_from_the_installed_runtime_still_pass(world):
 def test_what_the_replay_showed_misread_now_passes(world, line):
     (world["work"] / "notes.md").write_text("see ~/.claude/projects for the transcripts\n", encoding="utf-8")
     assert _verdict(world, line.format(**_raw(world))) is None
+
+
+# --- Python without -I: proven by its reader, with no module of the agent's where it starts (coordinator, 2026-11-14) -
+
+READ_HEREDOC = "python3 - {R} <<'EOF'\nimport json, sys\nprint(len(open(sys.argv[1], encoding='utf-8').read()))\nEOF"
+
+
+def test_a_read_only_heredoc_from_a_clean_folder_passes_without_isolation(world):
+    assert _verdict(world, READ_HEREDOC.format(**_raw(world))) is None
+    assert _verdict(world, "python3 -c 'import sys; print(open(sys.argv[1]).read()[:9])' {R}".format(**_raw(world))) is None
+    assert _verdict(world, "python3 -m json.tool {R}".format(**_raw(world))) is None
+
+
+def test_a_module_that_could_stand_in_or_a_path_variable_on_the_line_waits_and_the_hold_says_how_to_need_none(world):
+    (world["work"] / "json.py").write_text("print('planted')\n", encoding="utf-8")
+    reason = _verdict(world, READ_HEREDOC.format(**_raw(world)))
+    assert reason and HELD in reason and "-I" in reason and "needs no code" in reason, reason
+    assert HELD in (_verdict(world, "python3 -m json.tool {R}".format(**_raw(world))) or "")
+    (world["work"] / "json.py").unlink()
+    reason = _verdict(world, ("PYTHONPATH=. " + READ_HEREDOC).format(**_raw(world)))
+    assert reason and HELD in reason and "-I" in reason, reason
+    assert _verdict(world, ("cd /tmp && " + READ_HEREDOC).format(**_raw(world))) is None  # after the line's own cd
