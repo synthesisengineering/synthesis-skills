@@ -559,6 +559,8 @@ class El {
   contains(o) { for (let e = o; e; e = e.parentElement) if (e === this) return true; return false; }
   closest(s) { for (let e = this; e; e = e.parentElement) if (matches(e, s)) return e; return null; }
   get innerText() { return this.text; }
+  get previousElementSibling() { const k = this.parentElement ? this.parentElement.kids : []; const i = k.indexOf(this);
+    return i > 0 ? k[i - 1] : null; }
   querySelectorAll(s) { const out = []; const walk = e => e.kids.forEach(k => { if (matches(k, s)) out.push(k); walk(k); });
     walk(this); return out; }
 }
@@ -996,6 +998,32 @@ def test_the_composer_check_reports_a_reply_or_edit_banner_and_images_in_the_box
     drawn = _composer_on(LIVE_ROW.format(text=json.dumps(REPLY + "\n"), more="", focus="box").replace(
         "const box = el('div', LIVE, [],", "const box = el('div', LIVE, [el('img', {alt: 'x', src: 'emoji.png'})],"))
     assert drawn["inline"] == 1
+
+
+# Reply mode as the coordinator read it on a live chat (2026-11-15): the banner is the composer's previous sibling, not
+# inside it: a `role="heading"` reading `Replying to <First name>`, the quoted message's text and a `Cancel reply`
+# button; the composer holds its seven controls and the box, focused and empty.
+LIVE_REPLY = ("const box = el('div', LIVE, [], '\\n');"
+              "const composer = el('div', {}, [...['Send a voice clip', 'Attach a file up to 100 MB', 'Choose a sticker', "
+              "'Choose a GIF'].map(l => el('div', {role: 'button', 'aria-label': l})), el('div', {}, [box]), "
+              "el('div', {role: 'button', 'aria-label': 'Choose an emoji'}), el('div', {role: 'button', 'aria-label': 'Send a like'})]);"
+              "const body = el('body', {}, [el('div', {role: 'main'}, [el('div', {}, [BANNERcomposer])])]);"
+              "const focus = box; const href = 'https://www.facebook.com/messages/e2ee/t/1000000001/';")
+
+
+@pytest.mark.parametrize("banner", [
+    "el('div', {}, [el('div', {role: 'heading'}, [], 'Replying to Pat'), el('div', {}, [], 'Can you wire it today?'), "
+    "el('div', {role: 'button', 'aria-label': 'Cancel reply'})]), ",
+    "el('div', {role: 'heading'}, [], 'Replying to Pat'), ",                    # the sibling itself the heading
+    "el('div', {}, [el('div', {role: 'button', 'aria-label': 'Cancel reply'})]), ",  # the control alone
+    "el('div', {}, [el('span', {}, [], 'Editing message')]), ",
+])
+def test_the_composer_check_reads_reply_mode_from_the_banner_beside_the_composer(banner):
+    report = _composer_on(LIVE_REPLY.replace("BANNER", banner))
+    assert report["marks"] > 0 and report["box"] == "found" and report["focused"] is True and report["text"] == "\n"
+    assert report["staged"] == 0
+    plain = _composer_on(LIVE_REPLY.replace("BANNER", "el('div', {}, [el('span', {}, [], 'Pat Example')]), "))
+    assert plain["marks"] == 0 and plain["staged"] == 0  # a sibling that is no banner marks nothing
 
 
 def test_a_messages_entry_is_spent_only_with_the_session_the_guard_is_told():
