@@ -163,8 +163,8 @@ def write_config(isolated_home):
 @pytest.fixture
 def principal(tmp_path, monkeypatch):
     """The principal's side of an approval: they type "approve <code>" in this session, which the harness
-    records in its transcript (Claude Code's format here), and the prompt hook grants it. The session is
-    found the way a script run from a harness shell finds it: by its id, under the harness's own folder."""
+    records in its transcript (Claude Code's format here), and the prompt hook grants it. A script run from a
+    harness shell finds the session's transcript where the prompt hook recorded it (5.22.1), as here."""
     record = tmp_path / "claude-config" / "projects" / "-work" / "S-principal.jsonl"
     record.parent.mkdir(parents=True)
     monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "claude-config"))
