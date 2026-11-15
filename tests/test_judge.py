@@ -168,6 +168,54 @@ def test_content_that_addresses_the_judge_is_held_and_never_changes_the_policy(f
     assert nonce not in hostile and first[1]["content"].count(f"</content-{nonce}>") == 1  # the block closes once, ours
 
 
+def test_the_principals_last_message_goes_in_a_block_of_its_own_as_data(fake, isolated_home):
+    """The three test-half shortcuts both candidates cleared were asks the principal's earlier words had settled, which
+    a judge reading only the reply cannot know (2026-11-15): it reads the principal's last message too, as data in its
+    own block, cut from its end so the prompt stays short."""
+    judge = _judge()
+    fake.local = _local()
+    said = "Earlier words. " * 400 + "Please also convert the importer, and commit when the tests pass."
+    judge.ask("demo", judge.parse_policy("demo", POLICY_TEXT), CONTENT, {}, _config(fake), asked=said)
+    system, user = (m["content"] for m in fake.calls[0]["body"]["messages"])
+    code = re.search(r"<asked-([0-9a-f]+)>", user).group(1)
+    block = user[user.index(f"<asked-{code}>"):user.index(f"</asked-{code}>")]
+    assert code not in said and user.count(f"</asked-{code}>") == 1 and user.index(f"</asked-{code}>") < user.index("<content-")
+    assert block.endswith("commit when the tests pass.\n") and len(block) <= judge.ASKED + 40  # its end, bounded
+    assert "last message" in system and "data" in system
+    row = _log(isolated_home)[-1]
+    assert row["asked_chars"] == min(len(said), judge.ASKED) and "importer" not in json.dumps(row)
+
+
+def _record(tmp_path, prompt, reply):
+    """A Claude Code record: the principal's prompt, harness entries that are not theirs, then the reply."""
+    rows = [{"type": "user", "uuid": "u1", "message": {"role": "user", "content": prompt}},
+            {"type": "user", "uuid": "u2", "isMeta": True, "message": {"role": "user", "content": "a skill's text, not the principal's"}},
+            {"type": "assistant", "uuid": "a1", "message": {"id": "m1", "content": [{"type": "tool_use", "id": "t1", "name": "Bash", "input": {}}]}},
+            {"type": "user", "uuid": "u3", "message": {"content": [{"type": "tool_result", "tool_use_id": "t1", "content": "ok"}]}},
+            {"type": "assistant", "uuid": "a2", "message": {"id": "m2", "content": [{"type": "text", "text": reply}]}}]
+    path = tmp_path / "record.jsonl"
+    path.write_text("".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8")
+    return str(path)
+
+
+def test_the_reply_check_gives_the_judge_the_principals_last_message(fake, tmp_path):
+    reply = "The parser is converted. I'll leave the importer for now."
+    fake.local = _local(span="leave the importer for now")
+    path = _record(tmp_path, "<system-reminder>harness words</system-reminder>Convert the parser and the importer today.", reply)
+    reply_check.check({"last_assistant_message": reply, "transcript_path": path}, _config(fake))
+    user = fake.calls[0]["body"]["messages"][1]["content"]
+    assert "Convert the parser and the importer today." in user and "harness words" not in user and "a skill's text" not in user
+
+
+def test_with_no_message_of_the_principals_to_read_the_judge_reads_the_reply_alone(fake, tmp_path):
+    fake.local = _local(span="for now")
+    reply_check.check({"last_assistant_message": "I'll leave the importer for now."}, _config(fake))  # no record named
+    empty, lazy = tmp_path / "empty.jsonl", "I'll leave the exporter for now."
+    empty.write_text(json.dumps({"type": "assistant", "message": {"id": "m", "content": [{"type": "text", "text": lazy}]}}) + "\n")
+    reply_check.check({"last_assistant_message": lazy, "transcript_path": str(empty)}, _config(fake))  # none in it
+    assert len(fake.calls) == 2 and not any("<asked-" in c["body"]["messages"][1]["content"] for c in fake.calls)
+
+
 def test_the_same_content_is_judged_once_for_a_policy_version(fake):
     judge = _judge()
     policy, config = judge.parse_policy("demo", POLICY_TEXT), _config(fake)

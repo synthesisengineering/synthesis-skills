@@ -104,6 +104,9 @@ def test_the_replay_judges_the_list_hits_and_writes_where_to_read_never_what_was
     for words in ("importer", "exporter", "Config", "parser"):
         assert words not in out and words not in cleared.read_text(encoding="utf-8")
     assert [path for path, _ in server.asked].count("/api/chat") == 4  # two questions each; no list hit, never asked
+    asked = [body["messages"][1]["content"] for path, body in server.asked if path == "/api/chat"]
+    assert sum("Fix the parser." in u for u in asked) == 2 and sum("Tidy the config." in u for u in asked) == 2  # each one's prompt
+    assert "small-judge: latency ms: the first question alone" in out and "; both questions, median" in out
     assert server.asked[-1] == ("/api/generate", {"model": "small-judge", "keep_alive": 0})  # unloaded at the end
 
 
