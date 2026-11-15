@@ -38,7 +38,7 @@ from synthesis import paths
 POLICIES = Path(__file__).resolve().parent / "policies"
 ADDRESSED_RULE = "instructions-in-content"
 LOCAL_URL, CLOUD_URL = "http://127.0.0.1:11434", "https://api.anthropic.com/v1/messages"
-DEADLINE, LONGEST, CLOUD_LEAST = 3.0, 3.5, 1.0  # seconds: the whole verdict, its limit inside the Stop hook's 5, a cloud ask
+DEADLINE, LONGEST, CLOUD_LEAST = 3.0, 8.0, 1.0  # seconds: the whole verdict, its limit inside the Stop hook's 10, a cloud ask
 CAP, KEEP, LOG_LIMIT, MAX_TOKENS = 10.0, 2000, 4_000_000, 8000  # dollars a month; cached verdicts; log bytes; cloud tokens, thinking included
 ASKED = 3000  # characters of the principal's last message the judge reads, from its end: the prompt stays short
 LOOPBACK = ("127.0.0.1", "localhost", "::1")

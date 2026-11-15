@@ -275,7 +275,7 @@ def shortcut_hits(reply: str, extra: list[str]) -> list[str]:
 
 FENCED = re.compile(r"(?:(`{3,})|^[ \t]*(~{3,})).*?(?:\1|\2)", re.S | re.M)
 JUDGED = 6000  # characters of a reply the judge reads: its prompt stays inside the model's window and the deadline
-ROOM = 4.0  # seconds from the check's start by which the judge has answered: the Stop hook has 5, Python's start before it
+ROOM = 8.0  # seconds from the check's start by which the judge has answered: the Stop hook has 10, Python's start before it
 WHERE, SECOND = "the final reply an AI agent gives its principal at the end of a turn", "shortcut-asks"
 
 

@@ -340,7 +340,7 @@
           "/bin/sh",
           ".muse-plugin/hooks/stop.sh"
         ],
-        "timeoutMs": 5000
+        "timeoutMs": 10000
       }
     ],
     "mcpServers": [],

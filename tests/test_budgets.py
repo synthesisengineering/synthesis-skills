@@ -1461,10 +1461,16 @@ ROOT = Path(__file__).resolve().parents[1]
 # items were recorded in Claude Code, and Codex's plan was measured on them).
 # Merging main at 5.23.1 into the judge branch sums both sides' growth from their common base (core 15,886, plugin
 # 41,958): the judge branch's 759 core and 1,117 plugin, itemized above, and main's 995 and 995, itemized above.
+# The Stop hook's time for the plan's judge (the principal's approval, 2026-11-15: a flagged reply's two questions took
+# up to 7.2 s at the 95th on his plan) adds 5 to the core and the plugin, all in doctor.py: check_plan_judge 4 (below
+# the judge's ceiling the fix for a slow plan judge is the config's deadline, at the ceiling a faster model, and a probe
+# whose flagged reply would take longer than the deadline warns too), FLAGGED 1 (a flagged reply's time against the
+# probe's sentence, measured). judge.py, reply_check.py, hooks/hooks.json and Muse's manifest 0: the judge's ceiling and
+# the reply check's room at 8 s and the Stop hook at 10 s in every harness, each in its own line.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 17640
-PLUGIN_BUDGET = 44070
+CORE_BUDGET = 17645
+PLUGIN_BUDGET = 44075
 
 
 def _lines(files):

@@ -1456,6 +1456,7 @@ def check_latest(installed: dict, ref: str = "stable", fetch=fetch_text) -> Chec
 # ---- the plan's judge (M38) ----------------------------------------------------
 
 PLAN_NAMES = {"claude-code": ("Claude Code", "print mode", "run `claude`, then /login"), "codex": ("Codex", "exec", "run `codex login`")}
+FLAGGED = 2.0  # a flagged reply's time against the probe's sentence: 4.1 s against 2.0 for Haiku 5.5 in the replay of 2026-11-15
 
 
 def plan_status(harness: str, command: str) -> str:
@@ -1513,14 +1514,18 @@ def check_plan_judge(config: dict, probe=None, status=None) -> list:
         signed = status(harness, entry["command"])
         why, took = probe(config, harness) if signed in ("plan", "unknown") else ("", 0.0)
         fix, deadline, model = _plan_fix(harness, entry, signed, why), s["deadline_seconds"], entry["model"]
+        faster = (f"give judge.deadline_seconds up to {judge.LONGEST:.0f}" if deadline < judge.LONGEST else
+                  f"{judge.LONGEST:.0f} s is the most the Stop hook gives: name a faster model in judge.subscription.{harness}.model")
+        said = f"{model} answered an invented sentence in {took:.1f} s on the plan"
         if fix:
             level, detail = "warn", fix
         elif took > deadline:
-            level, detail = "warn", (f"{model} answered an invented sentence in {took:.1f} s on the plan, past the judge's deadline of {deadline:.1f} s (at most "
-                                     f"{judge.LONGEST:.1f} s): most verdicts are cut off and the word list decides, until the Stop hook gives the judge longer")
+            level, detail = "warn", f"{said}, past the judge's deadline of {deadline:.1f} s: most verdicts are cut off and the word list decides; {faster}"
+        elif took * FLAGGED > deadline:
+            level, detail = "warn", (f"{said}, but a flagged reply takes about twice as long, past the judge's deadline of {deadline:.1f} s, "
+                                     f"so most verdicts would be cut off and the word list decide; {faster}")
         else:
-            level, detail = "ok", (f"{model} answered an invented sentence in {took:.1f} s on the plan; the judge's deadline is {deadline:.1f} s "
-                                   "(a flagged reply takes longer: about twice as long in the replay of 2026-11-15)")
+            level, detail = "ok", f"{said}, inside the judge's deadline of {deadline:.1f} s with room for a flagged reply (about twice as long)"
         lines.append(Check(level, f"{harness} plan judge", detail))
     return lines
 

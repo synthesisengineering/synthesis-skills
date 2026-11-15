@@ -177,7 +177,8 @@ def test_a_second_run_in_the_same_process_gates_against_the_hooks_deadline(tmp_p
     for _ in range(2):
         assert _run(roots, url, "--model", "small-judge", "--labels", str(labels), "--deadline", "30") == 0
     gates = [line for line in capsys.readouterr().out.splitlines() if " gate on " in line]
-    assert len(gates) == 4 and all("against the 3500 ms deadline" in line for line in gates)
+    hook = f"against the {int(replay.judge.LONGEST * 1000)} ms deadline"  # the hook's own: 8 s since the principal's approval, 2026-11-15
+    assert len(gates) == 4 and all(hook in line for line in gates)
 
 
 def test_the_cloud_replay_reads_each_workspaces_key_and_leaves_out_a_workspace_with_none(tmp_path, model, monkeypatch, capsys):

@@ -99,6 +99,9 @@ before it goes back (M38; the principal's rulings of 2026-11-14). The list, the 
   sentence the same way (`judge.probe`, at most 20 seconds, nothing logged), and warns with the fix when it would not
   answer or answers past the deadline, so the fall back to the list is never silent. Claude Code says `--bare`, which never reads the plan's sign-in, will
   become the default for `-p`; when it does, these runs fail, the log shows `refused`, and the list decides.
+- The Stop hook is registered with 10 seconds in every harness, and the reply check gives the judge 8 of them from its
+  own start (the principal's approval, 2026-11-15), so a slow model never pushes the hook past its limit; a reply the
+  list does not flag never waits on a judge.
 - Where the judge is a service, the plan's or the cloud's, the two questions are asked at once, so a flagged reply waits
   about one answer's time; this Mac's one local model answers one at a time, so there they are asked in turn.
 - `cloud` is the judge itself when neither a local model nor the reply's plan judges it, and otherwise a second opinion

@@ -41,7 +41,7 @@
           {
             "type": "command",
             "command": "\"$HOME/.synthesis/v5/bin/synthesis-hook\" stop",
-            "timeout": 5
+            "timeout": 10
           }
         ]
       }

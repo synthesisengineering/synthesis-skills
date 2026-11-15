@@ -2877,12 +2877,12 @@ def test_the_plan_judge_line_says_whether_it_answers_and_what_to_do(signed, why,
 
 
 @pytest.mark.parametrize("took, status, words", [
-    (1.4, "warn", "give judge.deadline_seconds up to 8"), (3.9, "ok", "room for a flagged reply"),
+    (1.6, "warn", "give judge.deadline_seconds up to 8"), (3.9, "ok", "room for a flagged reply"),
     (4.5, "warn", "8 s is the most the Stop hook gives: name a faster model in judge.subscription.claude-code.model")])
 def test_the_fix_for_a_slow_plan_judge_is_the_deadline_up_to_eight_then_a_faster_model(took, status, words):
     """The Stop hook gives the plan's judge up to 8 s (the principal's approval, 2026-11-15): below that the fix is the
     config's deadline; at 8 it is a faster model. A flagged reply took about twice the probe's time in the replay."""
-    deadline = 3.0 if took == 1.4 else 8.0
+    deadline = 3.0 if took == 1.6 else 8.0
     config = {"judge": {**PLAN["judge"], "deadline_seconds": deadline}}
     line = doctor.check_plan_judge(config, probe=lambda config, harness: ("", took), status=lambda harness, command: "plan")[0]
     assert line.status == status and words in line.detail, line
