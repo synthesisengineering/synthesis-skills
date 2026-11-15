@@ -320,7 +320,7 @@ SHIPPED_READERS = [
 @pytest.mark.parametrize("call", SHIPPED_READERS)
 def test_the_shipped_scripts_that_read_the_records_run_without_a_code(world, call):
     script, _, rest = call.partition(" ")
-    assert _verdict(world, f"python3 {shlex.quote(str(SKILLS / script))} {rest}".strip()) is None, call
+    assert _verdict(world, f"python3 -s {shlex.quote(str(SKILLS / script))} {rest}".strip()) is None, call
 
 
 # --- the send window: the principal's setting, from any terminal ------------------------------------------------------
@@ -595,13 +595,13 @@ def test_the_rituals_scripts_run_from_the_installed_runtime_still_pass(world):
                               capture_output=True, text=True, env=dict(os.environ), timeout=120)
         assert done.returncode == 0, done.stderr[-600:]
         return json.loads(done.stdout)
-    assert verdict(f"python3 {script} --direction start") is None
+    assert verdict(f"python3 -s {script} --direction start") is None
     cache = world["home"] / ".claude" / "plugins" / "cache" / "m" / "synthesis-skills" / "9.9.9" / "skills" / "synthesis-daily-rituals" / "scripts"
     cache.mkdir(parents=True)
     (cache / "ritual_state.py").write_bytes(script.read_bytes())  # the same bytes as the protected runtime's copy
     for sibling in script.parent.glob("*.py"):
         (cache / sibling.name).write_bytes(sibling.read_bytes())
-    reason = verdict(f"python3 {cache / 'ritual_state.py'} --direction start")
+    reason = verdict(f"python3 -s {cache / 'ritual_state.py'} --direction start")
     assert reason and str(script) in reason, reason
 
 

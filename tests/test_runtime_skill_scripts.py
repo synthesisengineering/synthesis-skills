@@ -152,7 +152,7 @@ DAY_END = {  # the four a seat's day-end found held from the plugin cache (2026-
 @pytest.mark.parametrize("name", list(DAY_END))
 def test_the_runtimes_copy_of_a_day_end_script_needs_no_code(mac, tmp_path, name):
     work = _work(tmp_path)
-    assert _verdict(mac, f"python3 {mac.rt}/{DAY_END[name].format(work=work)}", work) is None, name
+    assert _verdict(mac, f"python3 -s {mac.rt}/{DAY_END[name].format(work=work)}", work) is None, name
 
 
 @pytest.mark.parametrize("name", list(DAY_END))
@@ -161,7 +161,7 @@ def test_a_plugin_copy_of_a_day_end_script_waits_and_names_the_runtimes_copy(mac
     first fix's test left it out, so the folder the send script imports from was not there)."""
     work = _work(tmp_path)
     script, _, rest = DAY_END[name].format(work=work).partition(" ")
-    reason = _verdict(mac, f"python3 {mac.plugin / script} {rest}", work)
+    reason = _verdict(mac, f"python3 -s {mac.plugin / script} {rest}", work)
     assert reason and str(mac.rt / script) in reason and "runs with no code" in reason, (name, reason)
 
 
@@ -327,7 +327,7 @@ def test_a_kit_script_copied_into_a_carried_skills_folder_waits(mac, tmp_path, k
 def test_the_runtimes_own_script_through_a_link_passes_and_a_copys_sibling_linked_to_an_agent_file_waits(mac, tmp_path):
     work = _work(tmp_path)
     (work / "fetch.py").symlink_to(mac.rt / FETCHER)
-    assert _verdict(mac, f"python3 {work / 'fetch.py'} --window 2026-11-14 2026-11-15", work) is None
+    assert _verdict(mac, f"python3 -s {work / 'fetch.py'} --window 2026-11-14 2026-11-15", work) is None
     root = _copy_plugin(tmp_path / "cache" / "synthesis-skills" / "5.23.1", ["synthesis-meeting-transcripts"])
     folder = root / "skills" / "synthesis-meeting-transcripts" / "optional-workspace-mcp"
     (work / "evil.py").write_text("print('the agent code')\n", encoding="utf-8")
@@ -342,13 +342,13 @@ IMPORT = "skills/synthesis-message-exports/scripts/import_messages.py"
 PAGE = "skills/synthesis-message-exports/scripts/chat_page.py"
 PLATE = "skills/synthesis-daily-rituals/scripts/plate.py"
 NAMED = {  # what the review saw written into a protected folder by an unmodified copy, and the same through the folder
-    "an argument into the session archive": "python3 {rt}/" + IMPORT + " {work}/export --out {sh}/sessions/probe-import",
-    "an argument into the board": "python3 {rt}/" + READ + " --request {work}/r.json --state {sh}/board/probe-state",
-    "a page written into the archive": "python3 {rt}/" + PAGE + " {work}/t.txt --out {sh}/sessions/probe-page --since 2026-11-14",
-    "a plate written onto the board": "python3 {rt}/" + PLATE + " --workspace {work} --as-of 2026-11-15 --out {sh}/board/probe-plate.md",
+    "an argument into the session archive": "python3 -s {rt}/" + IMPORT + " {work}/export --out {sh}/sessions/probe-import",
+    "an argument into the board": "python3 -s {rt}/" + READ + " --request {work}/r.json --state {sh}/board/probe-state",
+    "a page written into the archive": "python3 -s {rt}/" + PAGE + " {work}/t.txt --out {sh}/sessions/probe-page --since 2026-11-14",
+    "a plate written onto the board": "python3 -s {rt}/" + PLATE + " --workspace {work} --as-of 2026-11-15 --out {sh}/board/probe-plate.md",
     "the folder it runs in": "cd {sh}/state && python3 {rt}/" + IMPORT + " {work}/export --out probe-import",
     "a value the line gives it": "OUT={sh}/board/probe; export OUT; python3 {rt}/" + IMPORT + " {work}/export --out \"$OUT\"",
-    "a redirect": "python3 {rt}/" + PLATE + " --workspace {work} --as-of 2026-11-15 > {sh}/board/probe-plate.md",
+    "a redirect": "python3 -s {rt}/" + PLATE + " --workspace {work} --as-of 2026-11-15 > {sh}/board/probe-plate.md",
 }
 
 
@@ -371,7 +371,7 @@ OWN_TEXT = {  # what each script's own text names stays exempt: the fetcher read
 @pytest.mark.parametrize("name", list(OWN_TEXT))
 def test_what_the_runtimes_copy_names_in_its_own_text_needs_no_code(mac, tmp_path, name):
     work = _work(tmp_path)
-    assert _verdict(mac, f"python3 {mac.rt}/{OWN_TEXT[name].format(work=work)}", work) is None, name
+    assert _verdict(mac, f"python3 -s {mac.rt}/{OWN_TEXT[name].format(work=work)}", work) is None, name
 
 
 def test_a_plugin_copy_whose_line_names_a_protected_folder_is_not_told_the_runtimes_copy_needs_no_code(mac, tmp_path):
@@ -383,8 +383,8 @@ def test_a_plugin_copy_whose_line_names_a_protected_folder_is_not_told_the_runti
 
 # --- finding 4: what the interpreter loads, and what runs it --------------------------------------------------------
 
-RUN = "python3 {rt}/" + FETCHER + " --window 2026-11-14 2026-11-15"  # its own text names a project's `.claude` folder
-SEND_RUN = "python3 {rt}/" + SEND + " --to +15550100 --text-file {work}/t.txt"
+RUN = "python3 -s {rt}/" + FETCHER + " --window 2026-11-14 2026-11-15"  # its own text names a project's `.claude` folder
+SEND_RUN = "python3 -s {rt}/" + SEND + " --to +15550100 --text-file {work}/t.txt"
 NOT_PLAIN = {  # each makes the runtime's copy load or run something other than what the release holds, or run as another
     "PYTHONPATH": "PYTHONPATH={work}/pp " + RUN, "PYTHONHOME": "PYTHONHOME={work}/ph " + RUN,
     "PYTHONSTARTUP": "PYTHONSTARTUP={work}/s.py " + RUN, "PYTHONUSERBASE": "PYTHONUSERBASE={work}/ub " + RUN,
@@ -410,8 +410,8 @@ def test_the_runtimes_copy_run_with_its_own_environment_or_through_another_progr
 
 
 PLAIN = {  # the interpreter's plain word, with options that only take away what it loads, through a shell or not
-    "plain": RUN, "-S": RUN.replace("python3 ", "python3 -S ", 1), "-I": RUN.replace("python3 ", "python3 -I ", 1),
-    "-B -E -s -u": RUN.replace("python3 ", "python3 -B -E -s -u ", 1), "a shell's script": "bash -c '" + RUN + "'",
+    "plain": RUN, "-S": RUN.replace("python3 -s ", "python3 -S ", 1), "-I": RUN.replace("python3 -s ", "python3 -I ", 1),
+    "-B -E -s -u": RUN.replace("python3 -s ", "python3 -B -E -s -u ", 1), "a shell's script": "bash -c '" + RUN + "'",
     "after cd": "cd {work} && " + RUN, "after set -eu": "set -euo pipefail; " + RUN, "the send script": SEND_RUN,
     "a variable of the line's own": "AP={rt}/skills/synthesis-autopilot/scripts/autopilot_cli.py; python3 -S \"$AP\" status",
 }
@@ -451,19 +451,19 @@ def test_the_runtime_carries_a_carried_skills_shell_scripts_and_python_at_any_de
 
 
 EVERYDAY = {  # each newly carried skill's ordinary use, as its skill text now runs it (the review's matrix)
-    "fetch-meeting --window": f"python3 {{rt}}/{FETCHER} --window 2026-11-14 2026-11-15",
-    "fetch-meeting standup": f"python3 {{rt}}/{FETCHER} standup --date 2026-11-14",
-    "mcp_client list": f"python3 {{rt}}/{MCP}/mcp_client.py list",
-    "verify_transcripts": "python3 {rt}/skills/synthesis-meeting-transcripts/verify_transcripts.py {work}/t.txt",
-    "extract_commitments": "python3 {rt}/skills/synthesis-meeting-transcripts/extract_commitments.py {work}/t.txt",
+    "fetch-meeting --window": f"python3 -s {{rt}}/{FETCHER} --window 2026-11-14 2026-11-15",
+    "fetch-meeting standup": f"python3 -s {{rt}}/{FETCHER} standup --date 2026-11-14",
+    "mcp_client list": f"python3 -s {{rt}}/{MCP}/mcp_client.py list",
+    "verify_transcripts": "python3 -s {rt}/skills/synthesis-meeting-transcripts/verify_transcripts.py {work}/t.txt",
+    "extract_commitments": "python3 -s {rt}/skills/synthesis-meeting-transcripts/extract_commitments.py {work}/t.txt",
     "the server's doctor": f"bash {{rt}}/{MCP}/doctor.sh --quiet",
-    "import_messages --dry-run": "python3 {rt}/" + IMPORT + " {work}/export --out {work}/out --dry-run",
-    "chat_page": "python3 {rt}/" + PAGE + " {work}/t.txt --out {work}/out --since 2026-11-14",
-    "local_messaging --request --state": f"python3 {{rt}}/{READ} --request {{work}}/r.json --state {{work}}/state",
-    "messages_send --help": f"python3 {{rt}}/{SEND} --help",
-    "whatsapp_prefill --help": "python3 {rt}/skills/synthesis-local-messaging/scripts/whatsapp_prefill.py --help",
-    "context_doctor --project": f"python3 {{rt}}/{DOCTOR} --project {{work}}",
-    "context_doctor --json": f"python3 {{rt}}/{DOCTOR} --json",
+    "import_messages --dry-run": "python3 -s {rt}/" + IMPORT + " {work}/export --out {work}/out --dry-run",
+    "chat_page": "python3 -s {rt}/" + PAGE + " {work}/t.txt --out {work}/out --since 2026-11-14",
+    "local_messaging --request --state": f"python3 -s {{rt}}/{READ} --request {{work}}/r.json --state {{work}}/state",
+    "messages_send --help": f"python3 -s {{rt}}/{SEND} --help",
+    "whatsapp_prefill --help": "python3 -s {rt}/skills/synthesis-local-messaging/scripts/whatsapp_prefill.py --help",
+    "context_doctor --project": f"python3 -s {{rt}}/{DOCTOR} --project {{work}}",
+    "context_doctor --json": f"python3 -s {{rt}}/{DOCTOR} --json",
     "pr_queue_scan": "python3 -S {rt}/skills/synthesis-daily-rituals/scripts/pr_queue_scan.py --workspace w",
 }
 
@@ -513,7 +513,9 @@ def test_every_skill_text_and_script_runs_the_runtimes_copy_of_a_carried_script(
                 prefix, name = m.group(1) or "", m.group(2)
                 skill = next((s for s in carried if f"skills/{s}/" in prefix or f"<{s}>" in prefix or f"<{s}-root>" in prefix), None) or next(
                     (s for alias, s in ALIASES.items() if prefix.lstrip('"').startswith(alias)), None) or (rel[0] if rel[0] in carried else None)
-                if skill and name in carried[skill] and not _runtime_form(prefix, skill, text):
+                opts = re.match(r"python3?((?:[ \t]+-[A-Za-z]+)*)", m.group(0))  # a Python run: without the user's own site folder
+                bare = bool(opts) and name.endswith(".py") and not re.search(r"[sSI]", opts.group(1).replace(" -", ""))
+                if skill and name in carried[skill] and (bare or not _runtime_form(prefix, skill, text)):
                     wrong.append(f"skills/{'/'.join(rel)}:{n}: {m.group(0).strip()}")
     assert not wrong, "these run a copy outside the runtime:\n" + "\n".join(wrong)
 
@@ -536,3 +538,120 @@ def test_a_module_of_its_own_that_the_same_line_rewrites_is_not_read_as_it_stood
     assert _verdict(mac, line, work) is None  # a reader, with a module of its own that reads: no code
     reason = _verdict(mac, f"cp {work / 'evil.py'} {work / 'helper.py'} && {line}", work)
     assert reason and "the same line writes" in reason, reason
+
+
+# --- review round 2 ---------------------------------------------------------------------------------------------------
+
+AP = "skills/synthesis-autopilot/scripts/autopilot_cli.py"
+TOOL = ("import json, sys; sys.path.insert(0, sys.argv[1]); from synthesis import guards; print(json.dumps(guards.check("
+        "sys.argv[2], json.loads(sys.argv[3]), {}, cwd=sys.argv[4], session={'session_id': 'S-test', 'cwd': sys.argv[4]})))")
+
+
+def _tool_verdict(mac, tool: str, given: dict, cwd: Path):
+    done = subprocess.run([sys.executable, "-I", "-c", TOOL, str(mac.rt), tool, json.dumps(given), str(cwd)], capture_output=True,
+                          text=True, timeout=120, env=mac.env)
+    assert done.returncode == 0, done.stderr[-800:]
+    return json.loads(done.stdout)
+
+
+CHANGES = {  # R2-2: HOME, PATH or what `python3` is, changed with no assignment the guard read; each ran the agent's file
+    "read HOME": "read HOME <<< {fake}; python3 -s $HOME/.synthesis/v5/current/" + AP + " status",
+    "read HOME, tilde": "read HOME <<< {fake}; python3 -s ~/.synthesis/v5/current/" + AP + " status",
+    "printf -v HOME": "printf -v HOME %s {fake}; python3 -s $HOME/.synthesis/v5/current/" + AP + " status",
+    "print -v HOME": "print -v HOME {fake}; python3 -s $HOME/.synthesis/v5/current/" + AP + " status",
+    "${HOME::=}": ": ${{HOME::={fake}}}; python3 -s $HOME/.synthesis/v5/current/" + AP + " status",
+    "a loop over HOME": "for HOME in {fake}; do python3 -s $HOME/.synthesis/v5/current/" + AP + " status; done",
+    "cd home after reading it": "read HOME <<< {fake}; cd; python3 -s .synthesis/v5/current/" + AP + " status",
+    "zsh path array": "path=({bin} $path); python3 -s {rt}/" + AP + " status",
+    "read PATH": "read PATH <<< {bin}:$PATH; python3 -s {rt}/" + AP + " status",
+    "mapfile": "mapfile -t PATH < {w}/p; python3 -s {rt}/" + AP + " status",
+    "autoload from fpath": "fpath=({fp} $fpath); autoload -Uz python3; python3 -s {rt}/" + AP + " status",
+    "a parameter that assigns": ": ${{PYTHONPATH:={w}}}; python3 -s {rt}/" + AP + " status",
+}
+
+
+@pytest.mark.parametrize("name", list(CHANGES))
+def test_a_line_that_changes_home_path_or_python3_another_way_is_not_a_plain_run(mac, tmp_path, name):
+    work = _work(tmp_path)
+    line = CHANGES[name].format(fake=work / "fake", bin=work / "bin", fp=work / "fp", rt=mac.rt, w=work)
+    assert _verdict(mac, line, work), name
+
+
+def test_a_release_run_that_may_load_the_users_own_site_customizations_is_not_proven(mac, tmp_path):
+    """R2-6: a usercustomize.py or a .pth file in the user's own site folder runs inside any Python run without -s, -S or
+    -I, and ordinary installs put .pth files there, so only a run that leaves that folder out is the release's own."""
+    work = _work(tmp_path)
+    assert _verdict(mac, f"python3 {mac.rt}/{FETCHER} --window 2026-11-14 2026-11-15", work)
+    for flags in ("-s", "-S", "-I", "-B -s"):
+        assert _verdict(mac, f"python3 {flags} {mac.rt}/{FETCHER} --window 2026-11-14 2026-11-15", work) is None, flags
+
+
+@pytest.mark.parametrize("pattern", ["sta*", "s?ate", "[s]tate"])
+def test_a_protected_folder_spelled_as_a_pattern_on_the_line_is_heard(mac, tmp_path, pattern):
+    """R2-3: the line check resolves a pattern against the file system as the copy and redirect checks do."""
+    work = _work(tmp_path)
+    (mac.sh / "state").mkdir(parents=True, exist_ok=True)
+    assert _verdict(mac, f"python3 -s {mac.rt}/{IMPORT} {work}/export --out {mac.sh}/{pattern}", work), pattern
+    (work / "copy.py").write_text("import shutil, sys\nshutil.copy(sys.argv[1], sys.argv[2])\n", encoding="utf-8")
+    assert _verdict(mac, f"python3 {work / 'copy.py'} {work}/t.txt {mac.sh}/{pattern}/", work), pattern  # any script
+
+
+def test_a_hard_link_to_a_release_file_by_a_pattern_and_a_write_through_one_wait(mac, tmp_path):
+    """R2-4: `ln` with its source spelled as a pattern, then a Write through the link, rewrote the release in place."""
+    work = _work(tmp_path)
+    assert _verdict(mac, f"ln {mac.sh}/cur*/{AP} {work}/a.py", work)
+    os.link(os.path.realpath(mac.rt / AP), work / "linked.py")
+    try:
+        said = _tool_verdict(mac, "Write", {"file_path": str(work / "linked.py"), "content": "print('the agent')\n"}, work)
+        assert said and "approve" in said, said
+        assert _tool_verdict(mac, "Edit", {"file_path": str(work / "linked.py"), "old_string": "a", "new_string": "b"}, work)
+        assert _verdict(mac, f"echo x >> {work}/linked.py", work)
+        assert _tool_verdict(mac, "Write", {"file_path": str(work / "own.py"), "content": "x = 1\n"}, work) is None
+    finally:
+        os.unlink(work / "linked.py")
+
+
+@pytest.mark.parametrize("script", ["install-autostart.sh", "uninstall-autostart.sh"])
+def test_a_kit_script_that_writes_or_loads_a_service_unit_waits_from_the_runtime_too(mac, tmp_path, script):
+    """R2-8: on main both waited from the plugin cache; a LaunchAgent or a systemd unit runs later with no one asking."""
+    work = _work(tmp_path)
+    assert _verdict(mac, f"bash {mac.rt}/{MCP}/{script}", work), script
+
+
+def test_every_carried_script_that_names_a_service_manager_is_classified():
+    from synthesis import guards
+    named = {rel for rel, path in install._stable_skill_files(ROOT)
+             if re.search(r"launchctl|systemctl|LaunchAgents", path.read_text(encoding="utf-8", errors="replace"))}
+    assert named == set(guards.SERVICE_WRITERS) | {f"{MCP}/doctor.sh"}, named  # the doctor only reads a unit's state
+
+
+def test_the_messages_reader_opens_its_lock_without_following_a_link(mac, tmp_path):
+    """R2-7: a link the agent planted as the reader's own .lock carried the reader's write into the folder it names."""
+    work = _work(tmp_path)
+    (work / "empty.db").write_bytes(b"")
+    (work / "r.json").write_text(json.dumps({"schema": 1, "adapter": "imessage-v1", "database": str(work / "empty.db"),
+                                             "start": "2026-11-14T00:00:00Z", "end": "2026-11-15T00:00:00Z", "page_size": 10,
+                                             "excluded_chats": [], "self_names": []}), encoding="utf-8")
+    (work / "state").mkdir()
+    target = work / "through-lock.json"
+    os.symlink(target, work / "state" / ".lock")
+    subprocess.run([sys.executable, "-s", str(mac.rt / READ), "--request", str(work / "r.json"), "--state", str(work / "state")],
+                   cwd=str(work), capture_output=True, text=True, env=mac.env, timeout=60)
+    assert not target.exists()
+
+
+@pytest.mark.parametrize("where", ["the folder it runs in", "a folder above it"])
+def test_the_runtimes_fetcher_waits_when_the_config_it_follows_names_a_protected_folder(mac, tmp_path, where):
+    """Open-list item 1, a plain two-step attempt: the fetcher writes where .agents/meeting-transcripts.yaml, found from
+    the folder it runs in upward, says; the guard reads that config as it reads the line."""
+    work = _work(tmp_path)
+    project = work / "project"
+    run_in = project if where == "the folder it runs in" else project / "notes" / "deep"
+    run_in.mkdir(parents=True)
+    (project / ".agents").mkdir()
+    (project / ".agents" / "meeting-transcripts.yaml").write_text(
+        f"google_account: a@example.com\ntranscripts_repo: {mac.sh}\ntranscripts_path: state\n", encoding="utf-8")
+    assert _verdict(mac, f"python3 -s {mac.rt}/{FETCHER} standup", run_in), where
+    (project / ".agents" / "meeting-transcripts.yaml").write_text(
+        f"google_account: a@example.com\ntranscripts_repo: {project}\ntranscripts_path: notes\n", encoding="utf-8")
+    assert _verdict(mac, f"python3 -s {mac.rt}/{FETCHER} standup", run_in) is None, where  # the project's own folder
