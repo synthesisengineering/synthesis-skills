@@ -412,17 +412,36 @@ def test_the_reply_check_names_the_workspace_a_reply_belongs_to(fake, keys_file,
 FAKE_CLI = """#!/usr/bin/env python3
 import json, os, sys, time
 args = sys.argv[1:]
-record = {"argv": args, "marker": os.environ.get("SYNTHESIS_JUDGE_RUN"), "stdin": sys.stdin.read(), "cwd": os.getcwd(), "at": time.time(),
+record = {"argv": args, "marker": os.environ.get("SYNTHESIS_JUDGE_RUN"), "stdin": "" if "status" in args else sys.stdin.read(),
+          "cwd": os.getcwd(), "at": time.time(),
           "credentials": sorted(k for k in ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "CLAUDE_CODE_USE_BEDROCK", "CODEX_API_KEY",
                                             "OPENAI_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN") if k in os.environ)}
 with open(os.environ["FAKE_LOG"], "a") as handle:
     handle.write(json.dumps(record) + "\\n")
+signed = os.environ.get("FAKE_SIGNED_IN", "plan")  # what each command line's own status command says of its sign-in
+if args[:2] == ["auth", "status"]:
+    print(json.dumps({"loggedIn": signed != "none", "authMethod": "console" if signed == "api" else "claude.ai", "subscriptionType": "max"}))
+    sys.exit(0)
+if args[:2] == ["login", "status"]:
+    sys.stderr.write({"plan": "Logged in using ChatGPT", "api": "Logged in using an API key", "none": "Not logged in"}[signed] + "\\n")
+    sys.exit(1 if signed == "none" else 0)
 mode, verdict = os.environ.get("FAKE_MODE", "verdict"), json.loads(os.environ.get("FAKE_VERDICT", "{}"))
 time.sleep(float(os.environ.get("FAKE_SLEEP", "0")))
+codex = bool(args) and args[0] == "exec"
 if mode == "error":
     print(json.dumps({"type": "result", "subtype": "success", "is_error": True, "result": "Not logged in"}))
     sys.exit(1)
-if args and args[0] == "exec":  # codex: the last message to the file -o names
+if mode == "unknown_flag":  # each command line's own words for a flag it does not know
+    sys.stderr.write("error: unexpected argument '--disable' found\\n" if codex else "error: unknown option '--setting-sources'\\n")
+    sys.exit(2 if codex else 1)
+if mode in ("not_signed_in", "bad_model"):
+    said = {("not_signed_in", False): "Not logged in · Please run /login",
+            ("not_signed_in", True): "ERROR: unexpected status 401 Unauthorized: Missing bearer or basic authentication in header",
+            ("bad_model", False): "There's an issue with the selected model (small-model). It may not exist or you may not have access to it.",
+            ("bad_model", True): "ERROR: The 'small-codex' model is not supported when using Codex with a ChatGPT account."}[(mode, codex)]
+    sys.stderr.write(said + "\\n") if codex else print(json.dumps({"type": "result", "subtype": "success", "is_error": True, "result": said}))
+    sys.exit(1)
+if codex:  # codex: the last message to the file -o names
     open(args[args.index("-o") + 1], "w").write(json.dumps(verdict))
 else:
     print(json.dumps({"type": "result", "subtype": "success", "is_error": False, "result": json.dumps(verdict), "structured_output": verdict}))
@@ -515,7 +534,9 @@ def test_a_harness_with_no_entry_or_a_workspace_left_out_is_never_judged_by_the_
 
 
 @pytest.mark.parametrize("failure", ["slow", "error", "missing"])
-def test_a_subscription_run_that_is_slow_refused_or_missing_is_no_verdict(fake_cli, tmp_path, monkeypatch, failure):
+def test_a_subscription_run_that_is_slow_refused_or_missing_is_no_verdict(fake_cli, tmp_path, monkeypatch, isolated_home, failure):
+    """No verdict, inside the deadline, and the judge's log says why in fixed words (the same words the doctor's probe
+    gives), so a plan that stopped answering is found from the log too."""
     judge = _judge()
     config = _sub_config(fake_cli)
     config["judge"]["deadline_seconds"] = 0.8
@@ -526,6 +547,44 @@ def test_a_subscription_run_that_is_slow_refused_or_missing_is_no_verdict(fake_c
     began = time.monotonic()
     assert judge.ask("demo", judge.parse_policy("demo", POLICY_TEXT), CONTENT, {}, config, harness="claude-code") is None
     assert time.monotonic() - began < 2.0  # the deadline holds: the list decides
+    assert _log(isolated_home)[-1]["why"] == {"slow": "timeout", "error": "not_signed_in", "missing": "missing"}[failure]
+
+
+@pytest.mark.parametrize("harness", ["claude-code", "codex"])
+@pytest.mark.parametrize("mode, why", [("verdict", ""), ("not_signed_in", "not_signed_in"), ("unknown_flag", "unknown_flag"),
+                                       ("bad_model", "model_unavailable"), ("error", "not_signed_in"), ("missing", "missing")])
+def test_the_probe_judges_one_invented_sentence_the_way_a_reply_is_judged_and_names_why_it_failed(
+        fake_cli, tmp_path, monkeypatch, isolated_home, harness, mode, why):
+    """The doctor's look at the plan's judge (2026-11-15: the fall back to the word list is never silent). One invented
+    sentence goes the way a flagged reply goes, by the shortcut policy, through the judge's own command line with hooks
+    off and the credentials that outrank the plan taken out; no verdict comes back with its reason in fixed words. It
+    writes no log row and keeps no verdict, so the next real reply is asked afresh."""
+    judge = _judge()
+    config = _sub_config(fake_cli)
+    monkeypatch.setenv("FAKE_MODE", "verdict" if mode == "missing" else mode)
+    monkeypatch.setenv("FAKE_VERDICT", json.dumps(_verdict(verdict="pass", rule="none", span="", reason="nothing is put off")))
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "invented-key")
+    if mode == "missing":
+        config["judge"]["subscription"][harness]["command"] = str(tmp_path / "no-such-cli")
+    found, seconds = judge.probe(config, harness)
+    assert found == why and 0 <= seconds < 10
+    runs = _runs(tmp_path)
+    assert runs == [] if mode == "missing" else len(runs) == 1
+    for run in runs:
+        assert judge.PROBE in run["stdin"] and run["marker"] == "1" and run["credentials"] == []
+        args = run["argv"]
+        assert json.loads(args[args.index("--settings") + 1])["disableAllHooks"] is True if harness == "claude-code" \
+            else args[args.index("--disable") + 1] == "hooks" and "--ignore-user-config" in args
+    assert not (isolated_home / "state" / "judge" / "log.jsonl").exists() and not (isolated_home / "state" / "judge" / "cache.json").exists()
+
+
+def test_the_probe_reports_a_harness_without_an_entry_and_a_run_past_its_time(fake_cli, monkeypatch):
+    judge = _judge()
+    config = _sub_config(fake_cli)
+    assert judge.probe(config, "muse") == ("not_configured", 0.0)
+    monkeypatch.setenv("FAKE_SLEEP", "5")
+    began = time.monotonic()
+    assert judge.probe(config, "claude-code", seconds=0.8)[0] == "timeout" and time.monotonic() - began < 3
 
 
 def test_a_remote_judge_asks_both_questions_at_once(fake_cli, monkeypatch):

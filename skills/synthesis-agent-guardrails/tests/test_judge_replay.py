@@ -222,13 +222,18 @@ sys.stdin.read()
 with open(os.environ["FAKE_LOG"], "a") as handle:
     handle.write(json.dumps({"argv": sys.argv[1:], "marker": os.environ.get("SYNTHESIS_JUDGE_RUN")}) + "\\n")
 verdict = {"verdict": "pass", "rule": "none", "span": "", "reason": "nothing is put off", "sure": True}
-print(json.dumps({"type": "result", "subtype": "success", "is_error": False, "result": json.dumps(verdict), "structured_output": verdict}))
+if sys.argv[1:2] == ["exec"]:  # codex: the last message to the file -o names
+    open(sys.argv[sys.argv.index("-o") + 1], "w").write(json.dumps(verdict))
+else:
+    print(json.dumps({"type": "result", "subtype": "success", "is_error": False, "result": json.dumps(verdict), "structured_output": verdict}))
 """
 
 
-def test_the_subscription_replay_runs_the_harness_command_and_leaves_out_a_workspace(tmp_path, monkeypatch, capsys):
-    """The judge on the person's own subscription (2026-11-15): each labeled hit judged through the harness's command
-    line, both questions at once, a workspace set aside left out and counted."""
+@pytest.mark.parametrize("harness", ["claude-code", "codex"])
+def test_the_subscription_replay_runs_the_harness_command_and_leaves_out_a_workspace(tmp_path, monkeypatch, capsys, harness):
+    """The judge on the person's own subscription (2026-11-15): each labeled hit judged through the command line of the
+    plan --harness names, whichever harness recorded it (the 33 personal items were all recorded in Claude Code, and
+    Codex's plan was measured on them), both questions at once, a workspace set aside left out and counted."""
     import hashlib
     monkeypatch.setenv("HOME", str(tmp_path))
     fake = tmp_path / "fake-claude"
@@ -246,7 +251,7 @@ def test_the_subscription_replay_runs_the_harness_command_and_leaves_out_a_works
                        "label": "legitimate", "category": "other", "reason": "r"})
     _write(tmp_path / "labels.jsonl", labels)
     assert replay.main(["--since", "2000-01-01", "--claude", str(tmp_path / "claude"), "--codex", str(tmp_path / "none"), "--muse",
-                        str(tmp_path / "none"), "--subscription", "small-model", "--command", str(fake), "--effort", "low",
+                        str(tmp_path / "none"), "--subscription", "small-model", "--harness", harness, "--command", str(fake), "--effort", "low",
                         "--leave-out", "heldback", "--labels", str(tmp_path / "labels.jsonl"), "--limit", "8"]) == 0
     out = capsys.readouterr().out
     import re
@@ -255,4 +260,4 @@ def test_the_subscription_replay_runs_the_harness_command_and_leaves_out_a_works
     assert "small-model all (1): shortcut 0 of 0 cleared, unsure 0 of 0 cleared, legitimate 1 of 1 cleared" in out
     assert "both questions at once" in out and "against the 8000 ms limit" in out
     runs = [json.loads(line) for line in (tmp_path / "runs.jsonl").read_text().splitlines()]
-    assert len(runs) == 2 and all(r["marker"] == "1" and r["argv"][0] == "-p" for r in runs)  # the one item's two questions
+    assert len(runs) == 2 and all(r["marker"] == "1" and r["argv"][0] == {"claude-code": "-p", "codex": "exec"}[harness] for r in runs)
