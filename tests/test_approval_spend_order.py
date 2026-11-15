@@ -298,7 +298,6 @@ def test_a_grant_given_back_is_never_seen_half_written(tmp_path, monkeypatch):
     grant = next(approvals._dir("approvals").glob("*.json"))
     body = grant.read_bytes()
     grant.unlink()
-    approvals.SPENT[:] = [(grant, body)]
     seen = []
     real_link = approvals.os.link
 
@@ -307,7 +306,7 @@ def test_a_grant_given_back_is_never_seen_half_written(tmp_path, monkeypatch):
         return real_link(src, dst, *a, **k)
     import os
     monkeypatch.setattr(approvals.os, "link", link_and_look)
-    approvals.give_back()
+    approvals.put_back([(grant, body)])
     assert seen == [False] and grant.read_bytes() == body
     assert guards.check(SLACK, CALL, {}, session=session) is None
 
@@ -333,7 +332,7 @@ def test_a_grant_voided_by_a_call_that_is_then_held_comes_back(tmp_path, monkeyp
     def voided_then_held(tool, tool_input, config, cwd=None, session=None):
         guards._void("send", {"tool": SLACK, "input": CALL})
         return "held by a later check of the same call"
-    monkeypatch.setattr(guards, "check", voided_then_held)
+    monkeypatch.setattr(guards, "check", guards._entry(voided_then_held))  # an entry, as the real check is
     hook.pre_tool_use({"tool_name": SLACK, "tool_input": CALL, **session})
     assert "held by a later check" in capsys.readouterr().out
     monkeypatch.setattr(guards, "check", real)
@@ -451,10 +450,10 @@ def test_one_record_that_fails_does_not_stop_the_others(monkeypatch):
     def fails():
         raise OSError("full")
     guards.EFFECTS[:] = [(None, lambda: ran.append("first")), (None, fails), (None, lambda: ran.append("third"))]
-    monkeypatch.setattr(approvals, "give_back", lambda: given.append(True))
+    monkeypatch.setattr(approvals, "put_back", lambda items: given.append(items))
     with pytest.raises(OSError):
         guards.settle(False)
-    assert ran == ["third", "first"] and given == [True] and guards.EFFECTS == []
+    assert ran == ["third", "first"] and given == [[]] and guards.EFFECTS == []
 
 
 def test_a_window_s_send_held_after_another_went_is_left_to_the_window(monkeypatch):
@@ -464,16 +463,16 @@ def test_a_window_s_send_held_after_another_went_is_left_to_the_window(monkeypat
     config = {"send_window_signatures": ["signed probe"]}
     sends.open_window(1.0, ["all"], "", 2)
     first, second, third = ({"channel_id": "C0PROBE", "message": f"Note {n}, signed probe."} for n in (1, 2, 3))
-    monkeypatch.setitem(guards.UNDER_HOOK, "on", True)  # as two hook processes: each decides, then answers
+    import _thread
+    me = _thread.get_ident()
+    guards.hook_answers()  # as two hook processes: each decides, then answers
     assert guards.check(SLACK, first, config) is None
-    went = list(guards.EFFECTS)
+    went = guards._PENDING.pop(me)
     assert guards.check(SLACK, second, config) is None
-    held = list(guards.EFFECTS)
-    guards.EFFECTS[:] = went
-    guards.settle(True)
-    guards.EFFECTS[:] = held
-    guards.settle(False)
-    monkeypatch.setitem(guards.UNDER_HOOK, "on", False)
+    held = guards._PENDING.pop(me)
+    guards.settle(True, *went)
+    guards.settle(False, *held)
+    guards.answered(True)  # nothing left for it to settle
     assert sends.window() and guards.check(SLACK, third, config) is None
     assert sends.window() == {}  # its last planned send, gone, closes it
 
@@ -500,25 +499,27 @@ def test_the_hook_process_counts_its_deadline_from_its_own_start(monkeypatch, ca
 # --- review round 4 of this fix (2026-11-15): threads, state left set, a record that fails after others, the lock ------
 
 
-def test_a_second_thread_is_refused_while_one_judges(monkeypatch):
-    """Round 4, finding 2: two threads shared the call's records; the second now cannot judge until the first is done."""
+def test_a_second_thread_waits_while_one_judges(monkeypatch):
+    """Round 4, finding 2: two threads shared the call's records; the second now waits until the first is done, as two
+    processes wait at the send lock (CI on b458c09f: refusing it broke two identical calls at once)."""
     import threading
-    entered, release, seen = threading.Event(), threading.Event(), []
+    entered, release, order = threading.Event(), threading.Event(), []
     real = guards._check
 
     def slow(*args):
-        entered.set()
-        release.wait(5)
+        if not entered.is_set():
+            entered.set()
+            release.wait(5)
+        order.append(args[0])
         return real(*args)
     monkeypatch.setattr(guards, "_check", slow)
-    first = threading.Thread(target=lambda: seen.append(guards.check("Read", {"file_path": "/dev/null"}, {})))
+    first = threading.Thread(target=lambda: guards.check("Read", {"file_path": "/dev/null"}, {}))
     first.start()
     assert entered.wait(5)
-    with pytest.raises(RuntimeError, match="one call at a time"):
-        guards.check("Read", {"file_path": "/dev/null"}, {})
-    release.set()
+    threading.Timer(0.2, release.set).start()
+    assert guards.check("Glob", {"pattern": "*"}, {}) is None  # waits for the first, then judges
     first.join(5)
-    assert seen == [None] and guards._DEPTH[0] == 0
+    assert order == ["Read", "Glob"] and guards._DEPTH[0] == 0 and not guards._JUDGING.locked()
 
 
 def test_a_check_ended_by_an_interrupt_leaves_the_process_judging_as_a_caller(tmp_path, monkeypatch):
@@ -532,7 +533,7 @@ def test_a_check_ended_by_an_interrupt_leaves_the_process_judging_as_a_caller(tm
     with pytest.raises(KeyboardInterrupt):
         hook.pre_tool_use({"tool_name": SLACK, "tool_input": CALL, "session_id": SID})
     monkeypatch.setattr(guards, "_check", real)
-    assert guards.UNDER_HOOK["on"] is False and guards._DEPTH[0] == 0
+    assert not guards.UNDER_HOOK["on"] and guards._DEPTH[0] == 0 and not guards._JUDGING.locked()
     session = _granted(tmp_path, guards.check(SLACK, CALL, {}))
     assert guards.check_send(SLACK, CALL, {}, session=session) is None
     assert len(sends.ledger(time.strftime("%Y-%m-%d"))) == 1
@@ -582,3 +583,96 @@ def test_the_send_lock_taken_inside_itself_does_not_wait_for_good():
     worker.start()
     worker.join(5)
     assert done == [True] and approvals._ALONE[0] == 0
+
+
+# --- review round 5 of this fix (2026-11-15): the hook and other threads, the send lock's threads, an interrupt just
+# after the guard is taken, a deploy recorded meanwhile, an alarm as the deadline ends -------------------------------
+
+
+def test_a_hook_call_while_another_thread_judges_settles_only_its_own_call(tmp_path, monkeypatch, capsys):
+    """Round 5, finding 1: the hook settled another thread's records by its own answer."""
+    import threading
+    from synthesis import hook, sends
+    session = _granted(tmp_path, guards.check(SLACK, CALL, {}))
+    entered, release, results = threading.Event(), threading.Event(), []
+    real = guards._check
+
+    def slow(*args):
+        if not entered.is_set():
+            entered.set()
+            release.wait(5)
+        return real(*args)
+    monkeypatch.setattr(guards, "_check", slow)
+    other = threading.Thread(target=lambda: results.append(guards.check(SLACK, CALL, {}, session=session)))
+    other.start()
+    assert entered.wait(5)
+    threading.Timer(0.2, release.set).start()
+    hook.pre_tool_use({"tool_name": SLACK, "tool_input": {**CALL, "message": "Another note."}, **session})  # no grant
+    other.join(5)
+    assert '"permissionDecision": "deny"' in capsys.readouterr().out
+    assert results == [None] and len(sends.ledger(time.strftime("%Y-%m-%d"))) == 1  # the other thread's send stands
+
+
+def test_the_send_lock_makes_another_thread_wait():
+    """Round 5, finding 2: the lock's nesting count was the process's, so a second thread walked in without the lock."""
+    import threading
+    inside, release, order = threading.Event(), threading.Event(), []
+
+    def first():
+        with approvals.alone():
+            inside.set()
+            release.wait(5)
+            order.append("first")
+    worker = threading.Thread(target=first)
+    worker.start()
+    assert inside.wait(5)
+    threading.Timer(0.2, release.set).start()
+    with approvals.alone():
+        order.append("second")
+    worker.join(5)
+    assert order == ["first", "second"] and approvals._ALONE == [0, None]
+
+
+def test_an_interrupt_just_after_the_guard_is_taken_leaves_it_free(monkeypatch):
+    """Round 5, finding 3: an exception between taking the guard's lock and the try that frees it left it taken."""
+    class Interrupting(list):
+        armed = True
+
+        def clear(self):
+            if Interrupting.armed:
+                Interrupting.armed = False
+                raise KeyboardInterrupt()
+            super().clear()
+    monkeypatch.setattr(approvals, "SPENT", Interrupting())
+    with pytest.raises(KeyboardInterrupt):
+        guards.check("Read", {"file_path": "/dev/null"}, {})
+    assert not guards._JUDGING.locked() and guards._DEPTH == [0, None]
+
+
+def test_a_deploy_recorded_by_another_call_meanwhile_is_kept_when_this_one_is_put_back():
+    """Round 5, finding 4: putting back this call's deploy record erased a deploy another call recorded meanwhile."""
+    record = guards._last_deploy("probe-site")
+    guards.EFFECTS.clear()
+    guards._record_deploys(["probe-site"])
+    write, restore = guards.EFFECTS[0]
+    write()
+    record.write_text("probe-site\n200.0\n", encoding="utf-8")  # another call's deploy
+    restore()
+    guards.EFFECTS.clear()
+    assert record.read_text(encoding="utf-8") == "probe-site\n200.0\n"
+
+
+def test_an_alarm_landing_as_the_deadline_is_taken_down_still_holds(monkeypatch, capsys):
+    """Round 5, a note (the same since 5.21.0): an alarm in the moment the deadline was being taken down escaped the
+    hook with no answer, and Claude Code ran the call."""
+    import signal
+    from synthesis import hook
+    real = signal.setitimer
+
+    def lands(which, seconds, *rest):
+        real(which, 0)
+        if seconds == 0:
+            raise hook._Late()
+    monkeypatch.setattr(signal, "setitimer", lands)
+    hook.pre_tool_use({"tool_name": "Read", "tool_input": {"file_path": "/dev/null"}, "session_id": SID})
+    assert "did not answer within" in capsys.readouterr().out
