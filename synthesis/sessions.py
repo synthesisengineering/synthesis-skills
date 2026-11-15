@@ -906,8 +906,8 @@ def _export(days: float, only: str, scheduled: bool = False, again: bool = False
 def lost(session: str) -> str:
     """Clear a transcript the stamp names as never copied, once it is gone, and keep what was lost in
     `.state/lost.jsonl`. One still where a run looks, or perhaps in a folder a run cannot list, is not lost. Only
-    the principal can accept a loss: called by an agent (inside a harness, or with no terminal), this clears on their
-    code for that transcript and otherwise asks for it, whoever calls; typed by them in their own terminal, it needs none."""
+    the principal can accept a loss: this clears on their code for that transcript and otherwise asks for it, whoever
+    calls and from any terminal (5.22.1: a terminal on the input and no harness in the environment are an agent's to fake)."""
     from synthesis import approvals
     with _writer(True) as busy:
         stamp = root() / ".state" / "export.json"
@@ -927,8 +927,7 @@ def lost(session: str) -> str:
         if shut:
             raise ValueError(f"{names[0]} is not known to be lost: {shut[0]} cannot be listed, and its transcript may be there")
         said = f"{names[0]}, whose copy last failed {entry['at'][:16]} ({entry['reason']})"
-        agent = paths.harness() != "unknown" or not sys.stdin.isatty()
-        if agent and not approvals.consume("sessions-lost", names[0], {"session_id": paths.session_id()}):
+        if not approvals.consume("sessions-lost", names[0], {"session_id": paths.session_id()}):
             code = approvals.request("sessions-lost", names[0], f"accept the transcript of {names[0]} as lost")
             raise PermissionError(f"{said} was never copied, and its transcript is gone. Only the principal can accept that "
                                   f"what it held is lost. Show them this and ask them to type {approvals.how(code)}. Then run "

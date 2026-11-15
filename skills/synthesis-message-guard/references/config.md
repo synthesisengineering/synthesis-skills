@@ -409,12 +409,14 @@ binding rule covers it. Computer use and browser actions are covered below.
 **Windows.** Only the principal opens one, for a planned number of sends (`--sends`, 1 to 50) within at most 12
 hours: the last planned send closes it (2026-10-27: a window stayed open for hours after its planned sends, and
 later sends went out under it). A window without a planned count covers nothing, and the guard refuses to ask
-for a code to open a window the command would refuse. The command itself checks: run by an agent (a harness's
-environment, or no terminal), `synthesis sends open` opens only on the principal's granted code for exactly
-that window, read from the session's own transcript, and otherwise refuses with a code to show them; the guard
-also asks for the code before the command runs, wherever its options sit, and `--help` never needs one. Run in
-their own terminal, it opens directly (2026-10-13: a global option before `sends` slipped past the guard alone). A script that imports the approval or window code is
-refused. A window names its hours (at most 12), its channels (or `all`) and optionally a project; it ends by
+for a code to open a window the command would refuse. The command itself checks: whoever runs it, from any
+terminal, `synthesis sends open` opens only on the principal's granted code for exactly that window, read from the
+session's own transcript (`--session <id>` names it from a terminal of the principal's own), and otherwise refuses
+with a code to show them (2026-10-13: a global option before `sends` slipped past the guard alone; 5.22.1: a
+harness-free environment and a terminal on the command's input, which it once took for the principal's own
+terminal, are both an agent's to fake). The guard also asks for the code before the command
+runs, wherever its options sit, for every window request in a command line, each with its own code, and `--help`
+never needs one. A script that imports the approval or window code to open a window or make a grant is refused. A window names its hours (at most 12), its channels (or `all`) and optionally a project; it ends by
 itself, and `synthesis sends close` ends it at once with no code. Every session sees it at each prompt. Each
 send it covers still passes the register scan and format rules, must carry a `send_window_signatures`
 signature, and is written to the day's ledger with the sends approved by code; `synthesis sends log

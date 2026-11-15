@@ -222,7 +222,7 @@ def test_a_bare_key_header_passes_whatever_marker_the_policy_lists_and_a_key_blo
     "cd {folder} && echo '{{}}' >> line-allowances.json",
     "cp /tmp/line-allowances.json {folder}/",
     "sed -i '' 's/a/b/' {store}",
-    "python3 -c \"import json; json.dump({{}}, open('{store}', 'w'))\"",
+    "python3 -I -c \"import json; json.dump({{}}, open('{store}', 'w'))\"",
 ])
 def test_a_shell_command_writing_the_store_is_refused(tmp_path, store, command):
     config = {"commit_policy": str(tmp_path / "policy.yaml")}
@@ -232,7 +232,7 @@ def test_a_shell_command_writing_the_store_is_refused(tmp_path, store, command):
     assert reason and ("approved commit lines" in reason or "writes where" in reason), reason
 
 
-@pytest.mark.parametrize("command", ["cat {store}", "python3 -m json.tool {store}", "git -C {folder} status"])
+@pytest.mark.parametrize("command", ["cat {store}", "python3 -I -m json.tool {store}", "git -C {folder} status"])
 def test_reading_the_store_is_allowed(tmp_path, store, command):
     config = {"commit_policy": str(tmp_path / "policy.yaml")}
     assert guards.check("Bash", {"command": command.format(store=store, folder=tmp_path)}, config, cwd=str(tmp_path)) is None

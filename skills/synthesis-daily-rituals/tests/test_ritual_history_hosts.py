@@ -18,7 +18,9 @@ from pathlib import Path
 import pytest
 
 SCRIPTS = Path(__file__).resolve().parents[1] / "scripts"
-TODAY = date.today().isoformat()
+def today() -> str:
+    """Today as the code under test reads it, taken when each test runs, so a suite that crosses midnight agrees with it."""
+    return date.today().isoformat()
 
 
 @pytest.fixture(autouse=True)
@@ -44,7 +46,7 @@ def test_a_record_commits_nothing_and_says_where_its_history_goes(tmp_path: Path
     repo = tmp_path / "ai-knowledge-alpha"
     (repo / "daily-plans").mkdir(parents=True)
     git(tmp_path, "init", "-q", str(repo))
-    (repo / "daily-plans" / f"{TODAY}.md").write_text(f"# Plan for {TODAY}\n", encoding="utf-8")
+    (repo / "daily-plans" / f"{today()}.md").write_text(f"# Plan for {today()}\n", encoding="utf-8")
     git(repo, "add", "-A")
     git(repo, "commit", "-qm", "start")
     state = tmp_path / "state"
@@ -56,10 +58,10 @@ def test_a_record_commits_nothing_and_says_where_its_history_goes(tmp_path: Path
     (home / "config.json").write_text(json.dumps({"sessions_repos": {"alpha": str(tmp_path / "sessions-alpha")}}),
                                       encoding="utf-8")
     before = (git(repo, "log", "--format=%H"), git(repo, "status", "--porcelain"))
-    done = run(state, "record", "--direction", "day-end", "--workspace", "alpha", "--date", TODAY)
+    done = run(state, "record", "--direction", "day-end", "--workspace", "alpha", "--date", today())
     assert done.returncode == 0, done.stderr
     assert (git(repo, "log", "--format=%H"), git(repo, "status", "--porcelain")) == before  # nothing written, nothing committed
     assert f"ritual history: `synthesis sessions sync` carries it to {tmp_path / 'sessions-alpha'}" in done.stdout
     (home / "config.json").write_text("{}", encoding="utf-8")
-    done = run(state, "record", "--direction", "day-start", "--workspace", "alpha", "--date", TODAY)
+    done = run(state, "record", "--direction", "day-start", "--workspace", "alpha", "--date", today())
     assert done.returncode == 0 and "ritual history: kept on this Mac only" in done.stdout, done.stdout

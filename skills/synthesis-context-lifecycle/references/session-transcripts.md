@@ -152,8 +152,9 @@ each harness writes its own transcript to disk as the session runs. The copy is 
 - A transcript the harness removed before any run copied it can no longer be copied. A run of everything says
   so, the stamp keeps its name with when its copy last failed and when it was found gone, and the doctor keeps
   failing. What it held is not in the archive, and only the principal can accept that:
-  `synthesis sessions export --lost <session>` clears it. Run by an agent, it asks for the principal's approval
-  code first; typed by the principal in a terminal of their own, it needs none. It refuses a transcript that is
+  `synthesis sessions export --lost <session>` clears it. It asks for the principal's approval code first,
+  whoever runs it and from any terminal (5.22.1: a terminal and a harness-free environment are an agent's to
+  fake), read from the session's own transcript. It refuses a transcript that is
   still there, that the harness only moved, or whose harness has a folder that cannot be listed, and it appends
   each loss it clears to `<synthesis home>/sessions/.state/lost.jsonl`. `--rebuild` moves neither: it writes the
   stamp as a run of everything does, and leaves that file as it is.
