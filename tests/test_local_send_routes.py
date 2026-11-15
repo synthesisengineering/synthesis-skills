@@ -610,3 +610,110 @@ def test_a_hooks_folder_the_users_config_names_is_judged_not_held_for_a_scan(tmp
     (space / ".agents").mkdir(parents=True)
     (space / ".agents" / "repos.yaml").write_text(f"repos:\n  - name: plain\n    path: {plain}\n    ritual_sync: true\n", encoding="utf-8")
     assert shell(f"python3 {REPO_STATE} --workspace-root {space} --fetch --ff --json", cwd=str(tmp_path)) == ""
+
+
+# --- review round 2 (2026-11-15) ------------------------------------------------------------------------------------
+# T1: ordinary HTTP-client forms; T2: every carried script that runs git in a folder it is handed, and `git config` of
+# any key that names a program; T3: a bare repository's hooks folder and a local push's receiving hooks; T4: includes
+# named on the command line.
+
+STRAY = ROOT / "skills" / "synthesis-daily-rituals" / "scripts" / "stray_lessons.py"
+PR_QUEUE = ROOT / "skills" / "synthesis-daily-rituals" / "scripts" / "pr_queue_scan.py"
+PORTFOLIO = ROOT / "skills" / "synthesis-daily-rituals" / "scripts" / "portfolio_review.py"
+SHARING = ROOT / "skills" / "synthesis-kb-edit" / "scripts" / "sharing_scan.py"
+
+
+@pytest.mark.parametrize("line", [
+    "http POST :8765/mcp < {body}", "xh POST :8765/mcp < {body}", "https POST :8765/mcp < {body}",
+    "U=http://localhost:8765/mcp; curl -s -X POST \"$U\" -d @{body}", "export U=http://127.0.0.1:8765/mcp && curl -s \"$U\" --data-binary @{body}",
+    "python3 -c " + shlex.quote("import http.client, sys; c = http.client.HTTPConnection('localhost', 8765); "
+                                "c.request('POST', '/mcp', open(sys.argv[1]).read(), {'Content-Type': 'application/json'})") + " {body}",
+    "python3 -c " + shlex.quote("import sys, urllib.request as u; host, port = 'localhost', 8765; "
+                                "u.urlopen(f'http://{host}:{port}/mcp', data=open(sys.argv[1], 'rb').read())") + " {body}",
+    "node -e " + shlex.quote("fetch('http://localhost:8765/mcp', {method: 'POST', headers: {'Content-Type': 'application/json'}, "
+                             "body: require('fs').readFileSync(process.argv[1], 'utf8')})") + " {body}",
+    "node -e " + shlex.quote("const http = require('http'), fs = require('fs'); const r = http.request({host: 'localhost', port: 8765, "
+                             "path: '/mcp', method: 'POST'}); r.end(fs.readFileSync(process.argv[1]))") + " {body}",
+    "node -e " + shlex.quote("const axios = require('axios'); axios.post('http://localhost:8765/mcp', require('fs').readFileSync(process.argv[1], 'utf8'))") + " {body}",
+    "curl -s -K {cfg}", "curl -s --config {cfg}",
+])
+def test_ordinary_http_client_forms_that_send_wait(tmp_path, line):
+    (tmp_path / "send.json").write_text(SEND_BODY, encoding="utf-8")
+    (tmp_path / "read.json").write_text(READ_BODY, encoding="utf-8")
+    (tmp_path / "send.cfg").write_text(f'url = "http://localhost:8765/mcp"\nrequest = POST\ndata = "@{tmp_path / "send.json"}"\n', encoding="utf-8")
+    (tmp_path / "read.cfg").write_text(f'url = "http://localhost:8765/mcp"\ndata = "@{tmp_path / "read.json"}"\n', encoding="utf-8")
+    sent = line.replace("{body}", str(tmp_path / "send.json")).replace("{cfg}", str(tmp_path / "send.cfg"))
+    assert held(shell(sent, cwd=str(tmp_path))), sent
+    read = line.replace("{body}", str(tmp_path / "read.json")).replace("{cfg}", str(tmp_path / "read.cfg"))
+    assert shell(read, cwd=str(tmp_path)) == "", read
+
+
+def test_a_curl_config_the_guard_cannot_read_waits_and_liveness_forms_pass(tmp_path):
+    assert held(shell("curl -s -K missing.cfg", cwd=str(tmp_path)))
+    for line in ("http :8765/mcp", "xh GET :8765/mcp", "U=http://localhost:8765/mcp; curl -s \"$U\""):
+        assert shell(line, cwd=str(tmp_path)) == "", line
+
+
+def _fsmonitored(tmp_path, name="kb"):
+    import subprocess
+    r = repo(tmp_path, name)
+    (r / "projects" / "p").mkdir(parents=True)
+    (r / "projects" / "index.yaml").write_text("projects:\n  - id: p\n    status: active\n", encoding="utf-8")
+    plain_command = lambda: None  # noqa: E731
+    return r, lambda: subprocess.run(["git", "-C", str(r), "config", "core.fsmonitor", "/usr/bin/true"], check=True), plain_command
+
+
+def test_every_carried_script_that_runs_git_in_a_handed_folder_is_a_scanner(tmp_path):
+    r, plant, _ = _fsmonitored(tmp_path)
+    yaml = tmp_path / "repos.yaml"
+    yaml.write_text(f"repos:\n  - name: kb\n    path: {r}\n", encoding="utf-8")
+    lines = [f"python3 {STRAY} --since 2026-11-14 --repo {r}", f"python3 {PR_QUEUE} --repos-yaml {yaml} --json",
+             f"python3 {SHARING} {r} --staged", f"python3 {PORTFOLIO} --index {r / 'projects' / 'index.yaml'} --json"]
+    for line in lines:
+        assert shell(line, cwd=str(tmp_path)) == "", line  # a repository that names no program
+    plant()
+    for line in lines:
+        assert held(shell(line, cwd=str(tmp_path))), line
+    config = dict(CONFIG, knowledge_roots=[str(r)])  # the doctor given neither option reads the roots its config names
+    assert held(guards.check("Bash", {"command": f"python3 {CONTEXT_DOCTOR} --json"}, config, cwd=str(tmp_path), session=SESSION) or "")
+
+
+@pytest.mark.parametrize("line, waits", [
+    ("git config core.fsmonitor /tmp/monitor.sh", True), ("git -c user.name=x config core.pager 'less -R'", True),
+    ("git config --global credential.helper '!sh -c x'", True), ("git config alias.x '!sh -c y'", True),
+    ("git config diff.tool.textconv cat", True), ("git config --local filter.lfs.clean 'git-lfs clean -- %f'", True),
+    ("git config core.fsmonitor true", False), ("git config alias.co checkout", False), ("git config user.email a@example.com", False),
+    ("git config --get core.pager", False), ("git config --unset core.fsmonitor", False),
+])
+def test_git_config_of_a_key_that_names_a_program_waits(tmp_path, line, waits):
+    r = repo(tmp_path)
+    assert held(shell(line, cwd=str(r))) is waits, line
+
+
+def test_a_bare_repositorys_hooks_and_a_local_pushs_receiving_hooks(tmp_path):
+    import subprocess
+    from synthesis import paths
+    bare = tmp_path / "remote.git"
+    subprocess.run(["git", "init", "-q", "--bare", str(bare)], check=True)
+    target = bare / "hooks" / "pre-receive"
+    assert held(guards.check("Write", {"file_path": str(target), "content": "#!/bin/sh\n"}, CONFIG, cwd=str(tmp_path), session=SESSION) or "")
+    assert held(shell(f"printf 'x' > {target}", cwd=str(tmp_path)))
+    target.write_text(f"#!/bin/sh\necho ran > '{paths.state()}/marker'\n", encoding="utf-8")
+    target.chmod(0o755)
+    r = repo(tmp_path, "work")
+    subprocess.run(["git", "-C", str(r), "remote", "add", "origin", str(bare)], check=True)
+    subprocess.run(["git", "-C", str(r), "commit", "-q", "--allow-empty", "-m", "one"], check=True)
+    assert shell(f"git -C {r} push origin HEAD:main", cwd=str(tmp_path))  # its pre-receive runs
+    own = paths.home() / "git-hooks"
+    own.mkdir(parents=True)
+    Path(os.environ["GIT_CONFIG_GLOBAL"]).write_text(f"[user]\n\temail = t@example.com\n\tname = t\n[core]\n\thooksPath = {own}\n", encoding="utf-8")
+    assert shell(f"git -C {r} push origin HEAD:main", cwd=str(tmp_path)) == ""  # the global hooks folder holds no pre-receive
+
+
+def test_includes_named_on_the_line_are_followed(tmp_path):
+    evil = tmp_path / "evil.cfg"
+    evil.write_text(f"[core]\n\tfsmonitor = {writer(tmp_path)}\n", encoding="utf-8")
+    r = repo(tmp_path)
+    for line in (f"git -c include.path={evil} -C {r} status --porcelain", f"git -c includeIf.gitdir:/.path={evil} -C {r} status",
+                 f"GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=include.path GIT_CONFIG_VALUE_0={evil} git -C {r} status --porcelain"):
+        assert shell(line, cwd=str(tmp_path)), line
