@@ -578,7 +578,8 @@ def test_a_navigate_that_names_no_host_keeps_a_messaging_sites_page(tmp_path):
         session = _on(tmp_path, 7, tab7=where)
         for url in ("back", "forward", "/messages/t/1", "javascript:void(0)"):
             reason = guards.check(CHROME, _steps(("navigate", {"url": url, "tabId": 7}), RETURN), CONFIG, session=session)
-            assert bool(reason and "approve" in reason) is held, (where, url)
+            script = url.startswith("javascript:") and "shipped" in (reason or "")  # a script by address: refused there (5.24.0)
+            assert bool(reason and ("approve" in reason or script)) is held, (where, url)
 
 
 def test_a_tab_list_printed_by_another_tool_is_not_the_browsers(tmp_path):
@@ -645,9 +646,12 @@ def test_the_hook_holds_the_incident_call_and_fails_closed(isolated_home, write_
     "window.open('/messages/e2ee/t/4004/', '_self')", "location.href = document.querySelector('[role=\"row\"] a').href"])
 def test_a_page_script_that_moves_the_tab_on_a_messaging_site_waits(tmp_path, script):
     """Review round 1 of the Messenger surface, finding 13: on the chat list a script that moves the tab opens a chat,
-    which marks it read in the principal's view, so it waits for the code like one that clicks."""
+    which marks it read in the principal's view, so it waits for the code like one that clicks. On a Messenger site no
+    page script runs now but the plugin's own read-only ones (5.24.0); elsewhere the rule stands."""
     alone = {"action": "javascript_exec", "text": script, "tabId": 7}
     session = _on(tmp_path, 7, tab7="https://www.facebook.com/messages/t/")
+    assert "shipped" in (guards.check("mcp__claude-in-chrome__javascript_tool", alone, CONFIG, session=session) or "")
+    session = _on(tmp_path, 7, tab7="https://www.linkedin.com/messaging/")
     assert "approve" in (guards.check("mcp__claude-in-chrome__javascript_tool", alone, CONFIG, session=session) or "")
 
 
@@ -655,5 +659,7 @@ def test_a_page_script_that_moves_the_tab_on_a_messaging_site_waits(tmp_path, sc
                                     "location.href === 'https://www.facebook.com/messages/t/'"])
 def test_a_page_script_that_only_reads_its_address_passes(tmp_path, script):
     alone = {"action": "javascript_exec", "text": script, "tabId": 7}
-    session = _on(tmp_path, 7, tab7="https://www.facebook.com/messages/t/")
+    session = _on(tmp_path, 7, tab7="https://www.linkedin.com/messaging/")
     assert guards.check("mcp__claude-in-chrome__javascript_tool", alone, CONFIG, session=session) is None
+    session = _on(tmp_path, 7, tab7="https://www.facebook.com/messages/t/")  # a Messenger site takes the shipped ones alone
+    assert "shipped" in (guards.check("mcp__claude-in-chrome__javascript_tool", alone, CONFIG, session=session) or "")

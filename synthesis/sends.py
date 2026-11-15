@@ -358,32 +358,62 @@ HANDLE = re.compile(r"\+[1-9][0-9]{6,14}|[^\s@,]+@[^\s@,]+\.[^\s@,]+")  # what m
 KINDS = ('none of the four kinds: a connector call {"tool", "input"}, a browser send {"channel", "to", "text"}, and a '
          'messages send by --to {"channel": "messages", "to", "text"} or by --members {"channel": "messages", "members", '
          '"service", "chat", "text"}, each with nothing else')
-# The read-only check of a messaging page's message box that a browser entry's send waits on (the review of 5.23.0):
-# printed by `synthesis sends composer-check`, run as it is through the browser's JavaScript tool on the send's own tab.
-# The box is the one contenteditable textbox labelled `Write to ...` or for a message, with the placeholder `Aa`, or a
-# Lexical editor (the coordinator's live read of 2026-11-14: `Write to <Name>`, `Aa`, Lexical, in no form); the composer
-# around it is its nearest ancestor that holds a control labelled for sending or for a file or attachment.
-# Its marks count what puts the composer in another mode, outside the box, in the composer or in any other child of its
-# parent (the reply banner is the composer's previous sibling, live 2026-11-15): text that opens with `Replying to`,
-# `Editing`, `Cancel reply` or `Cancel edit`, a control labelled for a reply or an edit, a quotation, and a heading
-# outside the composer (inside it only by those words: it always holds a hidden `Compose` heading); inline counts
-# images in the box.
-COMPOSER_MARK = "synthesis-composer-5"
-COMPOSER_CHECK = ("(() => { const boxes = [...document.querySelectorAll('[contenteditable=\"true\"][role=\"textbox\"]')]; "
-                  "const fits = b => /^write to|message/i.test(b.getAttribute('aria-label') || '') || "
-                  "b.getAttribute('aria-placeholder') === 'Aa' || b.hasAttribute('data-lexical-editor'); "
-                  "const found = boxes.filter(fits); const box = found.length === 1 ? found[0] : null; let area = box && "
-                  "box.parentElement; while (area && ![...area.querySelectorAll('[aria-label*=\"send\" i], [aria-label*=\"file\" i], "
-                  "[aria-label*=\"attach\" i]')].some(e => !box.contains(e))) area = area.parentElement; "
-                  "return JSON.stringify({check: 'synthesis-composer-5', url: location.href, box: found.length > 1 ? 'ambiguous' : "
-                  "box ? 'found' : 'none', text: box ? box.innerText : null, focused: !!box && box.contains(document.activeElement), "
-                  "staged: !box ? null : area ? [...area.querySelectorAll('img, video, audio, canvas, object, embed, iframe, "
-                  "[aria-label*=\"remove\" i]')].filter(e => !box.contains(e)).length : 'unknown', marks: !box ? null : area ? "
-                  "[...(area.parentElement || area).querySelectorAll('*')].filter(e => !box.contains(e) && !e.contains(box) && "
-                  "(/^\\s*(replying to|editing|cancel (reply|edit))\\b/i.test(e.innerText || '') || /reply|edit/i.test("
-                  "e.getAttribute('aria-label') || '') || e.tagName === 'BLOCKQUOTE' || !area.contains(e) && ("
-                  "e.getAttribute('role') === 'heading' || /^H[1-6]$/.test(e.tagName)))).length : 'unknown', inline: box ? "
-                  "box.querySelectorAll('img, svg, picture, canvas, video, [role=\"img\"]').length : null, boxes: boxes.length}); })()")
+# What a Messenger entry's send reads of the page, shared by the read-only check (`synthesis sends composer-check`) and
+# the send script, so a live read shows exactly what a send reads. The box is the one contenteditable textbox labelled
+# `Write to ...` or for a message, with the placeholder `Aa`, or a Lexical editor (the coordinator's live read of
+# 2026-11-14: `Write to <Name>`, `Aa`, Lexical, in no form); the composer around it is its nearest ancestor that holds
+# a control labelled for sending or for a file or attachment. Outside the box, in the composer or in any other child of
+# its parent (in plain mode the composer is that parent's only child, live 2026-11-15), staged counts media, an svg
+# outside a control (a file's icon) and a control labelled to remove, close, cancel, delete or discard (the third
+# round, #6); marks count text that opens with `Replying to`, `Edit`, `Editing`, `Cancel reply` or `Cancel edit`, a
+# control labelled for a reply or an edit, a quotation, and a heading outside the composer (inside it only by those
+# words: it always holds a hidden `Compose` heading). Inline counts images in the box.
+_READ = ("const boxes = [...document.querySelectorAll('[contenteditable=\"true\"][role=\"textbox\"]')]; "
+         "const fits = b => /^write to|message/i.test(b.getAttribute('aria-label') || '') || "
+         "b.getAttribute('aria-placeholder') === 'Aa' || b.hasAttribute('data-lexical-editor'); "
+         "const found = boxes.filter(fits); const box = found.length === 1 ? found[0] : null; let area = box && "
+         "box.parentElement; while (area && ![...area.querySelectorAll('[aria-label*=\"send\" i], [aria-label*=\"file\" i], "
+         "[aria-label*=\"attach\" i]')].some(e => !box.contains(e))) area = area.parentElement; "
+         "const label = e => e.getAttribute('aria-label') || ''; const near = area ? [...(area.parentElement || area)"
+         ".querySelectorAll('*')].filter(e => !box.contains(e) && !e.contains(box)) : null; "
+         "const staged = near && near.filter(e => /^(img|video|audio|canvas|object|embed|iframe|picture)$/i.test(e.tagName) || "
+         "/^svg$/i.test(e.tagName) && !e.closest('[role=\"button\"], [role=\"link\"], button, a') || "
+         "/remove|close|cancel|delete|discard/i.test(label(e))).length; "
+         "const marks = near && near.filter(e => /^\\s*(replying to|edit(ing)?|cancel (reply|edit))\\b/i.test(e.innerText || '') || "
+         "/reply|edit/i.test(label(e)) || e.tagName === 'BLOCKQUOTE' || !area.contains(e) && (e.getAttribute('role') === "
+         "'heading' || /^H[1-6]$/.test(e.tagName))).length; "
+         "const inline = box && box.querySelectorAll('img, svg, picture, canvas, video, [role=\"img\"]').length; ")
+COMPOSER_MARK = "synthesis-composer-6"
+COMPOSER_CHECK = ("(() => { " + _READ + "return JSON.stringify({check: '" + COMPOSER_MARK + "', url: location.href, box: "
+                  "found.length > 1 ? 'ambiguous' : box ? 'found' : 'none', text: box ? box.innerText : null, focused: !!box && "
+                  "box.contains(document.activeElement), staged: !box ? null : area ? staged : 'unknown', marks: !box ? null : "
+                  "area ? marks : 'unknown', inline: box ? inline : null, boxes: boxes.length}); })()")
+# SHA-256 of a text's UTF-8, synchronous (crypto.subtle answers later, and the send must be one run).
+_SHA = ("const sha = s => { const K = [], H = [], b = [...new TextEncoder().encode(s)], n = b.length * 8; "
+        "for (let p = 2, c = 0; c < 64; p++) { let prime = true; for (let d = 2; d * d <= p; d++) if (p % d === 0) { prime = false; "
+        "break; } if (prime) { if (c < 8) H[c] = Math.pow(p, 1 / 2) * 2 ** 32 | 0; K[c++] = Math.pow(p, 1 / 3) * 2 ** 32 | 0; } } "
+        "b.push(128); while (b.length % 64 !== 56) b.push(0); for (let i = 7; i >= 0; i--) b.push(i > 3 ? 0 : n >>> i * 8 & 255); "
+        "const r = (x, k) => x >>> k | x << 32 - k; for (let o = 0; o < b.length; o += 64) { const w = [], v = H.slice(); "
+        "for (let i = 0; i < 64; i++) { w[i] = i < 16 ? b[o + 4 * i] << 24 | b[o + 4 * i + 1] << 16 | b[o + 4 * i + 2] << 8 | "
+        "b[o + 4 * i + 3] : (r(w[i - 2], 17) ^ r(w[i - 2], 19) ^ w[i - 2] >>> 10) + w[i - 7] + (r(w[i - 15], 7) ^ "
+        "r(w[i - 15], 18) ^ w[i - 15] >>> 3) + w[i - 16] | 0; const t = v[7] + (r(v[4], 6) ^ r(v[4], 11) ^ r(v[4], 25)) + "
+        "(v[4] & v[5] ^ ~v[4] & v[6]) + K[i] + w[i] | 0, u = (r(v[0], 2) ^ r(v[0], 13) ^ r(v[0], 22)) + (v[0] & v[1] ^ "
+        "v[0] & v[2] ^ v[1] & v[2]) | 0; v.pop(); v.unshift(t + u | 0); v[4] = v[4] + t | 0; } "
+        "for (let i = 0; i < 8; i++) H[i] = H[i] + v[i] | 0; } return H.map(x => (x >>> 0).toString(16).padStart(8, '0')).join(''); }; ")
+# A Messenger entry's send (the third round of 5.24.0's review, #1, #2, #3 and #6): one synchronous run that reads the
+# composer, compares its words to the entry's by digest, and clicks the one control labelled `Press enter to send` or
+# `Send` only when the page is the entry's conversation, its words are the entry's and nothing is staged or marked, so no
+# typist, other session or later script acts between the read and the send. It runs last in the send step.
+SEND_MARK = "synthesis-send-1"
+SEND_SCRIPT = ("(() => { const want = __WANT__; " + _READ + _SHA + "const host = location.hostname.replace(/\\.$/, ''); "
+               "const site = " + json.dumps([site for site, _, _ in CONVERSATIONS]) + ".find(s => host === s || host.endsWith('.' + s)); "
+               "const here = site ? site + location.pathname.replace(/\\/+$/, '') : ''; const words = box ? box.innerText.replace("
+               "/\\n$/, '') : null; const same = words !== null && sha(words) === want.digest; const controls = area ? "
+               "[...area.querySelectorAll('[aria-label]')].filter(e => !box.contains(e) && /^(press enter to send|send)$/i.test("
+               "label(e).trim())) : []; const sent = here === want.to && same && staged === 0 && marks === 0 && inline === 0 && "
+               "controls.length === 1; if (sent) controls[0].click(); return JSON.stringify({send: '" + SEND_MARK + "', url: "
+               "location.href, conversation: here === want.to, box: found.length > 1 ? 'ambiguous' : box ? 'found' : 'none', "
+               "words: same, staged, marks, inline, controls: controls.length, sent, after: box ? box.innerText : null}); })()")
 ADDRESS_KEYS = ("to", "cc", "bcc", "channel", "channel_id", "chat_id", "space_id", "space_name", "thread_id", "thread_ts",
                 "user_id", "recipient", "recipients", "issueIdOrKey", "owner", "repo", "pull_number", "issue_number")
 
@@ -534,8 +564,10 @@ def batch_refusal(batch: dict, file: str) -> str:
             f"exactly as written, within {MAX_HOURS} hours, from this session alone. Show the principal this whole list as it "
             f"stands (each text quoted, every hidden character as its code) and ask them to type {approvals.how(code)} to open "
             f"exactly it. Then run the identical command again." + (
-                " Each Messenger entry then goes as one plain Return in its box, on its tab, within 15 seconds of the check "
-                "`synthesis sends composer-check` prints, run there and reading the box focused; a click waits for its own code."
+                " Each Messenger entry then goes as one browser_batch on a tab that already shows its conversation: a navigate "
+                "to the conversation's address on that tab, its words typed there (shift+Return for a line break), and last the "
+                "page script `synthesis sends script --entry <digest prefix>:<its number>` prints, which sends only those words; "
+                "a Return or a click there waits for its own code."
                 if any(e.get("channel") == "messenger" for e in batch["entries"]) else "") + f"\n{batch_listing(batch, show=True)}")
 
 
@@ -716,16 +748,6 @@ def _backed(data: dict, session: dict | None) -> bool:
         return False
 
 
-def _when(line: str) -> float:
-    """When a record's line was written, by its own timestamp; 0 for none."""
-    from datetime import datetime, timezone
-    try:
-        stamp = datetime.fromisoformat(str(json.loads(line).get("timestamp")).replace("Z", "+00:00"))
-    except (ValueError, AttributeError):
-        return 0.0
-    return (stamp if stamp.tzinfo else stamp.replace(tzinfo=timezone.utc)).timestamp()
-
-
 def _plain(value):
     """A value with each string's line endings written one way: the one difference an entry overlooks."""
     if isinstance(value, dict):
@@ -751,30 +773,11 @@ def call_entry(entry: dict, tool: str, tool_input: dict) -> bool:
     return entry["channel"] == "messages" and tool == ("imessage_send" if "to" in entry else "messages_send") and _same(wanted, tool_input)
 
 
-def composer(said: str) -> dict:
-    """The composer check's own report in a tool result's text, as the browser tool returns it (quoted or not); {} for
-    none, or for more than one."""
-    texts, stripped = [said], said.lstrip()
-    if stripped.startswith('"'):
-        try:
-            inner = json.JSONDecoder().raw_decode(stripped)[0]
-            texts += [inner] if isinstance(inner, str) else []
-        except ValueError:
-            pass
-    found = []
-    for text in texts:
-        for at in [m.start() for m in re.finditer(r'\{"check":', text)]:
-            try:
-                report = json.JSONDecoder().raw_decode(text, at)[0]
-            except ValueError:
-                continue
-            found += [report] if isinstance(report, dict) and report.get("check") == COMPOSER_MARK else []
-    return found[0] if len(found) == 1 else {}
-
-
-def browser_entry(entry: dict, chan: str, where: str, text: str) -> bool:
-    """Whether a browser call that types `text` and sends it on the page of conversation (chan, where) is this entry."""
-    return "to" in entry and conversation(entry["to"]) == (chan, where) and _plain(entry["text"]) == text
+def send_script(entry: dict) -> str:
+    """The page script that sends a Messenger entry: the shipped send script, holding the entry's conversation and the
+    SHA-256 of its words (each line ending written as \\n), as `synthesis sends script` prints it and the guard compares it."""
+    digest = hashlib.sha256(_plain(entry["text"]).encode("utf-8")).hexdigest()
+    return SEND_SCRIPT.replace("__WANT__", json.dumps({"to": entry["to"], "digest": digest}))
 
 
 # --- the ledger ---------------------------------------------------------------------------------

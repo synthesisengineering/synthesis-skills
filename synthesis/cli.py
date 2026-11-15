@@ -187,8 +187,18 @@ def cmd_sends(args) -> int:
         return 2
     if args.action == "batch":
         return _batch(args)
-    if args.action == "composer-check":  # what a browser entry's send waits on, run on the send's own tab
+    if args.action == "composer-check":  # what a Messenger entry's send reads of the page, read only
         print(sends.COMPOSER_CHECK)
+        return 0
+    if args.action == "script":  # the page script that sends one Messenger entry, last in its send step
+        prefix, _, number = args.entry.partition(":")
+        found = [d for d in sends.batches() if prefix and d["digest"].startswith(prefix.lower())] if number.isdigit() else []
+        entries = found[0]["entries"] if len(found) == 1 else []
+        entry = entries[int(number) - 1] if 0 < (int(number) if number.isdigit() else 0) <= len(entries) else {}
+        if entry.get("channel") != "messenger":
+            print("name a Messenger entry of one open batch: --entry <digest prefix>:<its number in the listing>", file=sys.stderr)
+            return 2
+        print(sends.send_script(entry))
         return 0
     if args.action == "open":
         window = sends.asked(args.hours, args.channels, args.project, args.sends)
@@ -468,10 +478,11 @@ def parser() -> argparse.ArgumentParser:
     sub.add_parser("wait", help="wait for a message, a file or a command, holding a record on the board", add_help=False)
     s.set_defaults(fn=cmd_inbox)
     s = sub.add_parser("sends", help="open, close or show the send window and batches; list the day's sends")
-    s.add_argument("action", choices=["open", "batch", "close", "status", "log", "composer-check"])
+    s.add_argument("action", choices=["open", "batch", "close", "status", "log", "composer-check", "script"])
     s.add_argument("file", nargs="?", default="", help="batch: the batch file to show (--show) or open")
     s.set_defaults(late="file")
     s.add_argument("--show", action="store_true", help="batch: also print every text in full, and open nothing")
+    s.add_argument("--entry", default="", help="script: <digest prefix>:<entry number>, a Messenger entry of an open batch")
     s.add_argument("--hours", type=float, default=0, help="how long the window stays open, at most 12")
     s.add_argument("--channels", default="", help="comma-separated: slack,email,chat,calendar,jira,confluence,"
                    "bitbucket,github,docs,notion,web, or all")

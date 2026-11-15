@@ -1345,10 +1345,26 @@ ROOT = Path(__file__).resolve().parents[1]
 # A plain composer read live (2026-11-15): core 1 more, plugin 1. sends.py 1: COMPOSER_CHECK's note 1 longer (a heading
 # inside the composer counts only by its words, since the composer always holds a hidden `Compose` heading); the check
 # changes in place.
+# The batch's review round 3 (2026-11-15, 9 findings, #8 fixed on main): core 69 more, plugin 67. sends.py 48: the
+# Messenger send step (#1, #2, #3, #6) 3 net: _READ 15 (the composer read the check and the send share, staged and
+# marks across the composer's parent), _SHA 11 with its note 1 (SHA-256 in one synchronous run), SEND_MARK and
+# SEND_SCRIPT 10 with their note 4 (read, compare and click in one run), send_script 7, batch_refusal 2 more (the step
+# in the hold); COMPOSER_CHECK 11 fewer (built on _READ), composer 21, browser_entry 5 and _when 10 gone (the
+# check-then-Return path). The sender's ticket (#5) 30: its note 3, TICKET_SECONDS 1, _ticket_file 4, sender_ticket 5 and
+# ticket 15, with their blank lines. The code tied to the guard's own request (#4) 10: _requests_file 4, batch_refusal 3
+# more (it records the request), _backed 3 more (it reads that record, never the session's). What a listing prints
+# (#7, #9) 5: _controls and checked 1 more each (a lone surrogate refused), _escaped 1 more (only what draws a glyph
+# prints as it is), _entry_problem 2 more (a tool name holds only letters, digits and _ . : -). guards.py 10: the send
+# step 7 net (_send_step 35 with its own urllib import, _batch_send 32, _refused_scripts 25, _listed_on_messenger 16,
+# _messenger_site 5, STEP_KEYS 3, MOVES 1 more for open( by any name; _checked_box 58, _typed_elsewhere 21, _types 7, TYPERS 3
+# and CHECK_SECONDS 1 gone, check_desktop 20 fewer); the sender's ticket 2 (check 4 more: it files the ticket for a
+# command it lets run; _judged_send 2 more: the sender's tools take it; check_outgoing 4 fewer: the --session check
+# gone); the requests ledger 1 (the coarse places). cli.py 11: the `script` action 10 and --entry 1. messages_send.py 2
+# fewer (plugin): --session gone.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 16539
-PLUGIN_BUDGET = 42614
+CORE_BUDGET = 16608
+PLUGIN_BUDGET = 42681
 
 
 def _lines(files):

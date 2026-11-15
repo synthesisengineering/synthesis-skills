@@ -479,51 +479,53 @@ whose input names anything its connector fetches, reads or carries when it runs 
 path, a file, an attachment, an upload, a download, media, an image, a photo, a picture, video, audio, a voice clip, a
 blob, a sticker, a thumbnail or an avatar) is never covered, since a batch binds words, not what a url, a path or a
 file holds when the call runs. A messages entry binds what the sender's own approval binds; a photo beside it
-is outside every batch. A browser entry is sent in two calls on one tab, after any earlier calls that type the words
-and send nothing (the review of 5.23.0: one call that cleared, typed and sent made the guard trust which tab, the
-focus, an emptied box and an earlier paste, none of which it can see):
+is outside every batch. A Messenger entry is sent in one step, a single `browser_batch` (the review's third round: a
+check read in one call and a Return pressed in another left room between them for a page script that rewrote what the
+check reported, a typist the guard could not see, and another session):
 
-1. **The check.** The browser's JavaScript tool runs, on the tab, exactly the expression `synthesis sends
-   composer-check` prints, and it reads the page so (from a live Messenger chat, 2026-11-14):
-   - **The box** is the one contenteditable textbox whose `aria-label` starts with `Write to` or names a message, whose
-     `aria-placeholder` is `Aa`, or that is a Lexical editor (`data-lexical-editor`). Two such boxes on the page read as
-     `box: ambiguous`, and no box as `none`; either matches nothing.
-   - **Its text** is the box's `innerText`. Lexical ends it with one line break, which the guard leaves off, so an empty
-     box (a single line break) reads as empty; a shift+Enter line break reads as one line break inside the text. Past
-     that one break the comparison is exact.
-   - **The focus** is whether the page's focused element is the box or inside it.
-   - **The composer** is the box's nearest ancestor that also holds a control whose `aria-label` names sending (`Press
-     enter to send`, `Send`) or a file or attachment (`Attach a file`). What is staged is the count of images, video,
-     audio, canvases, objects, frames and `Remove` controls inside it and outside the box; with no such ancestor it is
-     `unknown`, which matches nothing.
-   - **Its mode** (the review of 5.24.0; reply mode and a plain composer read live on 2026-11-15, edit mode not yet):
-     the count of what puts the composer in another mode, outside the box, inside the composer or in any other child of
-     the composer's parent, where the reply banner sits as the composer's previous sibling: text that opens with
-     `Replying to`, `Editing`, `Cancel reply` or `Cancel edit`; a control labelled for a reply or an edit (`Cancel
-     reply`); a quotation; and a heading (`role="heading"` or `h1` to `h6`) outside the composer, whatever it reads.
-     Inside the composer a heading counts only by those words, since Messenger's composer always holds a visually
-     hidden `Compose` heading. With it, the count of images inside the box, whose `innerText` leaves an emoji drawn as
-     an image out. Either above nothing matches. In plain mode the composer is its parent's only child; were a page to
-     put more beside it, a heading there would void every check, so nothing is sent and each send waits for its code.
+1. **A navigate** on a tab it names, which this session's newest list of tabs already shows on the entry's
+   conversation, to that conversation's https address with no query or fragment (`https://www.<its address>/`). It
+   loads the page again, so whatever an earlier script did to it goes with it; since the tab already showed that
+   conversation, no session's guard reads another address for it while the step runs.
+2. **The words typed** on that tab, and nothing else: typing with no line break, shift+Return for each line break,
+   select-all with Delete or Backspace to clear, and waits. No click and no other key: Return sends the box as it stands,
+   and the composer's neighbours are send controls themselves (`Send a like` sends a thumbs-up; the coordinator's live
+   read of 2026-11-14).
+3. **Last, the send script**, exactly as `synthesis sends script --entry <digest prefix>:<its number>` prints it for
+   the entry, run with the JavaScript tool on that tab. It holds the conversation and the SHA-256 of the entry's words,
+   and in one synchronous run, so nothing can act between the read and the send, it:
+   - finds **the box**: the one contenteditable textbox whose `aria-label` starts with `Write to` or names a message,
+     whose `aria-placeholder` is `Aa`, or that is a Lexical editor (`data-lexical-editor`); two such boxes, or none,
+     send nothing;
+   - reads **its words**, its `innerText` with the one line break Lexical ends it with left off (an empty box is a
+     single line break; a shift+Enter break is one line break inside), and compares their SHA-256 with the entry's,
+     each line ending written as `\n`: past that one break the comparison is exact;
+   - reads **the composer**, the box's nearest ancestor that also holds a control whose `aria-label` names sending
+     (`Press enter to send`, `Send`) or a file or attachment (`Attach a file`), and outside the box, in it or in any other
+     child of its parent (in plain mode the composer is its parent's only child, live 2026-11-15): **what is staged**
+     (images, video, audio, canvases, objects, frames, pictures, an svg outside a control such as a file's icon, and a
+     control labelled to remove, close, cancel, delete or discard), and **its mode** (text that opens with `Replying
+     to`, `Edit`, `Editing`, `Cancel reply` or `Cancel edit`, a control labelled for a reply or an edit, a quotation, and
+     a heading, `role="heading"` or `h1` to `h6`, outside the composer whatever it reads; inside it a heading counts
+     only by those words, since Messenger's composer always holds a visually hidden `Compose` heading), with the images
+     inside the box, which `innerText` leaves out. Reply mode was read live on 2026-11-15; edit mode and a staged file
+     have not been;
+   - checks that **the page** is the entry's conversation, by its site and path;
+   - and only when all of that holds, clicks the one control in the composer labelled exactly `Press enter to send` or
+     `Send`. It returns one JSON report: the address, whether the conversation and the words matched, the counts, the
+     controls it found, whether it sent, and the box's text right after (empty when Messenger took the words at once).
 
-   It returns the page's address with those, as one JSON report the guard finds in the call's result. No page script
-   but the shipped read-only ones (this check, and the extractors `messenger_messages.py` and `chat_page.py` print) may
-   run on that tab since its last load, a navigation to an address: any other, in this session's record, can make the
-   check report what it likes, so it voids every check on that tab until the page loads again.
-2. **The send.** A call on the same tab, which it names, of the same browser server, holding one action: a plain
-   Return or Enter (repeat 1), made within 15 seconds of a check that read the focus in the box, with no call between
-   them that could type: none from this session (a browser call on any tab, computer use, a shell's `osascript`
-   keystrokes and their kin), and none in another session's record, read where its prompt hook recorded it, since the
-   check. That is the one action that sends exactly the box's text. A click never is: the composer's
-   neighbours are send controls themselves (`Send a like` sends a thumbs-up, `Send a voice clip` starts a recording;
-   the coordinator's live read of 2026-11-14), so the guard cannot tie a click to the control that sends the box, and a
-   click there waits for the code per call.
-
-The guard reads the check's result from the session's own record and matches only when its address names the entry's
-conversation, the box's text equals the entry's text, the focus was in the box and nothing waits beside it; anything
-else is a code per call. A conversation is a page's site and path, its trailing slash and query left off: the four
-forms above are four distinct conversations (every chat facebook.com lists links to `/messages/e2ee/t/<id>/`), and a
-send on one never spends an entry for another. Each entry sends once, decided under the send guard's lock; only within
+`synthesis sends composer-check` prints the same reading as a script that sends nothing, for a look at the page. On a
+Messenger site's tab (a page of facebook.com or messenger.com or a host under them, which share the chat's origin, by
+this call's own navigates, this session's newest list of tabs or the newest list of any session active in the last 12
+hours) no page script runs but the shipped read-only ones (the composer check, and the extractors
+`messenger_messages.py` and `chat_page.py` print) and the send script as the last step of its send step; any other,
+a navigate to a `javascript:` address included, is refused at its own call, since it can change what the send reads
+or what a click sends, then or later. The guard spends the entry when it lets the step through, so a step whose script
+then finds the page otherwise sends nothing and the entry is gone: the principal's code per call (the Return after the
+words) or a new batch sends it. A conversation is a page's site and path, its trailing slash and query left off: the
+four forms above are four distinct conversations (every chat facebook.com lists links to `/messages/e2ee/t/<id>/`), and
+a send on one never spends an entry for another. Each entry sends once, decided under the send guard's lock; only within
 12 hours of the grant; and only from the session that ran the granted command, as the guard is told it (a hook's
 payload). The messages sender names no session (its third round: a link or runpy kept a `--session` naming another):
 when the guard lets a command that runs `messages_send.py` by name through, it files a one-use ticket for the session
@@ -539,11 +541,10 @@ written to an append-only spends ledger and to the day's ledger as `batch:<diges
 sends log` shows it for "On your behalf".
 
 **Every other check runs first.** The register scan, the format rules, an address that can change
-(`temporary_addresses`) and a time in the words (`fresh_calendar`) hold an entry as they hold any message, a browser
-box's own text included: an entry that names a clock time still needs a fresh calendar read when it goes, or the
-hold's own code, which spends the entry with the send. For a Messenger entry that code binds the checked conversation
-and words, and the send it releases needs a check made after the code was asked for that reads the same words. A
-meeting placed on today is never covered
+(`temporary_addresses`) and a time in the words (`fresh_calendar`) hold an entry as they hold any message, a Messenger
+entry's words included: an entry that names a clock time still needs a fresh calendar read when it goes, or the
+hold's own code, which spends the entry with the send. For a Messenger entry that code binds the exact send step: its
+conversation's address, and its script, which holds the words' digest. A meeting placed on today is never covered
 (`same_day_meetings`). No shell post is a batch's entry: the messages sender asks the guard itself.
 
 **The window and the batch never combine.** The batch is looked at after every check and before the window; a send
@@ -658,7 +659,9 @@ code when its summaries name a message, comment, review, post, reply or tweet: m
 are the ones that post. A call that names none passes, as before 5.21.1 (the principal's ruling of 2026-11-14, "Skip
 typed text that names no post"), and so does every call on a local app. A page script (`javascript_tool`, alone or as a batch step) reaches the guard: on a messaging
 site one that clicks, submits, sends a key or an event, writes by fetch (a POST, PUT, PATCH or DELETE, or
-`sendBeacon`) or sets a value waits; elsewhere one that submits a form, sends a key or an event, writes by fetch, or
+`sendBeacon`), sets a value, moves the tab or opens a page by any name (`window.open(`, `globalThis.open(`,
+`window['open'](`, a bare `open(`: a chat's address opens it and marks it read) waits, and on a Messenger site's tab
+none runs but the plugin's own read-only ones ("Batches"); elsewhere one that submits a form, sends a key or an event, writes by fetch, or
 clicks with a word that publishes in it (submit, post, send, publish, reply, comment, share, review, rating, tweet,
 done) waits, unless it names a search, a sign-in, a password or a query as a whole word; on a local app none waits.
 A form fill alone (`form_input`) is typed text, scanned as a batch's is. Measured the same way: the key rule holds 16

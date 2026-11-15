@@ -19,15 +19,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   runs first (the register scan, the format rules, an address that can change, a fresh calendar read for a time, and a
   meeting placed on today never covered), a window and a batch never combine, and anything that differs waits for the
   code per call.
-- **A batch's Messenger send is verified, then sent** (core). The shipped composer check (`synthesis sends
-  composer-check`), run with the browser's JavaScript tool on the conversation's tab, reads the page's address, the one
-  message box (labelled `Write to ...` or for a message, with the placeholder `Aa`, or a Lexical editor), its text with
-  the one trailing line break Lexical adds left off, the focus, the composer's mode (a reply or an edit), images in the
-  box and anything staged; one plain Return or Enter on that tab within 15 seconds then sends it, with no call that
-  could type between, from this session or another, and no page script but the shipped read-only ones on that tab since
-  its last load. A time's code binds the checked words. A click never covers an entry, since the composer's neighbours
-  send too. The four Messenger address forms (`facebook.com/messages/t/<id>`, `facebook.com/messages/e2ee/t/<id>`,
-  `messenger.com/t/<id>`, `messenger.com/e2ee/t/<id>`) are four conversations, named only in that form, one entry each.
+- **A batch's Messenger send is one step that reads and sends in the same run** (core). One browser_batch on a tab
+  already showing the conversation loads its address there again, types the words, and last runs the entry's send
+  script (`synthesis sends script`), which finds the one message box (labelled `Write to ...` or for a message, with the
+  placeholder `Aa`, or a Lexical editor), compares its words, the one trailing line break Lexical adds left off, with
+  the entry's by SHA-256, reads the composer and its parent for anything staged and for a reply or edit banner, checks
+  the page is the conversation, and only then clicks the one `Press enter to send` control, in one synchronous run, so
+  no typist, other session or later script acts between the read and the send. On a Messenger site's tab no page
+  script runs but the shipped read-only ones and that send script; `open(` by any name now waits on a messaging site
+  as `window.open(` did. A time's code binds the exact step. The four Messenger address forms
+  (`facebook.com/messages/t/<id>`, `facebook.com/messages/e2ee/t/<id>`, `messenger.com/t/<id>`,
+  `messenger.com/e2ee/t/<id>`) are four conversations, named only in that form, one entry each.
 - **The guard reads every `synthesis sends` command in a line with the CLI's own parser** (core): each window or batch
   request asks for its own code, a command it cannot read as the CLI would waits for one, a file goes only with `sends
   batch`, and a held window or batch code no longer lets the rest of the line through unjudged.
