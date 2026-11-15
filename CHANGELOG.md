@@ -26,11 +26,23 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   placeholder `Aa`, or a Lexical editor), compares its words, the one trailing line break Lexical adds left off, with
   the entry's by SHA-256, reads the composer and its parent for anything staged and for a reply or edit banner, checks
   the page is the conversation, and only then clicks the one `Press enter to send` control, in one synchronous run, so
-  no typist, other session or later script acts between the read and the send. On a Messenger site's tab, or one whose
-  page no list of tabs names, no page script runs but the shipped read-only ones and that send script; `open(` by any
-  name now waits on a messaging site as `window.open(` did. A time's code binds the exact step. The four Messenger
+  no typist, other session or later script acts between the read and the send. On a Messenger site's tab (a page of
+  facebook.com or messenger.com, or of m.me, fb.com, fb.me or Business Suite's inbox), on one whose page no list of tabs
+  names, and on one a step earlier in the same call may have moved (a navigate off a local app, a click, a key), no page
+  script runs but the shipped read-only ones and that send script, whichever browser tool runs it, a navigate to a
+  `javascript:` address included; on every other messaging site's page none runs but the shipped read-only ones, so
+  `open(` is refused there by any spelling. A time's code binds the exact step. The four Messenger
   address forms (`facebook.com/messages/t/<id>`, `facebook.com/messages/e2ee/t/<id>`, `messenger.com/t/<id>`,
   `messenger.com/e2ee/t/<id>`) are four conversations, named only in that form, one entry each.
+- **What review round 4 found** (core). The messages sender's ticket is filed for each run of the sender a command
+  makes (its program resolved as the write rules resolve one, through links), bound to that run's file, arguments and
+  folder, and taken only by that run, so a `cat` or a `grep` of the sender files none and two sends in one line take
+  one each. Another session's call voids a send step only in the same browser, on its tab or naming none, when it can
+  change the page and no hook refused it, and only the extension's `Created new tab. Tab ID: N` makes a tab this
+  session's. The newest list of tabs across sessions decides a tab's page. A batch closes 12 hours after its code was
+  typed, as `sends status` says. The day's ledger reads a Messenger send's own report, so `synthesis sends log` names
+  one its script declined as not sent. A listing prints as its code any character whose name says it is a blank,
+  filler, joiner, subjoiner, conjoiner or selector.
 - **The guard reads every `synthesis sends` command in a line with the CLI's own parser** (core): each window or batch
   request asks for its own code, a command it cannot read as the CLI would waits for one, a file goes only with `sends
   batch`, and a held window or batch code no longer lets the rest of the line through unjudged.

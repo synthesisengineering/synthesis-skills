@@ -1421,10 +1421,22 @@ ROOT = Path(__file__).resolve().parents[1]
 # takes only the shipped readers, and a javascript: address is named as one; its comment 5 more, with the 60 days the rule was decided by). What stays of main's:
 # _tabs 20, _script_address 6, _url_read 5, _browser_item 4, _steps 2, _driven_steps 2, _puts 1, BROWSER_STEPS 1,
 # desktop_tool 1, TAB_LINE's comment 1, 4 blank lines, and install.py 1.
+# Review round 4 of the batch approval (2026-11-15): core 107 more and plugin 111. guards.py 64: _sender_runs 15 (the
+# messages sender's run a command makes, its program resolved as the write rules resolve one: its real file, arguments
+# and folder), _moves 10 (a step that may leave its tab on a page no list shows yet), _refused_scripts 10 (a script after
+# such a step, another session's newer list), _made_here 7 (only this browser's calls that name the tab or none and can
+# change the page, none a hook refused, and the extension's own `Created new tab` words), _messenger_site 4 (every host
+# the guard counts as Messenger's), _listed_on_messenger 4 (the newest list across sessions decides), _tab_list and _tabs
+# 2 (a list's time), check_send 1, QUIET_ACTIONS 1, _batch_send 1 (where its script's report will be), check 1 and 8
+# blank lines. sends.py 41: _reported 13 (whether a Messenger send's script sent, from its report), _run_key 7, ledger 4,
+# ticket 2, sender_ticket 1 (a ticket bound to a run, one for each run, taken by that run alone), _escaped 2 and
+# BLANK_NAMES 1 (a blank by its name), open_batch 1 (closed 12 hours after its code was typed), log 1, the comments 3 and
+# 6 blank lines. cli.py 2: `sends log` names a send its script declined, or one not yet confirmed. In the plugin,
+# messages_send.py 4 more: it hands the guard its own run (its file, the arguments it was run with, its folder).
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 17350
-PLUGIN_BUDGET = 43423
+CORE_BUDGET = 17457
+PLUGIN_BUDGET = 43534
 
 
 def _lines(files):

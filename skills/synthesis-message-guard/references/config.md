@@ -457,10 +457,12 @@ a file over 1 MB.
 
 **Asking.** `synthesis sends batch <file>` prints the digest (SHA-256 of the batch's canonical JSON: sorted keys, no
 spaces, UTF-8), the count and each entry's channel and recipient; `--show` also prints every text in full and opens
-nothing, so it needs no code. Every listing quotes each text as JSON and prints as it is only what draws a glyph (a
-letter, mark, digit, punctuation or symbol), a plain space and a line break; every other character (a control, format,
-separator, private or unassigned one, every other space) is written as its code, and so are the fillers, blanks and
-variation selectors of a drawing kind that render as nothing (U+1D159 and U+16FE4 among them, the third round). The
+nothing, so it needs no code. Every listing quotes each text as JSON and prints as it is a letter, mark, digit,
+punctuation or symbol, a plain space and a line break; every other character (a control, format, separator, private
+or unassigned one, every other space) is written as its code, and so is any character of those kinds that is one of
+the listed fillers, blanks and variation selectors (U+1D159 and U+16FE4 among them, the third round) or whose name says
+it is a blank, filler, joiner, subjoiner, conjoiner or selector (U+13441, U+2D7F, U+1107F, U+11A47 and U+1BC9D among
+them, review round 4, #8). The
 file's path, the batch's name and its project are shown the same way (the review of 5.24.0), and a connector call's
 input prints one field to a line. The command opens a batch only on the principal's code for exactly that
 digest, typed in the session that runs it, from any terminal: an agent could fake a terminal of the principal's own, so
@@ -524,25 +526,36 @@ check reported, a typist the guard could not see, and another session):
      controls it found, whether it sent, and the box's text right after (empty when Messenger took the words at once).
 
 `synthesis sends composer-check` prints the same reading as a script that sends nothing, for a look at the page. On a
-Messenger site's tab (a page of facebook.com or messenger.com or a host under them, which share the chat's origin, by
-this call's own navigates, this session's newest list of tabs or the newest list of any session active in the last 12
-hours) no page script runs but the shipped read-only ones (the composer check, and the extractors
-`messenger_messages.py` and `chat_page.py` print) and the send script as the last step of its send step; any other,
-whichever browser tool runs it (a driven browser's `browser_evaluate` and `browser_run_code_unsafe` included) and a
-navigate to a `javascript:` address too, is refused at its own call, since it can change what the send reads
-or what a click sends, then or later. A page no list of tabs names (a tab not listed yet, or one a navigate sent where
-no host is named) takes none either, since it may be a Messenger site's (the third round's opener ran on such a tab).
+Messenger site's tab (a page of facebook.com or messenger.com or a host under them, which share the chat's origin, or
+of a host the guard counts as Messenger's, where the browser lands on a chat: m.me, fb.com, fb.me and Business Suite's
+inbox), by this call's own navigates, this session's newest list of tabs, or another active session's list when that
+is the newest of all that name the tab, no page script runs but the shipped read-only ones (the composer check, and the
+extractors `messenger_messages.py` and `chat_page.py` print) and the send script as the last step of its send step; any
+other, whichever browser tool runs it (Claude in Chrome's, the built-in pane's, and a driven browser's
+`browser_evaluate` and `browser_run_code_unsafe`), and a navigate to a `javascript:` address too, read as a URL parser
+reads it, from any of them, alone or in a batch, is refused at its own call, since it can change what the send reads or
+what a click sends, then or later. A page no list of tabs names (a tab not listed yet, one a navigate sent where no host
+is named, or a page a driven browser's record does not show) takes none either, since it may be a Messenger site's (the
+third round's opener ran on such a tab), and nor does a tab a step earlier in the same call may have moved (a navigate
+other than to a local app, a click, a key, typed words with a line break; review round 4, #2: a short link or a followed
+link landed on a chat), until a list of tabs shows where it landed. Each browser keeps its own tab ids and lists. Over
+the 60 days to 2026-11-15, 142 scripts ran in a batch after such a step, 58 of them on a messaging site's page, which is
+refused anyway; the other 84 now run in a call of their own, with no code.
 The guard spends the entry when it lets the step through, so a step whose script then finds the page wrong sends
 nothing, and that entry needs a new code: the principal's code per call (the Return after the words) or a new batch. A
 conversation is a page's site and path, its trailing slash and query left off: the
 four forms above are four distinct conversations (every chat facebook.com lists links to `/messages/e2ee/t/<id>/`), and
 a send on one never spends an entry for another. Each entry sends once, decided under the send guard's lock; only within
-12 hours of the grant; and only from the session that ran the granted command, as the guard is told it (a hook's
-payload). The messages sender names no session (its third round: a link or runpy kept a `--session` naming another):
-when the guard lets a command that runs `messages_send.py` by name through, it files a one-use ticket for the session
-its hook names, and the sender's own guard call takes the one ticket filed in the last minute; a run the guard did not
-see as the sender's finds none and waits for the code per call, and so do two sessions' sends within the same minute,
-each of which finds more than one ticket. That session's own record must show, each time an
+12 hours of the principal typing the batch's code (what `synthesis sends status` names as its end); and only from the
+session that ran the granted command, as the guard is told it (a hook's payload). The messages sender names no session
+(its third round: a link or runpy kept a `--session` naming another): for each run of the sender a command the guard
+lets through makes, its program resolved as the write rules resolve one (an interpreter's file or module, a script run
+by its path, each through its links), the guard files a one-use ticket for the session its hook names, bound to that
+run (the sender's real file, its arguments and its real folder); the sender hands its guard call its own run, which
+takes only a ticket of the same run filed in the last minute (review round 4, #6, #11 and #12: a `cat` or a `grep` of
+the sender's file filed one, any run took it, and a line of two sends had one). A command that only names the file
+files none; a run the guard did not see as the sender's (a copy under another name, runpy) finds none and waits for the
+code per call, and so do identical runs of two sessions in one folder within the same minute. That session's own record must show, each time an
 entry is spent, the principal typing the batch's
 code after the guard first filed that code for that digest. The guard records each request it files for a batch, its
 digest and code, in a ledger only it writes (`sends._requests_file`); no line of the session's record stands in for
@@ -550,7 +563,13 @@ it, since the agent writes those (the review's third round: its own sentence nam
 repeating both after the principal typed the code held a granted batch). A code typed for anything else backs
 nothing, so batch state alone is never a grant. Each send is
 written to an append-only spends ledger and to the day's ledger as `batch:<digest prefix>:<index>`, so `synthesis
-sends log` shows it for "On your behalf".
+sends log` shows it for "On your behalf". A Messenger send step's line is read with its send script's own report from
+the session's record: `synthesis sends log` names one whose script declined as not sent, and one with no report yet as
+unconfirmed (review round 4's notes: the line named a message the script then declined to send). Another session's
+call voids a send step only when it went to the same browser, names the step's tab or none, can change the page (not
+a screenshot, a scroll, a wait or a hover) and no hook refused it, and a tab is this session's only by the extension's
+own `Created new tab. Tab ID: N` (the words every one of 89 such results in 60 days of records used, each naming in
+`Executed on tabId` the tab it made).
 
 **Every other check runs first.** The register scan, the format rules, an address that can change
 (`temporary_addresses`) and a time in the words (`fresh_calendar`) hold an entry as they hold any message, a Messenger
