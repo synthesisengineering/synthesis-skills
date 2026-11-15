@@ -1361,10 +1361,13 @@ ROOT = Path(__file__).resolve().parents[1]
 # command it lets run; _judged_send 2 more: the sender's tools take it; check_outgoing 4 fewer: the --session check
 # gone); the requests ledger 1 (the coarse places). cli.py 11: the `script` action 10 and --entry 1. messages_send.py 2
 # fewer (plugin): --session gone.
+# Round 3's probes on that head (#2: an opener script on a tab no list of tabs had named yet passed): core 8 more,
+# plugin 8. guards.py 8: _refused_scripts 8 more (a page no list of tabs names takes no page script 4, the page a
+# javascript: address runs on 3, its note 1).
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 16608
-PLUGIN_BUDGET = 42681
+CORE_BUDGET = 16616
+PLUGIN_BUDGET = 42689
 
 
 def _lines(files):

@@ -521,7 +521,8 @@ this call's own navigates, this session's newest list of tabs or the newest list
 hours) no page script runs but the shipped read-only ones (the composer check, and the extractors
 `messenger_messages.py` and `chat_page.py` print) and the send script as the last step of its send step; any other,
 a navigate to a `javascript:` address included, is refused at its own call, since it can change what the send reads
-or what a click sends, then or later. The guard spends the entry when it lets the step through, so a step whose script
+or what a click sends, then or later. A page no list of tabs names (a tab not listed yet, or one a navigate sent where
+no host is named) takes none either, since it may be a Messenger site's (the third round's opener ran on such a tab). The guard spends the entry when it lets the step through, so a step whose script
 then finds the page otherwise sends nothing and the entry is gone: the principal's code per call (the Return after the
 words) or a new batch sends it. A conversation is a page's site and path, its trailing slash and query left off: the
 four forms above are four distinct conversations (every chat facebook.com lists links to `/messages/e2ee/t/<id>/`), and

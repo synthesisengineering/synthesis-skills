@@ -5549,10 +5549,14 @@ def _listed_on_messenger(tab: str) -> bool:
 def _refused_scripts(name: str, tool_input: dict, session: dict | None, step) -> str | None:
     """Why a page script this browser call runs is refused: on a Messenger site's tab, by this call's own navigates, this
     session's newest list of tabs or another active session's, only the shipped read-only scripts run, and a send script
-    only last in its send step (`step`); a navigate to a javascript: address is such a script."""
+    only last in its send step (`step`); a navigate to a javascript: address is such a script. A page no list of tabs
+    names may be a Messenger site's, so it takes none (the third round's opener ran on a tab no list had named yet)."""
     from synthesis import sends
     readers, steps = None, list(_steps("computer" if name == "browser" else name, tool_input, session, keep=True))
-    for n, (kind, given, address, tab) in enumerate(steps):
+    shown, before = _tabs(str((session or {}).get("transcript_path") or ""))[0], {}
+    for n, (kind, given, after, tab) in enumerate(steps):
+        address = before.get(tab, shown.get(tab, "")) if kind.endswith("navigate") else after  # javascript: runs on the page before
+        before[tab] = after
         url = str(given.get("url") or "").strip()
         text = (str(given.get("text") or "").strip() if kind.endswith(("javascript_tool", "browser_script")) else
                 url if kind.endswith("navigate") and url.lower().startswith("javascript:") else None)
@@ -5563,6 +5567,10 @@ def _refused_scripts(name: str, tool_input: dict, session: dict | None, step) ->
                     "browser_batch that navigates its tab, already on the entry's conversation, to that address, types the words "
                     "there and runs the script `synthesis sends script` prints.")
         readers = _read_only_scripts() if readers is None else readers
+        if text not in readers and not address:
+            return (f"This page script runs on tab {tab or 'in front'}, whose page no list of tabs names (a tab not listed yet, "
+                    "or one a navigate sent where no host is named), and which may be a Messenger site's: list the tabs or "
+                    "navigate to an address first.")
         if text not in readers and (_messenger_site(address) or _listed_on_messenger(tab)):
             return (f"This page script runs on a Messenger site's tab ({address or f'tab {tab}, which another session lists there'}),"
                     " where only the plugin's shipped read-only scripts run (the composer check and the extractors) and a batch's "

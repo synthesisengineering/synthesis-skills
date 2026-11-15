@@ -25,10 +25,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   placeholder `Aa`, or a Lexical editor), compares its words, the one trailing line break Lexical adds left off, with
   the entry's by SHA-256, reads the composer and its parent for anything staged and for a reply or edit banner, checks
   the page is the conversation, and only then clicks the one `Press enter to send` control, in one synchronous run, so
-  no typist, other session or later script acts between the read and the send. On a Messenger site's tab no page
-  script runs but the shipped read-only ones and that send script; `open(` by any name now waits on a messaging site
-  as `window.open(` did. A time's code binds the exact step. The four Messenger address forms
-  (`facebook.com/messages/t/<id>`, `facebook.com/messages/e2ee/t/<id>`, `messenger.com/t/<id>`,
+  no typist, other session or later script acts between the read and the send. On a Messenger site's tab, or one whose
+  page no list of tabs names, no page script runs but the shipped read-only ones and that send script; `open(` by any
+  name now waits on a messaging site as `window.open(` did. A time's code binds the exact step. The four Messenger
+  address forms (`facebook.com/messages/t/<id>`, `facebook.com/messages/e2ee/t/<id>`, `messenger.com/t/<id>`,
   `messenger.com/e2ee/t/<id>`) are four conversations, named only in that form, one entry each.
 - **The guard reads every `synthesis sends` command in a line with the CLI's own parser** (core): each window or batch
   request asks for its own code, a command it cannot read as the CLI would waits for one, a file goes only with `sends
