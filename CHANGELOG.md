@@ -57,7 +57,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   what the hook says. The hook asks for the same subject where it reads the CLI as the command and only checks it, so
   the principal approves before the run and the install spends it. Where no runtime runs the prompt hook (after an
   uninstall), the session's own record showing the code is enough (`approvals.answered`). The first install, help, a dry
-  run and words the CLI refuses need no code.
+  run and words the CLI refuses need no code. That holds for every route that starts the CLI, setup.py or the release
+  script as a process of its own. A program that runs in the installer's own process (imports it and calls it, or puts
+  its own function in place of the check) is held only by the guard's reading of that program, which holds it where it
+  spells the installer and passes it where it builds the names at run time, the guard's documented residual (review
+  round 2 of 22.18, K1). setup.py takes `--session` for the session the principal types the code in, from his own
+  terminal, where no harness gives one, and passes it to the install and the uninstall (K2).
 - **The code binds the install that happens** (H2). `package_hash` read only `synthesis/*.py` and the stable scripts, of
   the folder as the hook saw it: a package folder added after the code was installed on it, and a change made after the
   hook's check was what got installed. Now `package_digest` is the sha256 of every file an install copies (the whole
@@ -67,7 +72,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   launcher is not read as the CLI. A release older than the running one is a subject of its own, `rollback`, named to
   the principal as a downgrade with both versions. The release tool's own install needs no code only where the process
   is that tool inside the protected runtime, started isolated (`-I -S`), and never for a rollback
-  (`install.release_route`); run from a checkout, as main runs it, its install stage waits for the code.
+  (`install.release_route`); run from a checkout, as main runs it, its install stage waits for the code. That test trusts
+  the process's main program, which a program in the same process can set, until 22.8's launcher replaces it with a grant
+  the hook issues when it lets the launcher's line through (K1).
 
 - **The daily rituals' skill file holds the Messenger rule** (`synthesis-daily-rituals` 3.19.0), by the move the principal
   approved in his decision packet of 2026-11-15. Two passages that describe the skill (its introduction and its

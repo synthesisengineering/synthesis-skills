@@ -131,8 +131,9 @@ def release_route() -> bool:
     """Whether this process is the release tool running from the protected runtime: its main program is that tool inside
     a release under this home, started isolated (-I -S, as the release launcher starts it), so no code of an agent's runs
     in it. Its install of a fresh clone's merged tag needs no code (the principal's ruling of 2026-11-15); a rollback
-    still does. An agent's program is never this route: it is not that file, and that file started any other way, or
-    imported by a program, is not the process's isolated main program."""
+    still does. It trusts the process's main program, which a program in the same process can set (a module of its own
+    put in as `__main__`), so such a program is held only by the guard's reading of it (review round 2 of 22.18, K1);
+    22.8's launcher replaces this with a grant the hook issues when it lets the launcher's line through."""
     import __main__
     main = os.path.realpath(getattr(__main__, "__file__", "") or os.devnull)
     return bool(sys.flags.isolated and sys.flags.no_site) and main.endswith(os.sep + RELEASE_TOOL) and paths.inside(

@@ -491,12 +491,19 @@ harness that gives no transcript cannot carry approved sends or deploys until it
    - **The runtime itself** (5.23.1; review round 2, N5 and N6; review round 1 of 22.18, H1
      and H2; review round 4 of 5.23.1, Q4). Replacing or removing an installed runtime waits
      for the principal's code for exactly that change, and `install.install` and
-     `install.uninstall` themselves spend it, so a program that calls them directly waits as
-     the CLI, setup.py and the release script do. A release older than the running one is a
-     subject of its own (`rollback`), named to the principal as a downgrade with both
-     versions. Only the release tool running from the protected runtime, started isolated
-     (`-I -S`, as its launcher starts it), installs a merged tag with no code, and never a
-     rollback (`install.release_route`); run from a checkout its install stage waits for the
+     `install.uninstall` themselves spend it, so every route that starts the CLI, setup.py or
+     the release script as a process of its own ends at that check. A program that runs in
+     the installer's own process (imports it and calls it, puts its own function in place of
+     the check, or poses as the release tool) is held only by the guard's reading of that
+     program: where it spells synthesis's installer the guard holds it; where it builds the
+     names at run time it passes, the documented residual below (review round 2 of 22.18,
+     K1). A release older than the running one is a subject of its own (`rollback`), named
+     to the principal as a downgrade with both versions. The release tool running from the
+     protected runtime, started isolated (`-I -S`, as its launcher starts it), installs a
+     merged tag with no code, and never a rollback (`install.release_route`); that test
+     trusts the process's main program, which a program in the same process can set, until
+     22.8's launcher replaces it with a grant the hook issues when it lets the launcher's
+     line through. Run from a checkout, the release script's install stage waits for the
      code. `synthesis install` (with or without
      a folder, and `--git-hooks`, which also points git's global hooks at the commit check)
      and `synthesis uninstall` refuse wherever the home shows a runtime (`install.traces`)

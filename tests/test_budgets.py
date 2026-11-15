@@ -1396,10 +1396,14 @@ ROOT = Path(__file__).resolve().parents[1]
 # 2 (it checks the grant and spends nothing). setup.py 1 and release.py 4: a refused install is said, not raised.
 # Merged with main at b8efb5ee (5.23.1's approval fix, 2026-11-15): main's ceilings (core 16881, plugin 42953) and this
 # branch's two itemized raises above (core 156 and 160, plugin 156 and 165): core 17197 and plugin 43274, measured.
+# 22.18's review round 2 (K1, K2): core 1 more and plugin 10, measured. install.py 1: release_route's docstring says it
+# trusts the process's main program until 22.8's launcher brings a grant the hook issues. setup.py 9: `--session` 2,
+# main 5 (a shell acts only as its own session; the session handed to the install and the uninstall), install_runtime's
+# docstring 2; install_runtime's and _uninstall's own lines change in place.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 17197
-PLUGIN_BUDGET = 43274
+CORE_BUDGET = 17198
+PLUGIN_BUDGET = 43284
 
 
 def _lines(files):
