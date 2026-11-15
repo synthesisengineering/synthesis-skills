@@ -40,6 +40,10 @@ def world(tmp_path, monkeypatch):
                        ("SYNTHESIS_CLAUDE_DESKTOP_DIR", home / "Library" / "Application Support" / "Claude")):
         monkeypatch.setenv(key, str(value))
     monkeypatch.setenv("SYNTHESIS_SESSION", "S-principal")
+    tools = tmp_path / "py-only"  # PATH of the test's own: no `synthesis` of this Mac's stands in for the test home's
+    tools.mkdir()
+    (tools / "python3").symlink_to(sys.executable)
+    monkeypatch.setenv("PATH", f"{tools}:/usr/bin:/bin:/usr/sbin:/sbin")
     record = home / ".claude" / "projects" / "-work" / "S-principal.jsonl"
     record.parent.mkdir(parents=True)
     record.write_text(json.dumps({"type": "user", "message": {"role": "user", "content": "hello"}}) + "\n", encoding="utf-8")

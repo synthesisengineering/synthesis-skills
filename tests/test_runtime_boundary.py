@@ -59,6 +59,7 @@ def world(tmp_path, monkeypatch):
     (tools / "python3").symlink_to(sys.executable)
     work = tmp_path / "work"
     work.mkdir()
+    monkeypatch.setenv("PATH", f"{tools}:/usr/bin:/bin:/usr/sbin:/sbin")  # `synthesis` is the test home's stable launcher
 
     def typed(code: str, grant: bool = True):
         """The principal types approve <code> in his session; the prompt hook grants it where a runtime runs it."""
@@ -221,3 +222,63 @@ def test_a_runtime_removed_on_the_code_is_installed_again_on_a_code_the_session_
     assert cli.main(["install", str(world["benign"])]) == 2 and not (world["v5"] / "current").exists()
     world["typed"](approvals.pending()[0], grant=False)  # the prompt hook did not run: only the record shows it
     assert cli.main(["install", str(world["benign"])]) == 0 and (world["v5"] / "current" / "synthesis" / "hook.py").is_file()
+
+
+# ---- review round 4 of 5.23.1, Q4: the check is in install and uninstall themselves ---------------------------------
+
+def test_a_program_that_calls_the_installer_itself_spends_the_code_too(world):
+    with pytest.raises(install.Unapproved, match="approve followed by the code"):
+        install.install(world["evil"])
+    assert _guards(world) != STUB
+    world["typed"](approvals.pending()[0])
+    install.install(world["evil"])  # the principal's code for exactly this staged copy
+    assert _guards(world) == STUB
+
+
+def test_uninstall_called_itself_waits_too(world):
+    with pytest.raises(install.Unapproved):
+        install.uninstall(codex_cleared=True)
+    assert (world["v5"] / "current").exists()
+
+
+def test_a_rollback_is_its_own_kind_named_as_a_downgrade(world):
+    (world["benign"] / "synthesis" / "__init__.py").write_text('__version__ = "5.0.0"\n')
+    with pytest.raises(install.Unapproved, match=r"back from \d+\.\d+\.\d+ to 5\.0\.0, a downgrade"):
+        install.install(world["benign"])
+    said = world["judge"](f"synthesis install {shlex.quote(str(world['benign']))}")
+    assert "back from" in said and "a downgrade" in said
+    staged = install.change(world["v5"], world["benign"], world["benign"], "d")[0]
+    assert staged["action"] == "rollback" and staged["to"] == "5.0.0"
+
+
+RELEASE = r"""
+import sys
+sys.path.insert(0, sys.argv[1])
+from synthesis import install
+print(install.release_route())
+if len(sys.argv) > 2:
+    try:
+        print(install.install(sys.argv[2]))
+    except install.Unapproved:
+        print("unapproved")
+"""
+
+
+def test_only_the_release_tool_from_the_protected_runtime_started_isolated_is_the_release_route(world, tmp_path):
+    """22.8 runs the release tool from the runtime, `-I -S`, so no code of an agent's runs in it: its install of a merged
+    tag's fresh clone needs no code; a rollback by it still does. An agent's program is never that route."""
+    release = Path(os.path.realpath(world["v5"] / "current"))
+    for root in (release, tmp_path / "elsewhere"):
+        tool = root / install.RELEASE_TOOL
+        tool.parent.mkdir(parents=True, exist_ok=True)
+        tool.write_text(RELEASE)
+    inside, outside = str(release / install.RELEASE_TOOL), str(tmp_path / "elsewhere" / install.RELEASE_TOOL)
+    route = lambda *args: subprocess.run([sys.executable, *args], capture_output=True, text=True, timeout=300).stdout.split()
+    assert route("-I", "-S", inside, str(release))[:1] == ["True"]
+    assert route("-S", inside, str(release))[:1] == ["False"]  # not isolated: PYTHONPATH and the user's folders could run first
+    assert route("-I", "-S", outside, str(release))[:1] == ["False"]  # the same file anywhere but the protected runtime
+    assert install.release_route() is False
+    assert "synthesis runtime" in route("-I", "-S", inside, str(release), str(world["benign"]))[-1] or (
+        "# a release of its own" in (world["v5"] / "current" / "synthesis" / "paths.py").read_text())
+    (world["evil"] / "synthesis" / "__init__.py").write_text('__version__ = "5.0.0"\n')
+    assert route("-I", "-S", inside, str(release), str(world["evil"]))[-1] == "unapproved"  # a rollback, even by it

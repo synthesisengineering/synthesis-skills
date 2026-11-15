@@ -15,6 +15,14 @@ from synthesis import install
 ROOT = Path(__file__).resolve().parents[1]
 
 
+@pytest.fixture(autouse=True)
+def the_principal_approves_each_change_of_the_runtime(monkeypatch):
+    """An install over an installed runtime spends the principal's code inside install itself (review round 4 of 5.23.1,
+    Q4), which tests/test_runtime_boundary.py holds to; these tests are about what an install lays out, so it is given.
+    A test that runs install in a process of its own meets the real check (the command line test below)."""
+    monkeypatch.setattr(install, "approval", lambda *args, **kwargs: None)
+
+
 def _plugin_copy(tmp_path, name="plugin-v1"):
     dest = tmp_path / name
     shutil.copytree(ROOT / "synthesis", dest / "synthesis", ignore=shutil.ignore_patterns("__pycache__"))
@@ -190,19 +198,23 @@ def test_uninstall_dry_run_changes_nothing(tmp_path, isolated_home):
 
 
 def test_install_rerun_changes_nothing(tmp_path, isolated_home):
+    """No file is written again. The releases folder's own time moves: every install stages its copy there and checks
+    it before anything switches (review round 1 of 22.18), and the copy of an unchanged release is then removed."""
     plugin = _plugin_copy(tmp_path)
     install.install(plugin)
-    stamp = {str(p): p.stat().st_mtime_ns for p in isolated_home.rglob("*")}
+    stamp = {str(p): p.stat().st_mtime_ns for p in isolated_home.rglob("*") if p.is_file()}
     install.install(plugin)
-    assert {str(p): p.stat().st_mtime_ns for p in isolated_home.rglob("*")} == stamp
+    assert {str(p): p.stat().st_mtime_ns for p in isolated_home.rglob("*") if p.is_file()} == stamp
+    assert not [p for p in (isolated_home / "releases").iterdir() if p.name.startswith(".")]
 
 
-def test_command_line_install_with_git_hooks_then_uninstall(tmp_path, isolated_home, principal):
+def test_command_line_install_with_git_hooks_then_uninstall(tmp_path, isolated_home, request):
     plugin = _plugin_copy(tmp_path)
     run = lambda *a: subprocess.run([sys.executable, "-S", str(plugin / "synthesis" / "install.py"), *a],
                                     capture_output=True, text=True, env={**os.environ, "SYNTHESIS_HOME": str(isolated_home)})
     out = run(str(plugin), "--git-hooks")  # a first install: no code
     assert out.returncode == 0 and "core.hooksPath ->" in out.stdout
+    principal = request.getfixturevalue("principal")  # the principal's session, as the prompt hook records it once a runtime runs
     out = run("uninstall")  # removing an installed runtime waits for the principal's code (review round 1 of 22.18)
     assert out.returncode == 2 and "approve followed by the code" in out.stderr and _hooks_path() != []
     principal(out.stderr)
