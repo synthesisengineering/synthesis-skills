@@ -6,7 +6,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
 
 ## [5.24.0] - 2026-11-15
 
-- **One approval for a reviewed batch of sends** (core, synthesis-message-guard). `synthesis sends batch <file>` opens a
+- **One approval for a reviewed batch of sends** (core, synthesis-message-guard 2.13.0). `synthesis sends batch <file>` opens a
   batch of 1 to 50 exact sends on the principal's code for its digest: the hold carries the whole listing, each text
   quoted with every hidden character as its code, and the command spends the code itself, from any terminal. Each
   entry then goes once, as written, within 12 hours, from the session that ran the granted command, whose own record

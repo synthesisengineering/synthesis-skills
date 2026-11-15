@@ -5,7 +5,7 @@ license: "Apache-2.0"
 depends_on: ["synthesis-agent-correspondence"]
 metadata:
   author: "Rajiv Pant"
-  version: "2.12.0"
+  version: "2.13.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
   format: v5
@@ -36,7 +36,7 @@ format rules, and then the principal must approve that exact call.
 15. **A calendar write that puts the principal at a place carries its travel line** (2026-11-11). With `in_person_travel` in the config, such a write is refused until the event's description says how they get there. It asks for no approval (references/config.md).
 16. **An address that can change never goes to a person** (2026-11-12). With `temporary_addresses` in the config, a send, draft, shell post or typed words holding a quick tunnel's host, or an address only this machine or its network answers, are held before the message's approval is asked: only the principal's code for those addresses releases them, and the message then still needs its own; starting a quick tunnel waits for a code of its own.
 17. **A time in a message rests on a fresh calendar read** (2026-11-12). With `fresh_calendar` in the config, a message to a person whose words name a clock time is held unless this session read a calendar, successfully, within its `minutes` (10 unless set, 1 to 60), or the principal types the hold's own code, which stands for the ordinary one. In Codex, Muse and a sub-agent the guard sees no calendar read, so only that code releases it (references/config.md).
-18. **A reviewed batch takes one code** (2026-11-14). `synthesis sends batch <file>` opens only on the principal's code for its digest, typed after they read the hold's listing; each entry then goes once, as written, within 12 hours, from that session alone, after every other check (a browser send after the composer check). Anything else waits for its own code (references/config.md).
+18. **A reviewed batch takes one code** (2026-11-14). `synthesis sends batch <file>` opens only on the principal's code for its digest, typed after they read the hold's listing; each entry then goes once, as written, within 12 hours, from that session alone, after every other check (a Messenger entry as its one send step). Anything else waits for its own code (references/config.md).
 
 ## Contents
 
