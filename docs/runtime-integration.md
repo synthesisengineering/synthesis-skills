@@ -553,6 +553,14 @@ stay open, and no hook running as that same user can close them:
   A fingerprint added that way passes its line without the person. It holds hashes, so
   the agent would have to compute the hash of the exact line, path and repository.
 - The agent can rewrite the runtime under `~/.synthesis/v5` or its config.
+- A program of the agent's that loads synthesis without the plain words `import synthesis`
+  or `from synthesis` (through `importlib`, `__import__` or a built `exec` string, from a
+  copy that is no protected folder) is read as reaching none of synthesis's writers, so it
+  can forge the send ledger's lines, open a send window, delete pending grants and requests,
+  plant a deploy record, or point the transcript that any check a script or the CLI enters
+  itself reads at a file it wrote, and so grant itself what such a check releases: a send a
+  script makes, a line approval, the CLI's send window (review rounds 4 and 5 of 5.23.1's
+  approval fix; crafted, the same before that release).
 
 Closing these needs isolation the hooks do not have: the agent under its own OS user
 or sandbox, or approvals signed by something outside the agent's reach.

@@ -18,6 +18,29 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   substitutions in a loop asked 11,746 times over 102 paths, which took 0.31 s on a Mac under Apple's Python 3.9 and
   1.11 s on CI's macOS runner, past the 1.0 s its test allows. The guard writes nothing while it judges, so each
   answer now holds for the call: 123 questions and 0.105 s. A test counts the questions, so it holds on any runner.
+- **An approval is spent only once it is confirmed, and confirming it reads only the record written since it was
+  granted.** A Codex session's record had grown to 1.9 GB. The principal typed two codes; the guard deleted each grant
+  and then read the record from its start for the prompt, which took 4.6 s, past the hook's 4 s deadline. The calls
+  were held with the grants gone, so each identical retry asked for a new code and neither call ran. The guard now
+  reads the grant, finds the prompt, and only then spends it; a grant changed while it was checked is never used. The
+  prompt hook records how long the session's record was when the principal typed, and the check reads back from the
+  end to 16 MB before that point, and the whole line there, so older lines written after the prompt (a compaction
+  block) cannot hide it: 0.02 s on that record. A grant filed before this release, or by a harness whose prompt names
+  no record, keeps the approval window's time rule. Nothing a call's decisions record stands until its answer (a
+  window's send is counted at once and marked settled or undone then): a call that is held, at the deadline or by a
+  later check, ran nothing, so it gives back the grants it used and leaves no record of a send, a send window's count,
+  a deploy for the 45-minute brake, or a grant voided by the code that released it; the hook settles them as it
+  answers, and a check a script enters itself (the local-messaging sender's) settles them when it returns. A record
+  that cannot be written holds the call, undoes the records written before it (a deploy another call recorded
+  meanwhile stays, and a desktop page's record of typed words released by their code is not undone) and gives back
+  its grants, and the answer still goes out. In one process, one thread judges at a time and another waits its turn,
+  the send lock too, and the hook settles only the call its own check judged. A grant given back appears whole or not
+  at all. A window closes once its last planned send has gone, so a send held after another went leaves its place to
+  the window, and desktop window sends are judged one at a time like the others. The guard's 4 s deadline counts from
+  when the hook process loaded, and an alarm that lands as the deadline is taken down still holds the call; a hold
+  answered more than 4.5 s after that may reach a harness after its 5 s, when it lets the call through, so then the
+  records stand and the grants stay spent. A grant spent before this release cannot be brought back; its call is
+  approved again once.
 
 ## [5.23.0] - 2026-11-15
 
