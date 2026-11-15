@@ -75,10 +75,10 @@ def mac(tmp_path_factory):
     return SimpleNamespace(base=base, home=home, sh=sh, rt=sh / "current", plugin=plugin, env=env)
 
 
-def _verdict(mac, command: str, cwd: Path):
+def _verdict(mac, command: str, cwd: Path, env: dict | None = None):
     """What the guard, run from the installed runtime, says to a shell command: None lets it run."""
     done = subprocess.run([sys.executable, "-I", "-c", PROGRAM, str(mac.rt), command, str(cwd)], capture_output=True, text=True,
-                          timeout=120, env=mac.env)
+                          timeout=120, env=env or mac.env)
     assert done.returncode == 0, done.stderr[-800:]
     return json.loads(done.stdout)
 
@@ -655,3 +655,53 @@ def test_the_runtimes_fetcher_waits_when_the_config_it_follows_names_a_protected
     (project / ".agents" / "meeting-transcripts.yaml").write_text(
         f"google_account: a@example.com\ntranscripts_repo: {project}\ntranscripts_path: notes\n", encoding="utf-8")
     assert _verdict(mac, f"python3 -s {mac.rt}/{FETCHER} standup", run_in) is None, where  # the project's own folder
+
+
+# --- review round 3 ---------------------------------------------------------------------------------------------------
+
+@pytest.mark.parametrize("given", ["PATH[1,-1]={bin}:$PATH", "path[1]={bin}", "PATH[0]={bin}", "Path[1]={bin}", "PYTHONPATH[1]={w}",
+                                   "HOME[1,-1]={w}"])
+def test_a_subscript_assignment_to_an_environment_or_startup_variable_is_not_a_plain_run(mac, tmp_path, given):
+    """N1: zsh's `PATH[1,-1]=` was trusted as a plain run while the shell ran the agent's python3; any case of the name."""
+    work = _work(tmp_path)
+    assert _verdict(mac, given.format(bin=work / "bin", w=work) + f"; python3 -s {mac.rt}/{AP} status", work), given
+
+
+def _interpreter(prefix: Path) -> dict:
+    """A Python laid out under `prefix` as a framework or Homebrew one is (bin/python3 leading to bin/python3.12, and
+    lib/python3.12/site-packages), first on PATH; the guard only looks at where it is and what it would load."""
+    (prefix / "bin").mkdir(parents=True)
+    (prefix / "lib" / "python3.12" / "site-packages").mkdir(parents=True)
+    (prefix / "bin" / "python3.12").write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    (prefix / "bin" / "python3.12").chmod(0o755)
+    (prefix / "bin" / "python3").symlink_to("python3.12")
+    return {"PATH": f"{prefix / 'bin'}:{os.environ.get('PATH', '/usr/bin:/bin')}"}
+
+
+def test_a_run_whose_interpreter_loads_from_a_folder_the_user_can_write_is_not_proven(mac, tmp_path):
+    """N2, ruled: a run is the release's only when the python3 it runs would load nothing from a folder the user can
+    write: its own site-packages and the folders its .pth files reach (a Homebrew Python's site-packages can be written)."""
+    work = _work(tmp_path)
+    line = f"python3 -s {mac.rt}/{FETCHER} --window 2026-11-14 2026-11-15"
+    assert _verdict(mac, line, work) is None  # this Mac's interpreter: nothing it loads can be written by the user
+    writable = _interpreter(work / "brew")
+    assert _verdict(mac, line, work, {**mac.env, **writable}), "its own site-packages can be written"
+    reached = _interpreter(work / "framework")
+    site = work / "framework" / "lib" / "python3.12" / "site-packages"
+    (work / "elsewhere").mkdir()
+    (site / "extra.pth").write_text(f"{work / 'elsewhere'}\n", encoding="utf-8")
+    for folder in (site, site.parent, site.parent.parent):
+        folder.chmod(0o555)
+    try:
+        assert _verdict(mac, line, work, {**mac.env, **reached}), "a .pth file reaches a folder the user can write"
+    finally:
+        for folder in (site.parent.parent, site.parent, site):
+            folder.chmod(0o755)
+
+
+def test_a_config_whose_folder_is_the_home_folder_itself_holds_the_run(mac, tmp_path):
+    """N4: the home folder holds the synthesis home, so a configuration that names it names what holds a protected folder."""
+    work = _work(tmp_path)
+    (work / ".agents").mkdir()
+    (work / ".agents" / "meeting-transcripts.yaml").write_text("google_account: a@example.com\narchive_dir: ~\n", encoding="utf-8")
+    assert _verdict(mac, f"python3 -s {mac.rt}/{FETCHER} standup", work)
