@@ -3,7 +3,8 @@
 #1 (major, ordinary work): after the pane's preview_start its page counted as unknown, so a local app's click, Return or
 typed line break waited for a code; preview_start's answer is read as the pane's page now, and on a page the record does
 not show a call that may send is told to read the page first, with no code asked. #2: a `body` key anywhere held a read
-by fetch; only the init argument of fetch or Request is read. #3: a read helper the script defines, named for what it
+by fetch; only the init argument of fetch or Request is read, and an init the reader cannot follow is read as a write
+(found in fixing it: spread into, keyed by a name built as it runs, set again, handed on). #3: a read helper the script defines, named for what it
 reads (`tweetText`, `postBody`, `replyCount`), was held as a send. #4: `[].slice.call(` was refused. #5: `+=` moves the
 tab; two crafted spellings go on the open list, each with a test expected to fail until it is closed.
 """
@@ -49,6 +50,21 @@ def test_a_local_apps_work_runs_in_the_pane_after_preview_start(tmp_path, answer
         assert _check(tool, named, session) is None, (answer, work, named)
 
 
+def test_a_pane_opened_at_a_messaging_page_or_without_an_address_after_one_holds_a_script_that_acts(tmp_path):
+    """preview_start's page is the address its answer names; an answer that names none changes no page, so the page an
+    earlier result shows stands (a new pane with no earlier result shows a blank one)."""
+    click = (PANE + "javascript_tool", {"action": "javascript_exec", "text": "document.querySelector('b').click()"})
+    at = tmp_path / "at.jsonl"
+    _ran(at, PANE + "preview_start", {"url": SITES["slack"]}, STARTED["server-started"].replace(LOCAL, SITES["slack"]))
+    verdict = _check(*click, {"session_id": "S-principal", "transcript_path": str(at)})
+    assert _held(verdict) and "slack" in verdict, verdict
+    after = tmp_path / "after.jsonl"
+    _ran(after, PANE + "navigate", {"url": SITES["slack"]}, f"Navigated to {SITES['slack']}")
+    _ran(after, PANE + "preview_start", {}, STARTED["pane-opened"])
+    verdict = _check(*click, {"session_id": "S-principal", "transcript_path": str(after)})
+    assert _held(verdict) and "slack" in verdict, verdict
+
+
 def test_a_call_that_may_send_on_a_page_the_record_does_not_show_is_told_to_read_the_page_first(tmp_path):
     record = tmp_path / "record.jsonl"
     _ran(record, "Bash", {"command": "ls"}, "notes.md")
@@ -78,6 +94,31 @@ def test_a_read_by_fetch_with_a_body_elsewhere_passes(tmp_path, site, text):
 @pytest.mark.parametrize("text", WRITES)
 def test_a_write_by_fetchs_init_still_waits(tmp_path, text):
     assert _held(_check(SCRIPT, _script(text, tab=5), _session(tmp_path, SITES["slack"], tab=5))), text
+
+
+# An init the reader cannot follow is read as a write: spread into, keyed by a name built as it runs, the variable set
+# again or handed to other code, a member named by a variable, a method set by `+=`, a method that is not one literal.
+UNFOLLOWED = ["const opts = {method: 'POST', body: 'x'}; fetch('/api/messages', {...opts})",
+              "fetch('/api/messages', {['met' + 'hod']: 'POST'})",
+              "let init = {}; init = {method: 'POST'}; fetch('/api/messages', init)",
+              "const init = {}; Object.assign(init, {method: 'POST'}); fetch('/api/messages', init)",
+              "const key = 'method'; const init = {}; init[key] = 'POST'; fetch('/api/messages', init)",
+              "let method = 'GET'; method = 'POST'; fetch('/api/messages', {method})",
+              "const init = {}; init.body += 'text=hello'; fetch('/api/messages', init)",
+              "fetch('/api/messages', {method: 'PO' + 'ST'})"]
+FOLLOWED = ["const opts = {headers: {Accept: 'application/json'}, credentials: 'include'}; fetch('/api/x', opts).then(r => r.json())",
+            "const init = {method: 'GET'}; init.headers = {Accept: 'application/json'}; fetch('/api/x', init).then(r => r.json())",
+            "fetch('/api/x', {method: 'HEAD'}).then(r => r.status)"]
+
+
+@pytest.mark.parametrize("text", UNFOLLOWED)
+def test_an_init_the_reader_cannot_follow_waits(tmp_path, text):
+    assert _held(_check(SCRIPT, _script(text, tab=5), _session(tmp_path, SITES["slack"], tab=5))), text
+
+
+@pytest.mark.parametrize("text", FOLLOWED)
+def test_a_read_whose_init_the_reader_follows_passes(tmp_path, text):
+    assert _check(SCRIPT, _script(text, tab=5), _session(tmp_path, SITES["slack"], tab=5)) is None, text
 
 
 # --- 3: a helper the script defines is no page's send -----------------------------------------------------------------
