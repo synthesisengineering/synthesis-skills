@@ -228,6 +228,36 @@ def test_a_runtime_removed_on_the_code_is_installed_again_on_a_code_the_session_
     assert cli.main(["install", str(world["benign"])]) == 0 and (world["v5"] / "current" / "synthesis" / "hook.py").is_file()
 
 
+# ---- review round 2 of 22.18, K2: setup names the session its install needs -----------------------------------------
+
+def _setup():
+    sys.path.insert(0, str(ROOT / "skills" / "synthesis-onboarding" / "scripts"))
+    import setup
+    return setup
+
+
+def test_setup_takes_session_and_passes_it_to_the_install(world, monkeypatch):
+    """From the principal's own terminal no session is in the environment, so a setup run over an installed runtime
+    could not name the session his code is typed in; `--session` names it, and the stop message says so."""
+    setup = _setup()
+    done = subprocess.run([sys.executable, str(ROOT / "skills" / "synthesis-onboarding" / "scripts" / "setup.py"), "--help"],
+                          capture_output=True, text=True, timeout=120)
+    assert re.search(r"--session(?![\w-])", done.stdout), "setup.py names no --session"
+    for key in ("SYNTHESIS_SESSION", "CLAUDE_CODE_SESSION_ID", "CODEX_THREAD_ID", "MUSE_SESSION_ID"):
+        monkeypatch.delenv(key, raising=False)
+    with pytest.raises(install.Unapproved, match="--session"):
+        setup.install_runtime(False, session={"session_id": ""})
+    world["typed"](approvals.pending()[0])
+    assert any("synthesis runtime" in line for line in setup.install_runtime(False, session={"session_id": SID}))
+
+
+def test_setup_s_first_install_still_needs_no_session(tmp_path, monkeypatch):
+    setup = _setup()
+    monkeypatch.setenv("SYNTHESIS_SESSION", "")
+    monkeypatch.setenv("SYNTHESIS_HOME", str(tmp_path / "fresh"))
+    assert any("synthesis runtime" in line for line in setup.install_runtime(False, session={"session_id": ""}))
+
+
 # ---- review round 4 of 5.23.1, Q4: the check is in install and uninstall themselves ---------------------------------
 
 def test_a_program_that_calls_the_installer_itself_spends_the_code_too(world):
