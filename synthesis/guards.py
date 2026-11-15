@@ -531,6 +531,66 @@ def _sha256(file: str, until: float, whole: bool = True) -> str:
     return out[0]
 
 
+EFFECTS: list = []  # (what to do if the call is let through, what to undo if it is held) for each record a decision makes
+UNDER_HOOK = {"on": False}  # the hook answers last, so it settles the effects; a check entered from elsewhere settles them
+_DEPTH = [0]  # how deep in the guard's checks this process is: only the first one entered settles
+
+
+def _after(commit=None, undo=None) -> None:
+    """A record of a decision that stands only if the whole call is let through: the send ledger, the deploy brake, a
+    grant voided by the code that released the call (review round 2 of the spend order, finding 1)."""
+    EFFECTS.append((commit, undo))
+
+
+def _void(kind: str, subject) -> None:
+    """Void the other code's grant at once, inside the decision's lock, and put it back if the call is held."""
+    removed = approvals.void(kind, subject)
+    _after(undo=lambda: approvals.put_back(removed))
+
+
+def settle(allowed: bool) -> None:
+    """The call is let through: write each record its decisions made and keep the grants it used spent. It is held:
+    undo what was written ahead and give the grants back, since it ran nothing. Each record is its own: one that
+    cannot be written does not stop the rest, and the first failure is raised after them."""
+    effects, failed = list(EFFECTS), None
+    EFFECTS.clear()
+    for commit, undo in (effects if allowed else reversed(effects)):
+        step = commit if allowed else undo
+        try:
+            if step:
+                step()
+        except Exception as exc:
+            failed = failed or exc
+    approvals.SPENT.clear() if allowed else approvals.give_back()
+    if failed:
+        raise failed
+
+
+def _entry(judge):
+    """A check that a caller may enter directly (the hook enters `check`; the local-messaging sender enters
+    `check_send`): the first one entered starts the call's records afresh and, unless the hook answers, settles them
+    when it returns, held as well when it raises (review round 3 of the spend order, finding 1)."""
+    def entered(*args, **kwargs):
+        if not _DEPTH[0]:
+            EFFECTS.clear()
+            approvals.SPENT.clear()
+        _DEPTH[0] += 1
+        try:
+            verdict = judge(*args, **kwargs)
+        except BaseException:
+            _DEPTH[0] -= 1
+            if not _DEPTH[0] and not UNDER_HOOK["on"]:
+                settle(False)
+            raise
+        _DEPTH[0] -= 1
+        if not _DEPTH[0] and not UNDER_HOOK["on"]:
+            settle(verdict is None)
+        return verdict
+    entered.__name__, entered.__qualname__, entered.__doc__, entered.__wrapped__ = judge.__name__, judge.__qualname__, judge.__doc__, judge
+    entered.settles = True  # functools.wraps is not used: the hook's own path imports nothing it does not need
+    return entered
+
+
 def check_upload(tool: str, tool_input: dict) -> str | None:
     """A Drive upload that asks for no code still names a file the connector must read: one it would not read is
     refused here, as a send's is before its code, and so is one it cannot read: its first byte is read, since no
@@ -539,6 +599,7 @@ def check_upload(tool: str, tool_input: dict) -> str | None:
     return "This call can't go as written: " + "; ".join(unread) + "." if unread else None
 
 
+@_entry
 def check_send(tool: str, tool_input: dict, config: dict, session: dict | None = None) -> str | None:
     """session: the hook payload, whose transcript shows who typed an approval (a shell's script passes none). One
     send is judged at a time: the code that lets a message go spends its other code before an identical call is
@@ -572,7 +633,7 @@ def _judged_send(tool: str, tool_input: dict, config: dict, session: dict | None
         return timed.replace("{code}", approvals.how(code))
     if not others and sends.covered(chan, [t for _, t in _strings(tool_input)], _project(session), config):
         mark = sends.log(chan, tool, summary, "window", session)  # counted at once, so no other call takes the same send
-        _after(sends.settle, lambda: sends.undo(mark))
+        _after(lambda: sends.settle(mark), lambda: sends.undo(mark))
         if timed is not None:
             _void("send-time", subject)
         return None
@@ -2156,6 +2217,7 @@ def _record_deploys(identities) -> None:
         record.write_text(f"{identity}\n{time.time()}\n", encoding="utf-8")
 
 
+@_entry
 def check_deploy(command: str, config: dict, cwd: str | None = None, session: dict | None = None) -> str | None:
     cwd = cwd or os.getcwd()
     found = _targets(command, config, cwd)
@@ -4426,34 +4488,6 @@ def _real(path) -> str:
         memo[path] = os.path.realpath(path)
     return memo[path]
 
-
-EFFECTS: list = []  # (what to do if the call is let through, what to undo if it is held) for each record a decision makes
-UNDER_HOOK = {"on": False}  # the hook answers last, so it settles the effects; a direct caller of check() has them settled there
-
-
-def _after(commit=None, undo=None) -> None:
-    """A record of a decision that stands only if the whole call is let through: the send ledger, the deploy brake, a
-    grant voided by the code that released the call (review round 2 of the spend order, finding 1)."""
-    EFFECTS.append((commit, undo))
-
-
-def _void(kind: str, subject) -> None:
-    """Void the other code's grant at once, inside the decision's lock, and put it back if the call is held."""
-    removed = approvals.void(kind, subject)
-    _after(undo=lambda: approvals.put_back(removed))
-
-
-def settle(allowed: bool) -> None:
-    """The call is let through: write each record its decisions made and keep the grants it used spent. It is held:
-    undo what was written ahead and give the grants back, since it ran nothing."""
-    effects = list(EFFECTS)
-    EFFECTS.clear()
-    for commit, undo in (effects if allowed else reversed(effects)):
-        step = commit if allowed else undo
-        if step:
-            step()
-    approvals.SPENT.clear() if allowed else approvals.give_back()
-
 READER_WRITES = {"less": r"-[A-Za-z]*[oO].*|--(?:log-file|LOG-FILE)(?:=.*)?", "rg": r"--pre(?:-glob)?(?:=.*)?", "sort": r"-o.*|--output(?:=.*)?",
                  "file": r"-[A-Za-z]*C[A-Za-z]*|--compile", "date": r"-s|--set(?:=.*)?"}  # a reader's own options that write or run
 GIT_FIRST = re.compile(r"-c|--config-env(?:=.*)?|--work-tree(?:=.*)?|--exec-path(?:=.*)?|-p|--paginate")  # git's own, before its subcommand
@@ -4461,7 +4495,8 @@ GIT_RUNS = re.compile(r"--output(?:=.*)?|--ext-diff|--textconv|-O.*|--open-files
 ABSOLUTE = re.compile(r"-[A-Za-z]*P[A-Za-z]*|--absolute-names|--absolute-filenames|--insecure|-:|-spf")  # an archive's members land where they say
 SYNTHESIS_IMPORT = re.compile(r"^[ \t]*(?:from[ \t]+synthesis\b|import[ \t]+synthesis\b)", re.M)
 SYNTHESIS_WRITES = frozenset(f"{module}.{name}" for module, names in (  # synthesis's own functions that write a file (a test reads them from the source)
-    ("approvals", "_expire _spend alone consume give_back grant_from_prompt put_back remember request void"), ("autopilot", "_evaluate _write_pointer evaluate"),
+    ("approvals", "_expire _spend alone consume give_back grant_from_prompt put_back remember request void"),
+    ("guards", "_record_deploys _void settle"), ("autopilot", "_evaluate _write_pointer evaluate"),
     ("board", "_claim _claim_lock _describe _post claim inbox mark_carried mark_read_messages message notify release resolve save touch"),
     ("checkout", "_append _staged_commit _tree_commit index_set log_claims snapshot snapshot_paths"),
     ("cli", "_main cmd_claim cmd_doctor cmd_handoff cmd_inbox cmd_index cmd_install cmd_msg cmd_release cmd_resume cmd_sends "
@@ -4470,7 +4505,7 @@ SYNTHESIS_WRITES = frozenset(f"{module}.{name}" for module, names in (  # synthe
     ("hook", "_carried_since _ran _upgrade_note main pre_tool_use session_start stop user_prompt_submit"),
     ("install", "_merge _write_exec install move_board register_git_hooks uninstall"), ("paths", "note_wait write_json"),
     ("project", "_carry_out _mark_carried_out _peers _recent_conversation handoff resume"),
-    ("reply_check", "check misrouted_accounts unarmed_wait unwatched_sends"), ("sends", "close_window log open_window settle undo window_refusal"),
+    ("reply_check", "check misrouted_accounts unarmed_wait unwatched_sends"), ("sends", "_note close_window log open_window settle undo window_refusal"),
     ("sessions", "_Session _export _ritual_history _sync_workspace _write_synced _writer behind export export_file fetch lost peek recent sync"),
     ("wait", "_watch live main record unread watching"), ("worktree", "create main retire")) for name in names.split())
 SYNTHESIS_DEFS: dict = {}  # a module of synthesis: the names it imports
@@ -5520,6 +5555,7 @@ def _sends_key(chords: str, apps: dict) -> bool:
     return False
 
 
+@_entry
 def check_desktop(name: str, tool: str, tool_input: dict, config: dict, session: dict | None = None) -> str | None:
     from synthesis import sends
     apps, record = _messaging(config), _grants(session)
@@ -5571,15 +5607,16 @@ def check_desktop(name: str, tool: str, tool_input: dict, config: dict, session:
     words, rules = [w for e in earlier for w in e["words"]], problems[:6] + [r for e in earlier for r in e["rules"]]
     subject = {**subject, "earlier": words} if earlier else subject
     summary = f"{tool} in {where}: {what}" + (f"; typed words not stored ({sum(map(len, typed + words))} characters)" if typed or words else "")
-    if not rules and sends.covered(chan, typed, _project(session), config):  # a window never covers words a rule stopped
-        mark = sends.log(chan, tool, summary, "window", session)  # counted at once, so no other call takes the same send
-        _after(sends.settle, lambda: sends.undo(mark))
-        return None
-    if approvals.consume("send", subject, session):
-        _after(lambda: sends.log(chan, tool, summary, "approval", session))
-        _released(session, list(reached), drop=True)
-        return None
-    code = approvals.request("send", subject, summary[:300])
+    with approvals.alone():  # one send judged at a time, as on the other send paths (review round 3 of the spend order)
+        if not rules and sends.covered(chan, typed, _project(session), config):  # a window never covers words a rule stopped
+            mark = sends.log(chan, tool, summary, "window", session)  # counted at once, so no other call takes the same send
+            _after(lambda: sends.settle(mark), lambda: sends.undo(mark))
+            return None
+        if approvals.consume("send", subject, session):
+            _after(lambda: sends.log(chan, tool, summary, "approval", session))
+            _released(session, list(reached), drop=True)
+            return None
+        code = approvals.request("send", subject, summary[:300])
     return (f"This call sends in {where} ({what})."
             + (f" Words typed on this page under the code for words that break a rule may go with it: {' / '.join(words)}." if words else "")
             + (f" These words break the principal's rules for messages: {'; '.join(rules)}. The code below waives that for this exact"
@@ -6158,6 +6195,7 @@ def _driven_steps(kind: str, tool: str, tool_input: dict, session: dict | None) 
     return [{"name": "navigate", "input": {"url": page, "exact": True}}] + steps if steps else []
 
 
+@_entry
 def check_driven(kind: str, tool: str, tool_input: dict, config: dict, session: dict | None = None) -> str | None:
     if kind in ("read", "navigate"):
         return None
@@ -6220,6 +6258,7 @@ def _project(session: dict | None) -> str:
     return me.project if me else ""
 
 
+@_entry
 def check_outgoing(command: str, config: dict, cwd: str, session: dict | None = None) -> str | None:
     """A shell command that posts words to people waits for the principal's code, as a connector send does, and
     opening a send window needs it too. The register scan reads the message the command sends (its text words and
@@ -6280,7 +6319,7 @@ def check_outgoing(command: str, config: dict, cwd: str, session: dict | None = 
             return timed.replace("make this identical call", "run the identical command").replace("{code}", approvals.how(code))
         if all(sends.covered(c, [text], _project(session), config) for c in chans):
             marks = [sends.log(c, "shell", summary, "window", session) for c in chans]  # counted at once, under the lock
-            _after(sends.settle, lambda: [sends.undo(m) for m in marks])
+            _after(lambda: [sends.settle(m) for m in marks], lambda: [sends.undo(m) for m in marks])
             if timed is not None:
                 _void("send-time", subject)
             return None
@@ -6304,21 +6343,12 @@ def guarded(tool: str, tool_input: dict | None = None) -> bool:
             or _sends(tool, tool_input or {}, {}) or routed(tool, tool_input or {}))
 
 
+@_entry
 def check(tool: str, tool_input: dict, config: dict, cwd: str | None = None, session: dict | None = None) -> str | None:
     """cwd is the session's working directory (the hook payload's `cwd`); defaults to this process's.
     session is the hook payload, which names the transcript an approval is checked against. The records the call's
     decisions make are written only if it is let through: here for a direct caller, by the hook when it answers."""
-    EFFECTS.clear()
-    approvals.SPENT.clear()
-    try:
-        verdict = _check(tool, tool_input, config, cwd, session)
-    except BaseException:  # a check that could not decide holds the call: nothing it decided stands
-        if not UNDER_HOOK["on"]:
-            settle(False)
-        raise
-    if not UNDER_HOOK["on"]:
-        settle(verdict is None)
-    return verdict
+    return _check(tool, tool_input, config, cwd, session)
 
 
 def _check(tool: str, tool_input: dict, config: dict, cwd: str | None, session: dict | None) -> str | None:

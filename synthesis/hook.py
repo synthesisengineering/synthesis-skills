@@ -267,13 +267,13 @@ def _late(signum, frame):
 
 
 def pre_tool_use(payload, began=None):
-    """Guard one call, within GUARD_SECONDS of `began` (the hook process's start; by default, now): past it the call is
-    held, so a guard slowed by a cold repository read or a lock answers, closed, before a harness gives up on it (Codex
-    and Muse let a call through on their timeout). The deadline stops git and any other process the guard started, and
-    the answer is printed once it is cancelled (review round 2 of 5.21.0)."""
+    """Guard one call, within GUARD_SECONDS of `began` (by default the hook process's start when it runs as the hook,
+    else now): past it the call is held, so a guard slowed by a cold repository read or a lock answers, closed, before
+    a harness gives up on it (Codex and Muse let a call through on their timeout). The deadline stops git and any other
+    process the guard started, and the answer is printed once it is cancelled (review round 2 of 5.21.0)."""
     import signal
 
-    began = time.monotonic() if began is None else began
+    began = (BEGAN if __name__ == "__main__" else time.monotonic()) if began is None else began
     before = signal.signal(signal.SIGALRM, _late)
     signal.setitimer(signal.ITIMER_REAL, max(0.01, GUARD_SECONDS - (time.monotonic() - began)))
     try:
@@ -307,7 +307,10 @@ def pre_tool_use(payload, began=None):
         judged.UNDER_HOOK["on"] = False
         # A held call ran nothing: its records are undone and its grants go back. An answer later than this may reach a
         # harness after its 5 seconds, when it lets the call through, so then its records stand and its grants stay spent.
-        judged.settle(not reason or time.monotonic() - began > GUARD_SECONDS + 0.5)
+        try:
+            judged.settle(not reason or time.monotonic() - began > GUARD_SECONDS + 0.5)
+        except Exception as exc:  # a record that cannot be written holds the call, and the answer still goes out
+            reason = reason or f"synthesis guard could not record this call ({type(exc).__name__}: {exc}); blocked rather than allowed"
     return _emit("PreToolUse", deny=reason) if reason else 0
 
 
@@ -368,7 +371,7 @@ def main(argv):
                "pre-tool-use": pre_tool_use, "stop": stop}.get(event)
     if not handler:
         return 0
-    code = handler(payload, BEGAN) if handler is pre_tool_use else handler(payload)
+    code = handler(payload)
     _ran(payload, event.replace("-", "_"))  # once it has answered: a handler that fails has not shown that it runs
     return code
 

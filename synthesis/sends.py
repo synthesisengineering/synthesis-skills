@@ -303,16 +303,23 @@ def close_window() -> bool:
         return False
 
 
-def spent(w: dict) -> int:
-    """Sends the window has let through since it opened (it may span midnight)."""
+def spent(w: dict, gone: bool = False) -> int:
+    """Sends the window has let through since it opened (it may span midnight); with `gone`, only those whose call was
+    let through as well (a send logged before 5.23.1 carries no id and counts as gone)."""
     days = {time.strftime("%Y-%m-%d", time.localtime(w["opened"])), time.strftime("%Y-%m-%d")}
-    return sum(1 for d in days for e in ledger(d) if e.get("how") == "window" and e.get("at", 0) >= w["opened"])
+    settled = {r.get("of") for d in days for r in _rows(d) if r.get("how") == "settled"} if gone else set()
+    return sum(1 for d in days for e in ledger(d) if e.get("how") == "window" and e.get("at", 0) >= w["opened"]
+               and (not gone or not e.get("id") or e["id"] in settled))
 
 
-def settle() -> None:
-    """After a send the window let through: its last planned send closes it."""
+def settle(mark: str = "") -> None:
+    """After a send the window let through: once its last planned send has gone, it closes. A send counted but still
+    being judged keeps it open, so one then held leaves its send to the window (review round 3 of the spend order,
+    finding 4)."""
+    if mark:
+        _note(mark, "settled")
     w = window()
-    if w and spent(w) >= w.get("sends", 0):
+    if w and spent(w, gone=True) >= w.get("sends", 0):
         close_window()
 
 
@@ -354,16 +361,25 @@ def log(chan: str, tool: str, summary: str, how: str, session: dict | None = Non
 def undo(mark: str) -> None:
     """A send counted at once (a window's planned send) whose call was then held: it did not go. The ledger only grows,
     so a line says so, and `ledger` leaves both out (review round 2 of the spend order, finding 1)."""
+    _note(mark, "undone")
+
+
+def _note(mark: str, how: str) -> None:
+    """A line about the send `mark` names: "undone" (its call was held) or "settled" (its call was let through)."""
     day, _, ident = mark.partition("/")
     target = paths.state() / "sends" / f"{day}.jsonl"
     target.parent.mkdir(parents=True, exist_ok=True)
     with target.open("a", encoding="utf-8") as handle:
-        handle.write(json.dumps({"at": time.time(), "how": "undone", "undoes": ident}) + "\n")
+        handle.write(json.dumps({"at": time.time(), "how": how, "of": ident}) + "\n")
+
+
+def _rows(day: str) -> list:
+    target = paths.state() / "sends" / f"{day}.jsonl"
+    return [json.loads(line) for line in target.read_text(encoding="utf-8").splitlines() if line] if target.is_file() else []
 
 
 def ledger(day: str) -> list:
-    """The sends of a day that went: a send its call's hold undid is left out, with the line that undid it."""
-    target = paths.state() / "sends" / f"{day}.jsonl"
-    rows = [json.loads(line) for line in target.read_text(encoding="utf-8").splitlines() if line] if target.is_file() else []
-    undone = {r.get("undoes") for r in rows if r.get("how") == "undone"}
-    return [r for r in rows if r.get("how") != "undone" and not (r.get("id") and r["id"] in undone)]
+    """The sends of a day that went: a send its call's hold undid is left out, and so are the lines about sends."""
+    rows = _rows(day)
+    undone = {r.get("of") for r in rows if r.get("how") == "undone"}
+    return [r for r in rows if r.get("how") not in ("undone", "settled") and not (r.get("id") and r["id"] in undone)]

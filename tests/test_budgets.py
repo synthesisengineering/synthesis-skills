@@ -1328,10 +1328,21 @@ ROOT = Path(__file__).resolve().parents[1]
 # returned), ledger 3 more (an undone send left out). hook.py 6: BEGAN 1 with its blank line (the deadline counts from
 # the process's start), pre_tool_use 4 more (the guard's records settled when it answers; an answer later than a harness
 # waits keeps them).
+# Then each 49 more, from review round 3 (a sender that runs check_send itself left no record of an approved send; a
+# record that could not be written ended the hook with no answer, so Claude Code ran a held call; two window sends counted
+# at once lost a planned send when the second was held; an agent's program could call the guard's new writers):
+# guards.py 30: _entry 23 with 2 blank lines (the first check a caller enters starts the call's records and settles them
+# unless the hook answers; check, check_send, check_deploy, check_desktop, check_driven and check_outgoing are entries,
+# their 6 decorator lines), _DEPTH 1, settle 6 more (each record its own, the first failure raised after the rest),
+# check_desktop 1 more (the window decision under the send lock), the guard's writers in SYNTHESIS_WRITES 1, less check
+# 10 (its wrapper is _entry). sends.py 16: _note 7 and _rows 3, with 4 blank lines (a line about a send, "undone" or
+# "settled"; a day's lines), settle 4 more and spent 3 more (the window closes once its last planned send has gone, so
+# one still being judged keeps it open), less undo 4 and ledger 1. hook.py 3: pre_tool_use 3 more (a record that cannot
+# be written holds the call, and the answer still goes out).
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 16718
-PLUGIN_BUDGET = 42790
+CORE_BUDGET = 16767
+PLUGIN_BUDGET = 42839
 
 
 def _lines(files):
