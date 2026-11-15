@@ -172,34 +172,38 @@ def github_state(version: str, run=setup.run) -> dict:
 
 
 def floor_problems(version: str, run=setup.run, running=None) -> list:
-    """Nothing older than the running runtime or GitHub's latest release is released or installed (review round 1 of
-    5.23.1, A1: `--install-only` installed any earlier release as the runtime). Unread is refused."""
+    """Nothing older than the running runtime or GitHub's latest release, its highest version tag, is released or
+    installed (review round 1 of 5.23.1, A1: `--install-only` installed any earlier release as the runtime). The tags
+    are read with git and its own config left out, never with a `gh` found on PATH (round 2, N7). Unread is refused."""
     want = install.version_tuple(version)
     running = install.version(paths.home() / "current") if running is None else running
-    read = run(["gh", "api", f"repos/{CANONICAL}/releases/latest", "--jq", ".tag_name"], 60)
-    latest = install.version_tuple(read.stdout.strip()[1:]) if read.returncode == 0 else ()
+    read = run([*GIT, "ls-remote", "--tags", CANONICAL_URL, "refs/tags/v*"], 120, env=clean_env())  # git, never a gh on
+    tags = re.findall(r"\trefs/tags/v(\d+\.\d+\.\d+)$", read.stdout, re.M) if read.returncode == 0 else []  # PATH (N7)
+    latest = max(map(install.version_tuple, tags), default=())
     return [f"v{version} is older than the running runtime ({'.'.join(map(str, running))}); nothing older installs"] * bool(
         running and want < running) + ([f"cannot read GitHub's latest release of {CANONICAL}: {setup._tail(read)}"] if not latest
                                        else [f"v{version} is older than GitHub's latest release (v{'.'.join(map(str, latest))})"] * (want < latest))
 
 
 def preflight(repo: Path, ci=None, github=None, floor=None) -> tuple:
-    """(version, problems) for a release of the checkout `repo`. Nothing is pushed or installed unless problems is empty.
-    A checkout that is not the canonical one is refused before git runs anything its config could start."""
+    """(version, commit, problems) for a release of the checkout `repo`: the commit is the one it read, and the one the
+    release then clones (review round 2, N10: read again later, a moved main was released). Nothing is pushed or
+    installed unless problems is empty. A checkout that is not the canonical one is refused before git runs anything
+    its config could start."""
     ci, github, floor = ci or ci_state, github or github_state, floor or floor_problems
     problems = []
     if "cache" in repo.parts and "plugins" in repo.parts or "muse-bundle" in repo.parts:
-        return None, [f"{repo} is an installed plugin copy, not a source checkout"]
+        return None, "", [f"{repo} is an installed plugin copy, not a source checkout"]
     if Path(git(repo, "rev-parse", "--show-toplevel").stdout.strip() or "/").resolve() != repo.resolve():
-        return None, [f"{repo} is not the root of a git checkout"]
+        return None, "", [f"{repo} is not the root of a git checkout"]
     named = guards.release_checkout(str(repo))
     if named:
-        return None, [f"{repo} is not the canonical checkout: {'; '.join(named)}"]
+        return None, "", [f"{repo} is not the canonical checkout: {'; '.join(named)}"]
     if git(repo, "status", "--porcelain").stdout.strip():
         problems.append("the tree has uncommitted changes")
     version, detail = manifest_version(repo)
     if version is None:
-        return None, problems + [detail]
+        return None, "", problems + [detail]
     head = git(repo, "rev-parse", "HEAD").stdout.strip()
     tag = git(repo, "rev-parse", "--verify", "--quiet", f"refs/tags/v{version}^{{commit}}").stdout.strip()
     if changelog_version(repo) != version:
@@ -216,7 +220,7 @@ def preflight(repo: Path, ci=None, github=None, floor=None) -> tuple:
         problems.append(f"{CANONICAL} already has v{version} at {served['tag'][:12]}; bump the version")
     problems += floor(version)
     passed, detail = ci(repo, head)
-    return version, problems + ([] if passed else [detail])
+    return version, head, problems + ([] if passed else [detail])
 
 
 def install_preflight(tag: str, ci=None, github=None, floor=None) -> tuple:
@@ -238,8 +242,9 @@ def fresh_clone(sha: str) -> Path:
     earlier run left are removed first."""
     folder = paths.home() / "releases"
     folder.mkdir(parents=True, exist_ok=True)
-    for old in folder.glob(".clone-*"):
-        shutil.rmtree(old, ignore_errors=True)
+    for old in folder.glob(".clone-*"):  # only those of runs that ended: another run's is its own (round 2, N8)
+        if not _running(old.name[len(".clone-"):]):
+            shutil.rmtree(old, ignore_errors=True)
     where = folder / f".clone-{os.getpid()}"
     made = setup.run([*GIT, "clone", "--quiet", "--no-local", "--no-checkout", CANONICAL_URL, str(where)], 900, env=clean_env())
     moved = git(where, "checkout", "--quiet", "--detach", sha, clean=True) if made.returncode == 0 else made
@@ -247,6 +252,16 @@ def fresh_clone(sha: str) -> Path:
         remove_clone(where)
         raise setup.SetupError(f"cannot make a fresh clone of {CANONICAL} at {sha[:12]}: {setup._tail(moved)}")
     return where
+
+
+def _running(pid: str) -> bool:
+    try:
+        os.kill(int(pid), 0)
+    except ProcessLookupError:
+        return False
+    except (ValueError, OSError):
+        return True  # one this run cannot signal, or a name it cannot read, may be another run's: it stays
+    return True
 
 
 def remove_clone(where: Path) -> None:
@@ -586,7 +601,7 @@ def main(argv=None) -> int:
     if args.install_only:
         version, sha, problems = install_preflight(args.tag)
     else:
-        (version, problems), sha = preflight(repo), (git(repo, "rev-parse", "HEAD").stdout.strip() if repo else "")
+        version, sha, problems = preflight(repo)  # the commit it read, never read again (round 2, N10)
     if problems:
         print("refused before publishing anything:\n  " + "\n  ".join(problems))
         return 1

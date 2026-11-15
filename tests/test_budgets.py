@@ -1340,10 +1340,23 @@ ROOT = Path(__file__).resolve().parents[1]
 # message beside the context) and session_start 1. doctor.py 6: check_package's warning for a newer plugin 5 and its
 # fail message's second line 1. install.py 2: install's docstring (first_only, the first install only, in place of
 # forward_only). cli.py 1: `install --first`, which the bootstrap passes.
+# 5.23.1, review round 2 of releases from the protected runtime: core 42 more and plugin 63. install.py 39:
+# refresh_launchers 18 with its blank lines (every launcher that differs from what the runtime writes rewritten, for the
+# interpreter it pins, re-pinned when that one may no longer run the guard: N4), pinned_git 10 with its blank lines and
+# GITS 2 with its comment 3 (git by its real path, checked as the interpreter is, never Apple's /usr/bin shim, which finds
+# its git through a cache in this user's own temporary folder), launcher_text 4 (its own home whatever the caller
+# exports, N2, the real git's folder first on PATH, its docstring) and install 2 (a release's install of a folder with
+# no runtime raises, N8). hook.py 3: every session start puts the launchers right, with or without a plugin folder.
+# guards.py: a workdir, a terminal tab's cwd, env -C and git -C placed by their real paths (N1) and refresh_launchers
+# among the writers change lines in place. release.py 15: _running 10 with its blank lines and fresh_clone 1 (a run
+# removes only its own clone and those of runs that ended, N8), floor_problems 2 (GitHub's highest version tag read by
+# git with its own config left out, never by a gh on PATH, N7, and its docstring) and preflight 2 (its docstring: the
+# commit it read is the one returned and released, N10). build_collections.py 6: tree 5 (each collection file's id held
+# to its bytes in memory, N3) and the hashlib import 1.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 16816
-PLUGIN_BUDGET = 43008
+CORE_BUDGET = 16858
+PLUGIN_BUDGET = 43071
 
 
 def _lines(files):

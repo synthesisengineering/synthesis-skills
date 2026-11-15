@@ -31,6 +31,7 @@ runs on Python 3.9.
 
 import argparse
 import ast
+import hashlib
 import json
 import os
 import posixpath
@@ -420,6 +421,11 @@ def tree(repo: Path, files: dict, modes: dict) -> str:
             (folder / path).write_bytes(files[path])
         objects = git(repo, "hash-object", "-w", "--no-filters", "--stdin-paths",
                       stdin="".join(f"{folder / path}\n" for path in paths).encode()).split()
+        kind = git(repo, "rev-parse", "--show-object-format").strip() or "sha1"  # each id held to the bytes in memory:
+        wrong = [path for path, oid in zip(paths, objects) if hashlib.new(kind, b"blob %d\0" % len(files[path])  # the
+                 + files[path]).hexdigest() != oid]  # scratch folder is one others can write (review round 2, N3)
+        if wrong or len(objects) != len(paths):
+            raise Unreadable(f"a collection file changed on disk while it was stored: {', '.join(wrong[:3]) or 'a file'}")
         index = {**os.environ, "GIT_INDEX_FILE": str(Path(scratch, "index"))}
         entries = (f"{'100755' if modes.get(path) == '100755' else '100644'} {sha}\t{path}\n"
                    for path, sha in zip(paths, objects))

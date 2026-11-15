@@ -66,7 +66,9 @@ def test_the_launcher_runs_isolated_with_only_the_named_variables(tmp_path):
     own = {k for k in seen["env"] if k.startswith("__CF")}  # what macOS itself gives every process it starts
     assert set(seen["env"]) - own <= set(install.KEPT) | {"PATH"}, sorted(set(seen["env"]) - own - set(install.KEPT))
     assert not [k for k in seen["env"] if k.startswith(("PYTHON", "DYLD_", "LD_", "GIT_EXEC", "DEVELOPER"))]
-    assert seen["env"]["PATH"].startswith(install.SAFE_PATH + ":") and seen["env"]["SYNTHESIS_HOME"] == str(tmp_path / "s")
+    git = install.pinned_git()  # the real git's folder first, then the system's (review round 2)
+    assert seen["env"]["PATH"].startswith((os.path.dirname(git) + ":" if git else "") + install.SAFE_PATH + ":"), seen["env"]["PATH"]
+    assert seen["env"]["SYNTHESIS_HOME"] == str(tmp_path / "s")  # a launcher made with no home keeps the caller's
     assert "SYNTHESIS_CLAUDE_BIN" not in seen["env"]  # a variable left unset stays unset, not empty
 
 

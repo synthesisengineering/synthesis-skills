@@ -39,21 +39,27 @@ release script names the approval as waiting on the person. The script runs
 `~/.synthesis/v5/current/synthesis/hook.py <event>` with the interpreter pinned
 at install, by its real path, owned by root with every folder above it and
 writable by neither this user nor its groups, with `-I -S` under `env -i` and
-only the variables the runtime reads (5.23.1; the CLI, the git hooks and the
-release launcher run the same way). `current` is a symlink switched atomically,
-so a running hook sees the old release or the new one, never neither.
+only the variables the runtime reads, its own synthesis home, and the real git's
+folder and then the system's first on PATH (5.23.1; the CLI, the git hooks and
+the release launcher run the same way). Every session start rewrites a launcher
+that differs from what the running runtime writes. `current` is a symlink
+switched atomically, so a running hook sees the old release or the new one,
+never neither.
 
 The SessionStart registration also passes the plugin folder the harness loaded
 (Claude Code's `${CLAUDE_PLUGIN_ROOT}`; Muse's `MUSE_PLUGIN_ROOT`, or the
 script's own location). That folder is the harness's own plugin cache, which the
 guard does not protect, so since 5.23.1 a session start installs from it only
 where no runtime exists at all: the first install, and the bootstrap that runs
-when the stable hook is missing. An installed runtime is replaced only by the
-release launcher (`~/.synthesis/v5/bin/synthesis-release --install-only --tag
-v<version>`), which installs from a clone of GitHub it verified, a tag on `main`
-no older than the runtime. When the folder carries a newer release, the session
-start says so once, naming both versions and that line, and `synthesis doctor`
-warns while the two differ. Nothing older than the running runtime installs.
+when the stable hook is missing. A session start never replaces an installed
+runtime; the release launcher (`~/.synthesis/v5/bin/synthesis-release
+--install-only --tag v<version>`) does, from a clone of GitHub it verified, a tag
+on `main` no older than the runtime or GitHub's highest version tag. When the
+folder carries a newer release, the session start says so once, naming both
+versions and that line, and `synthesis doctor` warns while the two differ. The
+CLI's `synthesis install <folder>` and `synthesis uninstall` still replace or
+remove the runtime with no code; they are listed below until they wait for the
+principal's code.
 
 ## The four events
 
@@ -562,12 +568,15 @@ stay open, and no hook running as that same user can close them:
 - The agent can rewrite the runtime under `~/.synthesis/v5` or its config.
 - The first install comes from the harness's plugin folder. Where no runtime exists at all, the session start and
   the bootstrap in `hooks.json` (which runs `python3 -B -S <plugin>/synthesis/install.py` from PATH while the stable
-  hook is missing) install the runtime from the folder the harness passes, which the guard does not protect. This
-  is acceptable: with no runtime there is no guard yet to keep, and once one is installed a session cannot force
-  that path again, because the runtime's own files (`releases`, `current`, `bin`, `git-hooks`) are protected folders
-  the guard refuses to remove or change, and an install, by any route, refuses anything older than the running
-  runtime. A runtime removed by a route the guard cannot read (above) would make the next session start a first
-  install again; that is the same class as the line before this one.
+  hook is missing) install the runtime from the folder the harness passes, which the guard does not protect. With
+  no runtime there is no guard yet to keep, so this is acceptable only while a session cannot remove an installed
+  runtime to force that path again. The guard refuses the shell's and the file tools' ways of removing or changing
+  the runtime's own files (`releases`, `current`, `bin`, `git-hooks`), and it places a command in a Codex workdir or
+  a terminal tab's folder by its real path, so `current/..` is `releases/`. Two routes are still open: the CLI's
+  `synthesis uninstall` removes the runtime with no code, after which the next session start is a first install, and
+  `synthesis install <folder>` installs any folder that declares a version no older than the running one. They stay
+  in this list until they wait for the principal's code. A runtime removed by a route the guard cannot read (above)
+  would make the next session start a first install too; that is the same class as the line before this one.
 
 Closing these needs isolation the hooks do not have: the agent under its own OS user
 or sandbox, or approvals signed by something outside the agent's reach.

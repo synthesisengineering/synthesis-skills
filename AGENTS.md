@@ -107,8 +107,8 @@ Codex's settings and catalog, instruction adapters and durable storage.
   remote the synthesis-skills repository on GitHub, on `main`, its own git config running no program). A release from
   a checkout's copy, or the tool run any other way, waits for the principal's code. The checkout only says what is
   released: the tool refuses unless the tree is clean, the manifests and CHANGELOG agree, HEAD is the tip of GitHub's
-  `main` (read with git's own config left out; a tag of the version there must name HEAD), the version is no older than
-  the running runtime or GitHub's latest release, and CI passed for HEAD there. It then makes a fresh clone of the
+  `main` (read with git's own config left out; a tag of the version GitHub already has must name HEAD), the version is
+  no older than the running runtime or GitHub's highest version tag, and CI passed for HEAD there. It then makes a fresh clone of the
   repository from GitHub at that commit in the protected releases folder, and everything after comes from that clone.
   It holds the release train (a board claim on the main checkout's `CHANGELOG.md`; another live session holding it
   means another release is under way, and the script names it), builds and checks the five collections from the
@@ -125,7 +125,7 @@ Codex's settings and catalog, instruction adapters and durable storage.
   (Codex asks again after every release) is named as waiting, not counted.
 - `~/.synthesis/v5/bin/synthesis-release --install-only --tag v<version>` installs a released tag from a fresh clone of
   it, after drift: GitHub must serve the tag on its `main` with CI passed, and nothing older than the running runtime or
-  GitHub's latest release installs. On a new Mac, where no runtime is installed yet, the checkout's copy runs it
+  GitHub's highest version tag installs. On a new Mac, where no runtime is installed yet, the checkout's copy runs it
   (`python3 skills/synthesis-skills-manager/scripts/release.py --install-only --tag v<version>`).
 
 See `CONTRIBUTING.md` for contribution structure and licensing.

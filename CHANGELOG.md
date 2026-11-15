@@ -30,22 +30,33 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   interpreter, so one file named python3 there, or with Apple's Python one compiled file under
   `~/Library/Caches/com.apple.python`, replaced the guard. Install now pins the first interpreter that is its own real
   path, owned by root with every folder above it, writable by neither this user nor its groups, and Python 3.9 or later
-  (the one installing, else python.org's, the Command Line Tools', Xcode's or `/usr/bin/python3`). The hook, the git
-  hooks, the CLI and the release tool each run it through a launcher in the protected `bin/` or `git-hooks/` with
-  `-I -S` under `env -i`, keeping only the variables the runtime was measured to read (git's too, for the commit
-  check), with the system's own folders first on PATH. With no such interpreter the launchers refuse. The runtime is
-  compiled for that interpreter beside its source, and the doctor checks the pin and every launcher.
-- **What a release publishes and installs comes from a fresh clone of what GitHub serves** (review round 1, A1 to
-  A3). The checkout `--repo-root` names only says what is released: it must be clean, its manifests and CHANGELOG must
-  agree, HEAD must be the tip of GitHub's `main` (read with git's own config left out), a tag of the version on GitHub
-  must name HEAD, CI must have passed for HEAD there, and the version must be no older than the running runtime or
-  GitHub's latest release. The tool then clones the repository from GitHub, with git's own config left out, into the
-  protected releases folder at that commit, and builds and checks the collections, tags, pushes (read back the same
-  way), takes the release notes, exports Muse's bundle, verifies every harness and installs the runtime from that clone
-  alone; the runtime's staged copy must hold the tag's listing before `current` moves. `--install-only` names a tag
-  (`--tag v<version>`) whose commit must be on `main` in that clone. `install.install` refuses anything older than the
-  running runtime, so no install rolls the guard back.
-- **Codex's commands are judged in their `workdir`**, where Codex runs them (review round 1, A5), and
+  (the one installing, else python.org's, the Command Line Tools', Xcode's, `/usr/bin/python3` or
+  `/usr/local/bin/python3`). The hook, the git hooks, the CLI and the release tool each run it through a launcher in
+  the protected `bin/` or `git-hooks/` with `-I -S` under `env -i`, keeping only the variables the runtime was measured
+  to read (git's too, for the commit check), with the launcher's own synthesis home whatever the caller exports, and
+  with the real git's folder and then the system's own first on PATH: Apple's `/usr/bin/git` is a shim that finds the
+  git it runs through `xcrun_db`, a file in this user's own temporary folder that holds each tool's path, so the real
+  git is found and checked as the interpreter is (review round 2). With no such interpreter the launchers refuse.
+  Install, and every session start after it, write the launchers this runtime writes, so a Mac moved to this release by
+  an older release's session start gets them too. The runtime is compiled for that interpreter beside its source, and
+  the doctor checks the pin and every launcher.
+- **What a release publishes and installs comes from a fresh clone of what GitHub serves** (review rounds 1 and 2).
+  The checkout `--repo-root` names only says what is released: it must be clean, its manifests and CHANGELOG must
+  agree, HEAD must be the tip of GitHub's `main` (read with git's own config left out), a tag of the version that
+  GitHub already has must name HEAD, CI must have passed for HEAD there, and the version must be no older than the
+  running runtime or GitHub's highest version tag (read the same way, never with a `gh` found on PATH). The commit
+  preflight read is the one released. The tool then clones the repository from GitHub, with git's own config left out,
+  into a folder of its own in the protected releases folder at that commit, and builds and checks the collections
+  (each file's id held to its bytes in memory, since the files pass through a temporary folder), tags, pushes (read
+  back the same way), takes the release notes, exports Muse's bundle, verifies every harness and installs the runtime
+  from that clone alone; the runtime's staged copy must hold the tag's listing before `current` moves, and a clone
+  gone before then stops the run. A run removes only its own clone and those of runs that ended. `--install-only`
+  names a tag (`--tag v<version>`) whose commit must be on `main` in that clone. `install.install` refuses a folder
+  that declares a version older than the running runtime; what a folder declares is its own claim, so the CLI's
+  `synthesis install <folder>` and `synthesis uninstall`, which pass with no code, stay open until they wait for the
+  principal's code (a separate change).
+- **Codex's commands are judged where Codex runs them**: in their `workdir`, by its real path, since the kernel follows
+  a link before a `..` (review rounds 1 and 2, A5 and N1); so are a terminal tab's `cwd`, `env -C` and `git -C`.
   **`~/.synthesis/v5/git-hooks` is a protected folder** (A8).
 - **A session start never replaces an installed runtime from its harness's folder**, by the principal's sandbox
   rulings of 2026-11-15 ("seal everything the guard trusts", "install from the protected release tool"). The session

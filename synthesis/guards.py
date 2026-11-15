@@ -1736,7 +1736,7 @@ def _commands(command: str, cwd: str, depth: int = 0, writes: list | None = None
         scripts = scripts + inner
         here = cwd
         for folder in moved:  # `env -C a env -C b`: b is read from a
-            here = os.path.normpath(os.path.join(here, os.path.expanduser(folder)))
+            here = os.path.realpath(os.path.join(here, os.path.expanduser(folder)))  # env chdirs as the kernel does (round 2, N1)
         head, script = os.path.basename(words[0]) if words else "", words
         takes_in = bool(words) and bool((head in SHELLS and _shell_input(words)[1]) or ((SCRIPT.match(head) or UNREAD.match(head)) and _program(words)[0] == "stdin"))
         stdin = [((_code_of(os.path.join(here, os.path.expanduser(t[2:]))) or f"{UNREAD_INPUT} {t[2:]}") if takes_in else "", True)
@@ -1835,7 +1835,7 @@ def _git(words: list[str], cwd: str) -> tuple[str | None, str]:
     i = 1
     while i < len(words) and words[i].startswith("-"):
         if words[i] == "-C" and i + 1 < len(words):
-            cwd = os.path.normpath(os.path.join(cwd, os.path.expanduser(words[i + 1])))
+            cwd = os.path.realpath(os.path.join(cwd, os.path.expanduser(words[i + 1])))  # git chdirs as the kernel does
         i += 2 if words[i] in GIT_VALUE_OPTIONS else 1
     return (words[i] if i < len(words) else None), cwd
 
@@ -4435,7 +4435,7 @@ SYNTHESIS_WRITES = frozenset(f"{module}.{name}" for module, names in (  # synthe
             "cmd_sessions cmd_uninstall cmd_use cmd_who cmd_worktree main"), ("commit_check", "main problems unapproved"),
     ("doctor", "_note_waits check_wait_check main run_checks"),
     ("hook", "_carried_since _newer_plugin_note _ran _upgrade_note main pre_tool_use session_start stop user_prompt_submit"),
-    ("install", "_merge _write_exec install move_board register_git_hooks uninstall"), ("paths", "note_wait write_json"),
+    ("install", "_merge _write_exec install move_board refresh_launchers register_git_hooks uninstall"), ("paths", "note_wait write_json"),
     ("project", "_carry_out _mark_carried_out _peers _recent_conversation handoff resume"),
     ("reply_check", "check misrouted_accounts unarmed_wait unwatched_sends"), ("sends", "close_window log open_window settle window_refusal"),
     ("sessions", "_Session _export _ritual_history _sync_workspace _write_synced _writer behind export export_file fetch lost peek recent sync"),
@@ -6430,9 +6430,9 @@ def check(tool: str, tool_input: dict, config: dict, cwd: str | None = None, ses
         except OSError:
             cwd = os.path.expanduser("~")
     if tool.endswith("__run_in_terminal") and tool_input.get("cwd"):  # the tab starts its shell there
-        cwd = os.path.normpath(os.path.join(cwd, os.path.expanduser(str(tool_input["cwd"]))))
+        cwd = os.path.realpath(os.path.join(cwd, os.path.expanduser(str(tool_input["cwd"]))))
     elif shell_tool(tool) and tool_input.get("workdir") and isinstance(tool_input["workdir"], str):  # Codex runs it there (round 1, A5)
-        cwd = os.path.normpath(os.path.join(cwd, os.path.expanduser(tool_input["workdir"])))
+        cwd = os.path.realpath(os.path.join(cwd, os.path.expanduser(tool_input["workdir"])))  # where the kernel puts it (round 2, N1)
     if shell_tool(tool):
         command = shell_command(tool_input)
         return (check_destructive(command, config, cwd) or check_self_grant(command, cwd, config, session)  # a recursive delete is named as one

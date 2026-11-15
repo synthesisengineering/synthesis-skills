@@ -361,12 +361,15 @@ def main(argv):
         payload = json.loads(sys.stdin.read() or "{}")
     except json.JSONDecodeError:
         payload = {}
-    if event == "session-start" and len(argv) > 2 and argv[2]:
+    if event == "session-start":
         try:  # the first install only: an installed runtime is replaced only by the release tool, from a verified clone
             from synthesis import install
-            install.install(argv[2], first_only=True)
+            if len(argv) > 2 and argv[2]:
+                install.install(argv[2], first_only=True)
+            if install.current_hash():  # launchers an older release's session start wrote are put right (round 2, N4)
+                install.refresh_launchers(install._home())
         except Exception:
-            pass  # a failed self-update must never block a session; doctor reports it
+            pass  # a failed first install must never block a session; doctor reports it
     from synthesis import paths
     if paths.old_board():  # seven lstat calls; true only after an older release wrote the board where it used to be
         try:

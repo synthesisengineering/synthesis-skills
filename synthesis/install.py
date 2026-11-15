@@ -64,6 +64,11 @@ GIT_KEPT = ("SYNTHESIS_GIT_HOOK", "GIT_DIR", "GIT_INDEX_FILE", "GIT_WORK_TREE", 
             "GIT_AUTHOR_EMAIL", "GIT_AUTHOR_DATE", "GIT_COMMITTER_NAME", "GIT_COMMITTER_EMAIL", "GIT_COMMITTER_DATE",
             "GIT_NO_REPLACE_OBJECTS")  # what git hands the commit check about the commit it makes
 SAFE_PATH = "/usr/bin:/bin:/usr/sbin:/sbin"
+# Apple's /usr/bin/git is a shim that runs the git it finds through `xcrun_db`, a file in this user's own temporary
+# folder that holds each tool's path (review round 2), so the launchers put the real git's folder first on PATH,
+# chosen and checked as the interpreter is. On Linux /usr/bin/git is git itself.
+GITS = ("/Library/Developer/CommandLineTools/usr/bin/git", "/Applications/Xcode.app/Contents/Developer/usr/bin/git",
+        "/usr/bin/git", "/usr/local/bin/git")
 NO_PYTHON = ("synthesis: no Python 3.9 or later owned by root, with every folder above it, and writable by neither this "
              "user nor its groups was found, so nothing runs; install python.org's Python or Apple's Command Line Tools, "
              "then run the plugin's install again")
@@ -107,21 +112,53 @@ def pinned_python(candidates=None) -> str:
     return ""
 
 
-def launcher_text(python: str, target: str, git_hook: bool = False) -> str:
+def pinned_git() -> str:
+    """The git the launchers put first on PATH: the first of `GITS` that is its own real path, owned by root with every
+    folder above it and writable by neither this user nor its groups, and is not Apple's /usr/bin shim; '' for none."""
+    for candidate in GITS:
+        real = os.path.realpath(candidate)
+        if not interpreter_problems(real) and not (sys.platform == "darwin" and real.startswith("/usr/bin/")):
+            return real
+    return ""
+
+
+def launcher_text(python: str, target: str, git_hook: bool = False, home: Path = None) -> str:
     """A launcher that runs `target` (shell words) with the pinned `python`, isolated, with only the named variables
-    that are set (one left unset stays unset); with no interpreter, one that refuses."""
+    that are set (one left unset stays unset), its own synthesis home whatever the caller exports (review round 2,
+    N2), and the real git first on PATH; with no interpreter, one that refuses."""
     if not python:
         return f"#!/bin/sh\necho {shlex.quote(NO_PYTHON)} >&2\nexit 2\n"
     kept = " ".join(f'${{{name}+"{name}=${name}"}}' for name in KEPT + (GIT_KEPT if git_hook else ()))
     hook = ' SYNTHESIS_GIT_HOOK="$(basename "$0")"' if git_hook else ""
+    own = f" SYNTHESIS_HOME={shlex.quote(str(home))}" if home else ""
+    git = pinned_git()
+    path = (os.path.dirname(git) + ":" if git else "") + SAFE_PATH
     return (f"#!/bin/sh\n# A synthesis entry point: the interpreter pinned at install, isolated, with a fixed environment.\n"
-            f"exec /usr/bin/env -i {kept}{hook} PATH=\"{SAFE_PATH}${{PATH:+:$PATH}}\" {shlex.quote(python)} -I -S {target} \"$@\"\n")
+            f"exec /usr/bin/env -i {kept}{hook}{own} PATH=\"{path}${{PATH:+:$PATH}}\" {shlex.quote(python)} -I -S {target} \"$@\"\n")
 
 
 def launcher(home: Path, python: str, name: str) -> str:
     """The text install writes for the entry point `name` (bin/<name>, or a git hook) of the synthesis home `home`."""
     entry = ENTRY["git-hook" if name in GIT_HOOKS else name]
-    return launcher_text(python, entry.format(runtime=shlex.quote(str(Path(home) / "current"))), name in GIT_HOOKS)
+    return launcher_text(python, entry.format(runtime=shlex.quote(str(Path(home) / "current"))), name in GIT_HOOKS, home)
+
+
+def refresh_launchers(home: Path) -> list:
+    """Every launcher rewritten that differs from what this runtime writes, for the interpreter it pins (re-pinned when
+    that one may no longer run the guard): a Mac moved to a release by an older release's session start kept the older
+    launchers (review round 2, N4). Returns the names it rewrote."""
+    python = pinned(home)
+    python = python if python and not interpreter_problems(python) else pinned_python()
+    stale = []
+    for name in (*ENTRY_POINTS, *GIT_HOOKS):
+        path = Path(home) / ("git-hooks" if name in GIT_HOOKS else "bin") / name
+        text = launcher(home, python, name)
+        if not path.is_file() or path.read_text(encoding="utf-8") != text:
+            _write_exec(path, text)
+            stale.append(name)
+    if stale:
+        _compile(Path(home) / "current" / "synthesis")
+    return stale
 
 
 def pinned(home: Path) -> str:
@@ -257,6 +294,8 @@ def install(plugin_root: Path, first_only: bool = False, expected: dict = None) 
     hold exactly those bytes before `current` moves, or nothing moves (A3)."""
     plugin_root = Path(plugin_root).resolve()
     if not (plugin_root / "synthesis" / "hook.py").is_file():
+        if expected is not None:  # a release's install that cannot happen stops it (review round 2, N8: a clone gone)
+            raise Refused(f"{plugin_root} holds no synthesis runtime, so the runtime was not installed")
         return f"not a synthesis plugin: {plugin_root}"
     home = _home()
     running = version(home / "current")

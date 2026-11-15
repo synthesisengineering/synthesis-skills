@@ -209,7 +209,9 @@ def test_ci_is_read_from_the_canonical_repository_whatever_the_checkout_names():
 # --- A1: nothing older than the running runtime or GitHub's latest release installs ------------------------------------
 
 def _latest(tag, code=0):
-    return lambda argv, *a, **k: subprocess.CompletedProcess(argv, code, tag + "\n", "" if code == 0 else "HTTP 502")
+    """GitHub's tags as `git ls-remote --tags` prints them, the highest `tag` (round 2, N7: read by git, not gh)."""
+    listed = "".join(f"{'0' * 40}\trefs/tags/{t}\n" for t in ("v5.0.0", tag) if t)
+    return lambda argv, *a, **k: subprocess.CompletedProcess(argv, code, listed if code == 0 else "", "no network" * bool(code))
 
 
 def test_the_floor_is_the_running_runtime_and_githubs_latest_release():
@@ -341,14 +343,16 @@ def _fake_bin(tmp_path, head, bare):
     bin_dir.mkdir()
     real = shutil.which("git")
     (bin_dir / "git").write_text(
-        "#!/bin/sh\ncase \" $* \" in\n  *\" ls-remote \"*)\n"
+        "#!/bin/sh\ncase \" $* \" in\n  *\" ls-remote --tags \"*)\n"
+        f"    echo \"git $*\" >> {log}\n    printf '{head}\\trefs/tags/v5.0.0\\n'\n    exit 0;;\n"
+        "  *\" ls-remote \"*)\n"
         f"    echo \"git $*\" >> {log}\n"
         f"    printf 'ref: refs/heads/main\\tHEAD\\n{head}\\tHEAD\\n{head}\\trefs/heads/main\\n'\n    exit 0;;\n"
         f"  *\" clone \"*)\n    echo \"git $*\" >> {log}\n"
         f"    exec {real} clone --quiet --no-checkout {bare} \"$(for a; do :; done; printf %s \"$a\")\";;\nesac\n"
         f"exec {real} \"$@\"\n")
     (bin_dir / "gh").write_text(
-        f"#!/bin/sh\necho \"gh $*\" >> {log}\ncase \" $* \" in\n  *\"/releases/latest\"*) echo v5.0.0; exit 0;;\nesac\n"
+        f"#!/bin/sh\necho \"gh $*\" >> {log}\n"
         "echo '[{\"status\": \"completed\", \"conclusion\": \"success\", \"workflowName\": \"ci\"}]'\n")
     for name in ("git", "gh"):
         (bin_dir / name).chmod(0o755)

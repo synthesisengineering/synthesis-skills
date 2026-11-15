@@ -59,7 +59,7 @@ Since 5.22.1 the guard holds a program that names synthesis's writers or runs fr
 protected runtime until the principal types a code, so every release waited for one. The
 principal's ruling of 2026-11-15: run releases from the protected installed tool, without a
 code. The runtime carries the release tool and what it imports (the scripts of this skill
-and of `synthesis-onboarding`), and install writes the launcher
+and of `synthesis-onboarding`), and install, and every session start after it, write the launcher
 `~/.synthesis/v5/bin/synthesis-release` beside the hook's. Every launcher runs the
 interpreter pinned at install: its own real path, owned by root with every folder above it,
 writable by neither this user nor its groups, with `-I -S` under `env -i`, keeping only the
@@ -78,13 +78,19 @@ launcher, the scripts the runtime carries for it (never trusted as the plugin's 
 it does not document, a program that loads its modules (found by file, so a project's own
 `release` or `setup` runs as before), a wrapper or an interpreter option.
 
-The checkout only says what is released. Everything built, pushed, exported and installed
-comes from a fresh clone of the repository that the run makes from GitHub, with git's own
-config left out, in the protected releases folder: git computes each object's id as it
-fetches it, and no agent writes there. The stable runtime is installed from that clone, its
-staged copy checked against the tag's listing before `current` moves, and nothing older than
-the running runtime or GitHub's latest release installs, by the release or by an explicit
-install (review round 1, A1 to A3).
+The checkout only says what is released, and the commit preflight read is the one released.
+Everything built, pushed, exported and installed comes from a fresh clone of the repository
+that the run makes from GitHub, with git's own config left out, in a folder of its own in the
+protected releases folder of the launcher's own home: git computes each object's id as it
+fetches it. The collection files pass through a temporary folder on their way into the clone's
+objects, so each id is held to the file's bytes in memory. The stable runtime is installed from
+that clone, its staged copy checked against the tag's listing before `current` moves, and the
+release refuses a version older than the running runtime or GitHub's highest version tag (read
+from its tags by git, never by a `gh` found on PATH). `install.install` refuses a folder that
+declares an older version than the running runtime; what a folder declares is its own claim, so
+the CLI's `synthesis install <folder>` and `synthesis uninstall`, which pass with no code, are
+open until they wait for the principal's code (a separate change). Review rounds 1 and 2 of
+5.23.1 found and closed the rest (A1 to A3, N2, N3, N7, N8, N10).
 
 ## What the script refuses, and why
 
@@ -102,8 +108,8 @@ Before anything is pushed it refuses when:
   config left out), or GitHub already has the version's tag at another commit; for
   `--install-only`, GitHub serves no such tag, or its commit is not on `main` in the fresh
   clone;
-- the version is older than the running runtime or than GitHub's latest release, or the
-  latest release cannot be read;
+- the version is older than the running runtime or than GitHub's highest version tag, or
+  GitHub's tags cannot be read;
 - the fresh clone cannot be made at that commit, or does not hold that version;
 - the three plugin manifests disagree or lack a version;
 - the CHANGELOG's newest entry is not that version;
@@ -250,9 +256,10 @@ v5 has two stable paths, both outside the harnesses' caches:
   approval as waiting.
 - `~/.synthesis/v5/current` is the runtime. At each session start the hook passes the
   plugin folder the harness loaded, which installs the runtime only where none exists
-  (the first install). Since 5.23.1 an installed runtime is replaced only by the release
-  launcher, from a clone of GitHub it verified, never from a harness's folder, which the
-  guard does not protect: a session start on a newer plugin says so once and names
+  (the first install), and rewrites any launcher that differs from what the runtime writes.
+  Since 5.23.1 a session start never replaces an installed runtime from a harness's folder,
+  which the guard does not protect (the release launcher installs from a clone of GitHub it
+  verified; the CLI's `synthesis install <folder>` is open until it waits for a code): a session start on a newer plugin says so once and names
   `~/.synthesis/v5/bin/synthesis-release --install-only --tag v<version>`, and the
   doctor warns while the two differ. Nothing older than the running runtime installs, and
   `synthesis doctor` fails when `current` is missing or its files changed.
