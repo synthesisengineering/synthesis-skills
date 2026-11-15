@@ -543,10 +543,9 @@ stay open, and no hook running as that same user can close them:
   measured on is the other direction as well: 30 days of recorded commands, where it must
   not refuse ordinary work.
 - A program the guard does not know that runs git itself in a folder it is handed runs whatever that repository's
-  configuration names; the plugin's own scanners are read (the context doctor's `--project` and `--root`, and the
-  rituals' `repo_state.py` with the paths its `--workspace-root` declares and the repositories under `--discover`), but
-  not the knowledge roots the doctor takes from its own settings when it is given neither; this is crafted, as it needs
-  a program of the agent's own, or roots set up to reach such a repository.
+  configuration names; every carried script that does so is read as a scanner (the context doctor, with the knowledge
+  roots its setting names when it is given no folder; `repo_state.py`, `stray_lessons.py`, `pr_queue_scan.py`,
+  `portfolio_review.py` and `sharing_scan.py`); this is crafted, as it needs a program of the agent's own.
 - A raw socket client (`nc`, `socat`) that writes a local MCP server's JSON-RPC itself reaches the server's tools
   unread; this is crafted, and 60 days of records hold none.
 - A prompt another process injects into the session through the harness's own CLI

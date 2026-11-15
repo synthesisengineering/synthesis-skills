@@ -653,7 +653,8 @@ connector call takes (the account it acts as, the travel rule, then the send rul
 not send), with the server named `workspace-mcp`:
 
 - **An HTTP client to an address on this machine** (`localhost`, `127.0.0.1`, `[::1]` and `*.localhost`, in any case and
-  with a trailing dot; `curl`, `wget`, HTTPie, `xh`): its body read from its data words, an
+  with a trailing dot, HTTPie's and xh's `:port` shorthand, and a URL in a variable the line sets or exports; `curl`, with
+  its `-K` config file read, `wget`, HTTPie, `xh`): its body read from its data words, a redirect's file, an
   `@file`, a file option, its heredoc or input, a `$(cat file)`, or HTTPie's fields. Each `tools/call` request it holds,
   a batch's included, is that tool's call. A body it cannot read (a file it lacks, one the same line writes, input another
   program writes, another substitution) waits when the address is a local MCP server's endpoint: port 8765 or the one
@@ -667,7 +668,8 @@ not send), with the server named `workspace-mcp`:
   tool and a JSON argument gives its arguments). A program whose strings only mention the method makes no call, and a
   program the line writes is read as the line's heredocs. Another language is read by the names its text gives.
 - **A program that posts a body it reads** (review round 1) to such an endpoint, with no tool call in its own text, is
-  judged by that body, from its input or from a file it names or takes from its arguments, as curl's `-d @file` is; a
+  judged by that body, from its input or from a file it names or takes from its arguments, as curl's `-d @file` is (the
+  endpoint named whole or as a host and a port apart, the body by keyword, by position or by `.end()`); a
   body built from parts the guard cannot read waits, and a request with no body (a liveness read) passes.
 - **The verdict:** a call whose tool and arguments are read is that tool's own call, so the principal's code is the one
   the connector's identical call takes, and either route spends it. A sending tool whose arguments are built while the
@@ -709,14 +711,20 @@ sends waits as a send.
   checkout's, a push's; status and diff only an index refresh's), never in synthesis's own installed git-hooks folder,
   whose commit check then counts the repository's own `.githooks` and `.git/hooks` hooks for a commit; a credential
   helper, an SSH command or an askpass program counts only for a command that reaches a remote.
-- **The plugin's scanners:** the context doctor (`--project`, the repository holding it, and each `--root`) and the
-  rituals' `repo_state.py` (the paths `--workspace-root`'s `.agents/repos.yaml` declares, relative to it, and each
-  repository one or two folders under `--discover`) run git themselves; a run whose repositories' own configuration
-  names a program waits for the protected-folder code, and the user's programs are judged as for git on the line. The
-  doctor given neither reads roots of its own setting, which the guard does not read.
-- **A planted hook:** a write into a repository's `.git/hooks` or `.githooks`, or into a folder `core.hooksPath` names
-  other than synthesis's own, by the file tools or the shell, and a `git config` that points `core.hooksPath` at such a
-  folder, wait for the principal's code for that exact call.
+- **The plugin's scanners** (every carried script that runs git in a folder it is handed): the context doctor
+  (`--project`, the repository holding it, each `--root`, and with neither the knowledge roots its setting names),
+  `repo_state.py` (the paths `--workspace-root`'s `.agents/repos.yaml` declares, and each repository one or two folders
+  under `--discover`), `stray_lessons.py` (each `--repo`), `pr_queue_scan.py` (the repos.yaml `--repos-yaml` or
+  `--workspace` names), `portfolio_review.py` (the repository of each `--index`, else those roots) and `sharing_scan.py`
+  (its repository). A run whose repositories' own configuration names a program waits for the protected-folder code,
+  and the user's programs are judged as for git on the line.
+- **A planted hook:** a write into a repository's `.git/hooks` or `.githooks`, into any git dir's own `hooks` folder (a
+  bare repository's), or into a folder `core.hooksPath` names other than synthesis's own, by the file tools or the shell,
+  and a `git config` that sets any key naming a program git runs (`core.hooksPath` other than synthesis's folder or
+  `/dev/null`, `core.fsmonitor` other than a boolean, an alias only to a shell or options), wait for the principal's code
+  for that exact call. A push to a repository on this disk counts that repository's receiving hooks (pre-receive,
+  update, post-receive, post-update, proc-receive) unless its hooks folder is synthesis's own; includes named on the
+  command line are followed as in a file.
 
 ## Calibration
 

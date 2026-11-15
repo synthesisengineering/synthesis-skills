@@ -54,6 +54,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   same 268,723 recorded commands, replayed: the round's first run held 115 scanner runs, under a hooks folder the user's
   own config names, which now takes that setting's scope; at its end 14 wait that main's guard passed, the 7 above, one
   program posting a body it builds, and six writes that plant hooks in temporary test repositories.
+- **Review round 2 of the three.** A reads HTTPie's and xh's `:port` shorthand for this machine and a body on a
+  redirect, curl's URL in a variable the line sets or exports and its `-K` config file (read as cheaply as `-d @file`),
+  and a program's request with host and port given apart or its method and body by position (`http.client`, node's
+  `http.request`). Every carried script that runs git in a folder it is handed is a scanner: `stray_lessons.py`,
+  `pr_queue_scan.py`, `sharing_scan.py` and `portfolio_review.py` beside the context doctor and `repo_state.py`, and the
+  doctor given no folder reads the knowledge roots its setting names, as it does. `git config` of any key that names a
+  program git runs waits as `core.hooksPath` does. A write into any git dir's own `hooks` folder (a bare repository's)
+  waits, and a push to a repository on this disk counts its receiving hooks unless the hooks folder is synthesis's own.
+  Includes named on the command line (`-c include.path`, `GIT_CONFIG_COUNT`) are followed as in a file. Tests first (20
+  failed).
 - **How the three were checked.** Tests first, committed alone (31 failed for the local server's tools, 21 for the
   osascript files and the git programs), with invented fixtures and stand-ins only. A harm check over the 60 days of
   Claude Code and Codex records before 2026-11-15 (265,000 shell commands) found no message sent and no state written by
