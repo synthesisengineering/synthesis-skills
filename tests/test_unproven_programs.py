@@ -210,8 +210,8 @@ READS = {
     "awk": "awk -F, '{{ print $1 }}' {rec}",
     "sed": "sed -n '1,5p' {rec}",
     "python -I script that reads": "python3 -I {work}/read.py {rec}",
-    "python -c that reads": "python3 -c 'import sys; print(open(sys.argv[1]).read()[:40])' {rec}",
-    "python heredoc that reads": "python3 - {rec} <<'EOF'\nimport json, sys\nprint(sum(1 for _ in open(sys.argv[1])))\nEOF",
+    "python -c that reads": "python3 -I -c 'import sys; print(open(sys.argv[1]).read()[:40])' {rec}",
+    "python heredoc that reads": "python3 -I - {rec} <<'EOF'\nimport json, sys\nprint(sum(1 for _ in open(sys.argv[1])))\nEOF",
     "synthesis": "synthesis approvals",
     "synthesis sessions": "synthesis sessions show S-principal --kinds user",
     "git": "git -C {work} status",
@@ -219,7 +219,7 @@ READS = {
     "node naming no protected folder": "node -e 'console.log(1)'",
     "a script naming no protected folder": "python3 {work}/copy.py {forged} {work}/copied.jsonl",
     "a script run from inside a transcript folder": "cd {home}/.claude/projects/-work && python3 -B {work}/copy.py {forged} {work}/out.jsonl",
-    "json.tool reading one file": "python3 -m json.tool {rec}",
+    "json.tool reading one file": "python3 -I -m json.tool {rec}",
 }
 
 
@@ -298,7 +298,7 @@ GIT_NOT_READS = {
 @pytest.mark.parametrize("name", sorted(GIT_READS_SPELLED))
 def test_a_spelled_git_read_in_the_archive_is_a_read(world, name):
     program = "import subprocess, sys; " + GIT_READS_SPELLED[name]
-    assert _verdict(world, f"python3 -c {shlex.quote(program)} {shlex.quote(str(paths.sessions()))}") is None
+    assert _verdict(world, f"python3 -I -c {shlex.quote(program)} {shlex.quote(str(paths.sessions()))}") is None
 
 
 @pytest.mark.parametrize("name", sorted(GIT_NOT_READS))

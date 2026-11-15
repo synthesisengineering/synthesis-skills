@@ -6,37 +6,42 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
 
 ## [5.22.1] - 2026-11-14
 
-- **A program near the records every approval rests on passes only when the guard can prove it reads** (core). Every
-  approval rests on two records an agent must not write: the harness's transcript, which shows the principal typing
-  `approve <code>`, and the grant the prompt hook files under the synthesis state. A review on 2026-11-14 found that the
-  shell guard judged an interpreter's program by a list of the calls that write, so a short program in a language the
-  guard does not read, calling a standard copy routine that was not on the list, could write both records, after which
-  any held call went. Programs that run text the guard cannot read (an interpreter other than Python, a shell running a
-  script file, a program run by its path, a Python module, an awk or sed program that writes a file or runs a command)
-  now pass, when they name a protected folder, only once their program is proven to read. Anything else waits for the
-  principal's code for exactly that command, run again from the same folder, and the hold says why and how to read with
-  no code. A folder counts as named in any spelling the guard can read: its path in any case; its path below the home
-  folder however a program joins it; a variable that holds it, a folder above it or a place inside it; a path through
-  `..` or a link; a folder above it handed whole; standing in the state folder, its board or the session archive (in a
-  transcript folder, the bare name of a file there); and the files `xargs` hands a program on a line that names one. A
-  Python script file is read when the hook has time for it (16 KB) and passes when the reader follows every write to a
-  place outside those folders; a git read it spells whole (a read subcommand with no option that writes or runs) is a
-  read wherever it is pointed. Python that reaches a call by a name it builds (`getattr` with a built name or on a
-  module, `vars()`, a module's `__dict__`, `functools.partial`, `operator.methodcaller`, `ctypes`) is taken to write, as
-  `exec` and `eval` already were. A script file that calls synthesis's code to open a window or make a grant is refused;
-  one that spends a principal's code, as the local-messaging gap review does, is not. Every refusal from before stands.
-- **An archive unpacked, or a copy made, over a folder that holds a protected one waits for the principal's code**
-  (core). A program the guard does not know to only read, handed a folder between the home folder and a protected one
-  (an archive tool's target, a remote copy's destination), and an archive tool that unpacks where it stands in such a
-  folder or inside a protected one, now wait as above. The copies into such a folder that were refused stay refused.
+- **A command that names a protected folder passes only when its program is one the guard knows to only read** (core).
+  Every approval rests on two records an agent must not write: the harness's transcript, which shows the principal
+  typing `approve <code>`, and the grant the prompt hook files under the synthesis state. Two reviews on 2026-11-14
+  found programs that could write both: a short program in a language the guard does not read, calling a standard copy
+  routine its list of writing calls did not know; a launcher, or an interpreter none of its lists named; git with an
+  option that writes; a hard link; an archive whose members carry their own paths; a copier's own options; and shell
+  syntax the guard misread (brace lists, zsh's clobber redirects). The guard no longer judges a program by lists of what
+  writes. A command any of whose words, options or program text names a protected folder or a folder above one, in any
+  spelling and after the shell's own expansions, passes only when its program is a known reader: the usual readers with
+  none of their own options that write or run, git with a read subcommand and none of its options that write or run
+  (an output file, a work tree, configuration, a pager, an external diff), an awk or sed program read with certainty
+  that writes no file and runs no command, a shell whose script is on the line, on its input or in a file `cat` pipes
+  to it (each of its commands is judged), Python its reader proves, and the plugin's own installed scripts. Anything
+  else, wherever it sits behind a launcher, waits for the principal's code for exactly that command, the folder it runs
+  in and the scripts it runs, so a script rewritten after the approval is a new command; the hold names the program that
+  runs and says how to read with no code. A folder's parts count wherever they stand in one program, however they are
+  joined. Every refusal from before stands; copying a file out of a protected folder with a copier now waits too (a
+  redirect of `cat` passes), and so does an archive tool that unpacks where its members say.
+- **Python passes only when its reader proves it, and the agent's own modules cannot stand in** (core). An inline or
+  module run is proved only in isolated mode, and a script file only when no file beside it or in the folder it runs
+  from could stand in for a module it imports; a git read it spells whole is a read wherever it points. A writer named
+  without being called (handed to `map`, a thread, `atexit`, a lambda or a table), or reached through `sys.modules`,
+  `__call__`, a built name, `vars()` or a module's `__dict__`, is taken to write. A script file outside the installed
+  plugin that imports synthesis's own modules is refused.
+- **The guard answers in its time** (core). It reads only regular files a command runs as scripts, bounded in size,
+  opened so that none can stop it; it proves each script once a call, at most eight, and a command it cannot finish
+  judging in its time waits for the principal's code instead of leaving the verdict to the harness.
 - **The send window and a lost transcript need the principal's code from any terminal** (core). `synthesis sends open`
   and `synthesis sessions export --lost` each went ahead with no code when they saw no harness in their environment and
   a terminal on their input, and an agent's shell can supply both. Each now spends the principal's granted code for
-  exactly what it does, read from the session's own transcript; the second clears the archive's record of a transcript
-  it could not copy, which the day's checks report. The guard judged only the first window request in a command line;
-  it judges every one now, each against its own code, and a post on the same line as well.
+  exactly what it does, read from the session's own transcript, which the command line finds only where the prompt hook
+  recorded it, never through folders the caller's environment names; the second clears the archive's record of a
+  transcript it could not copy, which the day's checks report. The guard judged only the first window request in a
+  command line; it judges every one now, each against its own code, and a post on the same line as well.
 - **The provenance scan spells each git read whole** (agent guardrails), so the guard proves that the day-end scan of
-  the records only reads, and it runs with no code.
+  the records only reads.
 
 ## [5.22.0] - 2026-11-14
 

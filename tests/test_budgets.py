@@ -1156,10 +1156,30 @@ ROOT = Path(__file__).resolve().parents[1]
 # does not know 4. sessions.py 1 fewer: the lost-transcript gate's own-terminal shortcut is gone, its docstring
 # rewritten in as many lines. provenance_scan.py 1: its git helper's five lines become five that spell each read whole,
 # and the docstring gains a line saying why.
+# Review round 1 of 5.22.1 (2026-11-14): core 210 more and plugin 210, for its nineteen findings and the coordinator's
+# rulings (a command that names a protected folder passes only when its program is a known reader; brace lists and
+# every redirect form; programs judged by their text, failing closed; Python isolated from the agent's modules; the hold
+# on time and bound to the scripts it runs). guards.py 203, each with the blank lines after it: _braces 26 (brace lists
+# as bash and zsh expand them, nested, with sequences, under a cap), _sed_writes 25 more (a sed program read with
+# certainty: bracket expressions as BSD sed reads them, any command or flag it does not know taken to write), _regular
+# 21 (a regular file read without waiting, bounded), _shipped 18 (the installed plugin's own scripts: the guard's
+# folder, the synthesis home, or a harness's plugin folder whose guard is this one byte for byte), _awk_reads 17 (an awk
+# program with no redirect, pipe or system), _proven 13 more (each script proved once a call under a cap and the call's
+# deadline, and no planted module beside it), _git_reads 13 (git's read subcommands without options that write or run),
+# _python_writes 10 more (a writer handed on rather than called, sys.modules, a started command's wait carried, a
+# refusal preferred), _unread 8 more (every program not known to only read is named; open runs what it opens), _self_grant
+# 8 more (each command's words judged for what they name, a script file outside the plugin using synthesis's code, a
+# line it cannot read), _piped 8 (what cat pipes into a shell, and what another program pipes, which waits), _isolated 6,
+# _commands 5 more (a file on a program's input read as its script; what printed into a shell), check_self_grant 3 more
+# (its deadline, its caches, the scripts the code binds), _lex 3 and _bare 3 more (quoted braces kept whole; env -S read
+# as env's own words), SYNTHESIS_IMPORT 3, _simple 2, _code_of 2, READER_WRITES 2, check 1, _spells 1, _spellings 1, and
+# one line each for _CALL, UNREAD_INPUT, SHIELD, OUTPUTS, GIT_RUNS, GIT_FIRST, ABSOLUTE and the operator list, less
+# _script_file's 4 (it opens its file through _regular). approvals.py 6: transcript reads the path the prompt hook recorded
+# (and only one that is there), remember records it. hook.py 1: the prompt hook records it.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 15329
-PLUGIN_BUDGET = 40572
+CORE_BUDGET = 15539
+PLUGIN_BUDGET = 40782
 
 
 def _lines(files):

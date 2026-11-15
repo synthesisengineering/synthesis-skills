@@ -21,6 +21,21 @@ import pytest
 
 from synthesis import approvals, board, guards, paths
 
+
+# 5.22.1, review round 1: a program the guard does not know to only read, whose words name a protected folder or a
+# folder above one, waits for the principal's code (decision 1): a copy out of one, a copy into the folder above, a
+# reference file, an awk program that runs a command, a line it cannot read with certainty. These recorded commands
+# are not refused; they wait.
+NOW_WAIT = {"cp {claude}/-work/s.jsonl /tmp/copy.jsonl", "python3 tools/report.py && cp {claude}/-work/s.jsonl /tmp/copy.jsonl",
+            "cp -t /tmp/out {state}/config.json", "dd if={state}/a of=/tmp/copy", "cp {state}/approvals/a.json /tmp/elsewhere/",
+            "touch -r {work}/s.jsonl /tmp/transcript-copy", "awk 'BEGIN {{ system(\"cd /tmp/pad && echo x > made\") }}' {work}/s.jsonl",
+            "cp -a {above} /tmp/pad/backup", "rsync -a {above}/ /tmp/pad/backup/", "cp /tmp/pad/settings.json {above}/",
+            "grep -c \"a\\|b\" {work}/s.jsonl | head -1; echo 'an unbalanced quote"}
+
+
+def _passes(reason, command) -> bool:
+    return reason is None or (command in NOW_WAIT and "approve followed by the code" in reason)
+
 ROOT = Path(__file__).resolve().parents[1]
 SLACK = "mcp__stubslack__slack_send_message"
 CALL = {"channel_id": "C0EXAMPLE", "message": "Probe for the approval check."}
@@ -148,13 +163,16 @@ def test_without_a_readable_transcript_the_grant_is_refused_and_says_why(session
         guards.check(SLACK, CALL, {}, session=session)
 
 
-def test_muse_names_no_transcript_so_it_is_found_by_the_session_id(tmp_path, monkeypatch):
+def test_muse_names_no_transcript_so_the_path_its_prompt_hook_recorded_is_read(tmp_path, monkeypatch):
+    """Never one found through folders the caller's environment names, which an agent's own command sets (5.22.1)."""
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
     record = tmp_path / "data" / "muse" / "sessions" / "2026" / "10" / "05" / SID / "session.jsonl"
     record.parent.mkdir(parents=True)
     reason = guards.check(SLACK, CALL, {})
     record.write_text(json.dumps(muse_intent(f"approve {_code(reason)}", time.time() + 0.01)) + "\n", encoding="utf-8")
     approvals.grant_from_prompt(f"approve {_code(reason)}")
+    assert approvals.transcript({"session_id": SID}) == ""
+    approvals.remember(SID, str(record))
     assert approvals.transcript({"session_id": SID}) == str(record)
     assert guards.check(SLACK, CALL, {}, session={"session_id": SID}) is None
 
@@ -261,16 +279,16 @@ def roots(tmp_path, monkeypatch):
     "cp /tmp/forged.json {state}/approvals/",
     "printf x | tee -a {claude}/-work/s.jsonl",
     "cat >> {codex}/2026/10/05/rollout-x.jsonl <<'EOF'\n{{}}\nEOF",
-    "python3 -c \"open('{claude}/-work/s.jsonl', 'a').write('x')\"",
-    "python3 - <<'EOF'\nopen('{claude}/-work/s.jsonl', 'a').write('x')\nEOF",
+    "python3 -I -c \"open('{claude}/-work/s.jsonl', 'a').write('x')\"",
+    "python3 -I - <<'EOF'\nopen('{claude}/-work/s.jsonl', 'a').write('x')\nEOF",
     "sed -i '' 's/a/b/' {muse}/2026/10/05/s/session.jsonl",
     "cd /tmp && mv forged.jsonl {claude}/-work/s.jsonl",
     "cd {state}/approvals && echo '{{}}' > abc.json",
     "cd {claude}/-work && printf x >> s.jsonl",
-    "python3 - <<'EOF'\nfrom pathlib import Path\nPath('{claude}/-work/s.jsonl').write_text('x')\nEOF",
-    "python3 - <<'EOF'\nimport os\nos.replace('/tmp/forged', '{state}/approvals/abc.json')\nEOF",
-    "python3 - <<'EOF'\nfrom pathlib import Path\nPath('/tmp/forged').replace('{codex}/2026/10/05/rollout-x.jsonl')\nEOF",
-    "python3 - <<'EOF'\nimport subprocess\nsubprocess.run(['cp', '/tmp/x', '{claude}/-work/s.jsonl'])\nEOF",
+    "python3 -I - <<'EOF'\nfrom pathlib import Path\nPath('{claude}/-work/s.jsonl').write_text('x')\nEOF",
+    "python3 -I - <<'EOF'\nimport os\nos.replace('/tmp/forged', '{state}/approvals/abc.json')\nEOF",
+    "python3 -I - <<'EOF'\nfrom pathlib import Path\nPath('/tmp/forged').replace('{codex}/2026/10/05/rollout-x.jsonl')\nEOF",
+    "python3 -I - <<'EOF'\nimport subprocess\nsubprocess.run(['cp', '/tmp/x', '{claude}/-work/s.jsonl'])\nEOF",
 ])
 def test_writing_into_the_state_folder_or_a_transcript_is_refused(roots, command, tmp_path):
     command = command.format(**roots)
@@ -281,34 +299,34 @@ def test_writing_into_the_state_folder_or_a_transcript_is_refused(roots, command
     "cat {claude}/-work/s.jsonl | tail -5",
     "grep -n approve {codex}/2026/10/05/rollout-x.jsonl > /tmp/hits.txt",
     "cp {claude}/-work/s.jsonl /tmp/copy.jsonl",
-    "python3 -c \"print(open('{claude}/-work/s.jsonl').read()[:100])\"",
+    "python3 -I -c \"print(open('{claude}/-work/s.jsonl').read()[:100])\"",
     "python3 tools/report.py && cp {claude}/-work/s.jsonl /tmp/copy.jsonl",
     "sed -n 1,40p synthesis/hook.py",
     "python3 -m pytest -q tests/test_hooks_registration.py",
     "synthesis approvals",
     # GUARD-READ-20261008: a bounded read-only lookup was refused because it printed with json.dumps
-    "python3 - <<'EOF'\nimport json, os\np = '{codex}/2026/10/05/rollout-x.jsonl'\nif os.path.exists(p):\n"
+    "python3 -I - <<'EOF'\nimport json, os\np = '{codex}/2026/10/05/rollout-x.jsonl'\nif os.path.exists(p):\n"
     "    f = open(p, 'rb'); f.seek(0, 2); f.seek(max(f.tell() - 4096, 0))\n"
     "    rows = [json.loads(l) for l in f.read().decode().splitlines() if l.strip()]\n"
     "    print(json.dumps([r for r in rows if r.get('type') == 'user'][-1:]).replace('\\\\n', ' '), rows[-1]['x'] if rows else '')\nEOF",
 ])
 def test_reading_them_and_working_on_the_hook_source_is_allowed(roots, command, tmp_path):
-    assert guards.check("Bash", {"command": command.format(**roots)}, {}, cwd=str(tmp_path)) is None
+    assert _passes(guards.check("Bash", {"command": command.format(**roots)}, {}, cwd=str(tmp_path)), command)
 
 
 def test_a_stdin_script_is_judged_by_the_whole_command_and_the_refusal_says_how_to_split_it(roots, tmp_path):
     """A heredoc's text cannot be told apart from the rest of the line, so a path named anywhere in it counts
     (a variable set elsewhere could carry it into the script). The refusal names the remedy (2026-10-06)."""
     note = f"sed -i '' 's#board#board in {roots['state']}/sessions#' REFERENCE.md"
-    combined = f"python3 - <<'EOF'\nopen('CONTEXT.md', 'w').write('x')\nEOF\n{note}"
+    combined = f"python3 -I - <<'EOF'\nopen('CONTEXT.md', 'w').write('x')\nEOF\n{note}"
     # Until 5.7.0 this was refused: a path named anywhere on the line counted against a script on stdin. The script's
     # text is now read apart from the line, and a path reaches it only through its arguments, its environment or
     # the folder it runs in; each of those is refused below (2026-11-11).
     assert guards.check("Bash", {"command": combined}, {}, cwd=str(tmp_path)) is None
-    carried = f"export P={roots['state']}/approvals/a.json\npython3 - <<'EOF'\nimport os\nopen(os.environ['P'], 'w').write('x')\nEOF"
+    carried = f"export P={roots['state']}/approvals/a.json\npython3 -I - <<'EOF'\nimport os\nopen(os.environ['P'], 'w').write('x')\nEOF"
     assert "run the script alone" in guards.check("Bash", {"command": carried}, {}, cwd=str(tmp_path))
     assert guards.check("Bash", {"command": note}, {}, cwd=str(tmp_path)) is None
-    assert guards.check("Bash", {"command": "python3 - <<'EOF'\nopen('CONTEXT.md', 'w').write('x')\nEOF"},
+    assert guards.check("Bash", {"command": "python3 -I - <<'EOF'\nopen('CONTEXT.md', 'w').write('x')\nEOF"},
                         {}, cwd=str(tmp_path)) is None
 
 
@@ -642,7 +660,7 @@ def test_a_write_through_a_variable_assigned_in_the_command_is_refused(roots, co
     "OUT=report.txt; python3 tools/report.py > \"$OUT\"",
 ])
 def test_a_variable_that_points_elsewhere_or_only_reads_changes_nothing(roots, command, tmp_path):
-    assert guards.check("Bash", {"command": command.format(**roots)}, {}, cwd=str(tmp_path)) is None
+    assert _passes(guards.check("Bash", {"command": command.format(**roots)}, {}, cwd=str(tmp_path)), command)
 
 
 @pytest.mark.parametrize("tool, payload", [
@@ -728,7 +746,7 @@ def test_the_shells_other_ways_to_name_and_write_a_protected_folder_are_refused(
     "N=$(wc -l < {state}/a); echo \"$N\" > /tmp/count",
 ])
 def test_reading_a_protected_folder_beside_a_write_elsewhere_is_not_refused(roots, command, tmp_path):
-    assert guards.check("Bash", {"command": command.format(**roots)}, {}, cwd=str(tmp_path)) is None
+    assert _passes(guards.check("Bash", {"command": command.format(**roots)}, {}, cwd=str(tmp_path)), command)
 
 
 def test_a_folder_named_by_a_variable_of_the_environment_is_read_too(roots, tmp_path, monkeypatch):
@@ -811,7 +829,7 @@ def test_a_protected_folder_reached_another_way_is_refused(spots, command, where
 def test_reading_a_protected_folder_with_a_program_the_guard_knows_is_not_refused(spots, command, tmp_path):
     (tmp_path / "tools").mkdir()  # a script that names a protected folder passes once the guard has read that it only reads (5.22.1)
     (tmp_path / "tools" / "read.py").write_text("import sys\nprint(open(sys.argv[1], encoding='utf-8').read()[:40])\n", encoding="utf-8")
-    assert guards.check("Bash", {"command": command.format(**spots)}, {}, cwd=str(tmp_path)) is None
+    assert _passes(guards.check("Bash", {"command": command.format(**spots)}, {}, cwd=str(tmp_path)), command)
 
 
 def test_a_refusal_for_an_unknown_program_says_how_to_read_the_file_instead(spots, tmp_path):
@@ -821,9 +839,12 @@ def test_a_refusal_for_an_unknown_program_says_how_to_read_the_file_instead(spot
 
 def test_the_approved_lines_file_can_be_staged_and_committed_but_not_rewritten(tmp_path):
     store = tmp_path / "policy" / "line-allowances.json"
+    store.parent.mkdir()
+    store.write_text("{}", encoding="utf-8")
     config = {"line_allowances": str(store)}
-    for command in (f"git add {store}", f"git diff {store}", f"cd {store.parent} && git commit -m lines line-allowances.json"):
-        assert guards.check("Bash", {"command": command}, config, cwd=str(tmp_path)) is None, command
+    assert guards.check("Bash", {"command": f"git diff {store}"}, config, cwd=str(tmp_path)) is None
+    for command in (f"git add {store}", f"cd {store.parent} && git commit -m lines line-allowances.json"):  # 5.22.1: they name it
+        assert "approve followed by the code" in guards.check("Bash", {"command": command}, config, cwd=str(tmp_path)), command
     for command in (f"echo '{{}}' > {store}", f"cd {store.parent} && echo '{{}}' > line-allowances.json", f"jq -S . {store} | sponge {store}"):
         assert REFUSED in (guards.check("Bash", {"command": command}, config, cwd=str(tmp_path)) or ""), command
 
@@ -861,7 +882,7 @@ def work(roots):
     "grep -c \"a\\|b\" {work}/s.jsonl | head -1; echo 'an unbalanced quote",          # unreadable text is judged on its writers only
 ])
 def test_ordinary_commands_from_ten_days_of_transcripts_are_not_refused(work, command, tmp_path):
-    assert guards.check("Bash", {"command": command.format(**work)}, {}, cwd=str(tmp_path)) is None
+    assert _passes(guards.check("Bash", {"command": command.format(**work)}, {}, cwd=str(tmp_path)), command)
 
 
 @pytest.mark.parametrize("command", [
@@ -879,19 +900,19 @@ def test_what_stays_refused_after_those_cases(work, command, tmp_path):
 
 
 @pytest.mark.parametrize("command", [
-    "for f in synthesis/guards.py synthesis/hook.py; do python3 -c 'import sys; print(len(open(sys.argv[1]).read()))' \"$f\"; done",
-    "python3 - synthesis/hook.py <<'EOF'\nimport sys\nprint(sys.argv[1])\nEOF",                 # handed to a program given inline
+    "for f in synthesis/guards.py synthesis/hook.py; do python3 -I -c 'import sys; print(len(open(sys.argv[1]).read()))' \"$f\"; done",
+    "python3 -I - synthesis/hook.py <<'EOF'\nimport sys\nprint(sys.argv[1])\nEOF",                 # handed to a program given inline
     "for f in synthesis/hook.py synthesis/board.py; do python3 -m py_compile \"$f\" || echo \"fails $f\"; done",  # or to a module
-    "F={work}/s.jsonl; python3 -c \"t = open('$F').read(); open('/tmp/out.txt', 'w').write(t)\"",  # reads there, writes elsewhere
+    "F={work}/s.jsonl; python3 -I -c \"t = open('$F').read(); open('/tmp/out.txt', 'w').write(t)\"",  # reads there, writes elsewhere
 ])
 def test_a_second_replay_left_these_and_they_pass(work, command, tmp_path):
-    assert guards.check("Bash", {"command": command.format(**work)}, {}, cwd=str(tmp_path)) is None
+    assert _passes(guards.check("Bash", {"command": command.format(**work)}, {}, cwd=str(tmp_path)), command)
 
 
 @pytest.mark.parametrize("command", [
-    "F={work}/s.jsonl; python3 -c \"open('$F', 'a').write('x')\"",                                # the same variable, written through
-    "F={work}/s.jsonl python3 -c \"import os; open(os.environ['F'], 'a').write('x')\"",            # a path that reaches the script at run time
-    "python3 -c \"import sys; open(sys.argv[1], 'a').write('x')\" {work}/s.jsonl",
+    "F={work}/s.jsonl; python3 -I -c \"open('$F', 'a').write('x')\"",                                # the same variable, written through
+    "F={work}/s.jsonl python3 -I -c \"import os; open(os.environ['F'], 'a').write('x')\"",            # a path that reaches the script at run time
+    "python3 -I -c \"import sys; open(sys.argv[1], 'a').write('x')\" {work}/s.jsonl",
     "python3 -m synthesis.hook pre-tool < /tmp/payload.json",
 ])
 def test_and_these_stay_refused(work, command, tmp_path):
@@ -910,21 +931,21 @@ def saved(work):
 @pytest.mark.parametrize("command", [
     "pdftotext -layout {work}/abc/tool-results/webfetch-1.pdf /tmp/out.txt",   # a saved tool result is material to work on
     "sips -s format jpeg {work}/abc/tool-results/shot.png --out /tmp/shot.jpg",
-    "SP=/tmp/pad; F={work}/abc/tool-results/events.txt; python3 -c \"import json; t = json.load(open('$F'))['result']; "
+    "SP=/tmp/pad; F={work}/abc/tool-results/events.txt; python3 -I -c \"import json; t = json.load(open('$F'))['result']; "
     "open('$SP/out.txt', 'w').write(t); print(t.count('\\n- \\\"'))\"",
     "gzip -dc {work}/abc/tool-results/big.txt | head -3",
 ])
 def test_a_thirty_day_replay_left_these_and_they_pass(saved, command, tmp_path):
-    assert guards.check("Bash", {"command": command.format(**saved)}, {}, cwd=str(tmp_path)) is None
+    assert _passes(guards.check("Bash", {"command": command.format(**saved)}, {}, cwd=str(tmp_path)), command)
 
 
 @pytest.mark.parametrize("command", [
     "gzip {work}/abc/tool-results/big.txt",                                   # but not to compress or remove where it lies
     "rm {work}/abc/tool-results/big.txt",
     "pdftotext {work}/s.jsonl /tmp/out.txt",                                  # and a transcript is not material
-    "cd {state}/approvals && python3 - <<'EOF'\nopen('a.json', 'w').write('x')\nEOF",          # a script that writes where it stands
-    "python3 - {work}/s.jsonl <<'EOF'\nimport sys\nopen(sys.argv[1], 'a').write('x')\nEOF",   # or where its arguments point
-    "export P={work}/s.jsonl; python3 - <<'EOF'\nimport os\nopen(os.environ['P'], 'a').write('x')\nEOF",
+    "cd {state}/approvals && python3 -I - <<'EOF'\nopen('a.json', 'w').write('x')\nEOF",          # a script that writes where it stands
+    "python3 -I - {work}/s.jsonl <<'EOF'\nimport sys\nopen(sys.argv[1], 'a').write('x')\nEOF",   # or where its arguments point
+    "export P={work}/s.jsonl; python3 -I - <<'EOF'\nimport os\nopen(os.environ['P'], 'a').write('x')\nEOF",
 ])
 def test_and_these_stay_refused_too(saved, command, tmp_path):
     assert REFUSED in (guards.check("Bash", {"command": command.format(**saved)}, {}, cwd=str(tmp_path)) or ""), command
@@ -934,7 +955,7 @@ def test_and_these_stay_refused_too(saved, command, tmp_path):
 
 @pytest.mark.parametrize("command", [
     "D={parent}; D+=/{rel}; echo x > \"$D/x.json\"",                               # a value appended to
-    "python3 -c 'open(file=\"{state}/x.json\", mode=\"w\").write(\"x\")'",          # the file given by keyword
+    "python3 -I -c 'open(file=\"{state}/x.json\", mode=\"w\").write(\"x\")'",          # the file given by keyword
     "node -e 'require(\"fs\").writeFileSync(\"{state}/x.json\", \"x\")'",
     "perl -e 'open(my $fh, \">\", \"{state}/x.json\"); print $fh \"x\"'",
     "sed -i '' -e's/a/b/' {state}/x.json",                                         # a script attached to its option
@@ -945,7 +966,7 @@ def test_and_these_stay_refused_too(saved, command, tmp_path):
     "awk '{{ print > ($1 \".txt\") }}' {state}/x.json",                             # or writes where the guard cannot read
     "sort -o {state}/x.json /tmp/b",
     "uniq /tmp/a {state}/x.json",
-    "find {state} -name '*.json' -exec python3 -c 'import sys; open(sys.argv[1], \"w\").write(\"\")' {{}} +",
+    "find {state} -name '*.json' -exec python3 -I -c 'import sys; open(sys.argv[1], \"w\").write(\"\")' {{}} +",
     "mkdir -p {claude}/-work/other",
     "bash -o pipefail synthesis-hook pre-tool",
 ])
@@ -954,7 +975,7 @@ def test_what_the_second_review_got_through_is_refused(spots, command, tmp_path)
 
 
 @pytest.mark.parametrize("command", [
-    "find {claude} -name '*.jsonl' -exec python3 -c 'import sys; print(open(sys.argv[1]).read()[:80])' {{}} +",
+    "find {claude} -name '*.jsonl' -exec python3 -I -c 'import sys; print(open(sys.argv[1]).read()[:80])' {{}} +",
     "touch -r {work}/s.jsonl /tmp/transcript-copy",                                # a file only referred to
     "mkdir -p {work}/memory/topics && printf 'x\\n' > {work}/memory/topics/a.md",   # a memory folder is made as its notes are
     "pandoc {work}/memory/old.md -o /tmp/memory.html",                             # and a note may be handed to any program
@@ -966,7 +987,7 @@ def test_what_the_second_review_got_through_is_refused(spots, command, tmp_path)
     "awk -F'\\t' '{{ print $1 }}' {work}/s.jsonl > /tmp/first-column.txt",
 ])
 def test_the_second_reviews_everyday_commands_pass(work, command, tmp_path):
-    assert guards.check("Bash", {"command": command.format(**work)}, {}, cwd=str(tmp_path)) is None
+    assert _passes(guards.check("Bash", {"command": command.format(**work)}, {}, cwd=str(tmp_path)), command)
     if "MEMORY" in command:
         path = str(work["claude"] / "-work" / "MEMORY" / "old.md")
         assert guards.check("Write", {"file_path": path, "content": "x"}, {}, cwd=str(tmp_path)) is None
@@ -974,13 +995,13 @@ def test_the_second_reviews_everyday_commands_pass(work, command, tmp_path):
 
 def test_a_script_that_writes_where_it_stands_or_where_its_environment_points_is_refused(spots, monkeypatch, tmp_path):
     inside = str(spots["state"])
-    stands = "python3 -c 'from pathlib import Path; (Path.cwd() / \"x.json\").write_text(\"x\")'"
+    stands = "python3 -I -c 'from pathlib import Path; (Path.cwd() / \"x.json\").write_text(\"x\")'"
     assert REFUSED in (guards.check("Bash", {"command": stands}, {}, cwd=inside) or "")
     assert guards.check("Bash", {"command": stands}, {}, cwd=str(tmp_path)) is None
     monkeypatch.setenv("WHERE_STATE_LIVES", inside)
-    writes = "python3 -c 'import os; open(os.environ[\"WHERE_STATE_LIVES\"] + \"/x.json\", \"w\").write(\"x\")'"
+    writes = "python3 -I -c 'import os; open(os.environ[\"WHERE_STATE_LIVES\"] + \"/x.json\", \"w\").write(\"x\")'"
     assert REFUSED in (guards.check("Bash", {"command": writes}, {}, cwd=str(tmp_path)) or "")
-    reads = "python3 -c 'import os; print(open(os.environ[\"WHERE_STATE_LIVES\"] + \"/x.json\").read())'"
+    reads = "python3 -I -c 'import os; print(open(os.environ[\"WHERE_STATE_LIVES\"] + \"/x.json\").read())'"
     assert guards.check("Bash", {"command": reads}, {}, cwd=str(tmp_path)) is None
 
 
@@ -1003,13 +1024,13 @@ def test_inside_a_protected_folder_only_a_command_the_guard_can_read_runs(work, 
 
 
 @pytest.mark.parametrize("command", [
-    "cd {work} && python3 - <<'EOF'\nimport json\nprint(len(open('s.jsonl').read()))\nEOF",
+    "cd {work} && python3 -I - <<'EOF'\nimport json\nprint(len(open('s.jsonl').read()))\nEOF",
     "cd {work} && ls -la && git log --oneline -1 && wc -l s.jsonl",
     "(cd {work} && grep -c x s.jsonl) && docker start bench",                        # the subshell's cd ends with it
     "ln -s {work}/memory /tmp/elsewhere/notes && echo x > /tmp/elsewhere/notes/a.md",   # a memory note through a link is still one
 ])
 def test_and_a_command_it_can_read_still_runs_there(work, command, tmp_path):
-    assert guards.check("Bash", {"command": command.format(**work)}, {}, cwd=str(tmp_path)) is None
+    assert _passes(guards.check("Bash", {"command": command.format(**work)}, {}, cwd=str(tmp_path)), command)
 
 
 def test_the_refusal_for_standing_in_a_protected_folder_says_to_run_it_elsewhere(work, tmp_path):
@@ -1022,18 +1043,18 @@ def test_the_refusal_for_standing_in_a_protected_folder_says_to_run_it_elsewhere
 @pytest.mark.parametrize("command", [
     "awk -F'|' 'NR>3 && NF>10 {{ st=$17; gsub(/ /,\"\",st); if (st!=\"released\") print $2, \"|\", $6, \"|\", $9 }}' {work}/abc/tool-results/big.txt",
     "awk -F'|' '/^\\|/ && $NF !~ /released/ && $3 > 5 || $4 == \"x\" {{ print $2, \"|\", $(NF-1) }}' {work}/s.jsonl | head -5",
-    "cd {work}/abc/tool-results && python3 - <<'EOF'\nimport json\nops = json.load(open('events.txt'))\njson.dump(ops, open('/tmp/pad/ops.json', 'w'))\nEOF",
-    "python3 -c \"import os; print(os.listdir('{work}')); open('/tmp/pad/list.txt', 'w').write('x')\"",
+    "cd {work}/abc/tool-results && python3 -I - <<'EOF'\nimport json\nops = json.load(open('events.txt'))\njson.dump(ops, open('/tmp/pad/ops.json', 'w'))\nEOF",
+    "python3 -I -c \"import os; print(os.listdir('{work}')); open('/tmp/pad/list.txt', 'w').write('x')\"",
 ])
 def test_the_replay_after_the_second_round_left_these_and_they_pass(saved, command, tmp_path):
-    assert guards.check("Bash", {"command": command.format(**saved)}, {}, cwd=str(tmp_path)) is None
+    assert _passes(guards.check("Bash", {"command": command.format(**saved)}, {}, cwd=str(tmp_path)), command)
 
 
 @pytest.mark.parametrize("command", [
     "awk '{{ print $1 | \"tee {work}/s.jsonl\" }}' /tmp/data",                    # an awk program that runs a command
     "awk 'BEGIN {{ system(\"rm {work}/s.jsonl\") }}'",
-    "cd {work}/abc/tool-results && python3 - <<'EOF'\nimport json\njson.dump([], open('events.txt', 'w'))\nEOF",   # written where it stands
-    "cd {work}/abc/tool-results && python3 - <<'EOF'\nimport sys\nopen(sys.argv[0] + '.out', 'w').write('x')\nEOF",
+    "cd {work}/abc/tool-results && python3 -I - <<'EOF'\nimport json\njson.dump([], open('events.txt', 'w'))\nEOF",   # written where it stands
+    "cd {work}/abc/tool-results && python3 -I - <<'EOF'\nimport sys\nopen(sys.argv[0] + '.out', 'w').write('x')\nEOF",
 ])
 def test_and_these_after_the_second_round_stay_refused(saved, command, tmp_path):
     assert REFUSED in (guards.check("Bash", {"command": command.format(**saved)}, {}, cwd=str(tmp_path)) or ""), command
@@ -1047,21 +1068,21 @@ def test_and_these_after_the_second_round_stay_refused(saved, command, tmp_path)
 # script's writes are still read.
 
 @pytest.mark.parametrize("command", [
-    "cd {work}/abc/tool-results && python3 -B - <<'PY'\nimport json\nprint(len(json.load(open('events.txt'))))\nPY",
-    "cd {work} && python3 -B /tmp/pad/build_transcript.py",
+    "cd {work}/abc/tool-results && python3 -I -B - <<'PY'\nimport json\nprint(len(json.load(open('events.txt'))))\nPY",
+    "cd {work} && python3 -I -B /tmp/pad/build_transcript.py",
     "cd {work} && grep -c x s.jsonl; docker start bench; open -a Docker",
     "cd {claude} && find . -name '*.jsonl' -print0 | xargs -0 /usr/bin/grep -c x | sort | head -3",
     "for f in $(grep -l \"Inbox hygiene (Step 3d)\" {work}/*.jsonl | head -2); do grep -c x \"$f\"; done",
     "ls {work} | head -2 | awk '{{ cmd = \"date -r \" $1; cmd | getline d; close(cmd); print d }}'",
 ])
 def test_working_from_inside_a_transcript_folder_is_not_refused(saved, command, tmp_path):
-    assert guards.check("Bash", {"command": command.format(**saved)}, {}, cwd=str(tmp_path)) is None
+    assert _passes(guards.check("Bash", {"command": command.format(**saved)}, {}, cwd=str(tmp_path)), command)
 
 
 @pytest.mark.parametrize("command", [
-    "cd {state} && python3 -B /tmp/pad/build.py",
+    "cd {state} && python3 -I -B /tmp/pad/build.py",
     "cd {state} && plutil -p /tmp/a.plist",
-    "cd {work}/abc/tool-results && python3 -B - <<'PY'\nopen('events.txt', 'w').write('x')\nPY",
+    "cd {work}/abc/tool-results && python3 -I -B - <<'PY'\nopen('events.txt', 'w').write('x')\nPY",
     "for d in $(ls -d {state}/*); do rm -rf \"$d\"; done",
 ])
 def test_and_what_stays_refused_with_the_standing_rule_narrowed(saved, command, tmp_path):
@@ -1074,9 +1095,9 @@ def test_and_what_stays_refused_with_the_standing_rule_narrowed(saved, command, 
 # that the guard did not follow.
 
 @pytest.mark.parametrize("command", [
-    "python3 -c \"from pathlib import Path; open(str(Path('{state}') / 'a.json'), 'w').write('x')\"",
-    "python3 -c \"import io; io.open('{state}/a.json', 'w').write('x')\"",
-    "python3 -c \"import gzip; gzip.open('{state}/a.json.gz', 'wt').write('x')\"",
+    "python3 -I -c \"from pathlib import Path; open(str(Path('{state}') / 'a.json'), 'w').write('x')\"",
+    "python3 -I -c \"import io; io.open('{state}/a.json', 'w').write('x')\"",
+    "python3 -I -c \"import gzip; gzip.open('{state}/a.json.gz', 'wt').write('x')\"",
     "env -C {state} tar -xf /tmp/a.tar",                                   # a wrapper that changes the folder
     "git -C {state} init",                                                  # git acting inside the state folder
     "cd {state} && git checkout -b other",
@@ -1088,22 +1109,22 @@ def test_what_a_probe_before_the_third_review_got_through_is_refused(saved, comm
 
 
 @pytest.mark.parametrize("command", [
-    "cd {work}/abc/tool-results && python3 -c \"out = '/tmp/pad/o.txt'; open(out, 'w').write('x')\"",
-    "cd {work}/abc/tool-results && python3 -c \"SP = '/tmp/pad'; open(SP + '/o.txt', 'w').write('x'); open(f'{{SP}}/p.txt', 'w').write('y')\"",
-    "cd {work}/abc/tool-results && python3 -c \"import os; open(os.path.join('/tmp/pad', 'o.txt'), 'w').write('x')\"",
-    "cd {work}/abc/tool-results && python3 -c \"from pathlib import Path; (Path('/tmp/pad') / 'o.txt').write_text('x')\"",
-    "python3 -c \"import os; print(open(os.path.join('{state}', 'a.json')).read())\"",
+    "cd {work}/abc/tool-results && python3 -I -c \"out = '/tmp/pad/o.txt'; open(out, 'w').write('x')\"",
+    "cd {work}/abc/tool-results && python3 -I -c \"SP = '/tmp/pad'; open(SP + '/o.txt', 'w').write('x'); open(f'{{SP}}/p.txt', 'w').write('y')\"",
+    "cd {work}/abc/tool-results && python3 -I -c \"import os; open(os.path.join('/tmp/pad', 'o.txt'), 'w').write('x')\"",
+    "cd {work}/abc/tool-results && python3 -I -c \"from pathlib import Path; (Path('/tmp/pad') / 'o.txt').write_text('x')\"",
+    "python3 -I -c \"import os; print(open(os.path.join('{state}', 'a.json')).read())\"",
     "cd {state} && git log --oneline -3 && git status --short",
     "perl -I lib tools/count.pl synthesis/hook.py",
 ])
 def test_and_what_the_same_probe_showed_must_pass(saved, command, tmp_path):
-    assert guards.check("Bash", {"command": command.format(**saved)}, {}, cwd=str(tmp_path)) is None
+    assert _passes(guards.check("Bash", {"command": command.format(**saved)}, {}, cwd=str(tmp_path)), command)
 
 
 @pytest.mark.parametrize("command", [
-    "cd {work}/abc/tool-results && python3 -c \"name = input(); open(name, 'w').write('x')\"",          # a target it cannot read
-    "cd {work}/abc/tool-results && python3 -c \"SP = '/tmp/pad'; SP = '.'; open(SP + '/o.txt', 'w').write('x')\"",   # a name given twice
-    "cd {work}/abc/tool-results && python3 -c \"open('/tmp/pad/../..{work}/s.jsonl', 'w').write('x')\"",  # a plain path that climbs back
+    "cd {work}/abc/tool-results && python3 -I -c \"name = input(); open(name, 'w').write('x')\"",          # a target it cannot read
+    "cd {work}/abc/tool-results && python3 -I -c \"SP = '/tmp/pad'; SP = '.'; open(SP + '/o.txt', 'w').write('x')\"",   # a name given twice
+    "cd {work}/abc/tool-results && python3 -I -c \"open('/tmp/pad/../..{work}/s.jsonl', 'w').write('x')\"",  # a plain path that climbs back
 ])
 def test_a_write_from_inside_that_cannot_be_shown_to_land_elsewhere_is_refused(saved, command, tmp_path):
     assert REFUSED in (guards.check("Bash", {"command": command.format(**saved)}, {}, cwd=str(tmp_path)) or ""), command
@@ -1131,7 +1152,7 @@ def test_git_reads_inside_the_state_folder_and_git_acting_elsewhere_are_not_held
     "import shutil; shutil.move('{state}/a.json', '/tmp/elsewhere.json')",                   # a move takes the file away
 ])
 def test_a_python_program_that_writes_a_protected_path_is_read_however_it_spells_the_call(spots, program, tmp_path):
-    command = "python3 - <<'EOF'\n" + program.format(**spots).replace("\\n", "\n") + "\nEOF"
+    command = "python3 -I - <<'EOF'\n" + program.format(**spots).replace("\\n", "\n") + "\nEOF"
     assert REFUSED in (guards.check("Bash", {"command": command}, {}, cwd=str(tmp_path)) or ""), program
 
 
@@ -1142,7 +1163,7 @@ def test_a_python_program_that_writes_a_protected_path_is_read_however_it_spells
     "import os; print(os.listdir('{state}'), os.path.getsize('{state}/a.json'))",
 ])
 def test_a_python_program_that_only_reads_a_protected_path_passes(spots, program, tmp_path):
-    command = "python3 - <<'EOF'\n" + program.format(**spots) + "\nEOF"
+    command = "python3 -I - <<'EOF'\n" + program.format(**spots) + "\nEOF"
     assert guards.check("Bash", {"command": command}, {}, cwd=str(tmp_path)) is None
 
 
@@ -1171,7 +1192,7 @@ def test_a_python_program_that_only_reads_a_protected_path_passes(spots, program
     "from pathlib import Path\nPath('/tmp/x').rename(target='{state}/a.json')",
 ])
 def test_a_python_program_is_followed_through_its_own_functions_lists_and_folder_changes(spots, program, tmp_path):
-    command = "python3 - <<'EOF'\n" + program.format(**spots) + "\nEOF"
+    command = "python3 -I - <<'EOF'\n" + program.format(**spots) + "\nEOF"
     assert REFUSED in (guards.check("Bash", {"command": command}, {}, cwd=str(tmp_path)) or ""), program
 
 
@@ -1185,48 +1206,48 @@ def test_a_path_that_reaches_another_interpreter_through_its_environment_is_refu
 
 @pytest.mark.parametrize("command", [
     # two programs in one command are two programs: what the second reads is not what the first writes
-    "python3 - <<'A'\nfrom pathlib import Path\np = Path('/tmp/pad/notes.md')\np.write_text('x')\nA\n"
-    "python3 - <<'B'\np = '{work}/s.jsonl'\nfor line in open(p): print(len(line))\nB",
+    "python3 -I - <<'A'\nfrom pathlib import Path\np = Path('/tmp/pad/notes.md')\np.write_text('x')\nA\n"
+    "python3 -I - <<'B'\np = '{work}/s.jsonl'\nfor line in open(p): print(len(line))\nB",
     # and a heredoc another command reads is not the program's text
     "cat > /tmp/pad/brief.txt <<'EOF'\nState lives in {state}; do not write it.\nEOF\n"
-    "python3 - <<'EOF'\np = '/tmp/pad/README.md'\nopen(p, 'w').write('x')\nEOF",
+    "python3 -I - <<'EOF'\np = '/tmp/pad/README.md'\nopen(p, 'w').write('x')\nEOF",
     # a memory note and a saved workflow script are the agent's own, for a program as for the shell
-    "python3 - <<'EOF'\np = '{work}/memory/a-note.md'\nopen(p, 'w').write('x')\nm = '{work}/memory/MEMORY.md'\n"
+    "python3 -I - <<'EOF'\np = '{work}/memory/a-note.md'\nopen(p, 'w').write('x')\nm = '{work}/memory/MEMORY.md'\n"
     "open(m, 'a').write('- a note')\nEOF",
-    "python3 - <<'EOF'\nfrom pathlib import Path\nsrc = Path('{work}/abc/workflows/scripts/review-wf_1.js')\n"
+    "python3 -I - <<'EOF'\nfrom pathlib import Path\nsrc = Path('{work}/abc/workflows/scripts/review-wf_1.js')\n"
     "dst = Path('{work}/abc/workflows/scripts/review-stage1.js')\ndst.write_text(src.read_text())\nEOF",
     "sed -i '' 's/a/b/' {work}/abc/workflows/scripts/review-wf_1.js",
     # files named as arguments: the program reads the first and writes the second
-    "F={work}/abc/tool-results/events.txt; OUT=/tmp/pad/out.md; python3 - \"$F\" \"$OUT\" <<'PY'\nimport sys\n"
+    "F={work}/abc/tool-results/events.txt; OUT=/tmp/pad/out.md; python3 -I - \"$F\" \"$OUT\" <<'PY'\nimport sys\n"
     "raw = open(sys.argv[1]).read()\nopen(sys.argv[2], 'w').write(raw)\nPY",
-    "python3 -c \"import sys\nd = open(sys.argv[1]).read()\nopen(sys.argv[2], 'w').write(d)\" {work}/s.jsonl /tmp/pad/out.txt",
-    "python3 -B - {work}/s.jsonl /tmp/pad/out.txt <<'PY'\nimport sys\nT, out = sys.argv[1], sys.argv[2]\n"
+    "python3 -I -c \"import sys\nd = open(sys.argv[1]).read()\nopen(sys.argv[2], 'w').write(d)\" {work}/s.jsonl /tmp/pad/out.txt",
+    "python3 -I -B - {work}/s.jsonl /tmp/pad/out.txt <<'PY'\nimport sys\nT, out = sys.argv[1], sys.argv[2]\n"
     "open(out, 'w').write(open(T).read())\nPY",
     # from inside the folder, a write under a plain folder elsewhere, whatever the file is called
-    "cd {work} && python3 - <<'EOF'\nfor n, line in enumerate(open('s.jsonl')):\n"
+    "cd {work} && python3 -I - <<'EOF'\nfor n, line in enumerate(open('s.jsonl')):\n"
     "    open(f'/tmp/pad/brief-{{n}}.txt', 'w').write(line)\nEOF",
     # a copy out reads the protected file and writes the copy
-    "python3 - <<'EOF'\nimport shutil\nshutil.copy('{work}/s.jsonl', '/tmp/pad/copy.jsonl')\nEOF",
+    "python3 -I - <<'EOF'\nimport shutil\nshutil.copy('{work}/s.jsonl', '/tmp/pad/copy.jsonl')\nEOF",
 ])
 def test_the_evening_replay_left_these_and_they_pass(saved, command, tmp_path):
-    assert guards.check("Bash", {"command": command.format(**saved)}, {}, cwd=str(tmp_path)) is None
+    assert _passes(guards.check("Bash", {"command": command.format(**saved)}, {}, cwd=str(tmp_path)), command)
 
 
 @pytest.mark.parametrize("command", [
-    "python3 - <<'A'\nprint(1)\nA\npython3 - <<'B'\nopen('{work}/s.jsonl', 'a').write('x')\nB",   # the second program is read too
-    "python3 - {work}/abc/tool-results/events.txt <<'PY'\nimport sys\nopen(sys.argv[1], 'w').write('x')\nPY",  # not rewritten in place
-    "python3 - {work}/s.jsonl /tmp/pad/out.txt <<'PY'\nimport sys\nfor p in sys.argv[1:]: open(p, 'a').write('x')\nPY",
-    "python3 - {work}/s.jsonl /tmp/pad/out.txt <<'PY'\nimport argparse\na = argparse.ArgumentParser(); a.add_argument('f', nargs=2)\n"
+    "python3 -I - <<'A'\nprint(1)\nA\npython3 -I - <<'B'\nopen('{work}/s.jsonl', 'a').write('x')\nB",   # the second program is read too
+    "python3 -I - {work}/abc/tool-results/events.txt <<'PY'\nimport sys\nopen(sys.argv[1], 'w').write('x')\nPY",  # not rewritten in place
+    "python3 -I - {work}/s.jsonl /tmp/pad/out.txt <<'PY'\nimport sys\nfor p in sys.argv[1:]: open(p, 'a').write('x')\nPY",
+    "python3 -I - {work}/s.jsonl /tmp/pad/out.txt <<'PY'\nimport argparse\na = argparse.ArgumentParser(); a.add_argument('f', nargs=2)\n"
     "open(a.parse_args().f[0], 'w').write('x')\nPY",                                               # arguments taken another way
-    "python3 - {work}/*.jsonl /tmp/pad/out.txt <<'PY'\nimport sys\nopen(sys.argv[2], 'w').write('x')\nPY",   # a pattern moves what follows it
-    "python3 - {work}/s.jsonl <<'PY'\nfrom sys import argv\nopen(argv[1], 'w').write('x')\nPY",
-    "python3 - <<'EOF'\nopen('{work}/abc/workflows/wf_1.json', 'w').write('x')\nEOF",             # the harness's own record of a workflow
-    "python3 - <<'EOF'\nopen('{work}/abc/workflows/scripts/deeper/x.js', 'w').write('x')\nEOF",
+    "python3 -I - {work}/*.jsonl /tmp/pad/out.txt <<'PY'\nimport sys\nopen(sys.argv[2], 'w').write('x')\nPY",   # a pattern moves what follows it
+    "python3 -I - {work}/s.jsonl <<'PY'\nfrom sys import argv\nopen(argv[1], 'w').write('x')\nPY",
+    "python3 -I - <<'EOF'\nopen('{work}/abc/workflows/wf_1.json', 'w').write('x')\nEOF",             # the harness's own record of a workflow
+    "python3 -I - <<'EOF'\nopen('{work}/abc/workflows/scripts/deeper/x.js', 'w').write('x')\nEOF",
     "echo x > {work}/abc/workflows/scripts/notes.txt",
-    "python3 - <<'EOF'\nopen('{work}/memory/notes.json', 'w').write('x')\nEOF",                   # only Markdown in a memory folder
-    "cd {work} && python3 - <<'EOF'\nn = 'x'\nopen(f'{{n}}.txt', 'w').write('x')\nEOF",          # no folder elsewhere leads the name
-    "cd {work} && python3 - <<'EOF'\nimport sys\nopen('/' + sys.stdin.readline(), 'w')\nEOF",     # the root holds every folder
-    "cd {work} && python3 - <<'EOF'\nimport sys\nopen('{claude}/../' + sys.stdin.readline(), 'w')\nEOF",
+    "python3 -I - <<'EOF'\nopen('{work}/memory/notes.json', 'w').write('x')\nEOF",                   # only Markdown in a memory folder
+    "cd {work} && python3 -I - <<'EOF'\nn = 'x'\nopen(f'{{n}}.txt', 'w').write('x')\nEOF",          # no folder elsewhere leads the name
+    "cd {work} && python3 -I - <<'EOF'\nimport sys\nopen('/' + sys.stdin.readline(), 'w')\nEOF",     # the root holds every folder
+    "cd {work} && python3 -I - <<'EOF'\nimport sys\nopen('{claude}/../' + sys.stdin.readline(), 'w')\nEOF",
 ])
 def test_and_what_stays_refused_after_the_evening_replay(saved, command, tmp_path):
     assert REFUSED in (guards.check("Bash", {"command": command.format(**saved)}, {}, cwd=str(tmp_path)) or ""), command
@@ -1251,22 +1272,22 @@ def test_the_file_tools_can_edit_a_sessions_saved_workflow_script_and_nothing_be
 # program is handed to Python (-Bc, -cPROGRAM, a decoy -c after `-`) are read as Python reads them.
 
 @pytest.mark.parametrize("command", [
-    "python3 - -c pass <<'EOF'\nopen('{state}/a.json', 'w')\nEOF",                               # the program is on stdin
+    "python3 -I - -c pass <<'EOF'\nopen('{state}/a.json', 'w')\nEOF",                               # the program is on stdin
     "python3 -W -c - <<'EOF'\nopen('{state}/a.json', 'w')\nEOF",                                 # -c is the value -W takes
     "python3 -Bc \"from shutil import copy; copy('/tmp/x', '{state}/a.json')\"",                 # options in one word
     "python3 -c\"from shutil import copy; copy('/tmp/x', '{state}/a.json')\"",                   # the program in the option's word
-    "python3 - <<'EOF'\nclass C:\n    P = '{state}/a.json'\n    def go(self): open(self.P, 'w')\nC().go()\nEOF",
-    "python3 - <<'EOF'\nclass C: pass\nc = C()\nsetattr(c, 'p', '{state}/a.json')\nopen(c.p, 'w')\nEOF",
-    "python3 - <<'EOF'\nimport io\nio.FileIO('{state}/a.json', 'w')\nEOF",
-    "python3 - <<'EOF'\nimport fileinput\nfor line in fileinput.input('{work}/s.jsonl', inplace=True): print(line, end='')\nEOF",
-    "python3 - <<'EOF'\nimport os\nrm = os.remove\nrm('{state}/a.json')\nEOF",                   # a function under another name
-    "python3 - <<'EOF'\nw = open\nw('{state}/a.json', 'w')\nEOF",
-    "python3 - <<'EOF'\nopen(*['{state}/a.json', 'w'])\nEOF",
-    "python3 - <<'EOF'\nimport zipfile\nzipfile.ZipFile('/tmp/a.zip').extractall('{state}')\nEOF",
-    "cd {work} && python3 - <<'EOF'\nimport zipfile\nzipfile.ZipFile('/tmp/a.zip').extractall()\nEOF",   # unpacked where it stands
-    "python3 - <<'EOF'\nimport glob, os\nfor f in glob.glob('{work}/*.jsonl'): open(os.path.join('/tmp/pad', f), 'w')\nEOF",  # a full path joined on
-    "python3 - <<'EOF'\nrows = [('/tmp/pad/a', '{state}/a.json')]\nfor src, dst in rows: open(dst, 'w')\nEOF",
-    "python3 - <<'EOF'\nrows = [('/tmp/pad/a', '/tmp/pad/b')]\nrows.append(('/tmp/pad/c', '{state}/a.json'))\n"
+    "python3 -I - <<'EOF'\nclass C:\n    P = '{state}/a.json'\n    def go(self): open(self.P, 'w')\nC().go()\nEOF",
+    "python3 -I - <<'EOF'\nclass C: pass\nc = C()\nsetattr(c, 'p', '{state}/a.json')\nopen(c.p, 'w')\nEOF",
+    "python3 -I - <<'EOF'\nimport io\nio.FileIO('{state}/a.json', 'w')\nEOF",
+    "python3 -I - <<'EOF'\nimport fileinput\nfor line in fileinput.input('{work}/s.jsonl', inplace=True): print(line, end='')\nEOF",
+    "python3 -I - <<'EOF'\nimport os\nrm = os.remove\nrm('{state}/a.json')\nEOF",                   # a function under another name
+    "python3 -I - <<'EOF'\nw = open\nw('{state}/a.json', 'w')\nEOF",
+    "python3 -I - <<'EOF'\nopen(*['{state}/a.json', 'w'])\nEOF",
+    "python3 -I - <<'EOF'\nimport zipfile\nzipfile.ZipFile('/tmp/a.zip').extractall('{state}')\nEOF",
+    "cd {work} && python3 -I - <<'EOF'\nimport zipfile\nzipfile.ZipFile('/tmp/a.zip').extractall()\nEOF",   # unpacked where it stands
+    "python3 -I - <<'EOF'\nimport glob, os\nfor f in glob.glob('{work}/*.jsonl'): open(os.path.join('/tmp/pad', f), 'w')\nEOF",  # a full path joined on
+    "python3 -I - <<'EOF'\nrows = [('/tmp/pad/a', '{state}/a.json')]\nfor src, dst in rows: open(dst, 'w')\nEOF",
+    "python3 -I - <<'EOF'\nrows = [('/tmp/pad/a', '/tmp/pad/b')]\nrows.append(('/tmp/pad/c', '{state}/a.json'))\n"
     "for src, dst in rows: open(dst, 'w')\nEOF",                                                  # a row added after the list was written
 ])
 def test_what_the_last_probe_before_the_third_review_got_through_is_refused(saved, command, tmp_path):
@@ -1275,23 +1296,23 @@ def test_what_the_last_probe_before_the_third_review_got_through_is_refused(save
 
 @pytest.mark.parametrize("command", [
     # rows the program spells out: each name takes its own column
-    "python3 - <<'PY'\nimport os\nOUT = os.path.expanduser('/tmp/pad/meetings')\nBASE = '{work}/abc/tool-results'\n"
+    "python3 -I - <<'PY'\nimport os\nOUT = os.path.expanduser('/tmp/pad/meetings')\nBASE = '{work}/abc/tool-results'\n"
     "jobs = [(f'{{BASE}}/events.txt', 'a.md', 'A'), (f'{{BASE}}/big.txt', 'b.md', 'B')]\n"
     "for path, fname, title in jobs:\n    raw = open(path).read()\n    open(os.path.join(OUT, fname), 'w').write(title + raw)\nPY",
     # a counter beside a transcript's lines names no protected path
-    "python3 - <<'EOF'\np = '{work}/s.jsonl'\nout = '/tmp/pad/brain/'\nwith open(p) as f:\n    for i, line in enumerate(f):\n"
+    "python3 -I - <<'EOF'\np = '{work}/s.jsonl'\nout = '/tmp/pad/brain/'\nwith open(p) as f:\n    for i, line in enumerate(f):\n"
     "        fn = out + f'notif-{{i}}.txt'\n        open(fn, 'w').write(line)\nEOF",
     # nor does what was parsed out of one
-    "cd /tmp/pad && python3 - <<'EOF'\nimport json, os\nf = '{work}/abc/subagents/agent-1.jsonl'\nfiles = {{}}\n"
+    "cd /tmp/pad && python3 -I - <<'EOF'\nimport json, os\nf = '{work}/abc/subagents/agent-1.jsonl'\nfiles = {{}}\n"
     "for i, line in enumerate(open(f)):\n    d = json.loads(line)\n    files[os.path.basename(d.get('file_path', ''))] = d.get('content')\n"
     "for k, v in files.items():\n    open('recovered/' + k, 'w').write(v)\nEOF",
     # one name for the handle that reads and the handle that writes
-    "cd /tmp && python3 << 'EOF'\nimport json, os\npath = '{work}/abc/tool-results/events.txt'\nwith open(path) as f:\n    data = json.load(f)\n"
+    "cd /tmp && python3 -I << 'EOF'\nimport json, os\npath = '{work}/abc/tool-results/events.txt'\nwith open(path) as f:\n    data = json.load(f)\n"
     "os.makedirs('/tmp/pad/parse', exist_ok=True)\nfor i, raw in enumerate(data['result'].split('---'), 1):\n"
     "    fn = f'/tmp/pad/parse/msg_{{i:02d}}.txt'\n    with open(fn, 'w') as f:\n        f.write(raw)\nEOF",
 ])
 def test_what_a_program_reads_from_a_protected_file_is_not_a_path_into_it(saved, command, tmp_path):
-    assert guards.check("Bash", {"command": command.format(**saved)}, {}, cwd=str(tmp_path)) is None
+    assert _passes(guards.check("Bash", {"command": command.format(**saved)}, {}, cwd=str(tmp_path)), command)
 
 
 # The environment is placed like the arguments: a variable the program reads by name has the value the command
@@ -1299,24 +1320,24 @@ def test_what_a_program_reads_from_a_protected_file_is_not_a_path_into_it(saved,
 # time and wrote a project record, and was refused for the first (30 days, twice).
 
 @pytest.mark.parametrize("command", [
-    "T={work}/s.jsonl && NOW=$(date +%H%M) && grep -c x \"$T\" && export NOW && python3 - <<'EOF'\nimport os\n"
+    "T={work}/s.jsonl && NOW=$(date +%H%M) && grep -c x \"$T\" && export NOW && python3 -I - <<'EOF'\nimport os\n"
     "NOW = os.environ['NOW']\np = 'notes/today.md'\nopen(p, 'a').write(NOW)\nEOF",
-    "export OUT=/tmp/pad/out.txt SRC={work}/s.jsonl; python3 - <<'EOF'\nimport os\n"
+    "export OUT=/tmp/pad/out.txt SRC={work}/s.jsonl; python3 -I - <<'EOF'\nimport os\n"
     "open(os.environ['OUT'], 'w').write(open(os.environ['SRC']).read())\nEOF",
-    "export SRC={work}/s.jsonl; python3 -c \"import os; print(len(open(os.getenv('SRC')).read()), os.environ.get('TERM'))\"",
+    "export SRC={work}/s.jsonl; python3 -I -c \"import os; print(len(open(os.getenv('SRC')).read()), os.environ.get('TERM'))\"",
 ])
 def test_a_variable_of_the_environment_is_placed_where_the_program_reads_it_by_name(saved, command, tmp_path):
-    assert guards.check("Bash", {"command": command.format(**saved)}, {}, cwd=str(tmp_path)) is None
+    assert _passes(guards.check("Bash", {"command": command.format(**saved)}, {}, cwd=str(tmp_path)), command)
 
 
 @pytest.mark.parametrize("command", [
-    "export OUT={work}/s.jsonl SRC=/tmp/pad/in.txt; python3 - <<'EOF'\nimport os\n"
+    "export OUT={work}/s.jsonl SRC=/tmp/pad/in.txt; python3 -I - <<'EOF'\nimport os\n"
     "open(os.environ['OUT'], 'w').write(open(os.environ['SRC']).read())\nEOF",                       # the variable it writes
-    "export OUT={work}/s.jsonl; python3 -c \"import os; open(os.getenv('OUT'), 'a').write('x')\"",
-    "export OUT={work}/s.jsonl; python3 -c \"import os; open(os.environ.get('OUT', '/tmp/x'), 'a').write('x')\"",
-    "export OUT={work}/s.jsonl; python3 - <<'EOF'\nimport os\nfor k, v in os.environ.items():\n"
+    "export OUT={work}/s.jsonl; python3 -I -c \"import os; open(os.getenv('OUT'), 'a').write('x')\"",
+    "export OUT={work}/s.jsonl; python3 -I -c \"import os; open(os.environ.get('OUT', '/tmp/x'), 'a').write('x')\"",
+    "export OUT={work}/s.jsonl; python3 -I - <<'EOF'\nimport os\nfor k, v in os.environ.items():\n"
     "    if k == 'OUT': open(v, 'a').write('x')\nEOF",                                                # taken another way: any write
-    "export OUT={work}/s.jsonl; python3 - <<'EOF'\nimport os, subprocess\nsubprocess.run(['sh', '-c', 'echo x >> $OUT'], env=dict(os.environ))\nEOF",
+    "export OUT={work}/s.jsonl; python3 -I - <<'EOF'\nimport os, subprocess\nsubprocess.run(['sh', '-c', 'echo x >> $OUT'], env=dict(os.environ))\nEOF",
 ])
 def test_and_a_write_to_what_the_environment_names_stays_refused(saved, command, tmp_path):
     assert REFUSED in (guards.check("Bash", {"command": command.format(**saved)}, {}, cwd=str(tmp_path)) or ""), command
@@ -1333,7 +1354,7 @@ def test_and_a_write_to_what_the_environment_names_stays_refused(saved, command,
     ("rows = open('{state}/a.json').read()\nopen('/tmp/pad/o.json', 'w').write(__import__('json').dumps(rows))", False),
 ])
 def test_a_program_that_runs_code_it_builds_is_refused_while_it_names_a_protected_path(spots, program, held, tmp_path):
-    command = "python3 - <<'EOF'\n" + program.format(**spots) + "\nEOF"
+    command = "python3 -I - <<'EOF'\n" + program.format(**spots) + "\nEOF"
     assert (REFUSED in (guards.check("Bash", {"command": command}, {}, cwd=str(tmp_path)) or "")) == held, program
 
 
@@ -1357,7 +1378,7 @@ def test_a_program_that_runs_code_it_builds_is_refused_while_it_names_a_protecte
     "import os\nos.chdir(path='{state}')\nopen('a', 'w').write('x')",                             # a folder changed by keyword
 ])
 def test_the_third_reviews_python_programs_are_refused(saved, program, tmp_path):
-    command = "python3 - <<'EOF'\n" + program.format(**saved) + "\nEOF"
+    command = "python3 -I - <<'EOF'\n" + program.format(**saved) + "\nEOF"
     assert REFUSED in (guards.check("Bash", {"command": command}, {}, cwd=str(tmp_path)) or ""), program
 
 
@@ -1399,12 +1420,12 @@ def test_a_value_added_to_a_variable_the_environment_holds_is_added_to_that_valu
     "uniq -f 1 {work}/s.jsonl",                                                                    # an option's value is not an operand
     "uniq -s 3 {work}/s.jsonl",
     "uniq -c -w 8 {work}/s.jsonl | sort -rn | head -3",
-    "cd {work} && python3 - <<'EOF'\ndef save(p, text):\n    open(p, 'w').write(text)\n\nsave('/tmp/pad' + '/copy.txt', open('s.jsonl').read())\nEOF",
+    "cd {work} && python3 -I - <<'EOF'\ndef save(p, text):\n    open(p, 'w').write(text)\n\nsave('/tmp/pad' + '/copy.txt', open('s.jsonl').read())\nEOF",
     "cd /tmp; pushd /tmp/pad; popd; tar xf /tmp/a.tar",                                            # a folder stack that never enters one
-    "python3 - <<'EOF'\nf = open('/tmp/pad/in.txt')\nopen(f.name + '.bak', 'w').write(f.read())\nEOF",
+    "python3 -I - <<'EOF'\nf = open('/tmp/pad/in.txt')\nopen(f.name + '.bak', 'w').write(f.read())\nEOF",
 ])
 def test_the_third_reviews_everyday_commands_pass(saved, command, tmp_path):
-    assert guards.check("Bash", {"command": command.format(**saved)}, {}, cwd=str(tmp_path)) is None
+    assert _passes(guards.check("Bash", {"command": command.format(**saved)}, {}, cwd=str(tmp_path)), command)
 
 
 @pytest.mark.parametrize("program", [
@@ -1413,7 +1434,7 @@ def test_the_third_reviews_everyday_commands_pass(saved, command, tmp_path):
     "def save(p, text):\n    open(p, 'w').write(text)\n\nlist(map(save, ['/tmp/pad/a.txt'], ['x']))",       # handed on, not called
 ])
 def test_a_helper_given_its_path_is_judged_by_every_path_it_is_given(saved, program, tmp_path):
-    command = "cd {work} && python3 - <<'EOF'\n".format(**saved) + program + "\nEOF"
+    command = "cd {work} && python3 -I - <<'EOF'\n".format(**saved) + program + "\nEOF"
     assert REFUSED in (guards.check("Bash", {"command": command}, {}, cwd=str(tmp_path)) or ""), program
 
 
@@ -1436,7 +1457,7 @@ def test_a_helper_given_its_path_is_judged_by_every_path_it_is_given(saved, prog
     "import fileinput\nfor line in fileinput.input('{work}/s.jsonl', inplace=1): print(line, end='')",
 ])
 def test_the_fourth_reviews_python_programs_are_refused(saved, program, tmp_path):
-    command = "python3 - <<'EOF'\n" + program.format(**saved) + "\nEOF"
+    command = "python3 -I - <<'EOF'\n" + program.format(**saved) + "\nEOF"
     assert REFUSED in (guards.check("Bash", {"command": command}, {}, cwd=str(tmp_path)) or ""), program
 
 
@@ -1462,13 +1483,13 @@ def test_the_fourth_reviews_commands_are_refused(saved, command, tmp_path):
     "cp /tmp/pad/review-script.js {work}/abc/workflows/scripts/review-wf_1.js",                    # a copy onto the script, not into it
     "cd {work} && cp /tmp/pad/review-script.js abc/workflows/scripts/review-wf_1.js",
     "pushd {state}; pushd /tmp; pushd +1; pushd +1; pushd +1; tar xf /tmp/a.tar",                  # three turns end in /tmp
-    "python3 - <<'EOF'\nimport fileinput\nfor line in fileinput.input(files='{work}/s.jsonl', inplace=False): print(line)\nEOF",
-    "python3 - <<'EOF'\nimport os\nf = os.fdopen(os.open('{work}/s.jsonl', os.O_RDONLY), 'rb')\nprint(f.read(80))\nEOF",
+    "python3 -I - <<'EOF'\nimport fileinput\nfor line in fileinput.input(files='{work}/s.jsonl', inplace=False): print(line)\nEOF",
+    "python3 -I - <<'EOF'\nimport os\nf = os.fdopen(os.open('{work}/s.jsonl', os.O_RDONLY), 'rb')\nprint(f.read(80))\nEOF",
     "awk 'BEGIN {{ system(\"cd /tmp/pad && echo x > made\") }}' {work}/s.jsonl",
     "env -C /tmp env -C pad tar xf /tmp/a.tar",
 ])
 def test_the_fourth_reviews_everyday_commands_pass(saved, command, tmp_path):
-    assert guards.check("Bash", {"command": command.format(**saved)}, {}, cwd=str(tmp_path)) is None
+    assert _passes(guards.check("Bash", {"command": command.format(**saved)}, {}, cwd=str(tmp_path)), command)
 
 
 @pytest.mark.parametrize("program", [
@@ -1480,7 +1501,7 @@ def test_the_fourth_reviews_everyday_commands_pass(saved, command, tmp_path):
     "from pathlib import Path\np = Path('/tmp/pad/in.txt')\nf = p.open('rb')\nother = f\nopen(other.name + '.bak', 'wb').write(f.read())",
 ])
 def test_from_inside_a_transcript_folder_these_programs_write_elsewhere_and_pass(saved, program, tmp_path):
-    command = "cd {work} && python3 - <<'EOF'\n".format(**saved) + program + "\nEOF"
+    command = "cd {work} && python3 -I - <<'EOF'\n".format(**saved) + program + "\nEOF"
     assert guards.check("Bash", {"command": command}, {}, cwd=str(tmp_path)) is None, program
 
 
@@ -1491,7 +1512,7 @@ def test_from_inside_a_transcript_folder_these_programs_write_elsewhere_and_pass
     "f = open('s.jsonl')\nopen(f.name + '.bak', 'w').write(f.read())",                                              # beside the transcript
 ])
 def test_and_from_inside_these_stay_refused(saved, program, tmp_path):
-    command = "cd {work} && python3 - <<'EOF'\n".format(**saved) + program + "\nEOF"
+    command = "cd {work} && python3 -I - <<'EOF'\n".format(**saved) + program + "\nEOF"
     assert REFUSED in (guards.check("Bash", {"command": command}, {}, cwd=str(tmp_path)) or ""), program
 
 
@@ -1513,18 +1534,18 @@ def test_a_link_made_and_moved_in_one_command_is_still_that_link(saved, command,
 # built with % or a base name, and a program that runs `cat`.
 
 @pytest.mark.parametrize("command", [
-    "python3 - <<'EOF'\nimport os as o\nf = o.fdopen(o.open('{work}/s.jsonl', o.O_RDONLY), 'rb')\nprint(f.read(80))\nEOF",
-    "python3 - <<'EOF'\nimport os\nf = os.fdopen(os.open('{work}/s.jsonl', 0), 'rb')\nprint(f.read(80))\nEOF",
-    "python3 - <<'EOF'\nimport os\nflags = os.O_RDONLY\nf = os.fdopen(os.open('{work}/s.jsonl', flags), 'rb')\nprint(f.read(80))\nEOF",
+    "python3 -I - <<'EOF'\nimport os as o\nf = o.fdopen(o.open('{work}/s.jsonl', o.O_RDONLY), 'rb')\nprint(f.read(80))\nEOF",
+    "python3 -I - <<'EOF'\nimport os\nf = os.fdopen(os.open('{work}/s.jsonl', 0), 'rb')\nprint(f.read(80))\nEOF",
+    "python3 -I - <<'EOF'\nimport os\nflags = os.O_RDONLY\nf = os.fdopen(os.open('{work}/s.jsonl', flags), 'rb')\nprint(f.read(80))\nEOF",
     "cp /tmp/pad/note.md {work}/memory/",                                                            # a note copied into its folder
     "find {work} -name '*.jsonl' -fprint /tmp/pad/list.txt",                                         # a listing written elsewhere
-    "python3 - <<'EOF'\nfrom pathlib import Path\nout = Path('/tmp/pad') / Path('{work}/s.jsonl').name\nout.write_text('copy')\nEOF",
-    "python3 - <<'EOF'\nimport os\nopen(os.path.join('/tmp/pad', os.path.basename('{work}/s.jsonl')), 'w').write('copy')\nEOF",
-    "python3 - <<'EOF'\nimport subprocess\nprint(subprocess.run(['cat', '{work}/s.jsonl'], capture_output=True, text=True).stdout[:80])\nEOF",
-    "python3 - <<'EOF'\nimport subprocess\nn = subprocess.check_output('wc -l {work}/s.jsonl | cut -d\" \" -f1', shell=True)\nprint(n)\nEOF",
+    "python3 -I - <<'EOF'\nfrom pathlib import Path\nout = Path('/tmp/pad') / Path('{work}/s.jsonl').name\nout.write_text('copy')\nEOF",
+    "python3 -I - <<'EOF'\nimport os\nopen(os.path.join('/tmp/pad', os.path.basename('{work}/s.jsonl')), 'w').write('copy')\nEOF",
+    "python3 -I - <<'EOF'\nimport subprocess\nprint(subprocess.run(['cat', '{work}/s.jsonl'], capture_output=True, text=True).stdout[:80])\nEOF",
+    "python3 -I - <<'EOF'\nimport subprocess\nn = subprocess.check_output('wc -l {work}/s.jsonl | cut -d\" \" -f1', shell=True)\nprint(n)\nEOF",
 ])
 def test_the_fifth_reviews_everyday_commands_pass(saved, command, tmp_path):
-    assert guards.check("Bash", {"command": command.format(**saved)}, {}, cwd=str(tmp_path)) is None
+    assert _passes(guards.check("Bash", {"command": command.format(**saved)}, {}, cwd=str(tmp_path)), command)
 
 
 @pytest.mark.parametrize("program", [
@@ -1539,27 +1560,27 @@ def test_the_fifth_reviews_everyday_commands_pass(saved, command, tmp_path):
     "import subprocess\nsubprocess.run(['wc', '-l', 's.jsonl'])",                                                       # a reader run from inside
 ])
 def test_from_inside_a_transcript_folder_the_fifth_reviews_programs_pass(saved, program, tmp_path):
-    command = "cd {work} && python3 - <<'EOF'\n".format(**saved) + program.format(**saved) + "\nEOF"
+    command = "cd {work} && python3 -I - <<'EOF'\n".format(**saved) + program.format(**saved) + "\nEOF"
     assert guards.check("Bash", {"command": command}, {}, cwd=str(tmp_path)) is None, program
 
 
 @pytest.mark.parametrize("command", [
-    "python3 - <<'EOF'\nimport os\nos.fdopen(os.open('{work}/s.jsonl', os.O_RDWR), 'r+').write('x')\nEOF",          # flags that write
-    "python3 - <<'EOF'\nimport os\nflags = os.O_WRONLY\nos.write(os.open('{work}/s.jsonl', flags), b'x')\nEOF",
+    "python3 -I - <<'EOF'\nimport os\nos.fdopen(os.open('{work}/s.jsonl', os.O_RDWR), 'r+').write('x')\nEOF",          # flags that write
+    "python3 -I - <<'EOF'\nimport os\nflags = os.O_WRONLY\nos.write(os.open('{work}/s.jsonl', flags), b'x')\nEOF",
     "cp /tmp/pad/data.json {work}/memory/",                                                                         # not a note
     "cp /tmp/pad/note.md {work}/",                                                                                   # not its folder
     "find {work} -name '*.jsonl' -fprint {work}/list.txt",                                                           # a listing written inside
     "find {work} -name 'x*.jsonl' -delete",
-    "python3 - <<'EOF'\nimport zipfile\nzipfile.ZipFile('/tmp/pad/a.zip').extract('report.csv', path='{state}')\nEOF",
-    "python3 - <<'EOF'\nfor i in range(2): open('{state}/line-%d.json' % i, 'w')\nEOF",
-    "python3 - <<'EOF'\nfrom pathlib import Path\nout = Path('{work}') / Path('/tmp/pad/x.jsonl').name\nout.write_text('x')\nEOF",
-    "python3 - <<'EOF'\nimport subprocess\nsubprocess.run(['python3', '-c', \"open('{work}/s.jsonl', 'a').write('x')\"])\nEOF",
-    "python3 - <<'EOF'\nimport subprocess\nsubprocess.run(['tar', 'xf', '/tmp/a.tar'], cwd='{state}')\nEOF",
-    "python3 - <<'EOF'\nimport subprocess\nsubprocess.run('cat /tmp/pad/x > {work}/s.jsonl', shell=True)\nEOF",
-    "python3 - <<'EOF'\nimport subprocess\nsubprocess.run(['sqlite3', '{state}/x.db', 'delete from t'])\nEOF",
-    "cd {work} && python3 - <<'EOF'\ndef save(*, dst='out.txt'):\n    open(dst, 'w').write('x')\nsave()\nEOF",
-    "cd {work} && python3 - <<'EOF'\nimport zipfile\nzipfile.ZipFile('/tmp/pad/a.zip').extract('report.csv')\nEOF",  # unpacked where it stands
-    "cd {work} && python3 - <<'EOF'\nfor i in range(2): open('line-%d.txt' % i, 'w')\nEOF",
+    "python3 -I - <<'EOF'\nimport zipfile\nzipfile.ZipFile('/tmp/pad/a.zip').extract('report.csv', path='{state}')\nEOF",
+    "python3 -I - <<'EOF'\nfor i in range(2): open('{state}/line-%d.json' % i, 'w')\nEOF",
+    "python3 -I - <<'EOF'\nfrom pathlib import Path\nout = Path('{work}') / Path('/tmp/pad/x.jsonl').name\nout.write_text('x')\nEOF",
+    "python3 -I - <<'EOF'\nimport subprocess\nsubprocess.run(['python3', '-c', \"open('{work}/s.jsonl', 'a').write('x')\"])\nEOF",
+    "python3 -I - <<'EOF'\nimport subprocess\nsubprocess.run(['tar', 'xf', '/tmp/a.tar'], cwd='{state}')\nEOF",
+    "python3 -I - <<'EOF'\nimport subprocess\nsubprocess.run('cat /tmp/pad/x > {work}/s.jsonl', shell=True)\nEOF",
+    "python3 -I - <<'EOF'\nimport subprocess\nsubprocess.run(['sqlite3', '{state}/x.db', 'delete from t'])\nEOF",
+    "cd {work} && python3 -I - <<'EOF'\ndef save(*, dst='out.txt'):\n    open(dst, 'w').write('x')\nsave()\nEOF",
+    "cd {work} && python3 -I - <<'EOF'\nimport zipfile\nzipfile.ZipFile('/tmp/pad/a.zip').extract('report.csv')\nEOF",  # unpacked where it stands
+    "cd {work} && python3 -I - <<'EOF'\nfor i in range(2): open('line-%d.txt' % i, 'w')\nEOF",
 ])
 def test_and_what_stays_refused_after_the_fifth_review(saved, command, tmp_path):
     assert REFUSED in (guards.check("Bash", {"command": command.format(**saved)}, {}, cwd=str(tmp_path)) or ""), command
@@ -1578,7 +1599,7 @@ def test_and_what_stays_refused_after_the_fifth_review(saved, command, tmp_path)
     ("import subprocess, sys\nsubprocess.run(['rm', sys.stdin.readline().strip(), '{work}/s.jsonl'])", True),                     # a word it cannot read at all
 ])
 def test_a_spawned_command_with_a_found_file_among_its_words_is_judged_with_it(saved, program, held, tmp_path):
-    command = "python3 - <<'EOF'\n" + program.format(**saved) + "\nEOF"
+    command = "python3 -I - <<'EOF'\n" + program.format(**saved) + "\nEOF"
     assert (REFUSED in (guards.check("Bash", {"command": command}, {}, cwd=str(tmp_path)) or "")) == held, program
 
 
@@ -1586,10 +1607,10 @@ def test_a_program_that_starts_a_refused_command_is_told_which_rule_refused_it(s
     """The replay after the fifth review: a program that ran the hook through `subprocess` is refused now, as the
     same command typed in the shell always was, and the refusal named the wrong rule."""
     hook = "import subprocess\nsubprocess.run(['/usr/bin/python3', '-S', 'synthesis/hook.py', 'pre-tool-use'], input='{}', text=True)"
-    reason = guards.check("Bash", {"command": "python3 - <<'EOF'\n" + hook + "\nEOF"}, {}, cwd=str(tmp_path))
+    reason = guards.check("Bash", {"command": "python3 -I - <<'EOF'\n" + hook + "\nEOF"}, {}, cwd=str(tmp_path))
     assert REFUSED in reason and "runs the synthesis hook" in reason and "starts a command" in reason
     copy = "import subprocess\nsubprocess.run(['cp', '/tmp/pad/x', '{work}/s.jsonl'])".format(**saved)
-    reason = guards.check("Bash", {"command": "python3 - <<'EOF'\n" + copy + "\nEOF"}, {}, cwd=str(tmp_path))
+    reason = guards.check("Bash", {"command": "python3 -I - <<'EOF'\n" + copy + "\nEOF"}, {}, cwd=str(tmp_path))
     assert REFUSED in reason and "starts a command" in reason and "writes into" in reason
 
 
@@ -1606,7 +1627,7 @@ def test_a_program_that_starts_a_refused_command_is_told_which_rule_refused_it(s
     "import os, subprocess, sys\nos.chdir(sys.stdin.readline().strip() or '{state}')\nsubprocess.run(['touch', 'forged.json'])",
 ])
 def test_a_command_a_program_starts_runs_where_the_program_has_gone(saved, program, tmp_path):
-    command = "python3 - <<'EOF'\n" + program.format(**saved) + "\nEOF"
+    command = "python3 -I - <<'EOF'\n" + program.format(**saved) + "\nEOF"
     assert REFUSED in (guards.check("Bash", {"command": command}, {}, cwd=str(tmp_path)) or ""), program
 
 
@@ -1617,28 +1638,28 @@ def test_a_command_a_program_starts_is_judged_with_the_same_configuration(tmp_pa
     store.write_text("{}", encoding="utf-8")
     config = {"line_allowances": str(store)}
     for program in (f"import subprocess\nsubprocess.run(['cp', '/tmp/pad/x', '{store}'])", f"import os\nos.system('cp /tmp/pad/x {store}')"):
-        command = "python3 - <<'EOF'\n" + program + "\nEOF"
+        command = "python3 -I - <<'EOF'\n" + program + "\nEOF"
         assert REFUSED in (guards.check("Bash", {"command": command}, config, cwd=str(tmp_path)) or ""), program
     assert REFUSED in (guards.check("Bash", {"command": f"cp /tmp/pad/x {store}"}, config, cwd=str(tmp_path)) or "")   # as the shell's own copy is
 
 
 @pytest.mark.parametrize("command", [
-    "python3 - <<'EOF'\nfrom os import open as fdopen, O_RDONLY as RD\nprint(fdopen('{work}/s.jsonl', RD))\nEOF",       # a reading flag under an imported name
-    "python3 - <<'EOF'\nfrom os import O_RDONLY\nimport os\nflags = O_RDONLY\nprint(os.open('{work}/s.jsonl', flags))\nEOF",
+    "python3 -I - <<'EOF'\nfrom os import open as fdopen, O_RDONLY as RD\nprint(fdopen('{work}/s.jsonl', RD))\nEOF",       # a reading flag under an imported name
+    "python3 -I - <<'EOF'\nfrom os import O_RDONLY\nimport os\nflags = O_RDONLY\nprint(os.open('{work}/s.jsonl', flags))\nEOF",
     "cd {work} && find /tmp/pad -name '*.tmp' -delete",                                                                 # a pattern is not a file
     "cd {work} && find /tmp/pad -type f -delete",
     "cd {work} && find -L /tmp/pad /tmp/pad2 -newer /tmp/pad/stamp -exec rm {{}} +",
-    "python3 - <<'EOF'\nimport os, subprocess\nos.chdir('/tmp/pad')\nsubprocess.run(['touch', 'made.txt'])\nEOF",       # a folder elsewhere
+    "python3 -I - <<'EOF'\nimport os, subprocess\nos.chdir('/tmp/pad')\nsubprocess.run(['touch', 'made.txt'])\nEOF",       # a folder elsewhere
 ])
 def test_the_sixth_reviews_everyday_commands_pass(saved, command, tmp_path):
-    assert guards.check("Bash", {"command": command.format(**saved)}, {}, cwd=str(tmp_path)) is None
+    assert _passes(guards.check("Bash", {"command": command.format(**saved)}, {}, cwd=str(tmp_path)), command)
 
 
 @pytest.mark.parametrize("command", [
     "cd {work} && find . -name '*.jsonl' -delete",                                                                     # the folder it stands in
     "cd {work} && find -name '*.jsonl' -delete",                                                                       # no folder named: this one
     "find /tmp/pad {work} -name '*.jsonl' -delete",
-    "python3 - <<'EOF'\nfrom os import open as fdopen, O_RDWR as RW\nfdopen('{work}/s.jsonl', RW)\nEOF",
+    "python3 -I - <<'EOF'\nfrom os import open as fdopen, O_RDWR as RW\nfdopen('{work}/s.jsonl', RW)\nEOF",
 ])
 def test_and_what_stays_refused_after_the_sixth_review(saved, command, tmp_path):
     assert REFUSED in (guards.check("Bash", {"command": command.format(**saved)}, {}, cwd=str(tmp_path)) or ""), command
@@ -1658,7 +1679,7 @@ def test_and_what_stays_refused_after_the_sixth_review(saved, command, tmp_path)
     ("import subprocess\nsubprocess.run(['grep', '-c', 'x', '{work}/s.jsonl'], env={{'LC_ALL': 'C'}})", False),
 ])
 def test_a_started_command_is_judged_with_what_the_program_hands_it(saved, program, held, tmp_path):
-    command = "python3 - <<'EOF'\n" + program.format(**saved) + "\nEOF"
+    command = "python3 -I - <<'EOF'\n" + program.format(**saved) + "\nEOF"
     assert (REFUSED in (guards.check("Bash", {"command": command}, {}, cwd=str(tmp_path)) or "")) == held, program
 
 
@@ -1668,14 +1689,14 @@ def test_an_input_the_guard_cannot_read_does_not_hide_what_the_commands_words_sh
     rule. The words of the command are judged whatever its input is."""
     hook = ("import json, subprocess\npayload = json.dumps({'tool_name': 'Bash'})\n"
             "subprocess.run(['/usr/bin/python3', '-S', 'synthesis/hook.py', 'pre-tool-use'], input=payload, capture_output=True, text=True)")
-    reason = guards.check("Bash", {"command": "python3 - <<'EOF'\n" + hook + "\nEOF"}, {}, cwd=str(tmp_path))
+    reason = guards.check("Bash", {"command": "python3 -I - <<'EOF'\n" + hook + "\nEOF"}, {}, cwd=str(tmp_path))
     assert REFUSED in (reason or "") and "runs the synthesis hook" in reason
     copy = "import subprocess, sys\nsubprocess.run(['cp', '/tmp/pad/x', '{work}/s.jsonl'], input=sys.stdin.read())".format(**saved)
-    assert REFUSED in (guards.check("Bash", {"command": "python3 - <<'EOF'\n" + copy + "\nEOF"}, {}, cwd=str(tmp_path)) or "")
+    assert REFUSED in (guards.check("Bash", {"command": "python3 -I - <<'EOF'\n" + copy + "\nEOF"}, {}, cwd=str(tmp_path)) or "")
     reads = "import subprocess, sys\nprint(subprocess.run(['grep', '-c', 'x', '{work}/s.jsonl'], input=sys.stdin.read(), text=True))".format(**saved)
-    assert guards.check("Bash", {"command": "python3 - <<'EOF'\n" + reads + "\nEOF"}, {}, cwd=str(tmp_path)) is None
+    assert guards.check("Bash", {"command": "python3 -I - <<'EOF'\n" + reads + "\nEOF"}, {}, cwd=str(tmp_path)) is None
     shell = "import subprocess, sys\nsubprocess.run(['bash'], input=sys.stdin.read() + ' {work}/s.jsonl', text=True)".format(**saved)
-    assert REFUSED in (guards.check("Bash", {"command": "python3 - <<'EOF'\n" + shell + "\nEOF"}, {}, cwd=str(tmp_path)) or "")   # a script it cannot read, naming the file
+    assert REFUSED in (guards.check("Bash", {"command": "python3 -I - <<'EOF'\n" + shell + "\nEOF"}, {}, cwd=str(tmp_path)) or "")   # a script it cannot read, naming the file
 
 
 # --- the seventh review round (2026-11-11): what a program has built by the time it writes or starts a command --
@@ -1705,7 +1726,7 @@ def test_an_input_the_guard_cannot_read_does_not_hide_what_the_commands_words_sh
     "import os\nlist(map(os.chdir, ['{state}']))\nopen('forged.json', 'w').write('x')",                                      # a change handed on, not called
 ])
 def test_a_program_stands_where_its_folder_changes_have_led_it(spots, saved, program, tmp_path):
-    command = "python3 - <<'EOF'\n" + program.format(**{**spots, **saved}) + "\nEOF"
+    command = "python3 -I - <<'EOF'\n" + program.format(**{**spots, **saved}) + "\nEOF"
     assert REFUSED in (guards.check("Bash", {"command": command}, {}, cwd=str(tmp_path)) or ""), program
 
 
@@ -1719,7 +1740,7 @@ def test_a_program_stands_where_its_folder_changes_have_led_it(spots, saved, pro
 ])
 @pytest.mark.parametrize("inside", [False, True])
 def test_a_program_that_has_left_a_protected_folder_writes_where_it_went(saved, program, inside, tmp_path):
-    command = "python3 - <<'EOF'\n" + program.format(**saved) + "\nEOF"
+    command = "python3 -I - <<'EOF'\n" + program.format(**saved) + "\nEOF"
     assert guards.check("Bash", {"command": command}, {}, cwd=str(saved["work"] if inside else tmp_path)) is None, program
 
 
@@ -1738,11 +1759,11 @@ def test_a_program_that_has_left_a_protected_folder_writes_where_it_went(saved, 
     ("import os, subprocess\nenv = {{**os.environ, 'LC_ALL': 'C'}}\nsubprocess.run(['grep', '-c', 'x', '{work}/s.jsonl'], env=env)", False),
 ])
 def test_the_variables_a_program_keeps_for_a_command_reach_it_however_they_are_kept(saved, program, held, tmp_path):
-    command = "python3 - <<'EOF'\n" + program.format(**saved) + "\nEOF"
+    command = "python3 -I - <<'EOF'\n" + program.format(**saved) + "\nEOF"
     assert (REFUSED in (guards.check("Bash", {"command": command}, {}, cwd=str(tmp_path)) or "")) == held, program
 
 
-PY = "python3 - <<'EOF'\nimport subprocess, sys\n{}\nEOF"
+PY = "python3 -I - <<'EOF'\nimport subprocess, sys\n{}\nEOF"
 
 
 @pytest.mark.parametrize("command, held", [
@@ -1795,7 +1816,7 @@ def test_a_command_started_another_way_or_fed_down_a_pipe_is_judged_the_same(sav
     ("find /tmp/pad -name '*.txt' -exec cp {{}} {state}/approvals/ \\;", True),                      # what the command it runs writes besides the files found
     ("find /tmp/pad -name '*.txt' -exec sh -c 'echo x >> {work}/s.jsonl' \\;", True),
     ("find /tmp/pad -name '*.txt' -exec tee -a {work}/s.jsonl \\;", True),
-    ("find /tmp/pad -name '*.txt' -exec python3 -c \"open('{work}/s.jsonl', 'a').write('x')\" \\;", True),
+    ("find /tmp/pad -name '*.txt' -exec python3 -I -c \"open('{work}/s.jsonl', 'a').write('x')\" \\;", True),
     ("find {work} -name '*.jsonl' -exec sh -c 'echo x >> \"$1\"' _ {{}} \\;", True),
     ("find {work} -name '*.jsonl' -execdir sh -c 'rm \"$1\"' _ {{}} \\;", True),
     ("find {work} -name '*.jsonl' -exec sh -c 'wc -l \"$1\"' _ {{}} \\;", False),                    # a script that only reads what it is handed
@@ -1844,13 +1865,13 @@ def test_a_command_another_command_runs_is_judged_too(saved, command, held, tmp_
     ("import subprocess\np = subprocess.Popen(['sort'], stdin=subprocess.PIPE, stdout=open('/tmp/pad/sorted.txt', 'w'), text=True)\np.communicate(open('{work}/s.jsonl').read())", False),
 ])
 def test_other_spellings_of_what_a_program_sets_up_first(saved, program, held, tmp_path):
-    command = "python3 - <<'EOF'\n" + program.format(**saved) + "\nEOF"
+    command = "python3 -I - <<'EOF'\n" + program.format(**saved) + "\nEOF"
     assert (REFUSED in (guards.check("Bash", {"command": command}, {}, cwd=str(tmp_path)) or "")) == held, program
 
 
 def test_another_objects_chdir_does_not_move_the_program(saved, tmp_path):
     program = "class Remote:\n    def chdir(self, path):\n        pass\nRemote().chdir('/tmp/pad')\nopen('s.jsonl', 'a').write('x')"
-    assert REFUSED in (guards.check("Bash", {"command": "python3 - <<'EOF'\n" + program + "\nEOF"}, {}, cwd=str(saved["work"])) or "")
+    assert REFUSED in (guards.check("Bash", {"command": "python3 -I - <<'EOF'\n" + program + "\nEOF"}, {}, cwd=str(saved["work"])) or "")
 
 
 @pytest.mark.parametrize("command, held", [
@@ -1900,11 +1921,11 @@ def above(saved):
     "chmod -R a-w {above}",
     "cp -R /tmp/pad/c/. {above}/",                                           # a tree copied over it lands in the folders it holds
     "rsync -a --delete /tmp/pad/empty/ {above}/",
-    "python3 - <<'EOF'\nimport shutil\nshutil.rmtree('{above}')\nEOF",
-    "python3 - <<'EOF'\nimport os\nos.rename('{above}', '/tmp/pad/old')\nEOF",
-    "python3 - <<'EOF'\nimport shutil\nshutil.move('{above}', '/tmp/pad/old')\nEOF",
-    "python3 - <<'EOF'\nimport shutil\nshutil.copytree('/tmp/pad/c', '{above}', dirs_exist_ok=True)\nEOF",
-    "python3 - <<'EOF'\nfrom pathlib import Path\nPath('{above}').rename('/tmp/pad/old')\nEOF",
+    "python3 -I - <<'EOF'\nimport shutil\nshutil.rmtree('{above}')\nEOF",
+    "python3 -I - <<'EOF'\nimport os\nos.rename('{above}', '/tmp/pad/old')\nEOF",
+    "python3 -I - <<'EOF'\nimport shutil\nshutil.move('{above}', '/tmp/pad/old')\nEOF",
+    "python3 -I - <<'EOF'\nimport shutil\nshutil.copytree('/tmp/pad/c', '{above}', dirs_exist_ok=True)\nEOF",
+    "python3 -I - <<'EOF'\nfrom pathlib import Path\nPath('{above}').rename('/tmp/pad/old')\nEOF",
 ])
 def test_a_change_to_a_whole_folder_that_holds_a_protected_one_is_refused(above, command, tmp_path):
     command = command.format(**above).replace("SEMI", chr(92) + ";")
@@ -1921,12 +1942,12 @@ def test_a_change_to_a_whole_folder_that_holds_a_protected_one_is_refused(above,
     "find {above}/plugins -name '*.tmp' -delete",
     "du -sh {above}; ls -la {above}",
     "tar -czf /tmp/pad/backup.tgz {above}/settings.json",
-    "python3 - <<'EOF'\nimport shutil\nshutil.copytree('{above}', '/tmp/pad/backup')\nEOF",
-    "python3 - <<'EOF'\nimport shutil\nshutil.rmtree('{above}/plugins/cache')\nEOF",
-    "python3 - <<'EOF'\nimport shutil\nshutil.move('/tmp/pad/settings.json', '{above}/settings.json')\nEOF",
+    "python3 -I - <<'EOF'\nimport shutil\nshutil.copytree('{above}', '/tmp/pad/backup')\nEOF",
+    "python3 -I - <<'EOF'\nimport shutil\nshutil.rmtree('{above}/plugins/cache')\nEOF",
+    "python3 -I - <<'EOF'\nimport shutil\nshutil.move('/tmp/pad/settings.json', '{above}/settings.json')\nEOF",
 ])
 def test_and_what_only_reads_it_or_changes_one_thing_beside_passes(above, command, tmp_path):
-    assert guards.check("Bash", {"command": command.format(**above)}, {}, cwd=str(tmp_path)) is None, command
+    assert _passes(guards.check("Bash", {"command": command.format(**above)}, {}, cwd=str(tmp_path)), command), command
 
 
 def test_what_find_hands_a_command_is_a_file_under_the_folder_searched(tmp_path):
@@ -1948,7 +1969,7 @@ def test_what_find_hands_a_command_is_a_file_under_the_folder_searched(tmp_path)
     ("import os\ndef main():\n    if os.environ.get('X'):\n        os.chdir('/tmp/pad')\n    open('s.jsonl', 'a').write('x')\nmain()", True),
 ])
 def test_inside_a_function_the_folder_is_followed_statement_by_statement_too(saved, program, held, tmp_path):
-    command = "python3 - <<'EOF'\n" + program.format(**saved) + "\nEOF"
+    command = "python3 -I - <<'EOF'\n" + program.format(**saved) + "\nEOF"
     assert (REFUSED in (guards.check("Bash", {"command": command}, {}, cwd=str(saved["work"])) or "")) == held, program
 
 
@@ -1961,18 +1982,18 @@ def test_inside_a_function_the_folder_is_followed_statement_by_statement_too(sav
     ("truncate -s 0 {above}/p*/-work/s.jsonl", True),
     ("mv {above}/*/-work /tmp/pad/", True),
     ("rm -rf {above}/p*", True),
-    ("python3 - <<'EOF'\nimport glob, os\nfor f in glob.glob('{above}/**/*.jsonl', recursive=True):\n    os.remove(f)\nEOF", True),
-    ("python3 - <<'EOF'\nimport os\nfor root, dirs, files in os.walk('{above}'):\n    for name in files:\n        os.remove(os.path.join(root, name))\nEOF", True),
-    ("python3 - <<'EOF'\nfrom pathlib import Path\nfor p in Path('{above}').rglob('*.jsonl'):\n    p.unlink()\nEOF", True),
-    ("python3 - <<'EOF'\nfrom pathlib import Path\nold = list(Path('{above}').glob('*/*/*.jsonl'))\nfor p in old:\n    p.write_text('')\nEOF", True),
+    ("python3 -I - <<'EOF'\nimport glob, os\nfor f in glob.glob('{above}/**/*.jsonl', recursive=True):\n    os.remove(f)\nEOF", True),
+    ("python3 -I - <<'EOF'\nimport os\nfor root, dirs, files in os.walk('{above}'):\n    for name in files:\n        os.remove(os.path.join(root, name))\nEOF", True),
+    ("python3 -I - <<'EOF'\nfrom pathlib import Path\nfor p in Path('{above}').rglob('*.jsonl'):\n    p.unlink()\nEOF", True),
+    ("python3 -I - <<'EOF'\nfrom pathlib import Path\nold = list(Path('{above}').glob('*/*/*.jsonl'))\nfor p in old:\n    p.write_text('')\nEOF", True),
     ("rm {above}/*.log", False),                                             # one that cannot reach that deep
     ("rm -rf {above}/plugins/*/cache", False),
     ("rm -f /tmp/pad/*/*/*.jsonl", False),
     ("ls {above}/*/*/*.jsonl | head -3", False),
-    ("python3 - <<'EOF'\nimport glob, os\nfor f in glob.glob('{above}/*.log'):\n    os.remove(f)\nEOF", False),
-    ("python3 - <<'EOF'\nimport glob\nprint(len(glob.glob('{above}/**/*.jsonl', recursive=True)))\nEOF", False),
-    ("python3 - <<'EOF'\nimport os, shutil\nfor root, dirs, files in os.walk('{above}'):\n    for name in files:\n        shutil.copy(os.path.join(root, name), '/tmp/pad/' + name)\nEOF", False),
-    ("python3 - <<'EOF'\nimport os, shutil\nfor root, dirs, files in os.walk('{work}'):\n    for name in files:\n        shutil.copy(os.path.join(root, name), '/tmp/pad/' + name)\nEOF", False),
+    ("python3 -I - <<'EOF'\nimport glob, os\nfor f in glob.glob('{above}/*.log'):\n    os.remove(f)\nEOF", False),
+    ("python3 -I - <<'EOF'\nimport glob\nprint(len(glob.glob('{above}/**/*.jsonl', recursive=True)))\nEOF", False),
+    ("python3 -I - <<'EOF'\nimport os, shutil\nfor root, dirs, files in os.walk('{above}'):\n    for name in files:\n        shutil.copy(os.path.join(root, name), '/tmp/pad/' + name)\nEOF", False),
+    ("python3 -I - <<'EOF'\nimport os, shutil\nfor root, dirs, files in os.walk('{work}'):\n    for name in files:\n        shutil.copy(os.path.join(root, name), '/tmp/pad/' + name)\nEOF", False),
 ])
 def test_a_pattern_or_a_walk_that_may_find_what_lies_in_a_protected_folder(above, command, held, tmp_path):
     assert (REFUSED in (guards.check("Bash", {"command": command.format(**above)}, {}, cwd=str(tmp_path)) or "")) == held, command
@@ -1993,8 +2014,8 @@ def test_a_pattern_or_a_walk_that_may_find_what_lies_in_a_protected_folder(above
     ("find -f /tmp/pad -name '*.tmp' -delete", False),
     ("find /tmp/pad -name '*.txt' -execdir wc -l {{}} SEMI", False),
     ("find {work} -name '*.jsonl' -execdir wc -l {{}} SEMI", False),
-    ("watch -n 1 \"python3 -c 'open(\\\"{work}/s.jsonl\\\",\\\"w\\\").write(\\\"x\\\")'\"", True),   # an interpreter inside the word
-    ("ssh localhost \"python3 -c 'from pathlib import Path; Path(\\\"{work}/s.jsonl\\\").write_text(\\\"x\\\")'\"", True),
+    ("watch -n 1 \"python3 -I -c 'open(\\\"{work}/s.jsonl\\\",\\\"w\\\").write(\\\"x\\\")'\"", True),   # an interpreter inside the word
+    ("ssh localhost \"python3 -I -c 'from pathlib import Path; Path(\\\"{work}/s.jsonl\\\").write_text(\\\"x\\\")'\"", True),
     ("ssh localhost \"bash -c 'cd {work} && touch forged.json'\"", True),
     ("gh pr comment 1 --body 'Example: echo x > {work}/s.jsonl'", False),                # a message that shows an example
     ("terminal-notifier -title done -message 'run: rm {work}/s.jsonl to reset'", False),
@@ -2037,13 +2058,13 @@ def test_the_eighth_reviews_programs(above, program, held, tmp_path):
     here = tmp_path / "elsewhere"
     here.mkdir()
     os.symlink(above["above"], here / "alias")
-    command = "python3 - <<'EOF'\n" + program.format(**above, alias=here / "alias") + "\nEOF"
+    command = "python3 -I - <<'EOF'\n" + program.format(**above, alias=here / "alias") + "\nEOF"
     assert (REFUSED in (guards.check("Bash", {"command": command}, {}, cwd=str(here)) or "")) == held, program
 
 
 def test_a_program_standing_in_a_transcript_folder_may_name_a_file_elsewhere_by_its_parts(saved, tmp_path):
     program = "from pathlib import Path\np = Path('/tmp/pad/input.txt')\np.with_suffix('.bak').write_text(p.read_text())\np.with_name('copy.txt').write_text('x')"
-    assert guards.check("Bash", {"command": "python3 - <<'EOF'\n" + program + "\nEOF"}, {}, cwd=str(saved["work"])) is None
+    assert guards.check("Bash", {"command": "python3 -I - <<'EOF'\n" + program + "\nEOF"}, {}, cwd=str(saved["work"])) is None
 
 
 def test_the_folder_that_holds_the_approved_lines_is_not_removed_or_moved_whole(tmp_path, monkeypatch):
@@ -2052,7 +2073,7 @@ def test_the_folder_that_holds_the_approved_lines_is_not_removed_or_moved_whole(
     store.parent.mkdir(parents=True)
     store.write_text("{}", encoding="utf-8")
     config = {"line_allowances": str(store)}
-    for command in (f"rm -rf {store.parent}", f"mv {store.parent} /tmp/pad/policy", f"python3 - <<'EOF'\nimport shutil\nshutil.rmtree('{store.parent.parent}')\nEOF"):
+    for command in (f"rm -rf {store.parent}", f"mv {store.parent} /tmp/pad/policy", f"python3 -I - <<'EOF'\nimport shutil\nshutil.rmtree('{store.parent.parent}')\nEOF"):
         assert REFUSED in (guards.check("Bash", {"command": command}, config, cwd=str(tmp_path)) or ""), command
     for command in (f"find {store.parent.parent} -name '*.pyc' -delete", f"chmod -R go-w {store.parent.parent}/docs", f"cp -R /tmp/pad/docs {store.parent.parent}/docs"):
         assert guards.check("Bash", {"command": command}, config, cwd=str(tmp_path)) is None, command   # a search across it is judged by what it names
@@ -2063,7 +2084,7 @@ def test_the_folder_that_holds_the_approved_lines_is_not_removed_or_moved_whole(
 @pytest.mark.parametrize("command, held", [
     ("cd \"$(dirname {work}/s.jsonl)\" && touch forged.json", True),                     # a folder the guard cannot read, then a bare name
     ("D=$(dirname {work}/s.jsonl); cd \"$D\" && rm s.jsonl", True),
-    ("cd \"$(dirname {work}/s.jsonl)\" && python3 -c \"open('forged.json', 'w').write('x')\"", True),
+    ("cd \"$(dirname {work}/s.jsonl)\" && python3 -I -c \"open('forged.json', 'w').write('x')\"", True),
     ("cd \"$(dirname {work}/s.jsonl)\" && wc -l s.jsonl", False),                        # reading there
     ("cd \"$(mktemp -d)\" && cp {work}/s.jsonl . && wc -l s.jsonl > count.txt", False),     # a fresh temporary folder is elsewhere
     ("cd $(mktemp -d /tmp/work.XXXXXX) && cp {work}/s.jsonl copy.jsonl", False),
@@ -2094,7 +2115,7 @@ def test_words_and_folders_the_guard_cannot_read(above, command, held, inside, t
 def test_a_path_made_whole_is_whole_from_where_the_program_stood_then(above, program, held, tmp_path):
     here = tmp_path / "elsewhere"
     here.mkdir()
-    command = "python3 - <<'EOF'\n" + program.format(**above) + "\nEOF"
+    command = "python3 -I - <<'EOF'\n" + program.format(**above) + "\nEOF"
     assert (REFUSED in (guards.check("Bash", {"command": command}, {}, cwd=str(here)) or "")) == held, program
 
 
@@ -2129,13 +2150,13 @@ def test_a_folder_the_guard_cannot_read_holds_nothing_when_no_protected_folder_i
     ("import subprocess\nn=3\nsubprocess.run('head -n 3 {work}/s.jsonl > /tmp/pad/h.txt', shell=True)", False),   # a statement of the program
 ])
 def test_a_keyword_in_a_program_is_not_a_variable_of_the_command(saved, program, held, tmp_path):
-    command = "python3 - <<'EOF'\n" + program.format(**saved) + "\nEOF"
+    command = "python3 -I - <<'EOF'\n" + program.format(**saved) + "\nEOF"
     assert (REFUSED in (guards.check("Bash", {"command": command}, {}, cwd=str(tmp_path)) or "")) == held, program
 
 
 def test_a_variable_the_command_exports_still_reaches_the_program(saved, tmp_path):
-    held = "export OUT={work}/s.jsonl; python3 - <<'EOF'\nimport os, subprocess\nsubprocess.run('echo x >> $OUT', shell=True, env=dict(os.environ, LANG='C'))\nEOF"
-    free = "export OUT=/tmp/pad; python3 - <<'EOF'\nimport os, subprocess\nsubprocess.run('wc -l {work}/s.jsonl > \"$OUT/n.txt\"', shell=True, env=dict(os.environ, LANG='C'))\nEOF"
+    held = "export OUT={work}/s.jsonl; python3 -I - <<'EOF'\nimport os, subprocess\nsubprocess.run('echo x >> $OUT', shell=True, env=dict(os.environ, LANG='C'))\nEOF"
+    free = "export OUT=/tmp/pad; python3 -I - <<'EOF'\nimport os, subprocess\nsubprocess.run('wc -l {work}/s.jsonl > \"$OUT/n.txt\"', shell=True, env=dict(os.environ, LANG='C'))\nEOF"
     assert REFUSED in (guards.check("Bash", {"command": held.format(**saved)}, {}, cwd=str(tmp_path)) or "")
     assert guards.check("Bash", {"command": free.format(**saved)}, {}, cwd=str(tmp_path)) is None
 
@@ -2178,7 +2199,7 @@ def test_the_folder_a_command_is_in_is_its_own_not_the_guards(above, tmp_path, m
     here.mkdir()
     monkeypatch.setenv("PWD", str(here))                                   # the hook's own folder is not the session's
     monkeypatch.setenv("OLDPWD", str(here))
-    program = "python3 - <<'EOF'\nimport os\nopen(os.path.join(os.environ['PWD'], 'made.txt'), 'w').write('x')\nEOF"
+    program = "python3 -I - <<'EOF'\nimport os\nopen(os.path.join(os.environ['PWD'], 'made.txt'), 'w').write('x')\nEOF"
     for command in ("echo x > \"$PWD/made.txt\"", "echo x > \"${PWD}/made.txt\"", "find \"$PWD\" -name '*.tmp' -delete", program):
         assert guards.check("Bash", {"command": command}, {}, cwd=str(here)) is None, command
         assert REFUSED in (guards.check("Bash", {"command": command}, {}, cwd=str(above["work"])) or ""), command
@@ -2222,7 +2243,7 @@ def test_the_top_of_a_repository_is_this_folder_or_one_above_it(above, tmp_path)
 def test_what_the_second_probe_showed_of_programs(above, program, held, tmp_path):
     here = tmp_path / "elsewhere"
     here.mkdir()
-    command = "python3 - <<'EOF'\n" + program.format(**above) + "\nEOF"
+    command = "python3 -I - <<'EOF'\n" + program.format(**above) + "\nEOF"
     assert (REFUSED in (guards.check("Bash", {"command": command}, {}, cwd=str(here)) or "")) == held, program
 
 
@@ -2249,7 +2270,7 @@ def test_what_the_second_probe_showed_of_programs(above, program, held, tmp_path
 def test_a_path_taken_relative_to_a_folder_names_no_folder(above, program, held, tmp_path):
     here = tmp_path / "elsewhere"
     here.mkdir()
-    command = "python3 - <<'EOF'\n" + program.format(**above) + "\nEOF"
+    command = "python3 -I - <<'EOF'\n" + program.format(**above) + "\nEOF"
     assert (REFUSED in (guards.check("Bash", {"command": command}, {}, cwd=str(here)) or "")) == held, program
 
 
@@ -2259,15 +2280,15 @@ def test_a_path_taken_relative_to_a_folder_names_no_folder(above, program, held,
     "import os, tempfile\nout = os.path.join(tempfile.gettempdir(), 'count.txt')\nopen(out, 'w').write(str(len(open('s.jsonl').read())))",
 ])
 def test_a_fresh_temporary_folder_is_a_folder_somewhere_else(above, program, tmp_path):
-    command = "python3 - <<'EOF'\n" + program.format(**above) + "\nEOF"
+    command = "python3 -I - <<'EOF'\n" + program.format(**above) + "\nEOF"
     assert guards.check("Bash", {"command": command}, {}, cwd=str(above["work"])) is None, program   # also from inside a transcript folder
     for call in ("mkdtemp(dir='{work}')", "mkdtemp(None, 'run-', '{work}')"):                                 # made where it is told
-        made = ("python3 - <<'EOF'\nimport tempfile\nd = tempfile." + call + "\nprint(d)\nEOF").format(**above)
+        made = ("python3 -I - <<'EOF'\nimport tempfile\nd = tempfile." + call + "\nprint(d)\nEOF").format(**above)
         assert REFUSED in (guards.check("Bash", {"command": made}, {}, cwd=str(tmp_path)) or ""), call
 
 
 def test_the_folder_a_command_was_in_reaches_a_program_on_its_input(above, tmp_path):
-    command = "cd /tmp/pad; python3 - <<EOF\nopen(\"$OLDPWD/forged.json\", \"w\").write(\"x\")\nEOF"
+    command = "cd /tmp/pad; python3 -I - <<EOF\nopen(\"$OLDPWD/forged.json\", \"w\").write(\"x\")\nEOF"
     assert REFUSED in (guards.check("Bash", {"command": command}, {}, cwd=str(above["work"])) or "")
     assert guards.check("Bash", {"command": command}, {}, cwd=str(tmp_path)) is None
 
@@ -2339,7 +2360,7 @@ def test_the_ninth_reviews_commands(above, command, held, inside, tmp_path):
 def test_the_ninth_reviews_programs(above, program, held, inside, tmp_path):
     here = tmp_path / "elsewhere"
     here.mkdir()
-    command = "python3 - <<'EOF'\n" + program.format(**above) + "\nEOF"
+    command = "python3 -I - <<'EOF'\n" + program.format(**above) + "\nEOF"
     reason = guards.check("Bash", {"command": command}, {}, cwd=str(above["work"] if inside else here))
     assert (REFUSED in (reason or "")) == held, program
 
@@ -2371,7 +2392,7 @@ def test_the_ninth_reviews_programs(above, program, held, inside, tmp_path):
     ("import contextlib, os\nwith contextlib.suppress(FileNotFoundError):\n    os.remove('/tmp/pad/old.txt')\nos.chdir('/tmp/pad')\nopen('new.txt', 'w').write('x')", False),
 ])
 def test_a_program_that_leaves_a_transcript_folder_inside_a_try_or_its_main_block(above, program, held, tmp_path):
-    command = "python3 - <<'EOF'\n" + program.format(**above) + "\nEOF"
+    command = "python3 -I - <<'EOF'\n" + program.format(**above) + "\nEOF"
     assert (REFUSED in (guards.check("Bash", {"command": command}, {}, cwd=str(above["work"])) or "")) == held, program
 
 
@@ -2388,9 +2409,9 @@ def test_a_shell_whose_own_output_is_sent_to_a_transcript(above, tmp_path):
 # for its destination, and a method's own parameter could not be read.
 
 @pytest.mark.parametrize("command, held", [
-    ("python3 -c \"import subprocess; D='{state}'; subprocess.run('touch \\$OUT/forged.json', shell=True, env=dict(OUT=D))\"", True),
-    ("python3 -c \"import subprocess\nD='/tmp/pad'\nsubprocess.run(\n    'head {work}/s.jsonl > \\\"\\$OUT/x.txt\\\"',\n    shell=True,\n    env=dict(OUT=D),\n)\"", False),
-    ("python3 - <<'EOF'\nimport subprocess\nD = '{state}'\nenv = dict(\n    OUT=D,\n)\nsubprocess.run('touch $OUT/forged.json', shell=True, env=env)\nEOF", True),
+    ("python3 -I -c \"import subprocess; D='{state}'; subprocess.run('touch \\$OUT/forged.json', shell=True, env=dict(OUT=D))\"", True),
+    ("python3 -I -c \"import subprocess\nD='/tmp/pad'\nsubprocess.run(\n    'head {work}/s.jsonl > \\\"\\$OUT/x.txt\\\"',\n    shell=True,\n    env=dict(OUT=D),\n)\"", False),
+    ("python3 -I - <<'EOF'\nimport subprocess\nD = '{state}'\nenv = dict(\n    OUT=D,\n)\nsubprocess.run('touch $OUT/forged.json', shell=True, env=env)\nEOF", True),
     ("trap -- 'rm -f {work}/s.jsonl' EXIT", True),                              # the action after `--`
     ("bash -c \"trap -- 'echo x >> {work}/s.jsonl' EXIT\"", True),
     ("trap -p EXIT; wc -l {work}/s.jsonl", False),
@@ -2426,7 +2447,7 @@ def test_the_tenth_reviews_commands(above, command, held, inside, tmp_path):
 def test_the_tenth_reviews_programs(above, program, held, inside, tmp_path):
     here = tmp_path / "elsewhere"
     here.mkdir()
-    command = "python3 - <<'EOF'\n" + program.format(**above) + "\nEOF"
+    command = "python3 -I - <<'EOF'\n" + program.format(**above) + "\nEOF"
     reason = guards.check("Bash", {"command": command}, {}, cwd=str(above["work"] if inside else here))
     assert (REFUSED in (reason or "")) == (inside if held is None else held), program
 
@@ -2532,7 +2553,7 @@ def test_a_program_is_read_through_every_value_a_name_may_hold(above, program, h
     monkeypatch.delenv("SYNTHESIS_NO_SUCH_VARIABLE", raising=False)
     here = tmp_path / "elsewhere"
     here.mkdir()
-    command = "python3 - <<'EOF'\n" + program.format(**above) + "\nEOF"
+    command = "python3 -I - <<'EOF'\n" + program.format(**above) + "\nEOF"
     reason = guards.check("Bash", {"command": command}, {}, cwd=str(above["work"] if inside else here))
     assert (REFUSED in (reason or "")) == (inside if held is None else held), program
 
@@ -2571,7 +2592,7 @@ FOLLOWED = [
 def test_a_value_carried_past_the_reading_is_still_followed(above, program, held, inside, tmp_path):
     here = tmp_path / "elsewhere"
     here.mkdir()
-    command = "python3 - <<'EOF'\n" + program.format(**above) + "\nEOF"
+    command = "python3 -I - <<'EOF'\n" + program.format(**above) + "\nEOF"
     reason = guards.check("Bash", {"command": command}, {}, cwd=str(above["work"] if inside else here))
     assert (REFUSED in (reason or "")) == held, program
 
@@ -2579,9 +2600,9 @@ def test_a_value_carried_past_the_reading_is_still_followed(above, program, held
 @pytest.mark.parametrize("command, held", [
     ("HOME={state}; echo 1 > ~/x.json", True),                                  # a command that gives HOME its own value: `~` is that value
     ("HOME={state} sh -c 'echo 1 > $HOME/x.json'", True),
-    ("HOME={state} python3 -c \"import os; open(os.path.expanduser('~/x.json'), 'w').write('1')\"", True),
-    ("HOME={state} python3 -c \"from pathlib import Path; (Path.home() / 'x.json').write_text('1')\"", True),
-    ("HOME=/tmp/pad/home python3 -c \"import os; open(os.path.expanduser('~/x.json'), 'w').write('1')\"", False),
+    ("HOME={state} python3 -I -c \"import os; open(os.path.expanduser('~/x.json'), 'w').write('1')\"", True),
+    ("HOME={state} python3 -I -c \"from pathlib import Path; (Path.home() / 'x.json').write_text('1')\"", True),
+    ("HOME=/tmp/pad/home python3 -I -c \"import os; open(os.path.expanduser('~/x.json'), 'w').write('1')\"", False),
     ("HOME=/tmp/pad/home sh -c 'echo 1 > ~/x.json'", False),
     ("notify --subtitle {work}/s.jsonl", False),                                # a message, whatever the option is called
     ("notify --msg {work}/s.jsonl", False),
@@ -2632,7 +2653,7 @@ OTHER_WRITERS = [
 def test_a_call_named_as_a_writer_is_judged_where_its_path_lands(above, program, held, inside, tmp_path):
     here = tmp_path / "elsewhere"
     here.mkdir()
-    command = "python3 - <<'EOF'\n" + program.format(**above) + "\nEOF"
+    command = "python3 -I - <<'EOF'\n" + program.format(**above) + "\nEOF"
     reason = guards.check("Bash", {"command": command}, {}, cwd=str(above["work"] if inside else here))
     assert (REFUSED in (reason or "")) == (inside if held is None else held), program
 
@@ -2697,7 +2718,7 @@ SECOND = [
 def test_a_program_is_read_in_the_order_it_runs_and_each_function_by_its_own_names(above, program, held, inside, tmp_path):
     here = tmp_path / "elsewhere"
     here.mkdir()
-    command = "python3 - <<'EOF'\n" + program.format(**above) + "\nEOF"
+    command = "python3 -I - <<'EOF'\n" + program.format(**above) + "\nEOF"
     reason = guards.check("Bash", {"command": command}, {}, cwd=str(above["work"] if inside else here))
     assert (REFUSED in (reason or "")) == (inside if held is None else held), program
 
@@ -3044,7 +3065,7 @@ OTHER_LIBRARIES = [
 def test_a_member_is_read_by_the_thing_that_holds_it(above, program, held, inside, tmp_path):
     here = tmp_path / "elsewhere"
     here.mkdir()
-    command = "python3 - <<'EOF'\n" + MEMBERS.format(**above) + program + "\nEOF"
+    command = "python3 -I - <<'EOF'\n" + MEMBERS.format(**above) + program + "\nEOF"
     reason = guards.check("Bash", {"command": command}, {}, cwd=str(above["work"] if inside else here))
     assert (REFUSED in (reason or "")) == (inside if held is None else held), program
 
@@ -3054,17 +3075,17 @@ def test_a_member_is_read_by_the_thing_that_holds_it(above, program, held, insid
 def test_a_writer_by_its_name_takes_its_path_where_that_writer_takes_it(above, program, held, inside, tmp_path):
     here = tmp_path / "elsewhere"
     here.mkdir()
-    command = "python3 - <<'EOF'\n" + MEMBERS.format(**above) + LIBRARIES + program + "\nEOF"
+    command = "python3 -I - <<'EOF'\n" + MEMBERS.format(**above) + LIBRARIES + program + "\nEOF"
     reason = guards.check("Bash", {"command": command}, {}, cwd=str(above["work"] if inside else here))
     assert (REFUSED in (reason or "")) == (inside if held is None else held), program
 
 
 @pytest.mark.parametrize("command, held", [
-    ("OUT=/tmp/pad/safe.txt python3 -c \"import os; os.environ['OUT'] = '{work}/s.jsonl'; open(os.getenv('OUT'), 'w').write('x')\"", True),
-    ("OUT={work}/s.jsonl python3 -c \"import os; os.environ['OUT'] = '/tmp/pad/safe.txt'; open(os.getenv('OUT'), 'w').write('x')\"", False),
-    ("OUT=/tmp/pad/safe.txt python3 -c \"import os; open(os.environ['OUT'], 'w').write('x')\"", False),
-    ("OUT={work}/s.jsonl python3 -c \"import os; open(os.environ.get('OUT'), 'w').write('x')\"", True),
-    ("OUT={work}/s.jsonl python3 -c \"import os; print(open(os.environ['OUT']).read()); os.environ['OUT'] = '/tmp/pad/x'; open(os.environ['OUT'], 'w').write('x')\"", False),
+    ("OUT=/tmp/pad/safe.txt python3 -I -c \"import os; os.environ['OUT'] = '{work}/s.jsonl'; open(os.getenv('OUT'), 'w').write('x')\"", True),
+    ("OUT={work}/s.jsonl python3 -I -c \"import os; os.environ['OUT'] = '/tmp/pad/safe.txt'; open(os.getenv('OUT'), 'w').write('x')\"", False),
+    ("OUT=/tmp/pad/safe.txt python3 -I -c \"import os; open(os.environ['OUT'], 'w').write('x')\"", False),
+    ("OUT={work}/s.jsonl python3 -I -c \"import os; open(os.environ.get('OUT'), 'w').write('x')\"", True),
+    ("OUT={work}/s.jsonl python3 -I -c \"import os; print(open(os.environ['OUT']).read()); os.environ['OUT'] = '/tmp/pad/x'; open(os.environ['OUT'], 'w').write('x')\"", False),
 ])
 def test_a_variable_the_command_gives_is_what_the_program_reads_until_it_gives_another(above, command, held, tmp_path):
     reason = guards.check("Bash", {"command": command.format(**above)}, {}, cwd=str(tmp_path))
@@ -3073,7 +3094,7 @@ def test_a_variable_the_command_gives_is_what_the_program_reads_until_it_gives_a
 
 def test_a_class_whose_name_is_also_a_variable_is_still_that_class(above, tmp_path):
     program = "C = '/tmp/pad'\nclass C:\n    out = '/tmp/pad/a.txt'\nC.out = '{work}/s.jsonl'\nopen(C().out, 'w').write('x')"
-    command = "python3 - <<'EOF'\n" + program.format(**above) + "\nEOF"
+    command = "python3 -I - <<'EOF'\n" + program.format(**above) + "\nEOF"
     assert REFUSED in (guards.check("Bash", {"command": command}, {}, cwd=str(tmp_path)) or "")
 
 
@@ -3097,7 +3118,7 @@ REPLAYED = [
 def test_a_reading_that_meets_itself_or_runs_long_still_ends(above, program, held, inside, tmp_path):
     here = tmp_path / "elsewhere"
     here.mkdir()
-    command = "python3 - <<'EOF'\n" + MEMBERS.format(**above) + program.replace("{work}", str(above["work"])) + "\nEOF"
+    command = "python3 -I - <<'EOF'\n" + MEMBERS.format(**above) + program.replace("{work}", str(above["work"])) + "\nEOF"
     began = time.monotonic()
     reason = guards.check("Bash", {"command": command}, {}, cwd=str(above["work"] if inside else here))
     assert (REFUSED in (reason or "")) == held and time.monotonic() - began < 5, program
@@ -3134,7 +3155,7 @@ REBOUND = [
 def test_a_name_a_function_gives_another_value_is_either(above, program, held, inside, tmp_path):
     here = tmp_path / "elsewhere"
     here.mkdir()
-    command = "python3 - <<'EOF'\n" + MEMBERS.format(**above) + program + "\nEOF"
+    command = "python3 -I - <<'EOF'\n" + MEMBERS.format(**above) + program + "\nEOF"
     reason = guards.check("Bash", {"command": command}, {}, cwd=str(above["work"] if inside else here))
     assert (REFUSED in (reason or "")) == held, program
 
@@ -3213,7 +3234,7 @@ TWELFTH = [
 def test_the_twelfth_reviews_programs(above, program, held, inside, tmp_path):
     here = tmp_path / "elsewhere"
     here.mkdir()
-    command = "python3 - <<'EOF'\n" + MEMBERS.format(**above) + program + "\nEOF"
+    command = "python3 -I - <<'EOF'\n" + MEMBERS.format(**above) + program + "\nEOF"
     reason = guards.check("Bash", {"command": command}, {}, cwd=str(above["work"] if inside else here))
     assert (REFUSED in (reason or "")) == held, program
 
@@ -3222,9 +3243,9 @@ def test_what_the_twelfth_rounds_answers_must_not_open(above, tmp_path):
     """Each answer to the twelfth round was read once more for what it might let through: a path object brought in
     from another module and opened to write from inside a transcript folder, and the environment's reader kept
     under another name while the command gives it a transcript."""
-    inside = "python3 - <<'EOF'\nfrom settings import OUT\nOUT.open('w').write('x')\nEOF"
+    inside = "python3 -I - <<'EOF'\nfrom settings import OUT\nOUT.open('w').write('x')\nEOF"
     assert REFUSED in (guards.check("Bash", {"command": inside}, {}, cwd=str(above["work"])) or "")
-    renamed = "OUT={work}/s.jsonl python3 -c \"import os; g = os.getenv; open(g('OUT'), 'w').write('x')\"".format(**above)
+    renamed = "OUT={work}/s.jsonl python3 -I -c \"import os; g = os.getenv; open(g('OUT'), 'w').write('x')\"".format(**above)
     assert REFUSED in (guards.check("Bash", {"command": renamed}, {}, cwd=str(tmp_path)) or "")
 
 
@@ -3275,7 +3296,7 @@ HIDDEN = [
 def test_a_transcript_hidden_in_a_table_a_list_or_an_object_is_still_found(above, program, held, inside, tmp_path):
     here = tmp_path / "elsewhere"
     here.mkdir()
-    command = "python3 - <<'EOF'\n" + MEMBERS.format(**above) + program + "\nEOF"
+    command = "python3 -I - <<'EOF'\n" + MEMBERS.format(**above) + program + "\nEOF"
     reason = guards.check("Bash", {"command": command}, {}, cwd=str(above["work"] if inside else here))
     assert (REFUSED in (reason or "")) == held, program
 
@@ -3286,7 +3307,7 @@ def test_a_transcript_hidden_in_a_table_a_list_or_an_object_is_still_found(above
 
 def test_reading_an_inline_program_with_a_sloppy_escape_prints_no_warning(tmp_path):
     import warnings
-    command = "python3 - <<'EOF'\nimport re\nprint(re.sub('\\$', '', 'a$'))\nEOF"
+    command = "python3 -I - <<'EOF'\nimport re\nprint(re.sub('\\$', '', 'a$'))\nEOF"
     with warnings.catch_warnings(record=True) as said:
         warnings.simplefilter("always")
         assert guards.check("Bash", {"command": command}, {}, cwd=str(tmp_path)) is None

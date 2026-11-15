@@ -365,37 +365,52 @@ harness that gives no transcript cannot carry approved sends or deploys until it
      (`getattr` with a built name or on a module, `vars()`, a module's `__dict__`,
      `functools.partial`, `operator.methodcaller`, `ctypes`). A program with a syntax error
      is judged as below.
-   - **A program the guard cannot read** (5.22.1). A list of the ways to write never ends (a
-     one-line copy in a language the guard does not read wrote a transcript and a grant), so this one passes
-     only where it names no protected folder: an interpreter the guard does not read (Perl,
-     Ruby, Node, Bun, Deno, PHP, Lua, Tcl, `osascript`, an editor or `sqlite3` fed a script,
-     and their like), a shell running a script file or `source`, a program run by its path,
-     `python3 -m` with any module but synthesis's own, an awk program given with `-f`, an
-     extension or an option that writes a file, and a sed program with `w`, `W`, `e` or an
-     `s` flag that writes or runs. A shell's script on the line or on its input is no such
-     program: each of its commands is judged. A Python script file is read where the hook
-     has time for it (16 KB) and passes when the reader follows every write to a place
-     outside the protected folders; it is never refused on that reading. Anything else that
-     names a protected folder waits for the principal's code for exactly that command, run
-     again from the same folder, and the hold says to read with `cat`, `head`, `tail`, `grep`
-     or `jq`, or with Python the guard can read, for no code. A folder is named in the
-     program's words, its program text, the script it runs or its input: by its path in any
-     case; by its path below the home folder however the parts are joined (`Path.home() /
-     ".claude" / "projects"`, `$ENV{HOME}/.claude/projects`, `~/...`); by a variable that
-     holds it, a folder above it or a place inside it, with the rest of the path after it
-     (`$ENV{CLAUDE_CONFIG_DIR}/projects`, `D=<folder> perl ...`); by a path that leads into it
-     through `..`, a link made beforehand or one the line makes; by a folder between it and
-     the home folder or such a variable, handed as an argument; by standing in the state
-     folder, its board or the session archive (in a transcript folder, by the bare name of a
-     file that is there); and by the files `xargs` hands the program on a line that names one. A script file the same
-     line writes is read as the line. A script file may spend a principal's code; one that
-     calls synthesis's code to open a window or make a grant is refused. A git command a Python
-     program spells whole (a list that starts with `git`, a read subcommand, no `-c`,
-     `--output` or pager option, no shell) is a read wherever it is pointed. A program the
-     guard does not know to only read, handed a folder between the home folder (or such a
-     variable's folder) and a protected one, and an archive tool (`tar`, `bsdtar`, `unzip`,
-     `pax`, `cpio`, `7z`, `ar`) that unpacks where it stands in such a folder or inside a
-     protected one, wait the same way; a copy into such a folder stays refused.
+   - **A program the guard does not know to only read** (5.22.1). A list of the ways to write
+     never ends (a one-line copy in a language the guard does not read wrote a transcript and
+     a grant, and so did a launcher in front of one, git with an option that writes, a hard
+     link and an archive whose members carry their own paths), so the guard keeps the other
+     list. A command any of whose words, options or program text names a protected folder or
+     a folder above one passes only when its program is a known reader: a program on the
+     readers' list with none of its own options that write or run (`less -o`, `rg --pre`,
+     `sort -o`), git with a read subcommand and none of its options that write or run
+     (`--output`, `--work-tree`, `-c`, `--config-env`, a pager, `--ext-diff`, `--textconv`),
+     `find` and `eval` (what each runs is judged as a command of its own), a hex dump with one
+     file, an awk program read with certainty that has no output redirect, pipe or `system`, a
+     sed program read with certainty (bracket expressions as BSD sed reads them) with no `w`,
+     `W` or `e`, a shell whose script is on the line, on its input or in a file `cat` pipes to
+     it (each of its commands is judged; a script on its input that cannot be read waits),
+     Python its reader proves, and the plugin's own installed scripts (inside the folder the
+     guard runs from, the synthesis home, or a harness's plugin folder whose guard is this one
+     byte for byte). Python is proved only isolated from the agent's modules: an inline or
+     module run with `-I` (or `-P` with `-E`), a script file when no file beside it or in the
+     folder it runs from could stand in for a module it imports, one of up to 16 KB that the
+     reader proves; a git read it spells whole (a list that starts with `git`, a read
+     subcommand, no option that writes or runs, no shell) is a read wherever it points. Anything
+     else waits for the principal's code for exactly that command, the folder it runs in and
+     the size, time and digest of every script it runs, so a script rewritten after the
+     approval is a new command; the hold names the program that runs and says to read with
+     `cat`, `head`, `tail`, `grep` or `jq` (or a redirect of `cat` for a copy), or with Python
+     the guard can read, for no code. Words are judged wherever the program sits, so a launcher
+     (`script`, `arch`, `time -p`, `xcrun`) hides nothing, and after the shell's own expansions:
+     brace lists (`{a,b}`, `{1..3}`, nested) and every redirect bash and zsh accept (`>|`,
+     `>!`, `>>!`, `&>!`, `>&!`, `&>>`, `<>`). A folder is named by its path in any case; by the
+     parts of its path below the home folder, wherever they stand in one program and however
+     they are joined (`Path.home() / ".claude" / "projects"`, `$ENV{HOME} . "/" . ".claude"`);
+     by a variable that holds it, a folder above it or a place inside it, with the rest of the
+     path anywhere after it; by a path that leads into it through `..`, a link made beforehand
+     or one the line makes; by a folder between it and the home folder or such a variable,
+     handed as a word; by standing in the state folder, its board or the session archive (in a
+     transcript folder, by the bare name of a file that is there); and by the files `xargs`
+     hands a program on a line that names one. A project's memory notes, a session's saved
+     workflow scripts and saved tool results name no folder. Values of message options and the
+     words given to `codex`, `claude`, `muse` and `gh` are left alone. An archive tool that
+     unpacks where it stands in a folder that holds or lies in a protected one, or where its
+     members say (`-P`, `--absolute-names`, `--insecure`, `pax -r`), waits too; a copy into
+     such a folder stays refused. A script file outside the installed plugin that imports
+     synthesis's own modules is refused, and so is Python that reaches synthesis's code by a
+     name it builds. The guard reads only regular files a command runs as scripts, bounded in
+     size and opened without waiting, proves each script once a call (at most eight), and a
+     command it cannot finish judging within 3 seconds waits for the principal's code.
    - **Standing in a protected folder.** A program can write where it stands without naming
      a file (an archive unpacked, a script file). Inside the state folder, the board or the
      sessions archive, where no session has reason to stand, only a command the guard can
@@ -449,10 +464,13 @@ stay open, and no hook running as that same user can close them:
   substitution, a glob in the folder's own name, a name assembled from pieces none of which
   spells the folder), a script file, a module or a program run by its path that names no
   protected folder in a spelling the guard reads (it reads a script's first 256 KB, and an
-  editor's file as text it edits, not a script), a program that writes where it stands
-  inside a transcript folder without naming a file (an archive unpacked there), a
-  file-writing tool of another server that the guard does not know as a file tool, or a
-  program the agent writes and runs that names no such folder gets through. So does `git`
+  editor's file as text it edits, not a script), a program other than an archive tool that
+  writes where it stands inside a transcript folder without naming a file, a file-writing
+  tool of another server that the guard does not know as a file tool, or a program the agent
+  writes and runs that names no such folder gets through. The installed plugin and runtime
+  are trusted as the guard itself is (an agent that rewrites them can rewrite the guard), and
+  a script file run without `-I` loads what the shell's own `PYTHONPATH`, which the guard does
+  not see, puts first. So does `git`
   told to put its own files in such a folder (a clone, an
   archive, a configuration file given with `-f`), a script that is the output of a process
   substitution (`bash <(…)`), and a command handed to a scheduler to run later (`crontab`,
@@ -463,8 +481,7 @@ stay open, and no hook running as that same user can close them:
   exception, a path built piece by piece so that
   no piece names the folder, a path the program reads out of a file or builds from a value
   the reader cannot read, a folder change or a mapping of variables
-  made by code the reader cannot follow, a command an awk program builds in a variable and
-  only reads from, and a program that runs what its configuration or a pipe hands it (a
+  made by code the reader cannot follow, and a program that runs what its configuration or a pipe hands it (a
   makefile on `make`'s input, a git alias given with `-c`, an editor named in a variable).
   A shell function's own `$1` is not followed either: a function handed a protected path
   is refused, also when it only reads it. The Python reader also refuses some programs

@@ -220,6 +220,7 @@ def user_prompt_submit(payload):
     from synthesis import approvals, board, paths
 
     prompt = str(payload.get("prompt") or payload.get("user_prompt") or "")
+    approvals.remember(paths.session_id(payload), str(payload.get("transcript_path") or ""))  # where the CLI finds it later
     waiting = set(approvals.pending())
     notes = [f"Approved by the principal: {s}" for s in approvals.grant_from_prompt(prompt)]
     # A typed code that matched nothing is said aloud, so no one assumes it took (2026-10-13)
