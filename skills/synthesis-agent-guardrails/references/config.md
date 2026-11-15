@@ -22,6 +22,18 @@ Codex and Muse is a hook that uses up their 5 seconds before its deadline is set
 slow to start by more than about a second, under heavy load or on a stalled disk. In every harness
 an unreadable config and an error inside a guard still block, since the guard catches those itself.
 
+**Programs a command runs** (5.23.1). The shell guard reads a shell script a command runs (by a shell, by its path or
+sourced) as the command lines it holds, three scripts deep, and reads a Python script run by its path, `ipython`, and
+what `uv run`, `poetry run`, `pipx run`, `pdm run` and `uvx` start, as the programs they run; a script that exists but
+cannot be opened waits for the principal's code. The release's own scripts are trusted: those in the synthesis home's
+`bin`, `current` and `releases`, the plugin's scripts as they shipped, and the CLI's launcher only where the `current`
+it runs is the synthesis home's own. For pytest, the test files it collects and the conftests it loads are read for a
+writer approvals rest on, or synthesis loaded another way, unless each test file runs with the synthesis home at a
+temporary path for every test. That is trusted only from a fixture that sets `SYNTHESIS_HOME` (or `HOME`) from the
+test's `tmp_path` and is autouse, in a conftest above the file or in the file itself, or that every test in the file
+requests. Nothing that runs as a file loads counts: a writer named, a path of synthesis's taken or synthesis loaded at a
+test module's or a conftest's top level, in a class body, a decorator or a default leaves that file read.
+
 ## Contents
 
 - [Keys](#keys)

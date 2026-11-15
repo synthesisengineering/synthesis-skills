@@ -1394,10 +1394,17 @@ ROOT = Path(__file__).resolve().parents[1]
 # pytest's runs), _bare 9 more (`uv run`, `poetry run`, `pipx run` and their like unwrapped, a .py file as Python runs
 # it; ipython as Python), RUNNERS 4, PYTEST_VALUES 2 and TEMPORARY 1 with their 2 blank lines, check_self_grant 1 more
 # (how deep a script it judges), less _script_file 1 (a text file with no first line is the shell's own script).
+# Then each 20 more, all in guards.py, from 22.21's review round 1 (a writer, or a path of synthesis's taken, at a test
+# module's top level ran before any fixture; a test file that isolated one test was trusted for all; the CLI's launcher
+# was trusted beside any runtime): _at_import 14 with 2 blank lines (what a test module or a conftest runs as it loads,
+# its function bodies left out, read for a writer, a path of synthesis's or synthesis loaded another way), _release_script
+# 2 more (the launcher trusted only where the `current` it runs is the synthesis home's own), _isolates_home 1 more (a
+# test file's own fixture counts only when autouse or every test requests it; nothing that runs at import, which a
+# conftest's environment set from mkdtemp was), _pytest_reach 1 more (what runs at import leaves a file read).
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 17126
-PLUGIN_BUDGET = 43198
+CORE_BUDGET = 17146
+PLUGIN_BUDGET = 43218
 
 
 def _lines(files):

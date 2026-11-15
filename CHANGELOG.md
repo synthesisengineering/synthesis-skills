@@ -67,16 +67,22 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   `poetry run` or `pipx run` start: through any of them, a program could import synthesis in plain words and open a send
   window, void a grant, or record a transcript under folders of its own. A shell script run by a shell, by its path or
   sourced is now judged as the command lines it holds, three scripts deep, a script the line writes by what the line
-  writes, and `$0` as the script's own path; one the guard cannot open waits. A Python script run by its path, `ipython`,
-  and what `uv run`, `poetry run`, `pipx run`, `pdm run`, `uvx` and their like start are read as Python and as the
-  command they run. The test files pytest collects and the conftests it loads are read as script files, unless every
-  test runs under a conftest whose own code puts the synthesis home at a temporary path for every test, an autouse fixture
-  that sets `SYNTHESIS_HOME` from the test's `tmp_path`, as synthesis's own conftests do: the suite runs from its checkout
-  or a worktree with no code, while a test file elsewhere that writes through synthesis waits. An import after `;` on a
-  program's line counts as one at a line's start. Of 73,747 shell commands recorded over 60 days, 13 newly wait: 7
-  programs whose import after a `;` names one of synthesis's writers, as the same program on separate lines already did,
-  and 6 pytest runs of probe and measurement tests that call synthesis's writers with no isolation the guard can read; a
-  planted shell script and a planted test file wait too.
+  writes, and `$0` as the script's own path; one the guard cannot open waits. The release's own scripts are trusted as
+  before, and the CLI's launcher only where the `current` it runs is the synthesis home's own: a copy beside any other
+  is read as what it runs. A Python script run by its path, `ipython`, and what `uv run`, `poetry run`, `pipx run`,
+  `pdm run`, `uvx` and their like start are read as Python and as the command they run. The test files pytest collects
+  and the conftests it loads are read for one of the writers approvals rest on, or synthesis loaded another way, unless
+  each test file runs with the synthesis home at a temporary path for every test: under a fixture that sets
+  `SYNTHESIS_HOME` (or `HOME`) from the test's `tmp_path` and is autouse, in a conftest above the file or in the file
+  itself, or that every test in the file requests, as synthesis's own conftests do, so the suite runs from its checkout
+  or a worktree with no code. Nothing that runs as a file loads counts as isolated: a writer named, a path of
+  synthesis's taken (`STATE = paths.state()`) or synthesis loaded at a test module's or a conftest's top level, in a
+  class body, a decorator or a default leaves that file read. An import after `;` on a program's line counts as one at
+  a line's start. Of 73,816 shell commands recorded over 60 days, 111 newly wait: 99 runs of tests that set the home
+  at a temporary path only inside a test's body or through a fixture not every test in the file requests, 6 runs of
+  probe and measurement tests with no isolation the guard can read, and 6 programs whose import after a `;` names one of
+  synthesis's writers, as the same program on separate lines already did; a planted shell script and a planted test
+  file wait too.
 
 ## [5.23.0] - 2026-11-15
 

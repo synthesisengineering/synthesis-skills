@@ -5118,34 +5118,53 @@ TEMPORARY = frozenset({"tmp_path", "tmp_path_factory", "tmpdir", "tmpdir_factory
 def _release_script(path: str, text: str) -> bool:
     """A shell script that is the release's own, trusted as before (22.21): inside the synthesis home's bin, current or
     releases, which only its installer writes, one of the plugin's scripts as it shipped, or the installer's launcher of
-    the CLI wherever it was copied, which runs the CLI as `synthesis` does."""
+    the CLI where the `current` it runs is the synthesis home's own; a copy beside any other is read as what it runs
+    (review round 1 of 22.21, finding 2)."""
     from synthesis import install
-    return text == install.CLI_SCRIPT or _shipped(path) or any(paths.inside(path, _real(str(paths.home() / n))) for n in ("bin", "current", "releases"))
+    return (text == install.CLI_SCRIPT and _real(os.path.join(os.path.dirname(os.path.dirname(path)), "current")) == _real(str(paths.home() / "current"))
+            ) or _shipped(path) or any(paths.inside(path, _real(str(paths.home() / n))) for n in ("bin", "current", "releases"))
 
 
 def _isolates_home(text: str, autouse: bool = True) -> bool:
-    """Whether a conftest's code puts the synthesis home at a temporary path for every test: an autouse fixture that sets
+    """Whether a conftest puts the synthesis home at a temporary path for every test: an autouse fixture that sets
     SYNTHESIS_HOME (or HOME, which it falls back on) from the test's own temporary folder, as synthesis's own conftests
-    do; with `autouse` False, a test file's own fixture or test that does. Read in its code, not taken from where it
-    sits; a copy isolates the tests beside it the same way, so their writes reach only a temporary home."""
+    do; with `autouse` False, a test file's own such fixture, when it is autouse or every test in the file requests it.
+    Read in the code, not taken from where the file sits (a copy isolates the tests beside it the same way). Nothing that
+    runs as the file loads counts: that runs before any fixture (review round 1 of 22.21, finding 1)."""
     import ast
     try:
         tree = ast.parse(text)
     except (SyntaxError, ValueError, RecursionError, MemoryError):
         return False
-    for f in (n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and (not autouse or any(isinstance(d, ast.Call) and any(
-            k.arg == "autouse" and getattr(k.value, "value", None) is True for k in d.keywords) for d in n.decorator_list))):
+    fixtures = {}  # each fixture that sets the home from a temporary folder: whether it is autouse
+    for f in (n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef)):
+        marks = [d for d in f.decorator_list if "fixture" in (getattr(getattr(d, "func", d), "attr", "") or getattr(getattr(d, "func", d), "id", ""))]
         values = {t.id: n.value for n in ast.walk(f) if isinstance(n, ast.Assign) for t in n.targets if isinstance(t, ast.Name)}
-        for c in (n for n in ast.walk(f) if isinstance(n, ast.Call) and getattr(n.func, "attr", "") == "setenv" and n.args[:1]
+        for c in (n for n in ast.walk(f) if marks and isinstance(n, ast.Call) and getattr(n.func, "attr", "") == "setenv" and n.args[:1]
                   and getattr(n.args[0], "value", None) in ("SYNTHESIS_HOME", "HOME")):
             names = {x.id for a in c.args[1:2] for x in ast.walk(a) if isinstance(x, ast.Name)}
             if (names | {x.id for name in names if name in values for x in ast.walk(values[name]) if isinstance(x, ast.Name)}) & TEMPORARY:
-                return True
-    values = {t.id: n.value for n in ast.walk(tree) if isinstance(n, ast.Assign) for t in n.targets if isinstance(t, ast.Name)}
-    said = lambda e: {x.id if isinstance(x, ast.Name) else x.attr for x in ast.walk(e) if isinstance(x, (ast.Name, ast.Attribute))}
-    return any(getattr(c, "value", None) == "SYNTHESIS_HOME" for c in ast.walk(tree)) and any(  # set for the whole run as it loads
-        (said(n.value) | {y for x in said(n.value) if x in values for y in said(values[x])}) & (TEMPORARY | {"mkdtemp", "TemporaryDirectory"})
-        for n in ast.walk(tree) if isinstance(n, ast.Assign) and any(getattr(getattr(t, "value", None), "attr", "") == "environ" for t in n.targets))
+                fixtures[f.name] = any(k.arg == "autouse" and getattr(k.value, "value", None) is True for d in marks for k in getattr(d, "keywords", []))
+    tests = [f for f in tree.body if isinstance(f, ast.FunctionDef) and f.name.startswith("test")] + [
+        m for c in tree.body if isinstance(c, ast.ClassDef) and c.name.startswith("Test") for m in c.body if isinstance(m, ast.FunctionDef) and m.name.startswith("test")]
+    return any(fixtures.values()) or (not autouse and bool(fixtures) and bool(tests) and all(
+        any(a.arg in fixtures for a in t.args.args + t.args.kwonlyargs) for t in tests))
+
+
+def _at_import(text: str) -> bool:
+    """Whether what a test module or a conftest runs as pytest collects it, before any fixture, reaches synthesis's code:
+    a writer named, a path of synthesis's taken (`STATE = paths.state()`, written through later), or synthesis loaded
+    another way, at its top level or in a class body, decorators and defaults included (review round 1 of 22.21)."""
+    import ast
+    try:
+        tree = ast.parse(text)
+    except (SyntaxError, ValueError, RecursionError, MemoryError):
+        return False
+    for n in ast.walk(tree):
+        if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            n.body = [ast.Pass()]  # what a function holds runs when it is called, under the fixtures in force
+    top = ast.unparse(tree)
+    return _synthesis_reach(top)[0] in ("names", "places") or bool(_synthesis_loads([top], [], "/"))  # a name built to hide one is crafted
 
 
 def _pytest_reach(words: list, where: str) -> str:
@@ -5178,8 +5197,9 @@ def _pytest_reach(words: list, where: str) -> str:
                 spot = os.path.dirname(spot)
         for c in conftests[folder]:
             isolating[c] = isolating[c] if c in isolating else _isolates_home(_code_of(c))
-        if (trusted and any(isolating[c] for c in conftests[folder])) or _isolates_home(_code_of(file), False):
-            continue  # a test file that puts the home at a temporary path itself, as a skill's tests may
+        if ((trusted and any(isolating[c] for c in conftests[folder])) or _isolates_home(_code_of(file), False)) and not any(
+                _at_import(_code_of(p)) for p in [file] + conftests[folder]):
+            continue  # under a home at a temporary path for every test, with nothing reaching synthesis as the files load
         if time.monotonic() > _CALL["until"]:
             return "more test files than this guard reads in its time"
         for path, text in [(p, _code_of(p)) for p in [file] + conftests[folder] if p not in judged]:
