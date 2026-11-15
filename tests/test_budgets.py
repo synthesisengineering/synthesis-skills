@@ -1261,10 +1261,16 @@ ROOT = Path(__file__).resolve().parents[1]
 # conversation split with a page read imported, partial pairs held, a page read's header kept), mine 6, text_digest 6,
 # exact_blocks 6, main 5 (the held and split lines), holders 5, near 4 and page_blocks 2, less read_from_page 9 and
 # read_transcript 8.
+# Spelling across words (the coordinator, 2026-11-15: a skill script's path in the plugin cache and a project page's
+# path were read together as naming the transcripts): core 43 more and plugin 43. guards.py 43: _statements 18 (a
+# program's text cut into its statements, outside quotes and brackets, comments left out), _joined 18 (the parts one
+# statement spells: from its code and pieces of a path, with at most one path written whole, and such a path alone
+# only where they stand one after another), LITERAL 1, 6 blank lines; _spells judging each text and each word apart
+# and expanding a word's variables, and the naming line handing it each word apart, change lines in place.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 15843
-PLUGIN_BUDGET = 41915
+CORE_BUDGET = 15886
+PLUGIN_BUDGET = 41958
 
 
 def _lines(files):
