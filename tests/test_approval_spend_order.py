@@ -220,3 +220,121 @@ def test_a_deadline_after_the_grant_was_spent_gives_it_back(tmp_path, monkeypatc
     assert "did not answer within" in capsys.readouterr().out
     assert guards.check(SLACK, CALL, {}, session=session) is None  # the same grant, given back
     assert "approval" in guards.check(SLACK, CALL, {}, session=session)
+
+
+# --- review round 2 of this fix (2026-11-15): a held call's records, the give-back's race, a long prompt line ---------
+
+DEPLOY = "npx wrangler pages deploy dist --project-name=probe-site"
+
+
+def _granted(tmp_path, reason):
+    """The principal types the code a hold asked for; the record shows it."""
+    transcript = tmp_path / "t.jsonl"
+    if not transcript.exists():
+        _write(transcript, [])
+    assert approvals.grant_from_prompt(f"approve {_code(reason)}", str(transcript))
+    with open(transcript, "a", encoding="utf-8") as out:
+        out.write(json.dumps(claude(f"approve {_code(reason)}", time.time(), promptSource="sdk")) + "\n")
+    return {"session_id": SID, "transcript_path": str(transcript), "cwd": str(tmp_path)}
+
+
+def _late_after(monkeypatch, real):
+    def decided_then_late(tool, tool_input, config, cwd=None, session=None):
+        assert real(tool, tool_input, config, cwd=cwd, session=session) is None
+        from synthesis import hook
+        raise hook._Late()  # the deadline arrives after the guard decided, before the hook answered
+    monkeypatch.setattr(guards, "check", decided_then_late)
+
+
+def test_a_deploy_held_by_a_later_check_runs_on_its_given_back_grant(tmp_path, monkeypatch, capsys):
+    """Round 2, finding 1: the deploy brake recorded the deploy before a later check held the call, so the retry was
+    asked for a rapid-redeploy code and the grant given back could not be used."""
+    from synthesis import hook
+    session = _granted(tmp_path, guards.check("Bash", {"command": DEPLOY}, {}, cwd=str(tmp_path), session={"session_id": SID}))
+    real = guards.check_outgoing
+    monkeypatch.setattr(guards, "check_outgoing", lambda *a, **k: "held by a later check of the same call")
+    hook.pre_tool_use({"tool_name": "Bash", "tool_input": {"command": DEPLOY}, **session})
+    assert "held by a later check" in capsys.readouterr().out
+    monkeypatch.setattr(guards, "check_outgoing", real)
+    assert guards.check("Bash", {"command": DEPLOY}, {}, cwd=str(tmp_path), session=session) is None
+
+
+def test_a_send_held_after_its_grant_was_used_is_not_in_the_ledger_as_sent(tmp_path, monkeypatch, capsys):
+    from synthesis import hook, sends
+    session = _granted(tmp_path, guards.check(SLACK, CALL, {}))
+    real = guards.check
+    _late_after(monkeypatch, real)
+    hook.pre_tool_use({"tool_name": SLACK, "tool_input": CALL, **session})
+    assert "did not answer within" in capsys.readouterr().out
+    monkeypatch.setattr(guards, "check", real)
+    assert sends.ledger(time.strftime("%Y-%m-%d")) == []  # nothing went
+    assert guards.check(SLACK, CALL, {}, session=session) is None  # it goes once, on the grant given back
+    assert len(sends.ledger(time.strftime("%Y-%m-%d"))) == 1
+
+
+def test_a_window_send_held_after_the_window_let_it_through_leaves_the_window_its_send(tmp_path, monkeypatch, capsys):
+    from synthesis import hook, paths, sends
+    paths.config_file().parent.mkdir(parents=True, exist_ok=True)
+    config = {"send_window_signatures": ["signed probe"]}
+    paths.config_file().write_text(json.dumps(config), encoding="utf-8")
+    sends.open_window(1.0, ["all"], "", 1)
+    call = {"channel_id": "C0PROBE", "message": "A planned note, signed probe."}
+    transcript = tmp_path / "t.jsonl"
+    _write(transcript, [])
+    session = {"session_id": SID, "transcript_path": str(transcript)}
+    real = guards.check
+    _late_after(monkeypatch, real)
+    hook.pre_tool_use({"tool_name": SLACK, "tool_input": call, **session})
+    assert "did not answer within" in capsys.readouterr().out
+    monkeypatch.setattr(guards, "check", real)
+    assert sends.window() and sends.spent(sends.window()) == 0  # the window still has its one send
+    assert guards.check(SLACK, call, config, session=session) is None
+
+
+def test_a_grant_given_back_is_never_seen_half_written(tmp_path, monkeypatch):
+    """Round 2, finding 2: the file was created and then written, so an identical call looking in between found an empty
+    grant, spent it, and the grant given back was lost. It now appears whole or not at all."""
+    session = _granted(tmp_path, guards.check(SLACK, CALL, {}))
+    grant = next(approvals._dir("approvals").glob("*.json"))
+    body = grant.read_bytes()
+    grant.unlink()
+    approvals.SPENT[:] = [(grant, body)]
+    seen = []
+    real_link = approvals.os.link
+
+    def link_and_look(src, dst, *a, **k):
+        seen.append(os.path.exists(dst))  # what an identical call would find just before the grant appears
+        return real_link(src, dst, *a, **k)
+    import os
+    monkeypatch.setattr(approvals.os, "link", link_and_look)
+    approvals.give_back()
+    assert seen == [False] and grant.read_bytes() == body
+    assert guards.check(SLACK, CALL, {}, session=session) is None
+
+
+def test_a_prompt_line_longer_than_the_margin_written_before_the_grant_is_found(tmp_path):
+    """Round 2, finding 3: the read stopped inside a prompt line that began more than 16 MB before the recorded position."""
+    code = _requested()
+    transcript = tmp_path / "t.jsonl"
+    _write(transcript, _old_output(10, time.time() - 600) + [claude(f"approve {code} " + "p" * (17 << 20), time.time(), promptSource="sdk")])
+    assert approvals.grant_from_prompt(f"approve {code}", str(transcript))  # the hook ran after the line was written
+    assert guards.check(SLACK, CALL, {}, session={"session_id": SID, "transcript_path": str(transcript)}) is None
+
+
+def test_a_grant_voided_by_a_call_that_is_then_held_comes_back(tmp_path, monkeypatch, capsys):
+    """A send released by the code for a time in its words voids the ordinary code for the same message; if a later
+    check holds the call, nothing went, and the ordinary code is put back."""
+    from synthesis import hook
+    session = _granted(tmp_path, guards.check(SLACK, CALL, {}))
+    grant = next(approvals._dir("approvals").glob("*.json"))
+    body = grant.read_bytes()
+    real = guards.check
+
+    def voided_then_held(tool, tool_input, config, cwd=None, session=None):
+        guards._void("send", {"tool": SLACK, "input": CALL})
+        return "held by a later check of the same call"
+    monkeypatch.setattr(guards, "check", voided_then_held)
+    hook.pre_tool_use({"tool_name": SLACK, "tool_input": CALL, **session})
+    assert "held by a later check" in capsys.readouterr().out
+    monkeypatch.setattr(guards, "check", real)
+    assert grant.read_bytes() == body
