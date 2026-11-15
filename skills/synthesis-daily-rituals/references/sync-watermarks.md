@@ -139,8 +139,7 @@ store is the single-slot shape again. Stores written before v5 sit at
 - `scripts/messenger_messages.py` reads Messenger's chat list the same way: its
   `messenger` watermark (one target per inbox: `chats`, `requests`, `archived`)
   moves only with that reader's coverage, and the coverage dates each row the
-  latest its age allows ([linkedin-messages.md](linkedin-messages.md),
-  Messenger's chat list). Each list reader's coverage names its inbox, so
+  latest its age allows ([messenger-messages.md](messenger-messages.md)). Each list reader's coverage names its inbox, so
   `advance` takes it for that inbox's target alone, never another inbox's or
   the surface's, and `plan` counts an inbox read only through its own
   watermark. A read with no `--since` carries no `through`.
