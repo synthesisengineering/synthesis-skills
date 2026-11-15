@@ -589,3 +589,15 @@ def test_the_rituals_scripts_run_from_the_installed_runtime_still_pass(world):
     for sibling in script.parent.glob("*.py"):
         (cache / sibling.name).write_bytes(sibling.read_bytes())
     assert _verdict(world, f"python3 {cache / 'ritual_state.py'} --direction start") is None
+
+
+# --- what the 30-day replay of recorded commands showed the round-1 code misread (2026-11-14) -----------------------
+
+@pytest.mark.parametrize("line", [
+    "F=({W}/notes.md drafts/b.md) && ls \"${{F[@]}}\"",                       # an array assignment is no subshell
+    "printf '%s\\n' '' {R}",                                                    # an empty word is no writing option
+    "echo $(( $(date +%s) - $(stat -f %m {R}) ))",                             # arithmetic runs only its substitutions
+    "python3 -I - <<'EOF'\nimport sys  # see ~/.synthesis/coordination\nprint(getattr(sys, 'ver' + 'sion'))\nEOF"])
+def test_what_the_replay_showed_misread_now_passes(world, line):
+    (world["work"] / "notes.md").write_text("see ~/.claude/projects for the transcripts\n", encoding="utf-8")
+    assert _verdict(world, line.format(**_raw(world))) is None
