@@ -975,6 +975,42 @@ def test_every_invisible_or_variation_character_is_shown_as_its_code():
         assert code in listing, code
 
 
+@pytest.mark.parametrize("blank", ["\U0001d159", "\U00016fe4"], ids=["U+1D159", "U+16FE4"])
+def test_a_character_that_draws_nothing_is_shown_as_its_code(blank):
+    """Review 3 #7: MUSICAL SYMBOL NULL NOTEHEAD (a symbol) and KHITAN SMALL SCRIPT FILLER (a mark) printed as is."""
+    listing = sends.batch_listing(sends.read_batch(str(batch_file([{**CHAT, "text": "Thanks." + blank + " See you."}]))), show=True)
+    assert blank not in listing and f"\\U{ord(blank):08x}" in listing
+
+
+def test_only_what_draws_a_glyph_prints_as_it_is():
+    """Review 3 #7, the rule turned round: letters, marks, digits, punctuation and symbols print as they are, and so do
+    a plain space and a line break, so a connector call's input prints one field to a line (it printed as one line,
+    each line break shown as its code)."""
+    drawn = "Café 日本 ١٢٣ — 👍🏽 €"
+    listing = sends.batch_listing(sends.read_batch(str(batch_file([{**CHAT, "text": drawn}, CALL]))), show=True)
+    assert json.dumps(drawn, ensure_ascii=False) in listing
+    assert '\n       {\n         "channel_id": "D0123",\n' in listing and "\\u000a" not in listing
+
+
+def test_a_lone_surrogate_is_refused_as_a_control_character_is():
+    """A JSON escape may hold half of a surrogate pair, which no listing shows and no message can carry."""
+    odd = FOLDER / "surrogate.json"
+    odd.write_text('{"batch": "b", "project": "p", "entries": [{"channel": "messenger", "to": "%s", "text": "Hi \\ud800 there."}]}'
+                   % CHAT["to"], encoding="utf-8")
+    with pytest.raises(ValueError, match="surrogate"):
+        sends.read_batch(str(odd))
+
+
+@pytest.mark.parametrize("odd", [" ", " ", "‮", " ", "é", "/"],
+                         ids=["line-separator", "paragraph-separator", "right-to-left-override", "space", "accent", "slash"])
+def test_a_tool_name_holds_only_plain_letters_digits_and_the_marks_names_use(odd):
+    """Review 3 #9: a tool name printed raw in the listing, the one field not escaped, so a line separator in it drew a
+    line of the agent's own text beside the entries; a name holds only [A-Za-z0-9_.:-]."""
+    with pytest.raises(ValueError, match="entry 1 names a tool"):
+        sends.read_batch(str(batch_file([{"tool": SLACK + odd + "x", "input": {"channel_id": "D0123", "message": "Hi."}}])))
+    assert sends.read_batch(str(batch_file([{"tool": "mcp__a1-b2.c3:d__slack_send_message", "input": SAID}])))
+
+
 @pytest.mark.parametrize("marks, inline", [(1, 0), (0, 1)])
 def test_a_reply_or_edit_mode_or_an_image_in_the_box_voids_the_match(marks, inline):
     """Review 2 #9: in reply or edit mode, or with an emoji drawn as an image in the box, the check read a ready box."""
