@@ -1008,8 +1008,23 @@ def test_a_tab_another_session_lists_on_a_messenger_site_takes_no_page_script():
 
 def test_a_page_script_off_the_messenger_sites_runs_as_before():
     session = listed("https://example.com/", tab=9)
-    for tab in (9, 12):  # a tab on another site, and one no record lists
-        assert guards.check(SCRIPT, {"action": "javascript_exec", "text": "document.title", "tabId": tab}, CONFIG, session=session) is None
+    assert guards.check(SCRIPT, {"action": "javascript_exec", "text": "document.title", "tabId": 9}, CONFIG, session=session) is None
+
+
+@pytest.mark.parametrize("where", ["a-tab-no-record-lists", "back-from-another-site", "a-path-from-another-site"])
+def test_a_page_script_on_a_page_no_record_names_is_refused(where):
+    """Round 3's probe of #2 on the head: an opener script on a tab no list of tabs named yet passed, and in a browser
+    such a script can open the chat and keep a timer that patches it through the send step's load. A page the guard
+    cannot place may be a Messenger site's, so it takes no page script (rule 6: fail closed)."""
+    session = listed("https://example.com/", tab=9)
+    opener = {"action": "javascript_exec", "text": f"self.chat = open('{E2EE}')", "tabId": 9}
+    if where == "a-tab-no-record-lists":
+        tool, given = SCRIPT, {**opener, "tabId": 12}
+    else:
+        tool, given = CHROME, {"actions": [{"name": "navigate", "input": {"url": "back" if where.startswith("back") else "/l.php",
+                                                                          "tabId": 9}}, {"name": "javascript_tool", "input": opener}]}
+    reason = guards.check(tool, given, CONFIG, session=session)
+    assert reason and "no list of tabs" in reason, reason
 
 
 @pytest.mark.parametrize("text", ["open('https://www.linkedin.com/messaging/thread/1/')", "globalThis.open('/messaging/thread/1/')",
