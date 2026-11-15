@@ -7,6 +7,7 @@ These fail closed when their config can't be read or is malformed (R3.5).
 
 from __future__ import annotations
 
+import _thread
 import fnmatch
 import itertools
 import json
@@ -533,7 +534,8 @@ def _sha256(file: str, until: float, whole: bool = True) -> str:
 
 EFFECTS: list = []  # (what to do if the call is let through, what to undo if it is held) for each record a decision makes
 UNDER_HOOK = {"on": False}  # the hook answers last, so it settles the effects; a check entered from elsewhere settles them
-_DEPTH = [0]  # how deep in the guard's checks this process is: only the first one entered settles
+_DEPTH = [0, None]  # how deep in the guard's checks this process is, and the thread judging: only the first one entered settles
+_JUDGING = _thread.allocate_lock()  # one thread judges at a time: the records of a call are the process's own
 
 
 def _after(commit=None, undo=None) -> None:
@@ -548,43 +550,65 @@ def _void(kind: str, subject) -> None:
     _after(undo=lambda: approvals.put_back(removed))
 
 
+def _logged(*line) -> None:
+    """A send's line in the ledger, written if the call is let through and marked undone if a later record of the same
+    call cannot be written, which holds it (review round 4 of the spend order, finding 4)."""
+    from synthesis import sends
+    marks: list = []
+    _after(lambda: marks.append(sends.log(*line)), lambda: [sends.undo(m) for m in marks])
+
+
 def settle(allowed: bool) -> None:
     """The call is let through: write each record its decisions made and keep the grants it used spent. It is held:
     undo what was written ahead and give the grants back, since it ran nothing. Each record is its own: one that
-    cannot be written does not stop the rest, and the first failure is raised after them."""
-    effects, failed = list(EFFECTS), None
+    cannot be written does not stop the rest, and the first failure is raised after them; a call whose record cannot be
+    written is held, so then its records are undone and its grants go back as well (review round 4, finding 4)."""
+    effects, failed = list(EFFECTS), []
     EFFECTS.clear()
-    for commit, undo in (effects if allowed else reversed(effects)):
-        step = commit if allowed else undo
-        try:
-            if step:
-                step()
-        except Exception as exc:
-            failed = failed or exc
-    approvals.SPENT.clear() if allowed else approvals.give_back()
+
+    def run(steps):
+        for step in steps:
+            try:
+                if step:
+                    step()
+            except Exception as exc:
+                failed.append(exc)
+    if allowed:
+        run(commit for commit, _ in effects)
+    if failed or not allowed:
+        run(undo for _, undo in reversed(effects))
+    approvals.SPENT.clear() if allowed and not failed else approvals.give_back()
     if failed:
-        raise failed
+        raise failed[0]
 
 
 def _entry(judge):
     """A check that a caller may enter directly (the hook enters `check`; the local-messaging sender enters
     `check_send`): the first one entered starts the call's records afresh and, unless the hook answers, settles them
-    when it returns, held as well when it raises (review round 3 of the spend order, finding 1)."""
+    when it returns, held as well when it raises (review round 3 of the spend order, finding 1). One thread judges at a
+    time, and the first one entered puts the depth back however it ends (review round 4, findings 2 and 3)."""
     def entered(*args, **kwargs):
-        if not _DEPTH[0]:
+        first = not (_DEPTH[0] and _DEPTH[1] == _thread.get_ident())
+        if first and not _JUDGING.acquire(False):
+            raise RuntimeError("the synthesis guard judges one call at a time, and another thread is judging one")
+        if first:
             EFFECTS.clear()
             approvals.SPENT.clear()
-        _DEPTH[0] += 1
+            _DEPTH[1] = _thread.get_ident()
+        verdict, decided = None, False
         try:
-            verdict = judge(*args, **kwargs)
-        except BaseException:
-            _DEPTH[0] -= 1
-            if not _DEPTH[0] and not UNDER_HOOK["on"]:
-                settle(False)
-            raise
-        _DEPTH[0] -= 1
-        if not _DEPTH[0] and not UNDER_HOOK["on"]:
-            settle(verdict is None)
+            _DEPTH[0] += 1
+            verdict, decided = judge(*args, **kwargs), True
+        finally:
+            if not first:
+                _DEPTH[0] -= 1
+            else:
+                _DEPTH[0] = 0
+                try:
+                    if not UNDER_HOOK["on"]:
+                        settle(decided and verdict is None)
+                finally:
+                    _JUDGING.release()
         return verdict
     entered.__name__, entered.__qualname__, entered.__doc__, entered.__wrapped__ = judge.__name__, judge.__qualname__, judge.__doc__, judge
     entered.settles = True  # functools.wraps is not used: the hook's own path imports nothing it does not need
@@ -626,7 +650,7 @@ def _judged_send(tool: str, tool_input: dict, config: dict, session: dict | None
         return timed
     if timed is not None and approvals.consume("send-time", subject, session):  # released as it is, by the code that says so
         _void("send", subject)  # one message, one release: a second copy asks again
-        _after(lambda: sends.log(chan, tool, summary, "approval", session))
+        _logged(chan, tool, summary, "approval", session)
         return None
     if timed:  # asked before any other code, and again when the approved call comes
         code = approvals.request("send-time", subject, f"{tool}, a time in its words and no calendar read: {summary[len(tool) + 2:][:100]}")
@@ -638,7 +662,7 @@ def _judged_send(tool: str, tool_input: dict, config: dict, session: dict | None
             _void("send-time", subject)
         return None
     if approvals.consume(kind, subject, session):
-        _after(lambda: sends.log(chan, tool, summary, "approval", session))
+        _logged(chan, tool, summary, "approval", session)
         if timed is not None:
             _void("send-time", subject)
         return None
@@ -2210,11 +2234,21 @@ def _last_deploy(identity: str):
 
 
 def _record_deploys(identities) -> None:
-    """The deploy brake's record of a deploy the guard let through, for the 45-minute check."""
-    for identity in identities:
-        record = _last_deploy(identity)
-        record.parent.mkdir(parents=True, exist_ok=True)
-        record.write_text(f"{identity}\n{time.time()}\n", encoding="utf-8")
+    """The deploy brake's record of a deploy the guard let through, for the 45-minute check: written if the call is let
+    through, and put back as it was if a later record of the same call cannot be written (review round 4, finding 4)."""
+    kept: list = []
+
+    def write():
+        for identity in identities:
+            record = _last_deploy(identity)
+            kept.append((record, record.read_bytes() if record.exists() else None))
+            record.parent.mkdir(parents=True, exist_ok=True)
+            record.write_text(f"{identity}\n{time.time()}\n", encoding="utf-8")
+
+    def restore():
+        for record, before in reversed(kept):
+            record.write_bytes(before) if before is not None else record.unlink(missing_ok=True)
+    _after(write, restore)
 
 
 @_entry
@@ -2252,7 +2286,7 @@ def check_deploy(command: str, config: dict, cwd: str | None = None, session: di
     subject = {"command": command, "heads": heads} if heads else command
     # A rapid-redeploy approval is the stronger one, so it still counts if the window has just closed.
     if approvals.consume(kind, subject, session) or (kind == "deploy" and approvals.consume("deploy-rapid", subject, session)):
-        _after(lambda: _record_deploys(identities))  # a deploy held later by another check of the call did not happen
+        _record_deploys(identities)  # a deploy held later by another check of the call did not happen
         return None
     if recent:
         name, last = recent[0]
@@ -5613,7 +5647,7 @@ def check_desktop(name: str, tool: str, tool_input: dict, config: dict, session:
             _after(lambda: sends.settle(mark), lambda: sends.undo(mark))
             return None
         if approvals.consume("send", subject, session):
-            _after(lambda: sends.log(chan, tool, summary, "approval", session))
+            _logged(chan, tool, summary, "approval", session)
             _released(session, list(reached), drop=True)
             return None
         code = approvals.request("send", subject, summary[:300])
@@ -6312,7 +6346,7 @@ def check_outgoing(command: str, config: dict, cwd: str, session: dict | None = 
     with approvals.alone():  # the code that lets it go spends the other before an identical command is judged
         if timed is not None and approvals.consume("send-time", subject, session):
             _void("send", subject)
-            _after(lambda: [sends.log(c, "shell", summary, "approval", session) for c in chans])
+            [_logged(c, "shell", summary, "approval", session) for c in chans]
             return None
         if timed:
             code = approvals.request("send-time", subject, f"a time in its words and no calendar read: {summary[:120]}")
@@ -6324,7 +6358,7 @@ def check_outgoing(command: str, config: dict, cwd: str, session: dict | None = 
                 _void("send-time", subject)
             return None
         if approvals.consume("send", subject, session):
-            _after(lambda: [sends.log(c, "shell", summary, "approval", session) for c in chans])
+            [_logged(c, "shell", summary, "approval", session) for c in chans]
             if timed is not None:
                 _void("send-time", subject)
             return None

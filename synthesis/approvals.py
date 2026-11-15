@@ -320,13 +320,28 @@ def void(kind: str, subject) -> list:
 def alone():
     """One decision at a time for a thing that can go on either of two codes: the code that lets it go spends the
     other before an identical call, judged at the same moment, is looked at (2026-11-13, a review: between the two
-    steps a second copy went on the other code)."""
+    steps a second copy went on the other code). Taken again inside itself in the same process, it does not lock
+    again: the lock belongs to the open file, so a second one would wait for good (review round 4, finding 5)."""
+    if _ALONE[0]:
+        _ALONE[0] += 1
+        try:
+            yield
+        finally:
+            _ALONE[0] -= 1
+        return
     import fcntl
     held = _dir("approvals.lock")  # beside the folder: a spent or expired approval leaves no file in it
     held.parent.mkdir(parents=True, exist_ok=True)
     with open(held, "a") as handle:
         fcntl.flock(handle, fcntl.LOCK_EX)
-        yield
+        _ALONE[0] = 1
+        try:
+            yield
+        finally:
+            _ALONE[0] = 0
+
+
+_ALONE = [0]  # how many times this process holds the lock of `alone`
 
 
 SPENT: list = []  # (grant file, the bytes it held) each grant this call used, for the hook to give back if the call is held

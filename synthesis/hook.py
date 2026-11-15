@@ -302,9 +302,11 @@ def pre_tool_use(payload, began=None):
     finally:
         signal.setitimer(signal.ITIMER_REAL, 0)
         signal.signal(signal.SIGALRM, before)
-    judged = sys.modules.get("synthesis.guards")
-    if judged is not None and judged.UNDER_HOOK["on"]:
-        judged.UNDER_HOOK["on"] = False
+        judged = sys.modules.get("synthesis.guards")
+        settling = bool(getattr(judged, "UNDER_HOOK", {}).get("on"))
+        if settling:  # put back however the check ended, so a process that goes on judges as a caller again
+            judged.UNDER_HOOK["on"] = False
+    if settling:
         # A held call ran nothing: its records are undone and its grants go back. An answer later than this may reach a
         # harness after its 5 seconds, when it lets the call through, so then its records stand and its grants stay spent.
         try:

@@ -1339,10 +1339,18 @@ ROOT = Path(__file__).resolve().parents[1]
 # "settled"; a day's lines), settle 4 more and spent 3 more (the window closes once its last planned send has gone, so
 # one still being judged keeps it open), less undo 4 and ledger 1. hook.py 3: pre_tool_use 3 more (a record that cannot
 # be written holds the call, and the answer still goes out).
+# Then each 51 more, from review round 4 (two threads would share a call's records; an interrupt left the hook's flag
+# on; a call held because its record failed kept its grants spent and the records before it; the send lock taken inside
+# itself waited for ever): guards.py 34: _record_deploys 10 more (the deploy record put back as it was if a later record
+# fails), _logged 6 with 2 blank lines (a send's line, undone the same way), _entry 8 more (one thread judges at a time;
+# the first entered puts the depth back however it ends), _JUDGING 1 and `import _thread` 1, settle 6 more (a call whose
+# record fails is held: every record undone and its grants given back). approvals.py 15: alone 12 more (taken again
+# inside itself in one process, it does not lock again), _ALONE 1 with 2 blank lines. hook.py 2: pre_tool_use 2 more
+# (the hook's flag put back however the check ended).
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 16767
-PLUGIN_BUDGET = 42839
+CORE_BUDGET = 16818
+PLUGIN_BUDGET = 42890
 
 
 def _lines(files):
@@ -1360,7 +1368,7 @@ def test_whole_plugin_stays_within_its_budget():
 
 # What the modules a pre-tool-use call for a shell command loads import as they load, by the module that asks.
 HOOK_NEEDS = ("json", "os", "re", "signal", "sys", "time",                        # hook.py (signal: its deadline)
-              "__future__", "datetime", "fnmatch", "itertools", "math", "shlex",  # guards.py
+              "__future__", "_thread", "datetime", "fnmatch", "itertools", "math", "shlex",  # guards.py (_thread: loaded at start)
               "hashlib", "pathlib", "unicodedata",                                # approvals.py and paths.py
               "base64", "contextlib", "dataclasses",                              # board.py
               "urllib.parse")                                                     # sends.py
