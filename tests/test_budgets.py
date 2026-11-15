@@ -1367,10 +1367,15 @@ ROOT = Path(__file__).resolve().parents[1]
 # Then each 5 more, all in guards.py: answered 5 more, from review round 7 (an interrupt after the check handed its
 # records over and before it freed the guard left the lock taken): the guard freed whichever records the check left, and
 # no check entered while the answer settles them.
+# 22.22, prose that names the self-grant functions (2026-11-15, a peer Codex seat's program refused for strings it wrote
+# to a file): core 21 more and plugin 21, measured, all in guards.py: _granting_text 18 (the program's code, a string
+# kept where it is the bare name or a dotted path to it, an f-string for its expressions, comments out, every string
+# kept for a program that runs one as code) with its 2 blank lines, GRANT_NAME 1 and RUNS_STRINGS 1, less nothing; the
+# rule's own line changes in place.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 16881
-PLUGIN_BUDGET = 42953
+CORE_BUDGET = 16902
+PLUGIN_BUDGET = 42974
 
 
 def _lines(files):

@@ -4,6 +4,20 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+- **Prose that names the approval functions is not a reach of them** (22.22). A peer Codex seat's small program, which
+  only wrote its own project-management files, was refused as running synthesis's approval code: the self-grant rule
+  matched the names of the approval and send-window functions anywhere in a program's text, and strings it wrote to a
+  file quoted them. Now the rule reads the program's code: a string counts only where it is the bare name or a dotted
+  path to it (as getattr, a subscript or attrgetter takes it), an f-string only for its expressions, and comments not
+  at all; a program that runs a string as code (exec, eval, compile, runpy, a JavaScript Function) keeps every string.
+  A call, an import, an attribute reach, a getattr or subscript by the name, and a program it starts that reaches
+  them are refused as before. Replayed over 60 days of this Mac's records, each guard from its installed runtime: of
+  254 commands the rule could fire on, 152 were refused for this reason before and 32 after; 118 now pass and 2 wait on
+  another rule. Read by Python's own syntax tree (100) or its tokenizer (18), none of the 118 reaches the functions in
+  code, and four planted self-grant programs are refused before and after.
+
 ## [5.23.1] - 2026-11-15
 
 - **The daily rituals' skill file holds the Messenger rule** (`synthesis-daily-rituals` 3.19.0), by the move the principal

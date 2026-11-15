@@ -2754,6 +2754,27 @@ SCRIPTED_WRITE = re.compile(
 # window, the ledger or the board stays allowed (a read-only check was refused on 2026-10-13).
 SELF_GRANT_CALLS = re.compile(r"\b(?:open_window|grant_from_prompt|consume|put_back|_window_file)\b|\bpaths\.state\b[\s\S]*\b(?:"
                               r"write_json|write_text|touch|unlink)\b|\b(?:write_json|write_text|touch|unlink)\b[\s\S]*\bpaths\.state\b")
+GRANT_NAME = re.compile(r"[\w.]*\b(?:open_window|grant_from_prompt|consume|put_back|_window_file|write_json|write_text|touch|unlink|paths\.state)")
+RUNS_STRINGS = re.compile(r"\b(?:exec|eval|compile|execfile|run_path|run_module|runcode|runsource|Function)\s*\(|\bnew\s+Function\b|\bvm\s*\.\s*run")
+
+
+def _granting_text(script: str, head: str) -> str:
+    """The text a self-grant is looked for in: the program's code, a string kept only where it is the bare name or a
+    dotted path to it (as getattr, a subscript or attrgetter takes it) and an f-string only for its expressions, every
+    comment out. A program that runs a string as code keeps every string (22.22: prose written to a file, a docstring
+    or a log line that names the functions was refused as running them)."""
+    if RUNS_STRINGS.search(script):
+        return script
+
+    def kept(m) -> str:
+        quote = re.match(r"[rRbBuUfF]{0,2}(\"\"\"|'''|\"|'|`)", m[0])
+        body = m[0][quote.end():len(m[0]) - len(quote[1])]
+        if GRANT_NAME.fullmatch(body.strip()):
+            return body
+        return " ".join(re.findall(r"\{([^{}]*)\}", body)) or '""' if "f" in m[0][:quote.start(1)].lower() else '""'
+    text = PROGRAM_STRINGS.sub(kept, script)
+    hashed = not re.match(r"(?:node|nodejs|bun|deno|tsx|ts-node|swift|java|jshell|groovy|scala)", head)
+    return re.sub(r"(?m)#.*$", "", text) if hashed else re.sub(r"/\*[\s\S]*?\*/|//[^\n]*", "", text)
 HOOK_RUN = re.compile(r"(?:^|/)(?:synthesis-hook|synthesis/hook\.py)$|^synthesis\.hook$")
 ASSIGNED = re.compile(r"(?:^|(?<=[\s;&|({'\"]))([A-Za-z_]\w*)(\+?)=(\"[^\"\n]*\"|'[^'\n]*'|\$\([^()\n]*\)[^\s;&|()<>\"']*|[^\s;&|()<>\"']*)")
 LOOPED = re.compile(r"\bfor\s+([A-Za-z_]\w*)\s+in\s+([^;\n]*)")
@@ -5278,7 +5299,7 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None) -> str |
             [fed, *([t for _, t in files] or [code])] + words[1:] if program else said, words, where, env, raw, linked)
                  or (where if any(paths.inside(_real(where), _real(str(r))) for r in (paths.state(), paths.board(), paths.sessions())) else "")
                  or ("the files xargs hands it" if HANDED in words and names else "")) if label else ""  # standing where no session works, or what xargs hands it
-        if SCRIPT.match(head) and re.search(r"\bsynthesis\b", script + code) and SELF_GRANT_CALLS.search(script):
+        if SCRIPT.match(head) and re.search(r"\bsynthesis\b", script + code) and SELF_GRANT_CALLS.search(_granting_text(script, head)):
             why = why or "runs synthesis's approval or send-window code, which only the guard and the principal's prompt use"
         reaches = [(f, _synthesis_reach(t)) for f, t in files] if python and ran and not waits and not _shipped(ran) else []
         uses = next(((f, r[1]) for f, r in reaches if r[0] in ("names", "follows")), None)

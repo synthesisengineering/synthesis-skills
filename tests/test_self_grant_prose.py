@@ -44,6 +44,8 @@ CODE = [
     "python3 - <<'EOF'\nimport synthesis\nfrom synthesis import sends\nsends._window_file().write_text('{}')\nEOF",
     "python3 -c \"from synthesis import paths; (paths.state() / 'approvals' / 'x.json').write_text('{}')\"",
     "node -e \"/* synthesis */ const consume = require('x'); consume()\"",                             # code in node
+    # a program it starts runs it: judged as the command the program starts
+    "python3 -c \"import subprocess; subprocess.run(['python3', '-c', 'from synthesis import approvals; approvals.consume(1, 2)'])\"",
 ]
 
 
