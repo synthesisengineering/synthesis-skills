@@ -1352,11 +1352,15 @@ ROOT = Path(__file__).resolve().parents[1]
 # removes only its own clone and those of runs that ended, N8), floor_problems 2 (GitHub's highest version tag read by
 # git with its own config left out, never by a gh on PATH, N7, and its docstring) and preflight 2 (its docstring: the
 # commit it read is the one returned and released, N10). build_collections.py 6: tree 5 (each collection file's id held
-# to its bytes in memory, N3) and the hashlib import 1.
+# to its bytes in memory, N3) and the hashlib import 1. Then plugin 6 more, all in release.py: main 5 (a run from an
+# installed runtime refuses a synthesis home other than the one that runtime is installed in, N2, whatever launched it)
+# and STALE_CLONE 1 (another run's clone is removed only when that run is gone and the clone is hours old, N8);
+# build_collections.py's tree, now written from memory with fast-import, its index in the repository's own git folder
+# and the tree held to the files' ids (N3), changes lines in place.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
 CORE_BUDGET = 16858
-PLUGIN_BUDGET = 43071
+PLUGIN_BUDGET = 43077
 
 
 def _lines(files):
