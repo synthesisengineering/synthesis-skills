@@ -55,18 +55,29 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   `--install-only` names a tag (`--tag v<version>`) whose commit must be on `main` in that clone. `install.install`
   refuses a folder that declares a version older than the running runtime, read when it starts and again, under a
   lock on the synthesis home, just before `current` moves (review round 3; the lock's file is one this user may only
-  write, so no program that only reads can hold it); a parameter for the code-approved route
-  alone lets a deliberate rollback install an older release, and a program that names the locked half of the install
-  waits for the principal's code, as one naming `install` does. With no interpreter to pin, install stops and names what
-  to install, and Apple's `/usr/bin/python3` shim is never pinned. What a folder declares is its own claim, so the
-  CLI's `synthesis install <folder>` and `synthesis uninstall`, which pass with no code, stay open until they wait for
-  the principal's code (a separate change).
-- **Commands are judged where they run**: a Codex `workdir`, a terminal tab's `cwd`, `env -C` and `git -C` by their real
-  paths, since the kernel follows a link before a `..` (review rounds 1 and 2, A5 and N1), and a shell's `cd`, `pushd`
-  and `popd` both by their text and by their real paths, since `cd -P`, `set -P`, zsh's `chase_dots` and `chase_links`
-  resolve `..` physically; a command is held when either reading reaches a protected folder (round 3, M1).
-  **`~/.synthesis/v5/git-hooks` is a protected folder** (A8). In a repository under `pr_gated`, a push that creates,
-  moves or deletes a version tag waits for the principal's code, as a push to its default branch does (round 3, M5).
+  write, so no program that only reads can hold it). It does so for every caller: no keyword passes the floor, since
+  any program in the process could pass one (round 4, Q4), so until the principal's grant of a rollback lands (the
+  separate change below) no route installs an older release. The guard holds a program that names `install`, or its
+  locked half, where the program's import starts a line; one whose import follows a semicolon passes this release
+  until that change's reading of imports lands. With no interpreter to pin, install stops and names what to install,
+  and Apple's `/usr/bin/python3` shim is never pinned. What a folder declares is its own claim, so the CLI's
+  `synthesis install <folder>` and `synthesis uninstall`, which pass with no code, stay open until they wait for the
+  principal's code (a separate change).
+- **Commands are judged in every folder they may run in**: a Codex `workdir`, a terminal tab's `cwd`, `env -C` and
+  `git -C` by their real paths, since the kernel follows a link before a `..` (review rounds 1 and 2, A5 and N1); a
+  shell's `cd`, `pushd` and `popd` by their text and by their real paths (`cd -P`, `set -P`, zsh's `chase_dots` and
+  `chase_links` resolve `..` physically, round 3, M1), under each CDPATH or cdpath entry the line or the environment
+  sets, at OLDPWD for `cd -`, at a variable's value under cdable_vars, at a folder named as a command under auto_cd,
+  where zsh's `cd old new` leads, and where the shell stays when a `cd` fails (a missing folder, a pipeline, `&`), for
+  the commands after its `&&` chain (round 4, Q1). `env cd` and the like move nothing. These readings are the parse's
+  own, so a check the guard runs for a program's commands no longer cuts the physical one short. A line whose folder
+  this cannot tell waits for the principal's code: a CDPATH set in a way it cannot read, a redefined `cd`, a `cd` inside
+  eval, a sourced file, a function, an alias or a trap, BASH_ENV or ZDOTDIR. **`~/.synthesis/v5/git-hooks` is a
+  protected folder** (A8). In a repository under `pr_gated`, a push waits for the principal's code when it makes, moves
+  or deletes a version tag there (round 3, M5): one named in full, a bare name git takes for a local tag, `--tags`, or
+  an annotated version tag that `--follow-tags` or `push.followTags` carries along; the remote is asked which version
+  tags it holds (`git ls-remote`), and when it cannot be asked the push waits. A branch whose name starts with "v" is
+  a branch (round 4, Q3).
 - **A session start never replaces an installed runtime from its harness's folder**, by the principal's sandbox
   rulings of 2026-11-15 ("seal everything the guard trusts", "install from the protected release tool"). The session
   start installed the runtime from the plugin folder the harness loaded whenever it carried a newer release; that

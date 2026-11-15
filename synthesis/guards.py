@@ -1705,25 +1705,71 @@ STARTERS = frozenset({"echo", "printf", "cat", "cd", "pushd", "find", "sed", "pe
                       "unlink", "shred", "chmod", "chown", "chgrp", "dd", "cp", "mv", "ln", "install", "rsync", "ditto", "gzip", "gunzip"})
 
 
+PLACINGS = 256  # the starting points a line's changes of folder may give its commands; past them the line waits (round 4)
+FOLDER_MOVE = re.compile(r"(?:^|[\s;&|(`{])(?:builtin\s+|command\s+)?(?:cd|pushd|popd)(?=[\s;&|)`}]|$)")  # a change of folder in a script
+
+
 def _commands(command: str, cwd: str, depth: int = 0, writes: list | None = None, runs: list | None = None,
-              feeds: list | None = None, prose: bool = False) -> list[tuple[list[str], str]]:
+              feeds: list | None = None, prose: bool = False, mode: dict | None = None) -> list[tuple[list[str], str]]:
     """Each simple command a shell line runs, with the directory it runs in. Follows `cd`,
     subshells, substitutions, `bash -c`, eval, and scripts a shell reads from its stdin. `writes`
     collects (file, directory) for every redirect that writes a file. `runs` collects, for each
     command found and in the same order, (the `&&` chain it stands in, whether a later command of
     that chain runs only if this one ran and succeeded). `feeds` collects, the same way, the text each
-    command reads on its own stdin (its heredocs and here-strings)."""
+    command reads on its own stdin (its heredocs and here-strings).
+
+    A command is listed once for each folder it may run in (review rounds 3 and 4 of 5.23.1, M1 and Q1). A change of
+    folder may land where its text leads or where its real path does (`cd -P`, `set -P`, zsh's chase options: the guard
+    cannot know a user's shell options), under a CDPATH or cdpath entry the line or the environment gives, at a
+    variable's value (cdable_vars), at OLDPWD (`cd -`), where zsh's `cd old new` leads, or at a folder named as a
+    command (auto_cd); and it may fail (a missing folder, a pipeline, `&`), leaving the commands after its `&&` chain
+    where they were. Each such landing reads the rest of the line from there. One reading's choices (`mode`) reach the
+    scripts it nests and stay within this call: a check the guard runs for a program's own commands starts its own."""
+    if mode is None:  # a line's own reading: by each change of folder's text, then, if one lands elsewhere physically, by its real path
+        mode = {"real": False, "split": False, "quiet": prose, "sources": {
+            "CDPATH": [e for e in os.environ.get("CDPATH", "").split(":") if e], "OLDPWD": [os.environ["OLDPWD"]] if os.environ.get("OLDPWD") else [],
+            "vars": {}, "cdable": False, "autocd": False, "unread": False}}
+        found = _commands(command, cwd, depth, writes, runs, feeds, prose, mode)
+        if mode["split"]:
+            mode["real"] = True
+            found += _commands(command, cwd, depth, writes, runs, feeds, prose, mode)
+        return found
     if depth > MAX_DEPTH:
         raise Unreadable("nested too deeply")
-    found, outer, upstream, chain, back, stack = [], [], "", object(), cwd, []
-    for item in _simple(_lex(command)):
+    _cd_sources(command, mode)
+    items, found, todo, seen = _simple(_lex(command)), [], [(0, cwd, cwd, (), (), "")], set()
+    while todo:
+        state = todo.pop()
+        if (*state[:5], repr(state[5])) in seen:
+            continue
+        seen.add((*state[:5], repr(state[5])))
+        if len(seen) > PLACINGS:
+            _CALL["unplaced"] = _CALL["unplaced"] or not mode["quiet"]
+            break
+        found += _walk(items, state, depth, writes, runs, feeds, prose, mode, todo)
+    return found
+
+
+def _walk(items: list, state: tuple, depth: int, writes, runs, feeds, prose: bool, mode: dict, todo: list) -> list:
+    """The commands of a line read from one starting point (its item, the folder, the one before it, pushd's stack, the
+    subshells open, what the command before piped): each landing of a change of folder past its first, and the folder
+    a failed one leaves the shell in after its `&&` chain, goes on `todo` as a starting point of its own."""
+    start, cwd, back, stack, outer, upstream = state
+    found, stack, outer, chain, pending = [], list(stack), list(outer), object(), []
+    for i, item in enumerate(items[start:], start):
         if item in ("(", ")"):
             if item == "(":
-                outer.append((cwd, back, list(stack)))
+                outer.append((cwd, back, tuple(stack), tuple(pending)))
+                pending = []
             elif outer:
-                cwd, back, stack = outer.pop()  # a subshell's cd ends with it
+                cwd, back, stack, pending = outer.pop()  # a subshell's cd ends with it
+                stack, pending = list(stack), list(pending)
             continue
         words, stdin, scripts, piped, targets, link = item
+        if link != "&&":  # a new chain: a change of folder before it may have failed, leaving the shell where it was
+            todo += [(i, *was, tuple(outer), upstream) for was in pending]
+            pending = []
+        lead = next((os.path.basename(w) for w in words if w not in KEYWORDS and not re.match(r"[A-Za-z_]\w*=", w)), "")
         chain = chain if link == "&&" else object()
         opening = words[:next((i for i, w in enumerate(words) if w not in KEYWORDS), len(words))]
         needed = link != "||" and "!" not in opening  # after `||` it may be skipped; under `!` its failure is what counts
@@ -1738,6 +1784,9 @@ def _commands(command: str, cwd: str, depth: int = 0, writes: list | None = None
         for folder in moved:  # `env -C a env -C b`: b is read from a
             here = os.path.realpath(os.path.join(here, os.path.expanduser(folder)))  # env chdirs as the kernel does (round 2, N1)
         head, script = os.path.basename(words[0]) if words else "", words
+        read_in = [_code_of(os.path.join(here, os.path.expanduser(w))) for w in [w for w in words[1:] if w != "--"][:1]] if head in ("source", ".") else []
+        if not mode["quiet"] and (any(FOLDER_MOVE.search(s) for s in inner) or any(not t or FOLDER_MOVE.search(t) for t in read_in)):
+            _CALL["unplaced"] = True  # eval and source run in this shell, a trap between its commands: a cd there is not followed
         takes_in = bool(words) and bool((head in SHELLS and _shell_input(words)[1]) or ((SCRIPT.match(head) or UNREAD.match(head)) and _program(words)[0] == "stdin"))
         stdin = [((_code_of(os.path.join(here, os.path.expanduser(t[2:]))) or f"{UNREAD_INPUT} {t[2:]}") if takes_in else "", True)
                  if t.startswith("\0<") else (t, lit) for t, lit in stdin]  # its script, when it reads one there; else nothing it runs
@@ -1771,23 +1820,26 @@ def _commands(command: str, cwd: str, depth: int = 0, writes: list | None = None
                 runs.append((chain, needed))
             if feeds is not None:
                 feeds.append("\n".join([text for text, _ in stdin] + [_piped(upstream)] * (piped and takes_in)))
-            if words[0] in ("cd", "pushd", "popd"):  # where the next command runs: `cd -` goes back, `popd` to the folder pushd left
-                to = next((w for w in words[1:] if w == "-" or not re.match(r"[-+]", w)), None)
-                turn = next((w for w in words[1:] if re.fullmatch(r"[-+]\d+", w)), "")  # +N from this folder, -N from the oldest
+            verb = words[1:] if words[0] == "builtin" else words
+            if verb[:1] and verb[0] in ("cd", "pushd", "popd") and lead in ("cd", "pushd", "popd", "builtin", "command"):
+                # where the next command runs (`env cd` and `nohup cd` run a cd of their own and move nothing): `cd -` goes
+                # back, `popd` to the folder pushd left
+                operands = [w for w in verb[1:] if w == "-" or not re.match(r"[-+]", w)]
+                to = operands[0] if operands else None
+                turn = next((w for w in verb[1:] if re.fullmatch(r"[-+]\d+", w)), "")  # +N from this folder, -N from the oldest
                 dirs = [cwd] + stack[::-1]  # the stack as the shell shows it: this folder first
                 at = (int(turn[1:]) if turn[:1] == "+" else len(dirs) - 1 - int(turn[1:])) % len(dirs) if turn else 0
-                aim = _led(os.path.expanduser(os.path.expandvars(to or "~")), cwd)
-                text, real = os.path.normpath(os.path.join(cwd, aim)), os.path.realpath(os.path.join(cwd, aim))
-                if to != "-" and aim[:1] not in ("$", "`") and os.path.realpath(text) != real:
-                    _CALL["cd_split"] = True  # a link before a `..`: a physical cd lands elsewhere (round 3, M1)
-                went = back if to == "-" else aim if aim[:1] in ("$", "`") else real if _CD_REAL[0] else text
-                if words[0] == "cd":
-                    dirs[0] = went if to is not None or not turn else dirs[at]
-                elif words[0] == "popd":
-                    dirs = (dirs[:at] + dirs[at + 1:]) if len(dirs) > 1 else dirs
-                else:  # pushd: a folder goes on top; a number turns the stack; alone, the top two change places
-                    dirs = [went] + dirs if to is not None else dirs[at:] + dirs[:at] if turn else dirs[1:2] + dirs[:1] + dirs[2:]
+                lands = [cwd] if verb[0] == "popd" else _landings(operands, cwd, back, mode)
+                pending.append((cwd, back, tuple(stack)))  # where the shell stays if this one fails
+                for went in lands[1:]:  # each other folder it may land in: the rest of the line, read from there
+                    moved = _moved(verb[0], dirs, went, to, turn, at)
+                    todo.append((i + 1, moved[0], cwd, tuple(moved[1:][::-1]), tuple(outer), f"{UNREAD_INPUT} {verb[0]}"))
+                dirs = _moved(verb[0], dirs, lands[0], to, turn, at)
                 cwd, back, stack = dirs[0], cwd, dirs[1:][::-1]
+            elif (mode["sources"]["autocd"] and len(words) == 1) or (re.match(r"[$`]", words[0]) and words[1:]):
+                # a folder named as a command (auto_cd), or a command whose name this cannot read, which may be a cd
+                went = _landings(words[:1] if len(words) == 1 else words[1:2], cwd, back, mode)[0]
+                todo.append((i + 1, went, cwd, tuple(stack), tuple(outer), f"{UNREAD_INPUT} {head}"))
             if os.path.basename(words[0]) == "find":  # what it runs with -exec is a command of its own, `{}` a file under each folder it
                 roots, ran = _find(words)[0], _find(script)[1]  # searches; with -execdir it runs in the folder of what it found
                 scripts += [f"cd {shlex.quote(root.rstrip('/') + DEEP)} && " + shlex.join(w.replace("{}", "./{}") for w in run) if there
@@ -1804,8 +1856,98 @@ def _commands(command: str, cwd: str, depth: int = 0, writes: list | None = None
         upstream = (here, files) if files else "\n".join([t for t, _ in stdin] + said).replace("\\n", "\n") if head in ("echo", "printf", "cat") else (
             f"{UNREAD_INPUT} {head}")  # what another program prints into a shell cannot be read (finding 18)
         for script in scripts:
-            found += _commands(script, here, depth + 1, writes, runs, feeds)
+            found += _commands(script, here, depth + 1, writes, runs, feeds, False, mode)
     return found
+
+
+def _moved(verb: str, dirs: list, went: str, to, turn: str, at: int) -> list:
+    """The folder stack, this folder first, after `verb` lands at `went`: `cd` replaces the top (with a number alone,
+    by the folder it names), `popd` takes off the top or the one a number names, `pushd` puts a folder on top, turns the
+    stack by a number, or alone swaps the top two."""
+    if verb == "cd":
+        return [went if to is not None or not turn else dirs[at]] + dirs[1:]
+    if verb == "popd":
+        return (dirs[:at] + dirs[at + 1:]) if len(dirs) > 1 else dirs
+    return [went] + dirs if to is not None else dirs[at:] + dirs[:at] if turn else dirs[1:2] + dirs[:1] + dirs[2:]
+
+
+def _landings(operands: list, cwd: str, back: str, mode: dict) -> list:
+    """Every folder a `cd` or `pushd` with these operands may land in, the one its words name first (review round 4 of
+    5.23.1, Q1): `cd -` at OLDPWD too, wherever the line or the environment sets it; a relative name under each CDPATH
+    or cdpath entry, and under cdable_vars at a variable's value, a folder `hash -d` names or a user's home; zsh's `cd
+    old new` at this folder's path with `old` replaced by `new`, and old bash's, which takes `old`. Each by its text,
+    or in the physical reading by its real path. A relative name on a line that sets CDPATH in a way this cannot read
+    leaves the line unplaced."""
+    src, to = mode["sources"], operands[0] if operands else None
+
+    def placed(aim: str) -> str:  # a substitution it cannot read stays as written
+        aim = _led(os.path.expanduser(os.path.expandvars(aim)), cwd)
+        if aim[:1] in ("$", "`"):
+            return aim
+        text, real = os.path.normpath(os.path.join(cwd, aim)), os.path.realpath(os.path.join(cwd, aim))
+        mode["split"] = mode["split"] or os.path.realpath(text) != real  # a link before a `..` (round 3, M1)
+        return real if mode["real"] else text
+    if to == "-":
+        lands = [back] + [placed(v) for v in src["OLDPWD"]]
+    elif len(operands) > 1:
+        lands = [placed(cwd.replace(operands[0], operands[1], 1))] * (operands[0] in cwd) + [placed(operands[0])]
+    else:
+        lands = [placed(to or "~")]
+        if to and not (to.startswith(("/", "~", "$", "`", "./", "../")) or to in (".", "..")):  # a relative name
+            _CALL["unplaced"] = _CALL["unplaced"] or (src["unread"] and not mode["quiet"])
+            lands += [placed(os.path.join(entry, to)) for entry in src["CDPATH"] if entry]
+            home = os.path.expanduser("~" + to) if re.fullmatch(r"[A-Za-z_][\w.-]*", to) else ""
+            lands += [placed(v) for v in src["vars"].get(to, []) + [os.environ.get(to, ""), home] if src["cdable"] and v and v != "~" + to]
+    return list(dict.fromkeys(lands))
+
+
+UNQUOTED = re.compile(r"\$'((?:[^'\\]|\\.)*)'|\\(.)|['\"]")  # $'…', a backslash and its letter, a quote
+FUNCTION = re.compile(r"(?:^|[\s;&|(])(?:function\s+[\w.:-]+(?:\s*\(\s*\))?|[\w.:-]+\s*\(\s*\))\s*[{(]")  # a function defined
+ESCAPES = {"n": "\n", "t": "\t", "r": "\r", "a": "\a", "b": "\b", "e": "\x1b", "E": "\x1b", "f": "\f", "v": "\v"}
+
+
+def _unquoted_line(text: str) -> str:
+    """A line with its quoting taken away, as the shell takes it away before a builtin reads its words: `export
+    "CD""PATH=…"` and `export $'CD\\x50ATH=…'` both name CDPATH."""
+    def ansi(body: str) -> str:
+        return re.sub(r"\\(?:x([0-9A-Fa-f]{1,2})|([0-7]{1,3})|u([0-9A-Fa-f]{1,4})|U([0-9A-Fa-f]{1,8})|(.))", lambda m: chr(min(int(
+            m[1] or m[2] or m[3] or m[4], 8 if m[2] else 16), 0x10FFFF)) if not m[5] else ESCAPES.get(m[5], m[5]), body)
+    return UNQUOTED.sub(lambda m: ansi(m[1]) if m[1] is not None else m[2] or "", text)
+
+
+def _cd_sources(text: str, mode: dict) -> None:
+    """What a line sets up that its changes of folder read (review round 4 of 5.23.1, Q1), read with its quoting taken
+    away: CDPATH (given a value, exported, or in `${CDPATH:=…}`) and zsh's cdpath; OLDPWD; the variables it gives
+    values and the folders `hash -d` names, read under cdable_vars; and whether it turns cdable_vars or auto_cd on (zsh
+    reads option names in any case and without underscores; -T and -J are their letters). A CDPATH or cdpath set in a
+    way this cannot read, or a name set through another name (a nameref, `printf -v`, zsh's (P) flag), leaves a
+    relative `cd` unplaced; so does, for any change of folder, an alias, a function or enable/disable on a line that
+    changes folder, and BASH_ENV or ZDOTDIR given to the shells it starts. An unplaced line waits."""
+    src, plain = mode["sources"], _unquoted_line(text)
+    flat = plain.lower().replace("_", "")
+    letters = "".join(w for words in re.findall(r"\b(?:set|setopt|zsh|emulate)\b([^;&|\n]*)", plain) for w in re.findall(r"(?:^|\s)[-+]([A-Za-z]+)", words))
+    src["cdable"] = src["cdable"] or "cdablevars" in flat or "T" in letters
+    src["autocd"] = src["autocd"] or "autocd" in flat or "J" in letters
+    given = 0
+    for line, counted in ((plain, 1), (text, 0)):  # read unquoted, and as written, where a value may hold a space
+        for m in ASSIGNED.finditer(line):
+            value = m[3].strip("'\"")
+            if m[1] == "CDPATH":
+                src["CDPATH"], given = src["CDPATH"] + value.split(":"), given + counted
+            elif m[1] == "OLDPWD":
+                src["OLDPWD"] = src["OLDPWD"] + [value]
+            src["vars"].setdefault(m[1], []).append(value)
+    for m in re.finditer(r"\bcdpath\+?=\(([^()]*)\)|\$\{(?:cdpath|CDPATH):{0,2}=([^}]*)\}", plain):
+        src["CDPATH"], given = src["CDPATH"] + (m[1].split() if m[1] is not None else m[2].split(":")), given + 1
+    for m in re.finditer(r"\bhash\s+-d\s+([A-Za-z_]\w*)=(\S+)", plain):
+        src["vars"].setdefault(m[1], []).append(m[2])
+    named = len(re.findall(r"(?<![\w${])(?:cdpath|CDPATH)\b|\$\{(?:cdpath|CDPATH):{0,2}=", plain)) - len(re.findall(
+        r"\b(?:unset|export)\s+(?:-\w+\s+)*(?:cdpath|CDPATH)\b(?!\+?=)", plain))  # each place it names CDPATH, but to unset or export it
+    src["unread"] = src["unread"] or named > given or any(re.search(r"[$`(]", e) for e in src["CDPATH"]) or bool(re.search(
+        r"\b(?:declare|typeset|local)\s+(?:-\w+\s+)*-\w*n|\bprintf?\s+(?:-\w+\s+)*-v|\$\{\([^)]*P", plain))
+    if not mode["quiet"] and (re.search(r"(?:^|[\s;&|(])(?:BASH_ENV|ZDOTDIR)=|\b(?:enable|disable)\s[^;&|\n]*?\b(?:cd|pushd|popd|builtin"
+                                        r"|command)\b", plain) or (FOLDER_MOVE.search(plain) and (FUNCTION.search(plain) or re.search(r"\balias\s+\S", plain)))):
+        _CALL["unplaced"] = True
 
 
 def _piped(upstream) -> str:
@@ -2474,30 +2616,66 @@ def _gated_push(words: list[str], where: str, rules: dict, readable: bool, branc
 
     follows = options.get("follow-tags") or (options.get("follow-tags") is not False and _run_git(
         where, "config", "--get", "push.followTags")[1].strip().lower() in ("true", "yes", "on", "1"))
-    tags = (repo, "refs/tags/v*") if options.get("tags") or follows else None  # a version tag among them is a release's (M5)
+    there: list = []  # the version tags the remote holds, asked of it once, and only when a push may touch one
+
+    def changes(tag: str, deleting: bool = False, value: str = "") -> bool:
+        """Whether the push makes, moves or deletes the version tag `tag` there (round 4 of 5.23.1, Q3): a tag the
+        remote lacks, or holds at another object than `value` (else the local tag's), or deletes one it holds; True
+        when the remote cannot be asked."""
+        there[:] = there or [_remote_tags(where, named or remote)]
+        if there[0] is None:
+            return True
+        return tag in there[0] if deleting else there[0].get(tag) != _run_git(where, "rev-parse", "--verify", "--quiet", value or tag)[1].strip()
+
+    def carried(sources: list):  # a version tag `--tags` takes along, or `--follow-tags` (annotated, reachable from what is pushed)
+        local = (_run_git(where, "for-each-ref", "--format=%(refname)", "refs/tags/v*")[1].split() if options.get("tags") else [
+            ref for source in sources for kind, _, ref in (row.partition(" ") for row in _run_git(
+                where, "for-each-ref", f"--merged={source}", "--format=%(objecttype) %(refname)", "refs/tags/v*")[1].splitlines())
+            if kind == "tag"] if follows else [])
+        hit = next((ref for ref in dict.fromkeys(local) if changes(ref)), None)
+        return (repo, hit) if hit else None
     if not refspecs:  # git consults its config; `--tags` alone pushes tags and no branch
         hit = None if options.get("tags") else UNREAD_BRANCH if mapped else lands("HEAD")
-        return (repo, hit) if hit else tags
-    at = 0
+        return (repo, hit) if hit else carried(["HEAD"])
+    at, sources = 0, []
     while at < len(refspecs):
         spec, at = refspecs[at], at + 1
         if spec == "tag" and at < len(refspecs):  # `tag <name>` pushes that tag
             at += 1
-            if refspecs[at - 1].startswith("v"):
+            if refspecs[at - 1].startswith("v") and changes(f"refs/tags/{refspecs[at - 1]}"):
                 return repo, f"refs/tags/{refspecs[at - 1]}"
             continue
         source, colon, target = spec.lstrip("+").partition(":")
-        target = target or source
-        tagged = not target.startswith("refs/") and _run_git(where, "rev-parse", "--verify", "--quiet", f"refs/tags/{target}")[0] == 0
-        if target.startswith("refs/tags/v") or (tagged and target.startswith("v")) or (
-                target.startswith("v") and (options.get("delete") or (colon and not source))):
-            return repo, target if target.startswith("refs/") else f"refs/tags/{target}"  # a version tag: a release's alone
+        target, deleting = target or source, bool(options.get("delete") or (colon and not source))
+        bare = not target.startswith("refs/")
+        tagged = bare and _run_git(where, "rev-parse", "--verify", "--quiet", f"refs/tags/{target}")[0] == 0  # git pushes the tag of that name
+        tag = target if target.startswith("refs/tags/") else f"refs/tags/{target}" if bare else ""
+        # A version tag made, moved or deleted there is a release's alone (round 3, M5): one named in full, a bare name
+        # git takes for a local tag, a bare name a push writes onto, or one it deletes. A branch named v... is a branch.
+        if tag.startswith("refs/tags/v") and (deleting or tagged or not bare or (colon and target != source)) and changes(
+                tag, deleting, source if colon and source != target else ""):
+            return repo, tag
         if target.startswith("refs/tags/") or tagged:  # another tag is what gets updated, whatever is pushed onto it
             continue
+        sources += [source] if source and not deleting else []
         hit = UNREAD_BRANCH if not colon and mapped else lands(target.replace("refs/heads/", "", 1))
         if hit:
             return repo, hit
-    return tags
+    return carried(sources)
+
+
+def _remote_tags(where: str, remote: str) -> dict | None:
+    """The version tags a remote holds, {refs/tags/name: object id}, asked of it with no prompt and a short wait; None
+    when it cannot be asked (round 4 of 5.23.1, Q3: whether a push makes, moves or deletes one)."""
+    import subprocess
+    env = {**os.environ, "GIT_TERMINAL_PROMPT": "0"}
+    env.setdefault("GIT_SSH_COMMAND", "ssh -o BatchMode=yes")
+    try:
+        done = subprocess.run(["git", "-C", where, "ls-remote", "--tags", "--refs", remote, "refs/tags/v*"], capture_output=True,
+                              text=True, timeout=5, env=env)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    return None if done.returncode else {ref: oid for oid, _, ref in (row.partition("\t") for row in done.stdout.splitlines()) if ref}
 
 
 def check_pr_gate(command: str, config: dict, cwd: str, session: dict | None = None) -> str | None:
@@ -2553,8 +2731,9 @@ def check_pr_gate(command: str, config: dict, cwd: str, session: dict | None = N
     repo, branch = hits[0]
     code = approvals.request("push-direct", subject, f"DIRECT push to {repo} {branch}: {command[:140]}")
     if branch.startswith("refs/tags/"):
-        return (f"This pushes the version tag {branch[len('refs/tags/'):]} to {repo}, where version tags are made by its "
-                "release tool alone: a stray one stops every release and install as older than it. If the principal wants "
+        return (f"This makes, moves or deletes the version tag {branch[len('refs/tags/'):]} on {repo} (or {repo} could not be "
+                "asked which version tags it holds), where version tags are made by its release tool alone: a stray one stops "
+                "every release and install as older than it. If the principal wants "
                 f"this one push, show them the exact command and ask them to type {approvals.how(code)}. Then run the "
                 "identical command again.")
     return (f"This pushes straight to {branch} of {repo}, which takes changes only through a pull request: push a "
@@ -4426,12 +4605,7 @@ class Unproven(str):
     protected folder. Any reading that is refused outright is refused first."""
 
 
-# A shell's `cd` resolves `..` by its text unless told to resolve it physically (`cd -P`, `set -P`, zsh's chase_dots,
-# or chase_links, which makes every cd physical), and the guard cannot know a user's shell options. So a line whose cd
-# lands elsewhere physically is judged twice, each cd placed by its text and then by its real path, and it waits or is
-# refused if either reading does (review round 3 of 5.23.1, M1).
-_CD_REAL = [False]
-_CALL: dict = {"codes": {}, "ran": {}, "proofs": {}, "files": {}, "real": {}, "until": 0.0}  # one call's script texts, their marks, its proofs, where its paths lead, and its deadline
+_CALL: dict = {"codes": {}, "ran": {}, "proofs": {}, "files": {}, "real": {}, "unplaced": False, "until": 0.0}  # one call's script texts, their marks, its proofs, where its paths lead, whether where its commands run could be told, and its deadline
 CALL_SECONDS, PROOFS_A_CALL = 3.0, 8  # under the hook's own 4 s; past either, a command waits rather than spins (finding 12)
 
 
@@ -5185,22 +5359,17 @@ def check_self_grant(command: str, cwd: str, config: dict | None = None, session
     else:
         readings = _resolved(command.replace("${HOME}", home).replace("$HOME", home))
     if hold:  # a call of its own: its script texts, their marks and its proofs start over, under its own deadline
-        _CALL.update(codes={}, ran={}, proofs={}, files={}, real={}, until=time.monotonic() + CALL_SECONDS)
+        _CALL.update(codes={}, ran={}, proofs={}, files={}, real={}, unplaced=False, until=time.monotonic() + CALL_SECONDS)
     waits = None
-    for text in readings:
-        _CALL["cd_split"] = False
-        for physical in (False, True):
-            if physical and not _CALL["cd_split"]:
-                break
-            _CD_REAL[0] = physical
-            try:
-                reason = _self_grant(command, text, cwd, config) if time.monotonic() <= _CALL["until"] else Unproven(
-                    "is more than this guard could judge in its time")  # it waits, rather than leave the verdict to the harness
-            finally:
-                _CD_REAL[0] = False
-            if reason and not isinstance(reason, Unproven):
-                return reason
-            waits = waits or reason
+    for text in readings:  # each command is judged in every folder it may run in (`_commands`)
+        reason = _self_grant(command, text, cwd, config) if time.monotonic() <= _CALL["until"] else Unproven(
+            "is more than this guard could judge in its time")  # it waits, rather than leave the verdict to the harness
+        if reason and not isinstance(reason, Unproven):
+            return reason
+        waits = waits or reason
+    if hold and _CALL["unplaced"]:  # where its commands run could not be told (review round 4 of 5.23.1, Q1)
+        waits = waits or Unproven("changes folder in a way this guard does not follow (a CDPATH it cannot read, a redefined cd, "
+                                  "a cd inside eval, source, a function, an alias or a trap, BASH_ENV or ZDOTDIR, or more ways than it reads)")
     if not waits:
         return None
     if not hold:

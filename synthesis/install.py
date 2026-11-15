@@ -321,17 +321,17 @@ def _older(plugin_root: Path, home: Path) -> str:
             f"{'.'.join(map(str, running))}: nothing older installs") if running and given < running else ""
 
 
-def install(plugin_root: Path, first_only: bool = False, expected: dict = None, rollback: bool = False) -> str:
+def install(plugin_root: Path, first_only: bool = False, expected: dict = None) -> str:
     """Install the plugin's runtime if it differs from the current one. Returns a one-line report.
 
     first_only (the session-start hook and the first-install bootstrap): install only where no runtime exists at all.
     The folder a harness passes is its own plugin cache, which the guard does not protect, so a session start never
     replaces an installed runtime (the principal's sandbox rulings of 2026-11-15). Any other install refuses (Refused) a
     release older than the running one (review round 1 of 5.23.1, A1), read when it starts and again, under the same
-    lock, just before `current` moves (round 3, M2). `rollback`: the code-approved route alone (the CLI's install, which
-    waits for the principal's code) may install an older release; no route that runs with no code passes it. `expected`
-    ({path: blob id}, every file the runtime takes, as the release read it from its fresh clone): the staged copy must
-    hold exactly those bytes before `current` moves, or nothing moves (A3)."""
+    lock, just before `current` moves (round 3, M2), for every caller: a keyword any program in the process could pass is
+    no exception (round 4, Q4); a deliberate rollback waits for the principal's own grant of it. `expected` ({path:
+    blob id}, every file the runtime takes, as the release read it from its fresh clone): the staged copy must hold
+    exactly those bytes before `current` moves, or nothing moves (A3)."""
     plugin_root = Path(plugin_root).resolve()
     if not (plugin_root / "synthesis" / "hook.py").is_file():
         if expected is not None:  # a release's install that cannot happen stops it (review round 2, N8: a clone gone)
@@ -349,11 +349,11 @@ def install(plugin_root: Path, first_only: bool = False, expected: dict = None, 
     if not python:  # nothing could run the guard: install nothing (review round 3, M3)
         raise Refused(NO_PYTHON)
     with _install_lock(home):
-        return _install_locked(plugin_root, home, python, expected, rollback)
+        return _install_locked(plugin_root, home, python, expected)
 
 
-def _install_locked(plugin_root: Path, home: Path, python: str, expected: dict, rollback: bool) -> str:
-    if not rollback and _older(plugin_root, home):
+def _install_locked(plugin_root: Path, home: Path, python: str, expected: dict) -> str:
+    if _older(plugin_root, home):
         raise Refused(_older(plugin_root, home))
     wanted = package_hash(plugin_root)
     if wanted != current_hash():
@@ -377,7 +377,7 @@ def _install_locked(plugin_root: Path, home: Path, python: str, expected: dict, 
         elif expected is not None and _differences(release, expected):
             raise Refused(f"{release} is not the release's bytes ({'; '.join(_differences(release, expected)[:4])}), "
                           "so current did not move")
-        if not rollback and _older(plugin_root, home):  # the floor read again, just before the switch (round 3, M2)
+        if _older(plugin_root, home):  # the floor read again, just before the switch (round 3, M2)
             raise Refused(_older(plugin_root, home) + " (the runtime moved while this install staged its copy)")
         link = home / f".current.{os.getpid()}"
         link.symlink_to(release)

@@ -89,11 +89,14 @@ listing before `current` moves, and the release refuses a version older than the
 or GitHub's highest version tag (read from its tags by git, never by a `gh` found on PATH).
 `install.install` refuses a folder that declares an older version than the running runtime, read
 when it starts and again, under a lock on the synthesis home, just before `current` moves (its
-file is one this user may only write, so no program that only reads can hold it); only the
-code-approved route may pass a rollback. What a folder declares is its own claim, so the
-CLI's `synthesis install <folder>` and `synthesis uninstall`, which pass with no code, are open
-until they wait for the principal's code (a separate change). Review rounds 1 to 3 of 5.23.1
-found and closed the rest (A1 to A3, N2, N3, N7, N8, N10, M2, M4).
+file is one this user may only write, so no program that only reads can hold it), for every
+caller: no keyword passes the floor. A deliberate rollback waits for the principal's own grant
+of it, which a separate change brings; until it lands, no route installs an older release, and
+the guard holds a program that names the installer only where its import starts a line. What a
+folder declares is its own claim, so the CLI's `synthesis install <folder>` and `synthesis
+uninstall`, which pass with no code, are open until they wait for the principal's code (the same
+change). Review rounds 1 to 4 of 5.23.1 found and closed the rest (A1 to A3, N2, N3, N7, N8,
+N10, M2, M4, Q4).
 
 ## What the script refuses, and why
 
