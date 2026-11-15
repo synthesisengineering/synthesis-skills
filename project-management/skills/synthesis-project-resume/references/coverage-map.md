@@ -68,4 +68,4 @@ The R1.1 resume scenarios from the v5 code evaluation (wrong project, held
 project, unknown id, behind upstream, unreachable remote, newer worktree copy,
 diverged copies, future dates and the generated index) are tests in the
 plugin's `tests/test_resume.py`; see synthesis-project-management's
-[coverage map](https://github.com/synthesisengineering/synthesis-skills/blob/v5.22.1/skills/synthesis-project-management/references/coverage-map.md#edge-cases-from-the-code-evaluation).
+[coverage map](https://github.com/synthesisengineering/synthesis-skills/blob/v5.23.0/skills/synthesis-project-management/references/coverage-map.md#edge-cases-from-the-code-evaluation).

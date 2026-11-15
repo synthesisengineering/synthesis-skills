@@ -31,11 +31,13 @@ chats from secure storage.
 6. **Transcripts stay private.** Never commit one to a repository others read, paste it into a shared surface, or quote it outward without the principal's word for that quote.
 7. **An export is a bounded source.** A conversation or message missing from it proves nothing: exports have dropped whole threads, and encrypted chats come in a download of their own.
 8. **Re-import; never rewrite.** The importer keeps every message it wrote and adds only new ones. Never edit or delete a transcript's messages to refresh it, and keep notes in other files.
+9. **Read a chat from its page only on the principal's word, for a chat an export lacks,** with `scripts/chat_page.py`: opening a chat marks it read in their view, so say so first.
 
 ## Contents
 
 - [references/formats.md](references/formats.md): the two downloads, their folder layouts and fields, how each field is shown, the encoding repair, what the importer refuses and why, what is confirmed and what is inferred, with sources. Read it before running the importer on a new export, and whenever it refuses one.
 - [references/transcript-format.md](references/transcript-format.md): file names, the transcript's layout line by line, untrusted fences and hidden characters, Message IDs and re-import, citing a transcript, and how it maps to the Slack transcript format. Read it before reading, quoting or relying on a transcript.
+- [references/chat-page.md](references/chat-page.md): one chat read from its page when an export lacks it: the read, the coverage line, how its messages merge with a later export, where they go. Read before reading a chat's page.
 - Procedure, What the command prints, After a refusal: below.
 
 ## Procedure

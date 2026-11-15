@@ -30,7 +30,7 @@ For more on each book and how to choose where to start, see [`references/recomme
 - [`synthesis-article-writing`](../../synthesis-article-writing/SKILL.md) — End-to-end article workflow
 - [`synthesis-article-refresh`](../../synthesis-article-refresh/SKILL.md) — Revising older articles
 - [`synthesis-reader-briefing`](../../synthesis-reader-briefing/SKILL.md) — Pre-writing audience analysis
-- [`synthesis-concise-messaging`](https://github.com/synthesisengineering/synthesis-skills/blob/v5.22.1/skills/synthesis-concise-messaging/SKILL.md) — Brevity-focused messaging methodology
+- [`synthesis-concise-messaging`](https://github.com/synthesisengineering/synthesis-skills/blob/v5.23.0/skills/synthesis-concise-messaging/SKILL.md) — Brevity-focused messaging methodology
 
 ---
 

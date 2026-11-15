@@ -10,7 +10,7 @@ When a PR passes review and is ready for integration:
 2. **If the PR needs adaptation** — the lead synthesist creates an integration branch, applies the adopt-and-adapt pattern, verifies the adapted bytes and merges within the actual grant.
 3. **If required work remains** — retain it as an open obligation. A dependency may land when independently useful, safe and authorized, but tickets or a partial merge cannot satisfy a promise to complete the whole outcome.
 
-The review findings feed directly into the integration plan. Apply the shared [decision-ownership contract](https://github.com/synthesisengineering/synthesis-skills/blob/v5.22.1/skills/synthesis-thinking-framework/references/decision-ownership.md): technical review acceptance, merge authorization, release/deployment authorization and delivered outcome are separate facts. Prior valid grants remain usable within their scope; reviewer approval cannot create a new grant. Do not request the same authorization again merely because work moved to another skill.
+The review findings feed directly into the integration plan. Apply the shared [decision-ownership contract](https://github.com/synthesisengineering/synthesis-skills/blob/v5.23.0/skills/synthesis-thinking-framework/references/decision-ownership.md): technical review acceptance, merge authorization, release/deployment authorization and delivered outcome are separate facts. Prior valid grants remain usable within their scope; reviewer approval cannot create a new grant. Do not request the same authorization again merely because work moved to another skill.
 
 ### Post-Merge Verification
 

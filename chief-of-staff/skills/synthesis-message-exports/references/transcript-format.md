@@ -20,7 +20,10 @@ One file per conversation, in the folder given with `--out`:
   (`messenger-dyi-alexsample_1234567890.md`);
 - `messenger-e2ee-<display name>-<8 hex>.md` for a conversation of the secure-storage download: its display name
   (the file name without its running `_<n>`) and 8 hex digits of a digest of its first message's ID, never the
-  download's index, which a later download may give to another chat (`messenger-e2ee-Alex-Sample-3f9a2c1d.md`).
+  download's index, which a later download may give to another chat (`messenger-e2ee-Alex-Sample-3f9a2c1d.md`);
+- `messenger-page-<display name>-<8 hex>.md` for a plain chat read from its page that no transcript held, since the
+  page does not show the regular export's folder name (references/chat-page.md). An encrypted chat read from its page
+  takes the `messenger-e2ee-` name.
 
 A name keeps letters, digits, dot, dash and underscore; any other character becomes a dash, and a regular-export
 folder name changed that way gains six hex digits of the original's digest, so it stays unique. The name is the
@@ -90,6 +93,9 @@ photo: your_facebook_activity/messages/inbox/tripplanning_4004/photos/101.jpg
   count by kind and each attachment's place in a fenced block; `**Shared link:**` with the link and its text,
   fenced; `**Reactions:**` with each emoji and who; or `**No text or attachment in the export.**`. A `---` line
   closes each message.
+- **`**Read from the page:**`**, third in a message's block, before its text, marks a message `chat_page.py` read
+  from the chat's page: the chat's address, and that its time is the minute the page showed; in the hour the clocks
+  went back it adds how many minutes later the second reading lies (references/chat-page.md).
 
 Names, titles and reactions sit on one line each: whitespace collapsed, at most 100 characters (a reaction 16), and
 every character markdown would read as markup escaped with a backslash, so a name cannot add a heading, a line, a
@@ -141,6 +147,12 @@ A re-import reads each transcript back before deciding anything:
 - A secure-storage conversation goes to the transcript already holding any of its messages, whatever its name; one
   holding none gets a new transcript; one whose messages sit in two transcripts, or that shares one transcript with
   another conversation of the same download, is skipped and named (references/formats.md).
+- A message read from the page counts as present when an export's message has its sender, the digest of its text
+  alone and a time inside its minute; each such block pairs with one message, and one that pairs only in part is held
+  for a person, neither written nor dropped. A transcript holding page reads takes a conversation of either download
+  on evidence about the chat: its title is among the conversation's people, and every page-read block inside the
+  conversation's span pairs. Beside the conversation's own transcript it keeps the messages it holds, and the import
+  says so; a transcript a page read started keeps its header (references/chat-page.md).
 
 ## Reading and citing a transcript
 
