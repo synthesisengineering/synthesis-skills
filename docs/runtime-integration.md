@@ -508,6 +508,9 @@ harness that gives no transcript cannot carry approved sends or deploys until it
   another name with its method quoted (`const {fetch: f} = window` or `const f = window.fetch`, then
   `f(url, {"method": "POST", ...})`), and a method that names what it does read as a value and called under another
   name (`const o = {c: HTMLElement.prototype.click}; o.c.call(el)`; `el.go = HTMLElement.prototype.click; el.go()`).
+  A third came with closing #3: the reader keeps no scopes, so a page's own send called by a bare name the script also
+  defines elsewhere, as a function or a parameter (`[0].map(sendMessage => sendMessage); sendMessage(...)`), passes (a
+  case of the same test).
 
 No local file is secret from an agent running as the person's own OS user, so these
 stay open, and no hook running as that same user can close them:
