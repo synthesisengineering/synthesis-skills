@@ -18,9 +18,11 @@ list beside an empty composer and opens nothing. The list loads older conversati
 scrolled, so a read stops at that day.
 
 `list.txt` is the conversation list's text as the browser tool returned it (the list alone, or the whole
-page). `--since` is the day the last read reached: a read whose oldest conversation is newer than that
-stopped short, and its coverage carries no `through`, so the watermark cannot move. Exit 0 for a complete
-read, 1 for one that stopped short or could not read an entry, 2 when the text holds no conversation list
+page). `--since` is the moment the last read reached, as `plan` prints it; a day stands for its first moment. A read
+reaches it only when its oldest entry's latest moment (the end of its day, or of today's minute) is at or before it;
+one that does not stopped short, and its coverage carries no `through`, nor does a read with no `--since`, so the
+watermark cannot move; a `--since` that names no day or moment is refused. Exit 0 for a read with nothing wrong,
+1 for one that stopped short or could not read an entry, 2 when the text holds no conversation list
 or shows a sign-in page or security check. A conversation the list marks as open was opened during the read:
 it is counted with `--opened` and named, since opening marks it read. An inbox with nothing in it is a
 complete read only with `--empty`: a page saved before its list loaded looks the same.
@@ -37,6 +39,8 @@ from pathlib import Path
 sys.dont_write_bytecode = True  # an installed plugin must stay byte-identical; Muse verifies its bundle
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))  # the plugin root, which holds synthesis/
+
+import sync_watermark as watermarks  # noqa: E402  the --since rule and each inbox's watermark
 
 END = re.compile(r"^Open the options list in your conversation with (.+)$")
 CLOCK = re.compile(r"^(\d{1,2}):(\d{2})\s*([AP])M$", re.I)
@@ -73,6 +77,13 @@ def when(text: str, read: datetime):
     return found.isoformat()
 
 
+def reach_of(last: str, read: datetime) -> datetime:
+    """The latest moment a list entry allows: the end of the minute it shows today, or of the day it shows."""
+    if "T" in last:
+        return datetime.fromisoformat(last).replace(tzinfo=read.tzinfo) + timedelta(minutes=1)
+    return datetime.combine(date.fromisoformat(last) + timedelta(days=1), datetime.min.time()).replace(tzinfo=read.tzinfo)
+
+
 def entry(block: list, names: str, read: datetime):
     """One conversation from the lines above its closing sentence, or None when they cannot be read."""
     at = next((i for i in range(1, len(block)) if when(block[i], read)), None)
@@ -106,6 +117,10 @@ def entry(block: list, names: str, read: datetime):
 
 
 def parse(text: str, read: datetime, since: str = "", opened: int = 0, inbox: str = "", empty: bool = False) -> dict:
+    try:
+        target = watermarks.since_moment(since, read.tzinfo) if since else None
+    except ValueError as refusal:
+        stop(str(refusal))
     lines = [line.strip() for line in text.splitlines() if line.strip()]
     ends = [i for i, line in enumerate(lines) if END.match(line)]
     if not ends and (WALL.search(text) or not empty):
@@ -126,8 +141,10 @@ def parse(text: str, read: datetime, since: str = "", opened: int = 0, inbox: st
         start = end + 1
     accounts = {t.pop("account") for t in threads} - {None}
     oldest = min((t["last"][:10] for t in threads), default=None)
-    short = bool(since and oldest and oldest > since)
-    complete = (bool(threads) or empty) and not unreadable and not short
+    reach = min((reach_of(t["last"], read) for t in threads), default=None)  # the latest moment the oldest entry allows
+    reached = target is not None and (empty or (reach is not None and reach <= target))  # compared as moments, not days
+    short = target is not None and bool(threads) and not reached
+    complete = (bool(threads) or empty) and not unreadable and reached
     owed = [t for t in threads if not t["from_me"]]
     unread, asked = sum(t["unread"] for t in threads), sum(t["nudge"] for t in owed)
     opened = max(opened, sum(t["open"] for t in threads))  # the new-message view opens none; one marked open was opened
@@ -137,7 +154,8 @@ def parse(text: str, read: datetime, since: str = "", opened: int = 0, inbox: st
                if threads else "no conversations in the list; ")
             + f"{opened or 'none'} opened"
             + (f"; {unreadable} could not be read" if unreadable else "")
-            + (f"; the read stops short of {since}: scroll the list further and read again" if short else ""))
+            + (f"; the read stops short of {since}: scroll the list further and read again" if short else "")
+            + ("; no --since, so it moves no watermark" if target is None else ""))
     return {"read_at": read.isoformat(), "inbox": inbox or None, "account": accounts.pop() if len(accounts) == 1 else None,
             "threads": threads, "owed": owed,
             "coverage": {"threads": len(threads), "oldest": oldest, "unreadable": unreadable, "since": since or None, "opened": opened,
@@ -147,7 +165,6 @@ def parse(text: str, read: datetime, since: str = "", opened: int = 0, inbox: st
 
 def plan(config: Path, today: date) -> list:
     """What a read opens and the day it scrolls back to, from the workspace's declaration."""
-    import sync_watermark as watermarks
     from synthesis.yamlish import load
     try:
         declared = load(config.read_text(encoding="utf-8"))
@@ -163,12 +180,14 @@ def plan(config: Path, today: date) -> list:
         stop(f"{config}: inboxes names {', '.join(sorted(set(inboxes) - set(ADDRESS)))}; this reads {' and '.join(ADDRESS)}")
     lines = []
     for inbox in inboxes:
-        last = watermarks.window(workspace, "linkedin", inbox)["from"]
-        day = last[:10] if last else (today - timedelta(days=FIRST_READ_DAYS)).isoformat()
+        window = watermarks.window(workspace, "linkedin", inbox)
+        last = window["from"] if window["source"] == "own watermark" else None  # read through only by its own reads
+        day = (today - timedelta(days=FIRST_READ_DAYS)).isoformat()
         lines += [f"open  {ADDRESS[inbox]}  ({inbox}, in the new-message view: the list beside an empty composer; never the bare "
                   "messaging page)",
-                  f"read  {inbox}: " + (f"read through {day}; scroll back to that day" if last else f"never read; scroll back to {day}")
-                  + f", stop there, and pass --inbox {inbox} --since {day}"]
+                  f"read  {inbox}: " + (f"read through {last[:10]} {last[11:16]}; scroll back past that moment, stop there, and "
+                                        f"pass --inbox {inbox} --since {last}" if last else
+                                        f"never read; scroll back to {day}, stop there, and pass --inbox {inbox} --since {day}")]
     return lines
 
 
@@ -182,7 +201,7 @@ def main(argv=None) -> int:
     read.add_argument("--text", required=True, type=Path)
     read.add_argument("--read-at", required=True, help="when the list was read, ISO-8601 with its offset")
     read.add_argument("--inbox", default="", help="the inbox this text was read from; it is named in the coverage line")
-    read.add_argument("--since", default="", help="the day the last read reached, YYYY-MM-DD")
+    read.add_argument("--since", default="", help="the moment the last read reached, as plan prints it (a day: its first moment)")
     read.add_argument("--empty", action="store_true", help="the page itself says this inbox holds no conversations")
     read.add_argument("--opened", type=int, default=0, help="how many threads this read opened (each marks one read)")
     read.add_argument("--json", action="store_true")
@@ -195,8 +214,6 @@ def main(argv=None) -> int:
         text = args.text.read_text(encoding="utf-8")
     except (ValueError, OSError) as exc:
         stop(f"cannot read --read-at or --text ({exc})")
-    if args.since and not re.fullmatch(r"\d{4}-\d{2}-\d{2}", args.since):
-        stop("--since is a day, YYYY-MM-DD")
     result = parse(text, moment, args.since, args.opened, args.inbox, args.empty)
     if args.json:
         print(json.dumps(result, indent=2, ensure_ascii=False))
@@ -209,7 +226,7 @@ def main(argv=None) -> int:
             marks = [m for m in ("InMail" if t["kind"] == "inmail" else "", f"{t['unread']} unread" if t["unread"] else "",
                                  "LinkedIn asks for a reply" if t["nudge"] else "") if m]
             print(f"  {t['last'][:10]} {t['who']}: {t['preview'][:200]}" + (f"  [{', '.join(marks)}]" if marks else ""))
-    return 0 if result["coverage"]["complete"] else 1
+    return 0 if not result["coverage"]["unreadable"] and not (args.since and not result["coverage"]["complete"]) else 1
 
 
 if __name__ == "__main__":

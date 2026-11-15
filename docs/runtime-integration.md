@@ -361,9 +361,90 @@ harness that gives no transcript cannot carry approved sends or deploys until it
      lie in it: of what a walk hands back, the folder is a path and the names in it are not.
      A program that runs code it builds (`exec`, `eval`, a module it names at run time)
      cannot be read: it is taken to write, and is refused while it names a protected path,
-     is handed one or runs inside one. A program with a syntax error, and a script for
-     another interpreter, is judged by its text: the words it is given, or the heredoc it
-     reads on its stdin (the whole command when its text comes down a pipe).
+     is handed one or runs inside one; so is one that reaches a call by a name it builds
+     (`getattr` with a built name or on a module, `vars()`, a module's `__dict__`,
+     `functools.partial`, `operator.methodcaller`, `ctypes`). A program with a syntax error
+     is judged as below.
+   - **A program the guard does not know to only read** (5.22.1). A list of the ways to write
+     never ends (a one-line copy in a language the guard does not read wrote a transcript and
+     a grant, and so did a launcher in front of one, git with an option that writes, a hard
+     link and an archive whose members carry their own paths), so the guard keeps the other
+     list. A command any of whose words, options or program text names a protected folder or
+     a folder above one passes only when its program is a known reader: a program on the
+     readers' list with none of its own options that write or run (`less -o`, `rg --pre`,
+     `sort -o`), git with a read subcommand and none of its options that write or run
+     (`--output`, `--work-tree`, `-c`, `--config-env`, a pager, `--ext-diff`, `--textconv`),
+     `find` and `eval` (what each runs is judged as a command of its own), a hex dump with one
+     file, an awk program read with certainty that has no output redirect, pipe or `system`, a
+     sed program read with certainty (bracket expressions as BSD sed reads them) with no `w`,
+     `W` or `e`, a shell whose script is on the line, on its input or in a file `cat` pipes to
+     it (each of its commands is judged; a script on its input that cannot be read waits),
+     Python its reader proves, and the plugin's own scripts: inside the release the guard runs
+     from (`releases/<hash>/` under the synthesis home), or byte for byte that release's copy at
+     the same relative path, with the modules beside it that it imports (a skill's script in a
+     harness's plugin cache). The installed runtime (`releases`, `current` and `bin` under the
+     synthesis home) is a protected folder, so no command plants or changes a file there. A
+     script, a module or Python on the line that uses synthesis's own code from outside the
+     release waits only when it names one of synthesis's functions that write (its state,
+     approvals, send windows and batches, board or archive: the list a test keeps to what the
+     source shows, under any name it is imported by, called or not), reaches that code in a
+     way its reader cannot follow (`getattr`, `vars()` or `__dict__` on it, a module handed
+     on, a name its module only imports, a name or code it builds, `import *`), or writes
+     where synthesis's own paths lead (`paths.state()` and the like, spelled out as the
+     folders they return where they can be); using it by name to read passes (`guards.check`,
+     `paths.home()`, `yamlish`, the board's readers), as does a function the source shows
+     never writes, handed on.
+     Python on the line (`-c`, or a program on its input) is proved only where none of the
+     agent's modules can stand in: run with `-I` (or `-P` with `-E`), or with no file or
+     package where it runs named like a module it imports, and no `PYTHONPATH`,
+     `PYTHONSTARTUP`, `PYTHONHOME`, `PYTHONUSERBASE` or `PYTHONSAFEPATH` set on the line. A
+     script file, or a module run with `-m` from the folder that holds it, is judged by what
+     its text shows (after the 30-day replay: proving every expression held about 3,700
+     commands a month): read whole up to 4 MB, with each module of its own it imports (a file
+     or package beside it named like no module found elsewhere, or one its package names
+     relative to itself, and theirs in turn), it waits only when the command or that text
+     names a protected folder and the text holds a write or a run the reader recognizes that
+     it cannot place outside them; a module of its own waits on any such write, since what
+     its functions are handed comes from another file. A file beside it named like a module
+     found elsewhere stands in, and waits; a module run with `-m` found anywhere else waits
+     whenever the command names a protected folder, since its first file is not the program
+     it runs (pip's and pytest's hand everything on) and need not be this Python's. A file
+     argparse opens to write is a write. A hold for want of only isolation says that `-I`, or
+     a folder or line without the module or variable, needs no code; a git read it spells whole (a list that starts with `git`, a read
+     subcommand, no option that writes or runs, no shell) is a read wherever it points. Anything
+     else waits for the principal's code for exactly that command, the folder it runs in and
+     the size, time and digest of every script it runs, so a script rewritten after the
+     approval is a new command; the hold names the program that runs and says to read with
+     `cat`, `head`, `tail`, `grep` or `jq` (or a redirect of `cat` for a copy), or with Python
+     the guard can read, for no code. Words are judged wherever the program sits, so a launcher
+     (`script`, `arch`, `time -p`, `xcrun`) hides nothing, and after the shell's own expansions:
+     brace lists (`{a,b}`, `{1..3}`, nested) and every redirect bash and zsh accept (`>|`,
+     `>!`, `>>!`, `&>!`, `>&!`, `&>>`, `<>`). A folder is named by its path in any case; on the
+     command line, each word only by its own path (after `~`, variables, `..` and links), so
+     parts in two words never join (2026-11-15: a skill script's path in the harness's plugin
+     cache and a project page's path were read together as naming the transcripts); in a
+     program's text, by the parts of its path below the home folder within one statement,
+     however they are joined (`Path.home() / ".claude" / "projects"`, `$ENV{HOME} . "/" .
+     ".claude"`), but never from two paths written whole, and a path written whole only where
+     they stand one after another;
+     by a variable that holds it, a folder above it or a place inside it, with the rest of the
+     path anywhere after it; by a path that leads into it through `..`, a link made beforehand
+     or one the line makes; by a folder between it and the home folder or such a variable,
+     handed as a word; by standing in the state folder, its board or the session archive (in a
+     transcript folder, by the bare name of a file that is there); and by the files `xargs`
+     hands a program on a line that names one. A project's memory notes, a session's saved
+     workflow scripts and saved tool results name no folder. Values of message options and the
+     words given to `codex`, `claude`, `muse` and `gh` are left alone. An archive tool that
+     unpacks where it stands in a folder that holds or lies in a protected one, or where its
+     members say (`-P`, `--absolute-names`, `--insecure`, `pax -r`), waits too; a copy into
+     such a folder stays refused. A script file outside the runtime release that names one of
+     synthesis's writers waits (the release script and onboarding's setup, run from a
+     checkout, are such files); Python on the line that reaches synthesis's code in a way its
+     reader cannot follow is refused. The guard reads only regular files a command runs as scripts, bounded in
+     size and opened without waiting, reads each script and its own modules once a call (at
+     most eight scripts, 64 modules a script), stops reading a program at the call's
+     deadline, and a command it cannot finish judging within 3 seconds waits for the
+     principal's code.
    - **Standing in a protected folder.** A program can write where it stands without naming
      a file (an archive unpacked, a script file). Inside the state folder, the board or the
      sessions archive, where no session has reason to stand, only a command the guard can
@@ -414,24 +495,29 @@ stay open, and no hook running as that same user can close them:
   like the person's prompt, defeats the transcript check. The shell guard and the guard
   on the file tools (Write, Edit, `apply_patch` and their like) refuse the natural routes.
   A command that builds the path or the code at run time (an encoding, the output of a
-  substitution, a glob in the folder's own name), a script file or a program run by its
-  path, which the guard cannot read, a program that writes where it stands inside a
-  transcript folder without naming a file (an archive unpacked there), a file-writing tool
-  of another server that the guard does not know as a file tool, or a program the agent
-  writes and runs gets through. So does a module run with `-m` (it is a script file:
-  `python3 -m zipfile -e`), `git` told to put its own files in such a folder (a clone, an
+  substitution, a glob in the folder's own name, a name assembled from pieces none of which
+  spells the folder), a script file, a module or a program run by its path that names no
+  protected folder in a spelling the guard reads (it reads a script's first 4 MB, a longer
+  Python script waits, and it reads an editor's file as text it edits, not a script), a Python
+  script whose own text and own modules show no write the reader recognizes while a module
+  it imports from anywhere else, or compiled code beside it, does the writing, a program other than an archive tool that
+  writes where it stands inside a transcript folder without naming a file, a file-writing
+  tool of another server that the guard does not know as a file tool, or a program the agent
+  writes and runs that names no such folder gets through. The installed plugin and runtime
+  are trusted as the guard itself is (an agent that rewrites them can rewrite the guard), and
+  a script file run without `-I` loads what the shell's own `PYTHONPATH`, which the guard does
+  not see, puts first. So does `git`
+  told to put its own files in such a folder (a clone, an
   archive, a configuration file given with `-f`), a script that is the output of a process
   substitution (`bash <(…)`), and a command handed to a scheduler to run later (`crontab`,
   `at`). So does a write the Python reader does not follow: a writer of another library
   whose name says nothing of writing (a method named `write` on anything but a tree or a
   document writer, a store opened by a name the reader does not know), a path such a
-  library's writer takes in a place the reader does not expect, a call reached through
-  `getattr` or handed on with
-  `functools.partial`, a path carried by an exception, a path built piece by piece so that
+  library's writer takes in a place the reader does not expect, a path carried by an
+  exception, a path built piece by piece so that
   no piece names the folder, a path the program reads out of a file or builds from a value
   the reader cannot read, a folder change or a mapping of variables
-  made by code the reader cannot follow, a command an awk program builds in a variable and
-  only reads from, and a program that runs what its configuration or a pipe hands it (a
+  made by code the reader cannot follow, and a program that runs what its configuration or a pipe hands it (a
   makefile on `make`'s input, a git alias given with `-c`, an editor named in a variable).
   A shell function's own `$1` is not followed either: a function handed a protected path
   is refused, also when it only reads it. The Python reader also refuses some programs
@@ -439,9 +525,8 @@ stay open, and no hook running as that same user can close them:
   `items()` that writes only under one key (`if k == "out":`) is read as writing every
   value, what a method stores under a key it is handed (`cfg.set("out", path)`) is read
   as stored under any key, and a thing given a protected path through a name the reader
-  cannot follow is taken to hold it wherever that thing is read. A program the guard does not know may be handed
-  a folder that holds a protected one (an archive unpacked over it), and a program may
-  list such a folder one level at a time and remove what it finds by a name it builds.
+  cannot follow is taken to hold it wherever that thing is read. A program may list a folder
+  that holds a protected one, one level at a time, and remove what it finds by a name it builds.
   A word handed to a program the guard does not know is read only where it starts as a
   command the guard knows: a script for that program's own language, or a line that
   starts with a program of the agent's, is not. A `cd` into a folder only a substitution

@@ -1127,6 +1127,146 @@ ROOT = Path(__file__).resolve().parents[1]
 # commit takes the release commit's identity and time, unsigned, names it, and is made once for each head).
 # context_doctor.py 6: repo_state 3 and cited_entries 3 (without the runtime's claims log or session archive, each says
 # what it cannot tell). local_messaging.py 4: _close 4 (without the runtime's approvals nothing is closed, in one line).
+# 5.22.1 (2026-11-14): core 209 more and plugin 209, after a review wrote the principal's prompt into a transcript and
+# the grant into the state with one line of Perl's File::Copy, which the guard's list of writing calls did not know, and
+# opened a send window from a faked terminal. guards.py 210: the section's comment 7 and its constants 8 (UNREAD 2, the
+# interpreters the guard does not read; EDITORS 1; AWK_SAFE 1, the awk options that write nothing; CANDIDATE 1, a path
+# in code; SPELLINGS 1, each folder's spellings compiled once; 2 blank lines), Unproven 5, _code_of 11 (a script file's
+# text, never a program's bytes), _sed_scripts 18 (each -e, else the first operand; none read from -f), _sed_writes 26
+# (w, W, e and an s flag that writes or runs, past addresses, the parts of s and y, text, labels and file names),
+# _unread 35 (which programs run text the guard cannot read, and the script file each runs: Python left to its reader,
+# synthesis's own module and json.tool given one file passed, a shell's script on the line passed, awk and sed by their
+# options and scripts, an interpreter, an editor, a program run by its path), PROOF_LIMIT 3 and _proven 11 (a Python script file of 16 KB or less, proven by the reader and never
+# refused on that reading), _spells 48 (a folder named in any spelling: its path in any case, its path below the home
+# folder however joined, a variable that holds it, a folder above it or a place inside it, a path through `..` or a
+# link, a folder above it handed whole), check_self_grant 20 more (every reading's refusal first, then the hold: the
+# code filed and spent for exactly that command and folder, or the reason as a refusal for a command a Python program
+# starts), _self_grant 9 (the files the line writes 2, the program, its script and what it names, standing in the state,
+# the board or the archive included, 4, a script file that makes a grant or opens a window 1, the hold's reason 2),
+# BUILT_CALLS 2 and its check in _python_writes 4 (a call reached by a name the program builds, through a module's own
+# table or `__dict__`, handed on, or into C; an object's own `__dict__` is read as before), and check_outgoing 3
+# (every window request in a line collected 1, a code asked for each that waits 2). cli.py 1 fewer: the own-terminal
+# shortcut's condition is gone and its comment says why in as many lines.
+# 5.22.1's review, round 2 (2026-11-14): core 20 more and plugin 21. guards.py 21: a git read a Python program spells
+# whole is a read wherever it is pointed 5 (its words, git's own options and the value -C takes 2, the read subcommand
+# with no option that writes or runs 2, the pass 1); EXTRACTS 3, the archive tools and the word that says each unpacks;
+# _spellings 6 (the spellings and the folders above each protected one, kept apart from _spells so the handed-path
+# rule reads the same folders: its signature and docstring 3, the return 1, 2 blank lines); an archive tool unpacking
+# where it stands in such a folder or a protected one 3; a folder above a protected one handed to a program the guard
+# does not know 4. sessions.py 1 fewer: the lost-transcript gate's own-terminal shortcut is gone, its docstring
+# rewritten in as many lines. provenance_scan.py 1: its git helper's five lines become five that spell each read whole,
+# and the docstring gains a line saying why.
+# Review round 1 of 5.22.1 (2026-11-14): core 210 more and plugin 210, for its nineteen findings and the coordinator's
+# rulings (a command that names a protected folder passes only when its program is a known reader; brace lists and
+# every redirect form; programs judged by their text, failing closed; Python isolated from the agent's modules; the hold
+# on time and bound to the scripts it runs). guards.py 203, each with the blank lines after it: _braces 26 (brace lists
+# as bash and zsh expand them, nested, with sequences, under a cap), _sed_writes 25 more (a sed program read with
+# certainty: bracket expressions as BSD sed reads them, any command or flag it does not know taken to write), _regular
+# 21 (a regular file read without waiting, bounded), _shipped 18 (the installed plugin's own scripts: the guard's
+# folder, the synthesis home, or a harness's plugin folder whose guard is this one byte for byte), _awk_reads 17 (an awk
+# program with no redirect, pipe or system), _proven 13 more (each script proved once a call under a cap and the call's
+# deadline, and no planted module beside it), _git_reads 13 (git's read subcommands without options that write or run),
+# _python_writes 10 more (a writer handed on rather than called, sys.modules, a started command's wait carried, a
+# refusal preferred), _unread 8 more (every program not known to only read is named; open runs what it opens), _self_grant
+# 8 more (each command's words judged for what they name, a script file outside the plugin using synthesis's code, a
+# line it cannot read), _piped 8 (what cat pipes into a shell, and what another program pipes, which waits), _isolated 6,
+# _commands 5 more (a file on a program's input read as its script; what printed into a shell), check_self_grant 3 more
+# (its deadline, its caches, the scripts the code binds), _lex 3 and _bare 3 more (quoted braces kept whole; env -S read
+# as env's own words), SYNTHESIS_IMPORT 3, _simple 2, _code_of 2, READER_WRITES 2, check 1, _spells 1, _spellings 1, and
+# one line each for _CALL, UNREAD_INPUT, SHIELD, OUTPUTS, GIT_RUNS, GIT_FIRST, ABSOLUTE and the operator list, less
+# _script_file's 4 (it opens its file through _regular). approvals.py 6: transcript reads the path the prompt hook recorded
+# (and only one that is there), remember records it. hook.py 1: the prompt hook records it.
+# The coordinator's ruling on the plugin's own scripts (2026-11-14): core 3 more and plugin 3. guards.py 3: _shipped 1
+# more (only the release the guard runs from, or a script and the modules beside it that it imports byte for byte that
+# release's copy, in place of the synthesis home and a plugin cache's guard match), _protected_roots 1 (the runtime's
+# releases, current and bin), and a script file outside the release that imports synthesis's code waits apart from the
+# approval-call refusal 1.
+# What the 30-day replay of recorded commands showed the round-1 code misread (2026-11-14): core 5 more and plugin 5.
+# guards.py 5: _lex 5 (arithmetic, whose own substitutions alone run, and an array's values, kept in its word; the
+# substitution branch and the `$` branch step past `$((` in place); _dquote's arithmetic, the empty word no longer read
+# as a reader's writing option and the import check for synthesis's code each change one line in place.
+# The coordinator's ruling on Python without -I (2026-11-14): core 18 more and plugin 18. guards.py 18: _stand_in 11 with
+# its two blank lines (a module a program imports or runs with -m that a file where it starts could stand in for),
+# PYTHON_ENV 3 with its blank line (the variables that move Python's module path, set on the line), _unread 1 (the -m
+# exemptions under the same rule), and _self_grant 3 (why only isolation is missing, and a hold that says -I or a clean
+# folder needs no code). And 1 more to both: the refusal of a program that imports synthesis's code and that its reader
+# cannot follow says that, not that it runs the approval code (its words take a second line).
+# The coordinator's ruling on Python script files (2026-11-14, after the 30-day replay held about 3,700 such runs a month
+# for want of a full proof): core 138 more and plugin 138. guards.py 138: _python_files 47 (the script and each module
+# of its own it imports, read whole: a file or package in the folder Python looks in first named like no module found
+# elsewhere, or one a package names relative to itself, and theirs in turn, with the packages that hold a module run
+# with -m; a file there named like a module found elsewhere stands in; past TEXT_LIMIT, OWN_MODULES or the call's time
+# it waits), _shows 30 in place of _proven's 22 (judged by what the text shows: no write or run the reader recognizes,
+# or each placed outside the protected folders, a module of its own by any write it holds; once a call, under the
+# cap), _imports 18 (each import a program's syntax holds), _module_file 16 (the file `python -m` runs when the folder
+# it starts from holds it; one found elsewhere keeps the full rule), _found_elsewhere 9, _python_writes 15 (a member
+# read inside its own reading, where the reader recursed without end, leaves the writes it reaches unplaced and no
+# member followed after it, a file argparse opens to write is a write, and the call's deadline it stops at), _self_grant 10 (each script read with its
+# own modules, the import check for synthesis's code over all of them, the text check in place of the proof), _unread 2
+# (a module run with -m from the folder that holds it), the block's comment and blank lines 13, and TEXT_LIMIT with
+# OWN_MODULES 1 in place of PROOF_LIMIT 1; df on the readers' list, _code_of reading to TEXT_LIMIT and the call's
+# module cache change lines in place.
+# The coordinator's ruling on programs that use synthesis's own code (2026-11-14: waiting on every import stopped every
+# probe, review script and skill script outside the runtime that reads through it): core 119 more and plugin 119.
+# guards.py 119: _synthesis_reach 78 (what a program does with synthesis's code: names one of its writers under any
+# name it is imported by, reaches it in a way the reader cannot follow, or reaches a protected folder through its own
+# paths, each such call spelled out as the folder it returns), _synthesis_own 14 (whether a module makes a name itself
+# or only imports it), SYNTHESIS_WRITES 13 (synthesis's writers, which a test reads from the source), _self_grant 5 (the
+# check over a script and its own modules and over Python on the line, and where its paths lead counted as named),
+# SYNTHESIS_PLACES 2, _shows 2 (a program read with its paths spelled out, and a write where they lead unspelled taken
+# to land there), SYNTHESIS_DEFS 1 and 4 blank lines.
+# What the replay of that rule showed it misread (2026-11-14): core 17 more and plugin 17. guards.py 17:
+# _synthesis_reach 10 (a module printed or shown as text is no module handed on; a call inside an f-string, or one
+# whose place cannot be read with certainty or whose spelled-out text does not parse, is not spelled out), _ancestors 7
+# with its 2 blank lines (the nodes that hold a node), less _synthesis_own's 2 (only a name a module imports leads
+# elsewhere, so a value it makes by a tuple, a dunder or a name it no longer has does not).
+# 5.23.0, the Messenger surface and a chat saved from its page (2026-11-14): plugin 602 more, the core as it was.
+# messenger_messages.py 274 (synthesis-daily-rituals): parse 56 (rows to chats, the owed and nudged ones, unread marks
+# and the coverage line; a wall, another inbox's grid, an empty list without --empty and --end off the list's bottom
+# refused), main 50 (plan, extractor and parse, and the text report), the docstring and imports 41, entry 32 (one row's
+# lines; its age dated the latest it allows, its words checked against it), the extractor 27 (the named grid's rows,
+# the address, dialogs and whether the list is at its bottom, as JSON; it only reads), plan 26 (the declaration, each
+# inbox's way in and its day from the watermark), loaded 12, address 6, stop 5 and the constants 19, each with the
+# blank lines after it. chat_page.py 273 (synthesis-message-exports): read_chat 54 (walls, the chat's address, name
+# and zone, each message from its two labels; notices, messages without text and labels that disagree counted, not
+# written), place 42 (the transcript holding the chat's page reads, else its messages with the same people, else
+# --into, else a new name), the docstring and imports 37, save 36 (pairing with an export's blocks, the write and the
+# coverage line), main 24, instant 18 (the minute in UTC, the hour the clocks went back, a time never shown), the
+# extractor 17, loaded 13, label_of 9, people 6, Refused 4 and the patterns 13. import_messages.py 54: page_blocks,
+# sender_of, pairs and read_from_page 37 (a block read from the page pairs with a message of its digest inside its
+# minute, and draws a conversation only with the same people), plan 9 (both downloads find a transcript holding their
+# page-read messages, each such message counts as present, and its docstring 2), the page mark and the minute 5, and
+# message_block 3 (the page line). sync_watermark.py 1: messenger joins the stores that move only with their reader's
+# coverage, and its help line wraps.
+# 5.23.0, after the Messenger extractors' first live reads (2026-11-14): plugin 9 more. messenger_messages.py 1: the
+# extractor looks for the list's scroll containers from its first row up, inside the grid or around it, and says the
+# list is at its end only when it finds one and each is at its end. chat_page.py 8: read_chat 6 (the encryption notice,
+# known by its sender and words before any time is read, and a label dated before 2004-02-04 held for a person),
+# EARLIEST 1 and the held count in the coverage line 1.
+# 5.23.0, review round 1 of the Messenger surface (2026-11-14, 21 findings): plugin 221 more, the core 3 of them.
+# guards.py 3: MOVES 1 (a location assignment, assign, replace or window.open held on a messaging site), SCRIPT_ACTS 1
+# (now on two lines to take it) and its comment 1. messenger_messages.py 66: read_time 22 (the read's own clock and zone,
+# --read-at held to within five minutes of it), parse 21 (the --since moment, the reach from the last row in the list's
+# order, rows above newer ones, pop-ups, the empty-list words, dialogs by their heading, no watermark without --since),
+# the docstring and imports 10, shown 5 (names and previews on one line, separators shown), the extractor 4 (its clock,
+# zone, pop-ups and dialog headings), entry 2 (`You` only in the page's forms, each row's span), CLOCK_SLACK 1, UNTRUSTED
+# 1 and plan 1 (each inbox's own watermark), less main 1. linkedin_messages.py 17: reach_of 7 (an entry's latest moment),
+# parse 7 (moments, and no watermark without --since), the docstring and import 4 and plan 1, less main 2.
+# sync_watermark.py 18: since_moment 15 (the first moment a --since names; a day that is no day refused) and _store_reach
+# 3 (a coverage moves only the inbox it names). chat_page.py 42: read_chat 13 (the labeled notice only, held items, reads
+# joined only where they share two messages, twins), save 12 (pairing with what is held, the day reached only from before
+# it, the held and passed-over lines), label_of 6 (the sender by the name the log gives), the docstring 5, HELD 5, paged
+# 5, place 4 (evidence about the chat) and the extractor 2, less people 6, EARLIEST 2, LABELS 1 and FIELDS 1.
+# import_messages.py 75: block_text 16, transcript_text 13, loose 11, page_holds 11 (evidence about the chat), plan 7 (a
+# conversation split with a page read imported, partial pairs held, a page read's header kept), mine 6, text_digest 6,
+# exact_blocks 6, main 5 (the held and split lines), holders 5, near 4 and page_blocks 2, less read_from_page 9 and
+# read_transcript 8.
+# Spelling across words (the coordinator, 2026-11-15: a skill script's path in the plugin cache and a project page's
+# path were read together as naming the transcripts): core 43 more and plugin 43. guards.py 43: _statements 18 (a
+# program's text cut into its statements, outside quotes and brackets, comments left out), _joined 18 (the parts one
+# statement spells: from its code and pieces of a path, with at most one path written whole, and such a path alone
+# only where they stand one after another), LITERAL 1, 6 blank lines; _spells judging each text and each word apart
+# and expanding a word's variables, and the naming line handing it each word apart, change lines in place.
 # The judge (M38, plan item 21.3; the principal's rulings of 2026-11-14) adds 428 to the core and 709 to the plugin: a
 # model that reads each reply the shortcut list flags before it goes back, after 44 of 54 replies revised after a
 # shortcut sendback were found at least 85% the same with only the phrase gone, and blind labels of 70 recorded list
@@ -1164,8 +1304,8 @@ ROOT = Path(__file__).resolve().parents[1]
 # lines between them.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 15528
-PLUGIN_BUDGET = 41051
+CORE_BUDGET = 16314
+PLUGIN_BUDGET = 42667
 
 
 def _lines(files):

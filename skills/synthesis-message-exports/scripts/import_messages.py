@@ -72,6 +72,11 @@ SEEN = ("[^\x00-\x7f\\s\u00ad\u034f\u061c\u115f\u1160\u17b4\u17b5\u180b-\u180f\u
 KEPT = re.compile("\U0001f3f4[\U000e0020-\U000e007e]+\U000e007f"
                   f"|(?<={SEEN})[\u200c\u200d](?={SEEN})|(?<=[^\ufe00-\ufe0f\U000e0100-\U000e01ef])[\ufe00-\ufe0f\U000e0100-\U000e01ef]")
 KEY = re.compile(r"\*\*Message ID:\*\* (\S+):((\d+)-[0-9a-f]{10}(?:-\d+)?)")
+MINUTE_MS = 60_000
+# A message read from a chat's page by chat_page.py: its time is the minute the page shows, and a time in the hour the
+# clocks went back may be the second one, the given minutes later. The line stands third in its block, before any fence.
+PAGE_MARK = re.compile(r"\*\*Read from the page:\*\* `(https://www\.facebook\.com/messages/(?:e2ee/)?t/[A-Za-z0-9._-]+/)`, to "
+                       r"the minute(?:; the clocks went back that hour, so it may be (\d{1,4}) minutes later)?")
 WEEKDAYS = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
 MONTHS = ("January", "February", "March", "April", "May", "June", "July", "August", "September", "October",
           "November", "December")
@@ -639,6 +644,9 @@ def participants_line(conversation):
 def message_block(cid, message):
     sender = inline(message["sender"]) if message["sender"] else "(no sender in the export)"
     lines = [f"### {sender} — {moment(message['ts']):%H:%M} UTC", f"**Message ID:** {cid}:{message['key']}"]
+    if message.get("page"):  # (the chat's address, minutes a second reading lies later)
+        lines.append(f"**Read from the page:** `{message['page'][0]}`, to the minute" + (
+            f"; the clocks went back that hour, so it may be {message['page'][1]} minutes later" if message["page"][1] else ""))
     if message["unsent"]:
         lines.append("**Unsent by its sender.**")
     if message["text"]:
@@ -660,16 +668,16 @@ def message_block(cid, message):
     return lines
 
 
-def render(conversation, old, new, cid):
-    """The whole transcript: the header from this export, the blocks already written exactly as they were, and the
-    new ones in time order among them."""
+def render(conversation, old, new, cid, kept=None):
+    """The whole transcript: the header from this export (or `kept`, its five lines from title to participants, as
+    they were), the blocks already written exactly as they were, and the new ones in time order among them."""
     blocks = sorted([(ts, 0, n, lines) for n, (_, ts, lines) in enumerate(old)] +
                     [(m["ts"], 1, n, message_block(cid, m)) for n, m in enumerate(new)],
                     key=lambda block: block[:3])
     first, last = blocks[0][0], blocks[-1][0]
     title = conversation["title"] or ", ".join(conversation["names"] or []) or cid
-    lines = [FORMAT_LINE, f"# Messenger — {inline(title)}", f"# Conversation: {cid} ({conversation['where']})",
-             "", "From: " + ", ".join(code(place) for place in conversation["from"]), participants_line(conversation),
+    lines = [FORMAT_LINE, *(kept or [f"# Messenger — {inline(title)}", f"# Conversation: {cid} ({conversation['where']})",
+             "", "From: " + ", ".join(code(place) for place in conversation["from"]), participants_line(conversation)]),
              f"Messages: {len(blocks)}, {stamp(first)}" + (f" to {stamp(last)}" if len(blocks) > 1 else ""),
              "", NOTICE, "", "---", ""]
     heading = None
@@ -720,68 +728,175 @@ def parse_transcript(text, cid):
     return blocks, recorded
 
 
-def read_transcript(path, cid):
+def transcript_text(path):
+    """A transcript's text, read from a plain file only."""
     if not stat.S_ISREG(os.lstat(path).st_mode):
         raise Unreadable("its path is not a plain file")
     handle = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
     with os.fdopen(handle, "rb") as stream:
         data = stream.read()
     try:
-        return parse_transcript(data.decode("utf-8"), cid)
+        return data.decode("utf-8")
     except UnicodeDecodeError:
         raise Unreadable("a file of that name was not written by this importer")
 
 
+def read_transcript(path, cid):
+    return parse_transcript(transcript_text(path), cid)
+
+
 def holders(out):
-    """Each secure-storage transcript in --out that reads back, with its id, blocks and message keys, so a conversation
-    finds the transcript already holding its messages however the download numbered it; and why each other one does
-    not read back."""
+    """Each transcript in --out that reads back: its blocks, message keys, blocks read from a chat's page, title, the
+    names it gives its people and its five header lines, so a conversation finds the transcript already holding its
+    messages however it is named; and why each other one does not read back."""
     held, unread = {}, {}
     for name in sorted(os.listdir(out)) if os.path.isdir(out) else []:
-        if name.startswith("messenger-e2ee-") and name.endswith(".md"):
+        if name.startswith("messenger-") and name.endswith(".md"):
             path = os.path.join(out, name)
             try:
-                blocks, _ = read_transcript(path, name[len("messenger-"):-len(".md")])
+                text = transcript_text(path)
+                blocks, recorded = parse_transcript(text, name[len("messenger-"):-len(".md")])
             except Unreadable as why:
                 unread[path] = str(why)
                 continue
-            held[path] = (blocks, {key for key, _, _ in blocks})
+            header = text.split("\n")[1:6]
+            title = header[0][len("# Messenger — "):]
+            people = {title, *(recorded or "Participants: ")[len("Participants: "):].split(", ")}
+            held[path] = (blocks, {key for key, _, _ in blocks}, page_blocks(blocks), title,
+                          people | {sender_of(lines[0]) for _, _, lines in blocks}, header)
     return held, unread
+
+
+def text_digest(text):
+    """A digest of a message's text alone, as a transcript shows it: what pairs a message read from the page with the
+    same message from an export, whatever else either carries (a link's preview, an attachment's name)."""
+    return hashlib.sha256(visible(text or "").encode("utf-8")).hexdigest()[:10]
+
+
+def block_text(lines):
+    """A block's text as written: its first fence, when that comes before an attachment, a link or a call; else None."""
+    tick, kept = None, []
+    for line in lines[2:]:
+        if tick:
+            if len(line) >= len(tick) and set(line) == {"`"}:
+                return "\n".join(kept)
+            kept.append(line)
+        elif line.startswith(("**Attachments", "**Shared link", "**Call", "**Reactions", "**No text")):
+            return None
+        else:
+            opened = re.fullmatch(r"(`{3,})untrusted", line)
+            tick = opened.group(1) if opened else None
+    return None
+
+
+def page_blocks(blocks):
+    """The blocks read from a chat's page: (sender as written, the minutes it may lie in, its text's digest, the chat's
+    address)."""
+    found = []
+    for key, ts, lines in blocks:
+        mark = PAGE_MARK.fullmatch(lines[2]) if len(lines) > 2 else None
+        if mark:
+            found.append((sender_of(lines[0]), {ts, ts + int(mark.group(2) or 0) * MINUTE_MS}, text_digest(block_text(lines)),
+                          mark.group(1)))
+    return found
+
+
+def exact_blocks(blocks):
+    """The blocks known to the millisecond, an export's: (key, sender as written, time, its text's digest)."""
+    return [(key, sender_of(lines[0]), ts, text_digest(block_text(lines))) for key, ts, lines in blocks
+            if not (len(lines) > 2 and PAGE_MARK.fullmatch(lines[2]))]
+
+
+def sender_of(heading):
+    return heading[len("### "):].rsplit(" — ", 1)[0]
+
+
+def near(ts, minutes):
+    return ts // MINUTE_MS * MINUTE_MS in minutes
+
+
+def pairs(exact, paged):
+    """{id: index}: each message known to the millisecond, (id, sender, time, text digest), paired with one read from
+    the page, (sender, minutes, text digest), of the same sender and text whose minute holds its time. Each pairs once."""
+    free, found = {}, {}
+    for index, (sender, minutes, digest) in enumerate(paged):
+        free.setdefault((sender, digest), []).append((index, minutes))
+    for ident, sender, ts, digest in exact:
+        options = free.get((sender, digest), [])
+        hit = next((n for n, (_, minutes) in enumerate(options) if near(ts, minutes)), None)
+        if hit is not None:
+            found[ident] = options.pop(hit)[0]
+    return found
+
+
+def loose(exact, paged, found):
+    """(ids, indexes) of what paired with nothing yet has an unpaired partner in its minute from the same sender or with
+    the same words: perhaps one message in two forms (an edit, a reply), so it is held for a person, neither written
+    twice nor dropped."""
+    taken = set(found.values())
+    spare_exact = [(i, s, ts, d) for i, s, ts, d in exact if i not in found]
+    spare_page = [(n, s, m, d) for n, (s, m, d) in enumerate(paged) if n not in taken]
+    return ({i for i, s, ts, d in spare_exact if any(near(ts, m) and (s == ps or d == pd) for _, ps, m, pd in spare_page)},
+            {n for n, s, m, d in spare_page if any(near(ts, m) and (s == es or d == ed) for _, es, ts, ed in spare_exact)})
+
+
+def mine(conversation, have=frozenset()):
+    """A conversation's messages not yet held by key, as pairs() reads them."""
+    return [(m["key"], inline(m["sender"] or ""), m["ts"], text_digest(m["text"])) for m in conversation["messages"]
+            if m["key"] not in have]
+
+
+def page_holds(conversation, entry):
+    """Whether a transcript's blocks read from a chat's page are this conversation's, on evidence about the chat itself:
+    the person or title the page named is among its people, and each such block inside its span pairs with one of its
+    messages. A digest and a minute alone can be the principal's `ok` to two people in one minute."""
+    pages, title = entry[2], entry[3]
+    people = {inline(name) for name in conversation["names"] or []} | {inline(conversation["title"] or "")}
+    times = [message["ts"] for message in conversation["messages"]]
+    inside = [page[:3] for page in pages if any(min(times) // MINUTE_MS * MINUTE_MS <= t <= max(times) for t in page[1])]
+    return title in people and bool(inside) and len(pairs(mine(conversation), inside)) == len(inside)
 
 
 def plan(conversations, out, since_ms):
     """What each conversation needs, reading only transcripts in --out. A regular-export conversation's transcript is
     the one named by its folder. A secure-storage conversation's is the one already holding any of its messages, since
     the download's running index can pass to another chat; one holding none of them gets a new transcript, and one
-    whose messages sit in two transcripts, or that shares its transcript with another conversation, is skipped."""
+    whose messages sit in two such transcripts, or that shares its transcript with another conversation, is skipped. A
+    transcript a page read holds for it (page_holds) takes it when it has no other; beside another, it keeps the
+    messages it holds and the rest go to the other. A message that pairs with a page read only in part is held."""
     report = dict.fromkeys(("created", "extended", "unchanged", "empty", "new", "present", "before", "attachments"), 0)
-    report["skipped"], work, targets = [], [], {}
+    report["skipped"], report["holds"], report["split"], work, targets = [], [], [], [], {}
     held, unread = holders(out)
     for conversation in conversations:
         if not conversation["messages"]:
             report["empty"] += 1
             continue
         path = os.path.join(out, f"messenger-{conversation['cid']}.md")
+        keys = {message["key"] for message in conversation["messages"]}
         if conversation["check"]:
-            keys = {message["key"] for message in conversation["messages"]}
-            holding = [place for place, (_, have) in held.items() if have & keys]
-            if len(holding) > 1:
-                report["skipped"].append((os.path.basename(path), "its messages are in more than one transcript: " +
-                                          ", ".join(os.path.basename(place) for place in holding)))
-                continue
-            if not holding and os.path.lexists(path):
-                report["skipped"].append((os.path.basename(path), unread.get(path, "a transcript of that name holds another conversation")))
-                continue
-            path = holding[0] if holding else path
-        targets.setdefault(path, []).append(conversation)
+            primary = sorted(place for place, entry in held.items()
+                             if os.path.basename(place).startswith("messenger-e2ee-") and entry[1] & keys)
+        else:
+            primary = [path] if os.path.lexists(path) else []
+        side = [place for place, entry in held.items() if place not in primary and page_holds(conversation, entry)]
+        if len(primary) > 1 or not primary and len(side) > 1:
+            report["skipped"].append((os.path.basename(path), "its messages are in more than one transcript: " +
+                                      ", ".join(os.path.basename(place) for place in primary + side)))
+            continue
+        if conversation["check"] and not primary and not side and os.path.lexists(path):
+            report["skipped"].append((os.path.basename(path), unread.get(path, "a transcript of that name holds another conversation")))
+            continue
+        target = primary[0] if primary else side.pop(0) if side else path
+        targets.setdefault(target, []).append((conversation, side))
     for path, group in targets.items():
         name = os.path.basename(path)
         if len(group) > 1:
             report["skipped"] += [(name, f"{len(group)} conversations of this export belong to it")] * len(group)
             continue
-        conversation, cid, old = group[0], name[len("messenger-"):-len(".md")], []
+        (conversation, side), cid, old, kept = group[0], name[len("messenger-"):-len(".md")], [], None
         if path in held:
             old = held[path][0]
+            kept = held[path][5] if held[path][5][1].endswith("(page read)") else None  # a page read's header stays its own
         elif os.path.lexists(path):
             try:
                 old, _ = read_transcript(path, cid)
@@ -789,21 +904,30 @@ def plan(conversations, out, since_ms):
                 report["skipped"].append((name, str(why)))
                 continue
         have = {key for key, _, _ in old}
+        own = page_blocks(old)
+        paged = [page[:3] for page in own + [page for place in side for page in held[place][2]]]
+        found = pairs(mine(conversation, have), paged)
+        doubtful = loose(mine(conversation, have), paged, found)[0]
+        aside = sum(index >= len(own) for index in found.values())  # paired with a page read another transcript keeps
         new = []
         for message in conversation["messages"]:
-            if message["key"] in have:
+            if message["key"] in have or message["key"] in found:
                 report["present"] += 1
+            elif message["key"] in doubtful:
+                continue
             elif since_ms is not None and message["ts"] < since_ms:
                 report["before"] += 1
             else:
                 new.append(message)
+        report["holds"] += [(name, len(doubtful))] * bool(doubtful)
+        report["split"] += [(name, aside, [os.path.basename(place) for place in side])] * bool(aside)
         if not new:
             report["unchanged"] += 1
             continue
         report["extended" if old else "created"] += 1
         report["new"] += len(new)
         report["attachments"] += sum(len(message["attachments"]) for message in new)
-        work.append((path, render(conversation, old, new, cid)))
+        work.append((path, render(conversation, old, new, cid, kept)))
     return work, report
 
 
@@ -914,12 +1038,17 @@ def main(argv=None):
           f"other messaging files with no conversation, {counts['html']} HTML copies")
     for name, why in report["skipped"]:
         print(f"skipped conversation {name}: {why}")
+    for name, count in report["holds"]:
+        print(f"held for a person: {name}: {count} message{'s' * (count != 1)} like one read from the page in its minute, "
+              "from the same sender or with the same words: neither written nor dropped")
+    for name, count, places in report["split"]:
+        print(f"split: {name}: {count} of its messages are held from a page read in {', '.join(places)}, which keeps them")
     if extra:
         print("fields not shown: " + ", ".join(f"{key} {n}" for key, n in sorted(extra.items())))
     if not conversations:
         print("no conversations in this export: a multi-part export keeps them in one of its other parts")
     print(failed or ("dry run: nothing written" if args.dry_run else f"wrote {done} transcripts to {out}"))
-    return 1 if report["skipped"] or failed else 0
+    return 1 if report["skipped"] or report["holds"] or failed else 0
 
 
 if __name__ == "__main__":

@@ -137,16 +137,22 @@ def grant_from_prompt(prompt: str) -> list[str]:
 
 
 def transcript(session: dict | None) -> str:
-    """The harness's record of this session: the hook payload's transcript_path, else the one file
-    a harness keeps under this session's id (Muse names none; a script run from a shell has none)."""
+    """The harness's record of this session: the hook payload's transcript_path, else the path the prompt hook recorded
+    for this session's id in the state folder. Never one found through folders the caller's environment names, which an
+    agent's own command sets (review of 5.22.1, finding 13); a session no prompt of the principal's reached has none."""
     given = str((session or {}).get("transcript_path") or "")
     sid = paths.session_id(session)
     if given or not re.fullmatch(r"[\w.-]+", sid):
         return given
-    roots = paths.transcript_roots()
-    found = [p for root, pattern in ((roots["claude-code"], f"*/{sid}.jsonl"), (roots["codex"], f"*/*/*/rollout-*{sid}.jsonl"),
-                                     (roots["muse"], f"*/*/*/{sid}/session.jsonl")) for p in root.glob(pattern)]
-    return str(found[0]) if len(found) == 1 else ""
+    recorded = str(paths.read_json(_dir("transcripts") / f"{sid}.json").get("path") or "")
+    return recorded if os.path.isfile(recorded) else ""
+
+
+def remember(session_id: str, transcript_path: str) -> None:
+    """Record where the harness keeps a session's transcript, as its prompt hook names it, for a command that session runs."""
+    if re.fullmatch(r"[\w.-]+", str(session_id or "")) and transcript_path and os.path.isabs(str(transcript_path)):
+        if paths.read_json(_dir("transcripts") / f"{session_id}.json").get("path") != str(transcript_path):
+            paths.write_json(_dir("transcripts") / f"{session_id}.json", {"path": str(transcript_path)})
 
 
 def _prompt(record: dict, session_id: str) -> tuple[float, list]:
