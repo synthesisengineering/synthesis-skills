@@ -16,6 +16,8 @@ import re
 import sys
 import time
 
+BEGAN = time.monotonic()  # near this process's start: each harness's 5 seconds began just before it
+
 if __package__ in (None, ""):  # run as a file with -S: make the package importable
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -222,7 +224,7 @@ def user_prompt_submit(payload):
     prompt = str(payload.get("prompt") or payload.get("user_prompt") or "")
     approvals.remember(paths.session_id(payload), str(payload.get("transcript_path") or ""))  # where the CLI finds it later
     waiting = set(approvals.pending())
-    notes = [f"Approved by the principal: {s}" for s in approvals.grant_from_prompt(prompt)]
+    notes = [f"Approved by the principal: {s}" for s in approvals.grant_from_prompt(prompt, approvals.transcript(payload))]
     # A typed code that matched nothing is said aloud, so no one assumes it took (2026-10-13)
     typed = approvals.typed_codes(prompt)
     notes += [f"Not granted: no pending request has the code {c}; it may have expired (15 minutes), been used, or "
@@ -264,41 +266,64 @@ def _late(signum, frame):
     raise _Late()
 
 
-def pre_tool_use(payload):
-    """Guard one call, within GUARD_SECONDS of starting to: past it the call is held, so a guard slowed by a cold
-    repository read or a lock answers, closed, before a harness gives up on it (Codex and Muse let a call through on
-    their timeout). The deadline stops git and any other process the guard started, and the answer is printed once it
-    is cancelled (review round 2 of 5.21.0)."""
+def pre_tool_use(payload, began=None):
+    """Guard one call, within GUARD_SECONDS of `began` (by default the hook process's start when it runs as the hook,
+    else now): past it the call is held, so a guard slowed by a cold repository read or a lock answers, closed, before
+    a harness gives up on it (Codex and Muse let a call through on their timeout). The deadline stops git and any other
+    process the guard started, and the answer is printed once it is cancelled (review round 2 of 5.21.0)."""
     import signal
 
+    began = (BEGAN if __name__ == "__main__" else time.monotonic()) if began is None else began
+    late = (f"synthesis guard did not answer within {GUARD_SECONDS:g} seconds, so the call is held: try it again, and "
+            "run synthesis doctor if it keeps happening")
     before = signal.signal(signal.SIGALRM, _late)
-    signal.setitimer(signal.ITIMER_REAL, GUARD_SECONDS)
+    signal.setitimer(signal.ITIMER_REAL, max(0.01, GUARD_SECONDS - (time.monotonic() - began)))
     try:
-        from synthesis import approvals, guards, paths  # the guard's own module loads inside its deadline too
-
-        tool = str(payload.get("tool_name", ""))
-        tool_input = payload.get("tool_input") or {}
         try:
-            config, unreadable = paths.config(), None
-        except (OSError, ValueError) as exc:
-            config, unreadable = {}, exc
-        if unreadable is not None:
-            reason = (f"synthesis guard config is unreadable ({unreadable}); fix {paths.config_file()}"
-                      if guards.guarded(tool, tool_input) else "")
-        else:
+            from synthesis import approvals, guards, paths  # the guard's own module loads inside its deadline too
+
+            guards.hook_answers()  # this call's records wait for this answer
+            tool = str(payload.get("tool_name", ""))
+            tool_input = payload.get("tool_input") or {}
             try:
-                reason = guards.check(tool, tool_input, config, cwd=str(payload.get("cwd") or "") or None, session=payload)
-            except approvals.Unverified as exc:
-                reason = str(exc)
-            except Exception as exc:  # a guard that can't decide must not wave the call through
-                reason = f"synthesis guard failed ({type(exc).__name__}: {exc}); blocked rather than allowed"
-    except _Late:
-        reason = (f"synthesis guard did not answer within {GUARD_SECONDS:g} seconds, so the call is held: try it again, and "
-                  "run synthesis doctor if it keeps happening")
+                config, unreadable = paths.config(), None
+            except (OSError, ValueError) as exc:
+                config, unreadable = {}, exc
+            if unreadable is not None:
+                reason = (f"synthesis guard config is unreadable ({unreadable}); fix {paths.config_file()}"
+                          if guards.guarded(tool, tool_input) else "")
+            else:
+                try:
+                    reason = guards.check(tool, tool_input, config, cwd=str(payload.get("cwd") or "") or None, session=payload)
+                except approvals.Unverified as exc:
+                    reason = str(exc)
+                except Exception as exc:  # a guard that can't decide must not wave the call through
+                    reason = f"synthesis guard failed ({type(exc).__name__}: {exc}); blocked rather than allowed"
+        except _Late:
+            reason = late
+        finally:
+            signal.setitimer(signal.ITIMER_REAL, 0)
+    except _Late:  # the alarm landed as the deadline was being taken down: held, as at the deadline (review round 5)
+        reason = late
+    except BaseException:  # an interrupt: this call's records are settled as held before it goes on
+        _answer(False)
+        raise
     finally:
-        signal.setitimer(signal.ITIMER_REAL, 0)
         signal.signal(signal.SIGALRM, before)
+    try:
+        # A held call ran nothing: its records are undone and its grants go back. An answer later than this may reach a
+        # harness after its 5 seconds, when it lets the call through, so then its records stand and its grants stay spent.
+        _answer(not reason or time.monotonic() - began > GUARD_SECONDS + 0.5)
+    except Exception as exc:  # a record that cannot be written holds the call, and the answer still goes out
+        reason = reason or f"synthesis guard could not record this call ({type(exc).__name__}: {exc}); blocked rather than allowed"
     return _emit("PreToolUse", deny=reason) if reason else 0
+
+
+def _answer(allowed):
+    """Settle the records of the call this hook's check judged, if the guard's module ever loaded."""
+    judged = sys.modules.get("synthesis.guards")
+    if judged is not None and hasattr(judged, "answered"):
+        judged.answered(allowed)
 
 
 def stop(payload):

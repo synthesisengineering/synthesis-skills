@@ -618,6 +618,14 @@ stay open, and no hook running as that same user can close them:
   check in the runtime can stop. A harness still on a plugin from before 5.23.1 runs that release's bootstrap, which
   installs whatever its folder holds whenever the stable hook is missing. Sealing the plugin caches is part of the
   sandbox the principal ruled for on 2026-11-15.
+- A program of the agent's that loads synthesis without the plain words `import synthesis`
+  or `from synthesis` (through `importlib`, `__import__` or a built `exec` string, from a
+  copy that is no protected folder) is read as reaching none of synthesis's writers, so it
+  can forge the send ledger's lines, open a send window, delete pending grants and requests,
+  plant a deploy record, or point the transcript that any check a script or the CLI enters
+  itself reads at a file it wrote, and so grant itself what such a check releases: a send a
+  script makes, a line approval, the CLI's send window (review rounds 4 and 5 of 5.23.1's
+  approval fix; crafted, the same before that release).
 
 Closing these needs isolation the hooks do not have: the agent under its own OS user
 or sandbox, or approvals signed by something outside the agent's reach.
