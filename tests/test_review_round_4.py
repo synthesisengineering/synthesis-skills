@@ -59,6 +59,7 @@ def _routes(home):
         "a cd that fails, then ||": (v5, f"cd /no/such/folder || {below}"),
         "two cds that fail": (v5, f"cd /no/such/a; cd /no/such/b; {below}"),
         "a cd that fails in a subshell": (v5, f"(cd /no/such/folder; {below})"),
+        "a folder removed before its cd": (v5, f"mkdir -p {work}/gone && rmdir {work}/gone; cd {work}/gone; {below}"),
         "a cd in a pipeline": (v5, f"cd {work} | cat; {below}"),
         "a cd sent to the background": (v5, f"cd {work} & {below}"),
         "env cd moves nothing": (v5, f"env cd {work} && {below}"),
@@ -79,7 +80,7 @@ def _routes(home):
 
 ROUTES = ["CDPATH on the line", "CDPATH exported", "zsh cdpath", "zsh cdable_vars", "OLDPWD and cd -",
           "a nested check before cd -P", "a cd that fails, then ;", "a cd that fails, then ||", "two cds that fail",
-          "a cd that fails in a subshell", "a cd in a pipeline", "a cd sent to the background", "env cd moves nothing",
+          "a cd that fails in a subshell", "a folder removed before its cd", "a cd in a pipeline", "a cd sent to the background", "env cd moves nothing",
           "zsh cd old new", "zsh auto_cd from its input", "a cd inside eval", "a cd inside a sourced file",
           "a cd inside a function called later", "a cd inside a trap", "a cd inside an alias", "enable -n cd",
           "BASH_ENV for the shell it starts", "CDPATH spelled through quotes", "CDPATH spelled as $'...'",
@@ -110,6 +111,8 @@ def test_q1_ordinary_changes_of_folder_still_pass(home):
              "cd sub && git status; cd .. && printf x > notes.txt"]
     held = [line for line in lines if _check(line, work) is not None]
     assert held == [], held
+    # a folder that is there, entered after nothing that could make, remove or move one, is where the line goes on
+    assert _check("cd /tmp; printf x > releases/notes.txt", paths.home()) is None
 
 
 # --- Q4: no keyword lets an older release in ---------------------------------------------------------------------------
