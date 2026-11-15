@@ -6,7 +6,7 @@ slips silently. Each workspace runs its own; a project supplement may add repos 
 
 ## Procedure
 
-Each ritual's order and commands, with the scripts they run: [references/procedure.md](references/procedure.md). Read it every time, then the ritual's own checklist.
+Each ritual's order and commands, with the scripts they run: [references/procedure.md](procedure.md). Read it every time, then the ritual's own checklist.
 
 Read every time, before the ritual's own checklist. Everything from "`<rituals>` is this skill's
 folder" to the paragraph about the launcher and the nudge was the Procedure section of SKILL.md
