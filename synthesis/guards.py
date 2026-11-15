@@ -4817,7 +4817,8 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None) -> str |
                           "writes while such a path reaches it through an argument, the environment or the folder it runs in "
                           "(spell each file's path inside the program, or run the script alone)")
         if source and hit is None and SYNTHESIS_IMPORT.search(source):  # synthesis's code reached by a name it builds
-            why = why or "runs synthesis's approval or send-window code, which only the guard and the principal's prompt use"
+            why = why or ("runs a program that imports synthesis's own code and that its reader cannot follow (a name it builds, a "
+                          "call handed on), so it may reach the approval or send-window code")
         python = head.startswith("python") and bool(SCRIPT.match(head))
         bare = "" if not python or _isolated(words) else "the line sets a variable that moves Python's module path (run it without that variable" if PYTHON_ENV.search(
             text) else f"a file in {where} could stand in for `{_stand_in(source, where)}`, which it imports (run it from a folder without that file" if source and _stand_in(source, where) else ""
