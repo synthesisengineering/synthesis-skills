@@ -548,12 +548,14 @@ def check_send(tool: str, tool_input: dict, config: dict, session: dict | None =
 
 
 def _judged_send(tool: str, tool_input: dict, config: dict, session: dict | None) -> str | None:
+    from synthesis import sends
+    if tool in ("imessage_send", "messages_send"):  # the messages sender's: the session whose guard let it run, never one it names
+        session = sends.ticket()
     files: dict = {}  # each file the connector will read, with the hash of its bytes: an approval of a path alone let
     # a copy replaced in the outbox after the principal's code go out in its place (as the iMessage sender binds a photo)
     problems = message_problems(tool, tool_input, config, session=session) or _unread_files(tool, tool_input, files)
     if problems:
         return "This message can't go out as written: " + "; ".join(problems[:6]) + "."
-    from synthesis import sends
     subject, chan = {"tool": tool, "input": tool_input, **({"files": files} if files else {})}, sends.channel(tool, tool_input)
     summary = f"{tool}: " + " ".join(t for _, t in _strings(tool_input))[:160]
     others = _invited_today(tool, tool_input, config)  # a meeting on today has an approval of its own; no window covers it
@@ -4440,13 +4442,13 @@ SYNTHESIS_WRITES = frozenset(f"{module}.{name}" for module, names in (  # synthe
     ("install", "_merge _write_exec install move_board register_git_hooks uninstall"), ("paths", "note_wait write_json"),
     ("project", "_carry_out _mark_carried_out _peers _recent_conversation handoff resume"),
     ("reply_check", "check misrouted_accounts unarmed_wait unwatched_sends"),
-    ("sends", "batch_refusal batch_spend close_batches close_window log open_batch open_window settle window_refusal"),
+    ("sends", "batch_refusal batch_spend close_batches close_window log open_batch open_window sender_ticket settle ticket window_refusal"),
     ("sessions", "_Session _export _ritual_history _sync_workspace _write_synced _writer behind export export_file fetch lost peek recent sync"),
     ("wait", "_watch live main record unread watching"), ("worktree", "create main retire")) for name in names.split())
 SYNTHESIS_DEFS: dict = {}  # a module of synthesis: the names it imports
 SYNTHESIS_PLACES = frozenset({"paths.home", "paths.state", "paths.board", "paths.sessions", "paths.old_board", "paths.codex_home", "paths.desktop_dir",
                               "paths.transcript_roots", "paths.desktop_agent_roots", "paths.line_allowances", "approvals._dir", "sessions.root",
-                              "sends._spends_file", "sends._batch_file", "sends._window_file", "sends._requests_file"})
+                              "sends._spends_file", "sends._batch_file", "sends._window_file", "sends._requests_file", "sends._ticket_file"})
 
 
 def _regular(path: str, limit: int = SCRIPT_LIMIT):
@@ -4884,7 +4886,7 @@ def _synthesis_reach(text: str) -> tuple:
                 isinstance(p, ast.JoinedStr) for p in _ancestors(parents, up))  # inside an f-string a call's place is not to be trusted
             spots, coarse = spots + [(up, parts[1], parts[2])] * plain, coarse or not plain or parts[2] in (
                 "old_board", "transcript_roots", "desktop_agent_roots", "line_allowances", "_spends_file", "_batch_file", "_window_file",
-                "_requests_file")
+                "_requests_file", "_ticket_file")
         module = len(parts) > 1 and os.path.isfile(os.path.join(os.path.dirname(os.path.abspath(__file__)), parts[1] + ".py"))
         if (len(parts) > 2 and module and not _synthesis_own(parts[1], parts[2])) or (len(parts) == 2 and not module and not _synthesis_own("__init__", parts[1])):
             return "follows", unfollowed.format(f"`{'.'.join(parts[1:3])}`, a name its module imports"), None
@@ -5770,11 +5772,7 @@ def check_outgoing(command: str, config: dict, cwd: str, session: dict | None = 
         for t in (words[-1:] if os.path.basename(words[0]) in COPIERS else words[1:])}
     for words, where in commands:
         calls += [(args, argv, where) for args, argv in sends.cli_calls(words)]
-        named = [w.split("=", 1)[1] if "=" in w else (words[i + 1] if i + 1 < len(words) else "") for i, w in enumerate(words)
-                 if w.split("=", 1)[0] == "--session"] if any(os.path.basename(w) == "messages_send.py" for w in words) else []
-        if any(n != paths.session_id(session) for n in named):  # the session a messages send's batch is spent from (5.24.0)
-            return (f"This command runs messages_send.py for session {named[0]}, but it runs in session "
-                    f"{paths.session_id(session) or 'none'}: a send spends only its own session's batch entries.")
+        _CALL["sender"] = _CALL.get("sender") or any(os.path.basename(w) == "messages_send.py" for w in words)  # check() files its ticket
         chan = sends.command_send(words, where, config)
         if chan:
             text, problem = sends.message_text(words, where, written)
@@ -5859,7 +5857,7 @@ def check(tool: str, tool_input: dict, config: dict, cwd: str | None = None, ses
     """cwd is the session's working directory (the hook payload's `cwd`); defaults to this process's.
     session is the hook payload, which names the transcript an approval is checked against."""
     _TAILS.clear()  # each call reads the record anew: a rewrite in place can keep a file's size and its time stamp
-    _CALL.update(codes={}, ran={}, proofs={}, files={}, until=time.monotonic() + CALL_SECONDS)  # and every script it runs
+    _CALL.update(codes={}, ran={}, proofs={}, files={}, sender=False, until=time.monotonic() + CALL_SECONDS)  # and every script it runs
     if not cwd:
         try:
             cwd = str(tool_input.get("workdir") or "") or os.getcwd()
@@ -5869,11 +5867,15 @@ def check(tool: str, tool_input: dict, config: dict, cwd: str | None = None, ses
         cwd = os.path.normpath(os.path.join(cwd, os.path.expanduser(str(tool_input["cwd"]))))
     if shell_tool(tool):
         command = shell_command(tool_input)
-        return (check_destructive(command, config, cwd) or check_self_grant(command, cwd, config, session)  # a recursive delete is named as one
-                or check_pr_gate(command, config, cwd, session)
-                or check_deploy(command, config, cwd, session) or check_tunnel(command, config, cwd, session)
-                or check_outgoing(command, config, cwd, session)
-                or check_claimed(_shell_writes(command, cwd), cwd, session))
+        verdict = (check_destructive(command, config, cwd) or check_self_grant(command, cwd, config, session)  # a recursive delete is named as one
+                   or check_pr_gate(command, config, cwd, session)
+                   or check_deploy(command, config, cwd, session) or check_tunnel(command, config, cwd, session)
+                   or check_outgoing(command, config, cwd, session)
+                   or check_claimed(_shell_writes(command, cwd), cwd, session))
+        if verdict is None and _CALL["sender"]:  # it runs messages_send.py: its sends spend this session's entries alone
+            from synthesis import sends
+            sends.sender_ticket(paths.session_id(session))
+        return verdict
     if tool in FILE_TOOLS:
         return check_file_write(tool, tool_input, cwd, config) or check_claimed(_file_targets(tool, tool_input), cwd, session)
     if tool.startswith(BROWSER):

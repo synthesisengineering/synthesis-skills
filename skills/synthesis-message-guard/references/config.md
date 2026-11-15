@@ -525,8 +525,11 @@ else is a code per call. A conversation is a page's site and path, its trailing 
 forms above are four distinct conversations (every chat facebook.com lists links to `/messages/e2ee/t/<id>/`), and a
 send on one never spends an entry for another. Each entry sends once, decided under the send guard's lock; only within
 12 hours of the grant; and only from the session that ran the granted command, as the guard is told it (a hook's
-payload; for the messages sender, the `--session` it names, which the shell guard checks is the one running it, and
-never the environment's), whose own record must show, each time an entry is spent, the principal typing the batch's
+payload). The messages sender names no session (its third round: a link or runpy kept a `--session` naming another):
+when the guard lets a command that runs `messages_send.py` by name through, it files a one-use ticket for the session
+its hook names, and the sender's own guard call takes the one ticket filed in the last minute; a run the guard did not
+see as the sender's finds none and waits for the code per call. That session's own record must show, each time an
+entry is spent, the principal typing the batch's
 code after the guard first filed that code for that digest. The guard records each request it files for a batch, its
 digest and code, in a ledger only it writes (`sends._requests_file`); no line of the session's record stands in for
 it, since the agent writes those (the review's third round: its own sentence naming a digest and a code tied them, and

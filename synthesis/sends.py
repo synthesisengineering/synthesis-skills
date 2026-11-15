@@ -665,6 +665,36 @@ def _requests_file():
     return paths.state() / "sends" / "batch-requests.jsonl"
 
 
+# The messages sender's session (the third round, #5): it named its own (`--session`), and a link or runpy kept another
+# session's name. Now a command the guard lets run `messages_send.py` files a ticket for the session its hook names, and
+# the sender's own guard call takes the one ticket filed in the last minute; a run the guard did not see finds none.
+TICKET_SECONDS = 60
+
+
+def _ticket_file(session_id: str):
+    return paths.state() / "sends" / "sender" / f"{session_id}.json"
+
+
+def sender_ticket(session_id: str) -> None:
+    if re.fullmatch(r"[\w.-]+", session_id or ""):
+        paths.write_json(_ticket_file(session_id), {"at": time.time()})
+
+
+def ticket() -> dict | None:
+    """The session of the one ticket filed in the last minute, taken; None for none, or for more than one. The caller
+    holds approvals.alone(); stale tickets go as they are passed."""
+    fresh = []
+    for file in _ticket_file("x").parent.glob("*.json"):
+        if time.time() - float(paths.read_json(file).get("at") or 0) <= TICKET_SECONDS:
+            fresh.append(file)
+        else:
+            file.unlink(missing_ok=True)
+    if len(fresh) != 1:
+        return None
+    fresh[0].unlink(missing_ok=True)
+    return {"session_id": fresh[0].stem}
+
+
 def _backed(data: dict, session: dict | None) -> bool:
     """Whether the principal typed this batch's code in the granting session's own record, after the guard first filed
     that code for this batch's digest (the request it recorded), within its last 12 hours. A code typed for anything else

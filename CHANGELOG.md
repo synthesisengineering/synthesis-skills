@@ -10,12 +10,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   batch of 1 to 50 exact sends on the principal's code for its digest: the hold carries the whole listing, each text
   quoted with every hidden character as its code, and the command spends the code itself, from any terminal. Each
   entry then goes once, as written, within 12 hours, from the session that ran the granted command, whose own record
-  must show at every spend the hold that named the batch's digest with its code and the principal typing that code
-  after it; spent marks yield to an append-only spends ledger. An entry is a connector call (its tool and whole input,
-  never one whose connector fetches, reads or carries a file, one entry to a conversation), a send by the local messages
-  sender (its handle, or its members, service and chat, and its text, spent only with the `--session` it names, which
-  the shell guard checks) or a Messenger send. Every listing shows each hidden or invisible character, the file's path,
-  the batch's name and its project escaped. Every other check
+  must show at every spend the principal typing the code the guard filed for that digest, which it records itself;
+  spent marks yield to an append-only spends ledger. An entry is a connector call (its tool and whole input, never one
+  whose connector fetches, reads or carries a file, one entry to a conversation), a send by the local messages sender
+  (its handle, or its members, service and chat, and its text, spent on the one-use ticket the guard files for the
+  session whose command runs the sender; it names no session of its own) or a Messenger send. Every listing prints as it
+  is only what draws a glyph, with every other character, the file's path, the batch's name and its project escaped. Every other check
   runs first (the register scan, the format rules, an address that can change, a fresh calendar read for a time, and a
   meeting placed on today never covered), a window and a batch never combine, and anything that differs waits for the
   code per call.

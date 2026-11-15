@@ -186,7 +186,7 @@ def _save(path: Path, record: dict) -> None:
     tmp.replace(path)
 
 
-def _send(to, text: str, key: str, resolve, tool: str, subject, attachment: dict | None = None, session: str = "") -> dict:
+def _send(to, text: str, key: str, resolve, tool: str, subject, attachment: dict | None = None) -> dict:
     """The shared path: refuse a repeat, find the chat, ask the guard, record, then one send call per part."""
     if (not text.strip() and attachment is None) or len(text) > 65536 or "\0" in text:
         raise Refused("the text must be non-empty unless a photo goes alone, at most 65,536 characters, with no NUL")
@@ -204,8 +204,8 @@ def _send(to, text: str, key: str, resolve, tool: str, subject, attachment: dict
                           "Never resend: check the conversation in Messages. If the principal wants these words sent "
                           "again, they send them by hand.")
     route = resolve()
-    # The session the shell guard checked --session against: a batch's entry is spent only with it, never the environment's.
-    reason = guards.check_send(tool, subject(route), config, {"session_id": session} if session else None)
+    # No session of its own: a batch's entry is spent for the session whose guard let the command that runs this through.
+    reason = guards.check_send(tool, subject(route), config)
     if reason:
         return {"status": "needs-approval" if "approve " in reason else "refused", "reason": reason}
     record = {"to": to, "text_sha256": hashlib.sha256(text.encode("utf-8")).hexdigest(),
@@ -228,15 +228,15 @@ def _key(*parts: str, attachment: dict | None = None) -> str:
     return hashlib.sha256("\0".join(parts + ((attachment["sha256"],) if attachment else ())).encode("utf-8")).hexdigest()[:32]
 
 
-def send(to: str, text: str, account: str | None = None, attachment: dict | None = None, session: str = "") -> dict:
+def send(to: str, text: str, account: str | None = None, attachment: dict | None = None) -> dict:
     if not HANDLE.match(to):
         raise Refused("the recipient must be +<country code><number> or an email address")
     return _send(to, text, _key(to, text, attachment=attachment), lambda: resolve_route(to, account), TOOL,
-                 lambda route: {"to": to, "text": text, **_named(attachment)}, attachment, session)
+                 lambda route: {"to": to, "text": text, **_named(attachment)}, attachment)
 
 
 def send_members(members: list, text: str, service: str | None = None, account: str | None = None,
-                 attachment: dict | None = None, session: str = "") -> dict:
+                 attachment: dict | None = None) -> dict:
     """The approval binds every member, the chat's service and the chat itself, so it covers exactly this send."""
     members = sorted(set(members))
     if not 1 <= len(members) <= 32 or not all(HANDLE.match(m) for m in members):
@@ -246,7 +246,7 @@ def send_members(members: list, text: str, service: str | None = None, account: 
     key = _key("members", ",".join(members), text, attachment=attachment)
     return _send(members, text, key, lambda: resolve_members(members, service, account), MEMBERS_TOOL,
                  lambda route: {"to": members, "service": route["service"], "text": text, "chat": route["chat_id"],
-                                **_named(attachment)}, attachment, session)
+                                **_named(attachment)}, attachment)
 
 
 def main(argv=None) -> int:
@@ -258,8 +258,6 @@ def main(argv=None) -> int:
     parser.add_argument("--photo", help="one photo to send first, approved by its SHA-256 with the text")
     parser.add_argument("--service", choices=("iMessage", "SMS"), help="with --members, when chats on both match")
     parser.add_argument("--account", help="the Messages account id, when more than one has a matching chat")
-    parser.add_argument("--session", default="", help="the session this runs in, which the shell guard checks: a batch's "
-                        "entry is spent only with it")
     args = parser.parse_args(argv)
     try:
         if not args.text_file and not args.photo:
@@ -268,11 +266,11 @@ def main(argv=None) -> int:
         picture = photo(args.photo)
         if args.members:
             result = send_members([m.strip() for m in args.members.split(",") if m.strip()], text, args.service,
-                                  args.account, picture, args.session)
+                                  args.account, picture)
         elif args.service:
             raise Refused("--service goes with --members; --to reaches a one-to-one iMessage chat")
         else:
-            result = send(args.to, text, args.account, picture, args.session)
+            result = send(args.to, text, args.account, picture)
     except (Refused, OSError, ValueError) as exc:
         result = {"status": "refused", "reason": str(exc)}
     print(json.dumps(result, ensure_ascii=False))

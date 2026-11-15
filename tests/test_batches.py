@@ -129,6 +129,15 @@ def held(reason) -> bool:
     return bool(reason) and "approve followed by the code" in reason
 
 
+SENDER = ROOT / "skills" / "synthesis-local-messaging" / "scripts" / "messages_send.py"
+
+
+def ran_sender() -> None:
+    """A command that runs the messages sender, let through by this session's guard: the ticket its send spends on."""
+    assert guards.check("Bash", {"command": f"python3 {SENDER} --to +15550100 --text-file reply.txt"}, CONFIG, cwd=str(FOLDER),
+                        session={**SESSION, "transcript_path": str(RECORD)}) is None
+
+
 # --- the batch file and its digest -----------------------------------------------------------------------------
 
 
@@ -445,11 +454,15 @@ def test_a_messages_entry_binds_the_senders_recipient_chat_service_and_text():
                         ("imessage_send", {"to": "+15550100", "text": REPLY, "photo": {"name": "a.jpg", "bytes": 9, "sha256": "0" * 64}}),
                         ("messages_send", {**members, "service": "iMessage"}), ("messages_send", {**members, "chat": "chat-2"}),
                         ("messages_send", {"to": ["+15550100"], "service": "iMessage", "text": REPLY, "chat": "chat-1"})):
-        assert held(guards.check_send(tool, given, CONFIG, SESSION)), (tool, given)
-    assert guards.check_send("imessage_send", {"to": "+15550100", "text": REPLY}, CONFIG, SESSION) is None  # --session, checked
-    assert guards.check_send("messages_send", members, CONFIG, SESSION) is None
+        ran_sender()
+        assert held(guards.check_send(tool, given, CONFIG)), (tool, given)
+    ran_sender()
+    assert guards.check_send("imessage_send", {"to": "+15550100", "text": REPLY}, CONFIG) is None
+    ran_sender()
+    assert guards.check_send("messages_send", members, CONFIG) is None
     one = {"to": ["+15550103"], "service": "iMessage", "text": "On my way.", "chat": "chat-7"}
-    assert guards.check_send("messages_send", one, CONFIG, SESSION) is None
+    ran_sender()
+    assert guards.check_send("messages_send", one, CONFIG) is None
     with pytest.raises(ValueError, match="entry 1"):
         sends.read_batch(str(batch_file([{**GROUP, "members": ["+15550100", "+15550100"]}])))
 
@@ -1129,7 +1142,6 @@ def test_the_composer_check_reads_reply_mode_from_the_banner_beside_the_composer
     assert plain["marks"] == 0 and plain["staged"] == 0  # a sibling that is no banner marks nothing
 
 
-SENDER = ROOT / "skills" / "synthesis-local-messaging" / "scripts" / "messages_send.py"
 OTHER = {"session_id": "S-other", "transcript_path": "/nonexistent/S-other.jsonl"}
 
 
