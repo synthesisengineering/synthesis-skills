@@ -38,6 +38,10 @@ class _Handler(BaseHTTPRequestHandler):
         if self.path == "/api/chat" and getattr(self.server, "missing", False):
             return self._answer({"error": "model not found"}, 404)
         verdict = {"verdict": "pass", "rule": "none", "span": "", "reason": "nothing is put off", "sure": True}
+        if self.path == "/v1/messages":  # the cloud judge, as the provider answers
+            self.server.keys.append(self.headers.get("x-api-key"))
+            return self._answer({"content": [{"type": "thinking", "thinking": ""}, {"type": "text", "text": json.dumps(verdict)}],
+                                 "stop_reason": "end_turn", "usage": {"input_tokens": 2000, "output_tokens": 150}})
         self._answer({"message": {"role": "assistant", "content": json.dumps(verdict)}, "done": True}
                      if self.path == "/api/chat" else {"done": True})
 
@@ -48,7 +52,7 @@ class _Handler(BaseHTTPRequestHandler):
 @pytest.fixture
 def model():
     server = ThreadingHTTPServer(("127.0.0.1", 0), _Handler)
-    server.daemon_threads, server.asked = True, []
+    server.daemon_threads, server.asked, server.keys = True, [], []
     threading.Thread(target=server.serve_forever, daemon=True).start()
     yield server, f"http://127.0.0.1:{server.server_address[1]}"
     server.shutdown()
@@ -174,3 +178,37 @@ def test_a_second_run_in_the_same_process_gates_against_the_hooks_deadline(tmp_p
         assert _run(roots, url, "--model", "small-judge", "--labels", str(labels), "--deadline", "30") == 0
     gates = [line for line in capsys.readouterr().out.splitlines() if " gate on " in line]
     assert len(gates) == 4 and all("against the 3500 ms deadline" in line for line in gates)
+
+
+def test_the_cloud_replay_reads_each_workspaces_key_and_leaves_out_a_workspace_with_none(tmp_path, model, monkeypatch, capsys):
+    """The cloud judge's measurement (the principal's ruling of 2026-11-15): each labeled hit judged with the key of its
+    record's workspace, a workspace whose key is not confirmed left out and counted, tokens and dollars reported, and
+    no key's value anywhere in what it prints or files."""
+    import hashlib
+    server, url = model
+    monkeypatch.setenv("HOME", str(tmp_path))
+    keys = tmp_path / "keys.yaml"
+    keys.write_text("default:\n  anthropic: test-key-default-1111\nworkspaces:\n  heldback:\n    anthropic: test-key-held-3333\n")
+    rows, labels = [], []
+    for name in ("personal", "heldback"):
+        cwd = str(tmp_path / "workspaces" / name / "project")
+        reply = f"The {name} parser is fixed. I'll leave the importer for now."
+        record = _write(tmp_path / "claude" / name / "one.jsonl", [
+            {"type": "user", "uuid": f"{name}-u", "cwd": cwd, "message": {"content": "Convert the parser."}},
+            {"type": "assistant", "uuid": f"{name}-a", "cwd": cwd, "message": {"id": f"{name}-m", "content": [{"type": "text", "text": reply}]}}])
+        labels.append({"path": str(record), "line": 2, "digest": hashlib.sha256(reply.encode()).hexdigest()[:16], "source": "list-hit",
+                       "label": "legitimate", "category": "other", "reason": "r"})
+    _write(tmp_path / "labels.jsonl", labels)
+    cleared = tmp_path / "cleared.jsonl"
+    assert replay.main(["--since", "2000-01-01", "--claude", str(tmp_path / "claude"), "--codex", str(tmp_path / "none"), "--muse",
+                        str(tmp_path / "none"), "--cloud", "cloud-judge", "--cloud-url", url + "/v1/messages", "--keys-file", str(keys),
+                        "--keys", json.dumps({"default": "default.anthropic", "heldback": None}), "--price", "4,20", "--effort", "low",
+                        "--labels", str(tmp_path / "labels.jsonl"), "--limit", "8", "--cleared", str(cleared)]) == 0
+    out = capsys.readouterr().out
+    assert "left out, their workspace's key not confirmed: 1 (dev 1, test 0)" in out
+    assert "cloud-judge all (1): shortcut 0 of 0 cleared, unsure 0 of 0 cleared, legitimate 1 of 1 cleared" in out
+    assert "cloud-judge: cloud tokens in 4000, out 300; dollars 0.0220" in out  # both questions of the one item judged
+    assert "against the 8000 ms limit" in out
+    assert server.keys == ["test-key-default-1111"] * 2  # the personal item's two questions, with the default key
+    for secret in ("test-key-default-1111", "test-key-held-3333"):
+        assert secret not in out and secret not in cleared.read_text(encoding="utf-8")

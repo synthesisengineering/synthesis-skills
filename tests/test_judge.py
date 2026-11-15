@@ -85,12 +85,27 @@ def fake():
     server.server_close()
 
 
-def _config(fake, cloud=False, models=("small-judge",), **more):
-    section = {"local": {"models": list(models), "url": fake.url}, "deadline_seconds": 2.0, **more}
-    if cloud:
-        section["cloud"] = {"provider": "anthropic", "model": "cloud-judge", "key_env": "TEST_JUDGE_KEY",
-                            "url": fake.url + "/v1/messages", "price_per_mtok": {"input": 1.0, "output": 5.0},
-                            "monthly_cap_usd": 10}
+def _config(fake, models=("small-judge",), **more):
+    return {"judge": {"local": {"models": list(models), "url": fake.url}, "deadline_seconds": 2.0, **more}}
+
+
+KEYS = "default:\n  anthropic: test-key-default-1111\nworkspaces:\n  clientx:\n    anthropic: test-key-clientx-2222\n"
+
+
+@pytest.fixture
+def keys_file(tmp_path):
+    """A keys file of the shape the principal's tools keep (invented keys): one for every workspace, one of its own."""
+    path = tmp_path / "keys.yaml"
+    path.write_text(KEYS, encoding="utf-8")
+    return str(path)
+
+
+def _cloud_config(fake, keys_file, local=False, **cloud):
+    section = {"deadline_seconds": 2.0, "cloud": {
+        "provider": "anthropic", "model": "cloud-judge", "keys_file": keys_file, "url": fake.url + "/v1/messages",
+        "keys": {"default": "default.anthropic", "clientx": "workspaces.clientx.anthropic", "heldback": None},
+        "price_per_mtok": {"input": 1.0, "output": 5.0}, "monthly_cap_usd": 10, **cloud}}
+    section.update({"local": {"models": ["small-judge"], "url": fake.url}} if local else {})
     return {"judge": section}
 
 
@@ -278,50 +293,87 @@ def test_the_next_local_model_answers_when_the_first_is_not_installed(fake):
     assert found.verdict == "hold" and found.model == "small-judge"
 
 
-# ---- the cloud second opinion -----------------------------------------------------------------------------------
+# ---- the cloud judge ---------------------------------------------------------------------------------------------
 
-def test_the_cloud_is_asked_only_when_configured_and_the_local_verdict_is_unsure(fake, monkeypatch, isolated_home):
+def _never_shown(isolated_home, *outputs):
+    """No key's value in the judge's log, cache or spend, nor in what a run printed."""
+    folder = isolated_home / "state" / "judge"
+    files = [f.read_text(encoding="utf-8") for f in folder.glob("*") if f.is_file()] if folder.exists() else []
+    return not any(secret in text for secret in ("test-key-default-1111", "test-key-clientx-2222") for text in files + list(outputs))
+
+
+def test_the_cloud_alone_judges_with_the_key_of_the_replys_workspace(fake, keys_file, isolated_home, capsys):
+    """The principal's ruling of 2026-11-15: the cloud model is the judge, its key read from his keys file at call time
+    for the workspace a reply belongs to, the default for every workspace not named, none where one is named empty."""
+    judge = _judge()
+    policy, config = judge.parse_policy("demo", POLICY_TEXT), _cloud_config(fake, keys_file, effort="low")
+    fake.cloud = _cloud()
+    found = judge.ask("demo", policy, CONTENT, {}, config, workspace="clientx")
+    assert (found.verdict, found.model) == ("hold", "cloud-judge") and fake.calls[-1]["headers"]["x-api-key"] == "test-key-clientx-2222"
+    judge.ask("demo", policy, CONTENT + " Two.", {}, config, workspace="personal")
+    assert fake.calls[-1]["headers"]["x-api-key"] == "test-key-default-1111" and len(fake.calls) == 2
+    assert judge.ask("demo", policy, CONTENT + " Three.", {}, config, workspace="heldback") is None and len(fake.calls) == 2
+    body = fake.calls[0]["body"]
+    schema = body["output_config"]["format"]["schema"]
+    assert body["thinking"] == {"type": "adaptive"} and body["output_config"]["effort"] == "low"
+    assert body["output_config"]["format"]["type"] == "json_schema" and schema["additionalProperties"] is False
+    assert set(schema["required"]) == {"verdict", "rule", "span", "reason", "sure"} and "temperature" not in body
+    assert fake.calls[0]["headers"]["anthropic-version"] and _log(isolated_home)[-1]["why"] == "no_key"
+    assert _never_shown(isolated_home, *capsys.readouterr())
+
+
+@pytest.mark.parametrize("answer", [
+    lambda body: (200, {"content": [{"type": "text", "text": json.dumps(_verdict())}], "stop_reason": "refusal", "usage": {}}),
+    lambda body: (200, {"content": [{"type": "text", "text": json.dumps(_verdict())}], "stop_reason": "max_tokens", "usage": {}}),
+    lambda body: (500, {"type": "error", "error": {"type": "api_error"}}),
+    lambda body: (401, {"type": "error", "error": {"type": "authentication_error"}}),
+])
+def test_a_refusal_an_unfinished_answer_or_an_error_from_the_cloud_is_no_verdict(fake, keys_file, answer):
+    judge = _judge()
+    fake.cloud = answer
+    assert judge.ask("demo", judge.parse_policy("demo", POLICY_TEXT), CONTENT, {}, _cloud_config(fake, keys_file)) is None
+
+
+def test_a_keys_file_that_cannot_be_read_is_no_verdict_and_is_never_quoted(fake, tmp_path, isolated_home, capsys):
+    judge = _judge()
+    broken = tmp_path / "broken.yaml"
+    broken.write_text("default:\n  anthropic: test-key-default-1111\n   - [unclosed: test-key-clientx-2222\n", encoding="utf-8")
+    fake.cloud = _cloud()
+    assert judge.ask("demo", judge.parse_policy("demo", POLICY_TEXT), CONTENT, {}, _cloud_config(fake, str(broken))) is None
+    assert fake.calls == [] and _log(isolated_home)[-1]["why"] == "keys_unreadable" and _never_shown(isolated_home, *capsys.readouterr())
+
+
+def test_the_cloud_is_a_second_opinion_only_where_a_local_judge_is_unsure(fake, keys_file, isolated_home):
     judge = _judge()
     policy = judge.parse_policy("demo", POLICY_TEXT)
-    monkeypatch.setenv("TEST_JUDGE_KEY", "test-key")
     fake.cloud = _cloud(verdict="pass", rule="none", span="", reason="a real boundary is named")
     fake.local = _local(sure=False)
     alone = judge.ask("demo", policy, CONTENT + " One.", {}, _config(fake))  # no cloud configured
     assert [c["path"] for c in fake.calls] == ["/api/chat"] and alone.verdict == "hold" and alone.model == "small-judge"
     fake.local = _local(sure=True)
-    sure = judge.ask("demo", policy, CONTENT + " Two.", {}, _config(fake, cloud=True))  # the local judge is sure
+    sure = judge.ask("demo", policy, CONTENT + " Two.", {}, _cloud_config(fake, keys_file, local=True))  # the local judge is sure
     assert [c["path"] for c in fake.calls][1:] == ["/api/chat"] and sure.model == "small-judge"
     fake.local = _local(sure=False)
-    second = judge.ask("demo", policy, CONTENT + " Three.", {}, _config(fake, cloud=True))
-    assert [c["path"] for c in fake.calls][2:] == ["/api/chat", "/v1/messages"]
-    assert (second.verdict, second.model) == ("pass", "cloud-judge")
-    asked = fake.calls[-1]
-    assert asked["headers"]["x-api-key"] == "test-key" and asked["headers"].get("anthropic-version")
-    assert "tools" not in asked["body"] and asked["body"]["model"] == "cloud-judge"
+    second = judge.ask("demo", policy, CONTENT + " Three.", {}, _cloud_config(fake, keys_file, local=True))
+    assert [c["path"] for c in fake.calls][2:] == ["/api/chat", "/v1/messages"] and (second.verdict, second.model) == ("pass", "cloud-judge")
     spend = json.loads((isolated_home / "state" / "judge" / "spend.json").read_text(encoding="utf-8"))
     assert spend["month"] == time.strftime("%Y-%m") and spend["usd"] == pytest.approx((1200 * 1.0 + 60 * 5.0) / 1e6)
-    assert "test-key" not in (isolated_home / "state" / "judge" / "log.jsonl").read_text(encoding="utf-8")
+    assert _log(isolated_home)[-1]["cloud_in"] == 1200 and _never_shown(isolated_home)
 
 
-def test_without_its_key_the_cloud_is_never_asked(fake, monkeypatch):
+@pytest.mark.parametrize("local", [True, False])
+def test_past_the_monthly_cap_the_cloud_is_not_asked_and_the_principal_is_told_once(fake, keys_file, isolated_home, local):
+    """With a local judge it decides alone past the cap; with the cloud as the only judge, the list decides. Either way
+    the principal is told once a month."""
     judge = _judge()
-    monkeypatch.delenv("TEST_JUDGE_KEY", raising=False)
-    fake.cloud, fake.local = _cloud(verdict="pass", rule="none", span=""), _local(sure=False)
-    found = judge.ask("demo", judge.parse_policy("demo", POLICY_TEXT), CONTENT, {}, _config(fake, cloud=True))
-    assert [c["path"] for c in fake.calls] == ["/api/chat"] and found.model == "small-judge"
-
-
-def test_past_the_monthly_cap_the_local_judge_decides_alone_and_the_principal_is_told_once(fake, monkeypatch, isolated_home):
-    judge = _judge()
-    monkeypatch.setenv("TEST_JUDGE_KEY", "test-key")
     spend = isolated_home / "state" / "judge" / "spend.json"
     spend.parent.mkdir(parents=True, exist_ok=True)
     spend.write_text(json.dumps({"month": time.strftime("%Y-%m"), "usd": 9.9999}), encoding="utf-8")
     fake.cloud, fake.local = _cloud(verdict="pass", rule="none", span=""), _local(sure=False, span="for now")
-    config = _config(fake, cloud=True)
-    payload = {"last_assistant_message": "The parser is fixed. I will leave the importer for now."}
-    told = reply_check.check(payload, config)
-    assert [c["path"] for c in fake.calls] == ["/api/chat"]  # past the cap, no cloud request
+    config = _cloud_config(fake, keys_file, local=local)
+    lazy = {"last_assistant_message": "The parser is fixed. I will leave the importer for now."}
+    told = reply_check.check(lazy, config)
+    assert "/v1/messages" not in [c["path"] for c in fake.calls]  # past the cap, no cloud request
     assert "lazy-shortcut phrasing" in told and "monthly cap" in told and "$10" in told and "tell the principal" in told.lower()
     again = reply_check.check({"last_assistant_message": "Fixed the parser. The exporter waits, for now."}, config)
     assert "lazy-shortcut phrasing" in again and "monthly cap" not in again  # said once a month
@@ -329,6 +381,20 @@ def test_past_the_monthly_cap_the_local_judge_decides_alone_and_the_principal_is
     fake.local = _local(sure=False)
     judge.ask("demo", judge.parse_policy("demo", POLICY_TEXT), CONTENT, {}, config)
     assert fake.calls[-1]["path"] == "/v1/messages"  # a new month starts from nothing
+
+
+def test_the_reply_check_names_the_workspace_a_reply_belongs_to(fake, keys_file, tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    fake.cloud = _cloud(span="leave the importer for now")
+    lazy = "The parser is fixed. I'll leave the importer for now."
+    for name in ("heldback", "clientx"):
+        (tmp_path / "workspaces" / name / "project").mkdir(parents=True)
+    held = reply_check.check({"last_assistant_message": lazy, "cwd": str(tmp_path / "workspaces" / "heldback" / "project")},
+                             _cloud_config(fake, keys_file))
+    assert fake.calls == [] and held == reply_check.check({"last_assistant_message": lazy}, {})  # no key there: the list
+    reply_check.check({"last_assistant_message": lazy, "cwd": str(tmp_path / "workspaces" / "clientx" / "project")},
+                      _cloud_config(fake, keys_file))
+    assert fake.calls[-1]["headers"]["x-api-key"] == "test-key-clientx-2222"
 
 
 # ---- the configuration ------------------------------------------------------------------------------------------
@@ -340,12 +406,18 @@ def test_past_the_monthly_cap_the_local_judge_decides_alone_and_the_principal_is
     {"local": {"models": ["m"], "url": "http://judge.example:11434"}},                  # the local judge stays on this Mac
     {"local": {"models": ["m"]}, "deadline_seconds": 9},                                # past the Stop hook's limit
     {"local": {"models": ["m"]}, "colud": {}},                                          # a key it does not know
-    {"cloud": {"provider": "anthropic", "model": "c", "key_env": "K", "price_per_mtok": {"input": 1, "output": 5}}},
-    {"local": {"models": ["m"]}, "cloud": {"provider": "other", "model": "c", "key_env": "K",
-                                           "price_per_mtok": {"input": 1, "output": 5}}},
-    {"local": {"models": ["m"]}, "cloud": {"provider": "anthropic", "model": "c", "key_env": "K"}},  # no prices: no cap
-    {"local": {"models": ["m"]}, "cloud": {"provider": "anthropic", "model": "c", "key_env": "K",
-                                           "price_per_mtok": {"input": 1, "output": 5}, "url": "http://api.example/v1"}},
+    {},                                                                                 # no judge to ask
+    {"cloud": {"provider": "other", "model": "c", "keys_file": "k.yaml", "keys": {"default": "a.b"}, "price_per_mtok": {"input": 1, "output": 5}}},
+    {"cloud": {"provider": "anthropic", "model": "c", "keys_file": "k.yaml", "keys": {"default": "a.b"}}},  # no prices: no cap
+    {"cloud": {"provider": "anthropic", "model": "c", "keys_file": "k.yaml", "keys": {"default": "a.b"},
+               "price_per_mtok": {"input": 1, "output": 5}, "url": "http://api.example/v1"}},
+    {"cloud": {"provider": "anthropic", "model": "c", "keys": {"default": "a.b"}, "price_per_mtok": {"input": 1, "output": 5}}},  # no file
+    {"cloud": {"provider": "anthropic", "model": "c", "keys_file": "k.yaml", "keys": {"clientx": None},
+               "price_per_mtok": {"input": 1, "output": 5}}},                          # no key for the other workspaces
+    {"cloud": {"provider": "anthropic", "model": "c", "keys_file": "k.yaml", "keys": {"default": 3},
+               "price_per_mtok": {"input": 1, "output": 5}}},
+    {"cloud": {"provider": "anthropic", "model": "c", "key_env": "K", "keys_file": "k.yaml", "keys": {"default": "a.b"},
+               "price_per_mtok": {"input": 1, "output": 5}}},                          # a key named by the environment: gone
 ])
 def test_a_malformed_judge_section_is_refused(section):
     judge = _judge()
@@ -356,6 +428,9 @@ def test_a_malformed_judge_section_is_refused(section):
 def test_no_judge_section_means_no_judge():
     judge = _judge()
     assert judge.settings({}) is None and judge.settings({"judge": False}) is None
+    cloud = judge.settings({"judge": {"cloud": {"provider": "anthropic", "model": "c", "keys_file": "k.yaml",
+                                                "keys": {"default": "a.b", "other": None}, "price_per_mtok": {"input": 1, "output": 5}}}})
+    assert cloud["local"] is None and cloud["cloud"]["keys"] == {"default": "a.b", "other": None}  # the cloud alone is the judge
     on = judge.settings({"judge": {"local": {"models": ["m"]}}})
     assert on["local"]["url"] == "http://127.0.0.1:11434" and on["deadline_seconds"] <= 3.5 and on["cloud"] is None
 
