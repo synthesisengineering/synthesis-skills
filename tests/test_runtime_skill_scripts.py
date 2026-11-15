@@ -333,3 +333,48 @@ def test_the_runtimes_own_script_through_a_link_passes_and_a_copys_sibling_linke
     (folder / "mcp_client.py").unlink()
     (folder / "mcp_client.py").symlink_to(work / "evil.py")
     assert _verdict(mac, f"python3 {folder / 'fetch-meeting.py'} {mac.sh / 'state'}", work)
+
+
+# --- finding 2: a protected folder the line names ---------------------------------------------------------------
+
+IMPORT = "skills/synthesis-message-exports/scripts/import_messages.py"
+PAGE = "skills/synthesis-message-exports/scripts/chat_page.py"
+PLATE = "skills/synthesis-daily-rituals/scripts/plate.py"
+NAMED = {  # what the review saw written into a protected folder by an unmodified copy, and the same through the folder
+    "an argument into the session archive": "python3 {rt}/" + IMPORT + " {work}/export --out {sh}/sessions/probe-import",
+    "an argument into the board": "python3 {rt}/" + READ + " --request {work}/r.json --state {sh}/board/probe-state",
+    "a page written into the archive": "python3 {rt}/" + PAGE + " {work}/t.txt --out {sh}/sessions/probe-page --since 2026-11-14",
+    "a plate written onto the board": "python3 {rt}/" + PLATE + " --workspace {work} --as-of 2026-11-15 --out {sh}/board/probe-plate.md",
+    "the folder it runs in": "cd {sh}/state && python3 {rt}/" + IMPORT + " {work}/export --out probe-import",
+    "a value the line gives it": "OUT={sh}/board/probe; export OUT; python3 {rt}/" + IMPORT + " {work}/export --out \"$OUT\"",
+    "a redirect": "python3 {rt}/" + PLATE + " --workspace {work} --as-of 2026-11-15 > {sh}/board/probe-plate.md",
+}
+
+
+@pytest.mark.parametrize("name", list(NAMED))
+def test_the_runtimes_copy_is_still_judged_for_a_protected_folder_its_line_names(mac, tmp_path, name):
+    work = _work(tmp_path)
+    line = NAMED[name].format(rt=mac.rt, sh=mac.sh, work=work)
+    reason = _verdict(mac, line, work)
+    assert reason and ("Refused" in reason or "approve" in reason), (name, reason)
+
+
+OWN_TEXT = {  # what each script's own text names stays exempt: the fetcher reads a project's own `.claude` folder
+    "the fetcher": f"{FETCHER} --window 2026-11-14 2026-11-15",
+    "the records gate": f"{DOCTOR} --project {{work}}",
+    "a plate into the workspace": PLATE + " --workspace {work} --as-of 2026-11-15 --out {work}/plate.md",
+    "an import into the workspace": IMPORT + " {work}/export --out {work}/out --dry-run",
+}
+
+
+@pytest.mark.parametrize("name", list(OWN_TEXT))
+def test_what_the_runtimes_copy_names_in_its_own_text_needs_no_code(mac, tmp_path, name):
+    work = _work(tmp_path)
+    assert _verdict(mac, f"python3 {mac.rt}/{OWN_TEXT[name].format(work=work)}", work) is None, name
+
+
+def test_a_plugin_copy_whose_line_names_a_protected_folder_is_not_told_the_runtimes_copy_needs_no_code(mac, tmp_path):
+    """The runtime's copy would wait for the same line, so the hold says nothing of running it."""
+    work = _work(tmp_path)
+    reason = _verdict(mac, f"python3 {mac.plugin / IMPORT} {work}/export --out {mac.sh}/sessions/probe-import", work)
+    assert reason and "runs with no code" not in reason, reason
