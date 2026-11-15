@@ -1424,9 +1424,53 @@ def test_a_script_after_a_step_that_may_move_the_page_is_refused(move, script):
     batch = _batch_on(9, move, ("computer", {"action": "type", "text": "Words nobody approved."}),
                       ("javascript_tool", {"action": "javascript_exec", "text": script}))
     reason = sent(batch)
-    assert reason and not held(reason) and "may have moved" in reason, reason
+    onto = move[0] == "navigate" and guards._web_app(move[1]["url"])  # onto a messaging site's page: only the plugin's own
+    if script == "document.title" and not onto:  # a read after a move from a page that is no messaging site's runs (round 5 prep)
+        assert reason is None, reason
+    else:
+        assert reason and not held(reason) and "may have moved" in reason, reason
     alone = sent({"actions": [batch["actions"][-1]]})  # in a call of its own, judged on the page the list shows
     assert session and alone is None, alone
+
+
+LOCAL = "http://localhost:3000/"
+CLICK_SAVE = ("computer", {"action": "left_click", "coordinate": [5, 5], "action_summary": "Clicks Save"})
+
+
+@pytest.mark.parametrize("script", ["document.title", "document.querySelector('#save').click()"])
+def test_a_click_then_a_script_on_a_local_app_runs_in_chrome_and_in_the_pane(script):
+    """The batch's moved rule refused a pane batch on localhost that clicked and then read: ordinary work. A local app's
+    page is placed, and a click there moves it nowhere the rule protects."""
+    listed(LOCAL, tab=9)
+    assert sent(_batch_on(9, CLICK_SAVE, ("javascript_tool", {"action": "javascript_exec", "text": script}))) is None
+    ran(PANE + "navigate", {"url": LOCAL}, said=f"navigated to {LOCAL}\n\n\nTab Context:\n- Executed on tabId: tab-1\n- "
+        f"Available tabs:\n  • tabId tab-1: \"App\" ({LOCAL})")
+    pane = {"actions": [{"name": "computer", "input": {k: v for k, v in CLICK_SAVE[1].items()}},
+                        {"name": "javascript_tool", "input": {"action": "javascript_exec", "text": script}}]}
+    assert sent(pane, tool=PANE + "browser_batch") is None
+
+
+def test_a_click_then_a_read_on_an_ordinary_site_runs_and_one_that_acts_goes_in_its_own_call():
+    listed("https://docs.example.com/guide", tab=9)
+    click = ("computer", {"action": "left_click", "coordinate": [5, 5], "action_summary": "Opens the next page"})
+    assert sent(_batch_on(9, click, ("javascript_tool", {"action": "javascript_exec", "text": "document.title"}))) is None
+    for script in (WRITTEN_CLICK, BUILT_CLICK):  # it may have followed a link to a chat: what acts waits for a list of tabs
+        reason = sent(_batch_on(9, click, ("javascript_tool", {"action": "javascript_exec", "text": script})))
+        assert reason and "may have moved" in reason and not held(reason), (script, reason)
+
+
+@pytest.mark.parametrize("url", ["https://www.linkedin.com/messaging/", "https://m.me/patexample", "https://www.facebook.com/messages/"])
+def test_a_move_onto_a_messaging_page_then_a_script_is_refused(url):
+    listed("https://docs.example.com/guide", tab=9)
+    reason = sent(_batch_on(9, ("navigate", {"url": url}), ("javascript_tool", {"action": "javascript_exec", "text": "document.title"})))
+    assert reason and not held(reason), (url, reason)
+
+
+@pytest.mark.parametrize("url", ["back", "/inbox"])
+def test_a_move_to_a_page_the_guard_cannot_place_then_a_script_is_refused(url):
+    listed("https://docs.example.com/guide", tab=9)
+    reason = sent(_batch_on(9, ("navigate", {"url": url}), ("javascript_tool", {"action": "javascript_exec", "text": "document.title"})))
+    assert reason and not held(reason), (url, reason)
 
 
 def test_a_script_after_a_navigate_to_a_local_app_still_runs():
