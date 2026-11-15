@@ -1364,10 +1364,12 @@ ROOT = Path(__file__).resolve().parents[1]
 # repos.yaml, sharing_scan.py's repository, portfolio_review.py's --index, the doctor's own knowledge roots),
 # _hooks_pointed 4 (any key that names a program) and GIT_SCANNERS 1. Receiving and bare hooks 25: _receiving_hooks 18,
 # RECEIVE_HOOKS 3, _hook_folder 3 (a git dir's own hooks folder) and _git_programs 1. Line includes 2 (_git_programs).
+# Then 1 more in each, from the round's replay (the line's readings had made 26 programs unknown calls): check_outgoing 1
+# (a reading counts only an HTTP client's call); a request's host and port count only side by side, and `.end()` no body.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 17276
-PLUGIN_BUDGET = 43348
+CORE_BUDGET = 17277
+PLUGIN_BUDGET = 43349
 
 
 def _lines(files):

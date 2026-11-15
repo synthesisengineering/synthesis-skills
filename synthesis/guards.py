@@ -6541,7 +6541,7 @@ def _mcp_calls(commands: list, feeds: list, written: set, line: str = "", bodies
 
 MCP_POSTS = re.compile(r"\burlopen\s*\(|\bRequest\s*\(|\.(?:post|put|patch|request)\s*\(|\bfetch\s*\(|['\"`](?:curl|wget|http|xh)['\"`]|HTTPConnection")
 BODY_GIVEN = re.compile(r"\bdata\s*=|\bjson\s*=|\bcontent\s*=|\bbody\s*[:=]|['\"`](?:-d|--data[\w-]*|--json|-T)['\"`]|\.(?:post|put|patch)\s*\("
-                        r"|\.request\s*\(\s*['\"](?:POST|PUT|PATCH)['\"]|\bmethod\s*[:=]\s*['\"](?:POST|PUT|PATCH)['\"]|\.end\s*\(\s*\S")
+                        r"|\.request\s*\(\s*['\"](?:POST|PUT|PATCH)['\"]|\bmethod\s*[:=]\s*['\"](?:POST|PUT|PATCH)['\"]")
 STDIN_READ = re.compile(r"\bsys\s*\.\s*stdin\b|\binput\s*\(|\bprocess\s*\.\s*stdin\b|/dev/stdin|readFileSync\s*\(\s*0\b|\bSTDIN\b|\bfileinput\b")
 
 
@@ -6550,7 +6550,7 @@ def _posted_bodies(text: str, head: str, where: str, path: str, args, feed: str,
     the body read from its input, or from a file it names or takes from its arguments, is read as curl's -d @file is; a
     body built from parts the guard cannot read is an unknown call; a program that posts no body (a liveness read) none."""
     aims = [u for u in re.findall(r"""['"`]([^'"`\s]{4,200})['"`]""", text) if _mcp_endpoint(u) == "mcp"] or re.findall(r"WORKSPACE_MCP_(?:URL|PORT)", text) or (
-        re.findall(r"""['"`](?:localhost|127\.0\.0\.1|::1|0\.0\.0\.0)['"`]""", text, re.I) and re.findall(r"\b8765\b|/mcp\b", text))  # host and port apart
+        re.findall(r"""['"`](?:localhost|127\.0\.0\.1|::1|0\.0\.0\.0)['"`][^\n]{0,40}?\b8765\b""", text, re.I))  # host and port apart, side by side
     if not aims or not MCP_POSTS.search(text) or not BODY_GIVEN.search(text):
         return []
     code, bodies, how = _code_only(text, head), [], f"`{head}` posting a body it reads or builds to a local MCP server"
@@ -6642,7 +6642,8 @@ def check_outgoing(command: str, config: dict, cwd: str, session: dict | None = 
     found_calls = _mcp_calls(commands, feeds, written, command, "\n".join(f for f in feeds if f.strip()))
     for reading in (_resolved(command)[:READINGS] if "$" in command and ASSIGNED.search(command) else []):  # `U=…; curl "$U"`
         fed: list = []
-        found_calls += _mcp_calls(_parse(reading, cwd, feeds=fed)[0], fed, written, reading, "\n".join(f for f in fed if f.strip())) if reading != command else []
+        found_calls += [c for c in (_mcp_calls(_parse(reading, cwd, feeds=fed)[0], fed, written, reading, "") if reading != command else [])
+                        if c[2].split("`")[1:2] and c[2].split("`")[1] in sends.WEB]  # an HTTP client's URL the line's variable gives
     reason = _check_mcp(found_calls, command, config, session)  # 5.23.1
     if reason:
         return reason
