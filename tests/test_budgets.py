@@ -1342,10 +1342,13 @@ ROOT = Path(__file__).resolve().parents[1]
 # Reply mode read live (2026-11-15): core 3 more, plugin 3. sends.py 3: COMPOSER_CHECK 1 longer (its marks read every
 # other child of the composer's parent, where the reply banner sits, and count a heading and a `Cancel reply` named by
 # its text) and its note 2 longer.
+# A plain composer read live (2026-11-15): core 1 more, plugin 1. sends.py 1: COMPOSER_CHECK's note 1 longer (a heading
+# inside the composer counts only by its words, since the composer always holds a hidden `Compose` heading); the check
+# changes in place.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 16538
-PLUGIN_BUDGET = 42613
+CORE_BUDGET = 16539
+PLUGIN_BUDGET = 42614
 
 
 def _lines(files):
