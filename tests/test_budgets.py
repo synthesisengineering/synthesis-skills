@@ -1215,10 +1215,15 @@ ROOT = Path(__file__).resolve().parents[1]
 # check over a script and its own modules and over Python on the line, and where its paths lead counted as named),
 # SYNTHESIS_PLACES 2, _shows 2 (a program read with its paths spelled out, and a write where they lead unspelled taken
 # to land there), SYNTHESIS_DEFS 1 and 4 blank lines.
+# What the replay of that rule showed it misread (2026-11-14): core 17 more and plugin 17. guards.py 17:
+# _synthesis_reach 10 (a module printed or shown as text is no module handed on; a call inside an f-string, or one
+# whose place cannot be read with certainty or whose spelled-out text does not parse, is not spelled out), _ancestors 7
+# with its 2 blank lines (the nodes that hold a node), less _synthesis_own's 2 (only a name a module imports leads
+# elsewhere, so a value it makes by a tuple, a dunder or a name it no longer has does not).
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 15823
-PLUGIN_BUDGET = 41066
+CORE_BUDGET = 15840
+PLUGIN_BUDGET = 41083
 
 
 def _lines(files):

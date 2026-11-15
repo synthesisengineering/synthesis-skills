@@ -4418,7 +4418,7 @@ SYNTHESIS_WRITES = frozenset(f"{module}.{name}" for module, names in (  # synthe
     ("reply_check", "check misrouted_accounts unarmed_wait unwatched_sends"), ("sends", "close_window log open_window settle window_refusal"),
     ("sessions", "_Session _export _ritual_history _sync_workspace _write_synced _writer behind export export_file fetch lost peek recent sync"),
     ("wait", "_watch live main record unread watching"), ("worktree", "create main retire")) for name in names.split())
-SYNTHESIS_DEFS: dict = {}  # a module of synthesis: the names it makes itself (functions, classes, values)
+SYNTHESIS_DEFS: dict = {}  # a module of synthesis: the names it imports
 SYNTHESIS_PLACES = frozenset({"paths.home", "paths.state", "paths.board", "paths.sessions", "paths.old_board", "paths.codex_home", "paths.desktop_dir",
                               "paths.transcript_roots", "paths.desktop_agent_roots", "paths.line_allowances", "approvals._dir", "sessions.root"})
 
@@ -4781,19 +4781,26 @@ def _shows(files: list, words: list, where: str, names: list, raw: list, env: di
 
 
 def _synthesis_own(module: str, name: str) -> bool:
-    """Whether a module of synthesis (its __init__ for the package's own names) makes `name` itself: a function, a
-    class or a value it gives. A name it only imports (`paths.os`) is not its own, and leads where the reader does
-    not follow."""
+    """Whether a module of synthesis (its __init__ for the package's own names) does not only import `name`: a name it
+    imports (`paths.os`) leads where the reader does not follow; one it makes itself, or no longer has, does not. A
+    module that cannot be read imports everything."""
     import ast
     if module not in SYNTHESIS_DEFS:
         try:
             tree = ast.parse(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), module + ".py"), encoding="utf-8").read())
-            SYNTHESIS_DEFS[module] = {n.name for n in tree.body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))} | {
-                t.id for n in tree.body if isinstance(n, (ast.Assign, ast.AnnAssign)) for t in (n.targets if isinstance(n, ast.Assign) else [n.target])
-                if isinstance(t, ast.Name)}
+            SYNTHESIS_DEFS[module] = {(a.asname or a.name).split(".")[0] for n in ast.walk(tree) if isinstance(n, (ast.Import, ast.ImportFrom)) for a in n.names}
         except (OSError, SyntaxError, ValueError):
-            SYNTHESIS_DEFS[module] = set()
-    return name in SYNTHESIS_DEFS[module]
+            SYNTHESIS_DEFS[module] = None
+    return SYNTHESIS_DEFS[module] is not None and name not in SYNTHESIS_DEFS[module]
+
+
+def _ancestors(parents: dict, node) -> list:
+    """The nodes that hold a node, nearest first."""
+    found = []
+    while id(node) in parents:
+        node = parents[id(node)]
+        found.append(node)
+    return found
 
 
 def _synthesis_reach(text: str) -> tuple:
@@ -4847,18 +4854,21 @@ def _synthesis_reach(text: str) -> tuple:
             return "names", f"names synthesis's `{'.'.join(parts[1:3])}`, which writes its state, approvals, windows, board or archive", None
         if ".".join(parts[1:3]) in SYNTHESIS_PLACES:
             places = places or "reaches a protected folder through synthesis's own `" + ".".join(parts[1:3]) + "`"
-            plain = isinstance(up, ast.Call) and up.func is n and not up.keywords and len(up.args) == (parts[2] == "_dir") and len(parts) == 3
+            plain = isinstance(up, ast.Call) and up.func is n and not up.keywords and len(up.args) == (parts[2] == "_dir") and len(parts) == 3 and not any(
+                isinstance(p, ast.JoinedStr) for p in _ancestors(parents, up))  # inside an f-string a call's place is not to be trusted
             spots, coarse = spots + [(up, parts[1], parts[2])] * plain, coarse or not plain or parts[2] in ("old_board", "transcript_roots", "desktop_agent_roots", "line_allowances")
         module = len(parts) > 1 and os.path.isfile(os.path.join(os.path.dirname(os.path.abspath(__file__)), parts[1] + ".py"))
         if (len(parts) > 2 and module and not _synthesis_own(parts[1], parts[2])) or (len(parts) == 2 and not module and not _synthesis_own("__init__", parts[1])):
-            return "follows", unfollowed.format(f"`{'.'.join(parts[1:3])}`, a name its module only imports"), None
+            return "follows", unfollowed.format(f"`{'.'.join(parts[1:3])}`, a name its module imports"), None
         if isinstance(up, ast.Attribute) and up.value is n:  # a longer chain: judged at its end, unless it opens the object
             if up.attr in ("__dict__", "__getattribute__", "__getattr__", "__setattr__", "__call__"):
                 return "follows", unfollowed.format(f"its {up.attr}"), None
             continue
         if isinstance(up, ast.Call) and up.func is not n and getattr(up.func, "id", "") in ("getattr", "setattr", "delattr", "vars") and up.args[:1] == [n]:
             return "follows", unfollowed.format(f"{up.func.id}() on it"), None
-        if (len(parts) == 1 or (len(parts) == 2 and module)) and not (isinstance(up, ast.Call) and up.func is n) and not (
+        shown = isinstance(up, ast.Call) and up.func is not n and (getattr(up.func, "id", "") in ("print", "repr", "str", "type", "id", "hash", "dir") or (
+            getattr(up.func, "attr", "") in ("getsource", "getsourcefile", "getfile", "getdoc") and getattr(up.func.value, "id", "") == "inspect"))  # its text, not its code
+        if (len(parts) == 1 or (len(parts) == 2 and module)) and not (isinstance(up, ast.Call) and up.func is n) and not shown and not (
                 isinstance(up, (ast.If, ast.IfExp, ast.While, ast.Assert)) and up.test is n) and not isinstance(up, (ast.BoolOp, ast.UnaryOp, ast.Compare)):
             return "follows", unfollowed.format(f"the module `{'.'.join(parts)}` handed on"), None  # a function of its own that writes is named above
     if not places:
@@ -4872,7 +4882,14 @@ def _synthesis_reach(text: str) -> tuple:
         root = paths.sessions() if (module, name) == ("sessions", "root") else paths.state() if name == "_dir" else getattr(paths, name)()
         arg = ast.get_source_segment(text, call.args[0]) if call.args else ""
         put = (f"({str(root)!r} + '/' + ({arg}))" if arg else repr(str(root))).encode("utf-8")
-        data = data[:starts[call.lineno - 1] + call.col_offset] + put + data[starts[call.end_lineno - 1] + call.end_col_offset:]
+        start, end = starts[call.lineno - 1] + call.col_offset, starts[call.end_lineno - 1] + call.end_col_offset
+        if not data[start:end].decode("utf-8", "replace").rstrip().endswith(")") or name.encode() not in data[start:end]:
+            return "places", places, None  # where the call stands could not be read with certainty
+        data = data[:start] + put + data[end:]
+    try:
+        ast.parse(data.decode("utf-8"))
+    except (SyntaxError, ValueError):
+        return "places", places, None
     return "places", places, data.decode("utf-8")
 
 
