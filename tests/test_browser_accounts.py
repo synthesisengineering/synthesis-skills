@@ -384,12 +384,23 @@ def test_a_put_on_a_tab_whose_page_the_record_does_not_show_waits_for_a_list_of_
     assert call(*TYPE, tab=7, using=config({})) is None and call(*TYPE, tab=9, using=config({})) is None   # and only where a site is named
 
 
-@pytest.mark.parametrize("url", ["back", "forward", "/new", "", "javascript:void(0)", "about:blank"])
+@pytest.mark.parametrize("url", ["back", "forward", "/new", "", "about:blank"])
 def test_a_batch_step_that_goes_nowhere_the_guard_can_name_leaves_the_tabs_page_unknown(url):
     ran("navigate")
     reason = batch(("navigate", {"url": url}), TYPE)
     assert reason and "which page" in reason
     assert batch(("navigate", {"url": url}), ("get_page_text", {})) is None
+
+
+def test_a_javascript_address_is_a_script_on_the_page_it_is_on():
+    """Round 4 of 5.24.0's review, #1: a navigate to a javascript: address runs its code on the tab's page, as a page
+    script does, so on a named site's page it waits for the account like one; what it leaves the page on is unknown."""
+    ran("navigate")
+    for after in (TYPE, ("get_page_text", {})):
+        assert unread(batch(("navigate", {"url": "javascript:void(0)"}), after)), after
+    ran("navigate", tabs={1: "https://mail.example/"})
+    reason = batch(("navigate", {"url": "java\tscript:void(0)"}), TYPE)
+    assert reason and "which page" in reason
 
 
 @pytest.mark.parametrize("url", ["back", "forward", "/new", "javascript:void(0)"])
