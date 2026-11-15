@@ -10,17 +10,22 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   batch of 1 to 50 exact sends on the principal's code for its digest: the hold carries the whole listing, each text
   quoted with every hidden character as its code, and the command spends the code itself, from any terminal. Each
   entry then goes once, as written, within 12 hours, from the session that ran the granted command, whose own record
-  must show the principal's code at every spend; spent marks yield to an append-only spends ledger. An entry is a
-  connector call (its tool and whole input, never one whose connector fetches or reads a file), a send by the local
-  messages sender (its handle, or its members, service and chat, and its text) or a Messenger send. Every other check
+  must show at every spend the hold that named the batch's digest with its code and the principal typing that code
+  after it; spent marks yield to an append-only spends ledger. An entry is a connector call (its tool and whole input,
+  never one whose connector fetches, reads or carries a file, one entry to a conversation), a send by the local messages
+  sender (its handle, or its members, service and chat, and its text, spent only with the `--session` it names, which
+  the shell guard checks) or a Messenger send. Every listing shows each hidden or invisible character, the file's path,
+  the batch's name and its project escaped. Every other check
   runs first (the register scan, the format rules, an address that can change, a fresh calendar read for a time, and a
   meeting placed on today never covered), a window and a batch never combine, and anything that differs waits for the
   code per call.
 - **A batch's Messenger send is verified, then sent** (core). The shipped composer check (`synthesis sends
   composer-check`), run with the browser's JavaScript tool on the conversation's tab, reads the page's address, the one
   message box (labelled `Write to ...` or for a message, with the placeholder `Aa`, or a Lexical editor), its text with
-  the one trailing line break Lexical adds left off, the focus and anything staged in the composer; one plain Return or
-  Enter on that tab within 60 seconds then sends it. A click never covers an entry, since the composer's neighbours
+  the one trailing line break Lexical adds left off, the focus, the composer's mode (a reply or an edit), images in the
+  box and anything staged; one plain Return or Enter on that tab within 15 seconds then sends it, with no call that
+  could type between, from this session or another, and no page script but the shipped read-only ones on that tab since
+  its last load. A time's code binds the checked words. A click never covers an entry, since the composer's neighbours
   send too. The four Messenger address forms (`facebook.com/messages/t/<id>`, `facebook.com/messages/e2ee/t/<id>`,
   `messenger.com/t/<id>`, `messenger.com/e2ee/t/<id>`) are four conversations, named only in that form, one entry each.
 - **The guard reads every `synthesis sends` command in a line with the CLI's own parser** (core): each window or batch

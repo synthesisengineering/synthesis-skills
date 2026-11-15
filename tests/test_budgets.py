@@ -1323,10 +1323,26 @@ ROOT = Path(__file__).resolve().parents[1]
 # and expanding a word's variables, and the naming line handing it each word apart, change lines in place.
 # 5.23.0 merged into the batch (2026-11-15): the ceilings are 5.23.0's (core 15,886, plugin 41,958) with the batch's
 # 530 summed onto them (its four paragraphs and the writers' line); the two merged with no line changed.
+# The batch's review round 2 (2026-11-15, 11 findings, #6 a sandbox's to close): core 119 more, plugin 122. guards.py 77:
+# _checked_box 15 more (the newest call that could type is the check; back to the tab's last load, no page script but
+# the shipped read-only ones; marks and inline read; when it was checked), _typed_elsewhere 21 (another session's record,
+# where its prompt hook put it, showing a call that could type since the check), _read_only_scripts 20 (the composer
+# check and 5.23.0's extractors, read from their scripts as their commands print them), _types 7 and TYPERS 3 (any
+# browser or computer-use call, a shell's osascript keystrokes and their kin), PAGE_READERS 1, CHECK_SECONDS 2 fewer and
+# its note 1 longer (15 seconds), check_desktop 3 more (a time's code binds the checked conversation and words, a check
+# made after it releases it, the hold says so), check_outgoing 5 more (the session messages_send.py names is the one
+# running it), FETCHES 1 more (photos and the fields that carry files), SYNTHESIS_PLACES 1 and _synthesis_reach 1 more
+# (the batch's and the window's state files lead into the state, never spelled out). sends.py 42: _when 10 (a record
+# line's time), _conversation_of 9 (a connector entry's conversation by the recipient fields it names), INVISIBLE 2 with
+# its note 3 and 2 blank lines, _escaped 2 more (every invisible or variation character as its code), COMPOSER_CHECK 4
+# more with its note 2 (the composer's mode, images in the box), _backed 6 more (the hold that named this digest with the
+# code, and the code typed after it), _entry_problem 2 more (the sender's own tools are no connector entry); read_batch,
+# batch_refusal, describe_batch and batch_spend change lines in place (the path, name and project escaped; the session
+# the guard is told). messages_send.py 3 (plugin): main 2 (--session) and _send 1 (the session given to the guard).
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 16416
-PLUGIN_BUDGET = 42488
+CORE_BUDGET = 16535
+PLUGIN_BUDGET = 42610
 
 
 def _lines(files):

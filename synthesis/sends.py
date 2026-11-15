@@ -363,17 +363,23 @@ KINDS = ('none of the four kinds: a connector call {"tool", "input"}, a browser 
 # The box is the one contenteditable textbox labelled `Write to ...` or for a message, with the placeholder `Aa`, or a
 # Lexical editor (the coordinator's live read of 2026-11-14: `Write to <Name>`, `Aa`, Lexical, in no form); the composer
 # around it is its nearest ancestor that holds a control labelled for sending or for a file or attachment.
-COMPOSER_MARK = "synthesis-composer-2"
+# Its marks count what puts the composer in another mode, outside the box: a reply or edit banner (text that opens with
+# `Replying to` or `Editing`), a control labelled for a reply or an edit, a quotation; inline counts images in the box.
+COMPOSER_MARK = "synthesis-composer-3"
 COMPOSER_CHECK = ("(() => { const boxes = [...document.querySelectorAll('[contenteditable=\"true\"][role=\"textbox\"]')]; "
                   "const fits = b => /^write to|message/i.test(b.getAttribute('aria-label') || '') || "
                   "b.getAttribute('aria-placeholder') === 'Aa' || b.hasAttribute('data-lexical-editor'); "
                   "const found = boxes.filter(fits); const box = found.length === 1 ? found[0] : null; let area = box && "
                   "box.parentElement; while (area && ![...area.querySelectorAll('[aria-label*=\"send\" i], [aria-label*=\"file\" i], "
                   "[aria-label*=\"attach\" i]')].some(e => !box.contains(e))) area = area.parentElement; "
-                  "return JSON.stringify({check: 'synthesis-composer-2', url: location.href, box: found.length > 1 ? 'ambiguous' : "
+                  "return JSON.stringify({check: 'synthesis-composer-3', url: location.href, box: found.length > 1 ? 'ambiguous' : "
                   "box ? 'found' : 'none', text: box ? box.innerText : null, focused: !!box && box.contains(document.activeElement), "
                   "staged: !box ? null : area ? [...area.querySelectorAll('img, video, audio, canvas, object, embed, iframe, "
-                  "[aria-label*=\"remove\" i]')].filter(e => !box.contains(e)).length : 'unknown', boxes: boxes.length}); })()")
+                  "[aria-label*=\"remove\" i]')].filter(e => !box.contains(e)).length : 'unknown', marks: !box ? null : area ? "
+                  "[...area.querySelectorAll('*')].filter(e => !box.contains(e) && !e.contains(box) && (/^\\s*(replying to|editing)\\b/i"
+                  ".test(e.innerText || '') || /reply|edit/i.test(e.getAttribute('aria-label') || '') || e.tagName === 'BLOCKQUOTE'))"
+                  ".length : 'unknown', inline: box ? box.querySelectorAll('img, svg, picture, canvas, video, [role=\"img\"]').length "
+                  ": null, boxes: boxes.length}); })()")
 ADDRESS_KEYS = ("to", "cc", "bcc", "channel", "channel_id", "chat_id", "space_id", "space_name", "thread_id", "thread_ts",
                 "user_id", "recipient", "recipients", "issueIdOrKey", "owner", "repo", "pull_number", "issue_number")
 
@@ -412,7 +418,7 @@ def read_batch(file: str) -> dict:
             raise ValueError("it is larger than 1 MB")
         return checked(json.loads(text, object_pairs_hook=_unique, parse_constant=_no_number))
     except ValueError as exc:
-        raise ValueError(f"{file} is no batch: {exc}") from None
+        raise ValueError(f"{_shown(file)} is no batch: {exc}") from None
 
 
 def checked(batch) -> dict:
@@ -432,11 +438,20 @@ def checked(batch) -> dict:
         problem = _entry_problem(entry)
         if problem or entries.index(entry) < n - 1:
             raise ValueError(f"entry {n} {problem or f'repeats entry {entries.index(entry) + 1}'}")
-        where = None if "tool" in entry else (entry["channel"], entry.get("chat") or entry.get("to"))
+        where = _conversation_of(entry)
         if where in seen:  # four entries that read as four people were one conversation (the same review)
             raise ValueError(f"entry {n} goes to the conversation of entry {seen[where]}: one entry for each conversation")
         seen.update({where: n} if where else {})
     return batch
+
+
+def _conversation_of(entry: dict):
+    """The conversation an entry goes to, one entry each: a Messenger address, a handle or a chat; for a connector call,
+    its tool's channel and the recipient fields it names (the review of 5.24.0), or None where it names none."""
+    if "tool" not in entry:
+        return entry["channel"], entry.get("chat") or entry.get("to")
+    named = {k: entry["input"][k] for k in ADDRESS_KEYS if k in entry["input"]}
+    return (channel(entry["tool"], entry["input"]), json.dumps(named, sort_keys=True)) if named else None
 
 
 def _controls(value) -> str:
@@ -448,8 +463,17 @@ def _controls(value) -> str:
     return value if isinstance(value, str) and any(unicodedata.category(c) == "Cc" and c != "\n" for c in value) else ""
 
 
+# Characters that render as nothing or as a plain space but are not one (the review of 5.24.0: variation selectors,
+# U+034F, U+115F and U+3164 printed as is): fillers, blanks, joiners and selectors, beside every control, format,
+# separator, private and unassigned character.
+INVISIBLE = ((0x034F, 0x034F), (0x115F, 0x1160), (0x17B4, 0x17B5), (0x180B, 0x180F), (0x2800, 0x2800), (0x3164, 0x3164),
+             (0xFE00, 0xFE0F), (0xFFA0, 0xFFA0), (0xE0100, 0xE01EF))
+
+
 def _escaped(text: str) -> str:
-    return "".join(f"\\u{ord(c):04x}" if unicodedata.category(c) in ("Cc", "Cf", "Zl", "Zp") else c for c in text)
+    return "".join((f"\\u{ord(c):04x}" if ord(c) <= 0xFFFF else f"\\U{ord(c):08x}")
+                   if unicodedata.category(c) in ("Cc", "Cf", "Zl", "Zp", "Co", "Cn") or unicodedata.category(c) == "Zs" and c != " "
+                   or any(low <= ord(c) <= high for low, high in INVISIBLE) else c for c in text)
 
 
 def _shown(text: str) -> str:
@@ -464,7 +488,9 @@ def _entry_problem(entry) -> str:
         from synthesis import guards
         tool = entry["tool"]
         return (f"names {tool}, whose sends a batch binds as a browser entry or not at all" if guards.desktop_tool(tool)
-                or guards.shell_tool(tool) or tool in guards.FILE_TOOLS else "")
+                or guards.shell_tool(tool) or tool in guards.FILE_TOOLS else
+                f"names {tool}, the messages sender's: its sends take the messages kinds, which no photo goes with"
+                if tool in ("imessage_send", "messages_send") else "")
     if keys not in ({"channel", "to", "text"}, {"channel", "members", "service", "chat", "text"}) or not (
             isinstance(entry["text"], str) and entry["text"].strip() and isinstance(entry["channel"], str)):
         return f"is {KINDS}"
@@ -490,13 +516,13 @@ def batch_digest(batch: dict) -> str:
 def batch_refusal(batch: dict, file: str) -> str:
     from synthesis import approvals
     digest, count = batch_digest(batch), len(batch["entries"])
-    code = approvals.request("send-batch", digest, f"open batch {batch['batch']}: {count} sends, digest {digest[:12]}, "
-                             f"project {batch['project']}")
-    return (f"Opening batch {digest[:12]} ({count} send{'s' if count != 1 else ''} from {file}) lets each entry below go once, "
+    code = approvals.request("send-batch", digest, f"open batch {_shown(batch['batch'])}: {count} sends, digest {digest[:12]}, "
+                             f"project {_shown(batch['project'])}")
+    return (f"Opening batch {digest[:12]} ({count} send{'s' if count != 1 else ''} from {_shown(file)}) lets each entry below go once, "
             f"exactly as written, within {MAX_HOURS} hours, from this session alone. Show the principal this whole list as it "
             f"stands (each text quoted, every hidden character as its code) and ask them to type {approvals.how(code)} to open "
             f"exactly it. Then run the identical command again." + (
-                " Each Messenger entry then goes as one plain Return in its box, on its tab, within 60 seconds of the check "
+                " Each Messenger entry then goes as one plain Return in its box, on its tab, within 15 seconds of the check "
                 "`synthesis sends composer-check` prints, run there and reading the box focused; a click waits for its own code."
                 if any(e.get("channel") == "messenger" for e in batch["entries"]) else "") + f"\n{batch_listing(batch, show=True)}")
 
@@ -580,7 +606,7 @@ def close_batches() -> int:
 
 def describe_batch(data: dict) -> str:
     done = {int(i) for i in data["spent"]} | {i for d, i in _spends() if d == data["digest"]}  # the ledger's spends count too
-    return (f"Batch {data['digest'][:12]} ({data['batch']}, project {data['project']}) open until "
+    return (f"Batch {data['digest'][:12]} ({_shown(data['batch'])}, project {_shown(data['project'])}) open until "
             f"{time.strftime('%H:%M', time.localtime(data['until']))}: {len(data['entries']) - len(done)} of "
             f"{len(data['entries'])} entries left, each sent once as written; `synthesis sends close` ends it sooner.")
 
@@ -590,7 +616,7 @@ def batch_spend(match, session: dict | None = None, spend: bool = True) -> str:
     names it (batch:<digest prefix>:<index>), marked spent unless `spend` is false; "" for none. Each time, the session's
     own record must show the principal typing the batch's code (state alone is never a grant), and an entry the spends
     ledger holds is spent whatever its state says (the review of 5.23.0). The caller holds approvals.alone()."""
-    me, ledger = paths.session_id(session), None
+    me, ledger = str((session or {}).get("session_id") or ""), None  # the session the guard is told, never the environment's
     for data in batches() if me else []:
         for i, entry in enumerate(data["entries"] if data["session"] == me else []):
             if str(i) in data["spent"] or not match(entry):
@@ -624,15 +650,31 @@ def _spends() -> set:
 
 
 def _backed(data: dict, session: dict | None) -> bool:
-    """Whether the granting session's own record shows the principal typing this batch's code after it was asked for,
-    and within its last 12 hours, as a per-call approval's record must."""
+    """Whether the granting session's own record shows the hold that named this batch's digest with its code, and the
+    principal typing that code after it, within its last 12 hours: a code typed for anything else backs nothing (the
+    review of 5.24.0: any code typed in 12 hours made forged state spendable)."""
     from synthesis import approvals
     try:
-        record = approvals.transcript(session)
-        return bool(record) and approvals.typed(record, data["code"], max(float(data["asked"]), time.time() - MAX_HOURS * 3600),
-                                                data["session"])
+        record, hold = approvals.transcript(session), None
+        named = (data["digest"], f"code {data['code']}")
+        with open(record, encoding="utf-8", errors="replace") as handle:
+            for line in handle if record else ():
+                if all(part in line for part in named):
+                    hold = max(hold or 0.0, _when(line))
+        return hold is not None and approvals.typed(record, data["code"], max(hold, float(data["asked"]),
+                                                                              time.time() - MAX_HOURS * 3600), data["session"])
     except OSError:
         return False
+
+
+def _when(line: str) -> float:
+    """When a record's line was written, by its own timestamp; 0 for none."""
+    from datetime import datetime, timezone
+    try:
+        stamp = datetime.fromisoformat(str(json.loads(line).get("timestamp")).replace("Z", "+00:00"))
+    except (ValueError, AttributeError):
+        return 0.0
+    return (stamp if stamp.tzinfo else stamp.replace(tzinfo=timezone.utc)).timestamp()
 
 
 def _plain(value):

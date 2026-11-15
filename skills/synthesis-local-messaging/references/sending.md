@@ -19,8 +19,12 @@ text is in [preserved.md](preserved.md).
 ## The command and the approval
 
 ```bash
-python3 scripts/messages_send.py --to +15551234567 --text-file reply.txt [--account ACCOUNT_ID]
+python3 scripts/messages_send.py --to +15551234567 --text-file reply.txt [--account ACCOUNT_ID] [--session SESSION_ID]
 ```
+
+`--session` names the session the command runs in. The shell guard refuses it when it names another, and only with it
+can a send spend an entry of a reviewed batch that session opened (synthesis-message-guard, references/config.md,
+"Batches"); without it, a send waits for its own code as before.
 
 1. It refuses at once when an earlier attempt with this recipient and text
    exists, unless that attempt is known not to have reached the send call.

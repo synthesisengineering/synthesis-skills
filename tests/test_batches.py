@@ -445,11 +445,11 @@ def test_a_messages_entry_binds_the_senders_recipient_chat_service_and_text():
                         ("imessage_send", {"to": "+15550100", "text": REPLY, "photo": {"name": "a.jpg", "bytes": 9, "sha256": "0" * 64}}),
                         ("messages_send", {**members, "service": "iMessage"}), ("messages_send", {**members, "chat": "chat-2"}),
                         ("messages_send", {"to": ["+15550100"], "service": "iMessage", "text": REPLY, "chat": "chat-1"})):
-        assert held(guards.check_send(tool, given, CONFIG)), (tool, given)
-    assert guards.check_send("imessage_send", {"to": "+15550100", "text": REPLY}, CONFIG) is None
-    assert guards.check_send("messages_send", members, CONFIG) is None
+        assert held(guards.check_send(tool, given, CONFIG, SESSION)), (tool, given)
+    assert guards.check_send("imessage_send", {"to": "+15550100", "text": REPLY}, CONFIG, SESSION) is None  # --session, checked
+    assert guards.check_send("messages_send", members, CONFIG, SESSION) is None
     one = {"to": ["+15550103"], "service": "iMessage", "text": "On my way.", "chat": "chat-7"}
-    assert guards.check_send("messages_send", one, CONFIG) is None
+    assert guards.check_send("messages_send", one, CONFIG, SESSION) is None
     with pytest.raises(ValueError, match="entry 1"):
         sends.read_batch(str(batch_file([{**GROUP, "members": ["+15550100", "+15550100"]}])))
 
@@ -520,6 +520,8 @@ def test_a_check_that_does_not_show_exactly_the_entry_ready_in_a_focused_box_lea
     if what == "between":
         other_call()
     assert held(send(session)), what
+    if what == "script":  # a script that is not the shipped check voids every check on its tab until the page loads again
+        other_call("mcp__claude-in-chrome__navigate", {"url": E2EE, "tabId": 7})
     assert send(checked()) is None  # the entry was not spent by it
 
 
@@ -929,9 +931,9 @@ def test_the_code_for_a_messenger_entrys_time_binds_the_checked_text_and_needs_a
     APPROVE(reason)
     other_call(KEYS, {"action": "type", "text": " P.S.", "tabId": 7})  # words added after the code
     assert held(send({**SESSION, "transcript_path": str(RECORD)}, config=config))  # no fresh check
-    assert held(send(checked(text=words + " P.S."), config=config))  # a fresh check of other words
-    assert send(checked(text=words), config=config) is None  # a fresh check of the words the code was for
-    assert today()[-1]["how"] == "approval" and held(send(checked(text=words), config=config))
+    assert held(send(checked(text=words + " P.S.", age=0), config=config))  # a fresh check of other words
+    assert send(checked(text=words, age=0), config=config) is None  # a fresh check, after the code, of the words it was for
+    assert today()[-1]["how"] == "approval" and held(send(checked(text=words, age=0), config=config))
 
 
 def test_a_spends_code_must_be_the_one_typed_for_this_batchs_digest():

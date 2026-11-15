@@ -608,7 +608,8 @@ def _judged_send(tool: str, tool_input: dict, config: dict, session: dict | None
                "principal too: one changed before the call needs a new code." if files else ""))
 
 
-FETCHES = re.compile(r"(?i)url|uri|link|path|file|attach|upload|download|media|image")  # a key naming what a call fetches
+FETCHES = re.compile(r"(?i)url|uri|link|path|file|attach|upload|download|media|image|photo|picture|video|audio|voice|blob"
+                     r"|sticker|thumb|avatar")  # a key naming what a call fetches, reads or carries (a photo: 5.24.0's review)
 
 
 def _fetches(value) -> bool:
@@ -4444,7 +4445,8 @@ SYNTHESIS_WRITES = frozenset(f"{module}.{name}" for module, names in (  # synthe
     ("wait", "_watch live main record unread watching"), ("worktree", "create main retire")) for name in names.split())
 SYNTHESIS_DEFS: dict = {}  # a module of synthesis: the names it imports
 SYNTHESIS_PLACES = frozenset({"paths.home", "paths.state", "paths.board", "paths.sessions", "paths.old_board", "paths.codex_home", "paths.desktop_dir",
-                              "paths.transcript_roots", "paths.desktop_agent_roots", "paths.line_allowances", "approvals._dir", "sessions.root"})
+                              "paths.transcript_roots", "paths.desktop_agent_roots", "paths.line_allowances", "approvals._dir", "sessions.root",
+                              "sends._spends_file", "sends._batch_file", "sends._window_file"})
 
 
 def _regular(path: str, limit: int = SCRIPT_LIMIT):
@@ -4880,7 +4882,8 @@ def _synthesis_reach(text: str) -> tuple:
             places = places or "reaches a protected folder through synthesis's own `" + ".".join(parts[1:3]) + "`"
             plain = isinstance(up, ast.Call) and up.func is n and not up.keywords and len(up.args) == (parts[2] == "_dir") and len(parts) == 3 and not any(
                 isinstance(p, ast.JoinedStr) for p in _ancestors(parents, up))  # inside an f-string a call's place is not to be trusted
-            spots, coarse = spots + [(up, parts[1], parts[2])] * plain, coarse or not plain or parts[2] in ("old_board", "transcript_roots", "desktop_agent_roots", "line_allowances")
+            spots, coarse = spots + [(up, parts[1], parts[2])] * plain, coarse or not plain or parts[2] in (
+                "old_board", "transcript_roots", "desktop_agent_roots", "line_allowances", "_spends_file", "_batch_file", "_window_file")
         module = len(parts) > 1 and os.path.isfile(os.path.join(os.path.dirname(os.path.abspath(__file__)), parts[1] + ".py"))
         if (len(parts) > 2 and module and not _synthesis_own(parts[1], parts[2])) or (len(parts) == 2 and not module and not _synthesis_own("__init__", parts[1])):
             return "follows", unfollowed.format(f"`{'.'.join(parts[1:3])}`, a name its module imports"), None
@@ -5490,17 +5493,70 @@ def _sends_key(chords: str, apps: dict) -> bool:
 # A batch's browser entry is sent in two calls on one tab (the review of 5.23.0: a call that cleared, typed and sent
 # made the guard trust which tab, the focus, an emptied box and an earlier paste, none of which it can see). Typing
 # happens in earlier calls, which send nothing; then the shipped composer check (sends.COMPOSER_CHECK) reads the box;
-# then the send is one plain Return or Enter in the focused box, on that tab of that browser, within 60 seconds, with no
-# other browser call between: never a click, since the composer's neighbours send too (`Send a like`, `Send a voice
-# clip`, the coordinator's live read). The guard reads the check's result from the session's own record.
-CHECK_SECONDS = 60
+# then the send is one plain Return or Enter in the focused box, on that tab of that browser, within 15 seconds, with no
+# call that could type between, from this session or another (the review of 5.24.0): never a click, since the composer's
+# neighbours send too (`Send a like`, `Send a voice clip`, the coordinator's live read). A page script on that tab since
+# its last load, but the shipped read-only ones, voids every check there: it can make the check report what it likes.
+CHECK_SECONDS = 15
+PAGE_READERS = (("synthesis-daily-rituals", "messenger_messages.py"), ("synthesis-message-exports", "chat_page.py"))
+TYPERS = re.compile(r"\b(?:osascript|cliclick|xdotool|ydotool|wtype)\b")  # programs that type into another app
+
+
+def _types(name: str, given) -> bool:
+    """Whether a call can put words into a page or an app: any browser or computer-use call, or a shell command that
+    runs a program that types (osascript's keystrokes and its kin)."""
+    return bool(desktop_tool(name) or re.search(r"browser|chrome", name.rpartition("__")[0], re.I)) or (
+        shell_tool(name) and isinstance(given, dict) and bool(TYPERS.search(shell_command(given))))
+
+
+def _read_only_scripts() -> set:
+    """The page scripts the plugin ships that only read a page, as their own commands print them: the composer check, and
+    5.23.0's extractors (messenger_messages.py prints one for each inbox it names)."""
+    import ast
+    from synthesis import sends
+    found = {sends.COMPOSER_CHECK}
+    for skill, name in PAGE_READERS:
+        try:
+            tree = ast.parse(open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "skills", skill,
+                                               "scripts", name), encoding="utf-8").read())
+            kept = {n.targets[0].id: ast.literal_eval(n.value) for n in tree.body if isinstance(n, ast.Assign)
+                    and [getattr(t, "id", "") for t in n.targets] in (["EXTRACTOR"], ["GRIDS"])}
+        except (OSError, SyntaxError, ValueError):
+            continue
+        grids = kept.get("GRIDS") if isinstance(kept.get("GRIDS"), dict) else {}
+        if isinstance(kept.get("EXTRACTOR"), str):
+            found |= {kept["EXTRACTOR"].replace("__GRID__", json.dumps(g)) for g in grids.values()} if grids else {kept["EXTRACTOR"]}
+    return {script.strip() for script in found}
+
+
+def _typed_elsewhere(session: dict | None, since: float) -> bool:
+    """Whether another session's record shows a call that could type, made since a moment: sessions share one browser
+    and one desktop. Each record is where 5.22.1's prompt hook recorded it; one not written since holds no such call."""
+    from synthesis import sends
+    for kept in (paths.state() / "transcripts").glob("*.json"):
+        record = str(paths.read_json(kept).get("path") or "")
+        try:
+            if kept.stem == paths.session_id(session) or not record or os.path.getmtime(record) < since:
+                continue
+        except OSError:
+            continue
+        for line in reversed(_tail(record)):
+            when = sends._when(line)
+            if when and when < since:
+                break
+            if '"tool_use"' in line and when and any(b.get("type") == "tool_use" and _types(str(b.get("name", "")), b.get("input"))
+                                                     for b in _blocks(line)):
+                return True
+    return False
 
 
 def _checked_box(tool: str, tool_input: dict, session: dict | None) -> tuple | None:
-    """(channel, conversation, words) when this browser call is the send of a box just checked: it holds one plain Return
-    or Enter (repeat 1) on a tab it names; and the session's newest browser call before it is the composer check on that
-    tab of the same browser, with a result in the last 60 seconds that names one conversation, with the focus in its box
-    and nothing staged. None for any other call, a click included."""
+    """(channel, conversation, words, when it was checked) when this browser call is the send of a box just checked: it
+    holds one plain Return or Enter (repeat 1) on a tab it names; the session's newest call that could type before it is
+    the composer check on that tab of the same browser, its result in the last 15 seconds naming one conversation, its box
+    focused, in no other mode, with nothing staged and no image in it; no page script but the shipped read-only ones ran
+    on that tab since its last load; and no other session's record shows a call that could type since the check. None
+    for any other call, a click included."""
     from synthesis import sends
     server, _, short = tool.rpartition("__")
     steps = tool_input.get("actions") if short == "browser_batch" else [{"name": "computer", "input": tool_input}]
@@ -5510,33 +5566,46 @@ def _checked_box(tool: str, tool_input: dict, session: dict | None) -> tuple | N
     if not (tab and act.get("action") == "key" and str(act.get("text") or "").strip().lower() in ("return", "enter")
             and type(repeat) is int and repeat == 1):
         return None
-    results, check = {}, None
-    for line in reversed(_tail(str((session or {}).get("transcript_path") or ""))):  # its record, newest first
+    lines, results, check, readers, loaded = _tail(str((session or {}).get("transcript_path") or "")), {}, None, None, False
+    for line in reversed(lines):  # its record, newest first: the check, then back to that tab's last load
         for block in reversed(_blocks(line)) if '"tool_' in line else ():
+            name, given = str(block.get("name", "")), block.get("input") if isinstance(block.get("input"), dict) else {}
             if block.get("type") == "tool_result":
                 results.setdefault(block.get("tool_use_id"), (block, line))
-            elif block.get("type") == "tool_use" and re.search(r"browser|chrome", str(block.get("name", "")).rpartition("__")[0], re.I):
-                if block.get("name") == tool and block.get("input") == tool_input and block.get("id") not in results:
-                    continue  # this call itself, recorded before its guard ran
-                check = block
+            elif block.get("type") != "tool_use" or check is None and (name == tool and given == tool_input and block.get(
+                    "id") not in results or not _types(name, given)):
+                continue  # not a call; this call itself, recorded before its guard ran; or one that types nothing
+            elif check is None:
+                check = block  # the newest call that could type: it is the check on this tab, or there is none
+                if not (name == f"{server}__javascript_tool" and given.get("text") == sends.COMPOSER_CHECK and str(given.get("tabId") or "") == tab):
+                    return None
+            elif name.rpartition("__")[0] == server:
+                parts = [(str(s.get("name", "")), s.get("input") if isinstance(s.get("input"), dict) else {}) for s in given.get("actions") or []
+                         if isinstance(s, dict)] if name.endswith("browser_batch") else [(name.rpartition("__")[2], given)]
+                for step, inner in reversed(parts):
+                    url = str(inner.get("url") or "").strip().lower()
+                    if str(inner.get("tabId") or tab) != tab:
+                        continue  # another tab of the browser; a step that names none is taken to be on this one
+                    if step == "navigate" and url and not url.startswith("javascript:") and url not in ("back", "forward"):
+                        loaded = True  # the page loaded again here: what ran before it is gone
+                        break
+                    readers = _read_only_scripts() if readers is None else readers
+                    if (step in ("javascript_tool", "browser_script") and str(inner.get("text") or "").strip() not in readers
+                            or url.startswith("javascript:")):
+                        return None
+            if loaded:
                 break
-        if check:
+        if loaded:
             break
-    given = (check or {}).get("input") if isinstance((check or {}).get("input"), dict) else {}
     found = results.get((check or {}).get("id"))
-    if not (found and check.get("name") == f"{server}__javascript_tool" and given.get("text") == sends.COMPOSER_CHECK
-            and str(given.get("tabId") or "") == tab and not found[0].get("is_error")):
+    if not found or found[0].get("is_error"):
         return None
-    try:
-        stamp = datetime.fromisoformat(str(json.loads(found[1]).get("timestamp")).replace("Z", "+00:00"))
-    except ValueError:
-        return None
-    age = time.time() - (stamp if stamp.tzinfo else stamp.replace(tzinfo=timezone.utc)).timestamp()
-    box = sends.composer(_said(found[0]))
-    place = sends.conversation(str(box.get("url") or "")) if -5 <= age <= CHECK_SECONDS else None
+    at, box = sends._when(found[1]), sends.composer(_said(found[0]))
+    place = sends.conversation(str(box.get("url") or "")) if -5 <= time.time() - at <= CHECK_SECONDS else None
     text = box.get("text") if isinstance(box.get("text"), str) else None  # Lexical ends the box's text with one line break
-    return (*place, text[:-1] if text.endswith("\n") else text) if place and text is not None and box.get("box") == "found" and (
-        box.get("focused") is True and type(box.get("staged")) is int and box["staged"] == 0) else None
+    ready = place and text is not None and box.get("box") == "found" and box.get("focused") is True and all(
+        type(box.get(k)) is int and box[k] == 0 for k in ("staged", "marks", "inline"))
+    return (*place, text[:-1] if text.endswith("\n") else text, at) if ready and not _typed_elsewhere(session, at) else None
 
 
 def check_desktop(name: str, tool: str, tool_input: dict, config: dict, session: dict | None = None) -> str | None:
@@ -5598,16 +5667,19 @@ def check_desktop(name: str, tool: str, tool_input: dict, config: dict, session:
     if timed and timed.startswith("fresh_calendar"):
         return timed
     how, waits = "", ""
-    if found:
-        match = lambda e: sends.browser_entry(e, *found)  # noqa: E731
+    if found:  # a time's code binds the checked conversation and words, and a check made after it was asked for (5.24.0)
+        match, boxed = (lambda e: sends.browser_entry(e, *found[:3])), {**subject, "box": list(found[:3])}  # noqa: E731
         with approvals.alone():  # each entry goes once, whichever call asks first
             waits = timed or ""
             how = sends.batch_spend(match, session, spend=not waits)
-            if how and waits and approvals.consume("send", subject, session):  # its own code released it: the entry goes too
+            asked = float(approvals.grant("send", boxed).get("asked") or time.time()) if how and waits else time.time()
+            if how and waits and found[3] > asked and approvals.consume("send", boxed, session):  # the entry goes with it
                 sends.batch_spend(match, session)
                 how, waits = "approval", ""
     if how and waits:
-        return waits.replace("{code}", approvals.how(approvals.request("send", subject, summary[:300])))
+        return waits.replace("{code}", approvals.how(approvals.request("send", boxed, summary[:300]))) + (
+            " The code binds this conversation and these words: once it is typed, run the composer check again (it must read"
+            " the same words), then press Return.")
     if how:
         sends.log(chan, tool, summary, how, session)
         approvals.void("send", subject)
@@ -5697,6 +5769,11 @@ def check_outgoing(command: str, config: dict, cwd: str, session: dict | None = 
         for t in (words[-1:] if os.path.basename(words[0]) in COPIERS else words[1:])}
     for words, where in commands:
         calls += [(args, argv, where) for args, argv in sends.cli_calls(words)]
+        named = [w.split("=", 1)[1] if "=" in w else (words[i + 1] if i + 1 < len(words) else "") for i, w in enumerate(words)
+                 if w.split("=", 1)[0] == "--session"] if any(os.path.basename(w) == "messages_send.py" for w in words) else []
+        if any(n != paths.session_id(session) for n in named):  # the session a messages send's batch is spent from (5.24.0)
+            return (f"This command runs messages_send.py for session {named[0]}, but it runs in session "
+                    f"{paths.session_id(session) or 'none'}: a send spends only its own session's batch entries.")
         chan = sends.command_send(words, where, config)
         if chan:
             text, problem = sends.message_text(words, where, written)

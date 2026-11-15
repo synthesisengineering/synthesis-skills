@@ -445,16 +445,20 @@ A connector call is the tool's exact name and its exact input. A browser send on
 address in its one canonical form (`facebook.com/messages/t/<id>`, `facebook.com/messages/e2ee/t/<id>`,
 `messenger.com/t/<id>` or `messenger.com/e2ee/t/<id>`, with nothing before or after it) and the exact text. A send by
 the local messages sender (`messages_send.py`) is the handle `--to` takes and the text, or for `--members` each
-member's handle once, the chat's service and its chat id, as the sender's own approval names them, and the text. One
-entry goes to each conversation (an address, a handle or a chat). Anything else is refused with what is wrong, and so
+member's handle once, the chat's service and its chat id, as the sender's own approval names them, and the text; a
+connector entry never names the sender's own tools (`imessage_send`, `messages_send`), which would carry its photo. One
+entry goes to each conversation (an address, a handle, a chat, or for a connector call the recipient fields its input
+names: `to`, `channel_id`, a thread and their kin). Anything else is refused with what is wrong, and so
 are a control character other than a newline anywhere in the file (the review of 5.23.0: an escape code hid words in a
 listing, and a carriage return printed one line over another), a key given twice, a number JSON does not have, a
 repeated entry and a file over 1 MB.
 
 **Asking.** `synthesis sends batch <file>` prints the digest (SHA-256 of the batch's canonical JSON: sorted keys, no
 spaces, UTF-8), the count and each entry's channel and recipient; `--show` also prints every text in full and opens
-nothing, so it needs no code. Every listing quotes each text as JSON, with each control, zero-width, direction or
-line-separator character written as its code. The command opens a batch only on the principal's code for exactly that
+nothing, so it needs no code. Every listing quotes each text as JSON, with each control, format (zero-width,
+direction), separator, private or unassigned character, every space but the plain one, and the fillers, blanks and
+variation selectors that render as nothing written as its code; the file's path, the batch's name and its project are
+shown the same way (the review of 5.24.0). The command opens a batch only on the principal's code for exactly that
 digest, typed in the session that runs it, from any terminal: an agent could fake a terminal of the principal's own, so
 there is no such shortcut. It spends the code itself, so a file changed after the hold has another digest and gets
 nothing. The guard holds the command with the code and the whole listing, texts included, so the principal reads in the
@@ -467,9 +471,10 @@ session that ran the command and the code the principal typed in it, so editing 
 **What an entry covers.** Exactly that entry, compared after each string's line endings are written as `\n`, and
 nothing else is overlooked: a trailing space, a lookalike letter, another case or one more character is another
 send. A connector entry binds the whole call, every field of its input, compared as JSON (`true` is not `1`); a call
-whose input names anything its connector fetches or reads when it runs (a key naming a url, a uri, a link, a path, a
-file, an attachment, an upload, a download, media or an image) is never covered, since a batch binds words, not what a
-url or a path holds when the call runs. A messages entry binds what the sender's own approval binds; a photo beside it
+whose input names anything its connector fetches, reads or carries when it runs (a key naming a url, a uri, a link, a
+path, a file, an attachment, an upload, a download, media, an image, a photo, a picture, video, audio, a voice clip, a
+blob, a sticker, a thumbnail or an avatar) is never covered, since a batch binds words, not what a url, a path or a
+file holds when the call runs. A messages entry binds what the sender's own approval binds; a photo beside it
 is outside every batch. A browser entry is sent in two calls on one tab, after any earlier calls that type the words
 and send nothing (the review of 5.23.0: one call that cleared, typed and sent made the guard trust which tab, the
 focus, an emptied box and an earlier paste, none of which it can see):
@@ -487,11 +492,20 @@ focus, an emptied box and an earlier paste, none of which it can see):
      enter to send`, `Send`) or a file or attachment (`Attach a file`). What is staged is the count of images, video,
      audio, canvases, objects, frames and `Remove` controls inside it and outside the box; with no such ancestor it is
      `unknown`, which matches nothing.
+   - **Its mode** (the review of 5.24.0; the labels await a live read): the count of what puts the composer in another
+     mode, inside the composer and outside the box (text that opens with `Replying to` or `Editing`, a control labelled
+     for a reply or an edit, a quotation), and the count of images inside the box, whose `innerText` leaves an emoji
+     drawn as an image out. Either above nothing matches.
 
-   It returns the page's address with those four, as one JSON report the guard finds in the call's result.
+   It returns the page's address with those, as one JSON report the guard finds in the call's result. No page script
+   but the shipped read-only ones (this check, and the extractors `messenger_messages.py` and `chat_page.py` print) may
+   run on that tab since its last load, a navigation to an address: any other, in this session's record, can make the
+   check report what it likes, so it voids every check on that tab until the page loads again.
 2. **The send.** A call on the same tab, which it names, of the same browser server, holding one action: a plain
-   Return or Enter (repeat 1), made within 60 seconds of a check that read the focus in the box, with no other browser
-   call between them. That is the one action that sends exactly the box's text. A click never is: the composer's
+   Return or Enter (repeat 1), made within 15 seconds of a check that read the focus in the box, with no call between
+   them that could type: none from this session (a browser call on any tab, computer use, a shell's `osascript`
+   keystrokes and their kin), and none in another session's record, read where its prompt hook recorded it, since the
+   check. That is the one action that sends exactly the box's text. A click never is: the composer's
    neighbours are send controls themselves (`Send a like` sends a thumbs-up, `Send a voice clip` starts a recording;
    the coordinator's live read of 2026-11-14), so the guard cannot tie a click to the control that sends the box, and a
    click there waits for the code per call.
@@ -501,15 +515,20 @@ conversation, the box's text equals the entry's text, the focus was in the box a
 else is a code per call. A conversation is a page's site and path, its trailing slash and query left off: the four
 forms above are four distinct conversations (every chat facebook.com lists links to `/messages/e2ee/t/<id>/`), and a
 send on one never spends an entry for another. Each entry sends once, decided under the send guard's lock; only within
-12 hours of the grant; and only from the session that ran the granted command, whose own record must show the
-principal typing the batch's code each time an entry is spent, so batch state alone is never a grant. Each send is
+12 hours of the grant; and only from the session that ran the granted command, as the guard is told it (a hook's
+payload; for the messages sender, the `--session` it names, which the shell guard checks is the one running it, and
+never the environment's), whose own record must show, each time an entry is spent, the hold that named the batch's
+digest with its code and the principal typing that code after it: a code typed for anything else backs nothing, so
+batch state alone is never a grant. Each send is
 written to an append-only spends ledger and to the day's ledger as `batch:<digest prefix>:<index>`, so `synthesis
 sends log` shows it for "On your behalf".
 
 **Every other check runs first.** The register scan, the format rules, an address that can change
 (`temporary_addresses`) and a time in the words (`fresh_calendar`) hold an entry as they hold any message, a browser
 box's own text included: an entry that names a clock time still needs a fresh calendar read when it goes, or the
-hold's own code, which spends the entry with the send. A meeting placed on today is never covered
+hold's own code, which spends the entry with the send. For a Messenger entry that code binds the checked conversation
+and words, and the send it releases needs a check made after the code was asked for that reads the same words. A
+meeting placed on today is never covered
 (`same_day_meetings`). No shell post is a batch's entry: the messages sender asks the guard itself.
 
 **The window and the batch never combine.** The batch is looked at after every check and before the window; a send
@@ -517,7 +536,10 @@ it covers is not counted against a window's planned sends, and a call is covered
 
 **What tampering with the state does.** The file tools and the shell writes the guard reads cannot write the state,
 and a script that names a batch's opening or spending code is refused as the window's is; 5.22.1 closes the
-interpreter writes the review of 5.23.0 found. Behind that: state that cannot be read, whose entries no longer hash to
+interpreter writes the review of 5.23.0 found, and the guard reads `sends._batch_file`, `sends._spends_file` and
+`sends._window_file` as leading into the state, so a program that names one is judged as one that names the state
+folder. A path a program builds at run time is still unseen (the review of 5.24.0, #6, a sandbox's to close, not this
+batch's). Behind that: state that cannot be read, whose entries no longer hash to
 its digest and its file's name, that marks entries it does not have as spent, or whose life runs past 12 hours from
 its grant is no batch, and its sends fall back to the code per call; the same batch granted again is then refused
 rather than guessing which entries went. A spent mark taken out of the state reopens nothing, since the spends ledger
