@@ -135,3 +135,88 @@ def test_a_grant_changed_while_it_was_checked_is_not_used(tmp_path, monkeypatch)
     monkeypatch.setattr(approvals, "typed", swapped)
     assert guards.check(SLACK, CALL, {}, session=session) is not None
     assert not grant.exists()
+
+
+# --- review round 1 of this fix (2026-11-15) ------------------------------------------------------------------------
+
+def _copied_block(n, when):
+    """What compaction appends after the prompt: copies of earlier lines, each with its original time."""
+    return [claude(f"an earlier message {i}", when + i * 0.001, promptSource="sdk") for i in range(n)]
+
+
+@pytest.mark.parametrize("copies", [250, 1000])
+def test_a_compaction_block_after_the_prompt_does_not_hide_it(tmp_path, copies):
+    """Finding 1: 200 old lines in a row ended the backward search before it reached a prompt typed a minute ago.
+    The grant now records where the record ended when the principal typed, and the search reads back to there."""
+    code = _requested()
+    transcript = tmp_path / "t.jsonl"
+    _write(transcript, _old_output(500, time.time() - 86400))
+    assert approvals.grant_from_prompt(f"approve {code}", str(transcript))
+    with open(transcript, "a", encoding="utf-8") as out:  # the harness writes the prompt, then the work, then a compaction
+        out.write(json.dumps(claude(f"approve {code}", time.time(), promptSource="sdk")) + "\n")
+        for line in _old_output(20, time.time()) + _copied_block(copies, time.time() - 7200):
+            out.write(json.dumps(line) + "\n")
+    session = {"session_id": SID, "transcript_path": str(transcript)}
+    assert guards.check(SLACK, CALL, {}, session=session) is None
+    assert "approval" in guards.check(SLACK, CALL, {}, session=session)
+
+
+def test_the_prompt_hook_records_where_the_record_ended_when_he_typed(tmp_path):
+    code = _requested()
+    transcript = tmp_path / "t.jsonl"
+    _write(transcript, _old_output(10, time.time() - 60))
+    size = transcript.stat().st_size
+    assert approvals.grant_from_prompt(f"approve {code}", str(transcript))
+    grant = json.loads(next(approvals._dir("approvals").glob("*.json")).read_text(encoding="utf-8"))
+    assert grant["record_at"] == size
+
+
+def test_a_clock_stepped_back_after_the_prompt_does_not_hide_it(tmp_path):
+    """Finding 5: lines stamped half an hour before the prompt, written after it, ended the search early."""
+    code = _requested()
+    transcript = tmp_path / "t.jsonl"
+    _write(transcript, [])
+    assert approvals.grant_from_prompt(f"approve {code}", str(transcript))
+    _write(transcript, [claude(f"approve {code}", time.time(), promptSource="sdk")] + _old_output(400, time.time() - 1800))
+    assert guards.check(SLACK, CALL, {}, session={"session_id": SID, "transcript_path": str(transcript)}) is None
+
+
+def test_a_line_longer_than_the_block_is_read_in_time_proportional_to_its_length(tmp_path):
+    """Finding 3: an unfinished line was copied again for each block read before it, so a 128 MB line took 9.9 s."""
+    transcript = tmp_path / "t.jsonl"
+    transcript.write_text("first\n" + "z" * (2 << 20) + "\nlast\n", encoding="utf-8")
+    start = time.perf_counter()
+    lines = list(approvals._lines_back(str(transcript), block=256))  # 8,192 blocks for the one long line
+    assert time.perf_counter() - start < 1.0
+    assert [len(line) for line in lines] == [4, 2 << 20, 5]
+
+
+@pytest.mark.parametrize("digits, value", [(10, 1794766177), (13, 1794766177000), (16, 1794766177000000)])
+def test_a_numeric_time_is_read_by_its_length(digits, value):
+    """Finding 4: a 13-digit time in milliseconds was read as microseconds, a moment in 1970."""
+    assert len(str(value)) == digits
+    assert approvals._stamps(f'{{"timestamp": {value}}}') == [pytest.approx(1794766177, abs=1)]
+
+
+def test_a_deadline_after_the_grant_was_spent_gives_it_back(tmp_path, monkeypatch, capsys):
+    """Finding 2: a later check in the same call ran past the hook's deadline after an earlier one had spent the grant;
+    the call was held and the grant was gone. The hook now puts back what that call spent."""
+    from synthesis import hook
+    code = _requested()
+    transcript = tmp_path / "t.jsonl"
+    _write(transcript, [])
+    assert approvals.grant_from_prompt(f"approve {code}", str(transcript))
+    _write(transcript, [claude(f"approve {code}", time.time(), promptSource="sdk")])
+    session = {"session_id": SID, "transcript_path": str(transcript)}
+    real = guards.check
+
+    def spend_then_run_late(tool, tool_input, config, cwd=None, session=None):
+        assert real(tool, tool_input, config, cwd=cwd, session=session) is None  # the grant is spent here
+        raise hook._Late()  # and a later check of the same call runs past the deadline
+    monkeypatch.setattr(guards, "check", spend_then_run_late)
+    payload = {"tool_name": SLACK, "tool_input": CALL, **session}
+    hook.pre_tool_use(payload)
+    monkeypatch.setattr(guards, "check", real)
+    assert "did not answer within" in capsys.readouterr().out
+    assert guards.check(SLACK, CALL, {}, session=session) is None  # the same grant, given back
+    assert "approval" in guards.check(SLACK, CALL, {}, session=session)
