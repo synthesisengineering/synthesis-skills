@@ -1306,10 +1306,17 @@ ROOT = Path(__file__).resolve().parents[1]
 # once, the bytes it held returned), _stamps 10 (every time a line carries), typed 9 more (read from the end; a run of
 # lines older than the window ends it), consume 6 more (read, check, then spend; a grant changed during the check is
 # never used), STAMP and the run's two constants 2, and the new functions' 8 blank lines.
+# Then each 46 more, from that fix's review round 1 (a compaction block of older lines after the prompt ended the search
+# before it; a long line was read in time proportional to its length squared; a deadline later in the same call lost a
+# grant spent earlier): approvals.py 42 (give_back 13 and SPENT 1, with 4 blank lines: a call that is held gives back the
+# grants it used; _lines_back 9 more, a long line kept as its pieces and read back only to a position; grant_from_prompt
+# 5 more, the record's size when he typed; typed 3 more, read back to that position; consume 3 more, what it used noted;
+# _stamps 2 more, a number read by its length; MARGIN 1; backed 1 more), hook.py 4 (pre_tool_use: the list cleared, and
+# the grants given back when the call is held).
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 16571
-PLUGIN_BUDGET = 42643
+CORE_BUDGET = 16617
+PLUGIN_BUDGET = 42689
 
 
 def _lines(files):

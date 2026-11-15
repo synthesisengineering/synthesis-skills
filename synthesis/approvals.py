@@ -121,16 +121,21 @@ def mentioned(prompt: str) -> list[str]:
     return list(dict.fromkeys(code.lower() for code in re.findall(rf"\b{ONE}", prompt or "", re.IGNORECASE)))
 
 
-def grant_from_prompt(prompt: str) -> list[str]:
-    """Grant every pending request whose code the prompt carries. Returns the summaries granted."""
+def grant_from_prompt(prompt: str, transcript_path: str = "") -> list[str]:
+    """Grant every pending request whose code the prompt carries, each with where the session's record ended when the
+    principal typed, so that finding his prompt reads only from there. Returns the summaries granted."""
     granted = []
+    try:
+        ended = {"record_at": os.path.getsize(transcript_path)} if transcript_path and os.path.isfile(transcript_path) else {}
+    except OSError:
+        ended = {}
     for code in typed_codes(prompt):
         pending_file = _dir("approval-requests") / f"{code}.json"
         data = paths.read_json(pending_file)
         if not data.get("digest"):
             continue
         paths.write_json(_dir("approvals") / f"{data['digest']}.json",
-                         {**data, "code": code, "asked": data.get("at", 0), "at": time.time()})
+                         {**data, "code": code, "asked": data.get("at", 0), "at": time.time(), **ended})
         pending_file.unlink(missing_ok=True)
         granted.append(data["summary"])
     return granted
@@ -190,49 +195,64 @@ def _prompt(record: dict, session_id: str) -> tuple[float, list]:
     return datetime.fromisoformat(str(stamp).replace("Z", "+00:00")).timestamp(), texts
 
 
-STAMP = re.compile(r'"(?:timestamp|recorded_at)"\s*:\s*(?:"([^"]{10,40})"|(\d{13,17}))')
-OLD_RUN, SLACK_SECONDS = 200, 600  # this many lines in a row, each older than the window by this much, end the search
+STAMP = re.compile(r'"(?:timestamp|recorded_at)"\s*:\s*(?:"([^"]{10,40})"|(\d{10,19}))')
+OLD_RUN, SLACK_SECONDS = 200, 600  # with no position: this many lines in a row, older than the window by this much, end it
+MARGIN = 16 << 20  # read this far before the position the grant records: the prompt line may be written before the hook runs
 
 
 def _stamps(line: str) -> list:
-    """Every time a record line carries (ISO times; Muse's microseconds), as seconds, nested ones included."""
+    """Every time a record line carries, as seconds, nested ones included: ISO times, and numbers read by their length
+    (seconds, milliseconds, Muse's microseconds, nanoseconds)."""
     from datetime import datetime
     found = []
-    for iso, micro in STAMP.findall(line):
+    for iso, number in STAMP.findall(line):
         try:
-            found.append(int(micro) / 1e6 if micro else datetime.fromisoformat(iso.replace("Z", "+00:00")).timestamp())
+            found.append(int(number) / 10 ** (3 * min(3, max(0, (len(number) - 9) // 3))) if number
+                         else datetime.fromisoformat(iso.replace("Z", "+00:00")).timestamp())
         except (ValueError, OverflowError):
             continue
     return found
 
 
-def _lines_back(transcript_path: str, block: int = 1 << 20):
-    """A record's lines from its end, newest first."""
+def _lines_back(transcript_path: str, block: int = 1 << 20, stop: int = 0):
+    """A record's lines from its end back to the byte `stop`, newest first. A line longer than a block is kept as its
+    pieces and joined once, so reading it costs its length, not its length squared."""
     with open(transcript_path, "rb") as handle:
         handle.seek(0, os.SEEK_END)
-        at, rest = handle.tell(), b""
-        while at > 0:
-            step = min(block, at)
+        at, tail = handle.tell(), []  # tail: the pieces of the line being read backward, the latest piece first
+        while at > stop:
+            step = min(block, at - stop)
             at -= step
             handle.seek(at)
-            lines = (handle.read(step) + rest).split(b"\n")
-            rest = lines.pop(0)  # the start of a line that began in the block before
-            for raw in reversed(lines):
+            data = handle.read(step)
+            if b"\n" not in data:
+                tail.append(data)
+                continue
+            lines = data.split(b"\n")
+            newest = lines[-1] + b"".join(reversed(tail))
+            if newest.strip():
+                yield newest.decode("utf-8", "replace")
+            for raw in reversed(lines[1:-1]):
                 if raw.strip():
                     yield raw.decode("utf-8", "replace")
+            tail = [lines[0]]
+        rest = b"".join(reversed(tail))
         if rest.strip():
             yield rest.decode("utf-8", "replace")
 
 
-def typed(transcript_path: str, code: str, since: float, session_id: str = "") -> bool:
-    """Whether the harness's record shows the principal typing approve <code> after `since`. It is read from its end,
-    and only as far back as the approval window: a run of lines all older than the window ends the search, while one
-    stray old line (a snapshot, a summary) or a line with no time does not (2026-11-15: a Codex record of 1.9 GB took
-    4.6 s to read from its start, past the hook's 4 s)."""
+def typed(transcript_path: str, code: str, since: float, session_id: str = "", start=None) -> bool:
+    """Whether the harness's record shows the principal typing approve <code> after `since`. It is read from its end:
+    back to just before `start`, where the record ended when the prompt hook granted (a forged position can only hide a
+    prompt, never add one), and with no position, only as far as the approval window, a run of lines all older than it
+    ending the search (2026-11-15: a Codex record of 1.9 GB took 4.6 s to read from its start, past the hook's 4 s; then
+    a compaction block of older lines written after a prompt ended the window's search before it)."""
     if not code:
         return False
+    size = os.path.getsize(transcript_path)
+    bounded = isinstance(start, int) and not isinstance(start, bool) and 0 <= start <= size
     hit, old = re.compile(re.escape(code), re.IGNORECASE), 0
-    for line in _lines_back(transcript_path):
+    for line in _lines_back(transcript_path, stop=max(0, start - MARGIN) if bounded else 0):
         if hit.search(line):
             try:
                 when, texts = _prompt(json.loads(line), session_id)
@@ -240,7 +260,7 @@ def typed(transcript_path: str, code: str, since: float, session_id: str = "") -
                 when, texts = 0.0, []
             if when > since and any(code in typed_codes(text) for text in texts):
                 return True
-        stamps = _stamps(line)
+        stamps = [] if bounded else _stamps(line)
         if stamps:
             old = old + 1 if max(stamps) < since - SLACK_SECONDS else 0
             if old >= OLD_RUN:
@@ -262,7 +282,8 @@ def backed(kind: str, subject, session: dict | None = None) -> bool:
         return False
     try:
         return bool(transcript(session)) and typed(transcript(session), str(data.get("code", "")),
-                                                   max(float(data.get("asked", 0)), time.time() - TTL_SECONDS), paths.session_id(session))
+                                                   max(float(data.get("asked", 0)), time.time() - TTL_SECONDS), paths.session_id(session),
+                                                   data.get("record_at"))
     except OSError:
         return False
 
@@ -289,6 +310,24 @@ def alone():
     with open(held, "a") as handle:
         fcntl.flock(handle, fcntl.LOCK_EX)
         yield
+
+
+SPENT: list = []  # (grant file, the bytes it held) each grant this call used, for the hook to give back if the call is held
+
+
+def give_back() -> None:
+    """Put back each grant this call used, the call having been held at the hook's deadline and run nothing (review of
+    the spend order, finding 2: a later check of the same call ran past the deadline after an earlier one had spent it)."""
+    for path, data in SPENT:
+        try:
+            handle = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        except OSError:
+            continue  # a newer grant of the same thing is in place, or the folder is gone: nothing to give back
+        try:
+            os.write(handle, data)
+        finally:
+            os.close(handle)
+    SPENT.clear()
 
 
 def _spend(path: Path) -> bytes | None:
@@ -326,8 +365,11 @@ def consume(kind: str, subject, session: dict | None = None) -> bool:
         return False
     record, since = transcript(session), max(float(data.get("asked", 0)), time.time() - TTL_SECONDS)
     try:
-        if record and typed(record, str(data.get("code", "")), since, paths.session_id(session)):
-            return _spend(path) == before  # once; a grant put in place while the record was read was never checked
+        if record and typed(record, str(data.get("code", "")), since, paths.session_id(session), data.get("record_at")):
+            if _spend(path) != before:  # once; a grant put in place while the record was read was never checked
+                return False
+            SPENT.append((path, before))
+            return True
         problem = (f"{record} shows no prompt from the principal with its code since it was asked for" if record else
                    "the harness gave no transcript for this session, and only that record can show who typed it")
     except OSError as exc:

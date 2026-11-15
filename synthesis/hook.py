@@ -222,7 +222,7 @@ def user_prompt_submit(payload):
     prompt = str(payload.get("prompt") or payload.get("user_prompt") or "")
     approvals.remember(paths.session_id(payload), str(payload.get("transcript_path") or ""))  # where the CLI finds it later
     waiting = set(approvals.pending())
-    notes = [f"Approved by the principal: {s}" for s in approvals.grant_from_prompt(prompt)]
+    notes = [f"Approved by the principal: {s}" for s in approvals.grant_from_prompt(prompt, approvals.transcript(payload))]
     # A typed code that matched nothing is said aloud, so no one assumes it took (2026-10-13)
     typed = approvals.typed_codes(prompt)
     notes += [f"Not granted: no pending request has the code {c}; it may have expired (15 minutes), been used, or "
@@ -276,6 +276,7 @@ def pre_tool_use(payload):
     try:
         from synthesis import approvals, guards, paths  # the guard's own module loads inside its deadline too
 
+        approvals.SPENT.clear()
         tool = str(payload.get("tool_name", ""))
         tool_input = payload.get("tool_input") or {}
         try:
@@ -298,6 +299,9 @@ def pre_tool_use(payload):
     finally:
         signal.setitimer(signal.ITIMER_REAL, 0)
         signal.signal(signal.SIGALRM, before)
+    used = sys.modules.get("synthesis.approvals")  # a call that is held runs nothing: the grants it used go back
+    if used is not None:
+        used.give_back() if reason else used.SPENT.clear()
     return _emit("PreToolUse", deny=reason) if reason else 0
 
 
