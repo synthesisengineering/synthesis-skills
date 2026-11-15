@@ -3,9 +3,10 @@
 A seat drafts replies in batches of about twenty; the principal reads every text and recipient in the hold and types
 one code for the batch's digest. Each entry then sends once, word for word, within 12 hours, from the session that
 ran the granted command, and every spend checks that session's record for the principal's code again. A connector
-entry binds the whole call; a messages entry the local sender's recipient, chat, service and text; a browser entry a
-send verified first: the shipped composer check on the tab, then one Return or Send click on that same tab. Every
-other check runs first, and anything that differs falls back to the code per call.
+entry binds the whole call; a messages entry the local sender's recipient, chat, service and text; a Messenger entry
+one send step: a browser_batch that loads the conversation again, types the words and runs the entry's send script,
+which reads the composer and sends in the same run. Every other check runs first, and anything that differs falls
+back to the code per call.
 """
 
 import copy
@@ -87,33 +88,6 @@ def _cli(*args):
 def _record(*lines) -> None:
     with RECORD.open("a", encoding="utf-8") as handle:
         handle.writelines(json.dumps(line) + "\n" for line in lines)
-
-
-def checked(url=E2EE, text=REPLY, tab=7, focused=True, staged=0, server="mcp__claude-in-chrome", script=None, age=1.0,
-            error=False, report=None, box="found", marks=0, inline=0) -> dict:
-    """The shipped composer check run on a tab, and its result, in the session's record; the session."""
-    ident, at = f"toolu_{time.time_ns()}", (datetime.now(timezone.utc) - timedelta(seconds=age)).isoformat()
-    found = report or json.dumps({"check": sends.COMPOSER_MARK, "url": url, "box": box, "text": text, "focused": focused,
-                                  "staged": staged, "marks": marks, "inline": inline, "boxes": 1})
-    tabs = f"\n\nTab Context:\n- Executed on tabId: {tab}\n- Available tabs:\n  • tabId {tab}: \"Messenger\" (\"{url}\")"
-    _record({"type": "assistant", "timestamp": at, "message": {"role": "assistant", "content": [
-                {"type": "tool_use", "id": ident, "name": f"{server}__javascript_tool",
-                 "input": {"action": "javascript_exec", "text": script or sends.COMPOSER_CHECK, "tabId": tab}}]}},
-            {"type": "user", "timestamp": at, "message": {"role": "user", "content": [
-                {"type": "tool_result", "tool_use_id": ident, "is_error": error, "content": [{"type": "text", "text": found + tabs}]}]}})
-    return {**SESSION, "transcript_path": str(RECORD)}
-
-
-def other_call(name=KEYS, given=None, tab=7) -> None:
-    ident, at = f"toolu_{time.time_ns()}", datetime.now(timezone.utc).isoformat()
-    _record({"type": "assistant", "timestamp": at, "message": {"role": "assistant", "content": [
-                {"type": "tool_use", "id": ident, "name": name, "input": given or {"action": "screenshot", "tabId": tab}}]}},
-            {"type": "user", "timestamp": at, "message": {"role": "user", "content": [
-                {"type": "tool_result", "tool_use_id": ident, "content": [{"type": "text", "text": "Done"}]}]}})
-
-
-def send(session, given=None, tool=KEYS, config=CONFIG):
-    return guards.check(tool, given or RETURN, config, session=session)
 
 
 def read_calendar() -> None:
@@ -477,14 +451,65 @@ def test_a_call_the_connector_fetches_or_reads_a_file_for_is_never_covered(attac
     assert not any(e["how"].startswith("batch") for e in today())
 
 
-# --- the browser: the box is checked, then one Return or Send click on that tab ---------------------------------
+# --- the browser: one step reloads the conversation, types the words, and its send script checks and sends ---------
+# The third round of 5.24.0's review (#1, #2, #3, #6): a check read in one call and a Return pressed in another left
+# room for a page script, a typist or another session between them. Now the read and the send are one synchronous run
+# of one shipped page script, the last step of a browser_batch that first loads the conversation again on its tab.
 
 
-def test_the_cli_prints_the_composer_check_and_the_guard_lets_it_run():
+def listed(url=E2EE, tab=7, record=None) -> dict:
+    """A browser call whose result lists a tab on a page, in a session's record (this one's unless named); the session."""
+    ident, at = f"toolu_{time.time_ns()}", datetime.now(timezone.utc).isoformat()
+    tabs = f"\n\nTab Context:\n- Executed on tabId: {tab}\n- Available tabs:\n  • tabId {tab}: \"Messenger\" (\"{url}\")"
+    with (record or RECORD).open("a", encoding="utf-8") as handle:
+        for line in ({"type": "assistant", "timestamp": at, "message": {"role": "assistant", "content": [
+                         {"type": "tool_use", "id": ident, "name": KEYS, "input": {"action": "screenshot", "tabId": tab}}]}},
+                     {"type": "user", "timestamp": at, "message": {"role": "user", "content": [
+                         {"type": "tool_result", "tool_use_id": ident, "content": [{"type": "text", "text": "Done" + tabs}]}]}}):
+            handle.write(json.dumps(line) + "\n")
+    return {**SESSION, "transcript_path": str(record or RECORD)}
+
+
+def step(entry=CHAT, tab=7, url=None, words=None, script=None, middle=None, after=()) -> dict:
+    """A batch's Messenger send as one browser_batch: load the conversation's address on the tab again, type the words,
+    run the entry's send script there, last."""
+    go = {"name": "navigate", "input": {"url": url or f"https://www.{entry['to']}/", "tabId": tab}}
+    typing = middle if middle is not None else [
+        {"name": "computer", "input": {"action": "type", "text": entry["text"] if words is None else words, "tabId": tab}}]
+    run = {"name": "javascript_tool", "input": {"action": "javascript_exec", "text": script or sends.send_script(entry), "tabId": tab}}
+    return {"actions": [go, *typing, run, *after]}
+
+
+def sent(given, config=CONFIG, tool=CHROME):
+    return guards.check(tool, given, config, session={**SESSION, "transcript_path": str(RECORD)})
+
+
+def test_the_cli_prints_the_composer_check_and_the_send_script_and_the_guard_lets_them_run():
     assert _cli("sends", "composer-check").stdout.strip() == sends.COMPOSER_CHECK
-    other_call()  # a page in the record: the call below runs on a messaging site's tab
     assert guards.check(SCRIPT, {"action": "javascript_exec", "text": sends.COMPOSER_CHECK, "tabId": 7}, CONFIG,
-                        session=checked()) is None
+                        session=listed()) is None
+    data = granted([CALL, CHAT])
+    shown = cli_out("sends", "script", "--entry", f"{data['digest'][:12]}:2")
+    assert shown == sends.send_script(CHAT) and sends.SEND_MARK in shown
+    assert guards.check("Bash", {"command": f"synthesis sends script --entry {data['digest'][:12]}:2"}, CONFIG, cwd=str(FOLDER)) is None
+    for wrong in (f"{data['digest'][:12]}:1", f"{data['digest'][:12]}:3", "0000:2"):  # a connector entry, none, no batch
+        assert cli_main("sends", "script", "--entry", wrong) == 2
+
+
+def cli_out(*args) -> str:
+    import contextlib
+    import io
+    out = io.StringIO()
+    with contextlib.redirect_stdout(out):
+        assert cli.main(["--session", "S-principal", *args]) == 0
+    return out.getvalue().strip()
+
+
+def cli_main(*args) -> int:
+    import contextlib
+    import io
+    with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+        return cli.main(["--session", "S-principal", *args])
 
 
 @pytest.mark.parametrize("entry_to, url, goes", [
@@ -502,62 +527,79 @@ def test_the_cli_prints_the_composer_check_and_the_guard_lets_it_run():
     ("facebook.com/messages/e2ee/t/1000000001", "https://facebook.com.example.org/messages/e2ee/t/1000000001/", False),
     ("facebook.com/messages/e2ee/t/1000000001", "https://www.facebook.com/messages/", False),
 ])
-def test_a_browser_entry_goes_only_after_a_check_of_its_conversations_box(entry_to, url, goes):
-    granted([{**CHAT, "to": entry_to}])
-    reason = send(checked(url=url))
+def test_a_messenger_entry_goes_as_one_send_step_on_a_tab_already_on_its_conversation(entry_to, url, goes):
+    """The tab must already show the conversation in this session's newest list of tabs, so the load the step makes
+    changes no address any session's guard reads (a page script there is refused, below)."""
+    entry = {**CHAT, "to": entry_to}
+    granted([entry])
+    listed(url)
+    reason = sent(step(entry))
     assert (reason is None) is goes, reason
-    assert goes or held(reason)
 
 
-def test_a_verified_send_goes_once_and_its_ledger_line_names_the_entry():
+def test_a_send_step_goes_once_and_its_ledger_line_names_the_entry():
     data = granted([CHAT])
-    assert send(checked()) is None
+    listed()
+    assert sent(step()) is None
     assert today()[-1]["how"] == f"batch:{data['digest'][:12]}:0"
-    assert held(send(checked()))  # spent
+    assert sent(step())  # spent
 
 
-@pytest.mark.parametrize("what", ["text", "focus", "staged", "old", "between", "script", "error", "tab", "server",
-                                  "unreported", "two reports"])
-def test_a_check_that_does_not_show_exactly_the_entry_ready_in_a_focused_box_leaves_the_code(what):
-    """Review #1, #2, #4 and #15: the guard trusted which tab, where the focus was, an emptied box and an earlier paste.
-    Now the box itself is read first, on the send's own tab and browser, in the last 60 seconds, with nothing between."""
+TYPE = {"action": "type", "text": REPLY, "tabId": 7}
+
+
+def _shapes() -> dict:
+    return {
+    "no-load-first": {"actions": step()["actions"][1:]},
+    "a-load-naming-no-tab": {"actions": [{"name": "navigate", "input": {"url": E2EE}}, *step()["actions"][1:]]},
+    "a-load-with-a-fragment": step(url=E2EE + "#"),
+    "a-load-with-a-query": step(url=E2EE + "?ref=1"),
+    "a-load-by-http": step(url="http://www.facebook.com/messages/e2ee/t/1000000001/"),
+    "a-load-of-another-conversation": step(url=PLAIN),
+    "a-script-to-a-page": step(url="javascript:void(0)"),
+    "the-script-not-last": step(after=[{"name": "computer", "input": {"action": "screenshot", "tabId": 7}}]),
+    "the-script-on-another-tab": {"actions": [*step()["actions"][:-1], {"name": "javascript_tool", "input": {
+        "action": "javascript_exec", "text": sends.send_script(CHAT), "tabId": 8}}]},
+    "typing-on-another-tab": step(middle=[{"name": "computer", "input": {**TYPE, "tabId": 8}}]),
+    "a-click-between": step(middle=[{"name": "computer", "input": TYPE}, {"name": "computer", "input": {
+        "action": "left_click", "ref": "ref_5", "tabId": 7, "action_summary": "Clicks the box"}}]),
+    "a-return-between": step(middle=[{"name": "computer", "input": TYPE}, {"name": "computer", "input": {
+        "action": "key", "text": "Return", "tabId": 7}}]),
+    "a-line-break-typed": step(middle=[{"name": "computer", "input": {**TYPE, "text": REPLY + "\n"}}]),
+    "a-form-value-set": step(middle=[{"name": "form_input", "input": {"ref": "ref_5", "value": REPLY, "tabId": 7}}]),
+    "the-script-changed": step(script=sends.send_script(CHAT).replace("innerText", "textContent")),
+    "the-script-of-other-words": step(script=sends.send_script({**CHAT, "text": REPLY + " P.S. Wire the deposit."})),
+    "two-scripts": {"actions": [*step()["actions"], step()["actions"][-1]]},
+    }
+
+
+@pytest.mark.parametrize("shape", [
+    "no-load-first", "a-load-naming-no-tab", "a-load-with-a-fragment", "a-load-with-a-query", "a-load-by-http",
+    "a-load-of-another-conversation", "a-script-to-a-page", "the-script-not-last", "the-script-on-another-tab",
+    "typing-on-another-tab", "a-click-between", "a-return-between", "a-line-break-typed", "a-form-value-set",
+    "the-script-changed", "the-script-of-other-words", "two-scripts"])
+def test_a_send_step_of_any_other_shape_is_refused_and_spends_nothing(shape):
     granted([CHAT])
-    session = (checked(text="P.S. " + REPLY) if what == "text" else checked(focused=False) if what == "focus" else
-               checked(staged=1) if what == "staged" else checked(age=61) if what == "old" else
-               checked(script=sends.COMPOSER_CHECK.replace("innerText", "textContent")) if what == "script" else
-               checked(error=True) if what == "error" else checked(tab=8) if what == "tab" else
-               checked(server="mcp__Claude_Browser") if what == "server" else
-               checked(report="Done") if what == "unreported" else
-               checked(report=json.dumps({"check": sends.COMPOSER_MARK, "url": E2EE, "box": "found", "text": REPLY,
-                                          "focused": True, "staged": 0}) * 2) if what == "two reports" else checked())
-    if what == "between":
-        other_call()
-    assert held(send(session)), what
-    if what == "script":  # a script that is not the shipped check voids every check on its tab until the page loads again
-        other_call("mcp__claude-in-chrome__navigate", {"url": E2EE, "tabId": 7})
-    assert send(checked()) is None  # the entry was not spent by it
+    listed()
+    assert sent(_shapes()[shape]), shape
+    assert not any(e["how"].startswith("batch") for e in today())
+    assert sent(step()) is None  # the entry is still there
 
 
-@pytest.mark.parametrize("text, entry_text, goes", [
-    (REPLY + "\n", REPLY, True),                                                   # the one trailing break Lexical adds
-    (REPLY, REPLY, True),
-    ("First paragraph.\n\nSecond.\n", "First paragraph.\n\nSecond.", True),        # shift+Enter breaks read as \n inside
-    ("\n", REPLY, False),                                                          # an empty box reads as one break
-    (REPLY + "\n\n", REPLY, False),                                                # only one trailing break is Lexical's
-    ("\n" + REPLY, REPLY, False),
-])
-def test_the_box_text_is_read_as_lexical_writes_it(text, entry_text, goes):
-    """The coordinator's live check, 2026-11-14: an empty Messenger box's innerText is a single line break."""
-    granted([{**CHAT, "text": entry_text}])
-    reason = send(checked(text=text))
-    assert (reason is None) is goes, reason
-
-
-@pytest.mark.parametrize("box, staged", [("ambiguous", 0), ("none", 0), ("found", "unknown"), ("found", None)])
-def test_a_check_that_found_no_single_box_or_no_composer_matches_nothing(box, staged):
+def test_a_send_step_on_a_tab_not_yet_on_its_conversation_is_refused():
     granted([CHAT])
-    assert held(send(checked(box=box, staged=staged)))
-    assert send(checked()) is None
+    listed("https://example.com/")
+    assert sent(step())
+    listed()
+    assert sent(step()) is None
+
+
+def test_the_send_script_runs_only_as_the_last_step_of_its_send():
+    granted([CHAT])
+    session = listed()
+    assert "last step" in guards.check(SCRIPT, {"action": "javascript_exec", "text": sends.send_script(CHAT), "tabId": 7},
+                                       CONFIG, session=session)
+    assert sent(step()) is None
 
 
 # A page as small as the check needs, of the shape the coordinator read on a live Messenger chat (2026-11-14): one
@@ -572,9 +614,11 @@ class El {
   contains(o) { for (let e = o; e; e = e.parentElement) if (e === this) return true; return false; }
   closest(s) { for (let e = this; e; e = e.parentElement) if (matches(e, s)) return e; return null; }
   get innerText() { return this.text; }
+  click() { clicks.push(this.getAttribute('aria-label') || this.tagName); }
   querySelectorAll(s) { const out = []; const walk = e => e.kids.forEach(k => { if (matches(k, s)) out.push(k); walk(k); });
     walk(this); return out; }
 }
+const clicks = [];
 function matches(el, list) {
   return list.split(',').some(one => {
     if (one.trim() === '*') return true;
@@ -595,23 +639,105 @@ const LIVE = {contenteditable: 'true', role: 'textbox', 'aria-label': 'Write to 
 """
 
 
-def _composer_on(page: str) -> dict:
-    """The shipped check's report on a page built by `page` (JavaScript that sets `body`, `focus` and `href`)."""
+def _on_page(page: str, script: str) -> str:
     import shutil
     if not shutil.which("node"):
-        pytest.skip("node runs the composer check against a page here; this machine has none")
+        pytest.skip("node runs the composer's scripts against a page here; this machine has none")
     program = (FAKE_DOM + page + "\nconst document = {querySelectorAll: s => body.querySelectorAll(s), activeElement: focus};"
-               "\nconst location = {href};\nconsole.log(" + sends.COMPOSER_CHECK + ");")
+               "\nconst location = new URL(href);\nconst report = " + script + ";\nconsole.log(JSON.stringify({report, clicks}));")
     done = subprocess.run(["node", "-"], input=program, capture_output=True, text=True, timeout=30)
     assert done.returncode == 0, done.stderr
-    return json.loads(done.stdout)
+    return done.stdout
 
 
+def _composer_on(page: str) -> dict:
+    """The shipped check's report on a page built by `page` (JavaScript that sets `body`, `focus` and `href`)."""
+    return json.loads(json.loads(_on_page(page, sends.COMPOSER_CHECK))["report"])
+
+
+def _send_on(page: str, entry=CHAT) -> tuple:
+    """(the entry's send script's report, the controls it clicked) on a page built by `page`."""
+    done = json.loads(_on_page(page, sends.send_script(entry)))
+    return json.loads(done["report"]), done["clicks"]
+
+
+# The live shapes (the coordinator's reads of 2026-11-14 and -15): in plain mode the composer is its parent's only
+# child; the message log, its photos and its headings lie outside that parent.
 LIVE_ROW = ("const box = el('div', LIVE, [], {text});"
             "const row = el('div', {{}}, [el('div', {{}}, [box]), el('div', {{role: 'button', 'aria-label': 'Press enter to send'}})"
             "{more}]);"
-            "const body = el('body', {{}}, [el('div', {{role: 'main'}}, [el('img', {{src: 'photo-in-the-thread.jpg'}}), row])]);"
+            "const body = el('body', {{}}, [el('div', {{role: 'main'}}, [el('div', {{role: 'grid'}}, [el('img', {{src: "
+            "'photo-in-the-thread.jpg'}}), el('h4', {{}}, [], 'Pat Example')]), el('div', {{}}, [row])])]);"
             "const focus = {focus}; const href = 'https://www.facebook.com/messages/e2ee/t/1000000001/';")
+HIDDEN_COMPOSE = ("el('h3', {style: 'position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0)'}, "
+                  "[], 'Compose')")
+LIVE_BANNER = ("el('div', {}, [el('div', {role: 'heading'}, [], 'Replying to Pat'), "
+               "el('div', {}, [], 'Can you wire it today?'), el('div', {role: 'button', 'aria-label': 'Cancel reply'})])")
+# A composer ready to send: the words typed, its icons drawn as svg inside their controls, `Send a like` turned into
+# `Press enter to send` (round 1's live read), the hidden `Compose` heading inside it, the log outside its parent.
+READY = ("const box = el('div', LIVE, [], TEXT);"
+         "const icon = l => el('div', {role: 'button', 'aria-label': l}, [el('svg', {})]);"
+         "const composer = el('div', {}, [" + HIDDEN_COMPOSE + ", INSIDE...['Send a voice clip', 'Attach a file up to 100 MB', "
+         "'Choose a sticker', 'Choose a GIF'].map(icon), el('div', {}, [box]), icon('Choose an emoji'), icon('Press enter to send')]);"
+         "const body = el('body', {}, [el('div', {role: 'main'}, [el('div', {role: 'grid'}, [el('img', {src: 'photo-in-the-thread.jpg'}), "
+         "el('h4', {}, [], 'Pat Example')]), el('div', {}, BESIDE)])]);"
+         "const focus = box; const href = HREF;")
+
+
+def ready(text=REPLY + "\n", inside="", beside="[composer]", href=E2EE) -> str:
+    return (READY.replace("TEXT", json.dumps(text)).replace("INSIDE", inside).replace("BESIDE", beside)
+            .replace("HREF", json.dumps(href)))
+
+
+PREVIEW = ("el('div', {}, [el('img', {src: 'blob:https://www.facebook.com/5d1c', alt: ''}), "
+           "el('div', {role: 'button', 'aria-label': 'Remove attachment'})])")
+EDIT = "el('div', {}, [el('span', {}, [], 'Edit message'), el('div', {role: 'button', 'aria-label': 'Close'})])"
+CHIP = "el('div', {}, [el('svg', {}), el('span', {}, [], 'lease.pdf'), el('div', {role: 'button', 'aria-label': 'Close'})]), "
+PAGES = {  # a page, and whether the send script sends on it
+    "plain": (ready(), True),
+    "one-character-more": (ready(text=REPLY + "!\n"), False),
+    "a-photo-strip-beside-the-composer": (ready(beside=f"[{PREVIEW}, composer]"), False),  # the third round's #6 shapes
+    "a-file-chip-inside-the-composer": (ready(inside=CHIP), False),
+    "an-edit-banner-beside-the-composer": (ready(beside=f"[{EDIT}, composer]"), False),
+    "an-edit-banner-inside-the-composer": (ready(inside=EDIT + ", "), False),
+    "the-live-reply-banner-beside-it": (ready(beside=f"[{LIVE_BANNER}, composer]"), False),
+    "an-emoji-drawn-in-the-box": (ready().replace("el('div', LIVE, [],", "el('div', LIVE, [el('img', {alt: 'x'})],"), False),
+    "another-conversation": (ready(href=PLAIN), False),
+    "the-plain-chat-of-its-number": (ready(href="https://www.facebook.com/messages/t/1000000001/"), False),
+    "no-send-control": (ready().replace("icon('Press enter to send')", "icon('Send a like')"), False),
+    "two-send-controls": (ready().replace("icon('Press enter to send')", "icon('Press enter to send'), icon('Send')"), False),
+    "two-boxes": (ready(beside="[composer, el('div', {contenteditable: 'true', role: 'textbox', 'aria-placeholder': 'Aa'})]"), False),
+}
+
+
+@pytest.mark.parametrize("page", sorted(PAGES))
+def test_the_send_script_reads_the_composer_and_sends_in_the_same_run_only_when_all_is_as_approved(page):
+    """The third round (#1, #2, #3, #6): the read and the send are one synchronous run, so nothing acts between them."""
+    built, goes = PAGES[page]
+    report, clicked = _send_on(built)
+    assert report["send"] == sends.SEND_MARK and report["sent"] is goes and clicked == (["Press enter to send"] if goes else []), report
+
+
+@pytest.mark.parametrize("text, entry_text, goes", [
+    (REPLY + "\n", REPLY, True),                                                   # the one trailing break Lexical adds
+    (REPLY, REPLY, True),
+    ("First paragraph.\n\nSecond.\n", "First paragraph.\n\nSecond.", True),        # shift+Enter breaks read as \n inside
+    ("First line.\nSecond line.", "First line.\r\nSecond line.", True),            # an entry's line endings, written one way
+    ("\n", REPLY, False),                                                          # an empty box reads as one break
+    (REPLY + "\n\n", REPLY, False),                                                # only one trailing break is Lexical's
+    ("\n" + REPLY, REPLY, False),
+])
+def test_the_send_script_reads_the_box_as_lexical_writes_it(text, entry_text, goes):
+    """The coordinator's live check, 2026-11-14: an empty Messenger box's innerText is a single line break."""
+    report, clicked = _send_on(ready(text=text), {**CHAT, "text": entry_text})
+    assert report["sent"] is goes and bool(clicked) is goes, report
+
+
+def test_the_send_scripts_digest_is_sha256_of_the_words():
+    texts = ["", "a", REPLY, "x" * 55, "x" * 56, "x" * 64, "Café 日本 👍🏽\nLine two.", "€" * 300]
+    found = json.loads(_on_page("const body = null; const focus = null; const href = 'https://example.com/';",
+                                "(() => { " + sends._SHA + " return JSON.stringify(" + json.dumps(texts) + ".map(sha)); })()"))
+    assert json.loads(found["report"]) == [hashlib.sha256(t.encode("utf-8")).hexdigest() for t in texts]
 
 
 def test_the_composer_check_reads_the_live_messenger_box():
@@ -630,9 +756,7 @@ def test_the_composer_check_reads_the_live_messenger_box():
 
 def test_the_composer_check_matches_nothing_with_two_boxes_or_no_composer_around_one():
     two = _composer_on(LIVE_ROW.format(text=json.dumps("\n"), focus="body", more="").replace(
-        "[el('img', {src: 'photo-in-the-thread.jpg'}), row]",
-        "[el('img', {src: 'photo-in-the-thread.jpg'}), row, el('div', {contenteditable: 'true', role: 'textbox', "
-        "'aria-placeholder': 'Aa'})]"))
+        "el('div', {}, [row])", "el('div', {}, [row]), el('div', {contenteditable: 'true', role: 'textbox', 'aria-placeholder': 'Aa'})"))
     assert two["box"] == "ambiguous" and two["text"] is None and two["staged"] is None
     alone = _composer_on("const box = el('div', LIVE, [], '\\n'); const body = el('body', {}, [el('div', {}, [box])]);"
                          "const focus = body; const href = 'https://www.facebook.com/messages/e2ee/t/1000000001/';")
@@ -646,51 +770,36 @@ def test_the_composer_check_matches_nothing_with_two_boxes_or_no_composer_around
         assert named["box"] == "found", label
 
 
-@pytest.mark.parametrize("given", [
-    {**RETURN, "repeat": 2}, {**RETURN, "text": "cmd+Return"}, {**RETURN, "text": "Return Return"},
-    {"action": "right_click", "ref": "ref_5", "tabId": 7, "action_summary": "Sends the reply"},
-    {"action": "double_click", "ref": "ref_5", "tabId": 7, "action_summary": "Clicks Send"},
-    {"action": "left_click", "ref": "ref_5", "tabId": 7, "action_summary": "Clicks Send", "modifiers": "shift"},
-    {"action": "key", "text": "Return", "action_summary": "Sends the reply"},  # no tab named
-    {"action": "left_click", "ref": "ref_5", "tabId": 7, "action_summary": "Clicks Send"},
-    {"action": "left_click", "ref": "ref_6", "tabId": 7, "action_summary": "Sends the reply with the Send button"},
-])
-def test_the_send_is_one_plain_return_on_the_checked_tab(given):
-    """Review #3: Return with repeat 2 passed as the single send. The coordinator's live read, 2026-11-14: the composer's
-    neighbours are send controls themselves (`Send a like`, `Send a voice clip`), so no click can be tied to the one that
-    sends the box's text; one plain Return or Enter in the checked, focused box is the send."""
-    granted([CHAT])
-    assert held(send(checked(), given)), given
-    assert send(checked(), {**RETURN, "text": "Enter", "repeat": 1}) is None
-
-
 def test_the_hold_says_how_a_messenger_entry_is_sent():
     file = batch_file([CALL, CHAT])
     reason = guards.check("Bash", {"command": f"synthesis sends batch {file}"}, CONFIG, cwd=str(FOLDER))
-    assert "composer-check" in reason and "one plain Return" in reason and "click" in reason
+    assert "synthesis sends script" in reason and "browser_batch" in reason and "Return" in reason
     alone = guards.check("Bash", {"command": f"synthesis sends batch {batch_file([CALL], name='mail-only')}"}, CONFIG,
                          cwd=str(FOLDER))
-    assert "composer-check" not in alone
+    assert "synthesis sends script" not in alone
 
 
-def test_typing_and_sending_in_one_call_never_spends_an_entry():
-    """Review #1 to #4 and #9: clearing, focus, typing and Return in one call let the guard trust what it cannot see."""
+def test_a_return_or_a_click_on_a_messenger_tab_spends_no_entry():
+    """A Return after typed words, or a click on Send, sends whatever the box holds then: it waits for the code per call,
+    and only the send step spends an entry."""
     granted([CHAT])
-    one_call = {"actions": [{"name": "computer", "input": {"action": "key", "text": "cmd+a", "tabId": 7}},
-                            {"name": "computer", "input": {"action": "key", "text": "Backspace", "tabId": 7}},
-                            {"name": "computer", "input": {"action": "type", "text": REPLY, "tabId": 7}},
-                            {"name": "computer", "input": {"action": "key", "text": "Return", "tabId": 7}}]}
-    assert held(send(checked(), one_call, tool=CHROME))
-    single = {"actions": [{"name": "computer", "input": RETURN}]}  # a batch of one plain Return is the send itself
-    assert send(checked(), single, tool=CHROME) is None
+    session = listed()
+    typed = {"actions": [{"name": "computer", "input": {"action": "type", "text": REPLY, "tabId": 7}},
+                         {"name": "computer", "input": {"action": "key", "text": "Return", "tabId": 7}}]}
+    for tool, given in ((CHROME, typed), (KEYS, RETURN),
+                        (KEYS, {"action": "left_click", "ref": "ref_5", "tabId": 7, "action_summary": "Clicks Send"})):
+        assert held(guards.check(tool, given, CONFIG, session=session)), given
+    assert sent(step()) is None
 
 
 def test_an_entry_covers_only_its_own_kind_of_send():
     granted([CHAT])
     assert held(guards.check(SLACK, SAID, CONFIG, session=SESSION))
     assert held(guards.check_send("imessage_send", {"to": "+15550100", "text": REPLY}, CONFIG))
-    assert held(send(checked(url=PLAIN)))
-    assert send(checked()) is None
+    listed(PLAIN)
+    assert sent(step({**CHAT, "to": "facebook.com/messages/t/1000000002"}))
+    listed()
+    assert sent(step()) is None
 
 
 # --- every other check still runs first --------------------------------------------------------------------------
@@ -700,12 +809,12 @@ def test_an_entry_that_names_a_time_still_needs_a_fresh_calendar_read():
     config, words = {**CONFIG, "fresh_calendar": {}}, "Tuesday at 3:30 pm works for me."
     timed = {**SAID, "message": words}
     granted([{"tool": SLACK, "input": timed}, {**CHAT, "text": words}])
-    session = {**SESSION, "transcript_path": str(RECORD)}
-    for reason in (guards.check(SLACK, timed, config, session=session), send(checked(text=words), config=config)):
+    session = listed()
+    for reason in (guards.check(SLACK, timed, config, session=session), sent(step({**CHAT, "text": words}), config=config)):
         assert held(reason) and "names a time" in reason
     read_calendar()
     assert guards.check(SLACK, timed, config, session=session) is None
-    assert send(checked(text=words), config=config) is None
+    assert sent(step({**CHAT, "text": words}), config=config) is None
 
 
 def test_an_entry_released_by_the_code_for_its_time_is_spent_with_it():
@@ -718,11 +827,12 @@ def test_an_entry_released_by_the_code_for_its_time_is_spent_with_it():
     assert held(guards.check(SLACK, timed, config, session=session))
 
 
-def test_the_register_scan_still_refuses_a_forbidden_phrase_in_an_entry_and_in_the_box():
+def test_the_register_scan_still_refuses_a_forbidden_phrase_in_an_entry():
     words = "Sorry for the delay, Tuesday works."
     granted([{"tool": SLACK, "input": {**SAID, "message": words}}, {**CHAT, "text": words}])
+    listed()
     assert "delay-apology" in guards.check(SLACK, {**SAID, "message": words}, CONFIG, session=SESSION)
-    assert "delay-apology" in send(checked(text=words))
+    assert "delay-apology" in sent(step({**CHAT, "text": words}))
     assert not any(e["how"].startswith("batch") for e in today())
 
 
@@ -859,60 +969,57 @@ def _extractors() -> list:
     return [subprocess.run([sys.executable, *run], capture_output=True, text=True, check=True).stdout.rstrip("\n") for run in runs]
 
 
+FORGE = "JSON.stringify = () => '{}'"
+
+
+@pytest.mark.parametrize("url", [E2EE, "https://www.facebook.com/", "https://business.facebook.com/latest/inbox",
+                                 "https://www.messenger.com/t/1000000003/"])
 @pytest.mark.parametrize("script", [
-    "JSON.stringify = () => '{}'",
-    "Object.defineProperty(HTMLElement.prototype, 'innerText', {get() { return 'x'; }})",
-    "history.replaceState(null, '', '/messages/e2ee/t/1000000001/')",
-    "setTimeout(() => document.querySelector('[aria-label=\"Send a like\"]').focus(), 1500)",
-])
-def test_a_page_script_on_the_tab_since_its_last_load_voids_every_check_there(script):
-    """Review 2 #1: four page scripts each made the check report what they chose. Any script but the shipped check and
-    the shipped read-only extractors, on that tab since its last load, voids every check there until the next load."""
-    granted([CHAT])
-    other_call(SCRIPT, {"action": "javascript_exec", "text": script, "tabId": 7})
-    assert held(send(checked()))
-    other_call("mcp__claude-in-chrome__navigate", {"url": E2EE, "tabId": 7})  # a new load of the page
-    assert send(checked()) is None
+    FORGE, "Object.defineProperty(HTMLElement.prototype, 'innerText', {get() { return 'x'; }})", "document.title",
+    f"self.chat = open('{E2EE}')", "setTimeout(() => document.querySelector('[aria-label=\"Send a like\"]').focus(), 1500)",
+], ids=["forge", "a-getter", "a-read", "an-opener", "a-timer"])
+def test_no_page_script_but_the_shipped_ones_runs_on_a_messenger_sites_tab(url, script):
+    """The third round (#1, #2): a page script on any page of those sites, which share the chat's origin, can change what
+    the send script reads or what a click sends, then or later; it is refused at its own call."""
+    reason = guards.check(SCRIPT, {"action": "javascript_exec", "text": script, "tabId": 7}, CONFIG, session=listed(url))
+    assert reason and "shipped" in reason, reason
+    batched = {"actions": [{"name": "navigate", "input": {"url": url, "tabId": 9}},
+                           {"name": "javascript_tool", "input": {"action": "javascript_exec", "text": script, "tabId": 9}}]}
+    assert "shipped" in (guards.check(CHROME, batched, CONFIG, session=listed("https://example.com/", tab=9)) or "")
 
 
-def test_the_shipped_read_only_extractors_and_a_script_on_another_tab_void_nothing():
-    granted([CHAT])
-    for script in _extractors():
-        other_call(SCRIPT, {"action": "javascript_exec", "text": script, "tabId": 7})
-    other_call(SCRIPT, {"action": "javascript_exec", "text": "document.title", "tabId": 8})
-    assert send(checked()) is None
+def test_the_shipped_read_only_scripts_run_there():
+    session = listed()
+    for script in [sends.COMPOSER_CHECK, *_extractors()]:
+        assert guards.check(SCRIPT, {"action": "javascript_exec", "text": script, "tabId": 7}, CONFIG, session=session) is None
 
 
-@pytest.mark.parametrize("between", [
-    ("mcp__computer-use__type", {"text": "P.S. "}),
-    ("mcp__computer-use__computer_batch", {"actions": [{"action": "type", "text": "P.S."}]}),
-    ("Bash", {"command": "osascript -e 'tell application \"System Events\" to keystroke \"P.S.\"'"}),
-    (KEYS, {"action": "type", "text": "P.S.", "tabId": 8}),
-])
-def test_any_call_that_can_type_between_the_check_and_the_return_voids_it(between):
-    """Review 2 #2: computer use and osascript keystrokes typed into the box unseen between the check and the Return."""
-    granted([CHAT])
-    session = checked()
-    other_call(*between)
-    assert held(send(session))
-    assert send(checked()) is None
-
-
-def test_another_sessions_call_on_the_browser_in_the_window_voids_the_check():
-    granted([CHAT])
-    session = checked()
+def test_a_tab_another_session_lists_on_a_messenger_site_takes_no_page_script():
+    """The third round (#2): a session that last saw a tab on another page, or never saw it, is not the only one judging."""
     other = RECORD.parent / "S-other.jsonl"
-    other.write_text(json.dumps({"type": "assistant", "timestamp": datetime.now(timezone.utc).isoformat(), "message": {
-        "role": "assistant", "content": [{"type": "tool_use", "id": "toolu_other", "name": KEYS,
-                                           "input": {"action": "type", "text": "P.S.", "tabId": 7}}]}}) + "\n", encoding="utf-8")
+    other.touch()
     paths.write_json(paths.state() / "transcripts" / "S-other.json", {"path": str(other)})
-    assert held(send(session))
+    listed(E2EE, tab=9, record=other)
+    session = listed("https://example.com/", tab=9)  # this session's own list shows another page there
+    for tab in (9,):
+        reason = guards.check(SCRIPT, {"action": "javascript_exec", "text": FORGE, "tabId": tab}, CONFIG, session=session)
+        assert reason and "shipped" in reason
 
 
-@pytest.mark.parametrize("age, goes", [(14, True), (16, False)])
-def test_a_check_is_good_for_fifteen_seconds(age, goes):
-    granted([CHAT])
-    assert (send(checked(age=age)) is None) is goes
+def test_a_page_script_off_the_messenger_sites_runs_as_before():
+    session = listed("https://example.com/", tab=9)
+    for tab in (9, 12):  # a tab on another site, and one no record lists
+        assert guards.check(SCRIPT, {"action": "javascript_exec", "text": "document.title", "tabId": tab}, CONFIG, session=session) is None
+
+
+@pytest.mark.parametrize("text", ["open('https://www.linkedin.com/messaging/thread/1/')", "globalThis.open('/messaging/thread/1/')",
+                                  "window['open']('/messaging/thread/1/')", "self.open('/messaging/thread/1/')"])
+def test_opening_a_page_by_any_spelling_of_open_waits_on_a_messaging_page(text):
+    """The third round (#2): `open(` opens a chat and marks it read as `window.open(` does, under any name."""
+    session = listed("https://www.linkedin.com/messaging/", tab=8)
+    assert held(guards.check(SCRIPT, {"action": "javascript_exec", "text": text, "tabId": 8}, CONFIG, session=session)), text
+    assert guards.check(SCRIPT, {"action": "javascript_exec", "text": "reopen(1); x.open('GET', '/a')", "tabId": 8}, CONFIG,
+                        session=session) is None
 
 
 def test_the_hold_shows_the_files_path_escaped():
@@ -935,18 +1042,19 @@ def test_the_batch_name_and_project_are_shown_escaped():
     assert "‮" not in sends.describe_batch(data) and "\\u202e" in sends.describe_batch(data)
 
 
-def test_the_code_for_a_messenger_entrys_time_binds_the_checked_text_and_needs_a_fresh_check():
-    """Review 2 #4: the code the time's hold asked for released whatever the box held at the next Return."""
+def test_the_code_for_a_messenger_entrys_time_binds_this_exact_send():
+    """Review 2 #4: the code the time's hold asked for released whatever the box held at the next Return. Now it binds
+    the send step itself: its conversation's address, and its script, which holds the words' digest."""
     config, words = {**CONFIG, "fresh_calendar": {}}, "Tuesday at 3:30 pm works for me."
-    granted([{**CHAT, "text": words}])
-    reason = send(checked(text=words), config=config)
-    assert held(reason) and "names a time" in reason and "check" in reason
+    entry = {**CHAT, "text": words}
+    data = granted([entry])
+    listed()
+    reason = sent(step(entry), config=config)
+    assert held(reason) and "names a time" in reason
     APPROVE(reason)
-    other_call(KEYS, {"action": "type", "text": " P.S.", "tabId": 7})  # words added after the code
-    assert held(send({**SESSION, "transcript_path": str(RECORD)}, config=config))  # no fresh check
-    assert held(send(checked(text=words + " P.S.", age=0), config=config))  # a fresh check of other words
-    assert send(checked(text=words, age=0), config=config) is None  # a fresh check, after the code, of the words it was for
-    assert today()[-1]["how"] == "approval" and held(send(checked(text=words, age=0), config=config))
+    assert sent(step(entry, words=words + " P.S."), config=config)  # another call: its own hold
+    assert sent(step(entry), config=config) is None
+    assert today()[-1]["how"] == f"batch:{data['digest'][:12]}:0" and sent(step(entry), config=config)
 
 
 def test_a_spends_code_must_be_the_one_typed_for_this_batchs_digest():
@@ -1069,14 +1177,6 @@ def test_a_tool_name_holds_only_plain_letters_digits_and_the_marks_names_use(odd
     assert sends.read_batch(str(batch_file([{"tool": "mcp__a1-b2.c3:d__slack_send_message", "input": SAID}])))
 
 
-@pytest.mark.parametrize("marks, inline", [(1, 0), (0, 1)])
-def test_a_reply_or_edit_mode_or_an_image_in_the_box_voids_the_match(marks, inline):
-    """Review 2 #9: in reply or edit mode, or with an emoji drawn as an image in the box, the check read a ready box."""
-    granted([CHAT])
-    assert held(send(checked(marks=marks, inline=inline)))
-    assert send(checked()) is None
-
-
 def test_the_composer_check_reports_a_reply_or_edit_banner_and_images_in_the_box():
     reply = ("el('div', {}, [el('span', {}, [], 'Replying to Dana Example'), el('span', {}, [], 'Can you wire it today?'),"
              " el('div', {role: 'button', 'aria-label': 'Close'})])")
@@ -1096,12 +1196,8 @@ def test_the_composer_check_reports_a_reply_or_edit_banner_and_images_in_the_box
 # inside it: a `role="heading"` reading `Replying to <First name>`, the quoted message's text and a `Cancel reply`
 # button; the composer holds its seven controls and the box, focused and empty. The check reads every other child of
 # the composer's parent, so a banner after the composer (where an edit banner might sit; none was read live) marks too.
-# The composer always holds a visually hidden `<h3>` reading `Compose` (the live read of synthesis-composer-4,
-# 2026-11-15: one pixel square, clipped, placed absolutely), and in plain mode it is its parent's only child.
-HIDDEN_COMPOSE = ("el('h3', {style: 'position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0)'}, "
-                  "[], 'Compose')")
-LIVE_BANNER = ("el('div', {}, [el('div', {role: 'heading'}, [], 'Replying to Pat'), "
-               "el('div', {}, [], 'Can you wire it today?'), el('div', {role: 'button', 'aria-label': 'Cancel reply'})])")
+# The composer always holds a visually hidden `<h3>` reading `Compose` (HIDDEN_COMPOSE: the live read of
+# synthesis-composer-4, 2026-11-15: one pixel square, clipped, placed absolutely), and in plain mode it is its parent's only child.
 LIVE_REPLY = ("const box = el('div', LIVE, [], '\\n');"
               "const composer = el('div', {}, [" + HIDDEN_COMPOSE + ", ...['Send a voice clip', 'Attach a file up to 100 MB', "
               "'Choose a sticker', 'Choose a GIF'].map(l => el('div', {role: 'button', 'aria-label': l})), el('div', {}, [box]), "
@@ -1137,7 +1233,6 @@ def test_the_composer_check_reads_reply_mode_from_the_banner_beside_the_composer
         return _composer_on(LIVE_REPLY.replace("CHILDREN", f"[composer, {sibling}]" if after else f"[{sibling}, composer]"))
     report = on(banner)
     assert report["marks"] > 0 and report["box"] == "found" and report["focused"] is True and report["text"] == "\n"
-    assert report["staged"] == 0
     plain = on("el('div', {}, [el('span', {}, [], 'Pat Example')])")
     assert plain["marks"] == 0 and plain["staged"] == 0  # a sibling that is no banner marks nothing
 
