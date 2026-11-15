@@ -26,7 +26,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   Each is read rightly now, and a call that sends only if a page no result shows is a messaging site's is told to read
   the page first, with no code asked. Over 60 days of records
   it refuses none of the seats' 181 ordinary scripts on those pages, holds the 5 that click or move the tab, as before,
-  and passes 176. Spellings made to beat the reader are on the runtime doc's open list.
+  and passes 176, and the second round changes the guard's verdict on none of Claude Code's 3,708 browser calls there.
+  Spellings made to beat the reader are on the runtime doc's open list.
 - **A navigate is read as a URL parser reads it** (core). The `navigate` tool called alone was never judged, and a
   navigate's address was read as written while a browser drops tabs and line breaks anywhere in it and control
   characters at its ends, so `java\tscript:` was a `javascript:` address to the browser alone. Every navigate, from

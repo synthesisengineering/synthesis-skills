@@ -569,6 +569,11 @@ the plugin's own, the seats' ordinary work in two workspaces, it refuses none, h
 tab: the 5 the rule above held) and passes 176; the 2 scripts on a page no record showed pass too. No script in those
 records called a member named as it ran, so none sent that way. A first version refused every script there but the
 plugin's own; it would have refused all 181, against the principal's bar that a release refuses no ordinary work.
+After review round 2 the counts are the same, and so is the guard's own verdict on each of the 3,708 browser calls in
+the Claude Code records of those days, judged as the hook judges them with the browser's recent calls and results as the
+record: 3,611 pass, 97 wait for a code on a messaging site's page, none is refused, and none was on a page no result
+showed. Of the 32 `preview_start` answers in them, 26 name the address the pane is placed at now, 2 name none and change
+no page, and 4 are errors.
 Spellings made to beat the reader are on the open list in `docs/runtime-integration.md`, each with a test expected to
 fail until it is closed.
 
