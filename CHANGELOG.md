@@ -20,8 +20,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   waits for the code, now with an optional call, a call or handler by a destructured name or a bare one the script does
   not define, a move by the address or another part of it, set or added to, and a fetch or Request whose init has a
   method that is no literal GET or HEAD or carries a body (an init the reader cannot follow is read by a method or a
-  body anywhere in the script; an XHR's method too); a read passes, `Array.fill`, `[].slice.call`, a read through a
-  fetch wrapper and a read helper named for what it reads, a function or an object's or a class's method, included. Its
+  body in an object the script passes to a call, or one a variable it passes holds; an XHR's method too); a read passes,
+  `Array.fill`, `[].slice.call`, a read through a fetch wrapper and a read helper named for what it reads, a function
+  or a method of an object or class the script defines, included. Its
   first review round found a page no list shows read as no messaging site's (a sub-agent's above all) and a refused
   navigate taken as a driven browser's page; its second, the pane's page after `preview_start` read as unknown, so a
   local app's click waited for a code; its third, a sub-agent judged by its own list after its session moved the tab

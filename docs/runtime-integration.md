@@ -514,6 +514,12 @@ harness that gives no transcript cannot carry approved sends or deploys until it
   script's own words, so one that a page's own function returns (`fetch(url, options())`) passes when the script names
   no method and no body, a case of the first item above (a call whose name says nothing of what it does) and of the
   same test.
+- **Two more from review round 4 of 5.23.1** (C1 and C2), cases of
+  `test_open_an_init_from_a_string_or_a_pages_send_under_the_scripts_own_name`, expected to fail until closed: an init
+  parsed from a string (`fetch(url, JSON.parse('{"method":"POST",...}'))`), whose method and body the reader sees only
+  as a string; and a page's send under a method name the script defines, by `this` at the script's top level (where it
+  is the page's window) or by a receiver the script sets to the page's object (`let o = {sendMessage() {}}; o =
+  window.app; o.sendMessage(...)`), the member-call form of the item above on scopes.
 
 No local file is secret from an agent running as the person's own OS user, so these
 stay open, and no hook running as that same user can close them:

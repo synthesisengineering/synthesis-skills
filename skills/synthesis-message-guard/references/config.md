@@ -559,7 +559,8 @@ call of X where X is a dotted name or an empty array's method (`Array.prototype.
   without the browser server's own calls, which no page script makes (`new Array(5).fill(0)` is a read); any spelling of
   `open`; a handler called or read (`.onclick`, `onClick`); a call whose name says it sends, posts, submits, publishes,
   replies, shares or tweets, a page's own: by a bare name the script does not define itself, or by a method unless the
-  script defines it and calls it on `this` or on an object it defines (a helper the script defines and names for what
+  script defines it and calls it on `this` or on an object it defines (an object it writes, `new` of its own class, or
+  what an IIFE of its own returns; review round 4, U4) (a helper the script defines and names for what
   it reads, `tweetText` or `postBody`, as a function or an object's or a class's method, is none; review round 3 of
   5.23.1, T2); a move by the address or another part
   of it, set or added to (`location.href +=`, `location.pathname`, `search`, `hash`, `navigation.navigate`,
@@ -567,9 +568,10 @@ call of X where X is a dotted name or an empty array's method (`Array.prototype.
   what is set on that variable) carries a body or a method, in any form (a quoted key, the shorthand, an assignment),
   that is not one literal GET or HEAD, or keyed by a name built as it runs (a computed key, a member named by a
   variable); an init the reader cannot follow otherwise (spread into, the variable set again or handed to other code, a
-  parameter, any other expression) when the script gives a body, or such a method, anywhere, so a read through a fetch
-  wrapper passes (review round 3 of 5.23.1, T1); and an XHR opened with a method that is not GET or HEAD. A `body` read
-  from a response is no write (review round 2 of 5.23.1, #2).
+  parameter, any other expression) when the script puts a body, or such a method, in an object it passes to a call, or
+  in one a variable it passes to a call or spreads into one holds or is given, so a read through a fetch wrapper passes,
+  a `body` in what its own callback returns included (review rounds 3 and 4 of 5.23.1, T1 and U1); and an XHR opened
+  with a method that is not GET or HEAD. A `body` read from a response is no write (review round 2 of 5.23.1, #2).
 - **Passes:** a read, and the extractors the plugin ships.
 
 Measured over the 60 days of Claude Code and Codex records to 2026-11-15: of 181 scripts on those pages that are none of

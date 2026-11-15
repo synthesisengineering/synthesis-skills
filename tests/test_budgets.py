@@ -1341,11 +1341,16 @@ ROOT = Path(__file__).resolve().parents[1]
 # or an object it defines, is no page's send), _defined_names 4 (an object's or a class's method, a property or a field
 # given a function), MEMBER_SENDS 2, _tab_list 8 less _tabs 6 (the list's time, split as on the batch), _LISTS 1 and 10
 # blank lines.
-# The 5.23.1 notes above sum: core 10, 101, 30, 60, 69 and 83 more, plugin the same, on 5.23.0's ceilings.
+# Review round 4 of that rule (2026-11-15): core 22 more and plugin 22, all in guards.py. _bracketed 8 (a balanced group,
+# for the init reader and the IIFE rule), _writes_by_fetch 5 (U1: an init not followed is read by a method or a body in
+# what the script passes to a call, not in what a callback returns or names), _shared_tabs 4 (a sub-agent record whose
+# last 8 MB name no tab list is not parsed: a busy session's 70 records), _script_acts 3 (U4: the object an IIFE of the
+# script's own returns) and 2 blank lines.
+# The 5.23.1 notes above sum: core 10, 101, 30, 60, 69, 83 and 22 more, plugin the same, on 5.23.0's ceilings.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 16850
-PLUGIN_BUDGET = 42922
+CORE_BUDGET = 16872
+PLUGIN_BUDGET = 42944
 
 
 def _lines(files):

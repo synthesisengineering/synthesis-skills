@@ -5474,6 +5474,16 @@ def _unread_script(text: str) -> str:
     return ""
 
 
+def _bracketed(code: str, at: int) -> str:
+    """The bracketed text that opens at `at`, to its closing bracket (the rest of the code when it never closes)."""
+    depth = 0
+    for j in range(at, len(code)):
+        depth += (code[j] in "([{") - (code[j] in ")]}")
+        if not depth:
+            return code[at:j + 1]
+    return code[at:]
+
+
 def _writes_by_fetch(code: str, literals: list) -> bool:
     """A fetch, Request or XHR that may write: the init of fetch or Request (its second argument, or the object a variable
     given there holds and what is set on it) with a body or a method that is not one literal GET or HEAD, or keyed by a
@@ -5481,13 +5491,8 @@ def _writes_by_fetch(code: str, literals: list) -> bool:
     parameter, any other expression) when the script gives a body or such a method anywhere (review round 3 of 5.23.1,
     T1: a read through a fetch wrapper waited); an XHR opened with a method that is not one (rounds 1 and 2, #1 and #2:
     a `body` read from a response is no write)."""
-    def group(at: int) -> str:  # the bracketed text that opens at `at`
-        depth = 0
-        for j in range(at, len(code)):
-            depth += (code[j] in "([{") - (code[j] in ")]}")
-            if not depth:
-                return code[at:j + 1]
-        return code[at:]
+    def group(at: int) -> str:
+        return _bracketed(code, at)
 
     def given(name: str) -> int:  # where the one value a variable is ever given starts, else -1
         sets = [m.end() for m in re.finditer(rf"(?<![\w$.]){re.escape(name)}\s*[-+*/%&|^?]*=(?![=>])", code)]
@@ -5505,22 +5510,32 @@ def _writes_by_fetch(code: str, literals: list) -> bool:
                 return True
         return False
 
-    def anywhere() -> bool:  # a body, or a method that is no literal GET or HEAD, given anywhere in the script
-        for found in re.finditer(r"(?<![\w$])method\b|\0(\d+)\0(?=\s*\]?\s*[:=](?!=))", code):
-            set_ = re.match(r"\s*\]?\s*[:=](?!=)", code[found.end():])
-            if (found[1] is None or literals[int(found[1])] == "method") and not (set_ and reads(code[found.end() + set_.end():])):
-                return True
-        return any(found[1] is None or literals[int(found[1])] == "body" for found in re.finditer(
-            r"(?<![\w$.])body\b(?=\s*[:,}])|\.\s*body\s*[-+]?=(?!=)|\0(\d+)\0(?=\s*\]?\s*(?::|[-+]?=(?!=)))", code))
-
-    inits = []
-    for call in re.finditer(r"\b(?:fetch|Request)\s*\(", code):
-        args, depth, start, inner = [], 0, 0, group(call.end() - 1)[1:-1]
+    def arguments(at: int) -> list:  # the arguments of the call whose `(` is at `at`
+        args, depth, start, inner = [], 0, 0, group(at)[1:-1]
         for j, c in enumerate(inner + ","):
             depth += (c in "([{") - (c in ")]}")
             if c == "," and not depth:
                 args, start = args + [inner[start:j].strip()], j + 1
-        inits.append(args[1] if len(args) > 1 else "")
+        return args
+
+    def anywhere() -> bool:  # a body, or a method that is no literal GET or HEAD, in an object the script passes to a call,
+        # or in one a variable passed or spread into one holds or is given (round 4, U1: not in what a callback returns or names)
+        passed = set()
+        for call in re.finditer(r"(?:(?<![\w$])(?!(?:if|for|while|switch|catch|with|function|return|typeof)\b)[A-Za-z_$][\w$]*|[)\]])\s*\(", code):
+            for arg in arguments(call.end() - 1):
+                if arg.startswith("{") and writes(arg):
+                    return True
+                passed |= set(re.findall(r"\.\.\.\s*([A-Za-z_$][\w$]*)", arg) if arg.startswith("{") else re.findall(r"^[A-Za-z_$][\w$]*$", arg))
+        for name in map(re.escape, passed):
+            if any(writes(group(m.end())) for m in re.finditer(rf"(?<![\w$.]){name}\s*=\s*(?=\{{)", code)):
+                return True
+            for member in re.finditer(rf"(?<![\w$.]){name}\s*(?:\.\s*(method|body)\b|\[\s*\0(\d+)\0\s*\])\s*[-+]?=(?!=)", code):
+                prop = member[1] or literals[int(member[2])]
+                if prop == "body" or prop == "method" and not reads(code[member.end():]):
+                    return True
+        return False
+
+    inits = [(lambda args: args[1] if len(args) > 1 else "")(arguments(call.end() - 1)) for call in re.finditer(r"\b(?:fetch|Request)\s*\(", code)]
     for init in filter(None, inits):
         name = re.escape(init)
         at = -1 if init.startswith("{") or not re.fullmatch(r"[A-Za-z_$][\w$]*", init) else given(init)
@@ -5567,8 +5582,11 @@ def _script_acts(text: str) -> bool:
     xhr_read = "XMLHttpRequest" in code and not _writes_by_fetch(code, literals) and not re.search(r"\bWebSocket\b|\bRTCDataChannel\b", code)
     read = re.sub(r"\.\s*send\s*\(\s*(?:null\s*)?\)", ".read()", code) if xhr_read else code
     defined, classes = _defined_names(code), set(re.findall(r"\bclass\s+([A-Za-z_$][\w$]*)", code))
-    objects = {"this"} | {n for n, brace, made in re.findall(r"\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:(\{)|new\s+([A-Za-z_$][\w$]*))", code)
-                          if brace or made in classes}
+    objects = {"this"}
+    for m in re.finditer(r"\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:(\{)|new\s+([A-Za-z_$][\w$]*)|(\())", code):
+        iife = _bracketed(code, m.start(4)) if m[4] else ""  # round 4, U4: what an IIFE of its own returns, an object it writes
+        if m[2] or m[3] in classes or iife and re.match(r"\s*\(", code[m.start(4) + len(iife):]) and re.search(r"=>\s*\(\s*\{|\breturn\s*\{", iife):
+            objects.add(m[1])
     member = any(not (m[3] in defined and (m[1] in classes or m[2] in objects)) for m in MEMBER_SENDS.finditer(read))
     bare = {found[1] for found in BARE_SENDS.finditer(code)} - defined
     return bool(acts.search(text) or acts.search(code) or SCRIPT_ACTS_MORE.search(read) or member or bare or _writes_by_fetch(code, literals))
@@ -5731,6 +5749,10 @@ def _shared_tabs(session: dict | None, server: str) -> tuple:
         try:
             if record == own or os.path.getmtime(record) < max(when, time.time() - 12 * 3600):
                 continue  # nothing in it is newer than this call's own list
+            with open(record, "rb") as handle:  # one whose last 8 MB name no tab list is not parsed (round 4: a busy
+                handle.seek(max(0, os.path.getsize(record) - TRANSCRIPT_TAIL))  # session's 70 records, 0.9 s of the 4)
+                if b"Tab Context" not in handle.read():
+                    continue
         except OSError:
             continue
         listed, _, at = _listed(record, server)
