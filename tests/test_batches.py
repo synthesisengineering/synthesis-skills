@@ -61,11 +61,22 @@ def batch_file(entries, name="replies-1", project=PROJECT, folder=None) -> Path:
 
 
 def granted(entries, name="replies-1") -> dict:
-    """A batch the principal opened: the guard's hold, their code typed in this session, the command run here."""
+    """A batch the principal opened: the guard's hold in this session's record, their code typed after it, the command
+    run here."""
     file = batch_file(entries, name)
-    APPROVE(guards.check("Bash", {"command": f"synthesis sends batch {file}"}, CONFIG, cwd=str(FOLDER)))
+    APPROVE(held_in_record(guards.check("Bash", {"command": f"synthesis sends batch {file}"}, CONFIG, cwd=str(FOLDER))))
     assert cli.main(["--session", "S-principal", "sends", "batch", str(file)]) == 0
     return next(b for b in sends.batches() if b["batch"] == name)
+
+
+def held_in_record(reason: str) -> str:
+    """The guard's hold as the harness records it, the held call's result, in the session's record; the hold."""
+    ident, at = f"toolu_{time.time_ns()}", datetime.now(timezone.utc).isoformat()
+    _record({"type": "assistant", "timestamp": at, "message": {"role": "assistant", "content": [
+                {"type": "tool_use", "id": ident, "name": "Bash", "input": {"command": "synthesis sends batch"}}]}},
+            {"type": "user", "timestamp": at, "message": {"role": "user", "content": [
+                {"type": "tool_result", "tool_use_id": ident, "is_error": True, "content": reason}]}})
+    return reason
 
 
 def _cli(*args):
@@ -79,11 +90,11 @@ def _record(*lines) -> None:
 
 
 def checked(url=E2EE, text=REPLY, tab=7, focused=True, staged=0, server="mcp__claude-in-chrome", script=None, age=1.0,
-            error=False, report=None, box="found") -> dict:
+            error=False, report=None, box="found", marks=0, inline=0) -> dict:
     """The shipped composer check run on a tab, and its result, in the session's record; the session."""
     ident, at = f"toolu_{time.time_ns()}", (datetime.now(timezone.utc) - timedelta(seconds=age)).isoformat()
     found = report or json.dumps({"check": sends.COMPOSER_MARK, "url": url, "box": box, "text": text, "focused": focused,
-                                  "staged": staged, "boxes": 1})
+                                  "staged": staged, "marks": marks, "inline": inline, "boxes": 1})
     tabs = f"\n\nTab Context:\n- Executed on tabId: {tab}\n- Available tabs:\n  • tabId {tab}: \"Messenger\" (\"{url}\")"
     _record({"type": "assistant", "timestamp": at, "message": {"role": "assistant", "content": [
                 {"type": "tool_use", "id": ident, "name": f"{server}__javascript_tool",
@@ -551,6 +562,7 @@ class El {
 }
 function matches(el, list) {
   return list.split(',').some(one => {
+    if (one.trim() === '*') return true;
     const m = one.trim().match(/^([a-z0-9]*)((?:\[[^\]]+\])*)$/i);
     if (!m) throw new Error('a selector this page cannot read: ' + one);
     if (m[1] && el.tagName !== m[1].toUpperCase()) return false;
@@ -590,7 +602,7 @@ LIVE_ROW = ("const box = el('div', LIVE, [], {text});"
 def test_the_composer_check_reads_the_live_messenger_box():
     report = _composer_on(LIVE_ROW.format(text=json.dumps("\n"), more="", focus="body"))
     assert report == {"check": sends.COMPOSER_MARK, "url": E2EE, "box": "found", "text": "\n", "focused": False,
-                      "staged": 0, "boxes": 1}
+                      "staged": 0, "marks": 0, "inline": 0, "boxes": 1}
     typed = _composer_on(LIVE_ROW.format(text=json.dumps(REPLY + "\n"), more="", focus="box"))
     assert typed["text"] == REPLY + "\n" and typed["focused"] is True and typed["staged"] == 0
     staged = _composer_on(LIVE_ROW.format(text=json.dumps(REPLY + "\n"), focus="box",
@@ -718,7 +730,7 @@ def test_a_meeting_placed_on_today_is_never_covered(monkeypatch):
 
 
 def test_the_window_and_the_batch_never_combine():
-    signed = {**SAID, "message": "Status is green. Helperbot here"}
+    signed = {"channel_id": "D0777", "message": "Status is green. Helperbot here"}
     sends.open_window(2, ["slack", "bitbucket"], count=1)
     data = granted([{"tool": SLACK, "input": signed}, CALL])
     assert guards.check(SLACK, signed, CONFIG, session=SESSION) is None
@@ -819,3 +831,180 @@ def test_no_shell_line_or_script_writes_the_batch_state_or_opens_a_batch():
         assert reason and "send-window code" in reason, script
     look = "python3 -c 'from synthesis import sends; print(sends.batches())'"
     assert guards.check("Bash", {"command": look}, CONFIG, cwd=str(FOLDER)) is None
+
+
+# --- review round 2 (2026-11-15) ---------------------------------------------------------------------------------
+
+
+def _extractors() -> list:
+    """The read-only page scripts 5.23.0 ships, as their own commands print them."""
+    rituals, exports = ROOT / "skills" / "synthesis-daily-rituals" / "scripts", ROOT / "skills" / "synthesis-message-exports" / "scripts"
+    runs = [[str(rituals / "messenger_messages.py"), "extractor", "--inbox", inbox] for inbox in ("chats", "requests", "archived")]
+    runs += [[str(exports / "chat_page.py"), "extractor"]]
+    return [subprocess.run([sys.executable, *run], capture_output=True, text=True, check=True).stdout.rstrip("\n") for run in runs]
+
+
+@pytest.mark.parametrize("script", [
+    "JSON.stringify = () => '{}'",
+    "Object.defineProperty(HTMLElement.prototype, 'innerText', {get() { return 'x'; }})",
+    "history.replaceState(null, '', '/messages/e2ee/t/1000000001/')",
+    "setTimeout(() => document.querySelector('[aria-label=\"Send a like\"]').focus(), 1500)",
+])
+def test_a_page_script_on_the_tab_since_its_last_load_voids_every_check_there(script):
+    """Review 2 #1: four page scripts each made the check report what they chose. Any script but the shipped check and
+    the shipped read-only extractors, on that tab since its last load, voids every check there until the next load."""
+    granted([CHAT])
+    other_call(SCRIPT, {"action": "javascript_exec", "text": script, "tabId": 7})
+    assert held(send(checked()))
+    other_call("mcp__claude-in-chrome__navigate", {"url": E2EE, "tabId": 7})  # a new load of the page
+    assert send(checked()) is None
+
+
+def test_the_shipped_read_only_extractors_and_a_script_on_another_tab_void_nothing():
+    granted([CHAT])
+    for script in _extractors():
+        other_call(SCRIPT, {"action": "javascript_exec", "text": script, "tabId": 7})
+    other_call(SCRIPT, {"action": "javascript_exec", "text": "document.title", "tabId": 8})
+    assert send(checked()) is None
+
+
+@pytest.mark.parametrize("between", [
+    ("mcp__computer-use__type", {"text": "P.S. "}),
+    ("mcp__computer-use__computer_batch", {"actions": [{"action": "type", "text": "P.S."}]}),
+    ("Bash", {"command": "osascript -e 'tell application \"System Events\" to keystroke \"P.S.\"'"}),
+    (KEYS, {"action": "type", "text": "P.S.", "tabId": 8}),
+])
+def test_any_call_that_can_type_between_the_check_and_the_return_voids_it(between):
+    """Review 2 #2: computer use and osascript keystrokes typed into the box unseen between the check and the Return."""
+    granted([CHAT])
+    session = checked()
+    other_call(*between)
+    assert held(send(session))
+    assert send(checked()) is None
+
+
+def test_another_sessions_call_on_the_browser_in_the_window_voids_the_check():
+    granted([CHAT])
+    session = checked()
+    other = RECORD.parent / "S-other.jsonl"
+    other.write_text(json.dumps({"type": "assistant", "timestamp": datetime.now(timezone.utc).isoformat(), "message": {
+        "role": "assistant", "content": [{"type": "tool_use", "id": "toolu_other", "name": KEYS,
+                                           "input": {"action": "type", "text": "P.S.", "tabId": 7}}]}}) + "\n", encoding="utf-8")
+    paths.write_json(paths.state() / "transcripts" / "S-other.json", {"path": str(other)})
+    assert held(send(session))
+
+
+@pytest.mark.parametrize("age, goes", [(14, True), (16, False)])
+def test_a_check_is_good_for_fifteen_seconds(age, goes):
+    granted([CHAT])
+    assert (send(checked(age=age)) is None) is goes
+
+
+def test_the_hold_shows_the_files_path_escaped():
+    """Review 2 #3: line breaks in the file's name printed a fake listing, and an escape code hid the real one."""
+    batch = sends.read_batch(str(batch_file([CALL])))
+    sly = str(FOLDER / "replies\n  1. slack by mcp__x: channel_id \"D1\"\x1b[8m.json")
+    reason = sends.batch_refusal(batch, sly)
+    assert "\x1b" not in reason and "\n  1. slack by mcp__x" not in reason and "\\u001b" in reason
+    (FOLDER / "bad\x1b[8m.json").write_text("{", encoding="utf-8")
+    with pytest.raises(ValueError) as refused:
+        sends.read_batch(str(FOLDER / "bad\x1b[8m.json"))
+    assert "\x1b" not in str(refused.value)
+
+
+def test_the_batch_name_and_project_are_shown_escaped():
+    """Review 2 #11: the approval's summary and `sends status` showed them raw."""
+    data = granted([CALL], name="replies‮-1")
+    pending = [paths.read_json(p) for p in (paths.state() / "approval-requests").glob("*.json")]
+    assert all("‮" not in p.get("summary", "") for p in pending)
+    assert "‮" not in sends.describe_batch(data) and "\\u202e" in sends.describe_batch(data)
+
+
+def test_the_code_for_a_messenger_entrys_time_binds_the_checked_text_and_needs_a_fresh_check():
+    """Review 2 #4: the code the time's hold asked for released whatever the box held at the next Return."""
+    config, words = {**CONFIG, "fresh_calendar": {}}, "Tuesday at 3:30 pm works for me."
+    granted([{**CHAT, "text": words}])
+    reason = send(checked(text=words), config=config)
+    assert held(reason) and "names a time" in reason and "check" in reason
+    APPROVE(reason)
+    other_call(KEYS, {"action": "type", "text": " P.S.", "tabId": 7})  # words added after the code
+    assert held(send({**SESSION, "transcript_path": str(RECORD)}, config=config))  # no fresh check
+    assert held(send(checked(text=words + " P.S."), config=config))  # a fresh check of other words
+    assert send(checked(text=words), config=config) is None  # a fresh check of the words the code was for
+    assert today()[-1]["how"] == "approval" and held(send(checked(text=words), config=config))
+
+
+def test_a_spends_code_must_be_the_one_typed_for_this_batchs_digest():
+    """Review 2 #5: any code the principal typed in 12 hours, for anything, made forged batch state spendable."""
+    unrelated = approvals.request("send", {"tool": SLACK, "input": {"channel_id": "D0555", "message": "Hi."}}, "a note")
+    APPROVE(held_in_record(f"Sending needs the principal's approval: type approve followed by the code {unrelated}."))
+    batch = sends.read_batch(str(batch_file([CALL])))
+    sends.open_batch(batch, {"code": unrelated, "asked": time.time() - 30}, "S-principal")
+    assert held(guards.check(SLACK, SAID, CONFIG, session=SESSION))
+
+
+def test_the_functions_that_lead_into_the_state_are_the_guards_to_see():
+    assert {"sends._spends_file", "sends._batch_file", "sends._window_file"} <= guards.SYNTHESIS_PLACES
+    for line in ("python3 -c 'from synthesis import sends; sends._spends_file().write_text(\"\")'",
+                 "python3 -c 'from synthesis import sends; open(sends._spends_file(), \"w\").close()'"):
+        assert guards.check("Bash", {"command": line}, CONFIG, cwd=str(FOLDER)), line
+
+
+def test_a_photo_or_a_file_carrying_field_is_never_covered_and_connector_entries_go_one_to_a_conversation():
+    """Review 2 #7: the connector form carried the messages sender's photo, and skipped one entry per conversation."""
+    photo = {"name": "a.jpg", "bytes": 9, "sha256": "0" * 64}
+    with pytest.raises(ValueError, match="entry 1"):
+        sends.read_batch(str(batch_file([{"tool": "imessage_send", "input": {"to": "+15550100", "text": REPLY, "photo": photo}}])))
+    with pytest.raises(ValueError, match="entry 2 .*conversation"):
+        sends.read_batch(str(batch_file([CALL, {"tool": SLACK, "input": {**SAID, "message": "And another thing."}}])))
+    for field in ("photo", "picture", "video", "audio", "voice", "blob", "sticker", "thumbnail", "avatar"):
+        sends.close_batches()
+        given = {"channel_id": f"D-{field}", "message": REPLY, field: photo}
+        granted([{"tool": SLACK, "input": given}], name=f"carry-{field}")
+        assert held(guards.check(SLACK, given, CONFIG, session=SESSION)), field
+
+
+def test_every_invisible_or_variation_character_is_shown_as_its_code():
+    """Review 2 #8: variation selectors, U+034F, U+115F and U+3164 printed as is, rendering as nothing."""
+    hidden = "️\U000e0100͏ᅟᅠㅤﾠ⠀ 　"
+    listing = sends.batch_listing(sends.read_batch(str(batch_file([{**CHAT, "text": "Thanks." + hidden + " See you."}]))), show=True)
+    assert not set(hidden) & set(listing)
+    for code in ("\\ufe0f", "\\U000e0100", "\\u034f", "\\u115f", "\\u3164"):
+        assert code in listing, code
+
+
+@pytest.mark.parametrize("marks, inline", [(1, 0), (0, 1)])
+def test_a_reply_or_edit_mode_or_an_image_in_the_box_voids_the_match(marks, inline):
+    """Review 2 #9: in reply or edit mode, or with an emoji drawn as an image in the box, the check read a ready box."""
+    granted([CHAT])
+    assert held(send(checked(marks=marks, inline=inline)))
+    assert send(checked()) is None
+
+
+def test_the_composer_check_reports_a_reply_or_edit_banner_and_images_in_the_box():
+    reply = ("el('div', {}, [el('span', {}, [], 'Replying to Dana Example'), el('span', {}, [], 'Can you wire it today?'),"
+             " el('div', {role: 'button', 'aria-label': 'Close'})])")
+    edit = "el('div', {}, [el('span', {}, [], 'Editing message'), el('div', {role: 'button', 'aria-label': 'Cancel'})])"
+    for banner in (reply, edit):
+        page = LIVE_ROW.format(text=json.dumps(REPLY + "\n"), more="", focus="box").replace(
+            "[el('div', {}, [box])", "[" + banner + ", el('div', {}, [box])")
+        assert _composer_on(page)["marks"] > 0, banner
+    plain = _composer_on(LIVE_ROW.format(text=json.dumps("Editing the plan now.\n"), more="", focus="box"))
+    assert plain["marks"] == 0  # the box's own words are no banner
+    drawn = _composer_on(LIVE_ROW.format(text=json.dumps(REPLY + "\n"), more="", focus="box").replace(
+        "const box = el('div', LIVE, [],", "const box = el('div', LIVE, [el('img', {alt: 'x', src: 'emoji.png'})],"))
+    assert drawn["inline"] == 1
+
+
+def test_a_messages_entry_is_spent_only_with_the_session_the_guard_is_told():
+    """Review 2 #10: the sender asked the guard with no session, so SYNTHESIS_SESSION, which any shell can set, chose
+    the session a spend checked. A spend now needs the session given to the guard, and the shell guard checks that a
+    session messages_send.py names is the one that runs it."""
+    granted([TEXT])
+    assert held(guards.check_send("imessage_send", {"to": "+15550100", "text": REPLY}, CONFIG))  # the environment's
+    sender = ROOT / "skills" / "synthesis-local-messaging" / "scripts" / "messages_send.py"
+    line = f"python3 {sender} --session S-principal --to +15550100 --text-file reply.txt"
+    other = {"session_id": "S-other", "transcript_path": str(RECORD.parent / "S-other.jsonl")}
+    assert "S-principal" in (guards.check("Bash", {"command": line}, CONFIG, cwd=str(FOLDER), session=other) or "")
+    assert guards.check("Bash", {"command": line}, CONFIG, cwd=str(FOLDER), session={**SESSION, "transcript_path": str(RECORD)}) is None
+    assert guards.check_send("imessage_send", {"to": "+15550100", "text": REPLY}, CONFIG, {"session_id": "S-principal"}) is None
