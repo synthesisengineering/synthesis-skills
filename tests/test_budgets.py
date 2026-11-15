@@ -1328,7 +1328,7 @@ ROOT = Path(__file__).resolve().parents[1]
 # lines (the workspace a record ran in), main 9 (the cloud model's arguments and each record's workspace), report 1 (the
 # gate's limit, and no pass where nothing answered).
 # The judge on the harness's own plan (the principal, 2026-11-15: synthesis must not depend on people buying API credits;
-# the cloud stays an option) adds 103 to the core and 123 to the plugin. judge.py 89: _subscription 42, primary 8 and
+# the cloud stays an option) adds 107 to the core and 127 to the plugin. judge.py 93: _subscription 42, primary 8 and
 # _first 3 with their six blank lines (Claude Code's print mode or Codex's exec on the person's plan, with no tools,
 # every hook off, no user settings, plugins or memory and no session kept, in a room of the judge's own with its marker
 # set, stopped at the deadline, a refusal, an error or an answer that is not a verdict no verdict; which judge reads a
@@ -1336,7 +1336,9 @@ ROOT = Path(__file__).resolve().parents[1]
 # settings 9 (an entry per harness with its model, command and effort, and the workspaces left out), _judged 10 (the
 # plan's judge first, none for a harness without one, the cloud's second opinion after either), ANSWER and BY_TOOL with
 # their comment 4 (the verdict through Claude Code's structured-output tool as the model's first act: an answer written
-# as text first cost two to three seconds more), HARNESSES, ENTRY_KEYS and MARKER 2, the docstring 2, the subprocess
+# as text first cost two to three seconds more), NOT_THE_PLAN with its comment 4 (the credentials that outrank the plan's sign-in kept out of the judge's run: in
+# print mode an API key in the environment is used before the plan, which would bill past the cloud's cap), HARNESSES,
+# ENTRY_KEYS and MARKER 2, the docstring 2, the subprocess
 # import 1, notice 1 (which judge decides alone past the cap), ask 1. reply_check.py 12: shortcut_verdict 11 (where the
 # judge is a service both questions are asked at once, so a flagged reply waits about one answer's time),
 # shortcut_problem 1 (the reply's harness passed through). hook.py 2: inside the judge's own run the session-start,
@@ -1346,8 +1348,8 @@ ROOT = Path(__file__).resolve().parents[1]
 # both questions timed at once as the hook asks them, the first question's own time from the judge's log).
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 16533
-PLUGIN_BUDGET = 42962
+CORE_BUDGET = 16537
+PLUGIN_BUDGET = 42966
 
 
 def _lines(files):

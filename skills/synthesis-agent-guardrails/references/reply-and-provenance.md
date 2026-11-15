@@ -90,8 +90,9 @@ before it goes back (M38; the principal's rulings of 2026-11-14). The list, the 
   model's first act: an answer written as text first is asked for again after a summary step of Claude Code's own, two
   to three seconds more. Codex's `codex exec` runs read only, ephemeral, without the user's config and with hooks off.
   Each run is in a room of the judge's own under `state/judge/`, with `SYNTHESIS_JUDGE_RUN` set: a synthesis hook
-  started inside it returns at once, so a verdict is never itself judged, and the guard still guards. Its verdicts count
-  against the plan's usage and cost nothing more. Claude Code says `--bare`, which never reads the plan's sign-in, will
+  started inside it returns at once, so a verdict is never itself judged, and the guard still guards. It runs on the
+  plan's sign-in alone: an API key, a gateway token or a cloud account in the environment is kept out of its run, since
+  print mode would use them before the plan, so its verdicts count against the plan's usage and cost nothing more. Claude Code says `--bare`, which never reads the plan's sign-in, will
   become the default for `-p`; when it does, these runs fail, the log shows `refused`, and the list decides.
 - Where the judge is a service, the plan's or the cloud's, the two questions are asked at once, so a flagged reply waits
   about one answer's time; this Mac's one local model answers one at a time, so there they are asked in turn.

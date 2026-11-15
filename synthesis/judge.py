@@ -46,6 +46,10 @@ SYSTEM_CA_FILES = ("/etc/ssl/cert.pem", "/etc/ssl/certs/ca-certificates.crt", "/
 KEYS, LOCAL_KEYS = {"local", "cloud", "subscription", "deadline_seconds"}, {"models", "url", "keep_alive"}
 HARNESSES, ENTRY_KEYS = {"claude-code": "claude", "codex": "codex"}, {"model", "command", "effort"}  # the plan's own command lines
 MARKER = "SYNTHESIS_JUDGE_RUN"  # set in the judge's own run: a synthesis hook there briefs, records and judges nothing
+# Credentials that outrank the plan's sign-in, kept out of the judge's run: Claude Code's print mode uses an API key in
+# the environment when present, a cloud account or gateway before it (its authentication precedence), Codex a key of its own
+NOT_THE_PLAN = ("CLAUDE_CODE_USE_BEDROCK", "CLAUDE_CODE_USE_VERTEX", "CLAUDE_CODE_USE_FOUNDRY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_API_KEY",
+                "ANTHROPIC_PROFILE", "ANTHROPIC_FEDERATION_RULE_ID", "CODEX_API_KEY", "OPENAI_API_KEY")
 CLOUD_KEYS = {"provider", "model", "keys_file", "keys", "price_per_mtok", "monthly_cap_usd", "url", "effort"}
 FIELDS = ("verdict", "rule", "span", "reason", "sure")
 QUOTES = str.maketrans({"‘": "'", "’": "'", "“": '"', "”": '"'})
@@ -392,8 +396,8 @@ def _subscription(entry: dict, harness: str, system: str, user: str, policy: Pol
                        "--skip-git-repo-check", "-C", str(room), "-m", entry["model"], "--output-schema", str(schema_file), "-o", str(answer_file)] \
             + (["-c", f'model_reasoning_effort="{effort}"'] if effort else []) + ["-"], system + "\n\n" + user
     try:
-        done = subprocess.run(argv, input=stdin, capture_output=True, text=True, cwd=str(room), env={**os.environ, MARKER: "1"},
-                              timeout=max(0.05, deadline - time.monotonic()))
+        env = {**{k: v for k, v in os.environ.items() if k not in NOT_THE_PLAN}, MARKER: "1"}
+        done = subprocess.run(argv, input=stdin, capture_output=True, text=True, cwd=str(room), env=env, timeout=max(0.05, deadline - time.monotonic()))
         if harness == "claude-code":
             answer = json.loads(done.stdout) if done.stdout.strip() else None
             if not isinstance(answer, dict) or answer.get("is_error") or done.returncode:
