@@ -88,7 +88,8 @@ def test_a_sub_agents_call_is_judged_by_its_own_record(tmp_path, name):
     parent = tmp_path / "S-principal.jsonl"
     _ran(parent, "mcp__claude-in-chrome__computer", {"action": "screenshot", "tabId": 5}, _listing({5: "https://www.example.com/"}, 5))
     sub = {"session_id": "S-principal", "transcript_path": str(parent), "agent_id": "a1b2c3"}
-    assert _stopped(_check(tool, given, sub)), name  # its own record shows nothing yet: the page is unknown, read it first
+    assert _check(tool, given, sub) is None, name  # its own record shows nothing yet: its session's list shows the tab on
+    # example.com, and the newest list across the two decides (review round 3 of 5.23.1, T3)
     own = tmp_path / "S-principal" / "subagents" / "agent-a1b2c3.jsonl"
     own.parent.mkdir(parents=True)
     _ran(own, "mcp__claude-in-chrome__computer", {"action": "screenshot", "tabId": 5}, _listing({5: SITES["slack"]}, 5))
