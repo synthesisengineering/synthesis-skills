@@ -497,6 +497,14 @@ harness that gives no transcript cannot carry approved sends or deploys until it
 No local file is secret from an agent running as the person's own OS user, so these
 stay open, and no hook running as that same user can close them:
 
+- A script file that builds the paths it writes while it runs. Python on the line that
+  writes where its reader cannot place it waits for the code whatever the line names
+  (2026-11-15), but a script file is judged only when the line or its text names a
+  protected folder, so one that builds every path at run time, from a variable's name or
+  from the state's own records, still gets through. Closing it lies outside any check of
+  a program's text: the harnesses' own sandboxes keeping those folders out of a shell's
+  write reach. That is a design decision for the principal.
+
 - An agent that deliberately forges its harness's transcript, writing a line shaped
   like the person's prompt, defeats the transcript check. The shell guard and the guard
   on the file tools (Write, Edit, `apply_patch` and their like) refuse the natural routes.
