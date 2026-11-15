@@ -1364,10 +1364,13 @@ ROOT = Path(__file__).resolve().parents[1]
 # settled and the guard freed), _entry 8 more (no entry while this thread settles or holds the send lock; the hook's
 # call marked as entered; the depth and the lock put back last), hook_answers 3 more (records an unanswered call left
 # stand), _SETTLING 1.
+# Then each 5 more, all in guards.py: answered 5 more, from review round 7 (an interrupt after the check handed its
+# records over and before it freed the guard left the lock taken): the guard freed whichever records the check left, and
+# no check entered while the answer settles them.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 16876
-PLUGIN_BUDGET = 42948
+CORE_BUDGET = 16881
+PLUGIN_BUDGET = 42953
 
 
 def _lines(files):

@@ -600,16 +600,21 @@ def answered(allowed: bool) -> None:
     """The hook's answer: settle the records of the call its check judged, when that check entered the guard, and stop
     waiting for the hook. Another thread's records are its own (review round 5 of the spend order, finding 1). A check
     of this thread cut short in its own finally, before it handed its records over, left them with the guard: they are
-    settled here, and the guard freed if that check still holds it (review round 6, finding 2)."""
+    settled here, and the guard freed if that check still holds it, whichever records it left (review round 6, finding
+    2; round 7, finding 1)."""
     me = _thread.get_ident()
     UNDER_HOOK["on"] = 0
-    pending = _PENDING.pop(me, False)
-    if pending:
-        settle(allowed, *pending)
-    elif pending is None and (_DEPTH[1] == me and _JUDGING.locked() or _JUDGING.acquire(False)):
-        try:
+    pending, held = _PENDING.pop(me, False), _DEPTH[1] == me and _JUDGING.locked()
+    try:
+        _SETTLING[0] = me
+        if pending:
+            settle(allowed, *pending)
+        elif pending is None and (held or _JUDGING.acquire(False)):
+            held = True
             settle(allowed)
-        finally:
+    finally:
+        _SETTLING[0] = None
+        if held:
             _DEPTH[0], _DEPTH[1] = 0, None
             _JUDGING.release()
 
