@@ -378,3 +378,51 @@ def test_a_plugin_copy_whose_line_names_a_protected_folder_is_not_told_the_runti
     work = _work(tmp_path)
     reason = _verdict(mac, f"python3 {mac.plugin / IMPORT} {work}/export --out {mac.sh}/sessions/probe-import", work)
     assert reason and "runs with no code" not in reason, reason
+
+
+# --- finding 4: what the interpreter loads, and what runs it --------------------------------------------------------
+
+RUN = "python3 {rt}/" + FETCHER + " --window 2026-11-14 2026-11-15"  # its own text names a project's `.claude` folder
+SEND_RUN = "python3 {rt}/" + SEND + " --to +15550100 --text-file {work}/t.txt"
+NOT_PLAIN = {  # each makes the runtime's copy load or run something other than what the release holds, or run as another
+    "PYTHONPATH": "PYTHONPATH={work}/pp " + RUN, "PYTHONHOME": "PYTHONHOME={work}/ph " + RUN,
+    "PYTHONSTARTUP": "PYTHONSTARTUP={work}/s.py " + RUN, "PYTHONUSERBASE": "PYTHONUSERBASE={work}/ub " + RUN,
+    "PYTHONPYCACHEPREFIX": "PYTHONPYCACHEPREFIX={work}/pyc " + RUN, "PYTHONINSPECT": "PYTHONINSPECT=1 " + RUN,
+    "PYTHONWARNINGS": "PYTHONWARNINGS=ignore::evil.Warning " + RUN, "an export": "export PYTHONPATH={work}/pp; " + RUN,
+    "env with a value": "env PYTHONPATH={work}/pp " + RUN, "the loader": "DYLD_INSERT_LIBRARIES={work}/x.dylib " + RUN,
+    "the program search path": "PATH={work}/bin:$PATH " + RUN, "allexport": "set -a; PYTHONPATH={work}/pp; " + RUN,
+    "another synthesis home": "SYNTHESIS_HOME={work}/fake " + SEND_RUN,
+    "another synthesis home, exported": "export SYNTHESIS_HOME={work}/fake; " + SEND_RUN,
+    "an interpreter by its path": "{work}/bin/" + RUN, "nice": "nice " + RUN, "env": "env " + RUN,
+    "timeout": "timeout 60 " + RUN, "xargs": "echo 2026-11-15 | xargs " + RUN, "-i": RUN.replace("python3 ", "python3 -i ", 1),
+    "-X pycache_prefix": RUN.replace("python3 ", "python3 -X pycache_prefix={work}/pyc ", 1),
+    "-W with a module": RUN.replace("python3 ", "python3 -W ignore::evil.Warning ", 1),
+    "a function": "python3() {{ {work}/evil \"$@\"; }}; " + RUN, "an alias": "alias python3={work}/evil; " + RUN,
+    "a file read into the shell": ". {work}/env.sh && " + RUN, "hash": "hash -p {work}/evil python3; " + RUN,
+}
+
+
+@pytest.mark.parametrize("name", list(NOT_PLAIN))
+def test_the_runtimes_copy_run_with_its_own_environment_or_through_another_program_is_not_proven_by_being_shipped(mac, tmp_path, name):
+    work = _work(tmp_path)
+    assert _verdict(mac, NOT_PLAIN[name].format(rt=mac.rt, work=work), work), name
+
+
+PLAIN = {  # the interpreter's plain word, with options that only take away what it loads, through a shell or not
+    "plain": RUN, "-S": RUN.replace("python3 ", "python3 -S ", 1), "-I": RUN.replace("python3 ", "python3 -I ", 1),
+    "-B -E -s -u": RUN.replace("python3 ", "python3 -B -E -s -u ", 1), "a shell's script": "bash -c '" + RUN + "'",
+    "after cd": "cd {work} && " + RUN, "after set -eu": "set -euo pipefail; " + RUN, "the send script": SEND_RUN,
+    "a variable of the line's own": "AP={rt}/skills/synthesis-autopilot/scripts/autopilot_cli.py; python3 -S \"$AP\" status",
+}
+
+
+@pytest.mark.parametrize("name", list(PLAIN))
+def test_the_runtimes_copy_run_by_the_plain_interpreter_needs_no_code(mac, tmp_path, name):
+    work = _work(tmp_path)
+    assert _verdict(mac, PLAIN[name].format(rt=mac.rt, work=work), work) is None, name
+
+
+def test_a_plugin_copy_run_with_its_own_environment_is_not_told_the_runtimes_copy_needs_no_code(mac, tmp_path):
+    work = _work(tmp_path)
+    reason = _verdict(mac, f"PYTHONPATH={work}/pp python3 {mac.plugin / FETCHER} --window 2026-11-14 2026-11-15", work)
+    assert reason and "runs with no code" not in reason, reason
