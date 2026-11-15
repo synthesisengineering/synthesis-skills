@@ -1355,10 +1355,19 @@ ROOT = Path(__file__).resolve().parents[1]
 # changes in place (any case, a trailing dot).
 # Then 1 more in each, from the round's replay (a scanner reaching repositories under a hooks folder the user's config
 # names waited 115 times): _git_programs 1 (a hooks folder's hooks take the scope of the setting that names it).
+# Review round 2 (HTTPie's :8765 shorthand, curl's URL in a variable, http.client with host and port apart, stray_lessons.py,
+# git config core.fsmonitor, a bare repository's pre-receive and -c include.path ran with no code): core 66 more and
+# plugin 66, all in guards.py. HTTP forms 27: _curl_config 15 (a config file's url, data and request read as words, or
+# unread), _mcp_calls 6 (the :port shorthand, a URL the shell fills in, input on a redirect), check_outgoing 4 (the
+# line's readings with its variables filled in), BODY_GIVEN 1 and _posted_bodies 1 (host and port apart, a method or a
+# body by position). Scanners and git config 12: _scanned_folders 7 (stray_lessons.py's --repo, pr_queue_scan.py's
+# repos.yaml, sharing_scan.py's repository, portfolio_review.py's --index, the doctor's own knowledge roots),
+# _hooks_pointed 4 (any key that names a program) and GIT_SCANNERS 1. Receiving and bare hooks 25: _receiving_hooks 18,
+# RECEIVE_HOOKS 3, _hook_folder 3 (a git dir's own hooks folder) and _git_programs 1. Line includes 2 (_git_programs).
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 17210
-PLUGIN_BUDGET = 43282
+CORE_BUDGET = 17276
+PLUGIN_BUDGET = 43348
 
 
 def _lines(files):
