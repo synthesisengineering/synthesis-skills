@@ -1516,10 +1516,11 @@ def check_plan_judge(config: dict, probe=None, status=None) -> list:
         if fix:
             level, detail = "warn", fix
         elif took > deadline:
-            level, detail = "warn", (f"{model} answered in {took:.1f} s on the plan, past the judge's deadline of {deadline:.1f} s (at most "
+            level, detail = "warn", (f"{model} answered an invented sentence in {took:.1f} s on the plan, past the judge's deadline of {deadline:.1f} s (at most "
                                      f"{judge.LONGEST:.1f} s): most verdicts are cut off and the word list decides, until the Stop hook gives the judge longer")
         else:
-            level, detail = "ok", f"{model} answered in {took:.1f} s on the plan; the judge's deadline is {deadline:.1f} s"
+            level, detail = "ok", (f"{model} answered an invented sentence in {took:.1f} s on the plan; the judge's deadline is {deadline:.1f} s "
+                                   "(a flagged reply takes longer: about twice as long in the replay of 2026-11-15)")
         lines.append(Check(level, f"{harness} plan judge", detail))
     return lines
 

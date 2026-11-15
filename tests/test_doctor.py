@@ -2849,9 +2849,9 @@ def test_no_plan_judge_configured_adds_no_line():
 
 
 @pytest.mark.parametrize("signed, why, seconds, status, words", [
-    ("plan", "", 2.1, "ok", "answered in 2.1 s on the plan"),
+    ("plan", "", 2.1, "ok", "answered an invented sentence in 2.1 s on the plan"),
     ("plan", "", 4.2, "warn", "past the judge's deadline of 3.0 s"),
-    ("unknown", "", 2.0, "ok", "answered in 2.0 s"),
+    ("unknown", "", 2.0, "ok", "a flagged reply takes longer"),
     ("none", "", 0.0, "warn", "is not signed in"),
     ("api", "", 0.0, "warn", "an API account, not a plan"),
     ("missing", "", 0.0, "warn", "is not on PATH"),
