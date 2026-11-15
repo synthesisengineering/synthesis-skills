@@ -76,6 +76,10 @@ PAGE_SENDS = {  # a page's own send, by a method the script does not define or o
     "this-undefined-method": "class A { go() { return this.sendMessage('C0001', 'hello') } } new A().go()",
     "defined-method-other-object": "const r = {tweetText(a) { return a.innerText }}; window.app.tweetText('hello')",
     "a-method-that-sends": "const r = {postReply(t) { return TS.client.ui.sendMessage('C0001', t) }}; r.postReply('hello')",
+    # the reviewer's status checks: a parameter named like a send changes nothing where the send is written as a call
+    "param-named-send-click": "const run = (send) => send(); run(() => document.querySelector('[aria-label=\"Send\"]').click())",
+    "param-named-post-member": ("function withRetry(post, tries = 2) { for (let i = 0; i < tries; i++) { try { return post() } catch (e) {} } } "
+                                "withRetry(() => TS.client.ui.sendMessage('C0001', 'hello'))"),
 }
 
 

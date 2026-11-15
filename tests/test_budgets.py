@@ -1333,11 +1333,19 @@ ROOT = Path(__file__).resolve().parents[1]
 # is told to read the page first, with no code asked, in a browser whose reads show its page), _defined_names 8 (a name
 # the script defines is no page's send), SHOWS_PAGE 1, BARE_SENDS 1, _script_code 1 (`[].x.call(` is a call of x),
 # _script_acts 1 and 2 blank lines.
-# The 5.23.1 notes above sum: core 10, 101, 30, 60 and 69 more, plugin the same, on 5.23.0's ceilings.
+# Review round 3 of that rule (2026-11-15): core 83 more and plugin 83, all in guards.py. _shared_tabs 26 (Claude in
+# Chrome's tab at the newest list that names it across the session's record and its sub-agents'), _writes_by_fetch 14
+# (an init the reader cannot follow is read by a method or a body anywhere in the script, so a read through a fetch
+# wrapper passes; keyed by a name built as it runs, it waits), _listed 12 (each record's newest list, read once per
+# version of the file), _when 6 (a list's line's time), _script_acts 6 (a call by a method the script defines, on `this`
+# or an object it defines, is no page's send), _defined_names 4 (an object's or a class's method, a property or a field
+# given a function), MEMBER_SENDS 2, _tab_list 8 less _tabs 6 (the list's time, split as on the batch), _LISTS 1 and 10
+# blank lines.
+# The 5.23.1 notes above sum: core 10, 101, 30, 60, 69 and 83 more, plugin the same, on 5.23.0's ceilings.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 16767
-PLUGIN_BUDGET = 42839
+CORE_BUDGET = 16850
+PLUGIN_BUDGET = 42922
 
 
 def _lines(files):
