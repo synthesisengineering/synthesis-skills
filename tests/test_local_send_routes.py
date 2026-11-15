@@ -826,3 +826,28 @@ def test_a_node_helper_is_read_through_its_calls(tmp_path):
     changed = ("const body = {jsonrpc: '2.0', id: 1, method: 'tools/call', params: {name: 'search_drive_files', arguments: {}}};\n"
                "body.params.name = process.env.TOOL;\nfetch('http://localhost:8765/mcp', {method: 'POST', body: JSON.stringify(body)});\n")
     assert held(shell("node - <<'EOF'\n" + changed + "EOF", cwd=str(tmp_path)))  # a request it changes in place
+
+
+def test_a_program_a_line_variable_names_is_read_and_its_filled_in_arguments_name_no_tool(tmp_path):
+    """From the round's replay: the line's variables now reach a program's own path, so a client run as `"$C"` is read; a
+    JSON argument that holds what a substitution gives cannot be a tool's name, so a reading tool still passes."""
+    query = '"{\\"user_google_email\\": \\"principal@example.com\\", \\"query\\": \\"modifiedTime > \'$D\'\\"}"'
+    assert shell(f'C={CLIENT}; D=$(date +%F); python3 "$C" search_drive_files {query}', cwd=str(tmp_path)) == ""
+    assert held(shell(f'C={CLIENT}; D=$(date +%F); python3 "$C" send_gmail_message {query}', cwd=str(tmp_path)))
+    assert held(shell(f"C={CLIENT}; T=$(cat tool.txt); python3 \"$C\" \"$T\" '{{}}'", cwd=str(tmp_path)))  # a name it fills in
+    poster = tmp_path / "poster.py"
+    poster.write_text(POSTER.replace("open(sys.argv[1], 'rb').read()", repr(SEND_BODY.encode())), encoding="utf-8")
+    assert held(shell(f'P={poster}; python3 "$P"', cwd=str(tmp_path)))  # a program the line's variable names
+
+
+def test_a_program_the_line_hands_the_endpoint_is_judged_by_its_bodies(tmp_path):
+    """From the round's replay: a program whose own text names no endpoint is handed it by the line, in its arguments or
+    in a variable the line sets, and its bodies are judged as when its text names it."""
+    (tmp_path / "send.json").write_text(SEND_BODY, encoding="utf-8")
+    (tmp_path / "read.json").write_text(READ_BODY, encoding="utf-8")
+    (tmp_path / "post.py").write_text("import sys, urllib.request as u\nu.urlopen(sys.argv[1], data=open(sys.argv[2], 'rb').read())\n", encoding="utf-8")
+    (tmp_path / "post_env.py").write_text("import os, sys, urllib.request as u\nu.urlopen(os.environ['URL'], data=open(sys.argv[1], 'rb').read())\n",
+                                          encoding="utf-8")
+    for body, waits in (("send.json", True), ("read.json", False)):
+        for line in (f"python3 post.py http://localhost:8765/mcp {body}", f"URL=http://127.0.0.1:8765/mcp python3 post_env.py {body}"):
+            assert held(shell(line, cwd=str(tmp_path))) is waits, line

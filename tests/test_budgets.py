@@ -1455,10 +1455,14 @@ ROOT = Path(__file__).resolve().parents[1]
 # variables 17 (_line_values 8, _filled 8 and _unfilled 5, less check_outgoing's 4: a body in a variable the line does
 # not set waits, and one it sets is put into the words that use it whole). Includes by --config-env 3 (_git_programs).
 # The section's note and the blank lines between its 18 new functions 41.
+# Then 3 more in each, from the round's replay (the line's variables now reach a program's own path, so 15 client runs
+# as "$C" with a JSON argument a substitution fills were read, and that argument counted as a possible tool name; and
+# a program whose text names no endpoint is handed it by its line): _mcp_calls 2 (a word the shell fills in names a
+# tool only when it can make a name; the line's port, path or arguments naming the endpoint) and _posted_bodies 1.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 18086
-PLUGIN_BUDGET = 44158
+CORE_BUDGET = 18089
+PLUGIN_BUDGET = 44161
 
 
 def _lines(files):

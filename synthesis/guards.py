@@ -6744,15 +6744,17 @@ def _mcp_calls(commands: list, feeds: list, written: set, line: str = "", bodies
             files = (_python_files(path or os.path.join(where, "-"), text, "" if _isolated(words) else os.path.realpath(
                 where if not path else os.path.dirname(path)), given if module else "")[0] if head.startswith("python") and text else [(path, text)])
             args = words[at + 1:] if kind == "file" else words[at + (words[at:at + 1] == ["-"]):] if kind == "stdin" else words[at:]
-            calls += _posted_bodies(files, head, where, path, args, "" if kind == "stdin" else feed, written, depth) if text else []
+            aimed = bool(re.search(r":8765\b|/mcp\b", line)) or any(_mcp_endpoint(w) == "mcp" for w in args)  # handed the endpoint
+            calls += _posted_bodies(files, head, where, path, args, "" if kind == "stdin" else feed, written, depth, aimed) if text else []
             for file, body in files:
                 for tool, given_args in _tools_called(body, head.startswith("python"), own=file == files[0][0]):
                     how = f"`{head}` running {'a program that' if kind != 'file' else os.path.basename(path) + ', which'} calls a tool"
                     if tool != ARGV:
                         calls.append((tool, given_args, how, where, path))
                         continue
-                    named = [w for w in args if "$" in w or "`" in w or re.fullmatch(r"[A-Za-z][\w.-]{1,80}", w)]
-                    objects = [o for o in (_json_object(w) for w in args) if o is not None]
+                    named = [w for w in args if re.fullmatch(r"[A-Za-z][\w.-]{1,80}", w) or ("$" in w or "`" in w) and re.fullmatch(
+                        r"(?:[\w.-]+|\$\{?\w+\}?|\$\([^()]*\)|`[^`]*`)+", w)]  # a word the shell fills in counts when it can make a name
+                    objects = [o for o in (_json_object(w) for w in args if "$" not in w and "`" not in w) if o is not None]
                     calls += [(None if "$" in w or "`" in w else w, objects[0] if len(named) == 1 and len(objects) == 1 else None,
                                how + " named in its arguments", where, path) for w in named]
         elif depth < 2:
@@ -7128,11 +7130,12 @@ def _js_bodies(text: str) -> tuple:
     return bodies + ([None] if marked and not wrote else []), lines
 
 
-def _posted_bodies(files: list, head: str, where: str, path: str, args, feed: str, written: set, depth: int = 0) -> list:
+def _posted_bodies(files: list, head: str, where: str, path: str, args, feed: str, written: set, depth: int = 0, aimed: bool = False) -> list:
     """Calls for what a program that names a local MCP endpoint hands over in its HTTP writes (rounds 1 and 3): each body
     it spells, reads from a file or its input, or takes from its arguments, read as curl's -d @file is; each client it
-    starts, judged as on the line; a body the guard cannot read is an unknown call. One that only reads hands over none."""
-    if not _names_mcp("\n".join(t for _, t in files), head):
+    starts, judged as on the line; a body the guard cannot read is an unknown call. One that only reads hands over none.
+    `aimed`: the line hands the program the endpoint (in its arguments, a variable it sets, a file another command writes)."""
+    if not aimed and not _names_mcp("\n".join(t for _, t in files), head):
         return []
     how, calls, bodies, lines = f"`{head}` posting a body it reads or builds to a local MCP server", [], [], []
     for _, text in files:
