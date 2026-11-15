@@ -407,6 +407,132 @@ def test_the_reply_check_names_the_workspace_a_reply_belongs_to(fake, keys_file,
     assert fake.calls[-1]["headers"]["x-api-key"] == "test-key-clientx-2222"
 
 
+# ---- the subscription judge ---------------------------------------------------------------------------------------
+
+FAKE_CLI = """#!/usr/bin/env python3
+import json, os, sys, time
+args = sys.argv[1:]
+record = {"argv": args, "marker": os.environ.get("SYNTHESIS_JUDGE_RUN"), "stdin": sys.stdin.read(), "cwd": os.getcwd(), "at": time.time()}
+with open(os.environ["FAKE_LOG"], "a") as handle:
+    handle.write(json.dumps(record) + "\\n")
+mode, verdict = os.environ.get("FAKE_MODE", "verdict"), json.loads(os.environ.get("FAKE_VERDICT", "{}"))
+time.sleep(float(os.environ.get("FAKE_SLEEP", "0")))
+if mode == "error":
+    print(json.dumps({"type": "result", "subtype": "success", "is_error": True, "result": "Not logged in"}))
+    sys.exit(1)
+if args and args[0] == "exec":  # codex: the last message to the file -o names
+    open(args[args.index("-o") + 1], "w").write(json.dumps(verdict))
+else:
+    print(json.dumps({"type": "result", "subtype": "success", "is_error": False, "result": json.dumps(verdict), "structured_output": verdict}))
+"""
+
+
+@pytest.fixture
+def fake_cli(tmp_path, monkeypatch):
+    """A stand-in for the harness's own command line: it records what it was given and answers as the harness does."""
+    path = tmp_path / "fake-cli"
+    path.write_text(FAKE_CLI, encoding="utf-8")
+    path.chmod(0o755)
+    monkeypatch.setenv("FAKE_LOG", str(tmp_path / "fake-cli.jsonl"))
+    monkeypatch.setenv("FAKE_VERDICT", json.dumps(_verdict()))
+    return path
+
+
+def _runs(tmp_path):
+    log = tmp_path / "fake-cli.jsonl"
+    return [json.loads(line) for line in log.read_text(encoding="utf-8").splitlines()] if log.exists() else []
+
+
+def _sub_config(fake_cli, **more):
+    return {"judge": {"deadline_seconds": 3.0, "subscription": {
+        "claude-code": {"model": "small-model", "command": str(fake_cli), "effort": "low"}, "codex": {"model": "small-codex", "command": str(fake_cli)},
+        "leave_out": ["heldback"], **more}}}
+
+
+def test_the_subscription_judge_runs_the_replys_own_harness_with_no_tools_hooks_or_saved_session(fake_cli, tmp_path, isolated_home):
+    """The principal's requirement of 2026-11-15: no one has to buy API credits beside their plan, so the judge can run
+    on the harness's own subscription through its command line: Claude Code's `claude -p` with a small model, no tools,
+    every hook off and no session kept, and the content on its input."""
+    judge = _judge()
+    found = judge.ask("demo", judge.parse_policy("demo", POLICY_TEXT), CONTENT, {}, _sub_config(fake_cli), harness="claude-code")
+    assert (found.verdict, found.model) == ("hold", "small-model")
+    run = _runs(tmp_path)[0]
+    args = run["argv"]
+    assert args[0] == "-p" and args[args.index("--model") + 1] == "small-model" and args[args.index("--tools") + 1] == ""
+    assert {"--no-session-persistence", "--strict-mcp-config", "--disable-slash-commands"} <= set(args)
+    assert json.loads(args[args.index("--settings") + 1])["disableAllHooks"] is True and args[args.index("--effort") + 1] == "low"
+    assert json.loads(args[args.index("--json-schema") + 1])["additionalProperties"] is False
+    assert POLICY_TEXT.strip() in args[args.index("--system-prompt") + 1] and "<content-" in run["stdin"] and CONTENT in run["stdin"]
+    assert run["marker"] == "1" and run["cwd"].startswith(str(isolated_home))  # the judge's own run, in a room of its own
+
+
+def test_a_codex_reply_is_judged_through_codex_exec(fake_cli, tmp_path):
+    judge = _judge()
+    found = judge.ask("demo", judge.parse_policy("demo", POLICY_TEXT), CONTENT, {}, _sub_config(fake_cli), harness="codex")
+    assert (found.verdict, found.model) == ("hold", "small-codex")
+    args = _runs(tmp_path)[0]["argv"]
+    assert args[0] == "exec" and {"--ephemeral", "--ignore-user-config", "--skip-git-repo-check"} <= set(args)
+    assert args[args.index("--disable") + 1] == "hooks" and args[args.index("--sandbox") + 1] == "read-only"
+    assert args[args.index("-m") + 1] == "small-codex" and "--output-schema" in args and _runs(tmp_path)[0]["marker"] == "1"
+
+
+def test_a_harness_with_no_entry_or_a_workspace_left_out_is_never_judged_by_the_subscription(fake_cli, tmp_path):
+    judge = _judge()
+    policy, config = judge.parse_policy("demo", POLICY_TEXT), _sub_config(fake_cli)
+    assert judge.ask("demo", policy, CONTENT, {}, config, harness="muse") is None
+    assert judge.ask("demo", policy, CONTENT, {}, config, harness="claude-code", workspace="heldback") is None
+    assert _runs(tmp_path) == []
+
+
+@pytest.mark.parametrize("failure", ["slow", "error", "missing"])
+def test_a_subscription_run_that_is_slow_refused_or_missing_is_no_verdict(fake_cli, tmp_path, monkeypatch, failure):
+    judge = _judge()
+    config = _sub_config(fake_cli)
+    config["judge"]["deadline_seconds"] = 0.8
+    monkeypatch.setenv("FAKE_MODE", "error" if failure == "error" else "verdict")
+    monkeypatch.setenv("FAKE_SLEEP", "5" if failure == "slow" else "0")
+    if failure == "missing":
+        config["judge"]["subscription"]["claude-code"]["command"] = str(tmp_path / "no-such-cli")
+    began = time.monotonic()
+    assert judge.ask("demo", judge.parse_policy("demo", POLICY_TEXT), CONTENT, {}, config, harness="claude-code") is None
+    assert time.monotonic() - began < 2.0  # the deadline holds: the list decides
+
+
+def test_a_remote_judge_asks_both_questions_at_once(fake_cli, monkeypatch):
+    """Two questions in turn on a service that takes a few seconds each would pass the principal's eight; asked at once
+    they take about one's time. The second's answer counts only where the first is a sure pass, as before."""
+    monkeypatch.setenv("FAKE_SLEEP", "1.0")
+    monkeypatch.setenv("FAKE_VERDICT", json.dumps(_verdict(verdict="pass", rule="none", span="", reason="nothing is put off")))
+    reply = "The parser is fixed. I'll leave the importer for now."
+    began = time.monotonic()
+    found = reply_check.shortcut_verdict(reply, ["for now"], _sub_config(fake_cli), harness="claude-code")
+    assert found.verdict == "pass" and time.monotonic() - began < 1.8  # in turn it would take two seconds and more
+
+
+def test_the_judges_own_run_quiets_the_turn_hooks_but_never_the_guard(isolated_home):
+    """No recursion: a hook started inside the judge's own run (its marker set) briefs, records and judges nothing, so a
+    judge's answer is never itself judged. The guard keeps guarding there: the marker opens no door."""
+    env = {**os.environ, "SYNTHESIS_HOME": str(isolated_home), "SYNTHESIS_JUDGE_RUN": "1"}
+    run = lambda event, payload, extra=env: subprocess.run([sys.executable, "-S", str(ROOT / "synthesis" / "hook.py"), event],
+                                                          input=json.dumps(payload), capture_output=True, text=True, env=extra)
+    lazy = {"session_id": "s1", "last_assistant_message": "Leaving that for now."}
+    plain = {k: v for k, v in env.items() if k != "SYNTHESIS_JUDGE_RUN"}
+    assert json.loads(run("stop", lazy, plain).stdout)["decision"] == "block"  # without the marker, sent back
+    assert run("stop", lazy).stdout.strip() == ""
+    assert run("session-start", {"session_id": "s2"}).stdout.strip() == "" and run("session-start", {"session_id": "s3"}, plain).stdout.strip()
+    assert run("user-prompt-submit", {"session_id": "s2", "prompt": "hello"}).stdout.strip() == ""
+    denied = run("pre-tool-use", {"tool_name": "Bash", "tool_input": {"command": "rm -rf ~"}})
+    assert json.loads(denied.stdout)["hookSpecificOutput"]["permissionDecision"] == "deny"
+
+
+def test_the_reply_check_names_the_harness_a_reply_came_from(fake_cli, tmp_path, isolated_home):
+    codex = Path(os.environ["CODEX_HOME"]) / "sessions" / "2026" / "rollout-one.jsonl"
+    codex.parent.mkdir(parents=True)
+    codex.write_text("", encoding="utf-8")
+    reply_check.check({"last_assistant_message": "I'll leave the importer for now.", "transcript_path": str(codex)}, _sub_config(fake_cli))
+    assert _runs(tmp_path) and all(run["argv"][0] == "exec" for run in _runs(tmp_path))
+
+
 # ---- the configuration ------------------------------------------------------------------------------------------
 
 @pytest.mark.parametrize("section", [
@@ -428,6 +554,11 @@ def test_the_reply_check_names_the_workspace_a_reply_belongs_to(fake, keys_file,
                "price_per_mtok": {"input": 1, "output": 5}}},
     {"cloud": {"provider": "anthropic", "model": "c", "key_env": "K", "keys_file": "k.yaml", "keys": {"default": "a.b"},
                "price_per_mtok": {"input": 1, "output": 5}}},                          # a key named by the environment: gone
+    {"subscription": "claude-code"},                                                    # not an object
+    {"subscription": {"muse": {"model": "m"}}},                                         # a harness it cannot run
+    {"subscription": {"claude-code": {}}},                                              # no model
+    {"subscription": {"claude-code": {"model": "m"}, "leave_out": "heldback"}},         # a list of workspaces
+    {"subscription": {"claude-code": {"model": "m", "turbo": True}}},                   # a key it does not know
 ])
 def test_a_malformed_judge_section_is_refused(section):
     judge = _judge()
@@ -441,6 +572,8 @@ def test_no_judge_section_means_no_judge():
     cloud = judge.settings({"judge": {"cloud": {"provider": "anthropic", "model": "c", "keys_file": "k.yaml",
                                                 "keys": {"default": "a.b", "other": None}, "price_per_mtok": {"input": 1, "output": 5}}}})
     assert cloud["local"] is None and cloud["cloud"]["keys"] == {"default": "a.b", "other": None}  # the cloud alone is the judge
+    sub = judge.settings({"judge": {"subscription": {"claude-code": {"model": "m"}, "leave_out": ["w"]}}})
+    assert sub["subscription"]["claude-code"]["command"] == "claude" and sub["subscription"]["leave_out"] == ["w"] and sub["local"] is None
     on = judge.settings({"judge": {"local": {"models": ["m"]}}})
     assert on["local"]["url"] == "http://127.0.0.1:11434" and on["deadline_seconds"] <= 3.5 and on["cloud"] is None
 

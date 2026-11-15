@@ -214,3 +214,45 @@ def test_the_cloud_replay_reads_each_workspaces_key_and_leaves_out_a_workspace_w
     assert server.keys == ["test-key-default-1111"] * 2  # the personal item's two questions, with the default key
     for secret in ("test-key-default-1111", "test-key-held-3333"):
         assert secret not in out and secret not in cleared.read_text(encoding="utf-8")
+
+
+FAKE_CLAUDE = """#!/usr/bin/env python3
+import json, os, sys
+sys.stdin.read()
+with open(os.environ["FAKE_LOG"], "a") as handle:
+    handle.write(json.dumps({"argv": sys.argv[1:], "marker": os.environ.get("SYNTHESIS_JUDGE_RUN")}) + "\\n")
+verdict = {"verdict": "pass", "rule": "none", "span": "", "reason": "nothing is put off", "sure": True}
+print(json.dumps({"type": "result", "subtype": "success", "is_error": False, "result": json.dumps(verdict), "structured_output": verdict}))
+"""
+
+
+def test_the_subscription_replay_runs_the_harness_command_and_leaves_out_a_workspace(tmp_path, monkeypatch, capsys):
+    """The judge on the person's own subscription (2026-11-15): each labeled hit judged through the harness's command
+    line, both questions at once, a workspace set aside left out and counted."""
+    import hashlib
+    monkeypatch.setenv("HOME", str(tmp_path))
+    fake = tmp_path / "fake-claude"
+    fake.write_text(FAKE_CLAUDE, encoding="utf-8")
+    fake.chmod(0o755)
+    monkeypatch.setenv("FAKE_LOG", str(tmp_path / "runs.jsonl"))
+    labels = []
+    for name in ("personal", "heldback"):
+        cwd = str(tmp_path / "workspaces" / name / "project")
+        reply = f"The {name} parser is fixed. I'll leave the importer for now."
+        record = _write(tmp_path / "claude" / name / "one.jsonl", [
+            {"type": "user", "uuid": f"{name}-u", "cwd": cwd, "message": {"content": "Convert the parser."}},
+            {"type": "assistant", "uuid": f"{name}-a", "cwd": cwd, "message": {"id": f"{name}-m", "content": [{"type": "text", "text": reply}]}}])
+        labels.append({"path": str(record), "line": 2, "digest": hashlib.sha256(reply.encode()).hexdigest()[:16], "source": "list-hit",
+                       "label": "legitimate", "category": "other", "reason": "r"})
+    _write(tmp_path / "labels.jsonl", labels)
+    assert replay.main(["--since", "2000-01-01", "--claude", str(tmp_path / "claude"), "--codex", str(tmp_path / "none"), "--muse",
+                        str(tmp_path / "none"), "--subscription", "small-model", "--command", str(fake), "--effort", "low",
+                        "--leave-out", "heldback", "--labels", str(tmp_path / "labels.jsonl"), "--limit", "8"]) == 0
+    out = capsys.readouterr().out
+    import re
+    left = re.search(r"left out by --leave-out: 1 \(dev (\d), test (\d)\)", out)
+    assert left and int(left.group(1)) + int(left.group(2)) == 1
+    assert "small-model all (1): shortcut 0 of 0 cleared, unsure 0 of 0 cleared, legitimate 1 of 1 cleared" in out
+    assert "both questions at once" in out and "against the 8000 ms limit" in out
+    runs = [json.loads(line) for line in (tmp_path / "runs.jsonl").read_text().splitlines()]
+    assert len(runs) == 2 and all(r["marker"] == "1" and r["argv"][0] == "-p" for r in runs)  # the one item's two questions
