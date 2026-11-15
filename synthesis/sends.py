@@ -436,7 +436,8 @@ def checked(batch) -> dict:
         raise ValueError(f"a batch holds 1 to {MAX_SENDS} entries")
     hidden = _controls(batch)  # the review of 5.23.0: an escape code hid words in the listing, a carriage return overprinted
     if hidden:
-        raise ValueError(f"it holds a control character other than a newline ({_shown(hidden)[:80]}), which no listing shows")
+        raise ValueError(f"it holds a control character other than a newline, or half of a surrogate pair ({_shown(hidden)[:80]}), "
+                         "which no listing shows")
     seen = {}
     for n, entry in enumerate(entries, 1):
         problem = _entry_problem(entry)
@@ -459,25 +460,27 @@ def _conversation_of(entry: dict):
 
 
 def _controls(value) -> str:
-    """The first string of a JSON value, a key included, that holds a control character other than a newline; else ""."""
+    """The first string of a JSON value, a key included, that holds a control character other than a newline or half of
+    a surrogate pair (a JSON escape can hold one); else ""."""
     if isinstance(value, dict):
         return next((s for k, v in value.items() for s in (_controls(k), _controls(v)) if s), "")
     if isinstance(value, list):
         return next((s for v in value for s in [_controls(v)] if s), "")
-    return value if isinstance(value, str) and any(unicodedata.category(c) == "Cc" and c != "\n" for c in value) else ""
+    return value if isinstance(value, str) and any(unicodedata.category(c) in ("Cc", "Cs") and c != "\n" for c in value) else ""
 
 
-# Characters that render as nothing or as a plain space but are not one (the review of 5.24.0: variation selectors,
-# U+034F, U+115F and U+3164 printed as is): fillers, blanks, joiners and selectors, beside every control, format,
-# separator, private and unassigned character.
+# Characters of a kind that draws (letters, marks, symbols) that render as nothing or as a plain space: fillers, blanks,
+# joiners and selectors (the review of 5.24.0: variation selectors, U+034F, U+115F and U+3164 printed as is; its third
+# round: U+1D159 and U+16FE4).
 INVISIBLE = ((0x034F, 0x034F), (0x115F, 0x1160), (0x17B4, 0x17B5), (0x180B, 0x180F), (0x2800, 0x2800), (0x3164, 0x3164),
-             (0xFE00, 0xFE0F), (0xFFA0, 0xFFA0), (0xE0100, 0xE01EF))
+             (0xFE00, 0xFE0F), (0xFFA0, 0xFFA0), (0x16FE4, 0x16FE4), (0x1D159, 0x1D159), (0xE0100, 0xE01EF))
 
 
 def _escaped(text: str) -> str:
-    return "".join((f"\\u{ord(c):04x}" if ord(c) <= 0xFFFF else f"\\U{ord(c):08x}")
-                   if unicodedata.category(c) in ("Cc", "Cf", "Zl", "Zp", "Co", "Cn") or unicodedata.category(c) == "Zs" and c != " "
-                   or any(low <= ord(c) <= high for low, high in INVISIBLE) else c for c in text)
+    """A text as a listing prints it: a character that draws a glyph (a letter, mark, digit, punctuation or symbol, none
+    of the blanks above), a plain space or a line break as it is; every other one as its code (the third round)."""
+    return "".join(c if c in " \n" or unicodedata.category(c)[0] in "LMNPS" and not any(low <= ord(c) <= high for low, high in INVISIBLE)
+                   else f"\\u{ord(c):04x}" if ord(c) <= 0xFFFF else f"\\U{ord(c):08x}" for c in text)
 
 
 def _shown(text: str) -> str:
@@ -491,7 +494,9 @@ def _entry_problem(entry) -> str:
     if keys == {"tool", "input"} and isinstance(entry["tool"], str) and entry["tool"] and isinstance(entry["input"], dict):
         from synthesis import guards
         tool = entry["tool"]
-        return (f"names {tool}, whose sends a batch binds as a browser entry or not at all" if guards.desktop_tool(tool)
+        return ("names a tool whose name holds more than letters, digits and _ . : - (the listing prints a name as it is)"
+                if not re.fullmatch(r"[A-Za-z0-9_.:-]+", tool, re.ASCII) else
+                f"names {tool}, whose sends a batch binds as a browser entry or not at all" if guards.desktop_tool(tool)
                 or guards.shell_tool(tool) or tool in guards.FILE_TOOLS else
                 f"names {tool}, the messages sender's: its sends take the messages kinds, which no photo goes with"
                 if tool in ("imessage_send", "messages_send") else "")
