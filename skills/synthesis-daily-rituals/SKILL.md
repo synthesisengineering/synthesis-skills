@@ -18,10 +18,6 @@ metadata:
 
 # Daily Rituals
 
-The principal's day-start, day-end, the syncs between them and the weekly review: close the gap
-between what happened and what the principal knows, plan the day, and close it so nothing owed
-slips silently. Each workspace runs its own; a project supplement may add repos and channels.
-
 ## Binding rules
 
 1. **Anchor the date first** with `date`; every record uses that date, never memory or a commit time. The model has no clock, and a commit can land overnight.
@@ -40,6 +36,7 @@ slips silently. Each workspace runs its own; a project supplement may add repos 
 14. **An in-person event is not planned until its travel is.** Where the workspace checks travel, each ritual runs `travel_check.py` over the days ahead, no ritual is recorded while an event lacks its travel, and a leaving or returning time in a plan or draft is taken from a travel block, never estimated (2026-11-11).
 15. **A choice in the plan is put with a recommendation, and with what it costs when it would commit the principal's time.** `ritual_state.py record` refuses while an open item that offers options lacks either (2026-11-11).
 16. **What another person relies on is checked first, at every ritual:** run `relied_on.py`. A `DOWN` line opens the plan and the reply before anything else. It is an incident: the principal is told first, the people affected only on the principal's approval. A `NOT CHECKED` line is said first too, never read as all clear. A test two colleagues relied on once stopped, unseen through two check-ins.
+17. **Messenger's chat list is read at its own address, beside "No chats selected"; the daily read opens no chat,** since opening one marks it read. Scroll back to the day the plan names and stop there.
 
 ## Contents
 
@@ -55,12 +52,9 @@ slips silently. Each workspace runs its own; a project supplement may add repos 
 - [references/decay-sweep.md](references/decay-sweep.md): deadline tags, identity and the sweep's coverage. Read at Day-End Step 4b.
 - [references/critical-deadlines.md](references/critical-deadlines.md): the Critical tag, its section in the plan, alerts, closure on evidence, and the plan folders each workspace declares. Read at day-start, at every sweep, and the day such a deadline is first seen.
 - [references/linkedin-messages.md](references/linkedin-messages.md): LinkedIn messages as a declared surface: the declaration, the read from the new-message view, the coverage line, what is owed. Read before a sync in a workspace that declares it.
+- [references/messenger-messages.md](references/messenger-messages.md): Messenger as a declared surface: the three inboxes, the read without opening a chat, the coverage line, what is owed. Read before a sync in a workspace that declares it.
 - [references/mailbox-manifest.md](references/mailbox-manifest.md): `.agents/mailboxes.yaml` and the mailbox states. Read before an email sweep.
 - [references/ownership-routing.md](references/ownership-routing.md): which workspace owns an item, and which side of a conflict moves. Read at the catch-up read.
 - [references/ritual-worker-contract.md](references/ritual-worker-contract.md): desk and workers, artifacts, plan storage separation. Read when a workers registry exists.
 - [references/version-history.md](references/version-history.md), [references/version-history-2.27-to-2.45.md](references/version-history-2.27-to-2.45.md), [references/version-history-2.3-to-2.26.md](references/version-history-2.3-to-2.26.md): why each rule exists. Read when a reason matters.
 - [references/coverage-map.md](references/coverage-map.md): the rewrite's record, with `references/preserved.md`, `references/preserved-skill-v2-part1.md`, `references/preserved-skill-v2-part2.md` and `references/preserved-retired-references.md`.
-
-## Procedure
-
-Each ritual's order and commands, with the scripts they run: [references/procedure.md](references/procedure.md). Read it every time, then the ritual's own checklist.

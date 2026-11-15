@@ -1,5 +1,13 @@
 # The rituals' order and commands
 
+The principal's day-start, day-end, the syncs between them and the weekly review: close the gap
+between what happened and what the principal knows, plan the day, and close it so nothing owed
+slips silently. Each workspace runs its own; a project supplement may add repos and channels.
+
+## Procedure
+
+Each ritual's order and commands, with the scripts they run: [references/procedure.md](references/procedure.md). Read it every time, then the ritual's own checklist.
+
 Read every time, before the ritual's own checklist. Everything from "`<rituals>` is this skill's
 folder" to the paragraph about the launcher and the nudge was the Procedure section of SKILL.md
 until v3.7.0 (2026-11-11) and moved here word for word, to make room there for a binding rule.
