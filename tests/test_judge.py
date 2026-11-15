@@ -471,6 +471,17 @@ def test_the_subscription_judge_runs_the_replys_own_harness_with_no_tools_hooks_
     assert "JSON object only" not in run["stdin"].split("</content-")[-1]
 
 
+def test_past_the_cap_the_notice_says_the_plans_judge_decides_alone_where_it_runs(fake, fake_cli, keys_file, isolated_home):
+    judge = _judge()
+    spend = isolated_home / "state" / "judge" / "spend.json"
+    spend.parent.mkdir(parents=True, exist_ok=True)
+    spend.write_text(json.dumps({"month": time.strftime("%Y-%m"), "usd": 10.0, "capped": True}), encoding="utf-8")
+    config = _cloud_config(fake, keys_file)
+    config["judge"]["subscription"] = _sub_config(fake_cli)["judge"]["subscription"]
+    said = judge.notice(config)
+    assert "monthly cap" in said and "the plan's judge decides alone where it runs" in said and judge.notice(config) == ""
+
+
 def test_a_codex_reply_is_judged_through_codex_exec(fake_cli, tmp_path):
     judge = _judge()
     found = judge.ask("demo", judge.parse_policy("demo", POLICY_TEXT), CONTENT, {}, _sub_config(fake_cli), harness="codex")
