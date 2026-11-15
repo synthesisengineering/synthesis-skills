@@ -1326,11 +1326,17 @@ ROOT = Path(__file__).resolve().parents[1]
 # hook refused left out), _refused_scripts 1, HANDLERS 1, SERVER_CODE 1, _osa_code 1 (`/` after `++` or `--` divides),
 # _driver_page 1 (a javascript: navigate is no page), _driven_steps 1 and 6 blank lines; less PAGE_CODE 1,
 # UNREAD_SCRIPT 2 and 6 lines of comment.
-# The 5.23.1 notes above sum: core 10, 101, 30 and 60 more, plugin the same, on 5.23.0's ceilings.
+# Review round 2 of that rule (2026-11-15): core 66 more and plugin 66, all in guards.py. _writes_by_fetch 37 (method
+# and body read in the init of fetch or Request alone, or in the object a variable given there holds and what is set
+# on it; an init the reader cannot follow is a write), _tabs 9 (preview_start's answer places the pane; one that names
+# no address changes no page), _defined_names 8 (a name the script defines is no page's send), check_desktop 7 (a call
+# that sends only if a page no result shows is a messaging site's is told to read the page first, with no code asked),
+# BARE_SENDS 1, _script_code 1 (`[].x.call(` is a call of x), _script_acts 1 and 2 blank lines.
+# The 5.23.1 notes above sum: core 10, 101, 30, 60 and 66 more, plugin the same, on 5.23.0's ceilings.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 16698
-PLUGIN_BUDGET = 42770
+CORE_BUDGET = 16764
+PLUGIN_BUDGET = 42836
 
 
 def _lines(files):

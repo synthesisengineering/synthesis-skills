@@ -263,10 +263,13 @@ def test_a_click_that_says_it_sends_waits_on_any_page(tmp_path):
 
 
 def test_a_page_the_record_does_not_show_holds_a_step_that_may_send(tmp_path):
+    """A step that sends only on a messaging site's page is told to read the page first, with no code asked (review
+    round 2 of 5.23.1, #1); words typed in a box named for messages and submitted send on any page, and wait for one."""
     session = _on(tmp_path, None)
-    for tool, tool_input in (ENTER, SUBMIT, (PW + "browser_click", {"element": "Done", "ref": "e2"})):
+    for tool, tool_input in (ENTER, (PW + "browser_click", {"element": "Done", "ref": "e2"})):
         reason = driven(tool, tool_input, session)
-        assert held(reason) and "does not show" in reason, tool
+        assert "does not show" in reason and "read the page first" in reason and not held(reason), tool
+    assert held(driven(*SUBMIT, session))
     assert driven(PW + "browser_snapshot", {}, session) == ""
     assert driven(PW + "browser_navigate", {"url": MESSENGER}, session) == ""
 
@@ -299,7 +302,13 @@ def test_a_code_lets_that_one_playwright_step_go_once(principal):
     ("mcp__puppeteer__puppeteer_click", {"selector": "button[type=submit]"}),
 ])
 def test_other_browser_servers_are_read_by_what_their_tools_do(tmp_path, tool, tool_input):
-    assert held(driven(tool, tool_input, _on(tmp_path, None)))
+    """A key or click that sends on a messaging site's page waits for the code there; on a page no result of theirs
+    shows it is held until the page is read (review round 2 of 5.23.1, #1)."""
+    placed = _call("toolu_o1", tool.rpartition("__")[0] + "__navigate_page", {"url": MESSENGER}, f"Navigated to {MESSENGER}")
+    assert held(driven(tool, tool_input, _on(tmp_path, None, placed)))
+    (tmp_path / "unplaced").mkdir()
+    reason = driven(tool, tool_input, _on(tmp_path / "unplaced", None))
+    assert "read the page first" in reason and "does not show" in reason, reason
 
 
 def test_every_browser_tool_fails_closed_when_the_config_cannot_be_read():

@@ -484,12 +484,18 @@ opened `linkedin.com/...`, `uk.linkedin.com` or `m.me/...` pressed Return with n
 The page is the tab a step names, else the one the last browser call ran on, read from the tab list Claude in Chrome
 prints after every call, or the page a `navigate` step earlier in the same batch opened. Each browser keeps its own tab
 ids, so a call is read by its own browser's newest list: since 5.23.1 the built-in pane's lists (its tab ids are
-`tab-N`), its own `tabs_context` (each tab's origin, the active one in front) and its navigate's result (`navigated to`
-or `opened` and the address) are read too. A `navigate` that names no
+`tab-N`), its own `tabs_context` (each tab's origin, the active one in front), its navigate's result (`navigated to`
+or `opened` and the address) and its `preview_start`'s answer (`opened` or `Opened tab "..." at` and the address) are
+read too; `Browser pane opened` names no address and changes no page, so the page an earlier result shows stands, and a
+new pane's is blank (review round 2 of 5.23.1, #1). A `navigate` that names no
 host (`back`, `forward`, a path, a script) leaves the page unknown, unless the tab was on a messaging site: the page it
 opens may be that site's still, so it is judged as that site's. In Claude in Chrome and the built-in pane a page no list
 of tabs shows (a tab not listed yet; a sub-agent's, whose own record the guard reads when the hook names one) is judged
-as a page that may be a messaging site's (review round 1 of 5.23.1, #3); the pane's first page, which its answer files
+as a page that may be a messaging site's (review round 1 of 5.23.1, #3), and so is a driven browser's page no result
+shows. A call there that sends only if the page is a messaging site's (a Return, a typed line break, a click no summary
+describes, a script that acts) is told to read the page first (`tabs_context`, or a snapshot in a driven browser), and
+no code is asked; one that sends on any page waits for the code (review round 2 of 5.23.1, #1: after `preview_start`, a
+local app's click in the pane waited for a code). The pane's first page, which its answer files
 under no tab, is its tab's. On 2026-10-22 a session found that Return in a Google
 Chat compose box went out with no code, because a browser page had counted as no app.
 
@@ -538,7 +544,8 @@ WhatsApp, LinkedIn, Gmail and X: the rule above read a script's text for a click
 its text shows such a call. On a messaging site's page (every site and page the list above names), and on a page no
 record shows (below), a script is now read as code by the guard's own JavaScript reader: its strings, comments and
 patterns out, an optional call (`x?.()`, `x?.[k]`) read as a plain one, and `X.call(`, `.apply(` or `.bind(` read as a
-call of X where X is a dotted name (`Array.prototype.slice.call(...)` is a call of `slice`).
+call of X where X is a dotted name or an empty array's method (`Array.prototype.slice.call(...)` and
+`[].slice.call(...)` are calls of `slice`).
 - **Refused:** one that calls what it names only as it runs (a member by a name it builds, Reflect, `call`, `apply` or
   `bind` of a plain name, `eval`, `Function`, `with`, `import()`, a timer given a string, a name written in escapes); one
   that puts code where the page runs it (a `script` element, an `on...` attribute, HTML with a script or an inline
@@ -547,9 +554,14 @@ call of X where X is a dotted name (`Array.prototype.slice.call(...)` is a call 
 - **Waits for the code:** one that acts: the rule above over its text and its code (`el['click']()` is `el.click()`),
   without the browser server's own calls, which no page script makes (`new Array(5).fill(0)` is a read); any spelling of
   `open`; a handler called or read (`.onclick`, `onClick`); a call whose name says it sends, posts, submits, publishes,
-  replies, shares or tweets, by a member or a bare name; a move by another part of the address (`location.pathname`,
-  `search`, `hash`, `navigation.navigate`, `history.go`); and a fetch, `Request` or XHR unless its method, in any form
-  (a quoted key, the shorthand, an assignment), is a literal GET or HEAD and it carries no body.
+  replies, shares or tweets, by a member, or by a bare name the script does not define itself (a page's own; a helper the
+  script defines and names for what it reads, `tweetText` or `postBody`, is none); a move by the address or another part
+  of it, set or added to (`location.href +=`, `location.pathname`, `search`, `hash`, `navigation.navigate`,
+  `history.go`); a fetch or `Request` whose init (its second argument, or the object a variable given there holds and
+  what is set on that variable) carries a body or a method, in any form (a quoted key, the shorthand, an assignment),
+  that is not one literal GET or HEAD, or that the reader cannot follow (spread into, keyed by a name built as it runs,
+  the variable set again, handed to other code or keyed by a variable, any other expression); and an XHR opened with a
+  method that is not GET or HEAD. A `body` read from a response is no write (review round 2 of 5.23.1, #2).
 - **Passes:** a read, and the extractors the plugin ships.
 
 Measured over the 60 days of Claude Code and Codex records to 2026-11-15: of 181 scripts on those pages that are none of
