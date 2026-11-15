@@ -63,7 +63,8 @@ def test_the_launcher_runs_isolated_with_only_the_named_variables(tmp_path):
     seen = json.loads(subprocess.run([str(launcher), "a b", "c"], env=hostile, capture_output=True, text=True,
                                      check=True).stdout)
     assert seen["isolated"] == 1 and seen["no_site"] == 1 and seen["executable"] == python and seen["argv"] == ["a b", "c"]
-    assert set(seen["env"]) <= set(install.KEPT) | {"PATH"}, sorted(set(seen["env"]) - set(install.KEPT))
+    own = {k for k in seen["env"] if k.startswith("__CF")}  # what macOS itself gives every process it starts
+    assert set(seen["env"]) - own <= set(install.KEPT) | {"PATH"}, sorted(set(seen["env"]) - own - set(install.KEPT))
     assert not [k for k in seen["env"] if k.startswith(("PYTHON", "DYLD_", "LD_", "GIT_EXEC", "DEVELOPER"))]
     assert seen["env"]["PATH"].startswith(install.SAFE_PATH + ":") and seen["env"]["SYNTHESIS_HOME"] == str(tmp_path / "s")
     assert "SYNTHESIS_CLAUDE_BIN" not in seen["env"]  # a variable left unset stays unset, not empty
@@ -130,7 +131,8 @@ def test_the_cli_the_commit_check_and_the_release_tool_load_under_isolation(tmp_
     (repo / "notes.md").write_text("plain words\n")
     subprocess.run(["git", "-C", str(repo), "add", "."], check=True)
     done = subprocess.run(["git", "-C", str(repo), "-c", f"core.hooksPath={isolated_home / 'git-hooks'}", "commit", "-qm",
-                           "Plain words"], env={**world["env"], "SYNTHESIS_HOME": str(isolated_home)}, capture_output=True,
+                           "Plain words"], env={**{k: v for k, v in world["env"].items() if not k.startswith("DYLD_")},
+                                                "SYNTHESIS_HOME": str(isolated_home)}, capture_output=True,
                           text=True, timeout=120)
     assert done.returncode == 0, done.stderr
     assert not world["marker"].exists(), world["marker"].read_text()

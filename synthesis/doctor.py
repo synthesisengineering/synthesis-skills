@@ -89,14 +89,24 @@ def check_runtime(home: Path) -> Check:
 
 
 def check_hook_script(home: Path) -> Check:
-    hook = home / "bin" / "synthesis-hook"
-    try:
-        text = hook.read_text(encoding="utf-8")
-    except OSError:
-        return Check("fail", "hook script", f"{_short(hook)} is missing")
-    if text != install.HOOK_SCRIPT:
-        return Check("fail", "hook script", f"{_short(hook)} differs from the shipped text; run install")
-    return Check("ok", "hook script", "stable entry text matches this release")
+    """Every launcher is the text install writes for the interpreter the hook launcher pins, and that interpreter is
+    still one install would pin: owned by root with every folder above it, writable by neither this user nor its groups."""
+    python = install.pinned(home)
+    if not python:
+        return Check("fail", "hook script", f"{_short(home / 'bin' / 'synthesis-hook')} pins no interpreter; run install")
+    problems = install.interpreter_problems(python)
+    if problems:
+        return Check("fail", "hook script", f"the pinned interpreter {python} may not run the guard: {problems[0]}; run install")
+    for folder, names in (("bin", install.ENTRY_POINTS), ("git-hooks", install.GIT_HOOKS)):
+        for name in names:
+            try:
+                same = (home / folder / name).read_text(encoding="utf-8") == install.launcher(home, python, name)
+            except OSError:
+                same = False
+            if not same:
+                return Check("fail", "hook script", f"{_short(home / folder / name)} is missing or differs from what install "
+                                                    "writes; run install")
+    return Check("ok", "hook script", f"every launcher runs {python}, pinned and isolated")
 
 
 def check_config(home: Path) -> Check:

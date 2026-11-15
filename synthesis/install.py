@@ -22,6 +22,7 @@ import hashlib
 import json
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -33,16 +34,6 @@ if __package__ in (None, ""):
 
 from synthesis import paths  # noqa: E402
 
-HOOK_SCRIPT = """#!/bin/sh
-# Stable entry for every synthesis hook. Its text never changes between releases.
-d=$(cd "$(dirname "$0")/.." && pwd)
-exec python3 -S "$d/current/synthesis/hook.py" "$@"
-"""
-GIT_HOOK_SCRIPT = """#!/bin/sh
-# Global git hook (core.hooksPath): the synthesis commit check, then the repository's own hook.
-d=$(cd "$(dirname "$0")/.." && pwd)
-SYNTHESIS_GIT_HOOK=$(basename "$0") exec python3 -S "$d/current/synthesis/commit_check.py" "$@"
-"""
 GIT_HOOKS = ("pre-commit", "pre-merge-commit", "commit-msg")
 DAY_END = ("day-end", "day-end-nudge.sh")  # the rituals' launcher and nudge ride every release into bin/
 # Scripts run outside a session (scheduled sweeps, autopilot wakes and backstops) need a stable path too.
@@ -50,9 +41,97 @@ STABLE_SKILL_SCRIPTS = ("synthesis-inbox-cleanup", "synthesis-autopilot", "synth
                         "synthesis-chief-of-staff",  # the holds ledger's reader, which the same-day guard asks
                         "synthesis-kb-edit",  # the phrase scan a knowledge base's own git hooks run (sharing-standard.md)
                         "synthesis-skills-manager", "synthesis-onboarding")  # the release tool and its imports, run from here
-CLI_SCRIPT = """#!/bin/sh
-exec python3 -c 'import os, sys; sys.path[0] = os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(sys.argv.pop(1)))), "current"); from synthesis.cli import main; sys.exit(main())' "$0" "$@"
-"""  # through a link (~/.local/bin/synthesis) and from any folder: the runtime, not a checkout in the working directory
+# Every entry point runs one interpreter, pinned at install (review round 1 of 5.23.1, P1, P3 and A4). `python3` from
+# PATH let one file named python3 in a folder this user writes, earlier on PATH, replace the guard, and the interpreter's
+# own start-up (a .pth file, usercustomize, PYTHONPATH, Apple's compiled-code folder, DEVELOPER_DIR, DYLD_*) ran code
+# placed outside the runtime first. So the launchers in the protected bin/ and git-hooks/ run the interpreter named by
+# its real path, accepted only when it and every folder above it are owned by root and writable by neither this user
+# nor its groups, with -I -S, through `env -i` and only the variables named here: those the runtime was measured to
+# read (every entry point run once), the harnesses' own and git's for the commit check. PATH starts with the system's
+# folders, so no tool the runtime starts (git, ps, ioreg) is one placed earlier on it.
+PYTHONS = ("/Library/Frameworks/Python.framework/Versions/Current/bin/python3",  # python.org's
+           "/Library/Developer/CommandLineTools/usr/bin/python3", "/Applications/Xcode.app/Contents/Developer/usr/bin/python3",
+           "/usr/bin/python3", "/usr/local/bin/python3")  # the real file behind each; Apple's /usr/bin shim runs xcrun
+KEPT = ("HOME", "USER", "LOGNAME", "TMPDIR", "TMP", "TEMP", "LANG", "LANGUAGE", "LC_ALL", "LC_CTYPE", "LC_MESSAGES", "COLUMNS",
+        "LINES", "TERM", "TZ", "SSH_AUTH_SOCK", "GH_TOKEN", "GITHUB_TOKEN", "HTTPS_PROXY", "HTTP_PROXY", "NO_PROXY",
+        "https_proxy", "http_proxy", "no_proxy", "SYNTHESIS_HOME", "SYNTHESIS_SESSION", "SYNTHESIS_HOST", "SYNTHESIS_CLAUDE_BIN",
+        "SYNTHESIS_CODEX_BIN", "SYNTHESIS_MUSE_BIN", "SYNTHESIS_CLAUDE_DESKTOP_DIR", "RITUAL_STATE_DIR", "CLAUDECODE",
+        "CLAUDE_CODE_SESSION_ID", "CLAUDE_CONFIG_DIR", "CLAUDE_PLUGIN_ROOT", "CLAUDE_PROJECT_DIR", "CODEX_HOME",
+        "CODEX_THREAD_ID", "MUSE_SESSION_ID", "MUSE_PLUGIN_ROOT", "XDG_DATA_HOME", "XDG_CONFIG_HOME", "XDG_STATE_HOME",
+        "XDG_CACHE_HOME", "GIT_CONFIG_GLOBAL", "GIT_CONFIG_NOSYSTEM")
+GIT_KEPT = ("SYNTHESIS_GIT_HOOK", "GIT_DIR", "GIT_INDEX_FILE", "GIT_WORK_TREE", "GIT_COMMON_DIR", "GIT_OBJECT_DIRECTORY",
+            "GIT_ALTERNATE_OBJECT_DIRECTORIES", "GIT_QUARANTINE_PATH", "GIT_PREFIX", "GIT_REFLOG_ACTION", "GIT_AUTHOR_NAME",
+            "GIT_AUTHOR_EMAIL", "GIT_AUTHOR_DATE", "GIT_COMMITTER_NAME", "GIT_COMMITTER_EMAIL", "GIT_COMMITTER_DATE",
+            "GIT_NO_REPLACE_OBJECTS")  # what git hands the commit check about the commit it makes
+SAFE_PATH = "/usr/bin:/bin:/usr/sbin:/sbin"
+NO_PYTHON = ("synthesis: no Python 3.9 or later owned by root, with every folder above it, and writable by neither this "
+             "user nor its groups was found, so nothing runs; install python.org's Python or Apple's Command Line Tools, "
+             "then run the plugin's install again")
+ENTRY_POINTS = ("synthesis-hook", "synthesis", "synthesis-release")  # in bin/; the git hooks' are in git-hooks/
+ENTRY = {"synthesis-hook": "{runtime}/synthesis/hook.py", "synthesis-release":
+         "{runtime}/skills/synthesis-skills-manager/scripts/release.py",
+         "synthesis": "-c 'import sys; sys.path.insert(0, sys.argv.pop(1)); from synthesis.cli import main; sys.exit(main())' "
+                      "{runtime}", "git-hook": "{runtime}/synthesis/commit_check.py"}
+
+
+def interpreter_problems(path: str) -> list:
+    """Why `path` may not be the pinned interpreter: [] when it is its own real path, an executable regular file, and it
+    and every folder above it are owned by root and writable by neither this user nor any of its groups."""
+    if not os.path.isabs(path) or os.path.realpath(path) != path:
+        return [f"{path} is not an absolute real path"]
+    problems, spot = [], path
+    while True:
+        try:
+            owner = os.lstat(spot).st_uid
+        except OSError as exc:
+            return [f"{spot}: {exc.strerror}"]
+        problems += [f"{spot} is not owned by root"] if owner else [f"{spot} is writable by this user or its groups"] * os.access(spot, os.W_OK)
+        if spot == os.path.dirname(spot):
+            break
+        spot = os.path.dirname(spot)
+    return problems or ([] if os.path.isfile(path) and os.access(path, os.X_OK) else [f"{path} is not an executable file"])
+
+
+def pinned_python(candidates=None) -> str:
+    """The interpreter to pin: the first of this one and the system's own (`PYTHONS`), each by its real path, that
+    `interpreter_problems` accepts and that, run isolated with no environment, is Python 3.9 or later; '' for none."""
+    for candidate in ([sys.executable, *PYTHONS] if candidates is None else candidates):
+        real = os.path.realpath(candidate) if candidate else ""
+        if real and not interpreter_problems(real):
+            try:
+                if subprocess.run([real, "-I", "-S", "-c", "import sys; sys.exit(sys.version_info < (3, 9))"], env={},
+                                  capture_output=True, timeout=30).returncode == 0:
+                    return real
+            except (OSError, subprocess.SubprocessError):
+                continue
+    return ""
+
+
+def launcher_text(python: str, target: str, git_hook: bool = False) -> str:
+    """A launcher that runs `target` (shell words) with the pinned `python`, isolated, with only the named variables
+    that are set (one left unset stays unset); with no interpreter, one that refuses."""
+    if not python:
+        return f"#!/bin/sh\necho {shlex.quote(NO_PYTHON)} >&2\nexit 2\n"
+    kept = " ".join(f'${{{name}+"{name}=${name}"}}' for name in KEPT + (GIT_KEPT if git_hook else ()))
+    hook = ' SYNTHESIS_GIT_HOOK="$(basename "$0")"' if git_hook else ""
+    return (f"#!/bin/sh\n# A synthesis entry point: the interpreter pinned at install, isolated, with a fixed environment.\n"
+            f"exec /usr/bin/env -i {kept}{hook} PATH=\"{SAFE_PATH}${{PATH:+:$PATH}}\" {shlex.quote(python)} -I -S {target} \"$@\"\n")
+
+
+def launcher(home: Path, python: str, name: str) -> str:
+    """The text install writes for the entry point `name` (bin/<name>, or a git hook) of the synthesis home `home`."""
+    entry = ENTRY["git-hook" if name in GIT_HOOKS else name]
+    return launcher_text(python, entry.format(runtime=shlex.quote(str(Path(home) / "current"))), name in GIT_HOOKS)
+
+
+def pinned(home: Path) -> str:
+    """The interpreter the installed hook launcher runs, '' when it names none."""
+    try:
+        line = (Path(home) / "bin" / "synthesis-hook").read_text(encoding="utf-8").splitlines()[-1]
+        words = shlex.split(line)
+    except (OSError, ValueError, IndexError):
+        return ""
+    return words[words.index("-I") - 1] if words[:1] == ["exec"] and "-I" in words else ""
 
 
 def _home() -> Path:
@@ -106,36 +185,40 @@ def _write_exec(path: Path, text: str) -> None:
     os.replace(tmp, path)
 
 
-def _compiled(package: Path) -> bool:
-    """Whether this interpreter would load every module of the runtime from compiled code: a compiled file for each,
-    where it looks for one, made from the source that is there now."""
-    from importlib import util
+COMPILED = ("import importlib.util as u, pathlib, sys\n"  # run by the pinned interpreter: every module compiled, by hash
+            "def ok(s):\n    c = pathlib.Path(u.cache_from_source(str(s))).read_bytes()\n"
+            "    return c[:4] == u.MAGIC_NUMBER and c[4] & 1 and c[8:16] == u.source_hash(s.read_bytes())\n"
+            "sys.exit(0 if all(ok(s) for s in pathlib.Path(sys.argv[1]).glob('*.py')) else 1)")
+COMPILE = ("import compileall, py_compile, sys\ncompileall.compile_dir(sys.argv[1], maxlevels=0, quiet=2, "
+           "invalidation_mode=py_compile.PycInvalidationMode.CHECKED_HASH)")
+
+
+def _pinned_run(package: Path, code: str) -> bool:
+    """Run `code` on the runtime package with the interpreter its launchers pin, as they run it (-I -S, where no
+    folder of compiled code but the package's own applies); False when there is none or it fails."""
+    python = pinned(Path(package).parent.parent)
     try:
-        for source in package.glob("*.py"):
-            cached = Path(util.cache_from_source(str(source))).read_bytes()
-            if cached[:4] != util.MAGIC_NUMBER or not cached[4] & 1 or cached[8:16] != util.source_hash(source.read_bytes()):
-                return False
-    except (OSError, NotImplementedError):
+        return bool(python) and subprocess.run([python, "-I", "-S", "-c", code, str(package)], env={}, capture_output=True,
+                                               timeout=300).returncode == 0
+    except (OSError, subprocess.SubprocessError):
         return False
-    return True
+
+
+def _compiled(package: Path) -> bool:
+    """Whether the pinned interpreter would load every module of the runtime from compiled code beside its source,
+    made from the source that is there now."""
+    return _pinned_run(package, COMPILED)
 
 
 def _compile(package: Path) -> None:
-    """Compiles the runtime once, for the interpreter that installs: beside its source, or under the folder that
-    interpreter keeps compiled code in (Apple's Python has one, keyed by the path through `current`). A hook is a new
-    process on every tool call, and a caller told to write no bytecode caches nothing it compiles: the guards were
-    compiled from their source each time, 72 ms for a shell command's check where 33 ms is what it takes (2026-11-12).
-    Each compiled file carries its source's hash and is checked against it when loaded, since by date and size a file
-    of the next release could pass for the one before it. A runtime already compiled is left as it is. Nothing here
-    stops an install: whatever goes wrong leaves the runtime as it was, slower and whole."""
-    import compileall
-    import py_compile
-    try:
-        if not _compiled(package):
-            compileall.compile_dir(str(package), maxlevels=0, quiet=2,
-                                   invalidation_mode=py_compile.PycInvalidationMode.CHECKED_HASH)
-    except Exception:
-        pass
+    """Compiles the runtime once, for the interpreter the launchers pin, beside its source, where an isolated run
+    looks. A hook is a new process on every tool call, and a caller told to write no bytecode caches nothing it
+    compiles: the guards were compiled from their source each time, 72 ms for a shell command's check where 33 ms is
+    what it takes (2026-11-12). Each compiled file carries its source's hash and is checked against it when loaded,
+    since by date and size a file of the next release could pass for the one before it. A runtime already compiled
+    is left as it is. Nothing here stops an install: whatever goes wrong leaves the runtime as it was, slower and whole."""
+    if not _compiled(package):
+        _pinned_run(package, COMPILE)
 
 
 def install(plugin_root: Path, forward_only: bool = False) -> str:
@@ -171,11 +254,10 @@ def install(plugin_root: Path, forward_only: bool = False) -> str:
         link = home / f".current.{os.getpid()}"
         link.symlink_to(release)
         os.replace(link, home / "current")  # atomic switch: a running hook sees old or new, never neither
+    python = pinned_python()
+    for name in (*ENTRY_POINTS, *GIT_HOOKS):  # before compiling: the compile runs the interpreter the hook launcher names
+        _write_exec(home / ("git-hooks" if name in GIT_HOOKS else "bin") / name, launcher(home, python, name))
     _compile(home / "current" / "synthesis")
-    _write_exec(home / "bin" / "synthesis-hook", HOOK_SCRIPT)
-    _write_exec(home / "bin" / "synthesis", CLI_SCRIPT)
-    for name in GIT_HOOKS:
-        _write_exec(home / "git-hooks" / name, GIT_HOOK_SCRIPT)
     copies = {}
     for name in DAY_END:
         source = plugin_root / "skills" / "synthesis-daily-rituals" / "scripts" / name
@@ -317,9 +399,10 @@ def register_git_hooks(home: Path = None) -> str:
 
 def _owned_files(home: Path) -> list:
     """(path, sha256 of what install wrote) for every file install owns."""
-    files = [(home / "bin" / "synthesis-hook", _sha(HOOK_SCRIPT)), (home / "bin" / "synthesis", _sha(CLI_SCRIPT))]
+    python = pinned(home)
+    files = [(home / "bin" / name, _sha(launcher(home, python, name))) for name in ENTRY_POINTS]
     files += [(home / "bin" / name, sha) for name, sha in (_registrations(home).get("copies") or {}).items()]
-    return files + [(home / "git-hooks" / name, _sha(GIT_HOOK_SCRIPT)) for name in GIT_HOOKS]
+    return files + [(home / "git-hooks" / name, _sha(launcher(home, python, name))) for name in GIT_HOOKS]
 
 
 class InUse(Exception):
