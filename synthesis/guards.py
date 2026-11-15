@@ -4587,16 +4587,113 @@ def _stand_in(code: str, where: str, module: str = "") -> str:
                  or os.path.isdir(os.path.join(where, m))), "")
 
 
+# --- the release tool, run from the protected runtime with no code (the principal, 2026-11-15) -----------------------
+# A release installs the runtime this guard runs from, so it runs from that runtime, where no agent can change it.
+# Exactly that copy passes with no code: the running release's release.py, by its path in the runtime, run by python3 or
+# the system Python, alone on the line in plain words, with only the options it documents, on the canonical checkout
+# (`release_checkout`). What it then publishes its own preflight proves: the tip of that repository's main as GitHub
+# serves it, every object of it intact, CI passed. A copy of the tool, the scripts the runtime carries for it and every
+# other way of running it are judged as any other program: `RELEASE_KIT` is never the plugin's own (`_shipped`).
+RELEASE_REPOSITORY = "synthesisengineering/synthesis-skills"
+RELEASE_TOOL = "skills/synthesis-skills-manager/scripts/release.py"
+RELEASE_KIT = ("skills/synthesis-skills-manager/scripts/", "skills/synthesis-onboarding/scripts/")  # its imports with it
+GITHUB_REMOTE = re.compile(r"(?:https://github\.com/|git@github\.com:|ssh://git@github\.com/)([^/\s]+/[^/\s]+?)(?:\.git)?/?$")
+RELEASE_OPTIONS = {"--repo-root": r".+", "--clients": r"(?:claude|codex|muse)(?:,(?:claude|codex|muse))*",
+                   "--session": r"[\w.:-]{1,128}", "--install-only": None, "--dry-run": None}
+RELEASE_CONFIG = re.compile(  # a checkout's own config keys that run no program and send git nowhere
+    r"core\.(?:repositoryformatversion|filemode|bare|logallrefupdates|ignorecase|precomposeunicode|symlinks)|user\.(?:name|email)"
+    r"|remote\.[^.\s]+\.(?:url|fetch|gh-resolved)|branch\..+\.(?:remote|merge|pushremote|rebase|vscode-merge-base|description)"
+    r"|extensions\.(?:worktreeconfig|objectformat)")
+PLAIN_LINE = re.compile(r"[\w./:@%+,=~-]+(?: +[\w./:@%+,=~-]+)*")  # words no shell changes: no quote, variable, glob or operator
+KIT_MODULES, KIT_LOADS = ("release", "setup"), re.compile(r"\b(?:import_module|__import__)\(\s*['\"](?:release|setup)['\"]")
+
+
+def _kit_code(text: str) -> bool:
+    """A program that imports the release tool's own modules, which claim the board, install the runtime and publish:
+    from wherever it finds them, the runtime included, it runs the tool around the one way that needs no code."""
+    return ("release" in text or "setup" in text) and (bool(KIT_LOADS.search(text)) or any(
+        not dots and module.split(".")[0] in KIT_MODULES for dots, module, _ in _imports(text)))
+
+
+def _canonical_remote(url: str) -> bool:
+    found = GITHUB_REMOTE.match(url)
+    return bool(found) and found.group(1).lower() == RELEASE_REPOSITORY
+
+
+def release_checkout(repo: str) -> list:
+    """Why `repo` is not the canonical checkout of the synthesis-skills repository, [] when it is: the root of a git
+    checkout; an origin, with every remote's address for fetching and for pushing, as git uses it after any rewriting,
+    the repository on GitHub; on main; its own config, and a worktree's, setting only keys that run no program and send
+    git nowhere. These reads run no program of the checkout's; one git cannot make is a reason (release.py asks too)."""
+    import subprocess
+
+    def git(*args):
+        try:
+            done = subprocess.run(["git", "-C", repo, *args], capture_output=True, text=True, timeout=4, stdin=subprocess.DEVNULL)
+        except (OSError, subprocess.TimeoutExpired):
+            return None
+        return done.stdout if done.returncode == 0 else None
+    top = git("rev-parse", "--show-toplevel")
+    if not top or os.path.realpath(top.strip()) != os.path.realpath(repo):
+        return [f"{repo} is not the root of a git checkout"]
+    remotes, branch, keys = git("remote", "-v"), (git("symbolic-ref", "--quiet", "--short", "HEAD") or "").strip(), git(
+        "config", "--list", "--show-scope", "--name-only")
+    if remotes is None or keys is None:
+        return [f"git cannot read the remotes or the config of {repo}"]
+    found = [(line.split() + [""])[:2] for line in remotes.splitlines() if line.strip()]
+    wrong = sorted({f"{name} {url}" for name, url in found if not _canonical_remote(url)})
+    odd = sorted({key for scope, _, key in (line.partition("\t") for line in keys.splitlines())
+                  if scope in ("local", "worktree") and not RELEASE_CONFIG.fullmatch(key)})
+    return ([] if any(name == "origin" for name, _ in found) else ["it has no origin remote"]) + (
+        [f"its remotes lead elsewhere than github.com/{RELEASE_REPOSITORY}: {', '.join(wrong[:4])}"] if wrong else []) + (
+        [] if branch == "main" else [f"it is on {branch or 'a detached HEAD'}, not main"]) + (
+        [f"its own git config sets {', '.join(odd[:6])}, which may run a program or send git elsewhere"] if odd else [])
+
+
+def _release_tool(command: str, cwd: str) -> bool:
+    """Whether a command line is exactly the running release's own release tool on the canonical checkout (above)."""
+    line, release = command.strip(), os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+    words, home = line.split(), os.path.expanduser("~")
+    if not PLAIN_LINE.fullmatch(line) or words[0] not in ("python3", "/usr/bin/python3") or os.path.realpath(
+            paths.home() / "current") != release or not paths.inside(release, os.path.realpath(paths.home() / "releases")):
+        return False  # a line a shell changes, another program, or this guard is not the protected runtime's
+
+    def place(word: str, shell: bool) -> str:  # a path as the shell hands it on: `~/` leads home only at a word's start
+        word = home + word[1:] if shell and word.startswith("~/") else word
+        return "" if "~" in word or word.startswith("=") else os.path.join(cwd, word)
+    script, tool = place(words[1], True) if len(words) > 1 else "", os.path.join(release, RELEASE_TOOL)
+    if os.path.basename(script) != "release.py" or os.path.realpath(os.path.dirname(script)) != os.path.dirname(tool):
+        return False
+    given, at = {}, 2
+    while at < len(words):
+        name, joined, value = words[at].partition("=")
+        pattern = RELEASE_OPTIONS.get(name, "")
+        if pattern == "" or name in given or (joined and pattern is None):
+            return False  # an option it does not document, one given twice, or a switch given a value
+        if pattern is not None and not joined:
+            at += 1
+            value = words[at] if at < len(words) else ""
+        if pattern is not None and not re.fullmatch(pattern, value):
+            return False
+        given[name], at = place(value, not joined) if name == "--repo-root" else value, at + 1
+    return bool(given.get("--repo-root")) and not release_checkout(given["--repo-root"])
+
+
 def _shipped(path: str) -> bool:
     """A script of the plugin as it shipped: inside the release this guard runs from (`releases/<hash>/` under the
     synthesis home, a protected folder), or with the same bytes as that release's copy at the same relative path,
     as are the modules beside it that it imports (a skill's script in a harness's plugin cache). Nothing else in the
-    synthesis home, and no file beside an unchanged guard elsewhere, is the plugin's (the coordinator, 2026-11-14)."""
+    synthesis home, and no file beside an unchanged guard elsewhere, is the plugin's (the coordinator, 2026-11-14).
+    The release tool and what it imports are the release's alone (2026-11-15): each is judged as any other script."""
     release = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
-    if paths.inside(path, release):
-        return True
     parts = path.split(os.sep)
     rel = os.path.join(*parts[len(parts) - 1 - parts[::-1].index("skills"):]) if "skills" in parts[:-1] else ""
+    inside = paths.inside(path, release)
+    if paths.spelled(os.path.relpath(paths.spelled(path), paths.spelled(release)) if inside else rel).replace(
+            os.sep, "/").startswith(tuple(map(paths.spelled, RELEASE_KIT))):
+        return False
+    if inside:
+        return True
     here, there = os.path.dirname(path), os.path.dirname(os.path.join(release, rel))
     mine = _regular(path, SCRIPT_LIMIT + 1)
     names = {m for a, b in re.findall(r"^[ \t]*(?:from[ \t]+(\w+)|import[ \t]+([\w, \t]+))", (mine or (b"",))[0].decode("utf-8", "replace"), re.M)
@@ -5007,6 +5104,10 @@ def _spells(texts: list, words: list, where: str, env: dict, raw: list, linked: 
 def check_self_grant(command: str, cwd: str, config: dict | None = None, session: dict | None = None, hold: bool = True) -> str | None:
     """The reason a shell command is refused, or waits for the principal's code because a program the guard cannot prove
     only reads names a protected folder (`hold`: file the code and spend it; else the reason, as a refusal)."""
+    if hold and _release_tool(command, cwd):  # never for a command a program starts: that program is judged
+        codes = approvals.pending()
+        if not (codes and re.search(r"(?i)\b(?:%s)\b" % "|".join(map(re.escape, codes)), command)):
+            return None
     home = os.path.expanduser("~")
     if re.search(r"(?:^|[\s;&|(])(?:export\s+)?HOME=", command):  # a command that gives HOME its own value: `~` is that value too
         readings = _resolved(re.sub(r"(?<![\w$~./-])~(?=/|\s|$)", "$HOME", command))
@@ -5115,6 +5216,11 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None) -> str |
         if uses:  # finding 17: by what it, or a module of its own, does with synthesis's code
             waits = Unproven(f"runs `{head}` on {ran}, a script outside the plugin's release that {uses[1]}" + (f" ({uses[0]})" if uses[0] != ran else ""))
         source, argv = _python_source(words, fed) if head.startswith("python") else ("", [])
+        kit = next((f for f, k in ([("its program", source)] if python and source else []) + (
+            files if python and ran and not _shipped(ran) else []) if _kit_code(k)), "")
+        if kit and not waits:  # 5.23.1: the release tool runs as itself, from the runtime, or waits
+            waits = Unproven(f"runs `{head}` on a program that imports the release tool's own modules ({kit}), which claim "
+                             "the board, install the runtime and publish; the tool itself, run from the installed runtime, needs no code")
         reach = _synthesis_reach(source) if python and source else next((r for _, r in reaches if r[0] == "places"), ("", "", None))
         named = named or (reach[1].replace("reaches ", "") if reach[0] == "places" and label else "")  # a folder synthesis's own paths lead to
         # A Python program given inline or on stdin is judged by its own text: what its code writes. A protected

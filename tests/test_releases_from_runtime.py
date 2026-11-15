@@ -166,8 +166,8 @@ def test_every_other_way_of_running_it_still_waits_for_the_code(world):
               "elsewhere": _elsewhere(world), "importing": q(importing), "running": q(running), "starting": q(starting),
               "importing_raw": importing.replace("; ", "\n"), "shelled": q(f"python3 {tool} --repo-root {canon} --dry-run")}
     lines = [template.format(**values) for template in WAITS.values()]
-    for name, said in zip(WAITS, world["judge"](lines)):
-        assert said and (HELD in said or said.startswith("Refused")), (name, said)
+    passed = [(name, said) for name, said in zip(WAITS, world["judge"](lines)) if not (said and (HELD in said or said.startswith("Refused")))]
+    assert not passed, "; ".join(f"{name}: {said}" for name, said in passed)
 
 
 NOT_CANONICAL = {
@@ -193,8 +193,7 @@ def test_a_checkout_that_is_not_the_canonical_one_waits(world):
     (world["work"] / "plain").mkdir()
     roots["no checkout at all"] = world["work"] / "plain"
     lines = [f"python3 {tool} --repo-root {q(str(root))} --dry-run" for root in roots.values()]
-    for name, said in zip(roots, world["judge"](lines)):
-        assert said and HELD in said, (name, said)
+    assert [(name, said) for name, said in zip(roots, world["judge"](lines)) if not (said and HELD in said)] == []
 
 
 def test_the_guard_lets_the_tool_through_only_when_it_runs_from_that_runtime(world):

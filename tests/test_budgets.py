@@ -1296,10 +1296,29 @@ ROOT = Path(__file__).resolve().parents[1]
 # to _caller). sends.py 2: command_send reads an osascript by the guard's reading of its script, across its lines, in
 # place of the one-line pattern. A reuse of the reader of a Python program's writes to spell the commands it starts was
 # tried and dropped: over two days of records it took 168 ms a program on average and 4 s at worst.
+# 5.23.1, releases from the protected runtime with no code (the principal's decision packet of 2026-11-15, row
+# "releases"): core 107 more and plugin 172. guards.py 106: release_checkout 28 (the canonical checkout: a checkout's
+# root, an origin, every remote's fetch and push address as git uses it the repository on GitHub, on main, its own and a
+# worktree's config keys from those that run nothing; unreadable is a reason), _release_tool 27 (the running release's
+# release.py by its path in the runtime, python3 or the system Python, plain words alone, each documented option once,
+# `~/` only where the shell expands it, on that checkout), the constants 11 (RELEASE_REPOSITORY, RELEASE_TOOL,
+# RELEASE_KIT and GITHUB_REMOTE 1 each, RELEASE_OPTIONS 2, RELEASE_CONFIG 4, PLAIN_LINE 1), _kit_code 5 with KIT_MODULES
+# and KIT_LOADS 1 (a program importing the tool's own modules waits), _canonical_remote 3, the block's comment 7 and 10
+# blank lines; _shipped 5 (the release kit is never the plugin's own, in any spelling), _self_grant 5 (that wait) and
+# check_self_grant 4 (the exact run passes, never one a program starts, never with a pending code). install.py 1: the
+# runtime carries synthesis-skills-manager's and synthesis-onboarding's scripts. release.py 65: snapshot_problems 28
+# (every object of HEAD hashed again, read past replace refs) and published_state 24 (GitHub's main tip and version
+# tag, and for an install the tag on its main, read through the proven origin), each with its 2 blank lines; the
+# docstring 7 (the runtime command, that it needs no code while a checkout's copy waits, the repository only from
+# --repo-root, stage 1's new checks); GIT with its comment 3 (replace refs ignored, hooks and the file monitor off);
+# preflight 2 (the canonical checkout before git status may start a file monitor, the snapshot and GitHub's state in
+# place of the default-branch check, its docstring 1); and __main__ 1 (every git it starts ignores replace refs).
+# main, ci_state, git and collections_head change lines in place (--repo-root required, no abbreviation, CI read from
+# the canonical repository by name).
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 16497
-PLUGIN_BUDGET = 42569
+CORE_BUDGET = 16604
+PLUGIN_BUDGET = 42741
 
 
 def _lines(files):

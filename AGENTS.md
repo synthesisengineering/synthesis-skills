@@ -92,15 +92,22 @@ Codex's settings and catalog, instruction adapters and durable storage.
 - Use a feature branch and a pull request; merge only after CI passes. GitHub enforces it: `main` and `stable`
   require the `ci` check (branch protection, admins included), and with auto-merge allowed,
   `gh pr merge --auto --merge` merges a pull request when its checks pass.
-- Ship with the release script from a clean checkout of the merged default branch:
+- Ship with the release tool the installed runtime carries, from a clean checkout of the merged
+  default branch, alone on the line:
 
   ```bash
-  python3 skills/synthesis-skills-manager/scripts/release.py --dry-run   # check and print the plan
-  python3 skills/synthesis-skills-manager/scripts/release.py
+  python3 ~/.synthesis/v5/current/skills/synthesis-skills-manager/scripts/release.py --repo-root <checkout> --dry-run   # the plan
+  python3 ~/.synthesis/v5/current/skills/synthesis-skills-manager/scripts/release.py --repo-root <checkout>
   ```
 
-  It refuses unless the tree is clean on the default branch, the manifests and
-  CHANGELOG agree, and CI passed for HEAD. It holds the release train (a board claim
+  Run so, it needs no code from the principal: no agent can change the runtime's copy, and the
+  guard lets exactly that copy run, with only the options it documents, on the canonical checkout
+  (origin and every remote the synthesis-skills repository on GitHub, on `main`, its own git config
+  running no program). A release from a checkout's copy, or the tool run any other way, waits for
+  the principal's code. The repository is only ever the checkout `--repo-root` names. It refuses
+  unless the tree is clean, every object HEAD is made of matches its id, the manifests and
+  CHANGELOG agree, HEAD is the tip of `main` as GitHub serves it (a tag of the version there names
+  it) and CI passed for HEAD there. It holds the release train (a board claim
   on the main checkout's `CHANGELOG.md`; another live session holding it means
   another release is under way, and the script names it), builds and checks the five
   collections from the commit (`build_collections.py`), tags, pushes `main`, `stable`,
@@ -117,7 +124,8 @@ Codex's settings and catalog, instruction adapters and durable storage.
   what is already published first, and a tap job GitHub never gave a runner is run again.
   A release is not complete until the script exits 0; a hook approval only the person can
   give in a harness (Codex asks again after every release) is named as waiting, not counted.
-- `release.py --install-only` installs and verifies the tag HEAD carries, for a new
-  Mac or after drift.
+- `release.py --install-only` installs and verifies the tag HEAD carries, a tag GitHub serves on
+  its `main`, after drift, or on a new Mac, where no runtime is installed yet and the checkout's
+  copy runs it.
 
 See `CONTRIBUTING.md` for contribution structure and licensing.

@@ -4,6 +4,7 @@
 
 - [Why release is a script](#why-release-is-a-script)
 - [The procedure](#the-procedure)
+- [Run from the installed runtime, with no code](#run-from-the-installed-runtime-with-no-code)
 - [What the script refuses, and why](#what-the-script-refuses-and-why)
 - [Each harness's own commands](#each-harnesss-own-commands)
 - [Why a client's own version report is not sufficient evidence](#why-a-clients-own-version-report-is-not-sufficient-evidence)
@@ -33,20 +34,45 @@ the script does not rerun the suite.
 2. In a pull request, bump `.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`
    and `.muse-plugin/plugin.json` together and add the CHANGELOG entry for that
    version. Merge once CI passes.
-3. From a clean checkout of the merged default branch:
+3. From a clean checkout of the merged default branch, run the release tool the installed
+   runtime carries, alone on the line ([below](#run-from-the-installed-runtime-with-no-code)):
 
    ```bash
-   python3 skills/synthesis-skills-manager/scripts/release.py --dry-run
-   python3 skills/synthesis-skills-manager/scripts/release.py
+   python3 ~/.synthesis/v5/current/skills/synthesis-skills-manager/scripts/release.py --repo-root <checkout> --dry-run
+   python3 ~/.synthesis/v5/current/skills/synthesis-skills-manager/scripts/release.py --repo-root <checkout>
    ```
 
    It prints one line per stage, then `release complete: vX.Y.Z` (exit 0) or
    `release NOT complete: vX.Y.Z` (exit 1), and runs `synthesis doctor` at the end.
 4. A harness line reading `NOT verified` names each missing, differing or extra file.
    Fix the cause and rerun; `--install-only` reinstalls and re-verifies the tag that
-   HEAD carries without publishing again (also the command for a new Mac).
+   HEAD carries without publishing again (also the command for a new Mac, where no runtime
+   is installed yet: there the checkout's copy runs it, with `--repo-root` naming the checkout).
 5. On success the script releases the train claim. On failure the claim stays with
    this session, on purpose: the next attempt is still this session's.
+
+## Run from the installed runtime, with no code
+
+Since 5.22.1 the guard holds a program that names synthesis's writers or runs from the
+protected runtime until the principal types a code, so every release waited for one. The
+principal's ruling of 2026-11-15: run releases from the protected installed tool, without a
+code. The runtime carries the release tool and what it imports (the scripts of this skill
+and of `synthesis-onboarding`), so no agent can change the copy that installs the guard,
+and the guard lets exactly that copy run with no code: the running release's
+`release.py`, named by its path in the runtime (through `current` or `releases/<hash>`),
+run by `python3` or `/usr/bin/python3`, alone on the line in plain words (no quote,
+variable, pipe, redirect or second command), with only the options it documents
+(`--repo-root`, once and required, `--dry-run`, `--install-only`, `--clients`, `--session`;
+no abbreviation), on the canonical checkout above. A release from a checkout's copy waits
+for the principal's code, and so does every other way of running the tool: a copy
+elsewhere, the scripts the runtime carries for it (never trusted as the plugin's own), an
+option it does not document, a program that imports its modules, a wrapper or an
+interpreter option. What the tool then publishes its own preflight proves.
+
+The repository is only ever the checkout `--repo-root` names: its collections, manifests,
+CHANGELOG, git and tap. The tool's own folder gives only its imports, from the runtime it
+runs from. Every git it starts reads the repository's own objects and nothing its config
+adds: replace refs ignored, hooks and the file monitor off.
 
 ## What the script refuses, and why
 
@@ -54,11 +80,22 @@ Before anything is pushed it refuses when:
 
 - the repository root is an installed plugin copy (a harness cache or Muse bundle), not
   a source checkout;
-- the tree has uncommitted changes, or HEAD is not on the default branch;
+- the checkout is not the canonical one: origin, and every remote's address for fetching
+  and pushing as git uses it after any rewriting, the synthesis-skills repository on
+  GitHub; on `main`; its own git config, and a worktree's, setting only keys that run no
+  program and send git nowhere (a file monitor, hooks, a credential helper, a proxy or an
+  include is refused before git can run it);
+- the tree has uncommitted changes;
+- an object HEAD's commit and files are made of does not match its id when hashed again
+  (git trusts the name an object is filed under; replace refs are ignored throughout);
+- HEAD is not the tip of that repository's `main` as GitHub serves it, or GitHub already
+  has the version's tag at another commit; for `--install-only`, GitHub serves no such
+  tag at HEAD, or HEAD is not on its `main`;
 - the three plugin manifests disagree or lack a version;
 - the CHANGELOG's newest entry is not that version;
 - the version's tag already names another commit;
-- CI has not passed for HEAD (read with `gh run list --commit`; unknown is not passed);
+- CI has not passed for HEAD on that repository (read with `gh run list -R
+  github.com/synthesisengineering/synthesis-skills --commit`; unknown is not passed);
 - another live session holds the release train;
 - the five collections, built from HEAD's commit, fail a check, or the collections file
   cannot be read ([collections.md](collections.md)); a dry run builds and checks them too.

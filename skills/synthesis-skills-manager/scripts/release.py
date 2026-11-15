@@ -1,8 +1,12 @@
 """Release synthesis-skills: preflight, one releaser at a time, publish, install in every harness,
 then prove the installed bytes equal the tag.
 
-    python3 skills/synthesis-skills-manager/scripts/release.py [--repo-root .] [--dry-run]
-    python3 skills/synthesis-skills-manager/scripts/release.py --install-only   # new Mac or drift
+    python3 ~/.synthesis/v5/current/skills/synthesis-skills-manager/scripts/release.py --repo-root <checkout> [--dry-run]
+    python3 ~/.synthesis/v5/current/skills/synthesis-skills-manager/scripts/release.py --repo-root <checkout> --install-only
+
+Run from the installed runtime, where no agent can change it, it needs no code; a copy in a checkout waits for the
+principal's (the principal, 2026-11-15). The repository is only ever the checkout --repo-root names: its collections,
+manifests, CHANGELOG, git and tap; this copy's own folder gives only its imports, from the runtime it runs from.
 
 Pushing is publishing (the marketplaces point at the repository), but each harness keeps its
 own installed copy that does not follow the remote, so a pushed-but-uninstalled release
@@ -11,8 +15,11 @@ each harness's installed files equal the tagged files, read at the folder the ha
 reports loading, whatever its version label says.
 
 Stages, each gating the next:
-  1. Preflight: clean tree on the default branch, not a plugin cache; the three plugin
-     manifests agree; the CHANGELOG's newest entry is this version; CI passed for HEAD.
+  1. Preflight: not a plugin cache; the canonical checkout (the synthesis-skills repository on GitHub as every remote,
+     on main, its own git config running nothing); a clean tree; every object HEAD is made of matching its id; the
+     three plugin manifests agree; the CHANGELOG's newest entry is this version; HEAD the tip of that repository's main
+     as GitHub serves it, its version tag there (if any) HEAD; CI passed for HEAD there. An install is of a tag GitHub
+     serves, on its main.
   2. Release train: a board claim on the main checkout's CHANGELOG.md. Another live session
      holding it means another release is under way: refuse and name it.
   3. Publish: build the five collections from HEAD's commit and check them (build_collections.py), then create the
@@ -42,15 +49,15 @@ import sys
 import time
 from pathlib import Path
 
-REPO = Path(__file__).resolve().parents[3]
+PLUGIN = Path(__file__).resolve().parents[3]  # the runtime or plugin this copy runs from: its imports, never the repository
 sys.dont_write_bytecode = True  # an installed plugin must stay byte-identical; Muse verifies its bundle
-for path in (REPO, REPO / "skills" / "synthesis-onboarding" / "scripts", Path(__file__).resolve().parent):
+for path in (PLUGIN, PLUGIN / "skills" / "synthesis-onboarding" / "scripts", Path(__file__).resolve().parent):
     if str(path) not in sys.path:
         sys.path.insert(0, str(path))
 import setup  # noqa: E402  (each harness's install commands)
 import build_collections  # noqa: E402  (the collections, published beside the whole set as a branch of built folders)
 try:
-    from synthesis import board, doctor, install, paths  # noqa: E402
+    from synthesis import board, doctor, guards, install, paths  # noqa: E402
 except ImportError as exc:  # no runtime beside this copy; one that fails otherwise as it loads keeps its traceback
     print(f"{__file__} needs the synthesis runtime, which cannot be imported ({exc}), so nothing ran. Run it from the "
           "installed synthesis-skills plugin or a checkout of it", file=sys.stderr)
@@ -59,9 +66,12 @@ except ImportError as exc:  # no runtime beside this copy; one that fails otherw
 MANIFESTS = (".claude-plugin/plugin.json", ".codex-plugin/plugin.json", ".muse-plugin/plugin.json")
 LOADABLE = ("skills/", "synthesis/", "hooks/", ".claude-plugin/", ".codex-plugin/", ".muse-plugin/")
 IGNORED = ("__pycache__", ".DS_Store")
-GITHUB = re.compile(r"(?:https://github\.com/|git@github\.com:|ssh://git@github\.com/)([^/\s]+/[^/\s]+?)(?:\.git)?/?$")
-# The Homebrew formula follows the canonical repository's tags only; a fork's release leaves it alone.
-CANONICAL, TAP = "synthesisengineering/synthesis-skills", "synthesisengineering/homebrew-tap"
+GITHUB = guards.GITHUB_REMOTE
+# The repository a release publishes, which preflight requires (5.23.1), and the tap whose formula follows its tags.
+CANONICAL, TAP = guards.RELEASE_REPOSITORY, "synthesisengineering/homebrew-tap"
+# What git reads and runs for a release is the repository's own objects and nothing its config adds: replace refs
+# ignored, hooks and a file monitor off (5.23.1). Run as a script, every git it starts ignores replace refs too.
+GIT = ("git", "--no-replace-objects", "-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false")
 FORMULA = "Formula/synthesis.rb"
 FAILED = {"FAILURE", "ERROR", "CANCELLED", "TIMED_OUT", "ACTION_REQUIRED", "STARTUP_FAILURE"}
 # GitHub's own server errors, which the same request usually gets past a moment later. An error body GitHub sends
@@ -71,7 +81,7 @@ TRANSIENT = re.compile(r"HTTP 5\d\d|Bad Gateway|Service Unavailable|Gateway Time
 
 
 def git(repo: Path, *args: str, timeout: float = 600) -> subprocess.CompletedProcess:
-    return setup.run(["git", "-C", str(repo), *args], timeout)
+    return setup.run([*GIT, "-C", str(repo), *args], timeout)
 
 
 def manifest_version(repo: Path) -> tuple:
@@ -115,8 +125,8 @@ def retrying(stage, *args, attempts: int = 3, wait: float = 20, sleep=time.sleep
 def ci_state(repo: Path, sha: str, run=setup.run, sleep=time.sleep) -> tuple:
     """(passed, detail) for HEAD's CI on GitHub. Unknown is not passed."""
     for attempt in range(1, 4):
-        proc = run(["gh", "run", "list", "--commit", sha, "--json", "status,conclusion,workflowName", "--limit", "50"],
-                   60, cwd=str(repo))
+        proc = run(["gh", "run", "list", "-R", f"github.com/{CANONICAL}", "--commit", sha, "--json",
+                    "status,conclusion,workflowName", "--limit", "50"], 60, cwd=str(repo))
         if proc.returncode == 0 or attempt == 3 or not TRANSIENT.search(setup._tail(proc)):
             break
         sleep(10 * attempt)
@@ -133,32 +143,86 @@ def ci_state(repo: Path, sha: str, run=setup.run, sleep=time.sleep) -> tuple:
     return True, f"CI passed for {sha[:12]} ({len(runs)} run(s))"
 
 
-def preflight(repo: Path, install_only: bool, ci=ci_state) -> tuple:
-    """(version, problems). Nothing is pushed or installed unless problems is empty."""
+def snapshot_problems(repo: Path) -> list:
+    """Every object HEAD's commit and files are made of, hashed again: git trusts the name an object is filed under, so
+    one written in place under another's id would publish and install files no CI saw (5.23.1). Replace refs are
+    already ignored (GIT)."""
+    fmt = git(repo, "rev-parse", "--show-object-format").stdout.strip() or "sha1"
+    ids = [git(repo, "rev-parse", "HEAD").stdout.strip(), git(repo, "rev-parse", "HEAD^{tree}").stdout.strip()] + [
+        entry.split()[2] for entry in git(repo, "ls-tree", "-r", "-t", "-z", "HEAD").stdout.split("\0")
+        if entry and entry.split()[1] in ("blob", "tree")]
+    try:
+        read = subprocess.run([*GIT, "-C", str(repo), "cat-file", "--batch"], input="\n".join(ids).encode() + b"\n",
+                              capture_output=True, timeout=600)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return [f"cannot read the objects of HEAD: {exc}"]
+    data, at, wrong = read.stdout, 0, []
+    for oid in ids:
+        end = data.find(b"\n", at)
+        header = data[at:end].split() if end >= 0 else []
+        if len(header) != 3 or header[0].decode() != oid or not header[2].isdigit():
+            wrong.append(oid)
+            break  # the stream cannot be followed past an object it does not describe
+        size = int(header[2])
+        body, at = data[end + 1:end + 1 + size], end + 2 + size
+        if hashlib.new(fmt, header[1] + b" %d\0" % size + body).hexdigest() != oid:
+            wrong.append(oid)
+    return [f"{len(wrong)} object(s) of HEAD do not match their ids ({', '.join(w[:12] or 'none' for w in wrong[:3])}): "
+            "one was written under another's id; release from a fresh clone"] if wrong or read.returncode else []
+
+
+def published_state(repo: Path, version: str, head: str, install_only: bool, run=setup.run) -> list:
+    """What GitHub serves for the canonical repository, read through origin, whose address `guards.release_checkout`
+    proved: a release is of the tip of its main, and a version tag it already has names this commit; an install is of
+    a tag it serves, on its main. Unreadable is refused (5.23.1: a local commit, a tag only the checkout has, or one
+    pushed and never merged, would otherwise publish or install what CI never passed on main)."""
+    tag = f"refs/tags/v{version}"
+    listed = run([*GIT, "-C", str(repo), "ls-remote", "--symref", "origin", "HEAD", "refs/heads/main", tag, f"{tag}^{{}}"],
+                 120)
+    if listed.returncode:
+        return [f"cannot read {CANONICAL} on GitHub: {setup._tail(listed)}"]
+    served = dict(reversed(line.split("\t", 1)) for line in listed.stdout.splitlines()
+                  if "\t" in line and not line.startswith("ref:"))
+    main, tagged = served.get("refs/heads/main", ""), served.get(f"{tag}^{{}}", served.get(tag, ""))
+    if not install_only:
+        return [f"HEAD {head[:12]} is not the tip of {CANONICAL} main ({main[:12] or 'unread'}): release only what is "
+                "merged there; pull, or merge its pull request first"] * (main != head) + [
+            f"{CANONICAL} already has v{version} at {tagged[:12]}; bump the version"] * bool(tagged and tagged != head)
+    standing = run(["gh", "api", f"repos/{CANONICAL}/compare/{head}...main", "--jq", ".status"], 60)
+    said = standing.stdout.strip() if standing.returncode == 0 else setup._tail(standing)
+    return [f"{CANONICAL} has {f'v{version} at {tagged[:12]}' if tagged else f'no v{version}'}; install only a tag it "
+            "serves"] * (tagged != head) + [f"{head[:12]} is not on {CANONICAL} main ({said}); install only a release of "
+                                            "what is merged there"] * (said not in ("ahead", "identical"))
+
+
+def preflight(repo: Path, install_only: bool, ci=ci_state, published=published_state) -> tuple:
+    """(version, problems). Nothing is pushed or installed unless problems is empty. A checkout that is not the
+    canonical one is refused before git runs anything its config could start (`git status` runs a file monitor)."""
     problems = []
     if "cache" in repo.parts and "plugins" in repo.parts or "muse-bundle" in repo.parts:
         return None, [f"{repo} is an installed plugin copy, not a source checkout"]
     if Path(git(repo, "rev-parse", "--show-toplevel").stdout.strip() or "/").resolve() != repo.resolve():
         return None, [f"{repo} is not the root of a git checkout"]
+    named = guards.release_checkout(str(repo))
+    if named:
+        return None, [f"{repo} is not the canonical checkout: {'; '.join(named)}"]
     if git(repo, "status", "--porcelain").stdout.strip():
         problems.append("the tree has uncommitted changes")
-    default = (git(repo, "symbolic-ref", "--short", "refs/remotes/origin/HEAD").stdout.strip() or "origin/main")
-    branch = git(repo, "rev-parse", "--abbrev-ref", "HEAD").stdout.strip()
-    if branch != default.split("/", 1)[-1]:
-        problems.append(f"on {branch or 'a detached HEAD'}, not the default branch {default.split('/', 1)[-1]}")
     version, detail = manifest_version(repo)
     if version is None:
         return None, problems + [detail]
     head = git(repo, "rev-parse", "HEAD").stdout.strip()
     tag = git(repo, "rev-parse", "--verify", "--quiet", f"refs/tags/v{version}^{{commit}}").stdout.strip()
+    problems += snapshot_problems(repo)
     if install_only:
         if tag != head:
             problems.append(f"v{version} is {'missing' if not tag else 'not HEAD'}; install from the tagged commit")
-        return version, problems
+        return version, problems + published(repo, version, head, True)
     if changelog_version(repo) != version:
         problems.append(f"CHANGELOG's newest entry is {changelog_version(repo) or 'missing'}, manifests say {version}")
     if tag and tag != head:
         problems.append(f"v{version} already tags another commit; bump the version")
+    problems += published(repo, version, head, False)
     passed, detail = ci(repo, head)
     if not passed:
         problems.append(detail)
@@ -214,7 +278,7 @@ def collections_head(repo: Path, remote: str, branch: str, tree: str, version: s
     stamp = git(repo, "log", "-1", "--format=%H%x00%cn%x00%ce%x00%cI", "HEAD").stdout.strip().split("\0")
     who = {f"GIT_{role}_{part}": value for role in ("AUTHOR", "COMMITTER")
            for part, value in zip(("NAME", "EMAIL", "DATE"), stamp[1:])}
-    done = setup.run(["git", "-C", str(repo), "commit-tree", "--no-gpg-sign", tree, *(["-p", head] if head else []),
+    done = setup.run([*GIT, "-C", str(repo), "commit-tree", "--no-gpg-sign", tree, *(["-p", head] if head else []),
                       "-m", f"Collections of v{version}", "-m", f"Built from {stamp[0]}, the commit v{version} tags."],
                      600, env={**os.environ, **who})
     if done.returncode:
@@ -465,8 +529,8 @@ def install_and_verify(repo: Path, version: str, clients: list, dry_run: bool = 
 
 
 def main(argv=None) -> int:
-    parser = argparse.ArgumentParser(prog="release.py", description=__doc__.split("\n\n")[0])
-    parser.add_argument("--repo-root", type=Path, default=REPO)
+    parser = argparse.ArgumentParser(prog="release.py", description=__doc__.split("\n\n")[0], allow_abbrev=False)
+    parser.add_argument("--repo-root", type=Path, required=True, help="the canonical checkout, never this copy's folder")
     parser.add_argument("--clients", default="claude,codex,muse")
     parser.add_argument("--install-only", action="store_true", help="install and verify the tag HEAD carries")
     parser.add_argument("--dry-run", action="store_true", help="check and print the plan; change nothing")
@@ -523,4 +587,5 @@ def main(argv=None) -> int:
 
 
 if __name__ == "__main__":
+    os.environ["GIT_NO_REPLACE_OBJECTS"] = "1"  # the builders' and setup's git too read the objects themselves
     sys.exit(main())

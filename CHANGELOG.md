@@ -13,6 +13,22 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   opening one marks it read. Messenger's section moved word for word from `references/linkedin-messages.md` to its own
   `references/messenger-messages.md` (its headings one level up), listed in Contents, and the four checklists point to
   it. The moved Procedure sentence's link now names `procedure.md`, the file it sits in. SKILL.md is 7,849 bytes.
+- **A release runs from the installed runtime's own release tool, with no code** (`synthesis-skills-manager` 3.7.0), by
+  the principal's ruling of 2026-11-15. Since 5.22.1 every release waited for a code: from a checkout the tool names
+  `board.claim`, and the runtime carried no release tool. The runtime now carries it and what it imports (this skill's
+  scripts and `synthesis-onboarding`'s), so no agent can change the copy that installs the guard, and the guard lets
+  exactly that copy run with no code: `python3 ~/.synthesis/v5/current/skills/synthesis-skills-manager/scripts/release.py
+  --repo-root <checkout>`, by `python3` or `/usr/bin/python3`, alone on the line in plain words, with only the options
+  it documents and no abbreviation, on the canonical checkout (origin and every remote's address, as git uses it, the
+  synthesis-skills repository on GitHub; on `main`; its own git config setting no key that runs a program or sends git
+  elsewhere). The checkout's copy, a copy elsewhere, the scripts the runtime carries for it (never trusted as the
+  plugin's own), another option, a program that imports its modules, a wrapper or another interpreter waits for the
+  code as before. `release.py` takes the repository only from `--repo-root`, now required, and its imports only from
+  where it runs. Its preflight also refuses, before anything is published: a checkout that is not the canonical one,
+  before git runs anything its config could start; an object of HEAD that does not match its id when hashed again
+  (every git it runs ignores replace refs, with hooks and the file monitor off); a HEAD that is not the tip of `main`
+  as GitHub serves it; a version tag GitHub has at another commit; and an `--install-only` of a tag GitHub does not
+  serve on its `main`. CI is read from the canonical repository by name. AGENTS.md and the skill name the command.
 
 ## [5.23.0] - 2026-11-15
 
