@@ -739,3 +739,15 @@ def test_records_a_call_left_with_no_answer_stand_when_its_thread_judges_again()
     guards.hook_answers()
     guards.answered(True)
     assert ran == ["commit"] and _thread.get_ident() not in guards._PENDING
+
+
+def test_the_hook_s_answer_frees_the_guard_its_check_left_taken():
+    """Round 7, finding 1: an interrupt after the check handed its records over and before it freed the guard left the
+    lock taken, so a process that went on would wait for good at its next check."""
+    import _thread
+    me = _thread.get_ident()
+    assert guards._JUDGING.acquire(False)
+    guards._DEPTH[0], guards._DEPTH[1] = 1, me
+    guards._PENDING[me] = ([], [])
+    guards.answered(True)
+    assert not guards._JUDGING.locked() and guards._DEPTH == [0, None] and guards._SETTLING == [None]
