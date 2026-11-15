@@ -15,11 +15,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   it. The moved Procedure sentence's link now names `procedure.md`, the file it sits in. SKILL.md is 7,849 bytes.
 - **On a messaging site's page a script the guard cannot read is refused** (core; `synthesis-message-guard` 2.12.1,
   references/config.md). Round 4 of the batch approval's review found a page script that clicks Send by a name it builds
-  as it runs (`el['cli' + 'ck']()`) passing on Slack, WhatsApp, LinkedIn, Gmail and X, since the old rule read a
-  script's text for a click, a submit or a key. A script there is now read with its strings, comments and patterns out:
-  one that calls what it names only as it runs, or puts code in a string the page runs, is refused; one that acts waits
-  for the code, with the plain spellings the old rule missed; a read passes. Over 60 days of records it refuses none of
-  the seats' 181 ordinary scripts on those pages, holds the 5 that click or move the tab, as before, and passes 176.
+  as it runs (`el['cli' + 'ck']()`) passing on Slack, WhatsApp, LinkedIn, Gmail and X. A script there is now read as
+  code: one that calls what it names only as it runs, or puts code where the page runs it, is refused; one that acts
+  waits for the code, now with an optional call, a call or handler by a bare or destructured name, a move by another
+  part of the address, and a fetch, Request or XHR whose method is no literal GET or HEAD; a read passes, `Array.fill`
+  and `slice.call` included. Its review round found a page no list shows read as no messaging site's (a sub-agent's
+  above all) and a refused navigate taken as a driven browser's page; both are read rightly now. Over 60 days of records
+  it refuses none of the seats' 181 ordinary scripts on those pages, holds the 5 that click or move the tab, as before,
+  and passes 176. Spellings made to beat the reader are on the runtime doc's open list.
 - **A navigate is read as a URL parser reads it** (core). The `navigate` tool called alone was never judged, and a
   navigate's address was read as written while a browser drops tabs and line breaks anywhere in it and control
   characters at its ends, so `java\tscript:` was a `javascript:` address to the browser alone. Every navigate, from

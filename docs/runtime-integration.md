@@ -493,6 +493,16 @@ harness that gives no transcript cannot carry approved sends or deploys until it
   event call (jQuery's `.trigger('click')`) or an app's own function under a name that does not say it sends passes as
   a read, since nothing in the script shows its effect. Tests: `test_open_a_call_whose_name_says_nothing_of_what_it_does`,
   marked to fail until it is closed.
+- **Spellings made to beat that reader** (review round 1 of 5.23.1, #13), each a case of
+  `test_open_a_spelling_made_to_beat_the_reader` or `test_open_a_blob_document_made_on_the_sites_own_origin`, expected to
+  fail until closed: a member named by an escaped string (`el['\u0063lick']()`, `el['\x63lick']()`); a method called in
+  parentheses (`(el.click)()`); a plain name as a template tag (`` el.click`` ``); an alias of a built name; a call by
+  `forEach(Function.prototype.call, ...)`; a getter; an indirect `eval` (`(0, eval)(...)`); a timer given a string in a
+  variable; `open` through a window alias (`const w = window; w.open(...)`); HTML decoded at run time
+  (`insertAdjacentHTML(..., atob(...))`); a `blob:` document made on the site's own origin and then navigated to; an
+  HTML-like comment (`<!-- '`), whose quote the reader takes for a string; and an object divided (`{} / x / 1`), whose
+  `/` the reader takes for a pattern. A batch whose `javascript:` navigate moves the tab was closed by reading the page
+  after it as unknown.
 
 No local file is secret from an agent running as the person's own OS user, so these
 stay open, and no hook running as that same user can close them:

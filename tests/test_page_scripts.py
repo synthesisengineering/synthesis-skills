@@ -7,7 +7,7 @@ and 3, on 5.23.0 too).
   a `javascript:` one is a page script on the page it runs on.
 - #3: on a messaging site's page a script was judged by a pattern over its text, and `el['cli' + 'ck']()` is no text it
   sees. It is now read with its strings, comments and patterns out: one that calls what it names only as it runs is
-  refused, one that acts waits for the code, a read passes (the coordinator's ruling on the 60 days' 178 scripts, the
+  refused, one that acts waits for the code, a read passes (the coordinator's ruling on the 60 days' 181 scripts, the
   seats' ordinary reads: a release refuses no ordinary work).
 """
 
@@ -131,7 +131,7 @@ def test_a_driven_browsers_navigate_to_a_javascript_address(tmp_path):
 
 
 OPAQUE = [BUILT, "document.querySelector('b')?.['cli' + 'ck']?.()", "el[k]`x`", "(el['cli' + 'ck'])()", "Reflect.apply(f, el, [])",
-          "HTMLElement.prototype.click.call(el)", "f.apply(el, [])", "f.bind(el)()", "eval('el.click()')", "new Function('el.click()')()",
+          "f.apply(el, [])", "f.bind(el)()", "eval('el.click()')", "new Function('el.click()')()",
           "with (el) { click() }", "import('https://x.example/a.js')", "setTimeout('el.click()', 10)", "document.title + '",
           "el.\\u0063lick()", "document.body.append(Object.assign(document.createElement('script'), {textContent: 'x()'}))",
           "box.innerHTML = '<img src=x onerror=go()>'"]
