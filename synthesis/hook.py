@@ -16,6 +16,8 @@ import re
 import sys
 import time
 
+BEGAN = time.monotonic()  # near this process's start: each harness's 5 seconds began just before it
+
 if __package__ in (None, ""):  # run as a file with -S: make the package importable
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -264,19 +266,20 @@ def _late(signum, frame):
     raise _Late()
 
 
-def pre_tool_use(payload):
-    """Guard one call, within GUARD_SECONDS of starting to: past it the call is held, so a guard slowed by a cold
-    repository read or a lock answers, closed, before a harness gives up on it (Codex and Muse let a call through on
-    their timeout). The deadline stops git and any other process the guard started, and the answer is printed once it
-    is cancelled (review round 2 of 5.21.0)."""
+def pre_tool_use(payload, began=None):
+    """Guard one call, within GUARD_SECONDS of `began` (the hook process's start; by default, now): past it the call is
+    held, so a guard slowed by a cold repository read or a lock answers, closed, before a harness gives up on it (Codex
+    and Muse let a call through on their timeout). The deadline stops git and any other process the guard started, and
+    the answer is printed once it is cancelled (review round 2 of 5.21.0)."""
     import signal
 
+    began = time.monotonic() if began is None else began
     before = signal.signal(signal.SIGALRM, _late)
-    signal.setitimer(signal.ITIMER_REAL, GUARD_SECONDS)
+    signal.setitimer(signal.ITIMER_REAL, max(0.01, GUARD_SECONDS - (time.monotonic() - began)))
     try:
         from synthesis import approvals, guards, paths  # the guard's own module loads inside its deadline too
 
-        approvals.SPENT.clear()
+        guards.UNDER_HOOK["on"] = True  # its records wait for this answer
         tool = str(payload.get("tool_name", ""))
         tool_input = payload.get("tool_input") or {}
         try:
@@ -299,9 +302,12 @@ def pre_tool_use(payload):
     finally:
         signal.setitimer(signal.ITIMER_REAL, 0)
         signal.signal(signal.SIGALRM, before)
-    used = sys.modules.get("synthesis.approvals")  # a call that is held runs nothing: the grants it used go back
-    if used is not None:
-        used.give_back() if reason else used.SPENT.clear()
+    judged = sys.modules.get("synthesis.guards")
+    if judged is not None and judged.UNDER_HOOK["on"]:
+        judged.UNDER_HOOK["on"] = False
+        # A held call ran nothing: its records are undone and its grants go back. An answer later than this may reach a
+        # harness after its 5 seconds, when it lets the call through, so then its records stand and its grants stay spent.
+        judged.settle(not reason or time.monotonic() - began > GUARD_SECONDS + 0.5)
     return _emit("PreToolUse", deny=reason) if reason else 0
 
 
@@ -362,7 +368,7 @@ def main(argv):
                "pre-tool-use": pre_tool_use, "stop": stop}.get(event)
     if not handler:
         return 0
-    code = handler(payload)
+    code = handler(payload, BEGAN) if handler is pre_tool_use else handler(payload)
     _ran(payload, event.replace("-", "_"))  # once it has answered: a handler that fails has not shown that it runs
     return code
 

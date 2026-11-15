@@ -564,22 +564,22 @@ def _judged_send(tool: str, tool_input: dict, config: dict, session: dict | None
     if timed and timed.startswith("fresh_calendar"):
         return timed
     if timed is not None and approvals.consume("send-time", subject, session):  # released as it is, by the code that says so
-        approvals.void("send", subject)  # one message, one release: a second copy asks again
-        sends.log(chan, tool, summary, "approval", session)
+        _void("send", subject)  # one message, one release: a second copy asks again
+        _after(lambda: sends.log(chan, tool, summary, "approval", session))
         return None
     if timed:  # asked before any other code, and again when the approved call comes
         code = approvals.request("send-time", subject, f"{tool}, a time in its words and no calendar read: {summary[len(tool) + 2:][:100]}")
         return timed.replace("{code}", approvals.how(code))
     if not others and sends.covered(chan, [t for _, t in _strings(tool_input)], _project(session), config):
-        sends.log(chan, tool, summary, "window", session)
-        sends.settle()
+        mark = sends.log(chan, tool, summary, "window", session)  # counted at once, so no other call takes the same send
+        _after(sends.settle, lambda: sends.undo(mark))
         if timed is not None:
-            approvals.void("send-time", subject)
+            _void("send-time", subject)
         return None
     if approvals.consume(kind, subject, session):
-        sends.log(chan, tool, summary, "approval", session)
+        _after(lambda: sends.log(chan, tool, summary, "approval", session))
         if timed is not None:
-            approvals.void("send-time", subject)
+            _void("send-time", subject)
         return None
     text = " ".join(t for _, t in _strings(tool_input))
     code = approvals.request(kind, subject, f"{'SAME-DAY meeting' if others else tool}: {text[:120]}")
@@ -2148,6 +2148,14 @@ def _last_deploy(identity: str):
     return paths.state() / "deploys" / (hashlib.sha256(identity.encode("utf-8")).hexdigest()[:16] + ".json")
 
 
+def _record_deploys(identities) -> None:
+    """The deploy brake's record of a deploy the guard let through, for the 45-minute check."""
+    for identity in identities:
+        record = _last_deploy(identity)
+        record.parent.mkdir(parents=True, exist_ok=True)
+        record.write_text(f"{identity}\n{time.time()}\n", encoding="utf-8")
+
+
 def check_deploy(command: str, config: dict, cwd: str | None = None, session: dict | None = None) -> str | None:
     cwd = cwd or os.getcwd()
     found = _targets(command, config, cwd)
@@ -2182,10 +2190,7 @@ def check_deploy(command: str, config: dict, cwd: str | None = None, session: di
     subject = {"command": command, "heads": heads} if heads else command
     # A rapid-redeploy approval is the stronger one, so it still counts if the window has just closed.
     if approvals.consume(kind, subject, session) or (kind == "deploy" and approvals.consume("deploy-rapid", subject, session)):
-        for identity in identities:
-            record = _last_deploy(identity)
-            record.parent.mkdir(parents=True, exist_ok=True)
-            record.write_text(f"{identity}\n{time.time()}\n", encoding="utf-8")
+        _after(lambda: _record_deploys(identities))  # a deploy held later by another check of the call did not happen
         return None
     if recent:
         name, last = recent[0]
@@ -2593,7 +2598,7 @@ SCRIPTED_WRITE = re.compile(
     r"|open\s*\(?\s*(?:my\s+)?[$\w]+\s*,\s*['\"]\s*\+?[>|]")
 # A script that opens a send window, grants or spends an approval, or writes into synthesis state. Reading the
 # window, the ledger or the board stays allowed (a read-only check was refused on 2026-10-13).
-SELF_GRANT_CALLS = re.compile(r"\b(?:open_window|grant_from_prompt|consume|give_back|_window_file)\b|\bpaths\.state\b[\s\S]*\b(?:"
+SELF_GRANT_CALLS = re.compile(r"\b(?:open_window|grant_from_prompt|consume|give_back|put_back|_window_file)\b|\bpaths\.state\b[\s\S]*\b(?:"
                               r"write_json|write_text|touch|unlink)\b|\b(?:write_json|write_text|touch|unlink)\b[\s\S]*\bpaths\.state\b")
 HOOK_RUN = re.compile(r"(?:^|/)(?:synthesis-hook|synthesis/hook\.py)$|^synthesis\.hook$")
 ASSIGNED = re.compile(r"(?:^|(?<=[\s;&|({'\"]))([A-Za-z_]\w*)(\+?)=(\"[^\"\n]*\"|'[^'\n]*'|\$\([^()\n]*\)[^\s;&|()<>\"']*|[^\s;&|()<>\"']*)")
@@ -4421,6 +4426,34 @@ def _real(path) -> str:
         memo[path] = os.path.realpath(path)
     return memo[path]
 
+
+EFFECTS: list = []  # (what to do if the call is let through, what to undo if it is held) for each record a decision makes
+UNDER_HOOK = {"on": False}  # the hook answers last, so it settles the effects; a direct caller of check() has them settled there
+
+
+def _after(commit=None, undo=None) -> None:
+    """A record of a decision that stands only if the whole call is let through: the send ledger, the deploy brake, a
+    grant voided by the code that released the call (review round 2 of the spend order, finding 1)."""
+    EFFECTS.append((commit, undo))
+
+
+def _void(kind: str, subject) -> None:
+    """Void the other code's grant at once, inside the decision's lock, and put it back if the call is held."""
+    removed = approvals.void(kind, subject)
+    _after(undo=lambda: approvals.put_back(removed))
+
+
+def settle(allowed: bool) -> None:
+    """The call is let through: write each record its decisions made and keep the grants it used spent. It is held:
+    undo what was written ahead and give the grants back, since it ran nothing."""
+    effects = list(EFFECTS)
+    EFFECTS.clear()
+    for commit, undo in (effects if allowed else reversed(effects)):
+        step = commit if allowed else undo
+        if step:
+            step()
+    approvals.SPENT.clear() if allowed else approvals.give_back()
+
 READER_WRITES = {"less": r"-[A-Za-z]*[oO].*|--(?:log-file|LOG-FILE)(?:=.*)?", "rg": r"--pre(?:-glob)?(?:=.*)?", "sort": r"-o.*|--output(?:=.*)?",
                  "file": r"-[A-Za-z]*C[A-Za-z]*|--compile", "date": r"-s|--set(?:=.*)?"}  # a reader's own options that write or run
 GIT_FIRST = re.compile(r"-c|--config-env(?:=.*)?|--work-tree(?:=.*)?|--exec-path(?:=.*)?|-p|--paginate")  # git's own, before its subcommand
@@ -4428,7 +4461,7 @@ GIT_RUNS = re.compile(r"--output(?:=.*)?|--ext-diff|--textconv|-O.*|--open-files
 ABSOLUTE = re.compile(r"-[A-Za-z]*P[A-Za-z]*|--absolute-names|--absolute-filenames|--insecure|-:|-spf")  # an archive's members land where they say
 SYNTHESIS_IMPORT = re.compile(r"^[ \t]*(?:from[ \t]+synthesis\b|import[ \t]+synthesis\b)", re.M)
 SYNTHESIS_WRITES = frozenset(f"{module}.{name}" for module, names in (  # synthesis's own functions that write a file (a test reads them from the source)
-    ("approvals", "_expire _spend alone consume give_back grant_from_prompt remember request void"), ("autopilot", "_evaluate _write_pointer evaluate"),
+    ("approvals", "_expire _spend alone consume give_back grant_from_prompt put_back remember request void"), ("autopilot", "_evaluate _write_pointer evaluate"),
     ("board", "_claim _claim_lock _describe _post claim inbox mark_carried mark_read_messages message notify release resolve save touch"),
     ("checkout", "_append _staged_commit _tree_commit index_set log_claims snapshot snapshot_paths"),
     ("cli", "_main cmd_claim cmd_doctor cmd_handoff cmd_inbox cmd_index cmd_install cmd_msg cmd_release cmd_resume cmd_sends "
@@ -4437,7 +4470,7 @@ SYNTHESIS_WRITES = frozenset(f"{module}.{name}" for module, names in (  # synthe
     ("hook", "_carried_since _ran _upgrade_note main pre_tool_use session_start stop user_prompt_submit"),
     ("install", "_merge _write_exec install move_board register_git_hooks uninstall"), ("paths", "note_wait write_json"),
     ("project", "_carry_out _mark_carried_out _peers _recent_conversation handoff resume"),
-    ("reply_check", "check misrouted_accounts unarmed_wait unwatched_sends"), ("sends", "close_window log open_window settle window_refusal"),
+    ("reply_check", "check misrouted_accounts unarmed_wait unwatched_sends"), ("sends", "close_window log open_window settle undo window_refusal"),
     ("sessions", "_Session _export _ritual_history _sync_workspace _write_synced _writer behind export export_file fetch lost peek recent sync"),
     ("wait", "_watch live main record unread watching"), ("worktree", "create main retire")) for name in names.split())
 SYNTHESIS_DEFS: dict = {}  # a module of synthesis: the names it imports
@@ -5461,7 +5494,7 @@ def _released(session: dict | None, pages: list, add: tuple = (), drop: bool = F
     if record and (add or drop):
         kept = [e for e in kept if not (drop and e in mine)] + ([{"pages": sorted(pages), "words": add[0], "rules": add[1],
                                                                  "at": time.time()}] if add else [])
-        paths.write_json(record, {"released": kept})
+        _after(lambda: paths.write_json(record, {"released": kept}))  # recorded only if the call is let through
     return mine
 
 
@@ -5539,11 +5572,11 @@ def check_desktop(name: str, tool: str, tool_input: dict, config: dict, session:
     subject = {**subject, "earlier": words} if earlier else subject
     summary = f"{tool} in {where}: {what}" + (f"; typed words not stored ({sum(map(len, typed + words))} characters)" if typed or words else "")
     if not rules and sends.covered(chan, typed, _project(session), config):  # a window never covers words a rule stopped
-        sends.log(chan, tool, summary, "window", session)
-        sends.settle()
+        mark = sends.log(chan, tool, summary, "window", session)  # counted at once, so no other call takes the same send
+        _after(sends.settle, lambda: sends.undo(mark))
         return None
     if approvals.consume("send", subject, session):
-        sends.log(chan, tool, summary, "approval", session)
+        _after(lambda: sends.log(chan, tool, summary, "approval", session))
         _released(session, list(reached), drop=True)
         return None
     code = approvals.request("send", subject, summary[:300])
@@ -6239,25 +6272,22 @@ def check_outgoing(command: str, config: dict, cwd: str, session: dict | None = 
         return timed
     with approvals.alone():  # the code that lets it go spends the other before an identical command is judged
         if timed is not None and approvals.consume("send-time", subject, session):
-            approvals.void("send", subject)
-            for c in chans:
-                sends.log(c, "shell", summary, "approval", session)
+            _void("send", subject)
+            _after(lambda: [sends.log(c, "shell", summary, "approval", session) for c in chans])
             return None
         if timed:
             code = approvals.request("send-time", subject, f"a time in its words and no calendar read: {summary[:120]}")
             return timed.replace("make this identical call", "run the identical command").replace("{code}", approvals.how(code))
         if all(sends.covered(c, [text], _project(session), config) for c in chans):
-            for c in chans:
-                sends.log(c, "shell", summary, "window", session)
-            sends.settle()
+            marks = [sends.log(c, "shell", summary, "window", session) for c in chans]  # counted at once, under the lock
+            _after(sends.settle, lambda: [sends.undo(m) for m in marks])
             if timed is not None:
-                approvals.void("send-time", subject)
+                _void("send-time", subject)
             return None
         if approvals.consume("send", subject, session):
-            for c in chans:
-                sends.log(c, "shell", summary, "approval", session)
+            _after(lambda: [sends.log(c, "shell", summary, "approval", session) for c in chans])
             if timed is not None:
-                approvals.void("send-time", subject)
+                _void("send-time", subject)
             return None
         code = approvals.request("send", subject, summary)
     lead = (f"This command {'; '.join(dict.fromkeys(acts))}; it runs in {', '.join(dirs)}. A key, a click or code run in another "
@@ -6276,7 +6306,22 @@ def guarded(tool: str, tool_input: dict | None = None) -> bool:
 
 def check(tool: str, tool_input: dict, config: dict, cwd: str | None = None, session: dict | None = None) -> str | None:
     """cwd is the session's working directory (the hook payload's `cwd`); defaults to this process's.
-    session is the hook payload, which names the transcript an approval is checked against."""
+    session is the hook payload, which names the transcript an approval is checked against. The records the call's
+    decisions make are written only if it is let through: here for a direct caller, by the hook when it answers."""
+    EFFECTS.clear()
+    approvals.SPENT.clear()
+    try:
+        verdict = _check(tool, tool_input, config, cwd, session)
+    except BaseException:  # a check that could not decide holds the call: nothing it decided stands
+        if not UNDER_HOOK["on"]:
+            settle(False)
+        raise
+    if not UNDER_HOOK["on"]:
+        settle(verdict is None)
+    return verdict
+
+
+def _check(tool: str, tool_input: dict, config: dict, cwd: str | None, session: dict | None) -> str | None:
     _TAILS.clear()  # each call reads the record anew: a rewrite in place can keep a file's size and its time stamp
     _CALL.update(codes={}, ran={}, proofs={}, files={}, real={}, until=time.monotonic() + CALL_SECONDS)  # and every script it runs
     if not cwd:

@@ -337,16 +337,33 @@ def describe(w: dict) -> str:
 # --- the ledger ---------------------------------------------------------------------------------
 
 
-def log(chan: str, tool: str, summary: str, how: str, session: dict | None = None) -> None:
-    """One line per send the guard let through, for the daily plan's "On your behalf"."""
-    entry = {"at": time.time(), "channel": chan, "tool": tool, "summary": summary[:200], "how": how,
+def log(chan: str, tool: str, summary: str, how: str, session: dict | None = None) -> str:
+    """One line per send the guard let through, for the daily plan's "On your behalf". Returns its mark (the day and
+    its id), for `undo` when the call it belongs to is then held."""
+    import uuid
+    day = time.strftime("%Y-%m-%d")
+    entry = {"id": uuid.uuid4().hex, "at": time.time(), "channel": chan, "tool": tool, "summary": summary[:200], "how": how,
              "session": paths.session_id(session) if session else os.environ.get("SYNTHESIS_SESSION", "")}
-    target = paths.state() / "sends" / f"{time.strftime('%Y-%m-%d')}.jsonl"
+    target = paths.state() / "sends" / f"{day}.jsonl"
     target.parent.mkdir(parents=True, exist_ok=True)
     with target.open("a", encoding="utf-8") as handle:
         handle.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    return f"{day}/{entry['id']}"
+
+
+def undo(mark: str) -> None:
+    """A send counted at once (a window's planned send) whose call was then held: it did not go. The ledger only grows,
+    so a line says so, and `ledger` leaves both out (review round 2 of the spend order, finding 1)."""
+    day, _, ident = mark.partition("/")
+    target = paths.state() / "sends" / f"{day}.jsonl"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    with target.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps({"at": time.time(), "how": "undone", "undoes": ident}) + "\n")
 
 
 def ledger(day: str) -> list:
+    """The sends of a day that went: a send its call's hold undid is left out, with the line that undid it."""
     target = paths.state() / "sends" / f"{day}.jsonl"
-    return [json.loads(line) for line in target.read_text(encoding="utf-8").splitlines() if line] if target.is_file() else []
+    rows = [json.loads(line) for line in target.read_text(encoding="utf-8").splitlines() if line] if target.is_file() else []
+    undone = {r.get("undoes") for r in rows if r.get("how") == "undone"}
+    return [r for r in rows if r.get("how") != "undone" and not (r.get("id") and r["id"] in undone)]

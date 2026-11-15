@@ -24,9 +24,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   were held with the grants gone, so each identical retry asked for a new code and neither call ran. The guard now
   reads the grant, finds the prompt, and only then spends it; a grant changed while it was checked is never used. The
   prompt hook records how long the session's record was when the principal typed, and the check reads back from the
-  end only to just before that point, so older lines written after the prompt (a compaction block) cannot hide it:
-  0.014 s on that record. A call that is held, at the deadline or by a later check, gives back the grants it used,
-  since it ran nothing. A grant spent before this release cannot be brought back; its call is approved again once.
+  end to 16 MB before that point, and the whole line there, so older lines written after the prompt (a compaction
+  block) cannot hide it: 0.02 s on that record. The hook is now the boundary for what a call's decisions record: a call
+  that is held, at the deadline or by a later check, ran nothing, so it gives back the grants it used and leaves no
+  record of a send, a send window's count, a deploy for the 45-minute brake, or a grant voided by the code that
+  released it. A grant given back appears whole or not at all. An answer later than a harness waits may come after
+  it let the call through, so then the records stand and the grants stay spent; the guard's 4 s deadline now counts
+  from the hook process's start. A grant spent before this release cannot be brought back; its call is approved again
+  once.
 
 ## [5.23.0] - 2026-11-15
 

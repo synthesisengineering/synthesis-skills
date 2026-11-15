@@ -1313,10 +1313,25 @@ ROOT = Path(__file__).resolve().parents[1]
 # 5 more, the record's size when he typed; typed 3 more, read back to that position; consume 3 more, what it used noted;
 # _stamps 2 more, a number read by its length; MARGIN 1; backed 1 more), hook.py 4 (pre_tool_use: the list cleared, and
 # the grants given back when the call is held).
+# Then each 101 more, from that fix's review round 2 (a deploy, a send, a send window's count and a voided grant stayed
+# recorded when a later check of the same call held it, so the retry was refused; a grant given back could be found half
+# written; a prompt line longer than the margin was cut): the hook is now the boundary, writing a call's records only
+# when it lets the call through. guards.py 45: settle 10 (each record written if the call is let through, undone in
+# reverse if it is held, the grants kept spent or given back), _after 4 and _void 4 (a record queued; a grant voided at
+# once and put back if the call is held), EFFECTS and UNDER_HOOK 2, with 8 blank lines; check 15 more (its body moved to
+# _check, the records settled here for a direct caller, also when the check raises); _record_deploys 6 with 2 blank lines
+# (the deploy brake's record, written at settle), less check_deploy 3 and check_outgoing 3 (their records queued in
+# place). approvals.py 33: put_back 21 with 2 blank lines (a grant written beside its place and linked in, so it appears
+# whole or not at all; a write that takes only part), less give_back 7 (it calls put_back); void 7 more (it returns what
+# it removed); _lines_back 10 more (the line holding the read's first byte read whole). sends.py 17: undo 8 with 2 blank
+# lines (a window's send counted at once and undone if its call is held), log 4 more (an id per send, its mark
+# returned), ledger 3 more (an undone send left out). hook.py 6: BEGAN 1 with its blank line (the deadline counts from
+# the process's start), pre_tool_use 4 more (the guard's records settled when it answers; an answer later than a harness
+# waits keeps them).
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 16617
-PLUGIN_BUDGET = 42689
+CORE_BUDGET = 16718
+PLUGIN_BUDGET = 42790
 
 
 def _lines(files):

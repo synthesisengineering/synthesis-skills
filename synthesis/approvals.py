@@ -215,8 +215,9 @@ def _stamps(line: str) -> list:
 
 
 def _lines_back(transcript_path: str, block: int = 1 << 20, stop: int = 0):
-    """A record's lines from its end back to the byte `stop`, newest first. A line longer than a block is kept as its
-    pieces and joined once, so reading it costs its length, not its length squared."""
+    """A record's lines from its end back to the line that holds the byte `stop`, newest first, that line whole even when
+    it began before `stop` (review round 2 of the spend order, finding 3: a prompt line longer than the margin was cut).
+    A line longer than a block is kept as its pieces and joined once, so reading it costs its length, not its square."""
     with open(transcript_path, "rb") as handle:
         handle.seek(0, os.SEEK_END)
         at, tail = handle.tell(), []  # tail: the pieces of the line being read backward, the latest piece first
@@ -236,6 +237,15 @@ def _lines_back(transcript_path: str, block: int = 1 << 20, stop: int = 0):
                 if raw.strip():
                     yield raw.decode("utf-8", "replace")
             tail = [lines[0]]
+        while 0 < at <= stop:  # the line holding `stop` may have begun before it: read back to its start
+            step = min(block, at)
+            at -= step
+            handle.seek(at)
+            data = handle.read(step)
+            cut = data.rfind(b"\n")
+            tail.append(data[cut + 1:])
+            if cut >= 0:
+                break
         rest = b"".join(reversed(tail))
         if rest.strip():
             yield rest.decode("utf-8", "replace")
@@ -243,8 +253,8 @@ def _lines_back(transcript_path: str, block: int = 1 << 20, stop: int = 0):
 
 def typed(transcript_path: str, code: str, since: float, session_id: str = "", start=None) -> bool:
     """Whether the harness's record shows the principal typing approve <code> after `since`. It is read from its end:
-    back to just before `start`, where the record ended when the prompt hook granted (a forged position can only hide a
-    prompt, never add one), and with no position, only as far as the approval window, a run of lines all older than it
+    back to MARGIN before `start`, where the record ended when the prompt hook granted, and the whole line there (a
+    forged position can only hide a prompt, never add one), and with no position, only as far as the approval window, a run of lines all older than it
     ending the search (2026-11-15: a Codex record of 1.9 GB took 4.6 s to read from its start, past the hook's 4 s; then
     a compaction block of older lines written after a prompt ended the window's search before it)."""
     if not code:
@@ -288,15 +298,22 @@ def backed(kind: str, subject, session: dict | None = None) -> bool:
         return False
 
 
-def void(kind: str, subject) -> None:
+def void(kind: str, subject) -> list:
     """Spend a grant of exactly this subject, and drop a request for one that still waits, using neither: the same
     thing went out on another code, so a second copy has to be shown again (2026-11-13: a message released by the
-    code for a time in its words left the ordinary grant live, and an identical call went a second time on it)."""
+    code for a time in its words left the ordinary grant live, and an identical call went a second time on it).
+    Returns what it removed, (file, bytes) each, for a call that is then held to put back."""
     key = digest(kind, subject)
-    (_dir("approvals") / f"{key}.json").unlink(missing_ok=True)
-    for code in pending():
-        if paths.read_json(_dir("approval-requests") / f"{code}.json").get("digest") == key:
-            (_dir("approval-requests") / f"{code}.json").unlink(missing_ok=True)
+    files = [_dir("approvals") / f"{key}.json"] + [_dir("approval-requests") / f"{code}.json" for code in pending()
+                                                   if paths.read_json(_dir("approval-requests") / f"{code}.json").get("digest") == key]
+    removed = []
+    for path in files:
+        try:
+            removed.append((path, path.read_bytes()))
+            path.unlink()
+        except FileNotFoundError:
+            continue
+    return removed
 
 
 @contextlib.contextmanager
@@ -315,18 +332,34 @@ def alone():
 SPENT: list = []  # (grant file, the bytes it held) each grant this call used, for the hook to give back if the call is held
 
 
-def give_back() -> None:
-    """Put back each grant this call used, the call having been held at the hook's deadline and run nothing (review of
-    the spend order, finding 2: a later check of the same call ran past the deadline after an earlier one had spent it)."""
-    for path, data in SPENT:
+def put_back(items: list) -> None:
+    """Put each (file, bytes) back whole, never over a file now in its place: written beside it first, then linked in,
+    so an identical call never finds it half written (review round 2 of the spend order, finding 2)."""
+    for path, data in items:
+        made = Path(path).with_name(f".{Path(path).name}.{os.getpid()}.back")
         try:
-            handle = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            handle = os.open(made, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
         except OSError:
-            continue  # a newer grant of the same thing is in place, or the folder is gone: nothing to give back
+            continue  # the folder is gone, or another put-back of it is under way
         try:
-            os.write(handle, data)
+            try:
+                view = memoryview(data)
+                while view:  # a write may take only part
+                    view = view[os.write(handle, view):]
+            finally:
+                os.close(handle)
+            os.link(made, path)
+        except OSError:
+            pass  # a newer file of the same thing is in place: nothing to put back
         finally:
-            os.close(handle)
+            made.unlink(missing_ok=True)
+
+
+def give_back() -> None:
+    """Put back each grant this call used: the call was held, at the hook's deadline or by a later check, and ran nothing
+    (review of the spend order, finding 2: a later check of the same call ran past the deadline after an earlier one had
+    spent it)."""
+    put_back(list(SPENT))
     SPENT.clear()
 
 
