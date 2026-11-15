@@ -38,13 +38,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   `synthesis uninstall` never ran; `synthesis install` ran twice (once from a folder, once for its help); the
   runtime's `install.py` by path 6 times (4 into a test's own home); setup.py's plugin install twice; the release script
   154 times and its dry run 57 (both already waited, run from a checkout); `update`, which v5 does not have, 13 times;
-  42 Python programs called the installer (4 into a test's own home). Replayed through 5.23.0's guard and this one
-  (6,974 commands: each that names the CLI near install or uninstall, setup.py, release.py or install.py, or holds a
-  Python import of synthesis the old reading missed), 13 now wait or are refused, on 7 days: the one `synthesis install`
-  from a folder; two runs of a copy's `install.py` in a temporary folder; three programs that import synthesis after a
-  `;` and name its doctor's or its wait's writer; and seven that import it after a `;`, or load its file, in a way the
-  reader cannot follow, refused as the same program is when its import starts a line. Eight of the thirteen are test or
-  probe work by their own marks (a temporary folder, a home of their own, pytest).
+  42 Python programs called the installer (4 into a test's own home). Replayed after review round 1 of 22.18 through
+  5.23.0's guard and this one, each from its installed runtime as the hook runs it (6,997 commands: each that names the
+  CLI near install or uninstall, setup.py, release.py or install.py, or holds a Python import of synthesis the old
+  reading missed), 12 now wait or are refused, on 6 days: two runs of a copy's `install.py` in a temporary folder; three
+  programs that import synthesis after a `;` and name its doctor's or its wait's writer; and seven that import it after
+  a `;`, or load its file, in a way the reader cannot follow, refused as the same program is when its import starts a
+  line. Eight of the twelve are test or probe work by their own marks (a temporary folder, a home of their own, pytest).
 - **How it was checked.** Tests first, committed alone: 50 of them failed on the code before. The runtime's own entry
   points are also judged by the installed runtime's guard, where its install.py had passed as the plugin's.
 - **Install and uninstall themselves spend the principal's code** (review round 1 of 22.18, H1; review round 4 of 5.23.1,
