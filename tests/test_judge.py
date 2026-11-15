@@ -76,11 +76,17 @@ class _Handler(BaseHTTPRequestHandler):
 
 
 @pytest.fixture
-def fake():
+def fake(monkeypatch):
+    """A stand-in for the local model and for the cloud. The cloud judge asks only the provider's own host, so the
+    config never points it here: the transport does, for the provider's address alone, as no config can."""
     server = ThreadingHTTPServer(("127.0.0.1", 0), _Handler)
     server.daemon_threads, server.fake = True, _Fake()
     threading.Thread(target=server.serve_forever, daemon=True).start()
     server.fake.url = f"http://127.0.0.1:{server.server_address[1]}"
+    judge = _judge()
+    real = judge._post
+    monkeypatch.setattr(judge, "_post", lambda url, *rest: real(url.replace(judge.CLOUD_URL.rsplit("/v1/", 1)[0], server.fake.url, 1)
+                                                                if url.startswith(judge.CLOUD_URL) else url, *rest))
     yield server.fake
     server.shutdown()
     server.server_close()
@@ -103,7 +109,7 @@ def keys_file(tmp_path):
 
 def _cloud_config(fake, keys_file, local=False, **cloud):
     section = {"deadline_seconds": 2.0, "cloud": {
-        "provider": "anthropic", "model": "cloud-judge", "keys_file": keys_file, "url": fake.url + "/v1/messages",
+        "provider": "anthropic", "model": "cloud-judge", "keys_file": keys_file,
         "keys": {"default": "default.anthropic", "clientx": "workspaces.clientx.anthropic", "heldback": None},
         "price_per_mtok": {"input": 1.0, "output": 5.0}, "monthly_cap_usd": 10, **cloud}}
     section.update({"local": {"models": ["small-judge"], "url": fake.url}} if local else {})
@@ -450,13 +456,17 @@ else:
 
 @pytest.fixture
 def fake_cli(tmp_path, monkeypatch):
-    """A stand-in for the harness's own command line: it records what it was given and answers as the harness does."""
-    path = tmp_path / "fake-cli"
-    path.write_text(FAKE_CLI, encoding="utf-8")
-    path.chmod(0o755)
+    """A stand-in for each harness's own command line, first on PATH as `claude` and `codex`, since the judge runs a
+    harness's own program and nothing a setting names: it records what it was given and answers as the harness does."""
+    folder = tmp_path / "bin"
+    folder.mkdir()
+    for name in ("claude", "codex"):
+        (folder / name).write_text(FAKE_CLI, encoding="utf-8")
+        (folder / name).chmod(0o755)
+    monkeypatch.setenv("PATH", f"{folder}{os.pathsep}{os.environ.get('PATH', '')}")
     monkeypatch.setenv("FAKE_LOG", str(tmp_path / "fake-cli.jsonl"))
     monkeypatch.setenv("FAKE_VERDICT", json.dumps(_verdict()))
-    return path
+    return folder
 
 
 def _runs(tmp_path):
@@ -464,9 +474,17 @@ def _runs(tmp_path):
     return [json.loads(line) for line in log.read_text(encoding="utf-8").splitlines()] if log.exists() else []
 
 
+def _another_program(tmp_path):
+    """A program that is not a harness's own: it would leave a mark where it ran."""
+    path = tmp_path / "another-program"
+    path.write_text(f"#!/bin/sh\necho ran > {tmp_path / 'another-ran'}\nexit 1\n", encoding="utf-8")
+    path.chmod(0o755)
+    return path
+
+
 def _sub_config(fake_cli, **more):
     return {"judge": {"deadline_seconds": 3.0, "subscription": {
-        "claude-code": {"model": "small-model", "command": str(fake_cli), "effort": "low"}, "codex": {"model": "small-codex", "command": str(fake_cli)},
+        "claude-code": {"model": "small-model", "effort": "low"}, "codex": {"model": "small-codex"},
         "leave_out": ["heldback"], **more}}}
 
 
@@ -515,6 +533,75 @@ def test_past_the_cap_the_notice_says_the_plans_judge_decides_alone_where_it_run
     assert "monthly cap" in said and "the plan's judge decides alone where it runs" in said and judge.notice(config) == ""
 
 
+@pytest.mark.parametrize("harness", ["claude-code", "codex"])
+def test_a_command_that_is_not_the_harness_own_program_never_runs(fake_cli, tmp_path, isolated_home, harness):
+    """Review round 1, H1 (2026-11-15): a session can write the config with no code, so a `command` that named any
+    program made the Stop hook run it on every flagged reply. The judge runs only the harness's own program: a command
+    that resolves elsewhere is not run, the list decides, and the log says why."""
+    judge = _judge()
+    config = _sub_config(fake_cli)
+    config["judge"]["subscription"][harness]["command"] = str(_another_program(tmp_path))
+    assert judge.ask("demo", judge.parse_policy("demo", POLICY_TEXT), CONTENT, {}, config, harness=harness) is None
+    assert not (tmp_path / "another-ran").exists() and _runs(tmp_path) == []
+    assert _log(isolated_home)[-1]["why"] == "not_the_harness"
+    lazy = "The parser is fixed. I'll leave the importer for now."
+    assert reply_check.check({"last_assistant_message": lazy}, {**config, "shortcut_phrases": ["for now"]}) == reply_check.check(
+        {"last_assistant_message": lazy}, {"shortcut_phrases": ["for now"]}) and not (tmp_path / "another-ran").exists()
+
+
+def test_a_command_that_resolves_to_the_harness_own_program_runs_it(fake_cli, tmp_path):
+    judge = _judge()
+    link = tmp_path / "my-claude"
+    link.symlink_to(fake_cli / "claude")
+    config = _sub_config(fake_cli)
+    for given in (str(link), "claude", str(fake_cli / "claude")):
+        config["judge"]["subscription"]["claude-code"]["command"] = given
+        found = judge.ask("demo", judge.parse_policy("demo", POLICY_TEXT), CONTENT + " " + given, {}, config, harness="claude-code")
+        assert found is not None and found.verdict == "hold", given
+    assert len(_runs(tmp_path)) == 3
+
+
+@pytest.mark.parametrize("url", ["https://collector.example.net/v1/messages", "http://127.0.0.1:8080/v1/messages",
+                                 "http://api.anthropic.com/v1/messages", "https://api.anthropic.com:8443/v1/messages",
+                                 "https://someone@api.anthropic.com/v1/messages", "https://api.anthropic.com.example.net/v1/messages"])
+def test_the_cloud_judge_asks_only_the_providers_own_host_over_https(keys_file, url):
+    """Review round 1, H2 (2026-11-15): `cloud.url` took any https host, and the reply, the principal's last message and
+    the workspace's key went there. The cloud judge asks only the provider's own host over https; any other address is
+    a section that cannot be used: no judge reads replies, the list decides, and the reply sent back and the doctor say
+    why."""
+    judge = _judge()
+    cloud = {"provider": "anthropic", "model": "m", "keys_file": keys_file, "keys": {"default": "default.anthropic"},
+             "price_per_mtok": {"input": 1, "output": 5}}
+    assert judge.settings({"judge": {"cloud": cloud}})["cloud"]["url"] == judge.CLOUD_URL
+    assert judge.settings({"judge": {"cloud": {**cloud, "url": "https://api.anthropic.com/v1/messages"}}})["cloud"]["url"] == judge.CLOUD_URL
+    with pytest.raises(judge.ConfigError, match="api.anthropic.com"):
+        judge.settings({"judge": {"cloud": {**cloud, "url": url}}})
+    said = reply_check.check({"last_assistant_message": "The parser is fixed. I'll leave the importer for now."},
+                             {"shortcut_phrases": ["for now"], "judge": {"cloud": {**cloud, "url": url}}})
+    assert "lazy-shortcut phrasing" in said and "api.anthropic.com" in said
+
+
+@pytest.mark.parametrize("entry, words", [
+    ({"model": "--add-dir=/"}, "model"), ({"model": "small model"}, "model"), ({"model": "m", "effort": 'low" x'}, "effort"),
+    ({"model": "m", "effort": "-c"}, "effort")])
+def test_a_model_or_effort_the_plans_judge_passes_is_a_name_never_an_option(entry, words):
+    """The model and the effort go into the harness's command line as values: each is a plain name, so a written
+    setting cannot pass an option of its own."""
+    judge = _judge()
+    with pytest.raises(judge.ConfigError, match=words):
+        judge.settings({"judge": {"subscription": {"claude-code": entry}}})
+
+
+@pytest.mark.parametrize("keys", [{"default": "github.com.oauth_token"}, {"default": "default.anthropic", "clientx": "x.token"}])
+def test_the_cloud_judge_reads_only_a_key_for_its_provider(keys_file, keys):
+    """The keys file's paths end in the provider's name, so the file can give the cloud judge its own key and no
+    other secret the same file holds, even toward the provider's own host."""
+    judge = _judge()
+    cloud = {"provider": "anthropic", "model": "m", "keys_file": keys_file, "keys": keys, "price_per_mtok": {"input": 1, "output": 5}}
+    with pytest.raises(judge.ConfigError, match="anthropic"):
+        judge.settings({"judge": {"cloud": cloud}})
+
+
 def test_a_codex_reply_is_judged_through_codex_exec(fake_cli, tmp_path):
     judge = _judge()
     found = judge.ask("demo", judge.parse_policy("demo", POLICY_TEXT), CONTENT, {}, _sub_config(fake_cli), harness="codex")
@@ -542,8 +629,9 @@ def test_a_subscription_run_that_is_slow_refused_or_missing_is_no_verdict(fake_c
     config["judge"]["deadline_seconds"] = 0.8
     monkeypatch.setenv("FAKE_MODE", "error" if failure == "error" else "verdict")
     monkeypatch.setenv("FAKE_SLEEP", "5" if failure == "slow" else "0")
-    if failure == "missing":
-        config["judge"]["subscription"]["claude-code"]["command"] = str(tmp_path / "no-such-cli")
+    if failure == "missing":  # the harness's own program is not on PATH
+        (tmp_path / "empty").mkdir()
+        monkeypatch.setenv("PATH", str(tmp_path / "empty"))
     began = time.monotonic()
     assert judge.ask("demo", judge.parse_policy("demo", POLICY_TEXT), CONTENT, {}, config, harness="claude-code") is None
     assert time.monotonic() - began < 2.0  # the deadline holds: the list decides
@@ -552,7 +640,8 @@ def test_a_subscription_run_that_is_slow_refused_or_missing_is_no_verdict(fake_c
 
 @pytest.mark.parametrize("harness", ["claude-code", "codex"])
 @pytest.mark.parametrize("mode, why", [("verdict", ""), ("not_signed_in", "not_signed_in"), ("unknown_flag", "unknown_flag"),
-                                       ("bad_model", "model_unavailable"), ("error", "not_signed_in"), ("missing", "missing")])
+                                       ("bad_model", "model_unavailable"), ("error", "not_signed_in"), ("missing", "missing"),
+                                       ("another", "not_the_harness")])
 def test_the_probe_judges_one_invented_sentence_the_way_a_reply_is_judged_and_names_why_it_failed(
         fake_cli, tmp_path, monkeypatch, isolated_home, harness, mode, why):
     """The doctor's look at the plan's judge (2026-11-15: the fall back to the word list is never silent). One invented
@@ -561,15 +650,19 @@ def test_the_probe_judges_one_invented_sentence_the_way_a_reply_is_judged_and_na
     writes no log row and keeps no verdict, so the next real reply is asked afresh."""
     judge = _judge()
     config = _sub_config(fake_cli)
-    monkeypatch.setenv("FAKE_MODE", "verdict" if mode == "missing" else mode)
+    monkeypatch.setenv("FAKE_MODE", "verdict" if mode in ("missing", "another") else mode)
     monkeypatch.setenv("FAKE_VERDICT", json.dumps(_verdict(verdict="pass", rule="none", span="", reason="nothing is put off")))
     monkeypatch.setenv("ANTHROPIC_API_KEY", "invented-key")
-    if mode == "missing":
-        config["judge"]["subscription"][harness]["command"] = str(tmp_path / "no-such-cli")
+    if mode == "missing":  # the harness's own program is not on PATH
+        (tmp_path / "empty").mkdir()
+        monkeypatch.setenv("PATH", str(tmp_path / "empty"))
+    if mode == "another":  # a program the setting names that is not the harness's own: never run
+        config["judge"]["subscription"][harness]["command"] = str(_another_program(tmp_path))
     found, seconds = judge.probe(config, harness)
     assert found == why and 0 <= seconds < 10
     runs = _runs(tmp_path)
-    assert runs == [] if mode == "missing" else len(runs) == 1
+    assert runs == [] if mode in ("missing", "another") else len(runs) == 1
+    assert not (tmp_path / "another-ran").exists()
     for run in runs:
         assert judge.PROBE in run["stdin"] and run["marker"] == "1" and run["credentials"] == []
         args = run["argv"]

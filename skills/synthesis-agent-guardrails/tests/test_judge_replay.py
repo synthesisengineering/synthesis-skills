@@ -6,6 +6,7 @@ Every record here is invented, and the model is a fake server on the loopback ad
 
 import importlib.util
 import json
+import os
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -187,6 +188,8 @@ def test_the_cloud_replay_reads_each_workspaces_key_and_leaves_out_a_workspace_w
     no key's value anywhere in what it prints or files."""
     import hashlib
     server, url = model
+    real = replay.judge._post  # the cloud judge asks only the provider's own host: the transport, never a setting, points it here
+    monkeypatch.setattr(replay.judge, "_post", lambda to, *rest: real(to.replace("https://api.anthropic.com", url, 1), *rest))
     monkeypatch.setenv("HOME", str(tmp_path))
     keys = tmp_path / "keys.yaml"
     keys.write_text("default:\n  anthropic: test-key-default-1111\nworkspaces:\n  heldback:\n    anthropic: test-key-held-3333\n")
@@ -202,7 +205,7 @@ def test_the_cloud_replay_reads_each_workspaces_key_and_leaves_out_a_workspace_w
     _write(tmp_path / "labels.jsonl", labels)
     cleared = tmp_path / "cleared.jsonl"
     assert replay.main(["--since", "2000-01-01", "--claude", str(tmp_path / "claude"), "--codex", str(tmp_path / "none"), "--muse",
-                        str(tmp_path / "none"), "--cloud", "cloud-judge", "--cloud-url", url + "/v1/messages", "--keys-file", str(keys),
+                        str(tmp_path / "none"), "--cloud", "cloud-judge", "--keys-file", str(keys),
                         "--keys", json.dumps({"default": "default.anthropic", "heldback": None}), "--price", "4,20", "--effort", "low",
                         "--labels", str(tmp_path / "labels.jsonl"), "--limit", "8", "--cleared", str(cleared)]) == 0
     out = capsys.readouterr().out
@@ -237,9 +240,12 @@ def test_the_subscription_replay_runs_the_harness_command_and_leaves_out_a_works
     Codex's plan was measured on them), both questions at once, a workspace set aside left out and counted."""
     import hashlib
     monkeypatch.setenv("HOME", str(tmp_path))
-    fake = tmp_path / "fake-claude"
-    fake.write_text(FAKE_CLAUDE, encoding="utf-8")
-    fake.chmod(0o755)
+    folder = tmp_path / "bin"  # the harness's own program, first on PATH: the judge runs nothing a setting names
+    folder.mkdir()
+    for name in ("claude", "codex"):
+        (folder / name).write_text(FAKE_CLAUDE, encoding="utf-8")
+        (folder / name).chmod(0o755)
+    monkeypatch.setenv("PATH", f"{folder}{os.pathsep}{os.environ.get('PATH', '')}")
     monkeypatch.setenv("FAKE_LOG", str(tmp_path / "runs.jsonl"))
     labels = []
     for name in ("personal", "heldback"):
@@ -252,7 +258,7 @@ def test_the_subscription_replay_runs_the_harness_command_and_leaves_out_a_works
                        "label": "legitimate", "category": "other", "reason": "r"})
     _write(tmp_path / "labels.jsonl", labels)
     assert replay.main(["--since", "2000-01-01", "--claude", str(tmp_path / "claude"), "--codex", str(tmp_path / "none"), "--muse",
-                        str(tmp_path / "none"), "--subscription", "small-model", "--harness", harness, "--command", str(fake), "--effort", "low",
+                        str(tmp_path / "none"), "--subscription", "small-model", "--harness", harness, "--effort", "low",
                         "--leave-out", "heldback", "--labels", str(tmp_path / "labels.jsonl"), "--limit", "8"]) == 0
     out = capsys.readouterr().out
     import re

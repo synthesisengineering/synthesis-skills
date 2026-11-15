@@ -2844,6 +2844,20 @@ else:
 """
 
 
+@pytest.fixture
+def plans_on_path(tmp_path, monkeypatch):
+    """Stand-ins named `claude` and `codex` first on PATH: the judge runs only a harness's own program, and this
+    machine's own must never answer a test."""
+    folder = tmp_path / "plan-bin"
+    folder.mkdir()
+    for name in ("claude", "codex"):
+        (folder / name).write_text(FAKE_STATUS, encoding="utf-8")
+        (folder / name).chmod(0o755)
+    monkeypatch.setenv("PATH", f"{folder}{os.pathsep}{os.environ.get('PATH', '')}")
+    monkeypatch.setenv("FAKE_LOG", str(tmp_path / "status.jsonl"))
+    return folder
+
+
 def test_no_plan_judge_configured_adds_no_line():
     assert doctor.check_plan_judge({}) == [] and doctor.check_plan_judge({"judge": {"local": {"models": ["m"]}}}) == []
 
@@ -2863,7 +2877,7 @@ def test_no_plan_judge_configured_adds_no_line():
     ("plan", "timeout", 40.0, "warn", "no answer within"),
     ("plan", "malformed", 2.0, "warn", "gave no verdict (malformed)"),
 ])
-def test_the_plan_judge_line_says_whether_it_answers_and_what_to_do(signed, why, seconds, status, words):
+def test_the_plan_judge_line_says_whether_it_answers_and_what_to_do(plans_on_path, signed, why, seconds, status, words):
     """A plan judge that would not answer leaves the word list deciding every reply; the doctor says so as a warn with
     the fix, and asks nothing of a sign-in that is missing or bills an API account."""
     asked = []
@@ -2879,7 +2893,7 @@ def test_the_plan_judge_line_says_whether_it_answers_and_what_to_do(signed, why,
 @pytest.mark.parametrize("took, status, words", [
     (1.6, "warn", "give judge.deadline_seconds up to 8"), (3.9, "ok", "room for a flagged reply"),
     (4.5, "warn", "8 s is the most the Stop hook gives: name a faster model in judge.subscription.claude-code.model")])
-def test_the_fix_for_a_slow_plan_judge_is_the_deadline_up_to_eight_then_a_faster_model(took, status, words):
+def test_the_fix_for_a_slow_plan_judge_is_the_deadline_up_to_eight_then_a_faster_model(plans_on_path, took, status, words):
     """The Stop hook gives the plan's judge up to 8 s (the principal's approval, 2026-11-15): below that the fix is the
     config's deadline; at 8 it is a faster model. A flagged reply took about twice the probe's time in the replay."""
     deadline = 3.0 if took == 1.6 else 8.0
@@ -2890,7 +2904,28 @@ def test_the_fix_for_a_slow_plan_judge_is_the_deadline_up_to_eight_then_a_faster
 
 def test_a_judge_section_that_cannot_be_used_is_one_warn():
     lines = doctor.check_plan_judge({"judge": {"subscription": {"claude-code": {}}}})
-    assert [(c.status, c.name) for c in lines] == [("warn", "plan judge")] and "word list" in lines[0].detail
+    assert [(c.status, c.name) for c in lines] == [("warn", "judge")] and "word list" in lines[0].detail
+
+
+def test_the_doctor_names_a_command_that_is_not_the_harness_own_and_runs_nothing(plans_on_path, tmp_path):
+    """Review round 1, H1 (2026-11-15): the doctor ran the config's `command` outside any guard. Where it is not the
+    harness's own program, the doctor names the setting and runs nothing: no status command, no probe."""
+    other = tmp_path / "another-program"
+    other.write_text(f"#!/bin/sh\necho ran > {tmp_path / 'another-ran'}\nexit 1\n", encoding="utf-8")
+    other.chmod(0o755)
+    config = {"judge": {"deadline_seconds": 8, "subscription": {"claude-code": {"model": "small-model", "command": str(other)}}}}
+    line = doctor.check_plan_judge(config)[0]
+    assert line.status == "warn" and "judge.subscription.claude-code.command" in line.detail and "not Claude Code's own program" in line.detail
+    assert not (tmp_path / "another-ran").exists() and not (tmp_path / "status.jsonl").exists()
+
+
+def test_the_doctor_says_why_a_cloud_judge_off_its_providers_host_does_not_run():
+    """Review round 1, H2 (2026-11-15): a cloud address off the provider's host is a section that cannot be used."""
+    cloud = {"provider": "anthropic", "model": "m", "keys_file": "keys.yaml", "keys": {"default": "default.anthropic"},
+             "price_per_mtok": {"input": 1, "output": 5}, "url": "https://collector.example.net/v1/messages"}
+    lines = doctor.check_plan_judge({"judge": {"cloud": cloud}})
+    assert [(c.status, c.name) for c in lines] == [("warn", "judge")]
+    assert "api.anthropic.com" in lines[0].detail and "word list" in lines[0].detail
 
 
 @pytest.mark.parametrize("harness", ["claude-code", "codex"])
