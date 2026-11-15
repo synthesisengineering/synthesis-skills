@@ -738,3 +738,18 @@ def test_a_module_beside_a_script_that_uses_synthesis_code_waits(world):
     _script(folder, "helper.py", "from synthesis import paths\ndef go():\n    paths.write_json(paths.state() / 'approvals' / 'x.json', {})\n")
     script = _script(folder, "main.py", "import helper\nhelper.go()\n")
     _held_or_refused(world, f"python3 {script}")
+
+
+LOOPED = ("import sys\nclass Box:\n    def __init__(self, p):\n        self.p = p\n        self.p = self.p + ''\n"
+          "b = Box(sys.argv[1])\n")
+
+
+def test_a_member_built_from_itself_leaves_a_write_to_a_plain_path_placed(world):
+    script = _script(world["work"] / "looped", "report.py",
+                     LOOPED + "open('/tmp/a-report-of-its-own.txt', 'w').write(str(len(open(b.p).read())))\n")
+    assert _verdict(world, f"python3 {script} {world['rec']}") is None
+
+
+def test_a_writer_by_name_through_a_member_built_from_itself_waits(world):
+    script = _script(world["work"] / "looped", "figure.py", LOOPED + "figure = object()\nfigure.savefig(b.p)\n")
+    assert HELD in (_verdict(world, f"python3 {script} {world['rec']}") or "")
