@@ -227,8 +227,10 @@ def cmd_sends(args) -> int:
         print(sends.describe(sends.window()) if sends.window() else "no send window is open")
         print("\n".join(sends.describe_batch(b) for b in sends.batches()) or "no batch is open")
     else:
-        for e in sends.ledger(args.date or time.strftime("%Y-%m-%d")):
-            print(f"{time.strftime('%H:%M', time.localtime(e['at']))}  {e['channel']:<10} {e['how']:<8} {e['summary']}")
+        for e in sends.ledger(args.date or time.strftime("%Y-%m-%d")):  # a Messenger send step by what its script did
+            said = {False: "not sent (its send script declined): ", None: "unconfirmed (no report from its send script yet): "}.get(
+                e.get("sent"), "") if "sent" in e else ""
+            print(f"{time.strftime('%H:%M', time.localtime(e['at']))}  {e['channel']:<10} {e['how']:<8} {said}{e['summary']}")
     return 0
 
 

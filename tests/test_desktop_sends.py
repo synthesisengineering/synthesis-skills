@@ -456,7 +456,9 @@ def test_a_click_that_only_opens_or_closes_a_box_passes(summary):
 def test_other_ways_a_review_is_submitted_on_a_site_that_is_no_messaging_site_wait(steps):
     """The second review: on a page that is no messaging site, a word before the label, an -ing form, a later "shows",
     a label outside the list, Return or Tab then Space after the words, a typed line break and a page script went out."""
-    assert "approve" in (check(CHROME, _opened(REVIEWS, *steps)) or "")
+    reason = check(CHROME, _opened(REVIEWS, *steps)) or ""
+    scripted = any(name == "javascript_tool" for name, _ in steps)  # after the batch's own navigate (round 4 of 5.24.0's review, #2)
+    assert ("may have moved" in reason) if scripted else ("approve" in reason), reason
 
 
 @pytest.mark.parametrize("url, steps", [
@@ -523,7 +525,7 @@ def test_a_page_script_that_can_send_on_a_messaging_site_is_refused(tmp_path, sc
     assert "get_page_text" in reason and "approve" not in reason
     fill = ("form_input", {"ref": "ref_2", "value": "Congratulations, Pat", "action_summary": "Fills the comment box"})
     reason = check(CHROME, _opened("https://www.linkedin.com/feed/", fill, ("javascript_tool", alone))) or ""
-    assert "get_page_text" in reason and "approve" not in reason
+    assert ("get_page_text" in reason or "may have moved" in reason) and "approve" not in reason  # after its navigate (round 4, #2)
 
 
 def test_a_page_script_that_only_reads_a_messaging_sites_page_is_refused_too(tmp_path):

@@ -658,7 +658,8 @@ def test_another_sessions_call_on_the_tab_since_this_session_made_it_voids_it(wh
     name, given = {"navigate": ("mcp__claude-in-chrome__navigate", {"url": E2EE, "tabId": 7}),
                    "script": (SCRIPT, {"action": "javascript_exec", "text": "document.title", "tabId": 7}),
                    "click": (KEYS, {"action": "left_click", "ref": "ref_1", "tabId": 7, "action_summary": "Clicks"}),
-                   "a-batch-step": (CHROME, {"actions": [{"name": "computer", "input": {"action": "scroll", "tabId": 7}}]}),
+                   "a-batch-step": (CHROME, {"actions": [{"name": "computer", "input": {"action": "left_click", "coordinate": [5, 5],
+                                                                                          "tabId": 7, "action_summary": "Clicks"}}]}),
                    "a-navigate-naming-no-tab": ("mcp__claude-in-chrome__navigate", {"url": "https://example.com/"})}[what]
     ran(name, given, other)
     reason = sent(step())
@@ -1084,7 +1085,8 @@ def test_no_page_script_but_the_shipped_ones_runs_on_a_messenger_sites_tab(url, 
     assert reason and "shipped" in reason, reason
     batched = {"actions": [{"name": "navigate", "input": {"url": url, "tabId": 9}},
                            {"name": "javascript_tool", "input": {"action": "javascript_exec", "text": script, "tabId": 9}}]}
-    assert "shipped" in (guards.check(CHROME, batched, CONFIG, session=listed("https://example.com/", tab=9)) or "")
+    reason = guards.check(CHROME, batched, CONFIG, session=listed("https://example.com/", tab=9)) or ""
+    assert "may have moved" in reason and not held(reason), reason  # after the batch's own navigate (round 4, #2)
 
 
 def test_the_shipped_read_only_scripts_run_there():
@@ -1098,8 +1100,9 @@ def test_a_tab_another_session_lists_on_a_messenger_site_takes_no_page_script():
     other = RECORD.parent / "S-other.jsonl"
     other.touch()
     paths.write_json(paths.state() / "transcripts" / "S-other.json", {"path": str(other)})
-    listed(E2EE, tab=9, record=other)
     session = listed("https://example.com/", tab=9)  # this session's own list shows another page there
+    time.sleep(0.01)
+    listed(E2EE, tab=9, record=other)  # and the other session's newer list shows a chat (round 4, #13: the newer list decides)
     for tab in (9,):
         reason = guards.check(SCRIPT, {"action": "javascript_exec", "text": FORGE, "tabId": tab}, CONFIG, session=session)
         assert reason and "shipped" in reason

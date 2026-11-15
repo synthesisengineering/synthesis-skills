@@ -508,11 +508,16 @@ INVISIBLE = ((0x034F, 0x034F), (0x115F, 0x1160), (0x17B4, 0x17B5), (0x180B, 0x18
              (0xFE00, 0xFE0F), (0xFFA0, 0xFFA0), (0x16FE4, 0x16FE4), (0x1D159, 0x1D159), (0xE0100, 0xE01EF))
 
 
+BLANK_NAMES = re.compile(r"\b(?:BLANK|FILLER|JOINER|SUBJOINER|CONJOINER|SELECTOR)\b")  # round 4, #8: U+13441, U+2D7F, U+1BC9D...
+
+
 def _escaped(text: str) -> str:
-    """A text as a listing prints it: a character that draws a glyph (a letter, mark, digit, punctuation or symbol, none
-    of the blanks above), a plain space or a line break as it is; every other one as its code (the third round)."""
+    """A text as a listing prints it: a letter, mark, digit, punctuation or symbol, a plain space or a line break as it
+    is, unless it is one of the blanks above or its name says it is a blank, filler, joiner, subjoiner, conjoiner or
+    selector; every other character as its code (the third round)."""
     return "".join(c if c in " \n" or unicodedata.category(c)[0] in "LMNPS" and not any(low <= ord(c) <= high for low, high in INVISIBLE)
-                   else f"\\u{ord(c):04x}" if ord(c) <= 0xFFFF else f"\\U{ord(c):08x}" for c in text)
+                   and not BLANK_NAMES.search(unicodedata.name(c, "")) else f"\\u{ord(c):04x}" if ord(c) <= 0xFFFF else f"\\U{ord(c):08x}"
+                   for c in text)
 
 
 def _shown(text: str) -> str:
@@ -569,7 +574,7 @@ def batch_refusal(batch: dict, file: str) -> str:
                 " Each Messenger entry then goes as one browser_batch on a tab this session made with tabs_create and navigated "
                 "to its conversation: a navigate to that address on the tab, its words typed there (shift+Return for a line "
                 "break), and last the page script `synthesis sends script --entry <digest prefix>:<its number>` prints, which "
-                "sends only those words; a Return or a click there waits for its own code."
+                "sends only those words; a Return there, or a click with no summary or one that says it sends, waits for its own code."
                 if any(e.get("channel") == "messenger" for e in batch["entries"]) else "") + f"\n{batch_listing(batch, show=True)}")
 
 
@@ -631,7 +636,8 @@ def open_batch(batch: dict, grant: dict, session_id: str) -> dict:
         if file.exists() and not _whole(earlier, file):
             raise ValueError(f"an earlier grant of batch {digest[:12]} left state that cannot be read ({file}), so which of "
                              "its entries went cannot be told: it is not opened again")
-        data = {**batch, "digest": digest, "granted": now, "until": now + MAX_HOURS * 3600, "spent": earlier["spent"],
+        typed = min(now, float(grant.get("at") or now))  # a spend needs the code typed in the last 12 hours (round 4's notes)
+        data = {**batch, "digest": digest, "granted": now, "until": typed + MAX_HOURS * 3600, "spent": earlier["spent"],
                 "session": session_id, "code": str(grant.get("code") or ""), "asked": float(grant.get("asked") or now)}
         paths.write_json(file, data)
         for old in file.parent.glob("*.json"):  # bounded: a batch's record outlives its 12 hours by a month
@@ -700,33 +706,48 @@ def _requests_file():
 
 
 # The messages sender's session (the third round, #5): it named its own (`--session`), and a link or runpy kept another
-# session's name. Now a command the guard lets run `messages_send.py` files a ticket for the session its hook names, and
-# the sender's own guard call takes the one ticket filed in the last minute; a run the guard did not see finds none.
+# session's name. Now each run of the sender a command the guard lets through makes (its program resolved as the write
+# rules resolve one) files a ticket for the session its hook names, bound to that run: the sender's real file, its
+# arguments and its real folder. The sender's own guard call hands over its run and takes only a ticket of the same
+# run filed in the last minute (round 4, #6, #11 and #12: any command naming the file filed one, any run took it, and a
+# line of two sends had one); a run the guard did not see, or one two sessions' tickets fit, finds none.
 TICKET_SECONDS = 60
 
 
-def _ticket_file(session_id: str):
-    return paths.state() / "sends" / "sender" / f"{session_id}.json"
+def _ticket_file(name: str):
+    return paths.state() / "sends" / "sender" / f"{name}.json"
 
 
-def sender_ticket(session_id: str) -> None:
-    if re.fullmatch(r"[\w.-]+", session_id or ""):
-        paths.write_json(_ticket_file(session_id), {"at": time.time()})
+def _run_key(run) -> str:
+    """The digest of a sender's run: its file and folder as the file system resolves them, and its arguments."""
+    try:
+        return hashlib.sha256(json.dumps([os.path.realpath(str(run["program"])), [str(a) for a in run["argv"]],
+                                          os.path.realpath(str(run["cwd"]))]).encode("utf-8")).hexdigest()
+    except (KeyError, TypeError):
+        return ""
 
 
-def ticket() -> dict | None:
-    """The session of the one ticket filed in the last minute, taken; None for none, or for more than one. The caller
-    holds approvals.alone(); stale tickets go as they are passed."""
-    fresh = []
+def sender_ticket(session_id: str, run: dict) -> None:
+    key = _run_key(run)
+    if re.fullmatch(r"[\w.-]+", session_id or "") and key:
+        paths.write_json(_ticket_file(f"{key[:16]}-{os.urandom(6).hex()}"), {"at": time.time(), "session": session_id, "run": key})
+
+
+def ticket(run: dict | None) -> dict | None:
+    """The session of a ticket this run's command filed in the last minute, taken (one ticket, one run); None for none, or
+    when the fresh tickets of this run name more than one session. The caller holds approvals.alone(); stale tickets go
+    as they are passed."""
+    key, fresh = _run_key(run) if run else "", []
     for file in _ticket_file("x").parent.glob("*.json"):
-        if time.time() - float(paths.read_json(file).get("at") or 0) <= TICKET_SECONDS:
-            fresh.append(file)
-        else:
+        data = paths.read_json(file)
+        if time.time() - float(data.get("at") or 0) > TICKET_SECONDS:
             file.unlink(missing_ok=True)
-    if len(fresh) != 1:
+        elif key and data.get("run") == key and isinstance(data.get("session"), str):
+            fresh.append((file, data["session"]))
+    if not fresh or len({who for _, who in fresh}) != 1:
         return None
-    fresh[0].unlink(missing_ok=True)
-    return {"session_id": fresh[0].stem}
+    fresh[0][0].unlink(missing_ok=True)
+    return {"session_id": fresh[0][1]}
 
 
 def _backed(data: dict, session: dict | None) -> bool:
@@ -785,10 +806,11 @@ def send_script(entry: dict) -> str:
 # --- the ledger ---------------------------------------------------------------------------------
 
 
-def log(chan: str, tool: str, summary: str, how: str, session: dict | None = None) -> None:
-    """One line per send the guard let through, for the daily plan's "On your behalf"."""
+def log(chan: str, tool: str, summary: str, how: str, session: dict | None = None, check: dict | None = None) -> None:
+    """One line per send the guard let through, for the daily plan's "On your behalf". `check` names where the send's
+    own report will be (a Messenger send step's record and call), which the ledger reads for whether it sent."""
     entry = {"at": time.time(), "channel": chan, "tool": tool, "summary": summary[:200], "how": how,
-             "session": paths.session_id(session) if session else os.environ.get("SYNTHESIS_SESSION", "")}
+             "session": paths.session_id(session) if session else os.environ.get("SYNTHESIS_SESSION", ""), **({"check": check} if check else {})}
     target = paths.state() / "sends" / f"{time.strftime('%Y-%m-%d')}.jsonl"
     target.parent.mkdir(parents=True, exist_ok=True)
     with target.open("a", encoding="utf-8") as handle:
@@ -796,5 +818,24 @@ def log(chan: str, tool: str, summary: str, how: str, session: dict | None = Non
 
 
 def ledger(day: str) -> list:
+    """The day's sends; a Messenger send step's line says whether its send script clicked (`sent`: true or false), from
+    the script's own report in the session's record, or None while no report is there (round 4's notes: the line named a
+    message the script then declined to send)."""
     target = paths.state() / "sends" / f"{day}.jsonl"
-    return [json.loads(line) for line in target.read_text(encoding="utf-8").splitlines() if line] if target.is_file() else []
+    rows = [json.loads(line) for line in target.read_text(encoding="utf-8").splitlines() if line] if target.is_file() else []
+    return [{**row, "sent": _reported(row["check"])} if isinstance(row.get("check"), dict) else row for row in rows]
+
+
+def _reported(check: dict):
+    """Whether the send script's report, in the result of the call `check` names (or the first after its time), says it
+    sent; None when no report is there."""
+    from synthesis import guards
+    call, since = str(check.get("call") or ""), float(check.get("since") or 0)
+    for line in guards._tail(str(check.get("record") or "")):
+        if SEND_MARK not in line or (not call and guards._when(line) < since - 1):
+            continue
+        for kind, ident, _, text in guards._line_events(line):
+            found = re.search(SEND_MARK + r'[^{}]*?\\*"sent\\*"\s*:\s*(true|false)', text) if kind == "result" and ident in (call or ident,) else None
+            if found:
+                return found[1] == "true"
+    return None
