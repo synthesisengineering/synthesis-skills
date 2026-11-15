@@ -412,7 +412,9 @@ def test_the_reply_check_names_the_workspace_a_reply_belongs_to(fake, keys_file,
 FAKE_CLI = """#!/usr/bin/env python3
 import json, os, sys, time
 args = sys.argv[1:]
-record = {"argv": args, "marker": os.environ.get("SYNTHESIS_JUDGE_RUN"), "stdin": sys.stdin.read(), "cwd": os.getcwd(), "at": time.time()}
+record = {"argv": args, "marker": os.environ.get("SYNTHESIS_JUDGE_RUN"), "stdin": sys.stdin.read(), "cwd": os.getcwd(), "at": time.time(),
+          "credentials": sorted(k for k in ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "CLAUDE_CODE_USE_BEDROCK", "CODEX_API_KEY",
+                                            "OPENAI_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN") if k in os.environ)}
 with open(os.environ["FAKE_LOG"], "a") as handle:
     handle.write(json.dumps(record) + "\\n")
 mode, verdict = os.environ.get("FAKE_MODE", "verdict"), json.loads(os.environ.get("FAKE_VERDICT", "{}"))
@@ -469,6 +471,18 @@ def test_the_subscription_judge_runs_the_replys_own_harness_with_no_tools_hooks_
     # first is asked for again after a summary step of Claude Code's own, two to three seconds more (measured 2026-11-15)
     assert args[args.index("--system-prompt") + 1].endswith(judge.BY_TOOL) and run["stdin"].endswith(judge.BY_TOOL)
     assert "JSON object only" not in run["stdin"].split("</content-")[-1]
+
+
+@pytest.mark.parametrize("harness", ["claude-code", "codex"])
+def test_the_plans_judge_never_runs_on_a_key_or_a_cloud_account_from_the_environment(fake_cli, tmp_path, monkeypatch, harness):
+    """The plan is the point (2026-11-15: no API credits bought, and no spend past the cloud's cap): in print mode Claude
+    Code uses an API key in the environment before the plan's sign-in, and Codex a key of its own, so those never reach
+    the judge's run. The plan's own token does."""
+    for name in ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "CLAUDE_CODE_USE_BEDROCK", "CODEX_API_KEY", "OPENAI_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN"):
+        monkeypatch.setenv(name, "invented-" + name.lower())
+    judge = _judge()
+    assert judge.ask("demo", judge.parse_policy("demo", POLICY_TEXT), CONTENT, {}, _sub_config(fake_cli), harness=harness) is not None
+    assert _runs(tmp_path)[0]["credentials"] == ["CLAUDE_CODE_OAUTH_TOKEN"]
 
 
 def test_past_the_cap_the_notice_says_the_plans_judge_decides_alone_where_it_runs(fake, fake_cli, keys_file, isolated_home):
