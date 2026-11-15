@@ -50,7 +50,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   body it reads to a local MCP server is judged by that body, as curl's `-d @file` is, and one built from parts the guard
   cannot read waits. The local host is read in any case and with its trailing dot. A write into `.git/hooks`,
   `.githooks` or a folder `core.hooksPath` names, by the file tools or the shell, or a `git config` that points
-  `core.hooksPath` at one, waits for the principal's code: the next commit would run it. Tests first (19 failed).
+  `core.hooksPath` at one, waits for the principal's code: the next commit would run it. Tests first (19 failed). The
+  same 268,723 recorded commands, replayed: the round's first run held 115 scanner runs, under a hooks folder the user's
+  own config names, which now takes that setting's scope; at its end 14 wait that main's guard passed, the 7 above, one
+  program posting a body it builds, and six writes that plant hooks in temporary test repositories.
 - **How the three were checked.** Tests first, committed alone (31 failed for the local server's tools, 21 for the
   osascript files and the git programs), with invented fixtures and stand-ins only. A harm check over the 60 days of
   Claude Code and Codex records before 2026-11-15 (265,000 shell commands) found no message sent and no state written by
