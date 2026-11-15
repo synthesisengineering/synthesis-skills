@@ -66,12 +66,20 @@ def source_repo(tmp_path, version="5.1.0", changelog=None, remotes=1):
 
 
 green = lambda repo, sha: (True, "CI passed")  # noqa: E731
+served = lambda repo, version, head, install_only: []  # noqa: E731  (GitHub serves HEAD as main's tip, and the tag)
+
+
+def canonical_source(tmp_path, **kwargs):
+    """A source repository whose origin is the synthesis-skills repository on GitHub, as preflight requires (5.23.1)."""
+    repo = source_repo(tmp_path, **kwargs)
+    git(repo, "remote", "set-url", "origin", "https://github.com/synthesisengineering/synthesis-skills.git")
+    return repo
 
 
 # ---- preflight ----------------------------------------------------------------
 
 def test_a_coherent_repository_passes_preflight(tmp_path):
-    version, problems = release.preflight(source_repo(tmp_path), False, ci=green)
+    version, problems = release.preflight(canonical_source(tmp_path), False, ci=green, published=served)
     assert version == "5.1.0" and problems == []
 
 
@@ -79,12 +87,12 @@ def test_a_coherent_repository_passes_preflight(tmp_path):
     (lambda r: (r / ".muse-plugin" / "plugin.json").write_text('{"version": "5.0.9"}'), "disagree"),
     (lambda r: (r / "CHANGELOG.md").write_text("## [5.0.9]\n"), "CHANGELOG's newest entry is 5.0.9"),
     (lambda r: (r / "stray.txt").write_text("x"), "uncommitted changes"),
-    (lambda r: git(r, "checkout", "-qb", "feature"), "not the default branch"),
+    (lambda r: git(r, "checkout", "-qb", "feature"), "on feature, not main"),
 ])
 def test_preflight_refuses_before_pushing(tmp_path, break_it, message):
-    repo = source_repo(tmp_path)
+    repo = canonical_source(tmp_path)
     break_it(repo)
-    _, problems = release.preflight(repo, False, ci=green)
+    _, problems = release.preflight(repo, False, ci=green, published=served)
     assert any(message in p for p in problems)
 
 
@@ -96,8 +104,9 @@ def test_preflight_refuses_a_plugin_cache_as_the_repository(tmp_path):
 
 
 def test_preflight_refuses_when_ci_has_not_passed(tmp_path):
-    repo = source_repo(tmp_path)
-    _, problems = release.preflight(repo, False, ci=lambda r, sha: (False, "CI for abc: failed ['test']"))
+    repo = canonical_source(tmp_path)
+    _, problems = release.preflight(repo, False, ci=lambda r, sha: (False, "CI for abc: failed ['test']"),
+                                    published=served)
     assert problems == ["CI for abc: failed ['test']"]
 
 
@@ -115,10 +124,10 @@ def test_ci_state_reads_github_runs():
 
 
 def test_install_only_needs_the_tag_on_head(tmp_path):
-    repo = source_repo(tmp_path)
-    assert "v5.1.0 is missing" in release.preflight(repo, True)[1][0]
+    repo = canonical_source(tmp_path)
+    assert "v5.1.0 is missing" in release.preflight(repo, True, published=served)[1][0]
     git(repo, "tag", "v5.1.0")
-    assert release.preflight(repo, True) == ("5.1.0", [])
+    assert release.preflight(repo, True, published=served) == ("5.1.0", [])
 
 
 # ---- the release train ----------------------------------------------------------
@@ -468,7 +477,7 @@ def test_the_release_is_complete_only_once_homebrew_serves_the_tag(tmp_path, mon
     monkeypatch.setattr(release.install, "install", lambda source: "runtime")
     monkeypatch.setattr(release.doctor, "run_checks", lambda: [release.doctor.Check("ok", "runtime", "current")])
     monkeypatch.setattr(release, "homebrew_merged", homebrew_merged)
-    assert release.main(["--session", "s1"]) == (0 if merged else 1)
+    assert release.main(["--repo-root", str(tmp_path), "--session", "s1"]) == (0 if merged else 1)
     out = capsys.readouterr().out
     assert ("release complete: v5.1.0" if merged else "release NOT complete: v5.1.0") in out
     assert "tap pull request" in out and ("Homebrew serves" in out if merged else f"Homebrew: {PR} did not merge" in out)
@@ -496,7 +505,7 @@ def test_an_approval_only_the_person_can_give_does_not_hold_the_release(tmp_path
     monkeypatch.setattr(release, "install_and_verify", lambda *a: (["installed"], {"codex": tmp_path}, ["codex"]))
     monkeypatch.setattr(release.install, "install", lambda source: "runtime")
     monkeypatch.setattr(release.doctor, "run_checks", lambda: [release.doctor.Check("fail", failing, detail)])
-    assert release.main(["--session", "s1"]) == (0 if complete else 1)
+    assert release.main(["--repo-root", str(tmp_path), "--session", "s1"]) == (0 if complete else 1)
     out = capsys.readouterr().out
     assert ("release complete: v5.1.0" if complete else "release NOT complete: v5.1.0") in out
     assert (f"waiting on your approval ({failing}): {detail}" in out) == complete
