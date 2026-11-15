@@ -14,6 +14,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 from synthesis import install
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -67,7 +69,7 @@ def _env(tmp_path):
     (home / ".claude" / "projects").mkdir(parents=True)
     env = {k: v for k, v in os.environ.items() if k not in (
         "CLAUDE_CONFIG_DIR", "SYNTHESIS_SESSION", "CLAUDE_CODE_SESSION_ID", "CLAUDECODE", "CODEX_THREAD_ID", "MUSE_SESSION_ID")}
-    env.update(HOME=str(home), SYNTHESIS_HOME=str(tmp_path / "synthesis"), CODEX_HOME=str(tmp_path / "codex"),
+    env.update(HOME=str(home), SYNTHESIS_HOME=str(home / ".synthesis" / "v5"), CODEX_HOME=str(tmp_path / "codex"),
                XDG_DATA_HOME=str(tmp_path / "xdg"), SYNTHESIS_CLAUDE_DESKTOP_DIR=str(tmp_path / "desktop"),
                RITUAL_STATE_DIR=str(tmp_path / "rituals"))
     return env
@@ -85,6 +87,29 @@ def test_the_meeting_fetcher_from_a_plugin_copy_needs_no_code_when_the_guard_run
     work = tmp_path / "work"
     work.mkdir()
     assert _verdict(release, f"python3 {copy / FETCHER} --window 2026-11-14 2026-11-15", work, env) is None
+
+
+RITUAL_READERS = ["skills/synthesis-context-lifecycle/scripts/context_doctor.py --project {work}",
+                  "skills/synthesis-local-messaging/scripts/local_messaging.py --help"]
+
+
+@pytest.mark.parametrize("call", RITUAL_READERS)
+def test_a_ritual_script_from_a_plugin_copy_needs_no_code_when_the_guard_runs_from_the_runtime(tmp_path, call):
+    """2026-11-15: a seat's day-end found both held, so the messages watermark could not move and the records gate could
+    not run without the principal's code."""
+    release, env = _release(tmp_path), _env(tmp_path)
+    work = tmp_path / "work"
+    work.mkdir()
+    script, _, rest = call.format(work=work).partition(" ")
+    skill = Path(script).parts[1]
+    copy = tmp_path / "plugin-cache" / "synthesis-skills" / "5.23.1"
+    shutil.copytree(ROOT / "skills" / skill, copy / "skills" / skill, ignore=shutil.ignore_patterns("__pycache__", "tests"))
+    assert _verdict(release, f"python3 {copy / script} {rest}", work, env) is None, call
+
+
+def test_the_installer_and_release_kit_is_never_carried():
+    """setup.py, workspace.py and release.py write the trust base itself: they are never vouched for from a plugin copy."""
+    assert not {"synthesis-skills-manager", "synthesis-onboarding"} & set(install.STABLE_SKILL_SCRIPTS)
 
 
 def test_a_changed_plugin_copy_of_the_fetcher_still_waits(tmp_path):
