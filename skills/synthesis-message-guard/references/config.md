@@ -537,17 +537,24 @@ reads it, from any of them, alone or in a batch, is refused at its own call, sin
 what a click sends, then or later. A page no list of tabs names (a tab not listed yet, one a navigate sent where no host
 is named, or a page a driven browser's record does not show) takes none either, since it may be a Messenger site's (the
 third round's opener ran on such a tab), and the refusal says to read the page first, by a list of tabs or a snapshot
-(main's word for such a page since its review round 2). After a step earlier in the same call that may have moved the tab (a navigate
-other than to a local app; a click, a key or typed words with a line break on a page that is no local app's; review
-round 4, #2: a short link or a followed link landed on a chat), a script there takes nothing but the plugin's own when
-the move was onto or from a Messenger site's page or one no list shows; after any other move a read runs, and a script
-that acts or cannot be read waits for a call of its own, once a list of tabs shows where the tab landed. Each browser
-keeps its own tab ids and lists. Over the 60 days to 2026-11-15, of 146 batches with a page script the rule refused 114
-as first written and refuses 23 now (8 whose script acts or cannot be read, 15 reads after a move onto or from a
-Messenger site's page or one no list shows); a pane batch on a local app that clicks and then reads runs. Of the 3,708
-browser calls in the Claude Code records of those days, the guard with these rules refuses 57 (34 scripts on a
-Messenger site's tab, none of them the plugin's own, and those 23 batches) and tells 1 to read its page first, where
-main's rule alone refuses none (above).
+(main's word for such a page since its review round 2). A step that may move a tab is a navigate, a click, a key, a
+drag, words typed with a line break, a form value, an upload, or a page script that acts or cannot be read
+(`location.href = ...`, `history.back()`, a link it clicks), on any page, a local app's included, since the page a
+local app goes to may send the tab on (review round 4, #2: a short link or a followed link landed on a chat; round 5,
+#1: a script, a form value or a local page moved it unseen). The guard's own first step for a driven browser, marked
+`exact`, moves nothing; an agent's call so marked does. After such a step earlier in the same call, a script there
+takes nothing but the plugin's own when the move was onto or from a Messenger site's page or one no list shows, and on
+a Messenger site's page the refusal names that page's rule and its read tools (round 5, #3); after any other move a
+read runs, and a script that acts or cannot be read waits for a call of its own, once a list of tabs shows where the
+tab landed. That split is protection, by the coordinator's ruling of 2026-11-15: a redirect onto a chat shows no sign
+before it lands, so a script that acts after an ordinary move costs one more call, and no code. Each browser keeps its
+own tab ids and lists. Over the 60 days to 2026-11-15, of 146 batches with a page script the rule refused 114 as first
+written and refuses 8 in its own words now, all scripts that act after an ordinary move, in both workspaces: the
+protection above. 19 more are refused in a Messenger page's rule's words (15 reads after a move onto a Messenger page,
+which round 4's fix refused in the moved rule's words, and 4 scripts on a Messenger tab), 27 in all, as before round 5.
+A pane batch on a local app that clicks and then reads runs. Of the 3,708 browser calls in the Claude Code records of
+those days, the guard with these rules refuses 57 (49 scripts on a Messenger site's tab, none of them the plugin's own,
+and those 8 batches) and tells 1 to read its page first, where main's rule alone refuses none (above).
 The guard spends the entry when it lets the step through, so a step whose script then finds the page wrong sends
 nothing, and that entry needs a new code: the principal's code per call (the Return after the words) or a new batch. A
 conversation is a page's site and path, its trailing slash and query left off: the
