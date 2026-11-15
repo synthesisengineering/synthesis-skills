@@ -47,6 +47,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   running runtime, so no install rolls the guard back.
 - **Codex's commands are judged in their `workdir`**, where Codex runs them (review round 1, A5), and
   **`~/.synthesis/v5/git-hooks` is a protected folder** (A8).
+- **The guard asks where a path leads once a call.** Judging a long shell command, it asked the file system where the
+  same paths lead again for each of the command's readings and each of its words: one recorded heredoc of
+  substitutions in a loop asked 11,746 times over 102 paths, which took 0.31 s on a Mac under Apple's Python 3.9 and
+  1.11 s on CI's macOS runner, past the 1.0 s its test allows. The guard writes nothing while it judges, so each
+  answer now holds for the call: 123 questions and 0.105 s. A test counts the questions, so it holds on any runner.
 
 ## [5.23.0] - 2026-11-15
 

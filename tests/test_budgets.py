@@ -1296,29 +1296,48 @@ ROOT = Path(__file__).resolve().parents[1]
 # to _caller). sends.py 2: command_send reads an osascript by the guard's reading of its script, across its lines, in
 # place of the one-line pattern. A reuse of the reader of a Python program's writes to spell the commands it starts was
 # tried and dropped: over two days of records it took 168 ms a program on average and 4 s at worst.
+# 5.23.1: core and plugin each 10 more, all in guards.py: _real 7 (where a path leads, asked once a call: the recorded
+# heredoc shape asked 11,746 times over 102 paths and took 1.11 s on CI's macOS runner under Apple's Python 3.9, 0.31 s
+# on this Mac; with it, 123 times and 0.105 s) and its 3 blank lines. The per-call reset and the 29 places that ask
+# change in place.
 # 5.23.1, releases from the protected runtime with no code (the principal's decision packet of 2026-11-15, row
-# "releases"): core 107 more and plugin 172. guards.py 106: release_checkout 28 (the canonical checkout: a checkout's
-# root, an origin, every remote's fetch and push address as git uses it the repository on GitHub, on main, its own and a
-# worktree's config keys from those that run nothing; unreadable is a reason), _release_tool 27 (the running release's
-# release.py by its path in the runtime, python3 or the system Python, plain words alone, each documented option once,
-# `~/` only where the shell expands it, on that checkout), the constants 11 (RELEASE_REPOSITORY, RELEASE_TOOL,
-# RELEASE_KIT and GITHUB_REMOTE 1 each, RELEASE_OPTIONS 2, RELEASE_CONFIG 4, PLAIN_LINE 1), _kit_code 5 with KIT_MODULES
-# and KIT_LOADS 1 (a program importing the tool's own modules waits), _canonical_remote 3, the block's comment 7 and 10
-# blank lines; _shipped 5 (the release kit is never the plugin's own, in any spelling), _self_grant 5 (that wait) and
-# check_self_grant 4 (the exact run passes, never one a program starts, never with a pending code). install.py 1: the
-# runtime carries synthesis-skills-manager's and synthesis-onboarding's scripts. release.py 65: snapshot_problems 28
-# (every object of HEAD hashed again, read past replace refs) and published_state 24 (GitHub's main tip and version
-# tag, and for an install the tag on its main, read through the proven origin), each with its 2 blank lines; the
-# docstring 7 (the runtime command, that it needs no code while a checkout's copy waits, the repository only from
-# --repo-root, stage 1's new checks); GIT with its comment 3 (replace refs ignored, hooks and the file monitor off);
-# preflight 2 (the canonical checkout before git status may start a file monitor, the snapshot and GitHub's state in
-# place of the default-branch check, its docstring 1); and __main__ 1 (every git it starts ignores replace refs).
-# main, ci_state, git and collections_head change lines in place (--repo-root required, no abbreviation, CI read from
-# the canonical repository by name).
+# "releases"), as review round 1 left it: core 280 more and plugin 400. guards.py 147: _release_tool 47 (the release
+# launcher install wrote, for an interpreter it would still pin, by its absolute path, plain words alone, each
+# documented option once with --repo-root or --install-only --tag, a named session only the asking one, the line
+# unwrapped exactly from Codex's shell tool, on that checkout), release_checkout 30 (the canonical checkout: a
+# checkout's root, an origin, every remote's fetch and push address as git uses it the repository on GitHub, on main,
+# its own and a worktree's config keys from those that run nothing; unreadable is a reason), _kit_loaded 20 (the release
+# tool's modules a program loads, found by file where Python finds them, or found nowhere while it names a protected
+# folder), the block's comment 9 with its blank lines, the constants 15 (RELEASE_REPOSITORY, RELEASE_KIT, GITHUB_REMOTE
+# and PLAIN_LINE 1 each, RELEASE_OPTIONS 2, RELEASE_CONFIG 4, KIT_FILES 2, KIT_LOADS 3 with its blank lines),
+# _canonical_remote 5 and _kit_file 5 with their blank lines, _shipped 5 (the release kit is never the plugin's own, in
+# any spelling), _self_grant 5 (a program loading the kit waits), check_self_grant 4 (the exact launcher line passes,
+# never one a program starts, never with a pending code) and check 2 (a Codex command judged in its workdir).
+# install.py 123: interpreter_problems 18, pinned_python 15, launcher_text 11, pinned 10 and launcher 6, each with its
+# blank lines (the interpreter pinned at install: its own real path, owned by root with every folder above it, writable
+# by neither this user nor its groups, Python 3.9 or later; each launcher runs it with -I -S under env -i with only the
+# named variables, the system's folders first on PATH, and refuses when there is none); the launchers' comment 8 and
+# constants 25 (KEPT 7, ENTRY 6, GIT_KEPT 4, PYTHONS 3, NO_PYTHON 3, SAFE_PATH 1, ENTRY_POINTS 1) and the runtime's
+# kit line 1; _pinned_run 11 with COMPILED 4 and COMPILE 4 in place of the in-process _compiled 8 and _compile 7 (the
+# runtime compiled for the pinned interpreter, beside its source, where an isolated run looks); install 13 (nothing
+# older than the running release installs; the staged copy must hold the listing before current moves; its
+# docstring); takes 8, _differences 8, _blob 5 and Refused 4 with their blank lines; _owned_files 1 and the shlex
+# import 1; less the three fixed launcher texts 13 and the 2 lines of the git hook's old text. doctor.py 10:
+# check_hook_script 10 (every launcher is the text install writes for the interpreter it pins, which must still be one
+# install would pin). release.py 120: fresh_clone 19, github_state 12, floor_problems 12, install_preflight 11,
+# runtime_listing 10, remove_clone 6, clean_env 6 and on_main 4, each with its blank lines (a fresh clone of what
+# GitHub serves, made with git's own config left out in the protected releases folder, and everything built, pushed,
+# exported and installed from it; GitHub's main tip and tag read the same way; nothing older than the running runtime
+# or GitHub's latest release; an install's tag on main in the clone; the runtime's listing; only a clone it made is
+# removed); main 16 (--tag and the rules for it and --repo-root, the clone, the version it holds, the runtime from it
+# with its listing, the clone removed, the doctor after every install); the docstring 15 (the launcher commands, the
+# fresh clone, the stages renumbered); preflight 4 (GitHub's state and the floor); CANONICAL_URL, TAG and GIT's
+# comment 3 and the CANONICAL comment 2. PLUGIN for REPO, ci_state, git, collections_head and publish's read-back
+# change lines in place.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 16604
-PLUGIN_BUDGET = 42741
+CORE_BUDGET = 16787
+PLUGIN_BUDGET = 42979
 
 
 def _lines(files):
