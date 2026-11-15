@@ -46,18 +46,25 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   GitHub already has must name HEAD, CI must have passed for HEAD there, and the version must be no older than the
   running runtime or GitHub's highest version tag (read the same way, never with a `gh` found on PATH). The commit
   preflight read is the one released. The tool then clones the repository from GitHub, with git's own config left out,
-  into a folder of its own in the protected releases folder at that commit, and builds and checks the collections
-  (each file's id held to its bytes in memory, since the files pass through a temporary folder), tags, pushes (read
-  back the same way), takes the release notes, exports Muse's bundle, verifies every harness and installs the runtime
-  from that clone alone; the runtime's staged copy must hold the tag's listing before `current` moves, and a clone
-  gone before then stops the run. A run removes only its own clone and those of runs that ended. `--install-only`
-  names a tag (`--tag v<version>`) whose commit must be on `main` in that clone. `install.install` refuses a folder
-  that declares a version older than the running runtime; what a folder declares is its own claim, so the CLI's
-  `synthesis install <folder>` and `synthesis uninstall`, which pass with no code, stay open until they wait for the
-  principal's code (a separate change).
-- **Codex's commands are judged where Codex runs them**: in their `workdir`, by its real path, since the kernel follows
-  a link before a `..` (review rounds 1 and 2, A5 and N1); so are a terminal tab's `cwd`, `env -C` and `git -C`.
-  **`~/.synthesis/v5/git-hooks` is a protected folder** (A8).
+  into a folder of its own in the protected releases folder at that commit, its name the run's pid and a random part,
+  and builds and checks the collections (their files written into the clone's objects from memory with `git
+  fast-import`, the tree held to the ids their bytes give), tags, pushes (read back the same way), takes the release
+  notes, exports Muse's bundle, verifies every harness and installs the runtime from that clone alone; the runtime's
+  staged copy must hold the tag's listing before `current` moves, and a clone gone before then stops the run. A run
+  removes only its own clone, and another run's only when that run is gone and the clone is over six hours old.
+  `--install-only` names a tag (`--tag v<version>`) whose commit must be on `main` in that clone. `install.install`
+  refuses a folder that declares a version older than the running runtime, read when it starts and again, under a
+  lock on the synthesis home, just before `current` moves (review round 3); a parameter for the code-approved route
+  alone lets a deliberate rollback install an older release. With no interpreter to pin, install stops and names what
+  to install, and Apple's `/usr/bin/python3` shim is never pinned. What a folder declares is its own claim, so the
+  CLI's `synthesis install <folder>` and `synthesis uninstall`, which pass with no code, stay open until they wait for
+  the principal's code (a separate change).
+- **Commands are judged where they run**: a Codex `workdir`, a terminal tab's `cwd`, `env -C` and `git -C` by their real
+  paths, since the kernel follows a link before a `..` (review rounds 1 and 2, A5 and N1), and a shell's `cd`, `pushd`
+  and `popd` both by their text and by their real paths, since `cd -P`, `set -P`, zsh's `chase_dots` and `chase_links`
+  resolve `..` physically; a command is held when either reading reaches a protected folder (round 3, M1).
+  **`~/.synthesis/v5/git-hooks` is a protected folder** (A8). In a repository under `pr_gated`, a push that creates,
+  moves or deletes a version tag waits for the principal's code, as a push to its default branch does (round 3, M5).
 - **A session start never replaces an installed runtime from its harness's folder**, by the principal's sandbox
   rulings of 2026-11-15 ("seal everything the guard trusts", "install from the protected release tool"). The session
   start installed the runtime from the plugin folder the harness loaded whenever it carried a newer release; that

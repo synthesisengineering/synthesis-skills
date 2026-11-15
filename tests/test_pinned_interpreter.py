@@ -140,12 +140,21 @@ def test_the_cli_the_commit_check_and_the_release_tool_load_under_isolation(tmp_
     assert not world["marker"].exists(), world["marker"].read_text()
 
 
-def test_with_no_interpreter_that_may_be_pinned_the_launchers_refuse(tmp_path, isolated_home, monkeypatch):
-    monkeypatch.setattr(install, "pinned_python", lambda candidates=None: "")
+def test_with_no_interpreter_that_may_be_pinned_install_stops_and_the_launchers_refuse(tmp_path, isolated_home, monkeypatch):
+    """Since review round 3 (M3) an install with nothing to pin stops, naming what to install; a session start that
+    finds its pinned interpreter gone and nothing to pin writes launchers that refuse, so the hooks fail closed."""
+    _trusted()
     install.install(ROOT)
+    monkeypatch.setattr(install, "pinned_python", lambda candidates=None: "")
+    with pytest.raises(install.Refused, match="python.org"):
+        install.install(ROOT)
+    pinned = install.pinned
+    monkeypatch.setattr(install, "pinned", lambda home: "")  # the pinned interpreter is gone
+    install.refresh_launchers(isolated_home)
     said = subprocess.run([str(isolated_home / "bin" / "synthesis-hook"), "pre-tool-use"], input="{}",
                           capture_output=True, text=True, timeout=60)
     assert said.returncode == 2 and "owned by root" in said.stderr, said.stderr
+    monkeypatch.setattr(install, "pinned", pinned)
     assert doctor.check_hook_script(isolated_home).status == "fail"
 
 

@@ -254,7 +254,8 @@ def test_a_staged_runtime_that_differs_from_the_listing_never_becomes_current(tm
         handle.write(b"\n# written after the listing was read\n")
     with pytest.raises(install.Refused, match="guards.py"):
         install.install(source, expected=listing)
-    assert not (paths.home() / "current").exists() and not list((paths.home() / "releases").glob("*"))
+    assert not (paths.home() / "current").exists() and not [
+        p for p in (paths.home() / "releases").glob("*") if p.name != ".install.lock"]  # install's own lock stays
     git(source, "checkout", "--", "synthesis/guards.py")
     assert "synthesis runtime" in install.install(source, expected=listing)
 

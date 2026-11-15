@@ -18,6 +18,8 @@ recording the value it replaces; uninstall restores that value unless the user
 changed it since, and removes only files install wrote that are still unedited.
 """
 
+import contextlib
+import fcntl
 import hashlib
 import json
 import os
@@ -99,10 +101,12 @@ def interpreter_problems(path: str) -> list:
 
 def pinned_python(candidates=None) -> str:
     """The interpreter to pin: the first of this one and the system's own (`PYTHONS`), each by its real path, that
-    `interpreter_problems` accepts and that, run isolated with no environment, is Python 3.9 or later; '' for none."""
+    `interpreter_problems` accepts, that is not Apple's /usr/bin shim (it finds the interpreter it runs through the xcrun
+    cache, a file this user writes: review round 3, M3; the real interpreter behind it is a candidate of its own), and
+    that, run isolated with no environment, is Python 3.9 or later; '' for none."""
     for candidate in ([sys.executable, *PYTHONS] if candidates is None else candidates):
         real = os.path.realpath(candidate) if candidate else ""
-        if real and not interpreter_problems(real):
+        if real and not interpreter_problems(real) and not (sys.platform == "darwin" and real.startswith("/usr/bin/")):
             try:
                 if subprocess.run([real, "-I", "-S", "-c", "import sys; sys.exit(sys.version_info < (3, 9))"], env={},
                                   capture_output=True, timeout=30).returncode == 0:
@@ -283,13 +287,44 @@ def _differences(folder: Path, expected: dict) -> list:
             + [f"missing {rel}" for rel in sorted(set(expected) - set(found))] + [f"extra {rel}" for rel in sorted(set(found) - set(expected))])
 
 
-def install(plugin_root: Path, first_only: bool = False, expected: dict = None) -> str:
+@contextlib.contextmanager
+def _install_lock(home: Path):
+    """One install at a time in a synthesis home, from its floor check to the switch of `current`, so an install of an
+    older release that overlaps a release cannot put the older runtime back (review round 3 of 5.23.1, M2). Another
+    install is waited for up to two minutes."""
+    (home / "releases").mkdir(parents=True, exist_ok=True)
+    with open(home / "releases" / ".install.lock", "a") as handle:
+        deadline = time.monotonic() + 120
+        while True:
+            try:
+                fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except BlockingIOError:
+                if time.monotonic() > deadline:
+                    raise Refused("another install has held this synthesis home for two minutes; run this again once it ends")
+                time.sleep(0.2)
+        try:
+            yield
+        finally:
+            fcntl.flock(handle, fcntl.LOCK_UN)
+
+
+def _older(plugin_root: Path, home: Path) -> str:
+    """Why the plugin may not replace the running runtime: it declares an older version; '' when it may."""
+    running, given = version(home / "current"), version(plugin_root)
+    return (f"{plugin_root} holds {'.'.join(map(str, given)) or 'no version'}, older than the running "
+            f"{'.'.join(map(str, running))}: nothing older installs") if running and given < running else ""
+
+
+def install(plugin_root: Path, first_only: bool = False, expected: dict = None, rollback: bool = False) -> str:
     """Install the plugin's runtime if it differs from the current one. Returns a one-line report.
 
     first_only (the session-start hook and the first-install bootstrap): install only where no runtime exists at all.
-    The folder a harness passes is its own plugin cache, which the guard does not protect, so an installed runtime is
-    replaced only by the release tool, from a clone it verified (the principal's sandbox rulings of 2026-11-15). Any
-    other install refuses (Refused) a release older than the running one (review round 1 of 5.23.1, A1). `expected`
+    The folder a harness passes is its own plugin cache, which the guard does not protect, so a session start never
+    replaces an installed runtime (the principal's sandbox rulings of 2026-11-15). Any other install refuses (Refused) a
+    release older than the running one (review round 1 of 5.23.1, A1), read when it starts and again, under the same
+    lock, just before `current` moves (round 3, M2). `rollback`: the code-approved route alone (the CLI's install, which
+    waits for the principal's code) may install an older release; no route that runs with no code passes it. `expected`
     ({path: blob id}, every file the runtime takes, as the release read it from its fresh clone): the staged copy must
     hold exactly those bytes before `current` moves, or nothing moves (A3)."""
     plugin_root = Path(plugin_root).resolve()
@@ -298,7 +333,6 @@ def install(plugin_root: Path, first_only: bool = False, expected: dict = None) 
             raise Refused(f"{plugin_root} holds no synthesis runtime, so the runtime was not installed")
         return f"not a synthesis plugin: {plugin_root}"
     home = _home()
-    running = version(home / "current")
     try:
         move_board(home)  # before any switch, so the new release's first read finds the board in place
     except OSError as exc:  # never blocks a session start; the doctor names what is left in state/
@@ -306,9 +340,16 @@ def install(plugin_root: Path, first_only: bool = False, expected: dict = None) 
     if first_only and current_hash():
         _compile(home / "current" / "synthesis")  # the interpreter it runs on may have changed under it
         return f"synthesis runtime kept at {current_hash()}: a session start installs only where no runtime exists"
-    if running and version(plugin_root) < running:
-        raise Refused(f"{plugin_root} holds {'.'.join(map(str, version(plugin_root))) or 'no version'}, older than the "
-                      f"running {'.'.join(map(str, running))}: nothing older installs")
+    python = pinned_python()
+    if not python:  # nothing could run the guard: install nothing (review round 3, M3)
+        raise Refused(NO_PYTHON)
+    with _install_lock(home):
+        return _install_locked(plugin_root, home, python, expected, rollback)
+
+
+def _install_locked(plugin_root: Path, home: Path, python: str, expected: dict, rollback: bool) -> str:
+    if not rollback and _older(plugin_root, home):
+        raise Refused(_older(plugin_root, home))
     wanted = package_hash(plugin_root)
     if wanted != current_hash():
         release = home / "releases" / wanted
@@ -331,10 +372,11 @@ def install(plugin_root: Path, first_only: bool = False, expected: dict = None) 
         elif expected is not None and _differences(release, expected):
             raise Refused(f"{release} is not the release's bytes ({'; '.join(_differences(release, expected)[:4])}), "
                           "so current did not move")
+        if not rollback and _older(plugin_root, home):  # the floor read again, just before the switch (round 3, M2)
+            raise Refused(_older(plugin_root, home) + " (the runtime moved while this install staged its copy)")
         link = home / f".current.{os.getpid()}"
         link.symlink_to(release)
         os.replace(link, home / "current")  # atomic switch: a running hook sees old or new, never neither
-    python = pinned_python()
     for name in (*ENTRY_POINTS, *GIT_HOOKS):  # before compiling: the compile runs the interpreter the hook launcher names
         _write_exec(home / ("git-hooks" if name in GIT_HOOKS else "bin") / name, launcher(home, python, name))
     _compile(home / "current" / "synthesis")
@@ -521,12 +563,16 @@ def uninstall(home: Path = None, dry_run: bool = False, codex_cleared: bool = Fa
     if (home / "current").is_symlink() and not dry_run:
         (home / "current").unlink()
     for release in sorted((home / "releases").glob("*")) if (home / "releases").is_dir() else []:
+        if release.name == ".install.lock":
+            continue  # install's own lock, removed below
         if release.name.startswith(".") or package_hash(release) != release.name:
             report.append(f"{kept} {release}: its files changed since install")
             continue
         if not dry_run:
             shutil.rmtree(release)
         report.append(f"{verb} {release}")
+    if (home / "releases" / ".install.lock").exists() and not dry_run:  # install's own lock (round 3, M2)
+        (home / "releases" / ".install.lock").unlink()
     if (home / "registrations.json").exists() and not dry_run:
         (home / "registrations.json").unlink()
     report.append(f"{kept} {home / 'config.json'}, {home / 'state'} and {home / 'board'} (your settings, approvals and board)")

@@ -244,9 +244,9 @@ def fresh_clone(sha: str) -> Path:
     folder = paths.home() / "releases"
     folder.mkdir(parents=True, exist_ok=True)
     for old in folder.glob(".clone-*"):  # only those of runs that ended long ago: another run's is its own (round 2, N8),
-        if not _running(old.name[len(".clone-"):]) and time.time() - old.stat().st_mtime > STALE_CLONE:  # one this run
-            shutil.rmtree(old, ignore_errors=True)  # cannot see (another sandbox's) included
-    where = folder / f".clone-{os.getpid()}"
+        if not _running(old.name[len(".clone-"):].split("-")[0]) and time.time() - old.stat().st_mtime > STALE_CLONE:
+            shutil.rmtree(old, ignore_errors=True)  # one this run cannot see (another sandbox's) included
+    where = folder / f".clone-{os.getpid()}-{os.urandom(6).hex()}"  # a name no earlier run left (round 3, M4)
     made = setup.run([*GIT, "clone", "--quiet", "--no-local", "--no-checkout", CANONICAL_URL, str(where)], 900, env=clean_env())
     moved = git(where, "checkout", "--quiet", "--detach", sha, clean=True) if made.returncode == 0 else made
     if made.returncode or moved.returncode or git(where, "rev-parse", "HEAD", clean=True).stdout.strip() != sha:

@@ -1357,10 +1357,22 @@ ROOT = Path(__file__).resolve().parents[1]
 # and STALE_CLONE 1 (another run's clone is removed only when that run is gone and the clone is hours old, N8);
 # build_collections.py's tree, now written from memory with fast-import, its index in the repository's own git folder
 # and the tree held to the files' ids (N3), changes lines in place.
+# 5.23.1, review round 3 of releases from the protected runtime: core 76 more and plugin 76. guards.py 30:
+# check_self_grant 8 (a line whose cd lands elsewhere physically is judged again with every cd placed by its real path,
+# M1), _commands 3 (each cd's textual and real places, and the mark that they differ), _CD_REAL 1 with its comment 4,
+# _gated_push 9 (in a gated repository a push that creates, moves or deletes a version tag, or carries tags with
+# --tags, --follow-tags or push.followTags, M5) and check_pr_gate 5 (its hold names the version tag). install.py 46:
+# _install_lock 22 with its decorator and blank lines (one install at a time in a home, from its floor check to the
+# switch of current, M2), _older 7 with its blank lines (why a plugin may not replace the running runtime), install and
+# _install_locked 9 (the floor read again under the lock just before current moves, the rollback parameter only the
+# code-approved route passes, an install that stops when nothing can be pinned, M3, and the docstring), uninstall 4
+# (install's own lock removed, and passed over in the sweep of releases), pinned_python 2 (Apple's /usr/bin shim refused,
+# and its docstring) and the contextlib and fcntl imports 2. release.py: a clone folder named by the run's pid and a
+# random part (M4) changes lines in place.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 16858
-PLUGIN_BUDGET = 43077
+CORE_BUDGET = 16934
+PLUGIN_BUDGET = 43153
 
 
 def _lines(files):

@@ -571,8 +571,11 @@ stay open, and no hook running as that same user can close them:
   hook is missing) install the runtime from the folder the harness passes, which the guard does not protect. With
   no runtime there is no guard yet to keep, so this is acceptable only while a session cannot remove an installed
   runtime to force that path again. The guard refuses the shell's and the file tools' ways of removing or changing
-  the runtime's own files (`releases`, `current`, `bin`, `git-hooks`), and it places a command in a Codex workdir or
-  a terminal tab's folder by its real path, so `current/..` is `releases/`. Two routes are still open: the CLI's
+  the runtime's own files (`releases`, `current`, `bin`, `git-hooks`) that it reads: it places a command in a Codex
+  workdir or a terminal tab's folder by its real path, and judges a line whose `cd`, `pushd` or `popd` lands
+  elsewhere physically twice, each placed by its text and by its real path, since `cd -P`, `set -P` and zsh's
+  `chase_dots` or `chase_links` resolve `..` physically; so `current/..` is `releases/` whichever way the shell goes
+  (review round 3 of 5.23.1, M1). Two routes are still open: the CLI's
   `synthesis uninstall` removes the runtime with no code, after which the next session start is a first install, and
   `synthesis install <folder>` installs any folder that declares a version no older than the running one. They stay
   in this list until they wait for the principal's code. A runtime removed by a route the guard cannot read (above)

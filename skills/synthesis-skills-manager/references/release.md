@@ -81,16 +81,18 @@ it does not document, a program that loads its modules (found by file, so a proj
 The checkout only says what is released, and the commit preflight read is the one released.
 Everything built, pushed, exported and installed comes from a fresh clone of the repository
 that the run makes from GitHub, with git's own config left out, in a folder of its own in the
-protected releases folder of the launcher's own home: git computes each object's id as it
-fetches it. The collection files pass through a temporary folder on their way into the clone's
-objects, so each id is held to the file's bytes in memory. The stable runtime is installed from
-that clone, its staged copy checked against the tag's listing before `current` moves, and the
-release refuses a version older than the running runtime or GitHub's highest version tag (read
-from its tags by git, never by a `gh` found on PATH). `install.install` refuses a folder that
-declares an older version than the running runtime; what a folder declares is its own claim, so
-the CLI's `synthesis install <folder>` and `synthesis uninstall`, which pass with no code, are
-open until they wait for the principal's code (a separate change). Review rounds 1 and 2 of
-5.23.1 found and closed the rest (A1 to A3, N2, N3, N7, N8, N10).
+protected releases folder of the launcher's own home (its name the run's pid and a random
+part): git computes each object's id as it fetches it. The collection files go into the clone's
+objects from memory with `git fast-import`, and the tree written is held to the ids their bytes
+give. The stable runtime is installed from that clone, its staged copy checked against the tag's
+listing before `current` moves, and the release refuses a version older than the running runtime
+or GitHub's highest version tag (read from its tags by git, never by a `gh` found on PATH).
+`install.install` refuses a folder that declares an older version than the running runtime, read
+when it starts and again, under a lock on the synthesis home, just before `current` moves; only
+the code-approved route may pass a rollback. What a folder declares is its own claim, so the
+CLI's `synthesis install <folder>` and `synthesis uninstall`, which pass with no code, are open
+until they wait for the principal's code (a separate change). Review rounds 1 to 3 of 5.23.1
+found and closed the rest (A1 to A3, N2, N3, N7, N8, N10, M2, M4).
 
 ## What the script refuses, and why
 

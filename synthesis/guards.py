@@ -1777,7 +1777,10 @@ def _commands(command: str, cwd: str, depth: int = 0, writes: list | None = None
                 dirs = [cwd] + stack[::-1]  # the stack as the shell shows it: this folder first
                 at = (int(turn[1:]) if turn[:1] == "+" else len(dirs) - 1 - int(turn[1:])) % len(dirs) if turn else 0
                 aim = _led(os.path.expanduser(os.path.expandvars(to or "~")), cwd)
-                went = back if to == "-" else aim if aim[:1] in ("$", "`") else os.path.normpath(os.path.join(cwd, aim))
+                text, real = os.path.normpath(os.path.join(cwd, aim)), os.path.realpath(os.path.join(cwd, aim))
+                if to != "-" and aim[:1] not in ("$", "`") and os.path.realpath(text) != real:
+                    _CALL["cd_split"] = True  # a link before a `..`: a physical cd lands elsewhere (round 3, M1)
+                went = back if to == "-" else aim if aim[:1] in ("$", "`") else real if _CD_REAL[0] else text
                 if words[0] == "cd":
                     dirs[0] = went if to is not None or not turn else dirs[at]
                 elif words[0] == "popd":
@@ -2469,23 +2472,32 @@ def _gated_push(words: list[str], where: str, rules: dict, readable: bool, branc
             return target if target in defaults else None
         return UNREAD_BRANCH if "" in current else next(iter(sorted(current & defaults)), None)
 
+    follows = options.get("follow-tags") or (options.get("follow-tags") is not False and _run_git(
+        where, "config", "--get", "push.followTags")[1].strip().lower() in ("true", "yes", "on", "1"))
+    tags = (repo, "refs/tags/v*") if options.get("tags") or follows else None  # a version tag among them is a release's (M5)
     if not refspecs:  # git consults its config; `--tags` alone pushes tags and no branch
         hit = None if options.get("tags") else UNREAD_BRANCH if mapped else lands("HEAD")
-        return (repo, hit) if hit else None
+        return (repo, hit) if hit else tags
     at = 0
     while at < len(refspecs):
         spec, at = refspecs[at], at + 1
         if spec == "tag" and at < len(refspecs):  # `tag <name>` pushes that tag
             at += 1
+            if refspecs[at - 1].startswith("v"):
+                return repo, f"refs/tags/{refspecs[at - 1]}"
             continue
         source, colon, target = spec.lstrip("+").partition(":")
         target = target or source
-        if target.startswith("refs/tags/"):  # a tag is what gets updated, whatever is pushed onto it
+        tagged = not target.startswith("refs/") and _run_git(where, "rev-parse", "--verify", "--quiet", f"refs/tags/{target}")[0] == 0
+        if target.startswith("refs/tags/v") or (tagged and target.startswith("v")) or (
+                target.startswith("v") and (options.get("delete") or (colon and not source))):
+            return repo, target if target.startswith("refs/") else f"refs/tags/{target}"  # a version tag: a release's alone
+        if target.startswith("refs/tags/") or tagged:  # another tag is what gets updated, whatever is pushed onto it
             continue
         hit = UNREAD_BRANCH if not colon and mapped else lands(target.replace("refs/heads/", "", 1))
         if hit:
             return repo, hit
-    return None
+    return tags
 
 
 def check_pr_gate(command: str, config: dict, cwd: str, session: dict | None = None) -> str | None:
@@ -2540,6 +2552,11 @@ def check_pr_gate(command: str, config: dict, cwd: str, session: dict | None = N
         return None
     repo, branch = hits[0]
     code = approvals.request("push-direct", subject, f"DIRECT push to {repo} {branch}: {command[:140]}")
+    if branch.startswith("refs/tags/"):
+        return (f"This pushes the version tag {branch[len('refs/tags/'):]} to {repo}, where version tags are made by its "
+                "release tool alone: a stray one stops every release and install as older than it. If the principal wants "
+                f"this one push, show them the exact command and ask them to type {approvals.how(code)}. Then run the "
+                "identical command again.")
     return (f"This pushes straight to {branch} of {repo}, which takes changes only through a pull request: push a "
             "branch, open the pull request, let its checks pass, merge it, then install from the merged branch. If the "
             f"principal wants this one push to go direct, show them the exact command and ask them to type {approvals.how(code)}. "
@@ -4409,6 +4426,11 @@ class Unproven(str):
     protected folder. Any reading that is refused outright is refused first."""
 
 
+# A shell's `cd` resolves `..` by its text unless told to resolve it physically (`cd -P`, `set -P`, zsh's chase_dots,
+# or chase_links, which makes every cd physical), and the guard cannot know a user's shell options. So a line whose cd
+# lands elsewhere physically is judged twice, each cd placed by its text and then by its real path, and it waits or is
+# refused if either reading does (review round 3 of 5.23.1, M1).
+_CD_REAL = [False]
 _CALL: dict = {"codes": {}, "ran": {}, "proofs": {}, "files": {}, "real": {}, "until": 0.0}  # one call's script texts, their marks, its proofs, where its paths lead, and its deadline
 CALL_SECONDS, PROOFS_A_CALL = 3.0, 8  # under the hook's own 4 s; past either, a command waits rather than spins (finding 12)
 
@@ -5166,11 +5188,19 @@ def check_self_grant(command: str, cwd: str, config: dict | None = None, session
         _CALL.update(codes={}, ran={}, proofs={}, files={}, real={}, until=time.monotonic() + CALL_SECONDS)
     waits = None
     for text in readings:
-        reason = _self_grant(command, text, cwd, config) if time.monotonic() <= _CALL["until"] else Unproven(
-            "is more than this guard could judge in its time")  # it waits, rather than leave the verdict to the harness
-        if reason and not isinstance(reason, Unproven):
-            return reason
-        waits = waits or reason
+        _CALL["cd_split"] = False
+        for physical in (False, True):
+            if physical and not _CALL["cd_split"]:
+                break
+            _CD_REAL[0] = physical
+            try:
+                reason = _self_grant(command, text, cwd, config) if time.monotonic() <= _CALL["until"] else Unproven(
+                    "is more than this guard could judge in its time")  # it waits, rather than leave the verdict to the harness
+            finally:
+                _CD_REAL[0] = False
+            if reason and not isinstance(reason, Unproven):
+                return reason
+            waits = waits or reason
     if not waits:
         return None
     if not hold:
