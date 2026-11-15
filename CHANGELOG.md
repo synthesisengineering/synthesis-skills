@@ -4,7 +4,7 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
-## [5.23.0] - 2026-11-14
+## [5.23.0] - 2026-11-15
 
 - **Messenger's chat list is a ritual surface** (`synthesis-daily-rituals` 3.18.0). A workspace declares
   `.agents/messenger-sync.yaml` (`workspace`, and `inboxes` from `chats`, `requests` and `archived`, all three when left
