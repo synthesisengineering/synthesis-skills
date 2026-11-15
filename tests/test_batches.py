@@ -1920,7 +1920,8 @@ def test_on_a_local_app_a_click_then_a_script_that_clicks_save_runs(tool, tab):
 def test_a_script_that_sets_a_value_or_writes_by_fetch_is_no_move(first):
     listed("https://admin.example.com/settings", tab=9)
     batch = _batch_on(9, ("javascript_tool", {"action": "javascript_exec", "text": first}), ("javascript_tool", {"action": "javascript_exec", "text": SAVE}))
-    assert sent(batch) is None
+    reason = sent(batch)  # a write by fetch waits for its own code as a send, on any page; neither is a move
+    assert reason is None if "value" in first else held(reason) and "may have moved" not in reason, reason
 
 
 @pytest.mark.parametrize("mover", ["const l = location; l.href = 'https://www.facebook.com/messages/e2ee/t/1000000001/'",

@@ -1578,10 +1578,14 @@ ROOT = Path(__file__).resolve().parents[1]
 # plus core and plugin 396: main's approval spend order (5.23.1, 374 beyond the path note the batch had; its notes
 # above) and the page rule's round 4 (22: _bracketed 8, _writes_by_fetch 5, _shared_tabs 4, _script_acts 3, 2 blank
 # lines). The batch's send paths keep their own records; main's decorator wraps the checks it wraps on main.
+# Review round 6 of the batch (2026-11-15): core and plugin 22 more. guards.py 21: _navigates 8 (a page script moves a
+# tab only when it can navigate; a location alias and Object.assign(location, ...) do), _local 3 again (a navigate or a
+# click on a local app moves nothing, as ruled), NAVIGATES 2 and its comment 2, 6 blank lines; _moves keeps its count.
+# sends.py 1: _own_line 1 (the system's /bin/ps with a clean environment); _table and _harness keep theirs.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 18169
-PLUGIN_BUDGET = 44246
+CORE_BUDGET = 18191
+PLUGIN_BUDGET = 44268
 
 
 def _lines(files):

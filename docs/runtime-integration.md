@@ -518,8 +518,12 @@ harness that gives no transcript cannot carry approved sends or deploys until it
   `test_open_a_move_the_page_script_reader_does_not_see`, expected to fail until closed: a page script moves the tab by
   a member of `location` it names as it runs (`location[['hr', 'ef'].join('')] = ...`), or by writing a refresh into the
   page (`document.body.innerHTML = '<meta http-equiv="refresh" ...>'`). Each is no move to the reader, so a script after
-  it in the same call is judged on the page the list showed before. A move by an address, a link, a click, a key, a form
-  value, an upload or any script the reader counts as acting is one.
+  it in the same call is judged on the page the list showed before. Review round 6 adds two, cases of
+  `test_open_a_page_that_moves_the_tab_by_itself`: a page that redirects itself after the last list of tabs showed it,
+  and, as ruled, a local app's page that sends the tab on (a navigate or a click on a local app moves nothing, so a
+  script after it runs there). A move by an address off a local app, a link, a click, a key, a form value or an upload
+  on another page, or a script that can navigate (a location change by name, alias or `Object.assign`, `open`, a
+  history or navigation step, and off a local app a click, a submit or a dispatched event) is one.
 - **Two more from review round 4 of 5.23.1** (C1 and C2), cases of
   `test_open_an_init_from_a_string_or_a_pages_send_under_the_scripts_own_name`, expected to fail until closed: an init
   parsed from a string (`fetch(url, JSON.parse('{"method":"POST",...}'))`), whose method and body the reader sees only

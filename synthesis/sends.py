@@ -745,8 +745,8 @@ def _table() -> dict:
     """{pid: (parent pid, start, name)} of every process, as `ps` reports them; {} when it cannot say."""
     import subprocess  # here, not on every call's path
     try:
-        shown = subprocess.run(["ps", "-A", "-o", "pid=,ppid=,lstart=,comm="], capture_output=True, text=True, timeout=10,
-                               env={**os.environ, "LC_ALL": "C"}).stdout
+        shown = subprocess.run(["/bin/ps", "-A", "-o", "pid=,ppid=,lstart=,comm="], capture_output=True, text=True, timeout=10,
+                               env={"PATH": "/usr/bin:/bin", "LC_ALL": "C"}).stdout  # the system's, whatever PATH finds first (round 6, #2)
     except (OSError, subprocess.SubprocessError):
         return {}
     rows = (row.split(None, 7) for row in shown.splitlines())
@@ -763,19 +763,20 @@ def _ancestors() -> set:
 
 def _harness() -> list:
     """[pid, start] of this process's nearest ancestor that is no shell, interpreter or the hook's launcher; [] for none."""
-    table, pid = _table(), os.getppid()
+    table, pid, last = _table(), os.getppid(), []
     while pid > 1 and pid in table:
         if not NOT_HARNESS.fullmatch(table[pid][2]):
             return [pid, table[pid][1]]
-        pid = table[pid][0]
-    return []
+        last, pid = [pid, table[pid][1]], table[pid][0]
+    return last  # shells alone up to the system's first process (a run its terminal left): the topmost of them
 
 
 def _own_line() -> str:
     """This process's command line as the system shows it: what a run puts in `sys.argv` changes nothing in it."""
     import subprocess
     try:
-        return subprocess.run(["ps", "-o", "command=", "-p", str(os.getpid())], capture_output=True, text=True, timeout=10).stdout.strip()
+        return subprocess.run(["/bin/ps", "-o", "command=", "-p", str(os.getpid())], capture_output=True, text=True, timeout=10,
+                              env={"PATH": "/usr/bin:/bin", "LC_ALL": "en_US.UTF-8"}).stdout.strip()
     except (OSError, subprocess.SubprocessError):
         return ""
 

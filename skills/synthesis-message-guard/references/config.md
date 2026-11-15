@@ -538,10 +538,14 @@ what a click sends, then or later. A page no list of tabs names (a tab not liste
 is named, or a page a driven browser's record does not show) takes none either, since it may be a Messenger site's (the
 third round's opener ran on such a tab), and the refusal says to read the page first, by a list of tabs or a snapshot
 (main's word for such a page since its review round 2). A step that may move a tab is a navigate, a click, a key, a
-drag, words typed with a line break, a form value, an upload, or a page script that acts or cannot be read
-(`location.href = ...`, `history.back()`, a link it clicks), on any page, a local app's included, since the page a
-local app goes to may send the tab on (review round 4, #2: a short link or a followed link landed on a chat; round 5,
-#1: a script, a form value or a local page moved it unseen). The guard's own first step for a driven browser, marked
+drag, words typed with a line break, a form value or an upload, but not one on a local app's page or a navigate to one
+(review round 6, #4, as ruled: a local page that sends the tab on is on the open list, so a click and then a script
+that clicks Save in the principal's own app runs); and a page script that can navigate, on any page: a location change
+(by name, by an alias such as `const l = location`, or by `Object.assign(location, ...)`), `open`, a history or
+navigation step, and off a local app's page a click, a submit or a dispatched event, or one the guard cannot read. A
+script that sets a value or writes by fetch moves nothing (a write by fetch waits for its own code as a send)
+(review round 4, #2: a short link or a followed link landed on a chat; round 5, #1: a script or a form value moved it
+unseen; round 6, #1 and #4). The guard's own first step for a driven browser, marked
 `exact`, moves nothing; an agent's call so marked does. After such a step earlier in the same call, a script there
 takes nothing but the plugin's own when the move was onto or from a Messenger site's page or one no list shows, and on
 a Messenger site's page the refusal names that page's rule and its read tools (round 5, #3); after any other move a
@@ -567,9 +571,14 @@ lets through makes, its program resolved as the write rules resolve one (an inte
 by its path, each through its links), the guard files a one-use ticket for the session its hook names, bound to that
 run (the sender's real file, its arguments and its real folder); the sender hands its guard call its own run, which
 takes only a ticket of the same run filed in the last minute (review round 4, #6, #11 and #12: a `cat` or a `grep` of
-the sender's file filed one, any run took it, and a line of two sends had one). A command that only names the file
-files none; a run the guard did not see as the sender's (a copy under another name, runpy) finds none and waits for the
-code per call, and so do identical runs of two sessions in one folder within the same minute. That session's own record must show, each time an
+the sender's file filed one, any run took it, and a line of two sends had one). The ticket names the harness whose hook
+filed it (the hook's nearest ancestor process that is no shell, interpreter or the hook's launcher, by its pid and start
+time; the topmost shell when there are only shells) and the command line the run's process shows; it is taken only by
+a process under that harness whose own command line, as the system's `/bin/ps` shows it, ends so (review rounds 5 and
+6, #4 and #2: an identical run the guard never saw took a ticket, and a `ps` first on PATH could answer for the system).
+A command that only names the file files none; a run under another name or by runpy takes only a ticket whose run its
+own command line shows; identical runs of two sessions in one folder each take their own session's ticket; where `ps`
+cannot answer, none is taken and each send waits for its code. That session's own record must show, each time an
 entry is spent, the principal typing the batch's
 code after the guard first filed that code for that digest. The guard records each request it files for a batch, its
 digest and code, in a ledger only it writes (`sends._requests_file`); no line of the session's record stands in for

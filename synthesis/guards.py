@@ -6015,19 +6015,40 @@ def _messenger_site(address: str) -> bool:
                               or bool(page and "messenger" in page[1][0].split("+")))
 
 
-def _moves(kind: str, given: dict, own: bool = False) -> bool:
+def _local(address: str) -> bool:
+    host = _where(_url_read(address or ""))[0]
+    return host in ("localhost", "127.0.0.1", "::1") or host.endswith((".localhost", ".test"))
+
+
+# A page script that can move its tab (round 6, #4, as ruled): a location change, by name, alias or Object.assign (#1),
+# `open`, a history or navigation step, and off a local app's page a click, a submit or a dispatched event.
+NAVIGATES = re.compile(MOVES + r"|\blocation\s*\.\s*(?:pathname|search|hash|host|hostname|port|protocol)\s*[+-]?=(?!=)|\bnavigation\s*\.\s*"
+                       r"navigate\s*\(|\bhistory\s*\.\s*(?:go|back|forward)\s*\(|\bObject\s*\.\s*assign\s*\(\s*(?:\w+\s*\.\s*)?location\b", re.I)
+
+
+def _navigates(text: str, local: bool = False) -> bool:
+    code = _script_code(text)[0]
+    names = {a or b for a, b in re.findall(r"\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:\w+\s*\.\s*)?location\b(?!\s*\.)"
+                                          r"|\{\s*location\s*:\s*([A-Za-z_$][\w$]*)\s*\}\s*=", code)}
+    aliased = any(re.search(rf"(?<![\w$.]){re.escape(n)}\s*\.\s*(?:(?:href|pathname|search|hash|host|hostname|port|protocol)\s*[+-]?=(?!=)"
+                            r"|(?:assign|replace)\s*\()", code) for n in names)
+    return bool(_unread_script(text) or NAVIGATES.search(code) or aliased
+                or not local and re.search(r"\.click\s*\(|\.submit\s*\(|requestSubmit|dispatchEvent", code))
+
+
+def _moves(kind: str, given: dict, own: bool = False, address: str = "") -> bool:
     """Whether a browser step may leave its tab on a page no list of tabs shows yet (round 4, #2: a batch that reached a
     Messenger chat by a short link or a followed link ran its script there): a navigate, but the guard's own first step
-    for a driven browser (`exact`, never an agent's word); a click, a key, a drag or words typed with a line break; a form
-    value or an upload; a page script that acts or cannot be read (`location.href`, `history.back()`, a link it clicks).
-    On a local app's page each moves too, since the page that app goes to may send the tab on (round 5, #1)."""
+    for a driven browser (`exact`, never an agent's word) or one to a local app; a click, a key, a drag, words typed with
+    a line break, a form value or an upload, but on a local app's page (round 6, #4, as ruled: a local page that sends the
+    tab on is on the open list); a page script that can navigate (`_navigates`), on any page."""
     if kind.endswith("navigate"):
-        return not (own and given.get("exact"))
+        return not (own and given.get("exact")) and not _local(str(given.get("url") or ""))
     if kind.endswith(("javascript_tool", "browser_script")):
-        return bool(_unread_script(str(given.get("text") or "")) or _script_acts(str(given.get("text") or "")))
+        return _navigates(str(given.get("text") or ""), _local(address))
     action = str(given.get("action") or "")
-    return kind.endswith(("form_input", "upload_image", "file_upload")) or kind.endswith("computer") and (
-        action in CLICKS or action in ("key", "left_click_drag") or action == "type" and bool(re.search(r"[\r\n]", str(given.get("text") or ""))))
+    return not _local(address) and (kind.endswith(("form_input", "upload_image", "file_upload")) or kind.endswith("computer") and (
+        action in CLICKS or action in ("key", "left_click_drag") or action == "type" and bool(re.search(r"[\r\n]", str(given.get("text") or "")))))
 
 
 def _when(line: str) -> float:
@@ -6157,13 +6178,13 @@ def _refused_scripts(name: str, tool: str, tool_input: dict, session: dict | Non
             if _messenger_site(address):  # that page's own rule says what runs there (round 5, #3)
                 return on_messenger(kind, address)
             return (f"This page script follows a step in this call that may have moved tab {tab or 'in front'} to another page "
-                    "(a navigate, a click, a key, a form value, an upload or a page script that acts), and no list of tabs shows "
+                    "(a navigate, a click, a key, a form value, an upload or a page script that can navigate), and no list of tabs shows "
                     "where it landed, which may be a Messenger chat: run the script in a call of its own, once a list of tabs "
                     "shows the page.")
         earlier = tab in went  # an address an earlier step of this call went to decides the page, not any session's list
         if kind.endswith("navigate") and text is None:  # an address places the page anew
             moved.pop(tab, None)
-        if _moves(kind, given, own):  # onto, or from, a Messenger site's page or one no list shows: strict (every other
+        if _moves(kind, given, own, address):  # onto, or from, a Messenger site's page or one no list shows: strict (every other
             # messaging site's page takes main's rule by itself, and a read there runs)
             strict = not address or address == UNKNOWN_PAGE or _messenger_site(address) or moved.get(tab) == "strict"
             moved[tab] = "strict" if strict else "ordinary"

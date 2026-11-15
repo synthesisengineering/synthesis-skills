@@ -53,6 +53,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   that page's rule (the read tools) rather than a second call that rule refuses too. A sub-agent's send step reads its
   own record for the tab list and the tabs_create that make its tab its own. Two moves made to beat the reader are on
   the runtime doc's open list.
+- **What review round 6 found** (core). As ruled, a page script moves a tab only when it can navigate (a location
+  change, by an alias or `Object.assign(location, ...)` too, `open`, a history step, and off a local app a click, a
+  submit or a dispatched event), not when it sets a value or writes by fetch, and on a local app's page a navigate or a
+  click moves nothing, so a click and then a script that clicks Save runs there; a local page that sends the tab on,
+  and a page that redirects itself, are on the open list. The sender's ticket reads the system's `/bin/ps` with a clean
+  environment, whatever comes first on PATH, and a hook under shells alone binds to the topmost of them.
 - **The guard reads every `synthesis sends` command in a line with the CLI's own parser** (core): each window or batch
   request asks for its own code, a command it cannot read as the CLI would waits for one, a file goes only with `sends
   batch`, and a held window or batch code no longer lets the rest of the line through unjudged.
