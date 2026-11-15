@@ -536,11 +536,14 @@ other, whichever browser tool runs it (Claude in Chrome's, the built-in pane's, 
 reads it, from any of them, alone or in a batch, is refused at its own call, since it can change what the send reads or
 what a click sends, then or later. A page no list of tabs names (a tab not listed yet, one a navigate sent where no host
 is named, or a page a driven browser's record does not show) takes none either, since it may be a Messenger site's (the
-third round's opener ran on such a tab), and nor does a tab a step earlier in the same call may have moved (a navigate
-other than to a local app, a click, a key, typed words with a line break; review round 4, #2: a short link or a followed
-link landed on a chat), until a list of tabs shows where it landed. Each browser keeps its own tab ids and lists. Over
-the 60 days to 2026-11-15, 142 scripts ran in a batch after such a step, 58 of them on a messaging site's page, which is
-refused anyway; the other 84 now run in a call of their own, with no code.
+third round's opener ran on such a tab). After a step earlier in the same call that may have moved the tab (a navigate
+other than to a local app; a click, a key or typed words with a line break on a page that is no local app's; review
+round 4, #2: a short link or a followed link landed on a chat), a script there takes nothing but the plugin's own when
+the move was onto or from a Messenger site's page or one no list shows; after any other move a read runs, and a script
+that acts or cannot be read waits for a call of its own, once a list of tabs shows where the tab landed. Each browser
+keeps its own tab ids and lists. Over the 60 days to 2026-11-15, of 146 batches with a page script the rule refused 114
+as first written and refuses 23 now (8 whose script acts or cannot be read, 15 reads after a move onto or from a
+Messenger site's page or one no list shows); a pane batch on a local app that clicks and then reads runs.
 The guard spends the entry when it lets the step through, so a step whose script then finds the page wrong sends
 nothing, and that entry needs a new code: the principal's code per call (the Return after the words) or a new batch. A
 conversation is a page's site and path, its trailing slash and query left off: the

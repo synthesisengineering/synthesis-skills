@@ -5701,16 +5701,21 @@ def _messenger_site(address: str) -> bool:
                               or bool(page and "messenger" in page[1][0].split("+")))
 
 
-def _moves(kind: str, given: dict) -> bool:
+def _local(address: str) -> bool:
+    host = _where(_url_read(address or ""))[0]
+    return host in ("localhost", "127.0.0.1", "::1") or host.endswith((".localhost", ".test"))
+
+
+def _moves(kind: str, given: dict, address: str = "") -> bool:
     """Whether a browser step may leave its tab on a page no list of tabs shows yet (round 4, #2: a batch that reached a
     Messenger chat by a short link or a followed link ran its script there): a navigate, but one to a local app or the
-    guard's own reading of a page; a click; a key; words typed with a line break."""
+    guard's own reading of a page; a click, a key or words typed with a line break, but on a local app's page, which the
+    principal's own app keeps placed (a pane batch on localhost that clicked and then read was refused)."""
     if kind.endswith("navigate"):
-        host = _where(_url_read(given.get("url") or ""))[0]
-        return not given.get("exact") and not (host in ("localhost", "127.0.0.1", "::1") or host.endswith((".localhost", ".test")))
+        return not given.get("exact") and not _local(str(given.get("url") or ""))
     action = str(given.get("action") or "")
-    return kind.endswith("computer") and (action in CLICKS or action in ("key", "left_click_drag")
-                                          or action == "type" and bool(re.search(r"[\r\n]", str(given.get("text") or ""))))
+    return kind.endswith("computer") and not _local(address) and (action in CLICKS or action in ("key", "left_click_drag")
+                                                                 or action == "type" and bool(re.search(r"[\r\n]", str(given.get("text") or ""))))
 
 
 def _when(line: str) -> float:
@@ -5816,7 +5821,7 @@ def _refused_scripts(name: str, tool: str, tool_input: dict, session: dict | Non
     left a tab on (round 4, #2)."""
     from synthesis import sends
     readers, steps = None, list(_steps("computer" if name == "browser" else name, tool_input, session, keep=True, tool=tool))
-    moved, went = set(), set()  # tabs a step of this call may have taken elsewhere, and tabs it navigated
+    moved, went = {}, set()  # tab: "strict" or "ordinary", by the page a step of this call may have moved it from or to; tabs it navigated
     for n, (kind, given, address, tab) in enumerate(steps):
         text = (str(given.get("text") or "") if kind.endswith(("javascript_tool", "browser_script")) else
                 _script_address(str(given.get("url") or "")) if kind.endswith("navigate") else None)
@@ -5827,12 +5832,18 @@ def _refused_scripts(name: str, tool: str, tool_input: dict, session: dict | Non
             return ("This page script is a batch's Messenger send, which runs only as the last step of its send step: one "
                     "browser_batch that navigates its tab, already on the entry's conversation, to that address, types the words "
                     "there and runs the script `synthesis sends script` prints.")
-        if other and tab in moved:
+        if other and tab in moved and (moved[tab] == "strict" or _unread_script(text) or _script_acts(text)):  # a read after a
+            # move from a page that is no messaging site's runs (the principal's bar: no ordinary work refused)
             return (f"This page script follows a step in this call that may have moved tab {tab or 'in front'} to another page "
                     "(a navigate, a click or a key), and no list of tabs shows where it landed, which may be a Messenger chat: "
                     "run the script in a call of its own, once a list of tabs shows the page.")
         earlier = tab in went  # an address an earlier step of this call went to decides the page, not any session's list
-        moved = moved | ({tab} if _moves(kind, given) else set())
+        if kind.endswith("navigate") and text is None:  # an address places the page anew
+            moved.pop(tab, None)
+        if _moves(kind, given, address):  # onto, or from, a Messenger site's page or one no list shows: strict (every other
+            # messaging site's page takes main's rule by itself, and a read there runs)
+            strict = not address or address == UNKNOWN_PAGE or _messenger_site(address) or moved.get(tab) == "strict"
+            moved[tab] = "strict" if strict else "ordinary"
         went = went | ({tab} if kind.endswith("navigate") and text is None else set())  # a javascript: one goes nowhere
         if not other:
             continue

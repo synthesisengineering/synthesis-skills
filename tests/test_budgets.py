@@ -1462,10 +1462,15 @@ ROOT = Path(__file__).resolve().parents[1]
 # _refused_scripts 1 (the batch keeps its own), plus 6 lines of comment main took from a block the batch never carried
 # (the new block's comment lands whole), and 1 for the batch's refusal on a page no list shows, now named for every
 # browser (a tab not listed yet, a sub-agent's, a driven browser's after a tab change).
+# The batch's moved rule, before its round 5 (2026-11-15: a pane batch on localhost that clicked and then read was
+# refused, ordinary work): core and plugin 11 more, all in guards.py. _refused_scripts 6 (a move is strict onto or from a
+# Messenger site's page or one no list shows, else ordinary, where a read runs and only what acts or
+# cannot be read waits for its own call; a navigate to an address places the page anew), _local 3 (a local app's host,
+# where a click, a key or a typed line break moves nothing) and its 2 blank lines; _moves keeps its line count.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 17566
-PLUGIN_BUDGET = 43643
+CORE_BUDGET = 17577
+PLUGIN_BUDGET = 43654
 
 
 def _lines(files):

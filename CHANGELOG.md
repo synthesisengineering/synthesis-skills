@@ -28,8 +28,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   the page is the conversation, and only then clicks the one `Press enter to send` control, in one synchronous run, so
   no typist, other session or later script acts between the read and the send. On a Messenger site's tab (a page of
   facebook.com or messenger.com, or of m.me, fb.com, fb.me or Business Suite's inbox), on one whose page no list of tabs
-  names, and on one a step earlier in the same call may have moved (a navigate off a local app, a click, a key), no page
-  script runs but the shipped read-only ones and that send script, whichever browser tool runs it, a navigate to a
+  names, and on one a step earlier in the same call may have moved onto or from such a page, no page script runs but
+  the shipped read-only ones and that send script (after any other move a read runs, and what acts or cannot be read
+  waits for a call of its own; a local app's click moves nothing), whichever browser tool runs it, a navigate to a
   `javascript:` address included; on every other messaging site's page none runs but the shipped read-only ones, so
   `open(` is refused there by any spelling. A time's code binds the exact step. The four Messenger
   address forms (`facebook.com/messages/t/<id>`, `facebook.com/messages/e2ee/t/<id>`, `messenger.com/t/<id>`,

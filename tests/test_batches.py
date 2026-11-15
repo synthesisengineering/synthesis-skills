@@ -1424,7 +1424,7 @@ def test_a_script_after_a_step_that_may_move_the_page_is_refused(move, script):
     batch = _batch_on(9, move, ("computer", {"action": "type", "text": "Words nobody approved."}),
                       ("javascript_tool", {"action": "javascript_exec", "text": script}))
     reason = sent(batch)
-    onto = move[0] == "navigate" and guards._web_app(move[1]["url"])  # onto a messaging site's page: only the plugin's own
+    onto = move[0] == "navigate" and guards._messenger_site(move[1]["url"])  # onto a Messenger site's page: only the plugin's own
     if script == "document.title" and not onto:  # a read after a move from a page that is no messaging site's runs (round 5 prep)
         assert reason is None, reason
     else:
@@ -1461,9 +1461,15 @@ def test_a_click_then_a_read_on_an_ordinary_site_runs_and_one_that_acts_goes_in_
 
 @pytest.mark.parametrize("url", ["https://www.linkedin.com/messaging/", "https://m.me/patexample", "https://www.facebook.com/messages/"])
 def test_a_move_onto_a_messaging_page_then_a_script_is_refused(url):
+    """Onto a Messenger site's page any script but the plugin's own is refused; onto another messaging site's page a script
+    that acts or cannot be read is, and a read runs, as main's rule lets it on that page."""
     listed("https://docs.example.com/guide", tab=9)
-    reason = sent(_batch_on(9, ("navigate", {"url": url}), ("javascript_tool", {"action": "javascript_exec", "text": "document.title"})))
-    assert reason and not held(reason), (url, reason)
+    for script in ("document.title", WRITTEN_CLICK):
+        reason = sent(_batch_on(9, ("navigate", {"url": url}), ("javascript_tool", {"action": "javascript_exec", "text": script})))
+        if script == "document.title" and not guards._messenger_site(url):
+            assert reason is None, (url, reason)
+        else:
+            assert reason and not held(reason), (url, script, reason)
 
 
 @pytest.mark.parametrize("url", ["back", "/inbox"])
