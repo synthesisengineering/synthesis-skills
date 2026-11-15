@@ -290,7 +290,34 @@ def _judged(reply: str, hits: list) -> str:
     return "\n\n[...]\n\n".join(kept)[-JUDGED:]
 
 
-def shortcut_verdict(reply: str, hits: list, config: dict, until: float | None = None):
+def last_message(transcript_path, tail: int = 4_000_000) -> str:
+    """The principal's last message in a Claude Code record, as they typed it: the newest user entry with words that
+    no harness marked as not theirs, what a harness wrapped into it left out. "" where there is none or the record
+    cannot be read; other harnesses' records give none, so their judge reads the reply alone."""
+    from synthesis.approvals import CUT, NOT_TYPED, typed_text
+    try:
+        with open(transcript_path if isinstance(transcript_path, str) else "", "rb") as handle:  # a number names a descriptor
+            handle.seek(max(0, handle.seek(0, 2) - tail))
+            lines = handle.read().splitlines()
+    except (OSError, ValueError):
+        return ""
+    for line in reversed(lines):
+        try:
+            entry = json.loads(line) if b'"user"' in line else None
+        except (ValueError, RecursionError):
+            continue
+        message = entry.get("message") if isinstance(entry, dict) and entry.get("type") == "user" else None
+        content = message.get("content") if isinstance(message, dict) and not any(entry.get(flag) for flag in NOT_TYPED) else None
+        parts = [p for p in content if isinstance(p, dict)] if isinstance(content, list) else []
+        text = content if isinstance(content, str) else "\n".join(str(p.get("text") or "") for p in parts if p.get("type") == "text") \
+            if not any(p.get("type") == "tool_result" for p in parts) else ""
+        said = typed_text(text).replace(CUT, " ").strip()
+        if said:
+            return said
+    return ""
+
+
+def shortcut_verdict(reply: str, hits: list, config: dict, until: float | None = None, asked: str = ""):
     """The judge's last word on a reply the list flagged, or None where it gave none. A sure pass of the first reading
     clears the hit only when a second, narrow question (does the reply ask leave for, wait on or offer back a step the
     agent could take itself?) passes it surely too: blind labels of the recorded hits found the shortcuts a first
@@ -299,16 +326,16 @@ def shortcut_verdict(reply: str, hits: list, config: dict, until: float | None =
     from dataclasses import replace
     from synthesis import judge
     content, context = _judged(reply, hits), {"where": WHERE, "list_hits": hits}
-    first = judge.ask("shortcut-phrasing", judge.load_policy("shortcut-phrasing"), content, context, config, until)
+    first = judge.ask("shortcut-phrasing", judge.load_policy("shortcut-phrasing"), content, context, config, until, asked)
     if first is None or first.verdict == "hold" or not first.sure:
         return first
-    second = judge.ask(SECOND, judge.load_policy(SECOND), content, context, config, until)
+    second = judge.ask(SECOND, judge.load_policy(SECOND), content, context, config, until, asked)
     if second is None or second.verdict == "pass" and not second.sure:
         return replace(first, sure=False)
     return first if second.verdict == "pass" else replace(second, notice=first.notice or second.notice)
 
 
-def shortcut_problem(reply: str, config: dict, until: float | None = None) -> str:
+def shortcut_problem(reply: str, config: dict, until: float | None = None, transcript_path: str | None = None) -> str:
     """What the shortcut check says of a reply, or "". The list's hits stand as they always have unless a judge is
     configured and answers (M38): only a reply the list flags goes to it. On this check the judge decides (the
     principal's ruling of 2026-11-14: a sendback costs one turn): a hit it is sure is benign is cleared, and a hit it
@@ -325,7 +352,7 @@ def shortcut_problem(reply: str, config: dict, until: float | None = None) -> st
     except judge.ConfigError as exc:
         return " ".join(filter(None, [listed, f"Also, {exc}; until it is fixed no judge reads replies and the list alone "
                                                 "decides: tell the principal."]))
-    found = shortcut_verdict(reply, hits, config, until) if on else None
+    found = shortcut_verdict(reply, hits, config, until, last_message(transcript_path)) if on else None
     if found is None:
         return listed
     told = f"Tell the principal in this reply: {found.notice}." if found.notice else ""
@@ -683,6 +710,6 @@ def check(payload: dict, config: dict) -> str | None:
     if missing:
         problems.append("quotes not found in this session's record: " + "; ".join(f'"{q}"' for q in missing)
                         + ". Quote only what a tool surfaced this session, or remove the quote.")
-    shortcut = shortcut_problem(reply, config, began + ROOM)  # last: whatever the judge takes, the hook ends in time
+    shortcut = shortcut_problem(reply, config, began + ROOM, payload.get("transcript_path"))  # last: the hook ends in time
     problems = [shortcut] * bool(shortcut) + problems
     return "Before this reply goes out, revise it: " + " ".join(problems) if problems else None

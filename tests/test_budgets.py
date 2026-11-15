@@ -1302,10 +1302,20 @@ ROOT = Path(__file__).resolve().parents[1]
 # verdicts asked as the hook asks them, the first reading alone, latency, the cleared items' file, the unload); report
 # 22 (the matrix by label for each half, the first question alone, and the gate); the entry point 2; and 26 blank
 # lines between them.
+# Giving that judge the principal's last message adds 37 to the core and 53 to the plugin (2026-11-15: the three test-half
+# shortcuts both candidates cleared were asks the principal's earlier words had settled). reply_check.py 27: last_message
+# 25 with its two blank lines (the newest user entry in a Claude Code record that no harness marked as not the
+# principal's, what a harness wrapped into it left out). guards.py 1: the judge's writers, with the reply check's two new ones in its own
+# entry, in the set of the runtime's writers a script that names one is held for (a test from 5.23.0 reads it from the source). judge.py 9: ASKED 1 (its last 3,000 characters), the instruction's
+# sentence on it 1, _prompt 1 (a block of its own, with a code of its own), _judged 1, ask 5 (passed through to both
+# questions, cut from its end, its length and digest logged). judge_replay.py 8: the principal's words with each Claude Code
+# prompt and their import 2, turn_ends 2 (each turn end's last message), main 1 (the first question timed alone) and
+# report 3 (both configurations' gates and latencies), and judged 8 (the models' loop in a function of its own, so the
+# deadline a run raises to count slow verdicts is put back for the next run in the same process).
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 16314
-PLUGIN_BUDGET = 42667
+CORE_BUDGET = 16351
+PLUGIN_BUDGET = 42720
 
 
 def _lines(files):

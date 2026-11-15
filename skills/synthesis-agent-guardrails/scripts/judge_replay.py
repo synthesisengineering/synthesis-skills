@@ -41,6 +41,7 @@ sys.dont_write_bytecode = True  # an installed plugin must stay byte-identical; 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))  # the plugin root or the installed runtime: holds synthesis/
 try:
     from synthesis import judge, paths, reply_check  # noqa: E402
+    from synthesis.approvals import CUT, NOT_TYPED, typed_text  # noqa: E402
 except Exception as exc:  # a collection without the runtime: the one line that says nothing was replayed
     print(f"NOT REPLAYED: the synthesis runtime cannot be imported: {exc}", file=sys.stderr)
     sys.exit(2)
@@ -83,7 +84,8 @@ def claude_events(path: Path, seen: set):
                     elif part.get("type") == "tool_use":
                         yield "use", number, "", message.get("id")
             elif row.get("type") == "user" and not row.get("isMeta") and not any(isinstance(p, dict) and p.get("type") == "tool_result" for p in parts):
-                yield "prompt", number, _text(parts), None
+                said = _text(parts)  # with the principal's own words, as the hook reads them (reply_check.last_message)
+                yield "prompt", number, said, "" if any(row.get(f) for f in NOT_TYPED) else typed_text(said).replace(CUT, " ").strip()
 
 
 def codex_events(path: Path, seen: set):
@@ -126,9 +128,10 @@ READERS = {"claude-code": claude_events, "codex": codex_events, "muse": muse_eve
 
 
 def turn_ends(events) -> list:
-    """[(line, reply, the sendback's words or "")]: the last message's text before a prompt, a sendback or the end,
-    with no tool call after it."""
-    found, words, line, message, used = [], [], 0, None, False
+    """[(line, reply, the sendback's words or "", the principal's last message before it or "")]: the last message's
+    text before a prompt, a sendback or the end, with no tool call after it. Only Claude Code's prompts carry the
+    principal's words, as only its records are read for them at the hook."""
+    found, words, line, message, used, asked = [], [], 0, None, False, ""
     for kind, number, text, ident in events:
         if kind == "text":
             words = (words if ident == message and not used else []) + [text]
@@ -136,9 +139,10 @@ def turn_ends(events) -> list:
         elif kind == "use":
             used = True
         else:
-            found += [(line, "\n\n".join(words), text if kind == "stop" else "")] if words and not used else []
+            found += [(line, "\n\n".join(words), text if kind == "stop" else "", asked)] if words and not used else []
             words, used = [], False
-    return found + ([(line, "\n\n".join(words), "")] if words and not used else [])
+            asked = ident if kind == "prompt" and isinstance(ident, str) and ident else asked
+    return found + ([(line, "\n\n".join(words), "", asked)] if words and not used else [])
 
 
 def split(rows: list, seed: int) -> tuple:
@@ -220,6 +224,14 @@ def main(argv=None) -> int:
         return 2
     jobs = [(part, label, e, reply_check.shortcut_hits(e[3], extra)) for part, label, e in jobs]
     hook, judge.LONGEST = judge.LONGEST, max(judge.LONGEST, args.deadline)  # slow verdicts are counted here, not cut
+    try:
+        return judged(args, jobs, config, hook)
+    finally:
+        judge.LONGEST = hook  # a second run in the same process measures against the hook's deadline too
+
+
+def judged(args, jobs: list, config: dict, hook: float) -> int:
+    """Each model's verdicts on the jobs, its report and its cleared items; the model unloaded if this run loaded it."""
     policy = judge.load_policy("shortcut-phrasing")
     for model in args.model:
         try:
@@ -230,14 +242,15 @@ def main(argv=None) -> int:
         settings = {**config, "judge": {"local": {"models": [model], "url": args.url, "keep_alive": "10m"}, "deadline_seconds": args.deadline}}
         times, cold, outcomes, cleared = [], None, [], []
         for part, label, entry, hits in jobs:
-            harness, path, line, reply, _ = entry
+            harness, path, line, reply, _, asked = entry
             began = time.monotonic()
-            found = reply_check.shortcut_verdict(reply, hits, settings) if hits else None  # both questions, as the hook asks
-            took = int((time.monotonic() - began) * 1000)
             alone = judge.ask("shortcut-phrasing", policy, reply_check._judged(reply, hits), {"where": reply_check.WHERE,
-                              "list_hits": hits}, settings) if found is not None else None  # the first reading, from its cache
-            if found is not None and not found.cached:
-                cold, times = (took, times) if cold is None and not loaded else (cold, times + [took])
+                              "list_hits": hits}, settings, asked=asked) if hits else None  # the first question alone
+            first = int((time.monotonic() - began) * 1000)
+            found = reply_check.shortcut_verdict(reply, hits, settings, asked=asked) if hits else None  # both, as the hook asks
+            took = int((time.monotonic() - began) * 1000)  # the first answer comes from its cache: the hook's time is the sum
+            if alone is not None and not alone.cached:
+                cold, times = (first, times) if cold is None and not loaded else (cold, times + [(first, took)])
             outcome, first = (("no verdict" if v is None else "held" if v.verdict == "hold" else "cleared" if v.sure else "passed unsure")
                               for v in (found, alone))
             outcomes.append((part, label, outcome, first))
@@ -254,27 +267,30 @@ def main(argv=None) -> int:
 
 
 def report(model: str, outcomes: list, by_label: bool, part: str, times: list, cold, hook: float) -> None:
-    """The counts of one model's run: by label for each part with a gate, or for the recorded sendbacks."""
+    """The counts of one model's run, with both questions as the hook asks them and with the first question alone: by
+    label for each half with a gate, or for the recorded sendbacks; then the latency of each."""
     count = lambda rows, **want: sum(all(dict(zip(("part", "label", "outcome"), row))[k] == v for k, v in want.items()) for row in rows)
-    p95 = percentile(times, 0.95)
+    both, alone = [r[:3] for r in outcomes], [r[:2] + r[3:] for r in outcomes]
     if not by_label:
-        print(f"{model}: sendbacks {len(outcomes)}: confirmed {count(outcomes, outcome='held')}, cleared {count(outcomes, outcome='cleared')}, "
-              f"passed unsure {count(outcomes, outcome='passed unsure')}, no verdict {count(outcomes, outcome='no verdict')}")
+        print(f"{model}: sendbacks {len(both)}: confirmed {count(both, outcome='held')}, cleared {count(both, outcome='cleared')}, "
+              f"passed unsure {count(both, outcome='passed unsure')}, no verdict {count(both, outcome='no verdict')}")
+    cleared = lambda rows: ", ".join(f"{label} {count(rows, label=label, outcome='cleared')} of {count(rows, label=label)} cleared"
+                                     for label in ("shortcut", "unsure", "legitimate"))
     for name in (["dev", "test", "all"] if part == "all" else [part]) if by_label else []:
-        rows = [row for row in outcomes if name == "all" or row[0] == name]
-        print(f"{model} {name} ({len(rows)}): " + ", ".join(f"{label} {count(rows, label=label, outcome='cleared')} of {count(rows, label=label)} cleared"
-                                                          for label in ("shortcut", "unsure", "legitimate"))
-              + f"; held {count(rows, outcome='held')}, passed unsure {count(rows, outcome='passed unsure')}, no verdict {count(rows, outcome='no verdict')}")
-    if by_label:
-        bad, good, legit = count(outcomes, label="shortcut", outcome="cleared"), count(outcomes, label="unsure", outcome="cleared"), count(outcomes, label="legitimate")
-        fine = count(outcomes, label="legitimate", outcome="cleared")
-        print(f"{model} {part}, the first question alone: " + ", ".join(f"{label} {count([r[:2] + r[3:] for r in outcomes], label=label, outcome='cleared')} "
-                                                                           f"of {count(outcomes, label=label)} cleared" for label in ("shortcut", "unsure", "legitimate")))
-        print(f"{model} gate on {len(outcomes)} list hits: real shortcuts cleared {bad}, unsure cleared {good}, legitimate cleared {fine} of "
-              f"{legit} ({100 * fine // max(1, legit)}%); warm 95th {p95} ms against the {hook * 1000:.0f} ms deadline: "
-              + ("PASSES" if outcomes and not bad and not good and p95 <= hook * 1000 else "FAILS"))
-    print(f"{model}: latency ms: first {cold if cold is not None else 'n/a (already loaded)'}, median {percentile(times, 0.5)}, "
-          f"95th {p95}, over {judge.DEADLINE:g} s {sum(t > judge.DEADLINE * 1000 for t in times)} of {len(times)}")
+        rows, lone = ([r for r in kept if name == "all" or r[0] == name] for kept in (both, alone))
+        print(f"{model} {name} ({len(rows)}): {cleared(rows)}; held {count(rows, outcome='held')}, passed unsure "
+              f"{count(rows, outcome='passed unsure')}, no verdict {count(rows, outcome='no verdict')}")
+        print(f"{model} {name}, the first question alone: {cleared(lone)}")
+    for which, rows, ms in ((" ", both, [t[1] for t in times]), (", the first question alone: ", alone, [t[0] for t in times])) if by_label else ():
+        bad, unsure = count(rows, label="shortcut", outcome="cleared"), count(rows, label="unsure", outcome="cleared")
+        legit, fine = count(rows, label="legitimate"), count(rows, label="legitimate", outcome="cleared")
+        print(f"{model} gate on {len(rows)} list hits{which.rstrip() if which != ' ' else ':'} real shortcuts cleared {bad}, unsure cleared {unsure}, "
+              f"legitimate cleared {fine} of {legit} ({100 * fine // max(1, legit)}%); warm 95th {percentile(ms, 0.95)} ms against the "
+              f"{hook * 1000:.0f} ms deadline: " + ("PASSES" if rows and not bad and not unsure and percentile(ms, 0.95) <= hook * 1000 else "FAILS"))
+    print(f"{model}: latency ms: the first question alone, first {cold if cold is not None else 'n/a (already loaded)'} median "
+          f"{percentile([t[0] for t in times], 0.5)} 95th {percentile([t[0] for t in times], 0.95)}; both questions, median "
+          f"{percentile([t[1] for t in times], 0.5)} 95th {percentile([t[1] for t in times], 0.95)}; both over {judge.DEADLINE:g} s "
+          f"{sum(t[1] > judge.DEADLINE * 1000 for t in times)} of {len(times)}")
 
 
 if __name__ == "__main__":

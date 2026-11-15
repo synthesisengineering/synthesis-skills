@@ -105,7 +105,7 @@ def test_the_replay_judges_the_list_hits_and_writes_where_to_read_never_what_was
         assert words not in out and words not in cleared.read_text(encoding="utf-8")
     assert [path for path, _ in server.asked].count("/api/chat") == 4  # two questions each; no list hit, never asked
     asked = [body["messages"][1]["content"] for path, body in server.asked if path == "/api/chat"]
-    assert sum("Fix the parser." in u for u in asked) == 2 and sum("Tidy the config." in u for u in asked) == 2  # each one's prompt
+    assert sum("Fix the parser." in u for u in asked) == 2 and not any("Tidy the config." in u for u in asked)  # as the hook reads
     assert "small-judge: latency ms: the first question alone" in out and "; both questions, median" in out
     assert server.asked[-1] == ("/api/generate", {"model": "small-judge", "keep_alive": 0})  # unloaded at the end
 
@@ -159,3 +159,18 @@ def test_an_item_with_no_verdict_is_counted_and_never_cleared(tmp_path, model, c
     assert _run(_records(tmp_path), url, "--model", "small-judge", "--cleared", str(cleared)) == 0
     assert "small-judge: sendbacks 2: confirmed 0, cleared 0, passed unsure 0, no verdict 2" in capsys.readouterr().out
     assert not cleared.exists() or cleared.read_text(encoding="utf-8") == ""
+
+
+def test_a_second_run_in_the_same_process_gates_against_the_hooks_deadline(tmp_path, model, capsys):
+    """A run lets slow verdicts finish and counts them; the deadline it raises for that is put back after it, so a second
+    run in the same process (one model after another) still gates against the hook's own deadline (2026-11-15)."""
+    import hashlib
+    server, url = model
+    roots, labels = _records(tmp_path), tmp_path / "labels.jsonl"
+    claude = str(Path(roots["claude"]) / "proj" / "one.jsonl")
+    _write(labels, [{"path": claude, "line": 2, "digest": hashlib.sha256(b"Parser fixed. I'll leave the importer for now.").hexdigest()[:16],
+                     "source": "list-hit", "label": "legitimate", "category": "other", "reason": "r"}])
+    for _ in range(2):
+        assert _run(roots, url, "--model", "small-judge", "--labels", str(labels), "--deadline", "30") == 0
+    gates = [line for line in capsys.readouterr().out.splitlines() if " gate on " in line]
+    assert len(gates) == 4 and all("against the 3500 ms deadline" in line for line in gates)

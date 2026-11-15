@@ -74,8 +74,13 @@ before it goes back (M38; the principal's rulings of 2026-11-14). The list, the 
 - A judge that cannot answer (no model installed, the server down, past `deadline_seconds`, an answer that is not a
   strict verdict, words cited that are not in the reply) leaves the list to decide exactly as before. A judge section
   of another shape is said in the reply sent back, and the list decides until it is fixed.
+- With the reply, the judge reads the principal's last message before it: in a Claude Code record, the newest user entry
+  that no harness marked as not theirs, what a harness wrapped into it left out, cut to its last 3,000 characters. It
+  tells a step those words already asked for or settled from a choice still theirs. Codex and Muse records are not read
+  for it, so there the judge reads the reply alone.
 - The reply is data, never instructions: it goes in a block whose markers carry a code made from its digest, the request
-  is fresh and has no tools, and text in it that addresses the judge or claims to change its rules is held.
+  is fresh and has no tools, and text in it that addresses the judge or claims to change its rules is held. The
+  principal's message comes in a block of its own, read as data the same way.
 - The local model answers on this Mac through Ollama's loopback API, at temperature 0. `cloud` adds a second opinion only
   where the local verdict is unsure, with the key from the environment variable `key_env` names. Its spend is kept by
   month in `state/judge/spend.json`; past `monthly_cap_usd` the local judge decides alone, and the reply sent back asks
