@@ -64,25 +64,35 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   text, parts still join within one statement however they are joined, but not from two separate paths written whole,
   and one path written whole names a folder only where its parts stand one after another in it.
 - **A key, a click or another app driven from the shell waits for the code, and so does any browser server's tool**
-  (core; `synthesis-message-guard` 2.12.0, references/config.md). Round 3 of the batch approval's review found that words
-  typed into a Messenger box with the browser tool, then Return pressed through `osascript` (System Events `key code
-  36`), went out with no code, and that the Playwright plugin's browser tools reached no send rule. A shell command that
-  presses keys or clicks in whatever app is in front (System Events' UI verbs through `osascript` or JavaScript for
-  Automation, `cliclick`, `xdotool`, `hs`, `skhd -k`, `shortcuts run`, `automator`, an input library in a program),
-  sends through a scriptable app (a `send` in Messages, Mail or Outlook, read across all of a script's lines where a
-  pattern read one), or runs code in another app (Terminal, iTerm, a browser's JavaScript, Keyboard Maestro, Shortcuts)
-  now waits for the principal's code for that exact command, read through `bash -c`, `watch`, heredocs, pipes, shell
-  files, programs and the commands written in a program's strings. What a script cannot show waits too: a compiled
-  script, `do shell script`, `run script`, a raw `«event»` code, a bridge to the system's classes, an app or member
-  named only when it runs. Words a command types or sends pass the register scan first. A browser tool from any server
-  whose name says it drives a browser (Playwright, Chrome DevTools, Puppeteer) is read as the steps it performs, on the
-  page its own results last showed, a click by the control the page's snapshot names: a Return, a submit, a click that
-  sends or a page script that acts waits on a messaging site as Claude in Chrome's does, and where its results show no
-  page such a step waits too. Sixty days of Claude Code and Codex records held no message sent either way (the one
-  osascript Return was the review's own scan; Playwright pressed Tab twice, on local pages). Over the 276,170 shell
-  commands they recorded, the reading holds 36 the old guard passed, none a message sent: osascript fed by another
-  program's output, and programs whose strings hold such a script, guard probes among them. Tests first: 66 of the 95
-  first cases failed on main.
+  (core; `synthesis-message-guard` 2.12.0, references/config.md). Round 3 of the batch approval's review found that
+  words typed into a Messenger box with the browser tool, then Return pressed through `osascript` (System Events `key
+  code 36`), went out with no code, and that the Playwright plugin's browser tools reached no send rule. A shell command
+  that presses keys or clicks in whatever app is in front (System Events' UI verbs through `osascript` or JavaScript for
+  Automation, `cliclick`, `xdotool`, Hammerspoon's Lua, `skhd -k`, `shortcuts run`, `automator`, an input library in a
+  program), types into another terminal (`tmux send-keys`, `screen -X stuff`, `kitty @ send-text`, `wezterm cli
+  send-text`), opens a terminal or an automation link (`open -a Terminal`, a `.command` file, `shortcuts://`), sends
+  through a scriptable app (a `send` in Messages, Mail or Outlook, read across all of a script's lines where a pattern
+  read one), or runs code in another app (Terminal's `do script`, iTerm's `write text`, a browser's JavaScript, Keyboard
+  Maestro, Alfred, Shortcuts) now waits for the principal's code for that exact command. The command is read through
+  `bash -c`, `watch`, `script`, `launchctl asuser` and `arch`, heredocs, pipes, shell files, `make` and package-script
+  recipes, the variables the line gives, the commands a program starts (from its calls, its command spans and its
+  strings, in Python with the modules of its own it imports, and in Perl, Ruby, Tcl, Node, Deno, PHP and Swift), and a
+  file the same line writes, read as the line's own heredocs. What a script cannot show waits too: a
+  compiled script, words the shell fills in, `do shell script`, `run script`, a script library, a raw `«event»` code, a
+  bridge to the system's classes, an app or member named only when it runs, a string or comment it never closes. Words a
+  command types or sends pass the register scan first. A browser tool from any server whose name says it drives a
+  browser (Playwright, Chrome DevTools, Puppeteer) is read as the steps it performs, on the page its own results or its
+  own last navigate show, in Claude Code's records or Codex's: a click by the control the page's newest snapshot names
+  (Playwright's `target`) as well as the agent's words; a Return, a submit, a click that sends or a page script that acts
+  waits on a messaging site as Claude in Chrome's does; a tool the guard does not know, or any step where nothing shows
+  the page, waits as one that may send; `browser_run_code_unsafe` waits when it loads a file or its code starts a command
+  that acts; and the code binds the call itself. Sixty days of Claude Code and Codex records held no message sent either
+  way (the one osascript Return was the review's own scan; Playwright pressed Tab twice, on local pages). Over the
+  276,500 shell commands they hold, the reading holds 39 the old guard passed, none a message sent or a key pressed:
+  osascript whose script comes from another program's output or from words the shell fills in, and programs whose
+  strings run such a script; 154 more ran script files since removed, judged live by their text. It takes 0.17 ms on a
+  typical command and 307 ms at worst. Tests first: 66 of the 95 first cases failed on main; review round 1 then found 15
+  more ways through and 16 false holds, all pinned by its probes (125 cases, 113 failing on their own commit) and fixed.
 
 ## [5.22.1] - 2026-11-14
 

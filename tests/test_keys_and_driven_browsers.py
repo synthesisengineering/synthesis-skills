@@ -144,10 +144,24 @@ def test_a_script_on_its_input_or_in_a_file_is_read(tmp_path):
     ("cat <<'EOF' | osascript -l JavaScript\nApplication(\"System Events\").keyCode(36)\nEOF", True),
     ("osascript -l JavaScript <<'EOF'\nApplication(\"System Events\").keyCode(36)\nEOF", True),
     ("osascript -e 'tell application \"System Events\" to (name of processes) contains \"Mail\"'", False),  # which apps run
+    ("$PY - <<'EOF'\nprint(1)\nEOF", False),                       # a program a variable names, reading its script from stdin
+    ("\"$VENV/bin/python\" -f report.py", False),
+    ("$RUFF check -", False),
+    ("$TOOL kp:return", True),                                     # cliclick's own words, whatever names the program
     ("osascript -e 'tell application \"System Events\" to tell process \"Messages\" to set value of text field 1 of window 1 to \"hi\"'", True),
 ])
 def test_what_the_recorded_commands_showed(command, waits):
     assert held(shell(command)) is waits, command
+
+
+@pytest.mark.parametrize("program", [
+    "import subprocess\nscript = 'tell application \"System Events\" to key code 36'\nsubprocess.run([\"osascript\", \"-e\", script])\n",
+    "import subprocess\nscript = 'tell application \"System Events\" to key code 36'\nsubprocess.run([\"osascript\"], input=script, text=True)\n",
+])
+def test_an_applescript_a_python_program_keeps_in_a_variable_is_read(tmp_path, program):
+    """A program that runs osascript with its script in a variable: the strings that are AppleScript are read."""
+    (tmp_path / "press.py").write_text(program, encoding="utf-8")
+    assert held(shell("python3 press.py", cwd=str(tmp_path)))
 
 
 def test_the_code_lets_that_one_command_run_once_and_the_ledger_says_so(principal):

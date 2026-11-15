@@ -1267,27 +1267,39 @@ ROOT = Path(__file__).resolve().parents[1]
 # statement spells: from its code and pieces of a path, with at most one path written whole, and such a path alone
 # only where they stand one after another), LITERAL 1, 6 blank lines; _spells judging each text and each word apart
 # and expanding a word's variables, and the naming line handing it each word apart, change lines in place.
-# 5.23.0, round 3 of the batch review, finding 8 (2026-11-15: words typed into a Messenger box with the browser tool,
-# then Return pressed through osascript, and the Playwright plugin's browser tools, sent with no code): core 345 more and
-# plugin 345. guards.py 343. Keys, clicks and other apps from the shell, 239: _osa_code 39 (an AppleScript or JavaScript
-# script with its comments and strings taken out, and a member a string names written as it runs), _acts_outside 39 (a
-# command read through the scripts, programs and shell files it runs), _program_acts 31 (an input library, or a command
-# written in a program's strings, read only in a program that runs one), _osa_judge 29 (the apps a script names and the
-# verbs it uses, System Events by its UI verbs), _osa_source 24 (its -e lines, its file or its input), osa_send 5,
-# _app_name 4, _unquoted 4, the tables and patterns 36 (ACTORS, INPUT_WORDS, the three descriptions, UI_SCRIPTING,
-# ACTING_APPS, SENDING_APPS, OSA_KEYS, OSA_OTHER, OSA_UNREAD, OSA_CALLED, INPUT_LIBS, SPAWNS, QUOTED_RUN, PROGRAM_STRINGS,
-# LOOKS_OSA), the comment 8 and 20 blank lines. Browser tools from any server, 87: _driven_steps 33 (a tool's steps as a
-# browser batch reads them, on the page its own results last showed, a click by the control its snapshot names),
-# driven_tool 9, _driver_results 9, _caller 6, check_driven 5, DRIVERS, DRIVEN, UNKNOWN_PAGE and PAGE_LINE 6, the
-# comment 6 and 13 blank lines. Elsewhere 17: check_outgoing 10 (each command's keys and apps, and a hold that says what
-# they do), the dispatch 4 (a driven tool is read before the connectors), DRIVES and PRESSES_ENTER 3 (a browser server's
-# own code acts through its page and keyboard), _web_app 2 (a page its results do not show), _program 1 (osascript's
-# options that take a value), less _browser_call 3 (its search moved to _caller). sends.py 2: command_send reads an
-# osascript by the guard's reading of its script, across its lines, in place of the one-line pattern.
+# 5.23.0, round 3 of the batch review, finding 8, and that fix's own review round 1 (2026-11-15: words typed into a
+# Messenger box with the browser tool, then Return pressed through osascript, and the Playwright plugin's browser tools,
+# sent with no code; the review found 15 more ways through and 16 false holds): core 611 more and plugin 611. guards.py
+# 609. Keys, clicks and other apps from the shell, 409: _acts_outside 77 (a command read through the scripts, programs,
+# runners, task recipes and shell files it runs, a program the shell names, a file the line writes), _osa_code 73 (an
+# AppleScript or JavaScript script with comments and strings out: a member a string names written as it runs, a
+# template's code kept, a pattern passed over, `¬` and `|name|` read, a string never closed found), _program_acts 54 (an
+# input library or module it uses, or a command it starts, from its calls, command spans and strings, an AppleScript kept
+# in a variable of a program that runs osascript), _osa_judge 36 (the apps a script names and the verbs it uses, System
+# Events by its UI verbs, words the shell fills in), _osa_source 25 (its -e lines, its file with $HOME filled in, its
+# input, or the line's heredocs), _recipe 17 (a make target's recipe or a package script), _acts_in_line 18 (every
+# reading of the line's variables, the line as its caller parsed it, a line the parser cannot read), osa_send 8,
+# _code_only 5, _app_name 4, _unquoted 4, _home 2, the tables and patterns 51 (ACTORS, INPUT_PROGRAMS, INPUT_WORDS,
+# HS_ACTS, the three descriptions, UI_SCRIPTING, ACTING_APPS, SENDING_APPS, OSA_KEYS, SE_VERBS, OSA_OTHER, OSA_UNREAD,
+# OSA_CALLED, OBJC_SAFE, AUTOMATION_URL, TERMINALS, INPUT_LIBS, INPUT_MODULES, IMPORTED, SPAWNS, QUOTED_RUN, CALLED_WITH,
+# LOOKS_OSA, PROGRAM_STRINGS), the comment 9 and 26 blank lines. Browser tools from any server, 173: _driven_steps 39
+# (a tool's steps as a browser batch reads them, on its page: a click by the control the current page's snapshot names for
+# its target or ref with the agent's words, a line-break key, a dialog, dropped text, an unknown tool as a step that may
+# send), _line_events 25 (a call or a result from a Claude Code record or a Codex rollout), driven_tool 16 (Playwright's
+# names, any other server's by its words), check_driven 14 (run_code from a file or starting a command, the code bound to
+# the call), _driver_events 13, _driver_page 13 (the page its results or its own last navigate show), _driver_ref 9,
+# _caller 6, DRIVERS, DRIVEN, READ_WORDS, UNKNOWN_PAGE, PAGE_LINE and PAGE_MARKS 13, the comment 7 and 18 blank lines.
+# Elsewhere 27: check_outgoing 9 (the line's keys and apps, and a hold that says what they do), _bare 7 (`script` and
+# `launchctl asuser` run the command they are given), _program 5 (node's --eval and -p, perl's -E, php's -r, deno eval
+# and run), the dispatch 4 (a driven tool is read before the connectors), DRIVES and PRESSES_ENTER 3 (a browser server's
+# own code acts through its page and keyboard), _web_app 2 (a page nothing shows), less _browser_call 3 (its search moved
+# to _caller). sends.py 2: command_send reads an osascript by the guard's reading of its script, across its lines, in
+# place of the one-line pattern. A reuse of the reader of a Python program's writes to spell the commands it starts was
+# tried and dropped: over two days of records it took 168 ms a program on average and 4 s at worst.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 16231
-PLUGIN_BUDGET = 42303
+CORE_BUDGET = 16497
+PLUGIN_BUDGET = 42569
 
 
 def _lines(files):
