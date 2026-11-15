@@ -25,7 +25,8 @@ or receipt is required (2026-10-01: requiring them stopped every bookmark).
     sync_watermark.py window  --workspace W --surface S [--target T]
     sync_watermark.py advance --workspace W --surface S --through TS [--target T ...] [--surface-level]
                               [--coverage FILE]   (required for a local message store: imessage, whatsapp;
-                                                   and for linkedin, whose list is read only as far as it scrolled)
+                                                   and for linkedin and messenger, whose lists are read only as far
+                                                   as they scrolled)
     sync_watermark.py defer   --workspace W --surface S [--target T] --reason TEXT
     sync_watermark.py status  --workspace W --surface S ... [--target S:T ...] [--targets-from FILE]
                               [--since run|TS] [--max-age 4h]
@@ -53,9 +54,9 @@ DEFERRAL_MAX_AGE = timedelta(days=1)  # an indefinite silence is how a gap becom
 # Stores read on this Mac hold only what their app last synced, so their watermark moves no further than the reader
 # read (its coverage.through). 2026-10-26: a quit WhatsApp's store held messages only to Sat 07:26, its watermark was
 # advanced by hand to the window's end, 20:45, and nothing in between was ever read.
-# LinkedIn's conversation list is the same kind of source: it loads as it scrolls, so a read covers only as far back
-# as it was scrolled, and `linkedin_messages.py` states that reach.
-LOCAL_STORES = frozenset({"messages", "imessage", "whatsapp", "sms", "linkedin"})
+# LinkedIn's conversation list and Messenger's chat list are the same kind of source: each loads as it scrolls, so a
+# read covers only as far back as it was scrolled, and `linkedin_messages.py` and `messenger_messages.py` state that reach.
+LOCAL_STORES = frozenset({"messages", "imessage", "whatsapp", "sms", "linkedin", "messenger"})
 _EPOCH = re.compile(r"\A([1-9]\d{9})(?:\.\d+)?\Z")  # ten digits, no leading zero
 _EPOCH_MS = re.compile(r"\A[1-9]\d{12}\Z")
 ACCEPTED = ("ISO-8601 such as 2026-09-14T09:15:00-04:00, YYYY-MM-DD for complete through the END of "
@@ -88,6 +89,21 @@ def parse_moment(text: str, now: datetime) -> datetime:
     except ValueError as exc:
         raise ValueError(f"not a timestamp: {text!r} (use {ACCEPTED})") from exc
     return (moment if moment.tzinfo else moment.replace(tzinfo=now.tzinfo)).replace(microsecond=0)
+
+
+def since_moment(text: str, zone) -> datetime:
+    """The first moment a reader's --since names: a day (YYYY-MM-DD) is its midnight in `zone`, any other value ISO-8601
+    with its offset. A value that names no real day or moment raises ValueError (2026-11-14: `2026-11-41`, compared as
+    text, made any read complete)."""
+    raw = str(text).strip()
+    try:
+        moment = (datetime.combine(date.fromisoformat(raw), datetime.min.time()).replace(tzinfo=zone)
+                  if re.fullmatch(r"\d{4}-\d{2}-\d{2}", raw) else datetime.fromisoformat(raw.replace("Z", "+00:00")))
+    except ValueError:
+        moment = None
+    if moment is None or moment.tzinfo is None:
+        raise ValueError(f"--since is a day (YYYY-MM-DD) or a moment with its offset (ISO-8601), got {text!r}")
+    return moment
 
 
 def parse_duration(text: str) -> timedelta:
@@ -205,6 +221,9 @@ def _store_reach(surface: str, targets: list, coverage, moment: datetime) -> dat
     """How far a local message store's watermark may move: its reader's coverage.through. None for other surfaces
     advanced without coverage."""
     local = surface in LOCAL_STORES or any(t in LOCAL_STORES for t in targets)
+    if isinstance(coverage, dict) and "inbox" in coverage and list(targets) != [coverage["inbox"]]:
+        raise ValueError(f"this coverage is the read of {coverage['inbox'] or 'an inbox it does not name'}: advance it with "
+                         f"--target {coverage['inbox'] or '<the inbox read>'} alone; an inbox moves only on its own read")
     if coverage is None:
         if local:
             raise ValueError(f"{_key(surface, ','.join(targets) or None)} is a local message store: it moves only as far "
@@ -351,8 +370,8 @@ def main(argv: list[str] | None = None) -> int:
             p.add_argument("--through", required=True, help=moment_help)
             p.add_argument("--target", action="append", default=[])
             p.add_argument("--surface-level", action="store_true")
-            p.add_argument("--coverage", help="the reader's output (JSON); required for imessage, whatsapp and "
-                           "linkedin, whose watermark stops at its coverage.through")
+            p.add_argument("--coverage", help="the reader's output (JSON); required for imessage, whatsapp, "
+                           "linkedin and messenger, whose watermark stops at its coverage.through")
         if name == "defer":
             p.add_argument("--reason", required=True)
         if name == "status":

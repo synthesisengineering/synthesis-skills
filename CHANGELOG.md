@@ -27,6 +27,66 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   request asks for its own code, a command it cannot read as the CLI would waits for one, a file goes only with `sends
   batch`, and a held window or batch code no longer lets the rest of the line through unjudged.
 
+## [5.23.0] - 2026-11-15
+
+- **Messenger's chat list is a ritual surface** (`synthesis-daily-rituals` 3.18.0). A workspace declares
+  `.agents/messenger-sync.yaml` (`workspace`, and `inboxes` from `chats`, `requests` and `archived`, all three when left
+  out). `messenger_messages.py plan` prints what to open and how far back to scroll: every inbox at the list's own
+  address, beside "No chats selected", with Message requests and Archived chats opened from the menu over it, since a
+  chat's own address opens the chat and marks it read; the daily read opens none. `extractor` prints a read-only
+  script for the browser's JavaScript tool that saves the grid named for the inbox (a hidden panel's rows have empty
+  text), and the browser guard lets it through as a read. `parse` lists the chats that end with someone else, the
+  unread marks and Messenger's `Follow up?` nudges, and prints one coverage line. A row shows an age, never a date, so
+  each is dated the latest its age allows and a row with no age moves nothing. A sign-in page, a security check or a
+  PIN prompt stops the read; `--empty` and `--end` (a short list read to its bottom) are the reader's word, each
+  checked against what the page showed. The `messenger` watermark moves only with a complete read's coverage. The
+  surface's reference is the closing section of `references/linkedin-messages.md` until a move of whole passages gives
+  SKILL.md room for its rule and its own file; the move is proposed, not made.
+- **One chat saved from its page when an export lacks it** (`synthesis-message-exports`). `scripts/chat_page.py
+  extractor` prints a read-only script for one open chat's message log, and `save` writes what it saved into the
+  importer's transcripts, in its format and identity scheme: each message keyed by the minute the page shows, in the
+  browser's time zone as the script records it, and the importer's digest of its text, its block marked as read from
+  the page. A later import of the same chat pairs each of its messages with such a block by sender, minute and the
+  digest of its text alone and adds nothing the transcript holds, and a page read after an export pairs with the export's blocks the same way. A
+  page read joins another chat's transcript only on evidence about that chat: the person or title its log names is
+  among the transcript's people, and every message of it inside the read's span pairs; an import takes a
+  conversation into a page-read transcript on the same evidence. The coverage line says how far back the read reached and whether it reached the day asked for.
+  Opening a chat marks it read, so the fallback runs on the principal's word for that chat (rule 9).
+- **How the two were checked.** Tests first, committed alone (31 failed and 20 errored at setup while both scripts
+  were missing), with invented fixtures only: every row shape, the three inboxes, an empty archive, a hidden panel,
+  walls, a short read, both label forms, the narrow no-break space, the principal's own messages, emoji, the
+  encryption notice, a read short of its day, the hour the clocks went back, and an export of the same chat adding
+  nothing in either order. Each extractor runs on an invented page in a headless Chromium where one is installed, as CI
+  installs it. Both then ran on the live pages, their output masked: the list read parsed whole, and two defects
+  were fixed, tests first. The list's scroll container sits inside its grid, where the extractor did not look, so it
+  reported the list at its bottom when it could not see it; it now looks from the first row up and, finding no
+  scroll container, reports the list not at its end. The notice where a chat became end-to-end encrypted carries a
+  message's label dated at time zero, by `a participant`, in the middle of the log, and was taken for a message of
+  1969; it is now a notice, and any label dated before 2004-02-04 is held for a person, never written.
+- **Review round 1 of the two, 21 findings, each fixed after a test that failed first.** Coverage compares moments,
+  not days, on Messenger's list and LinkedIn's: `plan` names the moment the inbox's own last read reached, a day given
+  as `--since` stands for its first moment, a read with no `--since` moves no watermark, and a `--since` that names no
+  day is refused. A read's coverage names its inbox and moves that inbox's watermark alone. Messenger's list: the read
+  reaches back to the last row read in the list's order (a pinned row above newer ones is named); the read's own clock
+  is its time; `--empty` needs the page's own words for that inbox's empty list; `You` marks the principal only in the
+  page's forms; names and previews are shown on one line and marked as untrusted, and `--json` escapes line
+  separators; a dialog is judged by its heading, never by message text, and a chat open in a pop-up counts as opened.
+  A chat saved from its page: messages pair on sender, minute and text alone, so a link takes no part and two people's
+  `ok` in one minute stay two; what pairs only in part, an item whose labels match no message and a possible twin where
+  two reads meet are held for a person, never written twice and never dropped; reads that share fewer than two
+  messages are not one read; a day is reached only when a message from before it was read; a sender's name may hold
+  `: `. The importer joins a page-read transcript only on evidence about the chat, keeps the header a page read wrote,
+  and imports a conversation split between a page read and its own transcript instead of skipping it on every run.
+  The browser guard holds a page script that moves the tab on a messaging site (a location assignment, `assign`,
+  `replace` or `window.open`), since a chat's address opens it; both extractors still pass as reads.
+- **A word names a protected folder only by its own path** (core). 5.22.1 joined the parts of a folder's path across
+  the whole command line, so a skill script run from Claude Code's plugin cache with a project's path anywhere on the
+  line was held as naming the transcripts, whenever the script's text could write; the action sheet's publisher was
+  the first seen. On the command line a word now names a protected folder only by its own path, after `~`, variables,
+  `..` and links: inside it, the folder itself, or a folder above it; parts in two words never join. In a program's
+  text, parts still join within one statement however they are joined, but not from two separate paths written whole,
+  and one path written whole names a folder only where its parts stand one after another in it.
+
 ## [5.22.1] - 2026-11-14
 
 - **A command that names a protected folder passes only when its program is one the guard knows to only read** (core).

@@ -636,3 +636,24 @@ def test_the_hook_holds_the_incident_call_and_fails_closed(isolated_home, write_
     (isolated_home / "config.json").write_text("{not json", encoding="utf-8")
     assert "unreadable" in _hook({**base, "tool_name": BATCH, "tool_input": SEND_CLICK}, env)
     assert _hook({**base, "tool_name": "mcp__computer-use__app_screenshot", "tool_input": {"app": WHATSAPP}}, env) is None
+
+
+
+@pytest.mark.parametrize("script", [
+    "location.assign('/messages/e2ee/t/4004/')", "location.replace('/messages/e2ee/t/4004/')",
+    "window.location.href = 'https://www.facebook.com/messages/e2ee/t/4004/'", "document.location = '/messages/t/1/'",
+    "window.open('/messages/e2ee/t/4004/', '_self')", "location.href = document.querySelector('[role=\"row\"] a').href"])
+def test_a_page_script_that_moves_the_tab_on_a_messaging_site_waits(tmp_path, script):
+    """Review round 1 of the Messenger surface, finding 13: on the chat list a script that moves the tab opens a chat,
+    which marks it read in the principal's view, so it waits for the code like one that clicks."""
+    alone = {"action": "javascript_exec", "text": script, "tabId": 7}
+    session = _on(tmp_path, 7, tab7="https://www.facebook.com/messages/t/")
+    assert "approve" in (guards.check("mcp__claude-in-chrome__javascript_tool", alone, CONFIG, session=session) or "")
+
+
+@pytest.mark.parametrize("script", ["location.href", "({url: location.href, path: location.pathname})",
+                                    "location.href === 'https://www.facebook.com/messages/t/'"])
+def test_a_page_script_that_only_reads_its_address_passes(tmp_path, script):
+    alone = {"action": "javascript_exec", "text": script, "tabId": 7}
+    session = _on(tmp_path, 7, tab7="https://www.facebook.com/messages/t/")
+    assert guards.check("mcp__claude-in-chrome__javascript_tool", alone, CONFIG, session=session) is None
