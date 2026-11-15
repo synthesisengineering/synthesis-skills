@@ -13,6 +13,7 @@ A verified grant lets exactly one matching call through and expires.
 
 from __future__ import annotations
 
+import _thread
 import contextlib
 import hashlib
 import json
@@ -320,9 +321,11 @@ def void(kind: str, subject) -> list:
 def alone():
     """One decision at a time for a thing that can go on either of two codes: the code that lets it go spends the
     other before an identical call, judged at the same moment, is looked at (2026-11-13, a review: between the two
-    steps a second copy went on the other code). Taken again inside itself in the same process, it does not lock
-    again: the lock belongs to the open file, so a second one would wait for good (review round 4, finding 5)."""
-    if _ALONE[0]:
+    steps a second copy went on the other code). Taken again inside itself by the thread that holds it, it does not
+    lock again: the lock belongs to the open file, so a second one would wait for good (review round 4, finding 5);
+    another thread waits for it like another process (round 5, finding 2)."""
+    me = _thread.get_ident()
+    if _ALONE[0] and _ALONE[1] == me:
         _ALONE[0] += 1
         try:
             yield
@@ -334,14 +337,14 @@ def alone():
     held.parent.mkdir(parents=True, exist_ok=True)
     with open(held, "a") as handle:
         fcntl.flock(handle, fcntl.LOCK_EX)
-        _ALONE[0] = 1
+        _ALONE[0], _ALONE[1] = 1, me
         try:
             yield
         finally:
-            _ALONE[0] = 0
+            _ALONE[0], _ALONE[1] = 0, None
 
 
-_ALONE = [0]  # how many times this process holds the lock of `alone`
+_ALONE = [0, None]  # how many times the thread `_ALONE[1]` holds the lock of `alone`
 
 
 SPENT: list = []  # (grant file, the bytes it held) each grant this call used, for the hook to give back if the call is held
@@ -368,14 +371,6 @@ def put_back(items: list) -> None:
             pass  # a newer file of the same thing is in place: nothing to put back
         finally:
             made.unlink(missing_ok=True)
-
-
-def give_back() -> None:
-    """Put back each grant this call used: the call was held, at the hook's deadline or by a later check, and ran nothing
-    (review of the spend order, finding 2: a later check of the same call ran past the deadline after an earlier one had
-    spent it)."""
-    put_back(list(SPENT))
-    SPENT.clear()
 
 
 def _spend(path: Path) -> bytes | None:
