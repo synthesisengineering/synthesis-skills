@@ -544,7 +544,10 @@ the move was onto or from a Messenger site's page or one no list shows; after an
 that acts or cannot be read waits for a call of its own, once a list of tabs shows where the tab landed. Each browser
 keeps its own tab ids and lists. Over the 60 days to 2026-11-15, of 146 batches with a page script the rule refused 114
 as first written and refuses 23 now (8 whose script acts or cannot be read, 15 reads after a move onto or from a
-Messenger site's page or one no list shows); a pane batch on a local app that clicks and then reads runs.
+Messenger site's page or one no list shows); a pane batch on a local app that clicks and then reads runs. Of the 3,708
+browser calls in the Claude Code records of those days, the guard with these rules refuses 57 (34 scripts on a
+Messenger site's tab, none of them the plugin's own, and those 23 batches) and tells 1 to read its page first, where
+main's rule alone refuses none (above).
 The guard spends the entry when it lets the step through, so a step whose script then finds the page wrong sends
 nothing, and that entry needs a new code: the principal's code per call (the Return after the words) or a new batch. A
 conversation is a page's site and path, its trailing slash and query left off: the
