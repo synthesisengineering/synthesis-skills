@@ -106,10 +106,12 @@ def held(reason) -> bool:
 SENDER = ROOT / "skills" / "synthesis-local-messaging" / "scripts" / "messages_send.py"
 
 
-def ran_sender() -> None:
-    """A command that runs the messages sender, let through by this session's guard: the ticket its send spends on."""
+def ran_sender() -> dict:
+    """A command that runs the messages sender, let through by this session's guard: the ticket its send spends on; the
+    sender's own run of that command, which takes it (round 4, #6)."""
     assert guards.check("Bash", {"command": f"python3 {SENDER} --to +15550100 --text-file reply.txt"}, CONFIG, cwd=str(FOLDER),
                         session={**SESSION, "transcript_path": str(RECORD)}) is None
+    return _run(*TO_A)
 
 
 # --- the batch file and its digest -----------------------------------------------------------------------------
@@ -428,15 +430,11 @@ def test_a_messages_entry_binds_the_senders_recipient_chat_service_and_text():
                         ("imessage_send", {"to": "+15550100", "text": REPLY, "photo": {"name": "a.jpg", "bytes": 9, "sha256": "0" * 64}}),
                         ("messages_send", {**members, "service": "iMessage"}), ("messages_send", {**members, "chat": "chat-2"}),
                         ("messages_send", {"to": ["+15550100"], "service": "iMessage", "text": REPLY, "chat": "chat-1"})):
-        ran_sender()
-        assert held(guards.check_send(tool, given, CONFIG)), (tool, given)
-    ran_sender()
-    assert guards.check_send("imessage_send", {"to": "+15550100", "text": REPLY}, CONFIG) is None
-    ran_sender()
-    assert guards.check_send("messages_send", members, CONFIG) is None
+        assert held(guards.check_send(tool, given, CONFIG, run=ran_sender())), (tool, given)
+    assert guards.check_send("imessage_send", {"to": "+15550100", "text": REPLY}, CONFIG, run=ran_sender()) is None
+    assert guards.check_send("messages_send", members, CONFIG, run=ran_sender()) is None
     one = {"to": ["+15550103"], "service": "iMessage", "text": "On my way.", "chat": "chat-7"}
-    ran_sender()
-    assert guards.check_send("messages_send", one, CONFIG) is None
+    assert guards.check_send("messages_send", one, CONFIG, run=ran_sender()) is None
     with pytest.raises(ValueError, match="entry 1"):
         sends.read_batch(str(batch_file([{**GROUP, "members": ["+15550100", "+15550100"]}])))
 
@@ -1363,12 +1361,12 @@ def test_the_senders_session_is_the_one_whose_guard_let_it_run():
     one-use ticket for the session the hook names, and an entry is spent only on its granting session's ticket."""
     granted([TEXT])
     asked, line = {"to": "+15550100", "text": REPLY}, f"python3 {SENDER} --to +15550100 --text-file reply.txt"
-    assert held(guards.check_send("imessage_send", asked, CONFIG))  # no command the guard let through runs it
+    assert held(guards.check_send("imessage_send", asked, CONFIG, run=_run(*TO_A)))  # no command the guard let through runs it
     assert guards.check("Bash", {"command": line}, CONFIG, cwd=str(FOLDER), session=OTHER) is None
-    assert held(guards.check_send("imessage_send", asked, CONFIG, {"session_id": "S-principal"}))  # S-other's ticket
+    assert held(guards.check_send("imessage_send", asked, CONFIG, {"session_id": "S-principal"}, run=_run(*TO_A)))  # S-other's ticket
     assert guards.check("Bash", {"command": line}, CONFIG, cwd=str(FOLDER), session={**SESSION, "transcript_path": str(RECORD)}) is None
-    assert guards.check_send("imessage_send", asked, CONFIG) is None  # its own session's ticket, spent with the entry
-    assert held(guards.check_send("imessage_send", asked, CONFIG))  # one ticket, one send
+    assert guards.check_send("imessage_send", asked, CONFIG, run=_run(*TO_A)) is None  # its own session's ticket, spent with the entry
+    assert held(guards.check_send("imessage_send", asked, CONFIG, run=_run(*TO_A)))  # one ticket, one send
 
 
 @pytest.mark.parametrize("form", ["link", "runpy"])
@@ -1380,8 +1378,10 @@ def test_a_sender_run_under_another_name_spends_no_entry(form):
     command = ("python3 reply_tool.py --to +15550100 --text-file reply.txt" if form == "link" else
                f"python3 -c \"import runpy, sys; sys.argv = ['m', '--to', '+15550100', '--text-file', 'reply.txt']; "
                f"runpy.run_path('{SENDER}', run_name='__main__')\"")
-    guards.check("Bash", {"command": command}, CONFIG, cwd=str(FOLDER), session=OTHER)  # whatever it says, it files no ticket
-    assert held(guards.check_send("imessage_send", {"to": "+15550100", "text": REPLY}, CONFIG, {"session_id": "S-principal"}))
+    guards.check("Bash", {"command": command}, CONFIG, cwd=str(FOLDER), session=OTHER)  # a link files S-other's own ticket
+    run = _run(*TO_A, program=FOLDER / "reply_tool.py") if form == "link" else _run(*TO_A)  # the run sees its own file
+    assert held(guards.check_send("imessage_send", {"to": "+15550100", "text": REPLY}, CONFIG, {"session_id": "S-principal"}, run=run))
+    assert not today()
 
 
 def test_the_sender_takes_no_session_of_its_own():
@@ -1391,3 +1391,273 @@ def test_the_sender_takes_no_session_of_its_own():
     spec.loader.exec_module(module)
     with pytest.raises(SystemExit):  # an argument it does not have: nothing is read, resolved or sent
         module.main(["--to", "+15550100", "--session", "S-principal"])
+
+
+# --- review round 4 (2026-11-15) -----------------------------------------------------------------------------------
+# A page script that reached a Messenger chat by a way the batch's rule did not read (#2), a driven page the record does
+# not show (#9), the built-in pane's own results (#5), another session's call in another browser or one a hook refused
+# (#10), another session's stale list (#13), names a script builds (#7) and blanks of a drawing kind (#8); the sender's
+# ticket (#6, #11, #12), the ledger of a Messenger send the script declined, and a batch's last usable hour.
+
+PANE = "mcp__Claude_Browser__"
+BUILT_CLICK = "document.querySelector('[aria-label=\"Press enter to send\"]')['cli' + 'ck']()"
+WRITTEN_CLICK = "document.querySelector('[aria-label*=\"Press enter\"]').click()"
+
+
+def _batch_on(tab, *steps) -> dict:
+    return {"actions": [{"name": name, "input": {**given, "tabId": tab}} for name, given in steps]}
+
+
+@pytest.mark.parametrize("move", [("navigate", {"url": "https://m.me/patexample"}), ("navigate", {"url": "https://fb.com/messages/t/1000000001/"}),
+                                  ("navigate", {"url": "https://fb.me/2xYz9Q"}), ("navigate", {"url": "https://bit.ly/3AbCdEf"}),
+                                  ("computer", {"action": "left_click", "coordinate": [120, 340], "action_summary": "Opens the Messenger link"}),
+                                  ("computer", {"action": "key", "text": "Return"}), ("computer", {"action": "type", "text": "x\n"})],
+                         ids=["m.me", "fb.com", "fb.me", "short-link", "a-link-clicked", "a-key", "a-typed-line-break"])
+@pytest.mark.parametrize("script", [BUILT_CLICK, WRITTEN_CLICK, "document.title"], ids=["built", "written", "reads"])
+def test_a_script_after_a_step_that_may_move_the_page_is_refused(move, script):
+    """Round 4, #2: the page a later step acts on was the batch's own navigate's address, and a click never moved it, so a
+    batch that landed on a Messenger chat by m.me, fb.com, fb.me, a short link or a followed link ran its script there."""
+    session = listed("https://example.com/", tab=9)
+    batch = _batch_on(9, move, ("computer", {"action": "type", "text": "Words nobody approved."}),
+                      ("javascript_tool", {"action": "javascript_exec", "text": script}))
+    reason = sent(batch)
+    assert reason and not held(reason) and "may have moved" in reason, reason
+    alone = sent({"actions": [batch["actions"][-1]]})  # in a call of its own, judged on the page the list shows
+    assert session and alone is None, alone
+
+
+def test_a_script_after_a_navigate_to_a_local_app_still_runs():
+    session = listed("https://example.com/", tab=9)
+    assert session and sent(_batch_on(9, ("navigate", {"url": "http://localhost:3000/"}),
+                                     ("javascript_tool", {"action": "javascript_exec", "text": "document.title"}))) is None
+
+
+@pytest.mark.parametrize("url", ["https://m.me/patexample", "https://fb.com/messages/t/1000000001/", "https://fb.me/2xYz9Q",
+                                 "https://business.facebook.com/latest/inbox/all"])
+def test_every_host_the_guard_counts_as_messenger_takes_only_the_shipped_scripts(url):
+    assert guards._messenger_site(url), url
+    listed(url, tab=9)
+    reason = sent({"actions": [{"name": "javascript_tool", "input": {"action": "javascript_exec", "text": "document.title", "tabId": 9}}]})
+    assert reason and "Messenger site" in reason and not held(reason), reason
+
+
+def test_a_script_in_the_built_in_pane_after_its_navigate_runs():
+    """Round 4, #5: the pane's own results name its page; a Chrome list is not needed for it."""
+    ran(PANE + "tabs_context", {}, said=json.dumps({"browserOpen": True, "tabs": [{"tabId": "1", "origin": "http://localhost:3000", "isActive": True}]}))
+    ran(PANE + "navigate", {"url": "http://localhost:3000/"}, said="Navigated to http://localhost:3000/")
+    assert sent({"action": "javascript_exec", "text": "document.title"}, tool=PANE + "javascript_tool") is None
+
+
+@pytest.mark.parametrize("spelling", ["window?.open('{c}')", "document.defaultView.open('{c}')", "open`{c}`",
+                                      "Reflect.apply(open, window, ['{c}'])", "open/**/('{c}')"])
+def test_open_by_any_spelling_is_refused_on_a_messaging_page(spelling):
+    """Round 4, #7: MOVES knew some spellings of open(; every script there but the shipped readers is refused now."""
+    listed("https://www.linkedin.com/messaging/", tab=5)
+    text = spelling.format(c="https://www.linkedin.com/messaging/thread/2-abc/")
+    reason = guards.check(SCRIPT, {"action": "javascript_exec", "text": text, "tabId": 5}, CONFIG, session={**SESSION, "transcript_path": str(RECORD)})
+    assert reason and "shipped" in reason and not held(reason), text
+
+
+def test_a_character_whose_name_says_it_draws_nothing_is_shown_as_its_code():
+    """Round 4, #8: blanks, joiners and selectors of a drawing category printed as they are in the hold."""
+    import re as _re
+    import unicodedata
+    for c in ("\U00013441", "\U00013442", "⵿", "\U0001107f", "\U00011a47", "\U0001bc9d"):
+        assert sends._escaped(c) != c, hex(ord(c))
+    named = [chr(n) for n in range(0x110000) if unicodedata.category(chr(n))[0] in "LMNPS"
+             and _re.search(r"\b(?:BLANK|FILLER|JOINER|SUBJOINER|CONJOINER|SELECTOR)\b", unicodedata.name(chr(n), ""))]
+    assert named and not [hex(ord(c)) for c in named if sends._escaped(c) == c]
+    assert sends._escaped("Tuesday, à demain 🙂") == "Tuesday, à demain 🙂"
+
+
+def test_a_driven_script_on_a_page_its_record_does_not_show_is_refused():
+    """Round 4, #9: after a tab change the driven browser's page is unknown, and an unknown page takes no script."""
+    ran("mcp__plugin_playwright_playwright__browser_navigate", {"url": E2EE}, said=f"- Page URL: {E2EE}\n")
+    ran("mcp__plugin_playwright_playwright__browser_tabs", {"action": "new"}, said="Opened a new tab")
+    ran("mcp__plugin_playwright_playwright__browser_tabs", {"action": "select", "index": 0}, said="Selected tab 0")
+    reason = sent({"function": "() => { JSON.stringify = () => '{}' }"}, tool="mcp__plugin_playwright_playwright__browser_evaluate")
+    assert reason and "does not show" in reason and not held(reason), reason
+
+
+def test_another_sessions_call_in_another_browser_or_one_that_changes_nothing_leaves_the_send_step():
+    """Round 4, #10: another session's pane screenshot, which names no tab, voided the step; so would any computer action."""
+    granted([CHAT])
+    other = FOLDER / "S-other.jsonl"
+    paths.write_json(paths.state() / "transcripts" / "S-other.json", {"path": str(other)})
+    session = opened()
+    ran(PANE + "computer", {"action": "screenshot"}, record=other)
+    ran(KEYS, {"action": "screenshot", "tabId": 7}, record=other)
+    ran(KEYS, {"action": "scroll", "tabId": 7, "coordinate": [10, 10], "scroll_direction": "down"}, record=other)
+    assert sent(step()) is None and [e["how"] for e in today()] == [f"batch:{granted_digest()}:0"]
+
+
+def granted_digest() -> str:
+    return sends.batches()[0]["digest"][:12]
+
+
+def test_another_sessions_action_on_the_tab_in_the_same_browser_voids_the_send_step():
+    granted([CHAT])
+    other = FOLDER / "S-other.jsonl"
+    paths.write_json(paths.state() / "transcripts" / "S-other.json", {"path": str(other)})
+    session = opened()
+    ran(KEYS, {"action": "left_click", "coordinate": [5, 5], "tabId": 7, "action_summary": "Clicks the chat"}, record=other)
+    assert session and "Another session's record" in (sent(step()) or "")
+
+
+def test_a_call_a_hook_refused_does_not_void_the_send_step():
+    granted([CHAT])
+    opened()
+    ident, at = f"toolu_{time.time_ns()}", datetime.now(timezone.utc).isoformat()
+    _record({"type": "assistant", "timestamp": at, "message": {"role": "assistant", "content": [
+                {"type": "tool_use", "id": ident, "name": SCRIPT, "input": {"action": "javascript_exec", "text": "document.title", "tabId": 7}}]}},
+            {"type": "user", "timestamp": at, "message": {"role": "user", "content": [
+                {"type": "tool_result", "tool_use_id": ident, "is_error": True,
+                 "content": f"PreToolUse:{SCRIPT} hook error: This page script runs on a Messenger site's tab"}]}})
+    assert sent(step()) is None
+
+
+def test_only_a_created_tab_result_makes_the_tab_this_sessions():
+    """The extension's own words, read over 60 days of records: `Created new tab. Tab ID: N`, and every such result's
+    `Executed on tabId` names that tab. A result without them (an error) made no tab."""
+    granted([CHAT])
+    ran("mcp__claude-in-chrome__tabs_create_mcp", {}, said="Error: no tab group\n\nTab Context:\n- Executed on tabId: 7")
+    listed(E2EE, tab=7)
+    assert "not made by this session's tabs_create" in (sent(step()) or "")
+
+
+def test_the_newest_list_of_tabs_across_sessions_decides_a_tabs_page():
+    """Round 4, #13: another session's older list showing tab 7 on a chat refused a script on the document this session's
+    newer list shows there."""
+    other = FOLDER / "S-other.jsonl"
+    paths.write_json(paths.state() / "transcripts" / "S-other.json", {"path": str(other)})
+    listed(E2EE, tab=7, record=other)
+    time.sleep(0.01)
+    session = listed("https://docs.google.com/document/d/1abc/edit", tab=7)
+    assert guards.check(SCRIPT, {"action": "javascript_exec", "text": "document.title", "tabId": 7}, CONFIG, session=session) is None
+    time.sleep(0.01)
+    listed(E2EE, tab=7, record=other)  # now the other session's list is the newer
+    reason = guards.check(SCRIPT, {"action": "javascript_exec", "text": "document.title", "tabId": 7}, CONFIG, session=session) or ""
+    assert "another session's newer list" in reason and E2EE in reason, reason
+
+
+def _run(*argv, program=SENDER, cwd=None) -> dict:
+    """The sender's own run, as messages_send.py hands it to the guard: its file, its arguments and its folder."""
+    return {"program": str(program), "argv": list(argv), "cwd": str(cwd or FOLDER)}
+
+
+TO_A = ("--to", "+15550100", "--text-file", "reply.txt")
+
+
+@pytest.mark.parametrize("command", ["cat {s}", "ls -la {s}", "grep -n TICKET {s}", "git diff -- {s}", "head -5 {s}"])
+def test_a_command_that_only_names_the_senders_file_files_no_ticket(command):
+    """Round 4, #6 and #12: any word named messages_send.py filed a ticket, and two fresh tickets held every send."""
+    granted([TEXT])
+    me = {**SESSION, "transcript_path": str(RECORD)}
+    assert guards.check("Bash", {"command": command.format(s=SENDER)}, CONFIG, cwd=str(FOLDER), session=me) is None
+    assert not list((paths.state() / "sends" / "sender").glob("*.json")) if (paths.state() / "sends" / "sender").is_dir() else True
+    assert held(guards.check_send("imessage_send", {"to": "+15550100", "text": REPLY}, CONFIG, run=_run(*TO_A)))
+
+
+def test_the_ticket_is_bound_to_its_command_and_taken_by_that_run_alone():
+    granted([TEXT, {**TEXT, "to": "+15550101"}])
+    me = {**SESSION, "transcript_path": str(RECORD)}
+    assert guards.check("Bash", {"command": f"python3 {SENDER} {' '.join(TO_A)}"}, CONFIG, cwd=str(FOLDER), session=me) is None
+    other_run = _run("--to", "+15550101", "--text-file", "reply.txt")
+    assert held(guards.check_send("imessage_send", {"to": "+15550101", "text": REPLY}, CONFIG, run=other_run))  # another command's run
+    assert held(guards.check_send("imessage_send", {"to": "+15550100", "text": REPLY}, CONFIG, run=_run(*TO_A, cwd=FOLDER / "elsewhere")))
+    assert guards.check_send("imessage_send", {"to": "+15550100", "text": REPLY}, CONFIG, run=_run(*TO_A)) is None
+    assert held(guards.check_send("imessage_send", {"to": "+15550100", "text": REPLY}, CONFIG, run=_run(*TO_A)))  # one run, one ticket
+    assert [e["session"] for e in today()] == ["S-principal"]
+
+
+def test_a_link_to_the_sender_is_the_sender_and_spends_only_its_own_sessions_entries():
+    """Round 4, #6: `cat` of the sender filed a ticket for the principal's session, and another session's sender, run
+    through a link, took it. A link is read as the sender now, so it files that session's own ticket, which spends none
+    of the principal's entries; a cat files none."""
+    granted([TEXT])
+    (FOLDER / "reply_tool.py").symlink_to(SENDER)
+    me = {**SESSION, "transcript_path": str(RECORD)}
+    assert guards.check("Bash", {"command": f"cat {SENDER}"}, CONFIG, cwd=str(FOLDER), session=me) is None
+    linked = "python3 reply_tool.py --to +15550100 --text-file reply.txt"
+    assert guards.check("Bash", {"command": linked}, CONFIG, cwd=str(FOLDER), session=OTHER) is None
+    assert held(guards.check_send("imessage_send", {"to": "+15550100", "text": REPLY}, CONFIG,
+                                  run=_run(*TO_A, program=FOLDER / "reply_tool.py")))
+    assert not today()
+
+
+def test_each_sender_run_in_one_line_takes_a_ticket_of_its_own():
+    """Round 4, #11: one ticket a command, so the second approved entry of a line waited for a code of its own."""
+    granted([TEXT, {**TEXT, "to": "+15550101"}])
+    me = {**SESSION, "transcript_path": str(RECORD)}
+    second = ("--to", "+15550101", "--text-file", "b.txt")
+    line = f"python3 {SENDER} {' '.join(TO_A)} && python3 {SENDER} {' '.join(second)}"
+    assert guards.check("Bash", {"command": line}, CONFIG, cwd=str(FOLDER), session=me) is None
+    assert guards.check_send("imessage_send", {"to": "+15550100", "text": REPLY}, CONFIG, run=_run(*TO_A)) is None
+    assert guards.check_send("imessage_send", {"to": "+15550101", "text": REPLY}, CONFIG, run=_run(*second)) is None
+
+
+def test_another_sessions_read_of_the_sender_leaves_the_principals_send_alone():
+    """Round 4, #12: another session's grep of the sender's source filed a second ticket, and the principal's send waited."""
+    granted([TEXT])
+    me = {**SESSION, "transcript_path": str(RECORD)}
+    assert guards.check("Bash", {"command": f"grep -n TICKET {SENDER}"}, CONFIG, cwd=str(FOLDER), session=OTHER) is None
+    assert guards.check("Bash", {"command": f"python3 {SENDER} {' '.join(TO_A)}"}, CONFIG, cwd=str(FOLDER), session=me) is None
+    assert guards.check_send("imessage_send", {"to": "+15550100", "text": REPLY}, CONFIG, run=_run(*TO_A)) is None
+
+
+def test_two_sessions_running_the_identical_command_in_one_folder_both_wait():
+    granted([TEXT])
+    me, line = {**SESSION, "transcript_path": str(RECORD)}, f"python3 {SENDER} {' '.join(TO_A)}"
+    for session in (OTHER, me):
+        assert guards.check("Bash", {"command": line}, CONFIG, cwd=str(FOLDER), session=session) is None
+    assert held(guards.check_send("imessage_send", {"to": "+15550100", "text": REPLY}, CONFIG, run=_run(*TO_A)))
+
+
+def test_the_sender_hands_the_guard_its_own_run(monkeypatch):
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("messages_send_run", SENDER)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    seen = {}
+    monkeypatch.setattr(guards, "check_send", lambda tool, given, config, session=None, run=None: seen.update(run=run) or
+                        "approve followed by the code abc123")
+    result = module._send("+15550100", REPLY, "k" * 32, lambda: {"chat_id": "c"}, "imessage_send", lambda route: {"to": "+15550100",
+                          "text": REPLY}, run={"argv": list(TO_A)})
+    assert result["status"] == "needs-approval"
+    assert seen["run"] == {"program": str(SENDER.resolve()), "argv": list(TO_A), "cwd": str(Path.cwd().resolve())}
+    captured = {}
+    monkeypatch.setattr(module, "send", lambda to, text, account=None, attachment=None, run=None: captured.update(run=run) or {"status": "refused"})
+    (FOLDER / "reply.txt").write_text(REPLY, encoding="utf-8")
+    monkeypatch.chdir(FOLDER)
+    module.main(list(TO_A))
+    assert captured["run"] == {"argv": list(TO_A)}
+
+
+def _reported(sent_it: bool, call: str) -> None:
+    report = json.dumps({"send": sends.SEND_MARK, "url": E2EE, "conversation": True, "box": "found", "words": sent_it,
+                         "staged": 0, "marks": 0, "inline": 0, "controls": 1, "sent": sent_it, "after": "" if sent_it else REPLY})
+    _record({"type": "user", "timestamp": datetime.now(timezone.utc).isoformat(), "message": {"role": "user", "content": [
+        {"type": "tool_result", "tool_use_id": call, "content": [{"type": "text", "text": json.dumps(report)}]}]}})
+
+
+@pytest.mark.parametrize("outcome", ["sent", "declined", "unread"])
+def test_the_days_ledger_lists_a_messenger_send_by_what_its_script_did(outcome):
+    """Round 4's notes: the ledger listed a Messenger send when the guard let the step through, and "On your behalf"
+    could name a message the script then declined to send."""
+    granted([CHAT])
+    opened()
+    assert guards.check(CHROME, step(), CONFIG, session={**SESSION, "transcript_path": str(RECORD), "tool_use_id": "toolu_step"}) is None
+    if outcome != "unread":
+        _reported(outcome == "sent", "toolu_step")
+    row = today()[0]
+    assert row["how"].startswith("batch:") and row["sent"] is {"sent": True, "declined": False, "unread": None}[outcome]
+    printed = cli_out("sends", "log")
+    assert ("not sent" in printed) is (outcome == "declined") and ("unconfirmed" in printed) is (outcome == "unread"), printed
+
+
+def test_a_batch_is_open_until_twelve_hours_after_the_principal_typed_its_code():
+    """Round 4's notes: `sends status` named the grant plus 12 hours, while a spend needs the code typed in the last 12."""
+    typed = time.time() - 600
+    data = sends.open_batch(sends.read_batch(str(batch_file([CALL]))), {"code": "abc123", "asked": typed - 30, "at": typed}, "S-principal")
+    assert abs(float(data["until"]) - (typed + sends.MAX_HOURS * 3600)) < 1 and float(data["granted"]) > typed
+    assert [b["digest"] for b in sends.batches()] == [data["digest"]]  # still whole, and open
