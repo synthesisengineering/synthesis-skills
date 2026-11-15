@@ -1038,3 +1038,95 @@ def test_synthesis_s_own_source_compiled_to_check_its_syntax_passes(world):
     body = "import sys\nfor name in sys.argv[1:]:\n    text = open(name).read()\n    compile(text, name, 'exec')\n    print(text.count('def '))\n"
     for form in ("script file", "inline -c", "stdin"):  # compiling runs nothing: a test that writes through synthesis is read too
         assert _verdict(world, _loaded(world, body, form, f" {ROOT}/synthesis/guards.py {ROOT}/tests/test_approval_spend_order.py")) is None, form
+
+
+# --- a shell script file a command runs, by a shell, by its path or sourced, is judged command by command as if those
+# commands were on the line (plan item 22.21, found with 22.19: `bash run.sh` let through a `python3 -c` inside it that
+# imported synthesis and named a writer, since the guard read a shell script's text only for the protected folders it
+# names); a script it cannot read waits ----------------------------------------------------------------------------
+
+SCRIPT_WRITES = {  # one line of a shell script, and how the same line is judged when it is typed
+    "a program on its line that names a writer": (f"python3 -c 'import sys; sys.path.insert(0, \"{ROOT}\"); from synthesis import approvals; "
+                                                  "approvals.void(\"send\", {})'\n", "held"),
+    "a Python script that names a writer": ("python3 tool.py\n", "held"),
+    "a program that opens a send window": (f"python3 -c 'import sys; sys.path.insert(0, \"{ROOT}\"); import synthesis.sends as s; "
+                                           "s.open_window(2.0, [\"all\"], \"\", 9)'\n", "refused"),
+    "a program that loads synthesis by importlib": (f"python3 -c 'import sys, importlib; sys.path.insert(0, \"{ROOT}\"); "
+                                                    "importlib.import_module(\"synthesis.sends\").undo(\"x\")'\n", "refused"),
+    "the hook run by hand": ("~/.synthesis/v5/bin/synthesis-hook pre-tool-use < payload.json\n", "refused"),
+}
+RUNS_SCRIPT = {  # how a command runs the script file run.sh
+    "bash": "bash run.sh", "sh": "sh run.sh", "zsh": "zsh run.sh", "bash with an option": "bash -e run.sh",
+    "its path": "./run.sh", "source": "source run.sh", "dot": ". run.sh", "another script": "bash outer.sh",
+}
+
+
+def _shell_world(world, line: str) -> Path:
+    folder = world["work"]
+    _script(folder, "tool.py", WRITES_THROUGH.replace("COPY", COPY))
+    run = _script(folder, "run.sh", "#!/bin/sh\nset -e\necho starting\n" + line + "echo done\n")
+    run.chmod(0o755)
+    _script(folder, "outer.sh", "#!/bin/bash\ncd \"$(dirname \"$0\")\"\nbash run.sh\n")
+    return folder
+
+
+@pytest.mark.parametrize("how", sorted(RUNS_SCRIPT))
+@pytest.mark.parametrize("name", sorted(SCRIPT_WRITES))
+def test_a_shell_script_s_commands_are_judged_as_if_they_were_on_the_line(world, name, how):
+    line, typed = SCRIPT_WRITES[name]
+    _shell_world(world, line)
+    reason = _verdict(world, RUNS_SCRIPT[how]) or ""
+    if typed == "refused":
+        assert reason.startswith("Refused"), (name, how, "held, not refused" if reason else "let through")
+    else:
+        assert HELD in reason, (name, how, "refused, not held" if reason else "let through")
+
+
+def test_a_script_with_no_first_line_run_by_its_path_is_read_as_the_shell_reads_it(world):
+    line, _ = SCRIPT_WRITES["a program on its line that names a writer"]
+    plain = _script(world["work"], "plain.sh", line)
+    plain.chmod(0o755)
+    assert HELD in (_verdict(world, "./plain.sh") or "")
+
+
+def test_a_script_the_line_writes_and_then_runs_is_judged_by_what_the_line_writes(world):
+    line, _ = SCRIPT_WRITES["a program on its line that names a writer"]
+    assert HELD in (_verdict(world, f"cat > made.sh <<'EOF'\n{line}EOF\nbash made.sh") or "")
+    assert HELD in (_verdict(world, f"printf '%s\\n' {shlex.quote(line.strip())} > made.sh && sh made.sh") or "")
+
+
+def test_a_python_script_run_by_its_path_is_judged_as_python_runs_it(world):
+    tool = _script(world["work"], "tool", "#!/usr/bin/env python3\n" + WRITES_THROUGH.replace("COPY", COPY))
+    tool.chmod(0o755)
+    assert HELD in (_verdict(world, "./tool") or "")
+    _script(world["work"], "run.sh", "#!/bin/sh\n./tool\n")
+    assert HELD in (_verdict(world, "bash run.sh") or "")
+
+
+def test_a_shell_script_the_guard_cannot_read_waits(world):
+    os.mkfifo(world["work"] / "pipe.sh")
+    assert HELD in (_verdict(world, "bash pipe.sh") or "")
+    _script(world["work"], "large.sh", "echo a line of an ordinary script\n" * 12000)  # past the 256 KB a script is read to
+    assert HELD in (_verdict(world, "bash large.sh") or "")
+
+
+ORDINARY_SCRIPTS = {  # build, test and setup scripts that never name synthesis's code
+    "build": "#!/usr/bin/env bash\nset -euo pipefail\ncd \"$(dirname \"$0\")\"\nnpm ci\nnpm run build\nmkdir -p dist && cp -R public/. dist/\necho built\n",
+    "test": "#!/bin/sh\npython3 -m pytest -q tests/\npython3 -c 'import json, sys; print(json.load(open(sys.argv[1]))[\"name\"])' package.json\n",
+    "setup": "#!/bin/bash\npython3 -m venv .venv\n. .venv/bin/activate\npip install -r requirements.txt\nexport PATH=\"$HOME/.local/bin:$PATH\"\n",
+    "release": "#!/bin/bash\nset -e\ncd ~/workspaces/synthesis-skills && git status --short && python3 -m pytest -q tests/test_yamlish.py\n"
+               "VERSION=$(git describe --tags)\necho \"synthesis skills $VERSION\"\n",
+    "a menu": "#!/bin/bash\nusage() { echo \"usage: $0 build|test\"; }\ncase \"$1\" in\n  build) make all ;;\n  test) make test ;;\n"
+              "  *) usage; exit 1 ;;\nesac\ncat <<EOF\nfinished $1\nEOF\n",
+    "an environment": "export NODE_ENV=production\nalias ll='ls -la'\neval \"$(/opt/homebrew/bin/brew shellenv)\"\n[ -f ~/.secrets ] && . ~/.secrets\n",
+}
+
+
+@pytest.mark.parametrize("how", ["bash", "its path", "source"])
+@pytest.mark.parametrize("name", sorted(ORDINARY_SCRIPTS))
+def test_an_ordinary_shell_script_passes_however_it_is_run(world, name, how):
+    run = _script(world["work"], "run.sh", ORDINARY_SCRIPTS[name])
+    run.chmod(0o755)
+    _script(world["work"] / ".venv" / "bin", "activate", "export VIRTUAL_ENV=\"$PWD/.venv\"\nexport PATH=\"$VIRTUAL_ENV/bin:$PATH\"\n")
+    assert _verdict(world, RUNS_SCRIPT[how]) is None, (name, how)
+    assert _verdict(world, "bash -n run.sh") is None  # read for its syntax, it runs nothing
