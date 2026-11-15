@@ -18,6 +18,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   substitutions in a loop asked 11,746 times over 102 paths, which took 0.31 s on a Mac under Apple's Python 3.9 and
   1.11 s on CI's macOS runner, past the 1.0 s its test allows. The guard writes nothing while it judges, so each
   answer now holds for the call: 123 questions and 0.105 s. A test counts the questions, so it holds on any runner.
+- **An approval is spent only once it is confirmed, and confirming it reads only the approval window.** A Codex
+  session's record had grown to 1.9 GB. The principal typed two codes; the guard deleted each grant and then read the
+  record from its start for the prompt, which took 4.6 s, past the hook's 4 s deadline. The calls were held with the
+  grants gone, so each identical retry asked for a new code and neither call ran. The guard now reads the grant, finds
+  the prompt, and only then spends it, so a deadline that ends the read leaves the grant for the identical retry; a
+  grant changed while it was checked is never used. The record is read from its end, and a run of lines older than
+  the 15-minute window ends the search: 0.014 s on that record. A grant spent before this release cannot be brought
+  back; its call is approved again once.
 
 ## [5.23.0] - 2026-11-15
 

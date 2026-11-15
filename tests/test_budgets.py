@@ -1300,10 +1300,16 @@ ROOT = Path(__file__).resolve().parents[1]
 # heredoc shape asked 11,746 times over 102 paths and took 1.11 s on CI's macOS runner under Apple's Python 3.9, 0.31 s
 # on this Mac; with it, 123 times and 0.105 s) and its 3 blank lines. The per-call reset and the 29 places that ask
 # change in place.
+# Then core and plugin each 64 more, all in approvals.py, so a grant is read before it is spent and finding the
+# principal's prompt reads only the approval window (a Codex record of 1.9 GB took 4.6 s to read from its start, past the
+# hook's 4 s, after the grants had been deleted): _lines_back 16 (a record's lines from its end), _spend 13 (a grant taken
+# once, the bytes it held returned), _stamps 10 (every time a line carries), typed 9 more (read from the end; a run of
+# lines older than the window ends it), consume 6 more (read, check, then spend; a grant changed during the check is
+# never used), STAMP and the run's two constants 2, and the new functions' 8 blank lines.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 16507
-PLUGIN_BUDGET = 42579
+CORE_BUDGET = 16571
+PLUGIN_BUDGET = 42643
 
 
 def _lines(files):

@@ -190,18 +190,61 @@ def _prompt(record: dict, session_id: str) -> tuple[float, list]:
     return datetime.fromisoformat(str(stamp).replace("Z", "+00:00")).timestamp(), texts
 
 
+STAMP = re.compile(r'"(?:timestamp|recorded_at)"\s*:\s*(?:"([^"]{10,40})"|(\d{13,17}))')
+OLD_RUN, SLACK_SECONDS = 200, 600  # this many lines in a row, each older than the window by this much, end the search
+
+
+def _stamps(line: str) -> list:
+    """Every time a record line carries (ISO times; Muse's microseconds), as seconds, nested ones included."""
+    from datetime import datetime
+    found = []
+    for iso, micro in STAMP.findall(line):
+        try:
+            found.append(int(micro) / 1e6 if micro else datetime.fromisoformat(iso.replace("Z", "+00:00")).timestamp())
+        except (ValueError, OverflowError):
+            continue
+    return found
+
+
+def _lines_back(transcript_path: str, block: int = 1 << 20):
+    """A record's lines from its end, newest first."""
+    with open(transcript_path, "rb") as handle:
+        handle.seek(0, os.SEEK_END)
+        at, rest = handle.tell(), b""
+        while at > 0:
+            step = min(block, at)
+            at -= step
+            handle.seek(at)
+            lines = (handle.read(step) + rest).split(b"\n")
+            rest = lines.pop(0)  # the start of a line that began in the block before
+            for raw in reversed(lines):
+                if raw.strip():
+                    yield raw.decode("utf-8", "replace")
+        if rest.strip():
+            yield rest.decode("utf-8", "replace")
+
+
 def typed(transcript_path: str, code: str, since: float, session_id: str = "") -> bool:
-    """Whether the harness's record shows the principal typing approve <code> after `since`."""
-    with open(transcript_path, encoding="utf-8", errors="replace") as handle:
-        for line in handle:
-            if not code or code not in line.lower():
-                continue
+    """Whether the harness's record shows the principal typing approve <code> after `since`. It is read from its end,
+    and only as far back as the approval window: a run of lines all older than the window ends the search, while one
+    stray old line (a snapshot, a summary) or a line with no time does not (2026-11-15: a Codex record of 1.9 GB took
+    4.6 s to read from its start, past the hook's 4 s)."""
+    if not code:
+        return False
+    hit, old = re.compile(re.escape(code), re.IGNORECASE), 0
+    for line in _lines_back(transcript_path):
+        if hit.search(line):
             try:
                 when, texts = _prompt(json.loads(line), session_id)
             except (ValueError, TypeError, AttributeError):
-                continue
+                when, texts = 0.0, []
             if when > since and any(code in typed_codes(text) for text in texts):
                 return True
+        stamps = _stamps(line)
+        if stamps:
+            old = old + 1 if max(stamps) < since - SLACK_SECONDS else 0
+            if old >= OLD_RUN:
+                return False
     return False
 
 
@@ -248,27 +291,48 @@ def alone():
         yield
 
 
-def consume(kind: str, subject, session: dict | None = None) -> bool:
-    """True once for a live grant of exactly this subject that the principal's own prompt backs. The
-    grant is spent either way; when the record does not back it, files the request again and raises."""
-    path = _dir("approvals") / f"{digest(kind, subject)}.json"
+def _spend(path: Path) -> bytes | None:
+    """Take a grant once: the bytes it held, or None where another caller took it first."""
     spent = path.with_suffix(".spent")
     try:
         os.replace(path, spent)
     except FileNotFoundError:
+        return None
+    try:
+        return spent.read_bytes()
+    except OSError:
+        return b""
+    finally:
+        spent.unlink(missing_ok=True)
+
+
+def consume(kind: str, subject, session: dict | None = None) -> bool:
+    """True once for a live grant of exactly this subject that the principal's own prompt backs. The
+    grant is read before it is spent, so a deadline that ends the read leaves it for the identical retry (2026-11-15:
+    two grants were spent, then the read ran past the hook's 4 s); a grant that does not hold, or that the record does
+    not back, is spent all the same, and for the latter the request is filed again and this raises."""
+    path = _dir("approvals") / f"{digest(kind, subject)}.json"
+    try:
+        before = path.read_bytes()
+    except FileNotFoundError:
         return False
-    data = paths.read_json(spent)
-    spent.unlink(missing_ok=True)
+    try:
+        data = json.loads(before)
+    except ValueError:
+        data = {}
+    data = data if isinstance(data, dict) else {}
     if data.get("kind") != kind or time.time() - float(data.get("at", 0)) > TTL_SECONDS:
+        _spend(path)
         return False
     record, since = transcript(session), max(float(data.get("asked", 0)), time.time() - TTL_SECONDS)
     try:
         if record and typed(record, str(data.get("code", "")), since, paths.session_id(session)):
-            return True
+            return _spend(path) == before  # once; a grant put in place while the record was read was never checked
         problem = (f"{record} shows no prompt from the principal with its code since it was asked for" if record else
                    "the harness gave no transcript for this session, and only that record can show who typed it")
     except OSError as exc:
         problem = f"the session's transcript could not be read ({exc})"
+    _spend(path)
     code = request(kind, subject, str(data.get("summary", "")))
     raise Unverified(f"An approval for this call was recorded, but {problem}. Approvals come only from the principal's "
                      f"own prompt, so it was not used. Show them the exact call again and ask them to type {how(code)}.")
