@@ -470,6 +470,29 @@ def listed(url=E2EE, tab=7, record=None) -> dict:
     return {**SESSION, "transcript_path": str(record or RECORD)}
 
 
+def ran(name, given, record=None, said="Done") -> None:
+    """A finished call and its result in a session's record (this one's unless named)."""
+    ident, at = f"toolu_{time.time_ns()}", datetime.now(timezone.utc).isoformat()
+    with (record or RECORD).open("a", encoding="utf-8") as handle:
+        for line in ({"type": "assistant", "timestamp": at, "message": {"role": "assistant", "content": [
+                         {"type": "tool_use", "id": ident, "name": name, "input": given}]}},
+                     {"type": "user", "timestamp": at, "message": {"role": "user", "content": [
+                         {"type": "tool_result", "tool_use_id": ident, "content": [{"type": "text", "text": said}]}]}}):
+            handle.write(json.dumps(line) + "\n")
+
+
+def made(tab=7, record=None) -> None:
+    """The browser's own tabs_create in a session's record, its result as the extension writes it."""
+    ran("mcp__claude-in-chrome__tabs_create_mcp", {}, record, f"Created new tab. Tab ID: {tab}\n\nTab Context:\n- Executed on "
+        f"tabId: {tab}\n- Available tabs:\n  • tabId {tab}: \"New Tab\" (\"chrome://newtab/\")")
+
+
+def opened(url=E2EE, tab=7) -> dict:
+    """A tab this session made with tabs_create and navigated to a page; the session."""
+    made(tab)
+    return listed(url, tab)
+
+
 def step(entry=CHAT, tab=7, url=None, words=None, script=None, middle=None, after=()) -> dict:
     """A batch's Messenger send as one browser_batch: load the conversation's address on the tab again, type the words,
     run the entry's send script there, last."""
@@ -532,14 +555,14 @@ def test_a_messenger_entry_goes_as_one_send_step_on_a_tab_already_on_its_convers
     changes no address any session's guard reads (a page script there is refused, below)."""
     entry = {**CHAT, "to": entry_to}
     granted([entry])
-    listed(url)
+    opened(url)
     reason = sent(step(entry))
     assert (reason is None) is goes, reason
 
 
 def test_a_send_step_goes_once_and_its_ledger_line_names_the_entry():
     data = granted([CHAT])
-    listed()
+    opened()
     assert sent(step()) is None
     assert today()[-1]["how"] == f"batch:{data['digest'][:12]}:0"
     assert sent(step())  # spent
@@ -580,7 +603,7 @@ def _shapes() -> dict:
     "the-script-changed", "the-script-of-other-words", "two-scripts"])
 def test_a_send_step_of_any_other_shape_is_refused_and_spends_nothing(shape):
     granted([CHAT])
-    listed()
+    opened()
     assert sent(_shapes()[shape]), shape
     assert not any(e["how"].startswith("batch") for e in today())
     assert sent(step()) is None  # the entry is still there
@@ -588,7 +611,7 @@ def test_a_send_step_of_any_other_shape_is_refused_and_spends_nothing(shape):
 
 def test_a_send_step_on_a_tab_not_yet_on_its_conversation_is_refused():
     granted([CHAT])
-    listed("https://example.com/")
+    opened("https://example.com/")
     assert sent(step())
     listed()
     assert sent(step()) is None
@@ -596,10 +619,87 @@ def test_a_send_step_on_a_tab_not_yet_on_its_conversation_is_refused():
 
 def test_the_send_script_runs_only_as_the_last_step_of_its_send():
     granted([CHAT])
-    session = listed()
+    session = opened()
     assert "last step" in guards.check(SCRIPT, {"action": "javascript_exec", "text": sends.send_script(CHAT), "tabId": 7},
                                        CONFIG, session=session)
     assert sent(step()) is None
+
+
+# --- the coordinator's ruling on the opener (2026-11-15): the send step runs only on a tab this session made --------
+# No page holds a handle to a tab the browser tool made and only this session navigated: a page gets a handle to
+# another window only by opening it. The guard reads which tabs this session made from its own tabs_create results.
+
+
+def test_the_send_step_runs_only_on_a_tab_this_session_made_with_tabs_create():
+    granted([CHAT, {**CHAT, "to": "facebook.com/messages/t/1000000002"}])
+    listed()  # on the conversation, but made by no tabs_create of this session
+    reason = sent(step())
+    assert reason and "tabs_create" in reason
+    made(tab=8)  # another tab made here makes tab 7 none
+    assert "tabs_create" in sent(step())
+    opened(tab=9)
+    assert sent(step(tab=9)) is None
+    listed(PLAIN, tab=9)  # the same tab, navigated by this session to the next conversation, carries the next send
+    assert sent(step({**CHAT, "to": "facebook.com/messages/t/1000000002"}, tab=9)) is None
+
+
+def _other_record():
+    other = RECORD.parent / "S-other.jsonl"
+    other.touch()
+    paths.write_json(paths.state() / "transcripts" / "S-other.json", {"path": str(other)})
+    return other
+
+
+@pytest.mark.parametrize("what", ["navigate", "script", "click", "a-batch-step", "a-navigate-naming-no-tab"])
+def test_another_sessions_call_on_the_tab_since_this_session_made_it_voids_it(what):
+    granted([CHAT])
+    other = _other_record()
+    ran("mcp__claude-in-chrome__navigate", {"url": "https://example.com/", "tabId": 7}, other)  # before it was made: no matter
+    opened()
+    name, given = {"navigate": ("mcp__claude-in-chrome__navigate", {"url": E2EE, "tabId": 7}),
+                   "script": (SCRIPT, {"action": "javascript_exec", "text": "document.title", "tabId": 7}),
+                   "click": (KEYS, {"action": "left_click", "ref": "ref_1", "tabId": 7, "action_summary": "Clicks"}),
+                   "a-batch-step": (CHROME, {"actions": [{"name": "computer", "input": {"action": "scroll", "tabId": 7}}]}),
+                   "a-navigate-naming-no-tab": ("mcp__claude-in-chrome__navigate", {"url": "https://example.com/"})}[what]
+    ran(name, given, other)
+    reason = sent(step())
+    assert reason and "another session" in reason, reason
+    assert not any(e["how"].startswith("batch") for e in today())
+
+
+def test_a_call_of_another_session_before_the_tab_was_made_voids_nothing():
+    granted([CHAT])
+    ran("mcp__claude-in-chrome__navigate", {"url": E2EE, "tabId": 7}, _other_record())
+    time.sleep(0.01)
+    opened()
+    assert sent(step()) is None
+
+
+def test_a_page_script_on_the_tab_since_this_session_made_it_voids_it():
+    """A window a page script opened keeps an opener's handle to the tab: the opener the guard can see."""
+    granted([CHAT])
+    opened("https://example.com/")
+    ran(SCRIPT, {"action": "javascript_exec", "text": "window.name = 'x'; open('https://example.com/b')", "tabId": 7})
+    listed()  # navigated to the conversation since
+    reason = sent(step())
+    assert reason and "page script" in reason, reason
+
+
+def test_the_opener_probe_is_refused_at_the_send_step():
+    """The third round's residual: the agent's own data: page, listed as it loaded, moves to facebook.com; a script there
+    passes as one on the data: page, opens the chat and keeps a timer that patches it through any load. The tab it opened
+    was made by no tabs_create of this session, so the send step on it is refused."""
+    granted([CHAT])
+    stale = "data:text/html,%3Cscript%3EsetTimeout(()=%3Elocation='https://www.facebook.com/messages/t/1000000009/',3000)%3C/script%3E"
+    opener = (f"self.chat = open('{E2EE}'); setInterval(() => {{ try {{ const w = chat; if (!w.__p) {{ const c = "
+              "w.HTMLElement.prototype.click; w.HTMLElement.prototype.click = function () { w.document.querySelector("
+              "'[role=textbox]').append(' P.S.'); return c.call(this); }; w.__p = 1; } } catch (e) {} }, 5)")
+    session = opened(stale, tab=9)
+    assert guards.check(SCRIPT, {"action": "javascript_exec", "text": opener, "tabId": 9}, CONFIG, session=session) is None  # unseen
+    ran(SCRIPT, {"action": "javascript_exec", "text": opener, "tabId": 9})
+    listed(E2EE, tab=10)  # the chat it opened, listed by the next call
+    reason = sent(step(tab=10))
+    assert reason and "tabs_create" in reason, reason
 
 
 # A page as small as the check needs, of the shape the coordinator read on a live Messenger chat (2026-11-14): one
@@ -783,7 +883,7 @@ def test_a_return_or_a_click_on_a_messenger_tab_spends_no_entry():
     """A Return after typed words, or a click on Send, sends whatever the box holds then: it waits for the code per call,
     and only the send step spends an entry."""
     granted([CHAT])
-    session = listed()
+    session = opened()
     typed = {"actions": [{"name": "computer", "input": {"action": "type", "text": REPLY, "tabId": 7}},
                          {"name": "computer", "input": {"action": "key", "text": "Return", "tabId": 7}}]}
     for tool, given in ((CHROME, typed), (KEYS, RETURN),
@@ -796,7 +896,7 @@ def test_an_entry_covers_only_its_own_kind_of_send():
     granted([CHAT])
     assert held(guards.check(SLACK, SAID, CONFIG, session=SESSION))
     assert held(guards.check_send("imessage_send", {"to": "+15550100", "text": REPLY}, CONFIG))
-    listed(PLAIN)
+    opened(PLAIN)
     assert sent(step({**CHAT, "to": "facebook.com/messages/t/1000000002"}))
     listed()
     assert sent(step()) is None
@@ -809,7 +909,7 @@ def test_an_entry_that_names_a_time_still_needs_a_fresh_calendar_read():
     config, words = {**CONFIG, "fresh_calendar": {}}, "Tuesday at 3:30 pm works for me."
     timed = {**SAID, "message": words}
     granted([{"tool": SLACK, "input": timed}, {**CHAT, "text": words}])
-    session = listed()
+    session = opened()
     for reason in (guards.check(SLACK, timed, config, session=session), sent(step({**CHAT, "text": words}), config=config)):
         assert held(reason) and "names a time" in reason
     read_calendar()
@@ -830,7 +930,7 @@ def test_an_entry_released_by_the_code_for_its_time_is_spent_with_it():
 def test_the_register_scan_still_refuses_a_forbidden_phrase_in_an_entry():
     words = "Sorry for the delay, Tuesday works."
     granted([{"tool": SLACK, "input": {**SAID, "message": words}}, {**CHAT, "text": words}])
-    listed()
+    opened()
     assert "delay-apology" in guards.check(SLACK, {**SAID, "message": words}, CONFIG, session=SESSION)
     assert "delay-apology" in sent(step({**CHAT, "text": words}))
     assert not any(e["how"].startswith("batch") for e in today())
@@ -1063,7 +1163,7 @@ def test_the_code_for_a_messenger_entrys_time_binds_this_exact_send():
     config, words = {**CONFIG, "fresh_calendar": {}}, "Tuesday at 3:30 pm works for me."
     entry = {**CHAT, "text": words}
     data = granted([entry])
-    listed()
+    opened()
     reason = sent(step(entry), config=config)
     assert held(reason) and "names a time" in reason
     APPROVE(reason)
