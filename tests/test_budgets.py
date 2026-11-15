@@ -1325,9 +1325,6 @@ ROOT = Path(__file__).resolve().parents[1]
 # an assignment or a wrapper stood in front of, which it otherwise reads past), _commands 1, and _self_grant 5 (the
 # plain run, the values on the line that only say where the script lies, and a hold that says why the release's own
 # copy waits).
-# Then core and plugin each 1 more: cli.py's install takes --forward-only, which a harness's session start now runs from
-# the plugin itself (finding 5: the previous release's installer built the new release and left out what it did not
-# know). install.py's test of what a session start keeps changes in place.
 # Then core and plugin each 1 more, in install.py: _stable_skill_files' docstring 1 (a carried skill's shell scripts
 # outside scripts/, the meeting skill's server kit, which its doctor checks the service against, and its Python below
 # scripts/: finding 6). Its test changes in place, and so does the fetcher's line naming the runtime's start.sh.
@@ -1335,8 +1332,8 @@ ROOT = Path(__file__).resolve().parents[1]
 # is code the guard cannot read (finding 3: it was judged as it stood before the line rewrote it).
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 16570
-PLUGIN_BUDGET = 42642
+CORE_BUDGET = 16569
+PLUGIN_BUDGET = 42641
 
 
 def _lines(files):
