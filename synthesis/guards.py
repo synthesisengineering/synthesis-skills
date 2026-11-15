@@ -4426,7 +4426,10 @@ READER_WRITES = {"less": r"-[A-Za-z]*[oO].*|--(?:log-file|LOG-FILE)(?:=.*)?", "r
 GIT_FIRST = re.compile(r"-c|--config-env(?:=.*)?|--work-tree(?:=.*)?|--exec-path(?:=.*)?|-p|--paginate")  # git's own, before its subcommand
 GIT_RUNS = re.compile(r"--output(?:=.*)?|--ext-diff|--textconv|-O.*|--open-files-in-pager(?:=.*)?|--upload-pack(?:=.*)?|--exec(?:=.*)?")
 ABSOLUTE = re.compile(r"-[A-Za-z]*P[A-Za-z]*|--absolute-names|--absolute-filenames|--insecure|-:|-spf")  # an archive's members land where they say
-SYNTHESIS_IMPORT = re.compile(r"^[ \t]*(?:from[ \t]+synthesis\b|import[ \t]+synthesis\b)", re.M)
+SYNTHESIS_IMPORT = re.compile(  # wherever a statement may start: a line, after `;` or `:`, in a list (5.23.1: `import sys; from
+    r"(?:^|[;:])[ \t]*(?:from[ \t]+synthesis\b|import[ \t]+(?:[\w.]+(?:[ \t]+as[ \t]+\w+)?[ \t]*,[ \t]*)*synthesis\b)", re.M)  # synthesis ...` passed)
+SYNTHESIS_LOADED = re.compile(r"\b(?:__import__|import_module|run_module|run_path|spec_from_file_location|SourceFileLoader|load_source|(open))"
+                              r"[ \t]*\([^)\n]*?['\"][^'\"\n]*\bsynthesis(?:[./]|['\"])")  # a name or a file of synthesis's handed to a loader
 SYNTHESIS_WRITES = frozenset(f"{module}.{name}" for module, names in (  # synthesis's own functions that write a file (a test reads them from the source)
     ("approvals", "_expire alone consume grant_from_prompt remember request void"), ("autopilot", "_evaluate _write_pointer evaluate"),
     ("board", "_claim _claim_lock _describe _post claim inbox mark_carried mark_read_messages message notify release resolve save touch"),
@@ -4837,8 +4840,10 @@ def _synthesis_reach(text: str) -> tuple:
     writes reads, whoever calls it."""
     import ast
     import warnings
-    if not SYNTHESIS_IMPORT.search(text):
+    loaded = [m[1] for m in SYNTHESIS_LOADED.finditer(text)]  # "open" for a file only opened, which runs only by exec or eval
+    if not (SYNTHESIS_IMPORT.search(text) or loaded):
         return "", "", None
+    runs = ("exec", "eval") if all(loaded) and not SYNTHESIS_IMPORT.search(text) else ("exec", "eval", "compile", "globals", "locals")
     unfollowed = "reaches synthesis's own code in a way its reader cannot follow ({})"
     try:
         with warnings.catch_warnings():
@@ -4864,16 +4869,20 @@ def _synthesis_reach(text: str) -> tuple:
         label = (n.func.id if isinstance(n.func, ast.Name) else "") if isinstance(n, ast.Call) else ""
         called = (getattr(n.func, "attr", "") or label) if isinstance(n, ast.Call) else ""
         said = n.args[0].value if isinstance(n, ast.Call) and n.args and isinstance(n.args[0], ast.Constant) and isinstance(n.args[0].value, str) else None
-        if label in ("exec", "eval", "compile", "globals", "locals") or called in ("run_path", "run_module") or (
+        if label in runs or called in ("run_path", "run_module") or (
                 called in ("import_module", "__import__") and (said is None or said.split(".")[0] == "synthesis")) or (
-                isinstance(n, ast.Attribute) and n.attr == "modules" and isinstance(parents.get(id(n)), ast.Subscript)):
+                isinstance(n, ast.Attribute) and n.attr == "modules" and isinstance(parents.get(id(n)), ast.Subscript)) or (
+                called in ("spec_from_file_location", "SourceFileLoader", "load_source") and any(  # a file of synthesis's, loaded
+                    isinstance(c, ast.Constant) and re.search(r"(?:^|/)synthesis(?:/|$)", str(c.value)) for a in n.args for c in ast.walk(a))):
             return "follows", unfollowed.format("code or a name it builds"), None
         whole = spelt(n) if isinstance(n, (ast.Name, ast.Attribute)) and isinstance(n.ctx, ast.Load) else ""
         if not whole:
             continue
         parts, up = whole.split("."), parents.get(id(n))
         if ".".join(parts[1:3]) in SYNTHESIS_WRITES:
-            return "names", f"names synthesis's `{'.'.join(parts[1:3])}`, which writes its state, approvals, windows, board or archive", None
+            runtime = parts[1] == "install" or ".".join(parts[1:3]) in ("cli.cmd_install", "cli.cmd_uninstall")
+            return "names", f"names synthesis's `{'.'.join(parts[1:3])}`, which " + (
+                "installs, removes or rewrites the runtime the guard runs" if runtime else "writes its state, approvals, windows, board or archive"), None
         if ".".join(parts[1:3]) in SYNTHESIS_PLACES:
             places = places or "reaches a protected folder through synthesis's own `" + ".".join(parts[1:3]) + "`"
             plain = isinstance(up, ast.Call) and up.func is n and not up.keywords and len(up.args) == (parts[2] == "_dir") and len(parts) == 3 and not any(
@@ -6141,6 +6150,116 @@ def check_driven(kind: str, tool: str, tool_input: dict, config: dict, session: 
     return check_desktop("browser_batch", tool, {"actions": steps, "call": {"tool": tool, "input": tool_input}}, config, session) if steps else None
 
 
+# --- the runtime the guard runs (5.23.1) ------------------------------------------------------------
+# Review round 2 of 5.23.1: `synthesis install <folder>` made any folder the runtime (N5), and `synthesis uninstall`
+# removed it so that the next session start took the harness's folder (N6), both with no code, by PATH and by the stable
+# path. The principal's sandbox rulings of 2026-11-15: a command that writes what the guard trusts waits for his code of
+# that exact command. A program that calls the installer itself waits in check_self_grant (_synthesis_reach).
+
+RUNNERS = ("uv", "uvx", "poetry", "pdm", "hatch", "pipenv", "pipx", "conda", "mamba")  # run the program they are handed
+CLI_MODULES = {"synthesis": "cli", "synthesis.cli": "cli", "synthesis.__main__": "cli", "synthesis.install": "install"}
+
+
+def _named_cli(word: str, where: str) -> bool:
+    """The synthesis CLI by its name: on PATH, by its stable path, a link to it or a copy named so, or a program word the
+    guard cannot read that names it."""
+    return os.path.basename(word) == "synthesis" or (word[:1] in ("$", "`") and "synthesis" in word) or (
+        "/" in word and os.path.basename(_real(os.path.join(where, os.path.expanduser(word)))) == "synthesis")
+
+
+def _cli_words(words: list, where: str) -> list | None:
+    """The words the CLI is handed by a command that runs it, by any spelling the guard can read: its name, `python -m
+    synthesis.cli` (or `synthesis`, `synthesis.install`), its module or the runtime's install.py run by path, its script
+    read by a shell, behind a runner. install.py hands `install --first` unless it is told `uninstall`. None otherwise."""
+    if os.path.basename(words[0]) in RUNNERS:
+        words = next((words[i:] for i, w in enumerate(words) if i and (_named_cli(w, where) or SCRIPT.match(os.path.basename(w)))), [])
+    head = os.path.basename(words[0]) if words else ""
+    if words and _named_cli(words[0], where):
+        return words[1:]
+    if not (head in SHELLS or (head.startswith("python") and SCRIPT.match(head))):
+        return None
+    kind, at, name = _program(words)
+    if kind != "file" or not name:
+        return None
+    if words[at] != name:  # -m, alone or after other letters
+        entry, rest = CLI_MODULES.get(name), words[at + 1 + words[at].endswith("m"):]
+    else:
+        path, rest = _real(os.path.join(where, os.path.expanduser(name))), words[at + 1:]
+        inside = os.path.basename(os.path.dirname(path)) == "synthesis"
+        entry = ("cli" if _named_cli(name, where) or (inside and os.path.basename(path) in ("cli.py", "__main__.py"))
+                 else "install" if inside and os.path.basename(path) == "install.py" else None)
+    return (rest if rest[:1] == ["uninstall"] else ["install", "--first", *rest]) if entry == "install" else rest if entry else None
+
+
+def _cli_reads(argv: list) -> tuple:
+    """(what the CLI does with these words, its namespace), read by its own parser as it dispatches them: ("install", ...),
+    ("uninstall", ...), or ("", None) for another command, its help, a dry run or words it refuses. A word the guard cannot
+    read may be anything when it runs (empty, an option), so with one an install or an uninstall is taken as asked."""
+    import contextlib
+    import io
+    from synthesis import cli
+    name = "".join(argv[cli.command_at(argv):][:1])
+    if not (name in ("install", "uninstall") or name.startswith(("$", "`"))):
+        return "", None
+    if any(re.search(r"[$`*?\[]", w) for w in argv):
+        return (name if name in ("install", "uninstall") else "install or uninstall"), None
+    try:
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            args = cli.parsed(argv)
+    except SystemExit:
+        return "", None
+    return ("uninstall" if args.fn is cli.cmd_uninstall and not args.dry_run else "install" if args.fn is cli.cmd_install else ""), args
+
+
+def _runtime_change(words: list, where: str, folders: dict) -> str:
+    """What a command does to the runtime the guard runs, in words for the principal; '' for nothing. Each folder an
+    install would take goes into `folders` with the hash of its runtime as it is now, so the code binds that."""
+    from pathlib import Path
+    from synthesis import install
+    argv = _cli_words(words, where) if words else None
+    action, args = _cli_reads(argv) if argv is not None else ("", None)
+    home = paths.home()
+    if action and args is None:
+        return f"runs the synthesis CLI with a word this guard cannot read, so it may {action} the runtime under {home}"
+    if action == "uninstall":
+        return (f"removes the installed synthesis runtime under {home} (`current`, its launchers and its releases); until one is "
+                "installed again every guarded call is held, and no session start installs one there")
+    if action != "install":
+        return ""
+    folder = os.path.normpath(os.path.join(where, os.path.expanduser(args.plugin))) if args and args.plugin else ""
+    try:
+        folders.update({folder: install.package_hash(Path(folder)) if os.path.isfile(os.path.join(folder, "synthesis", "hook.py")) else ""} if folder else {})
+    except OSError:
+        folders[folder] = "unreadable"
+    return ((f"installs a synthesis runtime from {folder}, replacing the one under {home} that the guard runs for every check"
+             if folder else f"installs the synthesis runtime from the CLI's own folder into {home} and writes its launchers again")
+            + (", and points git's global hooks at its commit check" if args and args.git_hooks else ""))
+
+
+def check_runtime(command: str, cwd: str, session: dict | None = None) -> str | None:
+    """A command that installs a synthesis runtime from a folder, removes the installed one or rewrites its launchers
+    waits for the principal's code for that exact command, run where it was asked and with each folder it takes as it is
+    now. Help and a dry run need no code: the CLI's own parser says what its words do. The line is read with its variables
+    put, and also as written when it uses one it does not set, whose value where it runs the guard cannot be sure of."""
+    found, folders = [], {}
+    unset = {m[1] or m[4] for m in USED.finditer(command)} - {m[1] for m in ASSIGNED.finditer(_own_text(command))} - {
+        m[1] for m in LOOPED.finditer(command)}
+    for text in dict.fromkeys([command] * bool(unset) + _resolved(command)):
+        if "synthesis" in text.lower():
+            for words, where in _parse(text, cwd)[0]:
+                said = "" if isinstance(where, Quoted) else _runtime_change(words, where, folders)
+                found += [said] if said and said not in found else []
+    if not found:
+        return None
+    subject = {"command": command, "runs_in": os.path.realpath(cwd), "folders": folders}
+    if approvals.consume("runtime", subject, session):
+        return None
+    code = approvals.request("runtime", subject, f"the synthesis runtime: {command[:150]}")
+    return (f"This command {'; it '.join(found)}. That runtime is what the guard runs, so it changes only on the principal's "
+            f"word: show them this exact command and ask them to type {approvals.how(code)}; then run the identical command "
+            f"again from {cwd}, with each folder it installs from left as it is now.")
+
+
 # --- dispatch -----------------------------------------------------------------------------------
 
 SHELL_TOOLS ={"Bash", "bash", "exec_command", "exec", "shell", "shell_command", "local_shell", "run_shell_command"}  # "bash": Muse
@@ -6288,7 +6407,8 @@ def check(tool: str, tool_input: dict, config: dict, cwd: str | None = None, ses
         cwd = os.path.normpath(os.path.join(cwd, os.path.expanduser(str(tool_input["cwd"]))))
     if shell_tool(tool):
         command = shell_command(tool_input)
-        return (check_destructive(command, config, cwd) or check_self_grant(command, cwd, config, session)  # a recursive delete is named as one
+        return (check_destructive(command, config, cwd) or check_runtime(command, cwd, session)  # a recursive delete is named as one
+                or check_self_grant(command, cwd, config, session)
                 or check_pr_gate(command, config, cwd, session)
                 or check_deploy(command, config, cwd, session) or check_tunnel(command, config, cwd, session)
                 or check_outgoing(command, config, cwd, session)

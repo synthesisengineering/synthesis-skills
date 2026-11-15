@@ -1300,10 +1300,24 @@ ROOT = Path(__file__).resolve().parents[1]
 # heredoc shape asked 11,746 times over 102 paths and took 1.11 s on CI's macOS runner under Apple's Python 3.9, 0.31 s
 # on this Mac; with it, 123 times and 0.105 s) and its 3 blank lines. The per-call reset and the 29 places that ask
 # change in place.
+# 5.23.1, the runtime changes only on the principal's code (review round 2, N5 and N6; his sandbox rulings of
+# 2026-11-15): core 156 more and plugin 156, measured. guards.py 120: check_runtime 26 (the hold, bound to the command,
+# the folder it runs in and each folder's runtime hash; the line read as written too where it uses a variable it does
+# not set; with its blank lines), _cli_words 24 (the CLI's words by every spelling: its name, a link, -m, its module or
+# install.py by path, a shell, a runner), _runtime_change 25 (what it does to the runtime, said for the principal; a
+# folder it cannot read bound as such), _cli_reads 20 (the CLI's own parser reads the words; a word the guard cannot
+# read waits), _named_cli 7, the section's comment 4, RUNNERS and CLI_MODULES 4, SYNTHESIS_IMPORT 1 (an import wherever
+# a statement may start) and SYNTHESIS_LOADED 2 (a name or a file of synthesis's handed to a loader), _synthesis_reach 6
+# (such a file, loaded 2; one only opened runs only by exec or eval 2, so a syntax check passes; the runtime named for
+# what an installer writes 2) and the dispatch 1. install.py 22: traces and TRACES 10
+# (what a runtime leaves in a home), install 8 (first_only: kept where the runtime is whole, refused loudly where it is
+# not), the module's docstring 2 and uninstall's last report line 2. cli.py 14: parsed 13 and command_at 6 (one reading
+# of the CLI's words for it and for the guard), less _main's 6, and `install --first` 1. hook.py and doctor.py change
+# lines in place.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 16507
-PLUGIN_BUDGET = 42579
+CORE_BUDGET = 16663
+PLUGIN_BUDGET = 42735
 
 
 def _lines(files):

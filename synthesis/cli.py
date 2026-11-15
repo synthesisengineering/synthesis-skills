@@ -357,7 +357,7 @@ def cmd_install(args) -> int:
     from synthesis import install
     plugin = Path(args.plugin) if args.plugin else Path(__file__).resolve().parents[1]
     try:
-        print(install.install(plugin))
+        print(install.install(plugin, first_only=args.first))
         if args.git_hooks:
             print(install.register_git_hooks())
     except (OSError, RuntimeError, subprocess.SubprocessError) as exc:
@@ -482,6 +482,7 @@ def parser() -> argparse.ArgumentParser:
     s.add_argument("plugin", nargs="?", default="")
     s.set_defaults(late="plugin")
     s.add_argument("--git-hooks", action="store_true", help="also run the commit check for every repository")
+    s.add_argument("--first", action="store_true", help="only into a home no runtime has been in, as the first-install bootstrap does")
     s.set_defaults(fn=cmd_install)
     s = sub.add_parser("uninstall", help="remove what install wrote; keep config and the board")
     s.add_argument("--dry-run", action="store_true")
@@ -501,17 +502,15 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
 
-def _main(argv: list[str] | None = None) -> int:
-    argv = list(sys.argv[1:] if argv is None else argv)
-    split = next((i for i, w in enumerate(argv) if not w.startswith("-") and argv[i - 1:i] != ["--session"]), len(argv))
-    name = "".join(argv[split:split + 1])  # the command is the first word that is no option of the CLI's own, not a word of a message
-    if name == "wait":  # its own options, and a command after `--`
-        from synthesis import wait
-        return wait.main(argv[split + 1:], _session(parser().parse_args(argv[:split] + ["wait"])))
-    if name in ("worktree", "doctor"):  # hand everything after it to that command's own parser untouched
-        args = parser().parse_args(argv[:split] + [name])
-        args.rest = argv[split + 1:]
-        return {"worktree": cmd_worktree, "doctor": cmd_doctor}[name](args)
+def command_at(argv: list[str]) -> int:
+    """Where the command stands in the CLI's words: the first word that is no option of the CLI's own (`--session` takes
+    the next), so a word of a message is never taken for it. The guard finds it the same way."""
+    return next((i for i, w in enumerate(argv) if not w.startswith("-") and argv[i - 1:i] != ["--session"]), len(argv))
+
+
+def parsed(argv: list[str]) -> argparse.Namespace:
+    """The namespace a command other than wait, worktree and doctor runs with; SystemExit for help and for words the CLI
+    refuses. The guard reads `install` and `uninstall` with it, so what waits for the principal is what would run."""
     made = parser()
     args, rest = made.parse_known_args(argv)
     late = getattr(args, "late", "")  # the one name a command may leave out: after an option, argparse has already taken it as left out
@@ -519,6 +518,21 @@ def _main(argv: list[str] | None = None) -> int:
         setattr(args, late, rest.pop())
     if rest:
         made.error("unrecognized arguments: " + " ".join(rest))
+    return args
+
+
+def _main(argv: list[str] | None = None) -> int:
+    argv = list(sys.argv[1:] if argv is None else argv)
+    split = command_at(argv)
+    name = "".join(argv[split:split + 1])
+    if name == "wait":  # its own options, and a command after `--`
+        from synthesis import wait
+        return wait.main(argv[split + 1:], _session(parser().parse_args(argv[:split] + ["wait"])))
+    if name in ("worktree", "doctor"):  # hand everything after it to that command's own parser untouched
+        args = parser().parse_args(argv[:split] + [name])
+        args.rest = argv[split + 1:]
+        return {"worktree": cmd_worktree, "doctor": cmd_doctor}[name](args)
+    args = parsed(argv)
     return args.fn(args)
 
 

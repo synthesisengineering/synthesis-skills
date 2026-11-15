@@ -103,6 +103,7 @@ WAITS = [
     "env -i PATH=/usr/bin:/bin synthesis uninstall",
     "nohup synthesis uninstall >/dev/null 2>&1 &",
     "C=install; synthesis $C {f}",                              # a subcommand the line spells through a variable
+    "for c in who uninstall; do synthesis $c; done",            # or a loop
     "synthesis $(printf install) {f}",                          # one the guard cannot read
     "synthesis uninstall $FLAGS",                               # a word that may be empty when it runs
     "find {f} -maxdepth 0 -exec synthesis install {{}} \\;",
@@ -132,10 +133,13 @@ PASSES = [
     "synthesis uninstall --dry-run", "synthesis uninstall --dry", "python3 -m synthesis.cli who", "python3 -m synthesis.cli install --help",
     "python3 -m synthesis.install uninstall --dry-run", "synthesis install {f} {f}",  # the CLI refuses two folders: nothing runs
     "synthesis uninstall --dry-run=no",  # argparse refuses a value for a flag: nothing runs, as the guard reads it
+    "for c in who version install; do synthesis $c --help; done",  # each value the loop gives is read (2 such loops in 60 days)
+    "cd $HOME && synthesis uninstall --dry-run",
     "cat {v5}/current/HASH", "ls -la {v5}", "echo synthesis install {f}", "git commit -m 'synthesis install {f}'",
     "grep -rn 'synthesis uninstall' docs", "cat > notes.md <<'EOF'\nrun synthesis install {f}\nEOF",
     "python3 -c \"import sys; from synthesis import install; print(install.version_tuple('5.1.0'))\"",
     "python3 -c \"import json; print(json.dumps({{'synthesis': 'install'}}))\"",
+    "python3 -c \"compile(open('{f}/synthesis/guards.py').read(), 'guards.py', 'exec')\"",  # a syntax check runs nothing
 ]
 
 
@@ -155,6 +159,7 @@ PROGRAMS = [
     "python3 -c \"import runpy; runpy.run_module('synthesis.cli', run_name='__main__')\" install {f}",
     "python3 -c \"import importlib.util as u; s = u.spec_from_file_location('i', '{f}/synthesis/install.py'); "
     "m = u.module_from_spec(s); s.loader.exec_module(m); m.install('{f}')\"",
+    "cd {f} && python3 -c \"exec(open('synthesis/cli.py').read())\" install {f}",  # the CLI's code run from its file
 ]
 
 
@@ -257,6 +262,20 @@ def test_a_runtime_removed_by_hand_is_not_installed_again_by_the_bootstrap(world
     (world["v5"] / "bin" / "synthesis-hook").unlink()
     _session_start(world, tmp_path, plugin)
     assert not (world["v5"] / "current").exists()
+
+
+def test_n9_a_hash_removed_or_a_launcher_folder_moved_makes_no_first_install(world, tmp_path):
+    """The review's N9 routes that a guard may not read (Codex's workdir through `current/..`, which this branch does not
+    place) end the same way: the runtime's traces stay, so neither the stable hook's session start nor the bootstrap
+    installs the harness folder's code."""
+    plugin = _harness_folder(tmp_path)
+    (world["runtime"] / "HASH").unlink()
+    subprocess.run([str(world["v5"] / "bin" / "synthesis-hook"), "session-start", str(plugin)], input="{}", capture_output=True,
+                   text=True, env=dict(os.environ), timeout=300)
+    assert _guards_now(world) != STUB and not (world["runtime"] / "HASH").exists()
+    (world["v5"] / "bin").rename(world["v5"] / "bin.old")
+    _session_start(world, tmp_path, plugin)
+    assert _guards_now(world) != STUB and not (world["v5"] / "bin").exists()
 
 
 def test_muse_s_bootstrap_installs_nothing_where_a_runtime_was(world, tmp_path):

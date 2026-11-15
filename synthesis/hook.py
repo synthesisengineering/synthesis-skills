@@ -342,11 +342,11 @@ def main(argv):
     except json.JSONDecodeError:
         payload = {}
     if event == "session-start" and len(argv) > 2 and argv[2]:
-        try:  # keep the stable runtime in step with the plugin the harness loaded
+        try:  # the first install only: the harness's folder is one the guard does not protect (2026-11-15)
             from synthesis import install
-            install.install(argv[2], forward_only=True)
+            install.install(argv[2], first_only=True)
         except Exception:
-            pass  # a failed self-update must never block a session; doctor reports it
+            pass  # never blocks a session; doctor reports a runtime older than the plugin
     from synthesis import paths
     if paths.old_board():  # seven lstat calls; true only after an older release wrote the board where it used to be
         try:

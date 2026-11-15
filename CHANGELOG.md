@@ -6,6 +6,48 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
 
 ## [5.23.1] - 2026-11-15
 
+- **The runtime the guard runs changes only on the principal's code** (review round 2 of 5.23.1, N5 and N6, both live
+  in 5.23.0; his sandbox rulings of 2026-11-15). `synthesis install <folder>` made any folder the runtime with no code,
+  by PATH and by `~/.synthesis/v5/bin/synthesis`, since the guard read it as a program that names no protected folder,
+  and the version floor read only what the folder said about itself. `synthesis uninstall` removed `current`, the
+  launchers and the releases with no code, and the next session start's bootstrap then installed the harness folder's
+  own code as a first install. Now a command that installs a runtime from a folder, removes it or writes its launchers
+  again waits for the principal's code for that exact command, run in the folder it was asked from, with each folder it
+  installs from bound by the hash of its runtime (a folder changed after the code asks again): `synthesis install`
+  with or without a folder and `synthesis uninstall`, by PATH, the stable path, a link, `python -m synthesis.cli`, `-m
+  synthesis` or `-m synthesis.install`, the CLI's module or any `synthesis/install.py` run by path (the runtime's own
+  had passed as the plugin's), the CLI's script read by a shell, behind `env`, `nohup`, `xargs`, `find -exec` or `uv
+  run`, in every harness's shell. The CLI's own parser reads the words (`cli.parsed`, which the CLI dispatches with
+  too), so help, `uninstall --dry-run` and words the CLI refuses need no code; a word the guard cannot read makes the
+  command wait. A Python program's import of synthesis is read wherever a statement may start:
+  `python3 -c "import sys; from synthesis import install; install.install(...)"` had passed, since the guard looked for
+  the import only at the start of a line. A name or a file of synthesis's handed to a loader is refused.
+- **A session start installs only into a home no runtime has been in.** It installed the plugin folder's runtime
+  whenever that folder carried a newer release, and the bootstrap installed whatever the folder held whenever the
+  stable hook was missing. That folder is the harness's own plugin cache, which the guard does not protect. Now both
+  install only where the synthesis home holds none of `releases`, `current`, `bin`, `git-hooks`, `state`, `board` or
+  `sessions` (`install.traces`; `install.py` passes `synthesis install --first`): an installed runtime is never replaced
+  from that folder, at any version, and a home a runtime has left, by uninstall or any other route, keeps its state,
+  board and archive, so no session start installs there again. The bootstrap says so on stderr, and every guarded call
+  is held until setup or the release script installs a runtime. The doctor's package check no longer says a session
+  start updates the runtime. `docs/runtime-integration.md` states what stays open: the bootstrap runs the plugin
+  folder's own code and `hooks.json` lives in that folder, so an agent that rewrites the harness's plugin cache changes
+  what the next session start runs; sealing the plugin caches belongs to the sandbox.
+- **Measured first**, over 60 days of this Mac's records, read only (263,900 shell commands: 115,777 in Claude Code and
+  148,123 in Codex; the controls found 4,961 `git commit`, 1,001 `synthesis claim` and 965 `synthesis who` runs):
+  `synthesis uninstall` never ran; `synthesis install` ran twice (once from a folder, once for its help); the
+  runtime's `install.py` by path 6 times (4 into a test's own home); setup.py's plugin install twice; the release script
+  154 times and its dry run 57 (both already waited, run from a checkout); `update`, which v5 does not have, 13 times;
+  42 Python programs called the installer (4 into a test's own home). Replayed through 5.23.0's guard and this one
+  (6,974 commands: each that names the CLI near install or uninstall, setup.py, release.py or install.py, or holds a
+  Python import of synthesis the old reading missed), 13 now wait or are refused, on 7 days: the one `synthesis install`
+  from a folder; two runs of a copy's `install.py` in a temporary folder; three programs that import synthesis after a
+  `;` and name its doctor's or its wait's writer; and seven that import it after a `;`, or load its file, in a way the
+  reader cannot follow, refused as the same program is when its import starts a line. Eight of the thirteen are test or
+  probe work by their own marks (a temporary folder, a home of their own, pytest).
+- **How it was checked.** Tests first, committed alone: 50 of them failed on the code before. The runtime's own entry
+  points are also judged by the installed runtime's guard, where its install.py had passed as the plugin's.
+
 - **The daily rituals' skill file holds the Messenger rule** (`synthesis-daily-rituals` 3.19.0), by the move the principal
   approved in his decision packet of 2026-11-15. Two passages that describe the skill (its introduction and its
   Procedure section) moved word for word to the head of `references/procedure.md`, so SKILL.md could take rule 17:

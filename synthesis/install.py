@@ -4,13 +4,15 @@ Hooks call ~/.synthesis/v5/bin/synthesis-hook, whose command text never
 changes between releases, so a harness deleting an old plugin folder never
 breaks a running task (Codex still asks for its hook approval again after each
 release: it ties the approval to the installed plugin's contents). At each
-session start the hook passes the plugin folder the harness loaded; if it is a
-newer release than the installed copy, it is installed beside the old one and
-`current` switches atomically. A session still on an older plugin (one that
-resumes or compacts after an upgrade) never switches it back; an explicit
-install (setup, release, `synthesis install`) installs whatever it is given.
+session start the hook passes the plugin folder the harness loaded, the harness's
+own plugin cache, which the guard does not protect: a session start installs from
+it only into a home no runtime has been in (the first install), and never replaces
+or reinstalls one (the principal's sandbox rulings of 2026-11-15). An explicit
+install (setup, release, `synthesis install`, which waits for the principal's
+code) installs whatever it is given, beside the old one, and `current` switches
+atomically.
 
-Run: python3 -S <plugin>/synthesis/install.py [plugin root] [--git-hooks]
+Run: python3 -S <plugin>/synthesis/install.py [plugin root] [--git-hooks]   (the bootstrap: a first install only)
      python3 -S <plugin>/synthesis/install.py uninstall [--dry-run]
 
 `--git-hooks` points the global core.hooksPath at the v5 commit check after
@@ -137,21 +139,39 @@ def _compile(package: Path) -> None:
         pass
 
 
-def install(plugin_root: Path, forward_only: bool = False) -> str:
+TRACES = ("releases", "current", "bin", "git-hooks", "state", "board", "sessions")
+
+
+def traces(home: Path) -> list:
+    """What in a synthesis home shows a runtime was installed there: its own folders, or the state, board or archive its
+    sessions wrote. Uninstall keeps the state, the board and the archive, and the guard refuses to remove them, so a home
+    a runtime has left, by uninstall or by any other route, still shows it (review round 2 of 5.23.1, N6)."""
+    return [name for name in TRACES if os.path.lexists(Path(home) / name)]
+
+
+def install(plugin_root: Path, first_only: bool = False) -> str:
     """Install the plugin's runtime if it differs from the current one. Returns a one-line report.
 
-    forward_only (the session-start hook): leave everything alone unless the plugin is a newer release."""
+    first_only (the session-start hook and the first-install bootstrap): install only into a home no runtime has been
+    in. The folder a harness passes is its own plugin cache, which the guard does not protect, so an installed runtime,
+    or one that was removed, is never replaced from it (the principal's sandbox rulings of 2026-11-15). A home that
+    shows a runtime but has none whole is refused (RuntimeError), loudly, rather than kept."""
     plugin_root = Path(plugin_root).resolve()
     if not (plugin_root / "synthesis" / "hook.py").is_file():
         return f"not a synthesis plugin: {plugin_root}"
     home = _home()
+    found = traces(home) if first_only else []
     try:
         move_board(home)  # before any switch, so the new release's first read finds the board in place
     except OSError as exc:  # never blocks a session start; the doctor names what is left in state/
         print(f"synthesis: the board could not be moved out of {home / 'state'}: {exc}", file=sys.stderr)
-    if forward_only and current_hash() and version(plugin_root) <= version(home / "current"):
+    if found and current_hash() and os.access(home / "bin" / "synthesis-hook", os.X_OK):
         _compile(home / "current" / "synthesis")  # an older release's installer made the switch, or the interpreter changed
-        return f"synthesis runtime kept at {current_hash()}: {plugin_root} is not newer"
+        return f"synthesis runtime kept at {current_hash()}: a session start installs only into a home no runtime has been in"
+    if found:
+        raise RuntimeError(f"{home} holds {', '.join(found)}, left by a runtime installed there, so a session start does not "
+                           f"install one from {plugin_root}, the harness's own folder. Install it from your own terminal: "
+                           "setup.py, or `synthesis install` with no folder where the runtime is still there")
     wanted = package_hash(plugin_root)
     if wanted != current_hash():
         release = home / "releases" / wanted
@@ -365,10 +385,12 @@ def uninstall(home: Path = None, dry_run: bool = False, codex_cleared: bool = Fa
         report.append(f"{verb} {release}")
     if (home / "registrations.json").exists() and not dry_run:
         (home / "registrations.json").unlink()
-    report.append(f"{kept} {home / 'config.json'}, {home / 'state'} and {home / 'board'} (your settings, approvals and board)")
+    report.append(f"{kept} {home / 'config.json'}, {home / 'state'} and {home / 'board'} (your settings, approvals and board); "
+                  "with them there no session start installs a runtime here again, so a harness that still has the plugin "
+                  "holds every guarded call until setup.py installs one")
     return report
 
 
-if __name__ == "__main__":  # the bootstrap hooks.json runs before the stable `synthesis` command exists
+if __name__ == "__main__":  # the bootstrap hooks.json runs before the stable `synthesis` command exists: a first install only
     from synthesis import cli
-    sys.exit(cli.main(sys.argv[1:] if sys.argv[1:2] == ["uninstall"] else ["install", *sys.argv[1:]]))
+    sys.exit(cli.main(sys.argv[1:] if sys.argv[1:2] == ["uninstall"] else ["install", "--first", *sys.argv[1:]]))

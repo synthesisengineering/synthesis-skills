@@ -231,8 +231,8 @@ def check_package(harness: str, plugin_root: Path | None, runtime: str) -> Check
         return Check("fail", name, "no runtime to compare against (see runtime)")
     found = install.package_hash(plugin_root)
     if found != runtime:
-        return Check("fail", name, f"plugin code {found} differs from the runtime {runtime}; "
-                                   "start a session in this harness to update, or reinstall the plugin")
+        return Check("fail", name, f"plugin code {found} differs from the runtime {runtime}, and a session start never "
+                                   "installs it: install the release with release.py or setup.py, or reinstall the plugin")
     if (plugin_root / "synthesis" / "__pycache__").exists():
         return Check("warn", name, f"matches the runtime ({found}), but something wrote __pycache__ into the plugin folder")
     return Check("ok", name, f"plugin code matches the runtime ({found})")
