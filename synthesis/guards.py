@@ -1696,6 +1696,14 @@ class Quoted(str):
     held for a path it is merely handed, since the word may be a message that mentions one."""
 
 
+class Run(list):
+    """A command's words; `wrapped` when an assignment or a wrapper (env, timeout, xargs and the rest of WRAPPERS) stood
+    in front of its program, which may give it an environment, a folder or words of its own."""
+    def __init__(self, words, wrapped: bool = False):
+        super().__init__(words)
+        self.wrapped = wrapped
+
+
 PLACE = re.compile(r"\$(?:(OLD)?PWD\b|\{(OLD)?PWD\})")  # the folder a command is in, and the one it was in before
 DEEP = "/**"  # after a folder a command runs in: that folder or any under it (`find -execdir` runs in the folder of what it found)
 OPAQUE = frozenset({"php", "lua", "luajit", "Rscript", "julia", "swift", "tclsh", "groovy", "scala", "elixir", "pwsh", "jshell"})
@@ -1732,7 +1740,8 @@ def _commands(command: str, cwd: str, depth: int = 0, writes: list | None = None
             if not literal:  # an unquoted heredoc expands its substitutions
                 _dquote(text, 0, scripts, "")
         moved: list = []
-        words, inner = _bare(words, moved)
+        before, (words, inner) = words, _bare(words, moved)
+        wrapped = len(words) > len(before) or any(w not in KEYWORDS for w in before[:len(before) - len(words)])
         scripts = scripts + inner
         here = cwd
         for folder in moved:  # `env -C a env -C b`: b is read from a
@@ -1766,7 +1775,7 @@ def _commands(command: str, cwd: str, depth: int = 0, writes: list | None = None
         if not taken:
             continue
         if words:
-            found.append((words, here))
+            found.append((Run(words, wrapped), here))
             if runs is not None:
                 runs.append((chain, needed))
             if feeds is not None:
@@ -4610,6 +4619,30 @@ def _shipped(path: str) -> bool:
     return paths.inside(path, _release())
 
 
+PLAIN_OPTIONS = re.compile(r"-[BEIPSsqu]+")  # Python's options that only take away what it loads, or change no code it runs
+SETTERS = frozenset({"export", "declare", "typeset", "local", "alias", "hash", "enable", "builtin", "source", ".", "function"})
+STARTUP = re.compile(r"PYTHON\w*|DYLD_\w*|LD_\w*|PATH|HOME|BASH_ENV|ENV|TMPDIR")  # what moves where a program loads from
+DEFINES = re.compile(r"(?:^|[\s;&|({])(?:function[ \t]+[^\s;&|()]|(?:functions|aliases|commands|builtins)\[|[^\s;&|()<>'\"=$]+[ \t]*\([ \t]*\)[ \t\n]*[{(])")
+
+
+def _plainly(words: list, where: str, text: str, found: list, given: list) -> str:
+    """'' when a script runs as the plain word of its interpreter runs it: that word with no path, no wrapper or
+    assignment in front of it, handed on by no other program, with no option but Python's that only take away what it
+    loads; on a line that defines no function or alias, reads no file into the shell, exports nothing and gives no value
+    to a variable in the environment or one that moves where a program loads from. Else what the line does instead,
+    which may run or load something other than the release's own code (the review of 5.23.1, finding 4)."""
+    head = os.path.basename(words[0])
+    interpreter = bool(SCRIPT.match(head) or UNREAD.match(head)) or head in SHELLS
+    kind, at, _ = _program(words) if interpreter else ("file", 0, "")
+    if getattr(words, "wrapped", True) or isinstance(where, Quoted) or (interpreter and "/" in words[0]) or kind != "file" or words[at:at + 1] == ["-m"] or (
+            words[1:at] and not (head.startswith("python") and all(PLAIN_OPTIONS.fullmatch(w) for w in words[1:at]))):
+        return "runs it through more than its interpreter's plain word (a path to it, a wrapper, an option or another program)"
+    if DEFINES.search(text) or any(m[1] in os.environ or STARTUP.fullmatch(m[1]) for m in given) or any(
+            os.path.basename(w[0]) in SETTERS or (w[0] == "set" and any(re.fullmatch(r"-\w*a\w*|allexport", x) for x in w[1:])) for w, _ in found):
+        return "gives it an environment of its own (a value for a variable it may read, a function, an alias or a file read into the shell)"
+    return ""
+
+
 def _runtime_copy(path: str) -> str:
     """The runtime's own copy of the script a copy outside the release stands for: the file at the same place under
     its last `skills/` folder, spelled through the synthesis home's `current` where that leads to this release; ''
@@ -5125,17 +5158,22 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None) -> str |
         if SCRIPT.match(head) and re.search(r"\bsynthesis\b", script + code) and SELF_GRANT_CALLS.search(script):
             why = why or "runs synthesis's approval or send-window code, which only the guard and the principal's prompt use"
         mine_run = bool(ran) and _shipped(ran)  # inside the release this guard runs from
+        unplain = _plainly(words, where, text, found, given) if ran and (mine_run or python) else "is not run"  # finding 4
         args = words[1:] if "/" in words[0] and not (SCRIPT.match(head) or head in SHELLS) else words[_program(words)[1] + 1:]
-        heard = (_spells([fed, *args, *[m[3] for m in given]], [head, *args], where, env, raw, linked) or (where if within else "") or (
-            "the files xargs hands it" if HANDED in words and names else "")) if ran and (mine_run or python) else ""  # what its line names
-        shipped = mine_run and not heard  # the plugin's own: what its own text names is exempt, never what its line names (finding 2)
-        named = (heard or named) if mine_run else named
-        copy = _runtime_copy(ran) if python and ran and not mine_run and not heard else ""  # a copy of a script the runtime carries
-        then = f"; it is a copy outside the installed release, which the guard never vouches for: the runtime's own copy, {copy}, runs with no code" if copy else ""
-        reaches = [(f, _synthesis_reach(t)) for f, t in files] if python and ran and not waits and not mine_run else []
+        values = [v for v in (m[3].strip("'\"") for m in given) if not paths.inside(ran, _real(os.path.join(where, os.path.expanduser(v))))]
+        heard = (_spells([fed, *args, *values], [head, *args], where, env, raw, linked) or (where if within else "") or (  # what its line names,
+            "the files xargs hands it" if HANDED in words and names else "")) if ran and not unplain else ""  # past where the script lies
+        trusted = mine_run and not unplain  # the release's own code, run as the release holds it
+        shipped = trusted and not heard  # the plugin's own: what its own text names is exempt, never what its line names (finding 2)
+        named = (heard or named) if trusted else named
+        copy = _runtime_copy(ran) if python and ran and not mine_run and not unplain and not heard else ""  # a copy of a script the runtime carries
+        then = (f"; it is a copy outside the installed release, which the guard never vouches for: the runtime's own copy, {copy}, runs with "
+                "no code" if copy else f", while the line {unplain}" if mine_run and unplain else "")
+        reaches = [(f, _synthesis_reach(t)) for f, t in files] if python and ran and not waits and not trusted else []
         uses = next(((f, r[1]) for f, r in reaches if r[0] in ("names", "follows")), None)
         if uses:  # finding 17: by what it, or a module of its own, does with synthesis's code
-            waits = Unproven(f"runs `{head}` on {ran}, a script outside the plugin's release that {uses[1]}" + (f" ({uses[0]})" if uses[0] != ran else "") + then)
+            waits = Unproven(f"runs `{head}` on {ran}, a script {'of' if mine_run else 'outside'} the plugin's release that {uses[1]}" + (
+                f" ({uses[0]})" if uses[0] != ran else "") + then)
         source, argv = _python_source(words, fed) if head.startswith("python") else ("", [])
         reach = _synthesis_reach(source) if python and source else next((r for _, r in reaches if r[0] == "places"), ("", "", None))
         named = named or (reach[1].replace("reaches ", "") if reach[0] == "places" and label else "")  # a folder synthesis's own paths lead to

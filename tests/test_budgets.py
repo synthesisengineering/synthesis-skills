@@ -1316,10 +1316,19 @@ ROOT = Path(__file__).resolve().parents[1]
 # The words after the script 1, the protected folder they, its input, the values the line gives variables, the folder
 # it runs in or the files xargs hands it name 2, the hold names that folder 1, and the release's own script is told
 # apart from the plugin's own (inside the release, its line naming none) 1.
+# Then core and plugin each 38 more, all in guards.py: a script inside the release is the plugin's own only when it runs
+# as the release holds it (finding 4: a module path set on the line was read and then ignored for a shipped script).
+# _plainly 16 and its 2 blank lines (its interpreter's plain word with no path, wrapper, or option but Python's that
+# take away what it loads, on a line that defines no function or alias, reads no file into the shell, exports nothing
+# and gives no value to a variable in the environment or one that moves where a program loads from), PLAIN_OPTIONS,
+# SETTERS, STARTUP and DEFINES 4 and their 2 blank lines, Run 6 and its 2 blank lines (the parser marks a command that
+# an assignment or a wrapper stood in front of, which it otherwise reads past), _commands 1, and _self_grant 5 (the
+# plain run, the values on the line that only say where the script lies, and a hold that says why the release's own
+# copy waits).
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 16529
-PLUGIN_BUDGET = 42601
+CORE_BUDGET = 16567
+PLUGIN_BUDGET = 42639
 
 
 def _lines(files):
