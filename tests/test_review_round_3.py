@@ -1,4 +1,4 @@
-"""Review round 3 of 5.23.1 (releases from the protected runtime): M1, M2, M3 and M5, and the rollback parameter.
+"""Review round 3 of 5.23.1 (releases from the protected runtime): M1, M2, M3 and M5.
 
 M1: a `cd` that resolves `..` physically (`cd -P`, bash's `set -P`, zsh's `chase_dots`, or `chase_links`, which makes even
 a plain `cd` physical) took a command through `current/..` into `releases/`, where it overwrote the runtime's guard or
@@ -74,9 +74,9 @@ def _plugin(tmp_path, name, version):
 
 def test_m2_the_floor_is_read_again_under_a_lock_just_before_current_moves(home, tmp_path, monkeypatch):
     old, mid, new = _plugin(tmp_path, "old", "98.0.0"), _plugin(tmp_path, "mid", "98.5.0"), _plugin(tmp_path, "new", "99.0.0")
-    install.install(new)
-    released = os.path.realpath(paths.home() / "current")  # what the overlapping release installs
-    install.install(old, rollback=True)  # the runtime the older install starts from
+    install.install(old)  # the runtime the older install starts from
+    released = str(paths.home() / "releases" / "release-99")  # what the overlapping release installs
+    shutil.copytree(new / "synthesis", Path(released) / "synthesis")
     copied = shutil.copytree
 
     def overlapping(source, target, *args, **kwargs):  # the release switches current while this install stages
@@ -107,22 +107,13 @@ def test_m2_the_floor_is_read_again_under_a_lock_just_before_current_moves(home,
     assert held == [True]  # the lock is held while current moves
 
 
-def test_m2_only_the_code_approved_route_may_install_an_older_release(home, tmp_path):
-    older = _plugin(tmp_path, "older", "1.0.0")
-    with pytest.raises(install.Refused):
-        install.install(older)
-    kept = install.current_hash()
-    assert "kept" in install.install(older, first_only=True, rollback=True) and install.current_hash() == kept
-    assert "synthesis runtime" in install.install(older, rollback=True)
-    assert install.version(paths.home() / "current") == (1, 0, 0)
-
-
 def test_m2_a_program_naming_the_locked_half_of_install_waits_for_the_code(home):
     """`install` checks the floor in `_install_locked`, under `_install_lock`; a program that calls either itself could
-    pass `rollback`, or move `current` with no lock, so it waits for the principal's code as one naming `install` does."""
+    move `current` with no lock, so it waits for the principal's code as one naming `install` does (its import starting
+    a line: round 4's Q4 showed a program whose import follows a semicolon passing this head, closed by 22.18's reading)."""
     for name in ("_install_locked", "_install_lock"):
         line = (f"python3 -I -c 'from synthesis import install; from pathlib import Path; "
-                f"install.{name}(Path(\"plugin\"), install._home(), install.pinned_python(), None, True)'")
+                f"install.{name}(Path(\"plugin\"), install._home(), install.pinned_python(), None)'")
         said = _check(line, home / "work")
         assert said and "approve followed by the code" in said, (name, said)
 
