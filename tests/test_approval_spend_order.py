@@ -338,3 +338,61 @@ def test_a_grant_voided_by_a_call_that_is_then_held_comes_back(tmp_path, monkeyp
     assert "held by a later check" in capsys.readouterr().out
     monkeypatch.setattr(guards, "check", real)
     assert grant.read_bytes() == body
+
+
+# --- the hook as the boundary (2026-11-15, after round 2) ------------------------------------------------------------
+
+
+def test_an_answer_too_late_for_the_harness_keeps_what_the_call_spent(tmp_path, monkeypatch, capsys):
+    """A held call gives back what it spent; but an answer later than a harness waits may come after it let the call
+    through on its own timeout, so then the call may have run: its grant stays spent and its records stand."""
+    import types
+    from synthesis import hook, sends
+    session = _granted(tmp_path, guards.check(SLACK, CALL, {}))
+    real = guards.check
+    clock = iter([0.0, hook.GUARD_SECONDS + 1.0])  # the deadline is set at once; the answer comes past it
+    monkeypatch.setattr(hook, "time", types.SimpleNamespace(monotonic=lambda: next(clock)))
+
+    def decided_then_held(tool, tool_input, config, cwd=None, session=None):
+        assert real(tool, tool_input, config, cwd=cwd, session=session) is None
+        return "held by a later check of the same call"
+    monkeypatch.setattr(guards, "check", decided_then_held)
+    hook.pre_tool_use({"tool_name": SLACK, "tool_input": CALL, **session}, began=0.0)
+    assert "held by a later check" in capsys.readouterr().out
+    monkeypatch.setattr(guards, "check", real)
+    assert len(sends.ledger(time.strftime("%Y-%m-%d"))) == 1  # it may have gone, so it is recorded
+    assert "approval" in guards.check(SLACK, CALL, {}, session=session)  # and its grant is not used twice
+
+
+def test_the_deadline_counts_from_the_hook_process_s_start(monkeypatch):
+    """The harness's 5 seconds began before the process: the guard's deadline is the time left of its own 4."""
+    import signal
+    from synthesis import hook
+    seen, real = [], signal.setitimer
+    monkeypatch.setattr(signal, "setitimer", lambda which, seconds, *rest: seen.append(seconds) or real(which, 0))
+    hook.pre_tool_use({"tool_name": "Read", "tool_input": {"file_path": "/dev/null"}}, began=time.monotonic() - 3.0)
+    assert 0.9 < seen[0] <= 1.0 and seen[-1] == 0
+
+
+def test_a_direct_check_that_fails_after_spending_gives_the_grant_back(tmp_path, monkeypatch):
+    """A caller of check() outside the hook: a check that raises after a decision spent a grant held the call."""
+    session = _granted(tmp_path, guards.check(SLACK, CALL, {}))
+    real = guards._check
+
+    def spent_then_failed(*args):
+        assert real(*args) is None
+        raise RuntimeError("a later step of the same call failed")
+    monkeypatch.setattr(guards, "_check", spent_then_failed)
+    with pytest.raises(RuntimeError):
+        guards.check(SLACK, CALL, {}, session=session)
+    monkeypatch.setattr(guards, "_check", real)
+    assert guards.check(SLACK, CALL, {}, session=session) is None
+
+
+def test_a_prompt_line_that_holds_the_read_s_first_byte_is_read_whole(tmp_path):
+    """The read stops inside a line only to finish it: the line before it is not read."""
+    path = tmp_path / "t.jsonl"
+    path.write_bytes(b"before\n" + b"a" * 50 + b"\nafter\n")
+    assert list(approvals._lines_back(str(path), block=8, stop=7 + 20)) == ["after", "a" * 50]
+    assert list(approvals._lines_back(str(path), block=8, stop=7)) == ["after", "a" * 50]
+    assert list(approvals._lines_back(str(path), block=8, stop=6)) == ["after", "a" * 50, "before"]
