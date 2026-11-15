@@ -1311,10 +1311,15 @@ ROOT = Path(__file__).resolve().parents[1]
 # 1), _release 3 and _runtime_copy 8 with their 4 blank lines (the runtime's own copy of a script a plugin copy stands
 # for), _self_grant 2 (a hold on such a copy names it). install.py 1: synthesis-bitbucket carried, whose pr_queue.py the
 # rituals' pr_queue_scan.py loads from beside its own skill.
+# Then core and plugin each 5 more, all in guards.py's _self_grant: what a script's line names, read apart from what its
+# own text names (finding 2: a protected folder named as an argument let an unmodified copy write there with no code).
+# The words after the script 1, the protected folder they, its input, the values the line gives variables, the folder
+# it runs in or the files xargs hands it name 2, the hold names that folder 1, and the release's own script is told
+# apart from the plugin's own (inside the release, its line naming none) 1.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 16524
-PLUGIN_BUDGET = 42596
+CORE_BUDGET = 16529
+PLUGIN_BUDGET = 42601
 
 
 def _lines(files):

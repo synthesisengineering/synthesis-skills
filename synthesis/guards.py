@@ -5074,9 +5074,9 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None) -> str |
     why, wheres, handed, links, made, linked, waits = "", {cwd}, [], [], [], [], None
     if codes and re.search(r"(?i)\b(?:%s)\b" % "|".join(map(re.escape, codes)), command):
         why = "carries a pending approval code (to see pending requests, run `synthesis approvals`)"
-    feeds, env = [], dict(os.environ)
+    feeds, env, given = [], dict(os.environ), list(ASSIGNED.finditer(_own_text(text)))
     found = _parse(text, cwd, feeds=feeds)[0]
-    for m in ASSIGNED.finditer(_own_text(text)):  # the value the command gives a variable; given two, the one that names a protected path
+    for m in given:  # the value the command gives a variable; given two, the one that names a protected path
         if not m[2] and (env.get(m[1]) is None or m[1] in os.environ or any(n in m[3] for n in names)):
             env[m[1]] = m[3].strip("'\"")
     written = {_real(os.path.join(w, os.path.expanduser(t))) for t, w in redirects} | {  # a script the line writes
@@ -5124,10 +5124,15 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None) -> str |
                  or ("the files xargs hands it" if HANDED in words and names else "")) if label else ""  # standing where no session works, or what xargs hands it
         if SCRIPT.match(head) and re.search(r"\bsynthesis\b", script + code) and SELF_GRANT_CALLS.search(script):
             why = why or "runs synthesis's approval or send-window code, which only the guard and the principal's prompt use"
-        shipped = bool(ran) and _shipped(ran)  # the plugin's own
-        copy = _runtime_copy(ran) if python and ran and not shipped else ""  # a copy of a script the runtime carries
+        mine_run = bool(ran) and _shipped(ran)  # inside the release this guard runs from
+        args = words[1:] if "/" in words[0] and not (SCRIPT.match(head) or head in SHELLS) else words[_program(words)[1] + 1:]
+        heard = (_spells([fed, *args, *[m[3] for m in given]], [head, *args], where, env, raw, linked) or (where if within else "") or (
+            "the files xargs hands it" if HANDED in words and names else "")) if ran and (mine_run or python) else ""  # what its line names
+        shipped = mine_run and not heard  # the plugin's own: what its own text names is exempt, never what its line names (finding 2)
+        named = (heard or named) if mine_run else named
+        copy = _runtime_copy(ran) if python and ran and not mine_run and not heard else ""  # a copy of a script the runtime carries
         then = f"; it is a copy outside the installed release, which the guard never vouches for: the runtime's own copy, {copy}, runs with no code" if copy else ""
-        reaches = [(f, _synthesis_reach(t)) for f, t in files] if python and ran and not waits and not shipped else []
+        reaches = [(f, _synthesis_reach(t)) for f, t in files] if python and ran and not waits and not mine_run else []
         uses = next(((f, r[1]) for f, r in reaches if r[0] in ("names", "follows")), None)
         if uses:  # finding 17: by what it, or a module of its own, does with synthesis's code
             waits = Unproven(f"runs `{head}` on {ran}, a script outside the plugin's release that {uses[1]}" + (f" ({uses[0]})" if uses[0] != ran else "") + then)
