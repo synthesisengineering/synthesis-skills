@@ -18,6 +18,40 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   substitutions in a loop asked 11,746 times over 102 paths, which took 0.31 s on a Mac under Apple's Python 3.9 and
   1.11 s on CI's macOS runner, past the 1.0 s its test allows. The guard writes nothing while it judges, so each
   answer now holds for the call: 123 questions and 0.105 s. A test counts the questions, so it holds on any runner.
+- **A local MCP server's tool, called from the shell, is judged as that tool's own call.** The meeting-transcripts
+  skill's `mcp_client.py` calls any tool of the local workspace-mcp server, whose default tier includes
+  `send_gmail_message`, and a write to this machine was no post to another host: neither the client nor a `curl` POST of
+  the same JSON-RPC waited (the review of the runtime's carried scripts, 2026-11-15, its problem A). A command that calls a
+  local server's tool, by an HTTP client to an address here or by a program that posts its JSON-RPC or calls a client's
+  `call_tool` (the client is one: its first argument names the tool), now takes the connector's own judgement, now one
+  function the dispatch and the shell share: a sending tool waits for the code the connector's identical call takes, a
+  reading tool passes, and a call whose tool or arguments the guard cannot read waits when it may send, for a code bound
+  to the exact command and the programs it runs.
+- **A program that hands osascript a script file is judged by that file.** An agent's own Python that read a script file
+  and passed it to `-e` ran with no code while `osascript <file>` waited; pointed at the local-messaging skill's
+  `messages_transport.js`, a Messages send (problem B). Each script file a program names or takes from its arguments is
+  judged as `osascript <file>` is; one it writes first, does not name or that cannot be read waits. A script built from
+  the program's own strings reads as before, so the plugin's notifications pass. The plugin's own sender as shipped is
+  judged by the send gate inside it, and a run the principal approved by its exact command is not asked about twice.
+- **A git command is judged as running the programs its configuration names.** `git status`, a read, ran the program a
+  repository's own `core.fsmonitor` names, and the reviewer's repository wrote into the state folder (problem D). The
+  repository's config (with what it includes, and its worktree's), a file the line points git at and the line's own
+  `-c`, `--config-env` and `GIT_CONFIG_*` are read, and each program they name (the monitor, the hooks folder's files,
+  the SSH command, credential helpers, pagers, editors, diff and filter drivers, an alias when it is the command run, and
+  more), and each the line's environment gives git, is judged by every shell guard where git runs it; a value the guard
+  cannot read waits. A program that runs git itself in a folder it is handed is not read this way.
+- **How the three were checked.** Tests first, committed alone (31 failed for the local server's tools, 21 for the
+  osascript files and the git programs), with invented fixtures and stand-ins only. A harm check over the 60 days of
+  Claude Code and Codex records before 2026-11-15 (265,000 shell commands) found no message sent and no state written by
+  these routes: 251 runs of the client and 113 programs posting the server's JSON-RPC named only reading tools, no HTTP
+  client posted a tool call, no program but the local-messaging sender ran the Messages transport, and no repository a
+  recorded git command ran in (350), nor any under the workspaces (320), names a program in its config. Every distinct
+  recorded command (268,723) then went through main's guard and this one: the first replay held 150 more, mostly
+  programs the line writes or programs that read through the server by names they compute, and each shape it showed was
+  fixed, tests first; 7 still wait, 6 of them programs naming a script file that is no longer on disk and one that runs a
+  program its line writes while naming the server. The review's probes for the three now hold, the meeting fetcher's
+  reads, ordinary osascript and 1,284 git reads in 321 repositories need nothing new, and a program with 3,000 tool
+  calls is read in 0.08 s.
 
 ## [5.23.0] - 2026-11-15
 
