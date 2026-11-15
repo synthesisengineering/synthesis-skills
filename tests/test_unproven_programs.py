@@ -908,3 +908,115 @@ def test_parts_in_two_separate_paths_of_a_program_never_join_but_parts_of_one_ex
                      "print(os.path.join(os.path.expanduser('~'), '.claude',\n    'projects', '-work', 'x.jsonl'))\n" + unread)
     assert HELD in (_verdict(world, f"python3 {joined}") or "")
     _held_or_refused(world, "perl -MFile::Copy -e 'copy($ARGV[0], $ENV{{HOME}} . \"/\" . \".claude\" . \"/\" . \"projects\" . \"/-work/S-principal.jsonl\")' {F}".format(**_raw(world)))
+
+
+# --- a program that loads synthesis without the plain words `import synthesis` or `from synthesis` (review round 4 of
+# 5.23.1's approval fix, finding 1): through importlib, __import__, exec, eval or compile of a string it builds, or runpy,
+# from a copy that is no protected folder, it was read as reaching none of synthesis's writers, so it could forge the
+# send ledger's lines, open a send window, void a grant, or point the transcript a script checks at a record it wrote
+# and grant itself the send. It is read as one that reaches synthesis in a way its reader cannot follow: a script file
+# waits for the principal's code, a program on the line or on stdin is refused, as for one that imports it plainly ------
+
+COPY = repr(str(ROOT))  # a copy of synthesis that is no protected folder, as a clone or a plugin cache is
+LOADS = {  # each loads synthesis another way and writes through it
+    "import_module, a window opened": "import sys, importlib\nsys.path.insert(0, COPY)\ns = importlib.import_module('synthesis.sends')\n"
+                                      "getattr(s, 'open_' + 'window')(2.0, ['all'], '', 9)\n",
+    "exec of a built import, an undone line": "import sys\nsys.path.insert(0, COPY)\nexec('from synthesis ' + 'import sends')\nsends.undo('2026-11-15/0123')\n",
+    "import_module, a grant voided": "import sys, importlib\nsys.path.insert(0, COPY)\na = importlib.import_module('synthesis.approvals')\n"
+                                     "getattr(a, 'vo' + 'id')('send', {})\n",
+    "__import__ of the package": "import sys\nsys.path.insert(0, COPY)\nm = __import__('synthesis', fromlist=['approvals'])\nm.approvals.void('send', {})\n",
+    "compile of a built string": "import sys\nsys.path.insert(0, COPY)\nexec(compile('from synthesis ' + 'import approvals', '<built>', 'exec'))\n"
+                                 "approvals.void('send', {})\n",
+    "eval of a built name": "import sys\nsys.path.insert(0, COPY)\na = eval(\"__import__('synthesis.' + 'approvals', fromlist=['x'])\")\na.void('send', {})\n",
+    "runpy of the package": "import sys, runpy\nsys.path.insert(0, COPY)\nsys.argv = ['x', 'sends', 'open', '--hours', '2']\n"
+                            "runpy.run_module('synthesis', run_name='__main__')\n",
+    "a file of synthesis loaded by its path": "import importlib.util\nspec = importlib.util.spec_from_file_location('s', COPY + '/synthesis/sends.py')\n"
+                                              "s = importlib.util.module_from_spec(spec)\nspec.loader.exec_module(s)\ns.undo('2026-11-15/0123')\n",
+    "a name pkgutil resolves": "import sys, pkgutil\nsys.path.insert(0, COPY)\npkgutil.resolve_name('synthesis.approvals:void')('send', {})\n",
+    "a module name built in an f-string": "import sys, importlib\nsys.path.insert(0, COPY)\nname = 'sends'\n"
+                                          "s = importlib.import_module(f'synthesis.{name}')\ns.undo('2026-11-15/0123')\n",
+}
+HANDED = {  # the same, with what it loads in the words it is handed
+    "a module name handed as a word": ("import sys, importlib\nsys.path.insert(0, COPY)\nm = importlib.import_module(sys.argv[1])\n"
+                                       "getattr(m, sys.argv[2])('send', {})\n", " synthesis.approvals void"),
+    "the transcript repointed and a grant written": (  # the first step of the review's chain
+        "import sys, importlib\nsys.path.insert(0, COPY)\na = importlib.import_module('synthesis.approvals')\n"
+        "getattr(a, 'remem' + 'ber')(sys.argv[1], sys.argv[2])\ngetattr(a, 'grant_from' + '_prompt')('approve ' + sys.argv[3])\n",
+        " S-principal /tmp/forged.jsonl 1abc23"),
+}
+INLINE = ("inline -c", "stdin")
+
+
+def _loaded(world, body: str, form: str, words: str = "") -> str:
+    body = body.replace("COPY", COPY)
+    script = _script(world["work"] / "loads", "tool.py", body)
+    return {"script file": f"python3 {script}{words}", "inline -c": f"python3 -c {shlex.quote(body)}{words}",
+            "stdin": f"python3 -{words} <<'EOF'\n{body}EOF", "PYTHONPATH and script": f"PYTHONPATH={ROOT} python3 {script}{words}"}[form]
+
+
+@pytest.mark.parametrize("form", ["script file", "inline -c", "stdin", "PYTHONPATH and script"])
+@pytest.mark.parametrize("name", sorted(LOADS) + sorted(HANDED))
+def test_a_program_that_loads_synthesis_another_way_is_judged_as_one_that_imports_it(world, name, form):
+    body, words = HANDED.get(name, (LOADS.get(name), ""))
+    reason = _verdict(world, _loaded(world, body, form, words)) or ""
+    if form in INLINE:
+        assert reason.startswith("Refused"), (name, form, "held, not refused" if reason else "let through")
+    else:
+        assert HELD in reason, (name, form, "refused, not held" if reason else "let through")
+
+
+@pytest.mark.parametrize("load", ["import importlib.util\nspec = importlib.util.spec_from_file_location('s', COPY + '/synthesis/sends.py')\n"
+                                  "s = importlib.util.module_from_spec(spec)\nspec.loader.exec_module(s)\ns.undo('2026-11-15/0123')\n",
+                                  "import pkgutil\npkgutil.resolve_name('synthesis.approvals:void')('send', {})\n"])
+def test_a_program_that_imports_synthesis_to_read_and_loads_a_writer_another_way_is_judged_so(world, load):
+    body = "from synthesis import yamlish\nprint(yamlish.load('a: 1'))\n" + load
+    assert HELD in (_verdict(world, _loaded(world, body, "script file")) or "")
+    assert (_verdict(world, _loaded(world, body, "inline -c")) or "").startswith("Refused")
+
+
+WRITES_THROUGH = "import sys\nsys.path.insert(0, COPY)\nfrom synthesis import approvals\napprovals.void('send', {})\n"
+
+
+@pytest.mark.parametrize("body", [
+    "import helper\n",                                          # a module of its own, by the plain words
+    "import importlib\nimportlib.import_module('helper')\n",    # by importlib
+    "__import__('helper')\n",                                   # by __import__
+    "import runpy\nrunpy.run_path('helper.py')\n",               # a file of its own, run by runpy
+    "exec(open('helper.py').read())\n",                          # a file of its own, read and run
+])
+def test_a_program_whose_own_module_writes_through_synthesis_is_judged_so_however_it_loads_it(world, body):
+    _script(world["work"], "helper.py", WRITES_THROUGH.replace("COPY", COPY))
+    main = _script(world["work"], "main.py", body)
+    for line in (f"python3 {main}", f"python3 -c {shlex.quote(body)}", f"python3 - <<'EOF'\n{body}EOF"):
+        assert _verdict(world, line), line
+
+
+ORDINARY_LOADS = {  # they load code, and none of it is synthesis's
+    "import_module for a library": "import importlib\nprint(importlib.import_module('json').dumps({'a': 1}))\n",
+    "find_spec for what is installed": "import importlib.util\nprint([n for n in ('yaml', 'requests') if importlib.util.find_spec(n)])\n",
+    "exec of its own code": "ns = {}\nexec('x = 1 + 2', ns)\nprint(ns['x'])\n",
+    "eval of arithmetic": "print(eval('2 * 21'))\n",
+    "compile to check its own syntax": "compile('def f():\\n    return 1\\n', '<check>', 'exec')\nprint('ok')\n",
+    "runpy of a library module": "import runpy, sys\nsys.argv = ['json.tool', '--help']\ntry:\n    runpy.run_module('json.tool', run_name='__main__')\n"
+                                 "except SystemExit:\n    pass\n",
+    "synthesis only in a comment": "# lists what the synthesis skills' plugin cache holds\nimport importlib\nprint(importlib.import_module('os').getcwd())\n",
+    "synthesis only in unrelated strings": "import importlib\nprint('Synthesis Engineering', 'synthesis-skills', 'com.synthesis.sessions-export')\n"
+                                           "print(importlib.import_module('platform').system())\n",
+    "a docstring that names a module of synthesis": '"""Counts the skills, where synthesis.paths names their folder."""\nimport importlib\n'
+                                                    "print(len(importlib.import_module('os').listdir('.')))\n",
+    "a helper of its own loaded by import_module": "import importlib\nprint(importlib.import_module('plain_helper').total([1, 2]))\n",
+}
+
+
+@pytest.mark.parametrize("form", ["script file", "inline -c", "stdin"])
+@pytest.mark.parametrize("name", sorted(ORDINARY_LOADS))
+def test_a_program_that_loads_code_without_reaching_synthesis_passes(world, name, form):
+    _script(world["work"], "plain_helper.py", "def total(xs):\n    return sum(xs)\n")
+    _script(world["work"] / "loads", "plain_helper.py", "def total(xs):\n    return sum(xs)\n")  # beside the script file too
+    assert _verdict(world, _loaded(world, ORDINARY_LOADS[name], form)) is None, (name, form)
+
+
+def test_synthesis_s_own_source_compiled_to_check_its_syntax_passes(world):
+    body = "import sys\ntext = open(sys.argv[1]).read()\ncompile(text, sys.argv[1], 'exec')\nprint(text.count('def '))\n"
+    for form in ("script file", "inline -c", "stdin"):
+        assert _verdict(world, _loaded(world, body, form, f" {ROOT}/synthesis/guards.py")) is None, form
