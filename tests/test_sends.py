@@ -124,14 +124,14 @@ def test_only_the_principal_opens_a_window(tmp_path, principal):
     reason = guards.check("Bash", {"command": "synthesis sends open --hours 6 --sends 4 --channels jira"}, CONFIG, cwd=str(tmp_path))
     principal(reason)
     assert guards.check("Bash", {"command": "synthesis sends open --hours 6 --sends 4 --channels jira"}, CONFIG, cwd=str(tmp_path)) is None
-    sneaky = "python3 -c 'from synthesis import sends; sends.open_window(12, [\"all\"])'"
+    sneaky = "python3 -I -c 'from synthesis import sends; sends.open_window(12, [\"all\"])'"
     assert "send-window code" in guards.check("Bash", {"command": sneaky}, CONFIG, cwd=str(tmp_path))
-    grant = "python3 -c 'from synthesis import approvals; approvals.grant_from_prompt(\"approve abc123\")'"
+    grant = "python3 -I -c 'from synthesis import approvals; approvals.grant_from_prompt(\"approve abc123\")'"
     assert "send-window code" in guards.check("Bash", {"command": grant}, CONFIG, cwd=str(tmp_path))
-    state = "python3 -c 'from synthesis import paths; (paths.state() / \"sends\" / \"window.json\").write_text(\"{}\")'"
+    state = "python3 -I -c 'from synthesis import paths; (paths.state() / \"sends\" / \"window.json\").write_text(\"{}\")'"
     assert "send-window code" in guards.check("Bash", {"command": state}, CONFIG, cwd=str(tmp_path))
     # Reading stays allowed (2026-10-13: a read-only check of the installed guard was refused).
-    look = "python3 -c 'from synthesis import sends, guards; print(sends.window(), guards._sends(\"mcp__x__send_email\", {}, {}))'"
+    look = "python3 -I -c 'from synthesis import sends, guards; print(sends.window(), guards._sends(\"mcp__x__send_email\", {}, {}))'"
     assert guards.check("Bash", {"command": look}, CONFIG, cwd=str(tmp_path)) is None
     assert guards.check("Bash", {"command": "synthesis sends close"}, CONFIG, cwd=str(tmp_path)) is None
 
@@ -140,8 +140,8 @@ def test_a_program_is_judged_by_its_own_text_not_by_a_file_the_same_line_writes(
     """Thirty days of recorded commands, 2026-11-11: three were refused because another heredoc of the line, a test
     file being written, named the window code. The program that ran did not."""
     file = "cat > tests/test_x.py <<'EOF'\nfrom synthesis import sends\nsends.open_window(1, ['all'])\nEOF\n"
-    assert guards.check("Bash", {"command": file + "python3 - <<'EOF'\nprint(1)\nEOF"}, CONFIG, cwd=str(tmp_path)) is None
-    runs = file + "python3 - <<'EOF'\nfrom synthesis import sends\nsends.open_window(1, ['all'])\nEOF"
+    assert guards.check("Bash", {"command": file + "python3 -I - <<'EOF'\nprint(1)\nEOF"}, CONFIG, cwd=str(tmp_path)) is None
+    runs = file + "python3 -I - <<'EOF'\nfrom synthesis import sends\nsends.open_window(1, ['all'])\nEOF"
     assert "send-window code" in guards.check("Bash", {"command": runs}, CONFIG, cwd=str(tmp_path))
     piped = "echo \"from synthesis import sends; sends.open_window(1, ['all'])\" | python3 -"  # its text comes down a pipe
     assert "send-window code" in guards.check("Bash", {"command": piped}, CONFIG, cwd=str(tmp_path))
@@ -219,7 +219,7 @@ def test_a_quoted_greater_than_sign_is_not_a_write_and_a_real_redirect_into_stat
     from synthesis import paths
     state = paths.state()
     (state / "approval-requests").mkdir(parents=True, exist_ok=True)
-    read = (f"cd {state} && for f in approval-requests/*.json; do python3 -c \"import json,sys; d=json.load(open(sys.argv[1])); "
+    read = (f"cd {state} && for f in approval-requests/*.json; do python3 -I -c \"import json,sys; d=json.load(open(sys.argv[1])); "
             "print({k: (v if k != 'code' else '<pending>') for k, v in d.items()})\" \"$f\"; done")
     assert guards.check("Bash", {"command": read}, CONFIG, cwd=str(tmp_path)) is None
     for write in (f"echo x > {state}/approvals/x.json", f"cd {state} && echo x >> approvals/x.json",
@@ -242,7 +242,7 @@ def test_global_options_do_not_hide_a_post_and_help_is_never_one(command, posts,
     assert (reason is not None and "posts to" in reason) is posts, reason
 
 
-HEREDOC = ("bkt api /repositories/team/app/pullrequests/5/comments -X POST -d \"$(python3 -c 'import json,sys; "
+HEREDOC = ("bkt api /repositories/team/app/pullrequests/5/comments -X POST -d \"$(python3 -I -c 'import json,sys; "
            "print(json.dumps({{\\\"content\\\": {{\\\"raw\\\": sys.stdin.read()}}}}))' <<'MSG'\n{}\nMSG\n)\"")
 
 
@@ -301,12 +301,12 @@ def test_a_python_script_that_only_cites_a_protected_path_may_write_a_project_re
     wrote cited a transcript path. Only a write's target counts; a path carried in by a variable still does."""
     from synthesis import paths
     state = paths.state()
-    cites = f"python3 - <<'EOF'\nfrom pathlib import Path\nPath('notes.md').write_text('Source: {state}/sessions/x.json')\nEOF"
+    cites = f"python3 -I - <<'EOF'\nfrom pathlib import Path\nPath('notes.md').write_text('Source: {state}/sessions/x.json')\nEOF"
     assert guards.check("Bash", {"command": cites}, CONFIG, cwd=str(tmp_path)) is None
-    for writes in (f"python3 - <<'EOF'\nopen('{state}/approvals/x.json', 'w').write('x')\nEOF",
-                   f"python3 - <<'EOF'\nimport os\nroot = '{state}'\np = os.path.join(root, 'sends', 'window.json')\n"
+    for writes in (f"python3 -I - <<'EOF'\nopen('{state}/approvals/x.json', 'w').write('x')\nEOF",
+                   f"python3 -I - <<'EOF'\nimport os\nroot = '{state}'\np = os.path.join(root, 'sends', 'window.json')\n"
                    "open(p, 'w').write('{}')\nEOF",
-                   f"python3 -c \"from pathlib import Path; Path('{state}/sends/window.json').write_text('x')\""):
+                   f"python3 -I -c \"from pathlib import Path; Path('{state}/sends/window.json').write_text('x')\""):
         assert "runs a script that writes" in guards.check("Bash", {"command": writes}, CONFIG, cwd=str(tmp_path)), writes
 
 

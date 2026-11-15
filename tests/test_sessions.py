@@ -1613,11 +1613,10 @@ def test_a_day_is_not_listed_while_a_transcript_that_may_hold_its_prompts_is_not
 
 
 @closed_to_us
-def test_a_transcript_that_cannot_hold_the_days_prompts_does_not_stop_the_listing(harness, tmp_path, monkeypatch, capsys):
+def test_a_transcript_that_cannot_hold_the_days_prompts_does_not_stop_the_listing(principal, harness, tmp_path, monkeypatch, capsys):
     """What is not copied is weighed for the workspace and the day asked about. A transcript filed under another
     workspace holds nothing of this one's. One that is gone may have held anything written until a run found it
     gone, so it stops the listing of those days until the principal accepts the loss."""
-    import types
     from datetime import date, timedelta
     beta = tmp_path / "workspaces" / "beta" / "repo"
     beta.mkdir(parents=True)
@@ -1642,8 +1641,9 @@ def test_a_transcript_that_cannot_hold_the_days_prompts_does_not_stop_the_listin
     assert cli.main(here) == 0
     tomorrow = (date.today() + timedelta(days=1)).isoformat()         # and nothing typed after that can have been in it
     assert cli.main(there[:-1] + [tomorrow]) == 0 and f"0 prompts on {tomorrow} in beta" in capsys.readouterr().out
-    monkeypatch.setattr("sys.stdin", types.SimpleNamespace(isatty=lambda: True))
-    assert cli.main(["sessions", "export", "--lost", "b1"]) == 0      # the principal accepts the loss,
+    assert cli.main(["sessions", "export", "--lost", "b1"]) == 2      # the principal accepts the loss, on their code,
+    principal(capsys.readouterr().err)
+    assert cli.main(["sessions", "export", "--lost", "b1"]) == 0
     capsys.readouterr()
     assert cli.main(there) == 0                                        # and the day lists what the archive holds of it
     listed = capsys.readouterr().out
@@ -1870,9 +1870,10 @@ def test_only_a_transcript_that_is_gone_is_lost(principal, harness, tmp_path, mo
 
 
 @closed_to_us
-def test_in_a_terminal_of_their_own_the_principal_clears_a_loss_without_a_code(harness, tmp_path, monkeypatch, capsys):
-    """Run by an agent, `--lost` waits for the principal's code. Typed by the principal in their own terminal, outside
-    any harness, it needs none: nobody else is at that keyboard."""
+def test_from_any_terminal_a_loss_is_cleared_only_on_the_principals_code(principal, harness, tmp_path, monkeypatch, capsys):
+    """`--lost` waits for the principal's code whoever runs it (5.22.1): a terminal on the command's input and no harness
+    in its environment are both an agent's to fake, so from a terminal of their own the principal clears a loss on their
+    code too. What it clears is the archive's record of a transcript it could not copy, which the day's checks report."""
     import types
     gone = _jsonl(harness["claude"], _claude_rows(harness["work"]))
     gone.chmod(0o000)
@@ -1882,11 +1883,10 @@ def test_in_a_terminal_of_their_own_the_principal_clears_a_loss_without_a_code(h
         gone.chmod(0o644)
     gone.unlink()
     monkeypatch.setattr("sys.stdin", types.SimpleNamespace(isatty=lambda: True))
-    monkeypatch.setenv("SYNTHESIS_SESSION", "S1")
-    monkeypatch.setenv("CLAUDECODE", "1")                                      # a terminal inside a harness is an agent's
-    assert cli.main(["sessions", "export", "--lost", "c1"]) == 2 and "type approve" in capsys.readouterr().err
-    assert _checked(tmp_path)[0] == "fail"
-    monkeypatch.delenv("CLAUDECODE")
+    assert cli.main(["sessions", "export", "--lost", "c1"]) == 2
+    reason = capsys.readouterr().err
+    assert "type approve" in reason and _checked(tmp_path)[0] == "fail"
+    principal(reason)
     assert cli.main(["sessions", "export", "--lost", "c1"]) == 0 and "cleared: claude-code c1" in capsys.readouterr().out
     assert _checked(tmp_path)[0] == "ok"
 

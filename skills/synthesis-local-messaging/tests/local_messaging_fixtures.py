@@ -99,5 +99,7 @@ def approve(reason: str, typed: bool = True) -> None:
         with record.open("a", encoding="utf-8") as handle:
             handle.write(json.dumps({"type": "user", "timestamp": when,
                                      "message": {"role": "user", "content": f"please approve {code}"}}) + "\n")
+        from synthesis import approvals
+        approvals.remember(os.environ["SYNTHESIS_SESSION"], str(record))  # as the prompt hook records it (5.22.1)
     from synthesis import approvals
     assert approvals.grant_from_prompt(f"please approve {code}")

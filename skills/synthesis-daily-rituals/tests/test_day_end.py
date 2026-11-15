@@ -28,7 +28,9 @@ PLUGIN = Path(__file__).resolve().parents[3]
 BANNER = '-e display notification "Evening ritual window — details in your synthesis console" with title "Synthesis"'
 UNCHECKED = '-e display notification "Critical-deadline check could not run — details in your synthesis console" with title "Synthesis"'
 SWEEP = Path("current") / "skills" / "synthesis-daily-rituals" / "scripts" / "decay_sweep.py"
-TODAY = date.today().isoformat()
+def today() -> str:
+    """Today as the code under test reads it, taken when each test runs, so a suite that crosses midnight agrees with it."""
+    return date.today().isoformat()
 
 
 def runtime(tmp_path: Path, with_rituals: bool = True) -> Path:
@@ -87,7 +89,7 @@ EVERY_DAY = {"defaults": {"weekdays": [0, 1, 2, 3, 4, 5, 6]}, "workspaces": {"al
 
 def test_the_nudge_stays_quiet_only_when_every_expected_workspace_has_closed(tmp_path: Path) -> None:
     home = runtime(tmp_path)
-    closed = [{"date": TODAY, "direction": d, "workspace": w, "ts": "x"}
+    closed = [{"date": today(), "direction": d, "workspace": w, "ts": "x"}
               for w in ("alpha", "beta") for d in ("day-start", "day-end")]
     state(home, closed, EVERY_DAY)
     before = snapshot(home)
@@ -97,13 +99,13 @@ def test_the_nudge_stays_quiet_only_when_every_expected_workspace_has_closed(tmp
 
 def test_one_closed_workspace_does_not_silence_the_nudge_for_another(tmp_path: Path) -> None:
     home = runtime(tmp_path)
-    state(home, [{"date": TODAY, "direction": "day-end", "workspace": "alpha", "ts": "x"}], EVERY_DAY)
+    state(home, [{"date": today(), "direction": "day-end", "workspace": "alpha", "ts": "x"}], EVERY_DAY)
     assert nudge(home, tmp_path) == [BANNER]
 
 
 def test_a_workspace_started_today_and_not_closed_fires_the_nudge(tmp_path: Path) -> None:
     home = runtime(tmp_path)
-    state(home, [{"date": TODAY, "direction": "day-start", "workspace": "gamma", "ts": "x"}])
+    state(home, [{"date": today(), "direction": "day-start", "workspace": "gamma", "ts": "x"}])
     assert nudge(home, tmp_path) == [BANNER]
 
 
@@ -130,7 +132,7 @@ EVENTS = ["session_start", "user_prompt_submit", "pre_tool_use", "stop"]
 
 def _all_closed(home: Path, ago: float = 3600.0, version: str = "", raw: str = "", **waiting) -> None:
     """Every workspace closed, and the note as a run of the doctor `ago` seconds back would have left it."""
-    closed = [{"date": TODAY, "direction": d, "workspace": w, "ts": "x"} for w in ("alpha", "beta") for d in ("day-start", "day-end")]
+    closed = [{"date": today(), "direction": d, "workspace": w, "ts": "x"} for w in ("alpha", "beta") for d in ("day-start", "day-end")]
     state(home, closed, EVERY_DAY)
     (home / "state").mkdir(exist_ok=True)
     released = re.search(r'__version__ = "([^"]+)"', (home / "current" / "synthesis" / "__init__.py").read_text(encoding="utf-8"))[1]
@@ -152,7 +154,7 @@ def test_the_nudge_says_when_a_harness_has_not_shown_its_guard_running(tmp_path:
     assert not list(home.rglob("__pycache__")), "nor compiled files beside the runtime it reads"
     _all_closed(home, codex=EVENTS, muse=["pre_tool_use"])
     assert nudge(home, tmp_path) == [SEVERAL]
-    state(home, [{"date": TODAY, "direction": "day-end", "workspace": "alpha", "ts": "x"}], EVERY_DAY)
+    state(home, [{"date": today(), "direction": "day-end", "workspace": "alpha", "ts": "x"}], EVERY_DAY)
     assert nudge(home, tmp_path) == [SEVERAL, BANNER]                           # and the evening banner beside it
 
 
@@ -221,8 +223,8 @@ def test_the_nudge_sounds_the_critical_alert_on_a_day_with_no_ritual(tmp_path: P
     home, plans = runtime(tmp_path), tmp_path / "plans"
     plans.mkdir()
     (plans / "2026-01-05.md").write_text("### Renew the passport\n**Critical:** identity document\n**Decay ID:** passport\n"
-                                         f"**Calendar:** event 9\n**Decays:** {TODAY} (the appointment)\n", encoding="utf-8")
-    closed = [{"date": TODAY, "direction": d, "workspace": "alpha", "ts": "x"} for d in ("day-start", "day-end")]
+                                         f"**Calendar:** event 9\n**Decays:** {today()} (the appointment)\n", encoding="utf-8")
+    closed = [{"date": today(), "direction": d, "workspace": "alpha", "ts": "x"} for d in ("day-start", "day-end")]
     state(home, closed, {"defaults": {"weekdays": [0, 1, 2, 3, 4, 5, 6]},
                          "workspaces": {"alpha": {"streak": "expected-days", "plans_dirs": [str(plans)]}}})
     before = snapshot(home)
@@ -234,7 +236,7 @@ def test_the_nudge_sounds_the_critical_alert_on_a_day_with_no_ritual(tmp_path: P
 
 def test_the_nudge_is_silent_about_critical_deadlines_when_none_is_due_an_alert(tmp_path: Path) -> None:
     home = runtime(tmp_path)
-    closed = [{"date": TODAY, "direction": d, "workspace": w, "ts": "x"} for w in ("alpha", "beta") for d in ("day-start", "day-end")]
+    closed = [{"date": today(), "direction": d, "workspace": w, "ts": "x"} for w in ("alpha", "beta") for d in ("day-start", "day-end")]
     state(home, closed, EVERY_DAY)
     assert nudge(home, tmp_path) == [] and not (tmp_path / "critical-alerts").exists()
 
