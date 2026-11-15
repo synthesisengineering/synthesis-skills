@@ -1872,3 +1872,21 @@ CRAFTED_MOVERS = {"location-by-a-built-name": "location[['hr', 'ef'].join('')] =
 def test_open_a_move_the_page_script_reader_does_not_see(name):
     listed(SHOP, tab=9)
     assert sent(_then_send(("javascript_tool", {"action": "javascript_exec", "text": CRAFTED_MOVERS[name]}))), name
+
+
+def test_a_real_process_of_the_command_takes_its_ticket_and_another_process_does_not():
+    """Round 5, #4, with nothing standing in for the system: the guard files the ticket here, and a process this test
+    starts takes it only when its own command line, as the system shows it, is the run's, under this harness."""
+    import os
+    granted([TEXT])
+    me = {**SESSION, "transcript_path": str(RECORD)}
+    assert guards.check("Bash", {"command": f"python3 {SENDER} {' '.join(TO_A)}"}, CONFIG, cwd=str(FOLDER), session=me) is None
+    program = ("import json; from synthesis import guards; print(json.dumps(guards.check_send('imessage_send', "
+               f"{{'to': '+15550100', 'text': {REPLY!r}}}, {CONFIG!r}, run={{'program': {str(SENDER)!r}, 'argv': {list(TO_A)!r}, "
+               f"'cwd': {str(FOLDER)!r}}})))")
+    env = {**os.environ, "PYTHONPATH": str(ROOT)}
+    other = subprocess.run([sys.executable, "-c", program, "--not-the-run"], capture_output=True, text=True, cwd=FOLDER, env=env, timeout=60)
+    assert other.returncode == 0 and held(json.loads(other.stdout)), other.stderr[-600:]
+    mine = subprocess.run([sys.executable, "-c", program, str(SENDER), *TO_A], capture_output=True, text=True, cwd=FOLDER, env=env, timeout=60)
+    assert mine.returncode == 0 and json.loads(mine.stdout) is None, mine.stderr[-600:]
+    assert [e["session"] for e in today()] == ["S-principal"]
