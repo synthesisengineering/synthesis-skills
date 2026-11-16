@@ -1046,14 +1046,17 @@ def test_synthesis_s_own_source_compiled_to_check_its_syntax_passes(world):
 # imported synthesis and named a writer, since the guard read a shell script's text only for the protected folders it
 # names); a script it cannot read waits ----------------------------------------------------------------------------
 
-SCRIPT_WRITES = {  # one line of a shell script, and how the same line is judged when it is typed
+SCRIPT_WRITES = {  # one line of a shell script, and how the script is judged (review round 3 of 22.21: a line of Python that
+    # reaches synthesis waits, with the script's bytes bound to the code, where the same line typed on the command is refused)
     "a program on its line that names a writer": (f"python3 -c 'import sys; sys.path.insert(0, \"{ROOT}\"); from synthesis import approvals; "
                                                   "approvals.void(\"send\", {})'\n", "held"),
     "a Python script that names a writer": ("python3 tool.py\n", "held"),
     "a program that opens a send window": (f"python3 -c 'import sys; sys.path.insert(0, \"{ROOT}\"); import synthesis.sends as s; "
-                                           "s.open_window(2.0, [\"all\"], \"\", 9)'\n", "refused"),
+                                           "s.open_window(2.0, [\"all\"], \"\", 9)'\n", "held"),
     "a program that loads synthesis by importlib": (f"python3 -c 'import sys, importlib; sys.path.insert(0, \"{ROOT}\"); "
-                                                    "importlib.import_module(\"synthesis.sends\").undo(\"x\")'\n", "refused"),
+                                                    "importlib.import_module(\"synthesis.sends\").undo(\"x\")'\n", "held"),
+    "a program on its input that builds a name": (f"python3 - <<'EOF'\nimport sys\nsys.path.insert(0, \"{ROOT}\")\nfrom synthesis import sends\n"
+                                                  "getattr(sends, 'un' + 'do')('x')\nEOF\n", "held"),
     "the hook run by hand": ("~/.synthesis/v5/bin/synthesis-hook pre-tool-use < payload.json\n", "refused"),
 }
 RUNS_SCRIPT = {  # how a command runs the script file run.sh
@@ -1310,3 +1313,66 @@ def test_code_inside_the_tests_stays_isolated(world, name):
     _script(world["work"] / "suite", "conftest.py", ISOLATING)
     _script(world["work"] / "suite", "test_mine.py", STILL_ISOLATED[name])
     assert _verdict(world, "python3 -m pytest -q suite/test_mine.py") is None, name
+
+
+# --- review round 3 of 22.21: a shell script's line of Python that reaches synthesis waits, the script bound to the code,
+# where the same line typed on the command is refused; and a program that only reads through `getattr` with a name
+# written out, or through a module path that leads to synthesis as the guard runs it, is let through -----------------
+
+PYTHON_LINES = ("a program that opens a send window", "a program that loads synthesis by importlib", "a program on its input that builds a name")
+
+
+@pytest.mark.parametrize("name", PYTHON_LINES)
+def test_the_same_line_of_python_typed_on_the_command_is_refused(world, name):
+    _shell_world(world, "")
+    assert (_verdict(world, SCRIPT_WRITES[name][0].rstrip("\n")) or "").startswith("Refused"), name
+
+
+def test_a_script_s_python_line_waits_bound_to_the_script_and_another_refusal_in_it_stands(world):
+    line = SCRIPT_WRITES["a program that loads synthesis by importlib"][0]
+    _shell_world(world, line)
+    reason = _verdict(world, "bash run.sh") or ""
+    assert HELD in reason
+    world["approve"](reason)
+    assert _verdict(world, "bash run.sh") is None  # the identical command, on the principal's code
+    with (world["work"] / "run.sh").open("a", encoding="utf-8") as script:
+        script.write("echo rewritten\n")
+    assert HELD in (_verdict(world, "bash run.sh") or "")  # a rewritten script is a new command
+    for lines in (line + SCRIPT_WRITES["the hook run by hand"][0], SCRIPT_WRITES["the hook run by hand"][0] + line):
+        _script(world["work"], "run.sh", "#!/bin/sh\n" + lines)
+        assert (_verdict(world, "bash run.sh") or "").startswith("Refused"), "the hook's refusal stands beside a waiting line"
+
+
+READS_ANOTHER_WAY = {
+    "getattr with the name written out": "from synthesis import approvals\nprint(getattr(approvals, 'how')('1abc23'))\n",
+    "a submodule under another name": "import synthesis.paths as p\nprint(p.home())\n",
+}
+WRITES_ANOTHER_WAY = {
+    "getattr with a writer's name written out": "from synthesis import approvals\ngetattr(approvals, 'void')('send', {})\n",
+    "a writer through a submodule under another name": "import synthesis.approvals as a\na.void('send', {})\n",
+}
+
+
+def _another_way(world, body: str, how: str, path: Path = ROOT) -> str:
+    script = _script(world["work"] / "reads", "tool.py", body)
+    line = f"PYTHONPATH={path} python3 {script}" if how == "script file" else f"PYTHONPATH={path} python3 -c {shlex.quote(body)}"
+    return _verdict(world, line) or ""
+
+
+@pytest.mark.parametrize("how", ["script file", "line program"])
+@pytest.mark.parametrize("name", sorted(READS_ANOTHER_WAY) + sorted(WRITES_ANOTHER_WAY))
+def test_a_program_reaching_synthesis_another_way_is_read_for_what_it_does(world, name, how):
+    body = READS_ANOTHER_WAY.get(name) or WRITES_ANOTHER_WAY[name]
+    reason = _another_way(world, body, how)
+    assert (reason == "") == (name in READS_ANOTHER_WAY), (name, how, reason[:80])
+
+
+def test_a_module_path_that_leads_to_another_synthesis_still_waits(world):
+    copy = world["work"] / "copy"
+    (copy / "synthesis").mkdir(parents=True)
+    for source in (ROOT / "synthesis").glob("*.py"):
+        (copy / "synthesis" / source.name).write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
+    with (copy / "synthesis" / "paths.py").open("a", encoding="utf-8") as stood_in:
+        stood_in.write("\n# a copy unlike the guard's own\n")
+    for how in ("script file", "line program"):
+        assert HELD in _another_way(world, READS_ANOTHER_WAY["a submodule under another name"], how, copy), how
