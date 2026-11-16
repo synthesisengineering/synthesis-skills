@@ -69,7 +69,8 @@ def test_each_layout_of_the_regular_export_is_read_from_every_section(im, capsys
         assert text.splitlines()[2] == f"# Conversation: dyi-{folder} ({section})"
         assert f"From: `{section}/{folder}`" in text.splitlines()
         assert split_fences(text)[1] == [f"note from {section}"]
-    assert "conversations: 5 found; 5 new transcripts, 0 extended, 0 with nothing new, 0 with no messages, 0 skipped" in printed
+    n = len(SECTIONS)
+    assert f"conversations: {n} found; {n} new transcripts, 0 extended, 0 with nothing new, 0 with no messages, 0 skipped" in printed
 
 
 def test_a_folder_around_the_export_and_the_messages_folder_itself_read_the_same(im, capsys, tmp_path):
@@ -746,3 +747,15 @@ def test_a_download_shaped_like_a_real_one_keeps_its_counts(im, capsys, tmp_path
     assert code == 0, printed
     assert "conversations: 40 found; 7 new transcripts, 0 extended, 0 with nothing new, 33 with no messages, 0 skipped" in printed
     assert "messages: 23 new; 0 already in transcripts" in printed and "attachments referenced: 3 (none copied)" in printed
+
+
+def test_a_chat_filtered_before_the_switch_is_read(im, capsys, tmp_path):
+    """Meta's regular download files a filtered chat from before the switch to end-to-end encryption under
+    e2ee_cutover_filtered, as filtered_threads is to inbox."""
+    out = tmp_path / "out"
+    write_dyi(tmp_path / "regular", "facebookuser_100001", [dyi_thread(ALEX, [ALEX, BLAIR], [
+        dyi_message(ALEX, T0, "before the switch, filtered")])], section="e2ee_cutover_filtered")
+    code, printed = run(im, capsys, tmp_path / "regular", "--out", out)
+    assert code == 0, printed
+    assert "not a folder this layout holds" not in printed
+    assert len(transcripts(out)) == 1

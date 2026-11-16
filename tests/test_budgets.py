@@ -2101,10 +2101,14 @@ ROOT = Path(__file__).resolve().parents[1]
 # blank lines, and a line of its docstring counted once). guards.py 1: the shell dispatch keeps the sender runs
 # check_outgoing found before check_git_programs judges each git program as a call of its own, which starts the call's
 # state anew, so a sender run beside such a git command still takes its ticket.
+# The Messenger importer's filtered chats from before the switch to encryption (2026-11-16): plugin 1 more, the core as
+# it was. import_messages.py 1: SECTIONS names e2ee_cutover_filtered, on a line of its own, as filtered_threads is to inbox.
+# 5.24.0, that change (17f42796, from main at 218da465) merged into release/next at d035d42e: release/next's ceilings
+# (core 21807, plugin 48429) and its raise just above (plugin 1), measured: core 21807 and plugin 48430.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
 CORE_BUDGET = 21807
-PLUGIN_BUDGET = 48429
+PLUGIN_BUDGET = 48430
 
 
 def _lines(files):

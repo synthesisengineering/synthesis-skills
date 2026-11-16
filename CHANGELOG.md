@@ -480,6 +480,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
 - **The guard reads every `synthesis sends` command in a line with the CLI's own parser** (core): each window or batch
   request asks for its own code, a command it cannot read as the CLI would waits for one, a file goes only with `sends
   batch`, and a held window or batch code no longer lets the rest of the line through unjudged.
+- **The Messenger importer reads the filtered chats from before the switch to encryption.** Meta's regular download files them under `e2ee_cutover_filtered`, as `filtered_threads` is to `inbox`; the importer refused such a download with "not a folder this layout holds". The section is now read like `e2ee_cutover`.
 
 ## [5.23.2] - 2026-11-15
 
