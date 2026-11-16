@@ -170,6 +170,50 @@ def test_each_harness_program_waits_wherever_it_resolves(world, spot, route):
     assert _held(reason, "harness program") and name in reason, (spot, route)
 
 
+def test_the_zsh_files_in_the_folder_zshenv_names_as_zdotdir_wait(world, tmp_path):
+    """zsh reads the rest of its startup files from where ~/.zshenv sets ZDOTDIR, and a child zsh reads that .zshenv."""
+    (world["home"] / ".zshenv").write_text('export ZDOTDIR="${XDG_CONFIG_HOME:-$HOME/.config}/zsh"\n', encoding="utf-8")
+    for name in (".zshrc", ".zshenv", ".zprofile"):
+        assert _held(_file(world, "Write", {"file_path": str(world["home"] / ".config" / "zsh" / name), "content": "x"}), "startup file")
+    assert _file(world, "Write", {"file_path": str(world["home"] / ".config" / "zsh" / "aliases.md"), "content": "x"}) is None
+
+
+def test_the_files_muse_keeps_beside_its_launcher_wait(world):
+    """muse's launcher runs muse-bin-<the version .muse-version names> from its own folder."""
+    (world["local_bin"] / "muse-bin-1.4.20-R8619.1").write_text("binary", encoding="utf-8")
+    (world["local_bin"] / ".muse-version").write_text("1.4.20-R8619.1\n", encoding="utf-8")
+    for name in ("muse-bin-1.4.20-R8619.1", ".muse-version"):
+        assert _held(_file(world, "Write", {"file_path": str(world["local_bin"] / name), "content": "x"}), "harness program")
+    assert _held(_shell(world, f"echo 9.9.9-R1 > {world['local_bin']}/.muse-version"), "harness program")
+
+
+def test_a_folder_on_path_not_made_yet_holds_its_harness_programs(world, monkeypatch, tmp_path):
+    later = tmp_path / "later" / "bin"
+    monkeypatch.setenv("PATH", f"{later}:{world['local_bin']}:/usr/bin:/bin")
+    assert _held(_shell(world, f"mkdir -p {later} && cp {world['work']}/tool {later}/codex"), "harness program")
+
+
+def test_a_harness_program_outside_the_home_folder_makes_no_tilde_a_protected_name(world):
+    """A path outside the home folder has no `~` spelling: a program that mentions `~` names none of them."""
+    line = "python3 -I - <<'EOF'\nimport sys  # see ~/notes\nprint(getattr(sys, 'ver' + 'sion'))\nEOF"
+    assert _shell(world, line) is None
+
+
+SOURCED = ["source ~/.zshrc", ". ~/.zprofile", "source ~/.zshrc && echo ok", "zsh -c 'source ~/.zshrc; echo ok'", "bash ~/.zshrc",
+           "source ~/.claude/shell-snapshots/snapshot-zsh-1791385983690-qq6fnt.sh"]
+
+
+@pytest.mark.parametrize("line", SOURCED)
+def test_sourcing_a_startup_file_or_a_snapshot_reads_it(world, line):
+    """What a shell runs at its start anyway: sourcing it runs nothing a start does not, whatever it names."""
+    (world["home"] / ".zshrc").write_text(f"export PATH=\"$HOME/.local/bin:$PATH\"\nalias c={world['local_bin']}/claude\n", encoding="utf-8")
+    assert _shell(world, line) is None, line
+
+
+def test_a_line_that_writes_a_startup_file_and_sources_it_waits(world):
+    assert _held(_shell(world, "echo 'echo planted' > ~/.zshrc; source ~/.zshrc"), "startup file")
+
+
 def test_a_link_put_in_place_of_a_harness_program_waits(world):
     assert _held(_shell(world, f"ln -sf {world['work']}/tool {world['local_bin']}/claude"), "harness program")
     assert _held(_shell(world, f"rm {world['local_bin']}/codex"), "harness program")
