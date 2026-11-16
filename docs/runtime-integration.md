@@ -561,6 +561,18 @@ stay open, and no hook running as that same user can close them:
   itself reads at a file it wrote, and so grant itself what such a check releases: a send a
   script makes, a line approval, the CLI's send window (review rounds 4 and 5 of 5.23.1's
   approval fix; crafted, the same before that release).
+- A program planted ahead of the real one runs in its place. Every hook that starts a program
+  by its name (the guard's `git` among them) starts whatever the hook's PATH finds first, and a
+  folder the agent can write may come first. The plan's judge (21.3) is part of this class: it
+  runs `claude` or `codex` as the hook's PATH resolves it, and accepts a `command` setting only
+  where it resolves to that file or to one in the harness's known install locations
+  (`~/.local/bin`, `/opt/homebrew/bin`, `/usr/local/bin`, and the apps' own folders). A program
+  planted in an install location the person can write, or in a folder earlier on PATH, counts as
+  the harness's own and runs (review round 2 of 21.3; crafted: it needs a program planted in a
+  writable folder, and a written setting or a PATH ordered ahead of the real program; a strict
+  expected-failure test holds it). Trusting only folders the person cannot write would refuse
+  the ordinary install, which lives in `~/.local/bin` or `/opt/homebrew/bin`, and a vendor's
+  signature does not fit a program installed as a script.
 
 Closing these needs isolation the hooks do not have: the agent under its own OS user
 or sandbox, or approvals signed by something outside the agent's reach.

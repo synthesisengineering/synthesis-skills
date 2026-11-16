@@ -22,9 +22,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   model or a policy on recorded list hits, by label, before it ships.
 - **The judge binds every setting it takes from the config** (review round 1 of the judge, 2026-11-15: a session can
   write the config with no code, and a written setting made the Stop hook run any program or post to any host). A
-  `judge.subscription` entry's `command` is used only where it resolves to that harness's own program, the file its
-  name resolves to on PATH or in its install locations; anything else runs nothing, the word list decides, and the
-  doctor names the setting instead of running it. `judge.cloud.url` is only the provider's own host over https
+  `judge.subscription` entry's `command` is used only where it resolves to that harness's own program: `claude` or
+  `codex` as the hook's PATH resolves it, or in its known install locations (`~/.local/bin`, `/opt/homebrew/bin`,
+  `/usr/local/bin` and the apps' own folders). Anything else runs nothing, the word list decides, and the doctor names
+  the setting instead of running it. A program planted in one of those folders that the person can write, or in a
+  folder earlier on PATH, counts as the harness's own: that crafted route is on the open list in
+  `docs/runtime-integration.md`, with the older class of a program planted ahead of the real one on PATH. `judge.cloud.url` is only the provider's own host over https
   (`api.anthropic.com`), so the reply, the principal's last message and the workspace's key go nowhere else. A
   subscription `model` is a plain name and its `effort` letters, values on the harness's command line and never options
   of their own; each `cloud.keys` path ends in the provider's name; `local.url` stays on this Mac's loopback address and

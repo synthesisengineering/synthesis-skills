@@ -549,6 +549,25 @@ def test_a_command_that_is_not_the_harness_own_program_never_runs(fake_cli, tmp_
         {"last_assistant_message": lazy}, {"shortcut_phrases": ["for now"]}) and not (tmp_path / "another-ran").exists()
 
 
+@pytest.mark.xfail(strict=True, reason="open list (docs/runtime-integration.md, What remains open): a program planted in an "
+                   "install location the person can write, or earlier on PATH, counts as the harness's own (review round 2 of 21.3)")
+def test_a_program_planted_in_a_writable_install_location_is_not_taken_for_the_harness_own(fake_cli, tmp_path, monkeypatch):
+    """Review round 2 of 21.3, ruled crafted and open-listed: `~/.local/bin` is one of the harness's install locations
+    and the person can write it, so a program planted there and named in `command` runs as the harness's own. Strict:
+    the day it no longer runs, this test fails, and the open list's entry goes with it."""
+    judge = _judge()
+    home = tmp_path / "home"
+    monkeypatch.setenv("HOME", str(home))
+    planted = home / ".local" / "bin" / "claude"
+    planted.parent.mkdir(parents=True)
+    planted.write_text(f"#!/bin/sh\necho ran > {tmp_path / 'planted-ran'}\nexit 1\n", encoding="utf-8")
+    planted.chmod(0o755)
+    config = _sub_config(fake_cli)
+    config["judge"]["subscription"]["claude-code"]["command"] = str(planted)
+    judge.ask("demo", judge.parse_policy("demo", POLICY_TEXT), CONTENT + " (planted)", {}, config, harness="claude-code")
+    assert not (tmp_path / "planted-ran").exists(), "the planted program ran as the harness's own"
+
+
 def test_a_command_that_resolves_to_the_harness_own_program_runs_it(fake_cli, tmp_path):
     judge = _judge()
     link = tmp_path / "my-claude"

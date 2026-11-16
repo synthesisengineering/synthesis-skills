@@ -84,9 +84,12 @@ before it goes back (M38; the principal's rulings of 2026-11-14). The list, the 
 - The local model answers on this Mac through Ollama's loopback API, at temperature 0.
 - `subscription` runs the judge on the plan of the harness the reply came from, through its own command line, so no one
   buys API credits for it (the principal, 2026-11-15); it reads a reply first where no local model is configured, for a
-  harness the config names and a workspace not in `leave_out`. It runs only the harness's own program: a `command` is
-  used where it resolves to the file the harness's name does on PATH or in its install locations, and anything else
-  runs nothing, so a written setting never chooses what the Stop hook runs (logged as `not_the_harness`). Claude
+  harness the config names and a workspace not in `leave_out`. It runs only the harness's own program: `claude` or
+  `codex` as the hook's PATH resolves it, or in its known install locations (`~/.local/bin`, `/opt/homebrew/bin`,
+  `/usr/local/bin` and the apps' own folders). A `command` that resolves anywhere else runs nothing, so a written
+  setting does not choose what the Stop hook runs (logged as `not_the_harness`); a program planted in one of those
+  folders the person can write, or earlier on PATH, counts as the harness's own, an open item in
+  `docs/runtime-integration.md` (What remains open). Claude
   Code's `claude -p` runs the configured model with
   no tools, every hook off (`--settings '{"disableAllHooks": true}'`), no user settings, plugins or memory
   (`--setting-sources local`) and no session kept, and the verdict comes through its structured-output tool as the
