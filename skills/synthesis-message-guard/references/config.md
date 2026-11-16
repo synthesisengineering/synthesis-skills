@@ -541,8 +541,9 @@ third round's opener ran on such a tab), and the refusal says to read the page f
 drag, words typed with a line break, a form value or an upload, but not one on a local app's page or a navigate to one
 (review round 6, #4, as ruled: a local page that sends the tab on is on the open list, so a click and then a script
 that clicks Save in the principal's own app runs); and a page script that can navigate, on any page: a location change
-(by name, by an alias such as `const l = location`, or by `Object.assign(location, ...)`), `open`, a history or
-navigation step, and off a local app's page a click, a submit or a dispatched event, or one the guard cannot read. A
+by any assignment operator (by name, by an alias such as `const l = location`, or by `Object.assign(location, ...)`),
+`open`, a history or navigation step, and off a local app's page a click, a submit or a dispatched event, or one the
+guard cannot read. A
 script that sets a value or writes by fetch moves nothing (a write by fetch waits for its own code as a send)
 (review round 4, #2: a short link or a followed link landed on a chat; round 5, #1: a script or a form value moved it
 unseen; round 6, #1 and #4). The guard's own first step for a driven browser, marked

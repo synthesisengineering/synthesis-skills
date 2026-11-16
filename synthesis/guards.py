@@ -6033,7 +6033,7 @@ def _local(address: str) -> bool:
 
 # A page script that can move its tab (round 6, #4, as ruled): a location change, by name, alias or Object.assign (#1),
 # `open`, a history or navigation step, and off a local app's page a click, a submit or a dispatched event.
-NAVIGATES = re.compile(MOVES + r"|\blocation\s*\.\s*(?:pathname|search|hash|host|hostname|port|protocol)\s*[+-]?=(?!=)|\bnavigation\s*\.\s*"
+NAVIGATES = re.compile(MOVES + r"|\blocation\s*\.\s*(?:pathname|search|hash|host|hostname|port|protocol)\s*" + ASSIGN + r"|\bnavigation\s*\.\s*"
                        r"navigate\s*\(|\bhistory\s*\.\s*(?:go|back|forward)\s*\(|\bObject\s*\.\s*assign\s*\(\s*(?:\w+\s*\.\s*)?location\b", re.I)
 
 
@@ -6041,7 +6041,7 @@ def _navigates(text: str, local: bool = False) -> bool:
     code = _script_code(text)[0]
     names = {a or b for a, b in re.findall(r"\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:\w+\s*\.\s*)?location\b(?!\s*\.)"
                                           r"|\{\s*location\s*:\s*([A-Za-z_$][\w$]*)\s*\}\s*=", code)}
-    aliased = any(re.search(rf"(?<![\w$.]){re.escape(n)}\s*\.\s*(?:(?:href|pathname|search|hash|host|hostname|port|protocol)\s*[+-]?=(?!=)"
+    aliased = any(re.search(rf"(?<![\w$.]){re.escape(n)}\s*\.\s*(?:(?:href|pathname|search|hash|host|hostname|port|protocol)\s*{ASSIGN}"
                             r"|(?:assign|replace)\s*\()", code) for n in names)
     return bool(_unread_script(text) or NAVIGATES.search(code) or aliased
                 or not local and re.search(r"\.click\s*\(|\.submit\s*\(|requestSubmit|dispatchEvent", code))
