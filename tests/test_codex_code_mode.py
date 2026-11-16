@@ -17,6 +17,9 @@ import contextlib
 import io
 import json
 import os
+import re
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -123,6 +126,35 @@ def test_a_script_shaped_command_line_is_judged_as_one_unless_codex_recorded_thi
     assert guards.check("exec", {"command": disguised}, {}) is not None
 
 
+# What each helper the guard counts as a sign does, by Codex's own description of its `exec` tool (the records'
+# `additional_tools`; the same in all 101 recorded from 2026-09-16 to 2026-11-15): each works inside Codex, on the
+# script's own result, its session's store or its run. None reaches a person, a service, a file or a process; a remote
+# image or audio URL is refused (the Codex binaries' own messages: "remote image URLs are not supported; use an inline data
+# URL instead", "audio URLs must use an inline data URL").
+HELPERS = {
+    "text": "appends a text item to the script's result",
+    "image": "appends an image item: an inline data URL or an MCP image block",
+    "audio": "appends an audio item: an inline data URL",
+    "generatedImage": "appends an image-generation result; HTTP(S) URLs are not supported",
+    "store": "keeps a value for later exec calls in the same session",
+    "load": "returns a value kept in the same session",
+    "notify": "injects an extra output into the current exec call's own result",
+    "exit": "ends the script",
+    "yield_control": "hands the output so far to the model while the script keeps running",
+}
+
+
+def test_the_helpers_counted_as_signs_are_the_ones_codex_documents_as_working_inside_it():
+    named = re.search(r"\(\?:([\w|]+)\)\\s\*\\\(", guards.CODE_MODE_SIGN.pattern).group(1).split("|")
+    assert sorted(named) == sorted(HELPERS)
+
+
+@pytest.mark.parametrize("text", ["process.exit(0)", "page.text(1)", "client.load(x)", "self.tools.exec_command(x)", "fetch(url)",
+                                  "console.log(1)"])
+def test_a_helper_is_a_sign_only_called_as_the_global_codex_documents(text):
+    assert not guards.code_mode_script("exec", {"input": text}), text
+
+
 def test_a_recorded_call_whose_text_differs_is_judged_as_a_command_line():
     path = rollout(meta(), exec_call("call_B", script("ls")))
     text = script(f"echo hi > {protected()}")
@@ -203,12 +235,51 @@ def test_a_proof_from_an_older_codex_does_not_cover_a_newer_one():
     assert check.status == "warn" and "0.167.0-alpha.4.1" in check.detail and "0.169.0-alpha.11.1" in check.detail, check
 
 
-def test_records_that_cannot_be_listed_warn_rather_than_stop_the_doctor(tmp_path):
-    folder = paths.transcript_roots()["codex"]
-    folder.mkdir(parents=True, exist_ok=True)
-    (folder / "rollout-2026-11-15T10-00-00-0009.jsonl").symlink_to(tmp_path / "gone.jsonl")  # removed as it was listed
+def test_records_that_cannot_be_listed_warn_rather_than_stop_the_doctor(monkeypatch):
+    paths.transcript_roots()["codex"].mkdir(parents=True, exist_ok=True)
+
+    def refused(self, pattern):
+        raise PermissionError(13, "Permission denied")
+    monkeypatch.setattr(Path, "rglob", refused)
     check = doctor.check_codex_nested_hooks(paths.codex_home())
     assert check.status == "warn" and "could not be listed" in check.detail, check
+
+
+def test_a_link_named_as_a_rollout_is_never_followed(tmp_path):
+    """Only a regular file is read (review round 1 of 22.33): a link may lead outside Codex's folder, or to a FIFO."""
+    elsewhere = tmp_path / "elsewhere.jsonl"
+    elsewhere.write_text("".join(json.dumps(r) + "\n" for r in (meta(), exec_call("call_1", script("ls")), output("call_1", REFUSED))),
+                         encoding="utf-8")
+    folder = paths.transcript_roots()["codex"] / "2026" / "11" / "15"
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / "rollout-2026-11-15T10-00-00-0005.jsonl").symlink_to(elsewhere)
+    (folder / "rollout-2026-11-15T10-00-00-0009.jsonl").symlink_to(tmp_path / "gone.jsonl")  # a link to nothing
+    assert doctor.check_codex_nested_hooks(paths.codex_home()) is None  # nothing regular was read: nothing to prove
+
+
+def test_a_fifo_named_as_a_rollout_is_never_opened():
+    """A FIFO with a rollout's name held the doctor until a writer came (review round 1 of 22.33): a doctor that hangs
+    never reports. The check runs in a process of its own here, so a hang fails the test instead of holding the run."""
+    folder = paths.transcript_roots()["codex"] / "2026" / "11" / "15"
+    folder.mkdir(parents=True, exist_ok=True)
+    rollout(meta(), exec_call("call_1", script("ls")), output("call_1", REFUSED), name="rollout-2026-11-15T10-00-00-0008.jsonl",
+            mtime=os.stat(folder).st_mtime - 60)  # older than the FIFO, so the newest-first reading meets the FIFO first
+    os.mkfifo(folder / "rollout-2026-11-15T10-00-00-0007.jsonl")
+    code = "from synthesis import doctor, paths; c = doctor.check_codex_nested_hooks(paths.codex_home()); print(c.status if c else 'none')"
+    try:
+        done = subprocess.run([sys.executable, "-c", code], cwd=str(Path(__file__).resolve().parents[1]), capture_output=True,
+                              text=True, timeout=15)
+    except subprocess.TimeoutExpired:
+        pytest.fail("the doctor opened a FIFO named as a rollout and waited for a writer")
+    assert done.stdout.strip() == "ok", done.stderr[-400:]
+
+
+def test_the_first_line_is_read_only_as_far_as_its_bound():
+    """A rollout's first line (its session record, about 20 KB) is read within a bound: a line with no end is not read whole."""
+    path = rollout(name="rollout-2026-11-15T10-00-00-0006.jsonl")
+    path.write_bytes(b"x" * (4 << 20))  # 4 MB and no line break
+    version, scripts, when, read = doctor._nested_proof(path, 1 << 20)
+    assert read < 4 << 20 and (version, scripts, when) == ("", False, ""), read
 
 
 def test_the_doctor_reads_only_the_newest_rollouts_it_allows_itself():
