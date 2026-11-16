@@ -78,9 +78,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   them, sourcing a startup file or a snapshot (what a shell's start runs anyway), running a harness program by name or
   by its path (a launcher's text may name where its program is kept), and installing other tools need no code. A
   harness's own variables that name its program or a startup file (Claude Code's `CLAUDE_CODE_EXECPATH`, `BASH_ENV`)
-  hold no program that reads the environment. The vendors' known places now live in `paths`, which the doctor and the
-  guard both read. A protected path outside the home folder had a
-  `~` spelling that matched any `~` a program holds (reached only by these paths); a program's text is looked through
+  hold no program that reads the environment, and a name that only begins with a protected path (`muse-bin-<version>`
+  beside muse, `ghostscript` beside gh) names another file. The vendors' known places now live in `paths`, which the
+  doctor and the guard both read. A protected path outside the home folder had a `~` spelling that matched any `~` a
+  program holds (reached only by these paths); a program's text is looked through
   only for the protected parts it holds, and the protected paths, their real paths and the variables that hold one are
   read once, so judging a command takes about as long as before with some 60 more paths (1,500 recorded commands: a
   median of 2.3 ms against 2.0, 8.1 s in all against 7.5; 3.8 ms and 12.3 s without this); a variable given a

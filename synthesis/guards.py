@@ -5509,7 +5509,7 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None) -> str |
     low = text.casefold()
 
     def spelled(name: str) -> set:  # as the command spells it: a Mac's file system ignores case (one it does not hold is not looked for)
-        return {m[0] for m in re.finditer(re.escape(name), text, re.I)} if name.casefold() in low else set()
+        return {m[0] for m in re.finditer(re.escape(name) + r"(?![\w.-])", text, re.I)} if name.casefold() in low else set()  # muse-bin-… is no muse
     mine = spelled(store.name) if store and str(store) in raw else set()  # the store's own name: a write from inside its folder
     names = sorted({s for r in raw for n in (r, *["~" + r[len(home):]] * paths.inside(r, home)) for s in spelled(n)} | mine)  # `~` spells only the home folder's (22.26)
     redirects, readable = [], True

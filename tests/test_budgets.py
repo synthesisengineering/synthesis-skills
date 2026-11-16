@@ -1425,7 +1425,8 @@ ROOT = Path(__file__).resolve().parents[1]
 # Then each 2 more, both in guards.py, from the 60-day replay of 22.26: _self_grant 1 (a harness's own variables that
 # name its program or a startup file, CLAUDE_CODE_EXECPATH and BASH_ENV, hold no program that reads the environment:
 # every such program that writes and that the reader could not follow waited in Claude Code), _settings_map 1 (the
-# ChatGPT and Codex apps held at the folder that keeps their Codex CLI, which KEPT no longer takes as the whole app).
+# ChatGPT and Codex apps held at the folder that keeps their Codex CLI, which KEPT no longer takes as the whole app). In
+# place: _self_grant's names are whole paths, so muse-bin-<version> or ghostscript no longer names muse or gh.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
 CORE_BUDGET = 17337
